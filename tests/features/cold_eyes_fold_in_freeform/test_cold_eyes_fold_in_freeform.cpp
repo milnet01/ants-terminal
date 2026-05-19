@@ -66,8 +66,13 @@ TEST(ColdEyesFoldInFreeform, HandlerRecognisesIdAllocation) {
     // Locate the cmdColdEyesFoldIn function body.
     const auto fnStart = rc.find("RemoteControl::cmdColdEyesFoldIn");
     ASSERT_NE(fnStart, std::string::npos);
-    // Approximate body window: 3 KB after the function start.
-    const std::string region = rc.substr(fnStart, 4000);
+    // ANTS-1644 — bound by the next handler rather than a fixed
+    // 4000-char window. The narrative-mode short-circuit grew the
+    // body and pushed the id_allocation parsing past the old window.
+    const auto fnEnd =
+        rc.find("RemoteControl::cmdColdEyesSingleDoc", fnStart);
+    ASSERT_NE(fnEnd, std::string::npos);
+    const std::string region = rc.substr(fnStart, fnEnd - fnStart);
 
     // INV-3 — id_allocation parsed and validated.
     EXPECT_TRUE(contains(region, "id_allocation"))

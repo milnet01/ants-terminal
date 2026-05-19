@@ -5229,10 +5229,55 @@ QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
     if (!gate.ok) return QJsonDocument(RcGate::gateErrorEnvelope(gate));
     const QString root = gate.focused;
 
+    // ANTS-1644 — narrative-mode short-circuit. Caller supplies
+    // pre-rendered markdown under the `### 🔍 Indie-review fold-in
+    // (<DATE>)` heading; handler inserts it verbatim, skipping ID
+    // allocation and per-finding bullet rendering. Mirrors the
+    // ANTS-1635 template from test_audit_fold_in.
+    const bool narrativeMode =
+        req.value(QStringLiteral("narrative_mode")).toBool();
+    if (narrativeMode) {
+        QString dateIso = req.value(QStringLiteral("date_iso")).toString();
+        if (dateIso.isEmpty()) {
+            dateIso = QDate::currentDate().toString(Qt::ISODate);
+        }
+        const QString narrative =
+            req.value(QStringLiteral("narrative_md")).toString().trimmed();
+        if (narrative.isEmpty()) return QJsonDocument(irErr(
+            QStringLiteral("narrative_md_required"),
+            QStringLiteral(
+                "indie_review_fold_in: narrative_mode=true requires "
+                "non-empty narrative_md")));
+        QString block;
+        block.reserve(narrative.size() + 64);
+        block += QStringLiteral("### 🔍 Indie-review fold-in (")
+              + dateIso + QStringLiteral(")\n\n");
+        block += narrative;
+        if (!block.endsWith(QChar('\n'))) block += QChar('\n');
+        QString heading =
+            req.value(QStringLiteral("release_block_heading")).toString();
+        if (heading.isEmpty()) heading =
+            RoadmapFoldIn::findActiveReleaseHeading(root);
+        bool written = false;
+        if (!heading.isEmpty()) {
+            written = RoadmapFoldIn::insertBlock(root, heading, block);
+        }
+        QJsonObject env;
+        env["ok"]            = true;
+        env["block"]         = block;
+        env["allocated_ids"] = QJsonArray();
+        env["written"]       = written;
+        if (!heading.isEmpty()) env["release_block_heading"] = heading;
+        return QJsonDocument(env);
+    }
+
     const QJsonArray actArr = req.value(QStringLiteral("actionable")).toArray();
     if (actArr.isEmpty()) return QJsonDocument(irErr(
         QStringLiteral("bad_args"),
-        QStringLiteral("indie_review_fold_in: actionable array required")));
+        QStringLiteral(
+            "indie_review_fold_in: actionable array required "
+            "(or pass narrative_mode=true + narrative_md=\"…\" — "
+            "ANTS-1644)")));
 
     QList<IndieReviewEngine::CorroboratedFinding> actionable;
     for (const auto &v : actArr) {
@@ -6728,11 +6773,59 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
     if (!gate.ok) return QJsonDocument(RcGate::gateErrorEnvelope(gate));
     const QString root = gate.focused;
 
+    // ANTS-1644 — narrative-mode short-circuit. Caller supplies
+    // pre-rendered markdown under the `### 📝 Cold-eyes <DATE>`
+    // heading; handler inserts it verbatim, skipping ID allocation and
+    // per-finding bullet rendering. Useful when the natural shape is
+    // "prose subsection grouped by Closed-inline / Deferred / False-
+    // positives", not N structured bullets. Ports the ANTS-1635
+    // template from test_audit_fold_in.
+    const bool narrativeMode =
+        req.value(QStringLiteral("narrative_mode")).toBool();
+    if (narrativeMode) {
+        QString dateIso = req.value(QStringLiteral("date_iso")).toString();
+        if (dateIso.isEmpty()) {
+            dateIso = QDate::currentDate().toString(Qt::ISODate);
+        }
+        const QString narrative =
+            req.value(QStringLiteral("narrative_md")).toString().trimmed();
+        if (narrative.isEmpty()) return QJsonDocument(ceErr(
+            QStringLiteral("narrative_md_required"),
+            QStringLiteral(
+                "cold_eyes_fold_in: narrative_mode=true requires "
+                "non-empty narrative_md")));
+        QString block;
+        block.reserve(narrative.size() + 64);
+        block += QStringLiteral("### 📝 Cold-eyes ") + dateIso
+              + QStringLiteral("\n\n");
+        block += narrative;
+        if (!block.endsWith(QChar('\n'))) block += QChar('\n');
+        QString heading =
+            req.value(QStringLiteral("release_block_heading")).toString();
+        if (heading.isEmpty()) heading =
+            RoadmapFoldIn::findActiveReleaseHeading(root);
+        bool written = false;
+        if (!heading.isEmpty()) {
+            written = RoadmapFoldIn::insertBlock(root, heading, block);
+        }
+        QJsonObject env;
+        env["ok"]            = true;
+        env["block"]         = block;
+        env["allocated_ids"] = QJsonArray();
+        env["id_allocation"] = QStringLiteral("skip");
+        env["written"]       = written;
+        if (!heading.isEmpty()) env["release_block_heading"] = heading;
+        return QJsonDocument(env);
+    }
+
     const QJsonArray actArr =
         req.value(QStringLiteral("actionable")).toArray();
     if (actArr.isEmpty()) return QJsonDocument(ceErr(
         QStringLiteral("bad_args"),
-        QStringLiteral("cold_eyes_fold_in: actionable array required")));
+        QStringLiteral(
+            "cold_eyes_fold_in: actionable array required "
+            "(or pass narrative_mode=true + narrative_md=\"…\" — "
+            "ANTS-1644)")));
 
     QList<IndieReviewEngine::CorroboratedFinding> actionable;
     for (const auto &v : actArr) {

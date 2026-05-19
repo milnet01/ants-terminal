@@ -71,8 +71,25 @@ TEST(McpColdEyes, SchemaRequiredArraysMatchInv10) {
     // required arg.
     EXPECT_NE(region.find("req.append(\"lane\")"), std::string::npos)
         << "cold_eyes_brief should require lane";
-    EXPECT_NE(region.find("req.append(\"actionable\")"), std::string::npos)
-        << "cold_eyes_fold_in should require actionable";
+    // ANTS-1644 — cold_eyes_fold_in dropped `actionable` from the
+    // required array when narrative_mode landed. `caller_cwd` is now
+    // the sole required field; the handler enforces "actionable OR
+    // narrative_mode + narrative_md" downstream so a single required
+    // field can't capture the disjunction. Sibling-tool assertion
+    // lives in `cold_eyes_fold_in_narrative` /
+    // `indie_review_fold_in_narrative`.
+    const auto pCe = region.find("t[\"name\"] = \"cold_eyes_fold_in\"");
+    ASSERT_NE(pCe, std::string::npos);
+    const auto pCeEnd = region.find("tools.append(t);", pCe);
+    ASSERT_NE(pCeEnd, std::string::npos);
+    const std::string ceRegion = region.substr(pCe, pCeEnd - pCe);
+    EXPECT_EQ(ceRegion.find("req.append(\"actionable\")"),
+              std::string::npos)
+        << "ANTS-1644: cold_eyes_fold_in must NOT require "
+           "`actionable` (narrative_mode is the alternative)";
+    EXPECT_NE(ceRegion.find("req.append(\"caller_cwd\")"),
+              std::string::npos)
+        << "cold_eyes_fold_in must keep caller_cwd required";
 
     // partition: no `required` (scope is optional). Negative check —
     // look for the partition block specifically. Its block runs from

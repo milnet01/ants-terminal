@@ -2619,9 +2619,18 @@ void ClaudeIntegration::onMcpConnection() {
                         "(via RoadmapFoldIn::allocateIds) and, if a "
                         "release-block heading is found via "
                         "findActiveReleaseHeading, atomically inserts "
-                        "the block into ROADMAP.md. Required: "
-                        "actionable (array), caller_cwd (string — "
-                        "your $PWD; ANTS-1372 cross-project gate).");
+                        "the block into ROADMAP.md. ANTS-1644 — pass "
+                        "`narrative_mode:true` + `narrative_md:\"<pre-"
+                        "rendered markdown>\"` to insert prose under "
+                        "the section heading verbatim, skipping ID "
+                        "allocation and per-finding bullet rendering. "
+                        "Use this when the natural shape is one prose "
+                        "subsection (Closed inline / Deferred / "
+                        "False-positives) rather than N bullets the "
+                        "reviewer doesn't want. Required: caller_cwd "
+                        "(string — your $PWD; ANTS-1372 cross-project "
+                        "gate). One of: actionable (array) OR "
+                        "narrative_mode=true + narrative_md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to merge a finished indie-review report "
                         "back into ROADMAP.md as a fold-in block. "
@@ -2653,14 +2662,42 @@ void ClaudeIntegration::onMcpConnection() {
                         "Your $PWD. Mutating verbs refuse on mismatch "
                         "with the focused tab's cwd (ANTS-1372 "
                         "cross-project write gate).");
+                    // ANTS-1644 — narrative-mode escape hatch.
+                    QJsonObject nmProp;
+                    nmProp["type"] = "boolean";
+                    nmProp["description"] = QStringLiteral(
+                        "Opt out of per-finding bullet rendering. "
+                        "When true, the handler inserts "
+                        "`narrative_md` verbatim under the "
+                        "`### 🔍 Indie-review fold-in (<DATE>)` "
+                        "heading, skips `.roadmap-counter` "
+                        "allocation, and returns `allocated_ids:[]`. "
+                        "`actionable` is then optional. Use for "
+                        "prose subsections (Closed inline / "
+                        "Deferred / False-positives) where N bullets "
+                        "would be noise.");
+                    QJsonObject nmdProp;
+                    nmdProp["type"] = "string";
+                    nmdProp["description"] = QStringLiteral(
+                        "Pre-rendered markdown body for "
+                        "`narrative_mode:true`. Inserted verbatim "
+                        "after a blank line under the section "
+                        "heading. Trailing newline added if absent. "
+                        "Refused with code "
+                        "`narrative_md_required` when empty or "
+                        "whitespace-only.");
                     QJsonObject props;
                     props["actionable"]             = actProp;
                     props["date_iso"]               = dateProp;
                     props["release_block_heading"]  = hdrProp;
+                    props["narrative_mode"]         = nmProp;
+                    props["narrative_md"]           = nmdProp;
                     props["caller_cwd"]             = callerProp;
                     schema["properties"] = props;
+                    // ANTS-1644 — `actionable` dropped from required.
+                    // Handler still refuses with bad_args when both
+                    // narrative_mode=false AND actionable[] empty.
                     QJsonArray req;
-                    req.append("actionable");
                     req.append("caller_cwd");
                     schema["required"] = req;
                     schema["additionalProperties"] = false;
@@ -3901,8 +3938,18 @@ void ClaudeIntegration::onMcpConnection() {
                         "atomically inserted into ROADMAP.md; "
                         "otherwise the block is returned in "
                         "`block` for caller-side splicing. "
-                        "Required: actionable (array), caller_cwd "
-                        "(string — your $PWD; ANTS-1372).");
+                        "ANTS-1644 — pass `narrative_mode:true` + "
+                        "`narrative_md:\"<pre-rendered markdown>\"` "
+                        "to insert prose under the section heading "
+                        "verbatim, skipping ID allocation and the "
+                        "per-finding bullet rendering. Use this when "
+                        "the natural shape is one prose subsection "
+                        "(Closed inline / Deferred / False-positives) "
+                        "rather than N bullets the reviewer doesn't "
+                        "want. Required: caller_cwd (string — your "
+                        "$PWD; ANTS-1372). One of: actionable "
+                        "(array) OR narrative_mode=true + "
+                        "narrative_md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to fold a cold-eyes set into "
                         "ROADMAP.md. id_allocation:\"skip\" for "
@@ -3957,15 +4004,43 @@ void ClaudeIntegration::onMcpConnection() {
                         "Your $PWD. Mutating verbs refuse on "
                         "mismatch with the focused tab's cwd "
                         "(ANTS-1372).");
+                    // ANTS-1644 — narrative-mode escape hatch.
+                    QJsonObject nmProp;
+                    nmProp["type"] = "boolean";
+                    nmProp["description"] = QStringLiteral(
+                        "Opt out of per-finding bullet rendering. "
+                        "When true, the handler inserts "
+                        "`narrative_md` verbatim under the "
+                        "`### 📝 Cold-eyes <DATE>` heading, skips "
+                        "`.roadmap-counter` allocation, and returns "
+                        "`allocated_ids:[]`. `actionable` is then "
+                        "optional. Use for prose subsections "
+                        "(Closed inline / Deferred / False-"
+                        "positives) where N bullets would be "
+                        "noise.");
+                    QJsonObject nmdProp;
+                    nmdProp["type"] = "string";
+                    nmdProp["description"] = QStringLiteral(
+                        "Pre-rendered markdown body for "
+                        "`narrative_mode:true`. Inserted verbatim "
+                        "after a blank line under the section "
+                        "heading. Trailing newline added if absent. "
+                        "Refused with code "
+                        "`narrative_md_required` when empty or "
+                        "whitespace-only.");
                     QJsonObject props;
                     props["actionable"]            = aProp;
                     props["date_iso"]              = dProp;
                     props["release_block_heading"] = hProp;
                     props["id_allocation"]         = iaProp;
+                    props["narrative_mode"]        = nmProp;
+                    props["narrative_md"]          = nmdProp;
                     props["caller_cwd"]            = callerProp;
                     schema["properties"] = props;
+                    // ANTS-1644 — `actionable` dropped from required.
+                    // Handler still refuses with bad_args when both
+                    // narrative_mode=false AND actionable[] empty.
                     QJsonArray req;
-                    req.append("actionable");
                     req.append("caller_cwd");
                     schema["required"] = req;
                     schema["additionalProperties"] = false;

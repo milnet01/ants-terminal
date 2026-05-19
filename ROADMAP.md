@@ -11848,8 +11848,8 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-test-audit, mcp-cold-eyes, mcp-indie-review, roadmapfoldin.
   Source: cross-session-report-2026-05-18 (Music_Production /test-audit second sweep Issue #3).
 
-- 📋 [ANTS-1644] **`cold_eyes_fold_in` + `indie_review_fold_in` — port `narrative_mode` from ANTS-1635.**
-  Sibling fold-in tools to `test_audit_fold_in` carry the same "structured-shape mismatch" gap that ANTS-1635 closed for the test-audit verb on 2026-05-19. Each engine renders one bullet per `actionable[]` entry under a section heading, allocating one roadmap ID per bullet — wrong for the natural human shape of "I want one prose subsection grouped by Closed-inline / Deferred / False-positives". The fix template is now in place (ANTS-1635 spec § 2.1-2.3 + INV checklist + test pattern); each sibling tool just needs the schema + handler + engine short-circuit applied. Scope per tool: (a) add `narrative_mode: bool` + `narrative_md: string` schema props, (b) add fields to the engine `FoldInRequest`, (c) short-circuit in the engine's fold-in entry point (`coldEyesFoldIn` / `indieReviewFoldIn`), (d) two new tests per tool (verbatim insert + body required), (e) flip schema `required` from `actionable` to caller_cwd-only.
+- ✅ [ANTS-1644] **`cold_eyes_fold_in` + `indie_review_fold_in` — port `narrative_mode` from ANTS-1635.** Shipped 2026-05-19 (pull 30). Both sibling fold-in handlers now accept `narrative_mode:true` + `narrative_md:"<markdown>"` and emit the section heading (`### 📝 Cold-eyes <DATE>` / `### 🔍 Indie-review fold-in (<DATE>)`) followed by the caller's markdown verbatim, skipping `.roadmap-counter` allocation and per-finding bullet rendering. Empty `narrative_md` refuses with the dedicated `narrative_md_required` code; the `actionable[]`-missing refusal names the escape hatch so callers discover it from the refusal alone. Schema dropped `actionable` from `required` on both descriptors (only `caller_cwd` remains). Because the cold-eyes/indie-review engines only expose pure template-builder functions (no `foldIn()` entry point like `TestAuditEngine`), the entire short-circuit lives in `RemoteControl::cmdColdEyesFoldIn` + `cmdIndieReviewFoldIn`; no engine-API churn. Spec `docs/specs/ANTS-1644.md`; tests `tests/features/cold_eyes_fold_in_narrative/` + `tests/features/indie_review_fold_in_narrative/` (8 new source-grep cases, mirroring the `cold_eyes_fold_in_freeform` pattern). Adjacent `mcp_cold_eyes.SchemaRequiredArraysMatchInv10` retargeted to assert the new contract. Pre-existing `cold_eyes_fold_in_freeform.HandlerRecognisesIdAllocation` body window widened (was a fixed 4 KB, now neighbour-bounded) so it survives the larger handler. Full features suite 1208/1208 green.
+  Original ask (kept for cross-reference): Sibling fold-in tools to `test_audit_fold_in` carry the same "structured-shape mismatch" gap that ANTS-1635 closed for the test-audit verb on 2026-05-19. Each engine renders one bullet per `actionable[]` entry under a section heading, allocating one roadmap ID per bullet — wrong for the natural human shape of "I want one prose subsection grouped by Closed-inline / Deferred / False-positives". The fix template is now in place (ANTS-1635 spec § 2.1-2.3 + INV checklist + test pattern); each sibling tool just needs the schema + handler + engine short-circuit applied.
   **Layman:** The cold-eyes and indie-review companions to /test-audit have the same "30 bullets when you wanted 1 paragraph" issue ANTS-1635 just fixed for /test-audit. Port the same fix to those two tools.
   Kind: enhancement.
   Lanes: mcp-cold-eyes, mcp-indie-review, roadmapfoldin, coldeyesengine, indiereviewengine.
@@ -11982,27 +11982,31 @@ template / mutate this state atomically" → movable. If it's
   Lanes: diffviewer, claudestatuswidgets.
   Source: user request 2026-05-19 (Review Changes screenshot).
 
-- 📋 [ANTS-1641] **Task List dialog — uneven vertical spacing between rows when description contains `[]` token.**
+- 📋 [ANTS-1641] **Task List dialog — uneven vertical spacing between rows; `[]` was the first trigger, but the symptom recurs without `[]` so the cause is broader.**
   Reported 2026-05-19 with a screenshot of the Task List dialog showing the 5 tasks for this MCP-bundle session. The ANTS-1620 row (which has `probed_paths[]` in its description) renders with visibly more vertical padding between it and the next row than the sibling rows have between each other — looks like the parser sanitiser (ANTS-1639) or the QTextDocument rich-text renderer is treating the `[]` token as a markdown empty-link-anchor and emitting an extra block-level break around it.
+
+  **Second observation (2026-05-19, MCP pull 30 session):** another screenshot of the Task List dialog (8 tasks for the cold_eyes/indie_review fold-in port) shows the same extra gap between task #7 ("Build + run features fast lane — Token-frugal build (tail -20) + ctest --label-regex features, verify pre-fix tests fail / post-fix pass.") and task #8 ("Update ROADMAP + CHANGELOG + flip ANTS-1644 → ✅ — Mirror pull 29 doc-update pattern: roadmap flip + new CHANGELOG section. Commit + push (public repo)."). **Neither row contains `[]`** — so the renderer's "extra block break" trigger is broader than empty-bracket-link. Candidate triggers in those two rows that should be tested: `(tail -20)` / `(public repo)` parenthesised tokens; the `→ ✅` ASCII-arrow + emoji combo; the `--label-regex` double-dash run; trailing `pass.` + leading `Update`; the em-dashes (`—`) separating subject from description on each row.
 
   Repro recipe:
   1. Create a task whose `description` contains a `[]` token (e.g. "the `foo[]` echo doesn't include bar").
   2. Open the Task List dialog.
   3. Compare the gap between that task and the next vs the gap between two adjacent tasks without `[]`.
+  4. **Additional:** repro the second observation by scripting 8 tasks where row #7's description ends `…post-fix pass.` and row #8's subject contains `→ ✅` — should reproduce the gap with no `[]` involved.
 
   Suggested investigation:
   - Check whether `ClaudeTaskListDialog::rebuild` (or the ANTS-1639 markup sanitiser) interprets `[…]` as a markdown link target. If so, escape `[` and `]` to entities BEFORE feeding the string to `QListWidgetItem::setText` / the rich-text renderer (mirror the ANTS-1639 escape pattern that's already applied for `<`/`>`/`&`).
+  - **NEW:** also audit the renderer's behaviour around parens, em-dashes, and the `→ ✅` ASCII-arrow + emoji combo for spurious block-break emission. Compare the rendered HTML for a single problem row vs. a single clean row in a `QTextEdit::toHtml()` dump to isolate.
   - Check the bg-tasks dialog for the same regression — same parser, same likely bug.
-  - Bound the fix to display-only escaping — the underlying task data must keep the verbatim `[]` so right-click copy (ANTS-1638) yields the original characters.
+  - Bound the fix to display-only escaping — the underlying task data must keep the verbatim characters so right-click copy (ANTS-1638) yields the originals.
 
   Composes with ANTS-1639 (markup sanitisation) — same parser, same defensive-escape discipline.
 
   RAM budget: zero — same data, two extra `replace()` calls per row at render time.
 
-  **Layman:** When a task description contains square brackets (like `foo[]`), the Task List dialog draws a bigger gap underneath that row than the others. Cosmetic but distracting. Likely the renderer is mistaking the brackets for a markdown link and inserting a blank-line break.
+  **Layman:** Originally reported as a gap appearing under task rows whose text contained square brackets (like `foo[]`). A second screenshot from the next session shows the same extra gap on rows that contain no square brackets at all — so the trigger is broader than first thought. Cosmetic but distracting; needs broader investigation of which characters the renderer is mistaking for markdown block-break sequences.
   Kind: fix.
   Lanes: claudetasklist, claudebgtasks, claudestatuswidgets.
-  Source: user request 2026-05-19 (Task List dialog screenshot, ANTS-1620 row).
+  Source: user request 2026-05-19 (Task List dialog screenshot, ANTS-1620 row) + user request 2026-05-19 (Task List dialog screenshot, MCP pull 30 tasks #7/#8 — no `[]` present).
 
 - ✅ [ANTS-1639] **Task List + bg-tasks parser doesn't sanitise raw tool-input markup leaked from malformed `TaskCreate` calls.**
   Observed in the same 2026-05-19 screenshot: a row reads `Roadmap "find-relevant-source-files" MCP feature (user 2026-05-19)</subject><parameter name="description">User asked: …`. The leak happened when an upstream `TaskCreate` invocation was malformed (sent `<parameter name="description">` markup instead of a `description:` field) and Claude Code's transcript-side error envelope ended up captured by the tracker as the task's title.

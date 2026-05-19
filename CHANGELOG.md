@@ -12,7 +12,44 @@ for security-relevant changes.
 
 ## [Unreleased]
 
-### 🔌 MCP test_audit_fold_in narrative_mode — pull 30 (ANTS-1635, 2026-05-19)
+### 🔌 MCP cold-eyes + indie-review fold-in narrative_mode — pull 30 (ANTS-1644, 2026-05-19)
+
+Ports the ANTS-1635 narrative_mode escape hatch from `test_audit_fold_in`
+into the two sibling fold-in verbs. Same friction class — "I want one
+prose subsection, not N structured bullets" — same fix shape.
+
+- **ANTS-1644 (enhancement)** — `cold_eyes_fold_in` and
+  `indie_review_fold_in` accept two new optional fields:
+  `narrative_mode: bool` + `narrative_md: string`. When
+  `narrative_mode=true`, the handler inserts `narrative_md` verbatim
+  under the verb-specific section heading (`### 📝 Cold-eyes <DATE>`
+  for cold-eyes, `### 🔍 Indie-review fold-in (<DATE>)` for indie-
+  review), skipping `.roadmap-counter` allocation and per-finding
+  bullet rendering. `actionable[]` is no longer schema-required on
+  either descriptor; the handler enforces "either narrative_mode OR
+  actionable[]" at runtime — empty `narrative_md` refuses with the
+  dedicated `narrative_md_required` code, and the `actionable[]`-
+  missing refusal now names the escape hatch (`"…or pass
+  narrative_mode=true + narrative_md=\"…\" — ANTS-1644"`) so callers
+  discover it from the refusal alone. Because both cold-eyes and
+  indie-review engines only expose pure template-builder functions
+  (no `foldIn()` entry point like `TestAuditEngine`), the entire
+  short-circuit lives in `RemoteControl::cmdColdEyesFoldIn` +
+  `cmdIndieReviewFoldIn`; no engine-API churn. RcGate caller-cwd
+  check still runs first (gate cannot be bypassed). Spec
+  `docs/specs/ANTS-1644.md`; 8 new source-grep tests in
+  `tests/features/cold_eyes_fold_in_narrative/` +
+  `tests/features/indie_review_fold_in_narrative/`. Adjacent
+  `mcp_cold_eyes.SchemaRequiredArraysMatchInv10` retargeted to assert
+  the new contract; pre-existing
+  `cold_eyes_fold_in_freeform.HandlerRecognisesIdAllocation` body
+  window widened (was a fixed 4 KB, now neighbour-bounded) so it
+  survives the larger handler. Full features suite 1208/1208 green.
+  `debt_sweep_apply_fix` narrative mode is the residual sibling-tool
+  gap — different artefact shape (per-file diff queue, not a ROADMAP
+  block); tracked separately if reports surface the need.
+
+### 🔌 MCP test_audit_fold_in narrative_mode — pull 29 (ANTS-1635, 2026-05-19)
 
 Closes the "I want a prose ROADMAP subsection, not 30 structured
 bullets" friction class on `test_audit_fold_in`. Pairs naturally with
