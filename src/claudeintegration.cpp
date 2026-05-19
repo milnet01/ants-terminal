@@ -2854,7 +2854,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "response. For builds > 60 s, fall back to "
                         "`Bash → cmake/make` rather than raising "
                         "`timeout_sec`; this tool's [10, 1800] clamp "
-                        "is independent of the transport cap.");
+                        "is independent of the transport cap. "
+                        "**Phase timing (ANTS-1628):** every successful "
+                        "envelope carries `wall_clock_ms`, `pre_gate_ms`, "
+                        "and `gate_ms`. A large `pre_gate_ms` with a "
+                        "tiny `gate_ms` means the wrapper work (config "
+                        "load, cache lookup, trust probe) is consuming "
+                        "the transport budget before the build starts — "
+                        "an actionable signal distinct from a long build.");
                     t["selection_hint"] = QStringLiteral(
                         "Use after Edit/Write to verify build / "
                         "tests / lint gates still pass. Cheap "
@@ -3549,7 +3556,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "Paths must be project-relative and resolve "
                         "inside the project root (INV-13 enforced); "
                         "absolute paths and symlink escapes are "
-                        "rejected silently.");
+                        "rejected silently. **Rate limit (ANTS-1629):** "
+                        "BriefAssembly tier — 30 calls / 60 s "
+                        "per (tool, caller_cwd). A canonical "
+                        "`/cold-eyes` Phase-2 fan-out dispatches "
+                        "12-16 briefs in one parallel batch, which "
+                        "fits comfortably under this cap. Higher than "
+                        "the 10/min Expensive tier the other "
+                        "`cold_eyes_*` verbs sit in.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to assemble the brief for one "
                         "cold-eyes chunk. Run after "
@@ -5253,10 +5267,12 @@ void ClaudeIntegration::maybeInsertIdempotentReadCache(
 
 namespace {
 // Test-only cap overrides. Defaulted to -1 = "use compile-time
-// constants" (kRateLimitCheapCap / kRateLimitExpensiveCap). The
-// `*ForTest` setters write here; production callers never touch it.
-int g_rateLimitCheapCapOverride     = -1;
-int g_rateLimitExpensiveCapOverride = -1;
+// constants" (kRateLimitCheapCap / kRateLimitBriefAssemblyCap /
+// kRateLimitExpensiveCap). The `*ForTest` setters write here;
+// production callers never touch it.
+int g_rateLimitCheapCapOverride         = -1;
+int g_rateLimitBriefAssemblyCapOverride = -1;
+int g_rateLimitExpensiveCapOverride     = -1;
 }  // namespace
 
 ClaudeIntegration::RateLimitClass
@@ -5269,12 +5285,18 @@ ClaudeIntegration::rateLimitClassFor(const QString &toolName) {
     if (toolName == QStringLiteral("tool_info"))          return R::ControlPlane;
     if (toolName == QStringLiteral("mcp_trace"))          return R::ControlPlane;
     if (toolName == QStringLiteral("caller_cwd_info"))    return R::ControlPlane;
+    // ANTS-1629 — BriefAssembly tier (30/min). Brief-generation verbs
+    // that fan out one-per-lane during a /cold-eyes sweep. The
+    // canonical Phase-2 step dispatches 12-16 briefs in one parallel
+    // batch, which the 10/min Expensive cap was blocking. Cost shape
+    // is read-and-template-assembly, not shell-out — semantically
+    // between Cheap and Expensive.
+    if (toolName == QStringLiteral("cold_eyes_brief"))          return R::BriefAssembly;
     // Expensive — 10/min. Heavy verbs (shell-out, subagent dispatch,
     // cmake/ctest, full-corpus scan).
     if (toolName == QStringLiteral("audit_run"))                return R::Expensive;
     if (toolName == QStringLiteral("workspace_search"))         return R::Expensive;
     if (toolName == QStringLiteral("verify_changes"))           return R::Expensive;
-    if (toolName == QStringLiteral("cold_eyes_brief"))          return R::Expensive;
     if (toolName == QStringLiteral("cold_eyes_partition"))      return R::Expensive;
     if (toolName == QStringLiteral("cold_eyes_cross_doc_diff")) return R::Expensive;
     if (toolName == QStringLiteral("cold_eyes_fold_in"))        return R::Expensive;
@@ -5304,6 +5326,12 @@ ClaudeIntegration::rateLimitTierFor(RateLimitClass cls) {
             const int cap = (g_rateLimitExpensiveCapOverride >= 0)
                 ? g_rateLimitExpensiveCapOverride
                 : kRateLimitExpensiveCap;
+            return RateLimitTier{cap, kRateLimitWindowMs};
+        }
+        case RateLimitClass::BriefAssembly: {
+            const int cap = (g_rateLimitBriefAssemblyCapOverride >= 0)
+                ? g_rateLimitBriefAssemblyCapOverride
+                : kRateLimitBriefAssemblyCap;
             return RateLimitTier{cap, kRateLimitWindowMs};
         }
         case RateLimitClass::Cheap:
@@ -5380,9 +5408,19 @@ void ClaudeIntegration::setRateLimitCapsForTest(int cheap, int expensive) {
     g_rateLimitExpensiveCapOverride = expensive;
 }
 
+// ANTS-1629 — additive overload so tests can drive the new
+// BriefAssembly tier without disturbing existing two-arg callers.
+void ClaudeIntegration::setRateLimitCapsForTest(
+    int cheap, int briefAssembly, int expensive) {
+    g_rateLimitCheapCapOverride         = cheap;
+    g_rateLimitBriefAssemblyCapOverride = briefAssembly;
+    g_rateLimitExpensiveCapOverride     = expensive;
+}
+
 void ClaudeIntegration::resetRateLimitCapsForTest() {
-    g_rateLimitCheapCapOverride     = -1;
-    g_rateLimitExpensiveCapOverride = -1;
+    g_rateLimitCheapCapOverride         = -1;
+    g_rateLimitBriefAssemblyCapOverride = -1;
+    g_rateLimitExpensiveCapOverride     = -1;
 }
 
 // --- Project / Session Discovery ---

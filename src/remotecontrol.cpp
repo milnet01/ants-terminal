@@ -5583,6 +5583,17 @@ void RemoteControl::putVerifyCacheForTest(
 
 QJsonDocument RemoteControl::cmdVerifyChangesImpl(
         const QString &root, const QJsonObject &req) {
+    // ANTS-1628 — phase timing. wall starts at impl entry; preGate
+    // freezes the moment we hand off to runVerify. Emitting both lets
+    // callers tell apart "build took 55 s" from "wrapper consumed 55 s
+    // before the build even started" — the latter is what the Vestige
+    // 3D Engine report saw when verify_changes(timeout_sec=900) hit a
+    // ~60 s transport-side cap on a near-empty build.
+    QElapsedTimer wall;
+    wall.start();
+    qint64 preGateMs = -1;
+    qint64 gateMs    = -1;
+
     const QFileInfo rootInfo(root);
     if (!rootInfo.isDir()) return QJsonDocument(vcErr(
         QStringLiteral("cwd_unreachable"),
@@ -5686,8 +5697,10 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
     // Step 10 — miss path. runVerify takes (root, opts) and re-calls
     // loadGateConfig internally; the second call is silent for
     // already-decided SHAs (spec § 2.1 rationale).
+    preGateMs = wall.elapsed();
     const VerifyEngine::VerifyReport rep =
         VerifyEngine::runVerify(root, opts);
+    gateMs = wall.elapsed() - preGateMs;
 
     QJsonObject env;
     env[QStringLiteral("ok")]               = true;
@@ -5741,6 +5754,15 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
             "transport closing the socket (typically ~60s for Claude "
             "Code) — independent of this tool's [10, 1800] clamp.");
     }
+
+    // ANTS-1628 — emit phase timing on every successful envelope.
+    // Lets the caller correlate "I saw `transport: timed out` at ~60 s
+    // on a near-empty build" against "the tool itself ran in N ms" —
+    // a large `pre_gate_ms` with a tiny `gate_ms` signals the pre-build
+    // wrapper work consumed the transport budget, not the build.
+    env[QStringLiteral("wall_clock_ms")] = static_cast<qint64>(wall.elapsed());
+    env[QStringLiteral("pre_gate_ms")]   = preGateMs;
+    env[QStringLiteral("gate_ms")]       = gateMs;
 
     // Step 10b — post-run snapshot + exclusion-list gate (§ 2.5).
     const VerifyGitSnapshot postSnapshot =

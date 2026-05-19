@@ -135,3 +135,47 @@ TEST(Ants1579TimeoutHeadroom, Inv4DescriptionNamesBothSidesInProximity) {
         << "requires them in proximity so a Claude reader sees the "
         << "asymmetry up front";
 }
+
+// ANTS-1628 INV-A — successful envelope carries the three phase-
+// timing fields (wall_clock_ms / pre_gate_ms / gate_ms) so callers
+// can distinguish a long build from pre-gate wrapper work consuming
+// the transport budget. Source-scrape against the impl assignments
+// (a live build-and-run test would add wall-clock dependency without
+// new correctness signal — the INV-1 path already exercises a real
+// runVerify).
+TEST(Ants1628PhaseTiming, ImplEmitsThreeTimingFields) {
+    expect_reset();
+    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    expect(rc.find("ANTS-1628 — phase timing") != std::string::npos,
+           "INV-A: phase-timing block anchor present in impl");
+    expect(rc.find("env[QStringLiteral(\"wall_clock_ms\")]") != std::string::npos,
+           "INV-A: wall_clock_ms emitted on the success envelope");
+    expect(rc.find("env[QStringLiteral(\"pre_gate_ms\")]") != std::string::npos,
+           "INV-A: pre_gate_ms emitted on the success envelope");
+    expect(rc.find("env[QStringLiteral(\"gate_ms\")]") != std::string::npos,
+           "INV-A: gate_ms emitted on the success envelope");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-1628 INV-B — verify_changes tool description names the new
+// phase-timing fields and points at the actionable signal ("large
+// pre_gate_ms + tiny gate_ms means wrapper is the culprit"). Without
+// this, callers seeing the new envelope fields wouldn't know what
+// they're for.
+TEST(Ants1628PhaseTiming, DescriptionNamesPhaseTimingFields) {
+    expect_reset();
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const size_t anchor = ci.find("t[\"name\"] = \"verify_changes\"");
+    ASSERT_NE(anchor, std::string::npos);
+    const size_t windowEnd = std::min(ci.size(), anchor + 5000);
+    const std::string window = ci.substr(anchor, windowEnd - anchor);
+    expect(window.find("Phase timing (ANTS-1628)") != std::string::npos,
+           "INV-B: description anchor names the ANTS-1628 phase-timing block");
+    expect(window.find("wall_clock_ms") != std::string::npos,
+           "INV-B: description names wall_clock_ms");
+    expect(window.find("pre_gate_ms") != std::string::npos,
+           "INV-B: description names pre_gate_ms");
+    expect(window.find("gate_ms") != std::string::npos,
+           "INV-B: description names gate_ms");
+    EXPECT_EQ(0, expect_failures());
+}

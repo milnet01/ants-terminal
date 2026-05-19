@@ -3979,6 +3979,13 @@ void MainWindow::setupClaudeMcpProviders() {
             // ANTS-1425 — forward `include_narrator_bullets` opt-in.
             const QJsonValue inclNarVal = args.value("include_narrator_bullets");
             if (inclNarVal.isBool()) req["include_narrator_bullets"] = inclNarVal.toBool();
+            // ANTS-1586 — forward `include_body` opt-in. Was silently
+            // dropped here, so `cmdRoadmapQuery` always read the
+            // default-false branch and stripped the body field at
+            // emission. Same isBool() gate as the other include_*
+            // forwards.
+            const QJsonValue inclBodyVal = args.value("include_body");
+            if (inclBodyVal.isBool()) req["include_body"] = inclBodyVal.toBool();
             // ANTS-1436 — forward offset/limit VERBATIM (not
             // type-gated) so the handler can emit bad_args on
             // non-numeric. The only roadmap_query dispatch lambda

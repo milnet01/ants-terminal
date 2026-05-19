@@ -12,6 +12,54 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP roadmap_query / verify_changes / rate-limit fixes — pull 23 (ANTS-1586 + ANTS-1628 + ANTS-1629, 2026-05-19)
+
+Three MCP follow-ups from the RetroArch / Vestige 3D Engine / MAME
+Curator cross-session reports. All token-saving and orchestration
+ergonomics — no behaviour changes for callers who weren't already
+hitting the affected paths.
+
+- **ANTS-1586 (fix)** — `roadmap_query` with `include_body:true`
+  now actually returns the per-bullet `body` field. The MCP-side
+  dispatch lambda in `mainwindow.cpp:roadmap_query` silently
+  dropped the `include_body` arg before forwarding to
+  `cmdRoadmapQuery`, so the IPC handler always read the default
+  (false) and the strip pass at emission deleted the body it had
+  populated. Same dispatch-forward bug shape as ANTS-1437/ANTS-1398
+  (`mode` / `include_section_headers` were silently dropped the
+  same way before those fixes). Adds the arg to the lambda; the
+  cache + emission code was already correct. Regression test sits
+  alongside the existing INVs at
+  `tests/features/roadmap_query_section_index/`. Reported by
+  RetroArch session 2026-05-18 (Bundle 65 addendum, Issue §2 new).
+
+- **ANTS-1628 (enhancement)** — `verify_changes` envelope now
+  carries phase timing (`wall_clock_ms`, `pre_gate_ms`, `gate_ms`)
+  on every successful response. A large `pre_gate_ms` with a tiny
+  `gate_ms` is the actionable signal that the wrapper work
+  (config load, cache lookup, trust probe) is consuming the
+  transport budget before the build even starts — distinct from
+  a long build hitting the transport cap. Pairs with the existing
+  ANTS-1525/1579 tool-side timeout envelope to give callers a
+  full picture when investigating a `transport: timed out` they
+  thought should have been fast. Tool description names the new
+  fields and the diagnostic pattern. Reported by Vestige 3D
+  Engine session 2026-05-17 (Issue #1).
+
+- **ANTS-1629 (enhancement)** — `cold_eyes_brief` rate-limit
+  raised from 10/min to 30/min via a new `BriefAssembly` tier
+  (between `Cheap` and `Expensive`). The canonical `/cold-eyes`
+  Phase-2 step dispatches 12-16 briefs in one parallel fan-out;
+  the previous 10/min cap blocked the recommended pattern and
+  forced orchestrators to stagger / skip / inline. Cost shape of
+  the verb is read-and-template-assembly (no shell-out, no
+  subagent dispatch) — semantically below `Expensive`. New tier
+  has its own test-only cap-override slot
+  (`setRateLimitCapsForTest(cheap, briefAssembly, expensive)`);
+  the two-arg overload is retained for back-compat with existing
+  call-sites. Tool description names the new cap. Reported by
+  MAME Curator session 2026-05-18 (Issue #a).
+
 ### 🔌 MCP cold-eyes partition fold-in — pull 22 (ANTS-1619 + ANTS-1631 + ANTS-1634, 2026-05-19)
 
 Three cold-eyes partition fixes targeted at non-canonical doc

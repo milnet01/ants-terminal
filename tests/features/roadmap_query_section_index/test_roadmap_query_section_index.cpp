@@ -409,3 +409,21 @@ TEST(roadmap_query_section_index, DispatchForwardsModeArg) {
            "dispatch: lambda reads include_section_headers from args");
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-1586 — regression test for the same dispatch-forward bug
+// pattern as ANTS-1437/ANTS-1398: the mainwindow lambda has to
+// forward `include_body` to cmdRoadmapQuery or callers passing
+// include_body:true never see the `body` field on returned bullets.
+// Pre-fix the lambda dropped the arg silently and the schema
+// advertised a parameter the dispatcher ignored.
+TEST(roadmap_query_section_index, DispatchForwardsIncludeBody) {
+    expect_reset();
+    const std::string cpp = slurp(SRC_MAINWINDOW_CPP_PATH);
+    expect(contains(cpp, "ANTS-1586 — forward `include_body`"),
+           "dispatch: include_body forward anchor present");
+    expect(contains(cpp, "args.value(\"include_body\")"),
+           "dispatch: lambda reads include_body from args");
+    expect(contains(cpp, "req[\"include_body\"]"),
+           "dispatch: lambda writes include_body into cmdRoadmapQuery req");
+    EXPECT_EQ(0, expect_failures());
+}

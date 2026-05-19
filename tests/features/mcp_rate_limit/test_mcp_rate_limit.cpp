@@ -276,11 +276,12 @@ TEST_F(RateLimitTestFixture, Inv13TierClassification) {
     }
 
     // Expensive list spot-check.
+    // ANTS-1629 — cold_eyes_brief moved out of Expensive into the
+    // new BriefAssembly tier (30/min), so it's no longer in this set.
     const std::string exp[] = {
         "\"audit_run\")",
         "\"workspace_search\")",
         "\"verify_changes\")",
-        "\"cold_eyes_brief\")",
         "\"indie_review_brief\")",
         "\"test_audit_brief\")",
         "\"debt_sweep_scan\")"};
@@ -293,6 +294,22 @@ TEST_F(RateLimitTestFixture, Inv13TierClassification) {
         EXPECT_NE(line.find("R::Expensive"), std::string::npos)
             << "INV-13: " << needle
             << " must map to R::Expensive; found line: " << line;
+    }
+
+    // ANTS-1629 — BriefAssembly tier (30/min). cold_eyes_brief is the
+    // first/only tenant. Same line must map to R::BriefAssembly.
+    const std::string briefAssembly[] = {
+        "\"cold_eyes_brief\")"};
+    for (const auto &needle : briefAssembly) {
+        const auto pos = classBody.find(needle);
+        ASSERT_NE(pos, std::string::npos)
+            << "INV-13 (ANTS-1629): BriefAssembly list missing "
+            << needle;
+        const auto lineEnd = classBody.find('\n', pos);
+        const std::string line = classBody.substr(pos, lineEnd - pos);
+        EXPECT_NE(line.find("R::BriefAssembly"), std::string::npos)
+            << "INV-13 (ANTS-1629): " << needle
+            << " must map to R::BriefAssembly; found line: " << line;
     }
 }
 
@@ -362,4 +379,55 @@ TEST_F(RateLimitTestFixture, Inv16MonotonicClockDeclared) {
               std::string::npos);
     EXPECT_NE(cc.find("s_rateLimitClock.elapsed()"),
               std::string::npos);
+}
+
+// ANTS-1629 INV-17 — BriefAssembly tier accepts 30 calls and refuses
+// the 31st. Drives `cold_eyes_brief` (the only BriefAssembly tenant
+// at registration time) and proves a canonical /cold-eyes Phase-2
+// fan-out of 12-16 briefs fits comfortably under the new cap.
+TEST_F(RateLimitTestFixture, Inv17BriefAssemblyCapAt30) {
+    ClaudeIntegration ci;
+    const QString tool = QStringLiteral("cold_eyes_brief");
+    // 30 calls within the window must all accept.
+    for (int i = 0; i < 30; ++i) {
+        ASSERT_EQ(ci.rateLimitCheck(tool, kCwdA, /*nowMs=*/1000 + i), 0)
+            << "INV-17: call " << i << " of 30 in BriefAssembly tier "
+               "must accept";
+    }
+    // The 31st within the window must refuse with a positive
+    // retry_after_ms.
+    const qint64 retry = ci.rateLimitCheck(tool, kCwdA, /*nowMs=*/1030);
+    EXPECT_GT(retry, 0)
+        << "INV-17: 31st call must refuse (BriefAssembly cap is 30/min)";
+    // Sanity: the refusal points at a positive remaining-window value
+    // bounded above by kRateLimitWindowMs.
+    EXPECT_LE(retry, qint64{60'000});
+}
+
+// ANTS-1629 INV-18 — 3-arg test-cap-override setter drives the
+// BriefAssembly tier independently of Cheap / Expensive. Confirms
+// the new override slot reads back through rateLimitTierFor.
+TEST_F(RateLimitTestFixture, Inv18BriefAssemblyOverride) {
+    ClaudeIntegration::setRateLimitCapsForTest(/*cheap=*/100,
+                                               /*briefAssembly=*/4,
+                                               /*expensive=*/100);
+    ClaudeIntegration ci;
+    const QString tool = QStringLiteral("cold_eyes_brief");
+    // First four must accept under the synthetic cap of 4.
+    for (int i = 0; i < 4; ++i) {
+        ASSERT_EQ(ci.rateLimitCheck(tool, kCwdA, /*nowMs=*/5000 + i), 0)
+            << "INV-18: override cap=4 must allow first 4; call " << i;
+    }
+    // Fifth must refuse.
+    EXPECT_GT(ci.rateLimitCheck(tool, kCwdA, /*nowMs=*/5004), 0)
+        << "INV-18: 5th call must refuse under override cap=4";
+
+    // Sibling tier (Cheap=100) still honours its own cap on the
+    // same instance — confirms the override doesn't leak across tiers.
+    const QString cheapTool = QStringLiteral("tab_list");
+    for (int i = 0; i < 100; ++i) {
+        ASSERT_EQ(ci.rateLimitCheck(cheapTool, kCwdA,
+                                    /*nowMs=*/6000 + i), 0)
+            << "INV-18: Cheap tier honours its own (overridden) cap=100";
+    }
 }

@@ -239,7 +239,16 @@ public:
     // Sliding-window bucket per (toolName, callerCwd). Monotonic
     // clock in production via s_rateLimitClock; tests pass synthetic
     // nowMs. See docs/specs/ANTS-1356.md.
-    enum class RateLimitClass { Cheap, Expensive, ControlPlane };
+    // ANTS-1629 — BriefAssembly tier. Higher cap (30/min) for brief-
+    // generation verbs that fan out one-call-per-lane during a single
+    // /cold-eyes (or sibling) sweep. The default `/cold-eyes` Phase-2
+    // step dispatches 12-16 cold_eyes_brief calls in a single parallel
+    // batch; the 10/min Expensive cap blocked the recommended pattern.
+    // Cost shape: file reads + template assembly (no shell-out, no
+    // subagent dispatch) — semantically closer to Cheap than Expensive,
+    // but the per-call I/O justifies a tier below Cheap (60/min).
+    enum class RateLimitClass {
+        Cheap, BriefAssembly, Expensive, ControlPlane };
     struct RateLimitTier { int capPerWindow; qint64 windowMs; };
     static RateLimitClass rateLimitClassFor(const QString &toolName);
     static RateLimitTier  rateLimitTierFor(RateLimitClass cls);
@@ -264,6 +273,9 @@ public:
     // Override per-tier caps for the duration of a test. Reset to
     // restore the 60/10 defaults.
     static void setRateLimitCapsForTest(int cheap, int expensive);
+    // ANTS-1629 — additive 3-arg overload covers the BriefAssembly tier.
+    static void setRateLimitCapsForTest(
+        int cheap, int briefAssembly, int expensive);
     static void resetRateLimitCapsForTest();
 
     // ANTS-1357 — direct cache API (test-only seam). The integration
@@ -523,9 +535,10 @@ private:
     };
     QHash<QPair<QString, QString>, RateLimitBucket> m_rateLimitBuckets;
     static constexpr int kRateLimitMapCap       = 256;
-    static constexpr int kRateLimitCheapCap     = 60;
-    static constexpr int kRateLimitExpensiveCap = 10;
-    static constexpr qint64 kRateLimitWindowMs  = 60'000;
+    static constexpr int kRateLimitCheapCap         = 60;
+    static constexpr int kRateLimitBriefAssemblyCap = 30;
+    static constexpr int kRateLimitExpensiveCap     = 10;
+    static constexpr qint64 kRateLimitWindowMs      = 60'000;
 
     // ANTS-1351 + ANTS-1397 § 2.4 — inline in-flight gate. Key:
     // (verb, canonicalProjectRoot) → start time (ms epoch). RAII
