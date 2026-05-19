@@ -4398,6 +4398,26 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_remoteControl->cmdCurrentState(args).toJson(QJsonDocument::Compact));
         });
 
+    // ANTS-1309 + ANTS-1308 — spec-aware token-savers. spec_query
+    // returns one spec's parsed {title, status, kind, invariants[]};
+    // invariant_check scans docs/specs/*.md for specs that mention
+    // any path in `files[]` and returns their invariant lists.
+    // Both MCP-only.
+    m_claudeIntegration->registerToolProvider("spec_query",
+        ClaudeIntegration::CallerCwdContract::Required,
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdSpecQuery(args).toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("invariant_check",
+        ClaudeIntegration::CallerCwdContract::Required,
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdInvariantCheck(args).toJson(QJsonDocument::Compact));
+        });
+
     // ANTS-1112 — five `indie_review_*` tools. Each handler resolves
     // the active project via the focused TerminalWidget's shellCwd
     // (matches the convention used by git_state / subsystem /

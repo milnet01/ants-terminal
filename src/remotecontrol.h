@@ -314,6 +314,18 @@ public:
     // no IPC dispatch branch). See docs/specs/ANTS-1569.md.
     QJsonDocument cmdCurrentState(const QJsonObject &req);
 
+    // ANTS-1309: spec_query — parse a single docs/specs/<id>.md file
+    // and return {title, status, kind, invariants[], path}. Token-
+    // frugal alternative to a full Read of a spec when the caller
+    // only wants the invariant list. MCP-only; no IPC dispatch.
+    QJsonDocument cmdSpecQuery(const QJsonObject &req);
+
+    // ANTS-1308: invariant_check — given a `files[]` array (project-
+    // relative paths), scan docs/specs/*.md for specs that mention
+    // any of those files and return their parsed invariant lists.
+    // Shares the spec parser with cmdSpecQuery. MCP-only.
+    QJsonDocument cmdInvariantCheck(const QJsonObject &req);
+
     // ANTS-1112 — five `indie_review_*` MCP tools. All resolve the
     // active project via the focused TerminalWidget's shellCwd
     // (matches git_state / subsystem / last_audit_summary). Pure

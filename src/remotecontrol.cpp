@@ -5129,6 +5129,272 @@ QJsonDocument RemoteControl::cmdCurrentState(const QJsonObject &req) {
     return QJsonDocument(result);
 }
 
+// ----- ANTS-1309 + ANTS-1308 — spec-aware MCP tools ----------------
+//
+// Shared parser for docs/specs/<id>.md. Recognises both the table
+// form (`| INV-N | body | test_surface |` — ANTS-1555-style) and the
+// bullet form (`- **INV-N** — body` or `- **INV-N.** body` —
+// ANTS-1290 / ANTS-1583 style). Title comes from the leading
+// `# ANTS-NNNN — <title>` line; Status / Kind come from the
+// `**Status:**` / `**Kind:**` metadata block.
+
+namespace {
+
+QJsonObject sqErr(const QString &code, const QString &message) {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["error"] = message;
+    o["code"]  = code;
+    return o;
+}
+
+// Strict ANTS-NNNN id check.
+bool isValidSpecId(const QString &id) {
+    static const QRegularExpression re(
+        QStringLiteral("^ANTS-[0-9]+$"));
+    return re.match(id).hasMatch();
+}
+
+// Parse a spec file's body into {title, status, kind, invariants[]}.
+// `body` is the full file text. Empty fields are emitted as empty
+// strings; absent Invariants section yields an empty array.
+QJsonObject parseSpecBody(const QString &body) {
+    QJsonObject out;
+    QString title, status, kind;
+
+    // Title: first line starting with `# ANTS-NNNN — title` or
+    // `# ANTS-NNNN - title`. Tolerate either em-dash or hyphen.
+    static const QRegularExpression titleRe(
+        QStringLiteral(R"(^#\s+ANTS-[0-9]+\s*[—\-]\s*(.+?)\s*$)"),
+        QRegularExpression::MultilineOption);
+    const auto titleM = titleRe.match(body);
+    if (titleM.hasMatch()) title = titleM.captured(1);
+
+    // Metadata: `**Status:** ...` and `**Kind:** ...` lines.
+    static const QRegularExpression statusRe(
+        QStringLiteral(R"(^\*\*Status:\*\*\s*(.+?)\s*$)"),
+        QRegularExpression::MultilineOption);
+    static const QRegularExpression kindRe(
+        QStringLiteral(R"(^\*\*Kind:\*\*\s*(.+?)\s*$)"),
+        QRegularExpression::MultilineOption);
+    const auto statusM = statusRe.match(body);
+    if (statusM.hasMatch()) status = statusM.captured(1);
+    const auto kindM = kindRe.match(body);
+    if (kindM.hasMatch()) kind = kindM.captured(1);
+
+    out["title"]  = title;
+    out["status"] = status;
+    out["kind"]   = kind;
+
+    // Locate the Invariants section. Accept `## N. Invariants`,
+    // `## Invariants`, `### Invariants`, case-insensitive.
+    QJsonArray invariants;
+    static const QRegularExpression hdrRe(
+        QStringLiteral(R"(^(#{2,3})\s+(?:\d+\.\s+)?[Ii]nvariants\b.*$)"),
+        QRegularExpression::MultilineOption);
+    const auto hdrM = hdrRe.match(body);
+    if (hdrM.hasMatch()) {
+        const int sectionStart = hdrM.capturedEnd();
+        // Section ends at the next `## ` heading of equal-or-lower
+        // depth (treat any subsequent `## ` as the boundary).
+        static const QRegularExpression nextHdrRe(
+            QStringLiteral(R"(^##\s+\S)"),
+            QRegularExpression::MultilineOption);
+        const auto nextM = nextHdrRe.match(body, sectionStart);
+        const int sectionEnd =
+            nextM.hasMatch() ? nextM.capturedStart() : body.size();
+        const QString section = body.mid(sectionStart,
+                                         sectionEnd - sectionStart);
+
+        // (a) Table-form rows: `| INV-N | body | test_surface |`.
+        static const QRegularExpression tableRe(
+            QStringLiteral(R"(^\|\s*(INV-[0-9]+)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*$)"),
+            QRegularExpression::MultilineOption);
+        auto it = tableRe.globalMatch(section);
+        while (it.hasNext()) {
+            const auto m = it.next();
+            QJsonObject inv;
+            inv["id"]           = m.captured(1);
+            inv["body"]         = m.captured(2);
+            inv["test_surface"] = m.captured(3);
+            invariants.append(inv);
+        }
+
+        // (b) Bullet-form: `- **INV-N** — body...` (multi-line until
+        // next `- **INV-` or blank-line-plus-non-indent). Skip if
+        // table form already matched (avoids dup).
+        if (invariants.isEmpty()) {
+            // Split on the bullet anchor — capture group keeps the
+            // INV-N marker, then accumulate body lines until the
+            // next anchor.
+            static const QRegularExpression bulletStartRe(
+                QStringLiteral(R"(^-\s+\*\*(INV-[0-9]+)[\.]?\*\*\s*[—\-:]?\s*)"),
+                QRegularExpression::MultilineOption);
+            auto bit = bulletStartRe.globalMatch(section);
+            QList<QPair<QString, int>> starts;  // id, position-after-marker
+            while (bit.hasNext()) {
+                const auto m = bit.next();
+                starts.append({m.captured(1), m.capturedEnd()});
+            }
+            for (int i = 0; i < starts.size(); ++i) {
+                const int from = starts[i].second;
+                const int to = (i + 1 < starts.size())
+                                   ? starts[i + 1].first.startsWith(
+                                         QStringLiteral("INV-"))
+                                         ? section.lastIndexOf(
+                                               QStringLiteral("\n- **INV-"),
+                                               starts[i + 1].second - 1)
+                                         : section.size()
+                                   : section.size();
+                const int end = to > from ? to : section.size();
+                QString invBody = section.mid(from, end - from).trimmed();
+                QJsonObject inv;
+                inv["id"]   = starts[i].first;
+                inv["body"] = invBody;
+                invariants.append(inv);
+            }
+        }
+    }
+
+    out["invariants"]       = invariants;
+    out["invariants_count"] = invariants.size();
+    return out;
+}
+
+}  // namespace
+
+QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
+    const QString id = req.value(QStringLiteral("id")).toString();
+    if (id.isEmpty()) {
+        return QJsonDocument(sqErr(
+            QStringLiteral("bad_id"),
+            QStringLiteral("spec_query: missing or empty \"id\"")));
+    }
+    if (!isValidSpecId(id)) {
+        return QJsonDocument(sqErr(
+            QStringLiteral("bad_id"),
+            QStringLiteral("spec_query: id must match ANTS-NNNN")));
+    }
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        return QJsonDocument(sqErr(
+            QStringLiteral("no_project"),
+            QStringLiteral("spec_query: project root unresolved")));
+    }
+    const QString rel  = QStringLiteral("docs/specs/") + id +
+                         QStringLiteral(".md");
+    const QString full = rootCanonical + QLatin1Char('/') + rel;
+    QFileInfo fi(full);
+    if (!fi.exists() || !fi.isFile()) {
+        return QJsonDocument(sqErr(
+            QStringLiteral("not_found"),
+            QStringLiteral("spec_query: %1 does not exist").arg(rel)));
+    }
+    QFile f(full);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return QJsonDocument(sqErr(
+            QStringLiteral("io_error"),
+            QStringLiteral("spec_query: cannot open %1").arg(rel)));
+    }
+    const QString body = QString::fromUtf8(f.readAll());
+    f.close();
+
+    QJsonObject result = parseSpecBody(body);
+    result["ok"]         = true;
+    result["id"]         = id;
+    result["path"]       = rel;
+    result["size_bytes"] = fi.size();
+    result["mtime_ms"]   = fi.lastModified().toMSecsSinceEpoch();
+    return QJsonDocument(result);
+}
+
+QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
+    const QJsonArray filesArr =
+        req.value(QStringLiteral("files")).toArray();
+    if (filesArr.isEmpty()) {
+        return QJsonDocument(sqErr(
+            QStringLiteral("bad_files"),
+            QStringLiteral("invariant_check: \"files\" must be a "
+                           "non-empty array of project-relative paths")));
+    }
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        return QJsonDocument(sqErr(
+            QStringLiteral("no_project"),
+            QStringLiteral("invariant_check: project root unresolved")));
+    }
+
+    // Normalise input file list: strip leading ./, dedup, drop empties.
+    QStringList needles;
+    for (const QJsonValue &v : filesArr) {
+        QString s = v.toString().trimmed();
+        while (s.startsWith(QStringLiteral("./"))) s = s.mid(2);
+        if (s.isEmpty()) continue;
+        if (!needles.contains(s)) needles.append(s);
+    }
+    if (needles.isEmpty()) {
+        return QJsonDocument(sqErr(
+            QStringLiteral("bad_files"),
+            QStringLiteral("invariant_check: \"files\" had no usable "
+                           "entries after normalisation")));
+    }
+
+    const QString specsDir =
+        rootCanonical + QStringLiteral("/docs/specs");
+    QDir dir(specsDir);
+    if (!dir.exists()) {
+        QJsonObject empty;
+        empty["ok"]              = true;
+        empty["matched_specs"]   = QJsonArray();
+        empty["specs_scanned"]   = 0;
+        empty["matched_count"]   = 0;
+        return QJsonDocument(empty);
+    }
+    const QStringList specFiles =
+        dir.entryList({QStringLiteral("ANTS-*.md")},
+                      QDir::Files | QDir::Readable, QDir::Name);
+
+    QJsonArray matched;
+    int scanned = 0;
+    for (const QString &fname : specFiles) {
+        ++scanned;
+        QFile f(specsDir + QLatin1Char('/') + fname);
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+        const QString text = QString::fromUtf8(f.readAll());
+        f.close();
+        QStringList hits;
+        for (const QString &needle : needles) {
+            if (text.contains(needle, Qt::CaseSensitive)) {
+                if (!hits.contains(needle)) hits.append(needle);
+            }
+        }
+        if (hits.isEmpty()) continue;
+        const QJsonObject parsed = parseSpecBody(text);
+        const QJsonArray invs =
+            parsed.value(QStringLiteral("invariants")).toArray();
+        // Spec ID = filename stem (ANTS-NNNN).
+        QString sid = fname;
+        if (sid.endsWith(QStringLiteral(".md"))) sid.chop(3);
+        QJsonObject entry;
+        entry["id"]    = sid;
+        entry["path"]  = QStringLiteral("docs/specs/") + fname;
+        entry["title"] = parsed.value(QStringLiteral("title"));
+        QJsonArray hitArr;
+        for (const QString &h : hits) hitArr.append(h);
+        entry["matched_terms"] = hitArr;
+        entry["invariants"]    = invs;
+        entry["invariants_count"] = invs.size();
+        matched.append(entry);
+    }
+
+    QJsonObject result;
+    result["ok"]            = true;
+    result["matched_specs"] = matched;
+    result["specs_scanned"] = scanned;
+    result["matched_count"] = matched.size();
+    return QJsonDocument(result);
+}
+
 // ----- ANTS-1112 — five `indie_review_*` MCP-tool handlers ---------
 
 namespace {

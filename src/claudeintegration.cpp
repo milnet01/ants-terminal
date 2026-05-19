@@ -2495,6 +2495,104 @@ void ClaudeIntegration::onMcpConnection() {
                     tools.append(csTool);
                 }
 
+                // ANTS-1309 — spec_query: parse a single spec file.
+                // Returns {title, status, kind, invariants[]} without
+                // reading the full 200-2000 line markdown body.
+                {
+                    QJsonObject t;
+                    t["name"] = "spec_query";
+                    t["description"] = QStringLiteral(
+                        "Parse a single docs/specs/<id>.md file and "
+                        "return its parsed metadata + invariant list. "
+                        "Returns {ok, id, title, status, kind, path, "
+                        "size_bytes, mtime_ms, invariants:[{id, body, "
+                        "test_surface?}], invariants_count}. Recognises "
+                        "both the table form (`| INV-N | body | test "
+                        "surface |`) and the bullet form (`- **INV-N** "
+                        "— body`). Use when you need the contract list "
+                        "of a spec without reading the full ~2 K-line "
+                        "body. Refusals: `bad_id` (missing or not "
+                        "matching `^ANTS-[0-9]+$`), `not_found` (file "
+                        "absent), `no_project` (caller_cwd unresolved).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Prefer over `Read` when you only need a spec's "
+                        "INV list (the contract surface), not the full "
+                        "narrative. Typically 5-20× smaller than a "
+                        "full Read.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject idProp;
+                    idProp["type"] = "string";
+                    idProp["description"] = QStringLiteral(
+                        "Spec ID matching `^ANTS-[0-9]+$`. The file "
+                        "is resolved as `docs/specs/<id>.md` under "
+                        "the caller's project root.");
+                    props["id"]         = idProp;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("id");
+                    req.append("caller_cwd");
+                    schema["required"]            = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
+                // ANTS-1308 — invariant_check: which specs reference
+                // a given set of source files, and what invariants do
+                // they declare. Surfaces "what contracts could this
+                // edit break?" before the edit, not after.
+                {
+                    QJsonObject t;
+                    t["name"] = "invariant_check";
+                    t["description"] = QStringLiteral(
+                        "Given a list of project-relative file paths "
+                        "(typically what you're about to edit), scan "
+                        "`docs/specs/*.md` for specs that mention any "
+                        "of those paths in their body and return the "
+                        "parsed invariant list per matching spec. "
+                        "Returns {ok, matched_specs:[{id, path, title, "
+                        "matched_terms[], invariants:[{id, body}], "
+                        "invariants_count}], specs_scanned, "
+                        "matched_count}. Matching is substring-only "
+                        "(no symbol resolution) — pass relative paths "
+                        "like `src/foo.cpp`, not bare basenames. Use "
+                        "BEFORE editing files in `src/` to surface "
+                        "documented contracts the edit might break.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Call with `files:[...]` from `git diff "
+                        "--name-only` (or your own changed-file list) "
+                        "before editing source files with associated "
+                        "specs. Pairs with spec_query for drilling "
+                        "into a single matched spec.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject filesProp;
+                    filesProp["type"] = "array";
+                    QJsonObject itemProp;
+                    itemProp["type"] = "string";
+                    filesProp["items"] = itemProp;
+                    filesProp["minItems"] = 1;
+                    filesProp["description"] = QStringLiteral(
+                        "Project-relative file paths to scan specs "
+                        "for. Substring-matched against spec bodies; "
+                        "pass `src/foo.cpp` not `foo.cpp` to avoid "
+                        "false hits on basename collisions.");
+                    props["files"]      = filesProp;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("files");
+                    req.append("caller_cwd");
+                    schema["required"]             = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-1112 — five `indie_review_*` tools that lift the
                 // mechanical halves of /indie-review out of orchestrator
                 // context. Engine: src/indiereviewengine.{h,cpp}.
@@ -4763,6 +4861,9 @@ void ClaudeIntegration::onMcpConnection() {
                         {QStringLiteral("test_audit_brief"),           {2000, 8000}},
                         {QStringLiteral("test_audit_synthesis_prompt"),{2500, 10000}},
                         {QStringLiteral("test_audit_fold_in"),         {1000, 4000}},
+                        // Spec-aware (ANTS-1309 + ANTS-1308).
+                        {QStringLiteral("spec_query"),         {500,  2500}},
+                        {QStringLiteral("invariant_check"),    {800,  4000}},
                     };
                     const auto it = kCosts.find(name);
                     if (it != kCosts.end()) return it.value();
@@ -4819,6 +4920,10 @@ void ClaudeIntegration::onMcpConnection() {
                         return QStringLiteral("mcp-state");
                     if (name == QLatin1String("plan_template"))
                         return QStringLiteral("plan");
+                    // ANTS-1309 + ANTS-1308 — spec-aware tools.
+                    if (name == QLatin1String("spec_query") ||
+                        name == QLatin1String("invariant_check"))
+                        return QStringLiteral("spec");
                     if (name.startsWith(QStringLiteral("get_")) ||
                         name == QLatin1String("tab_list"))
                         return QStringLiteral("terminal");
@@ -5487,6 +5592,11 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // already returns Required; this explicit branch is declarative
     // parity with sibling project-scoped tools.
     if (toolName == QStringLiteral("current_state"))      return C::Required;
+    // ANTS-1309 + ANTS-1308 — spec-aware MCP tools. Read under
+    // docs/specs/ which lives strictly inside the project root, so
+    // Required matches sibling project-scoped readers.
+    if (toolName == QStringLiteral("spec_query"))         return C::Required;
+    if (toolName == QStringLiteral("invariant_check"))    return C::Required;
     // Cold-eyes verb cluster (ANTS-1313).
     if (toolName == QStringLiteral("cold_eyes_brief"))         return C::Required;
     if (toolName == QStringLiteral("cold_eyes_cross_doc_diff"))return C::Required;

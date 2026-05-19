@@ -12,6 +12,54 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP spec-aware token-savers — pull 33 (ANTS-1309 + ANTS-1308, 2026-05-19)
+
+Two new MCP tools that surface a spec's invariant list without
+forcing the caller to Read the ~2 K-line markdown body. The pair
+composes: `spec_query` is the per-spec parser, `invariant_check`
+fans out the same parser across `docs/specs/*.md` to answer "what
+contracts does this file touch?".
+
+- **ANTS-1309 (implement)** — `spec_query` MCP tool. Inputs
+  `{id:"ANTS-NNNN", caller_cwd}`; reads `docs/specs/<id>.md`,
+  parses the metadata block (Status / Kind) + the Invariants
+  section, and returns `{ok, id, title, status, kind, path,
+  size_bytes, mtime_ms, invariants:[{id, body, test_surface?}],
+  invariants_count}`. The shared `parseSpecBody` helper recognises
+  both the table form (`| INV-N | body | test surface |` —
+  ANTS-1555 style) and the bullet form (`- **INV-N** — body` —
+  ANTS-1290 / ANTS-1583 style). Strict `^ANTS-[0-9]+$` validator
+  refuses `bad_id` on malformed input; non-existent files refuse
+  with `not_found`. Required-contract gated. Returns ~500 B-2 KB
+  vs the ~50-200 KB a full spec Read costs. Tests
+  `tests/features/mcp_spec_query/` (8 source-grep INVs covering
+  declaration, definition, refusal codes, helper delegation,
+  registration, schema required-fields, contract entry).
+
+- **ANTS-1308 (implement)** — `invariant_check` MCP tool. Inputs
+  `{files:[<rel-path>...], caller_cwd}`; iterates
+  `docs/specs/ANTS-*.md` via `QDir`, substring-matches each spec
+  body against the input file list, and returns
+  `{ok, matched_specs:[{id, path, title, matched_terms[],
+  invariants[], invariants_count}], specs_scanned,
+  matched_count}`. Single-source parser via the same
+  `parseSpecBody` helper as `spec_query`. v1 is substring-only
+  (no symbol resolution) — callers pass relative paths like
+  `src/foo.cpp`, not basenames. Refuses `bad_files` for missing /
+  empty / normalises-empty input. Required-contract gated.
+  Designed as a pre-edit surface: call with
+  `git diff --name-only` output before touching `src/` files to
+  see which spec contracts the edit might break. Tests
+  `tests/features/mcp_invariant_check/` (8 source-grep INVs
+  including QDir walk + `ANTS-*.md` glob + `minItems` schema
+  constraint).
+
+Both tools live in `src/remotecontrol.cpp` alongside the spec
+parser helper, register through `MainWindow::setupClaudeMcpProviders`,
+and bucket as `[spec]` in `kindForName`. Token-cost table entries
+`(500, 2500)` and `(800, 4000)` respectively. Full features suite
+1219/1219 green.
+
 ### 🔌 MCP roadmap duplicate-ID detector + test-audit resume recipe — pull 32 (ANTS-1646 + ANTS-1580, 2026-05-19)
 
 Two small MCP correctness / discoverability fixes. The first lands

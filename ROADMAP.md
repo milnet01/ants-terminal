@@ -12811,29 +12811,45 @@ expected token-leverage per implementation hour.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1308] **`invariant_check` MCP — list invariants touched by
-  a proposed edit.** Many `docs/specs/ANTS-NNNN.md` files have an
-  `INV-N:` list of documented invariants the implementation must
-  hold. Today nothing surfaces these at edit time; Claude can
-  accidentally break an invariant without ever seeing it. New MCP
-  takes a `files: [...]` or a diff and returns the set of INV-IDs
-  potentially affected (matched by file path + by symbol mentions
-  in the spec body). Claude sees the invariant list BEFORE the
-  edit, can verify post-edit. Quality lever.
+- ✅ [ANTS-1308] **`invariant_check` MCP — list invariants touched
+  by a proposed edit.** Shipped 2026-05-19 (Pull 33). Takes
+  `files:[<rel-path>...]` and scans `docs/specs/ANTS-*.md` for
+  specs that mention any of those paths in their body, returning
+  the parsed invariant list per matching spec. Envelope:
+  `{ok, matched_specs:[{id, path, title, matched_terms[],
+  invariants:[{id, body}], invariants_count}], specs_scanned,
+  matched_count}`. v1 is substring-match only (no symbol
+  resolution) — callers pass relative paths like `src/foo.cpp`,
+  not bare basenames. Parser is shared with `spec_query` via the
+  same `parseSpecBody` helper (single-source the markdown
+  recogniser; recognises both the table form `| INV-N | body |
+  test surface |` and the bullet form `- **INV-N** — body`).
+  Required-contract gated; refuses with `bad_files` (missing or
+  normalises-empty) or `no_project` (caller_cwd unresolved).
+  Bucket: `[spec]` in `kindForName`. Tests
+  `tests/features/mcp_invariant_check/` (8 source-grep INVs).
+  Full features suite 1219/1219 green.
   **Layman:** before Claude edits a file with a spec, surface the
   documented invariants so it knows the contracts not to break.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1309] **`spec_query` MCP — fetch a single spec's INV list.**
-  Convenience tool: `spec_query id=ANTS-NNNN` returns
-  `{title, invariants: [{id, body}], status, last_touched}` parsed
-  from `docs/specs/ANTS-NNNN.md`. Used by ANTS-1308 internally but
-  also by Claude directly during implementation ("remind me of the
-  ANTS-1234 invariants"). Returns ~500 B instead of the full
-  ~3000-line spec markdown.
-  **Layman:** fetch just the numbered invariants from a spec file,
-  not the full document.
+- ✅ [ANTS-1309] **`spec_query` MCP — fetch a single spec's INV
+  list.** Shipped 2026-05-19 (Pull 33). `spec_query
+  id=ANTS-NNNN` parses `docs/specs/<id>.md` and returns
+  `{ok, id, title, status, kind, path, size_bytes, mtime_ms,
+  invariants:[{id, body, test_surface?}], invariants_count}`. Used
+  internally by `invariant_check` and directly by Claude during
+  implementation ("remind me of the ANTS-1234 invariants").
+  Strict `^ANTS-[0-9]+$` id validator; refuses `bad_id` on
+  malformed input and `not_found` when the file is absent.
+  Returns ~500 B-2 KB instead of the full ~2 K-line spec body.
+  Required-contract gated. Shared parser recognises both the
+  `| INV-N | body | test surface |` table and `- **INV-N** —
+  body` bullet forms. Bucket: `[spec]` in `kindForName`. Tests
+  `tests/features/mcp_spec_query/` (8 source-grep INVs).
+  **Layman:** fetch just the numbered invariants from a spec
+  file, not the full document.
   Kind: implement.
   Source: indie-review-2026-05-13.
 

@@ -1014,7 +1014,11 @@ if(ANTS_TESTS)
                 # ANTS-1644 cold_eyes_fold_in narrative_mode port.
                 tests/features/cold_eyes_fold_in_narrative/test_cold_eyes_fold_in_narrative.cpp
                 # ANTS-1644 indie_review_fold_in narrative_mode port.
-                tests/features/indie_review_fold_in_narrative/test_indie_review_fold_in_narrative.cpp)
+                tests/features/indie_review_fold_in_narrative/test_indie_review_fold_in_narrative.cpp
+                # ANTS-1309 spec_query MCP tool.
+                tests/features/mcp_spec_query/test_mcp_spec_query.cpp
+                # ANTS-1308 invariant_check MCP tool.
+                tests/features/mcp_invariant_check/test_mcp_invariant_check.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
