@@ -12,6 +12,104 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 💸 MCP token-saver bundle — current_state aggregator + workspace_search context lines — pull 27 (ANTS-1304 + ANTS-1569, 2026-05-19)
+
+Two token-saver pickups from the MCP follow-ups list. Both are pure
+composers / data-shape extensions of existing tools — no API
+breakage on the verbs that already shipped.
+
+- **ANTS-1569 (implement)** — new `current_state` MCP aggregator.
+  One call returns the active 🚧 roadmap bullet (with id / kind /
+  lanes / section_slug / headline), the optional `.claude/
+  workflow.md` `## Status` headline, git branch state (branch /
+  ahead / behind / files_changed_count), open audit findings
+  count (error + warning + note summed from `last_audit_summary`),
+  and the matching `docs/specs/<id>.md` path when present. Pure
+  composer over the existing `cmdRoadmapQuery` +
+  `cmdGitState(op:status)` + `cmdLastAuditSummary` verbs — no new
+  caches, no new file reads. Upstream failures collapse to each
+  field's documented fallback (omit / empty / zero) so the
+  envelope stays `ok:true` whenever the project root resolves.
+  Required caller_cwd contract; etag-able via the ANTS-1499 304
+  pattern so a session re-asking "what's the state" between
+  upstream changes short-circuits to a ~50-byte envelope. MCP-only
+  surface (mirrors `last_audit_summary` — no IPC dispatch branch).
+  Closes the 3-4 read cascade every session opens with (MAME
+  Curator x2 cross-session reports 2026-05-18). Spec
+  `docs/specs/ANTS-1569.md`; new feature test
+  `tests/features/mcp_current_state/` (10 wiring INVs).
+
+- **ANTS-1304 (refactor)** — `workspace_search`'s `context`
+  parameter now actually surfaces surrounding lines. The
+  parameter accepted `context=N` since ANTS-1248 and passed
+  `--context N` to ripgrep, but the NDJSON parser only captured
+  `type=="match"` events and silently dropped rg's
+  `type=="context"` lines. After 1304, when `context > 0` each
+  match carries `context_before` and `context_after` arrays of
+  `{line, text}` entries (up to N each), attributed by line
+  distance with file-boundary resets on rg's `begin`/`end`
+  events. Server clamp stays at `[0, 10]`; envelope inflation
+  bounded by `max_results × 2 × context` with the ripgrep
+  `--max-columns 500` byte cap inherited. Dedup keeps context on
+  the primary only — pass `dedup:false` for per-hit context,
+  diagnose via `dedup_collapsed > 0`. Schema description + the
+  `context` property descriptor both updated to surface the new
+  shape + the 10-line cap. Spec `docs/specs/ANTS-1304.md`; four
+  new wiring INVs added to `tests/features/mcp_workspace_search/`.
+
+### 🔌 MCP test-audit + cold-eyes ergonomics — pull 26 (ANTS-1623 + ANTS-1626 + ANTS-1627, 2026-05-19)
+
+Three small MCP-side improvements from the 2026-05-17/18 cross-session
+reports — all "the tool already does X, but plumbing or docs hid it"
+or "regex needs a stricter scope filter" shapes.
+
+- **ANTS-1623 (enhancement)** — `test_audit_partition` gains
+  scope-aware framework probing + envelope-level
+  `additional_frameworks[]`. When `scope` is `path:<sub>`,
+  `detectFramework` now probes inside `<sub>` first and only falls
+  back to the project root if the subdir has no signal file —
+  fixes the MAME_Curator polyglot case where
+  `scope:"path:frontend/src"` returned `no_tests_found` because
+  the root `pyproject.toml` had won the first-match race. The
+  envelope also carries `additional_frameworks: [{name, root_rel}]`
+  listing every other framework whose signal file was detected at
+  the project root OR a top-level subdir but was not picked as the
+  primary, so a polyglot caller sees the parallel trees in one
+  call. Subdir scan honours the build-tree exclusion list
+  (`build*`, `node_modules`, `.venv`, `_deps`).
+
+- **ANTS-1627 (enhancement)** — `test_audit_partition` pre-pass
+  now strips Python string literals + `#` comments for `.py` files
+  (mirrors the existing ANTS-1491 C/C++ literal strip). New
+  `stripPythonLiteralsAndComments` state machine handles
+  single-quoted `'…'`, double-quoted `"…"`, triple-quoted
+  `"""…"""`/`'''…'''`, `#` line comments, and the full set of
+  string prefixes (r/b/u/f/rb/br/fr/rf plus case variants).
+  Content inside strings + comments is replaced with spaces so
+  columns stay exact; newlines preserved so line numbers in
+  `pre_pass_findings` still point at the real call site. Collapses
+  three of the four cited false-positive shapes (string-literal
+  needles like `'time.sleep('` inside
+  `test_no_bare_time_sleep_in_jobs`, docstring narration, `#`
+  comment narration) without needing a full Python AST walk. Real
+  `time.sleep()` calls outside strings still fire.
+
+- **ANTS-1626 (doc-fix + test)** — `cold_eyes_cross_doc_diff` inline
+  reports already shipped via ANTS-1509; RetroDB / Music_Production
+  reporters missed the support. Tightened the tool description to
+  spell out "no disk needed, ideal for /cold-eyes" and named the
+  /cold-eyes-vs-/indie-review skill split explicitly. Added
+  positive engine-level test
+  `ColdEyesEngine.CrossDocDiffFromReportsCorroboratesAcrossLanes`
+  exercising the in-memory path with a two-lane workspace that
+  shares one `(file, line)` and has two unique ones — locks the
+  regex + `min_lanes` semantics so the path can't silently
+  regress.
+
+Tests: 13 new INVs across two new + one updated test file. Full
+suite 1181/1181. *(CHANGELOG entry retroactively backfilled in
+pull 27 — the commit landed without it.)*
+
 ### 🔌 MCP test-audit framework + last_audit_summary picker — pull 25 (ANTS-1624 + ANTS-1625, 2026-05-19)
 
 Two cross-session-report enhancements for the audit + test-audit

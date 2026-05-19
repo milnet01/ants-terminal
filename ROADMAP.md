@@ -11148,7 +11148,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-discoverability, remotecontrol.
   Source: cross-session-report-2026-05-18 (MAME Curator late evening).
 
-- 📋 [ANTS-1569] **`current_state` MCP aggregator — one-call session-start state recovery.**
+- ✅ [ANTS-1569] **`current_state` MCP aggregator — one-call session-start state recovery.**
   MAME Curator 2026-05-18 (late evening): every session-start dance is currently a 3-4 read cascade — read `.claude/workflow.md` § 1 active item, then `roadmap_query(status="active")` to confirm bullet still 🚧, then read `docs/specs/<ID>.md` for chunk-table / next-gate, plus maybe `git_state(op="status")` for branch state and `last_audit_summary` counts. Aggregator verb: `current_state(caller_cwd)` returns `{active_bullet:{id, headline, section_slug, kind, lanes, status}, workflow_status_line:<verbatim header from .claude/workflow.md>, git_branch_state:{branch, ahead, behind, files_changed_count}, open_audit_findings_count:<int from last_audit_summary>}`. All backing data already cached / on disk — this is a de-dup of four parallel reads every session does. Pairs with ANTS-1499 etag pattern: aggregator emits one etag covering all four upstreams; on hit the entire bundle short-circuits to ~50 bytes. Optional: add `spec_path` if `active_bullet.id` resolves to a `docs/specs/<ID>.md` file.
   **Layman:** Every session that picks up project work currently makes 3-4 separate MCP calls just to learn "what's the active task, what branch am I on, what audit findings exist." Bundle them into one `current_state` call.
   Kind: implement.
@@ -12510,7 +12510,7 @@ expected token-leverage per implementation hour.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1304] **`grep_context` MCP — matches with ±N lines of
+- ✅ [ANTS-1304] **`grep_context` MCP — matches with ±N lines of
   surrounding context.** `workspace_search` already exists but
   returns only the match line. New variant (or `--context=N` flag)
   returns each match with ±3 lines of context inline. Saves the

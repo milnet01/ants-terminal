@@ -999,7 +999,9 @@ if(ANTS_TESTS)
                 # ANTS-1555 audit_run per-project .audit_cache/ infra.
                 tests/features/audit_run_cache/test_audit_run_cache.cpp
                 # ANTS-1642 schema-vs-lambda dispatch-forward completeness.
-                tests/features/mcp_dispatch_forward_completeness/test_mcp_dispatch_forward_completeness.cpp)
+                tests/features/mcp_dispatch_forward_completeness/test_mcp_dispatch_forward_completeness.cpp
+                # ANTS-1569 current_state MCP aggregator.
+                tests/features/mcp_current_state/test_mcp_current_state.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.

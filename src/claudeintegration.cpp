@@ -1961,15 +1961,20 @@ void ClaudeIntegration::onMcpConnection() {
                 wsTool["description"] = QStringLiteral(
                     "Search the project for code matching a literal "
                     "string or regex. Returns {ok, matches:[{file, "
-                    "line, text, also_at?:[{file,line}…]}], truncated, "
+                    "line, text, also_at?:[{file,line}…], "
+                    "context_before?:[{line,text}], "
+                    "context_after?:[{line,text}]}], truncated, "
                     "dedup, dedup_collapsed, respect_gitignore, "
                     "include_hidden, timeout_sec, elapsed_ms}. Prefer "
                     "this over `Bash grep -r ...` — typically saves "
                     "250-4500 tokens per query and avoids round-trips "
                     "for no-match cases. Args: pattern (required), "
                     "regex (false), lane (subdir under project root), "
-                    "glob, max_results (default 50, cap 500), context, "
-                    "case (smart/sensitive/insensitive), "
+                    "glob, max_results (default 50, cap 500), context "
+                    "(default 0, server-clamped to [0,10] — when > 0, "
+                    "each match carries `context_before`/`context_after` "
+                    "arrays with up to N surrounding lines per side; "
+                    "ANTS-1304), case (smart/sensitive/insensitive), "
                     "respect_gitignore (default true — pass false for "
                     "stale-path audits across build outputs / "
                     "compile_commands.json / cache dirs), "
@@ -1978,7 +1983,9 @@ void ClaudeIntegration::onMcpConnection() {
                     "regardless), dedup (default true — collapses "
                     "near-duplicate excerpts into a single primary "
                     "match with `also_at` carrying the rest; "
-                    "ANTS-1501), timeout_sec (default 5, range [1,30] "
+                    "context is preserved on the primary only, pass "
+                    "dedup:false for per-hit context; ANTS-1501), "
+                    "timeout_sec (default 5, range [1,30] "
                     "— raise for mid-size projects > 2 k files; "
                     "ANTS-1565). On hard-kill the rg_failed envelope "
                     "carries a `hint` field with the three viable "
@@ -2007,8 +2014,20 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject maxProp;      maxProp["type"]      = "integer";
                                               maxProp["default"]   = 50;
                                               maxProp["maximum"]   = 500;
+                    // ANTS-1304: context surfaces ±N surrounding
+                    // lines on each match (context_before / context_after).
+                    // Server clamp [0, 10] applied in cmdWorkspaceSearch.
                     QJsonObject ctxProp;      ctxProp["type"]      = "integer";
                                               ctxProp["default"]   = 0;
+                                              ctxProp["minimum"]   = 0;
+                                              ctxProp["maximum"]   = 10;
+                                              ctxProp["description"] = QStringLiteral(
+                        "Surrounding-lines window. When > 0 (server-"
+                        "clamped to 10), each match carries "
+                        "`context_before` and `context_after` arrays "
+                        "of up to N `{line, text}` entries. When 0 "
+                        "(default), the compact pre-1304 envelope "
+                        "ships.");
                     QJsonObject caseProp;     caseProp["type"]     = "string";
                     QJsonArray caseEnum;
                     caseEnum.append("smart");
@@ -2350,6 +2369,52 @@ void ClaudeIntegration::onMcpConnection() {
                     lasTool["inputSchema"] = schema;
                 }
                 tools.append(lasTool);
+
+                // ANTS-1569 — current_state aggregator. Bundles
+                // roadmap_query (active filter) + git_state(status) +
+                // last_audit_summary + .claude/workflow.md parse +
+                // docs/specs/<id>.md probe into one envelope. The
+                // session-start dance is currently a 3-4 read cascade;
+                // this verb collapses it.
+                {
+                    QJsonObject csTool;
+                    csTool["name"] = "current_state";
+                    csTool["description"] = QStringLiteral(
+                        "One-call session-start state. Returns "
+                        "{ok, active_bullet?, workflow_status_line?, "
+                        "git_branch_state, open_audit_findings_count, "
+                        "spec_path?, etag}. Bundles roadmap_query "
+                        "(status:active) + git_state(op:status) + "
+                        "last_audit_summary + .claude/workflow.md "
+                        "best-effort parse + docs/specs/<active-id>.md "
+                        "existence probe. `active_bullet` is the first "
+                        "🚧 in document order, else the first 📋; "
+                        "omitted when neither exists. Upstream "
+                        "failures collapse to documented field "
+                        "fallbacks — `ok:true` is preserved as long "
+                        "as the project root resolves. Etag-able via "
+                        "the ANTS-1499 304 pattern: pass `etag_match` "
+                        "to short-circuit when nothing has changed. "
+                        "See docs/specs/ANTS-1569.md.");
+                    csTool["selection_hint"] = QStringLiteral(
+                        "Call once at session start instead of "
+                        "chaining roadmap_query + git_state + "
+                        "last_audit_summary. Use the returned `etag` "
+                        "as `etag_match` on subsequent calls within "
+                        "the session.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["etag_match"] = makeEtagMatchProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("caller_cwd");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    csTool["inputSchema"] = schema;
+                    tools.append(csTool);
+                }
 
                 // ANTS-1112 — five `indie_review_*` tools that lift the
                 // mechanical halves of /indie-review out of orchestrator
@@ -4488,7 +4553,10 @@ void ClaudeIntegration::onMcpConnection() {
                     if (name == QLatin1String("workspace_search") ||
                         name == QLatin1String("file_outline") ||
                         name == QLatin1String("project_layout") ||
-                        name == QLatin1String("subsystem"))
+                        name == QLatin1String("subsystem") ||
+                        // ANTS-1569 — current_state is a project-scoped
+                        // read aggregator (joins project_layout's family).
+                        name == QLatin1String("current_state"))
                         return QStringLiteral("workspace");
                     if (name == QLatin1String("session_memory"))
                         return QStringLiteral("mcp-state");
@@ -5144,6 +5212,11 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("workspace_search"))   return C::Required;
     if (toolName == QStringLiteral("file_outline"))       return C::Required;
     if (toolName == QStringLiteral("plan_template"))      return C::Required;
+    // ANTS-1569 — current_state aggregator: project-scoped read over
+    // ROADMAP + git + audit cache. The ANTS-1520 fall-through default
+    // already returns Required; this explicit branch is declarative
+    // parity with sibling project-scoped tools.
+    if (toolName == QStringLiteral("current_state"))      return C::Required;
     // Cold-eyes verb cluster (ANTS-1313).
     if (toolName == QStringLiteral("cold_eyes_brief"))         return C::Required;
     if (toolName == QStringLiteral("cold_eyes_cross_doc_diff"))return C::Required;
@@ -5207,7 +5280,13 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
         // drift list rarely changes between calls (ROADMAP mtime +
         // HEAD reachability snapshot), so the etag 304 round-trip
         // saves the full re-emit on stable repos.
-        || toolName == QStringLiteral("roadmap_branch_drift");
+        || toolName == QStringLiteral("roadmap_branch_drift")
+        // ANTS-1569 — current_state aggregator. Three upstream
+        // payloads (roadmap_query + git_state + last_audit_summary)
+        // composed into one envelope; the etag covers the union, so
+        // a session re-asking "what's the state" between upstream
+        // changes short-circuits.
+        || toolName == QStringLiteral("current_state");
 }
 
 QString ClaudeIntegration::etagFor(const QString &payload) {

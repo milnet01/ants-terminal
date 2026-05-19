@@ -3231,9 +3231,19 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // Each match event has data.path.text, data.line_number, and
     // data.lines.text. NDJSON-style parse: split on '\n', QJsonDocument
     // per line.
+    //
+    // ANTS-1304: when context > 0, rg also emits type=="context" events
+    // around each match. Attribute them to the surrounding match by
+    // line distance — pending-before buffer for events that precede
+    // their owning match, direct-append for events that trail one.
     QJsonArray matches;
     int seenMatchEvents = 0;
     bool truncated = false;
+    int lastMatchIdx = -1;  // ANTS-1304: index into matches[] for the
+                            // most recent match in the current file
+                            // (reset on each begin / end event).
+    struct PendingCtx { int line; QString text; };
+    QList<PendingCtx> pendingBefore;
     const QList<QByteArray> lines = stdoutBytes.split('\n');
     for (const QByteArray &line : lines) {
         if (line.isEmpty()) continue;
@@ -3241,7 +3251,45 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         const QJsonDocument doc = QJsonDocument::fromJson(line, &perr);
         if (perr.error != QJsonParseError::NoError || !doc.isObject()) continue;
         const QJsonObject ev = doc.object();
-        if (ev.value("type").toString() != QLatin1String("match")) continue;
+        const QString evType = ev.value("type").toString();
+
+        // ANTS-1304: file boundaries reset context tracking — a context
+        // event in file B never belongs to a match in file A.
+        if (evType == QLatin1String("begin") ||
+            evType == QLatin1String("end")) {
+            lastMatchIdx = -1;
+            pendingBefore.clear();
+            continue;
+        }
+
+        // ANTS-1304: type=="context" — buffer if no prior match in this
+        // file or out-of-window; append to lastMatch.context_after if
+        // within +N of its line.
+        if (evType == QLatin1String("context") && context > 0) {
+            const QJsonObject data = ev.value("data").toObject();
+            const int ctxLine = data.value("line_number").toInt();
+            QString ctxText = data.value("lines").toObject().value("text").toString();
+            if (ctxText.endsWith(QLatin1Char('\n'))) ctxText.chop(1);
+            if (lastMatchIdx >= 0) {
+                const int anchorLine =
+                    matches.at(lastMatchIdx).toObject().value("line").toInt();
+                if (ctxLine > anchorLine && ctxLine - anchorLine <= context) {
+                    QJsonObject prim = matches.at(lastMatchIdx).toObject();
+                    QJsonArray after = prim.value("context_after").toArray();
+                    QJsonObject c;
+                    c["line"] = ctxLine;
+                    c["text"] = ctxText;
+                    after.append(c);
+                    prim["context_after"] = after;
+                    matches.replace(lastMatchIdx, prim);
+                    continue;
+                }
+            }
+            pendingBefore.append({ctxLine, ctxText});
+            continue;
+        }
+
+        if (evType != QLatin1String("match")) continue;
         ++seenMatchEvents;
         if (matches.size() >= maxResults) { truncated = true; continue; }
 
@@ -3261,7 +3309,25 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         m["file"] = path;
         m["line"] = lineNo;
         m["text"] = text;
+        // ANTS-1304: drain pending-before context — keep entries in
+        // [lineNo-N, lineNo-1]; drop older ones (they belonged to
+        // nothing reachable in this file).
+        if (context > 0) {
+            QJsonArray before;
+            for (const auto &p : pendingBefore) {
+                if (p.line >= lineNo - context && p.line < lineNo) {
+                    QJsonObject c;
+                    c["line"] = p.line;
+                    c["text"] = p.text;
+                    before.append(c);
+                }
+            }
+            pendingBefore.clear();
+            m["context_before"] = before;
+            m["context_after"]  = QJsonArray();
+        }
         matches.append(m);
+        lastMatchIdx = matches.size() - 1;
     }
 
     if (rg.exitStatus() != QProcess::NormalExit && !hardKilled) {
@@ -4690,6 +4756,208 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
     // the picker preferred a broader file or just took the newest.
     if (!pickBasis.isEmpty()) env["pick_basis"] = pickBasis;
     return QJsonDocument(env);
+}
+
+// ----- ANTS-1569 — current_state aggregator ------------------------
+
+namespace {
+
+QJsonObject csErr(const QString &code, const QString &message) {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["error"] = message;
+    o["code"]  = code;
+    return o;
+}
+
+// Best-effort parse of .claude/workflow.md: locate first `## Status`
+// heading, return the first non-blank line below it. Empty string
+// when the file exists but the block is missing or empty.
+// `fileExists` reports whether the file is on disk so the caller can
+// decide whether to omit or emit-as-empty.
+QString readWorkflowStatusLine(const QString &rootCanonical,
+                               bool *fileExists) {
+    *fileExists = false;
+    const QString path =
+        rootCanonical + QStringLiteral("/.claude/workflow.md");
+    QFileInfo fi(path);
+    if (!fi.exists() || !fi.isFile()) return QString();
+    *fileExists = true;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
+    QTextStream in(&f);
+    bool inStatus = false;
+    while (!in.atEnd()) {
+        const QString line    = in.readLine();
+        const QString trimmed = line.trimmed();
+        if (!inStatus) {
+            if (trimmed.startsWith(QStringLiteral("## ")) &&
+                trimmed.mid(3).trimmed().compare(
+                    QStringLiteral("Status"),
+                    Qt::CaseInsensitive) == 0) {
+                inStatus = true;
+            }
+            continue;
+        }
+        // Inside the `## Status` block. Hitting another heading ends
+        // the block; blank lines are skipped; first non-blank line
+        // wins.
+        if (trimmed.startsWith(QLatin1Char('#'))) break;
+        if (trimmed.isEmpty()) continue;
+        return trimmed;
+    }
+    return QString();  // file exists but block missing or empty
+}
+
+}  // namespace
+
+QJsonDocument RemoteControl::cmdCurrentState(const QJsonObject &req) {
+    if (!m_main) {
+        return QJsonDocument(csErr(QStringLiteral("no_window"),
+            QStringLiteral("current_state: no MainWindow")));
+    }
+
+    // ANTS-1569 INV-13: anchor on caller_cwd via the same chokepoint
+    // every Required tool uses. Empty result → `no_project` refusal.
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        return QJsonDocument(csErr(QStringLiteral("no_project"),
+            QStringLiteral("current_state: project root unresolved")));
+    }
+
+    // ANTS-1569: response envelope named `result` (not `env`) so the
+    // first occurrence of the cmdTokenUsage success-path anchor in
+    // this file stays inside cmdTokenUsage — its INV-4 source-scrape
+    // test in tests/features/token_usage_no_ci_diagnostic relies on
+    // that anchor.
+    QJsonObject result;
+    result["ok"] = true;
+
+    // (1) active_bullet — first 🚧 in document order, else first 📋.
+    // INV-7 delegation: pure composer over cmdRoadmapQuery; INV-8
+    // omit-on-empty / non-ok.
+    {
+        QJsonObject rqReq;
+        rqReq[QStringLiteral("caller_cwd")] = rootCanonical;
+        rqReq[QStringLiteral("status")]     = QStringLiteral("active");
+        const QJsonDocument rqDoc = cmdRoadmapQuery(rqReq);
+        const QJsonObject     rqObj = rqDoc.object();
+        if (rqObj.value(QStringLiteral("ok")).toBool(false)) {
+            const QJsonArray bullets =
+                rqObj.value(QStringLiteral("bullets")).toArray();
+            QJsonObject pick;
+            for (const QJsonValue &v : bullets) {
+                const QJsonObject b = v.toObject();
+                if (b.value(QStringLiteral("status")).toString() ==
+                    QStringLiteral("🚧")) {
+                    pick = b;
+                    break;
+                }
+            }
+            if (pick.isEmpty() && !bullets.isEmpty()) {
+                pick = bullets.first().toObject();
+            }
+            if (!pick.isEmpty()) {
+                QJsonObject ab;
+                ab[QStringLiteral("id")] =
+                    pick.value(QStringLiteral("id")).toString();
+                ab[QStringLiteral("headline")] =
+                    pick.value(QStringLiteral("headline_oneline")).toString();
+                ab[QStringLiteral("section_slug")] =
+                    pick.value(QStringLiteral("section_slug")).toString();
+                ab[QStringLiteral("kind")] =
+                    pick.value(QStringLiteral("kind")).toString();
+                ab[QStringLiteral("lanes")] =
+                    pick.value(QStringLiteral("lanes")).toArray();
+                ab[QStringLiteral("status")] =
+                    pick.value(QStringLiteral("status")).toString();
+                result[QStringLiteral("active_bullet")] = ab;
+            }
+        }
+    }
+
+    // (2) workflow_status_line — INV-9: omit when file absent; emit
+    // empty string when file exists but the block is empty.
+    {
+        bool fileExists = false;
+        const QString status =
+            readWorkflowStatusLine(rootCanonical, &fileExists);
+        if (fileExists) {
+            result[QStringLiteral("workflow_status_line")] = status;
+        }
+    }
+
+    // (3) git_branch_state — always-present (INV-14). Upstream
+    // non-ok collapses to empty/zero fallback so callers iterating
+    // the envelope can rely on the shape.
+    {
+        QJsonObject gsReq;
+        gsReq[QStringLiteral("caller_cwd")] = rootCanonical;
+        gsReq[QStringLiteral("op")]         = QStringLiteral("status");
+        const QJsonDocument gsDoc = cmdGitState(gsReq);
+        const QJsonObject     gs    = gsDoc.object();
+        QJsonObject gbs;
+        if (gs.value(QStringLiteral("ok")).toBool(false)) {
+            gbs[QStringLiteral("branch")] =
+                gs.value(QStringLiteral("branch")).toString();
+            gbs[QStringLiteral("ahead")]  =
+                gs.value(QStringLiteral("ahead")).toInt();
+            gbs[QStringLiteral("behind")] =
+                gs.value(QStringLiteral("behind")).toInt();
+            gbs[QStringLiteral("files_changed_count")] =
+                gs.value(QStringLiteral("files")).toArray().size();
+        } else {
+            gbs[QStringLiteral("branch")] = QString();
+            gbs[QStringLiteral("ahead")]  = 0;
+            gbs[QStringLiteral("behind")] = 0;
+            gbs[QStringLiteral("files_changed_count")] = 0;
+        }
+        result[QStringLiteral("git_branch_state")] = gbs;
+    }
+
+    // (4) open_audit_findings_count — error + warning + note from
+    // cmdLastAuditSummary. Any non-ok envelope ⇒ 0 (INV-14 spec).
+    // Suppressed findings excluded by definition (last_audit_summary
+    // doesn't include them in counts.error/warning/note).
+    {
+        QJsonObject lsReq;
+        lsReq[QStringLiteral("caller_cwd")] = rootCanonical;
+        const QJsonDocument lsDoc = cmdLastAuditSummary(lsReq);
+        const QJsonObject     ls    = lsDoc.object();
+        int total = 0;
+        if (ls.value(QStringLiteral("ok")).toBool(false)) {
+            const QJsonObject counts =
+                ls.value(QStringLiteral("counts")).toObject();
+            total = counts.value(QStringLiteral("error")).toInt()
+                  + counts.value(QStringLiteral("warning")).toInt()
+                  + counts.value(QStringLiteral("note")).toInt();
+        }
+        result[QStringLiteral("open_audit_findings_count")] = total;
+    }
+
+    // (5) spec_path — INV-10: present iff active_bullet has an id
+    // AND docs/specs/<id>.md exists on disk.
+    if (result.contains(QStringLiteral("active_bullet"))) {
+        const QString id = result.value(QStringLiteral("active_bullet"))
+                              .toObject()
+                              .value(QStringLiteral("id"))
+                              .toString();
+        if (!id.isEmpty()) {
+            const QString specRel =
+                QStringLiteral("docs/specs/") + id +
+                QStringLiteral(".md");
+            const QFileInfo specInfo(
+                rootCanonical + QStringLiteral("/") + specRel);
+            if (specInfo.exists() && specInfo.isFile()) {
+                result[QStringLiteral("spec_path")] = specRel;
+            }
+        }
+    }
+
+    // INV-11 — etag injection happens at the dispatch layer via
+    // applyEtagPattern (ANTS-1499). Return the body without an
+    // `etag` field; the dispatcher computes and injects it.
+    return QJsonDocument(result);
 }
 
 // ----- ANTS-1112 — five `indie_review_*` MCP-tool handlers ---------

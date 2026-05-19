@@ -305,6 +305,15 @@ public:
     // AuditEngine::summariseSarif. See docs/specs/ANTS-1254.md.
     QJsonDocument cmdLastAuditSummary(const QJsonObject &req);
 
+    // ANTS-1569: current_state — one-call session-start state recovery.
+    // Aggregates cmdRoadmapQuery (active filter) + cmdGitState(status)
+    // + cmdLastAuditSummary + .claude/workflow.md best-effort parse +
+    // docs/specs/<active-id>.md probe into a single envelope. Pure
+    // composer — no new file reads or cache layer beyond what the
+    // upstream verbs already do. MCP-only (mirrors last_audit_summary;
+    // no IPC dispatch branch). See docs/specs/ANTS-1569.md.
+    QJsonDocument cmdCurrentState(const QJsonObject &req);
+
     // ANTS-1112 — five `indie_review_*` MCP tools. All resolve the
     // active project via the focused TerminalWidget's shellCwd
     // (matches git_state / subsystem / last_audit_summary). Pure

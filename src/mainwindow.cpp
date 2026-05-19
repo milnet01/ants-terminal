@@ -4363,6 +4363,15 @@ void MainWindow::setupClaudeMcpProviders() {
             return QString::fromUtf8(
                 m_remoteControl->cmdLastAuditSummary(args).toJson(QJsonDocument::Compact));
         });
+    // ANTS-1569 — current_state aggregator. MCP-only (mirrors
+    // last_audit_summary; no IPC dispatch branch). Pure composer over
+    // cmdRoadmapQuery + cmdGitState + cmdLastAuditSummary.
+    m_claudeIntegration->registerToolProvider("current_state",
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdCurrentState(args).toJson(QJsonDocument::Compact));
+        });
 
     // ANTS-1112 — five `indie_review_*` tools. Each handler resolves
     // the active project via the focused TerminalWidget's shellCwd

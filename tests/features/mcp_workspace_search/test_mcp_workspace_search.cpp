@@ -330,5 +330,79 @@ TEST(McpWorkspaceSearch, WiringContract) {
                "behaviour (ANTS-1452 INV-6)");
     }
 
-    EXPECT_EQ(0, expect_failures()) << expect_failures() << " ANTS-1248 / ANTS-1452 invariant(s) failed";
+    // -- ANTS-1304 additions: surrounding-context lines on each match ---
+    // Four invariants riding the same wiring contract.
+
+    // INV-1304-1 — body parses type=="context" events with a
+    // context > 0 guard.
+    {
+        std::regex ctxParseRe(
+            R"(QLatin1String\("context"\))");
+        expect(std::regex_search(rcCpp, ctxParseRe),
+               "INV-1304-1a",
+               "remotecontrol.cpp does not branch on the rg "
+               "type==\"context\" event — ANTS-1304 INV-1 violated");
+        // The guard must be paired with `context > 0` in the
+        // immediate vicinity (within ~400 chars).
+        const auto p = rcCpp.find("QLatin1String(\"context\")");
+        bool guardedOk = false;
+        if (p != std::string::npos) {
+            const auto windowEnd = std::min(rcCpp.size(), p + 400);
+            const std::string window = rcCpp.substr(p, windowEnd - p);
+            guardedOk = contains(window, "context > 0") ||
+                        contains(window, "context>0");
+        }
+        expect(guardedOk,
+               "INV-1304-1b",
+               "remotecontrol.cpp context branch is not paired with a "
+               "`context > 0` guard — ANTS-1304 INV-1 violated");
+    }
+
+    // INV-1304-2 — match emit assigns both context_before and
+    // context_after on each match when context > 0.
+    expect(contains(rcCpp, "\"context_before\""),
+           "INV-1304-2a",
+           "remotecontrol.cpp does not assign m[\"context_before\"] "
+           "— ANTS-1304 INV-2 violated");
+    expect(contains(rcCpp, "\"context_after\""),
+           "INV-1304-2b",
+           "remotecontrol.cpp does not assign m[\"context_after\"] "
+           "— ANTS-1304 INV-2 violated");
+
+    // INV-1304-6 — tools/list description mentions both new fields
+    // AND the [0,10] / server-clamped language. The relevant
+    // description blurb lives in the workspace_search registration
+    // block — anchor by name, then scan ~3 KiB forward.
+    {
+        const auto p = ciCpp.find("\"workspace_search\"");
+        bool ok = false;
+        if (p != std::string::npos) {
+            const auto windowEnd = std::min(ciCpp.size(), p + 4000);
+            const std::string window = ciCpp.substr(p,
+                                                    windowEnd - p);
+            ok = contains(window, "context_before") &&
+                 contains(window, "context_after") &&
+                 (contains(window, "[0,10]") ||
+                  contains(window, "[0, 10]") ||
+                  contains(window, "server-clamped"));
+        }
+        expect(ok,
+               "INV-1304-6",
+               "workspace_search tools/list description does not "
+               "mention context_before/context_after AND the [0,10] "
+               "server clamp — ANTS-1304 INV-6 violated");
+    }
+
+    // INV-1304-7 — argv "--context" is gated on context > 0 (the
+    // pre-1304 default-0 path passes no flag).
+    {
+        std::regex ctxArgvRe(
+            R"(context\s*>\s*0[\s\S]{0,200}"--context")");
+        expect(std::regex_search(rcCpp, ctxArgvRe),
+               "INV-1304-7",
+               "remotecontrol.cpp does not gate the rg --context "
+               "flag on `context > 0` — ANTS-1304 INV-7 violated");
+    }
+
+    EXPECT_EQ(0, expect_failures()) << expect_failures() << " ANTS-1248 / ANTS-1452 / ANTS-1304 invariant(s) failed";
 }

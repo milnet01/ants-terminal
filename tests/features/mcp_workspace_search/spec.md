@@ -32,6 +32,10 @@ can grep for).
 | 1452-4 | `ok:true` envelope assigns `out["respect_gitignore"]` and `out["include_hidden"]` — caller can diagnose filter-induced 0-match results. (ANTS-1452 INV-4). |
 | 1452-5 | `tools/list` schema in `claudeintegration.cpp` registers `"respect_gitignore"` and `"include_hidden"` as input properties. (ANTS-1452 INV-5). |
 | 1452-6 | Parse calls use the default-preserving overload — `.toBool(true)` for `respect_gitignore`, `.toBool(false)` for `include_hidden` — so existing callers are unaffected. (ANTS-1452 INV-6). |
+| 1304-1 | `cmdWorkspaceSearch` parses `type=="context"` events from rg's JSON stream, guarded by `context > 0`. Source-grep: the `"context"` string literal appears inside `cmdWorkspaceSearch` paired with a `context > 0` guard. (ANTS-1304 INV-1). |
+| 1304-2 | When `context > 0`, the body assigns both `context_before` and `context_after` keys on each match. Source-grep: both literals appear inside the parse loop. (ANTS-1304 INV-2). |
+| 1304-6 | tools/list description for `workspace_search` mentions `context_before` and `context_after` AND the `[0, 10]` clamp / `server-clamped` language for the `context` parameter. (ANTS-1304 INV-6). |
+| 1304-7 | rg argv `--context` is gated on `context > 0` — backwards-compatible for callers that don't opt in. (ANTS-1304 INV-7). |
 
 ## Acceptance
 
