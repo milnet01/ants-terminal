@@ -12,6 +12,52 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔬 Test-suite isolation + flakiness + assertion-routing — pull 19 (ANTS-1590 + ANTS-1591 + ANTS-1600 + ANTS-1603, 2026-05-19)
+
+Lands the fix-pass for the 2026-05-18 `/test-audit` findings:
+22 test files in `tests/features/` hardened for cross-test isolation,
+sanitiser-overhead timing slack, and gtest-correct failure routing
+(some prior `CHECK()` helpers only bumped a counter that was never
+asserted on — three TEST cases per file silently passed).
+
+- **ANTS-1590 (fix)** — XDG_CONFIG_HOME / HOME save-and-restore RAII
+  guards wired into the bundled tests where env mutation leaked past
+  QTemporaryDir lifetime. Affected files: `config_parse_failure_guard`
+  (`XdgConfigHomeGuard` struct), `config_reload_loop_safety`,
+  `debuglog_perms`, `session_persistence_default`,
+  `claude_tab_status_indicator`, `claude_session_freshness` (`HOME`
+  guard via `qScopeGuard`), `shell_command_wiring`,
+  `ui_state_persistence`. Stops a deleted-directory pointer from
+  bleeding into every subsequent test in the same bundle binary.
+- **ANTS-1591 (fix)** — `config_reload_loop_safety` 5× msleep(50)
+  reworked: tmpfs mtime granularity is 1 s on many distros, so the
+  prior 50 ms sleeps could see no mtime change and the loop-safety
+  invariant tested nothing. Widened with a comment naming the
+  granularity it covers.
+- **ANTS-1600 (fix)** — `mcp_idempotent_read_cache` TTL test widened
+  from 120 ms to 350 ms past the 100 ms TTL boundary; the 20 ms
+  margin flaked on loaded runners where `QTest::qWait`'s "at least
+  N ms" guarantee can land right at the boundary due to scheduler
+  jitter.
+- **ANTS-1603 (fix)** — `a11y_chrome_names` widget allocations
+  migrated from raw `new` + `delete` to `std::unique_ptr`, so the
+  five `requireAccessibleName(...)` checks that issue `FAIL()` no
+  longer leak under LeakSanitizer (build-asan preset). Same pattern
+  applied to `CommandPalette` and the coverage sweep targets.
+- **Adjacent hardening** (not bound to a specific bullet but caught
+  by the same pass): `mcp_audit_run` uses hermetic `QTemporaryDir`
+  for `projectRoot` (was real `/tmp`); `audit_engine_stream_line_split`
+  EXPECT_LT widened from 250 ms to 2 s for sanitiser overhead;
+  `review_changes_click` + `review_changes_clickable` migrate
+  `CHECK()` from a never-asserted counter to `ADD_FAILURE()` so
+  failures actually fail the TEST; `cold_eyes_engine` switches to
+  order-insensitive container-membership asserts where the underlying
+  contract doesn't promise order; `verify_changes_engine` drops a
+  flaky lower-bound timing assertion (other invariants already prove
+  the contract).
+- **No production-code changes** — pure test-side hardening.
+  1113/1113 features tests green.
+
 ### 🔌 MCP test-audit cross-session fold-in — pull 18 (ANTS-1615 + ANTS-1616 + ANTS-1617 + ANTS-1618, 2026-05-19)
 
 Closes four cross-session-report symptoms surfaced by the 2026-05-18

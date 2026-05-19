@@ -245,6 +245,10 @@ void testMatchEmptyTitleList() {
 } // namespace
 
 static int runMain() {
+    // Reset counter so `--gtest_repeat` and re-entry from a single
+    // binary don't accumulate failures across runs (the variable is
+    // file-scope, not function-local, by intent — many helpers read it).
+    failures = 0;
     testExtractEmpty();
     testExtractIdentifierShapes();
     testExtractShortTokensDropped();

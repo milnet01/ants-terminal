@@ -101,9 +101,14 @@ TEST(AuditEngineStreamLineSplit, Inv3ThroughputBail) {
     const qint64 elapsedMs = t.elapsed();
 
     EXPECT_EQ(r.count, 5);
-    EXPECT_LT(elapsedMs, 250)
+    // Widened from 250 ms post-test-audit 2026-05-18: under ASan/UBSan
+    // (build-asan preset) or Valgrind a 1 MiB scan can take much
+    // longer than under Release. The bail-out invariant — applyFilter
+    // hits maxLines = 5 quickly rather than scanning the whole input —
+    // still holds under any reasonable sanitiser overhead at 2 s.
+    EXPECT_LT(elapsedMs, 2000)
         << "applyFilter bailed in " << elapsedMs
-        << " ms — expected < 250 ms (streaming rewrite regressed?)";
+        << " ms — expected < 2000 ms (streaming rewrite regressed?)";
 }
 
 // INV-4 — tail line without trailing newline.

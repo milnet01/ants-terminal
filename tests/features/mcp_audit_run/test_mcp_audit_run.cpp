@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QJsonArray>
 #include <QString>
+#include <QTemporaryDir>
 
 #include <cstdio>
 #include <fstream>
@@ -146,22 +147,33 @@ TEST(mcp_audit_run, Inv15ScopeTagRegex) {
 // INV-16 — range check refusals.
 TEST(mcp_audit_run, Inv16CapRanges) {
     expect_reset();
+    // Hermetic projectRoot — never use real /tmp here, as
+    // AuditRunner::runAudit may now (post AR-1) walk for src/ to
+    // auto-detect a compile-commands path. A QTemporaryDir keeps the
+    // refusal-path-only contract intact.
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) {
+        expect(false, "INV-16: QTemporaryDir setup");
+        return;
+    }
+    const QString root = tmp.path();
+
     AuditRunner::RunRequest bad1;
-    bad1.projectRoot = QStringLiteral("/tmp");
+    bad1.projectRoot = root;
     bad1.capPerToolSeconds = 4;  // < 5
     AuditRunner::RunResult r1 = AuditRunner::runAudit(bad1);
     expect(!r1.ok && r1.code == QStringLiteral("bad_args"),
            "INV-16: cap < 5 → bad_args");
 
     AuditRunner::RunRequest bad2;
-    bad2.projectRoot = QStringLiteral("/tmp");
+    bad2.projectRoot = root;
     bad2.capPerToolSeconds = 61;  // > 60
     AuditRunner::RunResult r2 = AuditRunner::runAudit(bad2);
     expect(!r2.ok && r2.code == QStringLiteral("bad_args"),
            "INV-16: cap > 60 → bad_args");
 
     AuditRunner::RunRequest bad3;
-    bad3.projectRoot = QStringLiteral("/tmp");
+    bad3.projectRoot = root;
     bad3.topFindingsCount = 101;
     AuditRunner::RunResult r3 = AuditRunner::runAudit(bad3);
     expect(!r3.ok && r3.code == QStringLiteral("bad_args"),

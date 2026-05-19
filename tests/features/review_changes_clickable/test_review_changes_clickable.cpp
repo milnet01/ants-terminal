@@ -25,24 +25,23 @@
 #include <QString>
 #include <QRegularExpression>
 
-#include <cstdio>
 #include <gtest/gtest.h>
 
 namespace {
-int failures = 0;
-
+// Routes through gtest so failures actually fail the TEST (prior shape
+// only printed to stderr and bumped a never-asserted counter, which is
+// why all three TEST cases in this file silently passed before the
+// 2026-05-18 test-audit).
 #define CHECK(cond, msg) do {                                                \
     if (!(cond)) {                                                           \
-        std::fprintf(stderr, "FAIL %s:%d  %s\n", __FILE__, __LINE__, msg);  \
-        ++failures;                                                          \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << (msg);                         \
     }                                                                        \
 } while (0)
 
 QString readSource(const QString &path) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        std::fprintf(stderr, "FAIL: cannot open %s\n", qUtf8Printable(path));
-        ++failures;
+        ADD_FAILURE() << "cannot open " << qUtf8Printable(path);
         return QString();
     }
     return QString::fromUtf8(f.readAll());
@@ -74,9 +73,7 @@ TEST(ReviewChangesClickable, RefreshShowsDisabledOnClean) {
     const QString body = extractFunctionBody(
         src, QStringLiteral("void MainWindow::refreshReviewButton()"));
     if (body.isEmpty()) {
-        std::fprintf(stderr,
-                     "FAIL: refreshReviewButton not found — function renamed?\n");
-        ++failures;
+        ADD_FAILURE() << "refreshReviewButton not found — function renamed?";
         return;
     }
 

@@ -23,6 +23,7 @@
 #include "config.h"
 
 #include <QByteArray>
+#include <QScopeGuard>
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
@@ -129,6 +130,16 @@ static int runMain() {
         std::fprintf(stderr, "FATAL: QTemporaryDir creation failed\n");
         return 2;
     }
+    // Capture prior XDG_CONFIG_HOME so we restore it at scope exit;
+    // otherwise the deleted QTemporaryDir would still be the env var's
+    // value for subsequent tests in the test_core bundle.
+    const bool hadXdg = qEnvironmentVariableIsSet("XDG_CONFIG_HOME");
+    const QByteArray priorXdg = hadXdg ? qgetenv("XDG_CONFIG_HOME") : QByteArray();
+    auto restoreXdg = qScopeGuard([hadXdg, priorXdg]() {
+        if (hadXdg) qputenv("XDG_CONFIG_HOME", priorXdg);
+        else qunsetenv("XDG_CONFIG_HOME");
+    });
+
     if (!qputenv("XDG_CONFIG_HOME", tmp.path().toLocal8Bit())) {
         std::fprintf(stderr, "FATAL: qputenv XDG_CONFIG_HOME failed\n");
         return 2;

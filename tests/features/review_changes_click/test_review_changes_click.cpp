@@ -43,17 +43,17 @@
 #include <QString>
 #include <QTimer>
 
-#include <cstdio>
 #include <gtest/gtest.h>
 
 namespace {
 
-int failures = 0;
-
+// Routes through gtest so that failures actually fail the TEST (prior
+// shape only printed to stderr and bumped a never-asserted counter,
+// which is why all four TEST cases in this file silently passed before
+// the 2026-05-18 test-audit).
 #define CHECK(cond, msg) do {                                                \
     if (!(cond)) {                                                           \
-        std::fprintf(stderr, "FAIL %s:%d  %s\n", __FILE__, __LINE__, msg);  \
-        ++failures;                                                          \
+        ADD_FAILURE_AT(__FILE__, __LINE__) << (msg);                         \
     }                                                                        \
 } while (0)
 
@@ -212,10 +212,8 @@ TEST(ReviewChangesClick, ShowDiffViewerCallsRaiseAndActivate) {
     const QString path = QStringLiteral(SRC_DIFFVIEWER_CPP_PATH);
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        std::fprintf(stderr,
-                     "FAIL: cannot open %s — test harness wiring broken\n",
-                     qUtf8Printable(path));
-        ++failures;
+        ADD_FAILURE() << "cannot open " << qUtf8Printable(path)
+                      << " — test harness wiring broken";
         return;
     }
     const QString src = QString::fromUtf8(f.readAll());
@@ -225,15 +223,15 @@ TEST(ReviewChangesClick, ShowDiffViewerCallsRaiseAndActivate) {
     // its opening brace to the matching close.
     const int start = src.indexOf(QStringLiteral("QDialog *show("));
     if (start < 0) {
-        std::fprintf(stderr,
-                     "FAIL: diffviewer::show not found in %s — function renamed "
-                     "or extraction reverted?\n",
-                     qUtf8Printable(path));
-        ++failures;
+        ADD_FAILURE() << "diffviewer::show not found in " << qUtf8Printable(path)
+                      << " — function renamed or extraction reverted?";
         return;
     }
     int braceStart = src.indexOf(QChar('{'), start);
-    if (braceStart < 0) { ++failures; return; }
+    if (braceStart < 0) {
+        ADD_FAILURE() << "diffviewer::show: no opening brace after signature";
+        return;
+    }
     int depth = 1;
     int i = braceStart + 1;
     while (i < src.size() && depth > 0) {

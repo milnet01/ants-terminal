@@ -80,6 +80,7 @@ TEST(roadmap_query_narrator_filter, Inv4SchemaAdvertises) {
            "advertises include_narrator_bullets");
     expect(contains(cpp, "ANTS-1425"),
            "INV-4: schema-block ANTS-1425 anchor present");
+    EXPECT_EQ(0, expect_failures());
 }
 
 // INV-5 — dispatch forwards the arg.
@@ -91,6 +92,7 @@ TEST(roadmap_query_narrator_filter, Inv5DispatchForwards) {
            "include_narrator_bullets from args into req");
     expect(contains(cpp, "ANTS-1425"),
            "INV-5: dispatch-side ANTS-1425 anchor present");
+    EXPECT_EQ(0, expect_failures());
 }
 
 // INV-6 — echo only when caller set it.

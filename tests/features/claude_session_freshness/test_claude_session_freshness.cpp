@@ -19,6 +19,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QScopeGuard>
 #include <QString>
 #include <QTemporaryDir>
 #include <QTimeZone>
@@ -157,6 +158,15 @@ void testLastEventTimestampMs(QTemporaryDir &dir) {
 }
 
 void testFilterAndPick(QTemporaryDir &home) {
+    // Restore HOME on scope exit; otherwise when the caller's
+    // QTemporaryDir is destroyed, $HOME continues pointing at a deleted
+    // directory for the rest of the test_core bundle's lifetime.
+    const bool hadHome = qEnvironmentVariableIsSet("HOME");
+    const QByteArray priorHome = hadHome ? qgetenv("HOME") : QByteArray();
+    auto restoreHome = qScopeGuard([hadHome, priorHome]() {
+        if (hadHome) qputenv("HOME", priorHome);
+        else qunsetenv("HOME");
+    });
     ::setenv("HOME", home.path().toLocal8Bit().constData(), 1);
 
     const QString cwd = home.path() + "/projA";

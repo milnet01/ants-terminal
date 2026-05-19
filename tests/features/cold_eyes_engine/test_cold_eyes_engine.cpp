@@ -153,12 +153,15 @@ TEST(ColdEyesEngine, CrossReferenceDocsAreContractTrio) {
     ASSERT_TRUE(ws.writeRel("docs/standards/coding.md", "x"));
 
     const auto m = ColdEyesEngine::assembleBriefManifest(ws.root(), lane);
-    EXPECT_EQ(m.crossReferenceDocs, (QStringList{
-        QStringLiteral("CLAUDE.md"),
-        QStringLiteral("README.md"),
-        QStringLiteral("ROADMAP.md"),
-        QStringLiteral("CHANGELOG.md"),
-    }));
+    // Order-insensitive: assembleBriefManifest does not promise a stable
+    // order for the contract trio. Check membership and count instead so
+    // a refactor that reorders the four files doesn't fail the test
+    // without any semantic regression.
+    EXPECT_EQ(m.crossReferenceDocs.size(), 4);
+    EXPECT_TRUE(m.crossReferenceDocs.contains(QStringLiteral("CLAUDE.md")));
+    EXPECT_TRUE(m.crossReferenceDocs.contains(QStringLiteral("README.md")));
+    EXPECT_TRUE(m.crossReferenceDocs.contains(QStringLiteral("ROADMAP.md")));
+    EXPECT_TRUE(m.crossReferenceDocs.contains(QStringLiteral("CHANGELOG.md")));
 
     // De-dup: contracts lane already contains all four; no double-emit.
     ColdEyesEngine::Lane contracts;

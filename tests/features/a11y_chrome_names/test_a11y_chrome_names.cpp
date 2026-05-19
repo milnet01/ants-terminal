@@ -21,9 +21,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <string>
-#include <vector>
 
 #include "titlebar.h"
 #include "commandpalette.h"
@@ -118,12 +118,20 @@ void coverageSweep(QWidget *root, const char *rootLabel) {
 
 }  // namespace
 
-TEST(A11yChromeNames, Main) {    // T1-T4 — TitleBar chrome buttons.
-    auto *bar = new TitleBar(nullptr);
-    requireAccessibleName(bar, "centerBtn", "Center window");
-    requireAccessibleName(bar, "minimizeBtn", "Minimize window");
-    requireAccessibleName(bar, "maximizeBtn", "Maximize window");
-    requireAccessibleName(bar, "closeBtn", "Close window");
+TEST(A11yChromeNames, Main) {
+    // Reset cross-TEST counter so `--gtest_repeat` doesn't accumulate
+    // failures from prior runs (the variable is file-scope, not
+    // function-local, by design — it's read across helpers).
+    g_fails = 0;
+
+    // T1-T4 — TitleBar chrome buttons. Use std::unique_ptr so an
+    // early FAIL() doesn't leak the widgets (LeakSanitizer is wired
+    // through the debug preset).
+    std::unique_ptr<TitleBar> bar(new TitleBar(nullptr));
+    requireAccessibleName(bar.get(), "centerBtn", "Center window");
+    requireAccessibleName(bar.get(), "minimizeBtn", "Minimize window");
+    requireAccessibleName(bar.get(), "maximizeBtn", "Maximize window");
+    requireAccessibleName(bar.get(), "closeBtn", "Close window");
 
     // Each TitleBar button must be a QToolButton (sanity — protects against
     // a later refactor that swaps to QPushButton without preserving names).
@@ -137,15 +145,15 @@ TEST(A11yChromeNames, Main) {    // T1-T4 — TitleBar chrome buttons.
     // T5 — CommandPalette search input. The palette doesn't need to be
     // shown for the input — it's constructed eagerly. m_list (T6) is
     // lazy on first show().
-    auto *palette = new CommandPalette(nullptr);
-    requireAccessibleName(palette, "commandPaletteInput",
+    std::unique_ptr<CommandPalette> palette(new CommandPalette(nullptr));
+    requireAccessibleName(palette.get(), "commandPaletteInput",
                           "Command palette search");
 
     // Trigger lazy list construction. show() positions relative to
     // parentWidget() and returns early when there is none — but
     // ensureListReady() runs unconditionally before that early return.
     palette->show();
-    requireAccessibleName(palette, "commandPaletteList",
+    requireAccessibleName(palette.get(), "commandPaletteList",
                           "Command palette results",
                           /*expectDescription=*/false);
     // Description is required by the spec table for both palette
@@ -158,8 +166,8 @@ TEST(A11yChromeNames, Main) {    // T1-T4 — TitleBar chrome buttons.
     }
 
     // T7 — coverage sweep over both chrome roots.
-    coverageSweep(bar, "TitleBar");
-    coverageSweep(palette, "CommandPalette");
+    coverageSweep(bar.get(), "TitleBar");
+    coverageSweep(palette.get(), "CommandPalette");
 
     // T8 — source-grep on titlebar.cpp.
     {
@@ -206,9 +214,9 @@ TEST(A11yChromeNames, Main) {    // T1-T4 — TitleBar chrome buttons.
         }
     }
 
-    delete palette;
-    delete bar;
-
+    // bar + palette release via unique_ptr destructors after the
+    // pass/fail decision below — so the widgets are reclaimed even on
+    // FAIL.
     if (g_fails == 0) {
         std::printf("a11y_chrome_names: OK\n");
         return;

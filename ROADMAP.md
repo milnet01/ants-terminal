@@ -8241,12 +8241,12 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
   - Dimension: assertions
   - Severity: high
   - Fix: Convert `fail()` to a function-like preprocessor macro (or use ADD_FAILURE_AT at the call site directly). 30+ call sites between the 3 files; mechanical.
-- 📋 [ANTS-1590] **Apply XdgConfigHomeGuard save/restore in claude_tab_tracker + roadmap_density to stop env-var leak.**
+- ✅ [ANTS-1590] **Apply XdgConfigHomeGuard save/restore in claude_tab_tracker + roadmap_density to stop env-var leak.**
   - File: tests/features/claude_tab_status_indicator/test_claude_tab_tracker.cpp,roadmap_density/test_roadmap_density.cpp:0
   - Dimension: isolation
   - Severity: medium
   - Fix: Apply the same XdgConfigHomeGuard / save-and-restore pattern used in the above six files.
-- 📋 [ANTS-1591] **config_reload_loop_safety 5× QThread::msleep(50) on tmpfs mtime — inject clock or widen.**
+- ✅ [ANTS-1591] **config_reload_loop_safety 5× QThread::msleep(50) on tmpfs mtime — inject clock or widen.**
   - File: tests/features/config_reload_loop_safety/test_config_reload_loop_safety.cpp:128
   - Dimension: flakiness
   - Severity: medium
@@ -8291,7 +8291,7 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
   - Dimension: accuracy
   - Severity: medium
   - Fix: Migrate all magic-window substr() usages to ants_test::slurpFunctionBody() (brace-balanced extraction).
-- 📋 [ANTS-1600] **Add clock-injection / forceExpire test hook to idempotent-read cache so TTL tests are deterministic.**
+- ✅ [ANTS-1600] **Add clock-injection / forceExpire test hook to idempotent-read cache so TTL tests are deterministic.**
   - File: tests/features/mcp_idempotent_read_cache/test_mcp_idempotent_read_cache.cpp:40
   - Dimension: flakiness
   - Severity: medium
@@ -8306,7 +8306,7 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
   - Dimension: isolation
   - Severity: medium
   - Fix: Use QTemporaryDir (RAII) for the root, as the other tests in this chunk already do. Fix the teardown order so the symlink unlink precedes rmpath.
-- 📋 [ANTS-1603] **Sweep tests/features for `new QWidget`/`new QMainWindow` patterns and migrate to unique_ptr for FAIL-safe cleanup.**
+- ✅ [ANTS-1603] **Sweep tests/features for `new QWidget`/`new QMainWindow` patterns and migrate to unique_ptr for FAIL-safe cleanup.**
   - File: tests/features/a11y_chrome_names/test_a11y_chrome_names.cpp:122
   - Dimension: setup_teardown
   - Severity: high

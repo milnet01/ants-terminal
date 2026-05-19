@@ -28,6 +28,27 @@ namespace {
 
 
 
+// RAII guard for XDG_CONFIG_HOME — captures the prior value (or the
+// "unset" state) and restores it in the destructor so each scenario's
+// sandbox doesn't leak to the next test in the same bundle binary
+// (test_core runs config_parse_failure_guard, config_reload_loop_safety,
+// debuglog_perms, and session_persistence_default sequentially; without
+// this guard, the last sandbox's XDG_CONFIG_HOME stays pointing at a
+// deleted QTemporaryDir for every subsequent test).
+struct XdgConfigHomeGuard {
+    QByteArray prior;
+    bool hadPrior = false;
+    XdgConfigHomeGuard() {
+        hadPrior = qEnvironmentVariableIsSet("XDG_CONFIG_HOME");
+        if (hadPrior) prior = qgetenv("XDG_CONFIG_HOME");
+    }
+    void set(const QByteArray &v) { qputenv("XDG_CONFIG_HOME", v); }
+    ~XdgConfigHomeGuard() {
+        if (hadPrior) qputenv("XDG_CONFIG_HOME", prior);
+        else qunsetenv("XDG_CONFIG_HOME");
+    }
+};
+
 // Plant a specific `config.json` inside a sandboxed XDG_CONFIG_HOME
 // and return the directory that contains it. `content == nullptr`
 // means "don't create the file" (fresh-run scenario).
@@ -36,9 +57,11 @@ namespace {
 // (no caching), so qputenv here is the whole sandbox. Do NOT use
 // QStandardPaths::setTestModeEnabled — it routes to a Qt-test-specific
 // path that ignores XDG and has collided with real user configs in
-// practice.
-QString setupSandbox(QTemporaryDir &tmp, const char *content) {
-    qputenv("XDG_CONFIG_HOME", tmp.path().toLocal8Bit());
+// practice. Caller owns the XdgConfigHomeGuard so the env restore
+// happens after the QTemporaryDir is consumed.
+QString setupSandbox(QTemporaryDir &tmp, XdgConfigHomeGuard &guard,
+                     const char *content) {
+    guard.set(tmp.path().toLocal8Bit());
 
     const QString antsDir = tmp.path() + "/ants-terminal";
     QDir().mkpath(antsDir);
@@ -56,7 +79,8 @@ QString setupSandbox(QTemporaryDir &tmp, const char *content) {
 void testFreshRun() {
     QTemporaryDir tmp;
     if (!tmp.isValid()) { expect(false, "freshRun: sandbox setup"); return; }
-    QString antsDir = setupSandbox(tmp, nullptr);
+    XdgConfigHomeGuard envGuard;
+    QString antsDir = setupSandbox(tmp, envGuard, nullptr);
 
     Config cfg;
 
@@ -73,7 +97,8 @@ void testFreshRun() {
 void testValidConfig() {
     QTemporaryDir tmp;
     if (!tmp.isValid()) { expect(false, "validConfig: sandbox setup"); return; }
-    setupSandbox(tmp, R"({"theme":"Dark","font_size":14})");
+    XdgConfigHomeGuard envGuard;
+    setupSandbox(tmp, envGuard, R"({"theme":"Dark","font_size":14})");
 
     Config cfg;
 
@@ -86,8 +111,9 @@ void testValidConfig() {
 void testCorruptConfig() {
     QTemporaryDir tmp;
     if (!tmp.isValid()) { expect(false, "corruptConfig: sandbox setup"); return; }
+    XdgConfigHomeGuard envGuard;
     const char *corrupt = "{\"theme\":\"Dark\",\"font_size\":14,"; // truncated
-    QString antsDir = setupSandbox(tmp, corrupt);
+    QString antsDir = setupSandbox(tmp, envGuard, corrupt);
     const QString cfgPath = antsDir + "/config.json";
 
     // Capture original bytes — we'll assert they survive unchanged.
@@ -141,7 +167,8 @@ void testEmptyStringParsesAsNull() {
     // path. Common outcome of a failed write mid-fsync.
     QTemporaryDir tmp;
     if (!tmp.isValid()) { expect(false, "emptyFile: sandbox setup"); return; }
-    setupSandbox(tmp, "");
+    XdgConfigHomeGuard envGuard;
+    setupSandbox(tmp, envGuard, "");
 
     Config cfg;
     expect(cfg.loadFailed(), "emptyFile: empty file → loadFailed == true");
@@ -152,7 +179,8 @@ void testNonObjectJson() {
     // applies: don't clobber whatever the user had.
     QTemporaryDir tmp;
     if (!tmp.isValid()) { expect(false, "nonObject: sandbox setup"); return; }
-    setupSandbox(tmp, "[1,2,3]");
+    XdgConfigHomeGuard envGuard;
+    setupSandbox(tmp, envGuard, "[1,2,3]");
 
     Config cfg;
     expect(cfg.loadFailed(), "nonObject: JSON array → loadFailed == true");
@@ -168,7 +196,8 @@ void testNonObjectJson() {
 void testRetentionCap() {
     QTemporaryDir tmp;
     if (!tmp.isValid()) { expect(false, "retentionCap: sandbox setup"); return; }
-    QString antsDir = setupSandbox(tmp, "{bad");
+    XdgConfigHomeGuard envGuard;
+    QString antsDir = setupSandbox(tmp, envGuard, "{bad");
     const QString cfgPath = antsDir + "/config.json";
 
     // Plant 8 synthetic `.corrupt-*` siblings with decreasing (older)
@@ -214,9 +243,9 @@ void testRetentionCap() {
 
 }  // namespace
 
-static int runMain(int argc, char **argv) {
+static int runMain() {
     expect_reset();
-    // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
+    // ANTS-1217: bundle_main creates the QCoreApplication
 
     testFreshRun();
     testValidConfig();
@@ -229,5 +258,5 @@ static int runMain(int argc, char **argv) {
 }
 
 TEST(ConfigParseFailureGuard, Main) {
-    ASSERT_EQ(0, runMain(0, nullptr));
+    ASSERT_EQ(0, runMain());
 }

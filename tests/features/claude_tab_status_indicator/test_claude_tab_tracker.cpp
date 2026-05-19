@@ -176,6 +176,9 @@ int checkAwaitingInputOverride() {
     // (ToolUse/Bash). Then flip awaitingInput true and verify the flag
     // is set WHILE the underlying state is preserved.
     QTemporaryDir tmp;
+    if (!tmp.isValid()) {
+        std::fprintf(stderr, "[INV-4] FAIL QTemporaryDir setup\n"); return 1;
+    }
     const QString path = tmp.path() + "/s.jsonl";
     write_file(path,
         R"({"type":"assistant","message":{"stop_reason":"tool_use","content":[{"type":"tool_use","name":"Bash","input":{}}]}}
@@ -240,6 +243,9 @@ int checkUntrackReleasesResources() {
     const pid_t kPid = 11111;
 
     QTemporaryDir tmp;
+    if (!tmp.isValid()) {
+        std::fprintf(stderr, "[INV-3] FAIL QTemporaryDir setup\n"); return 1;
+    }
     const QString path = tmp.path() + "/s.jsonl";
     write_file(path,
         R"({"type":"assistant","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"ok"}]}}

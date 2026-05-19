@@ -297,7 +297,9 @@ TEST(VtparserSimdScan, Main) {
             const auto chunked = parseChunked(c.input, seed);
             if (!streamsEqual(reference, chunked, c.name,
                               "chunked/seed=" + std::to_string(seed))) {
-                ADD_FAILURE();
+                ++failures;
+                ADD_FAILURE() << "chunked divergence: " << c.name
+                              << " seed=" << seed;
             }
         }
     }
@@ -308,7 +310,7 @@ TEST(VtparserSimdScan, Main) {
         return;
     }
     std::fprintf(stderr, "vtparser_simd_scan: %d divergence(s)\n", failures);
-    FAIL();
+    FAIL() << failures << " divergence(s) across feed strategies";
 
 }
 

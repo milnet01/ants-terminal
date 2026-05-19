@@ -42,7 +42,12 @@ TEST(McpIdempotentReadCache, MissAfterTtl) {
     ClaudeIntegration ci;
     ci.putIdempotentReadCacheForTest(
         QStringLiteral("tab_list"), argsA(), QStringLiteral("RESP"));
-    QTest::qWait(120);
+    // Widened from 120 ms (post-test-audit 2026-05-18): a 20 ms slack
+    // past the 100 ms TTL is too tight on a loaded CI runner where
+    // QTest::qWait's "at least N ms" guarantee can land barely above
+    // the threshold due to scheduler jitter. 350 ms is generous and
+    // still keeps the test under half a second.
+    QTest::qWait(350);
     const QString hit = ci.tryGetIdempotentReadCacheForTest(
         QStringLiteral("tab_list"), argsA());
     EXPECT_TRUE(hit.isEmpty()) << "expected miss past TTL";

@@ -41,6 +41,12 @@ int statMode(const QString &path) {
 void runRuntimeChecks() {
     const mode_t oldUmask = ::umask(0022);
 
+    // Capture prior XDG_DATA_HOME so we restore it at exit and don't
+    // leave subsequent tests in the test_core bundle pointing at a
+    // deleted directory.
+    const bool hadXdg = qEnvironmentVariableIsSet("XDG_DATA_HOME");
+    const QByteArray priorXdg = hadXdg ? qgetenv("XDG_DATA_HOME") : QByteArray();
+
     // Isolated XDG_DATA_HOME so parallel runs don't collide and so we
     // don't touch a real user log.
     const QString xdg =
@@ -116,6 +122,11 @@ void runRuntimeChecks() {
     QDir().rmpath(QFileInfo(expected).absolutePath());
     QDir().rmdir(xdg);
     ::umask(oldUmask);
+
+    // Restore prior XDG_DATA_HOME so the next test in the bundle isn't
+    // pointing at our now-removed temp dir.
+    if (hadXdg) qputenv("XDG_DATA_HOME", priorXdg);
+    else qunsetenv("XDG_DATA_HOME");
 }
 
 void runSourceChecks() {

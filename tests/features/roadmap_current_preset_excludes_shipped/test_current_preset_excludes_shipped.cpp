@@ -59,6 +59,7 @@ using RD = RoadmapDialog;
 // current-signal matches its body via the ANTS-NNNN fuzzy hit.
 TEST(roadmap_current_preset_excludes_shipped,
      Inv1CardsCurrentPresetDropsShipped) {
+    expect_reset();
     QStringList currentBullets;
     currentBullets << QStringLiteral(
         "ANTS-1100 — newly shipped widget, Bundle C closeout.");
@@ -83,6 +84,7 @@ TEST(roadmap_current_preset_excludes_shipped,
 // status filter (wantDone=true). Gate is a no-op.
 TEST(roadmap_current_preset_excludes_shipped,
      Inv2CardsFullPresetKeepsShipped) {
+    expect_reset();
     QStringList currentBullets;
     currentBullets << QStringLiteral(
         "ANTS-1100 — newly shipped widget, Bundle C closeout.");
@@ -105,6 +107,7 @@ TEST(roadmap_current_preset_excludes_shipped,
 // INV-3 — renderHtml (v1 path used by roadmap-query IPC): same fix.
 TEST(roadmap_current_preset_excludes_shipped,
      Inv3RenderHtmlCurrentPresetDropsShipped) {
+    expect_reset();
     QStringList currentBullets;
     currentBullets << QStringLiteral(
         "ANTS-1100 — newly shipped widget, Bundle C closeout.");
@@ -125,6 +128,7 @@ TEST(roadmap_current_preset_excludes_shipped,
 // it). Targets the 📋 bullet with its ANTS-NNNN in the signal.
 TEST(roadmap_current_preset_excludes_shipped,
      Inv4CardsCurrentPresetKeepsPlannedViaSignal) {
+    expect_reset();
     QStringList currentBullets;
     currentBullets << QStringLiteral(
         "ANTS-1300 — newly planned bundle work, just queued.");

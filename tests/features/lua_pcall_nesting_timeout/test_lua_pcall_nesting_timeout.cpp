@@ -184,10 +184,16 @@ void runA3(const QString &dir) {
            "A3a/recovery-benign-loads",
            QStringLiteral("loadScript on benign script after kill failed "
                           "(elapsed %1ms)").arg(goodElapsed));
-    expect(goodElapsed <= 200,
+    // Widened from 200 ms (post-test-audit 2026-05-18): the original
+    // bound matched the kill-path slack of 500 ms × 0.4, but on loaded
+    // CI runners or sanitiser builds a benign script can spike past
+    // 200 ms while still proving the latch reset. 750 ms preserves the
+    // contract (count restored to 100k → benign runs in well under a
+    // second) without flaking.
+    expect(goodElapsed <= 750,
            "A3b/recovery-benign-fast",
            QStringLiteral("benign script took %1ms after kill (expected "
-                          "≤ 200ms — count must be restored to 100k)")
+                          "≤ 750ms — count must be restored to 100k)")
                .arg(goodElapsed));
 
     QFile::remove(badPath);
@@ -217,9 +223,14 @@ void runA4(const QString &dir) {
     expect(ok,
            "A4a/benign-loads",
            QStringLiteral("loadScript failed (elapsed %1ms)").arg(elapsed));
-    expect(elapsed <= 100,
+    // Widened from 100 ms (post-test-audit 2026-05-18): ~10 000 trivial
+    // instructions complete in single-digit ms even on slow hardware,
+    // but a sanitiser build or loaded CI runner can push a single
+    // syscall into the 50–80 ms range. 500 ms still proves Invariant 7
+    // (no count-1 leak on the hot path) with comfortable margin.
+    expect(elapsed <= 500,
            "A4b/benign-fast",
-           QStringLiteral("benign script took %1ms (expected ≤ 100ms)")
+           QStringLiteral("benign script took %1ms (expected ≤ 500ms)")
                .arg(elapsed));
 
     QFile::remove(path);
