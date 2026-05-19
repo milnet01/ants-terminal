@@ -211,6 +211,42 @@ TEST(ColdEyesEngine, CrossDocDiffFromDirEmptyDirReturnsEmpty) {
     EXPECT_EQ(reportsRead, 0);
 }
 
+// ENG-7b (ANTS-1626) — inline `reports` path corroborates findings
+// across two distinct lanes without touching disk. The /cold-eyes
+// skill bundles agent reports inline in the orchestrator's context
+// (one report per `Agent` tool result); the path must work without
+// the caller having to spill them to disk just to call this verb.
+TEST(ColdEyesEngine, CrossDocDiffFromReportsCorroboratesAcrossLanes) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    // extractFileLineCitations() filters out paths that don't exist
+    // under projectPath (defends against fabricated citations), so
+    // touch the three files the reports cite.
+    ASSERT_TRUE(ws.writeRel("src/foo.cpp", "// stub\n"));
+    ASSERT_TRUE(ws.writeRel("src/bar.cpp", "// stub\n"));
+    ASSERT_TRUE(ws.writeRel("src/baz.cpp", "// stub\n"));
+    QHash<QString, QString> reports;
+    reports.insert(QStringLiteral("lane_alpha"),
+        QStringLiteral("# Alpha report\n\n"
+                       "- Issue at src/foo.cpp:42 — symptom A.\n"
+                       "- Another at src/bar.cpp:7 — symptom B.\n"));
+    reports.insert(QStringLiteral("lane_beta"),
+        QStringLiteral("# Beta report\n\n"
+                       "- Same issue at src/foo.cpp:42 — symptom A.\n"
+                       "- Unique at src/baz.cpp:99 — symptom C.\n"));
+    const auto found = ColdEyesEngine::crossDocDiffFromReports(
+        ws.root(), reports, /*minLanes=*/2);
+    // foo.cpp:42 is the only (file, line) cited by ≥ 2 lanes.
+    ASSERT_EQ(1, found.size())
+        << "expected exactly one corroborated finding (foo.cpp:42)";
+    EXPECT_EQ(QStringLiteral("src/foo.cpp"), found.first().file);
+    EXPECT_EQ(42, found.first().line);
+    QSet<QString> lanes(found.first().citingLanes.begin(),
+                        found.first().citingLanes.end());
+    EXPECT_TRUE(lanes.contains(QStringLiteral("lane_alpha")));
+    EXPECT_TRUE(lanes.contains(QStringLiteral("lane_beta")));
+}
+
 // ENG-8
 TEST(ColdEyesEngine, FoldInBlockHeadingMatchesInv7) {
     QList<IndieReviewEngine::CorroboratedFinding> actionable;

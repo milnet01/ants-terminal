@@ -74,6 +74,15 @@ struct PartitionResult {
     QString                           error;
     QString                           code;
     QString                           framework;
+    // ANTS-1623 — polyglot framework signals. Other frameworks whose
+    // signal files were detected at the probed root (or, when scope
+    // is "path:<sub>", at top-level subdirs of the project) but were
+    // not picked as the primary `framework`. Each entry is a
+    // {name, root_rel} pair. Callers can fan out a second partition
+    // call with `scope: "path:<root_rel>"` to cover the extra tree
+    // without re-walking from project root. Empty in single-framework
+    // projects (the common case).
+    QJsonArray                        additionalFrameworks;
     QStringList                       testGlobs;
     QVector<Chunk>                    chunks;
     int                               totalFiles = 0;

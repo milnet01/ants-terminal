@@ -192,17 +192,42 @@ void cachePartition(const PartitionResult &p) {
 }
 
 // ────────────────────────── Helpers ──
-QString detectFramework(const QString &projectRoot,
+QString detectFramework(const QString &probeRoot,
                         QStringList *globsOut) {
     for (const auto &fw : g_kFrameworks()) {
         for (const QString &signal : fw.signalFiles) {
-            if (QFileInfo::exists(projectRoot + QLatin1Char('/') + signal)) {
+            if (QFileInfo::exists(probeRoot + QLatin1Char('/') + signal)) {
                 if (globsOut) *globsOut = fw.testGlobs;
                 return fw.name;
             }
         }
     }
     return QString();
+}
+
+// ANTS-1623 — list every framework whose signal file exists at
+// `probeRoot`, in probe-table order. Used by the polyglot path to
+// fill `additional_frameworks[]` so callers see all signals at once.
+QStringList detectAllFrameworks(const QString &probeRoot) {
+    QStringList out;
+    for (const auto &fw : g_kFrameworks()) {
+        for (const QString &signal : fw.signalFiles) {
+            if (QFileInfo::exists(probeRoot + QLatin1Char('/') + signal)) {
+                out.append(fw.name);
+                break;
+            }
+        }
+    }
+    return out;
+}
+
+// ANTS-1623 — extract `<sub>` from a `path:<sub>` scope, with
+// trailing-slash normalisation. Returns empty for non-path scopes.
+QString scopeSubdir(const QString &scope) {
+    if (!scope.startsWith(QLatin1String("path:"))) return QString();
+    QString s = scope.mid(5);
+    while (s.endsWith(QLatin1Char('/'))) s.chop(1);
+    return s;
 }
 
 // ANTS-1455 — manual glob→regex conversion. Qt's
@@ -402,6 +427,181 @@ bool isCxxPath(const QString &path) {
     return false;
 }
 
+// ANTS-1627 — strip Python string literals (single, double, triple-
+// quoted, plus r/b/u/f/rb/br/fr/rf prefixes) and `#` line comments
+// before pre-pass regex matching. Mirrors stripCxxLiteralsAndComments
+// for .py files. Replaces stripped content with spaces (preserving
+// columns) and keeps newlines verbatim (preserving line numbers).
+//
+// Covers the false-positive shapes reported on RetroDB Issue 5 +
+// Vestige Issue 6 (2026-05-17/18):
+//   * `sleep_call` matched inside a string literal that's the search-
+//     needle of a `test_no_bare_time_sleep_in_jobs` negative-grep.
+//   * `hardcoded_password` matched inside a string literal asserted
+//     NOT to be present (`'password: admin'` in `assert ... not in`).
+//   * `sleep_call` matched inside a module docstring or `#` comment
+//     describing the bug being fixed.
+//
+// All four collapse to "match is inside a string literal or comment"
+// — the same shape the C/C++ strip already handles for raw-string
+// fixture scripts.
+bool isPyPath(const QString &path) {
+    return path.endsWith(QStringLiteral(".py"), Qt::CaseInsensitive);
+}
+
+// Skip past Python string-prefix letters (r, b, u, f, rb, br, fr, rf
+// and case-variants) immediately preceding a quote. Returns the index
+// of the opening quote, or -1 if `i` is not a prefix start.
+int matchPyStringPrefix(const QString &src, int i) {
+    int n = src.size();
+    int j = i;
+    int letters = 0;
+    while (j < n && letters < 2) {
+        const QChar c = src[j];
+        const QChar lc = c.toLower();
+        if (lc == QLatin1Char('r') || lc == QLatin1Char('b') ||
+            lc == QLatin1Char('u') || lc == QLatin1Char('f')) {
+            ++j;
+            ++letters;
+        } else {
+            break;
+        }
+    }
+    if (letters == 0) return -1;
+    if (j < n && (src[j] == QLatin1Char('"') ||
+                  src[j] == QLatin1Char('\''))) {
+        return j;
+    }
+    return -1;
+}
+
+// Word-boundary check — the char before `i` must not be a Python
+// identifier char, otherwise `bar()` would look like a `b`-prefixed
+// string when followed by `"` later. Cheap one-char lookback.
+bool isPyPrefixBoundary(const QString &src, int i) {
+    if (i == 0) return true;
+    const QChar p = src[i - 1];
+    if (p.isLetterOrNumber() || p == QLatin1Char('_')) return false;
+    return true;
+}
+
+QString stripPythonLiteralsAndComments(const QString &src) {
+    QString out;
+    out.reserve(src.size());
+    enum State { Normal, LineComment,
+                 StrS, StrD,            // single-quoted, double-quoted (single-line)
+                 TripleS, TripleD };    // ''' and """
+    State st = Normal;
+    const int n = src.size();
+    int i = 0;
+    while (i < n) {
+        const QChar c = src[i];
+        const QChar n1 = (i + 1 < n) ? src[i + 1] : QChar();
+        const QChar n2 = (i + 2 < n) ? src[i + 2] : QChar();
+        switch (st) {
+        case Normal: {
+            // Python string prefix (r/b/u/f and pairs).
+            if (isPyPrefixBoundary(src, i)) {
+                const int q = matchPyStringPrefix(src, i);
+                if (q >= 0) {
+                    // Replace prefix letters with spaces.
+                    for (int k = i; k < q; ++k) out.append(QLatin1Char(' '));
+                    i = q;
+                    continue;  // re-enter Normal at the quote char
+                }
+            }
+            if (c == QLatin1Char('#')) {
+                st = LineComment;
+                out.append(QLatin1Char(' '));
+                ++i;
+            } else if (c == QLatin1Char('"') && n1 == QLatin1Char('"') &&
+                       n2 == QLatin1Char('"')) {
+                st = TripleD;
+                out.append(QLatin1Char(' '));
+                out.append(QLatin1Char(' '));
+                out.append(QLatin1Char(' '));
+                i += 3;
+            } else if (c == QLatin1Char('\'') && n1 == QLatin1Char('\'') &&
+                       n2 == QLatin1Char('\'')) {
+                st = TripleS;
+                out.append(QLatin1Char(' '));
+                out.append(QLatin1Char(' '));
+                out.append(QLatin1Char(' '));
+                i += 3;
+            } else if (c == QLatin1Char('"')) {
+                st = StrD;
+                out.append(QLatin1Char(' '));
+                ++i;
+            } else if (c == QLatin1Char('\'')) {
+                st = StrS;
+                out.append(QLatin1Char(' '));
+                ++i;
+            } else {
+                out.append(c);
+                ++i;
+            }
+            break;
+        }
+        case LineComment:
+            if (c == QLatin1Char('\n')) { st = Normal; out.append(c); }
+            else                         out.append(QLatin1Char(' '));
+            ++i;
+            break;
+        case StrS:
+        case StrD: {
+            const QChar quote = (st == StrS) ? QLatin1Char('\'')
+                                             : QLatin1Char('"');
+            if (c == QLatin1Char('\\') && n1 != QChar()) {
+                // Preserve newline if escape is line-continuation.
+                out.append(QLatin1Char(' '));
+                out.append(n1 == QLatin1Char('\n')
+                           ? QLatin1Char('\n') : QLatin1Char(' '));
+                i += 2;
+            } else if (c == quote) {
+                st = Normal;
+                out.append(QLatin1Char(' '));
+                ++i;
+            } else if (c == QLatin1Char('\n')) {
+                // Unterminated single-line string — be liberal, end on EOL.
+                st = Normal;
+                out.append(c);
+                ++i;
+            } else {
+                out.append(QLatin1Char(' '));
+                ++i;
+            }
+            break;
+        }
+        case TripleS:
+        case TripleD: {
+            const QChar quote = (st == TripleS) ? QLatin1Char('\'')
+                                                : QLatin1Char('"');
+            if (c == QLatin1Char('\\') && n1 != QChar()) {
+                out.append(QLatin1Char(' '));
+                out.append(n1 == QLatin1Char('\n')
+                           ? QLatin1Char('\n') : QLatin1Char(' '));
+                i += 2;
+            } else if (c == quote && n1 == quote && n2 == quote) {
+                st = Normal;
+                out.append(QLatin1Char(' '));
+                out.append(QLatin1Char(' '));
+                out.append(QLatin1Char(' '));
+                i += 3;
+            } else if (c == QLatin1Char('\n')) {
+                // Preserve newline so line numbers stay exact.
+                out.append(c);
+                ++i;
+            } else {
+                out.append(QLatin1Char(' '));
+                ++i;
+            }
+            break;
+        }
+        }
+    }
+    return out;
+}
+
 QString stripCxxLiteralsAndComments(const QString &src) {
     QString out;
     out.reserve(src.size());
@@ -584,10 +784,14 @@ QJsonArray prePassFile(const QString &path,
     const QString raw = QString::fromUtf8(f.readAll());
     // ANTS-1491 — strip C/C++ string literals and comments before
     // matching, so patterns don't fire inside fixture-string Python
-    // scripts. Newlines/columns preserved so line-number reporting
-    // stays exact.
-    const QString text = isCxxPath(path)
-        ? stripCxxLiteralsAndComments(raw) : raw;
+    // scripts. ANTS-1627 extends the same strip to .py files
+    // (docstrings + comments + negative-grep needles like
+    // `'time.sleep('` inside a `not in` assertion). Newlines/columns
+    // preserved so line-number reporting stays exact.
+    QString text;
+    if      (isCxxPath(path)) text = stripCxxLiteralsAndComments(raw);
+    else if (isPyPath(path))  text = stripPythonLiteralsAndComments(raw);
+    else                      text = raw;
     const QStringList lines = text.split(QLatin1Char('\n'));
     for (int idx = 0; idx < lines.size() && out.size() < capRemaining; ++idx) {
         const int lineNo = idx + 1;
@@ -666,9 +870,28 @@ PartitionResult partition(const PartitionRequest &req) {
             return r;
         }
     }
-    // Framework detect.
+    // Framework detect. ANTS-1623 — when scope is `path:<sub>`, probe
+    // inside that subdir FIRST so polyglot projects (e.g. pytest
+    // backend + vitest frontend) route the framework to the scoped
+    // tree rather than the repo root's first-match. Falls back to
+    // root if the subdir has no signal file (e.g. the subdir is just
+    // a test-name filter inside a single-framework project).
     QStringList globs;
-    r.framework = detectFramework(canon, &globs);
+    const QString sub = scopeSubdir(req.scope);
+    QString probedRoot = canon;
+    if (!sub.isEmpty()) {
+        const QString subAbs = canon + QLatin1Char('/') + sub;
+        if (QFileInfo(subAbs).isDir()) {
+            const QString subFw = detectFramework(subAbs, &globs);
+            if (!subFw.isEmpty()) {
+                r.framework = subFw;
+                probedRoot  = subAbs;
+            }
+        }
+    }
+    if (r.framework.isEmpty()) {
+        r.framework = detectFramework(canon, &globs);
+    }
     if (r.framework.isEmpty()) {
         r.ok = false; r.code = QStringLiteral("no_tests_found");
         r.error = QStringLiteral(
@@ -677,6 +900,54 @@ PartitionResult partition(const PartitionRequest &req) {
         return r;
     }
     r.testGlobs = globs;
+
+    // ANTS-1623 — polyglot probe. Collect every framework whose
+    // signal sits at the project root OR at a top-level subdir, then
+    // exclude the one we already picked. Emitted as
+    // {name, root_rel} pairs for the caller's second-pass dispatch.
+    // Subdir scan caps at the immediate children of canon (depth-1)
+    // — deeper polyglot layouts are rare; the caller can call again
+    // with scope:path:<...> for those.
+    {
+        QSet<QString> seenNames;
+        seenNames.insert(r.framework);
+        QJsonArray extras;
+        // Root-level peers.
+        for (const QString &name : detectAllFrameworks(canon)) {
+            if (seenNames.contains(name)) continue;
+            seenNames.insert(name);
+            QJsonObject o;
+            o["name"]     = name;
+            o["root_rel"] = QString();    // project root
+            extras.append(o);
+        }
+        // Top-level subdirs.
+        QDir dirIter(canon);
+        const QFileInfoList children = dirIter.entryInfoList(
+            QDir::Dirs | QDir::NoDotAndDotDot);
+        for (const QFileInfo &child : children) {
+            // Skip the build-tree + tooling exclusions used in
+            // walkTestFiles so probes don't fire on `build/` etc.
+            static const QSet<QString> kSkip = {
+                QStringLiteral("node_modules"), QStringLiteral(".venv"),
+                QStringLiteral("__pycache__"),  QStringLiteral("dist"),
+                QStringLiteral("_deps"),        QStringLiteral("CMakeFiles"),
+                QStringLiteral("autogen"),      QStringLiteral(".git"),
+            };
+            if (kSkip.contains(child.fileName())) continue;
+            if (child.fileName().startsWith(QStringLiteral("build"))) continue;
+            for (const QString &name : detectAllFrameworks(
+                     child.absoluteFilePath())) {
+                if (seenNames.contains(name)) continue;
+                seenNames.insert(name);
+                QJsonObject o;
+                o["name"]     = name;
+                o["root_rel"] = child.fileName();
+                extras.append(o);
+            }
+        }
+        r.additionalFrameworks = extras;
+    }
     // Walk test files.
     const QStringList files = walkTestFiles(canon, globs, req.scope);
     if (files.isEmpty()) {

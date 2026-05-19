@@ -951,6 +951,9 @@ if(ANTS_TESTS)
                 tests/features/test_audit_walk_exclusions/test_walk_exclusions.cpp
                 # ANTS-1624 libcheck C-unit framework detection.
                 tests/features/test_audit_libcheck_detection/test_libcheck_detection.cpp
+                # ANTS-1623 polyglot framework detection + ANTS-1627
+                # Python literal/comment strip in pre-pass.
+                tests/features/test_audit_polyglot_and_strip/test_polyglot_and_strip.cpp
                 # ANTS-1399 tool_info(name) MCP verb.
                 tests/features/mcp_tool_info_verb/test_mcp_tool_info_verb.cpp
                 # ANTS-1402 dispatch-observer unification.

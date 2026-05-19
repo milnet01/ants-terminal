@@ -4168,6 +4168,11 @@ void MainWindow::setupClaudeMcpProviders() {
                 return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact)); }
             env["ok"] = true;
             env["framework"]    = r.framework;
+            // ANTS-1623 — polyglot signal. Only emitted when non-empty
+            // so single-framework projects (the common case) carry
+            // zero overhead in the envelope.
+            if (!r.additionalFrameworks.isEmpty())
+                env["additional_frameworks"] = r.additionalFrameworks;
             env["test_globs"]   = QJsonArray::fromStringList(r.testGlobs);
             env["total_files"]  = r.totalFiles;
             env["chunks_count"] = r.chunksCount;
