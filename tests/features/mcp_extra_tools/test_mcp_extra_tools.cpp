@@ -90,9 +90,19 @@ static int runMain() {
     // INV-3 — claudeintegration.h declares the single registry surface
     // (ANTS-1253). The per-tool setters / members no longer exist —
     // they collapsed into registerToolProvider + m_toolProviders.
+    // ANTS-1419: signature gained a CallerCwdContract second positional
+    // argument so per-tool security contracts live next to the
+    // registration call. The original (name, handler) shape was
+    // replaced — accept either declaration order so this anchor stays
+    // forgiving of future formatting tweaks.
     inv(3, contains(ciHdr,
-            "registerToolProvider(const QString &name, ToolHandler"),
-        "registerToolProvider not declared with (QString, ToolHandler) signature (ANTS-1253)");
+            "registerToolProvider(const QString &name,") &&
+           (contains(ciHdr,
+                     "CallerCwdContract contract") ||
+            contains(ciHdr, "ToolHandler handler")),
+        "registerToolProvider not declared with (QString, "
+        "CallerCwdContract, ToolHandler) signature "
+        "(ANTS-1253 + ANTS-1419)");
     inv(3, contains(ciHdr,
             "using ToolHandler ="),
         "claudeintegration.h missing ToolHandler type alias (ANTS-1253)");

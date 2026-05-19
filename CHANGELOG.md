@@ -12,6 +12,57 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP call-site contract + cross-language brief citations — pull 28 (ANTS-1419 + ANTS-1633, 2026-05-19)
+
+Two MCP improvements from the 2026-05-14 / 2026-05-18 follow-ups:
+one tightens the security-contract declaration so it can no longer
+drift silently; the other generalises an existing brief-envelope
+helper so it works on non-Ants project doc lanes.
+
+- **ANTS-1419 (refactor)** — `ClaudeIntegration::registerToolProvider`
+  signature gains a 2nd positional `CallerCwdContract` argument.
+  All 44 mainwindow.cpp registration call sites now declare their
+  contract next to the handler lambda — compile-time enforced
+  (signature mismatch refuses the build if the contract is dropped).
+  `m_toolProviders`'s value type becomes `RegisteredTool { handler;
+  contract; }`; the dispatcher reads the stored contract via
+  `m_toolProviders.find(toolName)` and only falls back to the static
+  `callerCwdContractFor` table for inline-dispatched tools
+  (`get_session_info`, `tool_info`). A `Q_ASSERT_X` drift assertion
+  inside `registerToolProvider` compares the call-site contract
+  against the static table — silent table-vs-call-site drift now
+  trips a loud failure at start-up instead of leaking through to
+  the dispatcher. The static table survives as a back-compat
+  accessor for the test suite (`mcp_required_contract_baseline` et
+  al. query it without instantiating `ClaudeIntegration`). Spec
+  `docs/specs/ANTS-1419.md`; new
+  `tests/features/mcp_call_site_contract/` with 5 INV (header
+  signature, every call site classifies, drift assertion present,
+  map value type carries contract, dispatcher prefers stored
+  contract); two existing source-scrape tests retuned for the new
+  signature window (`mcp_extra_tools` INV-3, `mcp_dispatch_debug_log`
+  INV-1 window 1000→2000 B).
+
+- **ANTS-1633 (enhancement)** — `cold_eyes_brief`'s
+  `cited_code_paths[]` now works on non-Ants doc lanes. The
+  underlying `extractCitedCodePaths` runs two passes: the
+  original `src/<path>.{h,cpp}` regex (back-compat with Ants's
+  own docs) plus a language-agnostic `<path>:<line>` regex
+  covering `.c/.cpp/.h/.hpp/.cc/.cxx/.py/.ts/.tsx/.js/.jsx/.go/
+  .rs/.lua/.java/.kt/.swift/.m/.mm/.sh`. The trailing
+  `:<digits>` requirement keeps version strings (`1.2.3:4`) and
+  URL ports (`example.com:443`) out of the match set. The brief
+  envelope gains a new `stale_citations[]` array for paths the
+  regex matched but the filesystem could not resolve under the
+  project root — per-lane reviewers treat non-empty entries as
+  accuracy-dimension findings (cited file moved / deleted /
+  never existed). Closes the 8-16 extra grep+stat round-trips
+  RetroArch's /cold-eyes 2026-05-18 ran when its lane agents
+  had to verify citations manually. Spec `docs/specs/ANTS-1633.md`;
+  4 new `Ants1633*` tests in `tests/features/cold_eyes_engine/`
+  (language-agnostic resolve, stale capture, regex rejects non-
+  code citations, BriefManifest carries `staleCitations`).
+
 ### 💸 MCP token-saver bundle — current_state aggregator + workspace_search context lines — pull 27 (ANTS-1304 + ANTS-1569, 2026-05-19)
 
 Two token-saver pickups from the MCP follow-ups list. Both are pure

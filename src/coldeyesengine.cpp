@@ -845,31 +845,85 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
 }
 
 QStringList extractCitedCodePaths(const QString &projectPath,
-                                  const QStringList &docPaths) {
-    QSet<QString> seen;
+                                  const QStringList &docPaths,
+                                  QStringList *staleCitationsOut) {
+    QSet<QString> seenResolved;
+    QSet<QString> seenStale;
     QStringList   out;
+    QStringList   stale;
 
-    static const QRegularExpression rx(
-        // src/foo.h, src/foo.cpp, src/foo.{h,cpp}
+    // Original Ants regex: `src/<path>.{h,cpp}` mentions (no
+    // `:line` required). Kept so existing Ants-doc citations
+    // continue to surface for spec-lane reviewers.
+    static const QRegularExpression rxSrcCpp(
         QStringLiteral("\\bsrc/([A-Za-z0-9_./-]+\\.(?:h|cpp))"));
+
+    // ANTS-1633 — generalised `<path>:<line>` regex. Language-
+    // agnostic: covers the extensions a /cold-eyes lane is
+    // likely to be reviewing in a non-Ants project (RetroArch
+    // cited `s3.c:1941`, `menu/menu_setting.c:18832`). Requires
+    // a recognised extension AND a trailing `:<digits>` to keep
+    // version strings (`1.2.3:4`) and prose with random colons
+    // out of the match set. The captured group is the path
+    // (without the line number).
+    static const QRegularExpression rxFileLine(
+        QStringLiteral(
+            "\\b((?:[A-Za-z0-9_][A-Za-z0-9_.-]*/)*"
+            "[A-Za-z0-9_][A-Za-z0-9_.-]*"
+            "\\.(?:c|cpp|h|hpp|cc|cxx|py|ts|tsx|js|jsx|"
+            "go|rs|lua|java|kt|swift|m|mm|sh)):\\d+"));
+
+    auto considerHit = [&](const QString &hit) {
+        // INV-13 defence (resolved path) — canonicalises under
+        // projectPath. INV-13 defence (stale path) — lexical
+        // check: no `..` segments, no leading `/`, since
+        // canonicalFilePath() returns empty for non-existent
+        // paths and would silently drop every stale citation
+        // before it reached the staleCitationsOut sink.
+        const QString abs = projectPath + QChar('/') + hit;
+        if (QFileInfo::exists(abs)) {
+            if (!isInsideProject(projectPath, abs)) return;
+            if (seenResolved.contains(hit)) return;
+            seenResolved.insert(hit);
+            out << hit;
+        } else {
+            // Lexical path-escape rejection. `hit` is project-
+            // relative from the regex capture — reject if it
+            // contains a `..` component or starts with `/`.
+            if (hit.startsWith(QChar('/'))) return;
+            const auto parts = hit.split(QChar('/'),
+                                         Qt::SkipEmptyParts);
+            bool escapes = false;
+            for (const QString &p : parts) {
+                if (p == QStringLiteral("..")) { escapes = true; break; }
+            }
+            if (escapes) return;
+            if (seenStale.contains(hit)) return;
+            seenStale.insert(hit);
+            stale << hit;
+        }
+    };
 
     for (const QString &rel : docPaths) {
         const QString body = slurpUtf8(projectPath + QChar('/') + rel);
         if (body.isEmpty()) continue;
-        auto it = rx.globalMatch(body);
-        while (it.hasNext()) {
+        // Pass 1: src/<path>.{h,cpp} (Ants-shaped citations).
+        auto it1 = rxSrcCpp.globalMatch(body);
+        while (it1.hasNext()) {
             const QString hit = QStringLiteral("src/")
-                              + it.next().captured(1);
-            if (seen.contains(hit)) continue;
-            seen.insert(hit);
-            // INV-13 defence.
-            const QString abs = projectPath + QChar('/') + hit;
-            if (!isInsideProject(projectPath, abs)) continue;
-            if (!QFileInfo::exists(abs)) continue;
-            out << hit;
+                              + it1.next().captured(1);
+            considerHit(hit);
+        }
+        // Pass 2: language-agnostic `<path>:<line>` citations.
+        auto it2 = rxFileLine.globalMatch(body);
+        while (it2.hasNext()) {
+            const QString hit = it2.next().captured(1);
+            considerHit(hit);
         }
     }
     std::sort(out.begin(), out.end());
+    std::sort(stale.begin(), stale.end());
+    if (staleCitationsOut) *staleCitationsOut = stale;
     return out;
 }
 
@@ -892,7 +946,11 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
         }
     }
 
-    m.citedCodePaths = extractCitedCodePaths(projectPath, lane.docPaths);
+    // ANTS-1633 — collect stale citations (cited-but-missing) so
+    // the brief envelope can surface them as `stale_citations[]`.
+    m.citedCodePaths = extractCitedCodePaths(projectPath,
+                                             lane.docPaths,
+                                             &m.staleCitations);
 
     // ANTS-1440 — spec-lane enrichment. For lanes named `spec/...`
     // (single-spec lanes from derivePartition or caller-supplied),

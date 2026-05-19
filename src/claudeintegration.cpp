@@ -1170,8 +1170,37 @@ void ClaudeIntegration::stopMcpServer() {
 // receives the JSON-RPC `arguments` object and returns the tool's
 // response as a JSON string; the dispatcher in onMcpConnection wraps
 // it into a text content block.
+// ANTS-1419: a CallerCwdContract value is now part of every
+// registration so the per-tool security classification lives next to
+// the tool's handler in mainwindow.cpp rather than in a separate
+// table. The dispatcher consults the stored contract on the
+// registered entry; the static `callerCwdContractFor` table is
+// preserved for inline-dispatched tools (get_session_info,
+// tool_info) and as a runtime drift-check below — if a future
+// maintainer updates the table but not the registration (or vice
+// versa) the assertion fails loudly at start-up.
 void ClaudeIntegration::registerToolProvider(
-    const QString &name, ToolHandler handler) {
+    const QString &name,
+    CallerCwdContract contract,
+    ToolHandler handler) {
+    // ANTS-1419 drift assertion — the static table is still
+    // queried by tests and by `tools/list` schema massage, so
+    // mis-classification between the call-site and the table
+    // would leak silently. Compare here and refuse the
+    // registration on mismatch.
+    const CallerCwdContract tableContract = callerCwdContractFor(name);
+    if (tableContract != contract) {
+        ANTS_LOG(DebugLog::Claude,
+                 "ANTS-1419 contract drift: registerToolProvider(%s) "
+                 "passed contract=%d but callerCwdContractFor returned "
+                 "%d — update one or the other.",
+                 name.toUtf8().constData(),
+                 static_cast<int>(contract),
+                 static_cast<int>(tableContract));
+        Q_ASSERT_X(false, "registerToolProvider",
+                   "ANTS-1419: contract drift between call-site and "
+                   "callerCwdContractFor table");
+    }
     // ANTS-1427 — wrap every handler with a lambda-entry log line so
     // multi-checkpoint debugging sees: lambda-enter (here) → cmd*
     // body checkpoint (per-cmd one-liner) → recordDispatch (final).
@@ -1185,7 +1214,7 @@ void ClaudeIntegration::registerToolProvider(
                      static_cast<long long>(args.size()));
             return inner(args);
         };
-    m_toolProviders[name] = std::move(wrapped);
+    m_toolProviders[name] = RegisteredTool{std::move(wrapped), contract};
 }
 
 // ANTS-1360 — MCP debug-log tap. Top-level shape only — no recursion
@@ -3642,9 +3671,21 @@ void ClaudeIntegration::onMcpConnection() {
                     t["description"] = QStringLiteral(
                         "Return a brief manifest for one lane: brief "
                         "text + doc_paths + cross_reference_docs + "
-                        "cited_code_paths. Doc bodies are NOT inlined "
-                        "(ANTS-1319 INV-3, mirrors ANTS-1281); the "
-                        "subagent reads each doc via its Read tool. "
+                        "cited_code_paths + stale_citations. Doc "
+                        "bodies are NOT inlined (ANTS-1319 INV-3, "
+                        "mirrors ANTS-1281); the subagent reads each "
+                        "doc via its Read tool. The `cited_code_paths` "
+                        "regex (ANTS-1633) covers `src/<path>.{h,cpp}` "
+                        "(Ants-shaped) plus language-agnostic "
+                        "`<path>:<line>` citations (.c/.cpp/.h/.hpp/"
+                        ".py/.ts/.tsx/.js/.jsx/.go/.rs/.lua/.java/.kt/"
+                        ".swift/.m/.mm/.sh) — works for non-Ants doc "
+                        "lanes supplied via `doc_paths[]`. Paths the "
+                        "regex matched but the filesystem could not "
+                        "resolve under projectPath surface as "
+                        "`stale_citations[]` — per-lane reviewers treat "
+                        "non-empty entries as accuracy-dimension "
+                        "findings (cited file moved/deleted). "
                         "Required: lane (string). Optional (ANTS-1508): "
                         "doc_paths[] — when `lane` is not in the "
                         "auto-partition, the brief is synthesised "
@@ -4781,8 +4822,19 @@ void ClaudeIntegration::onMcpConnection() {
                 // focused-fallback leak (2026-05-15 cross-session
                 // report). Other categories (Optional, TabSpecific,
                 // ProcessGlobal) are no-ops in Phase 3a.
-                const CallerCwdContract contract =
-                    callerCwdContractFor(toolName);
+                // ANTS-1419 — consult the stored contract on the
+                // registered entry when present (single source of
+                // truth at the call site); fall back to the static
+                // table for inline-dispatched tools
+                // (get_session_info, tool_info) that don't appear
+                // in m_toolProviders.
+                CallerCwdContract contract;
+                if (auto it = m_toolProviders.find(toolName);
+                    it != m_toolProviders.end()) {
+                    contract = it->second.contract;
+                } else {
+                    contract = callerCwdContractFor(toolName);
+                }
                 const QString callerCwd =
                     argsObj.value(QStringLiteral("caller_cwd"))
                         .toString();
@@ -4946,7 +4998,9 @@ void ClaudeIntegration::onMcpConnection() {
                         toolHandled = true;
                     } else if (auto it = m_toolProviders.find(toolName);
                                it != m_toolProviders.end()) {
-                        responseText = it->second(argsObj);
+                        // ANTS-1419 — value type is RegisteredTool
+                        // (handler + contract); call the handler.
+                        responseText = it->second.handler(argsObj);
                         toolHandled = true;
                     }
                 }

@@ -46,8 +46,10 @@ TEST(mcp_dispatch_debug_log, Inv1LambdaEntryWrapper) {
     ASSERT_NE(pos, std::string::npos)
         << "INV-1 precondition: registerToolProvider definition "
            "missing from claudeintegration.cpp";
-    // 1000-byte window covers the function body.
-    const std::string region = ci.substr(pos, 1000);
+    // 2000-byte window covers the function body. Bumped from 1000
+    // after ANTS-1419 inserted the contract-drift assertion ahead
+    // of the wrapper lambda.
+    const std::string region = ci.substr(pos, 2000);
     expect(contains(region, "ANTS-1427"),
            "INV-1: ANTS-1427 anchor comment present at wrapper site");
     expect(contains(region, "ANTS_LOG(DebugLog::Claude,"),

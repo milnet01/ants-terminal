@@ -19,11 +19,16 @@
 //       (ANTS-1319 INV-3, mirrors ANTS-1281 INV-5). Subagent reads
 //       each doc itself via its Read tool.
 //
-//   extractCitedCodePaths(projectPath, docPaths)
-//       Regex pass over doc bodies for `src/foo.{h,cpp}` mentions +
-//       `file:line` citations. Resolves under projectPath; rejects
-//       any path whose canonical form escapes projectPath
-//       (ANTS-1319 INV-13).
+//   extractCitedCodePaths(projectPath, docPaths,
+//                         staleCitationsOut = nullptr)
+//       Regex pass over doc bodies for `src/foo.{h,cpp}` mentions
+//       + language-agnostic `file:line` citations (.c/.cpp/.h/.hpp/
+//       .py/.ts/.tsx/.js/.jsx/.go/.rs/.lua, ANTS-1633). Resolves
+//       under projectPath; rejects any path whose canonical form
+//       escapes projectPath (ANTS-1319 INV-13). Returns the paths
+//       that resolved on disk; cited-but-missing paths are sorted
+//       into `staleCitationsOut` when the caller supplies one (the
+//       brief envelope surfaces them as `stale_citations[]`).
 //
 //   crossDocDiffFromDir(projectPath, reportsDirRelative, minLanes, reportsRead)
 //       Thin wrapper around IndieReviewEngine::corroboratedFindingsFromDir
@@ -95,6 +100,13 @@ struct BriefManifest {
     QStringList docPaths;
     QStringList crossReferenceDocs;  // INV-4 fixed contract trio + CHANGELOG
     QStringList citedCodePaths;
+    // ANTS-1633 — code paths cited in the doc bodies (`<path>:<line>`
+    // form, language-agnostic) that the regex matched but the
+    // filesystem could not resolve under projectPath. Surfaces as
+    // `stale_citations[]` in the brief envelope so per-lane reviewers
+    // can flag them as accuracy-dimension findings without redoing
+    // the grep + stat themselves.
+    QStringList staleCitations;
     // ANTS-1440 — structured summary surfaced in the MCP envelope.
     // For spec lanes this is the parsed `# ` H1 line of the primary
     // spec (e.g. "ANTS-1435 — session_memory reads honour caller_cwd")
@@ -110,7 +122,8 @@ BriefManifest   assembleBriefManifest(const QString &projectPath,
                                       const Lane &lane);
 
 QStringList     extractCitedCodePaths(const QString &projectPath,
-                                      const QStringList &docPaths);
+                                      const QStringList &docPaths,
+                                      QStringList *staleCitationsOut = nullptr);
 
 // ANTS-1413 — single-doc cross-consistency brief. Cheap entry-point
 // for "given a `doc_path`, what other docs in this project should

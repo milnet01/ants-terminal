@@ -5684,26 +5684,28 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-05-16 (self-observed: the diagnostic
   verb exists but is undiscoverable from the refusal path).
 
-- 📋 [ANTS-1419] **Hoist `CallerCwdContract` declaration into
-  `registerToolProvider` signature.** Current pattern: the
-  classification table in `callerCwdContractFor` is maintained
-  separately from `registerToolProvider` calls in
-  `mainwindow.cpp`. Drift is graceful (defaults to Optional —
-  ANTS-1404 INV-4) but the explicit declaration is lost when
-  a dev forgets the classification step. Compile-time fix:
-  add `CallerCwdContract` as a 2nd argument to
-  `registerToolProvider(name, contract, handler)`. Stores the
-  contract in `m_toolProviders` value (pair<handler, contract>).
-  Dispatcher consults `m_toolProviders[toolName].second`
-  instead of the table. Pros: single source of truth at the
-  call site; impossible to add a tool without classifying it.
-  Cons: signature change touches every existing registration
-  (~28 call sites) — mechanical refactor; one large diff.
-  Pairs with ANTS-1417 (the test becomes a compile-time check
-  instead of a runtime grep).
-  **Layman:** today the per-tool security classification lives
-  in a separate table; a refactor would move it next to each
-  tool's registration so it's impossible to add a tool without
+- ✅ [ANTS-1419] **Hoist `CallerCwdContract` declaration into
+  `registerToolProvider` signature.** Shipped 2026-05-19 (Pull 28).
+  `registerToolProvider` now takes the per-tool `CallerCwdContract`
+  as a 2nd positional argument; all 44 mainwindow.cpp call sites
+  pass their contract explicitly (compile-time enforced via
+  signature mismatch if dropped). `m_toolProviders` value type is
+  `RegisteredTool { handler; contract; }`; the dispatcher consults
+  the stored contract via `m_toolProviders.find(toolName)` before
+  falling back to the static table for inline tools
+  (`get_session_info`, `tool_info`). `registerToolProvider` adds a
+  `Q_ASSERT_X` drift assertion: passed contract must equal
+  `callerCwdContractFor(name)`. The static `callerCwdContractFor`
+  table survives as a back-compat accessor for tests that query
+  it without a `ClaudeIntegration` instance. Spec
+  `docs/specs/ANTS-1419.md`; 5 INV (header signature, every call
+  site classifies, drift assertion, map value type, dispatcher
+  reads stored contract); 1 source-scrape test bumped (`mcp_dispatch_debug_log`
+  window 1000→2000 B) + 1 INV-3 anchor updated (`mcp_extra_tools`).
+  Full suite 1191/1191.
+  **Layman:** today the per-tool security classification lived
+  in a separate table; the refactor moves it next to each tool's
+  registration so it's now impossible to add a tool without
   declaring how it handles caller_cwd.
   Kind: refactor.
   Source: in-session-2026-05-16 (self-observed during ANTS-1404
@@ -11816,9 +11818,8 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-project-layout, projectlayoutengine.
   Source: cross-session-reports-2026-05-18 (Vestige 3D_Engine Observations #9 + #16).
 
-- 📋 [ANTS-1633] **`cold_eyes_brief` — extract `cited_code_paths[]` from doc bodies for non-spec lanes (ANTS-1440 generalisation).**
-  RetroArch /cold-eyes 2026-05-18: dispatched `cold_eyes_brief(lane="fork-ops", doc_paths=["docs/private/ROADMAP.md", "docs/private/AUDIT-POLICY.md"])` — got back `cited_code_paths: []` even though the ROADMAP body cites hundreds of source `file:line` pairs (`s3.c:1941`, `menu/menu_setting.c:18832`, etc.) that the reviewer would want pre-flighted for staleness. Every lane agent then had to do its own `grep -n` + `wc -l` work to verify cited line ranges were in-bounds — 1-2 tool calls per lane × 8 lanes = 8-16 extra round-trips per /cold-eyes run. ANTS-1440 wired `extractCitedCodePaths` for spec lanes (`docs/specs/<ID>.md`); extend the same regex pass to the body of every doc supplied via the ad-hoc `doc_paths[]` path. Suggested implementation: regex `(\w[\w/]*\.(?:c|cpp|h|hpp|py|ts|tsx|js|jsx|go|rs|lua)):\d+` over each `doc_paths` body, collect unique paths, validate they exist (drop non-existent into a separate `stale_citations[]` array — accuracy-dimension feedback for the per-lane agent), surface both in the brief envelope. Composes with ANTS-1440 (spec-lane path) and ANTS-1319 (engine helper).
-  **Layman:** The cold-eyes brief tool already lists "code paths the reviewer should pre-check" for spec lanes, but not for general doc lanes (like ROADMAP or AUDIT-POLICY). If a doc cites `src/foo.c:123`, the brief should surface that path so the lane reviewer doesn't have to grep-discover it themselves.
+- ✅ [ANTS-1633] **`cold_eyes_brief` — extract `cited_code_paths[]` from doc bodies for non-spec lanes (ANTS-1440 generalisation).** Shipped 2026-05-19 (Pull 28). `extractCitedCodePaths` now runs two passes per doc body: the original `src/foo.{h,cpp}` regex (back-compat with Ants's own docs) plus a language-agnostic `<path>:<line>` regex covering `.c/.cpp/.h/.hpp/.cc/.cxx/.py/.ts/.tsx/.js/.jsx/.go/.rs/.lua/.java/.kt/.swift/.m/.mm/.sh`. The brief envelope gains a new `stale_citations[]` field for paths the regex matched but the filesystem could not resolve under the project root — per-lane reviewers treat non-empty entries as accuracy-dimension findings (cited file moved / deleted / never existed). Trailing `:<digits>` guard rejects version-string false-positives (`1.2.3:4`) and URL ports (`example.com:443/foo`). `BriefManifest` gains a `staleCitations` field alongside `citedCodePaths`. Spec `docs/specs/ANTS-1633.md`; 4 new INV (language-agnostic resolution, stale capture, regex rejects non-code, BriefManifest carries stale). Full suite 1191/1191.
+  **Layman:** The cold-eyes brief tool already listed "code paths the reviewer should pre-check" for spec lanes, but missed general doc lanes (like ROADMAP or AUDIT-POLICY). Now it works on any doc, in any language, and flags cited paths that no longer exist so the reviewer can surface them as accuracy findings.
   Kind: enhancement.
   Lanes: mcp-cold-eyes, coldeyesengine.
   Source: cross-session-report-2026-05-18 (RetroArch /cold-eyes doc-tree sweep).

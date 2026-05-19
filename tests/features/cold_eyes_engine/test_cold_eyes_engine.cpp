@@ -900,3 +900,111 @@ TEST(ColdEyesEngine, Ants1634AuditInfraOneLevelDeep) {
             << "INV-6: subdir .md files must not produce lane";
     }
 }
+
+// ANTS-1633 INV-A — language-agnostic <path>:<line> citations resolve
+// for non-Ants doc lanes. Today's `src/foo.{h,cpp}` regex misses
+// citations like `s3.c:1941` that show up in RetroArch ROADMAP docs.
+TEST(ColdEyesEngine, Ants1633CitedCodePathsLanguageAgnostic) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    // Non-Ants project layout: bare filenames, .c extension.
+    ASSERT_TRUE(ws.writeRel("s3.c",                "x"));
+    ASSERT_TRUE(ws.writeRel("menu/menu_setting.c", "x"));
+    ASSERT_TRUE(ws.writeRel("scripts/build.sh",    "x"));
+    ASSERT_TRUE(ws.writeRel("docs/private/ROADMAP.md",
+        QStringLiteral(
+            "# ROADMAP\n"
+            "- Bug at s3.c:1941 — symptom A.\n"
+            "- Issue at menu/menu_setting.c:18832 — symptom B.\n"
+            "- Script at scripts/build.sh:42 — symptom C.\n")));
+
+    const auto out = ColdEyesEngine::extractCitedCodePaths(
+        ws.root(),
+        QStringList{QStringLiteral("docs/private/ROADMAP.md")});
+    EXPECT_TRUE(out.contains(QStringLiteral("s3.c")))
+        << "ANTS-1633: bare-filename C citation must resolve";
+    EXPECT_TRUE(out.contains(QStringLiteral("menu/menu_setting.c")))
+        << "ANTS-1633: subdir C citation must resolve";
+    EXPECT_TRUE(out.contains(QStringLiteral("scripts/build.sh")))
+        << "ANTS-1633: shell-script citation must resolve";
+}
+
+// ANTS-1633 INV-B — cited-but-missing paths surface in
+// staleCitationsOut so per-lane reviewers can flag them as
+// accuracy-dimension findings.
+TEST(ColdEyesEngine, Ants1633StaleCitationsCapturedSeparately) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("src/legit.cpp", "x"));
+    // Cited but absent: simulates a renamed/deleted file.
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-9999.md",
+        QStringLiteral(
+            "# Spec\n"
+            "Real: `src/legit.cpp:10`.\n"
+            "Stale: `src/deleted_long_ago.cpp:42`.\n"
+            "Stale: `core/old_module.py:99`.\n")));
+
+    QStringList stale;
+    const auto out = ColdEyesEngine::extractCitedCodePaths(
+        ws.root(),
+        QStringList{QStringLiteral("docs/specs/ANTS-9999.md")},
+        &stale);
+    EXPECT_TRUE(out.contains(QStringLiteral("src/legit.cpp")))
+        << "INV-B: resolved citation stays in cited_code_paths";
+    EXPECT_FALSE(out.contains(QStringLiteral("src/deleted_long_ago.cpp")))
+        << "INV-B: stale path must NOT appear in cited_code_paths";
+    EXPECT_TRUE(stale.contains(QStringLiteral("src/deleted_long_ago.cpp")))
+        << "INV-B: stale cpp path must surface in staleCitationsOut";
+    EXPECT_TRUE(stale.contains(QStringLiteral("core/old_module.py")))
+        << "INV-B: stale py path must surface in staleCitationsOut";
+}
+
+// ANTS-1633 INV-C — version-string false-positives (1.2.3:4) and
+// non-recognised extensions stay out of both lists.
+TEST(ColdEyesEngine, Ants1633RegexRejectsNonCodeCitations) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("src/real.cpp", "x"));
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-8888.md",
+        QStringLiteral(
+            "# Spec\n"
+            "Version: 1.2.3:4 (semver-like).\n"
+            "Bumped to 0.7.91 on 2026-05-19.\n"
+            "URL: https://example.com:443/foo.\n"
+            "Citation: `src/real.cpp:1`.\n")));
+
+    QStringList stale;
+    const auto out = ColdEyesEngine::extractCitedCodePaths(
+        ws.root(),
+        QStringList{QStringLiteral("docs/specs/ANTS-8888.md")},
+        &stale);
+    EXPECT_TRUE(out.contains(QStringLiteral("src/real.cpp")));
+    // No version-string match should have leaked through.
+    for (const QString &p : out) {
+        EXPECT_FALSE(p.contains(QStringLiteral("1.2.3")))
+            << "INV-C: version-string false-positive: " << p.toStdString();
+    }
+    for (const QString &p : stale) {
+        EXPECT_FALSE(p.contains(QStringLiteral("1.2.3")))
+            << "INV-C: version-string false-positive (stale): " << p.toStdString();
+    }
+}
+
+// ANTS-1633 INV-D — assembleBriefManifest exposes staleCitations on
+// the manifest so the MCP brief envelope can surface them.
+TEST(ColdEyesEngine, Ants1633BriefManifestCarriesStaleCitations) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/private/ROADMAP.md",
+        QStringLiteral(
+            "# Doc\n"
+            "Stale: `gone/missing.go:7`.\n")));
+
+    ColdEyesEngine::Lane lane;
+    lane.name = QStringLiteral("ad-hoc");
+    lane.docPaths << QStringLiteral("docs/private/ROADMAP.md");
+    const auto m = ColdEyesEngine::assembleBriefManifest(ws.root(), lane);
+    EXPECT_TRUE(m.staleCitations.contains(
+        QStringLiteral("gone/missing.go")))
+        << "INV-D: stale citation must be on BriefManifest";
+}

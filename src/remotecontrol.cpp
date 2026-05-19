@@ -6587,6 +6587,14 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     for (const QString &p : m.crossReferenceDocs) xref.append(p);
     QJsonArray code;
     for (const QString &p : m.citedCodePaths) code.append(p);
+    // ANTS-1633 — paths the regex matched but the filesystem
+    // could not resolve under projectPath. Empty array when
+    // every citation resolved (the common case). Per-lane
+    // reviewers treat non-empty entries as accuracy-dimension
+    // findings: either the doc cites a deleted file, or the
+    // path has been moved/renamed.
+    QJsonArray stale;
+    for (const QString &p : m.staleCitations) stale.append(p);
 
     QJsonObject env;
     env["ok"]                    = true;
@@ -6595,6 +6603,7 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     env["doc_paths"]             = dps;
     env["cross_reference_docs"]  = xref;
     env["cited_code_paths"]      = code;
+    env["stale_citations"]       = stale;
     // ANTS-1440 — surface the structured summary so callers don't
     // have to grep the brief markdown for the H1 line.
     env["summary"]               = m.summary;

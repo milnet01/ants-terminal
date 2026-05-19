@@ -927,6 +927,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_current_preset_excludes_shipped/test_current_preset_excludes_shipped.cpp
                 # ANTS-1417 every registered MCP tool has explicit CallerCwdContract entry.
                 tests/features/mcp_caller_cwd_contracts_coverage/test_caller_cwd_contracts_coverage.cpp
+                # ANTS-1419 every registerToolProvider call declares its contract at the call site.
+                tests/features/mcp_call_site_contract/test_mcp_call_site_contract.cpp
                 # ANTS-1418 refusal envelopes name caller_cwd_info diagnostic path.
                 tests/features/mcp_refusal_envelope_hints/test_refusal_envelope_hints.cpp
                 # ANTS-1425 roadmap_query narrator-bullet filter v2.

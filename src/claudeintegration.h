@@ -187,8 +187,21 @@ public:
     // ANTS-1244..1251 each added (12 setters → 1 registrar). The
     // `get_session_info` tool stays inline in the dispatcher — it
     // reads ClaudeIntegration's own state, not an external delegate.
+    //
+    // ANTS-1419 — registration takes the per-tool CallerCwdContract
+    // as a 2nd positional argument so the security contract is a
+    // visible part of every registration block, not a separate
+    // table lookup. The dispatcher consults the stored contract on
+    // the registered entry; the static `callerCwdContractFor`
+    // helper is preserved as a back-compat accessor for tests and
+    // for tools dispatched inline (get_session_info, tool_info).
+    // registerToolProvider asserts the passed contract matches the
+    // static table so drift between call-site and table is loud.
     using ToolHandler = std::function<QString(const QJsonObject &args)>;
-    void registerToolProvider(const QString &name, ToolHandler handler);
+    enum class CallerCwdContract;
+    void registerToolProvider(const QString &name,
+                              CallerCwdContract contract,
+                              ToolHandler handler);
 
     // ANTS-1404 — per-tool caller_cwd contract. Recorded once per
     // tool at registration time and consulted by the dispatcher
@@ -498,7 +511,14 @@ private:
     QLocalServer *m_mcpServer = nullptr;
     // ANTS-1253: per-tool providers consolidated into a single
     // name-keyed registry. See registerToolProvider() above.
-    std::map<QString, ToolHandler> m_toolProviders;
+    // ANTS-1419: value type carries the per-tool CallerCwdContract
+    // alongside the handler so the dispatcher can read the
+    // call-site declaration without a separate table lookup.
+    struct RegisteredTool {
+        ToolHandler handler;
+        CallerCwdContract contract;
+    };
+    std::map<QString, RegisteredTool> m_toolProviders;
 
     // ANTS-1284 — per-tool MCP dispatch byte counters. Resets on
     // MCP `initialize` and on explicit token_usage(reset:true).
