@@ -6750,8 +6750,30 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: testauditengine.
   Source: deferred from ANTS-1397 v1 (in-session 2026-05-17).
 
-- 📋 [ANTS-1646] **`roadmap_log` duplicate-ID guard +
-  `.roadmap-counter` drift detector.** Surfaced 2026-05-19 (pull
+- ✅ [ANTS-1646] **`roadmap_log` duplicate-ID guard +
+  `.roadmap-counter` drift detector.** Shipped 2026-05-19 (Pull
+  32). Both halves of the fix landed: (a) the `roadmap_query`
+  envelope now carries `duplicate_ids[]` when the parser saw the
+  same `[PROJ-NNNN]` id on more than one bullet — each entry
+  `{id, occurrences:[{section_slug, status}]}` so a caller can
+  decide if the collision is hand-edit drift or an intentional
+  cross-section cite. Stays absent on a clean roadmap so the
+  envelope shape is back-compat. Computed once per bullets-cache
+  refill via `rcComputeDuplicateIds(QJsonArray)` in
+  `remotecontrol.cpp`; surfaced on all three response paths
+  (`section_index`, `section=`, full-file). (b) `tools/check-roadmap.sh`
+  exits non-zero on any duplicate; ships with `--allow ANTS-1118`
+  baked in as the known intentional cross-section cite (same
+  shipped fix referenced from two tier tables). Live-roadmap
+  sanity test in `tests/features/roadmap_query_duplicate_ids/`
+  pins the current state: ANTS-1118 = 2 expected, everything else
+  ≤ 1. Spec at `tests/features/roadmap_query_duplicate_ids/spec.md`;
+  full suite 1219/1219. The original ANTS-1415 collision that
+  motivated this had already been renumbered to ANTS-1645 in
+  pull 30 — the detector exists to keep the next collision from
+  living silently.
+
+  Original finding — Surfaced 2026-05-19 (pull
   31 prep): a survey of active bullets via
   `mcp__ants__roadmap_query mode:section_index` revealed two
   active bullets sharing id ANTS-1415 — one for "Phase 3b
@@ -8327,6 +8349,101 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: test-audit-2026-05-17.
 
 ## 0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)
+
+### 🔍 Indie-review fold-in (2026-05-19)
+
+**Theme:** 11 lanes (vtparser, terminalgrid, terminalwidget, ptyhandler, audit-pipeline, claudeintegration, claude-statusbar, ipc-trust, lua-sandbox, mcp-review-engines, roadmap-stack) cold-reviewed in one parallel batch. After threat-model calibration (same-UID trust, public repo, sole-author): 0 CRITICAL, 27 HIGH, 39 MEDIUM, ~30 LOW. /audit static analysis added 17 hot-path-regex sites (clazy), 145 range-loop-detach sites, 3 unused vars, 1 Q_PROPERTY-without-notify, plus shellcheck and ruff noise. 18 items fixed inline (see Closed inline / 2026-05-19 below); remainder tiered below.
+
+### 🟢 Closed inline (2026-05-19)
+
+- **audit-pipeline H1** — `writeSarif`/`writeHtml` now apply 0600 perms via `setOwnerOnlyPerms` (auditrunner.cpp). Matches CLAUDE.md contract; closes a same-UID data-leak class on SARIF bodies that may carry secret-shaped scanner output.
+- **audit-pipeline H2** — `allocSarifPath` prefers `QStandardPaths::CacheLocation` (`~/.cache/Ants Terminal/audit/`) over `/tmp`; both paths gain a 16-byte UUID suffix to defeat the predictable-filename symlink-squat. Same change applied to the HTML fallback path.
+- **lua-sandbox H1** — `lua_atpanic` registered on every per-plugin `lua_State`. Panic now emits an actionable `qCritical` line instead of a bare SIGABRT, honouring PLUGINS.md's "the terminal will never crash because of your plugin" contract.
+- **vtparser H2** — `CsiIntermediate` now mirrors `CsiParam`'s C0 handling: a control byte inside an intermediate-bytes CSI Executes and stays in `csi_intermediate` per ECMA-48 / xterm. Previously the byte silently aborted the CSI (asymmetric with the CsiParam branch), breaking sequences like `CSI ! <BEL> p`.
+- **claudeintegration H1** — `rateLimitCheck` now canonicalises `callerCwd` via `QFileInfo::canonicalFilePath()` before keying the bucket. Defeats the trailing-slash / double-dot / case-variant bucket-key bypass that would otherwise multiply effective budget Nx for a same-UID peer.
+- **ptyhandler H2** — Misleading "validated ShellEntry" comments at ptyhandler.cpp:312, :354 corrected to state the actual resolution chain (caller arg → $SHELL → getpwuid → /bin/bash fallback) and the same-UID trust posture, per CLAUDE.md rule 13.
+- **ptyhandler M1** — Explicit `m_masterFd = -1` before `forkpty()`. Pre-emptive guard against a future multi-call `Pty::start` that would otherwise see a stale FD from a failed `forkpty`.
+- **terminalwidget H2** — Image-paste directory check (a) requires `canonHome` exact match or `canonHome + '/'` prefix (was textual `startsWith`, accepting `/home/alice-evil` when home was `/home/alice`); (b) canonicalises BEFORE `mkpath`, so a bad `m_imagePasteDir` no longer creates a stray dir outside `$HOME` as a side effect.
+- **clazy hot-path regex** — `debtsweepengine.cpp:460` `kShippedRe` was dead (UTF-8-byte form alongside the UTF-16-emoji form actually in use); removed.
+- **clazy qproperty-without-notify** — `ToggleSwitch::thumbX` Q_PROPERTY now declares a `NOTIFY thumbXChanged` signal; setter emits when value changes; pre-existing animation usage unchanged.
+- **cppcheck unused variable** — `auditrunner.cpp:340` `QStringList args;` removed (declared inside the shellcheck branch and never referenced).
+- **clang-tidy integer-division** — `toggleswitch.cpp:54` `drawRoundedRect` radius args promoted to `qreal` explicitly via `static_cast<qreal>(kH) / 2.0`.
+- **shellcheck SC2164** — `tests/features/hook_pack/test_hooks.sh:44` `cd "$REPO_ROOT" || { fail; exit 1; }` (was bare `cd`).
+- **shellcheck SC2006** — Same file:88 fail-message backticks → double-quotes.
+- **clazy const-signal-or-slot** — `ClaudeTaskListTracker::lastRescanMtimeMs` moved from `public slots:` to `public:` (const getters aren't slots).
+- **ruff E501** — `tools/migrate_expect_helper.py:248` split a 89-col concat across 4 lines.
+- **/indie-review brief shared-file pattern** — Cold reviewers were dispatched with a single shared brief file at `/tmp/audit-20260519-audit/indie-review-brief.md`; the 11 prompts referenced it instead of inlining the 170-line dimension list. Tracked under "Skill improvements" below for fold-in to the canonical `/indie-review` template.
+- **/audit `p/cpp` semgrep pack** — `p/cpp` returns HTTP 404 from the semgrep registry. Switching to `p/security-audit` alone is the working invocation; `p/c` errors out on C++ syntax. Tracked under "Skill improvements".
+
+### 🔥 Cross-cutting themes (≥2 lanes)
+
+- 📋 [ANTS-1647] **Hot-path regex compilation — sweep 17 clazy sites across the codebase.** Clazy flagged 17 `use-static-qregularexpression` sites (auditdialog 4×, testauditengine 2×, others elsewhere). Multiple indie-review lanes independently noted this class (audit-pipeline H3, terminalwidget M3 catastrophic-backtracking, mcp-review-engines M5 64-KiB O(N²) re-encode). Mechanical refactor: hoist each `QRegularExpression` to `static const`. Kind: perf. Lanes: audit, mcp-engines, terminalwidget.
+- 📋 [ANTS-1648] **Body-size caps missing on JSON/text ingress paths — 4 distinct sites.** Hook server's 10 MiB JSON parse cap (claudeintegration H2), MCP socket 10 MiB cap (same), transcript-parse 4 MiB per-debounce (claudeintegration M4), `indiereviewdispatcher` upstream reply `readAll()` with no cap (mcp-review-engines H2), `assembleBriefForDispatch` per-source unbounded slurp (mcp-review-engines H3). All same shape: drop to ≤256 KiB for the hook/MCP paths (real events are <8 KiB), cap dispatcher response at `max_tokens × 6 bytes`, cap each source body at 1 MiB. Kind: security. Lanes: claudeintegration, mcp-engines.
+- 📋 [ANTS-1649] **Substring/prefix path checks across 3+ sites.** terminalwidget H2 (`canonHome startsWith`, fixed inline), ipc-trust M1 (`antshelper '..' substring`), claudeintegration H1 (raw caller_cwd in rate-limit, fixed inline). Audit every `startsWith(somePath)` against the rule "either equal OR equal + '/'" and route path-anchor checks through `PathValidation::validatePath`. Kind: security. Lanes: antshelper, ipc, claudeintegration.
+- 📋 [ANTS-1650] **Range-loop-detach sweep — 145 clazy sites.** Real perf class (Qt's COW container detach when range-for binds non-const reference) but bulk refactor. Sweep `for (auto &x : container)` → `for (const auto &x : std::as_const(container))` or `qAsConst`. Most callsites take by-value reads; few need mutation. Kind: perf. Lanes: cross-cutting.
+
+### 🔒 Tier 1 — ship next (security / data-loss / contract-broken)
+
+- 📋 [ANTS-1651] **vtparser H1 — Overlong-UTF-8 acceptance ladder is too permissive.** The ladder at vtparser.cpp:137-144 only rejects overlongs based on length≥2/≥3/≥4, missing the case where a 4-byte overlong encodes a C0 byte (e.g. `F0 80 80 81` decodes to `0x01`). Fix: replace the size-conditional ladder with explicit per-width minimum-codepoint checks. CWE-176 / overlong-NUL injection class. ~6 lines. Kind: security. Lane: vtparser.
+- 📋 [ANTS-1652] **vtparser H3 — `CSI ;` cap of 32 params is bypassed by the final-byte path at vtparser.cpp:392-395.** Either apply the cap symmetrically or remove it and document the per-int clamp as the only DoS guard. Kind: security. Lane: vtparser.
+- 📋 [ANTS-1653] **terminalgrid H1 — Kitty keyboard stack overflow corrupts pop balance permanently.** On the 17th push `m_kittyKeyFlags` updates but the stack drops the prior value; subsequent `CSI < N u` pops are unrecoverable. Fix: refuse push at full stack, OR raise cap to 256. Kind: fix. Lane: terminalgrid.
+- 📋 [ANTS-1654] **terminalgrid H2 — Alt-screen resize doesn't reflow saved main screen.** On 1049 exit after a window resize, soft-wrap boundaries are corrupted in the restored main buffer. Route saved-main reflow through the same `joinLogical`/`rewrap` path as the live screen. Also sync `m_altScreenHyperlinks` / `m_altInlineImages` / `m_altPromptRegions` to new dims. Kind: fix. Lane: terminalgrid.
+- 📋 [ANTS-1655] **terminalgrid H3 — OSC 1337 SetUserVar decodes base64 BEFORE the 4-KiB cap.** Up to 7.5 MB transient allocation per directive; no rate cap. Bound input length pre-decode; add rolling-minute quota mirroring OSC 52. Kind: security. Lane: terminalgrid.
+- 📋 [ANTS-1656] **terminalwidget H1 — Scratchpad event-filter is wired wrong (`installEventFilter(this)` but TerminalWidget overrides `event()`, not `eventFilter()`).** Ctrl+Enter / Esc shortcuts advertised in placeholder do not fire. Fix: add `eventFilter` override or use `QShortcut` with `WidgetWithChildrenShortcut`. Kind: fix. Lane: terminalwidget.
+- 📋 [ANTS-1657] **ptyhandler H1 — `childUnreapedAtEof()` signal is a zombie (declared + emitted, zero connect sites).** Either wire it through to a UI surface as documented or delete the signal + `w == 0` branch. Kind: fix. Lane: ptyhandler.
+- 📋 [ANTS-1658] **ptyhandler H3 — Hardcoded `rows ≤ 500 / cols ≤ 1000` silently fails session restore on ultrawide setups.** 4K-wide terminals already exceed 1000 cols; user loses scrollback on Wed→Thu monitor changes. Replace with `TerminalGrid::MAX_ROWS/COLS` references, or raise to (2000, 4000) with a `qWarning` on rejection. Kind: fix. Lane: ptyhandler.
+- 📋 [ANTS-1659] **claudeintegration H2 — Hook + MCP socket JSON parse caps are 10 MiB; real events are <8 KiB.** Drop to 256 KiB on both paths; closes a same-UID OOM vector (deeply-nested JSON balloons 3-5× in QJson tree allocation). Kind: security. Lane: claudeintegration.
+- 📋 [ANTS-1660] **roadmap-stack H1 — Multi-prefix project IDs partially broken across 5+ sites.** `idShorthand`, `parseShippedDates`, `parseLastTouchDates`, and the `#NNNN` chip all hardcode `ANTS-` / `mid(5)`. Per `docs/standards/roadmap-format.md` § 3.10.4 multi-prefix repos are permitted (RetroDB/Vestige CC sessions already test against the viewer). Sweep the literals → `[A-Za-z][A-Za-z0-9_-]*-\d+`. Kind: fix. Lane: roadmap-stack.
+- 📋 [ANTS-1661] **roadmap-stack H2 — `git blame --line-porcelain` runs synchronously on the GUI thread with 30 s budget.** Every dialog open + Refresh + search-debounce rebuild can freeze for seconds. Short-term: shorten budget to 3-5 s. Long-term: move off-thread via `QtConcurrent::run`. Kind: perf. Lane: roadmap-stack.
+- 📋 [ANTS-1662] **roadmap-stack H3 — `renderCardsHtml` drops sectionless bullets silently.** Bullets before the first `##`/`###` heading vanish from cards view while `renderHtml` (v1) shows them, breaking INV-16 (superset contract). Emit unsectioned bullets at the top of the body. Kind: fix. Lane: roadmap-stack.
+
+### 🔧 Tier 2 — hardening sweep (correctness / API ergonomics)
+
+- 📋 [ANTS-1663] **vtparser MEDIUM cluster — OSC/DCS/APC silent-overflow truncation needs `truncated` field on VtAction.** OSC 52 / OSC 8 consumers currently see a corrupted-but-act-on-it payload after the 10 MiB cap fires. Surface a flag so downstream refuses partial data. Lane: vtparser.
+- 📋 [ANTS-1664] **terminalwidget M1 — SGR mouse motion no-button event double-encodes the +32 flag.** Either drop the `button = 35` preset (let the +32 branch add it) or special-case the motion-no-button path. Apps using SGR-any-mode see button code 67 instead of 35. Lane: terminalwidget.
+- 📋 [ANTS-1665] **terminalwidget M3 — Search regex bypasses `hardenUserRegex`; catastrophic backtracking freezes GUI.** Route `setHighlightRules`/`setTriggerRules`/search-regex through the existing hardener; OR move match to a worker thread. Lane: terminalwidget.
+- 📋 [ANTS-1666] **terminalwidget M4 — `clickToMoveCursor` ignores DECCKM; misfires in zsh vi-mode / readline.** Mirror the keyPressEvent application-cursor-key switch. Lane: terminalwidget.
+- 📋 [ANTS-1667] **terminalgrid M1/M2 — Window-title + OSC 9/777 notification bodies pass C1 control bytes.** Strip `< 0xA0 && >= 0x80` from titles and notification bodies. Lane: terminalgrid.
+- 📋 [ANTS-1668] **terminalgrid M5 — `scrollDown` doesn't shift hyperlinks; clickable spans orphan on reverse-index / IL / RI.** Mirror `scrollUp`'s `std::rotate` block. Lane: terminalgrid.
+- 📋 [ANTS-1669] **claude-statusbar H2 — Bg-task completion uses `contains()` substring match; can false-flip a task whose id is a substring of another running task's id.** Switch to word-boundary regex or drop the fallback. Lane: claude-statusbar.
+- 📋 [ANTS-1670] **claudeintegration M1-M4 — Cold-start gate ordering, `wrapMcpData` open/close-tag tolerance asymmetry, `extractCwdFromTranscript` untrusted-cwd consumption, and per-tick transcript re-parse of up to 4 MiB.** All four are quality-of-implementation tightenings; details in indie-review lane report. Lane: claudeintegration.
+- 📋 [ANTS-1671] **ipc-trust H1/H2/M1-M5 — XDG_RUNTIME_DIR client/server-side resolution divergence; JSON nesting cap + value-size cap on `session_memory`; antshelper `..` substring check; remotecontrol.cpp refusal-envelope drift across 30+ sites; QVariant `_buf` round-trip O(N²); `SO_PEERCRED` skipped on `fd < 0`; slow-loris on client wait-loop.** Each item is a small fix; cluster them in one sweep. Lane: remotecontrol / antshelper.
+- 📋 [ANTS-1672] **mcp-review-engines H1 — Ledger load per brief assembly is re-parsed N times for N lanes.** Cache by `(projectPath, mtime)` inside `falseposledger.cpp`, or hoist load to the dispatch handler. Lane: mcp-engines.
+- 📋 [ANTS-1673] **mcp-review-engines M1 — `stripLineBreaks` doesn't strip C0 controls; `lane`/`topic`/`logged_by` can carry ESC sequences into brief headers outside the data fence.** Strip `[\x00-\x1F\x7F]` in `stripLineBreaks`. Lane: mcp-engines.
+- 📋 [ANTS-1674] **mcp-review-engines M3 — `extractCitedCodePaths` slurps every cited doc body unbounded; ROADMAP.md (~600 KB today) is read N times per cold-eyes brief.** Cache `slurpUtf8` by `(absPath, mtime)` using a 32-entry LRU. Lane: mcp-engines.
+- 📋 [ANTS-1675] **audit-pipeline M1-M4 — Dedup 16-char legacy hash band; `noiseRatePct` always-0 zombie field; QProcess lambda-capture lifetime tangle; 32 MiB `compile_commands.json` cap allocates 100+ MB transient.** Lane: audit.
+
+### 🏗 Tier 3 — structural
+
+- 📋 [ANTS-1676] **remotecontrol.cpp is 7656 LoC in one TU.** Extract verb registry pattern; consolidate 12 refusal-envelope lambdas (`rlErr`, `wsErr`, `gitErr`, `rbdErr`, …) into one chokepoint enforcing the mcp-error-codes taxonomy. Lane: remotecontrol.
+- 📋 [ANTS-1677] **mainwindow.cpp + claudeintegration.cpp + auditdialog.cpp all >5000 LoC; the trio holds 60% of the codebase's churn.** Defer to 0.8.x. Cross-cutting.
+- 📋 [ANTS-1678] **claude-statusbar refresh asymmetry (`refreshTasksButton` vs `refreshBgTasksButton`).** Extract shared helper. Lane: claude-statusbar.
+- 📋 [ANTS-1679] **Non-POD global static cleanup (clazy 25 sites).** Wrap each in a `static const&` accessor function. Style smell; defer. Cross-cutting.
+
+### 🔬 /audit static-analysis residue (deferred from 2026-05-19 run)
+
+- 📋 [ANTS-1680] **Cppcheck `useStlAlgorithm` style suggestions (~40 sites).** Mostly `for (...) { if (...) break; }` patterns that cppcheck wants as `std::find_if` / `std::any_of`. Refactor-class noise; cluster sweep. Lane: cross-cutting.
+- 📋 [ANTS-1681] **Cppcheck `functionStatic` (auditdialog::toolExists, consolidateMypyStubHints).** Either mark static or split into free helpers. Lane: audit.
+- 📋 [ANTS-1682] **Cppcheck missing-include `aboutdialogs.cpp:4 "build_info.h"`.** False positive — file is generated at build time. Add `// cppcheck-suppress missingInclude` annotation. Lane: build.
+
+### 🔌 Skill improvements observed (for the /audit and /indie-review skill markdown)
+
+- 📋 [ANTS-1683] **/audit step 5 `semgrep` invocation should drop `p/cpp` from the recommended pack list.** `p/cpp` returns HTTP 404 from the semgrep registry as of 2026-05-19; the C/C++ coverage path is `p/security-audit` alone (which does the right thing). `p/c` errors out on every `.h` file because the tree-sitter-c grammar doesn't parse C++. Update `~/.claude/skills/audit/SKILL.md` step 5 semgrep invocation. Token-saving: prevents the 0-findings + 14-errors result on every C++ project /audit run. Lane: skill.
+- 📋 [ANTS-1684] **/indie-review shared brief file pattern — write brief once to disk, reference path in each agent prompt.** This session wrote the 170-line dimension list to `/tmp/audit-20260519-audit/indie-review-brief.md` and pointed all 11 agents at it; saves ~37k tokens vs inlining the brief 11 times (11 × ~3.4k). Pattern: orchestrator writes the brief; per-lane prompts say "STEP 1: read this brief in full". Easy to fold into `~/.claude/skills/indie-review/SKILL.md` Phase 2 — token-vetted. Lane: skill.
+- 📋 [ANTS-1685] **Ants MCP `indie_review_partition` returns duplicate lanes when CLAUDE.md groups multiple subsystems under one paragraph (e.g. `claudetasklist`/`claudebgtasks` and `luaengine`/`pluginmanager` both produce sibling entries with identical summary text, and `ants_core_lib` returns empty sourcePaths).** Deduplicate by sourcePaths union + drop empty-paths entries server-side. Lane: mcp-ants.
+- 📋 [ANTS-1686] **Ants MCP `indie_review_brief` could accept a `lanes:[]` array and return all briefs in one call instead of 1 per lane.** With 11 lanes the round-trip cost is meaningful (~1.5 MCP turns per lane). Server-side change; same caller_cwd. Lane: mcp-ants.
+- 📋 [ANTS-1687] **/audit skill should document the false-positive ledger read+write workflow inline.** Currently the standards file is referenced but the recipe isn't surfaced at the triage step. After triage, orchestrator should append confirmed FPs via the documented `printf '\n%s\n' "$record" >>` recipe. Add a step 10.5 between triage and roadmap fold-in. Lane: skill.
+
+### 🟡 False positives logged (`.ants_review_falsepos.jsonl` entries appended 2026-05-19)
+
+- Cppcheck `aboutdialogs.cpp:4` missing include `"build_info.h"` — generated by cmake at build time; not on disk in static-analysis runs.
+- Cppcheck `antshelpermain.cpp:155` knownConditionTrueFalse on `!parseErr.isEmpty()` — flow-analysis miss: cppcheck doesn't trace `parseRequest(...)` which writes through the `QString *` outparam.
+- Cppcheck `auditdialog.cpp:2828` knownConditionTrueFalse on `f.file.isEmpty()` — flow-analysis miss: the outer ternary can be false because `f.line ≤ 0`, not because `f.file` is empty; the inner check is real defensive logic.
+- Gitleaks `docs/AUTOMATED_AUDIT_REPORT_*.json` (22 hits) — archived historical audit reports; rule-pattern matches inside saved audit findings, not real credentials.
+- Gitleaks `tests/audit_fixtures/secrets_scan/bad.cpp` (2 hits) — existing ledger entry; intentional fixture.
+- Gitleaks `tests/features/ai_context_redaction/spec.md` + `test_*.cpp` — existing ledger entries; redaction-test inputs.
+- Ruff `S108` `tools/mcp-bridge.py:24` `/tmp/ants-terminal-mcp-*` — false positive: the path is the *contract* with the server which creates the socket with 0700 perms; the Python client only reads/connects, doesn't create.
+
 
 ### 🧪 Test Audit 2026-05-18
 
@@ -11495,8 +11612,10 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-verify-changes, remotecontrol, tests.
   Source: cross-session-report-2026-05-17 (Vestige /test-audit Issue #1).
 
-- 📋 [ANTS-1580] **Test-audit resume-an-audit pattern — document follow-up session entry path + partition_token discovery via `session_memory`.**
-  MAME Curator 2026-05-18 (evening fold-in session): the use-case "audit was run earlier today, working tree has in-progress fixes, deferred items in ROADMAP, fold those in" has no first-class MCP entry point. No `test_audit_resume(latest=True)`, no `partition_token` discovery via `session_memory`, no documented "this is what a follow-up session does" recipe. The session worked around it by re-reading ROADMAP.md and verifying each FP## against current code with `Read`/`grep`. Two follow-ups: (a) document the resume recipe in the `test_audit_partition` description: "After a deferred audit, call `session_memory(op:get, key:test_audit_partition_token)` to fetch the prior run's token; the existing partition file at /tmp/<token>/ lives for N days"; (b) add `test_audit_resume(partition_token | latest=True)` that re-hydrates partition state from `.test-audit-reports-N/` so the orchestrator can pick up where it left off. Composes with ANTS-1513 (`test_audit_recheck <finding-id>` — verify cited file:line still contains the smell) — same "deferred-audit pickup" workflow. Composes with ANTS-1555 (per-project `.audit_cache/`) — the resume state would live in the same per-project dir.
+- ✅ [ANTS-1580] **Test-audit resume-an-audit pattern — document follow-up session entry path + partition_token discovery via `session_memory`.**
+  Shipped 2026-05-19 (Pull 32). v1 (a) only — the recipe doc. Verified that `partition_token` is an in-process LRU handle held by `g_partitionCache` (no `/tmp/<token>/` durable state, no auto-save to `session_memory`), so the realistic recipe is "client-side save via `session_memory(op:set, key:test_audit_partition_token:<scope_id>, value:{token, scope, dimensions, saved_at_ms})` right after partition; resume with a matching `op:get` and fall back to re-running partition if `test_audit_brief` refuses with `partition_token not found`." Full recipe at `docs/standards/test-audit-resume.md` (now indexed in `docs/standards/README.md` and `CLAUDE.md`'s standards block). The `test_audit_partition` MCP description (`claudeintegration.cpp`) now ends with an inline pointer to the recipe doc so a fresh Claude session reading `tools/list` sees the resume contract. v2 follow-up (`test_audit_resume({partition_token | latest:true})`) deferred — partition cost is small (≤ 5 s on a 1 K-file suite) and durable disk storage would need eviction + GC; client-side recipe is enough for now.
+
+  Original finding — MAME Curator 2026-05-18 (evening fold-in session): the use-case "audit was run earlier today, working tree has in-progress fixes, deferred items in ROADMAP, fold those in" has no first-class MCP entry point. No `test_audit_resume(latest=True)`, no `partition_token` discovery via `session_memory`, no documented "this is what a follow-up session does" recipe. The session worked around it by re-reading ROADMAP.md and verifying each FP## against current code with `Read`/`grep`. Two follow-ups: (a) document the resume recipe in the `test_audit_partition` description: "After a deferred audit, call `session_memory(op:get, key:test_audit_partition_token)` to fetch the prior run's token; the existing partition file at /tmp/<token>/ lives for N days"; (b) add `test_audit_resume(partition_token | latest=True)` that re-hydrates partition state from `.test-audit-reports-N/` so the orchestrator can pick up where it left off. Composes with ANTS-1513 (`test_audit_recheck <finding-id>` — verify cited file:line still contains the smell) — same "deferred-audit pickup" workflow. Composes with ANTS-1555 (per-project `.audit_cache/`) — the resume state would live in the same per-project dir.
   **Layman:** When a test-audit session is partially completed and the user picks it up days later, there's no clean way for the new session to "resume where the last left off." Today they have to re-read ROADMAP and verify findings by hand. Document the recipe, and ideally add a resume verb.
   Kind: doc.
   Lanes: mcp-test-audit, mcp-state, sessionmemoryengine.

@@ -414,6 +414,11 @@ defines the `.ants_review_falsepos.jsonl` ledger contract
 and `/test-audit`. `mcp-errors.md` is an earlier (2026-05-12)
 draft kept as a historical reference — `mcp-error-codes.md`
 (ANTS-1353) is the authoritative MCP error taxonomy.
+[`test-audit-resume.md`](docs/standards/test-audit-resume.md)
+(ANTS-1580) documents the client-side `partition_token`
+save-and-resume recipe via `session_memory` — the token is
+in-process LRU, so resume across an Ants restart needs an
+explicit handshake.
 
 ADRs live at `docs/decisions/` (Michael Nygard format); per-feature
 specs at `docs/specs/`; per-phase outcomes at `docs/journal/`.

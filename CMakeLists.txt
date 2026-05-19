@@ -938,6 +938,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_refusal_envelope_hints/test_refusal_envelope_hints.cpp
                 # ANTS-1425 roadmap_query narrator-bullet filter v2.
                 tests/features/roadmap_query_narrator_filter/test_narrator_filter.cpp
+                # ANTS-1646 roadmap_query duplicate-ID detector envelope field.
+                tests/features/roadmap_query_duplicate_ids/test_roadmap_query_duplicate_ids.cpp
                 # ANTS-1354 MCP tool descriptor version field.
                 tests/features/mcp_tool_descriptor_version/test_tool_descriptor_version.cpp
                 # ANTS-1416 MCP Required-contract baseline (session_memory + peers).
@@ -1051,6 +1053,8 @@ if(ANTS_TESTS)
         SRC_AUDIT_ENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.h"
         SRC_AUDIT_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
         SRC_REMOTECONTROL_H_PATH="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
+        # ANTS-1646 — live ROADMAP.md path for duplicate-id detector test.
+        ROADMAP_MD_PATH="${CMAKE_SOURCE_DIR}/ROADMAP.md"
         # ANTS-1410 — spec-anchor drift test for the /audit skill.
         SPEC_ANTS_1410_PATH="${CMAKE_SOURCE_DIR}/docs/specs/ANTS-1410.md"
         # ANTS-1351 — audit_run engine source for source-scrape tests.

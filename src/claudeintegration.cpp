@@ -1727,10 +1727,20 @@ void ClaudeIntegration::onMcpConnection() {
                     "The envelope also surfaces a top-level "
                     "`legacy_format_sections[]` array listing slugs "
                     "where every direct bullet is narrator-only. "
+                    "ANTS-1646 — every non-error response also carries "
+                    "a top-level `duplicate_ids[]` field when the parser "
+                    "saw the same `[PROJ-NNNN]` id on more than one "
+                    "bullet (each entry: `{id, occurrences:[{section_slug,"
+                    " status}]}`). Absent when the roadmap is clean. "
+                    "Surfaces hand-edited drift past the `.roadmap-counter` "
+                    "guard `roadmap_log` maintains so the next session "
+                    "sees the collision instead of inheriting a stale "
+                    "bullet at random. "
                     "Envelope: {ok, bullets, path, "
-                    "count, filter, section?, mode?} or "
+                    "count, filter, section?, mode?, duplicate_ids?} or "
                     "{ok, sections, path, filter, mode, "
-                    "legacy_format_sections?, legacy_format_hint?} for "
+                    "legacy_format_sections?, legacy_format_hint?, "
+                    "duplicate_ids?} for "
                     "section_index, or {ok:false, error, code} on error. "
                     "`bullets[].id` follows the shareable "
                     "docs/standards/roadmap-format.md § 3.5.1 spec — "
@@ -3282,6 +3292,19 @@ void ClaudeIntegration::onMcpConnection() {
                         "common case). Caller can fan out a second "
                         "partition call with `scope: \"path:<root_rel>\"` "
                         "to cover each extra tree. "
+                        "**ANTS-1580 resume:** the returned "
+                        "`partition_token` is an in-process LRU handle "
+                        "(not durable on disk and not auto-saved into "
+                        "session_memory). To survive a session bounce, "
+                        "store it explicitly via "
+                        "`session_memory(op:\"set\", "
+                        "key:\"test_audit_partition_token:<scope_id>\", "
+                        "value:{token, scope, dimensions, saved_at_ms})` "
+                        "right after partition; resume with a matching "
+                        "`op:\"get\"` and fall back to re-running this "
+                        "verb if `test_audit_brief` refuses with "
+                        "`partition_token not found`. Full recipe at "
+                        "docs/standards/test-audit-resume.md. "
                         "See docs/specs/ANTS-1397.md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to split a test corpus for multi-"
@@ -5718,7 +5741,21 @@ qint64 ClaudeIntegration::rateLimitCheck(
     if (cls == RateLimitClass::ControlPlane) return 0;
     const RateLimitTier tier = rateLimitTierFor(cls);
 
-    const QPair<QString, QString> key{toolName, callerCwd};
+    // indie-review-2026-05-19 claudeintegration H1 — canonicalise the
+    // bucket key. Raw callerCwd values (`/foo`, `/foo/`, `/foo/./`,
+    // `/foo//bar/..`, case-variants on case-insensitive mounts) would
+    // otherwise produce distinct map entries and let a same-UID peer
+    // multiply their effective budget by routing through synonyms.
+    // QFileInfo::canonicalFilePath returns "" if the path doesn't
+    // exist — we fall back to the raw form on that (matches pre-fix
+    // behaviour for non-existent callers) AND on the empty-string
+    // case (the "absent caller_cwd" bucket).
+    QString canon = callerCwd;
+    if (!canon.isEmpty()) {
+        const QString resolved = QFileInfo(canon).canonicalFilePath();
+        if (!resolved.isEmpty()) canon = resolved;
+    }
+    const QPair<QString, QString> key{toolName, canon};
     auto it = m_rateLimitBuckets.find(key);
 
     // Map-cap LRU eviction (INV-7). Only when inserting a NEW key

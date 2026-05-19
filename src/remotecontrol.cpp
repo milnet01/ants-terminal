@@ -197,6 +197,50 @@ QString rcHeadlineOneline(const QString &headline) {
     return s.trimmed();
 }
 
+// ANTS-1646 — walk a bullet-cache array and return an array of
+// duplicate-ID descriptors. Each descriptor names an ID that
+// appeared on more than one bullet (rollups + narrators with empty
+// IDs are excluded) and lists the occurrences (section_slug +
+// status) so a caller can decide whether the collision is a real
+// drift bug or an intentional cross-section tracking cite. Output
+// shape per duplicate:
+//   { "id": "ANTS-NNNN",
+//     "occurrences": [{ "section_slug": "...", "status": "..." }, ...] }
+// IDs in the result preserve first-seen order so the array is
+// stable across calls on the same cache. The whole array stays
+// empty on a clean roadmap; cmdRoadmapQuery's emission gate suppresses
+// the field entirely in that case so the envelope shape is unchanged
+// for the common path.
+QJsonArray rcComputeDuplicateIds(const QJsonArray &bullets) {
+    QJsonArray out;
+    if (bullets.isEmpty()) return out;
+    QHash<QString, QJsonArray> occurrencesById;
+    QStringList firstSeenOrder;
+    for (const auto &v : bullets) {
+        const QJsonObject o = v.toObject();
+        const QString id = o.value(QStringLiteral("id")).toString();
+        if (id.isEmpty()) continue;
+        QJsonObject occ;
+        occ[QStringLiteral("section_slug")] =
+            o.value(QStringLiteral("section_slug")).toString();
+        occ[QStringLiteral("status")] =
+            o.value(QStringLiteral("status")).toString();
+        if (!occurrencesById.contains(id)) {
+            firstSeenOrder.append(id);
+        }
+        occurrencesById[id].append(occ);
+    }
+    for (const QString &id : firstSeenOrder) {
+        const QJsonArray &occs = occurrencesById.value(id);
+        if (occs.size() < 2) continue;
+        QJsonObject entry;
+        entry[QStringLiteral("id")] = id;
+        entry[QStringLiteral("occurrences")] = occs;
+        out.append(entry);
+    }
+    return out;
+}
+
 // ANTS-1462 — render a header-inventory envelope from a built
 // RoadmapIndex. Used by cmdRoadmapQuery as a fall-through when the
 // bullet parser yields zero entries but the file still has ##/###
@@ -1465,6 +1509,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         m_roadmapIndex.clear();
         m_roadmapSectionCache.clear();
         m_roadmapSectionLru.clear();   // ANTS-1346 — keep INV-2 in sync.
+        m_roadmapCacheDuplicateIds = QJsonArray();   // ANTS-1646
         m_roadmapCachePath = path;
         m_roadmapCacheMtimeMs = mtime;
         m_roadmapCacheStampMs = nowMs;
@@ -1506,6 +1551,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 arr.append(o);
             }
             m_roadmapCacheBullets = arr;
+            // ANTS-1646 — recompute duplicate-ID descriptors against
+            // the freshly-populated cache. Stays empty on a clean
+            // roadmap; emission gate suppresses the field then.
+            m_roadmapCacheDuplicateIds =
+                rcComputeDuplicateIds(m_roadmapCacheBullets);
         } else {
             // ANTS-1287-INV-9 — section mode does not pre-fill the
             // full bullets cache; that path is taken lazily on the
@@ -1553,6 +1603,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                     arr.append(o);
                 }
                 m_roadmapCacheBullets = arr;
+                // ANTS-1646 — recompute on the section_index lazy-fill
+                // path so callers entering through section_index mode
+                // still see duplicate_ids when collisions exist.
+                m_roadmapCacheDuplicateIds =
+                    rcComputeDuplicateIds(m_roadmapCacheBullets);
             }
         }
         // Lazy-fill the index — same shape as the section-mode branch.
@@ -1686,6 +1741,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 "against those slugs with include_narrator_bullets:true "
                 "to retrieve their content.")
                     .arg(legacyFormatSections.size());
+        }
+        // ANTS-1646 — surface duplicate-ID collisions detected during
+        // cache fill. Stays absent on a clean roadmap so the envelope
+        // shape is unchanged for the common path.
+        if (!m_roadmapCacheDuplicateIds.isEmpty()) {
+            out["duplicate_ids"] = m_roadmapCacheDuplicateIds;
         }
         return QJsonDocument(out);
     }
@@ -1881,6 +1942,13 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // ANTS-1437 — mode echo only when caller set the arg
         // (default-back-compat envelope shape per INV-1).
         if (hasModeArg) out["mode"] = mode;
+        // ANTS-1646 — section-mode emission picks up the cached
+        // duplicate descriptors only when m_roadmapCacheBullets has
+        // been populated by a prior full-file / section_index call.
+        // Pure section-only first hits stay quiet (cache may be cold).
+        if (!m_roadmapCacheDuplicateIds.isEmpty()) {
+            out["duplicate_ids"] = m_roadmapCacheDuplicateIds;
+        }
         return QJsonDocument(out);
     }
 
@@ -1922,6 +1990,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 arr.append(o);
             }
             m_roadmapCacheBullets = arr;
+            // ANTS-1646 — recompute on the full-file lazy-fill path
+            // taken after a section-mode cache HIT.
+            m_roadmapCacheDuplicateIds =
+                rcComputeDuplicateIds(m_roadmapCacheBullets);
         }
     }
 
@@ -2076,6 +2148,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // ANTS-1437 — mode echo only when caller set the arg
     // (default-back-compat envelope shape per INV-1).
     if (hasModeArg) out["mode"] = mode;
+    // ANTS-1646 — full-file emission always sees the just-computed
+    // duplicate descriptors (cache fill happened above). Emit when
+    // non-empty so a clean roadmap envelope stays back-compat.
+    if (!m_roadmapCacheDuplicateIds.isEmpty()) {
+        out["duplicate_ids"] = m_roadmapCacheDuplicateIds;
+    }
     return QJsonDocument(out);
 }
 

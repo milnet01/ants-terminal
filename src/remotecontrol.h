@@ -456,6 +456,11 @@ private:
     mutable qint64 m_roadmapCacheMtimeMs = 0;
     mutable qint64 m_roadmapCacheStampMs = 0;  // epoch ms of last refresh
     mutable QJsonArray m_roadmapCacheBullets;
+    // ANTS-1646 — duplicate-ID descriptor cache, recomputed every time
+    // m_roadmapCacheBullets refills. Emitted on the envelope as
+    // `duplicate_ids` only when non-empty so a clean roadmap stays at
+    // its existing envelope shape.
+    mutable QJsonArray m_roadmapCacheDuplicateIds;
     // ANTS-1287 — heading index + section-slice bullet cache. Shares
     // (path, mtime, stamp) keys with the bullets cache; cleared on
     // mtime advance or TTL expiry. See docs/specs/ANTS-1287.md § 2.3.

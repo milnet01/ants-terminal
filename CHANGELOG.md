@@ -12,6 +12,59 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP roadmap duplicate-ID detector + test-audit resume recipe — pull 32 (ANTS-1646 + ANTS-1580, 2026-05-19)
+
+Two small MCP correctness / discoverability fixes. The first lands
+the detector that would have caught the ANTS-1415 → ANTS-1645
+duplicate (renumbered in pull 30) before it could live silently;
+the second documents the realistic client-side resume pattern for
+`test_audit_partition`, since the token is in-process LRU and there
+is no automatic durable storage.
+
+- **ANTS-1646 (enhancement)** — `roadmap_query` envelope
+  `duplicate_ids[]` + `tools/check-roadmap.sh` guard. The
+  `roadmap_query` envelope now carries
+  `duplicate_ids:[{id, occurrences:[{section_slug, status}]}]`
+  whenever the parser sees the same `[PROJ-NNNN]` id on more than
+  one bullet (empty when clean — back-compat envelope shape
+  preserved). Computed once per cache fill via
+  `rcComputeDuplicateIds(QJsonArray)` in `remotecontrol.cpp`;
+  surfaced on all three response paths (`section_index`,
+  `section=`, full-file). `tools/check-roadmap.sh` is a one-pass
+  awk linter that exits non-zero on collisions and ships with
+  `--allow ANTS-1118` baked in — that's the project's known
+  intentional cross-section cite (same shipped fix referenced from
+  two tier tables). Together (a) every consuming Claude session
+  sees collisions inline on the next `roadmap_query` and (b) a
+  pre-commit / CI wire stops new collisions at the door. Spec
+  `tests/features/roadmap_query_duplicate_ids/spec.md` (6 INVs);
+  regression
+  `tests/features/roadmap_query_duplicate_ids/test_roadmap_query_duplicate_ids.cpp`
+  (one live-roadmap sanity test pins current state at "ANTS-1118
+  expected twice, everything else ≤ 1"). The `roadmap_query` tool
+  description in `claudeintegration.cpp` documents the field for
+  discoverability. Full suite 1219/1219.
+
+- **ANTS-1580 (doc)** — Test-audit resume-an-audit recipe.
+  Verified from `testauditengine.cpp:982–1187` that
+  `partition_token` is an in-process LRU handle (`g_partitionCache`),
+  with no `/tmp/<token>/` durable state and no auto-save into
+  `session_memory` — so the realistic resume contract is
+  client-orchestrated. New `docs/standards/test-audit-resume.md`
+  spells out the recipe: save via
+  `session_memory(op:"set", key:"test_audit_partition_token:<scope_id>",
+  value:{token, scope, dimensions, saved_at_ms})` right after
+  partition, resume with a matching `op:"get"`, fall back to
+  re-running partition if `test_audit_brief` refuses with
+  `partition_token not found`. The `test_audit_partition` MCP tool
+  description (`claudeintegration.cpp`) now ends with an inline
+  pointer to the recipe doc so a session reading `tools/list` sees
+  the contract without a separate Read. Indexed in
+  `docs/standards/README.md` and `CLAUDE.md`'s standards block.
+  v2 follow-up (`test_audit_resume({partition_token | latest:true})`)
+  deferred — partition cost is ≤ 5 s on a 1 K-file suite and
+  durable disk storage would need eviction + GC.
+
 ### 🔌 MCP path-tool global-config sentinel + last_audit_summary since_commit — pull 31 (ANTS-1390 + ANTS-1406, 2026-05-19)
 
 Two independent MCP ergonomics fixes that both surfaced in the
