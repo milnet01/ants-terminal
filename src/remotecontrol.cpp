@@ -6031,6 +6031,26 @@ QJsonDocument RemoteControl::cmdColdEyesPartition(const QJsonObject &req) {
                                               : QStringLiteral("default");
     env["scoped_count"]  = m_coldEyesCache.scopedCount;
     env["truncated"]     = m_coldEyesCache.truncated;
+    // ANTS-1619 — debug field naming which code path built the
+    // partition. `"default"` covers the absent + malformed-fall-back
+    // cases; `"override"` indicates `.cold-eyes/partition.json`
+    // parsed cleanly.
+    env["partition_source"] = m_coldEyesCache.partitionSource;
+    // ANTS-1619 — surface the contract-doc probe outcome. Callers
+    // (and cross-session reports) can tell at a glance whether the
+    // partition silently skipped a doc the summary mentioned.
+    {
+        QJsonArray disc;
+        for (const QString &p : m_coldEyesCache.discoveredContractFiles) {
+            disc.append(p);
+        }
+        env["discovered_contract_files"] = disc;
+        QJsonArray miss;
+        for (const QString &p : m_coldEyesCache.missingContractFiles) {
+            miss.append(p);
+        }
+        env["missing_contract_files"] = miss;
+    }
     // ANTS-1412 — surface malformed override files so callers know
     // their `.cold-eyes/partition.json` was ignored and why. Field
     // omitted when override loaded cleanly or is absent.
@@ -6046,12 +6066,20 @@ QJsonDocument RemoteControl::cmdColdEyesPartition(const QJsonObject &req) {
     const bool defaultScope = scope == ColdEyesEngine::Scope::Default;
     if (defaultScope && m_coldEyesCache.lanes.size() <= 1) {
         env["sparse_partition"] = true;
+        // ANTS-1634a — point at the two existing escape hatches
+        // (ANTS-1508 lane-agnostic brief + ANTS-1412 project
+        // override) so callers driving a sweep on a non-canonical
+        // doc layout see the workaround alongside the diagnostic.
         env["sparse_partition_hint"] = QStringLiteral(
             "Default scope returned %1 lane(s). Check that the "
             "project root carries CLAUDE.md / README.md / ROADMAP.md "
             "/ CHANGELOG.md (case-insensitive match) and that "
             "docs/standards/ + docs/decisions/ exist. Pass scope="
-            "\"contracts_only\" to confirm the contract-doc shape.")
+            "\"contracts_only\" to confirm the contract-doc shape. "
+            "Pass doc_paths[] to cold_eyes_brief for one-shot ad-hoc "
+            "lanes (ANTS-1508), or commit "
+            "<projectPath>/.cold-eyes/partition.json per ANTS-1412 "
+            "to persist an override.")
                 .arg(m_coldEyesCache.lanes.size());
         // ANTS-1571 — point callers at the lane-agnostic cold_eyes_brief
         // escape hatch (ANTS-1508). Callers driving a sweep on a non-

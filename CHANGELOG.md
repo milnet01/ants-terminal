@@ -12,6 +12,77 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP cold-eyes partition fold-in — pull 22 (ANTS-1619 + ANTS-1631 + ANTS-1634, 2026-05-19)
+
+Three cold-eyes partition fixes targeted at non-canonical doc
+layouts surfaced by RetroDB, Vestige 3D Engine, MAME Curator, and
+RetroArch cross-session reports. All three land inside
+`coldeyesengine.cpp` + the matching MCP envelope in
+`remotecontrol.cpp::cmdColdEyesPartition`.
+
+- **ANTS-1619 (enhancement)** — `cold_eyes_partition` envelope
+  surfaces the contract-doc probe outcome explicitly. New fields
+  `discovered_contract_files[]` + `missing_contract_files[]` track
+  every contract stem the partition tried (the four canonical:
+  CLAUDE / README / ROADMAP / CHANGELOG; the four community:
+  CONTRIBUTING / SECURITY / LEGAL / CODE_OF_CONDUCT). Callers can
+  diagnose a sparse partition at a glance — the old "summary names
+  files the lane doesn't carry" pattern is now self-documenting.
+  Also: `data/changelog.<yaml|yml|json>` and `data/roadmap.<...>`
+  promote into the contracts lane alongside the root variants
+  (mirrors ANTS-1574's project_layout widening — RetroDB ships its
+  changelog as `data/changelog.yaml`). New `partition_source`
+  debug field returns `"override"` when `.cold-eyes/partition.json`
+  parsed cleanly, `"default"` otherwise (covers absent +
+  malformed-fall-back together — `override_warning` disambiguates
+  the latter). Spec `docs/specs/ANTS-1619.md`; tests
+  `tests/features/cold_eyes_engine/` (7 new cases).
+
+- **ANTS-1631 (enhancement)** — `cold_eyes_partition` probe set
+  widened to recognise four real-world doc layouts that previously
+  returned a one-lane (`contracts` only) partition:
+  - **Private / internal / fork spec dirs.** Mirrors
+    project_layout's ANTS-1493 probe set:
+    `docs/{private,internal,fork}/specs/*.md` now surface as spec
+    lanes alongside the canonical `docs/specs/`.
+  - **App-Build engine shape.** Walks `docs/engine/<sub>/spec.md`
+    one level deep (Vestige 3D Engine's 16 per-subsystem specs).
+  - **App-Build module shape.** Walks `src/<module>/spec.md`
+    similarly (MAME Curator's per-feature specs).
+  - **Phased design docs.** Walks `docs/phases/*.md` (date-prefixed
+    + descriptive names accepted; no `spec.md` suffix required).
+  Walk depth capped at one level — guards against accidentally
+  slurping vendor trees like `node_modules/**/spec.md`. Spec-dir
+  dedup is by lane name (canonical-dir hit wins when the same
+  filename appears in two roots); App-Build dedup is by rel-path
+  so multiple `spec.md` files at different parent dirs surface
+  with distinct lane names (`spec/audio`, `spec/graphics`).
+  Date-prefix `YYYY-MM-DD-*.md` files surface automatically — the
+  walker accepts any `*.md` shape; only the ANTS-NNNN active-set
+  filter is restrictive. Spec `docs/specs/ANTS-1631.md`; tests
+  `tests/features/cold_eyes_engine/` (7 new cases).
+
+- **ANTS-1634 (enhancement)** — two cold-eyes partition UX polish
+  items (parts a + c shipped; part b — `prior_loop_fixes` brief
+  param — deferred to a follow-on pull). Part (a):
+  `sparse_partition_hint` now points at both existing escape
+  hatches inline — `cold_eyes_brief(doc_paths=[...])` (ANTS-1508
+  lane-agnostic mode) and `.cold-eyes/partition.json` (ANTS-1412
+  override). Part (c): new `audit-infra` lane class detects
+  `docs/audit/`, `docs/private/audit/`, or `docs/internal/audit/`
+  carrying ≥ 2 `.md` files (suppressions notes, partition
+  overrides, allowlist standards). Threshold guards against
+  promoting an empty suppressions stub. One-level walk — subdir
+  files don't count toward the threshold or the doc list. Spec
+  `docs/specs/ANTS-1634.md`; tests in
+  `tests/features/cold_eyes_engine/` (4 new cases) +
+  `tests/features/mcp_cold_eyes/` (1 source-grep guard for the
+  hint pointers).
+
+Bundle verified: 41/41 ColdEyesEngine cases pass (18 new + 23
+existing); 9/9 McpColdEyes cases pass (1 new + 8 existing); full
+suite 1144/1144 green.
+
 ### 🔌 MCP read-tool correctness fixes — pull 21 (ANTS-1620 + ANTS-1621 + ANTS-1622 + ANTS-1632, 2026-05-19)
 
 Four small MCP-side fixes, all addressing the same shape of bug —

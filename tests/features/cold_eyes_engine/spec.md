@@ -46,6 +46,32 @@ existing `cold_eyes_cross_doc_diff` regression set (same engine
 helper) plus `mcp_tool_prefix_tags.Inv3EveryRegisteredToolHasBucket`
 (ensures the new tool is bucketed under `cold-eyes`).
 
+### Cold-eyes-engine fold-in pull 22 (2026-05-19)
+
+Eighteen additional cases shipped with pull 22 across the
+ANTS-1619 / 1631 / 1634 cold-eyes partition bundle:
+
+| # | Case | Asserts |
+|---|---|---|
+| ANTS-1619 INV-1+2 | `Ants1619DiscoveredAndMissingContractsTracked` | discovered/missing arrays mirror probe outcome |
+| ANTS-1619 INV-2 | `Ants1619CommunityContractMissesTracked` | CONTRIBUTING/SECURITY/LEGAL/CODE_OF_CONDUCT misses surface |
+| ANTS-1619 INV-3 | `Ants1619DataChangelogPromoted` | `data/changelog.yaml` lands in contracts.docPaths without double-list |
+| ANTS-1619 INV-3 | `Ants1619DataChangelogStandaloneWhenRootAbsent` | data-path resolves alone when root CHANGELOG.md absent |
+| ANTS-1619 INV-4 | `Ants1619PartitionSourceDefault` | no override → `partitionSource == "default"` |
+| ANTS-1619 INV-5 | `Ants1619PartitionSourceOverride` | valid override → `partitionSource == "override"` |
+| ANTS-1619 INV-6 | `Ants1619PartitionSourceMalformedFallsBack` | malformed override → `"default"` + non-empty warning |
+| ANTS-1631 INV-2 | `Ants1631PrivateInternalForkSpecsSurface` | specs under private/internal/fork roots surface as lanes |
+| ANTS-1631 INV-3 | `Ants1631DedupAcrossSpecRoots` | same basename in two roots → single lane (no duplicate) |
+| ANTS-1631 INV-4 | `Ants1631DocsEngineSpecMdSurfaces` | `docs/engine/<sub>/spec.md` surfaces (App-Build engine layout) |
+| ANTS-1631 INV-5 | `Ants1631SrcModuleSpecMdSurfaces` | `src/<module>/spec.md` surfaces (per-module spec layout) |
+| ANTS-1631 INV-6 | `Ants1631DocsPhasesSurfaces` | `docs/phases/*.md` surfaces (phased-design doc layout) |
+| ANTS-1631 INV-7 | `Ants1631DatePrefixedSpecsSurface` | `2026-MM-DD-*.md` names accepted by the walker |
+| ANTS-1631 INV-8 | `Ants1631DeepNestedNotSurfaced` | level-3+ files not walked (vendor-tree guard) |
+| ANTS-1634 INV-3 | `Ants1634AuditInfraLaneFires` | `docs/audit/` with ≥ 2 .md files → `audit-infra` lane |
+| ANTS-1634 INV-4 | `Ants1634AuditInfraLaneRespectsThreshold` | 1 .md → no lane (sub-threshold guard) |
+| ANTS-1634 INV-5 | `Ants1634AuditInfraPrivatePath` | `docs/private/audit/` fallback |
+| ANTS-1634 INV-6 | `Ants1634AuditInfraOneLevelDeep` | subdir .md files don't count toward threshold |
+
 ## Build wiring
 
 `tests/features/cold_eyes_engine/test_cold_eyes_engine.cpp` is added to

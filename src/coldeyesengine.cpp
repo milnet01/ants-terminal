@@ -352,6 +352,16 @@ QStringList extractRelatedSpecsFromHeader(const QString &projectPath,
     return out;
 }
 
+// ANTS-1631 — spec-lane candidate. Carries the lane name explicitly
+// so App-Build per-feature shapes (where every file is literally
+// `spec.md`) get a distinct lane name derived from the parent dir
+// rather than colliding on the basename. mtime drives the cap.
+struct SpecLaneCandidate {
+    qint64  mtimeMs;
+    QString rel;        // project-relative path
+    QString laneName;   // lane name suggestion (consumed by derivePartition)
+};
+
 // ANTS-1411 — generalised spec-lane candidate walker. Walks every
 // `*.md` under `docs/specs/` regardless of filename shape. For
 // `ANTS-NNNN.md` shapes, gates on the ROADMAP active set (preserves
@@ -360,33 +370,189 @@ QStringList extractRelatedSpecsFromHeader(const QString &projectPath,
 // `P04.md`), include all — projects without an ANTS-style ROADMAP
 // get every spec file as a candidate. mtime + relative-path pairs;
 // caller sorts + caps.
-QList<QPair<qint64, QString>> listSpecLaneCandidates(
+//
+// ANTS-1631 — widened probe set: walks every spec-dir candidate
+// (mirrors projectlayoutengine's kSpecsCandidates) PLUS App-Build
+// per-feature shapes: `docs/engine/<sub>/spec.md`, `docs/phases/*.md`,
+// and `src/<module>/spec.md`. Date-prefix `YYYY-MM-DD-*.md` is
+// accepted automatically (no special-casing — the `*.md` glob already
+// catches them; only the ANTS-NNNN active-set filter is gated).
+//
+// Caller-visible: `outDirs` (when non-null) receives every directory
+// the walker actually probed (relative to projectPath) so the MCP
+// envelope can echo the search set back per ANTS-1619 #7.
+QList<SpecLaneCandidate> listSpecLaneCandidates(
     const QString &projectPath,
-    const QSet<int> &activeAntsIds) {
-    QList<QPair<qint64, QString>> out;
-    const QString specsDir = caseInsensitiveResolve(
-        projectPath, QStringLiteral("docs/specs"));
-    if (specsDir.isEmpty()) return out;
-    QDir d(projectPath + QChar('/') + specsDir);
-    if (!d.exists()) return out;
-    const auto entries = d.entryList(
-        QStringList{QStringLiteral("*.md")},
-        QDir::Files | QDir::NoDotAndDotDot,
-        QDir::Name);
+    const QSet<int> &activeAntsIds,
+    QStringList *outDirs = nullptr) {
+    QList<SpecLaneCandidate> out;
+    // ANTS-1631 — every spec-dir candidate. Mirrors
+    // projectlayoutengine.cpp's kSpecsCandidates so the cold-eyes
+    // probe set tracks the project_layout probe set as ANTS-1493
+    // widens it further. Order is: canonical → private → internal →
+    // fork (matches project_layout's preference order).
+    static const QStringList kSpecDirs = {
+        QStringLiteral("docs/specs"),
+        QStringLiteral("docs/private/specs"),
+        QStringLiteral("docs/internal/specs"),
+        QStringLiteral("docs/fork/specs"),
+    };
     // The legacy Ants filter only knew `ANTS-NNNN.md`. Match strictly
     // so unrelated filename shapes are never accidentally gated.
     static const QRegularExpression rxAntsId(
         QStringLiteral("^ANTS-(\\d+)\\.md$"));
-    for (const QString &e : entries) {
-        const auto am = rxAntsId.match(e);
-        if (am.hasMatch() && !activeAntsIds.isEmpty()) {
-            const int id = am.captured(1).toInt();
-            if (!activeAntsIds.contains(id)) continue;
+    // ANTS-1631 — dedup the spec-dir walk by lane name (the basename
+    // without extension): two probe roots carrying the same filename
+    // (e.g. a project moving specs in-flight from `docs/specs/` to
+    // `docs/private/specs/`) produce identical lane names downstream,
+    // so the canonical-dir hit wins by virtue of the iteration order.
+    // The App-Build walks below maintain a parallel rel-path dedup so
+    // multiple `spec.md` files at different parent dirs survive.
+    QSet<QString> seenLaneName;
+    QSet<QString> seenRel;
+    for (const QString &cand : kSpecDirs) {
+        const QString specsDir = caseInsensitiveResolve(projectPath, cand);
+        if (specsDir.isEmpty()) continue;
+        QDir d(projectPath + QChar('/') + specsDir);
+        if (!d.exists()) continue;
+        if (outDirs) outDirs->append(specsDir);
+        const auto entries = d.entryList(
+            QStringList{QStringLiteral("*.md")},
+            QDir::Files | QDir::NoDotAndDotDot,
+            QDir::Name);
+        for (const QString &e : entries) {
+            const auto am = rxAntsId.match(e);
+            if (am.hasMatch() && !activeAntsIds.isEmpty()) {
+                const int id = am.captured(1).toInt();
+                if (!activeAntsIds.contains(id)) continue;
+            }
+            const QString laneName = QStringLiteral("spec/")
+                                   + QFileInfo(e).completeBaseName();
+            if (seenLaneName.contains(laneName)) continue;
+            seenLaneName.insert(laneName);
+            const QString rel = specsDir + QChar('/') + e;
+            seenRel.insert(rel);
+            QFileInfo fi(projectPath + QChar('/') + rel);
+            if (!fi.exists()) continue;
+            out.append({fi.lastModified().toMSecsSinceEpoch(), rel,
+                        laneName});
         }
-        const QString rel = specsDir + QChar('/') + e;
-        QFileInfo fi(projectPath + QChar('/') + rel);
-        if (!fi.exists()) continue;
-        out.append({fi.lastModified().toMSecsSinceEpoch(), rel});
+    }
+    // ANTS-1631 — App-Build per-feature shapes.
+    //
+    //   docs/engine/<sub>/spec.md — Vestige 3D Engine layout.
+    //   docs/phases/*.md           — phased-design doc layout.
+    //   src/<module>/spec.md       — per-module specs alongside code.
+    //
+    // For each, walk one level deep (no recursive descent — avoids
+    // accidentally slurping vendor trees). Lane name derives from the
+    // parent dir (or, for `docs/phases/`, the filename basename) so
+    // multiple `spec.md` files at different parent dirs surface as
+    // distinct lanes.
+    auto walkLevel2SpecMd = [&](const QString &parentRel) {
+        const QString parentResolved =
+            caseInsensitiveResolve(projectPath, parentRel);
+        if (parentResolved.isEmpty()) return;
+        QDir d(projectPath + QChar('/') + parentResolved);
+        if (!d.exists()) return;
+        if (outDirs) outDirs->append(parentResolved);
+        const auto subs = d.entryList(QDir::Dirs | QDir::NoDotAndDotDot,
+                                      QDir::Name);
+        for (const QString &sub : subs) {
+            const QString rel =
+                parentResolved + QChar('/') + sub
+                + QStringLiteral("/spec.md");
+            const QString resolved = caseInsensitiveResolve(projectPath, rel);
+            if (resolved.isEmpty()) continue;
+            if (seenRel.contains(resolved)) continue;
+            seenRel.insert(resolved);
+            QFileInfo fi(projectPath + QChar('/') + resolved);
+            if (!fi.exists()) continue;
+            // Lane name from the parent dir, not the basename
+            // (basename is literally "spec" for every hit).
+            QString laneName = QStringLiteral("spec/") + sub;
+            // De-collide against a canonical-dir hit that already
+            // claimed the same lane name (rare, e.g. a project with
+            // both `docs/specs/audio.md` and
+            // `docs/engine/audio/spec.md`). Append the parent-dir
+            // hint so both surface.
+            if (seenLaneName.contains(laneName)) {
+                laneName = QStringLiteral("spec/") + sub
+                         + QStringLiteral("@")
+                         + parentResolved.section(QChar('/'), -1);
+            }
+            seenLaneName.insert(laneName);
+            out.append({fi.lastModified().toMSecsSinceEpoch(), resolved,
+                        laneName});
+        }
+    };
+    walkLevel2SpecMd(QStringLiteral("docs/engine"));
+    walkLevel2SpecMd(QStringLiteral("src"));
+
+    // docs/phases/*.md — every markdown file at the level (no `spec.md`
+    // suffix requirement — phased design docs use `phase_1_design.md`
+    // / `2026-04-27-architecture.md` shapes).
+    const QString phasesResolved =
+        caseInsensitiveResolve(projectPath, QStringLiteral("docs/phases"));
+    if (!phasesResolved.isEmpty()) {
+        QDir d(projectPath + QChar('/') + phasesResolved);
+        if (d.exists()) {
+            if (outDirs) outDirs->append(phasesResolved);
+            const auto entries = d.entryList(
+                QStringList{QStringLiteral("*.md")},
+                QDir::Files | QDir::NoDotAndDotDot,
+                QDir::Name);
+            for (const QString &e : entries) {
+                const QString rel = phasesResolved + QChar('/') + e;
+                if (seenRel.contains(rel)) continue;
+                seenRel.insert(rel);
+                QFileInfo fi(projectPath + QChar('/') + rel);
+                if (!fi.exists()) continue;
+                QString laneName = QStringLiteral("spec/")
+                                 + QFileInfo(e).completeBaseName();
+                if (seenLaneName.contains(laneName)) continue;
+                seenLaneName.insert(laneName);
+                out.append({fi.lastModified().toMSecsSinceEpoch(), rel,
+                            laneName});
+            }
+        }
+    }
+    return out;
+}
+
+// ANTS-1634c — audit-infra lane: detect a `docs/audit/` or
+// `docs/private/audit/` directory carrying ≥ 2 `.md` files
+// (suppressions notes, partition overrides, allowlist standards).
+// Returns the resolved relative dir + the .md files inside it (both
+// non-empty on success, both empty on miss). Caller folds the result
+// into derivePartition's lane list.
+struct AuditInfraScan {
+    QString     dir;     // project-relative
+    QStringList files;   // project-relative, sorted
+};
+
+AuditInfraScan scanAuditInfra(const QString &projectPath) {
+    AuditInfraScan out;
+    static const QStringList kAuditDirs = {
+        QStringLiteral("docs/audit"),
+        QStringLiteral("docs/private/audit"),
+        QStringLiteral("docs/internal/audit"),
+    };
+    for (const QString &cand : kAuditDirs) {
+        const QString resolved = caseInsensitiveResolve(projectPath, cand);
+        if (resolved.isEmpty()) continue;
+        QDir d(projectPath + QChar('/') + resolved);
+        if (!d.exists()) continue;
+        const auto entries = d.entryList(
+            QStringList{QStringLiteral("*.md")},
+            QDir::Files | QDir::NoDotAndDotDot,
+            QDir::Name);
+        if (entries.size() < 2) continue;  // ≥ 2 threshold (ANTS-1634c)
+        out.dir = resolved;
+        for (const QString &e : entries) {
+            out.files << (resolved + QChar('/') + e);
+        }
+        return out;
     }
     return out;
 }
@@ -451,6 +617,9 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
         result.lanes        = override.lanes;
         result.overridePath = QStringLiteral(".cold-eyes/partition.json");
         result.scopedCount  = override.lanes.size();
+        // ANTS-1619 — debug echo so callers can tell which code
+        // path built the partition without parsing the response.
+        result.partitionSource = QStringLiteral("override");
         return result;
     }
     if (override.status != OverrideReadResult::Absent) {
@@ -485,7 +654,38 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
         for (const auto &[stem, exts] : kContracts) {
             const QString resolved =
                 resolveContractStem(projectPath, stem, exts);
-            if (!resolved.isEmpty()) contracts.docPaths << resolved;
+            if (!resolved.isEmpty()) {
+                contracts.docPaths << resolved;
+                result.discoveredContractFiles << resolved;
+            } else {
+                // ANTS-1619 — record the canonical .md spelling so
+                // callers see what the partition tried.
+                result.missingContractFiles << (stem + QStringLiteral(".md"));
+            }
+        }
+        // ANTS-1619 — ROADMAP / CHANGELOG sometimes live under
+        // `data/<stem>.yaml` (RetroDB ships its changelog this way as
+        // the runtime-readable YAML; project_layout already probes
+        // there per ANTS-1574). Promote the same probe set here so
+        // cold-eyes lanes see the file too.
+        static const std::vector<std::pair<QString, QStringList>>
+            kDataContracts = {
+                { QStringLiteral("data/changelog"),
+                  { QStringLiteral(".yaml"), QStringLiteral(".yml"),
+                    QStringLiteral(".json") } },
+                { QStringLiteral("data/roadmap"),
+                  { QStringLiteral(".yaml"), QStringLiteral(".yml"),
+                    QStringLiteral(".json") } },
+            };
+        for (const auto &[stem, exts] : kDataContracts) {
+            const QString resolved =
+                resolveContractStem(projectPath, stem, exts);
+            if (resolved.isEmpty()) continue;
+            // De-dup against the root-level resolution to avoid
+            // double-listing in the rare case both shapes exist.
+            if (contracts.docPaths.contains(resolved)) continue;
+            contracts.docPaths << resolved;
+            result.discoveredContractFiles << resolved;
         }
         // ANTS-1571 — fold community-contract docs (CONTRIBUTING /
         // SECURITY / LEGAL / CODE_OF_CONDUCT) into the contracts lane.
@@ -501,7 +701,12 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
         for (const QString &name : kCommunityContracts) {
             const QString resolved =
                 caseInsensitiveResolve(projectPath, name);
-            if (!resolved.isEmpty()) contracts.docPaths << resolved;
+            if (!resolved.isEmpty()) {
+                contracts.docPaths << resolved;
+                result.discoveredContractFiles << resolved;
+            } else {
+                result.missingContractFiles << name;
+            }
         }
         // ANTS-1506 — summary now mirrors the actually-matched docs,
         // so callers don't see "CLAUDE.md + README.md + ROADMAP.md +
@@ -571,11 +776,32 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
         }
     }
 
+    // ANTS-1634c — audit-infra lane. Detected before the spec lanes so
+    // it slots in alongside `decisions` / `plugins` in the response
+    // order. Threshold ≥ 2 .md files avoids promoting an empty
+    // suppressions stub.
+    {
+        const auto audit = scanAuditInfra(projectPath);
+        if (!audit.dir.isEmpty()) {
+            Lane infra;
+            infra.name = QStringLiteral("audit-infra");
+            infra.summary = audit.dir
+                + QStringLiteral(" (audit suppressions, partition "
+                                  "overrides, allowlist standards)");
+            infra.docPaths = audit.files;
+            result.lanes << infra;
+        }
+    }
+
     // Active-spec lanes. ANTS-1411: scanner walks every `*.md` under
     // `docs/specs/` regardless of filename shape. For `ANTS-NNNN.md`
     // files we keep the legacy active-only filter (drops shipped ✅
     // specs from the lane set). For other naming conventions
     // (DS01.md, FP05.md, generic.md) every file is a candidate.
+    // ANTS-1631: walks every spec-dir candidate (docs/specs +
+    // docs/private/specs + docs/internal/specs + docs/fork/specs) and
+    // App-Build per-feature shapes (docs/engine/<sub>/spec.md,
+    // docs/phases/*.md, src/<module>/spec.md).
     const auto allActive = activeSpecIds(projectPath);
     const QSet<int> activeAntsIds(allActive.begin(), allActive.end());
     auto mtimes = listSpecLaneCandidates(projectPath, activeAntsIds);
@@ -591,26 +817,27 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
     result.scopedCount = mtimes.size();
     std::sort(mtimes.begin(), mtimes.end(),
               [](const auto &a, const auto &b) {
-                  const qint64 aBucket = a.first / 1000;
-                  const qint64 bBucket = b.first / 1000;
+                  const qint64 aBucket = a.mtimeMs / 1000;
+                  const qint64 bBucket = b.mtimeMs / 1000;
                   if (aBucket != bBucket) return aBucket > bBucket;
-                  return a.second < b.second;
+                  return a.rel < b.rel;
               });
     if (mtimes.size() > kMaxSpecLanes) {
         mtimes = mtimes.mid(0, kMaxSpecLanes);
         result.truncated = true;
     }
-    QStringList chosen;
-    chosen.reserve(mtimes.size());
-    for (const auto &p : mtimes) chosen << p.second;
-    std::sort(chosen.begin(), chosen.end());
+    // Stable presentation order: sort survivors by rel-path so callers
+    // see a consistent lane list across re-derivations. ANTS-1631 — the
+    // lane name now travels in the SpecLaneCandidate, so re-sorting by
+    // rel keeps it next to its name.
+    std::sort(mtimes.begin(), mtimes.end(),
+              [](const auto &a, const auto &b) { return a.rel < b.rel; });
 
-    for (const QString &rel : chosen) {
-        QFileInfo fi(projectPath + QChar('/') + rel);
+    for (const auto &cand : mtimes) {
         Lane l;
-        l.name    = QStringLiteral("spec/") + fi.completeBaseName();
+        l.name    = cand.laneName;
         l.summary = QStringLiteral("Single spec lane");
-        l.docPaths << rel;
+        l.docPaths << cand.rel;
         result.lanes << l;
     }
 

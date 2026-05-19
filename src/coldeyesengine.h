@@ -76,6 +76,18 @@ struct PartitionResult {
     // fix the file. Echoed as the `override_warning` field on the
     // MCP `cold_eyes_partition` response.
     QString     overrideWarning;
+    // ANTS-1619 — debug field naming which code path built the
+    // partition. `"override"` when `.cold-eyes/partition.json`
+    // parsed cleanly, otherwise `"default"` (covers the absent +
+    // malformed-fall-back cases together, paired with
+    // `overrideWarning` for diagnosis).
+    QString     partitionSource = QStringLiteral("default");
+    // ANTS-1619 — every contract-stem the partition tried. Caller
+    // can tell from `discoveredContractFiles[]` vs
+    // `missingContractFiles[]` whether the partition silently
+    // skipped a doc it documented (the summary-vs-doc_paths gap).
+    QStringList discoveredContractFiles;
+    QStringList missingContractFiles;
 };
 
 struct BriefManifest {

@@ -566,3 +566,301 @@ TEST(ColdEyesEngine, StandardsNameGlobFallbackSkippedWhenDirPresent) {
         QStringLiteral("docs/EXTRA_DESIGN_GUIDE.md")))
         << "canonical docs/standards/ must win over name-glob fallback";
 }
+
+// ANTS-1619 INV-1 + INV-2 — discovered + missing contract files are
+// tracked separately. A workspace with two of the four canonical
+// contracts surfaces two entries in discoveredContractFiles and two
+// in missingContractFiles.
+TEST(ColdEyesEngine, Ants1619DiscoveredAndMissingContractsTracked) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("CLAUDE.md", "# CLAUDE\n"));
+    ASSERT_TRUE(ws.writeRel("README.md", "# README\n"));
+    // ROADMAP.md and CHANGELOG.md intentionally absent.
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    EXPECT_TRUE(r.discoveredContractFiles.contains(QStringLiteral("CLAUDE.md")));
+    EXPECT_TRUE(r.discoveredContractFiles.contains(QStringLiteral("README.md")));
+    EXPECT_TRUE(r.missingContractFiles.contains(QStringLiteral("ROADMAP.md")));
+    EXPECT_TRUE(r.missingContractFiles.contains(QStringLiteral("CHANGELOG.md")));
+}
+
+// ANTS-1619 INV-2 — community-contract misses surface explicitly.
+// `CONTRIBUTING.md` / `SECURITY.md` / `LEGAL.md` / `CODE_OF_CONDUCT.md`
+// are documented community docs the partition probes; absence is
+// reported in missingContractFiles so callers see the full survey.
+TEST(ColdEyesEngine, Ants1619CommunityContractMissesTracked) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("CLAUDE.md", "x"));
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    EXPECT_TRUE(r.missingContractFiles.contains(
+        QStringLiteral("CONTRIBUTING.md")));
+    EXPECT_TRUE(r.missingContractFiles.contains(
+        QStringLiteral("SECURITY.md")));
+    EXPECT_TRUE(r.missingContractFiles.contains(
+        QStringLiteral("LEGAL.md")));
+    EXPECT_TRUE(r.missingContractFiles.contains(
+        QStringLiteral("CODE_OF_CONDUCT.md")));
+}
+
+// ANTS-1619 INV-3 — `data/changelog.yaml` resolves and lands in
+// contracts.docPaths alongside the root CHANGELOG.md. No double-list.
+TEST(ColdEyesEngine, Ants1619DataChangelogPromoted) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("CHANGELOG.md",       "# CHANGELOG\n"));
+    ASSERT_TRUE(ws.writeRel("data/changelog.yaml","[]\n"));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    const ColdEyesEngine::Lane *c = nullptr;
+    for (const auto &l : r.lanes) {
+        if (l.name == QStringLiteral("contracts")) { c = &l; break; }
+    }
+    ASSERT_TRUE(c != nullptr);
+    EXPECT_TRUE(c->docPaths.contains(QStringLiteral("CHANGELOG.md")));
+    EXPECT_TRUE(c->docPaths.contains(QStringLiteral("data/changelog.yaml")));
+    EXPECT_TRUE(r.discoveredContractFiles.contains(
+        QStringLiteral("data/changelog.yaml")));
+}
+
+// ANTS-1619 INV-3 — `data/changelog.yaml` resolves standalone even
+// when the root `CHANGELOG.md` is absent.
+TEST(ColdEyesEngine, Ants1619DataChangelogStandaloneWhenRootAbsent) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("CLAUDE.md",          "x"));
+    ASSERT_TRUE(ws.writeRel("data/changelog.yaml","[]\n"));
+    // No root CHANGELOG.md.
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    const ColdEyesEngine::Lane *c = nullptr;
+    for (const auto &l : r.lanes) {
+        if (l.name == QStringLiteral("contracts")) { c = &l; break; }
+    }
+    ASSERT_TRUE(c != nullptr);
+    EXPECT_TRUE(c->docPaths.contains(QStringLiteral("data/changelog.yaml")));
+}
+
+// ANTS-1619 INV-4 — partitionSource defaults to "default" when no
+// override file exists.
+TEST(ColdEyesEngine, Ants1619PartitionSourceDefault) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("CLAUDE.md", "x"));
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    EXPECT_EQ(r.partitionSource, QStringLiteral("default"));
+}
+
+// ANTS-1619 INV-5 — partitionSource flips to "override" when
+// `.cold-eyes/partition.json` parses cleanly.
+TEST(ColdEyesEngine, Ants1619PartitionSourceOverride) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/custom.md", "x"));
+    ASSERT_TRUE(ws.writeRel(".cold-eyes/partition.json",
+        QStringLiteral("{\"version\":1,\"lanes\":[{"
+            "\"name\":\"custom\",\"summary\":\"x\","
+            "\"doc_paths\":[\"docs/custom.md\"]}]}")));
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    EXPECT_EQ(r.partitionSource, QStringLiteral("override"));
+}
+
+// ANTS-1619 INV-6 — partitionSource stays "default" when the
+// override file exists but is malformed. overrideWarning is
+// non-empty so the caller can disambiguate the four states.
+TEST(ColdEyesEngine, Ants1619PartitionSourceMalformedFallsBack) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel(".cold-eyes/partition.json", "{not json"));
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    EXPECT_EQ(r.partitionSource, QStringLiteral("default"));
+    EXPECT_FALSE(r.overrideWarning.isEmpty());
+}
+
+// ANTS-1631 INV-2 — private/internal/fork spec dirs are walked alongside
+// the canonical docs/specs/ dir.
+TEST(ColdEyesEngine, Ants1631PrivateInternalForkSpecsSurface) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/private/specs/PRIVATE-1.md",
+        QStringLiteral("# PRIVATE-1\n")));
+    ASSERT_TRUE(ws.writeRel("docs/internal/specs/INTERNAL-1.md",
+        QStringLiteral("# INTERNAL-1\n")));
+    ASSERT_TRUE(ws.writeRel("docs/fork/specs/FORK-1.md",
+        QStringLiteral("# FORK-1\n")));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    QStringList allDocs;
+    for (const auto &l : r.lanes) allDocs.append(l.docPaths);
+    EXPECT_TRUE(allDocs.contains(
+        QStringLiteral("docs/private/specs/PRIVATE-1.md")));
+    EXPECT_TRUE(allDocs.contains(
+        QStringLiteral("docs/internal/specs/INTERNAL-1.md")));
+    EXPECT_TRUE(allDocs.contains(
+        QStringLiteral("docs/fork/specs/FORK-1.md")));
+}
+
+// ANTS-1631 INV-3 — when the same basename appears under two probe
+// roots (a project moving specs in-flight), the lane appears once.
+TEST(ColdEyesEngine, Ants1631DedupAcrossSpecRoots) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/specs/SHARED.md", "# A\n"));
+    ASSERT_TRUE(ws.writeRel("docs/private/specs/SHARED.md", "# B\n"));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    int sharedHits = 0;
+    QStringList laneNames;
+    for (const auto &l : r.lanes) {
+        laneNames.append(l.name);
+        for (const QString &p : l.docPaths) {
+            if (p.endsWith(QStringLiteral("/SHARED.md"))) ++sharedHits;
+        }
+    }
+    EXPECT_GT(sharedHits, 0);
+    EXPECT_LE(sharedHits, 1)
+        << "INV-3: SHARED.md must appear once across the probe roots; "
+        << "lanes: " << laneNames.join(", ").toStdString();
+}
+
+// ANTS-1631 INV-4 — docs/engine/<sub>/spec.md (Vestige 3D Engine layout)
+// surfaces in some lane.
+TEST(ColdEyesEngine, Ants1631DocsEngineSpecMdSurfaces) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/engine/audio/spec.md",
+        QStringLiteral("# audio\n")));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    QStringList allDocs;
+    for (const auto &l : r.lanes) allDocs.append(l.docPaths);
+    EXPECT_TRUE(allDocs.contains(QStringLiteral("docs/engine/audio/spec.md")));
+}
+
+// ANTS-1631 INV-5 — src/<module>/spec.md (MAME Curator layout) surfaces.
+TEST(ColdEyesEngine, Ants1631SrcModuleSpecMdSurfaces) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("src/parser/spec.md", QStringLiteral("# p\n")));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    QStringList allDocs;
+    for (const auto &l : r.lanes) allDocs.append(l.docPaths);
+    EXPECT_TRUE(allDocs.contains(QStringLiteral("src/parser/spec.md")));
+}
+
+// ANTS-1631 INV-6 — docs/phases/*.md surfaces (phased-design doc layout).
+TEST(ColdEyesEngine, Ants1631DocsPhasesSurfaces) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/phases/phase_1_design.md",
+        QStringLiteral("# p1\n")));
+    ASSERT_TRUE(ws.writeRel("docs/phases/2026-04-27-architecture.md",
+        QStringLiteral("# arch\n")));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    QStringList allDocs;
+    for (const auto &l : r.lanes) allDocs.append(l.docPaths);
+    EXPECT_TRUE(allDocs.contains(
+        QStringLiteral("docs/phases/phase_1_design.md")));
+    EXPECT_TRUE(allDocs.contains(
+        QStringLiteral("docs/phases/2026-04-27-architecture.md")));
+}
+
+// ANTS-1631 INV-7 — date-prefix YYYY-MM-DD-*.md filenames in
+// docs/specs/ surface even without a matching ROADMAP entry.
+TEST(ColdEyesEngine, Ants1631DatePrefixedSpecsSurface) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/specs/2026-04-27-rfc.md",
+        QStringLiteral("# rfc\n")));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    QStringList allDocs;
+    for (const auto &l : r.lanes) allDocs.append(l.docPaths);
+    EXPECT_TRUE(allDocs.contains(
+        QStringLiteral("docs/specs/2026-04-27-rfc.md")));
+}
+
+// ANTS-1631 INV-8 — deeper-than-one-level files under
+// docs/engine/<sub>/sub/spec.md are NOT walked. Vendor-tree guard.
+TEST(ColdEyesEngine, Ants1631DeepNestedNotSurfaced) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/engine/audio/deeper/spec.md",
+        QStringLiteral("# deeper\n")));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    QStringList allDocs;
+    for (const auto &l : r.lanes) allDocs.append(l.docPaths);
+    EXPECT_FALSE(allDocs.contains(
+        QStringLiteral("docs/engine/audio/deeper/spec.md")))
+        << "INV-8: walker must be one level deep only";
+}
+
+// ANTS-1634 INV-3 — audit-infra lane fires when ≥ 2 .md files live
+// under docs/audit/.
+TEST(ColdEyesEngine, Ants1634AuditInfraLaneFires) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/audit/suppressions.md", "# s\n"));
+    ASSERT_TRUE(ws.writeRel("docs/audit/allowlist.md",    "# a\n"));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    const ColdEyesEngine::Lane *infra = nullptr;
+    for (const auto &l : r.lanes) {
+        if (l.name == QStringLiteral("audit-infra")) { infra = &l; break; }
+    }
+    ASSERT_TRUE(infra != nullptr) << "audit-infra lane missing";
+    EXPECT_TRUE(infra->docPaths.contains(
+        QStringLiteral("docs/audit/suppressions.md")));
+    EXPECT_TRUE(infra->docPaths.contains(
+        QStringLiteral("docs/audit/allowlist.md")));
+}
+
+// ANTS-1634 INV-4 — < 2 .md files: no audit-infra lane.
+TEST(ColdEyesEngine, Ants1634AuditInfraLaneRespectsThreshold) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/audit/only-one.md", "# s\n"));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    for (const auto &l : r.lanes) {
+        EXPECT_NE(l.name, QStringLiteral("audit-infra"))
+            << "INV-4: sub-threshold (1 .md) should NOT produce lane";
+    }
+}
+
+// ANTS-1634 INV-5 — audit-infra falls back to docs/private/audit/ when
+// docs/audit/ is absent.
+TEST(ColdEyesEngine, Ants1634AuditInfraPrivatePath) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/private/audit/suppress.md", "# s\n"));
+    ASSERT_TRUE(ws.writeRel("docs/private/audit/allow.md",    "# a\n"));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    const ColdEyesEngine::Lane *infra = nullptr;
+    for (const auto &l : r.lanes) {
+        if (l.name == QStringLiteral("audit-infra")) { infra = &l; break; }
+    }
+    ASSERT_TRUE(infra != nullptr);
+    EXPECT_TRUE(infra->docPaths.contains(
+        QStringLiteral("docs/private/audit/suppress.md")));
+}
+
+// ANTS-1634 INV-6 — audit-infra walker is one level deep.
+// Subdirectory files don't count toward the threshold or doc list.
+TEST(ColdEyesEngine, Ants1634AuditInfraOneLevelDeep) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/audit/sub/one.md", "# s\n"));
+    ASSERT_TRUE(ws.writeRel("docs/audit/sub/two.md", "# s\n"));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    for (const auto &l : r.lanes) {
+        EXPECT_NE(l.name, QStringLiteral("audit-infra"))
+            << "INV-6: subdir .md files must not produce lane";
+    }
+}

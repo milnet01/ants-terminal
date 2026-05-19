@@ -185,6 +185,32 @@ TEST(McpColdEyes, ProviderLambdasForwardArgs) {
               std::string::npos);
 }
 
+// ANTS-1634 INV-1 + INV-2 — sparse_partition_hint mentions both
+// escape hatches: ANTS-1508 (lane-agnostic cold_eyes_brief) and
+// ANTS-1412 (`.cold-eyes/partition.json` override). The hint is the
+// caller's first inroad when a default-scope partition comes back
+// near-empty; surfacing both workarounds inline prevents the
+// "give up and skip the verb" pattern observed in cross-session reports.
+TEST(McpColdEyes, Ants1634SparsePartitionHintMentionsBriefAndOverride) {
+    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    ASSERT_FALSE(rc.empty());
+    const auto pos = rc.find("sparse_partition_hint");
+    ASSERT_NE(pos, std::string::npos)
+        << "sparse_partition_hint emission missing from remotecontrol.cpp";
+    // Scope the grep to a window of ~600 bytes after the field name —
+    // bounds the literal lookup to the hint string body and avoids
+    // matching unrelated occurrences elsewhere in the file.
+    const std::string window = rc.substr(pos, 600);
+    EXPECT_NE(window.find("cold_eyes_brief"), std::string::npos)
+        << "INV-1: hint should point at cold_eyes_brief";
+    EXPECT_NE(window.find("ANTS-1508"), std::string::npos)
+        << "INV-1: hint should cite ANTS-1508";
+    EXPECT_NE(window.find(".cold-eyes/partition.json"), std::string::npos)
+        << "INV-2: hint should point at the override file";
+    EXPECT_NE(window.find("ANTS-1412"), std::string::npos)
+        << "INV-2: hint should cite ANTS-1412";
+}
+
 // REG-8
 TEST(McpColdEyes, FoldInUsesRoadmapFoldInAllocateAndInsert) {
     const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
