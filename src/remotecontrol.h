@@ -499,6 +499,15 @@ public:
     bool verifyInFlightForTest() const { return m_verifyInFlight; }
     void setVerifyInFlightForTest(bool v) { m_verifyInFlight = v; }
 
+    // ANTS-1433 — test-only seam for the two-stage QSaveFile commit in
+    // cmdRoadmapLog. setForceCounterCommitFailForTest(true) forces the
+    // .roadmap-counter commit to fail so the ROADMAP.md rollback path
+    // can be asserted; cmdRoadmapLogAppendForTest drives the append
+    // path against a synthetic caller_cwd without a MainWindow. See
+    // tests/features/mcp_roadmap_log_atomicity/spec.md.
+    static void setForceCounterCommitFailForTest(bool on);
+    QJsonDocument cmdRoadmapLogAppendForTest(const QJsonObject &req);
+
 private slots:
     void onNewConnection();
 
@@ -508,6 +517,11 @@ private:
     // Dispatched from cmdRoadmapLog when req["op"] == "flip". See
     // docs/specs/ANTS-1428.md § Tier 2.
     QJsonDocument cmdRoadmapLogFlip(const QJsonObject &req);
+    // ANTS-1433 — append path, split out of cmdRoadmapLog so the
+    // mcp_roadmap_log_atomicity test can drive it without the m_main
+    // guard. cmdRoadmapLog keeps op-dispatch + the m_main guard, then
+    // delegates here for op:"append".
+    QJsonDocument cmdRoadmapLogAppend(const QJsonObject &req);
     QJsonDocument cmdLs();
     QJsonDocument cmdSendText(const QJsonObject &req);
     QJsonDocument cmdNewTab(const QJsonObject &req);

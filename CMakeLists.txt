@@ -987,6 +987,8 @@ if(ANTS_TESTS)
                 tests/features/token_usage_no_ci_diagnostic/test_token_usage_no_ci_diagnostic.cpp
                 # ANTS-1424 roadmap_log MCP write verb.
                 tests/features/mcp_roadmap_log_verb/test_mcp_roadmap_log_verb.cpp
+                # ANTS-1433 roadmap_log two-stage commit rollback seam.
+                tests/features/mcp_roadmap_log_atomicity/test_mcp_roadmap_log_atomicity.cpp
                 # ANTS-1426 parseBullets blank-line continuation.
                 tests/features/roadmap_parser_blank_line_continuation/test_roadmap_parser_blank_line_continuation.cpp
                 # ANTS-1427 MCP dispatch debug-log audit trail.

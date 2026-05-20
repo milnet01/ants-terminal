@@ -12,6 +12,58 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🧪 Test-infra hardening — pull 41 (ANTS-1434, ANTS-1433, 2026-05-20)
+
+A flaky-test fix and a new atomic-write failure-injection seam — two
+test-quality items that keep future bundle close-outs honest.
+
+- **ANTS-1434 (fix)** — `KwinPositionTracker.Main` no longer flakes
+  under full-parallel `ctest -L features`. The harness globbed
+  `kwin_pos_ants_*` temp files in the shared `QDir::tempPath()`, so a
+  concurrent test or a leftover file from a prior/killed run could
+  inflate the count and trip INV-5c; and INV-5c waited a fixed ~500 ms
+  for the async `QProcess` cleanup, which can lag past that deadline
+  when the CPU is saturated. The test now points `TMPDIR` at a
+  per-process `QTemporaryDir` (writer and scanner share the private
+  dir) and polls until the count returns to baseline with a ~5 s
+  ceiling. Production code unchanged. Test + spec under
+  `tests/features/kwin_position_tracker/`.
+- **ANTS-1433 (test)** — `cmdRoadmapLog`'s two-stage `QSaveFile`
+  commit (ROADMAP.md then `.roadmap-counter`) now rolls ROADMAP.md
+  back to its pre-splice content when the counter commit fails, so the
+  write is all-or-nothing — closing the "bullet got the new ID but the
+  counter still points one behind → duplicate IDs" desync. Adds a
+  test-only failure-injection seam (`setForceCounterCommitFailForTest`
+  + `cmdRoadmapLogAppendForTest`, with the append body split into
+  `cmdRoadmapLogAppend`) following the codebase's always-compiled
+  `*ForTest` convention rather than an `#ifdef` build flag, because
+  `remotecontrol.cpp` ships inside the shared `ants_core_lib`. Spec +
+  test `tests/features/mcp_roadmap_log_atomicity/` (3 INVs). v2
+  (the other 9 `QSaveFile` sites) deferred.
+
+### 📚 MCP cache + test-audit defensive docs — pull 42 (ANTS-1439, ANTS-1447, 2026-05-20)
+
+Two defensive observations resolved doc-only — writing down contracts
+before the next person re-derives them.
+
+- **ANTS-1439 (research)** — new `docs/standards/mcp-caches.md`
+  records how every MCP cache is keyed and how each behaves when a
+  project directory is relocated (the trigger was this workstation's
+  `/mnt/Storage → /mnt/Games` move). The invariant: a path-keyed cache
+  may go cold or leave orphans across a move but must never *shadow*
+  (serve the old path's data under the new path). The audit confirmed
+  no current cache shadows. Includes a cache inventory table and an
+  "adding a new cache" checklist; linked from CLAUDE.md. Stale-entry
+  GC + an opt-in `migrate-cwd` verb are deferred until a symptom is
+  reported.
+- **ANTS-1447 (enhancement)** — `docs/specs/ANTS-1397.md` INV-15 now
+  documents the `test_audit` deep-tree mtime gap as an accepted v1
+  limitation: the shallow recheck stats only the top-level
+  `test_globs` roots, so a file added in a deep subdir can leave
+  `brief` / `synth` stale within one partition TTL (bounded; never a
+  wrong answer about files the partition saw). v2 options enumerated
+  and left unscheduled under ANTS-1450.
+
 ### 🔒 MCP TabSpecific caller-cwd enforcement — pull 40 (ANTS-1415, 2026-05-20)
 
 Phase 3b of the per-tool `caller_cwd` contract (ANTS-1404 was Phase

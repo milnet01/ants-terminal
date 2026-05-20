@@ -409,6 +409,12 @@ Four shareable v1 standards at `docs/standards/`:
   input validation, resource state, caller-cwd contract, I/O, and
   dispatcher. Cite when adding or reusing a code in a new refusal
   site.
+- Sub-spec: [`mcp-caches.md`](docs/standards/mcp-caches.md)
+  (ANTS-1439) — keying + relocation contract for every MCP cache.
+  The invariant: a path-keyed cache may go cold or orphan across a
+  project move but must never *shadow* (serve the old path's data
+  under the new path). Inventory table + "adding a new cache"
+  checklist. Cite when adding any project-scoped cache.
 
 `coding.md`, `commits.md`, and `testing.md` are byte-identical to
 `/start-app`'s template at

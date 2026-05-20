@@ -143,11 +143,35 @@ Source-grep + behavioural where the harness can reach.
   temp file written by the tracker does NOT remain in the
   system temp dir after the failure-path lambda settles.
   Because `dbus-send` failure is delivered asynchronously
-  via a QProcess signal, the test must spin a bounded event
-  loop (e.g. `QTRY_VERIFY` with a 500 ms cap, or
-  `QEventLoop::processEvents` until a `kwin_pos_ants_*` glob
-  on the temp dir is empty) before asserting. Asserted by
-  the post-settle `kwin_pos_ants_*` glob being empty.
+  via a QProcess signal, the test spins a bounded event loop
+  (`QCoreApplication::processEvents` polling the
+  `kwin_pos_ants_*` glob, breaking the instant the count
+  returns to baseline, ~5 s ceiling) before asserting.
+  Asserted by the post-settle `kwin_pos_ants_*` glob being at
+  or below its pre-call baseline.
+
+## ANTS-1434 — flake hardening (2026-05-20)
+
+`KwinPositionTracker.Main` flaked under full-parallel `ctest -L
+features` (~774 tests) while passing in isolation. Two harness
+defects, both fixed without changing the production contract:
+
+1. **Shared-tempdir contamination.** INV-4b and INV-5c globbed
+   `kwin_pos_ants_*` in `QDir::tempPath()` (`/tmp`), shared with
+   every other test process and with leftovers from prior or
+   killed runs. The test now sets `TMPDIR` to a per-process
+   `QTemporaryDir` at entry; since the tracker writes via
+   `QDir::tempPath() + "/kwin_pos_ants_XXXXXX.js"` and the glob
+   reads the same `QDir::tempPath()`, both resolve to the private
+   dir and no external writer can perturb the count.
+
+2. **Fixed-deadline async wait.** INV-5c's cleanup is delivered
+   asynchronously (`QProcess::errorOccurred`). The old fixed
+   50×10 ms (~500 ms) spin could expire before the lambda fired
+   under CPU saturation, leaving the file counted as "leaked".
+   The wait now polls-until-clean with early break and a ~5 s
+   ceiling, so it is fast on the happy path and tolerant under
+   load while still failing if cleanup genuinely never happens.
 
 - **INV-6** No regression of the 0.7.12 indie-review TOCTOU
   fix: `QTemporaryFile` is still used inside

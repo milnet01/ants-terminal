@@ -13,6 +13,7 @@
 #include <QFileInfo>
 #include <QString>
 #include <QStringList>
+#include <QTemporaryDir>
 #include <QWidget>
 
 #include <cstdio>
@@ -60,7 +61,20 @@ QStringList tempEntriesByGlob(const QString &glob) {
 
 }  // namespace
 
-TEST(KwinPositionTracker, Main) {    const std::string headerPath = KWINPOS_H;
+TEST(KwinPositionTracker, Main) {
+    // ANTS-1434: isolate the kwin_pos_ants_* temp-file scans (INV-4b /
+    // INV-5c) from cross-test contamination under full-parallel `ctest
+    // -L features`. Point TMPDIR at a private dir so both the tracker's
+    // QTemporaryFile writes and the glob below resolve to it
+    // (QDir::tempPath() reads TMPDIR live on Unix). Without this, a
+    // concurrent test or a leftover file from a prior/killed run can
+    // inflate the absolute count and trip the failure-path assertion.
+    QTemporaryDir tmpIsolation;
+    ASSERT_TRUE(tmpIsolation.isValid())
+        << "could not create a private TMPDIR for isolation";
+    qputenv("TMPDIR", tmpIsolation.path().toUtf8());
+
+    const std::string headerPath = KWINPOS_H;
     const std::string sourcePath = KWINPOS_CPP;
     const std::string mainwinH   = MAINWINDOW_H;
     const std::string mainwinCpp = MAINWINDOW_CPP;
@@ -237,14 +251,20 @@ TEST(KwinPositionTracker, Main) {    const std::string headerPath = KWINPOS_H;
         QWidget dummy;
         KWinPositionTracker tracker(&dummy);
         tracker.setPosition(7, 7);
-        // Pump events so the QProcess errorOccurred / finished
-        // lambdas fire. Bounded loop, ~500 ms cap.
-        for (int i = 0; i < 50; ++i) {
+        // Pump events so the QProcess errorOccurred / finished lambdas
+        // fire and remove the temp file. ANTS-1434: poll-until-clean
+        // (early break the instant the count returns to baseline)
+        // rather than a fixed 500 ms spin — the async cleanup can lag
+        // past 500 ms when the CPU is saturated by the full-parallel
+        // suite, which is what produced the flake. ~5 s ceiling.
+        QStringList after = tempEntriesByGlob(
+            QStringLiteral("kwin_pos_ants_*"));
+        for (int i = 0; i < 500 && after.size() > before.size(); ++i) {
             QCoreApplication::processEvents(
                 QEventLoop::AllEvents, 10);
+            after = tempEntriesByGlob(
+                QStringLiteral("kwin_pos_ants_*"));
         }
-        const QStringList after = tempEntriesByGlob(
-            QStringLiteral("kwin_pos_ants_*"));
         // Restore PATH for any post-test work.
         setenv("PATH", savedPath.constData(), 1);
         if (after.size() > before.size()) {

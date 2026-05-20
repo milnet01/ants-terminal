@@ -6040,7 +6040,17 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: claudeintegration.
   Source: in-session-2026-05-16 (ANTS-1422 pull 3 follow-on)..
 
-- 📋 [ANTS-1434] **`KwinPositionTracker.Main` flakes on full-parallel `ctest -L features` runs.** Failure path: `tests/features/kwin_position_tracker/test_kwin_position_tracker.cpp:254` reports `[INV-5c] FAIL: 1 new temp files left behind on failure path` when run alongside the full feature suite (~774 tests in parallel); the same test passes consistently in isolation (`ctest -R KwinPositionTracker`). Root cause is almost certainly cross-test temp-dir contamination — INV-5c counts temp files in a shared tmpdir prefix and another test (or a prior run) leaves files behind that this scan picks up. Discovered while shipping ANTS-1428 Tiers 2+3 (2026-05-16). Fix: either scope the test's tmp-file scan to a process-specific subdir (`QTemporaryDir` per test) or run the failure-path check against a delta from a starting snapshot rather than an absolute count. Standalone re-run during ANTS-1428's verification cycle returned green, so this isn't urgent — but every flaky test is a tax on future bundle close-outs.
+- ✅ [ANTS-1434] **`KwinPositionTracker.Main` flakes on full-parallel `ctest -L features` runs.** Failure path: `tests/features/kwin_position_tracker/test_kwin_position_tracker.cpp:254` reports `[INV-5c] FAIL: 1 new temp files left behind on failure path` when run alongside the full feature suite (~774 tests in parallel); the same test passes consistently in isolation (`ctest -R KwinPositionTracker`). Root cause is almost certainly cross-test temp-dir contamination — INV-5c counts temp files in a shared tmpdir prefix and another test (or a prior run) leaves files behind that this scan picks up. Discovered while shipping ANTS-1428 Tiers 2+3 (2026-05-16). Fix: either scope the test's tmp-file scan to a process-specific subdir (`QTemporaryDir` per test) or run the failure-path check against a delta from a starting snapshot rather than an absolute count. Standalone re-run during ANTS-1428's verification cycle returned green, so this isn't urgent — but every flaky test is a tax on future bundle close-outs.
+  Shipped 2026-05-20 (Pull 41). Root cause was the harness, not the
+  production code: INV-4b / INV-5c globbed `kwin_pos_ants_*` in the
+  shared `QDir::tempPath()`, and INV-5c waited a fixed ~500 ms for the
+  async QProcess cleanup — which can lag past that under full-parallel
+  CPU saturation. Fix: the test now points `TMPDIR` at a per-process
+  `QTemporaryDir` (writer + scanner share the private dir, so no
+  concurrent test or leftover run can inflate the count) and polls
+  until the count returns to baseline with a ~5 s ceiling instead of a
+  fixed spin. Test + spec updated; full features suite 1251/1251 green
+  under `-j6`.
   Kind: fix.
   Lanes: tests, kwin_position_tracker.
   Source: in-session-2026-05-16 (ANTS-1428 close-out discovery).
@@ -6381,7 +6391,23 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: claudeintegration.
   Source: vestige-cc-feedback-2026-05-16.
 
-- 📋 [ANTS-1433] **Atomic-write rollback test seam — failure-injection coverage for `QSaveFile` paths, starting with `cmdRoadmapLog`'s two-stage commit.**
+- ✅ [ANTS-1433] **Atomic-write rollback test seam — failure-injection coverage for `QSaveFile` paths, starting with `cmdRoadmapLog`'s two-stage commit.**
+  **Shipped 2026-05-20 (Pull 41).** On a failed `.roadmap-counter`
+  commit, `cmdRoadmapLog` now restores `ROADMAP.md` to its pre-splice
+  content (`rollbackRoadmap`) so the two-stage write is all-or-nothing
+  — no more "bullet has the new ID but the counter still points one
+  behind → duplicate IDs". Test seam:
+  `setForceCounterCommitFailForTest` + `cmdRoadmapLogAppendForTest`
+  (the append body was split into `cmdRoadmapLogAppend` so the test
+  drives it without a MainWindow). Chose the codebase's
+  always-compiled `*ForTest` convention over the sketched
+  `ANTS_TEST_HOOKS` build flag — `remotecontrol.cpp` ships inside the
+  shared `ants_core_lib`, so a build define would leak into the main
+  binary. Spec + test
+  `tests/features/mcp_roadmap_log_atomicity/` (3 INVs: happy-path
+  control, counter integrity, ROADMAP rollback). 1251/1251 features
+  green. v2 (failure-injection for the other 9 `QSaveFile` sites)
+  deferred per spec.
   **Problem.** 2026-05-16 cross-project pattern from Vestige's
   /test-audit hand-off (Prompt 3): atomic-write paths in Vestige
   had zero failure-injection coverage. Vestige's CC scoped a
@@ -6515,7 +6541,16 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: remotecontrol, roadmap_query, ANTS-1428.
   Source: vestige-cc-feedback-2026-05-16.
 
-- 📋 [ANTS-1439] **Path-keyed MCP caches survive user-initiated project relocation (defensive sweep).**
+- ✅ [ANTS-1439] **Path-keyed MCP caches survive user-initiated project relocation (defensive sweep).**
+  **Shipped 2026-05-20 (Pull 42, doc-only).** Audit confirmed no
+  cache *shadows* across a relocation — every path-keyed cache is
+  either Cold (in-process; recompute on the new path) or Orphan
+  (per-cwd-SHA on disk; old bytes linger but are never served under
+  the new path). Documented the keying + relocation contract, the
+  full cache inventory table, and an "adding a new cache" checklist
+  in `docs/standards/mcp-caches.md` (new); linked from CLAUDE.md.
+  Deferred until a symptom is reported: stale-entry GC sweep + an
+  opt-in `migrate-cwd <old> <new>` verb.
   Vestige CC session 2026-05-16, defensive observation (not a bug Vestige hit): the user's repo moved `/mnt/Storage → /mnt/Games` on 2026-05-08. Any MCP cache that hashes by absolute path (`project_layout` ttl cache, `session_memory` tenant-hashes, `verify_changes` build cache) could carry stale entries from the old path while the new path starts cold.
   
   Audit checklist:
@@ -6695,7 +6730,16 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: audit_run, pathvalidation.
   Source: deferred from ANTS-1351 § 9 Q4 (cold-eyes loop 3 2026-05-17 security H-C).
 
-- 📋 [ANTS-1447] **`test_audit` mtime cache deep-tree gap.**
+- ✅ [ANTS-1447] **`test_audit` mtime cache deep-tree gap.**
+  **Shipped 2026-05-20 (Pull 42, doc-only).** Documented the gap as
+  an accepted v1 limitation in `docs/specs/ANTS-1397.md` INV-15: the
+  shallow recheck stats only the top-level `test_globs` roots, so a
+  file added in a deep subdir can leave `brief` / `synth` stale
+  within one partition TTL — bounded, and never a *wrong* answer
+  about files the partition saw, only a stale set missing a just-added
+  file. v2 options (inotify watch / recursive mtime aggregation /
+  accept-the-gap) enumerated and left unscheduled under ANTS-1450;
+  option (c) is the de facto v1 behaviour.
   ANTS-1397 INV-15 bounds the recheck to top-level test_globs roots
   + 5 s rate-limit. Adding a file in `tests/api/integration/` doesn't
   update `tests/`'s mtime → cache misses the invalidation; brief/synth

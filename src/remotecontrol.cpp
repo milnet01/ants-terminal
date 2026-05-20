@@ -2288,6 +2288,59 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
                      QStringLiteral("roadmap_log: no main window"));
     }
 
+    return cmdRoadmapLogAppend(req);
+}
+
+// ANTS-1433 — test-only failure-injection flag for the two-stage
+// QSaveFile commit in cmdRoadmapLogAppend. Default false; flipped only
+// via setForceCounterCommitFailForTest() from the
+// mcp_roadmap_log_atomicity feature test. No IPC/MCP verb reaches it,
+// so production attack surface is nil and the single always-false
+// branch it adds to the rare counter-commit path is free. Follows the
+// codebase's existing always-compiled *ForTest seam convention
+// (setVerifyInFlightForTest / cmdVerifyChangesWithRoot) rather than an
+// #ifdef build flag, because remotecontrol.cpp ships inside the shared
+// ants_core_lib — a build define would leak into the main binary.
+static bool g_forceCounterCommitFail = false;
+
+void RemoteControl::setForceCounterCommitFailForTest(bool on) {
+    g_forceCounterCommitFail = on;
+}
+
+// ANTS-1433 — test-only entry point. Drives the append path against a
+// synthetic caller_cwd (req must carry it) without a MainWindow,
+// mirroring cmdVerifyChangesWithRoot. See
+// tests/features/mcp_roadmap_log_atomicity/spec.md.
+QJsonDocument RemoteControl::cmdRoadmapLogAppendForTest(
+        const QJsonObject &req) {
+    return cmdRoadmapLogAppend(req);
+}
+
+// ANTS-1424 — append path, split out of cmdRoadmapLog (ANTS-1433) so a
+// test can drive it without the m_main guard. op-dispatch + m_main
+// guard stay in cmdRoadmapLog; everything from field validation onward
+// lives here.
+QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
+    auto rlErr = [](const QString &code, const QString &message) {
+        QJsonObject env;
+        env["ok"]    = false;
+        env["code"]  = code;
+        env["error"] = message;
+        if (code == QStringLiteral("missing_field") ||
+            code == QStringLiteral("no_roadmap")) {
+            QJsonObject ex;
+            ex[QStringLiteral("op")]         = QStringLiteral("append");
+            ex[QStringLiteral("caller_cwd")] = QStringLiteral("<your $PWD>");
+            ex[QStringLiteral("section")]    = QStringLiteral("<roadmap H2/H3 slug>");
+            ex[QStringLiteral("status")]     = QStringLiteral("planned");
+            ex[QStringLiteral("headline")]   = QStringLiteral("<one-line bullet headline>");
+            ex[QStringLiteral("kind")]       = QStringLiteral("implement");
+            ex[QStringLiteral("source")]     = QStringLiteral("<origin tag>");
+            env[QStringLiteral("example")] = ex;
+        }
+        return QJsonDocument(env);
+    };
+
     // ANTS-1424-INV-6: validate every required field before any IO.
     // Anchor for the source-scrape regression test.
     const QString callerRaw =
@@ -2629,16 +2682,42 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
                            "failed").arg(roadmapPath));
     }
 
-    // Counter rewrite.
+    // Counter rewrite. ANTS-1433: this is the second half of a
+    // two-stage commit — ROADMAP.md is already on disk above. If the
+    // counter commit fails here the state desyncs (the appended bullet
+    // carries newId but the counter still points one behind, so the
+    // next roadmap_log reuses newId → duplicate IDs). Roll ROADMAP.md
+    // back to its pre-splice content (`markdown`, captured before the
+    // splice) so the operation is all-or-nothing.
+    auto rollbackRoadmap = [&]() {
+        QSaveFile restore(roadmapPath);
+        if (!restore.open(QIODevice::WriteOnly | QIODevice::Text)) return;
+        const QByteArray orig = markdown.toUtf8();
+        if (restore.write(orig) == orig.size()) restore.commit();
+    };
     QSaveFile cw(counterPath);
     if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        rollbackRoadmap();
         return rlErr(QStringLiteral("counter_write_failed"),
             QStringLiteral("roadmap_log: could not open "
                            ".roadmap-counter for writing"));
     }
     const QByteArray cv =
         (QString::number(newId) + QChar('\n')).toUtf8();
-    if (cw.write(cv) != cv.size() || !cw.commit()) {
+    bool counterCommitted = (cw.write(cv) == cv.size());
+    if (counterCommitted) {
+        if (g_forceCounterCommitFail) {
+            // ANTS-1433 test seam: drop the staged temp file so the
+            // original .roadmap-counter is left untouched, exactly as a
+            // real QSaveFile::commit() failure would.
+            cw.cancelWriting();
+            counterCommitted = false;
+        } else {
+            counterCommitted = cw.commit();
+        }
+    }
+    if (!counterCommitted) {
+        rollbackRoadmap();
         return rlErr(QStringLiteral("counter_write_failed"),
             QStringLiteral("roadmap_log: atomic write of "
                            ".roadmap-counter failed"));
