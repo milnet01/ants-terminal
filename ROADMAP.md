@@ -7157,25 +7157,32 @@ suppression that survives line drift.
   Lanes: auditrunner, auditengine, auditdialog.
   Source: self-audit 2026-05-20; pairs with ANTS-1449.
 
-- 📋 [ANTS-1708] **Persistent fingerprint-keyed FP-suppression ledger
-  for static-audit findings.** `.audit_suppress` is line-grain (JSONL
-  `{key, rule, reason}`) and so breaks the moment code shifts lines —
-  the same drift that produced the 43 "spec↔code line-number" findings.
-  Findings already carry a stable content fingerprint (the
-  `[f0d00ba8…]` hex IDs in the report), and `baseline.json` already
-  stores fingerprints. Add a *learned-FP* ledger keyed by that
-  fingerprint (distinct from baseline, which is "everything at commit
-  X"): when the user (or the AI-triage stage) marks a finding
-  FALSE_POSITIVE, record `{fingerprint, rule, reason, ts}` and
-  auto-suppress matching findings on every later run, drift-resilient.
-  Mirror the prose-grain `falseposledger` (`.ants_review_falsepos.jsonl`)
-  the AI-review skills already use, and expose a `debt_sweep_defer`-style
-  MCP verb (`audit_dismiss`) to record verdicts from a Claude session.
-  **Layman:** when you tell the audit tool "that's not a real bug," it
-  should remember — and not re-report it next time, even after you edit
-  the file.
+- ✅ [ANTS-1708] **Persistent fingerprint-keyed FP-suppression ledger
+  for static-audit findings.** Shipped 2026-05-20. Confirmed the premise:
+  `computeDedup` hashes `file:line:checkId:title`, so `.audit_suppress`
+  (keyed by `dedupKey`) IS line-grain and loses its suppression the moment
+  code above a finding shifts its line. New module `auditfpledger.{h,cpp}`
+  (`ants::auditfp`, in `ants_core_lib` next to its sibling `falseposledger`):
+  a line-INDEPENDENT content fingerprint (`computeFingerprint` strips a
+  leading `<path>:<line>[:<col>]:` prefix, then hashes file+checkId+message,
+  16 hex) plus JSONL load / filter / atomic-append (0600) over
+  `<root>/.audit_cache/learned-fp.jsonl`. `AuditEngine::applyLearnedFp`-
+  `Suppressions` marks matching findings `suppressed = true` (does NOT drop —
+  surfaces in SARIF `suppressions[]`, mirroring `.audit_suppress`), shared by
+  the GUI dialog and the future headless `audit_run` path ([[ANTS-1706]]).
+  Wired into the dialog: `loadSuppressions` loads the ledger, the parse loop
+  honours it by fingerprint, and the GUI suppress action now records BOTH
+  `.audit_suppress` (line-grain) AND a learned-FP entry (drift-resilient).
+  Locked by `tests/features/audit_fp_ledger/` (INV-1..6: line-independence,
+  discrimination, round-trip, malformed-skip, dedup, filter-marks). The
+  `audit_dismiss` MCP verb (record a verdict from a CC session) is deferred
+  to [[ANTS-1713]] — mirrors `falseposledger`'s read-only-v1 posture; v1
+  recording is the GUI suppress action.
+  **Layman:** when you tell the audit tool "that's not a real bug," it now
+  remembers — and won't re-report it next time, even after you edit the file
+  and its line number changes.
   Kind: feature.
-  Lanes: auditengine, auditcache, falseposledger.
+  Lanes: auditengine, auditfpledger, auditdialog, tests.
   Source: self-audit 2026-05-20.
 
 - ✅ [ANTS-1709] **Grep-rule hygiene pass — framework-awareness,
@@ -7257,6 +7264,13 @@ suppression that survives line drift.
   Kind: audit-fix.
   Lanes: auditdialog.
   Source: self-audit 2026-05-20; found during ANTS-1710.
+
+- 📋 [ANTS-1713] **`audit_dismiss` MCP verb — record a learned-FP verdict from a Claude Code session.**
+  Deferred v2 of ANTS-1708 (which shipped the fingerprint-keyed ledger + GUI recording path). Expose a debt_sweep_defer-style MCP verb `audit_dismiss` that records a learned-FP verdict into `.audit_cache/learned-fp.jsonl` from a CC session: input {file, rule, message, reason} (server computes the fingerprint via ants::auditfp::computeFingerprint) or {fingerprint, rule, reason} directly. Write op → must route through RcGate (focused-tab match, confused-deputy guard) like other MCP writes, declare a CallerCwdContract (Required), and validate any path via PathValidation. The ledger append helper (ants::auditfp::appendEntry) already exists; this is the MCP wiring (tool registration in mainwindow.cpp, dispatch + contract in claudeintegration.cpp, schema). Mirrors falseposledger's read-only-v1 → richer-write-path-later trajectory.
+  **Layman:** Let Claude itself tell the audit tool "that finding isn't a real bug" so it's remembered — today only the pop-up audit window can record that.
+  Kind: feature.
+  Lanes: claudeintegration, auditfpledger, mcp.
+  Source: self-audit 2026-05-20; deferred from ANTS-1708.
 
 ### ⚡ Other improvements (performance, security, optimisations)
 

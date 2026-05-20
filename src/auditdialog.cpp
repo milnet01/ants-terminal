@@ -1,4 +1,5 @@
 #include "auditdialog.h"
+#include "auditfpledger.h"
 #include "audithygiene.h"
 #include "dialogchrome.h"
 #include "featurecoverage.h"
@@ -2666,6 +2667,13 @@ void AuditDialog::consolidateMypyStubHints(CheckResult &r) const {
 void AuditDialog::loadSuppressions() {
     m_suppressedKeys.clear();
     m_suppressionReasons.clear();
+
+    // ANTS-1708 — drift-resilient learned-FP ledger, loaded alongside the
+    // line-grain .audit_suppress. Keyed by content fingerprint so a learned
+    // false positive stays hidden after edits shift its line number.
+    m_learnedFpFingerprints = ants::auditfp::fingerprintSet(
+        ants::auditfp::loadEntries(m_projectPath));
+
     QFile f(suppressionPath());
     if (!f.open(QIODevice::ReadOnly)) return;
     const QStringList lines = QString::fromUtf8(f.readAll()).split('\n', Qt::SkipEmptyParts);
@@ -2855,6 +2863,19 @@ void AuditDialog::onResultAnchorClicked(const QUrl &url) {
 
     const QString ruleId = f.checkId.isEmpty() ? QStringLiteral("unknown") : f.checkId;
     saveSuppression(key, ruleId, reason);
+
+    // ANTS-1708 — also record a drift-resilient learned-FP entry keyed by the
+    // line-independent content fingerprint, so the suppression survives later
+    // edits that shift this finding's line (the .audit_suppress key would not).
+    if (!f.file.isEmpty()) {
+        ants::auditfp::Entry e;
+        e.fingerprint = ants::auditfp::computeFingerprint(
+            f.file, f.checkId, f.message);
+        e.rule   = ruleId;
+        e.reason = reason;
+        if (ants::auditfp::appendEntry(m_projectPath, e))
+            m_learnedFpFingerprints.insert(e.fingerprint);
+    }
 
     // 0.6.31 self-learning — record the suppression in the rule-quality
     // tracker AND check whether the LCS suggester now has enough samples
@@ -3946,6 +3967,19 @@ void AuditDialog::handleCheckOutput(const QString &output) {
         // user-facing render paths (results pane, HTML export, summary)
         // continue to filter on isSuppressed and never display them.
         f.suppressed = isSuppressed(f.dedupKey);
+        // ANTS-1708 — also honour the drift-resilient learned-FP ledger,
+        // keyed by line-independent content fingerprint.
+        if (!f.suppressed && !m_learnedFpFingerprints.isEmpty()) {
+            const QString fp = ants::auditfp::computeFingerprint(
+                f.file, f.checkId, f.message);
+            if (m_learnedFpFingerprints.contains(fp)) {
+                f.suppressed = true;
+                if (f.aiReasoning.isEmpty())
+                    f.aiReasoning = QStringLiteral(
+                        "learned false positive "
+                        "(.audit_cache/learned-fp.jsonl)");
+            }
+        }
         if (!applyPathRules(f)) continue;       // generated files + path rules
         if (allowlisted(f)) continue;           // project-local allowlist
         if (inlineSuppressed(f)) continue;      // inline // ants-audit: disable ...

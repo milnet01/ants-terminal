@@ -235,6 +235,8 @@ add_library(ants_core_lib STATIC
     # ANTS-1457 — false-positive ledger helper shared across
     # the three AI-reviewer brief-assembly paths.
     src/falseposledger.cpp
+    # ANTS-1708 — fingerprint-keyed learned-FP ledger for static audit.
+    src/auditfpledger.cpp
     src/coldeyesengine.cpp
     src/verifyengine.cpp
     src/verifytrust.cpp
@@ -1221,7 +1223,9 @@ if(ANTS_TESTS)
                 # ANTS-1615/1616/1617 — 2026-05-19 test_audit bundle fold-in.
                 tests/features/test_audit_bundle_2026_05_19/test_test_audit_bundle.cpp
                 # ANTS-1709 — centralised dir-exclusion set + openUrl idiom.
-                tests/features/audit_exclusion_set/test_audit_exclusion_set.cpp)
+                tests/features/audit_exclusion_set/test_audit_exclusion_set.cpp
+                # ANTS-1708 — fingerprint-keyed learned-FP ledger.
+                tests/features/audit_fp_ledger/test_audit_fp_ledger.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"

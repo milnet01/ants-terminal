@@ -1,5 +1,7 @@
 #include "auditengine.h"
 
+#include "auditfpledger.h"
+
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDebug>
@@ -367,6 +369,24 @@ void capFindings(CheckResult &r, int cap) {
     if (cap <= 0 || r.findings.size() <= cap) return;
     r.omittedCount = r.findings.size() - cap;
     r.findings.erase(r.findings.begin() + cap, r.findings.end());
+}
+
+int applyLearnedFpSuppressions(QList<Finding> &findings,
+                               const QSet<QString> &learnedFingerprints) {
+    if (learnedFingerprints.isEmpty()) return 0;
+    int marked = 0;
+    for (Finding &f : findings) {
+        if (f.suppressed) continue;
+        const QString fp = ants::auditfp::computeFingerprint(
+            f.file, f.checkId, f.message);
+        if (!learnedFingerprints.contains(fp)) continue;
+        f.suppressed = true;
+        if (f.aiReasoning.isEmpty())
+            f.aiReasoning = QStringLiteral(
+                "learned false positive (.audit_cache/learned-fp.jsonl)");
+        ++marked;
+    }
+    return marked;
 }
 
 // ANTS-1343 — see header comment. Pre-collapse `r.findings.size()` is

@@ -170,6 +170,15 @@ QString sourceForCheck(const QString &checkId);
 QString computeDedup(const QString &file, int line,
                      const QString &checkId, const QString &title);
 
+// ANTS-1708 — mark findings whose line-independent content fingerprint
+// (ants::auditfp::computeFingerprint) is in the learned-FP ledger set as
+// `suppressed = true`, recording `aiReasoning` as a "learned FP" note when it
+// is otherwise empty. Mirrors the .audit_suppress mark semantics (surfaces in
+// SARIF suppressions[] rather than dropping). Returns the count newly marked.
+// Shared by the GUI dialog and the headless audit_run path (ANTS-1706).
+int applyLearnedFpSuppressions(QList<Finding> &findings,
+                               const QSet<QString> &learnedFingerprints);
+
 // ANTS-1343 — mypy "Library stubs not installed" consolidator. When
 // `r.checkId == "mypy"` and ≥ 2 distinct missing stub packages are
 // present, collapse the per-package findings into a single synthetic

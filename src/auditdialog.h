@@ -288,6 +288,13 @@ private:
     // JSONL file at export time.
     QHash<QString, QString> m_suppressionReasons;
 
+    // ANTS-1708 — learned-FP fingerprints from
+    // <project>/.audit_cache/learned-fp.jsonl. Line-INDEPENDENT (survive line
+    // shifts that break the dedupKey-grain m_suppressedKeys). Loaded alongside
+    // .audit_suppress; a finding whose content fingerprint is in this set is
+    // marked suppressed regardless of which line it now sits on.
+    QSet<QString> m_learnedFpFingerprints;
+
     // Backward-compatibility lookup. Pre-0.7.29 dedup keys were 16 hex
     // chars (64-bit SHA-256 prefix); new keys are 24 hex chars (96 bits).
     // Match either: full key (post-0.7.29 saves) OR leading-16 prefix

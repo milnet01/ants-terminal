@@ -35,6 +35,21 @@ for security-relevant changes.
   Spec `docs/specs/ANTS-1358.md`; tests
   `tests/features/debt_sweep_engine/` (INV-14..INV-19).
 
+- **Fingerprint-keyed learned-FP ledger for static audit (ANTS-1708).**
+  `.audit_suppress` is keyed by `dedupKey` (`file:line:checkId:title`),
+  so a finding's suppression is lost the moment code above it shifts its
+  line. New `auditfpledger` module (`ants::auditfp`) adds a parallel,
+  drift-resilient ledger at `.audit_cache/learned-fp.jsonl` keyed by a
+  **line-independent** content fingerprint (strips the location prefix
+  before hashing). `AuditEngine::applyLearnedFpSuppressions` marks
+  matching findings suppressed (surfaced in SARIF `suppressions[]`, not
+  dropped) and is shared by the GUI dialog and the future headless
+  `audit_run` path (ANTS-1706). The dialog's suppress action now records
+  both `.audit_suppress` (line-grain) and the learned-FP ledger
+  (drift-resilient). Locked by `tests/features/audit_fp_ledger/`
+  (INV-1..6). The `audit_dismiss` MCP verb to record a verdict from a
+  Claude Code session is deferred to ANTS-1713.
+
 ### Fixed
 
 - **Project Audit false positives (ANTS-1707).** The `header_guards`

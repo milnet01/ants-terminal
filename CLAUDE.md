@@ -71,6 +71,19 @@ Listed only where behavior isn't obvious from the name.
   `prior_false_positives` array (test-audit). Fence-hardening
   mirrors ANTS-1352. Distinct from line-grain `.audit_suppress`
   which `auditdialog` owns for static-analyser findings. ANTS-1457.
+- `auditfpledger` (Qt6::Core only; in `ants_core_lib`) — fingerprint-
+  keyed learned-FP ledger for *static-audit* findings (the code-grain
+  sibling of `falseposledger`'s prose-grain ledger). `computeFingerprint`
+  is line-INDEPENDENT (strips a `<path>:<line>[:<col>]:` prefix before
+  hashing file+checkId+message → 16 hex), so a learned FP survives the
+  line shifts that break the `dedupKey`-grain `.audit_suppress`. Loads /
+  filters / atomic-appends `<root>/.audit_cache/learned-fp.jsonl`.
+  `AuditEngine::applyLearnedFpSuppressions` consumes the fingerprint set
+  to MARK findings `suppressed` (SARIF `suppressions[]`, not dropped) —
+  shared by `auditdialog` and the headless `audit_run` path (ANTS-1706).
+  The dialog suppress action records to BOTH this ledger and
+  `.audit_suppress`. `audit_dismiss` MCP verb deferred to ANTS-1713.
+  ANTS-1708.
 - `featurecoverage` — in-process audit lanes via `AuditCheck::inProcessRunner`
   (no QProcess). Two in-process: `spec_code_drift`,
   `changelog_test_coverage`. Plus `test_health`, which is implemented
