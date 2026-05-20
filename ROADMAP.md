@@ -7089,6 +7089,115 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: auditengine.
   Source: in-session-2026-05-18 Bundle G observation.
 
+### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
+
+Ran the project's own `ants-audit` CLI against this repo (~300 findings,
+report `/tmp/ants-audit-nLCOvm.txt`). Triage: **zero genuine
+source-code defects** — every finding was noise. The signal here is the
+*shape* of the noise, which exposes where the audit tool's FP handling
+needs work. Two slam-dunk FP bugs fixed inline (ANTS-1707); the rest is
+research-grounded strategy below. Key realisation: the GUI AuditDialog
+already has strong FP machinery (fingerprint **baseline** /
+"New since baseline", **AI-triage** TRUE/FALSE_POSITIVE verdicts with
+confidence caps, the full drop/dedup/comment-strip pipeline), but the
+**headless CLI / MCP `audit_run` path that produced this report bypasses
+all of it** — it dumps raw aggregated findings. So the highest-leverage
+fixes are about *parity* (run the dialog's pipeline headlessly) and
+*persistence* (remember dismissed findings across runs).
+
+Research consulted (2026): SonarQube/GitHub "new-code baseline" model
+(surface only post-baseline findings); custom framework-aware rules are
+the single highest-impact FP lever (untuned SAST 30-60% FP → tuned
+10-20%); LLM-assisted FP filtering (Datadog; ZeroFalse; arXiv studies
+report initial FP rates 92% → as low as 6%); fingerprint/data-flow
+suppression that survives line drift.
+
+- ✅ [ANTS-1707] **Audit FP fixes — `#pragma once` whole-file match +
+  build-dir glob exclusion.** Shipped 2026-05-20. Two verified
+  FP-generators in `auditdialog.cpp` killed: (a) the `header_guards`
+  rule used `head -30` to find a guard, so the three engine headers
+  (`testauditengine.h`, `coldeyesengine.h`, `indiereviewengine.h`) whose
+  `#pragma once` sits at line 38-44 behind a long doc comment were
+  flagged as unguarded — now greps the whole file for `#pragma once`
+  (positionally unambiguous) and keeps a 50-line window only for the
+  traditional `#ifndef` form; (b) the two cppcheck checks enumerated
+  build-dir exclusions statically (`-i build -i build-asan …`) and had
+  silently missed `build-fast`/`build-workstation`, so cppcheck scanned
+  `build-fast/_deps/googletest-src/` → ~53 vendored false positives —
+  now generates one `-i` per existing `build*` dir at run time so new
+  presets self-exclude. Verified: the 3 headers no longer flag, an
+  unguarded header still does, the glob expands to include build-fast.
+  **Layman:** the audit tool was crying wolf about its own
+  correctly-guarded headers and about Google Test code in a build
+  folder; both fixed.
+  Kind: audit-fix.
+  Lanes: auditdialog.
+  Source: self-audit 2026-05-20.
+
+- 📋 [ANTS-1706] **Headless audit FP-parity — run the AuditDialog
+  filter + baseline + AI-triage pipeline in `ants-audit` CLI / MCP
+  `audit_run`.** The report that triggered this section came from the
+  headless generator, which emits raw aggregated findings: no
+  baseline-diff, no `.audit_suppress`/comment-strip/dedup beyond the
+  basics, no AI-triage verdict, no confidence floor. The GUI applies all
+  of these. Wire the same `AuditEngine` pipeline (already extracted,
+  Qt6::Core-only) into the headless path so a CLI/MCP run defaults to:
+  (i) baseline-diff "new since `.audit_cache/baseline.json`" when a
+  baseline exists, (ii) an optional confidence floor (hide `conf < N`),
+  (iii) the AI-triage stage (below). This is the single biggest FP
+  reduction available and largely overlaps **ANTS-1449** (audit_run v2 —
+  real per-tool parsers + config-table pipeline); treat 1449 as the
+  vehicle. Add a `--new-only` / `baseline` arg to the CLI and an
+  `audit_run` option mirroring it.
+  **Layman:** the pop-up audit window already hides most of the noise;
+  the command-line/Claude version doesn't — give it the same filters.
+  Kind: enhancement.
+  Lanes: auditrunner, auditengine, auditdialog.
+  Source: self-audit 2026-05-20; pairs with ANTS-1449.
+
+- 📋 [ANTS-1708] **Persistent fingerprint-keyed FP-suppression ledger
+  for static-audit findings.** `.audit_suppress` is line-grain (JSONL
+  `{key, rule, reason}`) and so breaks the moment code shifts lines —
+  the same drift that produced the 43 "spec↔code line-number" findings.
+  Findings already carry a stable content fingerprint (the
+  `[f0d00ba8…]` hex IDs in the report), and `baseline.json` already
+  stores fingerprints. Add a *learned-FP* ledger keyed by that
+  fingerprint (distinct from baseline, which is "everything at commit
+  X"): when the user (or the AI-triage stage) marks a finding
+  FALSE_POSITIVE, record `{fingerprint, rule, reason, ts}` and
+  auto-suppress matching findings on every later run, drift-resilient.
+  Mirror the prose-grain `falseposledger` (`.ants_review_falsepos.jsonl`)
+  the AI-review skills already use, and expose a `debt_sweep_defer`-style
+  MCP verb (`audit_dismiss`) to record verdicts from a Claude session.
+  **Layman:** when you tell the audit tool "that's not a real bug," it
+  should remember — and not re-report it next time, even after you edit
+  the file.
+  Kind: feature.
+  Lanes: auditengine, auditcache, falseposledger.
+  Source: self-audit 2026-05-20.
+
+- 📋 [ANTS-1709] **Grep-rule hygiene pass — framework-awareness,
+  centralized exclusion set, per-rule fixtures.** Research names
+  framework-aware custom rules as the highest-impact FP lever. The
+  `header_guards` (`#pragma once`) and `Qt openUrl Without Scheme Check`
+  (hardcoded `https://`/`fromLocalFile` literals) FPs are the visible
+  class: grep/find rules that don't model the framework idiom. (a) Sweep
+  every hardcoded `addFindCheck`/grep rule + `audit_rules.json` entry
+  for idiom blind spots and tighten the regexes. (b) Root-cause the
+  `build-fast` miss (ANTS-1707) by centralising the build/vendored/
+  generated exclusion set into ONE source of truth shared across the
+  find rules, cppcheck `-i`, clazy, and grep `--exclude-dir` — today
+  each enumerates its own list and they drift. (c) Give each grep rule a
+  `tests/audit_fixtures/<rule>/{good,bad}.*` pair (the harness exists)
+  so a future regex tweak can't silently regress, and lock the
+  `#pragma once` + `openUrl` cases as fixtures.
+  **Layman:** teach the audit rules the project's own conventions so
+  they stop flagging correct, idiomatic code — and add tests so the
+  rules can't quietly break again.
+  Kind: audit-fix.
+  Lanes: auditdialog, auditengine, audit_rules.json, tests.
+  Source: self-audit 2026-05-20.
+
 ### ⚡ Other improvements (performance, security, optimisations)
 
 Items surfaced by the audit cycle that aren't tied to a single

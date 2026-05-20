@@ -1113,16 +1113,18 @@ void AuditDialog::populateChecks() {
             // surfaces a real code bug, only a tool-noise annoyance, so we
             // silence the category globally.
             " --suppress=invalidSuppression"
-            // Exclude every build-dir variant (build, build-asan, build-fix,
-            // build-release, …). The 2026-04-16 triage found cppcheck was
-            // parsing moc_*.cpp files in build-asan/ and tripping on their
-            // `#error "This file was generated using moc from 6.11.0"`
-            // banners, which surfaced as spurious Dead Code / Compiler
-            // Warning findings and likely drove the 30s timeout on the
-            // latter. cppcheck's -i takes a path prefix so build-* is
-            // spelled as separate flags for each known variant.
-            " -i build -i build-asan -i build-debug -i build-fix -i build-release -i build-test"
-            " -i node_modules -i .audit_cache"
+            // Exclude every build-dir variant. The 2026-04-16 triage found
+            // cppcheck parsing moc_*.cpp in build-asan/ and tripping on
+            // their `#error "...generated using moc..."` banners. cppcheck's
+            // -i takes a path prefix and can't glob, and the old static
+            // enumeration silently missed newer presets — 2026-05-20
+            // (ANTS-1707) a self-audit found cppcheck scanning
+            // build-fast/_deps/googletest-src/ (~53 vendored false
+            // positives) because build-fast wasn't listed. Generate one -i
+            // per existing `build*` dir at run time so new presets are
+            // auto-excluded without another edit here.
+            " $(for d in build build-* node_modules .audit_cache; do"
+            " [ -d \"$d\" ] && printf -- '-i %s ' \"$d\"; done)"
             " -j$(nproc) . 2>&1 | head -100",
             CheckType::Bug, Severity::Major, { {}, "", {}, 100 },
             toolExists("cppcheck"), toolExists("cppcheck"), nullptr
@@ -1135,16 +1137,18 @@ void AuditDialog::populateChecks() {
             " --suppress=missingInclude --suppress=missingIncludeSystem"
             " --suppress=unmatchedSuppression --suppress=unknownMacro"
             " --suppress=invalidSuppression"
-            // Exclude every build-dir variant (build, build-asan, build-fix,
-            // build-release, …). The 2026-04-16 triage found cppcheck was
-            // parsing moc_*.cpp files in build-asan/ and tripping on their
-            // `#error "This file was generated using moc from 6.11.0"`
-            // banners, which surfaced as spurious Dead Code / Compiler
-            // Warning findings and likely drove the 30s timeout on the
-            // latter. cppcheck's -i takes a path prefix so build-* is
-            // spelled as separate flags for each known variant.
-            " -i build -i build-asan -i build-debug -i build-fix -i build-release -i build-test"
-            " -i node_modules -i .audit_cache"
+            // Exclude every build-dir variant. The 2026-04-16 triage found
+            // cppcheck parsing moc_*.cpp in build-asan/ and tripping on
+            // their `#error "...generated using moc..."` banners. cppcheck's
+            // -i takes a path prefix and can't glob, and the old static
+            // enumeration silently missed newer presets — 2026-05-20
+            // (ANTS-1707) a self-audit found cppcheck scanning
+            // build-fast/_deps/googletest-src/ (~53 vendored false
+            // positives) because build-fast wasn't listed. Generate one -i
+            // per existing `build*` dir at run time so new presets are
+            // auto-excluded without another edit here.
+            " $(for d in build build-* node_modules .audit_cache; do"
+            " [ -d \"$d\" ] && printf -- '-i %s ' \"$d\"; done)"
             " . 2>&1 | head -50",
             CheckType::CodeSmell, Severity::Minor, { {}, "", {}, 50 },
             false, toolExists("cppcheck"), nullptr
@@ -1194,21 +1198,22 @@ void AuditDialog::populateChecks() {
         });
 
         // 2026-04-17: widened from `head -5` + `_H` suffix to `head -30` +
-        // any `#ifndef <token>`. The 2026-04-16 Vestige triage caught 20/20
-        // headers as "missing guard" when they all had `#pragma once` on
-        // line 1 — the project's CODING_STANDARDS.md mandates the pragma
-        // form, which the old regex recognised, but copyright/include blocks
-        // at the top of some headers pushed `#pragma once` past line 5. The
-        // 30-line window is generous and still cheap; the `_H` suffix
-        // requirement was also wrong (macro conventions vary — `FOO_HPP`,
-        // `FOO_GUARD`, `__FOO__` all count as a valid traditional guard).
+        // any `#ifndef <token>`. 2026-05-20 (ANTS-1707): self-audit caught
+        // testauditengine.h / coldeyesengine.h / indiereviewengine.h as
+        // "missing guard" — all three carry `#pragma once`, but a long
+        // top-of-file doc comment pushed it past line 30. `#pragma once` is
+        // positionally unambiguous, so match it ANYWHERE in the file; only
+        // the traditional `#ifndef` form needs to live near the top (it must
+        // precede real code), so keep a generous 50-line window for that.
+        // The `_H` suffix requirement was also wrong (macro conventions vary
+        // — `FOO_HPP`, `FOO_GUARD`, `__FOO__` all count as a valid guard).
         addFindCheck("header_guards", "Missing Header Guards",
                      "Headers without #pragma once or ifndef guard", "C/C++",
                      "\\( -name '*.h' -o -name '*.hpp' -o -name '*.hxx'"
                      " -o -name '*.hh' \\) -type f | while read f; do"
-                     " head -30 \"$f\""
-                     " | grep -qE '(#pragma[[:space:]]+once"
-                     "|^[[:space:]]*#ifndef[[:space:]]+[A-Za-z_][A-Za-z0-9_]*)'"
+                     " grep -qE '#pragma[[:space:]]+once' \"$f\""
+                     " || head -50 \"$f\""
+                     " | grep -qE '^[[:space:]]*#ifndef[[:space:]]+[A-Za-z_][A-Za-z0-9_]*'"
                      " || echo \"$f\"; done | head -20",
                      CheckType::Bug, Severity::Major, false);
 

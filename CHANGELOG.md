@@ -35,6 +35,19 @@ for security-relevant changes.
   Spec `docs/specs/ANTS-1358.md`; tests
   `tests/features/debt_sweep_engine/` (INV-14..INV-19).
 
+### Fixed
+
+- **Project Audit false positives (ANTS-1707).** The `header_guards`
+  rule now greps the whole file for `#pragma once` (it previously only
+  scanned the first 30 lines, so headers whose pragma sits behind a long
+  doc comment were wrongly flagged as unguarded). The two cppcheck
+  checks now generate their build-dir exclusions from the existing
+  `build*` directories at run time instead of a static list that had
+  silently missed `build-fast`/`build-workstation` — cppcheck was
+  scanning vendored `build-fast/_deps/googletest-src/` and emitting ~53
+  false positives. Broader audit FP-reduction work is roadmapped
+  (ANTS-1706/1708/1709).
+
 ### Changed
 
 - **Audit library split (ANTS-1444, Pull 44).** `auditdialog.cpp` (the
