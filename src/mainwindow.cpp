@@ -3766,6 +3766,18 @@ void MainWindow::setupClaudeMcpProviders() {
     static constexpr const char *kRcUnavailable =
         ClaudeIntegration::kMcpRcUnavailable;
 
+    // ANTS-1301 — recent_errors. Scans the focused terminal's recent
+    // scrollback for structured errors (compiler/lint/lua/test/python).
+    // TabSpecific like get_text/get_scrollback; delegates to
+    // RemoteControl::cmdRecentErrors. See docs/specs/ANTS-1301.md.
+    m_claudeIntegration->registerToolProvider("recent_errors",
+        ClaudeIntegration::CallerCwdContract::TabSpecific,
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdRecentErrors(args).toJson(QJsonDocument::Compact));
+        });
+
     m_claudeIntegration->registerToolProvider("get_scrollback",
         ClaudeIntegration::CallerCwdContract::TabSpecific,
         [this](const QJsonObject &args) -> QString {

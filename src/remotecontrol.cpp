@@ -15,6 +15,7 @@
 #include "projectlayoutengine.h"
 #include "remotecontrolgate.h"
 #include "resolvedroot.h"
+#include "scrollbackerrors.h"
 #include "sessionmemoryengine.h"
 #include "symbolquery.h"
 #include "tokenusageengine.h"
@@ -1066,6 +1067,61 @@ QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
         out["lines_dropped"] = trim.linesDropped;
     }
     if (trim.capClamped) out["bytes_cap_clamped"] = true;
+    return QJsonDocument(out);
+}
+
+QJsonDocument RemoteControl::cmdRecentErrors(const QJsonObject &req) {
+    // ANTS-1301 — scan the focused terminal's recent scrollback for
+    // structured errors. Terminal resolution mirrors cmdGetText
+    // (ANTS-1392): explicit `tab` int → terminalAtTab; else caller_cwd
+    // → terminalForCaller → focused fallback. MCP-only.
+    QJsonObject out;
+    TerminalWidget *target = nullptr;
+    const QJsonValue tabVal = req.value(QStringLiteral("tab"));
+    if (tabVal.isDouble()) {
+        target = m_main->terminalAtTab(tabVal.toInt());
+    } else {
+        target = m_main->terminalForCaller(
+            req.value(QStringLiteral("caller_cwd")).toString());
+    }
+    if (!target) {
+        out["ok"]    = false;
+        out["error"] = QStringLiteral("recent_errors: no terminal to read");
+        out["code"]  = QStringLiteral("no_window");
+        return QJsonDocument(out);
+    }
+
+    int lines = 500;
+    const QJsonValue linesVal = req.value(QStringLiteral("lines"));
+    if (linesVal.isDouble()) {
+        const int requested = linesVal.toInt();
+        if (requested > 0) lines = std::min(requested, 10000);
+    }
+
+    ScrollbackErrors::Options opts;
+    const QJsonValue mr = req.value(QStringLiteral("max_results"));
+    if (mr.isDouble()) opts.maxResults = mr.toInt();  // lib clamps ≤0 / >1000
+
+    const ScrollbackErrors::Result res =
+        ScrollbackErrors::parse(target->recentOutput(lines), opts);
+
+    QJsonArray errors;
+    for (const ScrollbackErrors::ErrorEntry &e : res.errors) {
+        QJsonObject o;
+        o["category"] = e.category;
+        if (!e.file.isEmpty()) o["file"]   = e.file;
+        if (e.line   > 0)      o["line"]   = e.line;
+        if (e.column > 0)      o["column"] = e.column;
+        o["message"] = e.message;
+        o["text"]    = e.text;
+        errors.append(o);
+    }
+
+    out["ok"]            = true;
+    out["errors"]        = errors;
+    out["errors_count"]  = res.errorsTotal;
+    out["lines_scanned"] = res.linesScanned;
+    out["truncated"]     = res.truncated;
     return QJsonDocument(out);
 }
 

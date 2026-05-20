@@ -269,6 +269,13 @@ public:
     QJsonDocument cmdTabList();
     QJsonDocument cmdGetText(const QJsonObject &req);
 
+    // ANTS-1301: recent_errors — scan the focused terminal's recent
+    // scrollback with a per-language regex bank (ScrollbackErrors) and
+    // return structured errors[]. Resolves the terminal exactly as
+    // cmdGetText. MCP-only (no IPC dispatch verb, like get_scrollback).
+    // See docs/specs/ANTS-1301.md.
+    QJsonDocument cmdRecentErrors(const QJsonObject &req);
+
     // ANTS-1248: ripgrep wrapper. Public for the same reason as the
     // ANTS-1244 trio — MCP server lambda in MainWindow delegates here
     // so the body is reused across IPC + MCP transports. Argv-only

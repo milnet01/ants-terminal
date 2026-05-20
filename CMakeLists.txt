@@ -224,6 +224,8 @@ add_library(ants_core_lib STATIC
     src/fileoutline.cpp
     # ANTS-1303 — find_definition / find_caller tree-wide symbol scanner.
     src/symbolquery.cpp
+    # ANTS-1301 — recent_errors scrollback error parser.
+    src/scrollbackerrors.cpp
     src/gitwrap.cpp
     src/indiereviewengine.cpp
     src/debtsweepengine.cpp
@@ -1032,7 +1034,9 @@ if(ANTS_TESTS)
                 # ANTS-1300 test_results MCP tool.
                 tests/features/mcp_test_results/test_mcp_test_results.cpp
                 # ANTS-1303 find_definition + find_caller MCP tools.
-                tests/features/mcp_symbol_query/test_mcp_symbol_query.cpp)
+                tests/features/mcp_symbol_query/test_mcp_symbol_query.cpp
+                # ANTS-1301 recent_errors scrollback error extraction.
+                tests/features/mcp_recent_errors/test_mcp_recent_errors.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.

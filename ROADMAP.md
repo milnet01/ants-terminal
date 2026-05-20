@@ -12854,17 +12854,26 @@ expected token-leverage per implementation hour.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1301] **`recent_errors` MCP — extract compile/test/runtime
-  errors from scrollback.** Whenever the user just ran a command in
-  the terminal that emitted compile errors / test failures / runtime
-  panics / linter complaints, Claude has to either re-run the command
-  or `get_text` the whole scrollback. New MCP scans the most recent
-  N lines of the focused terminal's scrollback with project-aware
-  regex (gcc `error:` lines, ctest `FAILED:` blocks, ruff/bandit
-  `SOMETHING: msg`, Python tracebacks, Lua stack frames) and returns
-  a structured `errors[]` list with file:line + message + category.
-  Saves the "let me check what just happened" round trip — often
-  ~2–5 K of scrollback to re-derive.
+- ✅ [ANTS-1301] **`recent_errors` MCP — extract compile/test/runtime
+  errors from scrollback.** Shipped 2026-05-20 (Pull 36). Whenever the
+  user just ran a command that emitted compile errors / test failures
+  / runtime panics / linter complaints, Claude had to either re-run
+  the command or `get_text` the whole scrollback. New Qt6::Core-only
+  `ScrollbackErrors` lib (`src/scrollbackerrors.{h,cpp}`) scans the
+  most recent N lines (default 500) of the focused terminal's
+  scrollback with a per-language regex bank — GCC/clang `error:`,
+  ruff/flake8 `file:line:col: CODE`, `lua: file:line:`, ctest
+  `(Failed)`/`***Failed`, and multi-line Python tracebacks (collapsed
+  to one entry, deepest frame + exception line) — and returns a
+  structured `errors[]` (`{category, file?, line?, column?, message,
+  text}`) plus `errors_count` / `lines_scanned` / `truncated`.
+  First-match-wins ordering; cap 50 (keeps the newest). The MCP tool
+  is `TabSpecific` (mirrors `get_text`/`get_scrollback` — reads the
+  focused terminal; MCP-only, no IPC verb), reuses the `no_window`
+  refusal code. Saves the "let me check what just happened" round
+  trip — often ~2–5 K of scrollback to re-derive. Spec
+  `docs/specs/ANTS-1301.md` (cold-eyes 2 loops); tests
+  `tests/features/mcp_recent_errors/`. Full suite 1227/1227.
   **Layman:** Claude can ask "what just went wrong in this terminal?"
   and get the structured errors back without paging through
   thousands of lines of output.

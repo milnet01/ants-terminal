@@ -1990,6 +1990,67 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(getTextTool);
 
+                // ANTS-1301 — recent_errors: scan recent scrollback for
+                // structured compile/test/runtime errors.
+                {
+                    QJsonObject t;
+                    t["name"] = "recent_errors";
+                    t["description"] = QStringLiteral(
+                        "Scan the most recent N lines of a terminal's "
+                        "scrollback for structured errors — GCC/clang "
+                        "`error:`, ruff/flake8 `file:line:col: CODE`, "
+                        "`lua: file:line:`, ctest `(Failed)`/`***Failed`, "
+                        "and Python tracebacks. Returns {ok, errors:["
+                        "{category, file?, line?, column?, message, "
+                        "text}], errors_count, lines_scanned, "
+                        "truncated}. `category` is compiler/lint/lua/"
+                        "test/python. Use instead of re-running the "
+                        "command or `get_text`-ing the whole buffer to "
+                        "answer \"what just went wrong in this "
+                        "terminal?\". Optional `tab` (explicit index), "
+                        "`caller_cwd` (anchors to your tab when `tab` "
+                        "is omitted), `lines` (default 500, cap 10000), "
+                        "`max_results` (default 50, cap 1000 — keeps the "
+                        "newest when capped). Refuses `no_window` when "
+                        "no terminal resolves.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Reach for this right after a build/test/lint "
+                        "command fails — far cheaper than get_text + "
+                        "eyeballing. For the structured ctest summary "
+                        "of a recorded run, prefer test_results.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p; p["type"] = "integer";
+                        p["description"] = QStringLiteral(
+                            "Explicit tab index. Omit to use your own "
+                            "tab (via caller_cwd) or the focused tab.");
+                        props["tab"] = p;
+                    }
+                    {
+                        QJsonObject p; p["type"] = "integer";
+                        p["default"] = 500;
+                        p["description"] = QStringLiteral(
+                            "Trailing scrollback lines to scan "
+                            "(default 500, cap 10000).");
+                        props["lines"] = p;
+                    }
+                    {
+                        QJsonObject p; p["type"] = "integer";
+                        p["description"] = QStringLiteral(
+                            "Cap on errors[] (default 50, cap 1000); "
+                            "the newest are kept when capped. "
+                            "errors_count carries the pre-cap total.");
+                        props["max_results"] = p;
+                    }
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-1248: workspace_search — ripgrep wrapper. The
                 // schema declares all 7 spec args and marks `pattern`
                 // as required. The description names the alternative
@@ -5144,6 +5205,8 @@ void ClaudeIntegration::onMcpConnection() {
                         {QStringLiteral("get_environment"),   {300,  800}},
                         {QStringLiteral("get_scrollback"),    {1500, 8000}},
                         {QStringLiteral("get_text"),          {1200, 6000}},
+                        // Scrollback error extraction (ANTS-1301).
+                        {QStringLiteral("recent_errors"),     {800,  4000}},
                         // Repo / docs.
                         {QStringLiteral("roadmap_query"),     {1700, 12000}},
                         {QStringLiteral("roadmap_log"),       {200,  600}},
@@ -5263,7 +5326,9 @@ void ClaudeIntegration::onMcpConnection() {
                         name == QLatin1String("find_caller"))
                         return QStringLiteral("symbol");
                     if (name.startsWith(QStringLiteral("get_")) ||
-                        name == QLatin1String("tab_list"))
+                        name == QLatin1String("tab_list") ||
+                        // ANTS-1301 — reads terminal scrollback.
+                        name == QLatin1String("recent_errors"))
                         return QStringLiteral("terminal");
                     if (name == QLatin1String("tool_info") ||
                         name == QLatin1String("token_usage") ||
@@ -5882,6 +5947,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // need their own spec pass before refusal makes sense.
     if (toolName == QStringLiteral("get_scrollback"))     return C::TabSpecific;
     if (toolName == QStringLiteral("get_text"))           return C::TabSpecific;
+    // ANTS-1301 — reads the focused terminal's scrollback.
+    if (toolName == QStringLiteral("recent_errors"))      return C::TabSpecific;
     if (toolName == QStringLiteral("get_last_command"))   return C::TabSpecific;
     if (toolName == QStringLiteral("get_environment"))    return C::TabSpecific;
     if (toolName == QStringLiteral("get_cwd"))            return C::TabSpecific;

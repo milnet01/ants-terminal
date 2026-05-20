@@ -12,6 +12,37 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP scrollback error extraction — pull 36 (ANTS-1301, 2026-05-20)
+
+A read-only MCP tool that answers "what just went wrong in this
+terminal?" by scanning the focused terminal's recent scrollback for
+structured errors — instead of re-running the command or `get_text`-ing
+the whole buffer and re-deriving the structure by eye. Backed by a new
+Qt6::Core-only `ScrollbackErrors` parser (`src/scrollbackerrors.{h,cpp}`).
+
+- **ANTS-1301 (implement)** — `recent_errors` MCP tool. Input
+  `{caller_cwd?, tab?, lines?, max_results?}`; reads the focused
+  terminal's trailing scrollback (resolution mirrors `get_text` /
+  ANTS-1392 — explicit `tab` or `caller_cwd`-anchored or focused
+  fallback, default 500 lines, cap 10000) and runs a per-language
+  regex bank: GCC/clang `file:line:col: error:`, ruff/flake8
+  `file:line:col: CODE msg`, `lua: file:line: msg`, ctest
+  `N - name (Failed)` / `***Failed` markers, and multi-line Python
+  tracebacks (collapsed to one entry — deepest frame for file:line,
+  the exception line for the message; chained tracebacks emit one
+  each). Returns `{ok, errors:[{category, file?, line?, column?,
+  message, text}], errors_count, lines_scanned, truncated}` with
+  `category` ∈ compiler/lint/lua/test/python. Classification is
+  first-match-wins per line; `errors[]` is capped at `max_results`
+  (default 50, cap 1000) keeping the **newest** when capped, with
+  `errors_count` carrying the pre-cap total. `TabSpecific`-contract
+  (mirrors `get_text`/`get_scrollback`); MCP-only (no IPC verb);
+  buckets as `[terminal]`; token-cost `(800, 4000)`; reuses the
+  `no_window` refusal code. Spec `docs/specs/ANTS-1301.md`
+  (cold-eyes-reviewed, 2 loops); tests
+  `tests/features/mcp_recent_errors/` (live parser across all five
+  categories + source-grep wiring). Full feature suite 1227/1227 green.
+
 ### 🔌 MCP symbol queries — pull 35 (ANTS-1303, 2026-05-20)
 
 Two new read-only MCP tools (plus matching `find-definition` /
