@@ -118,21 +118,22 @@ for security-relevant changes.
   recursive-mtime / token-recompute / byte-cap-cascade items of ANTS-1450
   remain open.
 
-- **Hot-path regex hoisting (ANTS-1647).** A fresh
-  `clazy-standalone --checks=use-static-qregularexpression` sweep over
-  all of `src/*.cpp` reports zero — the named-literal locals the
-  2026-05-19 review counted were already hoisted via the project's
-  `static const QRegularExpression rx = []{ … }()` lambda-init pattern
-  (ANTS-1249). A source-level sweep then found 10 genuine
-  *inline-literal-temporary* recompile sites that clazy under-reports (a
+- **Hot-path regex hoisting (ANTS-1647).** Hoisted **16**
+  `QRegularExpression` literal sites to `static const` so they compile once
+  per process instead of on every call. The authoritative
+  `clazy-standalone --checks=use-static-qregularexpression` sweep (clazy
+  writes to stderr — capture it with `2>&1`) reported 8 sites; combined with
+  a source-level sweep for inline-literal temporaries clazy under-reports (a
   `QRegularExpression(R"(…)")` built fresh as a
-  `.replace()`/`.split()`/`.section()`/`.match()` argument every call):
-  auditdialog 4×, testauditengine 1× (pre-pass set now compiled once into
-  a `static const QVector`), remotecontrol 2×, audithygiene 2×,
-  claudeallowlist 1×. All hoisted to `static const`; behaviour-preserving.
-  The terminalwidget/settingsdialog/symbolquery search-regex sites the
-  review cited build patterns from runtime strings (not literals), so they
-  correctly can't be static and are out of scope here.
+  `.replace()`/`.split()`/`.section()`/`.match()` argument): auditdialog 4×,
+  testauditengine 1× (pre-pass set now compiled once into a
+  `static const QVector`), remotecontrol 8× (transcript scrub `pairRx` +
+  orphan-tag removes + close-tag/blank-run + timeout parser), audithygiene
+  2× (react/vue probes), claudeallowlist 1×. Post-fix clazy shows 2 residual
+  flags at `audithygiene.cpp:135` — a false positive (the pattern embeds a
+  runtime-escaped needle and genuinely can't be static). Behaviour-preserving
+  (1289/1289 ctest). The 154 `range-loop-detach` sites the same sweep surfaced
+  are tracked under ANTS-1650.
 
 ## [0.7.92] — 2026-05-20
 

@@ -2575,7 +2575,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         // required to span newlines because QRegularExpression's
         // default '.' doesn't cross them and DotMatchesEverything
         // would also relax greedy quantifiers elsewhere.
-        QRegularExpression pairRx(
+        static const QRegularExpression pairRx(  // ANTS-1647
             QStringLiteral("<parameter\\s+name=(?:\"([^\"]*)\"|"
                            "'([^']*)'|([^\\s>]+))[^>]*>"
                            "[\\s\\S]*?</parameter>"),
@@ -2591,17 +2591,20 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             }
         }
         text.remove(pairRx);
-        // Orphan openers/closers without a matched pair.
-        text.remove(QRegularExpression(
+        // Orphan openers/closers without a matched pair. ANTS-1647 — hoisted.
+        static const QRegularExpression reOrphanOpen(
             QStringLiteral("<parameter\\s+name=[^>]*>"),
-            QRegularExpression::CaseInsensitiveOption));
-        text.remove(QRegularExpression(
+            QRegularExpression::CaseInsensitiveOption);
+        text.remove(reOrphanOpen);
+        static const QRegularExpression reOrphanClose(
             QStringLiteral("</parameter>"),
-            QRegularExpression::CaseInsensitiveOption));
+            QRegularExpression::CaseInsensitiveOption);
+        text.remove(reOrphanClose);
         // Stray closing tags from a leaked outer <body> wrapper.
-        text.remove(QRegularExpression(
+        static const QRegularExpression reStrayBody(
             QStringLiteral("</body>"),
-            QRegularExpression::CaseInsensitiveOption));
+            QRegularExpression::CaseInsensitiveOption);
+        text.remove(reStrayBody);
         // ANTS-1554 follow-up — `</invoke>` also leaks through some
         // harnesses (observed in pull-8 on ANTS-1554 and ANTS-1555
         // bodies). Same shape as the stray `</body>` closer.
@@ -7660,7 +7663,7 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
             // budget; the gate ran with timeoutTotal / configured-size
             // per ANTS-1492. Surfacing the actual elapsed cap helps
             // the caller decide whether bumping timeout_sec helps.
-            const QRegularExpression rx(
+            static const QRegularExpression rx(  // ANTS-1647
                 QStringLiteral("timeout after (\\d+)s"));
             const auto m = rx.match(g.skippedReason);
             if (m.hasMatch()) timedOutSec = m.captured(1).toInt();
