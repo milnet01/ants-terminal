@@ -460,6 +460,18 @@ section. `PLUGINS.md` is the plugin-author contract — update it in
 the same commit when `luaengine` / `pluginmanager` change the
 `ants.*` surface.
 
+**Release candidates (ANTS-1318 frozen-RC pipeline).** The weekly
+Wednesday cadence cuts a public release plus a Patron-preview RC. The
+`-rcN` suffix lives ONLY at the git tag, the GitHub-release title, and
+the AppImage filename — never in `CMakeLists.txt`/`bump.json` (INV-3 /
+INV-9). RC orchestration is `packaging/cut-rc.sh` (`new-rc` / `respin`
+/ `promote` / `status`), NOT the global `/release` skill (which is
+shared across projects). Flow: `/bump` to the base `X.Y.Z` first, then
+`cut-rc.sh new-rc --push` tags `vX.Y.Z-rcN` + creates a `--prerelease`
+GitHub release. `release.yml` routes RC AppImages to their own zsync
+channel so stable users can't auto-update onto an RC. Spec
+`docs/specs/ANTS-1318.md`.
+
 ## Key design decisions (non-obvious)
 
 - Custom VT100 parser, no pyte/libvterm. Qt6 is the only runtime dep.

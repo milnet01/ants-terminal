@@ -12871,8 +12871,19 @@ window. Last ad-hoc release: 0.7.91 (2026-05-13). Bootstrap week
 2026-05-20 cuts only the first RC; public cadence steady-state
 starts 2026-05-27.
 
-- 📋 [ANTS-1318] **Weekly Wednesday release cadence + Patron-tier
-  frozen-RC pipeline.** Frozen-RC model: every Wednesday cuts both
+- 🚧 [ANTS-1318] **Weekly Wednesday release cadence + Patron-tier
+  frozen-RC pipeline.**
+  In progress 2026-05-20 (RC pipeline bootstrap): tooling shipped — `release.yml`
+  RC-aware AppImage channel split (INV-8) + prerelease backstop
+  (INV-5); new project-local `packaging/cut-rc.sh`
+  (`new-rc`/`respin`/`promote`/`status`) carrying the §4.4 / INV-1 /
+  INV-3 / INV-5 / INV-9 guards (the global `/release` skill is left
+  untouched — it's shared across projects); conformance test
+  `tests/features/release_rc_pipeline/` (6 INVs). The inaugural
+  `v0.7.92-rc1` is cut from this work. Remaining for ✅: the W+2
+  (2026-05-27) promote-public + cut-next-RC cycle that exercises the
+  full cadence end-to-end (spec §10 step 5).
+  Frozen-RC model: every Wednesday cuts both
   (a) the public release for the in-flight `X.Y.Z` (= the latest
   `vX.Y.Z-rcN` tag's bits, fast-forwarded to `vX.Y.Z`) AND (b) a
   new RC `vX.Y.(Z+1)-rc1` from current `main`. Bug fixes for

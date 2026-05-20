@@ -808,7 +808,9 @@ if(ANTS_TESTS)
                 tests/features/sync_output_snapshot/test_sync_output_snapshot.cpp
                 tests/features/vtbatch_zero_copy/test_vtbatch_zero_copy.cpp
                 tests/features/shift_enter_bracketed_paste/test_shift_enter.cpp
-                tests/features/kwin_position_tracker/test_kwin_position_tracker.cpp)
+                tests/features/kwin_position_tracker/test_kwin_position_tracker.cpp
+                # ANTS-1318 frozen-RC pipeline (release.yml + cut-rc.sh).
+                tests/features/release_rc_pipeline/test_release_rc_pipeline.cpp)
     # command_palette_ghost_completion uses QSignalSpy (Qt6::Test).
     target_link_libraries(test_chrome PRIVATE Qt6::Test)
     target_compile_definitions(test_chrome PRIVATE
@@ -858,6 +860,7 @@ if(ANTS_TESTS)
         SRC_AUDITDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
         SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_RELEASE_WORKFLOW_PATH="${CMAKE_SOURCE_DIR}/.github/workflows/release.yml"
+        CUT_RC_SH_PATH="${CMAKE_SOURCE_DIR}/packaging/cut-rc.sh"
         DOCS_STATUS_BAR_STANDARD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/status-bar.md"
         CMAKELISTS_TXT="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
         SRC_CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt"

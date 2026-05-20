@@ -56,9 +56,28 @@ jobs:
           # Strip leading `v` for the version string used in the
           # AppImage filename ("v0.7.42" → "0.7.42").
           VERSION="${REF#v}"
+          # ANTS-1318: detect RC tags (vX.Y.Z-rcN). The RC suffix lives
+          # only at the tag level (INV-3), so this regex is the single
+          # gate that drives both the AppImage update channel (INV-8)
+          # and the GitHub-release prerelease flag (INV-5).
+          if printf '%s' "$REF" | grep -qE -- '-rc[0-9]+$'; then
+            IS_RC=1
+            # INV-8: an RC build's zsync UPDATE_INFORMATION tracks its
+            # OWN rc tag, never `latest`. `latest` resolves to the most
+            # recent non-prerelease release, so stable users can't be
+            # auto-updated onto an RC, and RC testers aren't dragged onto
+            # stable. (rc→rc rolling auto-update is deferred — Patron
+            # count is 0 today; see ANTS-1318 §2.5 / OQ.)
+            UPDATE_CHANNEL="${REF}"
+          else
+            IS_RC=0
+            UPDATE_CHANNEL="latest"
+          fi
           echo "ref=${REF}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Resolved tag: ${REF} (version ${VERSION})"
+          echo "is_rc=${IS_RC}" >> "$GITHUB_OUTPUT"
+          echo "update_channel=${UPDATE_CHANNEL}" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: ${REF} (version ${VERSION}, is_rc=${IS_RC}, channel=${UPDATE_CHANNEL})"
 
       - name: Check out source at tag
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
@@ -162,14 +181,12 @@ jobs:
           # `gh-releases-zsync` schema (documented at
           # docs.appimage.org/packaging-guide/optional/updates.html)
           # tells AppImageUpdate to resolve the wildcard against the
-          # owner/repo's GitHub release tagged `latest`. Pinning to
-          # `latest` (not a specific tag) means the metadata is
-          # version-stable — every shipped AppImage from 0.7.46 forward
-          # auto-updates to whatever's tagged latest at the time the
-          # user runs the updater. Releases shipped before 0.7.46 do
-          # NOT carry this metadata and continue to be manual-download
-          # only — there's no way to retroactively add it.
-          UPDATE_INFORMATION: "gh-releases-zsync|milnet01|ants-terminal|latest|Ants_Terminal-*-x86_64.AppImage.zsync"
+          # owner/repo's GitHub release tagged by the channel field.
+          # Stable builds pin `latest` (the most recent non-prerelease
+          # release) so the metadata is version-stable. ANTS-1318 INV-8:
+          # RC builds substitute their own rc tag here (computed in the
+          # Resolve step) so the two update streams never cross.
+          UPDATE_INFORMATION: "gh-releases-zsync|milnet01|ants-terminal|${{ steps.tag.outputs.update_channel }}|Ants_Terminal-*-x86_64.AppImage.zsync"
         run: |
           ./linuxdeploy --appdir AppDir --plugin qt --output appimage
           ls -la "${OUTPUT}" "${OUTPUT}.zsync"
@@ -197,10 +214,21 @@ jobs:
           # (the user can flesh out the description after; CHANGELOG.md
           # has the full notes already).
           if ! gh release view "${{ steps.tag.outputs.ref }}" >/dev/null 2>&1; then
+            # ANTS-1318 INV-5 (defense-in-depth, OQ-4): an RC tag that
+            # reaches this auto-create path (e.g. a manual
+            # workflow_dispatch that didn't pre-create the release) must
+            # still be marked prerelease so it never surfaces as
+            # `latest`. cut-rc.sh normally pre-creates the RC release
+            # with --prerelease, so this branch is the backstop.
+            PRERELEASE_FLAG=""
+            if [ "${{ steps.tag.outputs.is_rc }}" = "1" ]; then
+              PRERELEASE_FLAG="--prerelease"
+            fi
             gh release create "${{ steps.tag.outputs.ref }}" \
+              $PRERELEASE_FLAG \
               --title "${{ steps.tag.outputs.ref }}" \
               --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${{ steps.tag.outputs.ref }}/CHANGELOG.md) for release notes."
-            echo "Created GitHub Release ${{ steps.tag.outputs.ref }}"
+            echo "Created GitHub Release ${{ steps.tag.outputs.ref }} (prerelease=${{ steps.tag.outputs.is_rc }})"
           fi
           # Upload both the AppImage AND its `.zsync` sidecar.
           # AppImageUpdate fetches the .zsync to compute partial

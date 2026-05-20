@@ -12,6 +12,32 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 📦 Frozen-RC release pipeline — tooling (ANTS-1318, 2026-05-20)
+
+Implements the weekly-Wednesday + Patron-7-day-RC cadence's project-local
+tooling, ahead of cutting the inaugural `v0.7.92-rc1`.
+
+- **ANTS-1318 (process + tooling)** — two project-local surfaces:
+  - `.github/workflows/release.yml` gains an RC-aware AppImage update
+    channel (INV-8): a `-rc[0-9]+$` tag detection drives the zsync
+    `UPDATE_INFORMATION` through a computed channel — stable builds keep
+    `latest`, RC builds track their own rc tag, so stable users can't
+    auto-update onto an RC. The auto-create-on-404 release path also
+    marks RC tags `--prerelease` (INV-5 backstop).
+  - new `packaging/cut-rc.sh` orchestrates the RC mechanics
+    (`new-rc` / `respin` / `promote` / `status`) with the ANTS-1318
+    guards: one-RC-in-flight (§4.4), Wednesday cadence (INV-1),
+    base-version-only/no-suffix-in-files (INV-3), and prerelease
+    mapping (INV-5). The `-rc` suffix lives only at the tag / GitHub
+    release title / AppImage filename; `/bump` still owns version-file
+    edits (INV-9). Irreversible pushes/publishes are gated behind an
+    explicit `--push` (rehearses otherwise).
+  - The global `/release` skill is deliberately left untouched — it is
+    shared across projects; the Ants-specific RC cadence lives in the
+    project-local script instead.
+  - Conformance: `tests/features/release_rc_pipeline/` (6 source-scrape
+    invariants). Spec `docs/specs/ANTS-1318.md`.
+
 ### 🧪 Test-infra hardening — pull 41 (ANTS-1434, ANTS-1433, 2026-05-20)
 
 A flaky-test fix and a new atomic-write failure-injection seam — two
