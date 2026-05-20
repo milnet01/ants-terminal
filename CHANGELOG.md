@@ -12,6 +12,56 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP task-start context composers — pull 37 (ANTS-1306 + ANTS-1307, 2026-05-20)
+
+Two read-only MCP tools that hand a session the right priors at task
+start instead of making it gather them in 6–8 exploration round-trips.
+Both are pure composers in `remotecontrol.cpp` (no new lib, no IPC
+verb) and resolve their project root the same way every Required tool
+does.
+
+- **ANTS-1306 (implement)** — `task_priors` MCP tool. Input
+  `{description, caller_cwd, max_specs?, max_cards?, max_commits?,
+  max_adrs?}`. Parses the free-text description into three needle sets
+  — `ANTS-NNNN` ids, file-path tokens, and ≥4-char terms (minus a
+  stopword set) — then returns four ranked context buckets: matching
+  `docs/specs/ANTS-*.md` (with a one-line excerpt + `+5` boost when an
+  id names the spec), matching ROADMAP cards (composed over
+  `cmdRoadmapQuery` status:all/limit:500/include_body), recent commits
+  touching the named paths (composed over `cmdGitState` op:log, merged
+  + deduped by sha) or — absent any path — subject-term-matched recent
+  commits, and related `docs/decisions/*.md`. Returns `{ok, terms[],
+  ids[], paths[], specs[], specs_count, roadmap_cards[], cards_count,
+  commits[], commits_count, adrs[], adrs_count}`; each `*_count` is the
+  pre-cap total. Caps default 5/5/5/3 (clamp 1–20). Refuses `bad_args`
+  (empty description / all-stopword) and `no_project`. MCP-only;
+  `kindForName` bucket `context`; token-cost `(1200, 6000)`. Spec
+  `docs/specs/ANTS-1306.md` (cold-eyes 4 loops); test
+  `tests/features/mcp_task_priors/`.
+- **ANTS-1307 (implement)** — `project_conventions` MCP tool. Input
+  `{task_type, caller_cwd}` with `task_type ∈ feature|bugfix|refactor|
+  docs|test`. Returns the task-type-scoped subset of project
+  conventions as `{rule, source}` entries (two common rows + 2–3
+  per-type rows), plus `sources:[{path, exists}]` — the deduped source
+  set with an on-disk existence flag. Every `source` is a real repo
+  doc whose body states the paraphrased rule (grep-verified during
+  spec authoring; the feature test asserts each exists — a drift
+  guard). Returns `{ok, task_type, conventions[], conventions_count,
+  sources[], sources_count}`. Refuses `bad_args` (task_type not in the
+  enum) and `no_project`. MCP-only; `kindForName` bucket `convention`;
+  token-cost `(400, 1500)`. Spec `docs/specs/ANTS-1307.md` (cold-eyes
+  3 loops); test `tests/features/mcp_project_conventions/` (includes a
+  behavioural drift guard that fails if any cited source doc is
+  renamed/removed). Full feature suite 1229/1229 green.
+- **ANTS-1693 / ANTS-1694 / ANTS-1695 (enhancement, logged)** — roadmap
+  MCP-vs-dialog parity audit (2026-05-20) found three display gaps where
+  the GUI Roadmap dialog lags the shared `roadmap_query` parser:
+  section-count chips use flat counts not `RoadmapIndex::rollupCounts`;
+  no duplicate-`[PROJ-NNNN]` surfacing; no unrecognised-format header
+  inventory for zero-bullet roadmaps. Logged to ROADMAP for follow-up
+  (the format-rendering parity — the most important one — is already
+  shared and OK).
+
 ### 🔌 MCP scrollback error extraction — pull 36 (ANTS-1301, 2026-05-20)
 
 A read-only MCP tool that answers "what just went wrong in this

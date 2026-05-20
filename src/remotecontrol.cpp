@@ -45,6 +45,7 @@
 #include <QLocalSocket>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QSet>
 #include <QStandardPaths>
 #include <QTabWidget>
 #include <cmath>
@@ -5459,6 +5460,518 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     result["matched_specs"] = matched;
     result["specs_scanned"] = scanned;
     result["matched_count"] = matched.size();
+    return QJsonDocument(result);
+}
+
+// ----- ANTS-1306 / ANTS-1307 — task-start context composers ---------
+//
+// task_priors: free-text task description → ranked context buckets
+// (matching specs / ROADMAP cards / recent commits / ADRs). Pure
+// composer over cmdRoadmapQuery + cmdGitState + parseSpecBody (above).
+// project_conventions: task_type → curated {rule, source} table with a
+// source-existence check. Both MCP-only. Specs docs/specs/ANTS-1306.md
+// and docs/specs/ANTS-1307.md.
+
+namespace {
+
+QJsonObject tpErr(const QString &code, const QString &message) {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["error"] = message;
+    o["code"]  = code;
+    return o;
+}
+
+// ANTS-1306 § 3.2.1 — v1 stopword set (English function words +
+// generic task verbs that carry no ranking signal). Process-static.
+const QSet<QString> &taskPriorStopwords() {
+    static const QSet<QString> kStop = {
+        QStringLiteral("the"),   QStringLiteral("and"),   QStringLiteral("or"),
+        QStringLiteral("but"),   QStringLiteral("nor"),   QStringLiteral("for"),
+        QStringLiteral("of"),    QStringLiteral("to"),    QStringLiteral("in"),
+        QStringLiteral("on"),    QStringLiteral("at"),    QStringLiteral("by"),
+        QStringLiteral("with"),  QStringLiteral("from"),  QStringLiteral("into"),
+        QStringLiteral("this"),  QStringLiteral("that"),  QStringLiteral("these"),
+        QStringLiteral("those"), QStringLiteral("there"), QStringLiteral("here"),
+        QStringLiteral("when"),  QStringLiteral("where"), QStringLiteral("which"),
+        QStringLiteral("while"), QStringLiteral("what"),  QStringLiteral("who"),
+        QStringLiteral("whom"),  QStringLiteral("will"),  QStringLiteral("would"),
+        QStringLiteral("should"),QStringLiteral("could"), QStringLiteral("must"),
+        QStringLiteral("shall"), QStringLiteral("not"),   QStringLiteral("are"),
+        QStringLiteral("was"),   QStringLiteral("were"),  QStringLiteral("been"),
+        QStringLiteral("being"), QStringLiteral("have"),  QStringLiteral("has"),
+        QStringLiteral("had"),   QStringLiteral("does"),  QStringLiteral("did"),
+        QStringLiteral("doing"), QStringLiteral("your"),  QStringLiteral("you"),
+        QStringLiteral("our"),   QStringLiteral("their"), QStringLiteral("its"),
+        QStringLiteral("then"),  QStringLiteral("than"),  QStringLiteral("also"),
+        QStringLiteral("more"),  QStringLiteral("most"),  QStringLiteral("some"),
+        QStringLiteral("any"),   QStringLiteral("all"),   QStringLiteral("each"),
+        QStringLiteral("every"), QStringLiteral("both"),  QStringLiteral("add"),
+        QStringLiteral("fix"),   QStringLiteral("make"),  QStringLiteral("use"),
+        QStringLiteral("new"),   QStringLiteral("run"),   QStringLiteral("get"),
+        QStringLiteral("set"),   QStringLiteral("let"),   QStringLiteral("put"),
+        QStringLiteral("via"),   QStringLiteral("per"),   QStringLiteral("might"),
+        QStringLiteral("may"),   QStringLiteral("can")
+    };
+    return kStop;
+}
+
+struct TpTerms {
+    QStringList ids;    // ANTS-NNNN, upper-cased, deduped
+    QStringList paths;  // known-extension tokens, deduped
+    QStringList terms;  // lower-cased words >=4, minus stopwords, cap 25
+};
+
+// ANTS-1306 § 3.2 — deterministic three-set extraction, fixed order.
+TpTerms tpExtract(const QString &description) {
+    TpTerms t;
+    static const QRegularExpression idRe(
+        QStringLiteral("ANTS-[0-9]+"),
+        QRegularExpression::CaseInsensitiveOption);
+    auto idIt = idRe.globalMatch(description);
+    while (idIt.hasNext()) {
+        const QString id = idIt.next().captured(0).toUpper();
+        if (!t.ids.contains(id)) t.ids.append(id);
+    }
+    static const QRegularExpression pathRe(QStringLiteral(
+        R"([\w./-]+\.(?:cpp|cc|cxx|c|h|hpp|hh|hxx|py|lua|sh|md|json|cmake|txt))"));
+    auto pIt = pathRe.globalMatch(description);
+    while (pIt.hasNext()) {
+        QString p = pIt.next().captured(0);
+        while (p.startsWith(QStringLiteral("./"))) p = p.mid(2);
+        if (!p.isEmpty() && !t.paths.contains(p)) t.paths.append(p);
+    }
+    static const QRegularExpression termRe(
+        QStringLiteral("[A-Za-z_][A-Za-z0-9_]{3,}"));
+    const QSet<QString> &stop = taskPriorStopwords();
+    auto tIt = termRe.globalMatch(description);
+    while (tIt.hasNext()) {
+        if (t.terms.size() >= 25) break;
+        const QString w = tIt.next().captured(0).toLower();
+        if (stop.contains(w)) continue;
+        if (!t.terms.contains(w)) t.terms.append(w);
+    }
+    return t;
+}
+
+// Count distinct entries of (ids ∪ paths ∪ terms) present in the
+// already-lower-cased haystack. ids/paths are lower-cased here; terms
+// arrive lower-cased.
+int tpDistinctNeedles(const QString &haystackLower, const TpTerms &t) {
+    int n = 0;
+    for (const QString &id : t.ids)
+        if (haystackLower.contains(id.toLower())) ++n;
+    for (const QString &p : t.paths)
+        if (haystackLower.contains(p.toLower())) ++n;
+    for (const QString &w : t.terms)
+        if (haystackLower.contains(w)) ++n;
+    return n;
+}
+
+// First body line containing any needle, trimmed + capped to 200
+// chars; fallback (trimmed) when none matches.
+QString tpExcerpt(const QString &body, const TpTerms &t,
+                  const QString &fallback) {
+    const QStringList lines = body.split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        const QString low = line.toLower();
+        if (tpDistinctNeedles(low, t) <= 0) continue;
+        QString s = line.trimmed();
+        if (s.isEmpty()) continue;
+        if (s.size() > 200) s = s.left(199) + QChar(0x2026);
+        return s;
+    }
+    return fallback.trimmed();
+}
+
+struct TpScored {
+    QJsonObject obj;
+    int         score;
+    QString     sortKey;
+};
+
+}  // namespace
+
+QJsonDocument RemoteControl::cmdTaskPriors(const QJsonObject &req) {
+    const QString description =
+        req.value(QStringLiteral("description")).toString();
+    if (description.trimmed().isEmpty()) {
+        return QJsonDocument(tpErr(QStringLiteral("bad_args"),
+            QStringLiteral("task_priors: missing or empty \"description\"")));
+    }
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        return QJsonDocument(tpErr(QStringLiteral("no_project"),
+            QStringLiteral("task_priors: project root unresolved")));
+    }
+    const TpTerms terms = tpExtract(description);
+    if (terms.ids.isEmpty() && terms.paths.isEmpty() &&
+        terms.terms.isEmpty()) {
+        return QJsonDocument(tpErr(QStringLiteral("bad_args"),
+            QStringLiteral("task_priors: \"description\" yielded no "
+                           "searchable terms (all stopwords?)")));
+    }
+
+    auto clampCap = [&](const char *key, int def) -> int {
+        const QJsonValue v = req.value(QLatin1String(key));
+        if (!v.isDouble()) return def;
+        int n = v.toInt(def);
+        if (n < 1)  n = 1;
+        if (n > 20) n = 20;
+        return n;
+    };
+    const int maxSpecs   = clampCap("max_specs", 5);
+    const int maxCards   = clampCap("max_cards", 5);
+    const int maxCommits = clampCap("max_commits", 5);
+    const int maxAdrs    = clampCap("max_adrs", 3);
+
+    QJsonObject result;
+    result["ok"] = true;
+    {
+        QJsonArray a;
+        for (const QString &s : terms.terms) a.append(s);
+        result["terms"] = a;
+    }
+    {
+        QJsonArray a;
+        for (const QString &s : terms.ids) a.append(s);
+        result["ids"] = a;
+    }
+    {
+        QJsonArray a;
+        for (const QString &s : terms.paths) a.append(s);
+        result["paths"] = a;
+    }
+
+    // (1) specs — docs/specs/ANTS-*.md, score by distinct needles
+    // (+5 id-in-filename boost).
+    {
+        QVector<TpScored> hits;
+        QDir dir(rootCanonical + QStringLiteral("/docs/specs"));
+        if (dir.exists()) {
+            const QStringList files = dir.entryList(
+                {QStringLiteral("ANTS-*.md")},
+                QDir::Files | QDir::Readable, QDir::Name);
+            for (const QString &fname : files) {
+                QFile f(dir.filePath(fname));
+                if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+                const QString body = QString::fromUtf8(f.readAll());
+                f.close();
+                QString stem = fname;
+                if (stem.endsWith(QStringLiteral(".md"))) stem.chop(3);
+                int score = tpDistinctNeedles(body.toLower(), terms);
+                if (terms.ids.contains(stem.toUpper())) score += 5;
+                if (score <= 0) continue;
+                const QJsonObject parsed = parseSpecBody(body);
+                const QString title =
+                    parsed.value(QStringLiteral("title")).toString();
+                QJsonObject e;
+                e["id"]      = stem;
+                e["path"]    = QStringLiteral("docs/specs/") + fname;
+                e["title"]   = title;
+                e["excerpt"] = tpExcerpt(body, terms,
+                                         title.isEmpty() ? stem : title);
+                e["score"]   = score;
+                hits.append({e, score, fname});
+            }
+        }
+        std::sort(hits.begin(), hits.end(),
+                  [](const TpScored &a, const TpScored &b) {
+            if (a.score != b.score) return a.score > b.score;
+            return a.sortKey < b.sortKey;
+        });
+        result["specs_count"] = static_cast<int>(hits.size());
+        QJsonArray arr;
+        for (int i = 0; i < hits.size() && i < maxSpecs; ++i)
+            arr.append(hits[i].obj);
+        result["specs"] = arr;
+    }
+
+    // (2) roadmap_cards — compose over cmdRoadmapQuery (status:all,
+    // limit:500, include_body). Non-ok ⇒ empty bucket.
+    {
+        QJsonObject rq;
+        rq["caller_cwd"]   = rootCanonical;
+        rq["status"]       = QStringLiteral("all");
+        rq["limit"]        = 500;
+        rq["include_body"] = true;
+        const QJsonObject rqObj = cmdRoadmapQuery(rq).object();
+        QVector<TpScored> hits;
+        if (rqObj.value(QStringLiteral("ok")).toBool(false)) {
+            const QJsonArray bullets =
+                rqObj.value(QStringLiteral("bullets")).toArray();
+            int order = 0;
+            for (const QJsonValue &v : bullets) {
+                const QJsonObject b = v.toObject();
+                const QString id = b.value(QStringLiteral("id")).toString();
+                const QString headline =
+                    b.value(QStringLiteral("headline_oneline")).toString();
+                const QString body =
+                    b.value(QStringLiteral("body")).toString();
+                const QString hayLow =
+                    (id + QLatin1Char(' ') + headline + QLatin1Char(' ') +
+                     body).toLower();
+                int score = tpDistinctNeedles(hayLow, terms);
+                if (!id.isEmpty() && terms.ids.contains(id.toUpper()))
+                    score += 5;
+                if (score > 0) {
+                    QJsonObject e;
+                    e["id"]       = id;
+                    e["status"]   = b.value(QStringLiteral("status")).toString();
+                    e["headline"] = headline;
+                    e["score"]    = score;
+                    hits.append({e, score,
+                                 QString::number(order).rightJustified(
+                                     6, QLatin1Char('0'))});
+                }
+                ++order;
+            }
+        }
+        std::stable_sort(hits.begin(), hits.end(),
+                         [](const TpScored &a, const TpScored &b) {
+            if (a.score != b.score) return a.score > b.score;
+            return a.sortKey < b.sortKey;
+        });
+        result["cards_count"] = static_cast<int>(hits.size());
+        QJsonArray arr;
+        for (int i = 0; i < hits.size() && i < maxCards; ++i)
+            arr.append(hits[i].obj);
+        result["roadmap_cards"] = arr;
+    }
+
+    // (3) commits — compose over cmdGitState(op:log). Path-filtered
+    // (merged, deduped by %h sha) when paths present, else subject-
+    // term-filtered over a recent window. Non-ok ⇒ empty bucket.
+    {
+        QVector<QJsonObject> merged;
+        QSet<QString> seen;
+        auto addCommits = [&](const QJsonObject &gs, bool subjectFilter) {
+            if (!gs.value(QStringLiteral("ok")).toBool(false)) return;
+            const QJsonArray commits =
+                gs.value(QStringLiteral("commits")).toArray();
+            for (const QJsonValue &cv : commits) {
+                const QJsonObject c = cv.toObject();
+                const QString sha = c.value(QStringLiteral("sha")).toString();
+                if (sha.isEmpty() || seen.contains(sha)) continue;
+                if (subjectFilter) {
+                    const QString subjLow =
+                        c.value(QStringLiteral("subject")).toString().toLower();
+                    if (tpDistinctNeedles(subjLow, terms) <= 0) continue;
+                }
+                seen.insert(sha);
+                QJsonObject e;
+                e["sha"]     = sha;
+                e["subject"] = c.value(QStringLiteral("subject")).toString();
+                e["date"]    = c.value(QStringLiteral("date")).toString();
+                merged.append(e);
+            }
+        };
+        if (!terms.paths.isEmpty()) {
+            int used = 0;
+            for (const QString &p : terms.paths) {
+                if (used >= 5) break;
+                ++used;
+                QJsonObject gs;
+                gs["caller_cwd"] = rootCanonical;
+                gs["op"]         = QStringLiteral("log");
+                gs["path"]       = p;
+                gs["n"]          = maxCommits;
+                addCommits(cmdGitState(gs).object(), false);
+            }
+        } else {
+            QJsonObject gs;
+            gs["caller_cwd"] = rootCanonical;
+            gs["op"]         = QStringLiteral("log");
+            gs["n"]          = 50;
+            addCommits(cmdGitState(gs).object(), true);
+        }
+        std::stable_sort(merged.begin(), merged.end(),
+                         [](const QJsonObject &a, const QJsonObject &b) {
+            return a.value(QStringLiteral("date")).toString() >
+                   b.value(QStringLiteral("date")).toString();
+        });
+        result["commits_count"] = static_cast<int>(merged.size());
+        QJsonArray arr;
+        for (int i = 0; i < merged.size() && i < maxCommits; ++i)
+            arr.append(merged[i]);
+        result["commits"] = arr;
+    }
+
+    // (4) adrs — docs/decisions/*.md minus README.md, score by needles.
+    {
+        QVector<TpScored> hits;
+        QDir dir(rootCanonical + QStringLiteral("/docs/decisions"));
+        if (dir.exists()) {
+            const QStringList files = dir.entryList(
+                {QStringLiteral("*.md")},
+                QDir::Files | QDir::Readable, QDir::Name);
+            for (const QString &fname : files) {
+                if (fname.compare(QStringLiteral("README.md"),
+                                  Qt::CaseInsensitive) == 0) continue;
+                QFile f(dir.filePath(fname));
+                if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+                const QString body = QString::fromUtf8(f.readAll());
+                f.close();
+                int score = tpDistinctNeedles(body.toLower(), terms);
+                if (score <= 0) continue;
+                QString title;
+                const QStringList lines = body.split(QLatin1Char('\n'));
+                for (const QString &ln : lines) {
+                    if (ln.startsWith(QStringLiteral("# "))) {
+                        title = ln.mid(2).trimmed();
+                        break;
+                    }
+                }
+                QJsonObject e;
+                e["path"]  = QStringLiteral("docs/decisions/") + fname;
+                e["title"] = title;
+                e["score"] = score;
+                hits.append({e, score, fname});
+            }
+        }
+        std::sort(hits.begin(), hits.end(),
+                  [](const TpScored &a, const TpScored &b) {
+            if (a.score != b.score) return a.score > b.score;
+            return a.sortKey < b.sortKey;
+        });
+        result["adrs_count"] = static_cast<int>(hits.size());
+        QJsonArray arr;
+        for (int i = 0; i < hits.size() && i < maxAdrs; ++i)
+            arr.append(hits[i].obj);
+        result["adrs"] = arr;
+    }
+
+    return QJsonDocument(result);
+}
+
+QJsonDocument RemoteControl::cmdProjectConventions(const QJsonObject &req) {
+    const QString taskType =
+        req.value(QStringLiteral("task_type")).toString();
+    static const QStringList kTypes = {
+        QStringLiteral("feature"),  QStringLiteral("bugfix"),
+        QStringLiteral("refactor"), QStringLiteral("docs"),
+        QStringLiteral("test")};
+    if (!kTypes.contains(taskType)) {
+        return QJsonDocument(tpErr(QStringLiteral("bad_args"),
+            QStringLiteral("project_conventions: \"task_type\" must be one "
+                           "of feature, bugfix, refactor, docs, test")));
+    }
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        return QJsonDocument(tpErr(QStringLiteral("no_project"),
+            QStringLiteral("project_conventions: project root unresolved")));
+    }
+
+    // ANTS-1307 § 3.2 — curated table. Each rule paraphrases a rule
+    // stated in its `source` doc body (grep-verified during spec
+    // authoring). Common rows prepended to every task type.
+    using RS = QPair<QString, QString>;
+    QVector<RS> conv;
+    conv.append({QStringLiteral(
+        "Commit messages use the `<ID>: <description>` mandate — "
+        "imperative subject, one concern per commit."),
+        QStringLiteral("docs/standards/commits.md")});
+    conv.append({QStringLiteral(
+        "Shortest correct implementation; reuse before rewriting "
+        "(Rule of Three on the third call-site)."),
+        QStringLiteral("docs/standards/coding.md")});
+
+    if (taskType == QLatin1String("feature")) {
+        conv.append({QStringLiteral(
+            "Write spec.md first as a human-readable contract and get "
+            "sign-off before writing the test/code."),
+            QStringLiteral("docs/standards/testing.md")});
+        conv.append({QStringLiteral(
+            "Pair the feature with a tests/features/<name>/ conformance "
+            "test (spec.md + GUI-free test_*.cpp added to a subsystem "
+            "bundle's SOURCES, label `features;fast`)."),
+            QStringLiteral("tests/features/README.md")});
+        conv.append({QStringLiteral(
+            "Validate at boundaries, not internally; don't write error "
+            "paths for scenarios that can't happen at the call site."),
+            QStringLiteral("docs/standards/coding.md")});
+    } else if (taskType == QLatin1String("bugfix")) {
+        conv.append({QStringLiteral(
+            "TDD: write a failing test asserting the bug doesn't recur, "
+            "confirm it fails on current code, then write the fix "
+            "(test first, code second)."),
+            QStringLiteral("docs/standards/testing.md")});
+        conv.append({QStringLiteral(
+            "Verify the test fails on pre-fix code (revert the fix, run, "
+            "must FAIL) before locking it in."),
+            QStringLiteral("docs/standards/testing.md")});
+        conv.append({QStringLiteral(
+            "Fix the root cause; no warning-silencing, `try/except: "
+            "pass`, `--no-verify`, or disabling checks as a default."),
+            QStringLiteral("docs/standards/coding.md")});
+    } else if (taskType == QLatin1String("refactor")) {
+        conv.append({QStringLiteral(
+            "Pure refactors keep the existing tests passing — no "
+            "behaviour change, no new test required."),
+            QStringLiteral("docs/standards/testing.md")});
+        conv.append({QStringLiteral(
+            "Reuse before rewriting (call it / refactor-and-call / only "
+            "then write new); extract a helper on the third call-site."),
+            QStringLiteral("docs/standards/coding.md")});
+    } else if (taskType == QLatin1String("docs")) {
+        conv.append({QStringLiteral(
+            "Keep CMakeLists.txt VERSION, CHANGELOG.md, and the "
+            "README.md version line in lockstep (use the /bump recipe); "
+            "completed ROADMAP items migrate to the matching CHANGELOG "
+            "section."),
+            QStringLiteral("CLAUDE.md")});
+        conv.append({QStringLiteral(
+            "Stable [PROJ-NNNN] IDs are append-only — never renumber, "
+            "never reuse."),
+            QStringLiteral("docs/standards/roadmap-format.md")});
+        conv.append({QStringLiteral(
+            "Render the labels you want spoken — Qt strips HTML "
+            "aria/alt/role, so set accessibleName/Description on QWidget "
+            "subclasses and emit inline text beside decorative emoji."),
+            QStringLiteral("docs/standards/documentation.md")});
+    } else {  // test
+        conv.append({QStringLiteral(
+            "Feature-conformance tests pair spec.md with a GUI-free C++ "
+            "test under tests/features/<name>/, registered into a "
+            "subsystem bundle (not a fresh add_executable unless process "
+            "isolation is needed)."),
+            QStringLiteral("tests/features/README.md")});
+        conv.append({QStringLiteral(
+            "Tests test the contract, not the implementation; anchor to "
+            "external signals (spec/RFC/CVE), not source structure."),
+            QStringLiteral("docs/standards/testing.md")});
+        conv.append({QStringLiteral(
+            "Audit-rule fixtures are count-based against fixture dirs, "
+            "not line-number-based."),
+            QStringLiteral("docs/standards/testing.md")});
+    }
+
+    QJsonObject result;
+    result["ok"]        = true;
+    result["task_type"] = taskType;
+
+    QJsonArray cArr;
+    QStringList srcOrder;
+    for (const RS &rs : conv) {
+        QJsonObject e;
+        e["rule"]   = rs.first;
+        e["source"] = rs.second;
+        cArr.append(e);
+        if (!srcOrder.contains(rs.second)) srcOrder.append(rs.second);
+    }
+    result["conventions"]       = cArr;
+    result["conventions_count"] = cArr.size();
+
+    QJsonArray sArr;
+    for (const QString &s : srcOrder) {
+        QJsonObject e;
+        e["path"] = s;
+        const QFileInfo fi(rootCanonical + QLatin1Char('/') + s);
+        e["exists"] = fi.exists() && fi.isFile();
+        sArr.append(e);
+    }
+    result["sources"]       = sArr;
+    result["sources_count"] = sArr.size();
     return QJsonDocument(result);
 }
 

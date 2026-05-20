@@ -2654,6 +2654,124 @@ void ClaudeIntegration::onMcpConnection() {
                     tools.append(t);
                 }
 
+                // ANTS-1306 — task_priors: bundle task-start context
+                // (matching specs + ROADMAP cards + recent commits +
+                // ADRs) for a free-text task description in one call.
+                {
+                    QJsonObject t;
+                    t["name"] = "task_priors";
+                    t["description"] = QStringLiteral(
+                        "Given a free-text task description, return the "
+                        "project context you'd otherwise gather in 6-8 "
+                        "exploration round-trips: matching `docs/specs/*.md` "
+                        "(with one-line excerpts), matching ROADMAP cards, "
+                        "recent commits touching the file paths named in the "
+                        "description, and related ADRs. Returns {ok, terms[], "
+                        "ids[], paths[], specs:[{id, path, title, excerpt, "
+                        "score}], specs_count, roadmap_cards:[{id, status, "
+                        "headline, score}], cards_count, commits:[{sha, "
+                        "subject, date}], commits_count, adrs:[{path, title, "
+                        "score}], adrs_count}. Ranking is case-insensitive "
+                        "distinct-needle substring matching; each `*_count` "
+                        "is the pre-cap total. Pure composer over "
+                        "roadmap_query + git_state + the spec parser — no "
+                        "cache. Refusals: `bad_args` (empty description or no "
+                        "searchable terms after stopword removal), "
+                        "`no_project` (caller_cwd unresolved).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Call ONCE at task start, before proposing an "
+                        "approach, with the user's task description. Cheaper "
+                        "and more complete than ad-hoc grep + Read of specs / "
+                        "ROADMAP / git log. Drill into a surfaced spec with "
+                        "spec_query.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject descProp;
+                    descProp["type"] = "string";
+                    descProp["description"] = QStringLiteral(
+                        "The free-text task description (the user's prompt "
+                        "or a sub-task). Parsed into ANTS-NNNN ids, "
+                        "file-path tokens, and >=4-char terms for ranking.");
+                    props["description"] = descProp;
+                    props["caller_cwd"]  = makeCallerCwdReadProp();
+                    const struct { const char *name; const char *desc; } caps[] = {
+                        {"max_specs",   "Max spec hits to return (default 5, clamp 1-20)."},
+                        {"max_cards",   "Max ROADMAP cards to return (default 5, clamp 1-20)."},
+                        {"max_commits", "Max commits to return (default 5, clamp 1-20)."},
+                        {"max_adrs",    "Max ADRs to return (default 3, clamp 1-20)."},
+                    };
+                    for (const auto &cap : caps) {
+                        QJsonObject p;
+                        p["type"] = "integer";
+                        p["minimum"] = 1;
+                        p["maximum"] = 20;
+                        p["description"] = QString::fromUtf8(cap.desc);
+                        props[QString::fromUtf8(cap.name)] = p;
+                    }
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("description");
+                    req.append("caller_cwd");
+                    schema["required"]             = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
+                // ANTS-1307 — project_conventions: the task_type-scoped
+                // subset of project conventions, each {rule, source}.
+                {
+                    QJsonObject t;
+                    t["name"] = "project_conventions";
+                    t["description"] = QStringLiteral(
+                        "Return the subset of project conventions relevant "
+                        "to a stated task type, instead of re-reading the "
+                        "whole CLAUDE.md + standards bundle. Returns {ok, "
+                        "task_type, conventions:[{rule, source}], "
+                        "conventions_count, sources:[{path, exists}], "
+                        "sources_count}. Each `rule` is a one-line "
+                        "convention; `source` is the repo-relative doc that "
+                        "states it in full (read it for detail). `sources[]` "
+                        "is the deduped source set with an existence flag "
+                        "(a `false` flags a missing/renamed doc). Static "
+                        "curated table; no file-body reads. Refusals: "
+                        "`bad_args` (task_type not one of feature/bugfix/"
+                        "refactor/docs/test), `no_project` (caller_cwd "
+                        "unresolved).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Call at task start with the kind of work you're "
+                        "about to do (feature/bugfix/refactor/docs/test) to "
+                        "get just the relevant rules + their authoritative "
+                        "doc paths — cheaper than reading the full CLAUDE.md "
+                        "preamble.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject typeProp;
+                    typeProp["type"] = "string";
+                    QJsonArray typeEnum;
+                    typeEnum.append("feature");
+                    typeEnum.append("bugfix");
+                    typeEnum.append("refactor");
+                    typeEnum.append("docs");
+                    typeEnum.append("test");
+                    typeProp["enum"] = typeEnum;
+                    typeProp["description"] = QStringLiteral(
+                        "The kind of work about to be done. Lower-case; one "
+                        "of feature, bugfix, refactor, docs, test.");
+                    props["task_type"]  = typeProp;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("task_type");
+                    req.append("caller_cwd");
+                    schema["required"]             = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-1299 — build_status: record/read the most recent
                 // build's outcome at <root>/.audit_cache/build.json.
                 {
@@ -5255,6 +5373,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // Symbol queries (ANTS-1303).
                         {QStringLiteral("find_definition"),    {600,  2500}},
                         {QStringLiteral("find_caller"),        {800,  4000}},
+                        // Task-start context composers (ANTS-1306 + ANTS-1307).
+                        {QStringLiteral("task_priors"),        {1200, 6000}},
+                        {QStringLiteral("project_conventions"),{400,  1500}},
                     };
                     const auto it = kCosts.find(name);
                     if (it != kCosts.end()) return it.value();
@@ -5325,6 +5446,12 @@ void ClaudeIntegration::onMcpConnection() {
                     if (name == QLatin1String("find_definition") ||
                         name == QLatin1String("find_caller"))
                         return QStringLiteral("symbol");
+                    // ANTS-1306 — task-start context bundler.
+                    if (name == QLatin1String("task_priors"))
+                        return QStringLiteral("context");
+                    // ANTS-1307 — task_type-scoped convention summary.
+                    if (name == QLatin1String("project_conventions"))
+                        return QStringLiteral("convention");
                     if (name.startsWith(QStringLiteral("get_")) ||
                         name == QLatin1String("tab_list") ||
                         // ANTS-1301 — reads terminal scrollback.
@@ -6011,6 +6138,10 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // caller's root; Required matches sibling project-scoped readers.
     if (toolName == QStringLiteral("find_definition"))    return C::Required;
     if (toolName == QStringLiteral("find_caller"))        return C::Required;
+    // ANTS-1306 + ANTS-1307 — task-start context composers read under
+    // the caller's project root; Required matches sibling readers.
+    if (toolName == QStringLiteral("task_priors"))        return C::Required;
+    if (toolName == QStringLiteral("project_conventions")) return C::Required;
     // Cold-eyes verb cluster (ANTS-1313).
     if (toolName == QStringLiteral("cold_eyes_brief"))         return C::Required;
     if (toolName == QStringLiteral("cold_eyes_cross_doc_diff"))return C::Required;

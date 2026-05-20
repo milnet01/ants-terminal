@@ -329,6 +329,19 @@ public:
     // no IPC dispatch branch). See docs/specs/ANTS-1569.md.
     QJsonDocument cmdCurrentState(const QJsonObject &req);
 
+    // ANTS-1306: task_priors — given a free-text task description,
+    // return ranked context buckets (matching specs, ROADMAP cards,
+    // recent commits touching named paths, related ADRs) in one call.
+    // Pure composer over cmdRoadmapQuery + cmdGitState + the spec
+    // parser; no new lib, no cache, MCP-only. See docs/specs/ANTS-1306.md.
+    QJsonDocument cmdTaskPriors(const QJsonObject &req);
+
+    // ANTS-1307: project_conventions — return the curated subset of
+    // project conventions relevant to a task_type (feature/bugfix/
+    // refactor/docs/test), each {rule, source} with a source-existence
+    // check. Static table, MCP-only. See docs/specs/ANTS-1307.md.
+    QJsonDocument cmdProjectConventions(const QJsonObject &req);
+
     // ANTS-1309: spec_query — parse a single docs/specs/<id>.md file
     // and return {title, status, kind, invariants[], path}. Token-
     // frugal alternative to a full Read of a spec when the caller

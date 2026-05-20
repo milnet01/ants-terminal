@@ -12952,8 +12952,9 @@ expected token-leverage per implementation hour.
 
 #### 🔌 Right-first-time via context completeness
 
-- 📋 [ANTS-1306] **`task_priors` MCP — bundled context for a task
-  description.** Given a free-text task description (the user's
+- ✅ [ANTS-1306] **`task_priors` MCP — bundled context for a task
+  description.** Shipped 2026-05-20 (Pull 37). Given a free-text task
+  description (the user's
   initial prompt or a sub-task), return: matching `docs/specs/*.md`
   files (`grep -l` then return excerpts), matching ROADMAP cards
   (via existing `roadmap_query`), recent commits touching named
@@ -12961,15 +12962,20 @@ expected token-leverage per implementation hour.
   exploration round-trips at task start. Saves ~10–30 K per task
   start; more importantly, gives Claude the right priors BEFORE it
   proposes an approach — reducing the "write wrong thing, rewrite"
-  cycle.
+  cycle. Pure composer over `cmdRoadmapQuery` + `cmdGitState` + the
+  spec parser; ranking is case-insensitive distinct-needle substring
+  matching; caps default 5/5/5/3 (clamp 1–20). MCP-only,
+  `kindForName` bucket `context`. Spec `docs/specs/ANTS-1306.md`
+  (cold-eyes 4 loops); test `tests/features/mcp_task_priors/`.
   **Layman:** when a task starts, hand Claude the relevant specs +
   roadmap items + recent commits in one MCP call so it doesn't
   thrash exploring.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1307] **`project_conventions` MCP — compact convention
-  summary.** Today CLAUDE.md is read every session — 330 lines of
+- ✅ [ANTS-1307] **`project_conventions` MCP — compact convention
+  summary.** Shipped 2026-05-20 (Pull 37). Today CLAUDE.md is read
+  every session — 330 lines of
   conventions, ~3 K tokens, even when only a small subset is
   relevant. New MCP returns just the conventions matching the
   current task type (`task_type=feature|bugfix|refactor|docs|test`):
@@ -12978,7 +12984,12 @@ expected token-leverage per implementation hour.
   skip the build-OOM rules + the audit pipeline tour. Cuts the
   every-session preamble cost. Pairs with ANTS-1292 (CLAUDE.md
   split — that's the source-of-truth restructure; this is the
-  consumer API).
+  consumer API). v1 ships a curated `{rule, source}` table whose
+  every `source` is a real repo doc (the feature test asserts each
+  exists — drift guard); `sources[]` carries an `exists` flag.
+  MCP-only, `kindForName` bucket `convention`. Spec
+  `docs/specs/ANTS-1307.md` (cold-eyes 3 loops); test
+  `tests/features/mcp_project_conventions/`.
   **Layman:** instead of reading the whole CLAUDE.md, Claude asks
   "what conventions matter for THIS kind of task" and gets the
   relevant subset.
@@ -17890,6 +17901,45 @@ contributors don't duplicate research.
   Source: research-2026-05-11.
 
 ---
+
+- 📋 [ANTS-1693] **RoadmapDialog section-count chips use flat counts, not RoadmapIndex rollup counts.**
+  The MCP `roadmap_query` section_index uses `RoadmapIndex::rollupCounts`
+  (level-2 parents sum their descendants) and exposes the `*_id_only`
+  parallels (ANTS-1622). The dialog computes its own *flat* per-section
+  counts in a local `SectionCounts` struct (`roadmapdialog.cpp` ~1589)
+  with no parent-rollup and no id-only split, so a parent-section count
+  chip in the dialog can disagree with the MCP `active_count`/`*_id_only`
+  for the same slug. Bring the dialog's count chips onto
+  `RoadmapIndex::rollupCounts` (or document the deliberate difference).
+  Source: parity audit 2026-05-20. Lanes: roadmapdialog, roadmapindex.
+  **Layman:** The little count badges on each Roadmap section header in the app can disagree with the numbers the Claude MCP tool reports for the same section, because the app counts differently.
+  Kind: enhancement.
+  Source: in-session-2026-05-20 (roadmap MCP-vs-dialog parity audit).
+
+- 📋 [ANTS-1694] **RoadmapDialog does not surface duplicate [PROJ-NNNN] IDs the MCP detects.**
+  The MCP `roadmap_query` surfaces `duplicate_ids[]` via
+  `rcComputeDuplicateIds` (ANTS-1646) when the same `[PROJ-NNNN]` id
+  appears on more than one bullet. The dialog has no visual surfacing —
+  colliding IDs render as two ordinary cards with no callout. Add a
+  duplicate-ID badge / warning row to the dialog (reuse the MCP detector
+  logic). Low severity — display-only; the card data itself is correct.
+  Source: parity audit 2026-05-20. Lanes: roadmapdialog.
+  **Layman:** If the roadmap accidentally has the same ID twice, the Claude MCP tool warns about it but the app just shows both as normal cards with no warning.
+  Kind: enhancement.
+  Source: in-session-2026-05-20 (roadmap MCP-vs-dialog parity audit).
+
+- 📋 [ANTS-1695] **RoadmapDialog has no unrecognised-format / header-inventory fallback for zero-bullet roadmaps.**
+  When `parseBullets` yields zero bullets but headings exist (e.g. a
+  table-style ROADMAP), the MCP returns a header inventory via
+  `buildHeaderInventoryEnvelope` / `unrecognised_format`
+  (`remotecontrol.cpp` ~260/1695). The dialog has no twin: a zero-bullet
+  roadmap renders as bare section headers with empty card areas and no
+  explanation. Add a "format not recognised — N headings found" fallback
+  panel mirroring the MCP inventory. Low severity. Source: parity audit
+  2026-05-20. Lanes: roadmapdialog.
+  **Layman:** If a project's roadmap is in a layout the app can't turn into cards, the Claude MCP tool still lists the section headers, but the app just shows empty sections with no explanation.
+  Kind: enhancement.
+  Source: in-session-2026-05-20 (roadmap MCP-vs-dialog parity audit).
 
 ## How to propose a roadmap item
 

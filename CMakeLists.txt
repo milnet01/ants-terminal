@@ -1036,7 +1036,11 @@ if(ANTS_TESTS)
                 # ANTS-1303 find_definition + find_caller MCP tools.
                 tests/features/mcp_symbol_query/test_mcp_symbol_query.cpp
                 # ANTS-1301 recent_errors scrollback error extraction.
-                tests/features/mcp_recent_errors/test_mcp_recent_errors.cpp)
+                tests/features/mcp_recent_errors/test_mcp_recent_errors.cpp
+                # ANTS-1306 task_priors MCP context bundler.
+                tests/features/mcp_task_priors/test_mcp_task_priors.cpp
+                # ANTS-1307 project_conventions MCP convention summary.
+                tests/features/mcp_project_conventions/test_mcp_project_conventions.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
