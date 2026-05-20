@@ -103,6 +103,18 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.92" date="2026-05-20">
+      <description>
+        <p>Frozen-RC release pipeline + MCP token-saver depth across 9 tools + test-infra hardening. Weekly-Wednesday + Patron-7-day-RC cadence launch (ANTS-1318). Four MCP context/code-navigation tools (similar_code, focused_test, task_priors, project_conventions), two cache tools (build_status, test_results), two spec-query tools (spec_query, invariant_check), plus scrollback error extraction, tabular symbol queries, roadmap duplicate-ID detector, and 9 defensive docs/test improvements. All 1257 feature tests passing.</p>
+        <ul>
+          <li><em>Added:</em> <code>similar_code</code> MCP tool — Jaccard-ranked code shape search surfacing existing project examples before writing new ones. <code>focused_test</code> tool runs only the tests touching changed files instead of the full ~1200-test suite. <code>task_priors</code> and <code>project_conventions</code> hand a session the right context at task start. <code>build_status</code> and <code>test_results</code> cache compiler/test outcomes in <code>.audit_cache/</code>. <code>spec_query</code> / <code>invariant_check</code> surface spec invariants without full reads. <code>recent_errors</code> MCP tool scans scrollback for structured errors (compiler, lint, test, Python traceback). <code>find_definition</code> / <code>find_caller</code> answer code-navigation questions in one call.</li>
+          <li><em>Security:</em> <code>ANTS-1415</code> — six per-tab MCP read tools (<code>get_text</code>, <code>recent_errors</code>, <code>get_scrollback</code>, <code>get_last_command</code>, <code>get_environment</code>, <code>get_cwd</code>) now enforce <code>TabSpecific</code> caller-cwd contract, refusing calls with no routing key — closing cross-tenant data-leak shape.</li>
+          <li><em>Changed:</em> <code>ANTS-1318</code> — RC-aware AppImage update channel discriminates stable vs RC builds; new <code>packaging/cut-rc.sh</code> orchestrates RC mechanics (new-rc / respin / promote / status). <code>ANTS-1439</code> — MCP cache inventory table + migration checklist. <code>ANTS-1447</code> — deep-tree mtime gap documented as v1 limitation.</li>
+          <li><em>Fixed:</em> <code>ANTS-1434</code> — <code>KwinPositionTracker.Main</code> flake under full-parallel ctest (temp-file isolation + adaptive polling). <code>ANTS-1433</code> — <code>cmdRoadmapLog</code> atomic write: ROADMAP.md rolls back when counter commit fails; failure-injection seam for future QSaveFile hardening.</li>
+        </ul>
+      </description>
+    </release>
+
     <release version="0.7.91" date="2026-05-13">
       <description>
         <p>Multi-agent /audit + /indie-review sweep across 14 subsystems. 3 CRITICAL, 53 HIGH, 64 MEDIUM, ~75 LOW findings audited. This release lands security, correctness, and mechanical items inline; 30 follow-ups (refactors, multi-file changes) defer to ROADMAP ANTS-1260…ANTS-1317. All 422 tests passing.</p>

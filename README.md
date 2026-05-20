@@ -25,7 +25,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>0.7.91</strong> — see the <a href="CHANGELOG.md">CHANGELOG</a> for release notes, the <a href="ROADMAP.md">ROADMAP</a> for what's coming, <a href="PLUGINS.md">PLUGINS</a> for the plugin authoring guide, and <a href="docs/standards/">docs/standards/</a> for the four shareable v1 standards (coding · documentation · testing · commits) any project can adopt — including the ROADMAP and CHANGELOG format specs.
+  Current version: <strong>0.7.92</strong> — see the <a href="CHANGELOG.md">CHANGELOG</a> for release notes, the <a href="ROADMAP.md">ROADMAP</a> for what's coming, <a href="PLUGINS.md">PLUGINS</a> for the plugin authoring guide, and <a href="docs/standards/">docs/standards/</a> for the four shareable v1 standards (coding · documentation · testing · commits) any project can adopt — including the ROADMAP and CHANGELOG format specs.
 </p>
 
 ---
@@ -479,7 +479,7 @@ The fastest path. Each tagged release ships an x86_64 AppImage on the
 # Download the latest AppImage (the URL pins 0.7.91 — the current release at write time;
 # `/latest/download/` always redirects to the newest tagged AppImage):
 curl -L -o Ants_Terminal-x86_64.AppImage \
-  https://github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-0.7.91-x86_64.AppImage
+  https://github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-0.7.92-x86_64.AppImage
 chmod +x Ants_Terminal-x86_64.AppImage
 ./Ants_Terminal-x86_64.AppImage
 ```

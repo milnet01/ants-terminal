@@ -1,3 +1,23 @@
+ants-terminal (0.7.92-1) unstable; urgency=medium
+
+  * Frozen-RC release pipeline + MCP token-saver depth (9 tools).
+    Weekly-Wednesday + Patron-7-day-RC cadence launch; RC-aware AppImage
+    channel + cut-rc.sh orchestration. Four MCP context/code-nav tools
+    (similar_code, focused_test, task_priors, project_conventions), two
+    cache tools (build_status, test_results), two spec-query tools, plus
+    scrollback error extraction, symbol queries, roadmap dedup detector.
+  * Security — ANTS-1415: six per-tab MCP read tools now enforce
+    TabSpecific caller_cwd contract, refusing calls with no routing key
+    (closes cross-tenant data-leak shape).
+  * Test-infra hardening: ANTS-1434 fixes KwinPositionTracker.Main flake
+    via per-process temp isolation + adaptive polling; ANTS-1433 adds
+    QSaveFile atomic-write failure-injection seam for future hardening.
+  * MCP defensive docs: ANTS-1439 (cache inventory + migration checklist),
+    ANTS-1447 (deep-tree mtime limitation documented), ANTS-1580
+    (test-audit resume recipe). All 1257 feature tests passing.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 20 May 2026 17:32:09 +0200
+
 ants-terminal (0.7.91-1) unstable; urgency=medium
 
   * Indie-review fold-in + multi-agent audit sweep. The 2026-05-13

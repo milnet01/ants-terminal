@@ -12,6 +12,13 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.92] — 2026-05-20
+
+**Theme:** MCP token-saver depth + frozen-RC release pipeline. Wires
+the 0.7.92 milestone (pulls 34–42 MCP/test-audit/indie-review fold-ins)
+and bootstraps the weekly-Wednesday + Patron-RC cadence. Public ship
+target 2026-05-27; the inaugural `v0.7.92-rc1` is cut from these bits.
+
 ### 📦 Frozen-RC release pipeline — tooling (ANTS-1318, 2026-05-20)
 
 Implements the weekly-Wednesday + Patron-7-day-RC cadence's project-local
