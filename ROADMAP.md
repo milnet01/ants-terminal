@@ -4858,6 +4858,23 @@ already on the roadmap above.
 - 📋 [ANTS-1700] **`find_definition` MCP surfaces and mis-classifies namespace-qualified call sites as `definition` / `declaration`.** A `find_definition` for `slurpFunctionBody` returned 17 call sites (e.g. `ants_test::slurpFunctionBody(`) alongside the 2 real definitions — multi-line calls labelled `definition`, `;`-terminated calls `declaration`. The C++ classifier should require a return-type token before the qualified name (or exclude `Ns::sym(` qualified-call context) so call sites are not reported as definitions. `src/symbolquery.cpp`. Kind: fix. Source: test-audit-2026-05-20 (observed self-hosting the audit through Ants MCP). Priority: LOW — precision/convenience, not correctness.
 - 📋 [ANTS-1701] **`.ants_review_falsepos.jsonl` carried a pre-existing malformed line (a 2026-05-17 entry with an unescaped `"` inside `rationale`) that the MCP reader silently skips — so that user-confirmed false positive is re-raised on every sweep, defeating the ledger.** Add writer-side validation (the standard already mandates a JSON encoder for appends) and/or the `audit_falsepos_verify` tool the standard's §Pruning anticipates, to flag malformed or stale ledger lines. `.ants_review_falsepos.jsonl`. Kind: fix. Source: test-audit-2026-05-20.
 
+- 📋 [ANTS-1702] **`-Wunused-parameter` on `runMain(int argc, char **argv)` in feature-test bundles whose `QApplication` line is commented out.**
+  Surfaced during the 0.7.92 build (2026-05-20). At least
+  `tests/features/remote_control_roadmap_query/test_remote_control_roadmap_query.cpp:43`
+  keeps the legacy `static int runMain(int argc, char **argv)` signature
+  with its `QCoreApplication app(argc, argv);` line commented out — the
+  ANTS-1217 bundle_main (`tests/bundle_main_gui.cpp` / console
+  equivalent) now constructs the QApplication, so `argc`/`argv` are
+  unused and trip `-Wunused-parameter`. Fix: drop the unused params
+  (`runMain()`), or mark them `[[maybe_unused]]`, in every feature-test
+  that no longer creates its own app. Audit all ~30 `runMain`
+  definitions for the same commented-out-app pattern (most still pass
+  `argc, argv` into a real QApplication and are fine). Pure
+  test-scaffolding hygiene; no runtime effect.
+  **Layman:** A harmless compiler warning in test scaffolding — an old test helper still takes startup arguments it no longer uses. Tidy it so the build is warning-clean.
+  Kind: chore.
+  Source: debt-sweep-2026-05-20 build-warning.
+
 ### 🔍 Indie-review fold-in (2026-05-14) — follow-up sweep
 
 6-lane indie-review on 2026-05-14 immediately after ANTS-1294
