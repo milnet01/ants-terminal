@@ -12,9 +12,10 @@
 #   tools/check-roadmap.sh --allow ID,ID  # exempt known intentional cites
 #
 # The `--allow` list takes comma-separated bare IDs (no brackets, no
-# `ANTS-` prefix expected — pass them verbatim). The current
-# allowlist is ANTS-1118 — same shipped fix cross-cited in a tier
-# table; remove from the allowlist once that section is rewritten.
+# `ANTS-` prefix expected — pass them verbatim). The default allowlist
+# is empty: the roadmap carries one bullet per ID. (The historical
+# ANTS-1118 cross-cite was deduped on 2026-05-20 — the Tier-1 0.7.65
+# entry is now a non-ID cross-reference, so no exemption is needed.)
 #
 # Exit codes:
 #   0  clean (or every duplicate exempt via --allow)
@@ -37,7 +38,7 @@ EOF
 }
 
 target="ROADMAP.md"
-allow_csv="ANTS-1118"   # known intentional cross-section cite
+allow_csv=""   # no intentional cross-section cites (ANTS-1118 deduped 2026-05-20)
 
 while [ "$#" -gt 0 ]; do
     case "$1" in

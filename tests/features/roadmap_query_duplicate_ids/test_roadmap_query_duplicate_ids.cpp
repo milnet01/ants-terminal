@@ -135,13 +135,13 @@ TEST(roadmap_query_duplicate_ids, Inv6McpDescriptorMentionsField) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// Live-roadmap sanity — the project's own ROADMAP.md must parse
-// cleanly under the helper. ANTS-1118 is the only known duplicate
-// bullet today and it's an intentional cross-section cite (both
-// ✅, same shipped fix referenced from two tier tables). This test
-// locks the helper at "real-world tolerance" — fires only when a
-// NEW collision lands that the author didn't intentionally mirror.
-TEST(roadmap_query_duplicate_ids, LiveRoadmapKnownDuplicatesOnly) {
+// Live-roadmap sanity — the project's own ROADMAP.md must carry
+// exactly one bullet per [ANTS-NNNN] id. The historical ANTS-1118
+// cross-cite was deduped on 2026-05-20 (the Tier-1 0.7.65 entry is
+// now a non-ID cross-reference), so there are zero intentional
+// duplicates today. This test fires the moment a NEW collision
+// lands — the same hand-edit drift `tools/check-roadmap.sh` guards.
+TEST(roadmap_query_duplicate_ids, LiveRoadmapNoDuplicateBullets) {
     expect_reset();
     const std::string md = slurp(ROADMAP_MD_PATH);
     // Hand-rolled scanner mirroring rcComputeDuplicateIds' predicate
@@ -150,8 +150,8 @@ TEST(roadmap_query_duplicate_ids, LiveRoadmapKnownDuplicatesOnly) {
     // catching real duplicates; we don't need the full parser here.
     std::string line;
     std::stringstream in(md);
-    int ants1118 = 0;
-    int other = 0;
+    int dupes = 0;
+    std::string dupeNames;
     std::map<std::string, int> seen;
     while (std::getline(in, line)) {
         if (line.size() < 4 || line[0] != '-' || line[1] != ' ')
@@ -171,23 +171,17 @@ TEST(roadmap_query_duplicate_ids, LiveRoadmapKnownDuplicatesOnly) {
             if (id[i] < '0' || id[i] > '9') digitsOnly = false;
         }
         if (!digitsOnly) continue;
-        if (id == "[ANTS-1118]") {
-            ++ants1118;
-            continue;
+        // Count second-or-later sightings as duplicates.
+        if (++seen[id] == 2) {
+            ++dupes;
+            dupeNames += (dupeNames.empty() ? "" : ", ") + id;
         }
-        // Count second-or-later sightings as "extra duplicates".
-        if (++seen[id] == 2) ++other;
     }
-    expect(ants1118 == 2,
-           ("LiveRoadmap: ANTS-1118 expected exactly twice "
-            "(intentional cross-section cite); saw " +
-            std::to_string(ants1118)).c_str());
-    expect(other == 0,
-           ("LiveRoadmap: new duplicate bullet detected past the "
-            "known ANTS-1118 cross-cite; "
-            "count of second-or-later occurrences: " +
-            std::to_string(other) +
-            " — either renumber the duplicate via roadmap_log "
-            "op:append or update this test if intentional").c_str());
+    expect(dupes == 0,
+           ("LiveRoadmap: duplicate bullet id(s) detected: " +
+            (dupeNames.empty() ? std::string("(none)") : dupeNames) +
+            " — each [ANTS-NNNN] must own exactly one bullet; "
+            "renumber via roadmap_log op:append or convert the "
+            "cross-cite to a non-ID reference").c_str());
     EXPECT_EQ(0, expect_failures());
 }

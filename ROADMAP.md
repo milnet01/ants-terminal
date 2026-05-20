@@ -6967,12 +6967,14 @@ fixes don't address. Roadmapped here as their own design tasks.
   refill via `rcComputeDuplicateIds(QJsonArray)` in
   `remotecontrol.cpp`; surfaced on all three response paths
   (`section_index`, `section=`, full-file). (b) `tools/check-roadmap.sh`
-  exits non-zero on any duplicate; ships with `--allow ANTS-1118`
-  baked in as the known intentional cross-section cite (same
-  shipped fix referenced from two tier tables). Live-roadmap
+  exits non-zero on any duplicate. (Update 2026-05-20: the
+  ANTS-1118 cross-cite was deduped to a single canonical bullet —
+  the Tier-1 0.7.65 entry is now a non-ID cross-reference — so the
+  `--allow ANTS-1118` exemption was cleared and the live-roadmap
   sanity test in `tests/features/roadmap_query_duplicate_ids/`
-  pins the current state: ANTS-1118 = 2 expected, everything else
-  ≤ 1. Spec at `tests/features/roadmap_query_duplicate_ids/spec.md`;
+  tightened to "zero duplicate bullets" rather than
+  "ANTS-1118 = 2 expected".) Spec at
+  `tests/features/roadmap_query_duplicate_ids/spec.md`;
   full suite 1219/1219. The original ANTS-1415 collision that
   motivated this had already been renumbered to ANTS-1645 in
   pull 30 — the detector exists to keep the next collision from
@@ -13682,26 +13684,20 @@ partition (11 lanes) is documented in this fold-in for reuse.
 
 ### 🐛 Tier 1 — ship-this-week fixes (0.7.65)
 
-> Eight items, four IDs (1118 reused; 1130-1132 new). Each is
-> a bounded fix-pass; total estimated diff ≤ 600 LoC + new
-> feature tests.
+> Eight items across four work areas: the smooth-scroll snapshot
+> race (ANTS-1118, detailed in §Scrollback overwrite during
+> streaming) plus ANTS-1130–1132 (new IDs). Each is a bounded
+> fix-pass; total estimated diff ≤ 600 LoC + new feature tests.
 
-- ✅ [ANTS-1118] **Smooth-scroll snapshot race during streaming
-  — root cause confirmed.** Shipped 2026-05-01 (0.7.65). Fix
-  triggers `captureScreenSnapshot()` +
+- ✅ **Smooth-scroll snapshot race during streaming — root cause
+  confirmed.** Shipped 2026-05-01 (0.7.65). Cross-referenced into
+  this Tier-1 table; tracked + detailed under ANTS-1118 in
+  §"Scrollback overwrite during streaming (user request
+  2026-04-30)" — that is the single canonical bullet for the fix.
+  In brief: the fix triggers `captureScreenSnapshot()` +
   `m_grid->setScrollbackInsertPaused(true)` on **scroll intent**
-  (positive `m_smoothScrollTarget` from offset 0 with no
-  existing snapshot) rather than on committed `m_scrollOffset`
-  transition; `smoothScrollStep` timer-stop branch calls
-  `updateScrollBar()` so an intent-captured-but-never-committed
-  snapshot is dropped (idempotent). `Shift+PageUp` /
-  `Shift+Home` / `Shift+Up` already correct because they set
-  offset non-zero synchronously. Spec at
-  `docs/specs/ANTS-1118.md`; feature test at
-  `tests/features/scroll_snapshot_intent/` source-greps the four
-  INVs (wheelEvent intent branch, scrollback-pause in same
-  branch, smoothScrollStep cleanup call, onVtBatch regression
-  guard).
+  rather than on committed `m_scrollOffset` transition; feature
+  test at `tests/features/scroll_snapshot_intent/`.
   Kind: fix. Source: user-2026-04-30 + indie-review-2026-05-01.
   Lanes: TerminalWidget, terminalgrid (snapshot path).
 - ✅ [ANTS-1130] **VT alt-screen + scroll-region invariants —
