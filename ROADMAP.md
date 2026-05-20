@@ -13258,6 +13258,12 @@ will be memoized at `docs/private/audit/indie-review-partition.md`
 once the project crosses run #3 of the same partition; today's
 partition (11 lanes) is documented in this fold-in for reuse.
 
+- 📋 [ANTS-1696] **roadmap_query section= gives no signal when the target section is a markdown table, not bullets.**
+  Hit during pull 39: querying section="bundle-plan-for-pulls-34-logged-2026-05-19" returned bullets:[] count:0 even with include_narrator_bullets+include_body, because the section body is a `| ... |` planning table, not roadmap-format bullets. The empty response is indistinguishable from a genuinely empty section, so the caller falls back to a raw Read to discover the table. Small enhancement: when a section= query finds 0 bullets but the section body has non-bullet content (e.g. a markdown table or prose block), surface a hint field (e.g. `non_bullet_lines:N` or `section_shape:"table"`) so the caller knows to Read rather than assume empty. Mirrors the existing legacy_format_hint affordance but for table/prose sections.
+  **Layman:** When asking the roadmap tool about a section that is actually a table, it looks empty instead of saying "this part is a table, go read it" — add that hint.
+  Kind: enhancement.
+  Source: in-session-2026-05-20 (pull 39).
+
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
 - 📋 **Trust-model gaps in IPC sockets.** Two independent
