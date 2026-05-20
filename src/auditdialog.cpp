@@ -46,36 +46,19 @@
 // Edit once, applies everywhere.
 namespace {
 
-// find(1) exclude expression (paths).
-// `external/` and `third_party/` hold vendored code we don't maintain;
-// findings there aren't actionable. Same rationale as `vendor/`.
-//
-// 2026-04-16: also exclude gitignored scratch areas that scans commonly
-// catch by accident — __pycache__/ (Python bytecode), .claude/worktrees/
-// (Claude-Code agent scratch worktrees), target/ (Rust/Maven), .venv/ /
-// venv/ (Python virtualenvs), .tox/ (pytest), .pytest_cache/. These are
-// all in typical .gitignore files but the audit isn't git-aware, so we
-// list them explicitly. A future refinement could shell out to
-// `git ls-files` instead, but that couples audit to git state; the
-// static-list approach works across non-git projects too.
-const QString kFindExcl =
-    " -not -path './.git/*' -not -path './build/*' -not -path './build-*/*'"
-    " -not -path './node_modules/*' -not -path './.cache/*'"
-    " -not -path './dist/*' -not -path './vendor/*' -not -path './.audit_cache/*'"
-    " -not -path './external/*' -not -path './third_party/*'"
-    " -not -path '*/__pycache__/*' -not -path './.claude/*'"
-    " -not -path './target/*' -not -path './.venv/*' -not -path './venv/*'"
-    " -not -path './.tox/*' -not -path './.pytest_cache/*' -not -path './.mypy_cache/*'";
+// find(1) / grep(1) exclude expressions. ANTS-1709: the directory set
+// (VCS, vendored code, language caches, our own artifact dirs, the
+// build* glob family) now lives in ONE place — AuditEngine — so the
+// find / grep / trivy / cppcheck / FeatureCoverage copies can't drift.
+// `external/` + `third_party/` + `vendor/` hold code we don't maintain;
+// the cache/scratch dirs (__pycache__/, .venv/, target/, .tox/, …) are
+// gitignored but the audit isn't git-aware, so the set lists them
+// explicitly (works on non-git projects too). See AuditEngine for the
+// per-tool formatter rationale.
+const QString kFindExcl = AuditEngine::findExcludeExpr();
 
 // grep(1) exclude-dir list (bare, no file-include filter).
-const QString kGrepExcl =
-    " --exclude-dir=.git --exclude-dir=build --exclude-dir='build-*'"
-    " --exclude-dir=node_modules --exclude-dir=.cache"
-    " --exclude-dir=dist --exclude-dir=vendor --exclude-dir=.audit_cache"
-    " --exclude-dir=external --exclude-dir=third_party"
-    " --exclude-dir=__pycache__ --exclude-dir=.claude"
-    " --exclude-dir=target --exclude-dir=.venv --exclude-dir=venv"
-    " --exclude-dir=.tox --exclude-dir=.pytest_cache --exclude-dir=.mypy_cache";
+const QString kGrepExcl = AuditEngine::grepExcludeExpr();
 
 // Security scans also skip auditdialog.cpp/.h — its check descriptions
 // contain the very patterns being searched for (unsafe function names,
@@ -534,9 +517,7 @@ void AuditDialog::populateChecks() {
         " --include='*.py' --include='*.js' --include='*.ts' --include='*.tsx'"
         " --include='*.go' --include='*.rs' --include='*.java' --include='*.kt'"
         " --include='*.scala' --include='*.rb'"
-        " --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=build"
-        " --exclude-dir='build-*' --exclude-dir=.venv --exclude-dir=venv"
-        " --exclude-dir=__pycache__ --exclude-dir=.pytest_cache"
+        + kGrepExcl +
         " '(GTEST_SKIP|QSKIP|@Disabled|@Ignore|pytest\\.mark\\.(skip|xfail)|unittest\\.skip|skipIf\\(|skipUnless\\(|[[:space:]\\.]it\\.(skip|only)[[:space:]\\(]|[[:space:]\\.]describe\\.(skip|only)[[:space:]\\(]|\\bxdescribe\\(|\\bfdescribe\\(|\\bxit\\(|\\bfit\\(|\\btodo\\.only)'"
         " \"$d\" 2>/dev/null; "
         "done",
@@ -819,7 +800,14 @@ void AuditDialog::populateChecks() {
     // (rather than `null` or "{}" lines that would parse as fake findings).
     const bool hasTrivy = toolExists("trivy");
     const bool hasJq    = toolExists("jq");
-    const QString trivyCmd = QString::fromLatin1(R"TRIVY(trivy fs --quiet --scanners vuln,secret,misconfig --format json --severity MEDIUM,HIGH,CRITICAL --skip-dirs build,build-test,build-release,build-asan,.audit_cache,node_modules,vendor,.git,Testing . 2>/dev/null | jq -r '.Results[]? | .Target as $f | (.Vulnerabilities[]? | "\($f):1: \(.Severity): vuln/\(.VulnerabilityID): \(.Title // .Description // "(no description)")"), (.Secrets[]? | "\($f):\(.StartLine): \(.Severity): secret/\(.RuleID): \(.Title)"), (.Misconfigurations[]? | "\($f):1: \(.Severity): misconfig/\(.ID): \(.Title)")' 2>/dev/null | head -100)TRIVY");
+    // ANTS-1709: --skip-dirs comes from AuditEngine::trivySkipDirsCsv()
+    // (build glob included), so trivy can no longer scan build-fast /
+    // build-workstation the way the old static list silently did.
+    const QString trivyCmd =
+        QStringLiteral("trivy fs --quiet --scanners vuln,secret,misconfig "
+                       "--format json --severity MEDIUM,HIGH,CRITICAL --skip-dirs ")
+        + AuditEngine::trivySkipDirsCsv()
+        + QString::fromLatin1(R"TRIVY( . 2>/dev/null | jq -r '.Results[]? | .Target as $f | (.Vulnerabilities[]? | "\($f):1: \(.Severity): vuln/\(.VulnerabilityID): \(.Title // .Description // "(no description)")"), (.Secrets[]? | "\($f):\(.StartLine): \(.Severity): secret/\(.RuleID): \(.Title)"), (.Misconfigurations[]? | "\($f):1: \(.Severity): misconfig/\(.ID): \(.Title)")' 2>/dev/null | head -100)TRIVY");
     const QString trivyDesc = (hasTrivy && hasJq)
         ? QString("Filesystem-wide vuln + secret + misconfig scan (MEDIUM+)")
         : (!hasTrivy
@@ -1113,18 +1101,13 @@ void AuditDialog::populateChecks() {
             // surfaces a real code bug, only a tool-noise annoyance, so we
             // silence the category globally.
             " --suppress=invalidSuppression"
-            // Exclude every build-dir variant. The 2026-04-16 triage found
-            // cppcheck parsing moc_*.cpp in build-asan/ and tripping on
-            // their `#error "...generated using moc..."` banners. cppcheck's
-            // -i takes a path prefix and can't glob, and the old static
-            // enumeration silently missed newer presets — 2026-05-20
-            // (ANTS-1707) a self-audit found cppcheck scanning
-            // build-fast/_deps/googletest-src/ (~53 vendored false
-            // positives) because build-fast wasn't listed. Generate one -i
-            // per existing `build*` dir at run time so new presets are
-            // auto-excluded without another edit here.
-            " $(for d in build build-* node_modules .audit_cache; do"
-            " [ -d \"$d\" ] && printf -- '-i %s ' \"$d\"; done)"
+            // Exclude every build-dir variant via AuditEngine's runtime
+            // glob (ANTS-1709 centralisation). cppcheck's -i takes a path
+            // prefix and can't glob, so the helper expands `build*` at run
+            // time — ANTS-1707 root cause: a static list missed build-fast,
+            // so cppcheck scanned build-fast/_deps/googletest-src/ (~53
+            // vendored FPs). New presets now self-exclude.
+            + AuditEngine::cppcheckIgnoreShellExpr() +
             " -j$(nproc) . 2>&1 | head -100",
             CheckType::Bug, Severity::Major, { {}, "", {}, 100 },
             toolExists("cppcheck"), toolExists("cppcheck"), nullptr
@@ -1137,18 +1120,9 @@ void AuditDialog::populateChecks() {
             " --suppress=missingInclude --suppress=missingIncludeSystem"
             " --suppress=unmatchedSuppression --suppress=unknownMacro"
             " --suppress=invalidSuppression"
-            // Exclude every build-dir variant. The 2026-04-16 triage found
-            // cppcheck parsing moc_*.cpp in build-asan/ and tripping on
-            // their `#error "...generated using moc..."` banners. cppcheck's
-            // -i takes a path prefix and can't glob, and the old static
-            // enumeration silently missed newer presets — 2026-05-20
-            // (ANTS-1707) a self-audit found cppcheck scanning
-            // build-fast/_deps/googletest-src/ (~53 vendored false
-            // positives) because build-fast wasn't listed. Generate one -i
-            // per existing `build*` dir at run time so new presets are
-            // auto-excluded without another edit here.
-            " $(for d in build build-* node_modules .audit_cache; do"
-            " [ -d \"$d\" ] && printf -- '-i %s ' \"$d\"; done)"
+            // Same AuditEngine runtime glob as the cppcheck check above
+            // (ANTS-1709 centralisation / ANTS-1707 root cause).
+            + AuditEngine::cppcheckIgnoreShellExpr() +
             " . 2>&1 | head -50",
             CheckType::CodeSmell, Severity::Minor, { {}, "", {}, 50 },
             false, toolExists("cppcheck"), nullptr
@@ -1347,6 +1321,13 @@ void AuditDialog::populateChecks() {
         // immediately-preceding line, or used a string-literal URL. The
         // context-window filter suppresses both patterns when a scheme-
         // check token appears within ±5 lines of the match.
+        //
+        // ANTS-1709 — also model `QUrl::fromLocalFile()`: it builds a
+        // file:// URL from a trusted local path, so an openUrl on its
+        // result needs no scheme gate. Without this, idiomatic
+        // "open this file/dir in the file manager" calls were the
+        // visible residual FP class. Same-line form drops via
+        // dropIfContains; adjacent-construction form via the context list.
         addGrepCheck("qt_openurl_unchecked", "Qt openUrl Without Scheme Check",
                      "QDesktopServices::openUrl called on unvalidated URIs", "Qt",
                      "'QDesktopServices::openUrl'",
@@ -1354,7 +1335,8 @@ void AuditDialog::populateChecks() {
                      OutputFilter{
                        /*dropIfContains*/ {"scheme() ==", "validScheme",
                                            "allowScheme", "isLocal",
-                                           "https://", "QUrl::TolerantMode"},
+                                           "https://", "QUrl::TolerantMode",
+                                           "fromLocalFile"},
                        "", {}, 20,
                        /*dropIfContextContains*/ {
                            "startsWith(\"http", "startsWith(\"https",
@@ -1363,7 +1345,7 @@ void AuditDialog::populateChecks() {
                            // string-literal URL constructor on adjacent line
                            "QUrl(\"http", "QUrl(\"https", "QUrl(\"file",
                            "QUrl(\"mailto", "QUrl(\"ftp",
-                           "QUrl::fromUserInput"},
+                           "QUrl::fromUserInput", "QUrl::fromLocalFile"},
                        /*contextWindow*/ 5 });
 
         // Unbounded callback payloads. Detects PTY / OSC / IPC byte buffers

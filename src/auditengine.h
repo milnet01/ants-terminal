@@ -199,6 +199,39 @@ bool isCatastrophicRegex(const QString &pattern);
 // ingest go through this function.
 QString hardenUserRegex(const QString &pattern);
 
+// ANTS-1709 — single source of truth for the directory names every
+// audit scanner must skip (VCS, dependency vendoring, language caches,
+// our own artifact dirs). `build` is deliberately NOT in this list: it
+// expands to a glob family (build, build-asan, build-fast,
+// build-workstation, …) and each scanner accepts globs differently, so
+// the per-tool formatters below prepend the build family in the right
+// syntax. Centralised here so the historical copies (find -not -path,
+// grep --exclude-dir, trivy --skip-dirs, cppcheck -i, FeatureCoverage's
+// walk) can no longer drift — the drift that let trivy keep scanning
+// build-fast / build-workstation after ANTS-1707 fixed the same class
+// for cppcheck.
+const QStringList &excludedDirNames();
+
+// find(1): a run of `-not -path './<dir>/*'` clauses with the build glob
+// family first. `__pycache__` matches at any depth (Python nests it);
+// the rest are anchored top-level, preserving the pre-centralisation
+// kFindExcl semantics. Leading space; append after the find predicate.
+QString findExcludeExpr();
+
+// grep(1): a run of `--exclude-dir=<dir>` flags, build glob first.
+// Leading space. `--exclude-dir` is position-safe (unlike file
+// `--exclude`, which silently disables a later `--include`).
+QString grepExcludeExpr();
+
+// trivy `--skip-dirs`: comma-joined dir list, build glob first. trivy's
+// skip-dirs honours shell-style globs, so `build-*` covers every preset.
+QString trivySkipDirsCsv();
+
+// cppcheck `-i`: cppcheck can't glob a -i prefix, so emit a shell
+// snippet that expands `build*` at run time and prints one `-i <dir>`
+// per existing match. Leading space; embed inside the cppcheck command.
+QString cppcheckIgnoreShellExpr();
+
 // ANTS-1254 — wire-shape view of a single SARIF finding for the
 // last_audit_summary MCP tool. Distinct from `Finding` (the audit
 // dialog's in-memory parse target) because the wire needs the

@@ -57,6 +57,66 @@ QString hardenUserRegex(const QString &pattern) {
     return QStringLiteral("(*LIMIT_MATCH=100000)") + pattern;
 }
 
+// ANTS-1709 — centralised directory-exclusion set. See the header for
+// the rationale (one source of truth, no per-tool drift). `build` is the
+// only globbed family; each formatter emits it in its own syntax.
+const QStringList &excludedDirNames() {
+    static const QStringList kNames = {
+        QStringLiteral(".git"),
+        QStringLiteral("node_modules"),
+        QStringLiteral(".cache"),
+        QStringLiteral("dist"),
+        QStringLiteral("vendor"),
+        QStringLiteral(".audit_cache"),
+        QStringLiteral("external"),
+        QStringLiteral("third_party"),
+        QStringLiteral("__pycache__"),
+        QStringLiteral(".claude"),
+        QStringLiteral("target"),
+        QStringLiteral(".venv"),
+        QStringLiteral("venv"),
+        QStringLiteral(".tox"),
+        QStringLiteral(".pytest_cache"),
+        QStringLiteral(".mypy_cache"),
+        QStringLiteral("Testing"),
+    };
+    return kNames;
+}
+
+QString findExcludeExpr() {
+    QString s = QStringLiteral(" -not -path './build/*' -not -path './build-*/*'");
+    for (const QString &d : excludedDirNames()) {
+        // __pycache__ nests arbitrarily deep in Python trees, so match it
+        // at any depth; the rest are conventionally top-level only. This
+        // reproduces the pre-centralisation kFindExcl semantics exactly.
+        s += (d == QLatin1String("__pycache__"))
+                 ? QStringLiteral(" -not -path '*/") + d + QStringLiteral("/*'")
+                 : QStringLiteral(" -not -path './") + d + QStringLiteral("/*'");
+    }
+    return s;
+}
+
+QString grepExcludeExpr() {
+    QString s = QStringLiteral(" --exclude-dir=build --exclude-dir='build-*'");
+    for (const QString &d : excludedDirNames())
+        s += QStringLiteral(" --exclude-dir=") + d;
+    return s;
+}
+
+QString trivySkipDirsCsv() {
+    QStringList parts{QStringLiteral("build"), QStringLiteral("build-*")};
+    parts += excludedDirNames();
+    return parts.join(QLatin1Char(','));
+}
+
+QString cppcheckIgnoreShellExpr() {
+    QString names = QStringLiteral("build build-*");
+    for (const QString &d : excludedDirNames())
+        names += QLatin1Char(' ') + d;
+    return QStringLiteral(" $(for d in ") + names +
+           QStringLiteral("; do [ -d \"$d\" ] && printf -- '-i %s ' \"$d\"; done)");
+}
+
 namespace {
 
 // Lifted from auditdialog.cpp: resolve `./relative.cpp` references

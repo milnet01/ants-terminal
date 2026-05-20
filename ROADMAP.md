@@ -7176,27 +7176,57 @@ suppression that survives line drift.
   Lanes: auditengine, auditcache, falseposledger.
   Source: self-audit 2026-05-20.
 
-- 📋 [ANTS-1709] **Grep-rule hygiene pass — framework-awareness,
-  centralized exclusion set, per-rule fixtures.** Research names
-  framework-aware custom rules as the highest-impact FP lever. The
-  `header_guards` (`#pragma once`) and `Qt openUrl Without Scheme Check`
-  (hardcoded `https://`/`fromLocalFile` literals) FPs are the visible
-  class: grep/find rules that don't model the framework idiom. (a) Sweep
-  every hardcoded `addFindCheck`/grep rule + `audit_rules.json` entry
-  for idiom blind spots and tighten the regexes. (b) Root-cause the
-  `build-fast` miss (ANTS-1707) by centralising the build/vendored/
-  generated exclusion set into ONE source of truth shared across the
-  find rules, cppcheck `-i`, clazy, and grep `--exclude-dir` — today
-  each enumerates its own list and they drift. (c) Give each grep rule a
-  `tests/audit_fixtures/<rule>/{good,bad}.*` pair (the harness exists)
-  so a future regex tweak can't silently regress, and lock the
-  `#pragma once` + `openUrl` cases as fixtures.
-  **Layman:** teach the audit rules the project's own conventions so
-  they stop flagging correct, idiomatic code — and add tests so the
-  rules can't quietly break again.
+- ✅ [ANTS-1709] **Grep-rule hygiene pass — framework-awareness,
+  centralized exclusion set, per-rule fixtures.** Shipped 2026-05-20.
+  (b) **Root-caused the `build-fast` miss (DONE).** The directory set
+  every scanner skips (VCS, vendored code, language caches, our artifact
+  dirs, the `build*` glob family) now lives in ONE place —
+  `AuditEngine::excludedDirNames()` + per-tool formatters
+  (`findExcludeExpr` / `grepExcludeExpr` / `trivySkipDirsCsv` /
+  `cppcheckIgnoreShellExpr`). All five copies (find `-not -path`, grep
+  `--exclude-dir`, trivy `--skip-dirs`, cppcheck `-i`, FeatureCoverage's
+  `kSkipTopDirs` walk) re-point at it. This killed a live FP generator:
+  trivy's static `--skip-dirs build,build-test,build-release,build-asan`
+  list silently missed `build-fast`/`build-workstation` — the *same*
+  class ANTS-1707 fixed for cppcheck. (clazy needs no entry — it scans
+  an explicit `../src/*.cpp` glob, not a dir tree.) (c) **Locks (DONE).**
+  Every `addGrepCheck` rule already carries a `tests/audit_fixtures/`
+  pair (enforced by `audit_self_test.sh`'s fixture-coverage cross-check);
+  added `tests/features/audit_exclusion_set/` (10 invariants) locking the
+  centralised formatters, the trivy build-glob (ANTS-1707-class
+  regression guard), the openUrl `fromLocalFile` idiom, and — newly — the
+  ANTS-1707 `#pragma once` whole-file probe (previously untested).
+  (a) **Idiom tightening (PARTIAL).** Modelled the named visible class:
+  `qt_openurl_unchecked` now treats `QUrl::fromLocalFile()` as a
+  validated source (`#pragma once`/header_guards was already done in
+  ANTS-1707). The broad sweep of *every* grep/find rule + `audit_rules.json`
+  for idiom blind spots is deferred to [[ANTS-1710]].
+  **Layman:** taught the audit rules the project's own conventions so
+  they stop flagging correct, idiomatic code, fixed the file-scanner so
+  it ignores every build folder, and added tests so the rules can't
+  quietly break again.
+  Kind: audit-fix.
+  Lanes: auditdialog, auditengine, featurecoverage, tests.
+  Source: self-audit 2026-05-20.
+
+- 📋 [ANTS-1710] **Audit grep/find rule idiom-blind-spot sweep — framework-awareness pass across all rules + audit_rules.json.**
+  Deferred residual of ANTS-1709 (which shipped the centralised
+  exclusion set + the named openUrl/header_guards idioms). The
+  open-ended part: walk EVERY hardcoded `addFindCheck`/`addGrepCheck`
+  rule in `auditdialog.cpp` and every `audit_rules.json` entry, and
+  tighten each regex/OutputFilter that doesn't model the language or
+  framework idiom it scans (research names framework-aware custom rules
+  as the highest-impact FP lever). For each rule reviewed, confirm or
+  add a `tests/audit_fixtures/<rule>/{good,bad}.*` pair that captures
+  the idiom it must NOT flag. Treat ANTS-1709's `qt_openurl_unchecked`
+  (fromLocalFile) and `header_guards` (#pragma once) as the worked
+  examples to follow.
+  **Layman:** Go rule-by-rule through the audit tool and teach each one
+  the coding conventions of the languages it checks, so it stops crying
+  wolf on correct code — with a test per rule to keep it honest.
   Kind: audit-fix.
   Lanes: auditdialog, auditengine, audit_rules.json, tests.
-  Source: self-audit 2026-05-20.
+  Source: self-audit 2026-05-20; deferred from ANTS-1709.
 
 ### ⚡ Other improvements (performance, security, optimisations)
 

@@ -1219,7 +1219,9 @@ if(ANTS_TESTS)
                 # ANTS-1345 — cold-eyes derivePartition deterministic tiebreak.
                 tests/features/cold_eyes_partition_deterministic/test_cold_eyes_partition_deterministic.cpp
                 # ANTS-1615/1616/1617 — 2026-05-19 test_audit bundle fold-in.
-                tests/features/test_audit_bundle_2026_05_19/test_test_audit_bundle.cpp)
+                tests/features/test_audit_bundle_2026_05_19/test_test_audit_bundle.cpp
+                # ANTS-1709 — centralised dir-exclusion set + openUrl idiom.
+                tests/features/audit_exclusion_set/test_audit_exclusion_set.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
@@ -1245,7 +1247,9 @@ if(ANTS_TESTS)
         # ANTS-1455 — taxonomy doc for new error-code rows.
         MCP_ERROR_CODES_DOC_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md"
         # ANTS-1579 — verify_changes description source-scrape (INV-4).
-        SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp")
+        SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
+        # ANTS-1709 — centralised exclusion-set drift guard (INV-7).
+        SRC_FEATURECOVERAGE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/featurecoverage.cpp")
 
     # ANTS-1217 Phase 6 — test_dialogs bundle. Subject: settingsdialog +
     # roadmapdialog + diffviewer (the dialogs hosted by chrome). 11 tests

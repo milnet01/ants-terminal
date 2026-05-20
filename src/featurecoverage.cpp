@@ -2,6 +2,8 @@
 
 #include "featurecoverage.h"
 
+#include "auditengine.h"
+
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -281,15 +283,19 @@ QString buildProjectSourceBlob(const QString &projectPath) {
         "*.in",         // CMake .in templates
         "*.pro", "*.pri",
     };
-    // Excluded top-level dirs — build artifacts and VCS/IDE noise
-    // that dilute the index without adding signal. Keep the list
-    // in sync with kFindExcl / kGrepExcl from auditdialog.cpp.
-    static const QSet<QString> kSkipTopDirs = {
-        ".git", ".svn", ".hg", "build", "dist", "node_modules",
-        ".cache", ".audit_cache", ".pytest_cache", ".mypy_cache",
-        ".tox", ".venv", "venv", "target", ".claude", "__pycache__",
-        "vendor", "third_party", "external", ".ccls-cache",
-    };
+    // Excluded dirs — build artifacts and VCS/IDE noise that dilute the
+    // index without adding signal. The core set is the shared audit
+    // exclusion set (AuditEngine::excludedDirNames — ANTS-1709, the single
+    // source of truth) plus a few VCS/IDE caches that only matter to this
+    // spec-drift walk. `build` and the `build-*` glob are handled by the
+    // literal + startsWith() check below.
+    static const QSet<QString> kSkipTopDirs = [] {
+        QSet<QString> s(AuditEngine::excludedDirNames().cbegin(),
+                        AuditEngine::excludedDirNames().cend());
+        s += {QStringLiteral("build"), QStringLiteral(".svn"),
+              QStringLiteral(".hg"), QStringLiteral(".ccls-cache")};
+        return s;
+    }();
     QString sourceBlob;
     // Walk the project tree manually so we can skip heavy dirs
     // without relying on QDirIterator's limited filtering.

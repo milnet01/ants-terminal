@@ -46,7 +46,23 @@ for security-relevant changes.
   silently missed `build-fast`/`build-workstation` — cppcheck was
   scanning vendored `build-fast/_deps/googletest-src/` and emitting ~53
   false positives. Broader audit FP-reduction work is roadmapped
-  (ANTS-1706/1708/1709).
+  (ANTS-1706/1708).
+
+- **Audit directory-exclusion set centralised + trivy build-glob fix
+  (ANTS-1709).** The set of directories every scanner skips (VCS,
+  vendored code, language caches, our artifact dirs, the `build*` glob
+  family) now lives in one place — `AuditEngine::excludedDirNames()` plus
+  per-tool formatters — instead of five hand-maintained copies (find
+  `-not -path`, grep `--exclude-dir`, trivy `--skip-dirs`, cppcheck `-i`,
+  and `FeatureCoverage`'s walk). This closes a live false-positive
+  generator: trivy's static `--skip-dirs` list missed
+  `build-fast`/`build-workstation`, so it scanned the vendored googletest
+  tree — the same class ANTS-1707 fixed for cppcheck. The
+  `qt_openurl_unchecked` rule also now recognises `QUrl::fromLocalFile()`
+  as a validated source (the named residual openUrl FP). Locked by
+  `tests/features/audit_exclusion_set/` (10 invariants, including a
+  regression guard for the ANTS-1707 `#pragma once` fix). The broad
+  per-rule idiom sweep is deferred to ANTS-1710.
 
 ### Changed
 
