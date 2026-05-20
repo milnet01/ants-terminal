@@ -725,14 +725,12 @@ QStringList extractIncludeArgsImpl(const QStringList &args) {
     };
     for (int i = 0; i < args.size(); ++i) {
         const QString &a = args.at(i);
-        bool matched = false;
         for (const QString &f : kFlags) {
             if (a == f) {
                 if (i + 1 < args.size()) {
                     out << args.at(i + 1);
                     ++i;
                 }
-                matched = true;
                 break;
             }
             if (a.startsWith(f) && a.size() > f.size()
@@ -743,11 +741,9 @@ QStringList extractIncludeArgsImpl(const QStringList &args) {
                  || a.at(f.size()) == QLatin1Char('~')
                  || a.at(f.size()).isLetterOrNumber())) {
                 out << a.mid(f.size());
-                matched = true;
                 break;
             }
         }
-        Q_UNUSED(matched);
     }
     return out;
 }

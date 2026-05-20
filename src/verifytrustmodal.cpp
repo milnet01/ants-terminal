@@ -118,7 +118,6 @@ Decision ModalClient::prompt(const QString &projectPath,
         return {Outcome::Trusted, shaHex};
     }
     // Deny / Cancel / window-close — all fall back.
-    Q_UNUSED(bDeny);
     return {Outcome::UntrustedFellBack, shaHex};
 }
 
