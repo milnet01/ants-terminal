@@ -92,7 +92,10 @@ TEST_F(RateLimitTestFixture, Inv5CacheHitsConsume) {
     const auto dispatchStart = cc.find("else if (method == \"tools/call\")");
     ASSERT_NE(dispatchStart, std::string::npos);
     // Bound the search to the dispatcher region for tools/call.
-    const std::string region = cc.substr(dispatchStart, 9000);
+    // Window widened to 16000 (ANTS-1415 Phase 3b added the
+    // TabSpecific refusal branch, pushing the cache gate past the
+    // original 9000-char window).
+    const std::string region = cc.substr(dispatchStart, 16000);
 
     const auto rateLimitPos = region.find("rateLimitCheck(toolName");
     const auto cachePos     = region.find("isIdempotentReadTool(toolName)");

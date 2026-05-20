@@ -33,6 +33,18 @@
 static QElapsedTimer s_rateLimitClock;
 #include <unistd.h>
 
+// ANTS-1415 — the two CallerCwdContract::TabSpecific tools whose handler
+// honours an explicit `tab` index as an alternate routing key
+// (cmdGetText, cmdRecentErrors). The other four (get_scrollback,
+// get_last_command, get_environment, get_cwd) ignore `tab`, so it must
+// NOT count as a routing key for them — else a stray tab:N would bypass
+// the Phase 3b gate and still fall back to the focused tab. See
+// docs/specs/ANTS-1415.md.
+static bool tabSpecificAcceptsTabIndex(const QString &toolName) {
+    return toolName == QLatin1String("get_text") ||
+           toolName == QLatin1String("recent_errors");
+}
+
 ClaudeIntegration::ClaudeIntegration(QObject *parent) : QObject(parent) {
     // ANTS-1356 — start the monotonic clock used by rateLimitCheck.
     // QElapsedTimer::start() is idempotent; calling it on already-
@@ -5881,6 +5893,56 @@ void ClaudeIntegration::onMcpConnection() {
                     // inherited the "ok" default and token_usage
                     // double-counted refusals as successes.
                     dispatchResult = QStringLiteral("caller_cwd_required");
+                }
+                // ANTS-1415 — Phase 3b: TabSpecific contract enforcement.
+                // The per-tab read tools route on caller_cwd (ANTS-1392)
+                // and, for two of them (get_text / recent_errors), an
+                // explicit `tab` index. With NO usable routing key they
+                // fall back to the focused tab — the cross-tenant leak
+                // ANTS-1404 closed for Required tools, deferred from
+                // Phase 3a because the routing-vs-anchoring semantics
+                // needed their own spec pass. Refuse before the
+                // rate-limit + cache, mirroring the Required branch.
+                // A stray `tab` on a cwd-only tool is NOT a routing key
+                // (the handler ignores it), else it would bypass the
+                // gate and still fall back to focused. See
+                // docs/standards/mcp-error-codes.md § 3 + docs/specs/ANTS-1415.md.
+                if (!toolHandled &&
+                    contract == CallerCwdContract::TabSpecific) {
+                    const bool tabIsRoutingKey =
+                        tabSpecificAcceptsTabIndex(toolName);
+                    const bool hasTab = tabIsRoutingKey &&
+                        argsObj.value(QStringLiteral("tab")).isDouble();
+                    if (callerCwd.isEmpty() && !hasTab) {
+                        QJsonObject env;
+                        env["ok"]   = false;
+                        env["code"] = QStringLiteral("tab_or_cwd_required");
+                        env["error"] = (tabIsRoutingKey
+                            ? QString("%1: pass a `tab` index or `caller_cwd` "
+                                      "(your $PWD) to identify the target tab "
+                                      "(ANTS-1415). Without either, this "
+                                      "per-tab tool falls back to whichever tab "
+                                      "Ants has focused — which may belong to a "
+                                      "different project.")
+                            : QString("%1: pass `caller_cwd` (your $PWD) to "
+                                      "identify the target tab (ANTS-1415). "
+                                      "Without it, this per-tab tool falls back "
+                                      "to whichever tab Ants has focused — which "
+                                      "may belong to a different project."))
+                            .arg(toolName);
+                        env["hint"] = QStringLiteral(
+                            "call mcp__ants__caller_cwd_info with your $PWD to "
+                            "confirm which tab Ants would route this call to; "
+                            "tab_list gives tab indices");
+                        QJsonObject ex;
+                        ex[QStringLiteral("caller_cwd")] =
+                            QStringLiteral("<your $PWD>");
+                        env[QStringLiteral("example")] = ex;
+                        responseText = QString::fromUtf8(
+                            QJsonDocument(env).toJson(QJsonDocument::Compact));
+                        toolHandled    = true;
+                        dispatchResult = QStringLiteral("tab_or_cwd_required");
+                    }
                 }
                 // ANTS-1356 — per-tool sliding-window rate-limit.
                 // Runs AFTER caller_cwd_required (a misconfigured

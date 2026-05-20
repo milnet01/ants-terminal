@@ -12,6 +12,43 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔒 MCP TabSpecific caller-cwd enforcement — pull 40 (ANTS-1415, 2026-05-20)
+
+Phase 3b of the per-tool `caller_cwd` contract (ANTS-1404 was Phase
+3a). The six per-tab read tools no longer silently fall back to the
+focused terminal tab when the caller supplies no routing key — closing
+the same cross-tenant data-leak shape Phase 3a closed for the
+`Required` tools.
+
+- **ANTS-1415 (security)** — the MCP `tools/call` dispatch now enforces
+  `CallerCwdContract::TabSpecific`. The six tools (`get_text`,
+  `recent_errors`, `get_scrollback`, `get_last_command`,
+  `get_environment`, `get_cwd`) are refused with
+  `{ok:false, code:"tab_or_cwd_required", error, hint, example}` when
+  **no usable routing key** is present: `caller_cwd` empty AND — for the
+  two tab-routing tools `get_text` / `recent_errors` — no integer
+  `tab`. The other four ignore a `tab` arg, so a stray `tab:N` does not
+  count as a routing key for them (it can't bypass the gate). The
+  refusal runs after the Phase 3a `Required` branch and before the
+  rate-limit + idempotent-read cache, and sets `dispatchResult` so
+  `token_usage` / `mcp_trace` count it as a failed call. New file-local
+  `tabSpecificAcceptsTabIndex` helper; new refusal code
+  `tab_or_cwd_required` documented in
+  `docs/standards/mcp-error-codes.md` § 3. No reclassification — all
+  six remain `TabSpecific` in `callerCwdContractFor`. Schemas are left
+  as-is (the tab-or-cwd disjunction isn't expressible as JSON-schema
+  `required`). **Contract break:** callers of these tools that omit
+  every routing key now get one refusal; the fix is mechanical (add
+  `caller_cwd`, or a `tab` index for the two tab-routing tools). Spec
+  `docs/specs/ANTS-1415.md` (cold-eyes 1 loop); tests
+  `tests/features/mcp_tabspecific_contract/` (6 source-scrape
+  invariants). Full feature suite 1248/1248 green.
+- **ANTS-1420 deferred to 0.7.93.** The pull-40 plan bundled the
+  deprecated-`cwd`-field schema drop here, but it stays on the 0.7.93
+  checklist: the `cwd` deprecation first *ships* in 0.7.92 (it landed
+  post-0.7.91, in this Unreleased tree), so removing it now would land
+  in 0.7.92 with zero migration window.
+
 ### 🔌 MCP shape matcher — pull 39 (ANTS-1305, 2026-05-20)
 
 A read-only MCP tool that surfaces the project's existing examples of a

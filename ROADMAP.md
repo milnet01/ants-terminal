@@ -5596,7 +5596,22 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: cross-session-report-2026-05-15 (positive feedback +
   follow-up suggestion).
 
-- 📋 [ANTS-1415] **Phase 3b — TabSpecific contract enforcement.**
+- ✅ [ANTS-1415] **Phase 3b — TabSpecific contract enforcement.**
+  Shipped 2026-05-20 (Pull 40). The dispatch site now refuses the six
+  TabSpecific tools (`get_scrollback`, `get_text`, `recent_errors`,
+  `get_last_command`, `get_environment`, `get_cwd`) with
+  `tab_or_cwd_required` when no usable routing key is present —
+  `caller_cwd` empty AND (for the two tab-routing tools
+  `get_text`/`recent_errors`) no integer `tab`. A `tab` on the four
+  cwd-only tools is NOT a routing key (they ignore it), so a stray
+  `tab:N` can't bypass the gate. Refusal runs after the Phase 3a
+  Required branch, before rate-limit + cache; sets `dispatchResult`
+  so token_usage/mcp_trace count it. New `tabSpecificAcceptsTabIndex`
+  helper; new error code `tab_or_cwd_required` in
+  `docs/standards/mcp-error-codes.md` § 3. No reclassification — all
+  six stay TabSpecific. Spec `docs/specs/ANTS-1415.md` (cold-eyes 1
+  loop); tests `tests/features/mcp_tabspecific_contract/`. Full
+  feature suite 1248/1248.
   ANTS-1404 (Phase 3a, shipped 2026-05-16) classified five tools
   as `CallerCwdContract::TabSpecific` (`get_scrollback`, `get_text`,
   `get_last_command`, `get_environment`, `get_cwd`) but does not
@@ -5722,6 +5737,11 @@ fixes don't address. Roadmapped here as their own design tasks.
   already ignores it; only the schema entry remains. One-line
   edit + schema regression test update. Track as a chore on
   the 0.7.93 release checklist rather than a standalone bump.
+  **Deferred from pull 40 (2026-05-20):** bundled with ANTS-1415 in
+  the pull-40 plan, but held back. The `cwd` deprecation first
+  *ships* in 0.7.92 (the next release — ANTS-1336 landed post-0.7.91,
+  in the [Unreleased] tree), so dropping it now would land in 0.7.92
+  with zero migration window. Stays on the 0.7.93 checklist.
   **Layman:** clean up the placeholder schema entry left behind
   for the session_memory `cwd` migration window — drops in the
   release after 0.7.92.
@@ -8369,7 +8389,7 @@ gets one CHANGELOG section + one drift cycle + one push.
 | **37** | Task-start context bundling | ANTS-1306 (`task_priors`) · ANTS-1307 (`project_conventions`) | composer over existing verbs · `remotecontrol.cpp` | small (~250 LOC, pure composer) |
 | **38** | Focused test runner | ANTS-1302 (`focused_test`) | new `focusedtest.{h,cpp}` · `tests/coverage-map.json` schema · `remotecontrol.cpp` | medium (~400 LOC) |
 | **39** ✅ | Pattern-shape matcher (shipped 2026-05-20) | ANTS-1305 (`similar_code`) | new `similarcode.{h,cpp}` (reuses FileOutline extractor) · token-set Jaccard ranking · `remotecontrol.cpp` | medium (~350 LOC) |
-| **40** | Contract enforcement Phase 3b + cwd-field schema drop | ANTS-1415 (Phase 3b spec + impl) · ANTS-1420 (drop deprecated `cwd`) | `claudeintegration.cpp` · `docs/specs/ANTS-1415.md` | small-medium (1420 is one-line; 1415 needs spec) |
+| **40** ✅ | Contract enforcement Phase 3b (shipped 2026-05-20; ANTS-1420 deferred to 0.7.93) | ANTS-1415 (Phase 3b spec + impl) · ~~ANTS-1420~~ (deferred — migration window) | `claudeintegration.cpp` · `docs/specs/ANTS-1415.md` · `mcp-error-codes.md` | small-medium |
 | **41** | Test-infra hardening | ANTS-1434 (KwinPositionTracker flake) · ANTS-1433 (atomic-write rollback test seam) | `tests/features/kwin_position_tracker/` · new `ANTS_TEST_HOOKS` define · new `tests/features/mcp_roadmap_log_atomicity/` | small-medium (each ~150 LOC) |
 | **42** | Defensive observations (doc-only) | ANTS-1439 (cache relocation contract) · ANTS-1447 (test_audit mtime deep-tree gap) | `docs/specs/ANTS-1397.md` INV-15 amendment · `docs/standards/mcp-caches.md` (new) | tiny (docs only) |
 | **43** | Debt-sweep detector expansion | ANTS-1358 (4 new detectors) | `debtsweepengine.cpp` · 4 detector classes + fixtures | medium (~500 LOC) |
