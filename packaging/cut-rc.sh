@@ -131,12 +131,22 @@ require_clean_main() {
     fi
 }
 
-changelog_excerpt() {
-    # Body of the first "## [X.Y.Z]" section (not [Unreleased]).
+release_notes() {
+    # Concise GitHub-release body for tag $1: the **Theme:** paragraph
+    # of the first "## [X.Y.Z]" CHANGELOG section + a link to the full
+    # notes at the tag. The full section can run to hundreds of KB
+    # (a whole milestone), which blows past both argv limits and
+    # GitHub's release-body cap — so we summarise + link, never inline
+    # the whole section.
+    local tag=$1
     awk '
         /^## \[[0-9]+\.[0-9]+\.[0-9]+\]/ { if (seen) exit; seen=1; next }
-        seen { print }
+        seen && /^\*\*Theme:\*\*/ { intheme=1 }
+        seen && intheme && /^$/   { exit }
+        seen && intheme           { print }
     ' CHANGELOG.md
+    printf '\nFull release notes: CHANGELOG.md at this tag —\n'
+    printf 'https://github.com/milnet01/ants-terminal/blob/%s/CHANGELOG.md\n' "$tag"
 }
 
 # ---- Subcommands -----------------------------------------------------
@@ -192,14 +202,17 @@ cmd_new_rc() {
     confirm_or_print git push origin main
     confirm_or_print git push origin "${tag}"
 
-    local notes; notes=$(changelog_excerpt)
     if [ "$DO_PUSH" = 1 ]; then
-        echo "+ gh release create ${tag} --prerelease --title \"${base} RC${n} — Patron preview\""
+        local notes_file; notes_file=$(mktemp)
+        release_notes "${tag}" > "$notes_file"
+        [ -s "$notes_file" ] || echo "See CHANGELOG.md for highlights." > "$notes_file"
+        echo "+ gh release create ${tag} --prerelease --title \"${base} RC${n} — Patron preview\" --notes-file <theme + CHANGELOG link>"
         gh release create "${tag}" --prerelease \
             --title "${base} RC${n} — Patron preview" \
-            --notes "${notes:-See CHANGELOG.md for highlights.}"
+            --notes-file "$notes_file"
+        rm -f "$notes_file"
     else
-        echo "  [rehearsal] would run: gh release create ${tag} --prerelease --title \"${base} RC${n} — Patron preview\" --notes <CHANGELOG [${base}] body>"
+        echo "  [rehearsal] would run: gh release create ${tag} --prerelease --title \"${base} RC${n} — Patron preview\" --notes-file <theme + CHANGELOG link>"
     fi
 
     echo
@@ -265,11 +278,15 @@ cmd_promote() {
     fi
     confirm_or_print git push origin "${pub}"
     if [ "$DO_PUSH" = 1 ]; then
+        local notes_file; notes_file=$(mktemp)
+        release_notes "${pub}" > "$notes_file"
+        [ -s "$notes_file" ] || echo "See CHANGELOG.md for highlights." > "$notes_file"
         gh release create "${pub}" \
             --title "${inflight}" \
-            --notes "$(changelog_excerpt)"
+            --notes-file "$notes_file"
+        rm -f "$notes_file"
     else
-        echo "  [rehearsal] would run: gh release create ${pub} (public, prerelease=false) …"
+        echo "  [rehearsal] would run: gh release create ${pub} (public, prerelease=false) --notes-file <theme + CHANGELOG link>"
     fi
     echo "cut-rc: ${pub} promoted. Now bump to the next patch and run 'new-rc'"
     echo "        to cut the following week's RC (ANTS-1318 §2.4 dual-cut)."
