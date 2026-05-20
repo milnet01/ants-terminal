@@ -143,12 +143,14 @@ QStringList detectProjectFrameworks(const QString &projectPath) {
     if (!pkgJson.isEmpty()) {
         // Cheap dependency-name probe: look for `"react"` or `"vue"`
         // followed by `:` inside any dependencies-shaped block.
-        if (QRegularExpression(QStringLiteral("\"react(?:-dom)?\"\\s*:"))
-                .match(pkgJson).hasMatch()) {
+        // ANTS-1647 — literal patterns hoisted out of the per-call path.
+        static const QRegularExpression reReact(
+            QStringLiteral("\"react(?:-dom)?\"\\s*:"));
+        static const QRegularExpression reVue(QStringLiteral("\"vue\"\\s*:"));
+        if (reReact.match(pkgJson).hasMatch()) {
             out << QStringLiteral("react");
         }
-        if (QRegularExpression(QStringLiteral("\"vue\"\\s*:"))
-                .match(pkgJson).hasMatch()) {
+        if (reVue.match(pkgJson).hasMatch()) {
             out << QStringLiteral("vue");
         }
     }

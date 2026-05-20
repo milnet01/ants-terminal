@@ -983,9 +983,14 @@ PartitionResult partition(const PartitionRequest &req) {
     r.partitionToken = computeToken(canon, req.scope, dims, maxMtime);
     r.mtimeWalkComputedAt = QDateTime::currentDateTimeUtc();
     r.dimensionsActive = dims;
-    // Pre-compile patterns.
-    QVector<QRegularExpression> rxs;
-    for (const auto &p : g_kPrePatterns()) rxs.append(QRegularExpression(p.regex));
+    // Pre-compile patterns. ANTS-1647 — g_kPrePatterns() is a fixed static
+    // table, so compile the regexes once for the process rather than on every
+    // partition() call.
+    static const QVector<QRegularExpression> rxs = []{
+        QVector<QRegularExpression> v;
+        for (const auto &p : g_kPrePatterns()) v.append(QRegularExpression(p.regex));
+        return v;
+    }();
     // Pre-pass per chunk; cap at kPrePassPerChunkCap per chunk.
     for (const Chunk &c : chunks) {
         QJsonArray findings;

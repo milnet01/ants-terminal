@@ -2027,7 +2027,9 @@ QString commentBody(const QString &rawLine) {
     int pos = s.indexOf("//");
     if (pos < 0) pos = s.indexOf(" #");
     if (pos < 0) pos = s.indexOf(" -- ");
-    if (pos >= 0) return s.mid(pos).replace(QRegularExpression(R"(^[/#\s-]+)"), "").trimmed();
+    // ANTS-1647 — hoist the literal pattern out of the per-call path.
+    static const QRegularExpression reLeadComment(R"(^[/#\s-]+)");
+    if (pos >= 0) return s.mid(pos).replace(reLeadComment, "").trimmed();
     return {};
 }
 
@@ -2097,8 +2099,8 @@ bool AuditDialog::commentSuppresses(const QString &commentText, const QString &r
     if (!listMatch.hasMatch()) return true;   // token present but shape unknown → conservative suppress
 
     const QString listStr = listMatch.captured(1);
-    const QStringList ids =
-        listStr.split(QRegularExpression(R"([,\s]+)"), Qt::SkipEmptyParts);
+    static const QRegularExpression reIdSep(R"([,\s]+)");  // ANTS-1647
+    const QStringList ids = listStr.split(reIdSep, Qt::SkipEmptyParts);
     for (const QString &raw : ids) {
         const QString id = raw.trimmed();
         if (id.isEmpty()) continue;
@@ -2700,7 +2702,8 @@ void AuditDialog::loadSuppressions() {
         }
 
         // v1 legacy: first whitespace-delimited token is the key.
-        m_suppressedKeys.insert(line.section(QRegularExpression(R"(\s+)"), 0, 0));
+        static const QRegularExpression reWs(R"(\s+)");  // ANTS-1647
+        m_suppressedKeys.insert(line.section(reWs, 0, 0));
     }
 }
 
@@ -2757,7 +2760,8 @@ void AuditDialog::saveSuppression(const QString &dedupKey,
             if (line.isEmpty() || line.startsWith('#')) continue;
             if (!line.startsWith('{')) {
                 needsConvert = true;
-                legacyKeys << line.section(QRegularExpression(R"(\s+)"), 0, 0);
+                static const QRegularExpression reWs(R"(\s+)");  // ANTS-1647
+                legacyKeys << line.section(reWs, 0, 0);
             }
             // JSONL lines are already v2 — we'll append to them as-is.
         }

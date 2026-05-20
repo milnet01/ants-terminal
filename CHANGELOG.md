@@ -118,6 +118,22 @@ for security-relevant changes.
   recursive-mtime / token-recompute / byte-cap-cascade items of ANTS-1450
   remain open.
 
+- **Hot-path regex hoisting (ANTS-1647).** A fresh
+  `clazy-standalone --checks=use-static-qregularexpression` sweep over
+  all of `src/*.cpp` reports zero — the named-literal locals the
+  2026-05-19 review counted were already hoisted via the project's
+  `static const QRegularExpression rx = []{ … }()` lambda-init pattern
+  (ANTS-1249). A source-level sweep then found 10 genuine
+  *inline-literal-temporary* recompile sites that clazy under-reports (a
+  `QRegularExpression(R"(…)")` built fresh as a
+  `.replace()`/`.split()`/`.section()`/`.match()` argument every call):
+  auditdialog 4×, testauditengine 1× (pre-pass set now compiled once into
+  a `static const QVector`), remotecontrol 2×, audithygiene 2×,
+  claudeallowlist 1×. All hoisted to `static const`; behaviour-preserving.
+  The terminalwidget/settingsdialog/symbolquery search-regex sites the
+  review cited build patterns from runtime strings (not literals), so they
+  correctly can't be static and are out of scope here.
+
 ## [0.7.92] — 2026-05-20
 
 **Theme:** MCP token-saver depth + frozen-RC release pipeline. Wires

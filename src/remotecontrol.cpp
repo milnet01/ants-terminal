@@ -2605,13 +2605,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         // ANTS-1554 follow-up — `</invoke>` also leaks through some
         // harnesses (observed in pull-8 on ANTS-1554 and ANTS-1555
         // bodies). Same shape as the stray `</body>` closer.
-        text.remove(QRegularExpression(
+        static const QRegularExpression reCloseTag(  // ANTS-1647
             QStringLiteral("</invoke>"),
-            QRegularExpression::CaseInsensitiveOption));
+            QRegularExpression::CaseInsensitiveOption);
+        text.remove(reCloseTag);
         // Collapse any blank-line runs created by the removal so the
         // splice doesn't accumulate empty body lines.
-        text.replace(QRegularExpression(QStringLiteral("\\n{3,}")),
-                     QStringLiteral("\n\n"));
+        static const QRegularExpression reBlankRun(  // ANTS-1647
+            QStringLiteral("\\n{3,}"));
+        text.replace(reBlankRun, QStringLiteral("\n\n"));
         // Trim trailing whitespace from each line + overall.
         QStringList ls = text.split(QChar('\n'));
         for (QString &l : ls) {

@@ -389,7 +389,8 @@ QString ClaudeAllowlistDialog::normalizeRule(const QString &raw) {
     if (m.hasMatch() && !rule.contains("SUDO_ASKPASS")) {
         QString rest = m.captured(1);
         // Strip any existing -A flag to avoid doubling
-        rest.remove(QRegularExpression(R"(^-A\s+)"));
+        static const QRegularExpression reDashA(R"(^-A\s+)");  // ANTS-1647
+        rest.remove(reDashA);
         rule = QStringLiteral("Bash(") + s_sudoPrefix + rest + ")";
     }
 
