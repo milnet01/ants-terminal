@@ -210,7 +210,8 @@ target_compile_options(ants_warnings INTERFACE
 #   ants_vt_lib      ← parser + grid + widget + themes (depends on core)
 #   ants_chrome_lib  ← mainwindow + tabbar + palette (depends on vt)
 #   ants_claude_lib  ← Claude Code integration (depends on chrome)
-#   ants_audit_lib   ← audit dialog + engine + hygiene (depends on core)
+#   ants_audit_lib   ← audit engine + runner + hygiene (depends on core)
+#   ants_audit_dialog_lib ← AuditDialog QDialog (depends on audit + chrome + dialogs)
 #   ants_dialogs_lib ← settings/about/diff/ssh/etc. (depends on chrome)
 #   ants_lua_lib     ← only if LUA_FOUND
 #   ants_helper_lib  ← only if ANTS_ENABLE_HELPER_CLI
@@ -334,8 +335,15 @@ target_link_libraries(ants_claude_lib
     PRIVATE ants_warnings)
 set_target_properties(ants_claude_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+# ANTS-1444: the audit engine/runner/hygiene core is split from the
+# Widgets-using AuditDialog. ants_audit_lib holds the non-GUI TUs (none
+# of these #include a Qt6::Widgets header); the QDialog moves to
+# ants_audit_dialog_lib below. This keeps engine-only consumers (the MCP
+# audit test bundle, future core consumers) free of the auditdialog.o
+# translation unit. NB: ants_core_lib still links Qt6::Widgets PUBLIC,
+# so the *transitive* Widgets surface persists until that is narrowed
+# separately — this split is the structural prerequisite.
 add_library(ants_audit_lib STATIC
-    src/auditdialog.cpp
     src/auditengine.cpp
     src/audithygiene.cpp
     src/featurecoverage.cpp
@@ -351,6 +359,19 @@ target_link_libraries(ants_audit_lib
     PUBLIC  ants_core_lib
     PRIVATE ants_warnings)
 set_target_properties(ants_audit_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# ANTS-1444: AuditDialog (QDialog) + its UI deps. References AuditEngine
+# (ants_audit_lib), DialogChrome (ants_chrome_lib), and ToggleSwitch
+# (ants_dialogs_lib). mainwindow.cpp (in ants_chrome_lib) constructs
+# AuditDialog, so consumers form a chrome↔dialog symbol cycle resolved
+# via --start-group at the final link.
+add_library(ants_audit_dialog_lib STATIC
+    src/auditdialog.cpp
+)
+target_link_libraries(ants_audit_dialog_lib
+    PUBLIC  ants_audit_lib ants_chrome_lib ants_dialogs_lib
+    PRIVATE ants_warnings)
+set_target_properties(ants_audit_dialog_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(ants_dialogs_lib STATIC
     src/settingsdialog.cpp
@@ -402,14 +423,23 @@ endif()
 # Just main.cpp — every other src/*.cpp is in a STATIC library above and is
 # reached transitively through target_link_libraries.
 add_executable(ants-terminal src/main.cpp)
+# ANTS-1444: the static-lib graph has symbol cycles (chrome↔claude↔dialogs
+# via mainwindow.cpp, plus chrome↔audit_dialog via the AuditDialog ctor).
+# Wrap the archives in --start-group so GNU ld/lld re-scan until every
+# symbol resolves, regardless of archive order — the same guard the test
+# bundles already use. ants_warnings is an INTERFACE flag lib and stays
+# outside the group.
 target_link_libraries(ants-terminal PRIVATE
+    -Wl,--start-group
     ants_core_lib
     ants_vt_lib
     ants_chrome_lib
     ants_claude_lib
     ants_audit_lib
+    ants_audit_dialog_lib
     ants_dialogs_lib
     $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
+    -Wl,--end-group
     ants_warnings
 )
 
@@ -438,6 +468,7 @@ ants_apply_qt_pch(ants_vt_lib)
 ants_apply_qt_pch(ants_chrome_lib)
 ants_apply_qt_pch(ants_claude_lib)
 ants_apply_qt_pch(ants_audit_lib)
+ants_apply_qt_pch(ants_audit_dialog_lib)
 ants_apply_qt_pch(ants_dialogs_lib)
 if(LUA_FOUND)
     ants_apply_qt_pch(ants_lua_lib)
@@ -764,6 +795,7 @@ if(ANTS_TESTS)
     ants_add_gui_bundle(test_chrome
         LIBS    ants_chrome_lib ants_vt_lib ants_core_lib
                 ants_claude_lib ants_dialogs_lib ants_audit_lib
+                ants_audit_dialog_lib
                 $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
         SOURCES tests/features/tab_rename_persist/test_tab_rename_persist.cpp
                 tests/features/status_bar_elision/test_status_bar_elision.cpp
@@ -877,6 +909,7 @@ if(ANTS_TESTS)
     ants_add_gui_bundle(test_claude
         LIBS    ants_chrome_lib ants_vt_lib ants_core_lib
                 ants_claude_lib ants_dialogs_lib ants_audit_lib
+                ants_audit_dialog_lib
                 $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
         SOURCES tests/features/claude_status_bar/test_claude_status.cpp
                 tests/features/claude_status_bar_per_tab/test_claude_status_bar_per_tab.cpp
@@ -1224,6 +1257,7 @@ if(ANTS_TESTS)
     ants_add_gui_bundle(test_dialogs
         LIBS    ants_chrome_lib ants_vt_lib ants_core_lib
                 ants_claude_lib ants_dialogs_lib ants_audit_lib
+                ants_audit_dialog_lib
                 $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
         SOURCES tests/features/settings_dependency_gating/test_settings_dependency_gating.cpp
                 tests/features/settings_profile_cancel_rollback/test_settings_profile_cancel_rollback.cpp

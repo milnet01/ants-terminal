@@ -35,6 +35,19 @@ for security-relevant changes.
   Spec `docs/specs/ANTS-1358.md`; tests
   `tests/features/debt_sweep_engine/` (INV-14..INV-19).
 
+### Changed
+
+- **Audit library split (ANTS-1444, Pull 44).** `auditdialog.cpp` (the
+  only Qt6::Widgets-using audit TU) moved into a new
+  `ants_audit_dialog_lib`; `ants_audit_lib` now holds only the
+  engine/runner/hygiene/cache TUs and no longer drags `auditdialog.o`
+  into engine-only consumers (verified: the `test_audit` bundle links
+  zero `AuditDialog` symbols). The main-exe link now wraps its static
+  archives in `-Wl,--start-group/--end-group` to resolve the
+  chrome↔dialog symbol cycle the move surfaces. `ants_core_lib` still
+  links `Qt6::Widgets PUBLIC`, so the transitive Widgets surface is
+  narrowed separately (ANTS-1705). No behavior change.
+
 ## [0.7.92] — 2026-05-20
 
 **Theme:** MCP token-saver depth + frozen-RC release pipeline. Wires

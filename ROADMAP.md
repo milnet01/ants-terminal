@@ -6740,23 +6740,48 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: audit_run, claudeintegration.
   Source: deferred from ANTS-1351 § 9 Q1 (cold-eyes loop 3 2026-05-17).
 
-- 📋 [ANTS-1444] **Split `ants_audit_lib` into engine/runner core + dialog GUI.**
-  ANTS-1351's `auditrunner.{h,cpp}` lives in `ants_audit_lib`
-  alongside `auditdialog.cpp` (a QDialog). Anything depending on
-  auditrunner pulls Qt6::Widgets via the lib's transitive deps even
-  though auditrunner.cpp itself doesn't include a Widgets header.
-  
-  Proposed split:
-  - `ants_audit_lib` → engine + runner + hygiene (Qt6::Core only)
-  - `ants_audit_dialog_lib` → dialog + UI helpers (Qt6::Widgets)
-  
-  Affects test linkage (the new MCP audit test could link
-  `ants_audit_lib` directly without dragging widgets). Larger scope
-  than v1 cleanup; better to do before lib has grown more.
+- ✅ [ANTS-1444] **Split `ants_audit_lib` into engine/runner core + dialog GUI.**
+  Shipped 2026-05-20 (Pull 44). `auditdialog.cpp` (the lone
+  Widgets-using TU) moved into a new `ants_audit_dialog_lib`
+  (PUBLIC `ants_audit_lib` + `ants_chrome_lib` + `ants_dialogs_lib`
+  — it references DialogChrome and ToggleSwitch). `ants_audit_lib`
+  now holds only engine/runner/hygiene/cache/featurecoverage/
+  rulequality/indie-dispatcher TUs, none of which `#include` a
+  Widgets header. `mainwindow.cpp` constructs `AuditDialog`, so the
+  consumer link graph gains a chrome↔dialog symbol cycle — resolved
+  by wrapping the main-exe archives in `-Wl,--start-group/--end-group`
+  (the guard the test bundles already used). The three chrome-linking
+  GUI bundles gained `ants_audit_dialog_lib`; the engine-only
+  `test_audit` bundle did **not** — verified `nm` shows zero
+  `AuditDialog::` symbols in it, and `ar t libants_audit_lib.a` no
+  longer lists `auditdialog.o`. 1265/1265 green.
+  **Residual (see ANTS-1705):** `ants_core_lib` still links
+  `Qt6::Widgets PUBLIC`, so the audit engine *transitively* pulls
+  Widgets despite being TU-clean — narrowing that is a separate
+  follow-up; this split is the structural prerequisite.
   **Layman:** Right now the audit library bundles the GUI dialog with the engine — anything that links the engine drags the GUI in too. Split them.
   Kind: refactor.
   Lanes: ants_audit_lib, CMakeLists.txt.
   Source: deferred from ANTS-1351 § 9 Q5 (cold-eyes loop 3 2026-05-17).
+
+- 📋 [ANTS-1705] **Narrow `ants_core_lib`'s `Qt6::Widgets` link to
+  realize the ANTS-1444 split benefit.** `ants_core_lib` links
+  `Qt6::Widgets PUBLIC`, so every downstream lib — including the now
+  TU-clean `ants_audit_lib` — still pulls the Widgets surface
+  transitively. To make the audit engine genuinely Widgets-free (so a
+  pure-core MCP/CI consumer can link it without Qt6::Widgets), audit
+  which `ants_core_lib` TUs actually need Widgets (candidates:
+  `themedstylesheet`, `dialogshowtracer`, `kwinpositiontracker`,
+  `globalshortcutsportal`), move those to a higher GUI lib or make the
+  Widgets link `PRIVATE`, and demote the core link to `Qt6::Gui` (or
+  `Qt6::Core`) where possible. Larger, cross-cutting refactor — measure
+  before committing.
+  **Layman:** the engine library no longer *contains* GUI code, but it
+  still drags the GUI toolkit in through a lower shared library; finish
+  the job by trimming that.
+  Kind: refactor.
+  Lanes: ants_core_lib, CMakeLists.txt.
+  Source: in-session 2026-05-20 (observed during ANTS-1444).
 
 - ✅ [ANTS-1445] **Prompt-injection fence sweep across `*_synthesis_prompt` MCP verbs.**
   Shipped 2026-05-18 (Bundle pull 16). `IndieReviewEngine::synthesisPrompt`
