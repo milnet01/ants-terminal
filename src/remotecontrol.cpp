@@ -16,6 +16,7 @@
 #include "remotecontrolgate.h"
 #include "resolvedroot.h"
 #include "sessionmemoryengine.h"
+#include "symbolquery.h"
 #include "tokenusageengine.h"
 #include "roadmapdialog.h"
 #include "roadmapfoldin.h"
@@ -868,6 +869,14 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
     if (cmd == QLatin1String("file-outline")) {
         // ANTS-1249: IPC dispatch entry for the file outline scanner.
         return cmdFileOutline(req);
+    }
+    if (cmd == QLatin1String("find-definition")) {
+        // ANTS-1303: IPC dispatch entry for the symbol-definition scanner.
+        return cmdFindDefinition(req);
+    }
+    if (cmd == QLatin1String("find-caller")) {
+        // ANTS-1303: IPC dispatch entry for the symbol-caller scanner.
+        return cmdFindCaller(req);
     }
     if (cmd == QLatin1String("git-state")) {
         // ANTS-1250: IPC dispatch entry for the consolidated git tool.
@@ -5395,6 +5404,126 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     result["specs_scanned"] = scanned;
     result["matched_count"] = matched.size();
     return QJsonDocument(result);
+}
+
+// ----- ANTS-1303 — find_definition / find_caller symbol queries -----
+
+namespace {
+
+QJsonObject sqArgErr(const QString &tool) {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["error"] = tool + QStringLiteral(": \"symbol\" missing, empty, or "
+                                       "not a valid identifier "
+                                       "(^[A-Za-z_][A-Za-z0-9_]{0,127}$)");
+    o["code"]  = QStringLiteral("bad_args");
+    return o;
+}
+
+QJsonObject sqNoProject(const QString &tool) {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["error"] = tool + QStringLiteral(": project root unresolved");
+    o["code"]  = QStringLiteral("no_project");
+    return o;
+}
+
+// Normalised `lang` echo for the envelope ("auto" when unset).
+QString sqLangEcho(const QJsonObject &req) {
+    const QString l = req.value(QStringLiteral("lang")).toString()
+                          .trimmed().toLower();
+    return l.isEmpty() ? QStringLiteral("auto") : l;
+}
+
+// Parse the shared `lang` + `max_results` opts from the request.
+SymbolQuery::Options sqOptions(const QJsonObject &req) {
+    SymbolQuery::Options opts;
+    opts.lang = SymbolQuery::parseLang(
+        req.value(QStringLiteral("lang")).toString().trimmed().toLower());
+    const QJsonValue mr = req.value(QStringLiteral("max_results"));
+    if (mr.isDouble()) {
+        const int n = mr.toInt();
+        if (n > 0) opts.maxResults = n;
+    }
+    return opts;
+}
+
+QJsonObject defMatchToJson(const SymbolQuery::DefMatch &d) {
+    QJsonObject o;
+    o["file"]      = d.file;
+    o["line"]      = d.line;
+    o["signature"] = d.signature;
+    o["lang"]      = d.lang;
+    o["kind"]      = d.kind;
+    return o;
+}
+
+}  // namespace
+
+QJsonDocument RemoteControl::cmdFindDefinition(const QJsonObject &req) {
+    const QString symbol = req.value(QStringLiteral("symbol")).toString().trimmed();
+    if (!SymbolQuery::isValidSymbol(symbol)) {
+        return QJsonDocument(sqArgErr(QStringLiteral("find_definition")));
+    }
+    const QString root = resolveRootCanonical(m_main, req);
+    if (root.isEmpty()) {
+        return QJsonDocument(sqNoProject(QStringLiteral("find_definition")));
+    }
+
+    const SymbolQuery::DefResult res =
+        SymbolQuery::findDefinition(root, symbol, sqOptions(req));
+
+    QJsonArray defs;
+    for (const SymbolQuery::DefMatch &d : res.definitions)
+        defs.append(defMatchToJson(d));
+
+    QJsonObject out;
+    out["ok"]                = true;
+    out["symbol"]            = symbol;
+    out["lang"]              = sqLangEcho(req);
+    out["definitions"]       = defs;
+    out["definitions_count"] = res.definitionsTotal;
+    out["files_scanned"]     = res.filesScanned;
+    out["truncated"]         = res.truncated;
+    out["walk_capped"]       = res.walkCapped;
+    return QJsonDocument(out);
+}
+
+QJsonDocument RemoteControl::cmdFindCaller(const QJsonObject &req) {
+    const QString symbol = req.value(QStringLiteral("symbol")).toString().trimmed();
+    if (!SymbolQuery::isValidSymbol(symbol)) {
+        return QJsonDocument(sqArgErr(QStringLiteral("find_caller")));
+    }
+    const QString root = resolveRootCanonical(m_main, req);
+    if (root.isEmpty()) {
+        return QJsonDocument(sqNoProject(QStringLiteral("find_caller")));
+    }
+
+    const SymbolQuery::CallResult res =
+        SymbolQuery::findCaller(root, symbol, sqOptions(req));
+
+    QJsonArray callers;
+    for (const SymbolQuery::CallMatch &c : res.callers) {
+        QJsonObject o;
+        o["file"]    = c.file;
+        o["line"]    = c.line;
+        o["context"] = c.context;
+        o["lang"]    = c.lang;
+        callers.append(o);
+    }
+
+    QJsonObject out;
+    out["ok"]            = true;
+    out["symbol"]        = symbol;
+    out["lang"]          = sqLangEcho(req);
+    out["callers"]       = callers;
+    out["callers_count"] = res.callersTotal;
+    if (res.definition.has_value())
+        out["definition"] = defMatchToJson(res.definition.value());
+    out["files_scanned"] = res.filesScanned;
+    out["truncated"]     = res.truncated;
+    out["walk_capped"]   = res.walkCapped;
+    return QJsonDocument(out);
 }
 
 // ----- ANTS-1112 — five `indie_review_*` MCP-tool handlers ---------

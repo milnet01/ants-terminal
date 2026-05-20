@@ -12,6 +12,43 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP symbol queries — pull 35 (ANTS-1303, 2026-05-20)
+
+Two new read-only MCP tools (plus matching `find-definition` /
+`find-caller` IPC verbs) that answer the two most-frequent
+code-navigation questions — "where is `Foo` defined?" and "what
+calls `Foo`?" — in one call instead of the 4–6 grep + Read cycles
+they cost today. Backed by a new Qt6::Core-only `SymbolQuery` lib
+(`src/symbolquery.{h,cpp}`), the tree-walking sibling to
+`fileoutline`. No clangd / tree-sitter / build-system dependency.
+
+- **ANTS-1303 (implement)** — `find_definition` + `find_caller` MCP
+  tools. Both take `{symbol, caller_cwd, lang?, max_results?}` and do
+  a bounded recursive regex scan over the project's C++/Python/Lua/
+  Shell sources. `find_definition` returns `{ok, symbol, lang,
+  definitions:[{file, line, signature, lang, kind}],
+  definitions_count, files_scanned, truncated, walk_capped}` — `kind`
+  is `definition` or `declaration` (C++ keys off a trailing `;`, so a
+  brace-on-next-line definition is still tagged `definition`).
+  `find_caller` returns `{…, callers:[{file, line, context, lang}],
+  callers_count, definition?, …}` — the symbol's own definition line
+  is excluded from callers, and the best-guess `definition` is
+  attached so a single call answers "where + who". The walk skips
+  `build*` / dot-dirs / `node_modules`, never follows symlinks, caps
+  lines at 1024 bytes (backtracking guard), and stops at 5 000 files
+  (`walk_capped:true`). Result caps: 50 definitions / 200 callers
+  (`max_results` overrides); `*_count` carries the pre-cap total.
+  The `symbol` is guarded by `^[A-Za-z_][A-Za-z0-9_]{0,127}$`
+  (refusal `bad_args`) and `QRegularExpression::escape`d before
+  splicing — the only caller text that reaches a regex. Both tools
+  are Required-contract gated, bucket as `[symbol]` in `kindForName`,
+  and carry token-cost ledger entries `(600, 2500)` /  `(800, 4000)`.
+  File paths in every envelope are project-relative. Spec
+  `docs/specs/ANTS-1303.md` (cold-eyes-reviewed, 2 loops to clean);
+  tests `tests/features/mcp_symbol_query/` (live `SymbolQuery`
+  behaviour across all four languages + source-grep wiring contract).
+  Full feature suite 1225/1225 green.
+
 ### 🔌 MCP build/test cache — pull 34 (ANTS-1299 + ANTS-1300, 2026-05-19)
 
 Two new MCP tools that cache the most recent build / test outcomes

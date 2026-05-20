@@ -12889,16 +12889,25 @@ expected token-leverage per implementation hour.
 
 #### 🔌 Better context, less reading
 
-- 📋 [ANTS-1303] **`find_definition` + `find_caller` MCP — cheap symbol
-  queries without full LSP.** Two of the most-frequent Claude tasks:
-  "where is `FunctionName` defined?" and "what calls `FunctionName`?".
-  Today both burn 4–6 grep + Read cycles. Regex-anchored scanner
-  returns `{definition: {file, line, signature}, callers: [{file,
-  line, context: <line text>}]}`. Anchors: `^[\w:&* ]*\bFunctionName\s*\(`
-  for definitions, `\bFunctionName\s*\(` minus the definition line
-  for callers. C++/Python/Lua/Shell aware. Pairs with the existing
-  `file_outline`; together they cover ~80 % of LSP without the
-  build-system overhead.
+- ✅ [ANTS-1303] **`find_definition` + `find_caller` MCP — cheap symbol
+  queries without full LSP.** Shipped 2026-05-20 (Pull 35). Two of the
+  most-frequent Claude tasks: "where is `FunctionName` defined?" and
+  "what calls `FunctionName`?". Both burned 4–6 grep + Read cycles.
+  New Qt6::Core-only `SymbolQuery` lib (`src/symbolquery.{h,cpp}`,
+  sibling to `fileoutline`) does a bounded recursive regex scan over
+  the project tree. `find_definition` returns `{definitions:[{file,
+  line, signature, lang, kind}], definitions_count, files_scanned,
+  truncated, walk_capped}` (kind = definition/declaration via the
+  trailing-`;` rule); `find_caller` returns `{callers:[{file, line,
+  context, lang}], callers_count, definition?, …}` — the def line is
+  excluded from callers and the best-guess definition is attached for
+  the "where + who" round trip. Per-language anchors for
+  C++/Python/Lua/Shell; the walk skips `build*` / dot-dirs /
+  `node_modules`; symbol guarded by `^[A-Za-z_][A-Za-z0-9_]{0,127}$`
+  (→ `bad_args`) + `QRegularExpression::escape`. Caps: 50 defs / 200
+  callers / 5000 files. Pairs with `file_outline`. Spec
+  `docs/specs/ANTS-1303.md` (cold-eyes 2 loops); tests
+  `tests/features/mcp_symbol_query/`. Full suite 1225/1225.
   **Layman:** asking "where's this function defined and who calls
   it" should be one MCP call, not five grep + read cycles.
   Kind: implement.

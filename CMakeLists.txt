@@ -222,6 +222,8 @@ add_library(ants_core_lib STATIC
     src/remotecontrol.cpp
     src/remotecontrolgate.cpp
     src/fileoutline.cpp
+    # ANTS-1303 — find_definition / find_caller tree-wide symbol scanner.
+    src/symbolquery.cpp
     src/gitwrap.cpp
     src/indiereviewengine.cpp
     src/debtsweepengine.cpp
@@ -1028,7 +1030,9 @@ if(ANTS_TESTS)
                 # ANTS-1299 build_status MCP tool.
                 tests/features/mcp_build_status/test_mcp_build_status.cpp
                 # ANTS-1300 test_results MCP tool.
-                tests/features/mcp_test_results/test_mcp_test_results.cpp)
+                tests/features/mcp_test_results/test_mcp_test_results.cpp
+                # ANTS-1303 find_definition + find_caller MCP tools.
+                tests/features/mcp_symbol_query/test_mcp_symbol_query.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.

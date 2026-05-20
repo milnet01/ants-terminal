@@ -283,6 +283,14 @@ public:
     // See docs/specs/ANTS-1249.md.
     QJsonDocument cmdFileOutline(const QJsonObject &req);
 
+    // ANTS-1303: find_definition / find_caller — tree-wide regex
+    // symbol scanner. Delegate to SymbolQuery; resolve the root via
+    // resolveRootCanonical, validate `symbol` (→ bad_args). Public so
+    // the MCP provider lambdas in MainWindow delegate here.
+    // See docs/specs/ANTS-1303.md.
+    QJsonDocument cmdFindDefinition(const QJsonObject &req);
+    QJsonDocument cmdFindCaller(const QJsonObject &req);
+
     // ANTS-1250: git_state — single tool, dispatches on `op` field
     // (status / log / diff). Wraps gitwrap.cpp's shell-less QProcess
     // helper. Argv-only, --separator + ./ prefix on -leading paths,

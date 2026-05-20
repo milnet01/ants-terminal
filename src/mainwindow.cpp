@@ -4437,6 +4437,26 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_remoteControl->cmdTestResults(args).toJson(QJsonDocument::Compact));
         });
 
+    // ANTS-1303 — find_definition + find_caller. Tree-wide regex symbol
+    // scanner (no LSP). Both take {symbol, caller_cwd, lang?,
+    // max_results?} and delegate to SymbolQuery via RemoteControl.
+    // MCP-only conceptually; also reachable via the IPC dispatch verbs
+    // find-definition / find-caller. See docs/specs/ANTS-1303.md.
+    m_claudeIntegration->registerToolProvider("find_definition",
+        ClaudeIntegration::CallerCwdContract::Required,
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdFindDefinition(args).toJson(QJsonDocument::Compact));
+        });
+    m_claudeIntegration->registerToolProvider("find_caller",
+        ClaudeIntegration::CallerCwdContract::Required,
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdFindCaller(args).toJson(QJsonDocument::Compact));
+        });
+
     // ANTS-1112 — five `indie_review_*` tools. Each handler resolves
     // the active project via the focused TerminalWidget's shellCwd
     // (matches the convention used by git_state / subsystem /

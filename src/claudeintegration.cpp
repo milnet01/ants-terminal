@@ -2783,6 +2783,138 @@ void ClaudeIntegration::onMcpConnection() {
                     tools.append(t);
                 }
 
+                // ANTS-1303 — find_definition: tree-wide regex scan for
+                // a symbol's definition/declaration line(s).
+                {
+                    QJsonObject t;
+                    t["name"] = "find_definition";
+                    t["description"] = QStringLiteral(
+                        "Find where a symbol is defined across the "
+                        "project, without a full LSP. Regex-anchored "
+                        "scan over C++/Python/Lua/Shell source. Returns "
+                        "{ok, symbol, lang, definitions:[{file, line, "
+                        "signature, lang, kind}], definitions_count, "
+                        "files_scanned, truncated, walk_capped}. `kind` "
+                        "is \"definition\" or \"declaration\" (C++ "
+                        "header decls end in `;`). Use instead of 4-6 "
+                        "grep + Read cycles for \"where is Foo "
+                        "defined?\". Refusals: bad_args (symbol missing "
+                        "or not a valid identifier), no_project "
+                        "(caller_cwd unresolved).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Prefer over grep+Read when you need the "
+                        "definition site of one named symbol. Pairs "
+                        "with find_caller (who uses it) and file_outline "
+                        "(what's in one file).");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p;
+                        p["type"]        = "string";
+                        p["description"] = QStringLiteral(
+                            "Identifier to locate "
+                            "(^[A-Za-z_][A-Za-z0-9_]{0,127}$).");
+                        props["symbol"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        QJsonArray e;
+                        e.append("auto"); e.append("cpp"); e.append("py");
+                        e.append("lua");  e.append("sh");
+                        p["enum"]        = e;
+                        p["default"]     = "auto";
+                        p["description"] = QStringLiteral(
+                            "Restrict the scan to one language family. "
+                            "\"auto\" (default) scans all four.");
+                        props["lang"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]        = "integer";
+                        p["description"] = QStringLiteral(
+                            "Cap on definitions[] (default 50). "
+                            "definitions_count carries the pre-cap "
+                            "total.");
+                        props["max_results"] = p;
+                    }
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("symbol");
+                    req.append("caller_cwd");
+                    schema["required"]             = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
+                // ANTS-1303 — find_caller: tree-wide regex scan for the
+                // call sites of a symbol, plus its best-guess definition.
+                {
+                    QJsonObject t;
+                    t["name"] = "find_caller";
+                    t["description"] = QStringLiteral(
+                        "Find what calls a symbol across the project, "
+                        "without a full LSP. Regex-anchored scan over "
+                        "C++/Python/Lua/Shell source. Returns {ok, "
+                        "symbol, lang, callers:[{file, line, context, "
+                        "lang}], callers_count, definition?, "
+                        "files_scanned, truncated, walk_capped}. The "
+                        "symbol's own definition line is excluded from "
+                        "callers; `definition` carries the best-guess "
+                        "definition so you get \"where + who\" in one "
+                        "call. Refusals: bad_args (symbol missing or "
+                        "not a valid identifier), no_project "
+                        "(caller_cwd unresolved).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Prefer over grep+Read for \"who calls Foo?\". "
+                        "Pairs with find_definition; shell matches are "
+                        "coarser (no call-paren convention).");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p;
+                        p["type"]        = "string";
+                        p["description"] = QStringLiteral(
+                            "Identifier to locate "
+                            "(^[A-Za-z_][A-Za-z0-9_]{0,127}$).");
+                        props["symbol"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        QJsonArray e;
+                        e.append("auto"); e.append("cpp"); e.append("py");
+                        e.append("lua");  e.append("sh");
+                        p["enum"]        = e;
+                        p["default"]     = "auto";
+                        p["description"] = QStringLiteral(
+                            "Restrict the scan to one language family. "
+                            "\"auto\" (default) scans all four.");
+                        props["lang"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]        = "integer";
+                        p["description"] = QStringLiteral(
+                            "Cap on callers[] (default 200). "
+                            "callers_count carries the pre-cap total.");
+                        props["max_results"] = p;
+                    }
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("symbol");
+                    req.append("caller_cwd");
+                    schema["required"]             = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-1112 — five `indie_review_*` tools that lift the
                 // mechanical halves of /indie-review out of orchestrator
                 // context. Engine: src/indiereviewengine.{h,cpp}.
@@ -5057,6 +5189,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // Build/test cache (ANTS-1299 + ANTS-1300).
                         {QStringLiteral("build_status"),       {500,  2000}},
                         {QStringLiteral("test_results"),       {800,  3000}},
+                        // Symbol queries (ANTS-1303).
+                        {QStringLiteral("find_definition"),    {600,  2500}},
+                        {QStringLiteral("find_caller"),        {800,  4000}},
                     };
                     const auto it = kCosts.find(name);
                     if (it != kCosts.end()) return it.value();
@@ -5123,6 +5258,10 @@ void ClaudeIntegration::onMcpConnection() {
                     // ANTS-1300 — test_results cache.
                     if (name == QLatin1String("test_results"))
                         return QStringLiteral("test");
+                    // ANTS-1303 — symbol queries.
+                    if (name == QLatin1String("find_definition") ||
+                        name == QLatin1String("find_caller"))
+                        return QStringLiteral("symbol");
                     if (name.startsWith(QStringLiteral("get_")) ||
                         name == QLatin1String("tab_list"))
                         return QStringLiteral("terminal");
@@ -5801,6 +5940,10 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // sibling project-scoped tools.
     if (toolName == QStringLiteral("build_status"))       return C::Required;
     if (toolName == QStringLiteral("test_results"))       return C::Required;
+    // ANTS-1303 — symbol queries scan the project tree under the
+    // caller's root; Required matches sibling project-scoped readers.
+    if (toolName == QStringLiteral("find_definition"))    return C::Required;
+    if (toolName == QStringLiteral("find_caller"))        return C::Required;
     // Cold-eyes verb cluster (ANTS-1313).
     if (toolName == QStringLiteral("cold_eyes_brief"))         return C::Required;
     if (toolName == QStringLiteral("cold_eyes_cross_doc_diff"))return C::Required;
