@@ -17039,6 +17039,25 @@ here.)
 
 ---
 
+- 📋 [ANTS-1692] **`roadmap_log op:flip` should optionally take a `shipped_note` to append provenance in the same call.**
+  Observed while flipping ANTS-1303 to ✅ via `roadmap_log op:flip`:
+  the flip cleanly toggles the status emoji (anchor_injected:false on
+  the Ants-v1 bullet — works as intended), but every shipped item also
+  needs a "Shipped YYYY-MM-DD (Pull N)." provenance note + an updated
+  envelope sketch, which still requires a separate manual `Edit` on the
+  same bullet immediately after. That second edit also forces a re-read
+  because the flip mutated the file (Edit reports "file modified since
+  read"). Proposal: add an optional `shipped_note` string to op:"flip"
+  that, when `to_status:"shipped"`, inserts the note right after the
+  bold headline (the spot pulls 28/33/34 use). Keeps the
+  flip-then-document round trip to one MCP call and avoids the
+  read-after-flip dance. Short-form notes only; rich multi-paragraph
+  ship notes (spec/test refs) stay a manual edit. Low risk — additive
+  optional arg, no change to the default flip path.
+  **Layman:** When Claude marks a roadmap item done via the MCP tool, it should be able to add the "shipped in pull N" note in the same step instead of a second manual edit.
+  Kind: enhancement.
+  Source: in-session-2026-05-20 (dogfooding during pull 35 / ANTS-1303).
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.
