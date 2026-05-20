@@ -253,9 +253,12 @@ TEST(McpTraceRingBuffer, WrapDetectableViaRingSize) {
                                 .toInt();
     const int size = wrapped.value(QStringLiteral("ring_size")).toInt();
     EXPECT_EQ(size, capacity);
-    EXPECT_GT(wrappedRecs.at(0).toObject()
+    // 250 inserts into a `capacity`-deep ring evict the oldest
+    // (250 - capacity) records, so records[0].id is the first
+    // survivor. Precise mirror of the pristine id==1 co-test below.
+    EXPECT_EQ(wrappedRecs.at(0).toObject()
               .value(QStringLiteral("id")).toInt(),
-              std::max(0, 1));  // wrap detected.
+              250 - capacity + 1);  // wrap detected: oldest evicted.
 
     // Boundary co-test: exactly 200 inserts → full but pristine.
     ClaudeIntegration ci2;

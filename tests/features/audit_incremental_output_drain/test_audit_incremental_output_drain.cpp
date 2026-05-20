@@ -108,7 +108,13 @@ TEST(AuditIncrementalOutputDrain, Main) {
 
     // INV-4 — buffers reset at the start of each check.
     const std::string runNextBody = extractFnBody(cpp, "AuditDialog::runNextCheck");
-    if (!runNextBody.empty()) {
+    if (runNextBody.empty()) {
+        // An empty extraction is a test defect, not a pass: the INV would
+        // otherwise be silently skipped (e.g. if the signature changed and
+        // the extractFnBody regex no longer matches). Fail loudly instead.
+        fail("INV-4: could not extract AuditDialog::runNextCheck body — "
+             "signature changed or extraction failed; INV-4 not verified.");
+    } else {
         bool resetOk =
             runNextBody.find("m_currentOutput.clear") != std::string::npos &&
             runNextBody.find("m_currentError.clear") != std::string::npos;
@@ -122,7 +128,10 @@ TEST(AuditIncrementalOutputDrain, Main) {
     // INV-5 — onCheckFinished reads from buffers, not the live process.
     const std::string finishedBody =
         extractFnBody(cpp, "AuditDialog::onCheckFinished");
-    if (!finishedBody.empty()) {
+    if (finishedBody.empty()) {
+        fail("INV-5: could not extract AuditDialog::onCheckFinished body — "
+             "signature changed or extraction failed; INV-5 not verified.");
+    } else {
         if (finishedBody.find("m_currentOutput") == std::string::npos) {
             fail("INV-5: onCheckFinished does not reference m_currentOutput. "
                  "Reverted to the live-process readAll pattern, defeating "

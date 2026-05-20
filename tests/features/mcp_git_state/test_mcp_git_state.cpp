@@ -205,14 +205,12 @@ TEST(McpGitState, WiringContract) {
 
     // INV-12 — gitwrap uses 5 s + 200 ms two-tier kill timer
     // (kHardKillMs / kKillGraceMs) and calls terminate() + kill().
-    expect(contains(gwCpp, "kHardKillMs") ||
-           contains(gwCpp, "5000"),
+    expect(contains(gwCpp, "kHardKillMs"),
            "INV-12a",
-           "gitwrap.cpp missing 5 s hard-kill (kHardKillMs / 5000)");
-    expect(contains(gwCpp, "kKillGraceMs") ||
-           contains(gwCpp, "200"),
+           "gitwrap.cpp missing 5 s hard-kill constant (kHardKillMs)");
+    expect(contains(gwCpp, "kKillGraceMs"),
            "INV-12b",
-           "gitwrap.cpp missing 200 ms grace (kKillGraceMs / 200)");
+           "gitwrap.cpp missing 200 ms grace constant (kKillGraceMs)");
     expect(contains(gwCpp, ".terminate("),
            "INV-12c",
            "gitwrap.cpp does not call QProcess::terminate()");

@@ -334,7 +334,7 @@ TEST(RoadmapFoldIn, R2HappyPathStillAllocates) {
 // to current=0 and returns [1]. The point of the test (guard does
 // not block legitimate paths) is unchanged — only the success shape
 // changed from "empty list" to "list with one ID".
-TEST(RoadmapFoldIn, R3FirstAllocationStillFalsThroughExistingPath) {
+TEST(RoadmapFoldIn, R3FirstAllocationStillFallsThroughExistingPath) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
     // No .roadmap-counter, no symlinks. Guard MUST allow (parent dir

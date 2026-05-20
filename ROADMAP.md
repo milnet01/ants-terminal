@@ -4830,6 +4830,34 @@ referenced item turns ✅ between bumps, the bundle shrinks; if a new
 item appears mid-stream that fits an existing bundle's theme, fold it
 in rather than spinning up a new release.
 
+### 🧪 Test Audit 2026-05-20
+
+Framework: ctest (GoogleTest) · Files scanned: 280 (tests/features +
+perf + bundle mains; `tests/audit_fixtures/` excluded as intentional
+bad-code samples, not test code) · Dimensions: all 18 · ~190 raw
+findings across 18 parallel chunk agents · Actionable after triage:
+**3 fixed this session + 2 new deferred**, the remainder a recurrence
+of the still-open 2026-05-17 / 2026-05-18 audits.
+
+**Recurrence note — schedule the migration.** This third sweep
+reconfirms, at the same severities, the systemic test-debt already
+tracked and still 📋: the ~98-file `slurp() + std::exit(2)` →
+`ants_test::slurpFile()` migration (ANTS-1465 / ANTS-1587), local
+`slurp`/`contains`/body-extractor dedup into `srcgrep.h` (ANTS-1466 /
+ANTS-1468 / ANTS-1588), monolithic-`Main` early-return split
+(ANTS-1467 / ANTS-1592), and fixed-byte `substr()` window →
+`slurpFunctionBody()` (ANTS-1595 / ANTS-1599). Three audits finding
+the same ~98-file pattern is a scheduling signal: this is mechanical,
+~10-file-batch work and should get a dedicated bundle rather than
+slipping a fourth cycle. No new IDs minted for these — they are
+already on the roadmap above.
+
+- ✅ [ANTS-1697] **mcp_git_state INV-12a/b used `|| contains(gwCpp, "5000")` / `|| contains(gwCpp, "200")` as a fallback to the kill-timer constant checks — the bare `"200"` literal matches anywhere in `gitwrap.cpp`, so the assertion could pass even if `kKillGraceMs` were removed.** Tightened to the named constants (`kHardKillMs` / `kKillGraceMs`) only; both verified present in `src/gitwrap.cpp`, so the check is strictly stronger. `tests/features/mcp_git_state/test_mcp_git_state.cpp:208`. Shipped 2026-05-20. Kind: test. Source: test-audit-2026-05-20.
+- ✅ [ANTS-1698] **audit_incremental_output_drain silently skipped INV-4 / INV-5 when `extractFnBody()` returned empty (`if (!body.empty()) { … }`) — a signature change that broke the extraction regex would drop coverage of the audit OOM-guard with no test failure.** Inverted to fail loudly on an empty extraction. `tests/features/audit_incremental_output_drain/test_audit_incremental_output_drain.cpp:110`. Shipped 2026-05-20. Kind: test. Source: test-audit-2026-05-20.
+- ✅ [ANTS-1699] **roadmap_fold_in regression-test name typo `R3FirstAllocationStillFalsThroughExistingPath`.** Renamed to `…StillFalls…`. `tests/features/roadmap_fold_in/test_roadmap_fold_in.cpp:337`. Shipped 2026-05-20. Kind: test.
+- 📋 [ANTS-1700] **`find_definition` MCP surfaces and mis-classifies namespace-qualified call sites as `definition` / `declaration`.** A `find_definition` for `slurpFunctionBody` returned 17 call sites (e.g. `ants_test::slurpFunctionBody(`) alongside the 2 real definitions — multi-line calls labelled `definition`, `;`-terminated calls `declaration`. The C++ classifier should require a return-type token before the qualified name (or exclude `Ns::sym(` qualified-call context) so call sites are not reported as definitions. `src/symbolquery.cpp`. Kind: fix. Source: test-audit-2026-05-20 (observed self-hosting the audit through Ants MCP). Priority: LOW — precision/convenience, not correctness.
+- 📋 [ANTS-1701] **`.ants_review_falsepos.jsonl` carried a pre-existing malformed line (a 2026-05-17 entry with an unescaped `"` inside `rationale`) that the MCP reader silently skips — so that user-confirmed false positive is re-raised on every sweep, defeating the ledger.** Add writer-side validation (the standard already mandates a JSON encoder for appends) and/or the `audit_falsepos_verify` tool the standard's §Pruning anticipates, to flag malformed or stale ledger lines. `.ants_review_falsepos.jsonl`. Kind: fix. Source: test-audit-2026-05-20.
+
 ### 🔍 Indie-review fold-in (2026-05-14) — follow-up sweep
 
 6-lane indie-review on 2026-05-14 immediately after ANTS-1294
@@ -8630,11 +8658,12 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
   - Dimension: isolation
   - Severity: low
   - Fix: Migrate to ANTS_TEST_SCOPE() / expect_reset() pattern; or move the counter inside the TEST body.
-- 📋 [ANTS-1606] **mcp_trace_ring_buffer EXPECT_GT against `std::max(0,1)` is trivially true — assert against sinceCursor delta directly.**
+- ✅ [ANTS-1606] **mcp_trace_ring_buffer EXPECT_GT against `std::max(0,1)` is trivially true — assert against sinceCursor delta directly.**
   - File: tests/features/mcp_trace_ring_buffer/test_mcp_trace_ring_buffer.cpp:258
   - Dimension: assertions
   - Severity: medium
   - Fix: Replace with explicit `EXPECT_GT(wrappedRecs.at(0).value("id"), sinceCursor)` or assert on the cursor delta directly.
+  - Shipped 2026-05-20 (test-audit recurrence): replaced `std::max(0, 1)` with the precise, capacity-derived first-survivor id `250 - capacity + 1` (== 51 today), mirroring the pristine `id == 1` co-test below it. EXPECT_GT→EXPECT_EQ. Verified green.
 - 📋 [ANTS-1607] **token_usage_engine QThread::msleep(5) too short for 10ms-tick kernels — widen to 20ms or use test-only timestamp setter.**
   - File: tests/features/token_usage_engine/test_token_usage_engine.cpp:47
   - Dimension: flakiness
