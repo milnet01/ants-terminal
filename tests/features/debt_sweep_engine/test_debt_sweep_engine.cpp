@@ -7,6 +7,8 @@
 #include <QByteArray>
 #include <QDir>
 #include <QFile>
+#include <QProcess>
+#include <QProcessEnvironment>
 #include <QRegularExpression>
 #include <QString>
 #include <QStringList>
@@ -23,6 +25,38 @@ void writeFile(const QString &dir, const QString &rel,
     QFile f(abs);
     ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
     f.write(body);
+}
+
+QString slurp(const QString &abs) {
+    QFile f(abs);
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    return QString::fromUtf8(f.readAll());
+}
+
+bool gitAvailable() {
+    QProcess p;
+    p.start(QStringLiteral("git"), {QStringLiteral("--version")});
+    return p.waitForStarted(2000) && p.waitForFinished(5000)
+           && p.exitCode() == 0;
+}
+
+// Run a git command in `dir` with optional extra env (KEY=VALUE).
+int runGitIn(const QString &dir, const QStringList &args,
+             const QStringList &extraEnv = {}) {
+    QProcess p;
+    p.setWorkingDirectory(dir);
+    if (!extraEnv.isEmpty()) {
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        for (const QString &kv : extraEnv) {
+            const int eq = kv.indexOf(QChar('='));
+            env.insert(kv.left(eq), kv.mid(eq + 1));
+        }
+        p.setProcessEnvironment(env);
+    }
+    p.start(QStringLiteral("git"), args);
+    if (!p.waitForStarted(2000)) return -1;
+    if (!p.waitForFinished(15000)) { p.kill(); return -1; }
+    return p.exitCode();
 }
 
 }  // namespace
@@ -301,4 +335,180 @@ TEST(DebtSweepEngine, ScanAllHonoursIncludeFlags) {
         if (f.category == "test_coverage") sawTestCov = true;
     }
     EXPECT_TRUE(sawTestCov);
+}
+
+// ---------------------------------------------------------------------------
+// INV-14 / INV-15 — duplicate_include  [ANTS-1358]
+// ---------------------------------------------------------------------------
+
+TEST(DebtSweepEngine, Inv14DuplicateIncludeFlagsSecond) {
+    const QString body =
+        "#include \"a.h\"\n"
+        "#include \"b.h\"\n"
+        "#include \"a.h\"\n"
+        "int x;\n";
+    const auto out =
+        DebtSweepEngine::detail::scanDuplicateIncludes("src/x.cpp", body);
+    ASSERT_EQ(out.size(), 1);
+    EXPECT_EQ(out[0].detectorId, QString("duplicate_include"));
+    EXPECT_EQ(out[0].line, 3);
+    EXPECT_TRUE(out[0].autoFixable);
+
+    // Each header once → no finding.
+    EXPECT_EQ(DebtSweepEngine::detail::scanDuplicateIncludes(
+                  "x", "#include \"a.h\"\n#include \"b.h\"\n").size(), 0);
+
+    // Duplicated across mutually-exclusive #if branches → not flagged.
+    const QString cond =
+        "#include \"a.h\"\n"
+        "#if FOO\n"
+        "#include \"a.h\"\n"
+        "#endif\n";
+    EXPECT_EQ(DebtSweepEngine::detail::scanDuplicateIncludes("x", cond).size(),
+              0);
+}
+
+TEST(DebtSweepEngine, Inv15ApplyDuplicateIncludeDeletes) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    writeFile(tmp.path(), "src/x.cpp",
+              "#include \"a.h\"\n#include \"a.h\"\nint x;\n");
+
+    DebtSweepEngine::Finding f;
+    f.detectorId  = "duplicate_include";
+    f.file        = "src/x.cpp";
+    f.line        = 2;
+    f.autoFixable = true;
+
+    const auto v = DebtSweepEngine::applyMechanicalFix(tmp.path(), f);
+    EXPECT_TRUE(v.applied);
+    const QString body = slurp(tmp.path() + "/src/x.cpp");
+    EXPECT_EQ(body.count("#include \"a.h\""), 1);
+
+    // Re-apply: line 2 is now `int x;` — not a duplicate include.
+    const auto v2 = DebtSweepEngine::applyMechanicalFix(tmp.path(), f);
+    EXPECT_FALSE(v2.applied);
+    EXPECT_EQ(v2.errorCode, QString("file_changed"));
+}
+
+// ---------------------------------------------------------------------------
+// INV-16 / INV-17 — obsolete_qstring_idiom  [ANTS-1358]
+// ---------------------------------------------------------------------------
+
+TEST(DebtSweepEngine, Inv16ObsoleteQStringIdioms) {
+    const QString body =
+        "QString s = QString::null;\n"
+        "x.toAscii();\n"
+        "y.fromAscii(z);\n"
+        "QString ok = QString();\n";
+    const auto out =
+        DebtSweepEngine::detail::scanObsoleteQStringIdioms("x", body);
+    ASSERT_EQ(out.size(), 3);
+    for (const auto &f : out) {
+        EXPECT_EQ(f.detectorId, QString("obsolete_qstring_idiom"));
+        EXPECT_TRUE(f.autoFixable);
+    }
+    EXPECT_EQ(DebtSweepEngine::detail::scanObsoleteQStringIdioms(
+                  "x", "a.toLatin1(); b = QString();\n").size(), 0);
+}
+
+TEST(DebtSweepEngine, Inv17ApplyObsoleteIdiomRewrites) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    writeFile(tmp.path(), "src/x.cpp", "QString s = QString::null;\n");
+
+    DebtSweepEngine::Finding f;
+    f.detectorId  = "obsolete_qstring_idiom";
+    f.file        = "src/x.cpp";
+    f.line        = 1;
+    f.autoFixable = true;
+
+    const auto v = DebtSweepEngine::applyMechanicalFix(tmp.path(), f);
+    EXPECT_TRUE(v.applied);
+    const QString body = slurp(tmp.path() + "/src/x.cpp");
+    EXPECT_TRUE(body.contains("QString s = QString();"));
+    EXPECT_FALSE(body.contains("QString::null"));
+
+    // Idempotent: nothing left to rewrite.
+    const auto v2 = DebtSweepEngine::applyMechanicalFix(tmp.path(), f);
+    EXPECT_FALSE(v2.applied);
+    EXPECT_EQ(v2.errorCode, QString("file_changed"));
+}
+
+// ---------------------------------------------------------------------------
+// INV-18 — dead_branch_after_return  [ANTS-1358]
+// ---------------------------------------------------------------------------
+
+TEST(DebtSweepEngine, Inv18DeadBranchAfterReturn) {
+    const auto dead = DebtSweepEngine::detail::scanDeadBranchAfterReturn(
+        "x", "void f() {\n    return;\n    foo();\n}\n");
+    ASSERT_EQ(dead.size(), 1);
+    EXPECT_EQ(dead[0].detectorId, QString("dead_branch_after_return"));
+    EXPECT_EQ(dead[0].line, 3);
+    EXPECT_FALSE(dead[0].autoFixable);
+
+    // return immediately before block close → not flagged.
+    EXPECT_EQ(DebtSweepEngine::detail::scanDeadBranchAfterReturn(
+                  "x", "void f() {\n    return;\n}\n").size(), 0);
+
+    // conditional return → not flagged.
+    EXPECT_EQ(DebtSweepEngine::detail::scanDeadBranchAfterReturn(
+                  "x", "void f() {\n    if (x) return;\n    foo();\n}\n")
+                  .size(), 0);
+
+    // break before a switch label → not flagged.
+    EXPECT_EQ(DebtSweepEngine::detail::scanDeadBranchAfterReturn(
+                  "x", "switch (x) {\ncase 1:\n    break;\ncase 2:\n    g();\n}\n")
+                  .size(), 0);
+}
+
+// ---------------------------------------------------------------------------
+// INV-19 — stale_todo (git-backed)  [ANTS-1358]
+// ---------------------------------------------------------------------------
+
+TEST(DebtSweepEngine, Inv19StaleTodoFlagsOldMarker) {
+    if (!gitAvailable()) GTEST_SKIP() << "git not available";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString dir = tmp.path();
+
+    ASSERT_EQ(runGitIn(dir, {"init", "-q"}), 0);
+    runGitIn(dir, {"config", "user.email", "t@example.com"});
+    runGitIn(dir, {"config", "user.name", "Test"});
+
+    writeFile(dir, "src/old.cpp",
+              "void f() {\n    // TODO: ancient debt\n    g();\n}\n");
+    ASSERT_EQ(runGitIn(dir, {"add", "src/old.cpp"}), 0);
+    // Commit dated well over 180 days before today.
+    const QStringList dateEnv = {
+        "GIT_AUTHOR_DATE=2020-01-01T12:00:00",
+        "GIT_COMMITTER_DATE=2020-01-01T12:00:00",
+    };
+    ASSERT_EQ(runGitIn(dir,
+                       {"-c", "commit.gpgsign=false", "commit", "-q",
+                        "-m", "old"},
+                       dateEnv), 0);
+
+    DebtSweepEngine::ScanOptions opt;
+    opt.staleTodoMaxAgeDays = 180;
+    const auto out = DebtSweepEngine::detectStaleTodos(dir, opt);
+    ASSERT_GE(out.size(), 1);
+    bool sawOld = false;
+    for (const auto &f : out) {
+        if (f.file == "src/old.cpp") {
+            sawOld = true;
+            EXPECT_EQ(f.detectorId, QString("stale_todo"));
+            EXPECT_EQ(f.line, 2);
+            EXPECT_FALSE(f.autoFixable);
+        }
+    }
+    EXPECT_TRUE(sawOld);
+
+    // Disabled by threshold <= 0.
+    opt.staleTodoMaxAgeDays = 0;
+    EXPECT_EQ(DebtSweepEngine::detectStaleTodos(dir, opt).size(), 0);
+
+    // Nothing is that old.
+    opt.staleTodoMaxAgeDays = 1000000;
+    EXPECT_EQ(DebtSweepEngine::detectStaleTodos(dir, opt).size(), 0);
 }

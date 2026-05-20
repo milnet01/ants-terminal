@@ -10,9 +10,11 @@
 
 #include <QByteArray>
 #include <QChar>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSaveFile>
@@ -95,6 +97,18 @@ QStringList diffedFiles(const QString &projectPath,
         rows << t;
         if (rows.size() >= kMaxDiffPaths) break;
     }
+    return rows;
+}
+
+// git ls-files restricted to the given pathspecs; capped + split.
+QStringList lsFiles(const QString &projectPath, const QStringList &globs,
+                    int cap = 5000) {
+    QStringList args = {QStringLiteral("ls-files")};
+    for (const QString &g : globs) args << g;
+    const QString out = runGit(projectPath, args, kGitStdoutCap);
+    if (out.isEmpty()) return {};
+    QStringList rows = out.split('\n', Qt::SkipEmptyParts);
+    if (rows.size() > cap) rows = rows.mid(0, cap);
     return rows;
 }
 
@@ -371,6 +385,350 @@ QList<Finding> detectOrphanQUnused(
 }
 
 // ---------------------------------------------------------------------------
+// Code drift (e) — stale TODO/FIXME (git-blame age)  [ANTS-1358]
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// TODO/FIXME/XXX/HACK marker, same shape detectAddedTodos uses.
+const QRegularExpression &todoMarkerRe() {
+    static const QRegularExpression re(
+        QStringLiteral(R"(\b(TODO|FIXME|XXX|HACK)\b\s*[:(])"));
+    return re;
+}
+
+// Parse `git blame --line-porcelain` into final-line → committer-time
+// (epoch seconds). With --line-porcelain the commit headers repeat for
+// every line, so a single forward pass suffices.
+QHash<int, qint64> blameCommitterTimes(const QString &projectPath,
+                                       const QString &relPath) {
+    const QString out = runGit(
+        projectPath,
+        {QStringLiteral("blame"), QStringLiteral("--line-porcelain"),
+         QStringLiteral("--"), relPath},
+        kGitLogCap);
+    QHash<int, qint64> times;
+    if (out.isEmpty()) return times;
+    static const QRegularExpression headerRe(
+        QStringLiteral(R"(^[0-9a-f]{40} \d+ (\d+))"));
+    int curLine = -1;
+    const QStringList lines = out.split('\n');
+    for (const QString &l : lines) {
+        const auto h = headerRe.match(l);
+        if (h.hasMatch()) {
+            curLine = h.captured(1).toInt();
+            continue;
+        }
+        if (curLine > 0 && l.startsWith(QStringLiteral("committer-time "))) {
+            times.insert(curLine,
+                         l.mid(15).trimmed().toLongLong());
+        }
+    }
+    return times;
+}
+
+}  // anonymous
+
+QList<Finding> detectStaleTodos(
+    const QString &projectPath, const ScanOptions &opt) {
+    if (opt.staleTodoMaxAgeDays <= 0) return {};
+    static const QStringList kExts = {
+        QStringLiteral("*.cpp"), QStringLiteral("*.h"),
+        QStringLiteral("*.py"),  QStringLiteral("*.js"),
+        QStringLiteral("*.ts"),  QStringLiteral("*.tsx"),
+        QStringLiteral("*.go"),  QStringLiteral("*.rs"),
+    };
+    const QStringList files = lsFiles(projectPath, kExts);
+    if (files.isEmpty()) return {};
+
+    const qint64 nowSec = QDateTime::currentSecsSinceEpoch();
+    const qint64 thresholdSec =
+        static_cast<qint64>(opt.staleTodoMaxAgeDays) * 86400;
+
+    QList<Finding> out;
+    for (const QString &rel : files) {
+        const QString body = slurpUtf8(projectPath + QChar('/') + rel);
+        if (body.isEmpty()) continue;
+        const QStringList lines = body.split('\n');
+        QList<int> hitLines;
+        for (int i = 0; i < lines.size(); ++i) {
+            if (todoMarkerRe().match(lines.at(i)).hasMatch())
+                hitLines << (i + 1);
+        }
+        if (hitLines.isEmpty()) continue;
+
+        const QHash<int, qint64> times = blameCommitterTimes(projectPath, rel);
+        if (times.isEmpty()) continue;  // non-git / blame failure → skip file
+        for (int ln : std::as_const(hitLines)) {
+            const auto it = times.constFind(ln);
+            if (it == times.constEnd()) continue;
+            const qint64 ageSec = nowSec - it.value();
+            if (ageSec < thresholdSec) continue;
+            Finding fnd;
+            fnd.category   = QStringLiteral("code_drift");
+            fnd.detectorId = QStringLiteral("stale_todo");
+            fnd.file       = rel;
+            fnd.line       = ln;
+            QString preview = lines.at(ln - 1).trimmed();
+            if (preview.size() > 80) preview = preview.left(77) + QStringLiteral("...");
+            fnd.message    = QStringLiteral("%1 (unchanged for %2 days)")
+                                 .arg(preview)
+                                 .arg(ageSec / 86400);
+            out.append(fnd);
+        }
+    }
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// Code drift (f) — duplicate #include  [ANTS-1358]
+// ---------------------------------------------------------------------------
+
+namespace detail {
+
+QList<Finding> scanDuplicateIncludes(const QString &relPath,
+                                     const QString &body) {
+    static const QRegularExpression kIncludeRe(
+        QStringLiteral(R"(^\s*#\s*include\s+(["<][^">]*[">]))"));
+    QList<Finding> out;
+    QHash<QString, int> firstLineOf;
+    int ppDepth = 0;
+    const QStringList lines = body.split('\n');
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString &raw = lines.at(i);
+        const QString t = raw.trimmed();
+        // Track preprocessor conditional nesting so we never flag an
+        // include duplicated across mutually-exclusive #if branches.
+        if (t.startsWith(QStringLiteral("#if"))) { ++ppDepth; continue; }
+        if (t.startsWith(QStringLiteral("#endif"))) {
+            if (ppDepth > 0) --ppDepth;
+            continue;
+        }
+        if (t.startsWith(QStringLiteral("#el"))) continue;  // #else/#elif
+        if (ppDepth != 0) continue;
+        const auto m = kIncludeRe.match(raw);
+        if (!m.hasMatch()) continue;
+        const QString key = m.captured(1);
+        const auto it = firstLineOf.constFind(key);
+        if (it == firstLineOf.constEnd()) {
+            firstLineOf.insert(key, i + 1);
+            continue;
+        }
+        Finding fnd;
+        fnd.category     = QStringLiteral("code_drift");
+        fnd.detectorId   = QStringLiteral("duplicate_include");
+        fnd.file         = relPath;
+        fnd.line         = i + 1;
+        fnd.message      = QStringLiteral(
+            "duplicate #include %1 (first at line %2)")
+                               .arg(key)
+                               .arg(it.value());
+        fnd.suggestedFix = QStringLiteral("<delete the redundant include line>");
+        fnd.autoFixable  = true;
+        out.append(fnd);
+    }
+    return out;
+}
+
+}  // namespace detail
+
+QList<Finding> detectDuplicateIncludes(
+    const QString &projectPath, const ScanOptions & /*opt*/) {
+    const QStringList files = lsFiles(
+        projectPath, {QStringLiteral("*.cpp"), QStringLiteral("*.h")});
+    QList<Finding> out;
+    for (const QString &rel : files) {
+        const QString body = slurpUtf8(projectPath + QChar('/') + rel);
+        if (body.isEmpty()) continue;
+        out += detail::scanDuplicateIncludes(rel, body);
+    }
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// Code drift (g) — obsolete Qt6 QString idioms  [ANTS-1358]
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Removed-in-Qt6 idiom → mechanical replacement. The find patterns are
+// anchored to *code* usage — `(?=\s*\()` for the call forms, a
+// quote-excluding lookbehind for `QString::null` — so a quoted mention
+// of the idiom name (e.g. this very table, parsed as source) is not a
+// match. Callers additionally strip `//` line-comments before scanning.
+struct QtIdiom {
+    QRegularExpression find;
+    QString            replace;
+    QString            label;
+};
+const QList<QtIdiom> &obsoleteQtIdioms() {
+    static const QList<QtIdiom> tbl = {
+        {QRegularExpression(QStringLiteral(R"((?<![\w"])QString::null\b(?!"))")),
+         QStringLiteral("QString()"), QStringLiteral("QString::null")},
+        {QRegularExpression(QStringLiteral(R"(\btoAscii\b(?=\s*\())")),
+         QStringLiteral("toLatin1"),  QStringLiteral("toAscii")},
+        {QRegularExpression(QStringLiteral(R"(\bfromAscii\b(?=\s*\())")),
+         QStringLiteral("fromLatin1"), QStringLiteral("fromAscii")},
+    };
+    return tbl;
+}
+
+// Drop a trailing `//` line-comment (best-effort: ignores `//` that
+// appears after the first double-quote, to avoid cutting at a `//`
+// inside a string literal).
+QString stripLineComment(const QString &s) {
+    const int q = s.indexOf(QChar('"'));
+    const int c = s.indexOf(QStringLiteral("//"));
+    if (c >= 0 && (q < 0 || c < q)) return s.left(c);
+    return s;
+}
+
+}  // anonymous
+
+namespace detail {
+
+QList<Finding> scanObsoleteQStringIdioms(const QString &relPath,
+                                         const QString &body) {
+    QList<Finding> out;
+    const QStringList lines = body.split('\n');
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString code = stripLineComment(lines.at(i));
+        QString hit;
+        QString repl;
+        for (const QtIdiom &idiom : obsoleteQtIdioms()) {
+            if (idiom.find.match(code).hasMatch()) {
+                hit = idiom.label;
+                repl = idiom.replace;
+                break;
+            }
+        }
+        if (hit.isEmpty()) continue;
+        Finding fnd;
+        fnd.category     = QStringLiteral("code_drift");
+        fnd.detectorId   = QStringLiteral("obsolete_qstring_idiom");
+        fnd.file         = relPath;
+        fnd.line         = i + 1;
+        fnd.message      = QStringLiteral("obsolete Qt6 idiom `%1` → `%2`")
+                               .arg(hit, repl);
+        fnd.suggestedFix = repl;
+        fnd.autoFixable  = true;
+        out.append(fnd);
+    }
+    return out;
+}
+
+}  // namespace detail
+
+QList<Finding> detectObsoleteQStringIdioms(
+    const QString &projectPath, const ScanOptions & /*opt*/) {
+    const QStringList files = lsFiles(
+        projectPath, {QStringLiteral("*.cpp"), QStringLiteral("*.h")});
+    QList<Finding> out;
+    for (const QString &rel : files) {
+        // This engine's own source *names* the obsolete idioms as data
+        // (the obsoleteQtIdioms() table + its anchored regex literals).
+        // Those are definitions, not occurrences-in-use, so excluding
+        // the engine file is the correct semantics — not a silenced
+        // finding. No other detector has this definitional self-match.
+        if (rel.endsWith(QStringLiteral("src/debtsweepengine.cpp"))
+            || rel.endsWith(QStringLiteral("src/debtsweepengine.h")))
+            continue;
+        const QString body = slurpUtf8(projectPath + QChar('/') + rel);
+        if (body.isEmpty()) continue;
+        out += detail::scanObsoleteQStringIdioms(rel, body);
+    }
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// Code drift (h) — statement after unconditional control-flow exit
+// ---------------------------------------------------------------------------
+
+namespace detail {
+
+QList<Finding> scanDeadBranchAfterReturn(const QString &relPath,
+                                         const QString &body) {
+    // The whole line (after stripping a trailing // comment) is solely
+    // an unconditional exit. Conditional forms (`if (x) return;`) carry
+    // a leading keyword and won't match.
+    static const QRegularExpression kExitRe(
+        QStringLiteral(R"(^(return(\s+[^;]*)?;|break;|continue;|throw(\s+[^;]*)?;)$)"));
+
+    const QStringList lines = body.split('\n');
+    // Strip a trailing line-comment conservatively (skips when a quote
+    // precedes the //, to avoid butchering string content).
+    auto stripComment = [](const QString &s) -> QString {
+        const int q = s.indexOf(QChar('"'));
+        const int c = s.indexOf(QStringLiteral("//"));
+        if (c >= 0 && (q < 0 || c < q)) return s.left(c);
+        return s;
+    };
+    auto isCommentOrBlank = [](const QString &t) -> bool {
+        return t.isEmpty() || t.startsWith(QStringLiteral("//"))
+               || t.startsWith(QStringLiteral("/*"))
+               || t.startsWith(QStringLiteral("*"));
+    };
+    // A structural token that legitimately follows an exit (block close,
+    // switch label, preprocessor, else, continuation).
+    static const QRegularExpression kLabelOnlyRe(
+        QStringLiteral(R"(^[A-Za-z_]\w*\s*:\s*$)"));
+    auto isStructural = [&](const QString &t) -> bool {
+        if (t.startsWith(QChar('}')) || t.startsWith(QChar('#'))
+            || t.startsWith(QChar(')')) || t.startsWith(QChar(','))
+            || t.startsWith(QStringLiteral("*/"))
+            || t.startsWith(QStringLiteral("else"))
+            || t.startsWith(QStringLiteral("case"))
+            || t.startsWith(QStringLiteral("default")))
+            return true;
+        // A bare `label:` (goto target) — but not `foo::bar` (note ::).
+        if (kLabelOnlyRe.match(t).hasMatch()
+            && !t.contains(QStringLiteral("::")))
+            return true;
+        return false;
+    };
+
+    QList<Finding> out;
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString exitLine = stripComment(lines.at(i)).trimmed();
+        if (!kExitRe.match(exitLine).hasMatch()) continue;
+        // Find the next non-blank, non-comment line.
+        int j = i + 1;
+        while (j < lines.size() && isCommentOrBlank(lines.at(j).trimmed()))
+            ++j;
+        if (j >= lines.size()) continue;
+        const QString next = lines.at(j).trimmed();
+        if (isStructural(next)) continue;
+        Finding fnd;
+        fnd.category   = QStringLiteral("code_drift");
+        fnd.detectorId = QStringLiteral("dead_branch_after_return");
+        fnd.file       = relPath;
+        fnd.line       = j + 1;
+        QString preview = next;
+        if (preview.size() > 80) preview = preview.left(77) + QStringLiteral("...");
+        fnd.message    = QStringLiteral(
+            "statement after `%1` is unreachable: %2")
+                             .arg(exitLine, preview);
+        out.append(fnd);
+    }
+    return out;
+}
+
+}  // namespace detail
+
+QList<Finding> detectDeadBranchAfterReturn(
+    const QString &projectPath, const ScanOptions & /*opt*/) {
+    const QStringList files = lsFiles(
+        projectPath, {QStringLiteral("*.cpp"), QStringLiteral("*.h")});
+    QList<Finding> out;
+    for (const QString &rel : files) {
+        const QString body = slurpUtf8(projectPath + QChar('/') + rel);
+        if (body.isEmpty()) continue;
+        out += detail::scanDeadBranchAfterReturn(rel, body);
+    }
+    return out;
+}
+
+// ---------------------------------------------------------------------------
 // Test coverage gap — INV-N markers without test references
 // ---------------------------------------------------------------------------
 
@@ -612,6 +970,10 @@ QList<Finding> scanAll(
         out += detectStaleTypeComments(projectPath, opt);
         out += detectAddedTodos(projectPath, opt);
         out += detectOrphanQUnused(projectPath, opt);
+        out += detectStaleTodos(projectPath, opt);
+        out += detectDuplicateIncludes(projectPath, opt);
+        out += detectObsoleteQStringIdioms(projectPath, opt);
+        out += detectDeadBranchAfterReturn(projectPath, opt);
     }
     if (opt.includeTestCoverage) {
         out += detectMissingInvariantTests(projectPath, opt);
@@ -639,7 +1001,14 @@ ApplyVerdict applyMechanicalFix(
             "detector did not flag this finding as auto-fixable");
         return v;
     }
-    if (finding.detectorId != QStringLiteral("orphan_q_unused")) {
+    // Auto-fix table: the detectors whose fix is byte-deterministic.
+    // stale_todo / dead_branch_after_return are flag-only (no entry).
+    static const QSet<QString> kFixable = {
+        QStringLiteral("orphan_q_unused"),
+        QStringLiteral("duplicate_include"),
+        QStringLiteral("obsolete_qstring_idiom"),
+    };
+    if (!kFixable.contains(finding.detectorId)) {
         v.errorCode = QStringLiteral("not_fixable");
         v.errorMessage = QStringLiteral(
             "no fix table entry for detector '%1'").arg(finding.detectorId);
@@ -658,25 +1027,55 @@ ApplyVerdict applyMechanicalFix(
     const QString body = QString::fromUtf8(raw);
     const QFile::Permissions origPerms = QFileInfo(abs).permissions();
 
-    const QStringList lines = body.split('\n');
-    if (finding.line < 1 || finding.line > lines.size()) {
+    QStringList kept = body.split('\n');
+    if (finding.line < 1 || finding.line > kept.size()) {
         v.errorCode = QStringLiteral("file_changed");
         v.errorMessage = QStringLiteral(
             "marker no longer on line %1; re-scan required").arg(finding.line);
         return v;
     }
-    static const QRegularExpression kMarkerRe(
-        QStringLiteral(R"(Q_UNUSED\(\s*[A-Za-z_][A-Za-z0-9_]*\s*\)|\(void\)\s*[A-Za-z_][A-Za-z0-9_]*\s*;)"));
-    if (!kMarkerRe.match(lines.at(finding.line - 1)).hasMatch()) {
+    const int idx = finding.line - 1;
+    const QString &target = kept.at(idx);
+
+    auto staleVerdict = [&]() {
         v.errorCode = QStringLiteral("file_changed");
         v.errorMessage = QStringLiteral(
             "marker no longer on line %1; re-scan required").arg(finding.line);
-        return v;
+    };
+
+    if (finding.detectorId == QStringLiteral("orphan_q_unused")) {
+        static const QRegularExpression kMarkerRe(
+            QStringLiteral(R"(Q_UNUSED\(\s*[A-Za-z_][A-Za-z0-9_]*\s*\)|\(void\)\s*[A-Za-z_][A-Za-z0-9_]*\s*;)"));
+        if (!kMarkerRe.match(target).hasMatch()) { staleVerdict(); return v; }
+        kept.removeAt(idx);
+    } else if (finding.detectorId == QStringLiteral("duplicate_include")) {
+        static const QRegularExpression kIncludeRe(
+            QStringLiteral(R"(^\s*#\s*include\s+(["<][^">]*[">]))"));
+        const auto m = kIncludeRe.match(target);
+        if (!m.hasMatch()) { staleVerdict(); return v; }
+        // Confirm the include is still a duplicate (an earlier line
+        // includes the same header) before deleting.
+        const QString key = m.captured(1);
+        bool earlierDup = false;
+        for (int i = 0; i < idx; ++i) {
+            const auto e = kIncludeRe.match(kept.at(i));
+            if (e.hasMatch() && e.captured(1) == key) { earlierDup = true; break; }
+        }
+        if (!earlierDup) { staleVerdict(); return v; }
+        kept.removeAt(idx);
+    } else {  // obsolete_qstring_idiom
+        QString rewritten = target;
+        bool any = false;
+        for (const QtIdiom &idiom : obsoleteQtIdioms()) {
+            if (idiom.find.match(rewritten).hasMatch()) {
+                rewritten.replace(idiom.find, idiom.replace);
+                any = true;
+            }
+        }
+        if (!any) { staleVerdict(); return v; }
+        kept[idx] = rewritten;
     }
 
-    // Splice out the line.
-    QStringList kept = lines;
-    kept.removeAt(finding.line - 1);
     const QByteArray newBody = kept.join(QChar('\n')).toUtf8();
 
     QSaveFile out(abs);

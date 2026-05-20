@@ -1,8 +1,10 @@
 // DebtSweepEngine — pure-function helpers for the in-process
-// /debt-sweep fold (ANTS-1113 v1). Qt::Core only, no widgets.
+// /debt-sweep fold (ANTS-1113 v1; detector set expanded ANTS-1358).
+// Qt::Core only, no widgets.
 //
-// Eight detectors + scanAll + applyMechanicalFix + two prompt
-// templates. See docs/specs/ANTS-1113.md for the full contract.
+// 11 detectors + scanAll + applyMechanicalFix + two prompt
+// templates. See docs/specs/ANTS-1113.md for the v1 contract and
+// docs/specs/ANTS-1358.md for the detector-expansion addendum.
 //
 // All file IO is constrained to <projectPath>; all git invocations
 // run via QProcess with stdout caps + 30 s timeout.
@@ -42,6 +44,10 @@ struct ScanOptions {
     bool    includeTestCoverage = true;
     bool    includeDocDrift = true;
     bool    includePackagingDrift = true;
+    // detectStaleTodos threshold: a TODO/FIXME whose git-blame
+    // committer-time is older than this many days is flagged. 0 or
+    // negative disables the detector (treated as "no stale floor").
+    int     staleTodoMaxAgeDays = 180;
 };
 
 // applyMechanicalFix verdict. Lets the MCP handler disambiguate
@@ -108,6 +114,71 @@ QList<Finding> detectRoadmapShippedWithoutCommit(
 // Self-disables if CHANGELOG.md has no `[Unreleased]` section.
 QList<Finding> detectChangelogStaleBullets(
     const QString &projectPath, const ScanOptions &opt);
+
+// Code drift (e) — TODO/FIXME markers that have outlived
+// `opt.staleTodoMaxAgeDays` (default 180). Distinct from
+// detectAddedTodos (which is scope/diff based): this flags
+// *long-lived* markers via `git blame --line-porcelain`
+// committer-time. Self-disables on non-git checkouts and when
+// staleTodoMaxAgeDays <= 0. Flag-only (NOT autoFixable) — a stale
+// TODO needs human judgement, not a mechanical delete.
+//
+// NOTE (ANTS-1358): the roadmap floated a "TODO older than N
+// commits" measure; we use committer-time age in days because git
+// blame surfaces it directly and per-file commit-distance counting
+// is both ambiguous (commits touch files at different rates) and
+// O(unique-sha) extra git calls. Same intent, deterministic source.
+QList<Finding> detectStaleTodos(
+    const QString &projectPath, const ScanOptions &opt);
+
+// Code drift (f) — the same header `#include`d two or more times in
+// one file. Reports the second and later occurrences. autoFixable =
+// true (mechanical: delete the redundant include line).
+//
+// NOTE (ANTS-1358): the roadmap floated a cppcheck-driven
+// "unused_include" detector, but cppcheck has no unused-include
+// check (only unusedVariable / unusedFunction / unusedStructMember)
+// and include-what-you-use is not a project dependency. A true
+// unused-include analysis needs a compiler frontend; the redundant-
+// duplicate case is the deterministic, dependency-free, safely
+// auto-fixable subset of the same intent.
+QList<Finding> detectDuplicateIncludes(
+    const QString &projectPath, const ScanOptions &opt);
+
+// Code drift (g) — removed-in-Qt6 QString idioms that carry an
+// unambiguous mechanical replacement (`QString::null` → `QString()`,
+// `.toAscii()` → `.toLatin1()`, `.fromAscii(` → `.fromLatin1(`).
+// autoFixable = true.
+//
+// NOTE (ANTS-1358): the roadmap floated a clazy-driven
+// "obsolete_qstring_arg" detector. clazy-standalone needs a
+// compile_commands.json + resolved include paths to run, and the
+// clazy `qstring-arg` combine-fixit is not unconditionally safe
+// (arg-index reuse). This detector covers the removed-API subset
+// whose replacement is byte-deterministic, with no external tool.
+QList<Finding> detectObsoleteQStringIdioms(
+    const QString &projectPath, const ScanOptions &opt);
+
+// Code drift (h) — a statement immediately following an
+// unconditional control-flow exit (`return …;` / `break;` /
+// `continue;` / `throw …;`) within the same block, before the
+// closing brace. Conservative line-local heuristic. Flag-only
+// (NOT autoFixable): deleting "dead" code is unsafe — macros,
+// `[[fallthrough]]`, and multi-line constructs can make the
+// following statement reachable. Surface for human triage.
+QList<Finding> detectDeadBranchAfterReturn(
+    const QString &projectPath, const ScanOptions &opt);
+
+// Pure per-file scan cores for the content-scanning detectors above.
+// The detectors enumerate git-tracked *.cpp/*.h and delegate to
+// these; exposed so invariant tests can drive the logic against an
+// in-memory body without a git fixture. `relPath` is echoed verbatim
+// into Finding.file.
+namespace detail {
+QList<Finding> scanDuplicateIncludes(const QString &relPath, const QString &body);
+QList<Finding> scanObsoleteQStringIdioms(const QString &relPath, const QString &body);
+QList<Finding> scanDeadBranchAfterReturn(const QString &relPath, const QString &body);
+}  // namespace detail
 
 // Packaging drift — wraps `bash packaging/check-version-drift.sh`.
 // Parses `<file>:<line>: <label> version <got> drifts from

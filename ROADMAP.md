@@ -5444,17 +5444,74 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: perf.
   Source: indie-review-2026-05-14 (self-observed).
 
-- 📋 [ANTS-1358] **`debt_sweep` detector expansion.** Today
-  only `orphan_q_unused` is mechanical-fixable. Add at least:
-  `stale_todo` (TODO/FIXME older than N commits), `unused_include`
-  (cppcheck-driven), `dead_branch_after_return` (clazy-driven),
-  `obsolete_qstring_arg` (Qt6 conversion lints). Each ships
-  with a deterministic auto-fix table + a Finding triple
-  (detector_id + file + line).
+- ✅ [ANTS-1358] **`debt_sweep` detector expansion.** Shipped
+  2026-05-20 (Pull 43). Four new detectors added, lifting the
+  mechanically-fixable count from 1 → 3: `stale_todo` (git-blame
+  committer-age, flag-only), `duplicate_include` (auto-fixable),
+  `obsolete_qstring_idiom` (auto-fixable Qt6 removed-API table:
+  `QString::null`→`QString()`, `toAscii`/`fromAscii`→
+  `toLatin1`/`fromLatin1`), and `dead_branch_after_return`
+  (conservative flag-only heuristic). `applyMechanicalFix` grew
+  from a single hard-coded branch into a per-detector fix table;
+  `ScanOptions.staleTodoMaxAgeDays` (default 180) gates the age
+  detector. Pure `detail::scan*` cores expose the content-scanning
+  logic for git-free invariant tests.
+  **Verified deviations from the original premise:** cppcheck has
+  no unused-include check and `include-what-you-use` is not a
+  project dep, so `unused_include` shipped as the safely-fixable
+  `duplicate_include` subset; clazy-standalone needs a compile DB
+  and its `qstring-arg` fixit isn't unconditionally safe, so the
+  Qt6 work shipped as the removed-API subset; auto-fixing dead
+  branches is unsafe (macros / fallthrough), so that detector is
+  flag-only. The external-tool-driven supersets are deferred (see
+  ANTS-1703). Spec: `docs/specs/ANTS-1358.md`. Tests:
+  `tests/features/debt_sweep_engine/` (INV-14..INV-19; 19/19 green,
+  1265/1265 full suite).
   **Layman:** the debt-sweep tool currently only knows how to
   fix one kind of leftover; teach it the others.
   Kind: refactor.
   Source: indie-review-2026-05-14 (self-observed).
+
+- 📋 [ANTS-1703] **`debt_sweep` external-tool detector supersets.**
+  Deferred from ANTS-1358 (Pull 43). Three detectors shipped as
+  dependency-free deterministic subsets; their full external-tool
+  supersets remain open: (a) true `unused_include` via
+  `include-what-you-use` (not currently installed; cppcheck has no
+  unused-include check) — gate on `which iwyu`/`include-what-you-use`;
+  (b) `dead_branch_after_return` auto-fix + richer unreachable-code
+  detection via clang-tidy `clang-analyzer` (needs `compile_commands.json`);
+  (c) `obsolete_qstring_arg` clazy `qstring-arg` combine-fixit + the
+  broader `qt6-deprecated-api-fixes` set (clazy-standalone, needs a
+  compile DB). Each self-disables when its tool is absent, mirroring
+  the audit-deps probe pattern.
+  **Layman:** the deeper versions of three debt-sweep checks need
+  external tools that aren't always installed; wire them up to
+  self-enable when the tool is present.
+  Kind: enhancement.
+  Lanes: debtsweepengine.
+  Source: deferred from ANTS-1358 (in-session 2026-05-20).
+
+- 📋 [ANTS-1704] **`roadmap_log op:append` drops args on rich body —
+  investigate.** Observed 2026-05-20 (Pull 43 session): six
+  consecutive `op:append` calls returned
+  `{ok:false, code:"caller_cwd_required"}` even though `caller_cwd`
+  was supplied each time — i.e. the *entire* argument object appeared
+  to arrive empty server-side. An `op:flip` call on the same tool
+  moments earlier (scalar-only args) succeeded. The append attempts
+  carried a multi-line `body` containing backticks, `→` (U+2192),
+  and embedded newlines; the working flip did not. Hypothesis (NOT
+  yet isolated): a serialization/escaping path mishandles a rich
+  `body`, dropping the whole params object. Repro candidate: append
+  with a `body` mixing backticks + non-ASCII + newlines. If
+  confirmed, harden the dispatch decode and add a feature test;
+  if not reproducible, it may be a transient client-side payload
+  truncation worth a guard. Fallback used this session: direct
+  ROADMAP edit + manual `.roadmap-counter` bump.
+  **Layman:** the tool that appends roadmap items failed whenever the
+  text had special characters; figure out why and fix it.
+  Kind: investigate.
+  Lanes: roadmap_log, claudeintegration.
+  Source: in-session 2026-05-20 (self-observed).
 
 - ✅ [ANTS-1359] **`mcp__ants__verify_changes` build-cache.**
   Repeated `verify_changes` calls within the same session no

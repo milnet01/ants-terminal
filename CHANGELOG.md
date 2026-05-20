@@ -12,6 +12,29 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **`debt_sweep` detector expansion (ANTS-1358, Pull 43).** Four new
+  detectors in `DebtSweepEngine`, lifting the mechanically-fixable set
+  from 1 → 3:
+  - `duplicate_include` — the same header `#include`d twice in one file
+    (preprocessor-conditional-aware); **auto-fixable** (deletes the
+    redundant line).
+  - `obsolete_qstring_idiom` — removed-in-Qt6 QString idioms with a
+    deterministic replacement (`QString::null`→`QString()`,
+    `toAscii`/`fromAscii`→`toLatin1`/`fromLatin1`); **auto-fixable**.
+  - `stale_todo` — TODO/FIXME markers older than
+    `ScanOptions.staleTodoMaxAgeDays` (default 180) by git-blame
+    committer-time; flag-only.
+  - `dead_branch_after_return` — a statement after an unconditional
+    control-flow exit within a block; conservative flag-only heuristic.
+
+  `applyMechanicalFix` is now a per-detector fix table. The
+  external-tool-driven supersets (`include-what-you-use`,
+  clazy/clang-tidy gated on a compile DB) are deferred to ANTS-1703.
+  Spec `docs/specs/ANTS-1358.md`; tests
+  `tests/features/debt_sweep_engine/` (INV-14..INV-19).
+
 ## [0.7.92] — 2026-05-20
 
 **Theme:** MCP token-saver depth + frozen-RC release pipeline. Wires
