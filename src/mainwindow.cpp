@@ -4469,6 +4469,18 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_remoteControl->cmdTestResults(args).toJson(QJsonDocument::Compact));
         });
 
+    // ANTS-1302 — focused_test. Runs only the ctest subset touching the
+    // changed files (via tests/coverage-map.json), returns the
+    // test_results envelope. Expensive (shells out to ctest), MCP-only.
+    // See docs/specs/ANTS-1302.md.
+    m_claudeIntegration->registerToolProvider("focused_test",
+        ClaudeIntegration::CallerCwdContract::Required,
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdFocusedTest(args).toJson(QJsonDocument::Compact));
+        });
+
     // ANTS-1303 — find_definition + find_caller. Tree-wide regex symbol
     // scanner (no LSP). Both take {symbol, caller_cwd, lang?,
     // max_results?} and delegate to SymbolQuery via RemoteControl.

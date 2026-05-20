@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "_note": "ANTS-1302 focused_test map. src path -> ctest -R name patterns (substring regex). PARTIAL BY DESIGN: only files whose complete covering test set is known are listed; entries were derived by grepping which tests/features/* dirs reference each lib. Unlisted source files (notably the cross-cutting remotecontrol.cpp / claudeintegration.cpp / mainwindow.cpp / vtparser.cpp / terminalgrid.cpp) fall back to the FULL suite on purpose — focused_test errs toward running more tests, never fewer. Grow this map as isolated subsystems are confirmed; a wrong/incomplete entry risks a false green, so add only verified-complete mappings.",
+  "map": {
+    "src/focusedtest.cpp": ["FocusedTest"],
+    "src/symbolquery.cpp": ["McpSymbolQuery"],
+    "src/scrollbackerrors.cpp": ["McpRecentErrors"],
+    "src/tooldetectionengine.cpp": ["ToolDetectionEngine"],
+    "src/projectlayoutengine.cpp": ["ProjectLayoutEngine"],
+    "src/sessionmemoryengine.cpp": ["SessionMemory"],
+    "src/falseposledger.cpp": ["FalseposLedger"],
+    "src/coldeyesengine.cpp": ["ColdEyes", "FalseposLedger"],
+    "src/testauditengine.cpp": ["TestAudit", "mcp_test_audit_trio", "FalseposLedger"]
+  },
+  "default": [],
+  "ignore": [".md", "docs/", ".roadmap-counter"]
+}

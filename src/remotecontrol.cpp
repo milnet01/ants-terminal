@@ -3,6 +3,7 @@
 #include "coldeyesengine.h"
 #include "debtsweepengine.h"
 #include "fileoutline.h"
+#include "focusedtest.h"
 #include "gitwrap.h"
 #include "claudeintegration.h"
 #include "config.h"
@@ -5973,6 +5974,204 @@ QJsonDocument RemoteControl::cmdProjectConventions(const QJsonObject &req) {
     result["sources"]       = sArr;
     result["sources_count"] = sArr.size();
     return QJsonDocument(result);
+}
+
+// ----- ANTS-1302 — focused_test: run only the ctest subset touching
+// the changed files. Pure resolution in FocusedTest; this runs ctest
+// and parses with TestResCache. See docs/specs/ANTS-1302.md.
+
+QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
+    const QString root = resolveRootCanonical(m_main, req);
+    if (root.isEmpty()) {
+        return QJsonDocument(tpErr(QStringLiteral("no_project"),
+            QStringLiteral("focused_test: project root unresolved")));
+    }
+
+    // Re-entrancy gate (mirrors m_verifyInFlight).
+    if (m_focusedTestInFlight) {
+        return QJsonDocument(tpErr(
+            QStringLiteral("focused_test_in_flight"),
+            QStringLiteral("focused_test: a previous call is still running")));
+    }
+    m_focusedTestInFlight = true;
+    auto inFlightGuard = qScopeGuard([this]{ m_focusedTestInFlight = false; });
+
+    // Build dir — default <root>/build, optional path-validated override.
+    QString buildRel = QStringLiteral("build");
+    if (req.contains(QStringLiteral("build_dir"))) {
+        const auto pc = PathValidation::validatePath(
+            req.value(QStringLiteral("build_dir")).toString(), root,
+            QStringLiteral("focused_test"), QStringLiteral("build_dir"));
+        if (pc.bad) return QJsonDocument(pc.err);
+        buildRel = pc.argvForm;
+    }
+    const QString buildAbs = root + QLatin1Char('/') + buildRel;
+    if (!QFileInfo(buildAbs).isDir() ||
+        !QFileInfo(buildAbs + QStringLiteral("/CMakeCache.txt")).isFile()) {
+        return QJsonDocument(tpErr(QStringLiteral("no_build_dir"),
+            QStringLiteral("focused_test: \"%1\" is not a configured CMake "
+                           "build dir (no CMakeCache.txt)").arg(buildRel)));
+    }
+
+    // Changed files — explicit array, else auto-derive from git status.
+    QStringList changed;
+    const bool haveArg = req.contains(QStringLiteral("changed_files"));
+    if (haveArg) {
+        const QJsonValue cfv = req.value(QStringLiteral("changed_files"));
+        if (!cfv.isArray()) {
+            return QJsonDocument(tpErr(QStringLiteral("bad_args"),
+                QStringLiteral("focused_test: \"changed_files\" must be "
+                               "an array of project-relative paths")));
+        }
+        for (const QJsonValue &v : cfv.toArray()) {
+            QString s = v.toString().trimmed();
+            while (s.startsWith(QStringLiteral("./"))) s = s.mid(2);
+            if (!s.isEmpty() && !changed.contains(s)) changed.append(s);
+        }
+    }
+    if (!haveArg) {
+        QJsonObject gs;
+        gs[QStringLiteral("caller_cwd")] = root;
+        gs[QStringLiteral("op")]         = QStringLiteral("status");
+        const QJsonObject gsObj = cmdGitState(gs).object();
+        if (gsObj.value(QStringLiteral("ok")).toBool(false)) {
+            for (const QJsonValue &v :
+                 gsObj.value(QStringLiteral("files")).toArray()) {
+                QString s = v.toObject()
+                                .value(QStringLiteral("path"))
+                                .toString()
+                                .trimmed();
+                while (s.startsWith(QStringLiteral("./"))) s = s.mid(2);
+                if (!s.isEmpty() && !changed.contains(s)) changed.append(s);
+            }
+        }
+    }
+
+    const FocusedTest::CoverageMap map = FocusedTest::loadCoverageMap(root);
+    const FocusedTest::Resolution res = FocusedTest::resolve(changed, map);
+
+    int timeoutSec = 300;
+    if (req.contains(QStringLiteral("timeout_sec"))) {
+        timeoutSec = req.value(QStringLiteral("timeout_sec")).toInt(300);
+    }
+    if (timeoutSec < 10)   timeoutSec = 10;
+    if (timeoutSec > 1800) timeoutSec = 1800;
+
+    QElapsedTimer wall;
+    wall.start();
+
+    struct RunOut { bool started; bool timedOut; bool crashed; QString output; };
+    auto runCtest = [&](const QString &regex) -> RunOut {
+        QStringList argv;
+        argv << QStringLiteral("--test-dir") << buildRel
+             << QStringLiteral("--output-on-failure");
+        if (!regex.isEmpty()) argv << QStringLiteral("-R") << regex;
+        QProcess p;
+        p.setWorkingDirectory(root);
+        p.setProcessChannelMode(QProcess::MergedChannels);
+        p.start(QStringLiteral("ctest"), argv);
+        RunOut o{true, false, false, QString()};
+        if (!p.waitForStarted(5000)) { o.started = false; return o; }
+        if (!p.waitForFinished(timeoutSec * 1000)) {
+            p.kill();
+            p.waitForFinished(2000);
+            o.timedOut = true;
+        }
+        if (!o.timedOut && p.exitStatus() != QProcess::NormalExit) {
+            o.crashed = true;
+        }
+        QByteArray out = p.readAllStandardOutput();
+        static const int kCap = 2 * 1024 * 1024;  // 2 MiB
+        if (out.size() > kCap) out = out.right(kCap);
+        o.output = QString::fromUtf8(out);
+        return o;
+    };
+
+    bool isFull = (res.selection == FocusedTest::Selection::Full);
+    QString filter = FocusedTest::buildCtestRegex(res.patterns);
+
+    RunOut run = runCtest(isFull ? QString() : filter);
+    if (!run.started) {
+        return QJsonDocument(tpErr(QStringLiteral("ctest_missing"),
+            QStringLiteral("focused_test: ctest binary not found on PATH")));
+    }
+    if (run.timedOut) {
+        return QJsonDocument(tpErr(QStringLiteral("ctest_failed"),
+            QStringLiteral("focused_test: ctest exceeded %1 s budget")
+                .arg(timeoutSec)));
+    }
+    if (run.crashed) {
+        return QJsonDocument(tpErr(QStringLiteral("ctest_failed"),
+            QStringLiteral("focused_test: ctest crashed")));
+    }
+
+    TestResCache::ParsedTests parsed =
+        TestResCache::parseCtestOutput(run.output);
+
+    // 0-match safety net: a subset that matched no tests must never
+    // report green — re-run the full suite.
+    bool    downgraded = false;
+    QString downgradeReason;
+    if (!isFull && parsed.total == 0) {
+        RunOut full = runCtest(QString());
+        if (!full.started) {
+            return QJsonDocument(tpErr(QStringLiteral("ctest_missing"),
+                QStringLiteral("focused_test: ctest binary not found on PATH")));
+        }
+        if (full.timedOut) {
+            return QJsonDocument(tpErr(QStringLiteral("ctest_failed"),
+                QStringLiteral("focused_test: full-suite re-run exceeded "
+                               "%1 s budget").arg(timeoutSec)));
+        }
+        if (full.crashed) {
+            return QJsonDocument(tpErr(QStringLiteral("ctest_failed"),
+                QStringLiteral("focused_test: full-suite re-run crashed")));
+        }
+        parsed          = TestResCache::parseCtestOutput(full.output);
+        downgraded      = true;
+        downgradeReason = QStringLiteral("selection matched 0 tests");
+        isFull          = true;
+        filter.clear();
+    }
+
+    if (!parsed.recognised) {
+        return QJsonDocument(tpErr(QStringLiteral("unrecognised_output"),
+            QStringLiteral("focused_test: ctest output not recognised "
+                           "(no summary footer or per-test lines)")));
+    }
+
+    auto selToStr = [](FocusedTest::Selection s) -> QString {
+        switch (s) {
+            case FocusedTest::Selection::Map:       return QStringLiteral("map");
+            case FocusedTest::Selection::Heuristic: return QStringLiteral("heuristic");
+            case FocusedTest::Selection::Full:      return QStringLiteral("full");
+        }
+        return QStringLiteral("full");
+    };
+
+    QJsonObject env = TestResCache::toJsonWire(parsed);
+    env[QStringLiteral("ok")]               = true;
+    env[QStringLiteral("selection")]        =
+        downgraded ? QStringLiteral("full") : selToStr(res.selection);
+    env[QStringLiteral("ctest_filter")]     = isFull ? QString() : filter;
+    auto toArr = [](const QStringList &xs) {
+        QJsonArray a;
+        for (const QString &s : xs) a.append(s);
+        return a;
+    };
+    env[QStringLiteral("changed_files")]    = toArr(changed);
+    env[QStringLiteral("mapped_files")]     = toArr(res.mappedFiles);
+    env[QStringLiteral("unmapped_files")]   = toArr(res.unmappedFiles);
+    env[QStringLiteral("ignored_files")]    = toArr(res.ignoredFiles);
+    env[QStringLiteral("selection_reason")] = res.reason;
+    env[QStringLiteral("build_dir")]        = buildRel;
+    env[QStringLiteral("duration_ms")]      =
+        static_cast<qint64>(wall.elapsed());
+    if (downgraded) {
+        env[QStringLiteral("downgraded_to_full")] = true;
+        env[QStringLiteral("downgrade_reason")]   = downgradeReason;
+    }
+    return QJsonDocument(env);
 }
 
 // ----- ANTS-1303 — find_definition / find_caller symbol queries -----

@@ -12880,16 +12880,26 @@ expected token-leverage per implementation hour.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1302] **`focused_test` MCP — run only tests touching the
-  changed files.** Today Claude runs the full 422-test suite to
-  verify a 1-file change. New MCP takes a `changed_files: [...]`
-  list (or auto-derives from `git diff --name-only HEAD`), maps
+- ✅ [ANTS-1302] **`focused_test` MCP — run only tests touching the
+  changed files.** Shipped 2026-05-20 (Pull 38). Takes a
+  `changed_files: [...]`
+  list (or auto-derives from git working-tree status), maps
   each to its test targets via a project-supplied
   `tests/coverage-map.json` (or heuristic: file `foo.cpp` →
-  `test_foo*` in the test suite), runs only those, returns the
-  ANTS-1300 envelope. Cuts test wall time on focused changes 5×–50×
-  AND cuts test-output tokens proportionally. Falls back to full
-  suite when the map is stale or absent.
+  basename token; or full fallback), runs only those, returns the
+  ANTS-1300 (`test_results`) envelope. Cuts test wall time on focused
+  changes 5×–50× AND cuts test-output tokens proportionally. Falls
+  back to full suite when the map is stale, absent, or a changed file
+  is unmapped (conservative: errs toward running more, never fewer);
+  a selection that matches 0 tests re-runs full
+  (`downgraded_to_full`) so a focused run never reports a false green.
+  New pure `FocusedTest` lib (`src/focusedtest.{h,cpp}`) does the
+  resolution; `cmdFocusedTest` runs ctest + parses via
+  `TestResCache::parseCtestOutput`. Expensive tier, MCP-only,
+  `kindForName` bucket `test`. Ships a starter `tests/coverage-map.json`
+  (partial by design). Spec `docs/specs/ANTS-1302.md` (cold-eyes 2
+  loops); test `tests/features/mcp_focused_test/` (behavioural lib +
+  source-grep wiring).
   **Layman:** running every test when you changed one file is
   wasteful — focused-test runs only the tests that exercise the
   edited code.

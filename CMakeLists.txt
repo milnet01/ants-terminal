@@ -249,6 +249,8 @@ add_library(ants_core_lib STATIC
     # core lib's link graph; .audit_cache/ path is computed inline.
     src/buildcache.cpp
     src/testrescache.cpp
+    # ANTS-1302 — focused_test changed-files -> ctest-pattern resolver.
+    src/focusedtest.cpp
     src/roadmapindex.cpp
     src/roadmapfoldin.cpp
     src/subsystemmap.cpp
@@ -1040,7 +1042,9 @@ if(ANTS_TESTS)
                 # ANTS-1306 task_priors MCP context bundler.
                 tests/features/mcp_task_priors/test_mcp_task_priors.cpp
                 # ANTS-1307 project_conventions MCP convention summary.
-                tests/features/mcp_project_conventions/test_mcp_project_conventions.cpp)
+                tests/features/mcp_project_conventions/test_mcp_project_conventions.cpp
+                # ANTS-1302 focused_test runner (lib + wiring).
+                tests/features/mcp_focused_test/test_mcp_focused_test.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.

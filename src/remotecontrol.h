@@ -342,6 +342,14 @@ public:
     // check. Static table, MCP-only. See docs/specs/ANTS-1307.md.
     QJsonDocument cmdProjectConventions(const QJsonObject &req);
 
+    // ANTS-1302: focused_test — run only the ctest subset touching the
+    // changed files. Resolves changed_files (or auto-derives from git
+    // status) to ctest -R patterns via tests/coverage-map.json (or a
+    // heuristic, or full-suite fallback), runs ctest, and returns the
+    // test_results (ANTS-1300) envelope shape plus selection metadata.
+    // Re-entrancy-gated, Expensive, MCP-only. See docs/specs/ANTS-1302.md.
+    QJsonDocument cmdFocusedTest(const QJsonObject &req);
+
     // ANTS-1309: spec_query — parse a single docs/specs/<id>.md file
     // and return {title, status, kind, invariants[], path}. Token-
     // frugal alternative to a full Read of a spec when the caller
@@ -556,6 +564,8 @@ private:
     mutable QHash<QString, VerifyChangesCacheEntry> m_verifyCache;
     mutable QList<QString>                          m_verifyCacheLru;
     mutable bool m_verifyInFlight = false;
+    // ANTS-1302 — focused_test re-entrancy gate (mirrors m_verifyInFlight).
+    mutable bool m_focusedTestInFlight = false;
     static constexpr int    kVerifyCacheCap   = 8;
     static constexpr qint64 kVerifyCacheTtlMs = 300 * 1000;   // 5 min
     QJsonDocument cmdVerifyChangesImpl(const QString &root,

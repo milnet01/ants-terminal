@@ -2962,6 +2962,83 @@ void ClaudeIntegration::onMcpConnection() {
                     tools.append(t);
                 }
 
+                // ANTS-1302 — focused_test: run only the ctest subset
+                // touching the changed files, return the test_results
+                // envelope shape.
+                {
+                    QJsonObject t;
+                    t["name"] = "focused_test";
+                    t["description"] = QStringLiteral(
+                        "Run only the tests that exercise the changed "
+                        "files, instead of the whole suite. Resolves "
+                        "`changed_files` (or auto-derives from git "
+                        "status) to ctest -R patterns via "
+                        "`tests/coverage-map.json` (or a heuristic, or a "
+                        "full-suite fallback), runs `ctest --test-dir "
+                        "<build> -R <regex> --output-on-failure`, and "
+                        "returns the test_results envelope {ok, passed, "
+                        "failed, skipped, total, failing_tests[]} plus "
+                        "{selection (map/heuristic/full), ctest_filter, "
+                        "changed_files, mapped_files, unmapped_files, "
+                        "ignored_files, selection_reason, build_dir, "
+                        "duration_ms}. Conservative: an unmapped source "
+                        "file or a 0-match selection falls back to the "
+                        "full suite (sets downgraded_to_full) — it never "
+                        "reports green from a run that matched no tests. "
+                        "Runs against the EXISTING build (does not "
+                        "rebuild). Refusals: no_project, no_build_dir "
+                        "(no configured build/ with CMakeCache.txt), "
+                        "focused_test_in_flight, bad_args, ctest_missing, "
+                        "ctest_failed (timeout/crash), unrecognised_output.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Call instead of a full `ctest` to verify a focused "
+                        "change (5x-50x faster on mapped files). Build "
+                        "FIRST — focused_test does not rebuild. Omit "
+                        "`changed_files` to use git status, or pass a set.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    {
+                        QJsonObject p;
+                        p["type"] = "array";
+                        QJsonObject item; item["type"] = "string";
+                        p["items"] = item;
+                        p["description"] = QStringLiteral(
+                            "Project-relative changed file paths. When "
+                            "omitted, derived from git working-tree "
+                            "status. Mapped to ctest patterns via "
+                            "tests/coverage-map.json.");
+                        props["changed_files"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]    = "integer";
+                        p["minimum"] = 10;
+                        p["maximum"] = 1800;
+                        p["description"] = QStringLiteral(
+                            "ctest wall-clock budget in seconds "
+                            "(default 300, clamp 10-1800).");
+                        props["timeout_sec"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Build dir relative to the project root "
+                            "(default \"build\"). Must contain "
+                            "CMakeCache.txt.");
+                        props["build_dir"] = p;
+                    }
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("caller_cwd");
+                    schema["required"]             = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-1303 — find_definition: tree-wide regex scan for
                 // a symbol's definition/declaration line(s).
                 {
@@ -5376,6 +5453,8 @@ void ClaudeIntegration::onMcpConnection() {
                         // Task-start context composers (ANTS-1306 + ANTS-1307).
                         {QStringLiteral("task_priors"),        {1200, 6000}},
                         {QStringLiteral("project_conventions"),{400,  1500}},
+                        // Focused test runner (ANTS-1302).
+                        {QStringLiteral("focused_test"),       {800,  4000}},
                     };
                     const auto it = kCosts.find(name);
                     if (it != kCosts.end()) return it.value();
@@ -5441,6 +5520,9 @@ void ClaudeIntegration::onMcpConnection() {
                         return QStringLiteral("build");
                     // ANTS-1300 — test_results cache.
                     if (name == QLatin1String("test_results"))
+                        return QStringLiteral("test");
+                    // ANTS-1302 — focused_test (shares the test bucket).
+                    if (name == QLatin1String("focused_test"))
                         return QStringLiteral("test");
                     // ANTS-1303 — symbol queries.
                     if (name == QLatin1String("find_definition") ||
@@ -6134,6 +6216,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // sibling project-scoped tools.
     if (toolName == QStringLiteral("build_status"))       return C::Required;
     if (toolName == QStringLiteral("test_results"))       return C::Required;
+    // ANTS-1302 — focused_test reads/runs under the caller's project root.
+    if (toolName == QStringLiteral("focused_test"))       return C::Required;
     // ANTS-1303 — symbol queries scan the project tree under the
     // caller's root; Required matches sibling project-scoped readers.
     if (toolName == QStringLiteral("find_definition"))    return C::Required;
@@ -6348,6 +6432,8 @@ ClaudeIntegration::rateLimitClassFor(const QString &toolName) {
     if (toolName == QStringLiteral("audit_run"))                return R::Expensive;
     if (toolName == QStringLiteral("workspace_search"))         return R::Expensive;
     if (toolName == QStringLiteral("verify_changes"))           return R::Expensive;
+    // ANTS-1302 — focused_test shells out to ctest.
+    if (toolName == QStringLiteral("focused_test"))             return R::Expensive;
     if (toolName == QStringLiteral("cold_eyes_partition"))      return R::Expensive;
     if (toolName == QStringLiteral("cold_eyes_cross_doc_diff")) return R::Expensive;
     if (toolName == QStringLiteral("cold_eyes_fold_in"))        return R::Expensive;

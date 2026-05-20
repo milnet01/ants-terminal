@@ -12,6 +12,43 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP focused test runner — pull 38 (ANTS-1302, 2026-05-20)
+
+A read-only MCP tool that runs only the tests touching the changed
+files instead of the full ~1200-test suite, returning the
+`test_results` envelope. Backed by a new Qt6::Core-only `FocusedTest`
+lib (`src/focusedtest.{h,cpp}`) for the pure changed-files → ctest
+pattern resolution; `cmdFocusedTest` runs ctest and reuses
+`TestResCache::parseCtestOutput`.
+
+- **ANTS-1302 (implement)** — `focused_test` MCP tool. Input
+  `{caller_cwd, changed_files?, timeout_sec?, build_dir?}`. Resolves
+  `changed_files` (or auto-derives from git working-tree status) to
+  `ctest -R` patterns via a project `tests/coverage-map.json` (schema
+  v1: `map` src→patterns, optional `default`, optional `ignore`), or a
+  basename heuristic when the map is absent, then runs
+  `ctest --test-dir <build> -R <regex> --output-on-failure` and parses
+  it. Returns the `test_results` shape (`ok, passed, failed, skipped,
+  total, failing_tests[]`) plus `{selection (map/heuristic/full),
+  ctest_filter, changed_files, mapped_files, unmapped_files,
+  ignored_files, selection_reason, build_dir, duration_ms}`.
+  **Conservative by design:** an unmapped source file forces the full
+  suite, and a selection matching 0 tests re-runs full
+  (`downgraded_to_full:true`) — a focused run never reports a green
+  result from a run that matched nothing. Runs against the EXISTING
+  build (does not rebuild); requires a configured `build/` with
+  `CMakeCache.txt`. Re-entrancy-gated (`focused_test_in_flight`),
+  `Expensive` rate tier, `Required` caller-cwd contract, `kindForName`
+  bucket `test`, token-cost `(800, 4000)`, MCP-only. Refusals:
+  `no_project`, `no_build_dir`, `focused_test_in_flight`, `bad_args`,
+  `bad_path`, `ctest_missing`, `ctest_failed`, `unrecognised_output`.
+  Ships a starter `tests/coverage-map.json` (partial — only
+  verified-complete subsystem mappings; cross-cutting files fall back
+  to full). Spec `docs/specs/ANTS-1302.md` (cold-eyes 2 loops); tests
+  `tests/features/mcp_focused_test/` (9 behavioural lib tests +
+  source-grep wiring + a shipped-map drift guard). Full feature suite
+  1240/1240 green.
+
 ### 🔌 MCP task-start context composers — pull 37 (ANTS-1306 + ANTS-1307, 2026-05-20)
 
 Two read-only MCP tools that hand a session the right priors at task

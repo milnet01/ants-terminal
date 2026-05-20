@@ -149,12 +149,13 @@ void testWiring() {
     // ANTS-1295's 8 to 10 (cmdLaunch + cmdNewTab add one each), then
     // to 11 with ANTS-1352's cmdIndieReviewDispatch, then to 13 with
     // ANTS-1413's cmdColdEyesSingleDoc + ANTS-1414's cmdCrossDocDiff
-    // (the new lane-source-agnostic cross-doc-diff alias).
+    // (the new lane-source-agnostic cross-doc-diff alias), then to 14
+    // with ANTS-1302's cmdFocusedTest (validates the build_dir arg).
     {
         const std::size_t count = ants_test::countOccurrences(
             rc, "PathValidation::validatePath(");
-        expect(count == 13,
-               (std::string("WI-3 expected 13 validatePath call-sites, "
+        expect(count == 14,
+               (std::string("WI-3 expected 14 validatePath call-sites, "
                             "found ")
                 + std::to_string(count)).c_str());
     }

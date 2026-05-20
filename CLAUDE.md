@@ -76,6 +76,16 @@ Listed only where behavior isn't obvious from the name.
   `changelog_test_coverage`. Plus `test_health`, which is implemented
   shell-side (`auditdialog.cpp` recursive grep) — listed alongside for
   topical grouping; not routed through `inProcessRunner`.
+- `focusedtest` (Qt6::Core only) — pure resolution for the
+  `focused_test` MCP tool (ANTS-1302): maps changed files →
+  `ctest -R` patterns via `tests/coverage-map.json` (schema v1:
+  `map` src→patterns + optional `default`/`ignore`), a basename
+  heuristic, or a conservative full-suite fallback (an unmapped
+  source file or a 0-match selection always falls back to full).
+  `cmdFocusedTest` (in `remotecontrol.cpp`) runs the ctest subset and
+  parses via `TestResCache::parseCtestOutput`. `tests/coverage-map.json`
+  is the project's living, partial file→test map. Spec
+  `docs/specs/ANTS-1302.md`.
 - `remotecontrol` — Kitty-style JSON-over-Unix-socket IPC. Verbs:
   `ls`, `send-text`, `new-tab`, `select-window`, `set-title`,
   `get-text`, `launch`, `tab-list`, `roadmap-query`,
