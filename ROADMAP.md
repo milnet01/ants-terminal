@@ -8368,7 +8368,7 @@ gets one CHANGELOG section + one drift cycle + one push.
 | **36** | Scrollback error extraction | ANTS-1301 (`recent_errors`) | new `scrollbackerrors.{h,cpp}` · per-language regex bank · `remotecontrol.cpp` | small-medium (~300 LOC) |
 | **37** | Task-start context bundling | ANTS-1306 (`task_priors`) · ANTS-1307 (`project_conventions`) | composer over existing verbs · `remotecontrol.cpp` | small (~250 LOC, pure composer) |
 | **38** | Focused test runner | ANTS-1302 (`focused_test`) | new `focusedtest.{h,cpp}` · `tests/coverage-map.json` schema · `remotecontrol.cpp` | medium (~400 LOC) |
-| **39** | Pattern-shape matcher | ANTS-1305 (`similar_code`) | new `similarcode.{h,cpp}` · indexer + signature hasher | medium-large (~600 LOC) |
+| **39** ✅ | Pattern-shape matcher (shipped 2026-05-20) | ANTS-1305 (`similar_code`) | new `similarcode.{h,cpp}` (reuses FileOutline extractor) · token-set Jaccard ranking · `remotecontrol.cpp` | medium (~350 LOC) |
 | **40** | Contract enforcement Phase 3b + cwd-field schema drop | ANTS-1415 (Phase 3b spec + impl) · ANTS-1420 (drop deprecated `cwd`) | `claudeintegration.cpp` · `docs/specs/ANTS-1415.md` | small-medium (1420 is one-line; 1415 needs spec) |
 | **41** | Test-infra hardening | ANTS-1434 (KwinPositionTracker flake) · ANTS-1433 (atomic-write rollback test seam) | `tests/features/kwin_position_tracker/` · new `ANTS_TEST_HOOKS` define · new `tests/features/mcp_roadmap_log_atomicity/` | small-medium (each ~150 LOC) |
 | **42** | Defensive observations (doc-only) | ANTS-1439 (cache relocation contract) · ANTS-1447 (test_audit mtime deep-tree gap) | `docs/specs/ANTS-1397.md` INV-15 amendment · `docs/standards/mcp-caches.md` (new) | tiny (docs only) |
@@ -12944,16 +12944,25 @@ expected token-leverage per implementation hour.
   Kind: refactor.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1305] **`similar_code` MCP — pattern matcher for existing
-  project shapes.** Before writing a new dialog, AI is supposed to
+- ✅ [ANTS-1305] **`similar_code` MCP — pattern matcher for existing
+  project shapes.** Shipped 2026-05-20 (Pull 39). Before writing a new
+  dialog, AI is supposed to
   reuse the project's existing dialog pattern. Today Claude re-derives
-  the pattern from scratch (or worse, doesn't). New MCP indexes
-  `src/` by class-shape signatures (`class FooDialog : public QDialog`,
-  `void cmdBar(const QJsonObject&)`, `MCP tool with op=...`) and
-  answers `similar_code shape="<query>"` with the 3 most similar
-  existing examples + their file:line. Reduces the "Claude reinvented
+  the pattern from scratch (or worse, doesn't). New MCP walks
+  `src/` extracting class/function signatures (reusing the FileOutline
+  extractor) and answers `similar_code shape="<query>"` with the most
+  similar existing examples + their file:line, ranked by token-set
+  Jaccard similarity (default 3, max 20). Reduces the "Claude reinvented
   the wheel" probability and reuses project conventions by default.
-  Pairs with the §3 reuse-before-rewriting rule in CLAUDE.md.
+  Pairs with the §3 reuse-before-rewriting rule in CLAUDE.md. New
+  Qt6::Core-only `SimilarCode` lib (`src/similarcode.{h,cpp}`); IPC
+  verb `similar-code`; `Required` caller-cwd contract; `pattern`
+  kindForName bucket; token-cost `(600, 2500)`. The `shape` query is
+  tokenised, never run as a regex (no injection surface). Spec
+  `docs/specs/ANTS-1305.md` (cold-eyes-reviewed, 1 loop to clean);
+  tests `tests/features/mcp_similar_code/` (tokeniser/jaccard +
+  behavioural + hard-cap/bad_args + source-grep wiring). Full feature
+  suite 1242/1242 green.
   **Layman:** when Claude is about to write a new dialog / IPC verb /
   test, surface the project's existing examples first so it copies
   the convention instead of inventing one.

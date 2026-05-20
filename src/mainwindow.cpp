@@ -4501,6 +4501,20 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_remoteControl->cmdFindCaller(args).toJson(QJsonDocument::Compact));
         });
 
+    // ANTS-1305 — similar_code. Tree-wide shape matcher: reuses the
+    // FileOutline extractor + ranks signatures by token-set Jaccard
+    // similarity to a free-text {shape, caller_cwd, lang?, max_results?}
+    // query. Delegates to SimilarCode via RemoteControl. MCP-only
+    // conceptually; also reachable via the IPC dispatch verb
+    // similar-code. See docs/specs/ANTS-1305.md.
+    m_claudeIntegration->registerToolProvider("similar_code",
+        ClaudeIntegration::CallerCwdContract::Required,
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdSimilarCode(args).toJson(QJsonDocument::Compact));
+        });
+
     // ANTS-1112 — five `indie_review_*` tools. Each handler resolves
     // the active project via the focused TerminalWidget's shellCwd
     // (matches the convention used by git_state / subsystem /

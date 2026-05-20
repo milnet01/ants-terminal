@@ -90,8 +90,8 @@ Listed only where behavior isn't obvious from the name.
   `ls`, `send-text`, `new-tab`, `select-window`, `set-title`,
   `get-text`, `launch`, `tab-list`, `roadmap-query`,
   `workspace-search`, `file-outline`, `find-definition`,
-  `find-caller` (ANTS-1303), `git-state`, `subsystem`,
-  `roadmap-branch-drift` (ANTS-1583).
+  `find-caller` (ANTS-1303), `similar-code` (ANTS-1305),
+  `git-state`, `subsystem`, `roadmap-branch-drift` (ANTS-1583).
   Trust model: UID-scoped + 0700 perms + `lstat`-checked
   `S_ISSOCK`.
 - `antshelper` (optional CLI, `-DANTS_ENABLE_HELPER_CLI=ON`) — local

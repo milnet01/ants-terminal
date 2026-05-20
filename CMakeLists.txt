@@ -224,6 +224,8 @@ add_library(ants_core_lib STATIC
     src/fileoutline.cpp
     # ANTS-1303 — find_definition / find_caller tree-wide symbol scanner.
     src/symbolquery.cpp
+    # ANTS-1305 — similar_code shape matcher (reuses FileOutline extractor).
+    src/similarcode.cpp
     # ANTS-1301 — recent_errors scrollback error parser.
     src/scrollbackerrors.cpp
     src/gitwrap.cpp
@@ -1037,6 +1039,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_test_results/test_mcp_test_results.cpp
                 # ANTS-1303 find_definition + find_caller MCP tools.
                 tests/features/mcp_symbol_query/test_mcp_symbol_query.cpp
+                # ANTS-1305 similar_code shape matcher.
+                tests/features/mcp_similar_code/test_mcp_similar_code.cpp
                 # ANTS-1301 recent_errors scrollback error extraction.
                 tests/features/mcp_recent_errors/test_mcp_recent_errors.cpp
                 # ANTS-1306 task_priors MCP context bundler.

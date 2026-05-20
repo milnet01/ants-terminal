@@ -18,6 +18,7 @@
 #include "resolvedroot.h"
 #include "scrollbackerrors.h"
 #include "sessionmemoryengine.h"
+#include "similarcode.h"
 #include "symbolquery.h"
 #include "tokenusageengine.h"
 #include "roadmapdialog.h"
@@ -880,6 +881,10 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
     if (cmd == QLatin1String("find-caller")) {
         // ANTS-1303: IPC dispatch entry for the symbol-caller scanner.
         return cmdFindCaller(req);
+    }
+    if (cmd == QLatin1String("similar-code")) {
+        // ANTS-1305: IPC dispatch entry for the shape matcher.
+        return cmdSimilarCode(req);
     }
     if (cmd == QLatin1String("git-state")) {
         // ANTS-1250: IPC dispatch entry for the consolidated git tool.
@@ -6288,6 +6293,87 @@ QJsonDocument RemoteControl::cmdFindCaller(const QJsonObject &req) {
     out["callers_count"] = res.callersTotal;
     if (res.definition.has_value())
         out["definition"] = defMatchToJson(res.definition.value());
+    out["files_scanned"] = res.filesScanned;
+    out["truncated"]     = res.truncated;
+    out["walk_capped"]   = res.walkCapped;
+    return QJsonDocument(out);
+}
+
+// ----- ANTS-1305 — similar_code shape matcher -----
+
+namespace {
+
+QJsonObject scArgErr() {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["error"] = QStringLiteral("similar_code: \"shape\" missing, empty, "
+                                "longer than 512 chars, or has no usable "
+                                "tokens");
+    o["code"]  = QStringLiteral("bad_args");
+    return o;
+}
+
+QJsonObject scNoProject() {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["error"] = QStringLiteral("similar_code: project root unresolved");
+    o["code"]  = QStringLiteral("no_project");
+    return o;
+}
+
+SimilarCode::Options scOptions(const QJsonObject &req) {
+    SimilarCode::Options opts;
+    opts.lang = SimilarCode::parseLang(
+        req.value(QStringLiteral("lang")).toString().trimmed().toLower());
+    const QJsonValue mr = req.value(QStringLiteral("max_results"));
+    if (mr.isDouble()) {
+        const int n = mr.toInt();
+        if (n > 0) opts.maxResults = n;
+    }
+    return opts;
+}
+
+}  // namespace
+
+QJsonDocument RemoteControl::cmdSimilarCode(const QJsonObject &req) {
+    const QString shape = req.value(QStringLiteral("shape")).toString().trimmed();
+    if (shape.isEmpty() || shape.size() > 512 ||
+        SimilarCode::tokenize(shape).isEmpty()) {
+        return QJsonDocument(scArgErr());
+    }
+    const QString root = resolveRootCanonical(m_main, req);
+    if (root.isEmpty()) {
+        return QJsonDocument(scNoProject());
+    }
+
+    const SimilarCode::Result res =
+        SimilarCode::findSimilar(root, shape, scOptions(req));
+    if (!res.ok) {  // defensive — lib re-validates the already-checked shape
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = res.error;
+        o["code"]  = res.code;
+        return QJsonDocument(o);
+    }
+
+    QJsonArray matches;
+    for (const SimilarCode::Match &m : res.matches) {
+        QJsonObject o;
+        o["file"]      = m.file;
+        o["line"]      = m.line;
+        o["signature"] = m.signature;
+        o["kind"]      = m.kind;
+        o["lang"]      = m.lang;
+        o["score"]     = m.score;
+        matches.append(o);
+    }
+
+    QJsonObject out;
+    out["ok"]            = true;
+    out["shape"]         = shape;
+    out["lang"]          = sqLangEcho(req);
+    out["matches"]       = matches;
+    out["matches_count"] = res.matchesTotal;
     out["files_scanned"] = res.filesScanned;
     out["truncated"]     = res.truncated;
     out["walk_capped"]   = res.walkCapped;

@@ -3171,6 +3171,75 @@ void ClaudeIntegration::onMcpConnection() {
                     tools.append(t);
                 }
 
+                // ANTS-1305 — similar_code: tree-wide shape matcher.
+                // Ranks existing class/function signatures by token-set
+                // similarity to a free-text shape query.
+                {
+                    QJsonObject t;
+                    t["name"] = "similar_code";
+                    t["description"] = QStringLiteral(
+                        "Find the project's existing examples of a code "
+                        "shape before you write a new one (CLAUDE.md §3 "
+                        "reuse-before-rewriting). Walks C++/Python source, "
+                        "extracts class/function signatures, and ranks "
+                        "them by token-set Jaccard similarity to your "
+                        "`shape` query. Returns {ok, shape, lang, "
+                        "matches:[{file, line, signature, kind, lang, "
+                        "score}], matches_count, files_scanned, "
+                        "truncated, walk_capped}, top matches first "
+                        "(default 3, max 20). The query is tokenised, "
+                        "never run as a regex. Refusals: bad_args (shape "
+                        "missing/empty/over-512-chars/no usable tokens), "
+                        "no_project (caller_cwd unresolved).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use before writing a new dialog / IPC verb / "
+                        "test to copy the project convention. Phrase the "
+                        "query like the signature you are about to write "
+                        "(e.g. \"class FooDialog : public QDialog\"), not "
+                        "as English prose. Pairs with file_outline.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p;
+                        p["type"]        = "string";
+                        p["description"] = QStringLiteral(
+                            "Free-text code shape to match, phrased like "
+                            "a signature (e.g. \"void cmdBar(const "
+                            "QJsonObject&)\"). Tokenised, not a regex.");
+                        props["shape"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        QJsonArray e;
+                        e.append("auto"); e.append("cpp"); e.append("py");
+                        p["enum"]        = e;
+                        p["default"]     = "auto";
+                        p["description"] = QStringLiteral(
+                            "Restrict the scan to one language family. "
+                            "\"auto\" (default) scans C++ and Python.");
+                        props["lang"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]        = "integer";
+                        p["description"] = QStringLiteral(
+                            "Cap on matches[] (default 3, max 20). "
+                            "matches_count carries the pre-cap total.");
+                        props["max_results"] = p;
+                    }
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("shape");
+                    req.append("caller_cwd");
+                    schema["required"]             = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-1112 — five `indie_review_*` tools that lift the
                 // mechanical halves of /indie-review out of orchestrator
                 // context. Engine: src/indiereviewengine.{h,cpp}.
@@ -5450,6 +5519,8 @@ void ClaudeIntegration::onMcpConnection() {
                         // Symbol queries (ANTS-1303).
                         {QStringLiteral("find_definition"),    {600,  2500}},
                         {QStringLiteral("find_caller"),        {800,  4000}},
+                        // Shape matcher (ANTS-1305).
+                        {QStringLiteral("similar_code"),       {600,  2500}},
                         // Task-start context composers (ANTS-1306 + ANTS-1307).
                         {QStringLiteral("task_priors"),        {1200, 6000}},
                         {QStringLiteral("project_conventions"),{400,  1500}},
@@ -5528,6 +5599,9 @@ void ClaudeIntegration::onMcpConnection() {
                     if (name == QLatin1String("find_definition") ||
                         name == QLatin1String("find_caller"))
                         return QStringLiteral("symbol");
+                    // ANTS-1305 — shape matcher.
+                    if (name == QLatin1String("similar_code"))
+                        return QStringLiteral("pattern");
                     // ANTS-1306 — task-start context bundler.
                     if (name == QLatin1String("task_priors"))
                         return QStringLiteral("context");
@@ -6222,6 +6296,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // caller's root; Required matches sibling project-scoped readers.
     if (toolName == QStringLiteral("find_definition"))    return C::Required;
     if (toolName == QStringLiteral("find_caller"))        return C::Required;
+    // ANTS-1305 — similar_code scans the project tree under the
+    // caller's root; Required matches sibling project-scoped readers.
+    if (toolName == QStringLiteral("similar_code"))        return C::Required;
     // ANTS-1306 + ANTS-1307 — task-start context composers read under
     // the caller's project root; Required matches sibling readers.
     if (toolName == QStringLiteral("task_priors"))        return C::Required;

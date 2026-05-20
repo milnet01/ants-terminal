@@ -12,6 +12,40 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### 🔌 MCP shape matcher — pull 39 (ANTS-1305, 2026-05-20)
+
+A read-only MCP tool that surfaces the project's existing examples of a
+code shape before Claude writes a new one — the CLAUDE.md §3
+reuse-before-rewriting rule, surfaced as a tool. Backed by a new
+Qt6::Core-only `SimilarCode` lib (`src/similarcode.{h,cpp}`) that walks
+the source tree, extracts class/function signatures by reusing the
+`FileOutline` extractor, and ranks them by token-set Jaccard similarity
+to a free-text `shape` query.
+
+- **ANTS-1305 (implement)** — `similar_code` MCP tool. Input
+  `{shape, caller_cwd, lang?, max_results?}`. Walks C++/Python source
+  (skipping `build*` / `node_modules` / dot-dirs, never following
+  symlinks), extracts each file's class/function/Qt-marker signatures
+  via `FileOutline::compute` (passing an explicit `Mode` so `.c` /
+  `.hxx` / `.pyi` are covered), tokenises every signature, and scores
+  it against the query with set Jaccard (`|Q∩C| / |Q∪C|`). Returns
+  `{ok, shape, lang, matches:[{file, line, signature, kind, lang,
+  score}], matches_count, files_scanned, truncated, walk_capped}`,
+  top matches first (default 3, hard cap 20; `matches_count` is the
+  pre-cap total of score>0 candidates). The `shape` query is
+  **tokenised, never spliced into a regex** — no injection surface, no
+  identifier guard needed. New IPC verb `similar-code`; `Required`
+  caller-cwd contract; `pattern` `kindForName` bucket; token-cost
+  `(600, 2500)`; MCP-only. Refusals: `bad_args` (shape missing / empty /
+  over-512-chars / no usable tokens), `no_project` (caller_cwd
+  unresolved). Reuses `FileOutline`'s extraction fidelity — notably
+  only top-level Python `def`/`class` (FileOutline's column-0 anchor),
+  while C++ member definitions and Qt markers are captured. Spec
+  `docs/specs/ANTS-1305.md` (cold-eyes-reviewed, 1 loop to clean);
+  tests `tests/features/mcp_similar_code/` (tokeniser/jaccard +
+  behavioural ranking + hard-cap/bad_args + source-grep wiring). Full
+  feature suite 1242/1242 green.
+
 ### 🔌 MCP focused test runner — pull 38 (ANTS-1302, 2026-05-20)
 
 A read-only MCP tool that runs only the tests touching the changed

@@ -298,6 +298,14 @@ public:
     QJsonDocument cmdFindDefinition(const QJsonObject &req);
     QJsonDocument cmdFindCaller(const QJsonObject &req);
 
+    // ANTS-1305: similar_code — tree-wide shape matcher. Reuses the
+    // FileOutline extractor + ranks signatures by token-set Jaccard
+    // similarity to a free-text `shape` query. Delegate to SimilarCode;
+    // resolve the root via resolveRootCanonical, validate `shape`
+    // (→ bad_args). Public so the MCP provider lambda in MainWindow
+    // delegates here. See docs/specs/ANTS-1305.md.
+    QJsonDocument cmdSimilarCode(const QJsonObject &req);
+
     // ANTS-1250: git_state — single tool, dispatches on `op` field
     // (status / log / diff). Wraps gitwrap.cpp's shell-less QProcess
     // helper. Argv-only, --separator + ./ prefix on -leading paths,
