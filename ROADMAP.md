@@ -12915,12 +12915,25 @@ subsection.
   `{flipped, skipped:[…], anchors_injected:[…]}`. The single
   reparse + single QSaveFile commit also avoids the dueling-mtime
   scenario where two close-together flips race the file watcher.
+  Refinement (RetroArch bundles 73-76, 2026-05-20): also take an
+  optional **per-locator** `annotate:"<suffix>"` appended after each
+  flipped headline — the per-bundle `_(Bundle NN — …)_` provenance
+  tag is what forced those sessions back to hand-`Edit`s even after
+  the `sed` shortcut existed, and from B73 on the notes DIVERGE per
+  bullet (Bundle 76 needed 7 distinct closure notes → 14 hand-Edits),
+  so the suffix must live on each locator, not as one shared tag —
+  plus a `no_anchor:true` opt-out so a flip on a narrator-format
+  roadmap doesn't inject an unwanted `^prefix-NNNN` caret anchor into
+  a section that deliberately keeps its bullets anchor-free. Now 6
+  consecutive sessions report this as the single most-repeated manual
+  step. Pairs with [[ANTS-1717]] (`op:"annotate"`, same renderer).
   **Layman:** when a release closes a dozen bullets at once,
   Claude should be able to flip all of them in one MCP call
-  instead of twelve.
+  instead of twelve — optionally stamping each with a "closed by
+  bundle N" tag and without adding stray anchors.
   Kind: enhance.
   Source: cross-session-report-2026-05-19 (RetroArch CC session
-  bundle 71).
+  bundle 71); refined 2026-05-20 (bundles 73-75).
 
 - 📋 [ANTS-1688] **`roadmap_query mode:"section_index"` payload
   shrink for legacy-format roadmaps with many duplicate-ID
@@ -12934,11 +12947,20 @@ subsection.
   `duplicate_id_count` integer by default and gate the full
   list behind an opt-in flag (`include_duplicate_id_details:true`).
   Most callers just want "is the roadmap clean?".
+  Correctness facet (3D_Engine Ts20-IS/CV, 2026-05-20): the detector
+  also *over-reports* — a caret-anchor/hash token like `35ra39wbn1`
+  was surfaced as a 7×-"duplicate ID" (all in a `phase-9c-…-shipped`
+  section), i.e. the parser is treating Obsidian-style `^anchor`
+  tokens (and other non-`[PROJ-NNNN]` strings) as bullet IDs. The
+  duplicate scan should key only on the canonical
+  `[A-Za-z][A-Za-z0-9_-]*-\d+` ID shape so anchors/legacy headlines
+  don't masquerade as ID collisions.
   **Layman:** when a roadmap has dozens of legacy bullets that
   share generic headlines, the duplicate-IDs surface gets huge —
-  cap it so the response stays under the truncation limit.
+  cap it, and stop mistaking anchor tags for real duplicate IDs.
   Kind: refactor.
-  Source: cross-session-report-2026-05-19 (3D_Engine CC session).
+  Source: cross-session-report-2026-05-19 (3D_Engine CC session);
+  correctness facet 2026-05-20 (Ts20-IS/CV).
 
 - 📋 [ANTS-1689] **`test_audit_synthesis_prompt` markdown
   `[SEVERITY]` fallback parser.** ANTS-1617 (pull 18) taught the
@@ -12973,6 +12995,34 @@ subsection.
   Kind: enhance.
   Source: cross-session-report-2026-05-19 (RetroArch CC session
   bundle 71).
+
+- 📋 [ANTS-1714] **`roadmap_query mode:"section_index"` ignores `status:"active"` + lacks a per-section legacy-format flag.**
+  Two related section_index ergonomics gaps from the 2026-05-20 cross-session reports (3D_Engine Ts20-PA/IS/CV addenda + RetroArch Bundle 72 §3). (a) `status:"active"` is a no-op in `mode:"section_index"`: on a 456 KB / ~223-section ROADMAP every section is returned including fully-shipped ones with `active_count==0`, producing a ~54 KB envelope that trips the persisted-output truncation path — contradicting the tool doc's "< 5 KB on a 500-bullet roadmap" claim (the estimate is bullet-count-based but the cost is section-count-based). Fix: when `status:"active"` is passed, drop sections whose `active_count==0` from `sections[]`; OR add an explicit `nonempty_only:true` flag; and correct the doc estimate to ~250 bytes/section. Pagination (offset/limit) for section_index would also help. (b) For legacy/narrator-format roadmaps (no `[PROJ-NNNN]` ids), the per-section `active_count_id_only:0` reads as "section empty" even when the section has N active narrator bullets — the top-level `legacy_format_sections[]` (ANTS-1622) covers it but a per-section `legacy_format:true` flag mirroring that array would let a caller spot the discrepancy without grepping the section name against the top-level list.
+  **Layman:** When asking the roadmap tool for just a section summary of active work, it returns every section (including long-finished ones) on big roadmaps, blowing the size limit — and on roadmaps without ID tags it can look empty when it isn't. Make it honour the "active only" filter and flag the no-ID case per section.
+  Kind: enhancement.
+  Lanes: remotecontrol, roadmap-stack, mcp.
+  Source: cross-session-report-2026-05-20 (3D_Engine Ts20 + RetroArch Bundle 72).
+
+- 💭 [ANTS-1715] **`verify_reexport` MCP verb — confirm a public symbol still aliases its internal definition.**
+  Speculative idea from the MAME_Curator FP31 /test-audit session (2026-05-18, overnight). That repo added a top-of-file `assert MediaFetchError is _MediaFetchError_public` runtime fence that fails at import time if a public re-export silently breaks — the same "is the surface still the surface?" check `verify_changes` does for build/test contracts. Proposed verb: `verify_reexport({module:"mame_curator.media", symbol:"MediaFetchError", internal_module:"mame_curator.media.cache"})` → `{exported:true, identity_match:true, last_changed_commit:"…"}`, so the ~5-line in-test guard doesn't get copy-pasted as re-exports accumulate. Considered (not planned): demand is single-project + speculative, and the Python-import-introspection surface is non-trivial to do safely from the MCP server. Revisit if a second project asks.
+  **Layman:** An idea (not committed): a tool that checks a library's public name still points at the real internal thing it's supposed to, so a broken re-export is caught automatically instead of via hand-written test guards.
+  Kind: feature.
+  Lanes: mcp.
+  Source: cross-session-report-2026-05-18 (MAME_Curator FP31 sweep).
+
+- 📋 [ANTS-1716] **Required-`caller_cwd` refusal bodies should include a concrete `caller_cwd` example.**
+  Minor ergonomic from the MAME_Curator sessions (2026-05-18): the first call of a session that forgets `caller_cwd` on a project-scoped tool (e.g. `session_memory op:list`) refuses cleanly with `code:"caller_cwd_required"` (ANTS-1336/1520) — correct, but the error body carries no example, so a fresh Claude self-corrects a beat slower. Add a one-line example to the `caller_cwd_required` refusal envelope, e.g. `hint:"pass caller_cwd:\"<your $PWD>\" — anchors the call to your project"`. Cheap, mirrors the precise schema-hint style ANTS-1524's `bad_case`/`canonical_slug` and the `.cold-eyes/partition.json` override-warning already use. Applies wherever the dispatcher emits `caller_cwd_required`.
+  **Layman:** When a tool call is rejected for missing the project-path argument, the error should show an example of what to pass, so the next attempt gets it right immediately.
+  Kind: enhancement.
+  Lanes: claudeintegration, mcp.
+  Source: cross-session-report-2026-05-18 (MAME_Curator).
+
+- 📋 [ANTS-1717] **`roadmap_log op:"annotate"` — append prose to an existing bullet without changing its status.**
+  From the RetroArch Bundle 76 session (2026-05-20). `roadmap_log op:"flip"` only changes status; there is no way to append a note to a bullet that stays open. Recording partial progress / cross-bundle corroboration on a still-📋 item is as common as closing one (Bundle 76 corroborated an open "orphan-test detection" follow-up — its libcheck suite surfaced link breaks + UB segfaults that an earlier `-fsyntax-only` pass missed — but couldn't close it since no CI hook was wired, so it fell back to a raw Edit). Add `op:"annotate"` taking a locator (`id`|`anchor`|`headline`) + `append:"<prose>"` that appends to the bullet body and leaves status untouched. Shares the renderer with [[ANTS-1690]]'s `flip_batch` `annotate:` — and that `annotate` must be PER-LOCATOR (Bundle 76 needed 7 distinct closure notes, forcing 14 hand-Edits), not one shared tag.
+  **Layman:** Let Claude add a "this bundle made progress on X" note to a roadmap item without marking it done — today the only structured option flips the status, so partial-progress notes are hand-edited.
+  Kind: enhancement.
+  Lanes: remotecontrol, roadmap-stack, mcp.
+  Source: cross-session-report-2026-05-20 (RetroArch Bundle 76).
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
