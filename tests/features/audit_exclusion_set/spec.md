@@ -63,3 +63,27 @@ trusted local path needs no scheme gate).
   `#pragma once` across the whole file *before* the `head`-limited
   `#ifndef` probe — so a guard sitting behind a long top-of-file doc
   comment is no longer misreported as "unguarded".
+
+## ANTS-1710 — grep-rule idiom-blind-spot tightenings
+
+The framework-awareness sweep deferred from ANTS-1709. All 25 hardcoded
+`addGrepCheck`/`addFindCheck` rules were reviewed; three carried idiom
+blind spots that produced false positives on correct, idiomatic code:
+
+- **INV-11** the `insecure_http` rule drops license-header / spec URLs
+  (`apache.org/licenses`, `gnu.org/licenses`) — documentation strings,
+  not live insecure endpoints. These appear in nearly every source tree
+  and were the dominant `insecure_http` FP.
+- **INV-12** `AuditEngine::applyFilter` drops an `http://` finding line
+  containing a license-header URL host.
+- **INV-13** the `secrets_scan` rule drops the env-read idiom
+  (`qEnvironmentVariable`, `getenv`, `qgetenv`): reading a secret *from*
+  the environment is the safe pattern, but the call expression trips the
+  rule's ≥16-char value arm.
+- **INV-14** `AuditEngine::applyFilter` drops a `password =
+  qEnvironmentVariable(...)` finding line.
+
+The third tightening — `hardcoded_ips` constraining each group to a valid
+octet (0-255) so build numbers like `1.2.300.4` no longer false-match — is
+a **regex** change, locked by `tests/audit_self_test.sh` +
+`tests/audit_fixtures/hardcoded_ips/` rather than here.

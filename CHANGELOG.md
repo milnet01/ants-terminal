@@ -64,6 +64,22 @@ for security-relevant changes.
   regression guard for the ANTS-1707 `#pragma once` fix). The broad
   per-rule idiom sweep is deferred to ANTS-1710.
 
+- **Audit grep-rule idiom blind spots (ANTS-1710).** The framework-
+  awareness sweep deferred from ANTS-1709. All 25 hardcoded grep/find
+  rules were reviewed; three were tightened to stop false-firing on
+  idiomatic code: `insecure_http` now drops license-header / spec URLs
+  (`apache.org/licenses`, `gnu.org/licenses`, …) — the dominant FP;
+  `secrets_scan` now drops the env-read idiom (`qEnvironmentVariable`,
+  `getenv`, `qgetenv`) — reading a secret from the environment is the
+  safe pattern; and `hardcoded_ips` now constrains each group to a valid
+  octet (0-255) so build numbers like `1.2.300.4` no longer match as
+  IPv4 (real-IP coverage unchanged). Locked by four new invariants
+  (INV-11..14) in `tests/features/audit_exclusion_set/` plus a
+  `hardcoded_ips` build-number canary. Two issues outside the rule-regex
+  scope were split out to ANTS-1711 (clazy build-dir probe misses
+  `build-fast`/`-asan` presets) and ANTS-1712 (`compiler_warnings` builds
+  with `make -j$(nproc)`).
+
 ### Changed
 
 - **Audit library split (ANTS-1444, Pull 44).** `auditdialog.cpp` (the

@@ -152,3 +152,55 @@ TEST(AuditExclusionSet, HeaderGuardsMatchesPragmaOnceWholeFile) {
            "head-limited #ifndef probe (else a guard behind a long "
            "doc comment reads as 'unguarded' — the ANTS-1707 FP)";
 }
+
+// INV-11 — ANTS-1710: insecure_http rule models license/spec URLs as docs.
+TEST(AuditExclusionSet, InsecureHttpDropsLicenseUrls) {
+    const std::string src = slurp(SRC_AUDIT_CPP_PATH);
+    ASSERT_FALSE(src.empty());
+    const size_t rule = src.find("insecure_http");
+    ASSERT_NE(rule, std::string::npos);
+    EXPECT_NE(src.find("apache.org/licenses", rule), std::string::npos)
+        << "insecure_http must drop Apache license-header URLs";
+    EXPECT_NE(src.find("gnu.org/licenses", rule), std::string::npos)
+        << "insecure_http must drop GNU license-header URLs";
+}
+
+// INV-12 — applyFilter drops a license-header http:// line.
+TEST(AuditExclusionSet, ApplyFilterDropsLicenseUrlLine) {
+    OutputFilter f;
+    f.dropIfContains = {QStringLiteral("apache.org/licenses")};
+    f.maxLines = 30;
+    const QString raw = QStringLiteral(
+        "src/foo.cpp:3: // http://www.apache.org/licenses/LICENSE-2.0\n");
+    const AuditEngine::FilterResult r =
+        AuditEngine::applyFilter(raw, f, QStringLiteral("."));
+    EXPECT_EQ(r.count, 0)
+        << "license-header URL line should be dropped; body was: "
+        << r.body.toStdString();
+}
+
+// INV-13 — ANTS-1710: secrets_scan models the env-read idiom as safe.
+TEST(AuditExclusionSet, SecretsScanDropsEnvReadIdiom) {
+    const std::string src = slurp(SRC_AUDIT_CPP_PATH);
+    ASSERT_FALSE(src.empty());
+    const size_t rule = src.find("secrets_scan");
+    ASSERT_NE(rule, std::string::npos);
+    EXPECT_NE(src.find("qEnvironmentVariable", rule), std::string::npos)
+        << "secrets_scan must treat qEnvironmentVariable reads as non-secrets";
+    EXPECT_NE(src.find("getenv", rule), std::string::npos)
+        << "secrets_scan must treat getenv reads as non-secrets";
+}
+
+// INV-14 — applyFilter drops a secret-from-env line.
+TEST(AuditExclusionSet, ApplyFilterDropsEnvReadSecretLine) {
+    OutputFilter f;
+    f.dropIfContains = {QStringLiteral("qEnvironmentVariable")};
+    f.maxLines = 50;
+    const QString raw = QStringLiteral(
+        "src/foo.cpp:9: password = qEnvironmentVariable(\"APP_PASSWORD\");\n");
+    const AuditEngine::FilterResult r =
+        AuditEngine::applyFilter(raw, f, QStringLiteral("."));
+    EXPECT_EQ(r.count, 0)
+        << "env-read secret line should be dropped; body was: "
+        << r.body.toStdString();
+}

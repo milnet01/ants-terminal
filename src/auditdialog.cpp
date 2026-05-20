@@ -848,7 +848,13 @@ void AuditDialog::populateChecks() {
                                        "const char",  // string literal pattern names
                                        "description", "Description",
                                        "changeme", "YOUR_", "xxxxxxxx",
-                                       "placeholder", "example.com"},
+                                       "placeholder", "example.com",
+                                       // ANTS-1710 — reading a secret FROM the
+                                       // environment / keychain is the safe
+                                       // idiom, not a hardcoded literal. The
+                                       // call expression trips the ≥16-char arm.
+                                       "getenv", "qEnvironmentVariable",
+                                       "qgetenv", "secretFromKeychain"},
                    "", {}, 50 },
                  {"-i",
                   "--include='*.json' --include='*.yaml' --include='*.yml'",
@@ -955,7 +961,17 @@ void AuditDialog::populateChecks() {
                                        // Schema / namespace URLs
                                        "json-schema.org", "www.w3.org",
                                        "schemas.xmlsoap.org", "tempuri.org",
-                                       "xmlns", "namespace", "XSD"},
+                                       "xmlns", "namespace", "XSD",
+                                       // ANTS-1710 — license-header / spec URLs
+                                       // are documentation, not live endpoints;
+                                       // they appear in nearly every source tree
+                                       // and were the dominant insecure_http FP.
+                                       "apache.org/licenses", "gnu.org/licenses",
+                                       "creativecommons.org",
+                                       "opensource.org/licenses",
+                                       "mozilla.org/MPL", "purl.org",
+                                       "docbook.org", "oasis-open.org",
+                                       "schemas.android.com"},
                    "", {}, 30,
                    /*dropIfContextContains*/ {"startsWith(\"http",
                                               "startsWith(QStringLiteral(\"http",
@@ -978,10 +994,17 @@ void AuditDialog::populateChecks() {
         true, true, nullptr
     });
 
-    // hardcoded_ips: drop version strings, license dates, checksums
+    // hardcoded_ips: drop version strings, license dates, checksums.
+    // ANTS-1710 — each group is constrained to a valid octet (0-255). A
+    // dotted-quad with a component >255 (e.g. a build number "1.2.300.4")
+    // cannot be an IPv4 address, so the old `[0-9]{1,3}` form false-fired on
+    // that class. Real IPs always have octets <=255, so true-positive
+    // coverage is unchanged. Version strings whose components stay <=255 are
+    // still caught at the OutputFilter (version/Version context drop) below.
     addGrepCheck("hardcoded_ips", "Hardcoded IPs & Ports",
                  "IPv4 literals in source", "Security",
-                 "'\\b([0-9]{1,3}\\.){3}[0-9]{1,3}\\b'",
+                 "'\\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}"
+                 "(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\b'",
                  CheckType::Hotspot, Severity::Minor, false,
                  { /*dropIfContains*/ {"127.0.0.1", "0.0.0.0", "255.255",
                                        "example", "version", "license",

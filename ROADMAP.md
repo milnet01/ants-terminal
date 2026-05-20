@@ -7211,24 +7211,52 @@ suppression that survives line drift.
   Lanes: auditdialog, auditengine, featurecoverage, tests.
   Source: self-audit 2026-05-20.
 
-- 📋 [ANTS-1710] **Audit grep/find rule idiom-blind-spot sweep — framework-awareness pass across all rules + audit_rules.json.**
-  Deferred residual of ANTS-1709 (which shipped the centralised
-  exclusion set + the named openUrl/header_guards idioms). The
-  open-ended part: walk EVERY hardcoded `addFindCheck`/`addGrepCheck`
-  rule in `auditdialog.cpp` and every `audit_rules.json` entry, and
-  tighten each regex/OutputFilter that doesn't model the language or
-  framework idiom it scans (research names framework-aware custom rules
-  as the highest-impact FP lever). For each rule reviewed, confirm or
-  add a `tests/audit_fixtures/<rule>/{good,bad}.*` pair that captures
-  the idiom it must NOT flag. Treat ANTS-1709's `qt_openurl_unchecked`
-  (fromLocalFile) and `header_guards` (#pragma once) as the worked
-  examples to follow.
-  **Layman:** Go rule-by-rule through the audit tool and teach each one
-  the coding conventions of the languages it checks, so it stops crying
-  wolf on correct code — with a test per rule to keep it honest.
+- ✅ [ANTS-1710] **Audit grep/find rule idiom-blind-spot sweep — framework-awareness pass across all rules + audit_rules.json.**
+  Shipped 2026-05-20. Reviewed all 25 hardcoded `addGrepCheck`/
+  `addFindCheck` rules in `auditdialog.cpp`; three carried idiom blind
+  spots that false-fired on correct, idiomatic code, now tightened:
+  (1) **`insecure_http`** drops license-header / spec URLs
+  (`apache.org/licenses`, `gnu.org/licenses`, `creativecommons.org`,
+  …) — the dominant FP, present in nearly every source tree;
+  (2) **`secrets_scan`** drops the env-read idiom (`qEnvironmentVariable`,
+  `getenv`, `qgetenv`) — reading a secret FROM the environment is the
+  safe pattern but the call expression tripped the ≥16-char value arm;
+  (3) **`hardcoded_ips`** constrains each group to a valid octet (0-255)
+  so build numbers like `1.2.300.4` no longer match as IPv4 (true-positive
+  coverage unchanged — real IPs always have octets ≤255). Locks: 4 new
+  invariants (INV-11..14) in `tests/features/audit_exclusion_set/` for the
+  two OutputFilter idioms; the regex tightening is locked by
+  `tests/audit_self_test.sh` + a new `hardcoded_ips/good.c` build-number
+  canary. The remaining rules were already idiom-aware (the long-standing
+  context/dropIfContains filters from prior triage cycles cover them).
+  Two issues found that fall OUTSIDE this rule-regex scope (they are raw
+  `m_checks.append` checks, not grep/find rules) were split out:
+  [[ANTS-1711]] (clazy build-dir probe misses build-fast/-asan presets)
+  and [[ANTS-1712]] (`compiler_warnings` builds with `make -j$(nproc)`).
+  `audit_rules.json` entries are data overrides with no language-idiom
+  regexes to tighten, so they needed no change.
+  **Layman:** Went rule-by-rule through the audit tool and taught three
+  checks the project's real conventions — license URLs in comments,
+  secrets read from the environment, and the fact that an address part
+  can't exceed 255 — so they stop crying wolf on correct code, with tests
+  to keep them honest.
   Kind: audit-fix.
-  Lanes: auditdialog, auditengine, audit_rules.json, tests.
+  Lanes: auditdialog, auditengine, tests.
   Source: self-audit 2026-05-20; deferred from ANTS-1709.
+
+- 📋 [ANTS-1711] **clazy build-dir probe misses build-fast / build-asan / build-workstation presets.**
+  Found during the ANTS-1710 idiom sweep. `auditdialog.cpp`'s clazy check probes a hardcoded list `{"build","build-release","build-debug","build-test"}` for `compile_commands.json` (and defaults the `-p` dir to "build"). It silently misses the project's own documented presets `build-fast`, `build-asan`, `build-workstation` — the SAME build-dir enumeration drift class ANTS-1707/1709 fixed for cppcheck/trivy/find/grep, except here it's a false-NEGATIVE: a contributor who only has `build-fast/` gets clazy silently skipped (clazyBuildDir empty → check disabled). Fix: derive the probe from a `build*` glob (or reuse the centralised build-glob logic) so new presets self-include; default `-p` to the discovered dir. Distinct from ANTS-1709's exclusion set (dirs to SKIP) — this is the discovery set (dirs to FIND compile_commands.json in).
+  **Layman:** The audit tool's Qt code-checker quietly does nothing if you build in one of the project's faster build folders, because it only looks in a few hardcoded folder names. Teach it to look in all of them.
+  Kind: audit-fix.
+  Lanes: auditdialog.
+  Source: self-audit 2026-05-20; found during ANTS-1710.
+
+- 📋 [ANTS-1712] **Audit `compiler_warnings` check builds with `make -j$(nproc)` — uncapped parallelism.**
+  Found during the ANTS-1710 idiom sweep. The `compiler_warnings` audit check (auditdialog.cpp, raw m_checks.append) configures a throwaway cmake build and runs `make -j$(nproc)`. This violates the project's own build-parallelism cap (CLAUDE.md: never -j$(nproc); JOB_POOLS caps at max(2, nproc/4) under Ninja only — make ignores the pool) and is the exact over-parallelism class that earlyoom-reaped binaries in 0.7.x. Running the audit's own warning check could spawn N concurrent cc1plus jobs on a workstation already under desktop load. Fix: cap at a safe degree (e.g. `-j2` or `$(( ($(nproc)+3)/4 ))`), and prefer `cmake --build` with Ninja if available. autoSelect=false so it's opt-in, but the default invocation should still be resource-safe.
+  **Layman:** One of the audit checks compiles the project to collect warnings, but it uses every CPU core at once — which can run the machine out of memory and kill programs. Cap how many cores it uses.
+  Kind: audit-fix.
+  Lanes: auditdialog.
+  Source: self-audit 2026-05-20; found during ANTS-1710.
 
 ### ⚡ Other improvements (performance, security, optimisations)
 
@@ -8710,18 +8738,18 @@ gets one CHANGELOG section + one drift cycle + one push.
 | Pull | Theme | Items | File affinity | Size |
 |------|-------|-------|---------------|------|
 | **34** ✅ | Test/build cache MCP — `.audit_cache/` siblings (shipped 2026-05-19) | ANTS-1300 (`test_results`) · ANTS-1299 (`build_status`) | new `testrescache.{h,cpp}` · new `buildcache.{h,cpp}` · `remotecontrol.cpp` · `mainwindow.cpp` | medium (~500 LOC + fixtures) |
-| **35** | Symbol queries (cheap LSP shape) | ANTS-1303 (`find_definition` + `find_caller`) | new `symbolquery.{h,cpp}` · regex anchors only · `remotecontrol.cpp` | medium (~400 LOC) |
-| **36** | Scrollback error extraction | ANTS-1301 (`recent_errors`) | new `scrollbackerrors.{h,cpp}` · per-language regex bank · `remotecontrol.cpp` | small-medium (~300 LOC) |
-| **37** | Task-start context bundling | ANTS-1306 (`task_priors`) · ANTS-1307 (`project_conventions`) | composer over existing verbs · `remotecontrol.cpp` | small (~250 LOC, pure composer) |
-| **38** | Focused test runner | ANTS-1302 (`focused_test`) | new `focusedtest.{h,cpp}` · `tests/coverage-map.json` schema · `remotecontrol.cpp` | medium (~400 LOC) |
+| **35** ✅ | Symbol queries (cheap LSP shape) (shipped 2026-05-20) | ANTS-1303 (`find_definition` + `find_caller`) | new `symbolquery.{h,cpp}` · regex anchors only · `remotecontrol.cpp` | medium (~400 LOC) |
+| **36** ✅ | Scrollback error extraction (shipped 2026-05-20) | ANTS-1301 (`recent_errors`) | new `scrollbackerrors.{h,cpp}` · per-language regex bank · `remotecontrol.cpp` | small-medium (~300 LOC) |
+| **37** ✅ | Task-start context bundling (shipped 2026-05-20) | ANTS-1306 (`task_priors`) · ANTS-1307 (`project_conventions`) | composer over existing verbs · `remotecontrol.cpp` | small (~250 LOC, pure composer) |
+| **38** ✅ | Focused test runner (shipped 2026-05-20) | ANTS-1302 (`focused_test`) | new `focusedtest.{h,cpp}` · `tests/coverage-map.json` schema · `remotecontrol.cpp` | medium (~400 LOC) |
 | **39** ✅ | Pattern-shape matcher (shipped 2026-05-20) | ANTS-1305 (`similar_code`) | new `similarcode.{h,cpp}` (reuses FileOutline extractor) · token-set Jaccard ranking · `remotecontrol.cpp` | medium (~350 LOC) |
 | **40** ✅ | Contract enforcement Phase 3b (shipped 2026-05-20; ANTS-1420 deferred to 0.7.93) | ANTS-1415 (Phase 3b spec + impl) · ~~ANTS-1420~~ (deferred — migration window) | `claudeintegration.cpp` · `docs/specs/ANTS-1415.md` · `mcp-error-codes.md` | small-medium |
 | **41** | Test-infra hardening | ANTS-1434 (KwinPositionTracker flake) · ANTS-1433 (atomic-write rollback test seam) | `tests/features/kwin_position_tracker/` · new `ANTS_TEST_HOOKS` define · new `tests/features/mcp_roadmap_log_atomicity/` | small-medium (each ~150 LOC) |
 | **42** | Defensive observations (doc-only) | ANTS-1439 (cache relocation contract) · ANTS-1447 (test_audit mtime deep-tree gap) | `docs/specs/ANTS-1397.md` INV-15 amendment · `docs/standards/mcp-caches.md` (new) | tiny (docs only) |
 | **43** | Debt-sweep detector expansion | ANTS-1358 (4 new detectors) | `debtsweepengine.cpp` · 4 detector classes + fixtures | medium (~500 LOC) |
-| **44** | Audit pipeline lib split | ANTS-1444 (`ants_audit_lib` engine/runner ↔ dialog GUI) | `CMakeLists.txt` · `src/auditrunner.{h,cpp}` move · all test bundles re-link | medium (refactor, ~200 LOC moved) |
+| **44** ✅ | Audit pipeline lib split (shipped 2026-05-20) | ANTS-1444 (`ants_audit_lib` engine/runner ↔ dialog GUI) | `CMakeLists.txt` · `src/auditrunner.{h,cpp}` move · all test bundles re-link | medium (refactor, ~200 LOC moved) |
 | **45** | `audit_run` v2 — real per-tool parsers | ANTS-1449 (AuditDialog config-table integration) | `auditrunner.cpp` · `auditengine.cpp` · `auditdialog.cpp` | large (~800 LOC; depends on bundle 44) |
-| **46** | `test_audit_*` v2 — JSON pattern resource | ANTS-1450 (full pattern set + drift-guard) | `testauditengine.cpp` · new `docs/standards/test-audit-grep-patterns.json` | medium (~400 LOC) |
+| **46** 🚧 | `test_audit_*` v2 — JSON pattern resource (resource + drift-guard shipped 2026-05-20; mtime/token/byte-cap residuals open under ANTS-1450) | ANTS-1450 (full pattern set + drift-guard) | `testauditengine.cpp` · new `docs/standards/test-audit-grep-patterns.json` | medium (~400 LOC) |
 | **47** | `audit_run` streaming progress | ANTS-1443 (progress_notification events) | `auditrunner.cpp` · `claudeintegration.cpp` notification surface | medium (~300 LOC; new MCP surface) |
 | **48** | `changelog_log` MCP tool | ANTS-1548 (3-mode CHANGELOG writer) | new `changelogfoldin.{h,cpp}` · `roadmap_log` op:flip integration | medium (~500 LOC) |
 | **49** | Orchestration-safe write path | ANTS-1630 (cwd-mismatch escape hatch) | needs design spec first · `remotecontrol.cpp` · `claudeintegration.cpp` | medium-large (security-sensitive, spec-gated) |
