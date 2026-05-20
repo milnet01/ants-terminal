@@ -48,6 +48,16 @@ for security-relevant changes.
   links `Qt6::Widgets PUBLIC`, so the transitive Widgets surface is
   narrowed separately (ANTS-1705). No behavior change.
 
+- **`test_audit` pattern source-of-truth + drift guard (ANTS-1450,
+  Pull 46).** Added `docs/standards/test-audit-grep-patterns.json` (17
+  pre-pass patterns + 18 dimensions) as the in-tree source of truth, and
+  a drift-guard feature test (`tests/features/test_audit_pattern_drift/`)
+  that asserts `TestAuditEngine::kDimensions()` and the newly-exposed
+  `prePassPatterns()` match the JSON exactly. Keeps the documented
+  pattern set and the compiled engine from silently diverging. The
+  recursive-mtime / token-recompute / byte-cap-cascade items of ANTS-1450
+  remain open.
+
 ## [0.7.92] — 2026-05-20
 
 **Theme:** MCP token-saver depth + frozen-RC release pipeline. Wires

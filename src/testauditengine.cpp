@@ -110,11 +110,10 @@ const QVector<FrameworkProbe> &g_kFrameworks() {
 }
 
 // ────────────────────────── Pre-pass pattern set ──
-struct PrePattern {
-    QString id;             // stable id ("sleep_call", "datetime_now", ...)
-    QString dimension;
-    QString regex;          // PCRE2
-};
+// PrePattern is the public TestAuditEngine::PrePassPattern (exposed for
+// the ANTS-1450 drift-guard); aliased here to keep the table literal
+// terse.
+using PrePattern = PrePassPattern;
 
 const QVector<PrePattern> &g_kPrePatterns() {
     // Pattern set widened ANTS-1616 — v1 was Python-centric and missed
@@ -813,6 +812,8 @@ QJsonArray prePassFile(const QString &path,
 }  // namespace
 
 const QStringList &kDimensions() { return g_kDimensions(); }
+
+const QVector<PrePassPattern> &prePassPatterns() { return g_kPrePatterns(); }
 
 namespace internal {
 const PartitionResult *lookupPartition(const QString &token) {

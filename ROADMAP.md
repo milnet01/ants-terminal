@@ -6910,7 +6910,21 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: auditrunner, auditengine, auditdialog.
   Source: deferred from ANTS-1351 v1 (in-session 2026-05-17).
 
-- 📋 [ANTS-1450] **`test_audit_*` v2 — JSON pattern resource + recursive mtime + drift-guard test.**
+- 🚧 [ANTS-1450] **`test_audit_*` v2 — JSON pattern resource + recursive mtime + drift-guard test.**
+  **In progress.** Shipped 2026-05-20 (Pull 46): the in-tree
+  source-of-truth resource `docs/standards/test-audit-grep-patterns.json`
+  (17 patterns + 18 dimensions) plus a drift-guard feature test
+  (`tests/features/test_audit_pattern_drift/`, INV-D1..D4) that asserts
+  `TestAuditEngine::kDimensions()` and the newly-exposed
+  `prePassPatterns()` match the JSON exactly (id/dimension/regex, in
+  order). Note: the v1 "5 hardcoded patterns" line below is stale —
+  ANTS-1616 already widened the set to 17; the drift-guard now locks it
+  to the JSON. The drift-guard reads the in-repo JSON (hermetic) rather
+  than the skill's `references/dimensions.md` (which lives under
+  `~/.claude/skills/`, outside the repo + CI). **Remaining (still
+  open under this item):** recursive mtime recheck for the deep-tree gap
+  (INV-15 / ANTS-1447), pre_pass token recompute in brief/synth, and the
+  envelope byte-cap cascade for `pre_pass_findings_by_chunk`.
   ANTS-1397 v1 ships:
   - Engine with framework detection, chunk packing, pre-pass scan,
     fold-in delegation, partition cache + LRU, qHash token, synth

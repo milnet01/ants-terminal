@@ -1381,6 +1381,8 @@ if(ANTS_TESTS)
                 tests/features/concurrent_writer_lock/test_concurrent_writer_lock.cpp
                 tests/features/secureio_configbackup_split/test_secureio_configbackup_split.cpp
                 tests/features/build_warning_repo_visibility_null_deref/test_build_warning_repo_visibility_null_deref.cpp
+                # ANTS-1450 — test_audit pattern/dimension JSON drift guard.
+                tests/features/test_audit_pattern_drift/test_pattern_drift.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         SRC_TERMINALGRID_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
@@ -1407,5 +1409,7 @@ if(ANTS_TESTS)
         SRC_MAIN_CPP="${CMAKE_SOURCE_DIR}/src/main.cpp"
         SRC_CMAKELISTS="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
         FLATPAK_MANIFEST_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/org.ants.Terminal.yml"
-        TRANSFORMER_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/make-flathub-manifest.sh")
+        TRANSFORMER_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/make-flathub-manifest.sh"
+        # ANTS-1450 — test_audit pattern/dimension drift guard.
+        TEST_AUDIT_PATTERNS_JSON="${CMAKE_SOURCE_DIR}/docs/standards/test-audit-grep-patterns.json")
 endif()

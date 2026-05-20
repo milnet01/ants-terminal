@@ -23,11 +23,15 @@
 //     ONLY — no matched text (INV-13).
 //   * Pagination per ANTS-1436 on chunks[].
 //
-// v2 follow-ups (logged separately):
-//   * Project-internal grep-patterns JSON resource.
-//   * Drift-guard test linking kDimensions to references/dimensions.md.
-//   * mtime-walk recursive scan + inotify (current shallow recheck
-//     has documented limitation; INV-15).
+// v2 status (ANTS-1450):
+//   * SHIPPED: in-tree source-of-truth resource
+//     docs/standards/test-audit-grep-patterns.json + drift-guard test
+//     (tests/features/test_audit_pattern_drift/) asserting kDimensions()
+//     and prePassPatterns() match it exactly.
+//   * DEFERRED (ANTS-1706): mtime-walk recursive scan + inotify (current
+//     shallow recheck has documented limitation; INV-15), pre_pass token
+//     recompute in brief/synth, and envelope byte-cap cascade for
+//     pre_pass_findings on large suites.
 //
 // See docs/specs/ANTS-1397.md.
 
@@ -45,8 +49,22 @@ namespace TestAuditEngine {
 
 // 18 dimensions — engine canonical (INV-6). Skill markdown
 // (~/.claude/skills/test-audit/references/dimensions.md) is the
-// human prose, kept in sync manually.
+// human prose, kept in sync manually; the in-tree source of truth is
+// docs/standards/test-audit-grep-patterns.json (ANTS-1450), against
+// which a drift-guard test asserts this list.
 const QStringList &kDimensions();
+
+// Pre-pass grep pattern set (INV-7). Each entry's `dimension` is one of
+// kDimensions(). Mirrored by docs/standards/test-audit-grep-patterns.json
+// (ANTS-1450) — a drift-guard test asserts this table and the JSON match
+// (same ids, dimensions, regexes, in order). Exposed so that guard can
+// run without reaching into engine internals.
+struct PrePassPattern {
+    QString id;
+    QString dimension;
+    QString regex;          // PCRE2
+};
+const QVector<PrePassPattern> &prePassPatterns();
 
 struct Chunk {
     QString     id;            // "c-001", "c-002", ...
