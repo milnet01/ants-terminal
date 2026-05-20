@@ -181,8 +181,12 @@ cmd_new_rc() {
 
     echo "cut-rc: cutting ${tag} from $(git rev-parse --short HEAD) on main"
     build_and_test
-    git tag -a "${tag}" -m "${base} RC${n} — Patron preview"
-    echo "cut-rc: created local annotated tag ${tag}"
+    if [ "$DO_PUSH" = 1 ]; then
+        git tag -a "${tag}" -m "${base} RC${n} — Patron preview"
+        echo "cut-rc: created local annotated tag ${tag}"
+    else
+        echo "  [rehearsal] would create annotated tag ${tag}"
+    fi
 
     # main must be on origin so the tag's commit is reachable remotely.
     confirm_or_print git push origin main
@@ -222,7 +226,11 @@ cmd_respin() {
         }
     done
     build_and_test
-    git tag -a "${to}" -m "${inflight} RC$((n+1)) — Patron preview (respin)"
+    if [ "$DO_PUSH" = 1 ]; then
+        git tag -a "${to}" -m "${inflight} RC$((n+1)) — Patron preview (respin)"
+    else
+        echo "  [rehearsal] would create annotated tag ${to}"
+    fi
     confirm_or_print git push origin "${to}"
     if [ "$DO_PUSH" = 1 ]; then
         gh release create "${to}" --prerelease \
@@ -250,7 +258,11 @@ cmd_promote() {
         echo "cut-rc: working tree differs from ${rctag}; promote tags the RC's commit." >&2
     fi
     echo "cut-rc: promoting ${rctag} → ${pub} (public, prerelease=false)"
-    git tag -a "${pub}" -m "${inflight}" "${rctag}^{commit}"
+    if [ "$DO_PUSH" = 1 ]; then
+        git tag -a "${pub}" -m "${inflight}" "${rctag}^{commit}"
+    else
+        echo "  [rehearsal] would create annotated tag ${pub} at ${rctag}"
+    fi
     confirm_or_print git push origin "${pub}"
     if [ "$DO_PUSH" = 1 ]; then
         gh release create "${pub}" \
