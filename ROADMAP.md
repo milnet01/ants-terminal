@@ -3248,7 +3248,7 @@ minor tag (next: pre-0.8.0).
   See [`docs/specs/ANTS-1111.md`](docs/specs/ANTS-1111.md) and
   [ADR-0003](docs/decisions/0003-cc-fold-relax-gate-and-draw-boundary.md).*
 
-- 📋 [ANTS-1257] **ANTS-1111 v2 — UI affordances on top of the
+- ✅ [ANTS-1257] **ANTS-1111 v2 — UI affordances on top of the
   engine layer.** Shipped engine layer in 0.7.88 (ANTS-1111 v1)
   exposes `RoadmapFoldIn`, `AuditEngine::applyCorroborationShift`,
   `AuditEngine::templateRoadmapFoldInBlock`,

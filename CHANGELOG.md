@@ -65,6 +65,18 @@ for security-relevant changes.
   ROADMAP.md as per-finding bullets (with allocated IDs) or as a
   free-text narrative.
 
+- **Project Audit dialog — fold findings into ROADMAP, allow findings,
+  and a "Since baseline" view (ANTS-1257).** Four new affordances wire
+  the ANTS-1111 engine layer into the audit UI: a **🌳 Fold actionable**
+  footer button that inserts the AI-confirmed / high-confidence findings
+  into ROADMAP.md as a dated `### 🔍 Audit fold-in` block with
+  freshly-allocated `[ANTS-N]` IDs (editable target heading); a
+  **📥 Allow this finding** link in each expanded finding that appends a
+  matching entry to `.audit_allowlist.json` so future runs drop it; a
+  **Since baseline** filter pill that shows only new findings on
+  recently-changed lines; and framework-specific Semgrep rule packs
+  (flask/django/react/vue) now feed the scan automatically.
+
 - **`session_brief` MCP tool — orient a fresh `/clear` session in one
   call (ANTS-1724).** New `session_brief` tool that returns a compact
   (≤ 512 byte) envelope containing: git branch, ahead/behind, and
@@ -169,6 +181,13 @@ for security-relevant changes.
   Claude Code session is deferred to ANTS-1713.
 
 ### Fixed
+
+- **Review briefs silently dropped absolute file paths (ANTS-1731).**
+  `BriefDispatch::inlineBodies` joined the project path onto every input,
+  so an already-absolute path (as the Test-audit dialog produces) became
+  `…/proj//tmp/…`, failed to resolve, and was dropped from the brief with
+  no error. Absolute paths under the project root now resolve directly,
+  and the fence header always shows the clean project-relative path.
 
 - **Review dialogs clipped their fold-in controls (ANTS-1727
   follow-up).** The shared review-dialog scaffold (`ReviewDialogBase`,

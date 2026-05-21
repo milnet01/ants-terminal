@@ -115,8 +115,38 @@ private:
         QString reason;
     };
     QList<AllowlistEntry> m_allowlist;
+protected:
     void loadAllowlist();
     bool allowlisted(const Finding &f) const;
+
+    // ANTS-1257 v2 — testable orchestration helpers behind the new
+    // AuditDialog buttons. Exposed to the feature-test subclass; the
+    // QPushButton slots (onFoldRoadmapClicked / the Allow anchor) are thin
+    // wrappers over these.
+    //
+    // appendAllowlistEntry — append one {rule, path_glob, line_regex,
+    //   reason} entry matching `f` to <project>/.audit_allowlist.json
+    //   (atomic QSaveFile) and reload, so the next runAudit() drops `f`.
+    //   INV-13.
+    bool appendAllowlistEntry(const Finding &f, const QString &reason);
+    // actionableFindings — currently-visible findings (same filter as the
+    //   results pane) whose aiVerdict == TRUE_POSITIVE OR confidence >= 70.
+    //   Drives the "Fold actionable" button's enable state + fold set.
+    QList<Finding> actionableFindings() const;
+    // foldFindingsIntoRoadmap — allocate K ids, template the fold-in block,
+    //   insert it after `releaseHeading`. Returns false (no write) on empty
+    //   set, id-alloc failure, or heading-not-found. INV-14.
+    bool foldFindingsIntoRoadmap(const QList<Finding> &actionable,
+                                 const QString &releaseHeading);
+    // visibleSinceBaseline — INV-11 predicate: kept iff (file,line) is in
+    //   `recentLines` AND dedupKey is NOT in `baselineFingerprints`. Unfiled
+    //   findings (no file/line) pass the recent test. Pure + static so the
+    //   feature test drives it without a GUI.
+    static bool visibleSinceBaseline(
+        const Finding &f,
+        const QHash<QString, QSet<int>> &recentLines,
+        const QSet<QString> &baselineFingerprints);
+private:
 
     // Regex-DoS watchdog. User patterns reach two sinks: `dropIfMatches`
     // on OutputFilter (audit_rules.json) and `lineRegex` on AllowlistEntry
@@ -434,6 +464,26 @@ private:
     // Refresh the button's label to "🧠 Triage visible (N)".
     void refreshBatchTriageButton();
     QPushButton *m_batchTriageBtn = nullptr;
+
+    // ANTS-1257 v2 — "Fold actionable into ROADMAP" footer button. Slot
+    // gathers actionableFindings(), pops a confirmation modal (editable
+    // release heading), and calls foldFindingsIntoRoadmap().
+    void onFoldRoadmapClicked();
+    void refreshFoldRoadmapButton();   // enable iff actionableFindings() non-empty
+    QPushButton *m_foldRoadmapBtn = nullptr;
+
+    // ANTS-1257 v2 — "Since baseline" filter pill. When on, the results
+    // pane shows only findings passing visibleSinceBaseline() (changed
+    // lines not already in the saved baseline). Toggling on recomputes the
+    // recent-change sets via git diff so the pill works without a prior
+    // recent-scoped run.
+    void onSinceBaselineToggled(bool on);
+    QPushButton *m_sinceBaselineBtn = nullptr;
+    bool m_sinceBaseline = false;
+    // Populate m_recentFiles (+ m_recentLines when includeLines) from the
+    // last m_recentCommits commits. No-op outside a git repo. Shared by
+    // runAudit's scope mode and the "Since baseline" pill.
+    void computeRecentChangeSets(bool includeLines);
 
     // SARIF v2.1.0 export — OASIS-standard JSON format consumed by GitHub
     // code-scanning, VSCode SARIF Viewer, SonarQube, etc.

@@ -3,6 +3,7 @@
 #include "auditcache.h"
 #include "auditfpledger.h"
 #include "audithygiene.h"
+#include "roadmapfoldin.h"
 #include "dialogchrome.h"
 #include "featurecoverage.h"
 #include "secureio.h"
@@ -28,6 +29,7 @@
 #include <QJsonArray>
 #include <QJsonValue>
 #include <QCryptographicHash>
+#include <QDate>
 #include <QInputDialog>
 #include <QMessageBox>
 #include <QUrl>
@@ -1501,6 +1503,14 @@ void AuditDialog::populateChecks() {
         if (hasCpp) packs << "p/c" << "p/cpp";
         if (hasPy)  packs << "p/python";
         if (hasJs)  packs << "p/javascript" << "p/typescript";
+        // ANTS-1257 — framework-specific packs (flask/django/react/vue) from
+        // audithygiene's project-marker detection. semgrepRulePacks returns
+        // {"--config", "p/flask", …}; collect the pack names so they share
+        // the `--config=p/X` shell form below and appear in the badge label.
+        const QStringList fwArgs = AuditHygiene::semgrepRulePacks(
+            AuditHygiene::detectProjectFrameworks(m_projectPath));
+        for (const QString &a : fwArgs)
+            if (a != QStringLiteral("--config")) packs << a;
         QString cfg;
         for (const QString &p : std::as_const(packs)) cfg += " --config=" + p;
         // Respect project-local `.semgrep.yml` "Excluded upstream rules"
@@ -2658,6 +2668,187 @@ bool AuditDialog::allowlisted(const Finding &f) const {
     return false;
 }
 
+// ANTS-1257 v2 — append one allowlist entry matching `f` and reload. The
+// entry's triple is (rule = checkId, path_glob = exact file, line_regex =
+// escaped message) so loadAllowlist()/allowlisted() drops exactly this
+// finding (and others sharing all three) on the next run. INV-13.
+bool AuditDialog::appendAllowlistEntry(const Finding &f, const QString &reason) {
+    const QString path = m_projectPath + "/.audit_allowlist.json";
+
+    QJsonObject rootObj;
+    QJsonArray arr;
+    QFile rf(path);
+    if (rf.open(QIODevice::ReadOnly)) {
+        const QJsonDocument doc = QJsonDocument::fromJson(rf.readAll());
+        rf.close();
+        if (doc.isObject()) {
+            rootObj = doc.object();
+            arr = rootObj.value("allowlist").toArray();
+        }
+    }
+
+    QJsonObject entry;
+    entry["rule"] = f.checkId.isEmpty() ? QStringLiteral("unknown") : f.checkId;
+    entry["path_glob"] = f.file.isEmpty() ? QStringLiteral("*") : f.file;
+    // Escape the message so it matches literally; an empty message falls
+    // back to ".*" (allow this rule on this file regardless of message).
+    entry["line_regex"] = f.message.isEmpty()
+        ? QStringLiteral(".*")
+        : QRegularExpression::escape(f.message.left(200));
+    entry["reason"] = reason;
+    arr.append(entry);
+    if (!rootObj.contains("version")) rootObj["version"] = 1;
+    rootObj["allowlist"] = arr;
+
+    QSaveFile sf(path);
+    if (!sf.open(QIODevice::WriteOnly)) return false;
+    sf.write(QJsonDocument(rootObj).toJson(QJsonDocument::Indented));
+    if (!sf.commit()) return false;
+
+    loadAllowlist();   // refresh so the running session also hides it on re-render
+    return true;
+}
+
+// ANTS-1257 v2 — INV-11 "Since baseline" predicate. Pure + static.
+bool AuditDialog::visibleSinceBaseline(
+    const Finding &f,
+    const QHash<QString, QSet<int>> &recentLines,
+    const QSet<QString> &baselineFingerprints) {
+    // Baseline half: drop findings already present in the saved baseline.
+    if (baselineFingerprints.contains(f.dedupKey)) return false;
+    // Recent half: unfiled findings always pass; filed findings must sit on
+    // a changed line. Match by exact path, then by path-suffix (scanner
+    // output and git diff may disagree on the relative prefix).
+    if (f.file.isEmpty() || f.line <= 0) return true;
+    const auto exact = recentLines.constFind(f.file);
+    if (exact != recentLines.constEnd()) return exact->contains(f.line);
+    for (auto it = recentLines.constBegin(); it != recentLines.constEnd(); ++it)
+        if (f.file.endsWith(it.key()) || it.key().endsWith(f.file))
+            return it->contains(f.line);
+    return false;   // file not in the changed set
+}
+
+// ANTS-1257 v2 — currently-visible findings (same filter as the results
+// pane) that are actionable: aiVerdict == TRUE_POSITIVE OR confidence >= 70.
+QList<Finding> AuditDialog::actionableFindings() const {
+    QList<Finding> out;
+    for (const auto &r : m_completedResults) {
+        if (r.warning) continue;
+        for (const Finding &f : r.findings) {
+            if (isSuppressed(f.dedupKey)) continue;
+            if (m_sinceBaseline) {
+                if (!visibleSinceBaseline(f, m_recentLines, m_baselineFingerprints))
+                    continue;
+            } else if (m_showNewOnly && m_hasBaseline
+                       && m_baselineFingerprints.contains(f.dedupKey)) {
+                continue;
+            }
+            if (!m_activeSeverities.contains(static_cast<int>(f.severity))) continue;
+            if (!m_textFilter.isEmpty()) {
+                const QString hay = (f.file + " " + f.message + " " +
+                                     f.checkId + " " + f.blameAuthor).toLower();
+                if (!hay.contains(m_textFilter)) continue;
+            }
+            const bool actionable =
+                f.aiVerdict == QStringLiteral("TRUE_POSITIVE") || f.confidence >= 70;
+            if (actionable) out.append(f);
+        }
+    }
+    return out;
+}
+
+// ANTS-1257 v2 — fold orchestration. INV-14: allocateIds once, template
+// once, insertBlock once. Returns false (no write) on empty set, id-alloc
+// failure, or heading-not-found.
+bool AuditDialog::foldFindingsIntoRoadmap(const QList<Finding> &actionable,
+                                          const QString &releaseHeading) {
+    if (actionable.isEmpty() || releaseHeading.isEmpty()) return false;
+
+    // Pre-flight: confirm the heading exists before allocating IDs.
+    // allocateIds bumps .roadmap-counter atomically (crash-safety), so a
+    // doomed insert against a wrong heading would otherwise leak the
+    // reserved IDs on every misclick.
+    QString needle = releaseHeading;
+    while (needle.endsWith(QChar('\n')) || needle.endsWith(QChar('\r')))
+        needle.chop(1);
+    {
+        QFile rf(m_projectPath + "/ROADMAP.md");
+        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) return false;
+        const QString body = QString::fromUtf8(rf.readAll());
+        rf.close();
+        bool found = false;
+        const QStringList lines = body.split(QChar('\n'));
+        for (const QString &ln : lines)
+            if (ln == needle) { found = true; break; }
+        if (!found) return false;
+    }
+
+    const QList<int> ids =
+        RoadmapFoldIn::allocateIds(m_projectPath, actionable.size());
+    if (ids.size() != actionable.size()) return false;   // alloc failed
+
+    const QString block = AuditEngine::templateRoadmapFoldInBlock(
+        actionable, ids,
+        QDate::currentDate().toString(Qt::ISODate));
+
+    return RoadmapFoldIn::insertBlock(m_projectPath, needle, block);
+}
+
+void AuditDialog::refreshFoldRoadmapButton() {
+    if (!m_foldRoadmapBtn) return;
+    const int n = actionableFindings().size();
+    m_foldRoadmapBtn->setEnabled(n > 0);
+    m_foldRoadmapBtn->setText(n > 0
+        ? QString("🌳 Fold actionable (%1)").arg(n)
+        : QStringLiteral("🌳 Fold actionable"));
+}
+
+void AuditDialog::onFoldRoadmapClicked() {
+    const QList<Finding> actionable = actionableFindings();
+    if (actionable.isEmpty()) {
+        QMessageBox::information(this, "Fold into ROADMAP",
+            "No actionable findings (none are AI-confirmed TRUE_POSITIVE or "
+            "confidence ≥ 70).");
+        return;
+    }
+
+    QString heading = RoadmapFoldIn::findActiveReleaseHeading(m_projectPath);
+
+    bool ok = false;
+    heading = QInputDialog::getText(this, "Fold actionable into ROADMAP",
+        QString("Insert %1 finding%2 as a new\n"
+                "  ### 🔍 Audit fold-in (%3)\n"
+                "subsection immediately after this ROADMAP heading "
+                "(edit if wrong):")
+            .arg(actionable.size())
+            .arg(actionable.size() == 1 ? "" : "s")
+            .arg(QDate::currentDate().toString(Qt::ISODate)),
+        QLineEdit::Normal, heading, &ok);
+    if (!ok || heading.trimmed().isEmpty()) return;
+
+    if (foldFindingsIntoRoadmap(actionable, heading.trimmed())) {
+        if (m_statusLabel)
+            m_statusLabel->setFullText(
+                QString("Folded %1 finding%2 into ROADMAP.md")
+                    .arg(actionable.size())
+                    .arg(actionable.size() == 1 ? "" : "s"));
+    } else {
+        QMessageBox::warning(this, "Fold into ROADMAP",
+            QString("Could not insert the fold-in block.\n\n"
+                    "Check that the heading exists verbatim in ROADMAP.md:\n  %1")
+                .arg(heading.trimmed()));
+    }
+}
+
+void AuditDialog::onSinceBaselineToggled(bool on) {
+    m_sinceBaseline = on;
+    // Recompute the changed-line sets so the pill works even when the run
+    // wasn't recent-scoped. Off → leave them (the predicate is gated on
+    // m_sinceBaseline, so stale data is inert).
+    if (on) computeRecentChangeSets(/*includeLines=*/true);
+    if (!m_completedResults.isEmpty()) renderResults();
+}
+
 // Collapse mypy "Library stubs not installed" findings into a single Info
 // entry listing the packages to install. Bulk-installing is deterministic
 // and the stub-install nag doesn't need to consume 20 finding slots.
@@ -2842,6 +3033,41 @@ void AuditDialog::onResultAnchorClicked(const QUrl &url) {
     // Fire an AI triage request; response lands async via requestAiTriage().
     if (scheme == "ants-triage") {
         requestAiTriage(key);
+        return;
+    }
+
+    // ANTS-1257 — "Allow this finding" — write a project-local allowlist
+    // entry (rule + file + message) so future runs drop this finding.
+    if (scheme == "ants-allow") {
+        const Finding fa = m_findingsByKey.value(key);
+        const QString whereA = (!fa.file.isEmpty() && fa.line > 0)
+            ? QString("%1:%2").arg(fa.file).arg(fa.line)
+            : (fa.file.isEmpty() ? QStringLiteral("(no location)") : fa.file);
+        bool okA = false;
+        const QString reasonA = QInputDialog::getText(
+            this, "Allow finding",
+            QString("Permanently allow this finding (writes "
+                    ".audit_allowlist.json)?\n\n"
+                    "Rule:     %1\n"
+                    "Location: %2\n"
+                    "Message:  %3\n\n"
+                    "Optional reason:")
+                .arg(fa.checkName.isEmpty() ? key : fa.checkName,
+                     whereA, fa.message.left(200)),
+            QLineEdit::Normal, QString(), &okA);
+        if (!okA) return;
+        if (appendAllowlistEntry(fa, reasonA)) {
+            if (m_statusLabel)
+                m_statusLabel->setFullText(
+                    QString("Allowlisted %1 (%2)")
+                        .arg(key.left(8),
+                             fa.checkId.isEmpty() ? QStringLiteral("unknown")
+                                                  : fa.checkId));
+            if (!m_completedResults.isEmpty()) renderResults();
+        } else if (m_statusLabel) {
+            m_statusLabel->setFullText(
+                QStringLiteral("Could not write .audit_allowlist.json"));
+        }
         return;
     }
 
@@ -3561,6 +3787,24 @@ void AuditDialog::buildUI() {
         m_sevPills.append(pill);
     }
 
+    // ANTS-1257 — "Since baseline" pill. One toggle for the common
+    // "what changed since I saved a baseline" view: only findings on
+    // git-changed lines that aren't already in the saved baseline. The
+    // underlying "New since baseline" / "Changed lines only" controls
+    // stay available for using either mode independently.
+    m_sinceBaselineBtn = new QPushButton("Since baseline", m_filterBar);
+    m_sinceBaselineBtn->setCheckable(true);
+    m_sinceBaselineBtn->setFixedHeight(26);
+    m_sinceBaselineBtn->setEnabled(m_hasBaseline);
+    m_sinceBaselineBtn->setToolTip(
+        m_hasBaseline
+        ? "Show only new findings on recently-changed lines (combines "
+          "new-since-baseline with changed-lines-only)"
+        : "Save a baseline first to use this filter");
+    connect(m_sinceBaselineBtn, &QPushButton::toggled, this,
+            &AuditDialog::onSinceBaselineToggled);
+    filterRow->addWidget(m_sinceBaselineBtn);
+
     m_confidenceSortBtn = new QPushButton("Sort by confidence", m_filterBar);
     m_confidenceSortBtn->setCheckable(true);
     m_confidenceSortBtn->setFixedHeight(26);
@@ -3586,6 +3830,21 @@ void AuditDialog::buildUI() {
     connect(m_batchTriageBtn, &QPushButton::clicked, this,
             &AuditDialog::onBatchTriageClicked);
     filterRow->addWidget(m_batchTriageBtn);
+
+    // ANTS-1257 — "Fold actionable into ROADMAP". Allocates stable IDs and
+    // inserts a templated `### 🔍 Audit fold-in (DATE)` block after the
+    // active release heading. Enabled only when ≥1 visible finding is
+    // actionable (AI TRUE_POSITIVE or confidence ≥ 70).
+    m_foldRoadmapBtn = new QPushButton(QStringLiteral("🌳 Fold actionable"),
+                                       m_filterBar);
+    m_foldRoadmapBtn->setFixedHeight(26);
+    m_foldRoadmapBtn->setEnabled(false);
+    m_foldRoadmapBtn->setToolTip(
+        "Fold the actionable findings (AI-confirmed or confidence ≥ 70) into "
+        "ROADMAP.md as a dated audit fold-in block with freshly-allocated IDs.");
+    connect(m_foldRoadmapBtn, &QPushButton::clicked, this,
+            &AuditDialog::onFoldRoadmapClicked);
+    filterRow->addWidget(m_foldRoadmapBtn);
 
     m_filterBar->setVisible(false);
     root->addWidget(m_filterBar);
@@ -3621,6 +3880,65 @@ QString AuditDialog::readProjectDoc(const QString &name) const {
 // Audit execution
 // ---------------------------------------------------------------------------
 
+void AuditDialog::computeRecentChangeSets(bool includeLines) {
+    m_recentFiles.clear();
+    m_recentLines.clear();
+    if (!m_detectedTypes.contains("Git")) return;
+
+    QProcess git;
+    git.setWorkingDirectory(m_projectPath);
+    git.start("git", {"log", QString("-n%1").arg(m_recentCommits),
+                      "--name-only", "--format=", "--diff-filter=ACMR"});
+    if (git.waitForFinished(5000) && git.exitCode() == 0) {
+        const QStringList lines =
+            QString::fromUtf8(git.readAllStandardOutput())
+                .split('\n', Qt::SkipEmptyParts);
+        QSet<QString> seen;
+        for (const QString &raw : lines) {
+            const QString p = raw.trimmed();
+            if (p.isEmpty() || seen.contains(p)) continue;
+            seen.insert(p);
+            // Keep only files that still exist on disk.
+            if (QFile::exists(m_projectPath + "/" + p))
+                m_recentFiles << p;
+        }
+    }
+    if (!includeLines) return;
+
+    // Line-level scoping: ask git for the diff with zero context, parse
+    // the hunk headers (`@@ -old,count +new,count @@`) and record the
+    // destination line range for each file. Uses HEAD~N..HEAD so new
+    // commits + uncommitted working-tree changes both land in the map.
+    QProcess gitDiff;
+    gitDiff.setWorkingDirectory(m_projectPath);
+    gitDiff.start("git", {"diff", "--unified=0",
+                          QString("HEAD~%1").arg(m_recentCommits)});
+    if (gitDiff.waitForFinished(8000) && gitDiff.exitCode() == 0) {
+        const QStringList dlines =
+            QString::fromUtf8(gitDiff.readAllStandardOutput())
+                .split('\n', Qt::KeepEmptyParts);
+        static const QRegularExpression reFileHdr(R"(^\+\+\+ b/(.+)$)");
+        static const QRegularExpression reHunk(
+            R"(^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@)");
+        QString curFile;
+        for (const QString &dl : dlines) {
+            auto mf = reFileHdr.match(dl);
+            if (mf.hasMatch()) { curFile = mf.captured(1); continue; }
+            auto mh = reHunk.match(dl);
+            if (mh.hasMatch() && !curFile.isEmpty()) {
+                const int start = mh.captured(1).toInt();
+                const int count = mh.captured(2).isEmpty()
+                                  ? 1 : mh.captured(2).toInt();
+                // count=0 means pure deletion — nothing to attribute
+                // to an added line; skip.
+                if (count <= 0) continue;
+                auto &set = m_recentLines[curFile];
+                for (int i = 0; i < count; ++i) set.insert(start + i);
+            }
+        }
+    }
+}
+
 void AuditDialog::runAudit() {
     m_results->clear();
     m_results->setVisible(true);
@@ -3635,63 +3953,8 @@ void AuditDialog::runAudit() {
     if (m_cancelBtn) m_cancelBtn->setVisible(true);
 
     // Compute the "recent files" list if the user opted into scoped audit.
-    m_recentFiles.clear();
-    m_recentLines.clear();
-    if (m_recentOnly && m_detectedTypes.contains("Git")) {
-        QProcess git;
-        git.setWorkingDirectory(m_projectPath);
-        git.start("git", {"log", QString("-n%1").arg(m_recentCommits),
-                          "--name-only", "--format=", "--diff-filter=ACMR"});
-        if (git.waitForFinished(5000) && git.exitCode() == 0) {
-            const QStringList lines =
-                QString::fromUtf8(git.readAllStandardOutput())
-                    .split('\n', Qt::SkipEmptyParts);
-            QSet<QString> seen;
-            for (const QString &raw : lines) {
-                const QString p = raw.trimmed();
-                if (p.isEmpty() || seen.contains(p)) continue;
-                seen.insert(p);
-                // Keep only files that still exist on disk.
-                if (QFile::exists(m_projectPath + "/" + p))
-                    m_recentFiles << p;
-            }
-        }
-
-        // Line-level scoping: ask git for the diff with zero context, parse
-        // the hunk headers (`@@ -old,count +new,count @@`) and record the
-        // destination line range for each file. Uses HEAD~N..HEAD so new
-        // commits + uncommitted working-tree changes both land in the map.
-        if (m_recentLinesOnly) {
-            QProcess gitDiff;
-            gitDiff.setWorkingDirectory(m_projectPath);
-            gitDiff.start("git", {"diff", "--unified=0",
-                                  QString("HEAD~%1").arg(m_recentCommits)});
-            if (gitDiff.waitForFinished(8000) && gitDiff.exitCode() == 0) {
-                const QStringList dlines =
-                    QString::fromUtf8(gitDiff.readAllStandardOutput())
-                        .split('\n', Qt::KeepEmptyParts);
-                static const QRegularExpression reFileHdr(R"(^\+\+\+ b/(.+)$)");
-                static const QRegularExpression reHunk(
-                    R"(^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@)");
-                QString curFile;
-                for (const QString &dl : dlines) {
-                    auto mf = reFileHdr.match(dl);
-                    if (mf.hasMatch()) { curFile = mf.captured(1); continue; }
-                    auto mh = reHunk.match(dl);
-                    if (mh.hasMatch() && !curFile.isEmpty()) {
-                        const int start = mh.captured(1).toInt();
-                        const int count = mh.captured(2).isEmpty()
-                                          ? 1 : mh.captured(2).toInt();
-                        // count=0 means pure deletion — nothing to attribute
-                        // to an added line; skip.
-                        if (count <= 0) continue;
-                        auto &set = m_recentLines[curFile];
-                        for (int i = 0; i < count; ++i) set.insert(start + i);
-                    }
-                }
-            }
-        }
-    }
+    if (m_recentOnly) computeRecentChangeSets(m_recentLinesOnly);
+    else { m_recentFiles.clear(); m_recentLines.clear(); }
 
     m_totalSelected = 0;
     for (const auto &c : std::as_const(m_checks))
@@ -4267,7 +4530,12 @@ void AuditDialog::renderResults() {
         if (r.warning) continue;
         for (const Finding &f : r.findings) {
             if (isSuppressed(f.dedupKey)) continue;
-            if (m_showNewOnly && !findingIsNew(f)) continue;
+            if (m_sinceBaseline) {
+                if (!visibleSinceBaseline(f, m_recentLines, m_baselineFingerprints))
+                    continue;
+            } else if (m_showNewOnly && !findingIsNew(f)) {
+                continue;
+            }
             ++bySev[static_cast<int>(f.severity)];
             ++totalFindings;
             if (findingIsNew(f)) ++totalNew;
@@ -4510,7 +4778,12 @@ void AuditDialog::renderResults() {
         for (const Finding *pf : sortedFindings) {
             const Finding &f = *pf;
             if (isSuppressed(f.dedupKey)) continue;
-            if (m_showNewOnly && !findingIsNew(f)) continue;
+            if (m_sinceBaseline) {
+                if (!visibleSinceBaseline(f, m_recentLines, m_baselineFingerprints))
+                    continue;
+            } else if (m_showNewOnly && !findingIsNew(f)) {
+                continue;
+            }
             if (!m_activeSeverities.contains(static_cast<int>(f.severity))) continue;
             if (!m_textFilter.isEmpty()) {
                 const QString hay = (f.file + " " + f.message + " " +
@@ -4630,8 +4903,15 @@ void AuditDialog::renderResults() {
                         .arg(f.aiVerdict, QString::number(f.aiConfidence),
                              f.aiReasoning.left(220).toHtmlEscaped());
                 }
+                // ANTS-1257 — "Allow this finding" — appends a matching
+                // entry to .audit_allowlist.json so future runs drop it.
+                const QString allowLink = QString(
+                    "  <a href='ants-allow://%1' style='color:#FFA500; "
+                    "font-size:10px;' title='Permanently allowlist this "
+                    "finding (writes .audit_allowlist.json)'>📥 Allow "
+                    "this finding</a>").arg(f.dedupKey);
                 body += "<div style='margin:2px 0 6px 24px; font-size:10px;'>"
-                      + triageLink + "</div>";
+                      + triageLink + allowLink + "</div>";
                 header += "<br>" + body;
             }
 
@@ -4659,6 +4939,7 @@ void AuditDialog::renderResults() {
     // the count changes with every filter toggle and every triage verdict
     // applied. Cheap (one scan of findings) so unconditional is fine.
     refreshBatchTriageButton();
+    refreshFoldRoadmapButton();
 }
 
 // ---------------------------------------------------------------------------
@@ -4854,7 +5135,12 @@ QStringList AuditDialog::visibleUntriagedKeys() const {
         if (r.warning) continue;
         for (const Finding &f : r.findings) {
             if (isSuppressed(f.dedupKey)) continue;
-            if (m_showNewOnly && !findingIsNew(f)) continue;
+            if (m_sinceBaseline) {
+                if (!visibleSinceBaseline(f, m_recentLines, m_baselineFingerprints))
+                    continue;
+            } else if (m_showNewOnly && !findingIsNew(f)) {
+                continue;
+            }
             if (!m_activeSeverities.contains(static_cast<int>(f.severity))) continue;
             if (!m_textFilter.isEmpty()) {
                 const QString hay = (f.file + " " + f.message + " " +
