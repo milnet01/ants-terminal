@@ -40,7 +40,7 @@ that a partition re-run is the common path"**:
 
 ### Saving the token (after partition)
 
-```jsonc
+```text
 session_memory(
   op:"set",
   key:"test_audit_partition_token:<scope_id>",

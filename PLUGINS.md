@@ -385,7 +385,8 @@ here as the intended API surface for a future wiring commit.
 **Return-value contract:** only `"keypress"` acts on the return value.
 Returning `false` suppresses default handling; any other value (including
 `nil`, `true`, or omitting the return) lets the event propagate. All
-other events ignore the return value.
+other events ignore the return value. (Note: `"keypress"` is marked `†` —
+not yet wired — so this contract applies once keypress is eventually wired.)
 
 **Performance:** handlers run synchronously on the UI thread. A slow
 handler stalls the terminal. Keep handler bodies under ~1 ms wall time;

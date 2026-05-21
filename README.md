@@ -235,9 +235,8 @@ ants.on("output", function(data)
     ants.log("Got output: " .. data)
 end)
 
-ants.on("keypress", function(key)
-    -- Return false to cancel the keypress
-    return true
+ants.on("command_finished", function(payload)
+    ants.log("command done: " .. payload)  -- payload: "exit_code=0&duration_ms=142"
 end)
 
 ants.send("echo hello")
