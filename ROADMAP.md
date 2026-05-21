@@ -3631,12 +3631,14 @@ minor tag (next: pre-0.8.0).
   Kind: implement. Source: user-2026-05-21.
   Lanes: remotecontrol, claudeintegration, auditcache, roadmapdialog.
 
-- 📋 [ANTS-1719] **Low-confidence finding auto-fix — fix the fixable,
-  surface the rest; nothing silently suppressed.** Current posture:
-  findings with confidence ≤ 30 are marked `suppressed` and hidden from
-  the default view. User requirement (2026-05-21): low findings should
-  be *fixed*, not buried — they represent real quality debt and can
-  escalate. New posture:
+- ✅ [ANTS-1719] **Low-confidence finding auto-fix — fix the fixable,
+  surface the rest; nothing silently suppressed.** Premise correction
+  (verified 2026-05-21): low-confidence (≤ 30) findings are **not**
+  suppressed/hidden — they already render with a red pip. `suppressed`
+  is a separate fingerprint-keyed mechanism (`.audit_suppress` /
+  learned-FP ledger), not a confidence threshold. So the "surface the
+  rest" half is already satisfied; the user-approved scope (2026-05-21)
+  is the **auto-fix engine** half — fix the mechanically-safe findings:
   1. **Attempt native auto-fix** for findings whose repair is
      mechanical and safe (no semantic judgment required):
      - Dead `Q_UNUSED(x)` where `x` is no longer declared → remove the
@@ -3648,25 +3650,28 @@ minor tag (next: pre-0.8.0).
        `unusedInclude` → remove.
      - Single-char comment-style inconsistency on a standalone line
        (e.g. `//comment` → `// comment`) → reformat inline.
-  2. **Surface unfixable low findings** in the Audit dialog under a
-     new "Low — needs attention" section (not suppressed, not hidden).
-     Each has a **Fix** button for one-click manual application.
-  3. **Never auto-fix** findings whose repair could alter runtime
-     behaviour (even at low confidence). The repair table above is the
-     exhaustive safe list; everything else goes to step 2.
+  2. **Never auto-fix** findings whose repair could alter runtime
+     behaviour. Each rule is gated on BOTH a finding signal and the exact
+     source-line shape — anything not provably one of the safe-list cases
+     is left untouched (surfaced as before, never auto-edited).
   Auto-fix is logged to `.audit_cache/autofix-YYYY-MM-DD.jsonl` (one
   entry per repair: `{file, line, rule, original, fixed, timestamp}`)
   so every change is auditable and reversible.
-  Complements ANTS-1257 (v2 UI) — the v2 "Fix inline" button covers
-  the step-2 surface; this bullet adds the step-1 native engine.
+  **Shipped (engine-only scope, 2026-05-21):** pure `ants::autofix`
+  engine (`src/auditautofix.{h,cpp}`, Qt6::Core) — `planRepair` /
+  `applyRepair` (atomic, re-verifies the line before writing) /
+  `logRepair` / `versionLE`. Opt-in **"Auto-fix safe"** button in the
+  Audit dialog applies repairs high-line-first per file. The "Low —
+  needs attention" dialog section was dropped as moot (lows aren't
+  hidden) — its one-click `Fix` surface is ANTS-1257 v2's "Fix inline".
   Locked by `tests/features/audit_low_confidence_autofix/`
-  (safe-list repair round-trip; unsafe findings are never auto-fixed;
-  autofix log is append-only; unfixable lows appear in dialog not
-  suppressed).
+  (safe-list repair round-trip; unsafe findings never auto-fixed;
+  applyRepair refuses a stale plan; autofix log append-only;
+  conservative version compare).
   Kind: implement. Source: user-2026-05-21.
   Lanes: auditengine, auditdialog, auditcache.
 
-- 📋 [ANTS-1720] **MCP response projection (`fields=` parameter) on
+- ✅ [ANTS-1720] **MCP response projection (`fields=` parameter) on
   high-volume read tools.** Heavy read tools return their full payload
   on every call even when the caller needs one field. A new optional
   `fields: ["f1","f2"]` parameter returns only the named top-level
@@ -12938,6 +12943,29 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Lanes: mcp-indie-review, mcp-test-audit, claudeintegration.
   Source: in-session-2026-05-19 (ANTS-1629 follow-up — extend the new tier to siblings before they report).
+
+- 📋 [ANTS-1726] **roadmap_query `id`/`ids` filter — fetch a bullet by stable ID without a full-section scan.**
+  Today roadmap_query can filter by `section`, `status`, or paginate,
+  but there is no way to fetch the bullet(s) for a known `[ANTS-NNNN]`
+  id. A session that knows an id (e.g. continuing a bundle) but not its
+  section must either pull `status:all` (~12 K tokens) and scan, or fall
+  back to `git show <sha> | grep` / a raw Read of ROADMAP.md — exactly
+  the token-heavy detour ANTS MCP exists to remove. Hit in-session on
+  2026-05-21 locating ANTS-1719..1724.
+  
+  Add an optional `id` (single) / `ids` (array) filter to roadmap_query:
+  return only the matching bullet(s) regardless of section, each carrying
+  its `section_slug` (already in the bullet shape). The parser already
+  indexes ids (it emits `duplicate_ids[]`), so this is a filter pass over
+  parsed bullets — O(N) with no new parse. Compose with `include_body`.
+  Unknown id ⇒ empty `bullets[]` (not an error), mirroring past-end
+  pagination. Pairs with the etag pattern. Locks: full-section parity
+  (id filter returns the same bullet a section scan would), unknown-id
+  empty result, ids[] multi-match ordering = document order.
+  **Layman:** Lets the assistant jump straight to a roadmap item by its number instead of downloading and searching the whole list.
+  Kind: enhancement.
+  Lanes: remotecontrol, roadmapindex.
+  Source: in-session-2026-05-21.
 
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 

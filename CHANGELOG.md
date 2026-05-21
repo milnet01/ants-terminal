@@ -49,6 +49,38 @@ for security-relevant changes.
   / "→ Sonnet"; clicking it injects `/model <name>` into the focused
   terminal. Refreshes on the existing 2 s status timer.
 
+- **MCP `fields=` response projection on seven read tools
+  (ANTS-1720).** `roadmap_query`, `project_layout`, `file_outline`,
+  `get_environment`, `tab_list`, `subsystem`, and `git_state` now accept
+  an optional `fields: ["f1","f2"]` array that narrows the response to
+  the named top-level fields (e.g. `fields:["bullets"]` on
+  `roadmap_query`, `fields:["branch"]` on `git_state`). Unknown names are
+  ignored; an all-unknown list returns `{}`; omitting `fields` returns
+  the full payload (fully backwards-compatible). Projection runs after
+  the ETag step, so the etag is computed on the unfiltered body and a
+  narrowed call still short-circuits when state is unchanged — list
+  `"etag"` in `fields` to keep it. Pure logic lives in
+  `src/mcpprojection.cpp` (Qt6::Core only). Composes with `etag_match`
+  (ANTS-1499) for a two-axis token saving: `fields=` narrows the body,
+  the etag elides the round-trip.
+
+- **Native safe-list auto-fix for audit findings (ANTS-1719).** A new
+  pure engine (`src/auditautofix.cpp`, Qt6::Core only) applies
+  mechanically-safe, behaviour-neutral repairs to audit findings: a dead
+  `#include` confirmed unused by cppcheck, a standalone `Q_UNUSED(...)`
+  flagged dead, a `// … TODO/FIXME … remove after X.Y.Z` whose version
+  has shipped, and `//word` → `// word` comment spacing. Each rule is
+  gated on both a finding signal and the exact source-line shape, so
+  anything not provably safe is left untouched. `applyRepair` writes
+  atomically and re-verifies the target line before writing (a plan
+  stale against on-disk content is refused). Every repair is appended to
+  `.audit_cache/autofix-YYYY-MM-DD.jsonl` (`{file, line, rule, original,
+  fixed, timestamp}`) so it is auditable and reversible. Exposed as an
+  opt-in **"Auto-fix safe"** button in the Project Audit dialog —
+  auto-fix never runs implicitly on a scan. (The original "low-confidence
+  findings are buried" premise was corrected: low-confidence findings
+  already render; this ships the auto-fix half.)
+
 - **`debt_sweep` detector expansion (ANTS-1358, Pull 43).** Four new
   detectors in `DebtSweepEngine`, lifting the mechanically-fixable set
   from 1 → 3:

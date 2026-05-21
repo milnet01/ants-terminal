@@ -60,6 +60,16 @@ Listed only where behavior isn't obvious from the name.
 - `audithygiene` — splices project-local scanner config into invocations
   (`.semgrep.yml` header → `--exclude-rule`; `pyproject.toml` ruff S-codes
   → bandit `--skip B<nnn>`).
+- `auditautofix` (Qt6::Core only; in `ants_audit_lib`) — native safe-list
+  auto-fixer for audit findings (ANTS-1719). `ants::autofix::planRepair`
+  returns a single-line behaviour-neutral `Repair` only when a finding is
+  provably one of: dead `#include` (cppcheck `unusedInclude`), standalone
+  dead `Q_UNUSED(...)`, expired `// … TODO … remove after X.Y.Z`, or
+  `//word`→`// word`; each gated on BOTH a finding signal and the exact
+  line shape. `applyRepair` writes atomically (`QSaveFile`) and re-checks
+  the line against `Repair.original` first (refuses a stale plan).
+  `logRepair` appends to `.audit_cache/autofix-*.jsonl`. Driven by the
+  opt-in "Auto-fix safe" `AuditDialog` button — never on a scan.
 - `falseposledger` (Qt6::Core only; in `ants_core_lib`) — load + filter
   + format helpers for `.ants_review_falsepos.jsonl`, the prose-grain
   false-positive ledger shared across the three AI-reviewer sweep
@@ -99,6 +109,12 @@ Listed only where behavior isn't obvious from the name.
   parses via `TestResCache::parseCtestOutput`. `tests/coverage-map.json`
   is the project's living, partial file→test map. Spec
   `docs/specs/ANTS-1302.md`.
+- `mcpprojection` (Qt6::Core only) — pure `fields=` response projection
+  for high-volume MCP read tools (ANTS-1720). `mcp::projectFields`
+  narrows a JSON-object response to named top-level fields;
+  `mcp::isFieldProjectionTool` is the 7-tool allowlist (a subset of
+  `isEtagSupportedTool`). Called from the `tools/call` dispatch after
+  `applyEtagPattern`, before `wrapMcpData`.
 - `remotecontrol` — Kitty-style JSON-over-Unix-socket IPC. Verbs:
   `ls`, `send-text`, `new-tab`, `select-window`, `set-title`,
   `get-text`, `launch`, `tab-list`, `roadmap-query`,
@@ -357,6 +373,22 @@ as a type and flags every signal emission.
   the wrapper tag). Allowlist is in `isEtagSupportedTool`; add a
   tool there + a `makeEtagMatchProp()` line to its schema to
   opt-in. Non-JSON responses are returned unmodified.
+
+- **MCP read tools opt into `fields=` response projection
+  (ANTS-1720).** Seven high-volume read tools (`roadmap_query`,
+  `project_layout`, `file_outline`, `get_environment`, `tab_list`,
+  `subsystem`, `git_state`) accept an optional `fields:["f1","f2"]`
+  array that narrows the response to the named top-level fields.
+  Pure logic is `mcp::projectFields` + `mcp::isFieldProjectionTool`
+  in `src/mcpprojection.cpp` (Qt6::Core only). Hooked at the dispatch
+  site *after* `applyEtagPattern` (so the etag is computed on the
+  unfiltered canonical body and a narrowed call still 304s — list
+  `"etag"` in `fields` to keep it) and *before* the `<ants_mcp_data>`
+  wrap. Skipped on the etag short-circuit. Unknown field names are
+  dropped (all-unknown ⇒ `{}`); empty/absent `fields` ⇒ full payload.
+  To opt a tool in: add it to `mcp::isFieldProjectionTool` + a
+  `makeFieldsProp()` line to its schema. The seven are a subset of
+  `isEtagSupportedTool`.
 
 - **`get_scrollback` has a since-cursor incremental mode
   (ANTS-1500).** Absent `since_cursor` ⇒ legacy raw-text return
