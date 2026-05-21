@@ -251,7 +251,10 @@ Listed only where behavior isn't obvious from the name.
   Kind chip + summary + meta row; section headers (`##`/`###`) emit
   collapse anchors using the `ants://expand-section/<slug>` URL
   scheme handled by `handleAnchorClicked`. Per-item / per-section
-  expand state persists via four `Config::roadmap*` keys.
+  expand state persists via nine `Config::roadmap*` keys
+  (`roadmapDialogGeometry`, `roadmapActivePreset`, `roadmapKindFilters`,
+  `roadmapStatusFilters`, `roadmapExpandedItems`, `roadmapExpandedSections`,
+  `roadmapTableSections`, `roadmapScrollAnchors`, `roadmapDensity`).
   `parseShippedDates` resolves `[ANTS-NNNN]` → CHANGELOG release
   date for ✅ cards. Tab-relevance gating drops prose narration on
   non-Full presets (INV-11/12). Spec: `docs/specs/ANTS-1154.md`.
@@ -434,7 +437,7 @@ as a type and flags every signal emission.
   Every tool is classified at `ClaudeIntegration::callerCwdContractFor`
   into one of `Required` / `Optional` / `TabSpecific` /
   `ProcessGlobal`. The `tools/call` dispatch branch in
-  `src/claudeintegration.cpp:3895` enforces `Required`
+  `src/claudeintegration.cpp:5953` enforces `Required`
   before the cache lookup and before the provider lambda runs:
   empty `caller_cwd` ⇒ refuse with
   `{ok:false, code:"caller_cwd_required"}`. When you register a

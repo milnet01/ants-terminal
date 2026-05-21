@@ -18193,6 +18193,22 @@ contributors don't duplicate research.
   model — saving you money on small jobs and giving you the big
   brain when you need it.
   Kind: design + implement. Source: user-2026-05-11; re-prioritised user-2026-05-21.
+- 📋 [ANTS-1735] **Automatic model selection — opt-in auto-switch
+  (Shape B of ANTS-1226).** ANTS-1226 shipped the passive recommender
+  chip (Shape A). This item ships the active tier: when the user opts
+  in, Ants Terminal auto-switches Claude Code to the recommended model
+  before each turn, without requiring a manual click on the chip. The
+  user can always override by pressing ESC and instructing the model
+  directly. Key design unknowns still apply from ANTS-1226 (hook API
+  model-override surface, prompt-cache TTL dampening policy, complexity
+  classifier corpus, trust graduation). Requires Shape A to have earned
+  user trust first — do not implement before several real sessions of
+  recommender-chip use with positive feedback.
+  **Layman:** Once you've seen the model recommender chip work well
+  enough to trust it, Ants Terminal can start automatically switching
+  models for you — so you get Haiku's speed for simple tasks and Opus's
+  power for hard ones, without having to click anything.
+  Kind: implement. Source: user-2026-05-21.
 
 ### 🔒 Security
 

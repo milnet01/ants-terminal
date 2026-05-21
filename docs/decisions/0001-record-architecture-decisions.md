@@ -54,7 +54,11 @@ trade-offs the decision accepts.
 
 Files are checked in to `docs/decisions/`. The folder's
 [README.md](README.md) explains the lifecycle and when to write
-one.
+one. The "never edited after acceptance" rule has one carve-out:
+the `Status:` field may be updated to `Deprecated` or
+`Superseded by ADR-NNNN` without a new ADR — a status change is a
+lifecycle event, not a decision revision. All other body content
+stays frozen; use a new ADR for supersession or partial amendment.
 
 ## Consequences
 

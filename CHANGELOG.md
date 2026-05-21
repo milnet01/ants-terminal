@@ -5614,16 +5614,17 @@ hostile-content findings.
 
 ### Added
 
-- **Spec — weekly Wednesday release cadence + Patron RC pipeline
-  (ANTS-1318).** From this release onward, public releases ship
-  on Wednesdays only. `main` IS the rolling RC, force-moved
-  `v<next>-rc` tag on every push. Patrons (🛠 tier on GitHub
-  Sponsors) are notified each Wednesday with the public-but-unannounced
-  pre-release URL. AppImage `UPDATE_INFORMATION` for RC builds
-  uses the rolling `v*-rc` tag (NOT `latest`) so stable users
-  never auto-update onto an RC. Full design + invariants:
-  [`docs/specs/ANTS-1318.md`](docs/specs/ANTS-1318.md).
-  Implementation lands separately (workflow + skill changes).
+- **Spec — weekly Wednesday release cadence + Patron frozen-RC
+  pipeline (ANTS-1318).** From this release onward, public releases
+  ship on Wednesdays only. Each Wednesday cuts a **frozen** RC from
+  current `main` (implemented via `packaging/cut-rc.sh`); Patron-
+  reported regressions are cherry-picked into the RC as `rcN+1`
+  tags; the following Wednesday promotes the latest RC to public.
+  Patrons (🛠 tier on GitHub Sponsors) are notified each Wednesday
+  with the public-but-unannounced pre-release URL. AppImage
+  `UPDATE_INFORMATION` for RC builds uses the RC channel (NOT
+  `latest`) so stable users never auto-update onto an RC. Full design
+  + invariants: [`docs/specs/ANTS-1318.md`](docs/specs/ANTS-1318.md).
 
 #### 🔌 MCP cross-project isolation (caller_cwd) — Phase 2 (2026-05-15)
 
@@ -5877,6 +5878,7 @@ folded into ROADMAP as ANTS-1260…ANTS-1317. All 422 tests passing.
 - **tests — `remote_control_launch` test window 3000 → 3500 chars**
   to admit the new `cwd` validation block in `cmdLaunch`.
 
+[Unreleased]: https://github.com/milnet01/ants-terminal/compare/v0.7.92...HEAD
 [0.7.92]: https://github.com/milnet01/ants-terminal/compare/v0.7.91...v0.7.92
 
 ## [0.7.90] — 2026-05-13

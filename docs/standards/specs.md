@@ -1,3 +1,4 @@
+<!-- ants-specs-standards: 1 -->
 # Spec-authoring standard
 
 **Status:** v1 (2026-05-21).
@@ -102,8 +103,8 @@ API additions, algorithms. Conventions:
 ### 3.5 Invariants
 
 A section (`## N. Invariants`) of numbered, testable contracts. **Use
-the bullet form** — it is what 96 of 98 specs use and what reviewers
-expect:
+the bullet form** — it is what the overwhelming majority of specs use
+and what reviewers expect:
 
 ```
 - **INV-1** — <one testable claim>. *Test:* <test surface>.

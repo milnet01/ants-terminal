@@ -869,9 +869,12 @@ Themes are selectable from the **View > Themes** menu. Each theme defines:
 |------|-------------|
 | 0/2 | Set window title |
 | 8 | Hyperlinks (open/close explicit links) |
+| 9 | Desktop notification (body only) |
 | 52 | Clipboard access (write only) |
 | 133 | Shell integration (A/B/C/D markers) |
+| 777 | Desktop notification (title + body) |
 | 1337 | iTerm2 inline images |
+| 9;4 | Progress indicator (state + percent) |
 
 ### DCS / APC Sequences
 
@@ -1067,7 +1070,12 @@ ants-terminal/
 
 tests/
 ├── audit_self_test.sh         # CTest regression harness for audit rule patterns
-└── audit_fixtures/            # Per-rule bad.*/good.* fixture pairs with @expect markers
+├── audit_fixtures/            # Per-rule bad.*/good.* fixture pairs with @expect markers
+├── features/                  # Feature-conformance test suite (spec.md + test_*.cpp per feature)
+├── perf/                      # Performance / stress tests
+├── coverage-map.json          # Maps source files → ctest -R patterns for focused_test MCP tool
+├── lsan-suppressions.txt      # LeakSanitizer suppression rules
+└── _support/                  # Shared test utilities and bundle main stubs
 ```
 
 ---

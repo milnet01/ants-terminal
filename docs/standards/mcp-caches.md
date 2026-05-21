@@ -1,3 +1,4 @@
+<!-- ants-mcp-caches-standards: 1 -->
 # MCP cache layer — keying & relocation contract (ANTS-1439)
 
 This document is the canonical record of how every Ants MCP cache is
@@ -40,6 +41,7 @@ are project-scoped.
 | Cache | Spec | Storage | Keyed by | Relocation profile |
 |-------|------|---------|----------|--------------------|
 | `session_memory` | ANTS-1283 / ANTS-1336 | Disk: `~/.cache/ants-terminal/mcp-state/<sha256(cwd)>.json` | `sha256(canonical cwd)` (one file per project) | **Orphan.** Old-SHA file persists; new-SHA file is fresh. Different files → no shadow. |
+| `workflow_state` | ANTS-1723 | Inside `session_memory` (keys prefixed `wf.`) — same backing file | Inherits per-cwd-SHA isolation; 72 h lazy-TTL purge on every `set` | **Orphan.** Same profile as `session_memory`. |
 | `project_layout` | ANTS-1430 | Inside `session_memory` (well-known key) | Inherits per-cwd-SHA isolation | **Orphan.** Same profile as `session_memory`. |
 | idempotent-read TTL cache (100 ms) | ANTS-1357 | In-process | `(tool, sha256(args))` where args carry `caller_cwd` | **Cold.** Relocation changes the args hash → old entries unreachable. Process death wipes it. |
 | `verify_changes` build cache | ANTS-1359 | In-process | project root + git HEAD + porcelain SHA + trust outcome | **Cold.** In-process only; process death wipes it. |

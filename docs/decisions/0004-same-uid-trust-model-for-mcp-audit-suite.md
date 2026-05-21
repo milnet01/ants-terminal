@@ -116,8 +116,8 @@ Same-UID trust is **not** an excuse for:
 ### Positive
 
 - Future audit / review / synth specs (ANTS-1449, ANTS-1450, the
-  pending ANTS-1352 dispatcher, cold-eyes engine work) cite this
-  ADR instead of re-deriving the trust model. Spec authoring time
+  ANTS-1352 dispatcher (shipped 0.7.91), cold-eyes engine work) cite
+  this ADR instead of re-deriving the trust model. Spec authoring time
   drops; the boundary statement stays consistent across the lane.
 - Indie-review and cold-eyes reviewers have a canonical reference
   to test individual spec claims against ("does this match
@@ -138,7 +138,7 @@ Same-UID trust is **not** an excuse for:
 
 ### Mitigations
 
-- Pin a reference to this ADR in `docs/standards/mcp-error-codes.md`
+- A reference to this ADR has been pinned in `docs/standards/mcp-error-codes.md`
   § 3 (caller-cwd contract) — the closest neighbouring doc.
 - Future ANTS-NNNN that ship a remote-transport MCP path MUST
   open a supersession ADR before merging.

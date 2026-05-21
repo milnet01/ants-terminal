@@ -3,10 +3,13 @@
 # Audit / review false-positive ledger
 
 This document is the canonical contract for **logging false-positive
-findings** during the four Ants-supported sweep skills — `/audit`,
-`/cold-eyes`, `/indie-review`, `/test-audit` — and the **read
-contract** the Ants MCP brief-assembly tools honour so a re-run of
-the sweep does not re-litigate findings the user has already
+findings** across the four Ants-supported sweep skills: `/audit`,
+`/cold-eyes`, `/indie-review`, `/test-audit`. Each skill uses a
+different ledger — `/audit` suppresses via `.audit_suppress` (line-grain,
+tool-keyed); the three AI-review skills share `.ants_review_falsepos.jsonl`
+(prose-grain, review-kind-keyed). This standard covers both ledgers
+and defines the **read contract** the Ants MCP brief-assembly tools
+honour so re-runs don't re-litigate findings the user has already
 dismissed.
 
 ## Why

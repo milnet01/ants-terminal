@@ -616,7 +616,7 @@ on these today** — they'll fail with `attempt to call a nil value`.
   `sound` / `command`. `run_script` broadcasts to plugins as a
   `palette_action` event with payload `"<action_id>\t<matched>"`.
 
-### 0.7 — output_line + ants.trigger.register
+### 0.7 — output_line + ants.trigger.register *(deferred — not yet shipped as of 0.7.92)*
 
 - **`"output_line"`** event — fires post-OSC-133-grouped (one event per
   command's output, batched, instead of one per chunk).

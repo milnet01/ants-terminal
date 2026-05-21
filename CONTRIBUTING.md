@@ -67,7 +67,7 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
 # Debug + ASan + UBSan (what the build-asan CI job runs)
 cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DANTS_SANITIZERS=ON
-cmake --build build-asan --parallel
+cmake --build build-asan
 QT_QPA_PLATFORM=offscreen ASAN_OPTIONS=detect_leaks=0 ./build-asan/ants-terminal --version
 ```
 

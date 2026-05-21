@@ -14,7 +14,7 @@ token is generated from canonical-cwd + scope + dimensions + the
 max mtime in the scoped tree (per `testauditengine.cpp:982`).
 
 The token is **held in an in-process LRU cache** inside the Ants
-binary (`g_partitionCache` in `testauditengine.cpp:183–187`). It
+binary (`g_partitionCache` declared at `testauditengine.cpp:174`). It
 does **not** persist to disk and is **not** auto-saved into
 `session_memory`. Two consequences:
 

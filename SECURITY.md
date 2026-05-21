@@ -138,7 +138,7 @@ For context on the existing defense posture:
   revocable in Settings → Plugins (0.6.11). Un-granted permissions
   are absent from the plugin's `ants.*` table — no nil stubs.
 - **Plugin sandbox** — per-plugin `lua_State`, 10 MB heap budget,
-  10M-instruction hook, dangerous globals removed.
+  100,000-instruction hook, dangerous globals removed.
 - **OSC 52 quotas** (0.6.0) — 32 writes/minute + 1 MB/minute per
   terminal, plus the 1 MB per-string cap.
 - **Multi-line paste confirmation** (0.6.0) — dialog for

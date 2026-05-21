@@ -1,3 +1,4 @@
+<!-- ants-mcp-error-codes-standards: 1 -->
 # MCP error-code taxonomy (ANTS-1353)
 
 This document is the canonical home for the `code` field that Ants

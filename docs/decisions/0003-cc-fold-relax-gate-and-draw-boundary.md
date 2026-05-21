@@ -4,7 +4,9 @@
 - **Date:** 2026-05-13
 - **Deciders:** Project lead, Claude
 - **Supersedes (in part):** [ADR-0002](0002-cold-eyes-companion-cleanup.md) decision 8
-- **Related:** ROADMAP.md ANTS-1108, ANTS-1111, ANTS-1112, ANTS-1113, ANTS-1120; CHANGELOG.md [0.7.87]
+- **Related:** ROADMAP.md ANTS-1108, ANTS-1111, ANTS-1112, ANTS-1113, ANTS-1120; CHANGELOG.md [0.7.87];
+  [ADR-0002](0002-cold-eyes-companion-cleanup.md) (superseded in part);
+  `docs/specs/ANTS-1120.md` (companion-instrumentation gate spec)
 
 ## Context
 
