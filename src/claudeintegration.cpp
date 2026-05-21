@@ -2,6 +2,7 @@
 
 #include "configpaths.h"
 #include "debuglog.h"
+#include "mcpprojection.h"
 #include "secureio.h"
 
 #include <QCryptographicHash>
@@ -1507,6 +1508,32 @@ void ClaudeIntegration::onMcpConnection() {
                     return p;
                 };
 
+                // ANTS-1720 — `fields` projection input prop. Seven
+                // high-volume read tools (roadmap_query, project_layout,
+                // file_outline, get_environment, tab_list, subsystem,
+                // git_state) accept it; the response carries only the
+                // named top-level fields. Gated by
+                // mcp::isFieldProjectionTool at the dispatch site.
+                auto makeFieldsProp = []{
+                    QJsonObject p;
+                    p["type"] = "array";
+                    QJsonObject items;
+                    items["type"] = "string";
+                    p["items"] = items;
+                    p["description"] = QStringLiteral(
+                        "Optional. Return only these top-level response "
+                        "fields (e.g. [\"bullets\"], [\"branch\","
+                        "\"files\"]). Unknown names are ignored; an "
+                        "all-unknown list yields {}. Omit for the full "
+                        "payload — fully backwards-compatible (ANTS-1720). "
+                        "To keep the etag for a follow-up 304 call, "
+                        "include \"etag\" in the list: the etag is "
+                        "computed on the unfiltered body, so a narrowed "
+                        "call still short-circuits when state is "
+                        "unchanged (composes with etag_match).");
+                    return p;
+                };
+
                 QJsonObject scrollbackTool;
                 scrollbackTool["name"] = "get_scrollback";
                 scrollbackTool["description"] = QStringLiteral(
@@ -1684,6 +1711,7 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject props;
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
+                    props["fields"] = makeFieldsProp();          // ANTS-1720
                     schema["properties"] = props;
                     envTool["inputSchema"] = schema;
                 }
@@ -1886,6 +1914,7 @@ void ClaudeIntegration::onMcpConnection() {
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
+                    props["fields"] = makeFieldsProp();          // ANTS-1720
                     schema["properties"] = props;
                     roadmapTool["inputSchema"] = schema;
                 }
@@ -1966,6 +1995,7 @@ void ClaudeIntegration::onMcpConnection() {
                     schema["type"] = "object";
                     QJsonObject props;
                     props["etag_match"] = makeEtagMatchProp();
+                    props["fields"] = makeFieldsProp();          // ANTS-1720
                     schema["properties"] = props;
                     tabListTool["inputSchema"] = schema;
                 }
@@ -2280,6 +2310,7 @@ void ClaudeIntegration::onMcpConnection() {
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"]           = makeCallerCwdReadProp();
                     props["etag_match"]           = makeEtagMatchProp();   // ANTS-1499
+                    props["fields"]               = makeFieldsProp();      // ANTS-1720
                     schema["properties"] = props;
                     QJsonArray required;
                     required.append("path");
@@ -2347,6 +2378,7 @@ void ClaudeIntegration::onMcpConnection() {
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
+                    props["fields"] = makeFieldsProp();          // ANTS-1720
                     schema["properties"] = props;
                     QJsonArray required;
                     required.append("op");
@@ -2398,6 +2430,7 @@ void ClaudeIntegration::onMcpConnection() {
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
+                    props["fields"] = makeFieldsProp();          // ANTS-1720
                     schema["properties"] = props;
                     QJsonArray required;
                     required.append("op");
@@ -5446,6 +5479,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["force_rescan"] = forceProp;
                     props["caller_cwd"]   = callerProp;
                     props["etag_match"]   = makeEtagMatchProp();   // ANTS-1499
+                    props["fields"]       = makeFieldsProp();      // ANTS-1720
                     schema["properties"]  = props;
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
@@ -6206,12 +6240,28 @@ void ClaudeIntegration::onMcpConnection() {
                 // the etag is computed against the actual JSON envelope
                 // (not the <ants_mcp_data> wrapper bytes which would
                 // shift the hash for every tool name change).
+                bool etagUnchanged = false;
                 if (toolHandled && isEtagSupportedTool(toolName)) {
-                    bool etagUnchanged = false;
                     responseText = applyEtagPattern(
                         toolName, argsObj, responseText, &etagUnchanged);
                     if (etagUnchanged) {
                         dispatchResult = QStringLiteral("etag_unchanged");
+                    }
+                }
+                // ANTS-1720 — `fields=` projection. Runs after the etag
+                // short-circuit (so the etag is computed on the
+                // unfiltered canonical body) and before the wrap (so the
+                // hash covers the JSON envelope, not the wrapper). Skipped
+                // on the etag short-circuit — {ok,unchanged,etag} has no
+                // content to narrow. To retain the etag through a narrowed
+                // call, the caller lists "etag" in `fields`.
+                if (toolHandled && !etagUnchanged &&
+                    mcp::isFieldProjectionTool(toolName)) {
+                    const QJsonValue fv =
+                        argsObj.value(QStringLiteral("fields"));
+                    if (fv.isArray()) {
+                        responseText = mcp::projectFields(
+                            responseText, fv.toArray());
                     }
                 }
 

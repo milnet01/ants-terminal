@@ -256,6 +256,8 @@ add_library(ants_core_lib STATIC
     src/testrescache.cpp
     # ANTS-1302 — focused_test changed-files -> ctest-pattern resolver.
     src/focusedtest.cpp
+    # ANTS-1720 — `fields=` MCP response projection (pure helper).
+    src/mcpprojection.cpp
     src/roadmapindex.cpp
     src/roadmapfoldin.cpp
     src/subsystemmap.cpp
@@ -1399,6 +1401,8 @@ if(ANTS_TESTS)
                 # ANTS-1226 — ModelRecommender scorer.
                 tests/features/model_recommender/test_model_recommender.cpp
                 src/modelrecommender.cpp
+                # ANTS-1720 — MCP fields= response projection.
+                tests/features/mcp_projection/test_mcp_projection.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         SRC_TERMINALGRID_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
@@ -1414,6 +1418,8 @@ if(ANTS_TESTS)
         SRC_SESSIONMANAGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/sessionmanager.cpp"
         SRC_CONFIG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/config.cpp"
         SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeallowlist.cpp"
+        # ANTS-1720 — dispatch-ordering scrape for the fields= projection.
+        SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
         SRC_SECUREIO_H_PATH="${CMAKE_SOURCE_DIR}/src/secureio.h"
         SRC_CONFIGBACKUP_H_PATH="${CMAKE_SOURCE_DIR}/src/configbackup.h"
