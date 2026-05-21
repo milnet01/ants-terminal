@@ -18215,6 +18215,18 @@ contributors don't duplicate research.
   Kind: spike.
   Source: user-2026-05-11.
 
+- 📋 [ANTS-1730] **Silence -Wunused-parameter on the test-bundle runMain() shims.**
+  Building test_core surfaces `-Wunused-parameter` for `argv` in
+  `tests/features/config_reload_loop_safety/test_config_reload_loop_safety.cpp`'s
+  `static int runMain(int argc, char **argv)` shim (line ~347). The
+  parameter is unused but the signature is deliberate. Mark it
+  `[[maybe_unused]]` (or drop the name) here and audit the other
+  per-bundle runMain() helpers for the same warning. Surfaced during the
+  ANTS-1727 build; logged per the flag-don't-dismiss-warnings rule.
+  Kind: chore.
+  Lanes: tests.
+  Source: in-session-2026-05-21 (surfaced during ANTS-1727 build).
+
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.
