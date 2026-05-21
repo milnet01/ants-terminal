@@ -28,6 +28,29 @@ for security-relevant changes.
   behaviour. No new external dependencies; the dialogs themselves land
   in ANTS-1721/1722 — this ships the foundation only.
 
+- **Cold-eyes documentation review, in-app (ANTS-1721).** New
+  Tools › Review › *Cold-eyes Documentation Review* dialog runs a full
+  cold-eyes doc review against your configured LLM endpoint without
+  spending Claude tokens. It partitions the doc tree into lanes (with a
+  scope selector and per-lane deselect), inlines each lane's docs whole
+  while narrowing big contract docs (ROADMAP/CHANGELOG) to only the
+  sections relevant to the lane, surfaces "cited code that no longer
+  exists" as accuracy findings with no model round-trip, corroborates
+  findings cited by two or more lanes, and re-reviews only the lanes
+  that had findings until clean. Findings fold into ROADMAP.md either as
+  per-finding bullets (with allocated IDs) or as a free-text narrative.
+
+- **Test-suite audit, in-app (ANTS-1722).** New
+  Tools › Review › *Test-suite Audit* dialog runs a per-chunk test-suite
+  audit against your configured LLM endpoint, again with no Claude
+  tokens. It detects the framework, packs test files into chunks, sends
+  each chunk (seeded with the full audit-dimension set + inlined test
+  bodies, capped at 200 KiB) to the model, then runs one cross-chunk
+  synthesis pass. Verbatim chunk reports are saved under
+  `.audit_cache/test_audit_<token>/` and the audit can be closed and
+  resumed mid-run. Findings fold into ROADMAP.md as a grouped narrative
+  (default) or per-finding bullets.
+
 - **`session_brief` MCP tool — orient a fresh `/clear` session in one
   call (ANTS-1724).** New `session_brief` tool that returns a compact
   (≤ 512 byte) envelope containing: git branch, ahead/behind, and

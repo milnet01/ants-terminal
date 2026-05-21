@@ -148,6 +148,41 @@ Listed only where behavior isn't obvious from the name.
   test-audit's engine-owned fold-in doesn't double-allocate). `dispatchOne`
   runs a follow-up (e.g. synthesis) without re-entering
   `onAllReportsCollected`. Static `endpointDispatchable` gates Dispatch.
+- `coldeyesdialog` (`ants_dialogs_lib`) — native in-app cold-eyes doc
+  review (ANTS-1721); `ReviewDialogBase` subclass over `ColdEyesEngine`.
+  `derivePartition` maps engine lanes → `ReviewLane` (scope combo +
+  per-lane deselect). `composeBrief` does NOT reuse the engine manifest's
+  paths-only `brief` (its Read-tool instructions don't apply to a raw
+  inlined-bodies endpoint); it composes its own prompt from the
+  manifest's structured fields — lane docs whole via
+  `BriefDispatch::inlineBodies`, cross-ref contracts narrowed via
+  `inlineRelevantSections` with lane-derived keywords, `ants::falsepos`
+  prior-FP block, and stale citations as pre-found `[ACCURACY]` findings
+  (no model round-trip) — sum-capped at 200 KiB (cross-ref dropped before
+  lane bodies). `onAllReportsCollected` corroborates via
+  `crossDocDiffFromReports` (minLanes 2; single-lane cites kept as
+  uncorroborated). Re-review dispatches only finding lanes, threading
+  fixed items as `PriorLoopFix`. `performFoldIn` builds on the base
+  helpers: per-finding (`allocateFoldInIds` + `templateColdEyesFoldInBlock`)
+  or narrative free-text (no IDs). Tools › Review menu entry. Spec
+  `docs/specs/ANTS-1721.md`.
+- `testauditdialog` (`ants_dialogs_lib`) — native in-app test-suite
+  review (ANTS-1722); `ReviewDialogBase` subclass over `TestAuditEngine`.
+  `derivePartition` runs `partition` (stores `partitionToken` +
+  `dimensionsActive`), one `ReviewLane` per chunk. `composeBrief` seeds
+  the full `dimensionsActive` list (not just pre-pass hits) + framework
+  context + inlined test bodies (engine returns ABSOLUTE chunk paths —
+  relativised before `inlineBodies`), sum-capped at 200 KiB (pre-pass
+  context dropped first). `briefFor` retries once on the engine's
+  `stale_partition` code (spec ANTS-1722 mis-names it `stale_token`) by
+  re-partitioning. `onAllReportsCollected` writes verbatim reports under
+  `.audit_cache/test_audit_<token>/`, calls `synthesize` (summary mode),
+  and dispatches the synthesis prompt via the base `dispatchOne` (no
+  re-entry). `performFoldIn` calls `TestAuditEngine::foldIn` DIRECTLY
+  (engine owns ID allocation — base helpers NOT used, avoiding
+  double-allocation); narrative (default) or per-finding. Resume persists
+  `{token, dimensions, collected_chunk_ids}` via `SessionMemoryEngine`.
+  Tools › Review menu entry. Spec `docs/specs/ANTS-1722.md`.
 - `remotecontrol` — Kitty-style JSON-over-Unix-socket IPC. Verbs:
   `ls`, `send-text`, `new-tab`, `select-window`, `set-title`,
   `get-text`, `launch`, `tab-list`, `roadmap-query`,

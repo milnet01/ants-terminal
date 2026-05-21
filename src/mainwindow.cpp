@@ -35,6 +35,8 @@
 #include "auditdialog.h"
 #include "auditrunner.h"      // ANTS-1351 — server-side audit runner.
 #include "testauditengine.h"  // ANTS-1397 — test_audit_* trio engine.
+#include "coldeyesdialog.h"   // ANTS-1721 — native cold-eyes review dialog.
+#include "testauditdialog.h"  // ANTS-1722 — native test-suite review dialog.
 #include "shellutils.h"
 #include "elidedlabel.h"
 #include "globalshortcutsportal.h"
@@ -1506,6 +1508,27 @@ void MainWindow::setupToolsMenu() {
                                   " For each fix, explain what you changed and why.\"\n").arg(resultsFile);
             t->writeCommand(cmd);
         });
+        dlg->show();
+    });
+
+    // ANTS-1721 / ANTS-1722 — native AI review dialogs (no Claude tokens).
+    QMenu *reviewMenu = toolsMenu->addMenu("&Review");
+    QAction *coldEyesAction = reviewMenu->addAction("&Cold-eyes Documentation Review...");
+    connect(coldEyesAction, &QAction::triggered, this, [this]() {
+        QString cwd;
+        if (auto *t = focusedTerminal()) cwd = t->shellCwd();
+        if (cwd.isEmpty()) cwd = QDir::currentPath();
+        auto *dlg = new ColdEyesDialog(cwd, this, &m_config);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->show();
+    });
+    QAction *testAuditAction = reviewMenu->addAction("&Test-suite Audit...");
+    connect(testAuditAction, &QAction::triggered, this, [this]() {
+        QString cwd;
+        if (auto *t = focusedTerminal()) cwd = t->shellCwd();
+        if (cwd.isEmpty()) cwd = QDir::currentPath();
+        auto *dlg = new TestAuditDialog(cwd, this, &m_config);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
         dlg->show();
     });
 

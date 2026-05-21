@@ -3704,7 +3704,7 @@ minor tag (next: pre-0.8.0).
   Kind: implement. Source: user-2026-05-21.
   Lanes: remotecontrol, claudeintegration.
 
-- 📋 [ANTS-1721] **Cold-eyes v2 Qt dialog (`ColdEyesDialog`) — native
+- ✅ [ANTS-1721] **Cold-eyes v2 Qt dialog (`ColdEyesDialog`) — native
   in-app doc review.** The cold-eyes MCP engine is fully shipped
   (`cold_eyes_partition`, `cold_eyes_brief`, `cold_eyes_single_doc`,
   `cold_eyes_cross_doc_diff`, `cold_eyes_fold_in` — ANTS-1411–1414).
@@ -3736,8 +3736,16 @@ minor tag (next: pre-0.8.0).
   menu entry + 2 feature tests).
   Kind: implement. Source: user-2026-05-21.
   Lanes: new (coldeyesdialog), coldeyesengine, aidialog, MainWindow.
+  Shipped 2026-05-21 under TDD (`tests/features/cold_eyes_dialog/`,
+  INV-1..8 green). `ColdEyesDialog : ReviewDialogBase` composes its own
+  inlined-bodies prompt from the engine's structured manifest fields
+  (the manifest's paths-only `brief` carries Read-tool instructions that
+  don't apply to a raw endpoint), narrows cross-reference contracts via
+  `BriefDispatch::inlineRelevantSections`, surfaces stale citations
+  without a model round-trip, and offers per-finding / narrative fold-in.
+  Tools › Review › Cold-eyes Documentation Review.
 
-- 📋 [ANTS-1722] **Test-audit v2 Qt dialog (`TestAuditDialog`) — native
+- ✅ [ANTS-1722] **Test-audit v2 Qt dialog (`TestAuditDialog`) — native
   in-app test-suite review.** Mirrors ANTS-1721 for the test-audit
   family (`test_audit_partition`, `test_audit_brief`,
   `test_audit_synthesis_prompt`, `test_audit_fold_in` — all shipped).
@@ -3763,6 +3771,32 @@ minor tag (next: pre-0.8.0).
   Kind: implement. Source: user-2026-05-21.
   Lanes: new (testauditdialog), testauditengine, aidialog, MainWindow,
   sessionmemoryengine.
+  Shipped 2026-05-21 under TDD (`tests/features/test_audit_dialog/`,
+  INV-1..8 green). `TestAuditDialog : ReviewDialogBase` partitions via
+  `TestAuditEngine`, composes per-chunk briefs (full `dimensions_active`
+  + framework context + inlined test bodies, sum-capped at 200 KiB),
+  writes verbatim reports under `.audit_cache/test_audit_<token>/`, runs
+  one synthesis follow-up via the base `dispatchOne`, and folds in via
+  `TestAuditEngine::foldIn` directly (engine owns ID allocation — base
+  helpers NOT used, avoiding double-allocation). Resume persists
+  `{token, dimensions, collected_chunk_ids}` via `SessionMemoryEngine`;
+  a `stale_partition` brief code (the engine's real code; the spec named
+  it `stale_token`) triggers a re-partition + retry. Tools › Review ›
+  Test-suite Audit.
+
+- 📋 [ANTS-1731] **`BriefDispatch::inlineBodies` should tolerate
+  absolute paths under the project root.** Discovered while wiring
+  ANTS-1722: `TestAuditEngine` returns ABSOLUTE chunk paths, but
+  `inlineBodies`/`inlineRelevantSections` build `projectPath + "/" +
+  path`, so an absolute path becomes `…/proj//tmp/…`, fails
+  `canonicalFilePath`, and is silently skipped (empty inlined body — no
+  error). `TestAuditDialog::composeBrief` works around it by stripping
+  the project prefix before the call, but the next caller will hit the
+  same footgun. Harden `safeCanon` to accept a path already under
+  `rootCanon` (relativise it internally) and/or surface skipped paths
+  through `skippedOut` at the dialog layer so an empty brief is visible.
+  Kind: implement. Source: in-session-2026-05-21 (noticed integrating
+  ANTS-1722). Lanes: briefdispatch, testauditdialog.
 
 - ✅ [ANTS-1723] **Workflow-state MCP tool — superpowers skill
   context compression.** *Shipped 2026-05-21 in 0.7.92.*

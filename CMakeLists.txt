@@ -397,6 +397,10 @@ add_library(ants_dialogs_lib STATIC
     src/toggleswitch.cpp
     # ANTS-1727 — shared review-dialog scaffold (ColdEyes/TestAudit base).
     src/reviewdialogbase.cpp
+    # ANTS-1721 — native in-app cold-eyes documentation review dialog.
+    src/coldeyesdialog.cpp
+    # ANTS-1722 — native in-app test-suite review dialog.
+    src/testauditdialog.cpp
 )
 target_link_libraries(ants_dialogs_lib
     PUBLIC  ants_chrome_lib
@@ -1302,6 +1306,10 @@ if(ANTS_TESTS)
         SOURCES tests/features/settings_dependency_gating/test_settings_dependency_gating.cpp
                 # ANTS-1727 — review-dialog foundation scaffold.
                 tests/features/review_dialog_base/test_review_dialog_base.cpp
+                # ANTS-1721 — ColdEyesDialog (native cold-eyes review).
+                tests/features/cold_eyes_dialog/test_cold_eyes_dialog.cpp
+                # ANTS-1722 — TestAuditDialog (native test-suite review).
+                tests/features/test_audit_dialog/test_test_audit_dialog.cpp
                 tests/features/settings_profile_cancel_rollback/test_settings_profile_cancel_rollback.cpp
                 tests/features/settings_restore_defaults/test_settings_restore_defaults.cpp
                 tests/features/settings_parse_failure_mirror/test_settings_parse_failure_mirror.cpp
