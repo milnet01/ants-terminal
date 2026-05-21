@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QLayout>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QTabWidget>
 #include <QTextEdit>
 #include <QVBoxLayout>
@@ -19,11 +20,28 @@ ReviewDialogBase::ReviewDialogBase(QString projectCwd, QWidget *parent,
                                    Config *config)
     : QDialog(parent), m_projectCwd(std::move(projectCwd)), m_config(config) {
     setMinimumSize(640, 480);
-    resize(820, 600);
+    resize(900, 880);
 
     auto chrome = DialogChrome::install(this);
     QWidget *content = chrome.contentArea;
-    m_contentLayout = new QVBoxLayout(content);
+
+    // The content column stacks several tall/stretchy widgets (lane tabs,
+    // the subclass results host, the fold-in panel). On a short window their
+    // combined minimum heights overflow and the bottom widgets clip. Host the
+    // whole column in a resizable scroll area: when the window is tall the
+    // stretch fills it; when it's short a scrollbar appears instead of
+    // clipping. Keeps every subclass (cold-eyes / test-audit / the deferred
+    // audit-v2 + indie-review dialogs) safe without per-subclass tuning.
+    auto *outer = new QVBoxLayout(content);
+    outer->setContentsMargins(0, 0, 0, 0);
+    auto *scroll = new QScrollArea(content);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    outer->addWidget(scroll);
+
+    auto *inner = new QWidget;
+    scroll->setWidget(inner);
+    m_contentLayout = new QVBoxLayout(inner);
     m_contentLayout->setContentsMargins(8, 8, 8, 8);
     m_contentLayout->setSpacing(6);
 

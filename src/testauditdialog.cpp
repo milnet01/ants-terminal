@@ -102,6 +102,11 @@ void TestAuditDialog::buildControls() {
     connect(m_narrativeEdit, &QPlainTextEdit::textChanged, this, [this]() {
         if (m_narrativeEdit) setNarrativeText(m_narrativeEdit->toPlainText());
     });
+    // Narrative is the default mode here, so the editor starts visible; hide
+    // it when the user switches to Per-finding (mirrors cold-eyes).
+    m_narrativeEdit->setVisible(narrativeRadio->isChecked());
+    connect(narrativeRadio, &QRadioButton::toggled, m_narrativeEdit,
+            &QWidget::setVisible);
     foldLay->addWidget(m_narrativeEdit);
     lay->addWidget(foldBox);
 

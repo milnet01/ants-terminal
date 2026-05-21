@@ -114,6 +114,11 @@ void ColdEyesDialog::buildControls() {
     connect(m_narrativeEdit, &QPlainTextEdit::textChanged, this, [this]() {
         if (m_narrativeEdit) setNarrativeText(m_narrativeEdit->toPlainText());
     });
+    // Only relevant in Narrative mode (Per-finding is default) — hide it
+    // otherwise so the fold-in box doesn't reserve dead vertical space.
+    m_narrativeEdit->setVisible(narrativeRadio->isChecked());
+    connect(narrativeRadio, &QRadioButton::toggled, m_narrativeEdit,
+            &QWidget::setVisible);
     foldLay->addWidget(m_narrativeEdit);
     lay->addWidget(foldBox);
 
