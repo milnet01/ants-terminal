@@ -176,7 +176,7 @@ for security-relevant changes.
   dialogs) stacked several tall regions that overflowed the default
   window height, cutting off the "Fold-in mode" box and its buttons. The
   content column is now hosted in a scroll area so nothing ever clips,
-  the default window is taller (900×720), and the narrative free-text box
+  the default window is taller (900×880), and the narrative free-text box
   is hidden unless "Narrative" fold-in mode is selected.
 
 - **Project Audit false positives (ANTS-1707).** The `header_guards`
