@@ -3650,7 +3650,7 @@ once real consumers hit it.
   `delta`. The hide-branch label is also refined from
   `HIDE/empty` to `HIDE/empty-or-done` so a reader of the log
   can tell which case fired. Spec `docs/specs/ANTS-1458.md`
-  (TC-1..TC-3) was cold-eyes-reviewed twice before commit;
+  (INV-1..INV-3) was cold-eyes-reviewed twice before commit;
   ROADMAP entry stays 🚧 in-progress (phase 2 — actual latency
   fix — lands once the user reproduces with the log enabled).
   **Layman:** the task-count chip sometimes lagged behind when

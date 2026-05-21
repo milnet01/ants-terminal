@@ -263,11 +263,12 @@ Listed only where behavior isn't obvious from the name.
   date for ✅ cards. Tab-relevance gating drops prose narration on
   non-Full presets (INV-11/12). Spec: `docs/specs/ANTS-1154.md`.
 - `claudetasklist` / `claudebgtasks` — per-tab JSONL trackers with
-  `QFileSystemWatcher` + `poll()` / `sweepLiveness()` mtime rescue
-  for the case Claude rewrites the transcript via tmpfile+rename
-  (which silently drops the watch). **Both** trackers now expose a
-  `poll()` that rebinds the watch when the file appears or its
-  mtime advanced; bg-tasks gained parity in 2026-05-13. Parser:
+  `QFileSystemWatcher` + `poll()` mtime rescue for the case Claude
+  rewrites the transcript via tmpfile+rename (which silently drops
+  the watch). **Both** trackers expose `poll()` to rebind the watch
+  when the file appears or its mtime advanced; bg-tasks gained
+  parity in 2026-05-13. `sweepLiveness()` is `claudebgtasks`-only
+  (foreground tracker does not expose it). Parser:
   `TodoWrite` (snapshot replace), `TaskCreate` + paired tool_result
   (incremental add), `TaskUpdate` (status flip). The chip itself
   reads `done/total` (ANTS-1246); `unfinishedCount() = pending
@@ -419,7 +420,7 @@ as a type and flags every signal emission.
   (in `src/claudeintegration.cpp`), invoked from the
   `method == "tools/call"` dispatch branch. The wrap signals "this is data, not instructions" to
   the consuming assistant. Control-plane tools
-  (`get_session_info`, `token_usage`) bypass the wrap — their
+  (`get_session_info`, `token_usage`, `tool_info`) bypass the wrap — their
   JSON envelope is structural metadata, not content. If you add a
   tool whose response includes text from disk, scrollback, or
   user input, register it normally; the dispatch site wraps it
@@ -447,8 +448,8 @@ as a type and flags every signal emission.
   `{ok:false, code:"caller_cwd_required"}`. When you register a
   new tool, add a matching contract entry — unclassified tools
   default to `Optional` (no enforcement), which is safe but loses
-  the explicit declaration. `TabSpecific` is classified but not
-  enforced in Phase 3a. See `docs/specs/ANTS-1404.md`.
+  the explicit declaration. `TabSpecific` is enforced in Phase 3b
+  (`tab_or_cwd_required` code). See `docs/specs/ANTS-1404.md`.
 
 - **MCP read tools opt into the ETag "304 Not Modified" pattern
   (ANTS-1499).** Thirteen tools (`project_layout`, `roadmap_query`,

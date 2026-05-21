@@ -10533,7 +10533,7 @@ template / mutate this state atomically" → movable. If it's
   catch up. Probably the file-watcher dropping its hook on
   an atomic-rewrite, or the JSONL parse taking longer than
   a tick. Worth instrumenting before guessing.
-  Kind: investigate.
+  Kind: implement.
   Source: user-report-2026-05-17-20-36.
 
 - ✅ [ANTS-1457] **False-positive ledger

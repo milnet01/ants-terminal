@@ -273,7 +273,7 @@ Highlights:
 - **SonarQube-style taxonomy** — every finding carries a type
   (Info / CodeSmell / Bug / Hotspot / Vulnerability) and a 5-level
   severity (Info / Minor / Major / Critical / Blocker).
-- **Per-finding dedup keys** (SHA-256 of file:line:checkId:title) power
+- **Per-finding dedup keys** (first 24 hex chars of SHA-256 of file:line:checkId:title) power
   stable baselines, suppressions, and trend tracking across runs.
 - **Baseline diff** — save current findings, later runs highlight only
   what's new; toggle "New since baseline" to hide known issues.
@@ -395,7 +395,7 @@ printf(userInput);
 
 Deep integration with [Claude Code](https://claude.ai/claude-code) for AI-assisted development workflows.
 
-**Live Status Monitoring** -- The status bar shows Claude's current state (idle, thinking, bash, reading a file, editing, searching, planning, auditing, prompting, compacting) with context window usage. Process detection via `/proc` polling automatically tracks running Claude sessions; transcript state is derived from `~/.claude/projects/<encoded-cwd>/*.jsonl` via an inotify watcher with a 50 ms debounce.
+**Live Status Monitoring** -- The status bar shows Claude's current state (idle, thinking, bash, reading a file, editing, searching, planning, auditing, prompting, compacting) with context window usage. Process detection via `/proc` polling automatically tracks running Claude sessions; transcript state is derived from `~/.claude/projects/<encoded-cwd>/*.jsonl` via a `QFileSystemWatcher` with a 50 ms debounce.
 
 **Real-time status hooks (opt-in)** -- For sub-second state transitions, install the Claude Code hooks from **Settings > General > Claude Code > Install Claude Code status-bar hooks**. That one-click action writes:
 

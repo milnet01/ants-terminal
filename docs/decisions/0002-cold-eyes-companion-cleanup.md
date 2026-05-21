@@ -114,8 +114,10 @@ and ship features the user didn't ask for.
   ANTS-1056 — "retire" means a one-line forward pointer in place,
   not delete (the stable ID survives per `roadmap-format.md`
   § 3.5.1). Implementation outcome: ANTS-1110 was marked `💭`;
-  ANTS-1056 had its status emoji removed entirely (bare
-  `- [ANTS-1056]`). Signal-to-noise ratio goes up.
+  ANTS-1056 had its status emoji removed and a
+  `**Retired: superseded by ANTS-1100.**` annotation added in
+  its place (`- [ANTS-1056] **Retired: …**`). Signal-to-noise
+  ratio goes up.
 
 **Negative:**
 
@@ -123,7 +125,7 @@ and ship features the user didn't ask for.
   (`drift-check`). Users expecting `audit-run` from this
   bullet will need to wait until ANTS-1119 lands first.
 - The audit-extraction (ANTS-1119) is non-trivial — auditdialog.cpp
-  is ~5000 lines with logic and presentation interleaved; the
+  is ~6400 lines with logic and presentation interleaved; the
   refactor will need its own audit pass.
 - ROADMAP body changes for ANTS-1056/1110/1113/1114 invalidate
   any deep-anchor links readers had to those bullet bodies.

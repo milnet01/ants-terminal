@@ -12,7 +12,7 @@ periodic refresh, the startup `singleShot(0)` lambda, and the
 The status bar carries two kinds of widgets:
 
 - **Action** — buttons that the user clicks to do a thing
-  (Review Changes, Background Tasks, Roadmap, Audit, Bg-Tasks).
+  (Review Changes, Background Tasks, Roadmap, Tasks, Model).
   Visibility is gated on whether the action is currently
   available; click triggers a real operation.
 

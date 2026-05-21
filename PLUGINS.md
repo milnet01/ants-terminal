@@ -110,7 +110,7 @@ requires a matching entry in `pluginmanager.cpp::knownPermissions()`.
 Un-granted permissions result in the corresponding `ants.*` table being
 **absent** (not `nil`), so plugins can feature-detect with
 `if ants.clipboard then ... end`. Grants persist in `config.json`
-(`plugin_grants.<name>: [...]`); subsequent loads don't re-prompt unless
+(`plugin_grants: {"<name>": [...]}`); subsequent loads don't re-prompt unless
 the manifest requests a new permission the user hasn't yet granted.
 
 ## Entry Point (`init.lua`)
@@ -272,6 +272,13 @@ if ants._version and ants._version >= "0.6" then
     -- 0.6+ API available
 end
 ```
+
+> **⚠ Warning:** `ants._version` is a plain string. Lua's `>=` comparison
+> is lexicographic, so `"0.10" >= "0.6"` evaluates to `false` (because
+> `"1"` < `"6"` as a character). For version checks spanning minor ≥ 10,
+> use a numeric split: `tonumber(ants._version:match("^(%d+)%.(%d+)")) >= 0
+> and …` or compare major/minor/patch parts individually. See
+> ROADMAP.md ANTS-1536 for a planned `ants.version_gte(major, minor)` helper.
 
 ### 🔒 `ants.clipboard.write(text)`
 
@@ -440,7 +447,7 @@ The runtime enforces two hard limits per plugin VM:
   handler that runs longer than 1.5 s aborts; the next event
   starts a fresh budget. Pure-C calls don't trigger either hook
   variant (see the caveat above).
-- **Heap budget:** 10 MB total Lua heap, enforced by a custom
+- **Heap budget:** 10 MiB total Lua heap, enforced by a custom
   allocator (`MAX_LUA_MEMORY` in `luaengine.h`). On exceed,
   allocations return `NULL`; Lua treats this as out-of-memory and
   typically propagates the error up the call stack. The plugin
@@ -475,6 +482,11 @@ if ants._version and ants._version >= "0.6" then
     -- use 0.6-only API
 end
 ```
+
+> **⚠ Lexicographic caveat:** `ants._version >= "0.6"` is fine for
+> `0.6`–`0.9` comparisons but will return `false` for `0.10+` because
+> `"0.10"` < `"0.6"` lexicographically. Prefer a numeric split for
+> guards that must remain correct across minor bumps ≥ 10.
 
 ## Error Handling
 
@@ -581,14 +593,14 @@ on these today** — they'll fail with `attempt to call a nil value`.
 
 **All of the below are live in 0.6.0.** See the
 [manifest contract](#manifest-manifestjson) and the
-[`ants.*` API](#the-ants-api--current-v07-reviewed-for-0791) section for concrete docs.
+[`ants.*` API](#the-ants-api--current-v07-reviewed-for-0792) section for concrete docs.
 
 - ✅ **`manifest.json` v2** with declarative `permissions`, `keybindings`,
   and `settings_schema` fields. First-load prompt + persisted grants in
   `config.json`.
 - ✅ **`ants.clipboard.write(text)`** — gated by `clipboard.write`.
 - ✅ **`ants.settings.get/set`** — gated by `settings`; backed by
-  `config.json` (`plugin_settings.<name>.<key>`). **Note:** the 0.6 store
+  `config.json` (`plugin_settings: {"<name>": {"<key>": "…"}}`). **Note:** the 0.6 store
   is a flat string k/v — the JSON-Schema-driven Settings UI auto-render
   is deferred to 0.7.
 - ✅ **Per-plugin Lua VMs** — each plugin gets its own `lua_State` with
