@@ -357,6 +357,8 @@ add_library(ants_audit_lib STATIC
     src/auditrunner.cpp
     # ANTS-1555 — per-project .audit_cache/ manifest + retention reaper.
     src/auditcache.cpp
+    # ANTS-1719 — native safe-list auto-fix engine.
+    src/auditautofix.cpp
     # ANTS-1352 — indie-review dispatcher (Qt6::Network).
     src/indiereviewdispatcher.cpp
 )
@@ -1232,7 +1234,9 @@ if(ANTS_TESTS)
                 # ANTS-1709 — centralised dir-exclusion set + openUrl idiom.
                 tests/features/audit_exclusion_set/test_audit_exclusion_set.cpp
                 # ANTS-1708 — fingerprint-keyed learned-FP ledger.
-                tests/features/audit_fp_ledger/test_audit_fp_ledger.cpp)
+                tests/features/audit_fp_ledger/test_audit_fp_ledger.cpp
+                # ANTS-1719 — native safe-list auto-fix engine.
+                tests/features/audit_low_confidence_autofix/test_audit_low_confidence_autofix.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"

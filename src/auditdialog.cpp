@@ -1,4 +1,6 @@
 #include "auditdialog.h"
+#include "auditautofix.h"
+#include "auditcache.h"
 #include "auditfpledger.h"
 #include "audithygiene.h"
 #include "dialogchrome.h"
@@ -3019,6 +3021,62 @@ void AuditDialog::saveBaseline() {
 }
 
 // ---------------------------------------------------------------------------
+// ANTS-1719 — opt-in safe-list auto-fix. Plans behaviour-neutral repairs
+// for the current findings, then applies them high-line-first per file so
+// an earlier removal never shifts a later target line. Each applied repair
+// is logged to .audit_cache/autofix-*.jsonl. Stale findings refresh on the
+// next Run Audit — we don't auto-rerun the scan.
+// ---------------------------------------------------------------------------
+void AuditDialog::runAutoFix() {
+    if (m_completedResults.isEmpty()) return;
+
+    QHash<QString, QString> contents;   // absPath -> original file text
+    QList<ants::autofix::Repair> repairs;
+    for (const CheckResult &r : std::as_const(m_completedResults)) {
+        for (const Finding &f : r.findings) {
+            if (f.suppressed) continue;
+            const QString abs = resolveProjectPath(f.file);
+            if (abs.isEmpty()) continue;
+            if (!contents.contains(abs)) {
+                QFile in(abs);
+                contents.insert(abs, in.open(QIODevice::ReadOnly)
+                    ? QString::fromUtf8(in.readAll()) : QString());
+            }
+            const QString &body = contents.value(abs);
+            if (body.isEmpty()) continue;
+            auto rep = ants::autofix::planRepair(
+                f, abs, body, QStringLiteral(ANTS_VERSION));
+            if (rep) repairs.append(*rep);
+        }
+    }
+
+    // High-line-first within a file so a removal doesn't invalidate the
+    // plan for a lower line still pending in this batch.
+    std::sort(repairs.begin(), repairs.end(),
+              [](const ants::autofix::Repair &a, const ants::autofix::Repair &b) {
+                  if (a.file != b.file) return a.file < b.file;
+                  return a.line > b.line;
+              });
+
+    const QString cacheDir = AuditCache::cacheDir(
+        QFileInfo(m_projectPath).canonicalFilePath());
+    int applied = 0;
+    for (const ants::autofix::Repair &rep : std::as_const(repairs)) {
+        if (ants::autofix::applyRepair(rep)) {
+            ants::autofix::logRepair(cacheDir, rep);
+            ++applied;
+        }
+    }
+
+    if (m_statusLabel) {
+        m_statusLabel->setFullText(repairs.isEmpty()
+            ? QStringLiteral("Auto-fix: no safe repairs in the current findings")
+            : QString("Auto-fix: applied %1 of %2 safe repairs — "
+                      "re-run audit to refresh").arg(applied).arg(repairs.size()));
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Rule Quality dialog (0.6.31 self-learning surface)
 // ---------------------------------------------------------------------------
 void AuditDialog::showRuleQualityDialog() {
@@ -3404,6 +3462,19 @@ void AuditDialog::buildUI() {
     });
     btnRow->addWidget(m_reviewBtn);
 
+    // ANTS-1719 — opt-in safe-list auto-fix. Never runs implicitly on a
+    // scan; the user clicks to apply behaviour-neutral repairs.
+    m_autofixBtn = new QPushButton("Auto-fix safe", this);
+    m_autofixBtn->setFixedHeight(32);
+    m_autofixBtn->setMinimumWidth(140);
+    m_autofixBtn->setToolTip("Apply mechanically-safe, behaviour-neutral "
+                             "repairs (dead #include / Q_UNUSED, expired "
+                             "version-TODO, comment spacing). Logged to "
+                             ".audit_cache/autofix-*.jsonl.");
+    m_autofixBtn->setVisible(false);
+    connect(m_autofixBtn, &QPushButton::clicked, this, &AuditDialog::runAutoFix);
+    btnRow->addWidget(m_autofixBtn);
+
     root->addLayout(btnRow);
 
     // Progress + results
@@ -3710,6 +3781,7 @@ void AuditDialog::cancelAudit() {
     m_runBtn->setEnabled(true);
     if (m_cancelBtn) m_cancelBtn->setVisible(false);
     m_reviewBtn->setVisible(true);
+    if (m_autofixBtn) m_autofixBtn->setVisible(true);
     m_baselineBtn->setVisible(true);
     if (m_sarifBtn)  m_sarifBtn->setVisible(true);
     if (m_htmlBtn)   m_htmlBtn->setVisible(true);

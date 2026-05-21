@@ -246,6 +246,8 @@ private:
     // fire/suppression history sorted by 30-day FP rate. Includes the
     // LCS-based tightening suggester output where available.
     void showRuleQualityDialog();
+    // ANTS-1719 — opt-in safe-list auto-fix over the current findings.
+    void runAutoFix();
     QString baselinePath() const;
 
     QString m_projectPath;
@@ -475,6 +477,7 @@ private:
     static constexpr qsizetype MAX_TOOL_OUTPUT_BYTES = 64 * 1024 * 1024;
 
     QPushButton *m_reviewBtn = nullptr;
+    QPushButton *m_autofixBtn = nullptr;
     QPushButton *m_sarifBtn = nullptr;
     QPushButton *m_htmlBtn = nullptr;
     QString plainTextResults() const;
