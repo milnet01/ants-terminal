@@ -80,6 +80,7 @@ public:
     // hides m_tasksBtn when the parsed list is empty, otherwise
     // shows the "<unfinished>/<total>" label.
     void refreshTasksButton();
+    void refreshModelChip();   // ANTS-1226
 
     // Provider injection — Qt-idiomatic; matches the existing
     // ClaudeIntegration::set*Provider pattern.
@@ -139,6 +140,7 @@ private:
     // controller, retargeted on tab switch.
     ClaudeTaskListTracker *m_tasks = nullptr;
     QPushButton           *m_tasksBtn = nullptr;
+    QPushButton           *m_modelBtn = nullptr;  // ANTS-1226
 
     // Render state — formerly the m_claude{LastState, LastDetail,
     // PromptActive, PlanMode, Auditing} fivesome on MainWindow.

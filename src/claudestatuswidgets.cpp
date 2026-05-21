@@ -18,6 +18,7 @@
 
 #include "claudeallowlist.h"
 #include "claudebgtasks.h"
+#include "modelrecommender.h"
 #include "claudeintegration.h"
 #include "claudetabtracker.h"
 #include "claudetasklist.h"
@@ -124,6 +125,25 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     // an event-loop gap.
     connect(m_tasks, &ClaudeTaskListTracker::tasksChanged,
             this, &ClaudeStatusBarController::refreshTasksButton);
+
+    // ANTS-1226 — model recommender chip.
+    m_modelBtn = new QPushButton(QString(), m_statusBar);
+    m_modelBtn->setObjectName(QStringLiteral("claudeModelBtn"));
+    m_modelBtn->setAccessibleName(tr("Model recommendation"));
+    m_modelBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    m_modelBtn->hide();
+    m_statusBar->addPermanentWidget(m_modelBtn);
+    connect(m_modelBtn, &QPushButton::clicked, this, [this]() {
+        if (!m_modelBtn) return;
+        const QString label = m_modelBtn->text();
+        const QString tier = label.mid(label.lastIndexOf(QChar(' ')) + 1).toLower();
+        if (tier.isEmpty()) return;
+        auto *focused = m_focusedTerminalProvider
+            ? m_focusedTerminalProvider() : nullptr;
+        if (!focused) return;
+        focused->sendToPty(
+            (QStringLiteral("/model ") + tier + QStringLiteral("\n")).toUtf8());
+    });
 
     // Error indicator label — surfaces the exit-code from the
     // commandFailed terminal signal, auto-hides after the timeout the
@@ -954,4 +974,55 @@ void ClaudeStatusBarController::apply() {
     // colour-only state encoding is no longer the sole signal.
     m_statusLabel->setAccessibleDescription(text);
     m_statusLabel->show();
+}
+
+// ANTS-1226 — Passive model-tier recommender chip.
+// Reads the last 20 assistant turns from the active session's
+// transcript, scores complexity, and shows a chip when the
+// recommendation differs from the current model in use.
+void ClaudeStatusBarController::refreshModelChip()
+{
+    if (!m_modelBtn) return;
+
+    // Resolve transcript path — same pattern as refreshTasksButton.
+    QString cwd;
+    auto *focused = m_focusedTerminalProvider
+        ? m_focusedTerminalProvider() : nullptr;
+    if (focused) cwd = focused->shellCwd();
+    QString transcriptPath;
+    if (m_integration) transcriptPath = m_integration->activeSessionPath(cwd);
+
+    if (transcriptPath.isEmpty()) {
+        m_modelBtn->hide();
+        return;
+    }
+
+    const ModelRecommender::Result rec =
+        ModelRecommender::score(transcriptPath);
+
+    // INV-4: hide chip when recommendation matches current model tier.
+    const ModelRecommender::Tier currentTier =
+        ModelRecommender::tierFromModelId(rec.currentModel);
+    if (rec.tier == currentTier) {
+        m_modelBtn->hide();
+        return;
+    }
+
+    const QString tierLabel = [&]() -> QString {
+        switch (rec.tier) {
+        case ModelRecommender::Tier::Haiku: return tr("→ Haiku");
+        case ModelRecommender::Tier::Opus:  return tr("→ Opus");
+        default:                            return tr("→ Sonnet");
+        }
+    }();
+
+    m_modelBtn->setText(tierLabel);
+    m_modelBtn->setToolTip(
+        tr("Suggested model: %1\nReason: %2\n"
+           "Click to send /model %3 to the focused terminal.")
+            .arg(ModelRecommender::tierName(rec.tier))
+            .arg(rec.reason.isEmpty()
+                 ? tr("default heuristic") : rec.reason)
+            .arg(ModelRecommender::tierName(rec.tier)));
+    m_modelBtn->show();
 }

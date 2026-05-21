@@ -324,6 +324,7 @@ add_library(ants_claude_lib STATIC
     src/claudeintegration.cpp
     src/claudeallowlist.cpp
     src/claudestatuswidgets.cpp
+    src/modelrecommender.cpp
     src/claudetabtracker.cpp
     src/claudetranscript.cpp
     src/claudeprojects.cpp
@@ -1395,6 +1396,9 @@ if(ANTS_TESTS)
                 tests/features/build_warning_repo_visibility_null_deref/test_build_warning_repo_visibility_null_deref.cpp
                 # ANTS-1450 — test_audit pattern/dimension JSON drift guard.
                 tests/features/test_audit_pattern_drift/test_pattern_drift.cpp
+                # ANTS-1226 — ModelRecommender scorer.
+                tests/features/model_recommender/test_model_recommender.cpp
+                src/modelrecommender.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         SRC_TERMINALGRID_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
