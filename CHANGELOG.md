@@ -14,6 +14,41 @@ for security-relevant changes.
 
 ### Added
 
+- **`session_brief` MCP tool — orient a fresh `/clear` session in one
+  call (ANTS-1724).** New `session_brief` tool that returns a compact
+  (≤ 512 byte) envelope containing: git branch, ahead/behind, and
+  changed-file count; last build result (pass/fail/unknown) with error
+  and warning counts; last test result with pass/fail/total counts;
+  open audit findings count; and the active roadmap item ID + headline.
+  All data comes from on-disk caches — no new I/O. ETag-eligible: pass
+  `etag_match` from a prior call to skip re-emission when nothing has
+  changed. Replaces 5–6 sequential MCP reads at the start of every
+  fresh session.
+
+- **`workflow_state` MCP tool — superpowers skill step/phase store
+  (ANTS-1723).** New `workflow_state` tool that lets superpowers skills
+  persist their current step and phase across `/clear` sessions. Skills
+  call `op:"get"` at session start to resume from the last saved step
+  instead of reconstructing state from full conversation history; call
+  `op:"set"` at each step boundary to persist progress; call
+  `op:"clear"` to wipe state. Entries are stored as `wf.<skill>` keys
+  in the `session_memory` backing store, expire after 72 h of
+  inactivity, and are capped at 4 KiB. Write ops are guarded by the
+  ANTS-1435 confused-deputy gate; read ops anchor to `caller_cwd`
+  directly.
+
+- **Model recommender chip — passive session-complexity scorer
+  (ANTS-1226 Shape A).** A new chip in the bottom status bar scores
+  the last 20 assistant turns of the active session's transcript (using
+  a tail-read of ≤ 512 KB) and recommends a Claude model tier: Haiku
+  for mechanical turns (no file writes, ≤ 2 unique tools), Opus for
+  design-heavy turns (plan keywords + many file writes), Sonnet
+  otherwise. The chip is hidden when the recommendation matches the
+  model already in use (read from `message.model` in the transcript).
+  When a recommendation differs, the chip shows "→ Haiku" / "→ Opus"
+  / "→ Sonnet"; clicking it injects `/model <name>` into the focused
+  terminal. Refreshes on the existing 2 s status timer.
+
 - **`debt_sweep` detector expansion (ANTS-1358, Pull 43).** Four new
   detectors in `DebtSweepEngine`, lifting the mechanically-fixable set
   from 1 → 3:

@@ -3597,8 +3597,9 @@ minor tag (next: pre-0.8.0).
   Kind: research. Source: ADR-0002-2026-04-30.
   Lanes: TBD per future per-surface bullet.
 
-- 📋 [ANTS-1724] **Session-bootstrap MCP tool (`session_brief`) — orient a fresh
-  session in one call.** The `/clear`-heavy workflow that saves tokens
+- ✅ [ANTS-1724] **Session-bootstrap MCP tool (`session_brief`) — orient a fresh
+  session in one call.** *Shipped 2026-05-21 in 0.7.92.*
+  The `/clear`-heavy workflow that saves tokens
   per-session now has a hidden cost at the *start* of every session:
   5–6 MCP calls are needed to orient (git status, active roadmap item,
   last build result, open findings count, focused tab). This collapses
@@ -3758,8 +3759,9 @@ minor tag (next: pre-0.8.0).
   Lanes: new (testauditdialog), testauditengine, aidialog, MainWindow,
   sessionmemoryengine.
 
-- 📋 [ANTS-1723] **Workflow-state MCP tool — superpowers skill
-  context compression.** The superpowers skills (brainstorming,
+- ✅ [ANTS-1723] **Workflow-state MCP tool — superpowers skill
+  context compression.** *Shipped 2026-05-21 in 0.7.92.*
+  The superpowers skills (brainstorming,
   systematic-debugging, TDD, verification-before-completion, etc.)
   carry significant context overhead: every invocation re-reads the
   full skill file and reconstructs workflow state from prior
@@ -17973,10 +17975,12 @@ contributors don't duplicate research.
   back, with a different look so it doesn't pretend to be
   something *you* need to do.
   Kind: design + fix. Source: user-2026-05-10.
-- 📋 [ANTS-1226] **Automatic Claude Code model switcher driven by
-  observed work complexity.** User request 2026-05-11; re-prioritised
+- ✅ [ANTS-1226] **Automatic Claude Code model switcher driven by
+  observed work complexity — Shape A: recommender chip shipped.**
+  *Shipped 2026-05-21 in 0.7.92 (Shape A: passive recommender chip).*
+  User request 2026-05-11; re-prioritised
   2026-05-21 — Max(5) economics make every misrouted turn costly.
-  **Start with shape (a): the recommender chip.** Ants Terminal already parses every Claude Code
+  **Shape (a) shipped:** the recommender chip. Ants Terminal already parses every Claude Code
   JSONL transcript for the Tasks chip / bg-tasks chip / per-tab
   status; that data stream is enough to score session complexity
   in real time (tool diversity, plan length, file-write fan-out,

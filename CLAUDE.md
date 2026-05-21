@@ -122,12 +122,23 @@ Listed only where behavior isn't obvious from the name.
   routes through `m_lastHookSessionId` rather than the gate.
 - `claudestatuswidgets` — `ClaudeStatusBarController` owns the
   bottom-bar Claude chips (review-changes, audit, bg-tasks, tasks,
-  context-bar, error, repo). `refreshTasksButton` /
-  `refreshBgTasksButton` fire on the 2 s status timer, call
-  `activeSessionPath(focusedCwd)`, push the path to `m_tasks` /
-  `m_bgTasks` only on change, and call `poll()` / `sweepLiveness()`
-  for atomic-rewrite watch-loss recovery. `resetForTabSwitch`
-  clears trackers synchronously on tab change.
+  context-bar, error, repo, model-recommender). `refreshTasksButton` /
+  `refreshBgTasksButton` / `refreshModelChip` fire on the 2 s status
+  timer, call `activeSessionPath(focusedCwd)`, push the path to
+  `m_tasks` / `m_bgTasks` only on change, and call `poll()` /
+  `sweepLiveness()` for atomic-rewrite watch-loss recovery.
+  `refreshModelChip` calls `ModelRecommender::score(transcriptPath)`
+  and shows/hides `m_modelBtn` based on whether the recommended tier
+  differs from `message.model` in the most-recent transcript turn.
+  `resetForTabSwitch` clears trackers synchronously on tab change.
+- `modelrecommender` (Qt6::Core only) — stateless free-function scorer
+  `ModelRecommender::score(transcriptPath)` that tail-reads ≤ 512 KB
+  from the active session's JSONL, scores the last 20 assistant turns
+  for file-write count, tool diversity, plan keywords, and message
+  length, and returns a `Tier` (Haiku/Sonnet/Opus) with a reason
+  string and the current model ID from `message.model`. Used by
+  `claudestatuswidgets` for the ANTS-1226 model recommender chip.
+  No side effects; safe to call on the UI thread. ANTS-1226.
 - `roadmapdialog` — ROADMAP.md viewer. Two renderers coexist:
   `renderHtml` (the v1 markdown→HTML helper, kept for tests + the
   `roadmap-query` IPC verb consumers) and `renderCardsHtml` (the v2
@@ -331,9 +342,11 @@ as a type and flags every signal emission.
   enforced in Phase 3a. See `docs/specs/ANTS-1404.md`.
 
 - **MCP read tools opt into the ETag "304 Not Modified" pattern
-  (ANTS-1499).** Eight tools (`project_layout`, `roadmap_query`,
+  (ANTS-1499).** Thirteen tools (`project_layout`, `roadmap_query`,
   `file_outline`, `last_audit_summary`, `get_environment`,
-  `tab_list`, `subsystem`, `git_state`) emit an `etag` field
+  `tab_list`, `subsystem`, `git_state`, `roadmap_branch_drift`,
+  `current_state`, `build_status`, `test_results`, `session_brief`)
+  emit an `etag` field
   (sha256-hex16 of the canonical response body) and accept an
   `etag_match` input. When the caller passes a matching etag,
   `ClaudeIntegration::applyEtagPattern` short-circuits to
@@ -373,13 +386,16 @@ as a type and flags every signal emission.
   💭). `(SEVERITY, SIZE)` meta re-emits in the headline so it
   survives in `headline_oneline`.
 
-- **session_memory + project_layout gate routing is asymmetric
-  (ANTS-1336 + ANTS-1435).** Write ops on tenant-hashed storage
-  (`session_memory set/delete`) go through RcGate — focused-tab
-  match required, prevents the confused-deputy attack. Read ops
-  (`session_memory get/list`, entire `project_layout`) anchor to
-  `caller_cwd` directly — canonicalise + isDir check, no focused-
-  tab match. The storage at
+- **`session_memory`, `workflow_state` + `project_layout` gate routing
+  is asymmetric (ANTS-1336 + ANTS-1435).** Write ops on tenant-hashed
+  storage (`session_memory set/delete`, `workflow_state set/clear`) go
+  through RcGate — focused-tab match required, prevents the
+  confused-deputy attack. Read ops (`session_memory get/list`,
+  `workflow_state get`, entire `project_layout`) anchor to `caller_cwd`
+  directly — canonicalise + isDir check, no focused-tab match.
+  `workflow_state` keys are stored as `wf.<skill>` in the same backing
+  file as `session_memory`; 72 h lazy-TTL purge on every `set`.
+  ANTS-1723. The storage at
   `~/.cache/ants-terminal/mcp-state/<sha256(cwd)>.json` is per-cwd-
   hashed and reads of the caller's own bucket are self-scoped.
   `session_memory`'s legacy `cwd` arg is ignored (still in the
