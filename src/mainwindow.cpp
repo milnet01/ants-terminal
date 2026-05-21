@@ -4726,6 +4726,15 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_remoteControl->cmdSessionMemory(args).toJson(QJsonDocument::Compact));
         });
 
+    // ANTS-1723 — workflow_state: superpowers skill step/phase store.
+    m_claudeIntegration->registerToolProvider("workflow_state",
+        ClaudeIntegration::CallerCwdContract::Required,
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdWorkflowState(args).toJson(QJsonDocument::Compact));
+        });
+
     // ANTS-1724 — session_brief: compact session-state envelope.
     m_claudeIntegration->registerToolProvider("session_brief",
         ClaudeIntegration::CallerCwdContract::Required,

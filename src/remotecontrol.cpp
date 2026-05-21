@@ -8911,6 +8911,177 @@ QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
     return QJsonDocument(env);
 }
 
+// ANTS-1723 — workflow_state: per-project, per-skill step/phase store.
+// Uses session_memory's backing store with "wf.<skill>" key namespace.
+// Write ops (set/clear) use RcGate (ANTS-1435). Read ops anchor to
+// caller_cwd directly. 72 h lazy-TTL purge on every set. 4 KiB cap.
+QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
+{
+    if (!m_main) {
+        return QJsonDocument(csErr(QStringLiteral("no_window"),
+            QStringLiteral("workflow_state: no MainWindow")));
+    }
+
+    // --- parse op ---
+    const QString opRaw = req.value(QStringLiteral("op")).toString();
+    enum class Op { Get, Set, Clear };
+    Op op;
+    if      (opRaw == QStringLiteral("get"))   op = Op::Get;
+    else if (opRaw == QStringLiteral("set"))   op = Op::Set;
+    else if (opRaw == QStringLiteral("clear")) op = Op::Clear;
+    else {
+        return QJsonDocument(csErr(QStringLiteral("bad_args"),
+            QStringLiteral("workflow_state: op must be get/set/clear")));
+    }
+
+    // --- validate skill name: ^[A-Za-z0-9_-]{1,32}$ ---
+    const QString skill = req.value(QStringLiteral("skill")).toString();
+    static const QRegularExpression kSkillRe(
+        QStringLiteral("^[A-Za-z0-9_-]{1,32}$"));
+    if (!kSkillRe.match(skill).hasMatch()) {
+        return QJsonDocument(csErr(QStringLiteral("bad_args"),
+            QStringLiteral("workflow_state: invalid skill name — "
+                           "must match ^[A-Za-z0-9_-]{1,32}$")));
+    }
+
+    // --- key: "wf.<skill>" — dot separator, valid in key charset ---
+    const QString key = QStringLiteral("wf.") + skill;
+
+    // --- TTL constant: 72 h in milliseconds ---
+    constexpr qint64 kTtlMs = 72LL * 3600LL * 1000LL;
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
+    // ----------------------------------------------------------------
+    // GET — read op: anchor to caller_cwd directly (ANTS-1435).
+    // ----------------------------------------------------------------
+    if (op == Op::Get) {
+        const QString rawCaller =
+            req.value(QStringLiteral("caller_cwd")).toString();
+        if (rawCaller.isEmpty()) {
+            return QJsonDocument(csErr(QStringLiteral("cwd_missing"),
+                QStringLiteral("workflow_state: caller_cwd required")));
+        }
+        const QFileInfo fi(rawCaller);
+        const QString canon = fi.canonicalFilePath();
+        if (canon.isEmpty() || !QFileInfo(canon).isDir()) {
+            return QJsonDocument(csErr(QStringLiteral("cwd_bad"),
+                QStringLiteral("workflow_state: caller_cwd unresolvable")));
+        }
+        SessionMemoryEngine::OpResult r =
+            SessionMemoryEngine::execute(canon,
+                SessionMemoryEngine::Op::Get, key, QJsonValue());
+        if (!r.ok) return QJsonDocument(csErr(r.code, r.error));
+        if (!r.found) {
+            QJsonObject out;
+            out[QStringLiteral("ok")]    = true;
+            out[QStringLiteral("found")] = false;
+            return QJsonDocument(out);
+        }
+        // Check 72 h TTL.
+        const qint64 updatedAt =
+            r.value.toObject()
+                .value(QStringLiteral("updated_at_ms")).toDouble(0);
+        if (updatedAt > 0 && (nowMs - updatedAt) > kTtlMs) {
+            QJsonObject out;
+            out[QStringLiteral("ok")]      = true;
+            out[QStringLiteral("found")]   = false;
+            out[QStringLiteral("expired")] = true;
+            return QJsonDocument(out);
+        }
+        QJsonObject out;
+        out[QStringLiteral("ok")]    = true;
+        out[QStringLiteral("found")] = true;
+        out[QStringLiteral("state")] = r.value;
+        return QJsonDocument(out);
+    }
+
+    // ----------------------------------------------------------------
+    // CLEAR / SET — write ops: enforce RcGate (ANTS-1435).
+    // ----------------------------------------------------------------
+    const auto gate = RcGate::checkCallerCwd(
+        resolveRootCanonical(m_main), req,
+        QStringLiteral("workflow_state"));
+    if (!gate.ok) return QJsonDocument(RcGate::gateErrorEnvelope(gate));
+    const QString cwd = gate.focused;
+
+    // --- CLEAR ---
+    if (op == Op::Clear) {
+        // Issue Delete directly; r.found indicates whether the key existed.
+        SessionMemoryEngine::OpResult r =
+            SessionMemoryEngine::execute(cwd,
+                SessionMemoryEngine::Op::Delete, key, QJsonValue());
+        if (!r.ok) return QJsonDocument(csErr(r.code, r.error));
+        QJsonObject out;
+        out[QStringLiteral("ok")]      = true;
+        out[QStringLiteral("deleted")] = r.found;
+        return QJsonDocument(out);
+    }
+
+    // --- SET ---
+    // Validate required fields: step (int) and phase (non-empty string).
+    const QJsonValue stepVal = req.value(QStringLiteral("step"));
+    const QString    phase   = req.value(QStringLiteral("phase")).toString();
+    if (!stepVal.isDouble() || phase.isEmpty()) {
+        return QJsonDocument(csErr(QStringLiteral("bad_args"),
+            QStringLiteral("workflow_state: set requires step (int) "
+                           "and phase (non-empty string)")));
+    }
+    const QJsonArray notes = req.value(QStringLiteral("notes")).toArray();
+
+    // Build the stored value; always overwrite updated_at_ms with server clock.
+    QJsonObject state;
+    state[QStringLiteral("step")]          = static_cast<int>(stepVal.toDouble());
+    state[QStringLiteral("phase")]         = phase;
+    state[QStringLiteral("notes")]         = notes;
+    state[QStringLiteral("updated_at_ms")] = static_cast<double>(nowMs);
+
+    // Payload cap: 4 KiB serialised.
+    const QByteArray payload =
+        QJsonDocument(state).toJson(QJsonDocument::Compact);
+    if (payload.size() > 4096) {
+        return QJsonDocument(csErr(QStringLiteral("payload_too_large"),
+            QStringLiteral("workflow_state: state payload exceeds 4 KiB")));
+    }
+
+    // Lazy TTL purge: delete all wf. keys older than 72 h before writing.
+    {
+        SessionMemoryEngine::OpResult listR =
+            SessionMemoryEngine::execute(cwd,
+                SessionMemoryEngine::Op::List,
+                QString(), QJsonValue());
+        if (listR.ok) {
+            for (const QJsonValue &kv : listR.keys) {
+                // OpResult::keys is [{key:str, bytes:N}, ...] for List.
+                const QString k =
+                    kv.toObject().value(QStringLiteral("key")).toString();
+                if (!k.startsWith(QStringLiteral("wf."))) continue;
+                SessionMemoryEngine::OpResult getR =
+                    SessionMemoryEngine::execute(cwd,
+                        SessionMemoryEngine::Op::Get, k, QJsonValue());
+                if (!getR.ok || !getR.found) continue;
+                const qint64 ts =
+                    getR.value.toObject()
+                        .value(QStringLiteral("updated_at_ms"))
+                        .toDouble(0);
+                if (ts > 0 && (nowMs - ts) > kTtlMs) {
+                    SessionMemoryEngine::execute(cwd,
+                        SessionMemoryEngine::Op::Delete, k, QJsonValue());
+                }
+            }
+        }
+    }
+
+    // Write the new state.
+    SessionMemoryEngine::OpResult wr =
+        SessionMemoryEngine::execute(cwd,
+            SessionMemoryEngine::Op::Set, key, QJsonValue(state));
+    if (!wr.ok) return QJsonDocument(csErr(wr.code, wr.error));
+
+    QJsonObject out;
+    out[QStringLiteral("ok")] = true;
+    return QJsonDocument(out);
+}
+
 // ---------------------------------------------------------------------------
 // ANTS-1430 — project_layout MCP tool
 // ---------------------------------------------------------------------------

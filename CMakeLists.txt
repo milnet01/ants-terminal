@@ -961,6 +961,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_session_memory/test_mcp_session_memory.cpp
                 # ANTS-1724 — session_brief MCP tool.
                 tests/features/mcp_session_brief/test_mcp_session_brief.cpp
+                # ANTS-1723 — workflow_state MCP tool.
+                tests/features/mcp_workflow_state/test_mcp_workflow_state.cpp
                 tests/features/mcp_output_sanitisation/test_mcp_output_sanitisation.cpp
                 tests/features/mcp_path_anchor/test_mcp_path_anchor.cpp
                 # ANTS-1357 + ANTS-1346 MCP perf bundle.

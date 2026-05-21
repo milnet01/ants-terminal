@@ -338,6 +338,8 @@ public:
     QJsonDocument cmdCurrentState(const QJsonObject &req);
     // ANTS-1724: compact session-state envelope for fresh-session orientation.
     QJsonDocument cmdSessionBrief(const QJsonObject &req);
+    // ANTS-1723: per-project, per-skill step/phase store for superpowers skills.
+    QJsonDocument cmdWorkflowState(const QJsonObject &req);
 
     // ANTS-1306: task_priors — given a free-text task description,
     // return ranked context buckets (matching specs, ROADMAP cards,

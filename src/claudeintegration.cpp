@@ -2610,6 +2610,77 @@ void ClaudeIntegration::onMcpConnection() {
                     tools.append(t);
                 }
 
+                // ANTS-1723 — workflow_state: superpowers skill step/phase store.
+                {
+                    QJsonObject t;
+                    t["name"] = "workflow_state";
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to persist skill step/phase across /clear. "
+                        "Call op:\"get\" at session start to resume.");
+                    t["description"] = QStringLiteral(
+                        "Per-project, per-skill step/phase store for "
+                        "superpowers skills. Survives /clear — call "
+                        "op:\"get\" at session start to resume from the "
+                        "last saved step. ops: get (returns {found,state?}), "
+                        "set (stores {step,phase,notes}), clear (deletes). "
+                        "Entries expire after 72 h of inactivity. "
+                        "skill: ^[A-Za-z0-9_-]{1,32}$ "
+                        "(e.g. \"tdd\", \"systematic-debugging\"). "
+                        "Keys stored as wf.<skill> in session_memory "
+                        "backing store. Write ops (set/clear) require "
+                        "focused-tab cwd match (ANTS-1435). "
+                        "ANTS-1723.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    QJsonObject opProp;
+                    opProp["type"] = "string";
+                    QJsonArray opEnum;
+                    opEnum.append(QStringLiteral("get"));
+                    opEnum.append(QStringLiteral("set"));
+                    opEnum.append(QStringLiteral("clear"));
+                    opProp["enum"] = opEnum;
+                    opProp["description"] = QStringLiteral("get/set/clear.");
+                    QJsonObject cwdProp;
+                    cwdProp["type"] = "string";
+                    cwdProp["description"] = QStringLiteral("Your $PWD (required).");
+                    QJsonObject skillProp;
+                    skillProp["type"] = "string";
+                    skillProp["description"] = QStringLiteral(
+                        "Skill identifier, ^[A-Za-z0-9_-]{1,32}$. "
+                        "E.g. \"tdd\", \"systematic-debugging\".");
+                    QJsonObject stepProp;
+                    stepProp["type"] = "integer";
+                    stepProp["description"] =
+                        QStringLiteral("Current step number (required for set).");
+                    QJsonObject phaseProp;
+                    phaseProp["type"] = "string";
+                    phaseProp["description"] =
+                        QStringLiteral("Current phase label (required for set).");
+                    QJsonObject notesProp;
+                    notesProp["type"] = "array";
+                    QJsonObject notesItems;
+                    notesItems["type"] = "string";
+                    notesProp["items"] = notesItems;
+                    notesProp["description"] =
+                        QStringLiteral("Optional carry-forward notes.");
+                    QJsonObject props;
+                    props["op"]         = opProp;
+                    props["caller_cwd"] = cwdProp;
+                    props["skill"]      = skillProp;
+                    props["step"]       = stepProp;
+                    props["phase"]      = phaseProp;
+                    props["notes"]      = notesProp;
+                    schema["properties"] = props;
+                    QJsonArray reqArr;
+                    reqArr.append(QStringLiteral("op"));
+                    reqArr.append(QStringLiteral("caller_cwd"));
+                    reqArr.append(QStringLiteral("skill"));
+                    schema["required"] = reqArr;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-1309 — spec_query: parse a single spec file.
                 // Returns {title, status, kind, invariants[]} without
                 // reading the full 200-2000 line markdown body.
@@ -5531,6 +5602,7 @@ void ClaudeIntegration::onMcpConnection() {
                         {QStringLiteral("project_layout"),    {600,  2000}},
                         {QStringLiteral("session_memory"),    {200,  1000}},
                         {QStringLiteral("session_brief"),     {300,  1200}},
+                        {QStringLiteral("workflow_state"),    {200,  1000}},
                         {QStringLiteral("workspace_search"),  {1500, 10000}},
                         {QStringLiteral("file_outline"),      {800,  4000}},
                         {QStringLiteral("git_state"),         {700,  4000}},
@@ -5635,7 +5707,8 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-1724 — session_brief is the compact variant.
                         name == QLatin1String("session_brief"))
                         return QStringLiteral("workspace");
-                    if (name == QLatin1String("session_memory"))
+                    if (name == QLatin1String("session_memory") ||
+                            name == QLatin1String("workflow_state"))
                         return QStringLiteral("mcp-state");
                     if (name == QLatin1String("plan_template"))
                         return QStringLiteral("plan");
@@ -6333,6 +6406,7 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // routing: reads anchor to caller_cwd, writes match focused tab.
     if (toolName == QStringLiteral("session_memory"))     return C::Required;
     if (toolName == QStringLiteral("session_brief"))      return C::Required;
+    if (toolName == QStringLiteral("workflow_state"))     return C::Required;
     // TabSpecific — classified but not enforced in Phase 3a. The
     // ANTS-1392 routing semantics (caller_cwd as a tab-routing key)
     // need their own spec pass before refusal makes sense.
