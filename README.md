@@ -247,7 +247,7 @@ ants.get_cwd()       -- Current directory
 ants.set_status("Custom status text")
 ```
 
-**Events:** `output`, `line`, `prompt`, `keypress`, `title_changed`, `tab_created`, `tab_closed` (plus 9 more since 0.6.9 — see PLUGINS.md § Events for the full list)
+**Events:** 16 total — see PLUGINS.md § Events for the full list. Note: `output`, `line`, `prompt`, `keypress`, `title_changed`, `tab_created`, `tab_closed` are registered but not yet fired; the 9 functional events (keybinding, command_finished, theme_changed, etc.) added since 0.6.9 are the ones that actually trigger handlers.
 
 **Security:** Plugins run in a sandbox with `os`, `io`, `debug`, `require`, `setmetatable`, `collectgarbage` removed. 100,000-instruction timeout prevents infinite loops (resistant to `pcall` bypass attacks; pure-C call interiors remain uninterruptible). Memory capped at 10MB to prevent `string.rep` OOM attacks.
 

@@ -139,8 +139,8 @@ two IDs.
    - The roadmap-format spec already documents `Kind: audit-fix`
      / `Kind: review-fix` / `Kind: chore` and `Source: <slug>` —
      RoadmapFoldIn just templates against them.
-   - `.roadmap-counter` exists at the project root (value 1256 as
-     of 2026-05-13 when this ADR was written). It is incremented today by hand or by the
+   - `.roadmap-counter` exists at the project root (value was 1256
+     at the time this ADR was written — 2026-05-13; the counter is higher now). It is incremented today by hand or by the
      `/start-app` skill via `echo $(($(cat .roadmap-counter)+1))`,
      with no in-process locking. RoadmapFoldIn introduces the
      first programmatic writer; it adopts the

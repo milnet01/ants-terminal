@@ -127,7 +127,7 @@ dialog, and survive an app restart.
 - **Position is NOT persisted** — see D4. Persist size only; the
   dialog is re-centered on every open.
 
-**Known non-conformers (as of 0.7.92):** `roadmapDialogGeometry`
+**Known non-conformers:** `roadmapDialogGeometry`
 (stores a base64 `saveGeometry()` blob — position included — instead
 of a bare `QSize`). All other dialogs either persist nothing or use the
 `saveGeometry` blob form. No dialog yet uses the spec-conformant

@@ -90,3 +90,13 @@ Future revisions increment the version number. Backwards-
 incompatible changes (renaming a section, removing a Kind value,
 adding a required field) require a major version bump. Additive
 changes stay on the current version.
+
+**Exception — sub-specs.** `roadmap-format.md` uses
+`ants-roadmap-format-spec: 1.1` rather than the standard
+`ants-<name>-standards: N` pattern. The `spec` suffix signals
+it tracks the *data-file format* (what conforming `ROADMAP.md`
+files must look like), not an authoring guideline for
+practitioners. The `1.1` subversion marks one additive revision
+(the `Layman:` field). This is the only sub-spec exception;
+all other files in this directory follow the `-standards: N`
+form.

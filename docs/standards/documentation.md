@@ -113,7 +113,7 @@ The high-level rules:
 - `ROADMAP.md` uses status emojis (✅🚧📋💭), theme emojis, and
   stable per-bullet IDs (`<project>-NNNN` from
   `.roadmap-counter`) plus phase IDs (`P##` — the canonical
-  prefix; see `roadmap-format.md` § 3.2 for the full list).
+  prefix; see `roadmap-format.md` § 3.2 for the heading format).
 - `CHANGELOG.md` follows
   [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with
   an `[Unreleased]` block at the top.
