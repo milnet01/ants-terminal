@@ -142,7 +142,7 @@ two IDs.
      with no in-process locking. RoadmapFoldIn introduces the
      first programmatic writer; it adopts the
      `::flock(fd, LOCK_EX | LOCK_NB)` pattern already used by
-     `ConfigWriteLock` in `configbackup.h:82-117` (advisory lock
+     `ConfigWriteLock` in `configbackup.h:82-120` (advisory lock
      on the counter file itself). This is new code reusing an
      existing pattern, not re-binding to existing infrastructure.
 

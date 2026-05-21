@@ -157,7 +157,8 @@ future reviewers.
 
 **Good rationale:** `"the apparent race is impossible because
 mainwindow.cpp:842 holds the m_promptMutex across both calls — the
-reviewer didn't have that file in their brief"`.
+reviewer didn't have that file in their brief"` *(illustrative example —
+use a real path:line in actual entries)*.
 
 **Never include secrets.** The `rationale` field flows verbatim
 into the brief that the reviewer LLM consumes — which means it
@@ -193,7 +194,8 @@ build a brief, they MUST:
 4. **Validate first.** Drop entries whose `claim` or `rationale`
    is empty after JSON parse (before truncation — see § Schema).
    Drop entries whose `timestamp` fails
-   `QDate::fromString(Qt::ISODate).isValid()`.
+   `QDate::fromString(timestamp, QStringLiteral("yyyy-MM-dd")).isValid()`
+   (matches the Schema's `"yyyy-MM-dd"` format and the code in `src/falseposledger.cpp`).
 5. **Cap** to the most recent **50 entries** (ledger order is
    chronological because the file is append-only; the tail is the
    newest). Older entries are dropped from the brief — they are

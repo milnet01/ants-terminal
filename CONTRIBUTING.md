@@ -115,12 +115,19 @@ they're scoped to the project, not to a code-pattern regex.
 
 ## Versioning + release
 
-SemVer. Every version bump touches **three files**:
+SemVer. Every version bump uses the `/bump` skill — the `.claude/bump.json`
+recipe edits **all** version-bearing files automatically (CMakeLists.txt,
+CHANGELOG.md, README.md, packaging manifests, and more). Never hand-edit
+version strings individually.
+
+Key files the bump touches:
 
 1. `CMakeLists.txt` — `project(... VERSION X.Y.Z)` (single source of truth).
 2. `CHANGELOG.md` — new dated `## [X.Y.Z] — YYYY-MM-DD` section above the
    previous release. Categories: Added / Changed / Fixed / Security / Removed.
 3. `README.md` — the "Current version: **X.Y.Z**" line.
+4. Packaging manifests (`packaging/opensuse/*.spec`, `packaging/archlinux/PKGBUILD`,
+   etc.) — covered by `/bump` automatically.
 
 When you ship a ROADMAP item, move it from `ROADMAP.md` (status `📋`) into
 the matching `CHANGELOG.md` section. The `ROADMAP.md` entry converts to `✅`

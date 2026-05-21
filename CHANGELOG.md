@@ -5877,7 +5877,7 @@ folded into ROADMAP as ANTS-1260…ANTS-1317. All 422 tests passing.
 - **tests — `remote_control_launch` test window 3000 → 3500 chars**
   to admit the new `cwd` validation block in `cmdLaunch`.
 
-[0.7.92]: https://github.com/milnet01/ants-terminal/compare/v0.7.91...HEAD
+[0.7.92]: https://github.com/milnet01/ants-terminal/compare/v0.7.91...v0.7.92
 
 ## [0.7.90] — 2026-05-13
 

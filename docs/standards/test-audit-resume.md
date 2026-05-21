@@ -76,7 +76,7 @@ human-readable `scope_id` you can recall in a follow-up session.
 
 ### Lifetime budget
 
-The in-process cache holds ~64 partitions LRU. A long-lived Ants
+The in-process cache holds 16 partitions LRU (`kPartitionCacheCap` in `src/testauditengine.cpp`). A long-lived Ants
 session running 5 audits a day evicts old tokens quickly. Treat
 the saved entry as a **convenience pointer, not a guarantee** —
 the recipe above always falls back to re-running partition.

@@ -39,6 +39,18 @@ Sequential, zero-padded to 4 digits:
 Append-only — once an ADR has a number, it keeps it forever,
 even if superseded.
 
+## Co-decider convention
+
+ADRs in this project list both "Project lead" and "Claude" as
+**Deciders** when the architectural choice emerged from a
+collaborative design session (the project lead steered the
+requirements; Claude Code provided option analysis, trade-off
+enumeration, and implementation feasibility checks). Listing Claude
+reflects that the decision is not purely the project lead's alone —
+the LLM's analysis shaped the outcome. It does **not** imply Claude
+can make decisions unilaterally; the project lead always has final
+sign-off.
+
 ## Lifecycle
 
 | Status | Meaning |

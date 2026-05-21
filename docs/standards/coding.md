@@ -57,10 +57,10 @@ reason. When calling library APIs, use the current idiomatic
 syntax for that version — not the one current three years ago.
 
 For per-language idiom examples (Qt 6, C++20+, Python 3.10+,
-React 18+), see `~/.claude/CLAUDE.md § 5` — that's the
-canonical source. When unsure what's current, check the
-library docs first. Stale idioms compile but they age the
-codebase.
+React 18+), see the "Use the latest external-library version"
+section in the global CLAUDE.md (`~/.claude/CLAUDE.md § 5`).
+When unsure what's current, check the library docs first.
+Stale idioms compile but they age the codebase.
 
 
 ## 2. Error handling

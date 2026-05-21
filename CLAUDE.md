@@ -138,8 +138,8 @@ Listed only where behavior isn't obvious from the name.
   default 2). Emits `jobFinished` per job + `allFinished`; retains no result
   text after forwarding (RAM bound). `cancelAll` aborts in-flight + drains.
 - `reviewdialogbase` (`ants_dialogs_lib`) — shared QDialog scaffold for the
-  v2 review-dialog family (ANTS-1721 ColdEyes / ANTS-1722 TestAudit, plus the
-  deferred audit-v2 / indie-review dialogs). Owns partition tabs, the
+  v2 review-dialog family (ANTS-1721 ColdEyes / ANTS-1722 TestAudit / ANTS-1258
+  IndieReview, plus the deferred audit-v2 dialog). Owns partition tabs, the
   Dispatch button (→ `LlmDispatcher` at `ai_review_concurrency`), a results
   host, and the Fold-into-ROADMAP button. Hooks: `derivePartition` /
   `composeBrief` / `onAllReportsCollected` / `performFoldIn` (subclass owns
@@ -174,7 +174,7 @@ Listed only where behavior isn't obvious from the name.
   context + inlined test bodies (engine returns ABSOLUTE chunk paths —
   relativised before `inlineBodies`), sum-capped at 200 KiB (pre-pass
   context dropped first). `briefFor` retries once on the engine's
-  `stale_partition` code (spec ANTS-1722 mis-names it `stale_token`) by
+  `stale_partition` code (see spec ANTS-1722 § "Staleness handshake") by
   re-partitioning. `onAllReportsCollected` writes verbatim reports under
   `.audit_cache/test_audit_<token>/`, calls `synthesize` (summary mode),
   and dispatches the synthesis prompt via the base `dispatchOne` (no
@@ -342,7 +342,7 @@ the working-set ceiling, not the safety net.
 | `default` | Release + Ninja in `build/`. Honours the in-tree JOB_POOLS cap. |
 | `workstation` | Release in `build-workstation/` hard-capped at `-j3` for constrained hardware *or* when the build is competing with a heavy desktop session. Pair with `cmake --build --preset=workstation`. |
 | `debug` | Debug + ASan/UBSan in `build-asan/` with sanitizer env vars wired into `ctest --preset=debug`. |
-| `fast` | Release in `build-fast/` bundling ccache + Unity + per-lib PCH (ANTS-1550). Lowest wall-clock for incremental hot-loop work on a warm cache. |
+| `fast` | Release in `build-fast/` bundling ccache + per-lib PCH (ANTS-1550). Lowest wall-clock for incremental hot-loop work on a warm cache. Unity intentionally disabled (ANTS-1553). |
 
 ```bash
 cmake --preset=default    && cmake --build --preset=default    && ctest --preset=default
@@ -406,13 +406,11 @@ as a type and flags every signal emission.
 - QTextLayout for ligature shaping.
 - **MCP `tools/call` responses are wrapped (ANTS-1294).** Every
   reply through the tool registry (`registerToolProvider` calls
-  span `src/mainwindow.cpp:3769–4451`) is enclosed in
+  in `src/mainwindow.cpp`) is enclosed in
   `<ants_mcp_data tool="…">…</ants_mcp_data>` by
   `ClaudeIntegration::wrapMcpData`
-  (`src/claudeintegration.cpp:4199`), invoked from the
-  `method == "tools/call"` dispatch branch at
-  `src/claudeintegration.cpp:3895` (wrap call at
-  `:4123`). The wrap signals "this is data, not instructions" to
+  (in `src/claudeintegration.cpp`), invoked from the
+  `method == "tools/call"` dispatch branch. The wrap signals "this is data, not instructions" to
   the consuming assistant. Control-plane tools
   (`get_session_info`, `token_usage`) bypass the wrap — their
   JSON envelope is structural metadata, not content. If you add a

@@ -249,7 +249,7 @@ ants.set_status("Custom status text")
 
 **Events:** `output`, `line`, `prompt`, `keypress`, `title_changed`, `tab_created`, `tab_closed`
 
-**Security:** Plugins run in a sandbox with `os`, `io`, `debug`, `require`, `setmetatable`, `collectgarbage` removed. 10M instruction timeout prevents infinite loops (immune to `pcall` bypass). Memory capped at 10MB to prevent `string.rep` OOM attacks.
+**Security:** Plugins run in a sandbox with `os`, `io`, `debug`, `require`, `setmetatable`, `collectgarbage` removed. 100,000-instruction timeout prevents infinite loops (immune to `pcall` bypass). Memory capped at 10MB to prevent `string.rep` OOM attacks.
 
 ### Background Opacity & Blur
 
@@ -476,7 +476,7 @@ The fastest path. Each tagged release ships an x86_64 AppImage on the
 [Releases page](https://github.com/milnet01/ants-terminal/releases/latest):
 
 ```bash
-# Download the latest AppImage (the URL pins 0.7.91 — the current release at write time;
+# Download the latest AppImage (the URL pins 0.7.92 — update this comment on each release;
 # `/latest/download/` always redirects to the newest tagged AppImage):
 curl -L -o Ants_Terminal-x86_64.AppImage \
   https://github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-0.7.92-x86_64.AppImage
@@ -1011,7 +1011,7 @@ capability manifest, 0.7 triggers, 0.8 marketplace) live in
 - **Config file permissions**: created with `0600` (owner read/write only)
 - **No network access** by default -- AI assistant requires explicit configuration
 - **OSC 52 clipboard**: write-only -- read disabled
-- **Lua sandbox**: dangerous functions removed, 10M instruction timeout (pcall-proof), 10MB memory limit
+- **Lua sandbox**: dangerous functions removed, 100,000-instruction timeout (pcall-proof), 10MB memory limit
 - **SSH**: no password storage, interactive authentication only
 - **AI**: API keys stored in 0600-permission config, 30-second network timeout
 - **Session files**: bounds-validated on load, 100MB compressed size limit
@@ -1036,7 +1036,7 @@ ants-terminal/
 ├── ants-terminal.desktop.in    # Desktop entry template (@INSTALL_DIR@)
 ├── assets/                     # App icons (16-256px PNGs)
 ├── packaging/linux/            # Spec-compliant .desktop + AppStream metainfo
-├── docs/standards/             # Shareable v1 standards bundle (coding · documentation · testing · commits + roadmap-format sub-spec) plus project-local extras (status-bar, audit-false-positives, mcp-error-codes)
+├── docs/standards/             # Shareable v1 standards bundle (coding · documentation · testing · commits + roadmap-format sub-spec) plus project-local extras (see docs/standards/README.md for the full list)
 ├── docs/decisions/             # Architecture Decision Records (Michael Nygard format)
 ├── docs/specs/                 # Per-feature spec drafts (spec-first authoring)
 ├── docs/journal/               # Per-phase outcomes / session notes

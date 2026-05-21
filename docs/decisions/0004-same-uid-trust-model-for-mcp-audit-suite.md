@@ -4,15 +4,14 @@
 - **Date:** 2026-05-17
 - **Deciders:** Project lead, Claude
 - **Related:** ROADMAP.md ANTS-1351, ANTS-1397, ANTS-1352, ANTS-1416,
-  ANTS-1404, ANTS-1372; CHANGELOG.md ANTS-1448 entry (initially
-  filed under `[Unreleased]`; will sit under the release section
-  for the version that ships ADR-0004).
+  ANTS-1404, ANTS-1372; CHANGELOG.md ANTS-1448 entry (filed under
+  `[0.7.92] — 2026-05-20`).
 
 ## Context
 
 ANTS-1351 (`audit_run` MCP verb), ANTS-1397 (`test_audit_*` MCP
 trio), and ANTS-1352 (`indie_review_dispatch` orchestrator,
-in flight) each carry their own "out of scope: same-UID trust
+shipped in 0.7.91) each carry their own "out of scope: same-UID trust
 model" caveats. Cold-eyes loop 3 on the ANTS-1397 spec
 (2026-05-17) called out the recurrence — every spec re-derives
 the trust boundary from scratch, so the boundary is restated four

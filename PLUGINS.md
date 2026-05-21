@@ -235,9 +235,9 @@ ants.set_status("indexing…")
 
 ### `ants.log(message)`
 
-Writes to the internal plugin log (visible in `journalctl` or the
-terminal's stdout when launched from a shell). Use for debugging; not a
-substitute for `ants.set_status()` for user-facing messages.
+Displays as a 3-second status-bar message (routed via
+`PluginManager::logMessage` → `MainWindow::showStatusMessage`). Use for
+debugging; not a substitute for `ants.set_status()` for user-facing messages.
 
 ```lua
 ants.log("plugin foo: loaded config from " .. cfg_path)
@@ -263,7 +263,9 @@ end)
 ### `ants._version` / `ants._plugin_name`
 
 Read-only strings. `ants._version` is the terminal version (e.g. `"0.6.0"`);
-`ants._plugin_name` is the plugin's declared manifest name. Use them for
+`ants._plugin_name` is the plugin's on-disk directory name (the ID used for
+permission grants and settings keys; distinct from the human-readable
+manifest `"name"` field). Use these for
 feature detection without string-hardcoding:
 
 ```lua
