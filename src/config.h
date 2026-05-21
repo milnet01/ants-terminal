@@ -200,6 +200,8 @@ public:
     void setAiModel(const QString &model);
     int aiContextLines() const;
     void setAiContextLines(int lines);
+    int aiReviewConcurrency() const;        // ANTS-1727; default 2, clamp [1,4]
+    void setAiReviewConcurrency(int n);
     bool aiEnabled() const;
     void setAiEnabled(bool enabled);
 

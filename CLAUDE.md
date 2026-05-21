@@ -115,6 +115,39 @@ Listed only where behavior isn't obvious from the name.
   `mcp::isFieldProjectionTool` is the 7-tool allowlist (a subset of
   `isEtagSupportedTool`). Called from the `tools/call` dispatch after
   `applyEtagPattern`, before `wrapMcpData`.
+- `briefdispatch` (Qt6::Core only; `ants_core_lib`) — shared dispatch-brief
+  composer for the review-dialog family (ANTS-1727). `BriefDispatch::fenceBody`
+  is the 4-backtick fence-hardening kernel extracted from
+  `IndieReviewEngine::assembleBriefForDispatch` (which now calls it; the
+  standards-doc loop passes a `"standard"` label so its brief stays
+  byte-identical). `inlineBodies` fences a path list; `inlineRelevantSections`
+  slices large cross-reference docs (e.g. ROADMAP.md) to only the `##`/`###`
+  sections matching a keyword, with an H1+intro leading-block fallback.
+- `llmclient` (Qt6::Core + Qt6::Network, widget-free; `ants_core_lib`) —
+  reusable OpenAI-compatible streaming chat client extracted from `AiDialog`
+  (ANTS-1727). Owns the request build, SSE drain (256-line/tick + re-arm),
+  10 MiB caps, scheme allowlist, transfer timeout, and OWASP LLM06 scrub.
+  Static test seams `isEndpointAllowed`/`isPlaintextRemote`/`sseContentDelta`
+  /`buildRequestBody`/`accumulateCapped` make the parse/scrub/cap logic
+  unit-testable without a network. `AiDialog` now drives this for the
+  network; it keeps its own scrub + redaction notice (UX-coupled) and passes
+  prompts pre-scrubbed (`scrubSecrets=false`).
+- `llmdispatcher` (Qt6::Core + Qt6::Network, widget-free; `ants_core_lib`) —
+  bounded-concurrency pool over `LlmClient` (ANTS-1727). `JobRunner` test
+  seam; `maxConcurrent` clamped `[1,4]` (config `ai_review_concurrency`,
+  default 2). Emits `jobFinished` per job + `allFinished`; retains no result
+  text after forwarding (RAM bound). `cancelAll` aborts in-flight + drains.
+- `reviewdialogbase` (`ants_dialogs_lib`) — shared QDialog scaffold for the
+  v2 review-dialog family (ANTS-1721 ColdEyes / ANTS-1722 TestAudit, plus the
+  deferred audit-v2 / indie-review dialogs). Owns partition tabs, the
+  Dispatch button (→ `LlmDispatcher` at `ai_review_concurrency`), a results
+  host, and the Fold-into-ROADMAP button. Hooks: `derivePartition` /
+  `composeBrief` / `onAllReportsCollected` / `performFoldIn` (subclass owns
+  the fold-in sequence — base provides `activeReleaseHeading` /
+  `allocateFoldInIds` / `insertFoldInBlock` helpers, not an orchestrator, so
+  test-audit's engine-owned fold-in doesn't double-allocate). `dispatchOne`
+  runs a follow-up (e.g. synthesis) without re-entering
+  `onAllReportsCollected`. Static `endpointDispatchable` gates Dispatch.
 - `remotecontrol` — Kitty-style JSON-over-Unix-socket IPC. Verbs:
   `ls`, `send-text`, `new-tab`, `select-window`, `set-title`,
   `get-text`, `launch`, `tab-list`, `roadmap-query`,

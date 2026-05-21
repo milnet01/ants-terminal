@@ -5,11 +5,15 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
 #include <QLabel>
 
-// AI Assistant dialog — sends terminal context to an OpenAI-compatible API
+#include "llmclient.h"
+
+// AI Assistant dialog — sends terminal context to an OpenAI-compatible API.
+// ANTS-1727: the network mechanics (request build, SSE drain, 10 MiB caps,
+// scheme allowlist, transfer timeout) are delegated to an owned LlmClient.
+// The dialog keeps its chat UI, the OWASP LLM06 scrub + user-facing
+// redaction notice (UX-coupled), and the Insert-Cmd confirmation flow.
 class AiDialog : public QDialog {
     Q_OBJECT
 
@@ -52,8 +56,7 @@ public:
 
 private slots:
     void onSend();
-    void onReplyFinished();
-    void onReplyReadyRead();
+    void onLlmFinished(const LlmResult &result);
 
 private:
     void appendMessage(const QString &role, const QString &text);
@@ -65,8 +68,7 @@ private:
     QPushButton *m_insertBtn = nullptr;
     QLabel *m_statusLabel = nullptr;
 
-    QNetworkAccessManager m_netManager;
-    QNetworkReply *m_currentReply = nullptr;
+    LlmClient *m_client = nullptr;
 
     QString m_terminalContext;
     QString m_endpoint;
@@ -74,14 +76,8 @@ private:
     QString m_model;
     int m_contextLines = 50;
     QString m_lastResponse;   // Last complete AI response (for insert)
-    QString m_streamBuffer;   // Accumulates streaming response
-    QByteArray m_sseLineBuffer; // Buffers incomplete SSE lines across TCP chunks
     bool m_httpWarned = false;  // Show plaintext-HTTP warning once per dialog instance
-    bool m_streamTruncated = false; // Marker appended once when m_streamBuffer hits cap
 
 public:
-    // Abort any in-flight reply before members start destructing. Without
-    // this, a reply arriving during the narrow window of member destruction
-    // can deliver readyRead/finished to a partially-destroyed AiDialog.
     ~AiDialog() override;
 };

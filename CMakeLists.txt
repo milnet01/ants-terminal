@@ -258,6 +258,12 @@ add_library(ants_core_lib STATIC
     src/focusedtest.cpp
     # ANTS-1720 — `fields=` MCP response projection (pure helper).
     src/mcpprojection.cpp
+    # ANTS-1727 — shared dispatch-brief composer (fence-hardening +
+    # section slicing) + LLM client / bounded dispatcher for the
+    # review-dialog family (widget-free; Qt6::Network already linked).
+    src/briefdispatch.cpp
+    src/llmclient.cpp
+    src/llmdispatcher.cpp
     src/roadmapindex.cpp
     src/roadmapfoldin.cpp
     src/subsystemmap.cpp
@@ -389,6 +395,8 @@ add_library(ants_dialogs_lib STATIC
     src/aidialog.cpp
     src/aboutdialogs.cpp
     src/toggleswitch.cpp
+    # ANTS-1727 — shared review-dialog scaffold (ColdEyes/TestAudit base).
+    src/reviewdialogbase.cpp
 )
 target_link_libraries(ants_dialogs_lib
     PUBLIC  ants_chrome_lib
@@ -1050,6 +1058,10 @@ if(ANTS_TESTS)
                 tests/features/mcp_rate_limit/test_mcp_rate_limit.cpp
                 # ANTS-1352 indie_review_dispatch orchestrator.
                 tests/features/indie_review_dispatch/test_indie_review_dispatch.cpp
+                # ANTS-1727 review-dialog foundation (Q_OBJECT-bearing —
+                # hosted here for the full lib set; see test_core note).
+                tests/features/llm_client/test_llm_client.cpp
+                tests/features/llm_dispatcher/test_llm_dispatcher.cpp
                 # ANTS-1453 per-tool MCP selection_hint descriptor field.
                 tests/features/mcp_selection_hint/test_mcp_selection_hint.cpp
                 # ANTS-1510 cold_eyes_fold_in freeform-mode opt-in.
@@ -1159,6 +1171,15 @@ if(ANTS_TESTS)
         SRC_INDIE_REVIEW_DISPATCHER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewdispatcher.cpp"
         SRC_INDIE_REVIEW_ENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.h"
         SRC_INDIE_REVIEW_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.cpp"
+        # ANTS-1727 — fence kernel relocated to BriefDispatch (G-15 scrape)
+        # + review-dialog foundation source-grep paths (INV-16 widget-free
+        # guard, INV-8 dispatcher no-retention).
+        SRC_BRIEFDISPATCH_CPP_PATH="${CMAKE_SOURCE_DIR}/src/briefdispatch.cpp"
+        SRC_BRIEFDISPATCH_H_PATH="${CMAKE_SOURCE_DIR}/src/briefdispatch.h"
+        SRC_LLMCLIENT_H_PATH="${CMAKE_SOURCE_DIR}/src/llmclient.h"
+        SRC_LLMCLIENT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/llmclient.cpp"
+        SRC_LLMDISPATCHER_H_PATH="${CMAKE_SOURCE_DIR}/src/llmdispatcher.h"
+        SRC_LLMDISPATCHER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/llmdispatcher.cpp"
         # ANTS-1510 — cold_eyes_fold_in freeform-mode source-scrape.
         SRC_COLDEYESENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.h"
         SRC_COLDEYESENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.cpp"
@@ -1279,6 +1300,8 @@ if(ANTS_TESTS)
                 ants_audit_dialog_lib
                 $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
         SOURCES tests/features/settings_dependency_gating/test_settings_dependency_gating.cpp
+                # ANTS-1727 — review-dialog foundation scaffold.
+                tests/features/review_dialog_base/test_review_dialog_base.cpp
                 tests/features/settings_profile_cancel_rollback/test_settings_profile_cancel_rollback.cpp
                 tests/features/settings_restore_defaults/test_settings_restore_defaults.cpp
                 tests/features/settings_parse_failure_mirror/test_settings_parse_failure_mirror.cpp
@@ -1407,6 +1430,14 @@ if(ANTS_TESTS)
                 src/modelrecommender.cpp
                 # ANTS-1720 — MCP fields= response projection.
                 tests/features/mcp_projection/test_mcp_projection.cpp
+                # ANTS-1727 — ai_review_concurrency config clamp (INV-14).
+                tests/features/config_ai_review_concurrency/test_config_ai_review_concurrency.cpp
+                # ANTS-1727 — BriefDispatch is moc-free, links here. The
+                # LlmClient/LlmDispatcher tests reference Q_OBJECT classes,
+                # which pull ants_core_lib's aggregated moc (co-references
+                # RemoteControl/VtStream → unlinked GUI libs); they live in
+                # test_claude where the full lib set resolves.
+                tests/features/brief_dispatch_fence/test_brief_dispatch_fence.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         SRC_TERMINALGRID_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"

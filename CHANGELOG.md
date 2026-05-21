@@ -14,6 +14,20 @@ for security-relevant changes.
 
 ### Added
 
+- **Review-dialog foundation — run AI doc/test reviews in-app without
+  spending Claude tokens (ANTS-1727).** New shared plumbing for the
+  upcoming Cold-Eyes (ANTS-1721) and Test-Audit (ANTS-1722) dialogs:
+  a reusable streaming LLM client (`LlmClient`), a bounded-concurrency
+  job pool (`LlmDispatcher`, capped by the new `ai_review_concurrency`
+  config key — default 2, range 1–4), a shared brief composer that
+  fences inlined file/doc bodies so they can't be misread as
+  instructions (`BriefDispatch`, with keyword-aware section slicing for
+  big docs like ROADMAP.md), and the shared dialog scaffold
+  (`ReviewDialogBase`). The AI Assistant dialog and `/indie-review`
+  brief assembly were refactored onto this shared code with no change in
+  behaviour. No new external dependencies; the dialogs themselves land
+  in ANTS-1721/1722 — this ships the foundation only.
+
 - **`session_brief` MCP tool — orient a fresh `/clear` session in one
   call (ANTS-1724).** New `session_brief` tool that returns a compact
   (≤ 512 byte) envelope containing: git branch, ahead/behind, and

@@ -2,31 +2,24 @@
 #include "dialogchrome.h"
 #include "secretredact.h"
 
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonArray>
 #include <QMessageBox>
-#include <QNetworkRequest>
 #include <QScrollBar>
-#include <QTimer>
 #include <QUrl>
 
 AiDialog::~AiDialog() {
-    // Abort and drop any in-flight reply before member teardown runs. Qt
-    // auto-disconnects signals from a destroyed receiver, but there's a
-    // narrow window during member destruction where slots can still fire
-    // on a partially-destructed AiDialog. Explicit abort closes the window.
-    if (m_currentReply) {
-        m_currentReply->abort();
-        m_currentReply->deleteLater();
-        m_currentReply = nullptr;
-    }
+    // m_client (a child QObject) aborts its in-flight reply in its own
+    // destructor; abort explicitly first to close the narrow window where
+    // a late finished() could fire during member teardown.
+    if (m_client) m_client->abort();
 }
 
 AiDialog::AiDialog(QWidget *parent) : QDialog(parent) {
     setWindowTitle("AI Assistant");
     setMinimumSize(500, 400);
     resize(600, 500);
+
+    m_client = new LlmClient(this);
+    connect(m_client, &LlmClient::finished, this, &AiDialog::onLlmFinished);
 
     // ANTS-1242 — frameless + theme-aware TitleBar.
     auto chrome = DialogChrome::install(this);
@@ -124,15 +117,7 @@ void AiDialog::resetTransient() {
     // continue across re-opens.
     if (m_input)        m_input->clear();
     if (m_statusLabel)  m_statusLabel->clear();
-    if (m_currentReply) {
-        QNetworkReply *r = m_currentReply;
-        m_currentReply = nullptr;
-        r->abort();
-        r->deleteLater();
-    }
-    m_streamBuffer.clear();
-    m_sseLineBuffer.clear();
-    m_streamTruncated = false;
+    if (m_client)       m_client->abort();
     m_httpWarned = false;
 }
 
@@ -148,9 +133,8 @@ void AiDialog::setConfig(const QString &endpoint, const QString &apiKey,
     // still means "AI disabled" (handled below); we only validate when
     // a non-empty value is supplied.
     if (!endpoint.isEmpty()) {
-        const QUrl u(endpoint);
-        const QString scheme = u.scheme().toLower();
-        if (scheme != QStringLiteral("http") && scheme != QStringLiteral("https")) {
+        QString scheme;
+        if (!LlmClient::isEndpointAllowed(endpoint, &scheme)) {
             m_endpoint.clear();
             m_apiKey.clear();
             m_model = model;
@@ -211,17 +195,8 @@ void AiDialog::appendMessage(const QString &role, const QString &text) {
 }
 
 void AiDialog::sendRequest(const QString &userMessage) {
-    // Abort any in-flight request to prevent leaked QNetworkReply
-    if (m_currentReply) {
-        m_currentReply->abort();
-        m_currentReply->deleteLater();
-        m_currentReply = nullptr;
-    }
-
+    m_client->abort();
     m_sendBtn->setEnabled(false);
-    m_streamBuffer.clear();
-    m_sseLineBuffer.clear();
-    m_streamTruncated = false;
 
     // OWASP LLM06: scrub well-known secret shapes out of both the
     // scrollback context and the user's own message before either
@@ -236,17 +211,11 @@ void AiDialog::sendRequest(const QString &userMessage) {
     const auto scrubbedContext = SecretRedact::scrub(m_terminalContext);
     const auto scrubbedUser    = SecretRedact::scrub(userMessage);
 
-    QJsonObject systemMsg;
-    systemMsg["role"] = "system";
-    systemMsg["content"] = QString(
+    const QString systemPrompt = QString(
         "You are a helpful terminal assistant. The user is working in a terminal emulator. "
         "Here is the recent terminal output for context:\n\n```\n%1\n```\n\n"
         "Provide concise, actionable answers. When suggesting commands, put them in code blocks."
     ).arg(scrubbedContext.text);
-
-    QJsonObject userMsg;
-    userMsg["role"] = "user";
-    userMsg["content"] = scrubbedUser.text;
 
     const int totalRedacted = scrubbedContext.redactedCount + scrubbedUser.redactedCount;
     if (totalRedacted > 0) {
@@ -261,160 +230,41 @@ void AiDialog::sendRequest(const QString &userMessage) {
                           .arg(totalRedacted == 1 ? "" : "s"));
     }
 
-    QJsonArray messages;
-    messages.append(systemMsg);
-    messages.append(userMsg);
-
-    QJsonObject body;
-    body["model"] = m_model;
-    body["messages"] = messages;
-    body["stream"] = true;
-    body["max_tokens"] = 1024;
-
-    QUrl url(m_endpoint);
     // Warn once per session if the user has configured an API key against a
     // plaintext HTTP endpoint — the Bearer token would travel in cleartext.
     // Localhost is permitted silently (Ollama/LM Studio default to http://127.0.0.1).
-    if (!m_apiKey.isEmpty() && url.scheme() == "http") {
-        const QString host = url.host();
-        const bool isLocal = (host == "localhost" || host == "127.0.0.1" || host == "::1");
-        if (!isLocal && !m_httpWarned) {
-            m_httpWarned = true;
-            appendMessage("System", "Warning: endpoint uses plaintext HTTP — API key will be sent unencrypted. Prefer https:// for remote providers.");
-        }
+    if (!m_apiKey.isEmpty() && LlmClient::isPlaintextRemote(m_endpoint) && !m_httpWarned) {
+        m_httpWarned = true;
+        appendMessage("System", "Warning: endpoint uses plaintext HTTP — API key will be sent unencrypted. Prefer https:// for remote providers.");
     }
 
-    QNetworkRequest req{url};
-    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-    req.setTransferTimeout(30000); // 30-second timeout
-    if (!m_apiKey.isEmpty())
-        req.setRawHeader("Authorization", ("Bearer " + m_apiKey).toUtf8());
-
-    m_currentReply = m_netManager.post(req, QJsonDocument(body).toJson());
-    connect(m_currentReply, &QNetworkReply::readyRead, this, &AiDialog::onReplyReadyRead);
-    connect(m_currentReply, &QNetworkReply::finished, this, &AiDialog::onReplyFinished);
+    // Prompts are already scrubbed above (UX-coupled notice), so the
+    // client doesn't re-scrub — scrubSecrets=false avoids double work.
+    LlmRequest req;
+    req.endpoint = m_endpoint;
+    req.apiKey = m_apiKey;
+    req.model = m_model;
+    req.systemPrompt = systemPrompt;
+    req.userPrompt = scrubbedUser.text;
+    req.maxTokens = 1024;
+    req.timeoutMs = 30000;
+    req.scrubSecrets = false;
+    m_client->send(req);
 }
 
-void AiDialog::onReplyReadyRead() {
-    if (!m_currentReply) return;
-
-    // Append new data to SSE line buffer to handle chunk boundaries correctly
-    m_sseLineBuffer += m_currentReply->readAll();
-
-    // Cap buffer to prevent unbounded growth from misbehaving servers
-    if (m_sseLineBuffer.size() > 10 * 1024 * 1024) {
-        m_sseLineBuffer.clear();
-        return;
+void AiDialog::onLlmFinished(const LlmResult &result) {
+    if (!result.text.isEmpty()) {
+        m_lastResponse = result.text;
+        appendMessage("AI", result.text);
+        // ANTS-1144 — fail-closed on partial-stream errors. Only enable
+        // Insert when the response landed cleanly; a truncated response
+        // (network drop mid-fenced-block) would otherwise invite the user
+        // to confirm a command missing its tail.
+        m_insertBtn->setEnabled(result.ok);
+    } else if (!result.error.isEmpty()) {
+        appendMessage("Error", result.error);
     }
 
-    // 0.7.54 (2026-04-27 indie-review) — cap per-tick iterations and
-    // re-arm via QTimer::singleShot(0). A misbehaving SSE endpoint
-    // streaming millions of tiny lines in one buffer would otherwise
-    // hold the event loop for the whole drain (UI freeze, no paint,
-    // no input). 256 lines per tick is generous: a normal model
-    // streams ~30 SSE events per second per token; 256 covers ~8
-    // seconds of legitimate output before yielding. After the cap,
-    // schedule a singleShot(0) drain continuation so the rest of the
-    // buffer is processed on the next event-loop iteration.
-    constexpr int kMaxLinesPerTick = 256;
-    int processed = 0;
-
-    // Process complete lines (SSE lines are terminated by \n)
-    while (processed < kMaxLinesPerTick) {
-        int nlPos = m_sseLineBuffer.indexOf('\n');
-        if (nlPos < 0) break;
-        ++processed;
-
-        QString line = QString::fromUtf8(m_sseLineBuffer.left(nlPos)).trimmed();
-        m_sseLineBuffer = m_sseLineBuffer.mid(nlPos + 1);
-
-        // Handle both "data: " (standard) and "data:" (some providers)
-        if (!line.startsWith("data:")) continue;
-        QString json = line.mid(line.startsWith("data: ") ? 6 : 5).trimmed();
-        if (json == "[DONE]") continue;
-
-        QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
-        if (!doc.isObject()) continue;
-
-        QJsonObject obj = doc.object();
-        QJsonArray choices = obj["choices"].toArray();
-        if (choices.isEmpty()) continue;
-
-        QJsonObject delta = choices[0].toObject()["delta"].toObject();
-        QString content = delta["content"].toString();
-        if (!content.isEmpty()) {
-            // Cap the accumulated response buffer to guard against a
-            // misbehaving endpoint streaming unbounded content past
-            // max_tokens. m_sseLineBuffer guards the pipe side; this
-            // guards the parsed-content side. 10MB mirrors that cap.
-            constexpr int kMaxStreamBuffer = 10 * 1024 * 1024;
-            if (m_streamBuffer.size() >= kMaxStreamBuffer) {
-                if (!m_streamTruncated) {
-                    m_streamBuffer += QStringLiteral("\n[response truncated]");
-                    m_streamTruncated = true;
-                }
-                continue;
-            }
-            m_streamBuffer += content;
-        }
-    }
-
-    // If we hit the iteration cap and there's still buffered data
-    // with at least one complete line ready, re-arm via singleShot(0)
-    // so the event loop gets a turn before we resume draining.
-    if (processed >= kMaxLinesPerTick &&
-        m_sseLineBuffer.indexOf('\n') >= 0) {
-        QTimer::singleShot(0, this, &AiDialog::onReplyReadyRead);
-    }
-}
-
-void AiDialog::onReplyFinished() {
-    if (!m_currentReply) return;
-
-    bool hadError = m_currentReply->error() != QNetworkReply::NoError;
-    if (hadError) {
-        // Try to read non-streaming response (some APIs don't stream)
-        QByteArray data = m_currentReply->readAll();
-        if (!data.isEmpty()) {
-            QJsonDocument doc = QJsonDocument::fromJson(data);
-            if (doc.isObject()) {
-                QJsonObject obj = doc.object();
-                QJsonArray choices = obj["choices"].toArray();
-                if (!choices.isEmpty()) {
-                    QString content = choices[0].toObject()["message"].toObject()["content"].toString();
-                    if (!content.isEmpty()) {
-                        m_streamBuffer = content;
-                        hadError = false; // Valid response despite HTTP error
-                    }
-                } else if (obj.contains("error")) {
-                    appendMessage("Error", obj["error"].toObject()["message"].toString());
-                }
-            }
-        }
-        if (hadError && m_streamBuffer.isEmpty()) {
-            appendMessage("Error", m_currentReply->errorString());
-        } else if (hadError && !m_streamBuffer.isEmpty()) {
-            // Had partial stream content before error — mark as incomplete
-            m_streamBuffer += "\n[response may be incomplete]";
-        }
-    }
-
-    if (!m_streamBuffer.isEmpty()) {
-        m_lastResponse = m_streamBuffer;
-        appendMessage("AI", m_streamBuffer);
-        // ANTS-1144 — fail-closed on partial-stream errors. The
-        // user's confirmation dialog (extractAndSanitizeCommand)
-        // is the OWASP LLM01 kill-switch, but enabling Insert on
-        // a truncated response invites the user to confirm a
-        // command that's missing its tail (network drop mid-
-        // fenced-block leaves the prefix intact). Pre-fix code
-        // enabled the button regardless. Now: only enable when
-        // the response landed cleanly.
-        m_insertBtn->setEnabled(!hadError);
-    }
-
-    m_currentReply->deleteLater();
-    m_currentReply = nullptr;
     m_sendBtn->setEnabled(true);
 }
 

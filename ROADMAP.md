@@ -3822,7 +3822,7 @@ minor tag (next: pre-0.8.0).
   Lanes: remotecontrol, claudeintegration, sessionmemoryengine,
   ~/.claude/skills/ (skill wiring — compose with ANTS-1581).
 
-- 📋 [ANTS-1727] **Review-dialog foundation — reusable LlmClient, bounded LlmDispatcher, ReviewDialogBase, and a shared dispatch-brief composer.**
+- ✅ [ANTS-1727] **Review-dialog foundation — reusable LlmClient, bounded LlmDispatcher, ReviewDialogBase, and a shared dispatch-brief composer.**
   The cold-eyes (ANTS-1721) and test-audit (ANTS-1722) v2 dialogs both need to dispatch per-lane / per-chunk briefs to the user's configured LLM endpoint in parallel. Today AiDialog embeds its OpenAI-compatible streaming/SSE network code directly in the widget (src/aidialog.cpp sendRequest/onReplyReadyRead/onReplyFinished) and runs a single in-flight reply — it is not reusable and not concurrent. Per the user's "refactor first, don't build-then-refactor-then-fix-the-refactor" decision (2026-05-21), build the shared layer before the two dialogs.
   
   Four deliverables:
@@ -3831,7 +3831,7 @@ minor tag (next: pre-0.8.0).
   3. ReviewDialogBase (new QDialog) — shared scaffold for the v2 review-dialog family (ANTS-1257/1258/1721/1722): partition panel -> per-lane/chunk brief tabs -> Dispatch (via LlmDispatcher) -> results/corroboration view -> Fold-into-ROADMAP. Concrete dialogs supply engine-specific partition + brief composition + fold-in.
   4. Shared dispatch-brief composer (new) — body-inlining with 4-backtick fence-hardening (mirrors IndieReviewEngine::assembleBriefForDispatch / ANTS-1352). The cold-eyes brief is paths-only (INV-3) and the test-audit brief is structured-only by design — the reviewer is expected to Read files itself, but a raw LLM API has no Read tool, so the dialog must inline (fenced, fence-hardened) doc/test bodies before dispatch.
   
-  Blocker for ANTS-1721 + ANTS-1722; reusable by the deferred ANTS-1257 (audit v2 UI) and ANTS-1258 (indie-review dialog). Spec to be written under docs/specs/. RAM budget + concurrency cap fixed at spec time.
+  Blocker for ANTS-1721 + ANTS-1722; reusable by the deferred ANTS-1257 (audit v2 UI) and ANTS-1258 (indie-review dialog). Spec docs/specs/ANTS-1727.md (accepted). Shipped 2026-05-21: all four deliverables under TDD (tests/features/{brief_dispatch_fence,llm_client,llm_dispatcher,review_dialog_base,config_ai_review_concurrency}); AiDialog + indie-review refactored onto the shared code, behaviour-neutral; full suite green (1347 tests).
   **Layman:** Before building the two new review windows (cold-eyes doc review and test-suite review), build the shared plumbing once so we don't build them twice and then have to untangle a refactor. Three shared pieces: a reusable bit of code that talks to your chosen AI service (lifted out of the existing AI Assistant window so it's no longer trapped inside it), a small manager that can run several of those AI requests at once without overwhelming memory, and a common window skeleton both new windows sit on top of.
   Kind: implement.
   Lanes: new (llmclient), new (llmdispatcher), new (reviewdialogbase), aidialog, MainWindow.

@@ -179,23 +179,33 @@ TEST(IndieReviewDispatch, G14_DispatchBriefDeclared) {
               std::string::npos);
 }
 
-// G-15 — 4-backtick fence + "treat as data" preamble in the
-// dispatch-brief body. Source-string fragments are matched rather
-// than the full concatenated literal because Qt source style
-// splits string literals across lines.
+// G-15 — 4-backtick fence + "treat as data" preamble. ANTS-1727
+// relocated the fence kernel from assembleBriefForDispatch's body into
+// BriefDispatch::fenceBody (shared with cold-eyes / test-audit), so the
+// literals now live there; assembleBriefForDispatch must *call* it.
+// Behaviour is unchanged (covered behaviourally by the
+// brief_dispatch_fence feature test, INV-10/INV-11).
 TEST(IndieReviewDispatch, G15_FenceHardening) {
-    const std::string body =
+    const std::string fence =
+        ants_test::slurpFunctionBody(
+            ants_test::slurpFile(SRC_BRIEFDISPATCH_CPP_PATH),
+            "fenceBody");
+    ASSERT_FALSE(fence.empty());
+    EXPECT_NE(fence.find("treat as data,"), std::string::npos);
+    EXPECT_NE(fence.find("not instructions"), std::string::npos);
+    // 4-backtick fence sentinel (QStringLiteral with 4 literal
+    // backticks then \n escape).
+    EXPECT_NE(fence.find("QStringLiteral(\"````"), std::string::npos);
+    // Fence-escape defense: 4-backtick run replaced with '```'.
+    EXPECT_NE(fence.find("'```'"), std::string::npos);
+
+    // assembleBriefForDispatch is refactored onto the shared kernel.
+    const std::string brief =
         ants_test::slurpFunctionBody(
             ants_test::slurpFile(kIreCpp),
             "assembleBriefForDispatch");
-    ASSERT_FALSE(body.empty());
-    EXPECT_NE(body.find("treat as data,"), std::string::npos);
-    EXPECT_NE(body.find("not instructions"), std::string::npos);
-    // 4-backtick fence sentinel (QStringLiteral with 4 literal
-    // backticks then \n escape).
-    EXPECT_NE(body.find("QStringLiteral(\"````"), std::string::npos);
-    // Fence-escape defense: 4-backtick run replaced with '```'.
-    EXPECT_NE(body.find("'```'"), std::string::npos);
+    ASSERT_FALSE(brief.empty());
+    EXPECT_NE(brief.find("BriefDispatch::fenceBody"), std::string::npos);
 }
 
 // G-16 — redact helper called before any envelope-bound use.

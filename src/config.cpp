@@ -731,6 +731,18 @@ void Config::setAiContextLines(int lines) {
     save();
 }
 
+// ANTS-1727 — bounded-concurrency cap for the review-dialog LlmDispatcher.
+// Default 2, clamped [1, 4] so a large partition can't open more sockets
+// or exceed the ~40 MiB transient RAM budget (spec § 4).
+int Config::aiReviewConcurrency() const {
+    return qBound(1, m_data.value("ai_review_concurrency").toInt(2), 4);
+}
+
+void Config::setAiReviewConcurrency(int n) {
+    if (!storeIfChanged("ai_review_concurrency", qBound(1, n, 4))) return;
+    save();
+}
+
 bool Config::aiEnabled() const {
     return m_data.value("ai_enabled").toBool(false);
 }
