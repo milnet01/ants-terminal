@@ -464,6 +464,13 @@ Four shareable v1 standards at `docs/standards/`:
   — stable `[ANTS-NNNN]` IDs from `.roadmap-counter`, status emojis
   (✅ 🚧 📋 💭), theme emojis, position-is-priority, `Kind:` /
   `Source:` taxonomy, fold-in subsections.
+- Sub-spec: [`specs.md`](docs/standards/specs.md) (ANTS-1728) —
+  spec-authoring standard for `docs/specs/ANTS-NNNN.md`: required
+  structure (H1 + Status/Kind/Source header, § 1 Problem, § 2 Surface,
+  Invariants, Tests), the bullet `- **INV-N** —` form (96/98 specs;
+  the minority GFM-table form is also parsed), grounding/RAM/security
+  conventions, cold-eyes loop log, and the `spec_query` machine-
+  readability contract. Cite when writing or reviewing a spec.
 - Sub-spec: [`mcp-error-codes.md`](docs/standards/mcp-error-codes.md)
   (ANTS-1353) — canonical taxonomy for the `code` field on MCP
   refusal envelopes (`{ok:false, error, code}`). Five categories:

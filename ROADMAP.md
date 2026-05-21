@@ -3822,6 +3822,28 @@ minor tag (next: pre-0.8.0).
   Lanes: remotecontrol, claudeintegration, sessionmemoryengine,
   ~/.claude/skills/ (skill wiring — compose with ANTS-1581).
 
+- 📋 [ANTS-1727] **Review-dialog foundation — reusable LlmClient, bounded LlmDispatcher, ReviewDialogBase, and a shared dispatch-brief composer.**
+  The cold-eyes (ANTS-1721) and test-audit (ANTS-1722) v2 dialogs both need to dispatch per-lane / per-chunk briefs to the user's configured LLM endpoint in parallel. Today AiDialog embeds its OpenAI-compatible streaming/SSE network code directly in the widget (src/aidialog.cpp sendRequest/onReplyReadyRead/onReplyFinished) and runs a single in-flight reply — it is not reusable and not concurrent. Per the user's "refactor first, don't build-then-refactor-then-fix-the-refactor" decision (2026-05-21), build the shared layer before the two dialogs.
+  
+  Four deliverables:
+  1. LlmClient (new, Qt6::Core + Qt6::Network, no widgets) — extract AiDialog's request build + SSE parse + caps + scheme allowlist + SecretRedact scrub into a reusable client. Behaviour-neutral refactor: AiDialog is rewired to use it (its existing feature tests must still pass).
+  2. LlmDispatcher (new) — bounded-concurrency pool over LlmClient (cap N in flight; queue the rest). Emits per-job completion signals. RAM-bounded: caps concurrency AND total buffered bytes.
+  3. ReviewDialogBase (new QDialog) — shared scaffold for the v2 review-dialog family (ANTS-1257/1258/1721/1722): partition panel -> per-lane/chunk brief tabs -> Dispatch (via LlmDispatcher) -> results/corroboration view -> Fold-into-ROADMAP. Concrete dialogs supply engine-specific partition + brief composition + fold-in.
+  4. Shared dispatch-brief composer (new) — body-inlining with 4-backtick fence-hardening (mirrors IndieReviewEngine::assembleBriefForDispatch / ANTS-1352). The cold-eyes brief is paths-only (INV-3) and the test-audit brief is structured-only by design — the reviewer is expected to Read files itself, but a raw LLM API has no Read tool, so the dialog must inline (fenced, fence-hardened) doc/test bodies before dispatch.
+  
+  Blocker for ANTS-1721 + ANTS-1722; reusable by the deferred ANTS-1257 (audit v2 UI) and ANTS-1258 (indie-review dialog). Spec to be written under docs/specs/. RAM budget + concurrency cap fixed at spec time.
+  **Layman:** Before building the two new review windows (cold-eyes doc review and test-suite review), build the shared plumbing once so we don't build them twice and then have to untangle a refactor. Three shared pieces: a reusable bit of code that talks to your chosen AI service (lifted out of the existing AI Assistant window so it's no longer trapped inside it), a small manager that can run several of those AI requests at once without overwhelming memory, and a common window skeleton both new windows sit on top of.
+  Kind: implement.
+  Lanes: new (llmclient), new (llmdispatcher), new (reviewdialogbase), aidialog, MainWindow.
+  Source: user-request-2026-05-21 (refactor-first foundation for ANTS-1721/1722).
+
+- 🚧 [ANTS-1728] **Spec-authoring standard — docs/standards/specs.md.**
+  User observed (2026-05-21) that spec format was being reverse-engineered from existing specs each time rather than following a written standard. Codify the de-facto format into docs/standards/specs.md alongside the existing standards bundle (coding/documentation/testing/commits/roadmap-format). Captures: required structure (H1 `# ANTS-NNNN — title`, Status/Kind/Source header, § 1 Problem grounded in path:line, § 2 Surface, Invariants, Tests); the bullet `- **INV-N** —` form as primary (96/98 specs use it; the GFM-table form is the parsed-but-minority alternative); grounding/RAM/security/immutability conventions; the cold-eyes loop log; and the spec_query machine-readability contract so drafts stay parseable. Referenced from CLAUDE.md § Project standards. Could later be promoted into the shareable /start-app app-workflow template (currently project-local).
+  **Layman:** A written rulebook for how we write the design documents (specs) for each feature, so the format is consistent instead of being copied from whatever old spec happened to be open.
+  Kind: doc.
+  Lanes: docs/standards, docs/specs.
+  Source: user-request-2026-05-21 ("we need a standard for how specs are written").
+
 ### ⚡ Performance — hot-path sweep (user request 2026-04-30)
 
 - 📋 [ANTS-1115] **Performance, performance, performance — full
@@ -7315,6 +7337,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Lanes: auditengine.
   Source: in-session-2026-05-18 Bundle G observation.
+
+- 📋 [ANTS-1729] **roadmap_query mode:section_index needs an active-only filter / pagination — busts its own &lt;5 KB budget on many-section roadmaps.**
+  The section_index mode's doc claims "response < 5 KB on a 500-bullet roadmap", but the budget is bullet-count-based: this ROADMAP has ~150 sections × ~200 B each ⇒ a ~10 K+ token response regardless of bullet count. Add either (a) an `active_only:true` arg that drops sections whose active_count==0 (most are shipped/archive — would cut this response ~60%), or (b) offset/limit pagination on sections[] mirroring the bullets[] path (ANTS-1436). Cheap, and directly on-theme for the token-reduction focus. Workaround today: `fields:["sections"]` trims the envelope but not the per-section payload.
+  **Layman:** The tool that lists the roadmap's section headings (so I can find where to file a new item) is supposed to be small, but on this big roadmap it dumps ~150 sections and burns a lot of tokens. Add a way to ask for only the active sections, or page through them.
+  Kind: perf.
+  Lanes: remotecontrol, claudeintegration.
+  Source: in-session-2026-05-21 (noticed while finding a section slug for ANTS-1727).
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
