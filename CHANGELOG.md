@@ -51,6 +51,20 @@ for security-relevant changes.
   resumed mid-run. Findings fold into ROADMAP.md as a grouped narrative
   (default) or per-finding bullets.
 
+- **Independent code review, in-app (ANTS-1258).** New
+  Tools › Review › *Independent Code Review* dialog runs a full
+  independent source-code review against your configured LLM endpoint
+  without spending Claude tokens — the source-code twin of the Cold-eyes
+  dialog. It splits `src/` into per-subsystem lanes (from the CLAUDE.md
+  module map, with per-lane deselect), sends each lane's fenced source +
+  the project coding/testing/documentation standards to the model
+  (previously-rejected findings from `.ants_review_falsepos.jsonl` are
+  folded in so they aren't re-raised), corroborates findings cited by two
+  or more lanes, runs an optional cross-cutting synthesis pass, and
+  re-reviews only the lanes that had findings. Findings fold into
+  ROADMAP.md as per-finding bullets (with allocated IDs) or as a
+  free-text narrative.
+
 - **`session_brief` MCP tool — orient a fresh `/clear` session in one
   call (ANTS-1724).** New `session_brief` tool that returns a compact
   (≤ 512 byte) envelope containing: git branch, ahead/behind, and
@@ -155,6 +169,15 @@ for security-relevant changes.
   Claude Code session is deferred to ANTS-1713.
 
 ### Fixed
+
+- **Review dialogs clipped their fold-in controls (ANTS-1727
+  follow-up).** The shared review-dialog scaffold (`ReviewDialogBase`,
+  used by the Cold-eyes, Test-audit, and new Independent-Code-Review
+  dialogs) stacked several tall regions that overflowed the default
+  window height, cutting off the "Fold-in mode" box and its buttons. The
+  content column is now hosted in a scroll area so nothing ever clips,
+  the default window is taller (900×720), and the narrative free-text box
+  is hidden unless "Narrative" fold-in mode is selected.
 
 - **Project Audit false positives (ANTS-1707).** The `header_guards`
   rule now greps the whole file for `#pragma once` (it previously only

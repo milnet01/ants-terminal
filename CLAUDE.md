@@ -183,6 +183,26 @@ Listed only where behavior isn't obvious from the name.
   double-allocation); narrative (default) or per-finding. Resume persists
   `{token, dimensions, collected_chunk_ids}` via `SessionMemoryEngine`.
   Tools › Review menu entry. Spec `docs/specs/ANTS-1722.md`.
+- `indiereviewdialog` (`ants_dialogs_lib`) — native in-app independent
+  source-code review (ANTS-1258); `ReviewDialogBase` subclass over
+  `IndieReviewEngine`, the source-code twin of `coldeyesdialog`.
+  `derivePartition` maps `IndieReviewEngine::derivePartition` (one lane
+  per CLAUDE.md module-map subsystem; no scope arg) → `ReviewLane` with a
+  per-lane deselect checklist. `composeBrief` REUSES the engine's
+  dispatch-shaped `assembleBriefForDispatch` (which already fences source
+  bodies, inlines the three standards docs, injects the `ants::falsepos`
+  prior-FP block for `("indie-review", lane)`, and appends the ROADMAP
+  slice) and only sum-caps it at 200 KiB — it does NOT re-add the FP
+  block or re-fence (unlike cold-eyes, whose engine manifest carried
+  Read-tool cruft). `onAllReportsCollected` corroborates via
+  `corroboratedFindings` (minLanes 2; single-lane cites kept as
+  uncorroborated) then auto-runs the optional cross-cutting synthesis
+  (`synthesisPrompt` + `assembleThreatModelExtras`) via the base
+  `dispatchOne` (endpoint-gated; no re-entry). `performFoldIn`: per-finding
+  via `templateIndieReviewFoldInBlock` + base helpers, or narrative
+  free-text (no IDs). Cross-loop prior-fix suppression rides on the
+  `.ants_review_falsepos.jsonl` ledger (indie-review has no `PriorLoopFix`).
+  Tools › Review menu entry. Spec `docs/specs/ANTS-1258.md`.
 - `remotecontrol` — Kitty-style JSON-over-Unix-socket IPC. Verbs:
   `ls`, `send-text`, `new-tab`, `select-window`, `set-title`,
   `get-text`, `launch`, `tab-list`, `roadmap-query`,

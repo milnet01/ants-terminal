@@ -3273,6 +3273,15 @@ minor tag (next: pre-0.8.0).
      invocation at `runNextCheck()` so the framework-detect
      output actually feeds the scanner.
 
+  **Scope note (2026-05-21):** despite ANTS-1727 referring to a
+  deferred "audit-v2 dialog", this item is *not* a `ReviewDialogBase`
+  subclass — `AuditDialog` already AI-triages findings natively
+  (`requestAiTriageBatch`, the "Triage visible" button), so a separate
+  dispatch dialog would duplicate it. ANTS-1257 stays scoped to the four
+  v2 affordances on the *existing* `AuditDialog` above. The review-dialog
+  family's third native subclass is ANTS-1258 (indie-review), spec
+  `docs/specs/ANTS-1258.md`.
+
   Spec: [`docs/specs/ANTS-1111.md`](docs/specs/ANTS-1111.md) §12
   for the v1/v2 split rationale. Estimated v2 LoC: ~300-400
   across `auditdialog.cpp` (3 button slots + 1 modal) plus 3
@@ -3366,12 +3375,26 @@ minor tag (next: pre-0.8.0).
   *See [`docs/specs/ANTS-1112.md`](docs/specs/ANTS-1112.md) and
   [ADR-0003](docs/decisions/0003-cc-fold-relax-gate-and-draw-boundary.md).*
 
-- 📋 [ANTS-1258] **ANTS-1112 v2 — Qt dialog for in-app indie
+- ✅ [ANTS-1258] **ANTS-1112 v2 — Qt dialog for in-app indie
   review.** v1 (0.7.89) shipped the engine layer + 5 MCP tools
   that lift the mechanical halves of /indie-review into Ants;
   per-lane judgment + dispatch still live in Claude. v2 wraps
   the engine in a `IndieReviewDialog` for users who want to run
   indie review without Claude orchestration:
+
+  **Shipped 2026-05-21:** `docs/specs/ANTS-1258.md` (accepted; cold-eyes
+  loop 1 + user sign-off). `IndieReviewDialog : ReviewDialogBase`
+  (`src/indiereviewdialog.{h,cpp}`), the source-code twin of
+  `ColdEyesDialog`, under TDD (`tests/features/indie_review_dialog/`
+  INV-1..8 green). The architecture was realigned onto the shipped
+  ANTS-1727 foundation (`ReviewDialogBase` + `LlmDispatcher`) rather
+  than the standalone-`aidialog` design the deliverables below
+  describe: `composeBrief` reuses the engine's `assembleBriefForDispatch`
+  (fenced bodies + inlined standards + prior-FP block), corroboration +
+  optional synthesis via `dispatchOne`, fold-in via the base helpers +
+  `templateIndieReviewFoldInBlock`. Tools › Review › *Independent Code
+  Review*. The deliverables 1–5 below remained the feature list; only
+  the wiring changed (shared base, not a hand-rolled pool).
 
   1. **Tabbed per-lane panel** — one tab per lane from
      `IndieReviewEngine::derivePartition`, with the assembled

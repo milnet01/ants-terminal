@@ -401,6 +401,8 @@ add_library(ants_dialogs_lib STATIC
     src/coldeyesdialog.cpp
     # ANTS-1722 — native in-app test-suite review dialog.
     src/testauditdialog.cpp
+    # ANTS-1258 — native in-app independent code review dialog.
+    src/indiereviewdialog.cpp
 )
 target_link_libraries(ants_dialogs_lib
     PUBLIC  ants_chrome_lib
@@ -1310,6 +1312,8 @@ if(ANTS_TESTS)
                 tests/features/cold_eyes_dialog/test_cold_eyes_dialog.cpp
                 # ANTS-1722 — TestAuditDialog (native test-suite review).
                 tests/features/test_audit_dialog/test_test_audit_dialog.cpp
+                # ANTS-1258 — IndieReviewDialog (native independent code review).
+                tests/features/indie_review_dialog/test_indie_review_dialog.cpp
                 tests/features/settings_profile_cancel_rollback/test_settings_profile_cancel_rollback.cpp
                 tests/features/settings_restore_defaults/test_settings_restore_defaults.cpp
                 tests/features/settings_parse_failure_mirror/test_settings_parse_failure_mirror.cpp

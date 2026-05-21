@@ -37,6 +37,7 @@
 #include "testauditengine.h"  // ANTS-1397 — test_audit_* trio engine.
 #include "coldeyesdialog.h"   // ANTS-1721 — native cold-eyes review dialog.
 #include "testauditdialog.h"  // ANTS-1722 — native test-suite review dialog.
+#include "indiereviewdialog.h"  // ANTS-1258 — native independent code review.
 #include "shellutils.h"
 #include "elidedlabel.h"
 #include "globalshortcutsportal.h"
@@ -1528,6 +1529,15 @@ void MainWindow::setupToolsMenu() {
         if (auto *t = focusedTerminal()) cwd = t->shellCwd();
         if (cwd.isEmpty()) cwd = QDir::currentPath();
         auto *dlg = new TestAuditDialog(cwd, this, &m_config);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->show();
+    });
+    QAction *indieReviewAction = reviewMenu->addAction("&Independent Code Review...");
+    connect(indieReviewAction, &QAction::triggered, this, [this]() {
+        QString cwd;
+        if (auto *t = focusedTerminal()) cwd = t->shellCwd();
+        if (cwd.isEmpty()) cwd = QDir::currentPath();
+        auto *dlg = new IndieReviewDialog(cwd, this, &m_config);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
         dlg->show();
     });
