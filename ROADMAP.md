@@ -9093,6 +9093,18 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
 
 ## 0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)
 
+### 📝 Cold-eyes 2026-05-21
+
+Docs reviewed: PLUGINS.md, README.md, CONTRIBUTING.md, CHANGELOG.md, SECURITY.md, docs/specs/ANTS-1120.md, ANTS-1160.md, ANTS-1318.md, docs/decisions/ADR-0002 + ADR-0003, docs/standards/* (all). Loops to clean: 8. Findings fixed: ~20 across the run.
+
+Key corrections per loop batch:
+- **Loop 6** — CONTRIBUTING.md: added `tests/features/` to directory map + Debt Sweep tab authoring note. README.md: corrected `glrenderer.cpp` deletion note (0.7.44), rewrote events description (16 total, 7 unwired †, 9 functional), corrected test binary count (~11, not ~30).
+- **Loop 7** — ANTS-1160.md: P2 version corrected 0.7.78 → 0.7.77 (verified via CHANGELOG). ANTS-1120.md: Pass 5 note clarified (optional sections have no mandated order). documentation.md: §3.2 citation corrected to "heading format" not "full list". standards/README.md: sub-spec exception block added explaining `ants-roadmap-format-spec: 1.1` deviation. dialogs.md: stale "as of 0.7.92" temporal anchor removed. ADR-0003: `.roadmap-counter` value note clarified (was absolute, now says "higher now").
+- **Loop 8** — README.md Quick Start: replaced unwired `keypress` handler with functional `command_finished` example. ANTS-1318.md INV-9 + §6 bump.json row: corrected false attribution of RC tag computation to `/release`; it is `cut-rc.sh` that post-appends `-rcN`. ANTS-1160.md status: added version 0.7.83 to P4 ship date; corrected "seven" → "five" remaining P1 edits (items f, g already resolved). PLUGINS.md: added caveat that keypress return-value contract applies once the † event is wired. test-audit-resume.md: changed `jsonc` fence to `text` for pseudo-code blocks.
+
+Deferred (code-side, not doc): wire 7 legacy plugin events (output, line, prompt, keypress, title_changed, tab_created, tab_closed) to `fireEvent` call sites; connect `PluginManager::showNotification` to MainWindow.
+
+
 ### 📦 Bundle plan for pulls 34+ (logged 2026-05-19)
 
 Forward plan for MCP-themed roadmap items remaining active after
