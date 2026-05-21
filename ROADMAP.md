@@ -9104,6 +9104,17 @@ Key corrections per loop batch:
 
 Deferred (code-side, not doc): wire 7 legacy plugin events (output, line, prompt, keypress, title_changed, tab_created, tab_closed) to `fireEvent` call sites; connect `PluginManager::showNotification` to MainWindow.
 
+### 🔌 Plugin event wiring (cold-eyes deferred 2026-05-21)
+
+- 📋 **[ANTS-1736] Wire 7 unwired plugin events to `fireEvent` call sites.**
+  Layman: Seven plugin events (`output`, `line`, `prompt`, `keypress`, `title_changed`, `tab_created`, `tab_closed`) are accepted by `ants.on()` and documented in PLUGINS.md (marked †) but have no `fireEvent` call site in `luaengine` / `pluginmanager` — handlers registered for them will never fire in the current build.
+  Kind: implement.
+  Source: cold-eyes-2026-05-21.
+
+- 📋 **[ANTS-1737] Connect `PluginManager::showNotification` to `MainWindow` so `ants.notify()` is functional.**
+  Layman: `ants.notify()` is the plugin API for desktop notifications but is currently a complete no-op — calling it from a plugin does nothing. The function exists and is documented; it just needs to be wired to the notification path in MainWindow.
+  Kind: fix.
+  Source: cold-eyes-2026-05-21.
 
 ### 📦 Bundle plan for pulls 34+ (logged 2026-05-19)
 
