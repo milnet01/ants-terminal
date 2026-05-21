@@ -3597,6 +3597,224 @@ minor tag (next: pre-0.8.0).
   Kind: research. Source: ADR-0002-2026-04-30.
   Lanes: TBD per future per-surface bullet.
 
+- 📋 [ANTS-1724] **Session-bootstrap MCP tool (`session_brief`) — orient a fresh
+  session in one call.** The `/clear`-heavy workflow that saves tokens
+  per-session now has a hidden cost at the *start* of every session:
+  5–6 MCP calls are needed to orient (git status, active roadmap item,
+  last build result, open findings count, focused tab). This collapses
+  all five into one cheap `session_brief` call that returns a compact
+  JSON envelope:
+  ```json
+  {
+    "git": {"branch": "main", "status": "clean", "ahead": 0},
+    "roadmap": {"active_item": "ANTS-NNNN", "title": "…", "kind": "…"},
+    "build":   {"last_preset": "default", "result": "pass", "at": "…"},
+    "audit":   {"open_findings": 3, "high": 0, "medium": 1, "low": 2},
+    "tab":     {"cwd": "…", "index": 0}
+  }
+  ```
+  Each field is assembled from already-cached state (git via
+  `git_state` engine, roadmap via the mtime-TTL parsed model,
+  build via `m_lastBuildResult`, audit via `AuditCache::lastRunSummary`).
+  No new I/O — reads only in-process caches. Response is always compact
+  (< 400 bytes). ETag-eligible (stable prefix when state hasn't changed)
+  so a second call costs ~20 bytes on a cache hit.
+  The tool is `ProcessGlobal` (`CallerCwdContract`) — it anchors to
+  `caller_cwd` for the roadmap + audit slices and falls back gracefully
+  when the project root is unresolvable (omits the affected fields,
+  still returns git + tab).
+  **Layman:** When you start a fresh conversation and say "pick up where
+  we left off", today I make 5–6 separate requests to Ants to find out
+  what's happening. This tool gives me all of that in a single request
+  — so every fresh session starts faster and cheaper.
+  Kind: implement. Source: user-2026-05-21.
+  Lanes: remotecontrol, claudeintegration, auditcache, roadmapdialog.
+
+- 📋 [ANTS-1719] **Low-confidence finding auto-fix — fix the fixable,
+  surface the rest; nothing silently suppressed.** Current posture:
+  findings with confidence ≤ 30 are marked `suppressed` and hidden from
+  the default view. User requirement (2026-05-21): low findings should
+  be *fixed*, not buried — they represent real quality debt and can
+  escalate. New posture:
+  1. **Attempt native auto-fix** for findings whose repair is
+     mechanical and safe (no semantic judgment required):
+     - Dead `Q_UNUSED(x)` where `x` is no longer declared → remove the
+       line atomically.
+     - `TODO`/`FIXME` with a shipped version marker (e.g.
+       `TODO: remove after 0.7.X` where `0.7.X ≤ current`) → remove
+       the line.
+     - Dead `#include` directives confirmed unused by cppcheck
+       `unusedInclude` → remove.
+     - Single-char comment-style inconsistency on a standalone line
+       (e.g. `//comment` → `// comment`) → reformat inline.
+  2. **Surface unfixable low findings** in the Audit dialog under a
+     new "Low — needs attention" section (not suppressed, not hidden).
+     Each has a **Fix** button for one-click manual application.
+  3. **Never auto-fix** findings whose repair could alter runtime
+     behaviour (even at low confidence). The repair table above is the
+     exhaustive safe list; everything else goes to step 2.
+  Auto-fix is logged to `.audit_cache/autofix-YYYY-MM-DD.jsonl` (one
+  entry per repair: `{file, line, rule, original, fixed, timestamp}`)
+  so every change is auditable and reversible.
+  Complements ANTS-1257 (v2 UI) — the v2 "Fix inline" button covers
+  the step-2 surface; this bullet adds the step-1 native engine.
+  Locked by `tests/features/audit_low_confidence_autofix/`
+  (safe-list repair round-trip; unsafe findings are never auto-fixed;
+  autofix log is append-only; unfixable lows appear in dialog not
+  suppressed).
+  Kind: implement. Source: user-2026-05-21.
+  Lanes: auditengine, auditdialog, auditcache.
+
+- 📋 [ANTS-1720] **MCP response projection (`fields=` parameter) on
+  high-volume read tools.** Heavy read tools return their full payload
+  on every call even when the caller needs one field. A new optional
+  `fields: ["f1","f2"]` parameter returns only the named top-level
+  fields. No change to the response *schema* — absent fields are simply
+  omitted. Callers that omit `fields` get the full payload (fully
+  backwards-compatible).
+  Tools in scope (in priority order):
+  | Tool | Typical full size | Common targeted read |
+  |---|---|---|
+  | `roadmap_query` | 8–80 KB | `active_items` only |
+  | `project_layout` | 4–12 KB | `source_dirs` only |
+  | `file_outline` | 2–20 KB | `symbols` only |
+  | `get_environment` | 1–3 KB | `model` + `cwd` only |
+  | `tab_list` | 1–5 KB | `focused` only |
+  | `subsystem` | 2–8 KB | `lanes` only |
+  | `git_state` | 1–4 KB | `branch` + `status` only |
+  Pairs with the ETag pattern (ANTS-1499): `fields=` narrows the
+  payload; ETag short-circuits the round-trip when state is unchanged.
+  Implementation: each tool's handler maps `fields` to a `QJsonObject`
+  filter pass (O(N fields)) before the `wrapMcpData` call. Schema
+  addition: `fields` is an optional `array` of `string` on each tool's
+  `inputSchema`. `isEtagSupportedTool` hash covers the combined ETag +
+  fields path: the ETag is computed on the *unfiltered* canonical body
+  so a `fields=["active_items"]` call with a matching etag still
+  short-circuits correctly.
+  Locked by `tests/features/mcp_projection/` (full payload on absent
+  `fields`; single-field subset correct; unknown field name returns
+  empty object not error; etag computed on canonical body, not
+  filtered body).
+  Kind: implement. Source: user-2026-05-21.
+  Lanes: remotecontrol, claudeintegration.
+
+- 📋 [ANTS-1721] **Cold-eyes v2 Qt dialog (`ColdEyesDialog`) — native
+  in-app doc review.** The cold-eyes MCP engine is fully shipped
+  (`cold_eyes_partition`, `cold_eyes_brief`, `cold_eyes_single_doc`,
+  `cold_eyes_cross_doc_diff`, `cold_eyes_fold_in` — ANTS-1411–1414).
+  What's missing is the Qt dialog layer that ANTS-1258 provides for
+  indie-review. `ColdEyesDialog` follows the same structure:
+  1. **Partition panel** — calls `cold_eyes_partition`; renders the
+     discovered lane list (name + contract files + spec paths). User
+     can add/remove lanes before dispatch.
+  2. **Per-lane brief tab** — calls `cold_eyes_brief` for each lane;
+     shows assembled context (contract docs + ROADMAP slice + prior
+     false-positives from `.ants_review_falsepos.jsonl`).
+  3. **Dispatch** — sends each brief to the user's chosen LLM via
+     `aidialog`, in parallel (bounded process pool). Captures per-lane
+     reports verbatim.
+  4. **Cross-doc diff view** — calls `cold_eyes_cross_doc_diff` on the
+     collected reports; surfaces corroborated findings (≥ 2 lanes) in
+     a dedicated tab.
+  5. **Fold into ROADMAP** — calls `cold_eyes_fold_in` with
+     `narrative_mode:true` so the user can write a prose summary or
+     use the structured per-finding path. Same atomic insert + ID
+     allocation as ANTS-1257.
+  The cold-eyes loop (review → fix → re-review until clean) runs
+  entirely inside the dialog — each "re-review" reruns only the lanes
+  that had findings, not the whole partition. Addresses the user's
+  requirement that spec cold-eyes review loops run until clean; the
+  loop is cheaper natively because Ants assembles briefs without an
+  LLM round-trip.
+  Estimated LoC: ~600–800 (`coldeyesdialog.{h,cpp}` + 1 MainWindow
+  menu entry + 2 feature tests).
+  Kind: implement. Source: user-2026-05-21.
+  Lanes: new (coldeyesdialog), coldeyesengine, aidialog, MainWindow.
+
+- 📋 [ANTS-1722] **Test-audit v2 Qt dialog (`TestAuditDialog`) — native
+  in-app test-suite review.** Mirrors ANTS-1721 for the test-audit
+  family (`test_audit_partition`, `test_audit_brief`,
+  `test_audit_synthesis_prompt`, `test_audit_fold_in` — all shipped).
+  1. **Partition panel** — calls `test_audit_partition`; renders chunks
+     (file list + dimension set). User can adjust dimensions before
+     dispatch.
+  2. **Per-chunk brief tab** — shows the assembled brief including
+     grep-pattern matches from `docs/standards/test-audit-grep-patterns.json`
+     (ANTS-1450).
+  3. **Dispatch** — sends each chunk brief to aidialog in parallel.
+  4. **Synthesis** — calls `test_audit_synthesis_prompt` and sends to
+     aidialog for the cross-chunk summary.
+  5. **Fold into ROADMAP** — calls `test_audit_fold_in` with
+     `narrative_mode:true` support (ANTS-1635). User writes a grouped
+     summary (Closed-inline / Deferred / False-positives) rather than
+     coercing per-finding bullets.
+  Resume support: stores the `partition_token` via `session_memory`
+  per the `docs/standards/test-audit-resume.md` recipe (ANTS-1580).
+  User can close and reopen the dialog mid-audit without re-running
+  the full partition.
+  Estimated LoC: ~500–700 (`testauditdialog.{h,cpp}` + 1 MainWindow
+  menu entry + 2 feature tests).
+  Kind: implement. Source: user-2026-05-21.
+  Lanes: new (testauditdialog), testauditengine, aidialog, MainWindow,
+  sessionmemoryengine.
+
+- 📋 [ANTS-1723] **Workflow-state MCP tool — superpowers skill
+  context compression.** The superpowers skills (brainstorming,
+  systematic-debugging, TDD, verification-before-completion, etc.)
+  carry significant context overhead: every invocation re-reads the
+  full skill file and reconstructs workflow state from prior
+  conversation history. Ants can compress this by owning the
+  *state* (not the judgment):
+
+  `workflow_state(op:"get"|"set"|"clear", scope:<cwd-hash>,
+  skill:<name>, state:{step:int, phase:str, notes:str[]})`.
+
+  | Operation | What it does |
+  |---|---|
+  | `get` | Returns `{skill, step, phase, notes, updated_at}` or `null` if no state for this skill+scope |
+  | `set` | Atomically overwrites state for this skill+scope |
+  | `clear` | Removes state for this skill+scope |
+
+  Skills call `workflow_state(op:"get")` at the start of each turn
+  to receive a compact "here's where we left off" block (< 200 bytes)
+  instead of reconstructing state from full context. At each step
+  boundary, `op:"set"` persists the current step. Result: a
+  multi-step skill can resume from a cold `/clear` session with one
+  tool call.
+
+  Storage: `~/.cache/ants-terminal/mcp-state/<sha256(cwd)>.json`
+  (same backing store as `session_memory`); workflow-state keys are
+  namespaced `wf/<skill>/<scope>` to avoid collisions. Gate:
+  `CallerCwdContract::Required` — prevents cross-project state
+  leakage. Retention: entries expire after 72 h of inactivity (auto-
+  purged by the existing retention reaper). Max payload per entry:
+  4 KB (enforced at set — refuse with `payload_too_large`).
+
+  Mechanical skills that are also promotable under this tool:
+  - `using-git-worktrees` — Ants can inject worktree context via
+    `UserPromptSubmit` hook when the task type matches (new branch
+    creation, multi-file refactor, experimental change). State tracks
+    the active worktree path so the skill skips the setup step on
+    resume.
+  - `dispatching-parallel-agents` — state tracks which subtasks have
+    been dispatched and which are pending, so the orchestrator can
+    resume a partial dispatch after a /clear.
+
+  **Layman:** The superpowers rules that guide how I work (like
+  "always write a failing test first", "debug systematically", etc.)
+  have to be re-read and re-understood every session. This tool gives
+  Ants Terminal a memory for *where we are in a workflow* — so when
+  you start a new session, I can ask Ants "what step were we on?" and
+  jump straight back in rather than starting from scratch.
+
+  Locked by `tests/features/mcp_workflow_state/` (get returns null
+  on cold store; set + get round-trip; clear removes entry; 4 KB cap
+  enforced; 72 h expiry triggers purge; cross-scope get returns null;
+  payload namespacing prevents session_memory collision).
+  Kind: implement. Source: user-2026-05-21.
+  Lanes: remotecontrol, claudeintegration, sessionmemoryengine,
+  ~/.claude/skills/ (skill wiring — compose with ANTS-1581).
+
 ### ⚡ Performance — hot-path sweep (user request 2026-04-30)
 
 - 📋 [ANTS-1115] **Performance, performance, performance — full
@@ -17755,9 +17973,10 @@ contributors don't duplicate research.
   back, with a different look so it doesn't pretend to be
   something *you* need to do.
   Kind: design + fix. Source: user-2026-05-10.
-- 💭 [ANTS-1226] **Automatic Claude Code model switcher driven by
-  observed work complexity.** User request 2026-05-11 (far-off
-  scope). Idea: Ants Terminal already parses every Claude Code
+- 📋 [ANTS-1226] **Automatic Claude Code model switcher driven by
+  observed work complexity.** User request 2026-05-11; re-prioritised
+  2026-05-21 — Max(5) economics make every misrouted turn costly.
+  **Start with shape (a): the recommender chip.** Ants Terminal already parses every Claude Code
   JSONL transcript for the Tasks chip / bg-tasks chip / per-tab
   status; that data stream is enough to score session complexity
   in real time (tool diversity, plan length, file-write fan-out,
@@ -17811,7 +18030,7 @@ contributors don't duplicate research.
   happening and either suggest or automatically pick the right
   model — saving you money on small jobs and giving you the big
   brain when you need it.
-  Kind: design + implement. Source: user-2026-05-11.
+  Kind: design + implement. Source: user-2026-05-11; re-prioritised user-2026-05-21.
 
 ### 🔒 Security
 
