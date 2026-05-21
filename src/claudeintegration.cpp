@@ -2568,6 +2568,48 @@ void ClaudeIntegration::onMcpConnection() {
                     tools.append(csTool);
                 }
 
+                // ANTS-1724 — session_brief: compact session-state envelope.
+                {
+                    QJsonObject t;
+                    t["name"] = "session_brief";
+                    t["selection_hint"] = QStringLiteral(
+                        "Orient a fresh /clear session: returns git "
+                        "branch, build/test result, open audit count, "
+                        "and active roadmap item in one call.");
+                    t["description"] = QStringLiteral(
+                        "Compact session-state envelope for orienting "
+                        "a fresh session in one call. Returns git "
+                        "branch+ahead/behind+files_changed_count, last "
+                        "build result (pass/fail/unknown) with "
+                        "error/warning counts, last test result with "
+                        "pass/fail/total counts, open audit findings "
+                        "count, and the active roadmap item id+headline. "
+                        "All data comes from on-disk caches — no new I/O. "
+                        "ETag-eligible: pass etag_match from a prior call "
+                        "to skip re-emission when state is unchanged. "
+                        "ANTS-1724.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    QJsonObject cwdProp;
+                    cwdProp["type"] = "string";
+                    cwdProp["description"] = QStringLiteral("Your $PWD (required).");
+                    QJsonObject etagProp;
+                    etagProp["type"] = "string";
+                    etagProp["description"] = QStringLiteral(
+                        "ETag from a previous session_brief call. "
+                        "When it matches: {ok:true,unchanged:true,etag:\"<same>\"}.");
+                    QJsonObject props;
+                    props["caller_cwd"] = cwdProp;
+                    props["etag_match"] = etagProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema["required"] = req;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-1309 — spec_query: parse a single spec file.
                 // Returns {title, status, kind, invariants[]} without
                 // reading the full 200-2000 line markdown body.
@@ -5488,6 +5530,7 @@ void ClaudeIntegration::onMcpConnection() {
                         {QStringLiteral("roadmap_log"),       {200,  600}},
                         {QStringLiteral("project_layout"),    {600,  2000}},
                         {QStringLiteral("session_memory"),    {200,  1000}},
+                        {QStringLiteral("session_brief"),     {300,  1200}},
                         {QStringLiteral("workspace_search"),  {1500, 10000}},
                         {QStringLiteral("file_outline"),      {800,  4000}},
                         {QStringLiteral("git_state"),         {700,  4000}},
@@ -5588,7 +5631,9 @@ void ClaudeIntegration::onMcpConnection() {
                         name == QLatin1String("subsystem") ||
                         // ANTS-1569 — current_state is a project-scoped
                         // read aggregator (joins project_layout's family).
-                        name == QLatin1String("current_state"))
+                        name == QLatin1String("current_state") ||
+                        // ANTS-1724 — session_brief is the compact variant.
+                        name == QLatin1String("session_brief"))
                         return QStringLiteral("workspace");
                     if (name == QLatin1String("session_memory"))
                         return QStringLiteral("mcp-state");
@@ -6287,6 +6332,7 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // contract — kept for diagnostic parity. Asymmetric internal
     // routing: reads anchor to caller_cwd, writes match focused tab.
     if (toolName == QStringLiteral("session_memory"))     return C::Required;
+    if (toolName == QStringLiteral("session_brief"))      return C::Required;
     // TabSpecific — classified but not enforced in Phase 3a. The
     // ANTS-1392 routing semantics (caller_cwd as a tab-routing key)
     // need their own spec pass before refusal makes sense.
@@ -6435,6 +6481,8 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
         // a session re-asking "what's the state" between upstream
         // changes short-circuits.
         || toolName == QStringLiteral("current_state")
+        // ANTS-1724 — session_brief: compact current_state variant.
+        || toolName == QStringLiteral("session_brief")
         // ANTS-1299 + ANTS-1300 — build/test caches. The envelope on
         // op=read is stable between record calls, so re-reads from
         // peer sessions / tabs short-circuit. Etag injection is

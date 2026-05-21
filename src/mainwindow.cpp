@@ -4726,6 +4726,15 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_remoteControl->cmdSessionMemory(args).toJson(QJsonDocument::Compact));
         });
 
+    // ANTS-1724 — session_brief: compact session-state envelope.
+    m_claudeIntegration->registerToolProvider("session_brief",
+        ClaudeIntegration::CallerCwdContract::Required,
+        [this](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                m_remoteControl->cmdSessionBrief(args).toJson(QJsonDocument::Compact));
+        });
+
     // ANTS-1430 — project_layout pre-cache.
     m_claudeIntegration->registerToolProvider("project_layout",
         ClaudeIntegration::CallerCwdContract::Required,

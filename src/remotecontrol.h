@@ -336,6 +336,8 @@ public:
     // upstream verbs already do. MCP-only (mirrors last_audit_summary;
     // no IPC dispatch branch). See docs/specs/ANTS-1569.md.
     QJsonDocument cmdCurrentState(const QJsonObject &req);
+    // ANTS-1724: compact session-state envelope for fresh-session orientation.
+    QJsonDocument cmdSessionBrief(const QJsonObject &req);
 
     // ANTS-1306: task_priors — given a free-text task description,
     // return ranked context buckets (matching specs, ROADMAP cards,

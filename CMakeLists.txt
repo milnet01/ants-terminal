@@ -959,6 +959,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_roadmap_section_slice/test_mcp_roadmap_section_slice.cpp
                 tests/features/mcp_cold_eyes/test_mcp_cold_eyes.cpp
                 tests/features/mcp_session_memory/test_mcp_session_memory.cpp
+                # ANTS-1724 — session_brief MCP tool.
+                tests/features/mcp_session_brief/test_mcp_session_brief.cpp
                 tests/features/mcp_output_sanitisation/test_mcp_output_sanitisation.cpp
                 tests/features/mcp_path_anchor/test_mcp_path_anchor.cpp
                 # ANTS-1357 + ANTS-1346 MCP perf bundle.

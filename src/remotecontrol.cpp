@@ -5287,6 +5287,146 @@ QJsonDocument RemoteControl::cmdCurrentState(const QJsonObject &req) {
     return QJsonDocument(result);
 }
 
+// ANTS-1724 — session_brief: compact session-state envelope for
+// fresh /clear session orientation. Composes four on-disk caches
+// (roadmap active bullet, git status, last audit summary,
+// build/test caches) into one ≤ 512-byte envelope. ETag-eligible.
+QJsonDocument RemoteControl::cmdSessionBrief(const QJsonObject &req)
+{
+    if (!m_main) {
+        return QJsonDocument(csErr(QStringLiteral("no_window"),
+            QStringLiteral("session_brief: no MainWindow")));
+    }
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        return QJsonDocument(csErr(QStringLiteral("no_project"),
+            QStringLiteral("session_brief: project root unresolved")));
+    }
+
+    QJsonObject result;
+    result[QStringLiteral("ok")] = true;
+
+    // --- roadmap: first 🚧 in document order, else first 📋.
+    // Intentional subset of cmdCurrentState's active_bullet: emits only
+    // active_id + headline for compactness (INV-8 ≤ 512 bytes budget).
+    {
+        QJsonObject rqReq;
+        rqReq[QStringLiteral("caller_cwd")] = rootCanonical;
+        rqReq[QStringLiteral("status")]     = QStringLiteral("active");
+        const QJsonObject rq = cmdRoadmapQuery(rqReq).object();
+        QJsonObject rm;
+        if (rq.value(QStringLiteral("ok")).toBool(false)) {
+            const QJsonArray bullets =
+                rq.value(QStringLiteral("bullets")).toArray();
+            QJsonObject pick;
+            for (const QJsonValue &v : bullets) {
+                const QJsonObject b = v.toObject();
+                if (b.value(QStringLiteral("status")).toString() ==
+                        QStringLiteral("🚧")) { pick = b; break; }
+            }
+            if (pick.isEmpty() && !bullets.isEmpty())
+                pick = bullets.first().toObject();
+            rm[QStringLiteral("active_id")] =
+                pick.value(QStringLiteral("id")).toString();
+            rm[QStringLiteral("headline")] =
+                pick.value(QStringLiteral("headline_oneline")).toString();
+        } else {
+            rm[QStringLiteral("active_id")] = QString();
+            rm[QStringLiteral("headline")]  = QString();
+        }
+        result[QStringLiteral("roadmap")] = rm;
+    }
+
+    // --- git: branch + ahead/behind + changed-file count ---
+    {
+        QJsonObject gsReq;
+        gsReq[QStringLiteral("caller_cwd")] = rootCanonical;
+        gsReq[QStringLiteral("op")]         = QStringLiteral("status");
+        const QJsonObject gs = cmdGitState(gsReq).object();
+        QJsonObject git;
+        if (gs.value(QStringLiteral("ok")).toBool(false)) {
+            git[QStringLiteral("branch")] =
+                gs.value(QStringLiteral("branch")).toString();
+            git[QStringLiteral("ahead")]  =
+                gs.value(QStringLiteral("ahead")).toInt();
+            git[QStringLiteral("behind")] =
+                gs.value(QStringLiteral("behind")).toInt();
+            git[QStringLiteral("files_changed_count")] =
+                gs.value(QStringLiteral("files")).toArray().size();
+        } else {
+            git[QStringLiteral("branch")]              = QString();
+            git[QStringLiteral("ahead")]               = 0;
+            git[QStringLiteral("behind")]              = 0;
+            git[QStringLiteral("files_changed_count")] = 0;
+        }
+        result[QStringLiteral("git")] = git;
+    }
+
+    // --- audit: open findings count from last run ---
+    {
+        QJsonObject lsReq;
+        lsReq[QStringLiteral("caller_cwd")] = rootCanonical;
+        const QJsonObject ls = cmdLastAuditSummary(lsReq).object();
+        QJsonObject audit;
+        int total = 0;
+        if (ls.value(QStringLiteral("ok")).toBool(false)) {
+            const QJsonObject counts =
+                ls.value(QStringLiteral("counts")).toObject();
+            total = counts.value(QStringLiteral("error")).toInt()
+                  + counts.value(QStringLiteral("warning")).toInt()
+                  + counts.value(QStringLiteral("note")).toInt();
+        }
+        audit[QStringLiteral("open_count")] = total;
+        result[QStringLiteral("audit")] = audit;
+    }
+
+    // --- build: last recorded build result ---
+    {
+        const auto bOpt = BuildCache::loadBuild(rootCanonical);
+        QJsonObject build;
+        if (bOpt.has_value()) {
+            const auto &b = bOpt.value();
+            build[QStringLiteral("result")]   = (b.exitCode == 0)
+                ? QStringLiteral("pass") : QStringLiteral("fail");
+            build[QStringLiteral("errors")]   = b.errorsCount;
+            build[QStringLiteral("warnings")] = b.warningsCount;
+            if (b.recordedAtMs > 0) {
+                build[QStringLiteral("recorded_at")] =
+                    QDateTime::fromMSecsSinceEpoch(b.recordedAtMs)
+                        .toUTC().toString(Qt::ISODate);
+            }
+        } else {
+            build[QStringLiteral("result")] = QStringLiteral("unknown");
+        }
+        result[QStringLiteral("build")] = build;
+    }
+
+    // --- test: last recorded test result ---
+    {
+        const auto tOpt = TestResCache::loadTests(rootCanonical);
+        QJsonObject test;
+        if (tOpt.has_value()) {
+            const auto &t = tOpt.value();
+            test[QStringLiteral("result")]  = (t.exitCode == 0)
+                ? QStringLiteral("pass") : QStringLiteral("fail");
+            test[QStringLiteral("passed")]  = t.passed;
+            test[QStringLiteral("failed")]  = t.failed;
+            test[QStringLiteral("total")]   = t.total;
+            if (t.recordedAtMs > 0) {
+                test[QStringLiteral("recorded_at")] =
+                    QDateTime::fromMSecsSinceEpoch(t.recordedAtMs)
+                        .toUTC().toString(Qt::ISODate);
+            }
+        } else {
+            test[QStringLiteral("result")] = QStringLiteral("unknown");
+        }
+        result[QStringLiteral("test")] = test;
+    }
+
+    // ETag injected at the dispatch layer (isEtagSupportedTool).
+    return QJsonDocument(result);
+}
+
 // ----- ANTS-1309 + ANTS-1308 — spec-aware MCP tools ----------------
 //
 // Shared parser for docs/specs/<id>.md. Recognises both the table
