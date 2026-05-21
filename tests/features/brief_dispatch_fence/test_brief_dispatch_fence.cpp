@@ -124,6 +124,56 @@ TEST(BriefDispatchFence, INV17_LeadingBlockFallback) {
     EXPECT_FALSE(out.contains(QStringLiteral("beta body")));
 }
 
+// INV-1731 — an absolute path under the root is inlined (not skipped) and
+// the fence header shows the relative form.
+TEST(BriefDispatchFence, INV1731_AbsolutePathUnderRootInlined) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral("tests")));
+    ASSERT_TRUE(writeFile(dir.path() + QStringLiteral("/tests/t_foo.cpp"),
+                          QStringLiteral("int probe_marker = 42;\n")));
+
+    // canonical project root + canonical absolute file path (resolves any
+    // /tmp -> /private symlink so the prefix check is apples-to-apples).
+    const QString rootCanon = QFileInfo(dir.path()).canonicalFilePath();
+    const QString absPath =
+        QFileInfo(dir.path() + QStringLiteral("/tests/t_foo.cpp"))
+            .canonicalFilePath();
+    ASSERT_FALSE(absPath.isEmpty());
+    ASSERT_TRUE(absPath.startsWith(rootCanon + QStringLiteral("/")));
+
+    QStringList skipped;
+    const QString out = BriefDispatch::inlineBodies(
+        dir.path(), QStringList{ absPath }, 64 * 1024, &skipped);
+
+    EXPECT_TRUE(skipped.isEmpty()) << "absolute-under-root path was skipped";
+    EXPECT_TRUE(out.contains(QStringLiteral("probe_marker"))) << out.toStdString();
+    // Fence header carries the RELATIVE path, not the absolute one.
+    EXPECT_TRUE(out.contains(QStringLiteral("=== file: tests/t_foo.cpp")))
+        << out.toStdString();
+    EXPECT_FALSE(out.contains(QStringLiteral("=== file: ") + absPath))
+        << "fence header leaked the absolute path";
+}
+
+// INV-1731 — an absolute path OUTSIDE the root is still skipped.
+TEST(BriefDispatchFence, INV1731_AbsolutePathOutsideRootSkipped) {
+    QTemporaryDir root;
+    QTemporaryDir other;
+    ASSERT_TRUE(root.isValid() && other.isValid());
+    ASSERT_TRUE(writeFile(other.path() + QStringLiteral("/secret.txt"),
+                          QStringLiteral("do-not-leak\n")));
+    const QString absOutside =
+        QFileInfo(other.path() + QStringLiteral("/secret.txt"))
+            .canonicalFilePath();
+
+    QStringList skipped;
+    const QString out = BriefDispatch::inlineBodies(
+        root.path(), QStringList{ absOutside }, 64 * 1024, &skipped);
+
+    EXPECT_FALSE(out.contains(QStringLiteral("do-not-leak"))) << out.toStdString();
+    EXPECT_EQ(skipped.size(), 1);
+}
+
 // INV-17 — a 4-backtick run inside a matched section is hardened.
 TEST(BriefDispatchFence, INV17_SectionFenceHardening) {
     QTemporaryDir dir;

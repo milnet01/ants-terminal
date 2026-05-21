@@ -18,16 +18,32 @@ QString slurpUtf8(const QString &absPath) {
     return QString::fromUtf8(f.readAll());
 }
 
-// Canonicalise `relPath` under `rootCanon`; empty on escape / missing.
+// Canonicalise `path` (project-relative OR already-absolute) under
+// `rootCanon`; empty on escape / missing. An absolute input is resolved
+// directly — joining it onto projectPath would yield "…/proj//abs/path",
+// which fails canonicalisation and silently drops the body (ANTS-1731).
 QString safeCanon(const QString &projectPath, const QString &rootCanon,
-                  const QString &relPath) {
-    const QString abs = projectPath + QChar('/') + relPath;
+                  const QString &path) {
+    const QString abs = QFileInfo(path).isAbsolute()
+                            ? path
+                            : projectPath + QChar('/') + path;
     const QString canon = QFileInfo(abs).canonicalFilePath();
     if (canon.isEmpty() || rootCanon.isEmpty()
         || !canon.startsWith(rootCanon + QChar('/'))) {
         return QString();
     }
     return canon;
+}
+
+// Fence-header label: a project-relative form so the brief never leaks an
+// absolute path. A relative input is used verbatim; an absolute input
+// under rootCanon is relativised against it (ANTS-1731).
+QString displayLabel(const QString &rootCanon, const QString &input,
+                     const QString &canon) {
+    if (!QFileInfo(input).isAbsolute()) return input;
+    if (!rootCanon.isEmpty() && canon.startsWith(rootCanon + QChar('/')))
+        return canon.mid(rootCanon.size() + 1);
+    return input;
 }
 
 bool isSectionHeading(const QString &line) {
@@ -76,7 +92,7 @@ QString inlineBodies(const QString &projectPath, const QStringList &relPaths,
             body += QStringLiteral("\n[truncated at %1 bytes]")
                         .arg(perFileCapBytes);
         }
-        out += fenceBody(rel, body);
+        out += fenceBody(displayLabel(rootCanon, rel, canon), body);
     }
     return out;
 }
@@ -136,7 +152,7 @@ QString inlineRelevantSections(const QString &projectPath,
             slice += QStringLiteral("\n[truncated at %1 bytes]")
                          .arg(perDocCapBytes);
         }
-        out += fenceBody(rel, slice);
+        out += fenceBody(displayLabel(rootCanon, rel, canon), slice);
     }
     return out;
 }

@@ -9,7 +9,6 @@
 
 #include <QDir>
 #include <QFile>
-#include <QFileInfo>
 #include <QGroupBox>
 #include <QJsonDocument>
 #include <QLabel>
@@ -197,23 +196,13 @@ QString TestAuditDialog::assembleCappedPrompt(
     const QString prePass =
         jsonArrayBlock(tr("Pre-pass grep hits (prioritisation only)"),
                        b.prePassFindings);
-    // TestAuditEngine returns absolute chunk paths; BriefDispatch anchors
-    // project-relative paths under the root, so strip the project prefix.
-    const QString root = projectCwd();
-    const QString rootCanon = QFileInfo(root).canonicalFilePath();
-    QStringList rels;
-    rels.reserve(b.sourcePaths.size());
-    for (const QString &p : b.sourcePaths) {
-        if (p.startsWith(root + QChar('/')))
-            rels << p.mid(root.size() + 1);
-        else if (!rootCanon.isEmpty() && p.startsWith(rootCanon + QChar('/')))
-            rels << p.mid(rootCanon.size() + 1);
-        else
-            rels << p;
-    }
+    // TestAuditEngine returns absolute chunk paths; BriefDispatch.inlineBodies
+    // tolerates absolute-under-root paths directly and relativises the fence
+    // header itself (ANTS-1731), so no prefix-stripping is needed here.
     const QString bulk =
         QStringLiteral("\n## Test files (verbatim)\n\n")
-        + BriefDispatch::inlineBodies(projectCwd(), rels, kPerFileCapBytes);
+        + BriefDispatch::inlineBodies(projectCwd(), b.sourcePaths,
+                                      kPerFileCapBytes);
 
     const qint64 fixedBytes = fixed.toUtf8().size();
     const qint64 bulkBytes  = bulk.toUtf8().size();

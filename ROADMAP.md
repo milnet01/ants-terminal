@@ -3807,7 +3807,7 @@ minor tag (next: pre-0.8.0).
   it `stale_token`) triggers a re-partition + retry. Tools › Review ›
   Test-suite Audit.
 
-- 📋 [ANTS-1731] **`BriefDispatch::inlineBodies` should tolerate
+- ✅ [ANTS-1731] **`BriefDispatch::inlineBodies` should tolerate
   absolute paths under the project root.** Discovered while wiring
   ANTS-1722: `TestAuditEngine` returns ABSOLUTE chunk paths, but
   `inlineBodies`/`inlineRelevantSections` build `projectPath + "/" +
@@ -3894,7 +3894,7 @@ minor tag (next: pre-0.8.0).
   Lanes: new (llmclient), new (llmdispatcher), new (reviewdialogbase), aidialog, MainWindow.
   Source: user-request-2026-05-21 (refactor-first foundation for ANTS-1721/1722).
 
-- 🚧 [ANTS-1728] **Spec-authoring standard — docs/standards/specs.md.**
+- ✅ [ANTS-1728] **Spec-authoring standard — docs/standards/specs.md.**
   User observed (2026-05-21) that spec format was being reverse-engineered from existing specs each time rather than following a written standard. Codify the de-facto format into docs/standards/specs.md alongside the existing standards bundle (coding/documentation/testing/commits/roadmap-format). Captures: required structure (H1 `# ANTS-NNNN — title`, Status/Kind/Source header, § 1 Problem grounded in path:line, § 2 Surface, Invariants, Tests); the bullet `- **INV-N** —` form as primary (96/98 specs use it; the GFM-table form is the parsed-but-minority alternative); grounding/RAM/security/immutability conventions; the cold-eyes loop log; and the spec_query machine-readability contract so drafts stay parseable. Referenced from CLAUDE.md § Project standards. Could later be promoted into the shareable /start-app app-workflow template (currently project-local).
   **Layman:** A written rulebook for how we write the design documents (specs) for each feature, so the format is consistent instead of being copied from whatever old spec happened to be open.
   Kind: doc.

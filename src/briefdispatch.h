@@ -30,11 +30,12 @@ namespace BriefDispatch {
 QString fenceBody(const QString &relPath, const QString &body,
                   const QString &label = QStringLiteral("file"));
 
-// Read each project-relative path (canonicalised + anchored under
-// projectPath), cap its body at perFileCapBytes, fence each via
-// fenceBody, and concatenate. Paths that fail to canonicalise inside
-// projectPath are skipped (appended to *skippedOut when supplied). A
-// body trimmed by the cap gets a "[truncated at N bytes]" marker.
+// Read each path (project-relative OR already-absolute under projectPath;
+// ANTS-1731), cap its body at perFileCapBytes, fence each via fenceBody,
+// and concatenate. The fence header always shows the project-relative
+// form. Paths that fail to canonicalise inside projectPath are skipped
+// (appended to *skippedOut when supplied). A body trimmed by the cap gets
+// a "[truncated at N bytes]" marker.
 QString inlineBodies(const QString &projectPath, const QStringList &relPaths,
                      qint64 perFileCapBytes = 64 * 1024,
                      QStringList *skippedOut = nullptr);
