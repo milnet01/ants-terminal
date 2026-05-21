@@ -79,7 +79,7 @@ against the table below.
 | Code | Meaning | Diagnostic path |
 |------|---------|-----------------|
 | `caller_cwd_required` | Dispatcher refused: tool is `CallerCwdContract::Required` and `caller_cwd` was empty. | Envelope carries `hint` naming `caller_cwd_info`. |
-| `tab_or_cwd_required` | Dispatcher refused: tool is `CallerCwdContract::TabSpecific` and no usable routing key was supplied — `caller_cwd` empty AND no integer `tab` (for the two tab-routing tools `get_text` / `recent_errors`). Closes the focused-tab fallback leak (ANTS-1415 Phase 3b). | Envelope carries `hint` naming `caller_cwd_info` + `tab_list`. e.g. `get_scrollback` with neither `tab` nor `caller_cwd`. |
+| `tab_or_cwd_required` | Dispatcher refused: tool is `CallerCwdContract::TabSpecific` and no usable routing key was supplied — `caller_cwd` empty AND no integer `tab` (for the two tab-routing tools `get_text` / `recent_errors`). Closes the focused-tab fallback leak (ANTS-1415 Phase 3b). | Envelope carries `hint` naming `caller_cwd_info` + `tab_list`. e.g. `get_text` with neither `tab` nor `caller_cwd`. |
 | `cwd_missing` | RcGate refused: tool needs `caller_cwd` and the caller didn't supply one. | Envelope carries `hint` naming `caller_cwd_info`. |
 | `cwd_bad` | RcGate refused: `caller_cwd` doesn't canonicalise. | No hint — the caller has a `caller_cwd`, it just doesn't resolve. |
 | `cwd_mismatch` | RcGate refused: `caller_cwd` doesn't match the focused-tab cwd (write-side tools that need both to agree, ANTS-1372). | No hint — the caller has a `caller_cwd`, focus on the gate's diagnostic in `error`. |

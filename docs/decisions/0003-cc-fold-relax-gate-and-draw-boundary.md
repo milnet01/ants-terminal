@@ -20,7 +20,7 @@ without evidence.
 Two facts have changed since:
 
 1. **0.7.87 shipped on 2026-05-13** with the MCP token-reduction
-   pack (ANTS-1248..1252 + 1254 — five new MCP tools, hook pack,
+   pack (ANTS-1248..1254 — five new MCP tools, hook pack,
    provider-registry consolidation). Cumulative session saving
    quoted in the release notes: *~50–100 K tokens on a typical
    /indie-review + /audit workflow.* The figure was estimated, not
@@ -89,7 +89,8 @@ two IDs.
    - **0.7.88** — ANTS-1111 (residual triage features + the
      `RoadmapFoldIn` shared helper that 1112 + 1113 will reuse).
    - **0.7.89** — ANTS-1112 (the big new build: indie-review
-     engine + dialog + parallel dispatch via aidialog).
+     engine + dialog + parallel dispatch via LlmDispatcher /
+     ReviewDialogBase (ANTS-1727)).
    - **0.7.90** — ANTS-1113 (Debt Sweep tab; reuses RoadmapFoldIn
      and the allowlist-learning loop from 0.7.88).
 
@@ -144,7 +145,7 @@ two IDs.
      with no in-process locking. RoadmapFoldIn introduces the
      first programmatic writer; it adopts the
      `::flock(fd, LOCK_EX | LOCK_NB)` pattern already used by
-     `ConfigWriteLock` in `configbackup.h:93-120` (advisory lock
+     `ConfigWriteLock` in `configbackup.h:93-130` (advisory lock
      on the counter file itself). This is new code reusing an
      existing pattern, not re-binding to existing infrastructure.
 

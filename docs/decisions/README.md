@@ -65,6 +65,14 @@ A status change is an edit to the ADR's `Status:` field; the
 body of an accepted ADR isn't rewritten — supersession or
 amendment is captured in a new ADR.
 
+**Exception — outcome annotations.** A brief `**Outcome
+(YYYY-MM-DD):**` block appended to a Decision bullet is
+sanctioned. It documents what *actually shipped* vs what was
+projected; this is read-only history, not a policy change.
+Keep it one paragraph; if the actual outcome differs
+substantially from the projection, write a superseding ADR
+instead.
+
 The combined form `Accepted (Amended by ADR-NNNN)` is also used
 in practice when an ADR has been accepted and later partially
 amended — the `Accepted` prefix signals the original decision

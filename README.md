@@ -47,7 +47,7 @@
 
 ### Rendering
 
-Ants Terminal paints via `QPainter` + `QTextLayout` (HarfBuzz). One render path, ligature-aware out of the box, partial-rect updates for sub-millisecond redraws on noisy output. The earlier optional GL-atlas renderer (`glrenderer.cpp`, GLSL 3.3 core, 2048x2048 texture atlas, instanced quads) was retired in 0.7.44 after sitting compiled-but-unreachable since 0.7.4 — see `CHANGELOG.md` for the post-mortem.
+Ants Terminal paints via `QPainter` + `QTextLayout` (HarfBuzz). One render path, ligature-aware out of the box, partial-rect updates for sub-millisecond redraws on noisy output. The earlier optional GL-atlas renderer (last seen as `src/glrenderer.cpp`; GLSL 3.3 core, 2048x2048 texture atlas, instanced quads) was retired and deleted in 0.7.44 after sitting compiled-but-unreachable since 0.7.4 — see `CHANGELOG.md` for the post-mortem.
 
 ### Ligature Support
 
@@ -557,7 +557,7 @@ loop. Combine as many as the situation justifies:
 
 | Pattern | What it does | How to invoke |
 |---|---|---|
-| Target-specific build | Skips the ~30 test binaries when only the main app changed. | `cmake --build build --target ants-terminal` |
+| Target-specific build | Skips the ~11 test binaries (7 GoogleTest bundles + 4 standalone) when only the main app changed. | `cmake --build build --target ants-terminal` |
 | `-DANTS_TESTS=OFF` | Drops every test target from the graph entirely. | `cmake -G Ninja -B build -DANTS_TESTS=OFF` |
 | `-DANTS_CCACHE=ON` *(default)* | Wires `ccache` as the C/C++ compiler launcher when installed; second build of any file is a cache hit (zero compile cost). Pass `-DANTS_CCACHE=OFF` to disable. | `zypper install ccache` (or distro equivalent), then `cmake -G Ninja -B build` |
 | `-DANTS_UNITY_BUILD=ON` | Folds groups of `.cpp` into one TU per CMake target, dropping `cc1plus` instance count (each holds ~600 MiB of Qt headers). **Experimental** — incompatible with the current test-bundle selective-link layout (see ANTS-1553). Use only on main-exe-only builds. | `cmake -G Ninja -B build -DANTS_TESTS=OFF -DANTS_UNITY_BUILD=ON` |
@@ -609,7 +609,7 @@ Runs `tests/audit_self_test.sh` (audit-rule grep regression tests
 against `tests/audit_fixtures/`) plus the GoogleTest feature-bundle
 suites — `test_vt`, `test_chrome`, `test_claude`, `test_audit`,
 `test_dialogs`, `test_lua`, `test_core` — registered as individual
-ctest entries by `gtest_discover_tests`. Total ≈ 1382 entries. Use
+ctest entries by `gtest_discover_tests`. Total ≈ 1382 entries (run `ctest -N` for the current count). Use
 `ctest -L features` to limit to the bundle entries; `ctest -R 'Suite\.Name'`
 filters to a single TEST block.
 

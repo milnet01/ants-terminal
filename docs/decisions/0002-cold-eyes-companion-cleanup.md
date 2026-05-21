@@ -74,7 +74,7 @@ and ship features the user didn't ask for.
    token-saving claims. Threshold for keep/iterate/drop is
    **deferred to user input at the time the measurement lands** —
    any number set in this ADR would be ungrounded.
-6. **Mark ANTS-1056 obsolete** in the roadmap (superseded by
+6. **Annotate ANTS-1056 as Retired** in the roadmap (superseded by
    ANTS-1100). The two remaining additive items
    (theme-emoji filter, export-as-Markdown) only land if the
    user explicitly asks for them; they are not auto-promoted.

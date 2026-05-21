@@ -66,9 +66,10 @@ CC sessions append concurrently.
 The atomicity contract:
 
 - **Local Linux filesystems** (ext4, btrfs, xfs, tmpfs) provide
-  atomic `write()` for `O_APPEND` opens up to `PIPE_BUF` (4096
-  bytes on Linux). This is the Linux kernel extending POSIX's
-  pipe-only guarantee to regular files. Records MUST stay
+  atomic `write()` for `O_APPEND` opens up to 4096 bytes in
+  practice (Linux kernel implementation guarantee for regular
+  files — POSIX only mandates this for pipes, but Linux extends it
+  to local-filesystem regular files). Records MUST stay
   **under 3.5 KiB on disk** so they always fit in one
   `write(2)` call below that bound — the read-side caps (280 +
   1024 UTF-16 code units) keep records well under, but writers

@@ -4,7 +4,8 @@
 > reviewed for 0.7.92, Lua 5.4 runtime). The plugin surface hasn't grown
 > since 0.6.9 — per-event "0.6.9" markers below remain accurate. For
 > internal plugin-system architecture notes aimed at Ants-Terminal
-> contributors, see [`docs/standards/coding.md`](docs/standards/coding.md).
+> contributors, see the `luaengine` / `pluginmanager` module-map entries
+> in [`CLAUDE.md`](CLAUDE.md).
 
 Plugins extend the terminal through a sandboxed Lua 5.4 runtime. They can
 react to terminal events (line of output, keypress, tab created, OSC 133
@@ -155,7 +156,7 @@ end)
   Plugin files: `manifest.json` is capped at 1 MiB
   (`kMaxManifestBytes`) and `init.lua` must be a regular file —
   symlinks at `init.lua` are rejected before load
-  (`pluginmanager.cpp::loadFromDir`).
+  (`pluginmanager.cpp::scanAndLoad`, line 141).
 - A `load` event fires **once** immediately after `init.lua` returns — use
   `ants.on("load", fn)` for deferred setup that needs the full ants API
   ready.
@@ -197,6 +198,12 @@ injects into that command's stdin. Use responsibly.
 Shows a desktop notification (via the host's native notification service)
 or falls back to the status bar.
 
+> **⚠ Note (0.7.92):** `ants.notify()` is currently a no-op. The
+> `PluginManager::showNotification` signal is connected within the engine
+> but is not connected to the host notification service or status bar in
+> `MainWindow`. Calling this function is accepted without error but has
+> no visible effect. This is tracked for fix in the ROADMAP.
+
 ```lua
 ants.notify("Build finished", "Exit 0 · 1m 14s")
 ```
@@ -224,9 +231,11 @@ local cwd = ants.get_cwd()
 
 ### `ants.set_status(text)`
 
-Overwrites the status-bar text. A new `ants.set_status("")` restores the
-default status. Plugins should scope their status updates to clear them
-when no longer relevant.
+Displays `text` in the status bar as a **5-second timed message**
+(routed via `PluginManager::statusMessage` → `showStatusMessage(text,
+5000)`). After the 5 s window the status bar returns to its normal
+content — this is not a persistent override. Calling `ants.set_status("")`
+shows a blank message for 5 seconds, not an immediate restore.
 
 ```lua
 ants.set_status("indexing…")
@@ -234,9 +243,11 @@ ants.set_status("indexing…")
 
 ### `ants.log(message)`
 
-Displays as a 3-second status-bar message (routed via
-`PluginManager::logMessage` → `MainWindow::showStatusMessage`). Use for
-debugging; not a substitute for `ants.set_status()` for user-facing messages.
+Displays as a **3-second timed status-bar message** prepended with
+`"Plugin: "` (i.e. `showStatusMessage("Plugin: " + message, 3000)`).
+Use for debugging; not a substitute for `ants.set_status()` for
+user-facing messages. Note: `print()` inside a plugin is also
+redirected here.
 
 ```lua
 ants.log("plugin foo: loaded config from " .. cfg_path)
@@ -348,13 +359,13 @@ end
 
 | Event name                | Handler signature             | Cancellable | When it fires                                        |
 |---------------------------|-------------------------------|-------------|------------------------------------------------------|
-| `"output"`                | `function(chunk)`             | no          | Every chunk of PTY output, post-decode, pre-display  |
-| `"line"`                  | `function(line)`              | no          | A complete logical line arrives (newline-terminated) |
-| `"prompt"`                | `function(marker_data)`       | no          | OSC 133 A/B/C/D marker parsed                        |
-| `"keypress"`              | `function(key)` returns bool? | **yes**     | User pressed a key (before the grid sees it)         |
-| `"title_changed"`         | `function(new_title)`         | no          | OSC 0/1/2 title change                               |
-| `"tab_created"`           | `function(tab_info)`          | no          | New tab opened (includes splits)                     |
-| `"tab_closed"`            | `function(tab_info)`          | no          | Tab/pane closed                                      |
+| `"output"` †              | `function(chunk)`             | no          | Every chunk of PTY output, post-decode, pre-display  |
+| `"line"` †                | `function(line)`              | no          | A complete logical line arrives (newline-terminated) |
+| `"prompt"` †              | `function(marker_data)`       | no          | OSC 133 A/B/C/D marker parsed                        |
+| `"keypress"` †            | `function(key)` returns bool? | **yes**     | User pressed a key (before the grid sees it)         |
+| `"title_changed"` †       | `function(new_title)`         | no          | OSC 0/1/2 title change                               |
+| `"tab_created"` †         | `function(tab_info)`          | no          | New tab opened (includes splits)                     |
+| `"tab_closed"` †          | `function(tab_info)`          | no          | Tab/pane closed                                      |
 | `"keybinding"`            | `function(action_id)`         | no          | Manifest `"keybindings"` shortcut fired              |
 | `"load"`                  | `function(plugin_name)`       | no          | Once after `init.lua` returns — deferred init hook   |
 | `"unload"`                | `function(plugin_name)`       | no          | Just before VM shutdown — save state here            |
@@ -364,6 +375,12 @@ end
 | `"window_config_reloaded"` 0.6.9 | `function(_)`          | no          | Settings → Apply, or `config.json` watcher fired     |
 | `"user_var_changed"` 0.6.9 | `function(payload)`          | no          | OSC 1337 SetUserVar — payload `"NAME=value"`         |
 | `"palette_action"` 0.6.9  | `function(payload)`           | no          | Registered palette entry / `run_script` trigger fired |
+
+**† Not yet wired (0.7.92):** Events marked `†` are registered in the
+`ants.on()` API (handlers are accepted without error) but have **no
+`fireEvent` call site** in the terminal source as of 0.7.92. Handlers
+for these events will never fire in the current build. They are listed
+here as the intended API surface for a future wiring commit.
 
 **Return-value contract:** only `"keypress"` acts on the return value.
 Returning `false` suppresses default handling; any other value (including
@@ -483,10 +500,9 @@ if ants._version and ants._version >= "0.6" then
 end
 ```
 
-> **⚠ Lexicographic caveat:** `ants._version >= "0.6"` is fine for
-> `0.6`–`0.9` comparisons but will return `false` for `0.10+` because
-> `"0.10"` < `"0.6"` lexicographically. Prefer a numeric split for
-> guards that must remain correct across minor bumps ≥ 10.
+> **⚠ Lexicographic caveat:** same as the warning in
+> [§ `ants._version`](#antsversion--ants_plugin_name) above — string
+> comparison breaks for minor ≥ 10. Prefer a numeric split.
 
 ## Error Handling
 
@@ -545,21 +561,14 @@ end)
 ### Example 3 — fail-fast test runner
 
 ```lua
--- init.lua — re-run tests on save when you're in a test directory
--- Listens to OSC 133 markers; when a 'B' marker arrives (command start),
--- checks the command for matching patterns.
-local last_cmd = ""
-
-ants.on("prompt", function(marker)
-    -- OSC 133's B marker carries the command; we just snapshot recent
-    -- output since the marker data shape is loose today.
-    local tail = ants.get_output(2)
-    last_cmd = tail:match("%$ (.-)\n") or last_cmd
-end)
-
-ants.on("line", function(line)
-    if line:match("^FAIL") then
-        ants.notify("Test failed", last_cmd)
+-- init.lua — notify on a non-zero exit from any command
+-- Uses the "command_finished" event (OSC 133 D marker), which carries
+-- the exit code and duration of the last command.
+ants.on("command_finished", function(payload)
+    local code = payload:match("exit_code=(%d+)") or "0"
+    if tonumber(code) ~= 0 then
+        local dur = payload:match("duration_ms=(%d+)") or "?"
+        ants.log("command failed: exit " .. code .. " (" .. dur .. " ms)")
     end
 end)
 ```
@@ -635,13 +644,18 @@ on these today** — they'll fail with `attempt to call a nil value`.
   config-file trigger rules. Same rule schema; lets plugins install /
   remove triggers without user editing of `config.json`.
 
+### 0.6.13 — trigger grid-mutation actions ✅ (shipped)
+
+- ✅ **Config-file trigger actions**: `highlight_line`, `highlight_text`,
+  `make_hyperlink` — available as rule `action` types in the config-file
+  trigger system. These are **config-level** actions (declared in
+  `config.json`), not Lua API. The `ants.trigger.register()` programmatic
+  Lua API (§ 0.7 below) remains deferred.
+
 ### 0.8 — plugin marketplace
 
 - **Signed manifest packaging** (Ed25519), public index served from a
   static site, inline install from Settings → Plugins → Browse.
-- **Trigger grid-mutation actions**: `HighlightLine`, `HighlightText`,
-  `MakeHyperlink` — require per-cell color overrides + parser-external
-  OSC 8 injection; deferred from the 0.6.9 trigger bundle.
 
 ### 0.9+ — WebAssembly plugins (opt-in)
 

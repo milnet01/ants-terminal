@@ -1,10 +1,11 @@
 # Project Standards
 
-Four shareable template standards that govern how this project is
+Five shareable template standards that govern how this project is
 written, tested, documented, and committed. Each standard is v1
 and self-contained; cross-references between them are explicit.
-Project-local standards (dialogs, mcp-tools, status-bar, etc.)
-are listed below the table.
+(`roadmap-format.md` is also from the `/start-app` template, listed
+in the sub-spec table below.) Project-local standards (dialogs,
+mcp-tools, status-bar, etc.) are listed below the table.
 
 | Standard | Covers |
 |----------|--------|

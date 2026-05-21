@@ -314,8 +314,9 @@ while preserving the tail where compile/link failures actually surface.
 Five overlapping knobs trim wall-clock and peak RAM on the workstation
 edit-build-test loop (ANTS-1550 / ANTS-1552):
 
-- `cmake --build build --target ants-terminal` — skips the ~30 test
-  bundle binaries when only the main app changed.
+- `cmake --build build --target ants-terminal` — skips the ~11 test
+  binaries (7 GoogleTest bundles + 4 standalone) when only the main
+  app changed.
 - `-DANTS_TESTS=OFF` at configure time — drops every test target from
   the graph entirely. Pair with the target-specific build above for
   the absolute floor.
@@ -392,14 +393,14 @@ as a type and flags every signal emission.
   with `// @expect <rule-id>` markers) and `good.*` (expect zero).
   Count-based, not line-number-based.
 - **Feature-conformance** (`tests/features/*`, label `features`) —
-  each subdir pairs `spec.md` (human contract) with a standalone C++
-  test linking only the `src/*.cpp` objects it exercises (GUI-free).
-  To add a new one:
+  each subdir pairs `spec.md` (human contract) with a C++ test compiled
+  into a shared test bundle (not a standalone binary — see
+  `tests/features/README.md` for the bundle model). To add a new one:
   1. Write `spec.md` first (surface to user for sign-off before coding).
   2. Write `test_<feature>.cpp` — exit 0/non-zero, print enough on
      failure to diagnose without reproducing.
-  3. Wire in `CMakeLists.txt` via `add_executable` + `add_test` with
-     label `features;fast`.
+  3. Add the source path to the appropriate bundle's `SOURCES` list in
+     `CMakeLists.txt` (do NOT add a new `add_executable`).
   4. **Verify the test fails against pre-fix code** (`git checkout
      <sha> -- src/...`) before restoring the fix — prevents tests
      that pass on broken code.
@@ -526,7 +527,8 @@ as a type and flags every signal emission.
   `~/.cache/ants-terminal/mcp-state/<sha256(cwd)>.json` is per-cwd-
   hashed and reads of the caller's own bucket are self-scoped.
   `session_memory`'s legacy `cwd` arg is ignored (still in the
-  schema for one release as `DEPRECATED`, drops in 0.7.93);
+  schema for one release as `DEPRECATED`, will be removed in a future
+  release);
   `caller_cwd` is the only project-scope source. ANTS-1372 § 4
   INV-7 amended by ANTS-1336 then re-amended by ANTS-1435 to
   reflect the read/write split. See `docs/specs/ANTS-1435.md` and
@@ -551,7 +553,7 @@ as a type and flags every signal emission.
 
 ## Project standards
 
-Four template-identical shareable v1 standards at `docs/standards/` (coding, documentation, testing, commits), plus the following project-specific standards:
+Five shareable v1 standards at `docs/standards/` (coding, documentation, testing, commits, roadmap-format — all from the `/start-app` template, with project-local additions described below), plus the following project-specific standards:
 
 - [`coding.md`](docs/standards/coding.md), [`documentation.md`](docs/standards/documentation.md),
   [`testing.md`](docs/standards/testing.md), [`commits.md`](docs/standards/commits.md)
@@ -562,8 +564,8 @@ Four template-identical shareable v1 standards at `docs/standards/` (coding, doc
 - Sub-spec: [`specs.md`](docs/standards/specs.md) (ANTS-1728) —
   spec-authoring standard for `docs/specs/ANTS-NNNN.md`: required
   structure (H1 + Status/Kind/Source header, § 1 Problem, § 2 Surface,
-  Invariants, Tests), the bullet `- **INV-N** —` form (96/98 specs;
-  the minority GFM-table form is also parsed), grounding/RAM/security
+  Invariants, Tests), the bullet `- **INV-N** —` form (majority of
+  specs; the minority GFM-table form is also parsed), grounding/RAM/security
   conventions, cold-eyes loop log, and the `spec_query` machine-
   readability contract. Cite when writing or reviewing a spec.
 - Sub-spec: [`mcp-error-codes.md`](docs/standards/mcp-error-codes.md)
@@ -589,12 +591,13 @@ Four template-identical shareable v1 standards at `docs/standards/` (coding, doc
   user-resizable, persist its size, and re-center over the terminal
   window on every open (D1–D4). Cite when building or reviewing a dialog.
 
-`coding.md`, `commits.md`, and `testing.md` are byte-identical to
-`/start-app`'s template at
-`~/.claude/skills/app-workflow/templates/docs/standards/`. The
-remaining two carry project-specific additions on top of the
-template: `documentation.md` adds § 7 Accessibility (ANTS-1235);
-`roadmap-format.md` adds the `Layman:` field (§ 3.5) and the
+`commits.md` and `testing.md` are byte-identical to `/start-app`'s
+template at `~/.claude/skills/app-workflow/templates/docs/standards/`.
+`coding.md` carries one project-local addition on top of the template:
+the `setOwnerOnlyPerms()` note in § 5.2 Qt (a project-local helper, not
+a Qt built-in). The remaining two carry further project-specific additions:
+`documentation.md` adds § 7 Accessibility (ANTS-1235); `roadmap-format.md`
+adds the `Layman:` field (§ 3.5), the `Layman:` ordering rule, and the
 § 3.9 archive-rotation block. Project-local additions (not in the
 template, not shareable as-is): `status-bar.md` documents this
 codebase's status-bar widget convention;

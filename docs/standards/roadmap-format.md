@@ -522,11 +522,11 @@ This spec uses **one prefix per repo** (`ANTS-`, `VESTIGE-`,
 …) by convention. Repos with multiple work streams sometimes
 prefer **multi-prefix** schemes (`SH-`, `ED-`, `PHASE-`) for
 lane visibility. Multi-prefix is permitted — the format-spec
-tooling only requires the regex
-`\[[A-Za-z][A-Za-z0-9_-]+-\d+\]` to match (mixed-case prefixes
-like `Sh-`, `Ed-` are accepted by the parser; § 3.5.1's
-all-caps rule is the recommended convention but not enforced
-mechanically). The single-prefix rule is convention because it
+tooling requires the regex `\[[A-Z][A-Z0-9_-]+-\d+\]` (uppercase
+only, consistent with § 3.5.1 and the `roadmap-query` parser in
+`remotecontrol.cpp`). Mixed-case prefixes like `Sh-`, `Ed-` are
+**not** accepted by the parser. The single-prefix rule is convention
+because it
 keeps `.roadmap-counter` unambiguous; multi-prefix repos need
 one counter per prefix.
 

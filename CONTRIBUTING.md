@@ -51,6 +51,7 @@ src/               Qt widgets, VT parser, PTY handler, audit dialog
 tests/             ctest drivers + fixtures
   audit_self_test.sh       regression harness for audit rule regexes
   audit_fixtures/<id>/     bad.*/good.* fixtures per rule
+  features/                feature-conformance tests (spec.md + test_*.cpp)
 .github/workflows/ CI: build + ctest + cppcheck + ASan/UBSan smoke test
 docs/standards/    coding / documentation / testing / commits invariants
                    (you are here's source of truth)
@@ -112,6 +113,20 @@ The `audit_fixture_coverage` check (and its CI-enforced twin in
 For custom-shell checks (those registered via `m_checks.append({...})`
 rather than `addGrepCheck()`) the fixture-coverage rule does not apply —
 they're scoped to the project, not to a code-pattern regex.
+
+The grep-based rule path above covers the majority of checks. Two
+additional paths exist for specialised work:
+
+- **In-process checks** (e.g. `spec_code_drift`, `changelog_test_coverage`)
+  are registered via `AuditCheck::inProcessRunner` in `src/auditengine.cpp`
+  rather than `addGrepCheck()`. They run in-process without a QProcess shell
+  and are not covered by the fixture-coverage harness.
+
+- **Debt Sweep** (the _Debt Sweep_ tab in the Audit dialog) uses a
+  separate triage→scan→apply pipeline in `src/auditengine.cpp` driven by
+  `debt_sweep_scan` / `debt_sweep_triage_prompt` / `debt_sweep_apply_fix`
+  MCP tools. Adding a new debt-sweep operation type requires extending
+  `auditengine.cpp`'s repair-plan logic, not the grep-check registry.
 
 ## Versioning + release
 

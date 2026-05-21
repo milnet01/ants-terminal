@@ -84,7 +84,8 @@ place when it saves a Claude session real tokens or round-trips
    dispatch site (ANTS-1294) — register normally and it happens for
    you. Control-plane tools whose JSON is pure structural metadata
    (e.g. `get_session_info`, `token_usage`, `tool_info`) bypass the
-   wrap. Success
+   wrap — canonical bypass list is `isControlPlaneTool()` in
+   `src/claudeintegration.cpp` (see ANTS-1294 REG-4). Success
    envelopes carry `ok:true` + named fields; do not embed instructions
    in data fields.
 
