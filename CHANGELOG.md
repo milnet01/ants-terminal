@@ -65,6 +65,17 @@ for security-relevant changes.
   ROADMAP.md as per-finding bullets (with allocated IDs) or as a
   free-text narrative.
 
+- **Project Audit dialog — "Debt Sweep" tab (ANTS-1259).** The audit
+  dialog is now two tabs (Audit | Debt Sweep). The Debt Sweep tab scans
+  for code / test / doc / packaging drift accrued since the last tag
+  (the ANTS-1113 engine, previously only reachable via MCP), groups the
+  findings by category, and offers per-finding **Fix** (mechanical
+  auto-fixes, applied in place), **Defer** (fold one or all into
+  ROADMAP.md as a dated debt-sweep block with allocated IDs), and
+  **Allow** (false-positive → project allowlist) actions, plus a
+  **Triage with AI** button that sends the non-mechanical findings to
+  the configured AI endpoint for KEEP/DROP/DEFER triage.
+
 - **Project Audit dialog — fold findings into ROADMAP, allow findings,
   and a "Since baseline" view (ANTS-1257).** Four new affordances wire
   the ANTS-1111 engine layer into the audit UI: a **🌳 Fold actionable**

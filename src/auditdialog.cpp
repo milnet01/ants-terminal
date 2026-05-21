@@ -4,6 +4,8 @@
 #include "auditfpledger.h"
 #include "audithygiene.h"
 #include "roadmapfoldin.h"
+#include "debtsweepengine.h"
+#include "llmclient.h"
 #include "dialogchrome.h"
 #include "featurecoverage.h"
 #include "secureio.h"
@@ -15,6 +17,7 @@
 #include <QHBoxLayout>
 #include <QGroupBox>
 #include <QScrollArea>
+#include <QTabWidget>
 #include <QDir>
 #include <QFile>
 #include <QSaveFile>
@@ -2771,17 +2774,7 @@ bool AuditDialog::foldFindingsIntoRoadmap(const QList<Finding> &actionable,
     QString needle = releaseHeading;
     while (needle.endsWith(QChar('\n')) || needle.endsWith(QChar('\r')))
         needle.chop(1);
-    {
-        QFile rf(m_projectPath + "/ROADMAP.md");
-        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) return false;
-        const QString body = QString::fromUtf8(rf.readAll());
-        rf.close();
-        bool found = false;
-        const QStringList lines = body.split(QChar('\n'));
-        for (const QString &ln : lines)
-            if (ln == needle) { found = true; break; }
-        if (!found) return false;
-    }
+    if (!roadmapHeadingExists(needle)) return false;
 
     const QList<int> ids =
         RoadmapFoldIn::allocateIds(m_projectPath, actionable.size());
@@ -2847,6 +2840,346 @@ void AuditDialog::onSinceBaselineToggled(bool on) {
     // m_sinceBaseline, so stale data is inert).
     if (on) computeRecentChangeSets(/*includeLines=*/true);
     if (!m_completedResults.isEmpty()) renderResults();
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-1259 — Debt Sweep tab
+// ---------------------------------------------------------------------------
+
+bool AuditDialog::roadmapHeadingExists(const QString &heading) const {
+    QString needle = heading;
+    while (needle.endsWith(QChar('\n')) || needle.endsWith(QChar('\r')))
+        needle.chop(1);
+    QFile rf(m_projectPath + "/ROADMAP.md");
+    if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) return false;
+    const QStringList lines = QString::fromUtf8(rf.readAll()).split(QChar('\n'));
+    rf.close();
+    for (const QString &ln : lines)
+        if (ln == needle) return true;
+    return false;
+}
+
+Finding AuditDialog::debtToAuditFinding(const DebtSweepEngine::Finding &d) {
+    Finding f;
+    f.checkId   = d.detectorId;
+    f.checkName = d.detectorId;
+    f.file      = d.file;
+    f.line      = d.line;
+    f.message   = d.message;
+    return f;
+}
+
+QList<DebtSweepEngine::Finding> AuditDialog::debtScan() {
+    DebtSweepEngine::ScanOptions opt;   // engine defaults
+    const QList<DebtSweepEngine::Finding> all =
+        DebtSweepEngine::scanAll(m_projectPath, opt);
+    // Reuse the project allowlist so an Allowed debt finding stays hidden
+    // across scans (the engine itself doesn't consult the allowlist).
+    m_debtFindings.clear();
+    for (const DebtSweepEngine::Finding &d : all)
+        if (!allowlisted(debtToAuditFinding(d)))
+            m_debtFindings.append(d);
+    m_debtScanned = true;
+    return m_debtFindings;
+}
+
+bool AuditDialog::debtFixInline(const DebtSweepEngine::Finding &f) {
+    return DebtSweepEngine::applyMechanicalFix(m_projectPath, f).applied;
+}
+
+bool AuditDialog::debtDeferToRoadmap(
+    const QList<DebtSweepEngine::Finding> &deferred,
+    const QString &releaseHeading) {
+    if (deferred.isEmpty() || releaseHeading.isEmpty()) return false;
+    QString needle = releaseHeading;
+    while (needle.endsWith(QChar('\n')) || needle.endsWith(QChar('\r')))
+        needle.chop(1);
+    if (!roadmapHeadingExists(needle)) return false;   // don't burn IDs
+
+    const QList<int> ids =
+        RoadmapFoldIn::allocateIds(m_projectPath, deferred.size());
+    if (ids.size() != deferred.size()) return false;
+
+    const QString block = DebtSweepEngine::templateDebtSweepFoldInBlock(
+        deferred, ids, QDate::currentDate().toString(Qt::ISODate));
+    return RoadmapFoldIn::insertBlock(m_projectPath, needle, block);
+}
+
+bool AuditDialog::debtAllow(const DebtSweepEngine::Finding &f,
+                            const QString &reason) {
+    return appendAllowlistEntry(debtToAuditFinding(f), reason);
+}
+
+QString AuditDialog::debtTriagePrompt() const {
+    QList<DebtSweepEngine::Finding> llm;
+    for (const DebtSweepEngine::Finding &d : m_debtFindings)
+        if (!d.autoFixable) llm.append(d);
+    return DebtSweepEngine::triagePrompt(llm);
+}
+
+void AuditDialog::buildDebtSweepTab() {
+    auto *tab = new QWidget(m_tabs);
+    auto *col = new QVBoxLayout(tab);
+    col->setSpacing(8);
+
+    auto *intro = new QLabel(tab);
+    intro->setText(
+        "<b>Debt Sweep</b> — scans for code / test / doc / packaging drift "
+        "accrued since the last tag. Fix mechanical items in place, defer the "
+        "rest into ROADMAP, or allow a false positive.");
+    intro->setWordWrap(true);
+    col->addWidget(intro);
+
+    auto *btnRow = new QHBoxLayout();
+    m_debtScanBtn = new QPushButton(QStringLiteral("🧹 Scan for debt"), tab);
+    m_debtScanBtn->setFixedHeight(32);
+    connect(m_debtScanBtn, &QPushButton::clicked,
+            this, &AuditDialog::onDebtScanClicked);
+    btnRow->addWidget(m_debtScanBtn);
+
+    m_debtDeferAllBtn =
+        new QPushButton(QStringLiteral("📌 Defer all to ROADMAP"), tab);
+    m_debtDeferAllBtn->setFixedHeight(32);
+    m_debtDeferAllBtn->setEnabled(false);
+    m_debtDeferAllBtn->setToolTip(
+        "Fold every listed finding into ROADMAP.md as a dated debt-sweep block.");
+    connect(m_debtDeferAllBtn, &QPushButton::clicked, this, [this]() {
+        if (m_debtFindings.isEmpty()) return;
+        QString heading = RoadmapFoldIn::findActiveReleaseHeading(m_projectPath);
+        bool ok = false;
+        heading = QInputDialog::getText(this, "Defer all to ROADMAP",
+            QString("Fold all %1 finding%2 into ROADMAP.md after this heading "
+                    "(edit if wrong):")
+                .arg(m_debtFindings.size())
+                .arg(m_debtFindings.size() == 1 ? "" : "s"),
+            QLineEdit::Normal, heading, &ok);
+        if (!ok || heading.trimmed().isEmpty()) return;
+        if (debtDeferToRoadmap(m_debtFindings, heading.trimmed())) {
+            if (m_debtStatus)
+                m_debtStatus->setFullText("Deferred all findings into ROADMAP.md");
+            m_debtFindings.clear();
+            renderDebtResults();
+        } else {
+            QMessageBox::warning(this, "Defer to ROADMAP",
+                "Could not insert the fold-in block — check the heading exists "
+                "verbatim in ROADMAP.md.");
+        }
+    });
+    btnRow->addWidget(m_debtDeferAllBtn);
+
+    m_debtTriageBtn = new QPushButton(QStringLiteral("🧠 Triage with AI"), tab);
+    m_debtTriageBtn->setFixedHeight(32);
+    m_debtTriageBtn->setEnabled(false);
+    m_debtTriageBtn->setToolTip(
+        "Send the non-mechanical findings to the configured AI endpoint for "
+        "KEEP / DROP / DEFER triage. Requires Settings → AI → enabled.");
+    connect(m_debtTriageBtn, &QPushButton::clicked,
+            this, &AuditDialog::onDebtTriageClicked);
+    btnRow->addWidget(m_debtTriageBtn);
+    btnRow->addStretch();
+    col->addLayout(btnRow);
+
+    m_debtStatus = new ElidedLabel(tab);
+    col->addWidget(m_debtStatus);
+
+    m_debtResults = new QTextBrowser(tab);
+    m_debtResults->setReadOnly(true);
+    m_debtResults->setFont(QFont("monospace", 9));
+    m_debtResults->setOpenLinks(false);
+    m_debtResults->setOpenExternalLinks(false);
+    connect(m_debtResults, &QTextBrowser::anchorClicked,
+            this, &AuditDialog::onDebtAnchorClicked);
+    col->addWidget(m_debtResults, 1);
+
+    m_tabs->addTab(tab, tr("Debt Sweep"));
+    renderDebtResults();   // initial "click Scan" placeholder
+}
+
+void AuditDialog::onDebtScanClicked() {
+    if (m_debtStatus) m_debtStatus->setFullText("Scanning for debt…");
+    QApplication::processEvents();
+    debtScan();
+    renderDebtResults();
+    if (m_debtStatus)
+        m_debtStatus->setFullText(QString("Debt sweep — %1 finding%2")
+            .arg(m_debtFindings.size())
+            .arg(m_debtFindings.size() == 1 ? "" : "s"));
+}
+
+void AuditDialog::renderDebtResults() {
+    if (!m_debtResults) return;
+    m_debtResults->clear();
+
+    const bool any = !m_debtFindings.isEmpty();
+    if (m_debtDeferAllBtn) m_debtDeferAllBtn->setEnabled(any);
+
+    bool hasLlmShaped = false;
+    for (const DebtSweepEngine::Finding &d : m_debtFindings)
+        if (!d.autoFixable) { hasLlmShaped = true; break; }
+    if (m_debtTriageBtn) {
+        Config cfg;
+        m_debtTriageBtn->setEnabled(hasLlmShaped && cfg.aiEnabled()
+                                    && !cfg.aiEndpoint().isEmpty());
+    }
+
+    if (!any) {
+        m_debtResults->setHtml(m_debtScanned
+            ? QStringLiteral("<i>No debt findings.</i>")
+            : QStringLiteral("<i>Click \"Scan for debt\" to begin.</i>"));
+        return;
+    }
+
+    static const QStringList catOrder = {
+        "code_drift", "test_coverage", "doc_drift", "packaging_drift"};
+    static const QHash<QString, QString> catLabel = {
+        {"code_drift", "Code drift"}, {"test_coverage", "Test coverage"},
+        {"doc_drift", "Doc drift"}, {"packaging_drift", "Packaging drift"}};
+
+    QString html;
+    for (const QString &cat : catOrder) {
+        QStringList rows;
+        for (int i = 0; i < m_debtFindings.size(); ++i) {
+            const DebtSweepEngine::Finding &d = m_debtFindings.at(i);
+            if (d.category != cat) continue;
+            const QString loc = d.file.isEmpty()
+                ? QStringLiteral("(project)")
+                : (d.line > 0
+                   ? QString("%1:%2").arg(d.file.toHtmlEscaped()).arg(d.line)
+                   : d.file.toHtmlEscaped());
+            QString actions;
+            if (d.autoFixable)
+                actions += QString(" <a href='ants-debt-fix://%1' "
+                    "style='color:#4CAF50; text-decoration:none;'>[fix]</a>").arg(i);
+            actions += QString(" <a href='ants-debt-defer://%1' "
+                "style='color:#89B4FA; text-decoration:none;'>[defer]</a>").arg(i);
+            actions += QString(" <a href='ants-debt-allow://%1' "
+                "style='color:#FFA500; text-decoration:none;'>[allow]</a>").arg(i);
+            rows << QString("<span style='color:#89B4FA;'>%1</span>  %2"
+                            "  <span style='color:#666; font-size:9px;'>(%3)</span>%4")
+                        .arg(loc, d.message.toHtmlEscaped(),
+                             d.detectorId.toHtmlEscaped(), actions);
+        }
+        if (rows.isEmpty()) continue;
+        html += QString("<div style='margin:6px 0 2px 0;'><b>%1</b> "
+                        "<span style='color:#888;'>(%2)</span></div>")
+                    .arg(catLabel.value(cat, cat)).arg(rows.size());
+        html += "<div style='margin:0 0 8px 12px; white-space:pre-wrap;'>"
+                + rows.join("<br>") + "</div>";
+    }
+    m_debtResults->setHtml(html);
+}
+
+void AuditDialog::onDebtAnchorClicked(const QUrl &url) {
+    const QString scheme = url.scheme();
+    bool okIdx = false;
+    const QString raw = url.host().isEmpty() ? url.path().mid(1) : url.host();
+    const int idx = raw.toInt(&okIdx);
+    if (!okIdx || idx < 0 || idx >= m_debtFindings.size()) return;
+    const DebtSweepEngine::Finding f = m_debtFindings.at(idx);
+
+    if (scheme == "ants-debt-fix") {
+        if (debtFixInline(f)) {
+            if (m_debtStatus)
+                m_debtStatus->setFullText(QString("Fixed: %1 (%2)")
+                    .arg(f.file, f.detectorId));
+            debtScan();   // re-scan: the fixed finding is gone from the file
+        } else if (m_debtStatus) {
+            m_debtStatus->setFullText(
+                "Fix did not apply (file changed under the scan?) — re-scan");
+        }
+        renderDebtResults();
+        return;
+    }
+
+    if (scheme == "ants-debt-allow") {
+        bool ok = false;
+        const QString reason = QInputDialog::getText(this, "Allow debt finding",
+            QString("Allow this finding (writes .audit_allowlist.json)?\n\n"
+                    "Detector: %1\nLocation: %2\nMessage:  %3\n\nOptional reason:")
+                .arg(f.detectorId,
+                     f.file.isEmpty() ? QStringLiteral("(project)")
+                                      : QString("%1:%2").arg(f.file).arg(f.line),
+                     f.message.left(200)),
+            QLineEdit::Normal, QString(), &ok);
+        if (!ok) return;
+        if (debtAllow(f, reason)) {
+            if (m_debtStatus)
+                m_debtStatus->setFullText(QString("Allowlisted %1").arg(f.detectorId));
+            debtScan();   // re-scan: now filtered out by the allowlist
+        }
+        renderDebtResults();
+        return;
+    }
+
+    if (scheme == "ants-debt-defer") {
+        QString heading = RoadmapFoldIn::findActiveReleaseHeading(m_projectPath);
+        bool ok = false;
+        heading = QInputDialog::getText(this, "Defer to ROADMAP",
+            "Fold this finding into ROADMAP.md after this heading (edit if wrong):",
+            QLineEdit::Normal, heading, &ok);
+        if (!ok || heading.trimmed().isEmpty()) return;
+        if (debtDeferToRoadmap({f}, heading.trimmed())) {
+            m_debtFindings.removeAt(idx);
+            if (m_debtStatus) m_debtStatus->setFullText("Deferred into ROADMAP.md");
+            renderDebtResults();
+        } else {
+            QMessageBox::warning(this, "Defer to ROADMAP",
+                "Could not insert — check the heading exists verbatim in "
+                "ROADMAP.md.");
+        }
+        return;
+    }
+}
+
+void AuditDialog::onDebtTriageClicked() {
+    const QString prompt = debtTriagePrompt();
+    if (prompt.isEmpty()) {
+        QMessageBox::information(this, "Triage with AI",
+            "No non-mechanical findings to triage.");
+        return;
+    }
+    Config cfg;
+    if (!cfg.aiEnabled() || cfg.aiEndpoint().isEmpty()) {
+        QMessageBox::information(this, "Triage with AI",
+            "Configure an AI endpoint in Settings → AI first.");
+        return;
+    }
+    int llmCount = 0;
+    for (const DebtSweepEngine::Finding &d : m_debtFindings)
+        if (!d.autoFixable) ++llmCount;
+    const auto reply = QMessageBox::question(this, "Triage with AI",
+        QString("Send %1 non-mechanical finding%2 to %3 for triage?")
+            .arg(llmCount).arg(llmCount == 1 ? "" : "s")
+            .arg(QUrl(cfg.aiEndpoint()).host().isEmpty()
+                 ? cfg.aiEndpoint() : QUrl(cfg.aiEndpoint()).host()),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+    if (reply != QMessageBox::Yes) return;
+
+    if (!m_debtLlm) {
+        m_debtLlm = new LlmClient(this);
+        connect(m_debtLlm, &LlmClient::finished, this,
+                [this](const LlmResult &r) {
+            if (m_debtTriageBtn) m_debtTriageBtn->setEnabled(true);
+            if (!r.ok) {
+                if (m_debtStatus)
+                    m_debtStatus->setFullText("AI triage failed: " + r.error);
+                return;
+            }
+            m_debtResults->append(
+                "<hr><div style='margin:6px 0;'><b>🧠 AI triage</b></div>"
+                "<div style='white-space:pre-wrap;'>"
+                + r.text.toHtmlEscaped() + "</div>");
+            if (m_debtStatus) m_debtStatus->setFullText("AI triage complete");
+        });
+    }
+    LlmRequest req;
+    req.endpoint   = cfg.aiEndpoint();
+    req.apiKey     = cfg.aiApiKey();
+    req.model      = cfg.aiModel();
+    req.userPrompt = prompt;
+    if (m_debtTriageBtn) m_debtTriageBtn->setEnabled(false);
+    if (m_debtStatus) m_debtStatus->setFullText("AI triage in flight…");
+    m_debtLlm->send(req);
 }
 
 // Collapse mypy "Library stubs not installed" findings into a single Info
@@ -3402,7 +3735,16 @@ void AuditDialog::showRuleQualityDialog() {
 // ---------------------------------------------------------------------------
 
 void AuditDialog::buildUI() {
-    auto *root = new QVBoxLayout(m_contentArea);
+    // ANTS-1259 — the dialog hosts two tabs: the original single-pane
+    // audit UI and a new Debt Sweep panel. `root` (below) lays out the
+    // Audit tab exactly as before; only the outer container changed.
+    auto *outer = new QVBoxLayout(m_contentArea);
+    outer->setContentsMargins(0, 0, 0, 0);
+    m_tabs = new QTabWidget(m_contentArea);
+    outer->addWidget(m_tabs);
+
+    auto *auditTab = new QWidget(m_tabs);
+    auto *root = new QVBoxLayout(auditTab);
     root->setSpacing(8);
 
     m_pathLabel = new QLabel(this);
@@ -3860,6 +4202,11 @@ void AuditDialog::buildUI() {
     connect(m_results, &QTextBrowser::anchorClicked,
             this, &AuditDialog::onResultAnchorClicked);
     root->addWidget(m_results, 2);
+
+    m_tabs->addTab(auditTab, tr("Audit"));
+
+    // ANTS-1259 — Debt Sweep tab.
+    buildDebtSweepTab();
 }
 
 // ---------------------------------------------------------------------------

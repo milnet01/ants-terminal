@@ -3576,7 +3576,7 @@ minor tag (next: pre-0.8.0).
   remotecontrol (4 cmdDebtSweep* methods), claudeintegration (4 tools/list
   entries), mainwindow (4 registerToolProvider lambdas), docs (spec).
 
-- 📋 [ANTS-1259] **ANTS-1113 v2 — Qt "Debt Sweep" tab in the
+- ✅ [ANTS-1259] **ANTS-1113 v2 — Qt "Debt Sweep" tab in the
   Project Audit dialog.** Per `docs/specs/ANTS-1113.md` § 1.1
   v1/v2 split. v1 (0.7.90) shipped the engine + MCP surface;
   v2 wraps it in a tabbed Audit-dialog panel showing findings
@@ -7402,6 +7402,22 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: remotecontrol, claudeintegration.
   Source: in-session-2026-05-21 (noticed while finding a section slug for ANTS-1727).
 
+- 📋 [ANTS-1733] **roadmap_log append refused 7× with empty param body in one session.**
+  During the ANTS-1257/1731 session, ~7 consecutive `roadmap_log` op:append
+  calls arrived at the dispatcher with an empty argument object and were
+  correctly refused with `caller_cwd_required`; `op:flip` calls in the same
+  session carried their params fine, and a later append (this very bullet)
+  worked. Most likely a client-side serialization glitch rather than an
+  Ants bug, BUT worth a defensive look: (a) can the refusal envelope hint
+  "received 0 arguments — the whole param object was empty" to disambiguate
+  "forgot caller_cwd" from "args dropped entirely"? (b) is there anything
+  in the append schema (e.g. the larger required-field set vs flip) that
+  makes a malformed call more likely to serialize empty? Low priority —
+  no data loss, the guard worked as designed.
+  Kind: investigate.
+  Lanes: claudeintegration, remotecontrol.
+  Source: in-session-2026-05-21.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
@@ -8010,6 +8026,17 @@ indie-review finding.
   **Layman:** The "build time" shown in the title bar stops updating if you rebuild twice in the same minute — fix is to use seconds, not just minutes.
   Kind: fix.
   Source: user-report-2026-05-18 (build-time stamp frozen across intra-minute rebuilds).
+
+- 📋 [ANTS-1732] **Drop the unused `<functional>` include from auditdialog.h.**
+  `src/auditdialog.h:24` includes `<functional>` but `std::function` is
+  only used in `auditengine.h` (the `AuditCheck::inProcessRunner` member),
+  which auditdialog.h pulls in transitively. clangd flags it as an unused
+  include. Pre-existing (predates the ANTS-1257 work that surfaced it);
+  left untouched per the "don't delete pre-existing dead code without
+  asking" rule. One-line removal.
+  Kind: chore.
+  Lanes: auditdialog.
+  Source: in-session-2026-05-21.
 
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 

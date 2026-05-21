@@ -1316,6 +1316,8 @@ if(ANTS_TESTS)
                 tests/features/indie_review_dialog/test_indie_review_dialog.cpp
                 # ANTS-1257 — AuditDialog v2 affordances (allow / fold / since-baseline).
                 tests/features/audit_dialog_v2/test_audit_dialog_v2.cpp
+                # ANTS-1259 — AuditDialog Debt Sweep tab (fix / defer / allow).
+                tests/features/debt_sweep_dialog/test_debt_sweep_dialog.cpp
                 tests/features/settings_profile_cancel_rollback/test_settings_profile_cancel_rollback.cpp
                 tests/features/settings_restore_defaults/test_settings_restore_defaults.cpp
                 tests/features/settings_parse_failure_mirror/test_settings_parse_failure_mirror.cpp

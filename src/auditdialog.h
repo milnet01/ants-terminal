@@ -6,6 +6,7 @@
 #include "auditengine.h"
 #include "elidedlabel.h"
 #include "auditrulequality.h"
+#include "debtsweepengine.h"
 
 #include <memory>
 
@@ -25,6 +26,8 @@
 
 class Config;
 class ToggleSwitch;
+class QTabWidget;
+class LlmClient;
 
 class AuditDialog : public QDialog {
     Q_OBJECT
@@ -146,6 +149,32 @@ protected:
         const Finding &f,
         const QHash<QString, QSet<int>> &recentLines,
         const QSet<QString> &baselineFingerprints);
+
+    // ANTS-1259 — Debt Sweep tab orchestration (testable seams; the
+    // QTextBrowser anchors + buttons are thin wrappers over these).
+    //
+    // debtScan — run DebtSweepEngine::scanAll, drop entries already in
+    //   the project allowlist, store + return the survivors (m_debtFindings).
+    QList<DebtSweepEngine::Finding> debtScan();
+    // debtFixInline — apply one mechanical fix via the engine; true iff
+    //   the file was mutated.
+    bool debtFixInline(const DebtSweepEngine::Finding &f);
+    // debtDeferToRoadmap — fold `deferred` into ROADMAP.md as a
+    //   ### 🧹 Debt-sweep fold-in block (allocateIds + template + insert),
+    //   pre-flighting the heading so a misclick doesn't burn IDs.
+    bool debtDeferToRoadmap(const QList<DebtSweepEngine::Finding> &deferred,
+                            const QString &releaseHeading);
+    // debtAllow — allowlist one finding (reuses the audit allowlist, keyed
+    //   on detectorId as the rule) so future scans drop it.
+    bool debtAllow(const DebtSweepEngine::Finding &f, const QString &reason);
+    // debtTriagePrompt — DebtSweepEngine::triagePrompt over the
+    //   currently-held findings that have no mechanical fix.
+    QString debtTriagePrompt() const;
+    // Adapt a debt finding to the audit Finding shape so it can reuse the
+    //   allowlist match/write machinery (rule = detectorId).
+    static Finding debtToAuditFinding(const DebtSweepEngine::Finding &d);
+    // True iff a line exactly equal to `heading` exists in ROADMAP.md.
+    bool roadmapHeadingExists(const QString &heading) const;
 private:
 
     // Regex-DoS watchdog. User patterns reach two sinks: `dropIfMatches`
@@ -480,6 +509,25 @@ private:
     void onSinceBaselineToggled(bool on);
     QPushButton *m_sinceBaselineBtn = nullptr;
     bool m_sinceBaseline = false;
+
+    // ANTS-1259 — Debt Sweep tab. The dialog is now a two-tab QTabWidget
+    // (Audit | Debt Sweep). The debt panel scans via DebtSweepEngine and
+    // renders findings grouped by category with per-finding Fix / Defer /
+    // Allow anchors + a Triage-with-AI button.
+    QTabWidget  *m_tabs = nullptr;
+    void buildDebtSweepTab();
+    void onDebtScanClicked();
+    void renderDebtResults();
+    void onDebtAnchorClicked(const QUrl &url);   // ants-debt-fix/defer/allow
+    void onDebtTriageClicked();
+    QTextBrowser *m_debtResults = nullptr;
+    QPushButton  *m_debtScanBtn = nullptr;
+    QPushButton  *m_debtDeferAllBtn = nullptr;
+    QPushButton  *m_debtTriageBtn = nullptr;
+    ElidedLabel  *m_debtStatus = nullptr;
+    QList<DebtSweepEngine::Finding> m_debtFindings;
+    LlmClient   *m_debtLlm = nullptr;            // lazily created on first triage
+    bool         m_debtScanned = false;
     // Populate m_recentFiles (+ m_recentLines when includeLines) from the
     // last m_recentCommits commits. No-op outside a git repo. Shared by
     // runAudit's scope mode and the "Since baseline" pill.
