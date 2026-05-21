@@ -1,8 +1,10 @@
 # Project Standards
 
-Four short, focused standards that govern how this project is
+Four shareable template standards that govern how this project is
 written, tested, documented, and committed. Each standard is v1
 and self-contained; cross-references between them are explicit.
+Project-local standards (dialogs, mcp-tools, status-bar, etc.)
+are listed below the table.
 
 | Standard | Covers |
 |----------|--------|

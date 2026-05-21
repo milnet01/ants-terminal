@@ -609,7 +609,7 @@ Runs `tests/audit_self_test.sh` (audit-rule grep regression tests
 against `tests/audit_fixtures/`) plus the GoogleTest feature-bundle
 suites — `test_vt`, `test_chrome`, `test_claude`, `test_audit`,
 `test_dialogs`, `test_lua`, `test_core` — registered as individual
-ctest entries by `gtest_discover_tests`. Total ≈ 281 entries. Use
+ctest entries by `gtest_discover_tests`. Total ≈ 1382 entries. Use
 `ctest -L features` to limit to the bundle entries; `ctest -R 'Suite\.Name'`
 filters to a single TEST block.
 

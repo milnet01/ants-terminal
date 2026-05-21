@@ -278,7 +278,7 @@ end
 > `"1"` < `"6"` as a character). For version checks spanning minor ≥ 10,
 > use a numeric split: `tonumber(ants._version:match("^(%d+)%.(%d+)")) >= 0
 > and …` or compare major/minor/patch parts individually. See
-> ROADMAP.md ANTS-1536 for a planned `ants.version_gte(major, minor)` helper.
+> ROADMAP.md ANTS-1536 (doc-fix — warnings added in 0.7.92).
 
 ### 🔒 `ants.clipboard.write(text)`
 
@@ -436,7 +436,7 @@ abuse):
 The runtime enforces two hard limits per plugin VM:
 
 - **Wall-clock pcall budget:** each `loadScript` / `fireEvent`
-  starts a 1500 ms (`kPcallBudgetMs`) deadline. The watchdog hook
+  starts a 1500 ms (`m_pcallBudgetMs` in `luaengine.h`) deadline. The watchdog hook
   (`lua_sethook(LUA_MASKCOUNT | LUA_MASKLINE, 100000)` — i.e.
   every 100 000 VM instructions AND every Lua source line) checks
   the wall clock on each fire and calls `luaL_error("Script

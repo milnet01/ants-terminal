@@ -21,8 +21,9 @@ Listed only where behavior isn't obvious from the name.
   QTextLayout renderer with HarfBuzz ligatures. SGR mouse, focus
   reporting, sync output, undercurl, per-pixel bg alpha.
 - `ptyhandler` — forkpty + QSocketNotifier.
-- `auditdialog` — static-analysis panel. Pipeline (matches
-  `handleCheckOutput` order):
+- `auditdialog` — static-analysis panel. Pipeline (steps 1–10 in
+  `handleCheckOutput`; enrichment + trend + render in the separate
+  `renderResults()` called after all checks finish):
   `OutputFilter → parseFindings → mark .audit_suppress → drop
    generated-file → drop/shift path_rules → drop allowlist →
    drop inline-suppress → drop non-recent → dedup →

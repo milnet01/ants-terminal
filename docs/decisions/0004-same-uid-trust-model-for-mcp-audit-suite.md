@@ -11,7 +11,7 @@
 
 ANTS-1351 (`audit_run` MCP verb), ANTS-1397 (`test_audit_*` MCP
 trio), and ANTS-1352 (`indie_review_dispatch` orchestrator,
-shipped in 0.7.91) each carry their own "out of scope: same-UID trust
+shipped in 0.7.92) each carry their own "out of scope: same-UID trust
 model" caveats. Cold-eyes loop 3 on the ANTS-1397 spec
 (2026-05-17) called out the recurrence — every spec re-derives
 the trust boundary from scratch, so the boundary is restated four
@@ -116,7 +116,7 @@ Same-UID trust is **not** an excuse for:
 ### Positive
 
 - Future audit / review / synth specs (ANTS-1449, ANTS-1450, the
-  ANTS-1352 dispatcher (shipped 0.7.91), cold-eyes engine work) cite
+  ANTS-1352 dispatcher (shipped 0.7.92), cold-eyes engine work) cite
   this ADR instead of re-deriving the trust model. Spec authoring time
   drops; the boundary statement stays consistent across the lane.
 - Indie-review and cold-eyes reviewers have a canonical reference

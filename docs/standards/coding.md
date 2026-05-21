@@ -131,7 +131,7 @@ Don't:
 - `Q_OBJECT` macro on every QObject subclass.
 - Wrap user-visible strings in `tr()` for translator compatibility.
 - `QSaveFile` for atomic writes, not raw `QFile::Truncate`.
-- `setOwnerOnlyPerms()` on files that contain config / secrets.
+- `setOwnerOnlyPerms()` on files that contain config / secrets (project-local helper, `src/secureio.h`; not a Qt built-in).
 
 ### 5.3 Python
 

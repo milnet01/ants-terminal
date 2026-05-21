@@ -13169,7 +13169,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: community-docs, hardware-sponsors, supporters.
   Source: Cold-eyes 2026-05-18 (community lane).
 
-- 📋 [ANTS-1536] **`PLUGINS.md` feature-detect example uses lexicographic version compare (`ants._version >= "0.6"`) — breaks at 0.10+.**
+- ✅ [ANTS-1536] **`PLUGINS.md` feature-detect example uses lexicographic version compare (`ants._version >= "0.6"`) — breaks at 0.10+.**
   Cold-eyes plugins lane (LOW). The §Versioning example at
   `PLUGINS.md:251-260` uses string-lexicographic comparison
   (`ants._version >= "0.6"`). Works for 0.6 vs 0.7 but fails

@@ -1,7 +1,7 @@
 <!-- ants-test-audit-resume-standards: 1 -->
 # Test-Audit Resume Recipe
 
-**Status**: v1 (ANTS-1580 — pull 32, 2026-05-19)
+**Status**: v1 (ANTS-1580, 2026-05-19)
 **Audience**: Claude Code sessions / non-CC orchestrators that pick
 up a partially-completed `/test-audit` after the initial session
 exited.
