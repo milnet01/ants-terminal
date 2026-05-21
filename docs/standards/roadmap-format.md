@@ -119,7 +119,7 @@ Required pieces:
   one-line summary; this is what the dialog filters and the LLM
   agent reads first.
 - **`Kind: <kind>.`** — declares the type of work. One of the
-  ten values in §3.5.3. **Required as of v1.1** so the Roadmap
+  twelve values in §3.5.3. **Required as of v1.1** so the Roadmap
   viewer (and any tooling that consumes the file
   deterministically) can categorise without inferring from the
   surrounding section heading. The dominant Kind for a section
@@ -228,6 +228,8 @@ this without adding complexity to the bullet's surface form.
 | `test` | Test-only change (new spec, new fixture, harness improvement) | no changelog |
 | `chore` | Housekeeping (deps, build flags, generated files) | no test, changelog optional |
 | `release` | Version bump, packaging files, tag | drives the release skill |
+| `research` | Exploratory / feasibility work | journal artifact or decision doc |
+| `ux` | UX or interaction design work | design doc or mockup |
 
 **Required as of v1.1** — every actionable bullet declares its
 `Kind:` explicitly, even when the surrounding section makes the

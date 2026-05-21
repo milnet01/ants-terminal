@@ -4,8 +4,8 @@
 - **Date:** 2026-05-17
 - **Deciders:** Project lead, Claude
 - **Related:** ROADMAP.md ANTS-1351, ANTS-1397, ANTS-1352, ANTS-1416,
-  ANTS-1404, ANTS-1372; CHANGELOG.md ANTS-1448 entry (filed under
-  `[0.7.92] — 2026-05-20`).
+  ANTS-1404, ANTS-1372, ANTS-1448; CHANGELOG.md ANTS-1448 entry
+  (filed under `[0.7.92] — 2026-05-20`).
 
 ## Context
 

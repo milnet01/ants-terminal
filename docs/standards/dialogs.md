@@ -36,7 +36,10 @@ auto *root = new QVBoxLayout(chrome.contentArea);
 - applies the active theme via `DialogChrome::applyTheme`, which reads
   these `Theme` fields (`src/themes.h`): the dialog palette uses
   `bgPrimary` / `bgSecondary` / `textPrimary`, and the title bar uses
-  `setThemeColors(bgSecondary, textPrimary, accent, border)`,
+  `setThemeColors(bgSecondary, textPrimary, accent, border)` (signature
+  has an optional 5th `danger` parameter, default `QColor::fromRgb(0xe74856)`,
+  for a custom close-button danger color — pass it explicitly only when
+  the dialog needs a non-default danger color),
 - returns an `InstallResult{ titleBar, contentArea }` — lay the dialog's
   own widgets into `contentArea`.
 
@@ -113,7 +116,8 @@ dialog, and survive an app restart.
   captures the final size:
 
   ```cpp
-  // restore (ctor / first show):
+  // restore (ctor / first show) — illustrative pseudocode;
+  // auditDialogSize() does not exist, add a real accessor per dialog:
   const QSize sz = m_config->auditDialogSize();   // new per-dialog key
   if (sz.isValid()) resize(sz);
   // save (closeEvent / done):

@@ -247,9 +247,9 @@ ants.get_cwd()       -- Current directory
 ants.set_status("Custom status text")
 ```
 
-**Events:** `output`, `line`, `prompt`, `keypress`, `title_changed`, `tab_created`, `tab_closed`
+**Events:** `output`, `line`, `prompt`, `keypress`, `title_changed`, `tab_created`, `tab_closed` (plus 9 more since 0.6.9 — see PLUGINS.md § Events for the full list)
 
-**Security:** Plugins run in a sandbox with `os`, `io`, `debug`, `require`, `setmetatable`, `collectgarbage` removed. 100,000-instruction timeout prevents infinite loops (immune to `pcall` bypass). Memory capped at 10MB to prevent `string.rep` OOM attacks.
+**Security:** Plugins run in a sandbox with `os`, `io`, `debug`, `require`, `setmetatable`, `collectgarbage` removed. 100,000-instruction timeout prevents infinite loops (resistant to `pcall` bypass attacks; pure-C call interiors remain uninterruptible). Memory capped at 10MB to prevent `string.rep` OOM attacks.
 
 ### Background Opacity & Blur
 
@@ -462,7 +462,7 @@ Switch themes from the **View** menu. Your choice is saved between sessions.
 
 - **Persistent geometry** -- window size and position saved/restored between sessions
 - **Center window** -- **Ctrl+Shift+M** or View menu
-- **Zoom** -- **Ctrl+=** / **Ctrl+-** / **Ctrl+0** (8pt to 32pt range)
+- **Zoom** -- **Ctrl+=** / **Ctrl+-** / **Ctrl+0** (keyboard zoom range 8–32pt; config key `font_size` accepts 4–48)
 - **Tabs** -- Ctrl+Shift+T/W for new/close
 - **Split panes** -- horizontal (Ctrl+Shift+E) and vertical (Ctrl+Shift+O)
 
@@ -940,6 +940,7 @@ Config is stored at `~/.config/ants-terminal/config.json` with **0600** file per
 | `ssh_bookmarks` | array | `[]` | Saved SSH connection bookmarks |
 | `plugin_dir` | string | `""` | Lua plugin directory |
 | `enabled_plugins` | array | `[]` | List of enabled plugin names |
+| `plugin_grants` | object | `{}` | Per-plugin permission grants (set via Settings → Plugins) |
 | `claude_project_dirs` | array | `[]` | Directories for Claude Code projects |
 | `keybindings` | object | `{}` | Custom keybindings (action -> key) |
 | `snippets` | array | `[]` | Saved command snippets with placeholders |
@@ -991,9 +992,8 @@ end)
 | `ants.set_status(text)` | Set status bar text |
 | `ants.log(message)` | Log message to status bar |
 
-Full signatures, return values, examples, and planned additions (0.6
-capability manifest, 0.7 triggers, 0.8 marketplace) live in
-[PLUGINS.md](PLUGINS.md).
+Full signatures, return values, examples, and planned additions (0.7
+triggers, 0.8 marketplace) live in [PLUGINS.md](PLUGINS.md).
 
 ### Events
 
@@ -1014,7 +1014,7 @@ capability manifest, 0.7 triggers, 0.8 marketplace) live in
 - **Config file permissions**: created with `0600` (owner read/write only)
 - **No network access** by default -- AI assistant requires explicit configuration
 - **OSC 52 clipboard**: write-only -- read disabled
-- **Lua sandbox**: dangerous functions removed, 100,000-instruction timeout (pcall-proof), 10MB memory limit
+- **Lua sandbox**: dangerous functions removed, 100,000-instruction timeout (pcall-resistant via sticky-kill latch), 10MB memory limit
 - **SSH**: no password storage, interactive authentication only
 - **AI**: API keys stored in 0600-permission config, 30-second network timeout
 - **Session files**: bounds-validated on load, 100MB compressed size limit

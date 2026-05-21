@@ -1,3 +1,4 @@
+<!-- ants-test-audit-resume-standards: 1 -->
 # Test-Audit Resume Recipe
 
 **Status**: v1 (ANTS-1580 — pull 32, 2026-05-19)

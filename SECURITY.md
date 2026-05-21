@@ -155,7 +155,7 @@ For context on the existing defense posture:
 
 We will maintain a public list of researchers who responsibly
 disclose vulnerabilities. *No disclosed vulnerabilities yet
-(as of 2026-05-18).* If you would prefer to remain anonymous,
+(as of 2026-05-20).* If you would prefer to remain anonymous,
 say so in your report.
 
 ---

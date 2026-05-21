@@ -32,7 +32,7 @@ The format for each ADR:
 ```markdown
 # ADR-NNNN: <short title>
 
-- **Status:** Proposed | Accepted | Deprecated | Superseded by ADR-NNNN
+- **Status:** Proposed | Accepted | Deprecated | Superseded by ADR-NNNN | Amended by ADR-NNNN
 - **Date:** YYYY-MM-DD
 - **Deciders:** <names / roles>
 - **Related:** <links to other ADRs, ROADMAP items, etc.>

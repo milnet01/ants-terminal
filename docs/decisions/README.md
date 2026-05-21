@@ -65,6 +65,11 @@ A status change is an edit to the ADR's `Status:` field; the
 body of an accepted ADR isn't rewritten — supersession or
 amendment is captured in a new ADR.
 
+The combined form `Accepted (Amended by ADR-NNNN)` is also used
+in practice when an ADR has been accepted and later partially
+amended — the `Accepted` prefix signals the original decision
+is still in effect; the parenthetical names which ADR amended it.
+
 ## Template
 
 See [ADR-0001](0001-record-architecture-decisions.md) — both the

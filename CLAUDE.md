@@ -214,7 +214,8 @@ Listed only where behavior isn't obvious from the name.
 - `antshelper` (optional CLI, `-DANTS_ENABLE_HELPER_CLI=ON`) — local
   subagent for Claude Code; v1 surface is `drift-check`. ANTS-1116.
 - `luaengine` / `pluginmanager` — sandboxed Lua 5.4; plugins live in
-  `~/.config/ants-terminal/plugins/`, gated by `ANTS_LUA_PLUGINS`.
+  `~/.config/ants-terminal/plugins/`, gated by `ANTS_LUA_PLUGINS`
+  (compile-time define).
 - `claudeintegration` — singleton owning the Claude Code hook
   server (one UDS shared across every Claude under any tab),
   `m_pollTimer` (2 s) for `pollClaudeProcess` PID detection,
@@ -225,8 +226,11 @@ Listed only where behavior isn't obvious from the name.
   Per-tab transcript binding via `m_transcriptPath`; PermissionRequest
   routes through `m_lastHookSessionId` rather than the gate.
 - `claudestatuswidgets` — `ClaudeStatusBarController` owns the
-  bottom-bar Claude chips (review-changes, audit, bg-tasks, tasks,
-  context-bar, error, repo, model-recommender). `refreshTasksButton` /
+  bottom-bar Claude chips (review-changes, bg-tasks, tasks,
+  context-bar, error, model-recommender). The "repo" visibility
+  label (`m_repoVisibilityLabel`) lives in `MainWindow`, not here.
+  "audit" is not a chip — it is a rendered state on `m_statusLabel`
+  ("Claude: auditing"). `refreshTasksButton` /
   `refreshBgTasksButton` / `refreshModelChip` fire on the 2 s status
   timer, call `activeSessionPath(focusedCwd)`, push the path to
   `m_tasks` / `m_bgTasks` only on change, and call `poll()` /
@@ -545,7 +549,7 @@ as a type and flags every signal emission.
 
 ## Project standards
 
-Four shareable v1 standards at `docs/standards/`:
+Four template-identical shareable v1 standards at `docs/standards/` (coding, documentation, testing, commits), plus the following project-specific standards:
 
 - [`coding.md`](docs/standards/coding.md), [`documentation.md`](docs/standards/documentation.md),
   [`testing.md`](docs/standards/testing.md), [`commits.md`](docs/standards/commits.md)

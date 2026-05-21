@@ -9,7 +9,7 @@ and self-contained; cross-references between them are explicit.
 | [coding.md](coding.md) | Code style, language idioms, error handling, comments, naming, security. Governs `Kind: implement / fix / refactor / audit-fix / review-fix` work. |
 | [documentation.md](documentation.md) | README / CLAUDE.md / SECURITY.md structure, API contracts, screenshots, markdown style. Governs `Kind: doc / doc-fix` work. |
 | [testing.md](testing.md) | TDD policy, test types, spec-first authoring, INV numbering, coverage, anti-patterns. Governs `Kind: test` work + the regression-test follow-through for `fix / audit-fix / review-fix`. |
-| [commits.md](commits.md) | The `<ID>: <description>` mandate, hygiene, branching, push policy, release commits. Governs every commit. |
+| [commits.md](commits.md) | The `<ID>: <description>` mandate, hygiene, branching, push policy, release commits. Governs every commit plus release-orchestration work under ROADMAP bullets with `Kind: chore` or `release`. |
 
 Sub-spec extracted from `documentation.md` for token efficiency:
 

@@ -111,9 +111,11 @@ and ship features the user didn't ask for.
   audit consumers (CI runners, MCP server) — the architectural
   payoff outlives the immediate `audit-run` use case.
 - ROADMAP.md shrinks by retiring ANTS-1110 catalogue and
-  ANTS-1056 — "retire" here means **mark `💭` with a one-line
-  forward pointer in place**, not delete (the stable ID survives
-  per `roadmap-format.md` § 3.5.1). Signal-to-noise ratio goes up.
+  ANTS-1056 — "retire" means a one-line forward pointer in place,
+  not delete (the stable ID survives per `roadmap-format.md`
+  § 3.5.1). Implementation outcome: ANTS-1110 was marked `💭`;
+  ANTS-1056 had its status emoji removed entirely (bare
+  `- [ANTS-1056]`). Signal-to-noise ratio goes up.
 
 **Negative:**
 

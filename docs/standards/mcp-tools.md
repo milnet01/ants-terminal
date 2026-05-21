@@ -30,8 +30,8 @@ place when it saves a Claude session real tokens or round-trips
 ## Authoring checklist
 
 1. **Register the provider with its contract.** Add a
-   `registerToolProvider` entry in `src/mainwindow.cpp` (the existing
-   block, see CLAUDE.md for the line span). Since ANTS-1419 the call is
+   `registerToolProvider` entry in `src/mainwindow.cpp` (grep
+   `registerToolProvider` to find the existing block). Since ANTS-1419 the call is
    3-arg — the per-tool caller-cwd contract is the **2nd positional
    argument**, so the security contract is visible at the registration
    site, not a separate lookup:

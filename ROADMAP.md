@@ -13107,7 +13107,7 @@ template / mutate this state atomically" → movable. If it's
 > drift + structural items); the rest deferred and surfaced
 > below or addressed at the same line as fixes above (ANTS-1514..1531).
 
-- 📋 [ANTS-1532] **CHANGELOG.md ANTS-1318 rolling-RC entry rewrite.**
+- ✅ [ANTS-1532] **CHANGELOG.md ANTS-1318 rolling-RC entry rewrite.**
   Cold-eyes spec/ANTS-1318 lane (CRITICAL): the 0.7.91 CHANGELOG
   entry for ANTS-1318 describes a "rolling-RC tag, force-moved on
   every push" model that directly contradicts the spec's
@@ -13140,7 +13140,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: docs-standards, skill-templates.
   Source: Cold-eyes 2026-05-18 (standards lane).
 
-- 📋 [ANTS-1534] **`docs/specs/ANTS-1318.md` §2.5 RC zsync channel mechanism triple-described.**
+- ✅ [ANTS-1534] **`docs/specs/ANTS-1318.md` §2.5 RC zsync channel mechanism triple-described.**
   Cold-eyes spec/ANTS-1318 lane (HIGH). § 2.5 names three
   different mechanisms for keeping RC users on the RC zsync
   channel: (i) a literal `rc-channel` tag the workflow
@@ -13617,11 +13617,10 @@ starts 2026-05-27.
   Patrons (🛠 tier) notified via the GitHub Sponsors-tier comms
   channel with the public-but-unannounced pre-release URL — no
   technical gating ("early access," not "exclusive access"; per
-  `SUPPORTERS.md:31`). Critical infra change: AppImage `UPDATE_INFORMATION`
-  for RC builds points at an `rc-channel` (NOT `latest`) so
-  stable users can't auto-update onto RCs. Touches `/release`
-  skill (Wed-detection + dual-cut + `--rc-respin` subcommand),
-  `release.yml` (zsync channel split), no schema change to
+  `SUPPORTERS.md:29`). Critical infra change: AppImage `UPDATE_INFORMATION`
+  for RC builds points at the RC tag itself (NOT `latest`) so
+  stable users can't auto-update onto RCs.
+  `release.yml` (zsync channel split); no schema change to
   `bump.json` or `CMakeLists.txt` (RC suffix lives only at tag +
   GH release title + AppImage filename per INV-3). 9 invariants
   spec'd. Spec: [`docs/specs/ANTS-1318.md`](docs/specs/ANTS-1318.md).

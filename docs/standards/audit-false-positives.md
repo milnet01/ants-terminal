@@ -28,12 +28,14 @@ model and pins the discipline of "log it once, don't re-debate".
 
 ## Two ledgers, one taxonomy
 
-| Sweep | Finding grain | Ledger | How MCP honours it |
-|-------|---------------|--------|--------------------|
+| Sweep | Finding grain | Ledger | How the harness-side MCP tool honours it |
+|-------|---------------|--------|------------------------------------------|
 | `/audit` (cppcheck, clazy, ruff, bandit, semgrep, gitleaks, …) | line-grain `(path, line, rule)` | `.audit_suppress` (JSONL v2) | `auditdialog` reads at the filter stage; marks `f.suppressed = true` so SARIF § 3.34 surfaces but the report drops |
-| `/cold-eyes` | prose claim against a contract / spec | `.ants_review_falsepos.jsonl` | `cold_eyes_brief` injects a "previously-rejected" block |
-| `/indie-review` | prose claim against source + spec | `.ants_review_falsepos.jsonl` | `indie_review_brief` + `indie_review_dispatch` inject the same block |
-| `/test-audit` | structured dimension finding (dimension + severity + summary) | `.ants_review_falsepos.jsonl` | `test_audit_brief` returns `prior_false_positives: [...]` as a structured field |
+| `/cold-eyes` | prose claim against a contract / spec | `.ants_review_falsepos.jsonl` | `cold_eyes_brief` (Ants harness MCP tool) injects a "previously-rejected" block |
+| `/indie-review` | prose claim against source + spec | `.ants_review_falsepos.jsonl` | `indie_review_brief` + `indie_review_dispatch` (Ants harness MCP tools) inject the same block |
+| `/test-audit` | structured dimension finding (dimension + severity + summary) | `.ants_review_falsepos.jsonl` | `test_audit_brief` (Ants harness MCP tool) returns `prior_false_positives: [...]` as a structured field |
+
+Note: the tool names in the last column (`cold_eyes_brief`, `indie_review_brief`, `indie_review_dispatch`, `test_audit_brief`) are Ants-harness skill-side MCP tools — they appear in `mcp__ants__*` form in skill invocations. They are distinct from the in-app `tools/call` registry (the `registerToolProvider` verbs in `src/mainwindow.cpp`).
 
 `.audit_suppress` and `.ants_review_falsepos.jsonl` are **distinct
 files**. `.audit_suppress` is line-grain and tool-keyed; the new
