@@ -135,8 +135,11 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_statusBar->addPermanentWidget(m_modelBtn);
     connect(m_modelBtn, &QPushButton::clicked, this, [this]() {
         if (!m_modelBtn) return;
-        const QString label = m_modelBtn->text();
-        const QString tier = label.mid(label.lastIndexOf(QChar(' ')) + 1).toLower();
+        // Read the tier from a stored property, NOT by reverse-parsing the
+        // visible (translatable / RTL-reorderable) label — that round-trip
+        // could write a garbage /model argument to the user's shell.
+        // indie-review-2026-05-21.
+        const QString tier = m_modelBtn->property("modelTier").toString();
         if (tier.isEmpty()) return;
         auto *focused = m_focusedTerminalProvider
             ? m_focusedTerminalProvider() : nullptr;
@@ -1015,8 +1018,17 @@ void ClaudeStatusBarController::refreshModelChip()
         default:                            return tr("→ Sonnet");
         }
     }();
+    // Stable, locale-independent /model argument for the click handler.
+    const QString tierArg = [&]() -> QString {
+        switch (rec.tier) {
+        case ModelRecommender::Tier::Haiku: return QStringLiteral("haiku");
+        case ModelRecommender::Tier::Opus:  return QStringLiteral("opus");
+        default:                            return QStringLiteral("sonnet");
+        }
+    }();
 
     m_modelBtn->setText(tierLabel);
+    m_modelBtn->setProperty("modelTier", tierArg);
     m_modelBtn->setToolTip(
         tr("Suggested model: %1\nReason: %2\n"
            "Click to send /model %3 to the focused terminal.")

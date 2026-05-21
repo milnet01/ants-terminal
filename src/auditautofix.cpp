@@ -130,7 +130,10 @@ bool applyRepair(const Repair &r) {
 
     QSaveFile sf(r.file);
     if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
-    sf.write(out.toUtf8());
+    // Refuse a short write rather than commit a truncated source file
+    // (disk-full corruption guard). indie-review-2026-05-21.
+    const QByteArray outBytes = out.toUtf8();
+    if (sf.write(outBytes) != outBytes.size()) return false;
     return sf.commit();
 }
 

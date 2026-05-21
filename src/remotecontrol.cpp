@@ -4537,6 +4537,10 @@ QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
         sub["op"]   = "log";
         sub["n"]    = n;
         sub["path"] = f;
+        // Thread caller_cwd so git resolves against the caller's project,
+        // not the focused tab — matches every sibling composer
+        // (current_state / task_priors / build_status). indie-review-2026-05-21.
+        sub["caller_cwd"] = req.value("caller_cwd");
         const QJsonObject r = cmdGitState(sub).object();
         if (!r.value("ok").toBool()) continue;
         const QJsonArray commits = r.value("commits").toArray();

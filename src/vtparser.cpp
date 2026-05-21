@@ -344,6 +344,17 @@ void VtParser::processChar(uint32_t ch) {
             a.intermediate = m_intermediate;
             m_callback(a);
             transition(Ground);
+        } else if (ch < 0x20) {
+            // ECMA-48 / Williams parser table: a C0 control inside
+            // `esc_intermediate` Executes and stays in esc_intermediate
+            // (the ESC sequence is NOT aborted) — same rule as the
+            // CsiIntermediate branch below. Previously this fell through
+            // to transition(Ground), asymmetrically dropping the whole
+            // sequence on an embedded BEL/CR/LF. indie-review-2026-05-21.
+            VtAction a;
+            a.type = VtAction::Execute;
+            a.controlChar = static_cast<char>(ch);
+            m_callback(a);
         } else {
             transition(Ground);
         }

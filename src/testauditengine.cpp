@@ -1303,8 +1303,14 @@ SynthResult synthesize(const SynthRequest &req) {
         }
         const QByteArray raw = f.readAll().left(64 * 1024);
         QString contents = QString::fromUtf8(raw);
+        // Escape BOTH the open `<chunk_report` and close `</chunk_report>`
+        // markers so a hostile chunk report can't forge a report frame in
+        // the synthesis prompt — mirrors indiereviewengine's <lane_report>
+        // hardening (ANTS-1445). indie-review-2026-05-21.
         contents.replace(QStringLiteral("</chunk_report>"),
                          QStringLiteral("&lt;/chunk_report&gt;"));
+        contents.replace(QStringLiteral("<chunk_report"),
+                         QStringLiteral("&lt;chunk_report"));
         contentsByChunk.append(contents);
         for (const QString &d : g_kDimensions()) {
             if (contents.contains(d, Qt::CaseInsensitive)) {
@@ -1728,8 +1734,37 @@ FoldInResult foldIn(const FoldInRequest &req) {
        << " · Dimensions: " << req.dimensions.join(QLatin1String(", "))
        << " · Raw: " << req.rawFindings
        << " · Actionable: " << req.actionable.size() << "\n\n";
-    // Allocate all IDs upfront — single counter touch (INV-3).
     const int n = req.actionable.size();
+    // ANTS-1615 — pre-validate headlines BEFORE allocating IDs so a caller
+    // that forgot to supply `summary`/`headline`/`claim` gets a loud
+    // `bad_actionable` refusal instead of permanently burning N counter
+    // values with nothing written to ROADMAP. (Moved above allocateIds —
+    // indie-review-2026-05-21.) Accept any of the three field names;
+    // truncate to ~120 chars with " …" suffix.
+    QStringList headlines;
+    headlines.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        const QJsonObject f = req.actionable.at(i).toObject();
+        QString h;
+        for (const auto &k : {QStringLiteral("headline"),
+                              QStringLiteral("summary"),
+                              QStringLiteral("claim")}) {
+            const QString v = f.value(k).toString().trimmed();
+            if (!v.isEmpty()) { h = v; break; }
+        }
+        if (h.isEmpty()) {
+            r.ok = false; r.code = QStringLiteral("bad_actionable");
+            r.error = QStringLiteral(
+                "test_audit_fold_in: actionable[%1] has no headline / "
+                "summary / claim field (keys present: %2)")
+                .arg(i).arg(f.keys().join(QLatin1String(", ")));
+            r.failedCount = n;
+            return r;
+        }
+        if (h.size() > 120) h = h.left(120).trimmed() + QStringLiteral(" …");
+        headlines.append(h);
+    }
+    // Allocate all IDs upfront — single counter touch (INV-3).
     const QList<int> allocatedInts = RoadmapFoldIn::allocateIds(canon, n);
     if (allocatedInts.size() != n) {
         // ANTS-1490 — surface the counter-file path in the error so the
@@ -1786,35 +1821,7 @@ FoldInResult foldIn(const FoldInRequest &req) {
         allocated.append(QStringLiteral("ANTS-%1").arg(v));
     }
     r.allocatedIds = allocated;
-    // ANTS-1615 — pre-validate headlines before emitting any bullet so
-    // a caller that forgot to supply `summary`/`headline`/`claim` gets a
-    // loud `bad_actionable` refusal instead of silent `**.**` bullets.
-    // Accept any of the three field names (callers in the wild observed
-    // using all three); truncate to ~120 chars with " …" suffix.
-    QStringList headlines;
-    headlines.reserve(n);
-    for (int i = 0; i < n; ++i) {
-        const QJsonObject f = req.actionable.at(i).toObject();
-        QString h;
-        for (const auto &k : {QStringLiteral("headline"),
-                              QStringLiteral("summary"),
-                              QStringLiteral("claim")}) {
-            const QString v = f.value(k).toString().trimmed();
-            if (!v.isEmpty()) { h = v; break; }
-        }
-        if (h.isEmpty()) {
-            r.ok = false; r.code = QStringLiteral("bad_actionable");
-            r.error = QStringLiteral(
-                "test_audit_fold_in: actionable[%1] has no headline / "
-                "summary / claim field (keys present: %2)")
-                .arg(i).arg(f.keys().join(QLatin1String(", ")));
-            r.failedCount = n;
-            return r;
-        }
-        if (h.size() > 120) h = h.left(120).trimmed() + QStringLiteral(" …");
-        headlines.append(h);
-    }
-    // Render per-finding bullets.
+    // Render per-finding bullets (headlines validated above, pre-allocation).
     for (int i = 0; i < n; ++i) {
         const QJsonObject f = req.actionable.at(i).toObject();
         bs << "- 📋 [" << allocated.at(i) << "] **"

@@ -210,6 +210,15 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
     childEnvp[envpCount++] = "COLORFGBG=15;0";
     childEnvp[envpCount] = nullptr;
 
+    // ANTS-1135 follow-up (indie-review-2026-05-21): pre-fork the shell-path
+    // and workdir byte conversions. toLocal8Bit() heap-allocates, which is
+    // NOT on POSIX's async-signal-safe list — doing it in the child between
+    // forkpty and execle can deadlock on the malloc arena lock if another
+    // thread held it at fork. Compute here in the parent; the child reads
+    // .constData() via fork's COW semantics with no child-side allocation.
+    const QByteArray shellBytesPre   = shellPath.toLocal8Bit();
+    const QByteArray workDirBytesPre = workDir.toLocal8Bit();
+
     // indie-review-2026-05-19 ptyhandler M1 — explicit -1 init.
     // POSIX forkpty does not guarantee `*amaster` is untouched on -1.
     // Pty::start is one-shot today, but the header doesn't enforce
@@ -281,14 +290,13 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
                 ::close(fd);
         }
 
-        // Exec the shell
-        QByteArray shellBytes = shellPath.toLocal8Bit();
-        const char *shellCStr = shellBytes.constData();
+        // Exec the shell. shellBytesPre/workDirBytesPre were converted
+        // pre-fork (above) so the child does NO heap allocation here.
+        const char *shellCStr = shellBytesPre.constData();
 
         // Change to requested working directory before exec
         if (!workDir.isEmpty()) {
-            QByteArray dirBytes = workDir.toLocal8Bit();
-            if (::chdir(dirBytes.constData()) != 0) {
+            if (::chdir(workDirBytesPre.constData()) != 0) {
                 // Fall back to home directory
                 const char *home = ::getenv("HOME");
                 if (home && ::chdir(home) != 0) { /* last-resort fallback, ignore failure */ }

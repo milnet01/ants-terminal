@@ -10,8 +10,23 @@
 #include <QJsonObject>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QRegularExpression>
 #include <QTimer>
 #include <QUrl>
+
+namespace {
+// Qt's QNetworkReply::errorString() can embed the full endpoint URL —
+// including any `user:pass@` userinfo from a credentialed ai_endpoint —
+// which then lands in the chat history / screenshots. Strip userinfo and
+// run the generic secret scrub before surfacing. indie-review-2026-05-21.
+QString scrubErrorString(const QString &s) {
+    static const QRegularExpression rxUserInfo(
+        QStringLiteral("://[^/?#@\\s]*@"));
+    QString out = s;
+    out.replace(rxUserInfo, QStringLiteral("://"));
+    return SecretRedact::scrub(out).text;
+}
+}  // namespace
 
 LlmClient::LlmClient(QObject *parent) : QObject(parent) {}
 
@@ -209,7 +224,7 @@ void LlmClient::onFinished() {
             }
         }
         if (hadError && m_text.isEmpty() && result.error.isEmpty())
-            result.error = m_reply->errorString();
+            result.error = scrubErrorString(m_reply->errorString());
         else if (hadError && !m_text.isEmpty())
             m_text += QStringLiteral("\n[response may be incomplete]");
     }
@@ -219,7 +234,7 @@ void LlmClient::onFinished() {
     result.truncated = m_truncated;
     result.redactedCount = m_redactedCount;
     if (result.error.isEmpty() && hadError)
-        result.error = m_reply->errorString();
+        result.error = scrubErrorString(m_reply->errorString());
 
     m_reply->deleteLater();
     m_reply = nullptr;

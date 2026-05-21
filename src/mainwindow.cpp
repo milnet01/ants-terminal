@@ -118,6 +118,7 @@ void sweepKwinScriptOrphansOnce();
 #include <QRegularExpression>
 #include <QLineEdit>
 #include <QPainter>
+#include <QScopeGuard>
 #include <QSystemTrayIcon>
 #include <QWindow>
 
@@ -4110,6 +4111,13 @@ void MainWindow::setupClaudeMcpProviders() {
                 return QString::fromUtf8(
                     QJsonDocument(env).toJson(QJsonDocument::Compact));
             }
+            // RAII: release the in-flight slot on EVERY exit path (including
+            // an exception or a future early return), honouring the header's
+            // documented guard contract. indie-review-2026-05-21.
+            const auto inFlightGuard = qScopeGuard([this, &canon] {
+                m_claudeIntegration->verbInFlightRelease(
+                    QStringLiteral("audit_run"), canon);
+            });
             // Build the engine request.
             AuditRunner::RunRequest req;
             req.projectRoot = callerCwd;
@@ -4147,8 +4155,7 @@ void MainWindow::setupClaudeMcpProviders() {
             // Run synchronously (v1) — caller blocks. v2 will route
             // through the dedicated m_auditPool worker (INV-9).
             const AuditRunner::RunResult r = AuditRunner::runAudit(req);
-            m_claudeIntegration->verbInFlightRelease(
-                QStringLiteral("audit_run"), canon);
+            // (in-flight slot released by inFlightGuard on scope exit)
             // Serialise envelope.
             QJsonObject env;
             if (!r.ok) {
@@ -4620,11 +4627,14 @@ void MainWindow::setupClaudeMcpProviders() {
                 return QString::fromUtf8(
                     QJsonDocument(env).toJson(QJsonDocument::Compact));
             }
+            // RAII: release on every exit path (incl. exception). indie-review-2026-05-21.
+            const auto inFlightGuard = qScopeGuard([this, &canon] {
+                m_claudeIntegration->verbInFlightRelease(
+                    QStringLiteral("indie_review_dispatch"), canon);
+            });
             QString out = QString::fromUtf8(
                 m_remoteControl->cmdIndieReviewDispatch(args)
                     .toJson(QJsonDocument::Compact));
-            m_claudeIntegration->verbInFlightRelease(
-                QStringLiteral("indie_review_dispatch"), canon);
             return out;
         });
 

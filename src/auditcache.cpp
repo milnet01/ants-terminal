@@ -223,8 +223,13 @@ RecordedRun recordRun(const QString &canonProject,
                 abs = dir + QLatin1Char('/') + abs;
             }
             // Defence in depth: never delete files outside our cache dir.
-            const QString canonAbs = QFileInfo(abs).absoluteFilePath();
-            if (!canonAbs.startsWith(dir + QLatin1Char('/'))) return;
+            // canonicalFilePath resolves symlinks + `..`, so a tampered
+            // manifest can't escape via a symlink planted inside
+            // .audit_cache. indie-review-2026-05-21.
+            const QString canonAbs = QFileInfo(abs).canonicalFilePath();
+            const QString canonDir = QFileInfo(dir).canonicalFilePath();
+            if (canonAbs.isEmpty() || canonDir.isEmpty()) return;
+            if (!canonAbs.startsWith(canonDir + QLatin1Char('/'))) return;
             QFile::remove(canonAbs);
         };
         reapOne(sarif);

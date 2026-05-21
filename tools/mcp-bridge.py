@@ -45,6 +45,12 @@ def pick_socket() -> str:
             continue
         if not S_ISSOCK(st.st_mode):
             continue
+        # Only connect to a socket we own. /tmp is world-writable + sticky,
+        # so a co-tenant could pre-create an AF_UNIX listener at a live-PID
+        # path and intercept our request stream. The C++ server enforces the
+        # peer UID via SO_PEERCRED; the client must mirror it. indie-review-2026-05-21.
+        if st.st_uid != os.getuid():
+            continue
         # Path shape: /tmp/ants-terminal-mcp-<PID>
         pid_str = p.rsplit("-", 1)[-1]
         live = False

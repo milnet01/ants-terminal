@@ -230,7 +230,10 @@ const std::vector<HyperlinkSpan> &TerminalGrid::scrollbackHyperlinks(int idx) co
 }
 
 void TerminalGrid::setMaxScrollback(int lines) {
-    m_maxScrollback = std::max(1000, lines);
+    // Clamp to the documented [1000, 1M] range. The 1M ceiling is the
+    // memory bound the rest of the grid relies on (per-image/per-chunk
+    // budgeting is undone if scrollback is unbounded). indie-review-2026-05-21.
+    m_maxScrollback = std::clamp(lines, 1000, 1'000'000);
     while (static_cast<int>(m_scrollback.size()) > m_maxScrollback)
         m_scrollback.pop_front();
     // Keep scrollback hyperlinks in sync
@@ -1155,8 +1158,16 @@ void TerminalGrid::handleOsc(const std::string &payload) {
                     // Silently drop oversized payload
                     return;
                 }
-                QByteArray decoded = QByteArray::fromBase64(
-                    QByteArray::fromRawData(b64.data(), static_cast<int>(b64.size())));
+                // Strict decode: reject malformed/garbage base64 rather than
+                // silently writing corrupt bytes to the clipboard (Qt6 idiom).
+                // indie-review-2026-05-21.
+                auto decRes = QByteArray::fromBase64Encoding(
+                    QByteArray::fromRawData(b64.data(), static_cast<int>(b64.size())),
+                    QByteArray::Base64Encoding | QByteArray::AbortOnBase64DecodingErrors);
+                if (decRes.decodingStatus != QByteArray::Base64DecodingStatus::Ok) {
+                    return;
+                }
+                QByteArray decoded = decRes.decoded;
                 if (decoded.size() > kMaxClipboardBytes) {
                     return;
                 }

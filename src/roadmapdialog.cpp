@@ -1796,7 +1796,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         if (rec.synthetic)       cardClasses += QStringLiteral(" rm-card-synthetic");
         // ANTS-1154-INV-1
         html += QStringLiteral("<div class=\"rm-card%1\" id=\"rm-%2\">")
-                    .arg(cardClasses, rec.id);
+                    .arg(cardClasses, htmlEscape(rec.id));
         // Row 1
         html += QStringLiteral("<span class=\"rm-state\">%1</span>")
                     .arg(rec.status);
@@ -1863,7 +1863,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         }
         html += QStringLiteral(
             "<a class=\"rm-toggle\" href=\"ants://%1/%2\">[%3]</a>")
-            .arg(verb, rec.id, chevron);
+            .arg(verb, htmlEscape(rec.id), chevron);
         // Body (expanded only). ANTS-1240 — no `<div class="rm-body">`
         // wrapper: Qt's text engine renders nested <div> blocks with
         // their own QPalette::Base background frame, so the body

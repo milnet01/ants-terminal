@@ -542,7 +542,6 @@ bool writeSarif(const QString &path,
                 const QHash<QString, ToolResult> &byTool,
                 const QHash<QString, QString> &rawByTool,
                 const QString &rootCanonical) {
-    QJsonObject runs;
     QJsonArray  runsArr;
     // ANTS-1576 — capture once, attach to every run we emit. The probe
     // forks at most three short git subprocesses; runs once per

@@ -2705,8 +2705,11 @@ bool AuditDialog::appendAllowlistEntry(const Finding &f, const QString &reason) 
 
     QSaveFile sf(path);
     if (!sf.open(QIODevice::WriteOnly)) return false;
-    sf.write(QJsonDocument(rootObj).toJson(QJsonDocument::Indented));
+    setOwnerOnlyPerms(sf);  // 0600 — matches every other state writer here (indie-review-2026-05-21)
+    const QByteArray body = QJsonDocument(rootObj).toJson(QJsonDocument::Indented);
+    if (sf.write(body) != body.size()) return false;
     if (!sf.commit()) return false;
+    setOwnerOnlyPerms(path);
 
     loadAllowlist();   // refresh so the running session also hides it on re-render
     return true;

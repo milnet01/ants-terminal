@@ -71,10 +71,15 @@ TEST(IndieReviewDispatch, G5_InFlightGate) {
         "verbInFlightTryAcquire(\n"
         "                    QStringLiteral(\"indie_review_dispatch\")"),
         std::string::npos);
+    // The slot is released via a qScopeGuard so it fires on every exit
+    // path (incl. exception), not just the explicit return — the release
+    // call now lives one indent deeper inside the guard lambda.
+    // indie-review-2026-05-21.
     EXPECT_NE(mw.find(
         "verbInFlightRelease(\n"
-        "                QStringLiteral(\"indie_review_dispatch\")"),
+        "                    QStringLiteral(\"indie_review_dispatch\")"),
         std::string::npos);
+    EXPECT_NE(mw.find("qScopeGuard"), std::string::npos);
 }
 
 // G-6 — PathValidation on reports_dir.

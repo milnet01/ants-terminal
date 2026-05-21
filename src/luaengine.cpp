@@ -47,8 +47,13 @@ void *LuaEngine::luaAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
     // byte count. Treating it as bytes drifts m_luaMemUsage downward on
     // every fresh allocation, silently letting plugins exceed MAX_LUA_MEMORY.
     if (ptr == nullptr) osize = 0;
-    // Check memory limit on allocate/realloc
-    size_t newTotal = engine->m_luaMemUsage - osize + nsize;
+    // Check memory limit on allocate/realloc. Guard the subtraction against
+    // unsigned underflow the same way the free path does — if accounting has
+    // drifted such that osize > tracked usage, a wrap would spuriously deny a
+    // legit shrink or (worse) let a plugin slip past the cap. indie-review-2026-05-21.
+    const size_t base =
+        (osize <= engine->m_luaMemUsage) ? engine->m_luaMemUsage - osize : 0;
+    size_t newTotal = base + nsize;
     if (newTotal > MAX_LUA_MEMORY) {
         return nullptr; // Lua treats NULL return as allocation failure
     }
