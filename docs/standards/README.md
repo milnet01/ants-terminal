@@ -22,6 +22,8 @@ template):
 
 | Standard | Covers |
 |----------|--------|
+| [dialogs.md](dialogs.md) | Dialog convention for every `QDialog` — theme conformance via `DialogChrome`, user-resizable, size persisted to `Config`, always re-centered over the terminal window on open (D1–D4). |
+| [mcp-tools.md](mcp-tools.md) | Ordered authoring checklist for adding a tool to the Ants MCP surface — registration, caller-cwd contract, path validation, response wrap, refusal codes, ETag / `fields=` opt-ins, cache contract, required tests. Umbrella over mcp-error-codes.md + mcp-caches.md. |
 | [status-bar.md](status-bar.md) | Status-bar widget convention specific to this codebase's `MainWindow` + `ClaudeStatusBarController` architecture. |
 | [audit-false-positives.md](audit-false-positives.md) | False-positive ledger (`.ants_review_falsepos.jsonl`) shared across `/audit`, `/cold-eyes`, `/indie-review`, `/test-audit` sweep skills — schema, CC write contract, MCP read contract. |
 | [mcp-error-codes.md](mcp-error-codes.md) | Canonical taxonomy for the `code` field on MCP refusal envelopes (ANTS-1353). Five categories: input validation, resource state, caller-cwd contract, I/O, dispatcher. |

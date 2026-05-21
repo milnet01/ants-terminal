@@ -8038,6 +8038,23 @@ indie-review finding.
   Lanes: auditdialog.
   Source: in-session-2026-05-21.
 
+- 📋 [ANTS-1734] **Make dialogs conform to the new dialogs.md standard (D2–D4).**
+  docs/standards/dialogs.md (cold-eyes-clean) sets four dialog
+  invariants; the cold-eyes pass confirmed existing dialogs don't yet
+  meet D2-D4. Highest-leverage fix: fold a `QSizeGrip` (D2), a
+  size-persist helper keyed in Config (D3, bare QSize — NOT
+  saveGeometry), and parent-centering on showEvent (D4) into
+  `DialogChrome::install` so one call satisfies D1-D4 and new dialogs
+  can't drift. Then migrate the lone non-conformer `RoadmapDialog`,
+  which today persists absolute position via `saveGeometry`/
+  `restoreGeometry` (violates D3 + D4) — switch it to bare-QSize +
+  re-center. D1 (theme) already holds via DialogChrome. Kind:
+  enhancement.
+  **Layman:** Make every pop-up window resizable, remember the size you set, and always open centred on the terminal — like the new rulebook says.
+  Kind: enhancement.
+  Lanes: dialogchrome, config, roadmapdialog.
+  Source: cold-eyes-2026-05-21 (dialogs.md authoring).
+
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
 5-lane in-house audit of the 584-test suite across perf,

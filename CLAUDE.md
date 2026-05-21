@@ -571,6 +571,16 @@ Four shareable v1 standards at `docs/standards/`:
   project move but must never *shadow* (serve the old path's data
   under the new path). Inventory table + "adding a new cache"
   checklist. Cite when adding any project-scoped cache.
+- Sub-spec: [`mcp-tools.md`](docs/standards/mcp-tools.md) — umbrella
+  authoring checklist for adding a tool to the Ants MCP surface
+  (register-with-contract per ANTS-1419, caller-cwd resolve, path
+  validation, response wrap, refusal codes, ETag / `fields=` opt-ins,
+  cache contract, required tests). References `mcp-error-codes.md` +
+  `mcp-caches.md` for the deep contracts. Cite when adding any MCP tool.
+- Project-local: [`dialogs.md`](docs/standards/dialogs.md) — every
+  `QDialog` MUST conform to the active theme (via `DialogChrome`), be
+  user-resizable, persist its size, and re-center over the terminal
+  window on every open (D1–D4). Cite when building or reviewing a dialog.
 
 `coding.md`, `commits.md`, and `testing.md` are byte-identical to
 `/start-app`'s template at
