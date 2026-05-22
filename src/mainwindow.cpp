@@ -3741,17 +3741,32 @@ void MainWindow::setupClaudeMcpProviders() {
     static constexpr const char *kRcUnavailable =
         ClaudeIntegration::kMcpRcUnavailable;
 
+    // ANTS-1782 — RC-delegate factory. Most MCP tools below are
+    // byte-identical shims that differ only in which RemoteControl
+    // cmd* verb they forward `args` to. This builds the handler so the
+    // null-guard + serialise body lives in exactly one place rather
+    // than being copy-pasted per tool. Non-shim tools (terminal-state
+    // reads, in-flight gates, selective arg-forwarding, non-RC
+    // delegates, the no-arg tab_list and multi-arg token_usage) keep
+    // their inline lambdas — the factory only fits the
+    // `cmd(args).toJson()` shape.
+    auto rcDelegate =
+        [this](QJsonDocument (RemoteControl::*fn)(const QJsonObject &))
+            -> ClaudeIntegration::ToolHandler {
+        return [this, fn](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            return QString::fromUtf8(
+                (m_remoteControl->*fn)(args).toJson(QJsonDocument::Compact));
+        };
+    };
+
     // ANTS-1301 — recent_errors. Scans the focused terminal's recent
     // scrollback for structured errors (compiler/lint/lua/test/python).
     // TabSpecific like get_text/get_scrollback; delegates to
     // RemoteControl::cmdRecentErrors. See docs/specs/ANTS-1301.md.
     m_claudeIntegration->registerToolProvider("recent_errors",
         ClaudeIntegration::CallerCwdContract::TabSpecific,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdRecentErrors(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdRecentErrors));
 
     m_claudeIntegration->registerToolProvider("get_scrollback",
         ClaudeIntegration::CallerCwdContract::TabSpecific,
@@ -4011,23 +4026,13 @@ void MainWindow::setupClaudeMcpProviders() {
     // absent caller_cwd refuses upstream before this lambda runs.
     m_claudeIntegration->registerToolProvider("roadmap_log",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdRoadmapLog(args)
-                    .toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdRoadmapLog));
     // ANTS-1583 — roadmap_branch_drift: compare ROADMAP ✅ entries'
     // cited commit SHAs against HEAD's reachable history. caller_cwd
     // is Required (ANTS-1404 contract registered below).
     m_claudeIntegration->registerToolProvider("roadmap_branch_drift",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdRoadmapBranchDrift(args)
-                    .toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdRoadmapBranchDrift));
     // ANTS-1351 — audit_run server-side runner. Inline in-flight gate
     // via ClaudeIntegration::verbInFlight* (§ 2.4 of v4 spec) — no
     // class abstraction; two consumers (this verb + ANTS-1397's
@@ -4357,49 +4362,25 @@ void MainWindow::setupClaudeMcpProviders() {
         });
     m_claudeIntegration->registerToolProvider("workspace_search",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdWorkspaceSearch(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdWorkspaceSearch));
     m_claudeIntegration->registerToolProvider("file_outline",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdFileOutline(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdFileOutline));
     m_claudeIntegration->registerToolProvider("git_state",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdGitState(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdGitState));
     m_claudeIntegration->registerToolProvider("subsystem",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdSubsystem(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdSubsystem));
     m_claudeIntegration->registerToolProvider("last_audit_summary",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdLastAuditSummary(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdLastAuditSummary));
     // ANTS-1569 — current_state aggregator. MCP-only (mirrors
     // last_audit_summary; no IPC dispatch branch). Pure composer over
     // cmdRoadmapQuery + cmdGitState + cmdLastAuditSummary.
     m_claudeIntegration->registerToolProvider("current_state",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdCurrentState(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdCurrentState));
 
     // ANTS-1309 + ANTS-1308 — spec-aware token-savers. spec_query
     // returns one spec's parsed {title, status, kind, invariants[]};
@@ -4408,18 +4389,10 @@ void MainWindow::setupClaudeMcpProviders() {
     // Both MCP-only.
     m_claudeIntegration->registerToolProvider("spec_query",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdSpecQuery(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdSpecQuery));
     m_claudeIntegration->registerToolProvider("invariant_check",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdInvariantCheck(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdInvariantCheck));
 
     // ANTS-1306 + ANTS-1307 — task-start context composers.
     // task_priors bundles matching specs + ROADMAP cards + recent
@@ -4428,18 +4401,10 @@ void MainWindow::setupClaudeMcpProviders() {
     // See docs/specs/ANTS-1306.md and docs/specs/ANTS-1307.md.
     m_claudeIntegration->registerToolProvider("task_priors",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdTaskPriors(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdTaskPriors));
     m_claudeIntegration->registerToolProvider("project_conventions",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdProjectConventions(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdProjectConventions));
 
     // ANTS-1299 + ANTS-1300 — build/test cache MCP tools. Both
     // are op-dispatched (op=read | op=record) and write to
@@ -4447,18 +4412,10 @@ void MainWindow::setupClaudeMcpProviders() {
     // and docs/specs/ANTS-1300.md.
     m_claudeIntegration->registerToolProvider("build_status",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdBuildStatus(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdBuildStatus));
     m_claudeIntegration->registerToolProvider("test_results",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdTestResults(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdTestResults));
 
     // ANTS-1302 — focused_test. Runs only the ctest subset touching the
     // changed files (via tests/coverage-map.json), returns the
@@ -4466,11 +4423,7 @@ void MainWindow::setupClaudeMcpProviders() {
     // See docs/specs/ANTS-1302.md.
     m_claudeIntegration->registerToolProvider("focused_test",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdFocusedTest(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdFocusedTest));
 
     // ANTS-1303 — find_definition + find_caller. Tree-wide regex symbol
     // scanner (no LSP). Both take {symbol, caller_cwd, lang?,
@@ -4479,18 +4432,10 @@ void MainWindow::setupClaudeMcpProviders() {
     // find-definition / find-caller. See docs/specs/ANTS-1303.md.
     m_claudeIntegration->registerToolProvider("find_definition",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdFindDefinition(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdFindDefinition));
     m_claudeIntegration->registerToolProvider("find_caller",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdFindCaller(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdFindCaller));
 
     // ANTS-1305 — similar_code. Tree-wide shape matcher: reuses the
     // FileOutline extractor + ranks signatures by token-set Jaccard
@@ -4500,11 +4445,7 @@ void MainWindow::setupClaudeMcpProviders() {
     // similar-code. See docs/specs/ANTS-1305.md.
     m_claudeIntegration->registerToolProvider("similar_code",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdSimilarCode(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdSimilarCode));
 
     // ANTS-1112 — five `indie_review_*` tools. Each handler resolves
     // the active project via the focused TerminalWidget's shellCwd
@@ -4513,39 +4454,19 @@ void MainWindow::setupClaudeMcpProviders() {
     // cmdIndieReview* methods, mirroring the ANTS-1253 registry shape.
     m_claudeIntegration->registerToolProvider("indie_review_partition",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdIndieReviewPartition(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdIndieReviewPartition));
     m_claudeIntegration->registerToolProvider("indie_review_brief",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdIndieReviewBrief(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdIndieReviewBrief));
     m_claudeIntegration->registerToolProvider("indie_review_corroborate",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdIndieReviewCorroborate(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdIndieReviewCorroborate));
     m_claudeIntegration->registerToolProvider("indie_review_synthesis_prompt",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdIndieReviewSynthesisPrompt(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdIndieReviewSynthesisPrompt));
     m_claudeIntegration->registerToolProvider("indie_review_fold_in",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdIndieReviewFoldIn(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdIndieReviewFoldIn));
 
     // ANTS-1352 — indie_review_dispatch. Inline in-flight gate via
     // verbInFlight* (same pattern as audit_run); caller_cwd Required
@@ -4588,50 +4509,26 @@ void MainWindow::setupClaudeMcpProviders() {
     // ANTS-1113 — debt_sweep_* (4 tools).
     m_claudeIntegration->registerToolProvider("debt_sweep_scan",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdDebtSweepScan(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdDebtSweepScan));
     m_claudeIntegration->registerToolProvider("debt_sweep_apply_fix",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdDebtSweepApplyFix(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdDebtSweepApplyFix));
     m_claudeIntegration->registerToolProvider("debt_sweep_defer",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdDebtSweepDefer(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdDebtSweepDefer));
     m_claudeIntegration->registerToolProvider("debt_sweep_triage_prompt",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdDebtSweepTriagePrompt(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdDebtSweepTriagePrompt));
 
     // ANTS-1289 — verify_changes.
     m_claudeIntegration->registerToolProvider("verify_changes",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdVerifyChanges(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdVerifyChanges));
 
     // ANTS-1290 — plan_template.
     m_claudeIntegration->registerToolProvider("plan_template",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdPlanTemplate(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdPlanTemplate));
 
     // ANTS-1284 — token_usage. ANTS-1422 pull 3: explicit
     // ClaudeIntegration* is now the canonical (only) path. The
@@ -4666,86 +4563,46 @@ void MainWindow::setupClaudeMcpProviders() {
     // pattern; each handler delegates to RemoteControl::cmdColdEyes*.
     m_claudeIntegration->registerToolProvider("cold_eyes_partition",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdColdEyesPartition(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdColdEyesPartition));
     m_claudeIntegration->registerToolProvider("cold_eyes_brief",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdColdEyesBrief(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdColdEyesBrief));
     m_claudeIntegration->registerToolProvider("cold_eyes_cross_doc_diff",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdColdEyesCrossDocDiff(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdColdEyesCrossDocDiff));
     m_claudeIntegration->registerToolProvider("cold_eyes_fold_in",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdColdEyesFoldIn(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdColdEyesFoldIn));
     // ANTS-1413 — cold_eyes_single_doc. Single-spec cross-consistency
     // brief without the partition+brief multi-step.
     m_claudeIntegration->registerToolProvider("cold_eyes_single_doc",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdColdEyesSingleDoc(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdColdEyesSingleDoc));
     // ANTS-1414 — cross_doc_diff. Lane-source-agnostic alias for the
     // regex hotspot primitive shared by cold-eyes + indie-review.
     m_claudeIntegration->registerToolProvider("cross_doc_diff",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdCrossDocDiff(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdCrossDocDiff));
 
     // ANTS-1283 — session_memory KV.
     m_claudeIntegration->registerToolProvider("session_memory",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdSessionMemory(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdSessionMemory));
 
     // ANTS-1723 — workflow_state: superpowers skill step/phase store.
     m_claudeIntegration->registerToolProvider("workflow_state",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdWorkflowState(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdWorkflowState));
 
     // ANTS-1724 — session_brief: compact session-state envelope.
     m_claudeIntegration->registerToolProvider("session_brief",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdSessionBrief(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdSessionBrief));
 
     // ANTS-1430 — project_layout pre-cache.
     m_claudeIntegration->registerToolProvider("project_layout",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                m_remoteControl->cmdProjectLayout(args).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdProjectLayout));
 
     // ANTS-1400 — caller_cwd_info diagnostic verb. Pure delegation to
     // ants::resolveCallerCwdRoot. No filesystem operations beyond the

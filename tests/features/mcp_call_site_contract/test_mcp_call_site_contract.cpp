@@ -32,18 +32,19 @@ bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
 }
 
-// Pull every registered tool name + the literal text that follows
-// the closing paren of its name-string, capturing up to the next
-// lambda capture-list `[`. The captured slice is the place where
-// the CallerCwdContract argument must appear.
+// Pull every registered tool name + the literal text between the
+// name-string and the handler argument. The handler is either an
+// inline lambda capture-list `[` or, for the ANTS-1782 pure RC-delegate
+// shims, an `rcDelegate(` factory call. The captured slice is the place
+// where the CallerCwdContract argument must appear, in BOTH forms.
 struct Registration {
     std::string name;
-    std::string betweenNameAndLambda;  // raw text slice
+    std::string betweenNameAndLambda;  // raw text slice (contract lives here)
 };
 std::vector<Registration> registrations(const std::string &mw) {
     std::vector<Registration> out;
     static const std::regex rx(
-        R"RX(registerToolProvider\("([^"]+)",([^\[]*)\[)RX");
+        R"RX(registerToolProvider\("([^"]+)",([^;]*?)(?:\[|rcDelegate\())RX");
     auto it = std::sregex_iterator(mw.begin(), mw.end(), rx);
     auto end = std::sregex_iterator();
     for (; it != end; ++it) {
@@ -78,6 +79,14 @@ TEST(mcp_call_site_contract, Inv2EveryCallSitePassesContract) {
     expect(!regs.empty(),
            "INV-2: registrations regex returned 0 hits — "
            "mainwindow lost its registerToolProvider calls");
+    // Count guard (ANTS-1782) — both handler forms (inline lambda +
+    // rcDelegate factory) must be captured. A silent regex under-match
+    // would let the per-call contract check go vacuous for whole
+    // swathes of tools; pin a floor well below the current ~58 so a
+    // genuine regression trips but routine additions don't.
+    expect(regs.size() > 50,
+           "INV-2: expected > 50 registerToolProvider call sites "
+           "(inline + rcDelegate forms) — regex may have drifted");
 
     std::vector<std::string> missing;
     for (const auto &r : regs) {

@@ -47,10 +47,10 @@ TEST(McpColdEyes, FourToolNamesRegisteredWithAnchor) {
     const auto end = coldEyesBlockEnd(ci, pos);
     ASSERT_NE(end, std::string::npos);
     const std::string region = ci.substr(pos, end - pos);
-    for (const std::string &name : {"cold_eyes_partition",
-                                    "cold_eyes_brief",
-                                    "cold_eyes_cross_doc_diff",
-                                    "cold_eyes_fold_in"}) {
+    for (const std::string name : {"cold_eyes_partition",
+                                   "cold_eyes_brief",
+                                   "cold_eyes_cross_doc_diff",
+                                   "cold_eyes_fold_in"}) {
         EXPECT_NE(region.find("t[\"name\"] = \"" + name + "\""),
                   std::string::npos)
             << name << " registration missing under ANTS-1319 anchor";
@@ -189,11 +189,15 @@ TEST(McpColdEyes, CacheMembersDeclaredInHeader) {
 TEST(McpColdEyes, ProviderLambdasForwardArgs) {
     const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(mw.empty());
-    for (const std::string &cmd : {"cmdColdEyesPartition",
-                                   "cmdColdEyesBrief",
-                                   "cmdColdEyesCrossDocDiff",
-                                   "cmdColdEyesFoldIn"}) {
-        EXPECT_NE(mw.find(cmd + "(args)"), std::string::npos)
+    // ANTS-1782 — these are pure RC-delegate shims registered via the
+    // rcDelegate(&RemoteControl::cmd*) factory, which forwards `args`
+    // wholesale. Assert the verb reference rather than the old inline
+    // `cmd(args)` call shape.
+    for (const std::string cmd : {"cmdColdEyesPartition",
+                                  "cmdColdEyesBrief",
+                                  "cmdColdEyesCrossDocDiff",
+                                  "cmdColdEyesFoldIn"}) {
+        EXPECT_NE(mw.find(cmd), std::string::npos)
             << cmd << " not wired in mainwindow.cpp";
     }
     EXPECT_NE(mw.find("registerToolProvider(\"cold_eyes_partition\""),
