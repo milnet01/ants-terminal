@@ -5,6 +5,8 @@
 #include <QChar>
 #include <QStringList>
 
+#include <algorithm>
+
 namespace RoadmapIndex {
 
 // Moved from roadmapdialog.cpp (anonymous-namespace static) — see
@@ -126,26 +128,57 @@ QHash<QString, SectionCounts> rollupCounts(
     const QHash<QString, SectionCounts> &direct) {
     QHash<QString, SectionCounts> out;
     out.reserve(index.size());
-    for (const auto &parent : index) {
-        SectionCounts agg;
-        for (const auto &candidate : index) {
-            // Self counts (lineStart/lineEnd both equal) so this
-            // covers both self and proper descendants.
-            const bool nested = (candidate.lineStart >= parent.lineStart &&
-                                 candidate.lineEnd   <= parent.lineEnd);
-            if (!nested) continue;
-            const auto it = direct.constFind(candidate.slug);
-            if (it == direct.cend()) continue;
-            agg.active        += it->active;
-            agg.shipped       += it->shipped;
-            agg.total         += it->total;
-            // ANTS-1622 — roll up the ID-only parallels too.
-            agg.activeWithId  += it->activeWithId;
-            agg.shippedWithId += it->shippedWithId;
-            agg.totalWithId   += it->totalWithId;
+
+    // ANTS-1783 — linear stack pass instead of the O(N²) all-pairs
+    // containment scan (~30k checks on the live ROADMAP per
+    // roadmap_query rollup). Sections form a tree by [lineStart,
+    // lineEnd] containment; walking them in lineStart order with a
+    // stack of open ancestors lets each section's direct counts bubble
+    // up to every ancestor in amortised O(1). A copy is sorted first so
+    // we don't depend on buildIndex's emission order.
+    QVector<const Section *> ordered;
+    ordered.reserve(index.size());
+    for (const auto &s : index) ordered.append(&s);
+    std::sort(ordered.begin(), ordered.end(),
+              [](const Section *a, const Section *b) {
+                  if (a->lineStart != b->lineStart)
+                      return a->lineStart < b->lineStart;
+                  // Wider span first on a tie so a parent is pushed
+                  // before a same-start child.
+                  return a->lineEnd > b->lineEnd;
+              });
+
+    struct Frame { const Section *sec; SectionCounts agg; };
+    QVector<Frame> stack;
+    auto addInto = [](SectionCounts &dst, const SectionCounts &src) {
+        dst.active        += src.active;
+        dst.shipped       += src.shipped;
+        dst.total         += src.total;
+        dst.activeWithId  += src.activeWithId;   // ANTS-1622 parallels
+        dst.shippedWithId += src.shippedWithId;
+        dst.totalWithId   += src.totalWithId;
+    };
+    auto closeFrame = [&](const Frame &f) {
+        out.insert(f.sec->slug, f.agg);
+        if (!stack.isEmpty()) addInto(stack.last().agg, f.agg);
+    };
+
+    for (const Section *s : ordered) {
+        // Pop ancestors that end at or before this section begins —
+        // their subtree is complete. lineEnd is EXCLUSIVE, so a sibling
+        // whose lineStart equals the previous section's lineEnd (e.g.
+        // [10,50) then [50,100)) is NOT nested: pop on `<=`, not `<`.
+        while (!stack.isEmpty() &&
+               stack.last().sec->lineEnd <= s->lineStart) {
+            closeFrame(stack.takeLast());
         }
-        out.insert(parent.slug, agg);
+        // Seed with the section's own direct counts (covers "self").
+        SectionCounts seed;
+        const auto it = direct.constFind(s->slug);
+        if (it != direct.cend()) seed = it.value();
+        stack.append(Frame{s, seed});
     }
+    while (!stack.isEmpty()) closeFrame(stack.takeLast());
     return out;
 }
 

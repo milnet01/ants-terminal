@@ -1,6 +1,7 @@
 #include "diffviewer.h"
 
 #include "clipboardguard.h"
+#include "dialogchrome.h"
 #include "themes.h"
 
 #include <QDialog>
@@ -44,7 +45,13 @@ QDialog *show(QWidget *parent,
     dialog->resize(800, 600);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
 
-    auto *layout = new QVBoxLayout(dialog);
+    // ANTS-1765 — frameless theme-aware chrome (D1). Pre-fix this was a
+    // bare QDialog whose title bar fell through to the system colour
+    // scheme. Lay the dialog's content into chrome.contentArea.
+    auto chrome = DialogChrome::install(dialog, themeName);
+    QWidget *content = chrome.contentArea;
+
+    auto *layout = new QVBoxLayout(content);
     auto *viewer = new QTextEdit(dialog);
     viewer->setReadOnly(true);
     viewer->setFont(QFont("Monospace", 10));
@@ -69,9 +76,9 @@ QDialog *show(QWidget *parent,
 
     // Show NOW. No git has run yet; the viewer carries a loading
     // placeholder so the dialog isn't empty on first paint. raise()
-    // + activateWindow() bring it above the frameless parent; the
-    // WindowStaysOnTopHint flag already set in the flags keeps it
-    // there regardless of KWin stacking heuristics.
+    // + activateWindow() bring it above the frameless parent.
+    // (ANTS-1765 — removed a stale comment claiming a
+    // WindowStaysOnTopHint flag was set; no such flag is set here.)
     const Theme &th = Themes::byName(themeName);
     viewer->setHtml(QStringLiteral(
         "<pre style='color: %1; background: %2;'>"

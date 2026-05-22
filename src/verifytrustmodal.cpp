@@ -3,6 +3,9 @@
 
 #include "verifytrustmodal.h"
 
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QString>
@@ -23,24 +26,30 @@ QString shortSha(const QString &fullHex) {
 }
 
 QString commandPreview(const QByteArray &configBytes) {
-    // Naive parse: find the first `"command":` substring and read
-    // the quoted value. Don't pull in QJsonDocument here just for
-    // the preview — if the JSON is malformed enough to confuse this
-    // regex, the user is about to see "Trust this .ants/verify.json?
-    // (preview unavailable)" which is the right outcome.
-    const QString s = QString::fromUtf8(configBytes);
-    const int idx = s.indexOf(QStringLiteral("\"command\""));
-    if (idx < 0) return QStringLiteral("(no command field found)");
-    int colon = s.indexOf(':', idx);
-    if (colon < 0) return QStringLiteral("(malformed)");
-    int quoteOpen = s.indexOf('"', colon + 1);
-    if (quoteOpen < 0) return QStringLiteral("(malformed)");
-    int quoteClose = s.indexOf('"', quoteOpen + 1);
-    while (quoteClose > 0 && s[quoteClose - 1] == '\\') {
-        quoteClose = s.indexOf('"', quoteClose + 1);
+    // ANTS-1763 — parse with QJsonDocument rather than a naive quote
+    // scan. The previous backslash-aware scan misread a value ending in
+    // an even number of backslashes (e.g. "foo\\"): it treated the real
+    // closing quote as escaped and read on into the rest of the JSON.
+    // This preview is the ONLY human-readable summary in the trust
+    // prompt, so a misrepresentation is a trust-decision hazard. Schema
+    // (VerifyEngine::parseVerifyJson): { build|tests|lint: { command } }.
+    // Return the FIRST gate's command in the engine's gate order so the
+    // "First command preview" matches what would actually run first.
+    QJsonParseError pe{};
+    const QJsonDocument doc = QJsonDocument::fromJson(configBytes, &pe);
+    if (pe.error != QJsonParseError::NoError || !doc.isObject()) {
+        return QStringLiteral("(preview unavailable — malformed JSON)");
     }
-    if (quoteClose < 0) return QStringLiteral("(malformed)");
-    QString preview = s.mid(quoteOpen + 1, quoteClose - quoteOpen - 1);
+    const QJsonObject root = doc.object();
+    QString preview;
+    for (const QString &gate : {QStringLiteral("build"),
+                                QStringLiteral("tests"),
+                                QStringLiteral("lint")}) {
+        const QString cmd = root.value(gate).toObject()
+                                .value(QStringLiteral("command")).toString();
+        if (!cmd.isEmpty()) { preview = cmd; break; }
+    }
+    if (preview.isEmpty()) return QStringLiteral("(no command field found)");
     if (preview.size() > kCommandPreviewChars) {
         preview = preview.left(kCommandPreviewChars)
                   + QStringLiteral("…");

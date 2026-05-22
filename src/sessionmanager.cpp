@@ -139,11 +139,15 @@ QByteArray SessionManager::serialize(const TerminalGrid *grid,
     QByteArray compressed = qCompress(raw, 6);
 
     // V4 envelope: SHEC magic + envelope version + SHA-256(compressed)
-    // + payload length + compressed payload. Tampering with the payload
-    // (or the envelope's length field) flips the hash. Legacy V1-V3
-    // files lacked any payload integrity — anyone with write access to
-    // the sessions dir could plant arbitrary codepoints/colors/flags
-    // into the next restore.
+    // + payload length + compressed payload. ANTS-1778 — this is an
+    // UNKEYED hash, so it provides CORRUPTION DETECTION ONLY (bit-rot,
+    // truncated writes, version skew): an attacker with write access to
+    // the sessions dir can tamper with the payload AND recompute a valid
+    // hash, so it is NOT tamper resistance. The actual defense against a
+    // write-access adversary is the 0700 sessions-dir perms (ANTS-1141,
+    // see ensureSessionsDir above). Real tamper resistance would require
+    // a keyed MAC (HMAC over a per-user secret) — deferred. Legacy V1-V3
+    // files carried no integrity field at all.
     QByteArray sha = QCryptographicHash::hash(compressed,
                                               QCryptographicHash::Sha256);
 

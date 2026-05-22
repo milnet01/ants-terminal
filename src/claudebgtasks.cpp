@@ -149,7 +149,7 @@ void ClaudeBgTaskTracker::poll() {
 //      and recording the output path (parsed from the tool_result text).
 //
 //   3. `user` with content[].type == "tool_result" whose
-//      toolUseResult.status == "completed" / "killed":
+//      toolUseResult.status == "completed" / "killed" / "failed":
 //      → mark matching id finished. Look up by tool_use_id which for
 //      BashOutput refs the original tool_use; we also accept matches by
 //      bash_id / backgroundTaskId text-match where the tool_result body

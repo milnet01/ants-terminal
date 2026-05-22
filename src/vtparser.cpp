@@ -537,6 +537,14 @@ void VtParser::processChar(uint32_t ch) {
         break;
 
     case DcsStringEsc:
+        // ANTS-1777 — the byte after the string-terminating ESC is
+        // deliberately consumed, NOT re-armed as a fresh ESC sequence
+        // (same security trade as OscStringEsc above): re-arming would
+        // let a hostile DCS payload ending in `ESC c` trigger RIS
+        // (terminal reset) — see tests/features/vt_osc_esc_discard/spec.md.
+        // Accepted cost: back-to-back `ESC P … ESC P` loses the second
+        // `P` (Sixel/Kitty intro). A safe partial re-arm (DCS/APC intro
+        // bytes only) needs its own security-reviewed spec.
         transition(Ground);
         break;
 
@@ -565,6 +573,9 @@ void VtParser::processChar(uint32_t ch) {
         break;
 
     case ApcStringEsc:
+        // ANTS-1777 — see the DcsStringEsc note above: the post-ESC byte
+        // is consumed for the same RIS-injection security reason, at the
+        // cost of losing the intro of an immediately-following APC.
         transition(Ground);
         break;
 

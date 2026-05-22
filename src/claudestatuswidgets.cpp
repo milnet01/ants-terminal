@@ -1000,6 +1000,19 @@ void ClaudeStatusBarController::refreshModelChip()
         return;
     }
 
+    // ANTS-1787 — mtime short-circuit. score() tail-reads ≤512 KB and
+    // scores the last 20 turns on every 2 s tick; the sibling task /
+    // bg-task trackers already gate on mtime via poll(). Skip the work
+    // when the transcript hasn't changed since the last score — the chip
+    // already reflects that parse.
+    const qint64 mtimeMs =
+        QFileInfo(transcriptPath).lastModified().toMSecsSinceEpoch();
+    if (transcriptPath == m_modelChipPath && mtimeMs == m_modelChipMtimeMs) {
+        return;
+    }
+    m_modelChipPath    = transcriptPath;
+    m_modelChipMtimeMs = mtimeMs;
+
     const ModelRecommender::Result rec =
         ModelRecommender::score(transcriptPath);
 

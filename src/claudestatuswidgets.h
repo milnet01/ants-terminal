@@ -141,6 +141,11 @@ private:
     ClaudeTaskListTracker *m_tasks = nullptr;
     QPushButton           *m_tasksBtn = nullptr;
     QPushButton           *m_modelBtn = nullptr;  // ANTS-1226
+    // ANTS-1787 — mtime short-circuit for refreshModelChip: skip the
+    // ≤512 KB tail-read + scoring on every 2 s tick when the transcript
+    // hasn't changed since the last score.
+    QString                m_modelChipPath;
+    qint64                 m_modelChipMtimeMs = -1;
 
     // Render state — formerly the m_claude{LastState, LastDetail,
     // PromptActive, PlanMode, Auditing} fivesome on MainWindow.

@@ -122,12 +122,6 @@ struct ScanState {
     int  callsTotal = 0;
 };
 
-// Chop trailing CR/LF; return decoded line.
-QString chopLine(QByteArray raw) {
-    while (!raw.isEmpty() && (raw.back() == '\n' || raw.back() == '\r')) raw.chop(1);
-    return QString::fromUtf8(raw);
-}
-
 void scanFile(ScanState &st, const QFileInfo &fi, const Anchors &an) {
     QFile f(fi.absoluteFilePath());
     if (!f.open(QIODevice::ReadOnly)) return;  // unopenable → not counted
@@ -136,9 +130,18 @@ void scanFile(ScanState &st, const QFileInfo &fi, const Anchors &an) {
     const QString rel = fi.absoluteFilePath().mid(st.rootPrefixLen);
     int lineNo = 0;
     while (!f.atEnd()) {
-        const QString line = chopLine(f.readLine());
+        QByteArray raw = f.readLine();
         ++lineNo;
-        if (line.toUtf8().size() > kMaxLineBytes) continue;  // backtracking guard
+        // ANTS-1786 — chop trailing CR/LF and length-check on the RAW
+        // bytes before decoding. UTF-8 byte length is exactly what
+        // kMaxLineBytes means, so checking the raw size avoids both the
+        // per-line throwaway toUtf8() the old code did AND the QString
+        // decode for over-long lines that are skipped anyway. Across a
+        // multi-thousand-file scan that is millions of avoided allocs.
+        while (!raw.isEmpty() && (raw.back() == '\n' || raw.back() == '\r'))
+            raw.chop(1);
+        if (raw.size() > kMaxLineBytes) continue;  // backtracking guard
+        const QString line = QString::fromUtf8(raw);
 
         bool isDef = false;
         for (const QRegularExpression &re : an.def) {

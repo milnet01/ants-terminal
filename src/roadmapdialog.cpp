@@ -572,6 +572,16 @@ bool extractBoldId(const QString &lineHead, QString *id) {
 // post-separator text on match, empty QString otherwise. Whitespace
 // brackets the separator so mid-word hits (e.g. `re-render`) don't
 // match.
+// ANTS-1784 — single source of truth for the project-ID token shape
+// (`PROJ-NNNN`: a letter-led prefix + `-` + digits, per
+// docs/standards/roadmap-format.md § 3.5.1). parseBullets anchors it in
+// `[...]`; parseShippedDates anchors it on word boundaries (CHANGELOG
+// prose). Both derive from this so the accepted ID shape can't drift
+// between the two parsers.
+static QString idTokenPattern() {
+    return QStringLiteral("[A-Za-z][A-Za-z0-9_-]*-\\d+");
+}
+
 QString splitOnEmDash(const QString &head) {
     static const QString sep1 = QString::fromUtf8(" \xE2\x80\x94 ");  // " — "
     int idx = head.indexOf(sep1);
@@ -581,11 +591,13 @@ QString splitOnEmDash(const QString &head) {
         idx = head.indexOf(sep2);
         sepLen = sep2.size();
     }
-    if (idx < 0) {
-        const QString sep3 = QStringLiteral(" - ");
-        idx = head.indexOf(sep3);
-        sepLen = sep3.size();
-    }
+    // ANTS-1785 — dropped the ` - ` (space-hyphen-space) fallback. It is
+    // too ambiguous to be a reliable label/headline separator: a bold-ID
+    // label or headline containing hyphenated prose (`**FW - W5** - …`,
+    // `add X - and Y`) made indexOf split at the wrong hyphen and
+    // truncate the headline. With only the em-dash and ` -- ` separators
+    // (both unambiguous), an ambiguous ` - ` bullet now falls through to
+    // the rxBold headline extractor at the caller instead of mis-splitting.
     if (idx < 0) return QString();
     return head.mid(idx + sepLen).trimmed();
 }
@@ -806,7 +818,7 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
     // ANTS bullets is preserved because the captured string matches
     // the previous "ANTS-%1".arg(N) shape byte-for-byte.
     static const QRegularExpression rxId(
-        QStringLiteral("\\[([A-Za-z][A-Za-z0-9_-]*-\\d+)\\]"));
+        QStringLiteral("\\[(") + idTokenPattern() + QStringLiteral(")\\]"));
     // ANTS-1547 — lazy `(.+?)` instead of `[^*]+`. Bullets whose bold
     // span wraps inline-code with a literal `*` (e.g. `**Three review
     // surfaces (`cold_eyes_*` / ...)** `) would otherwise fall through
@@ -2074,9 +2086,10 @@ RoadmapDialog::parseShippedDates(const QString &changelogPath) {
         QStringLiteral("^##\\s*\\[([^\\]]+)\\]\\s*(?:[—-]\\s*(\\d{4}-\\d{2}-\\d{2}))?"));
     // ANTS-1660 — match any project-ID prefix, not just ANTS- (multi-prefix
     // repos are permitted per roadmap-format.md § 3.10.4; the viewer is reused
-    // by other projects). ANTS-NNNN still matches.
+    // by other projects). ANTS-NNNN still matches. ANTS-1784 — token shape
+    // shared with parseBullets via idTokenPattern() so they can't drift.
     static const QRegularExpression rxId(
-        QStringLiteral("\\b([A-Za-z][A-Za-z0-9_-]*-\\d+)\\b"));
+        QStringLiteral("\\b(") + idTokenPattern() + QStringLiteral(")\\b"));
     QString currentDate;
     while (!f.atEnd()) {
         const QString line = QString::fromUtf8(f.readLine()).trimmed();

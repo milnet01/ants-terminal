@@ -231,6 +231,18 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         return false;
     }
 
+    // ANTS-1751 — set FD_CLOEXEC on the master as the FIRST parent action
+    // after the fork. forkpty has no atomic O_CLOEXEC variant, so the
+    // master comes back inheritable; doing this here (rather than after
+    // the ~140-line child/parent setup below) shrinks to a few
+    // instructions the window in which a concurrent fork on another
+    // thread (e.g. an audit QProcess) could inherit the PTY master.
+    // The residual window cannot be closed without serialising every
+    // fork/QProcess site behind a global lock — a known limitation.
+    if (m_childPid > 0) {
+        ::fcntl(m_masterFd, F_SETFD, FD_CLOEXEC);
+    }
+
     if (m_childPid == 0) {
         // Reset signal mask + dispositions to defaults. Qt installs
         // handlers for SIGCHLD/SIGPIPE/SIGUSR2/...; glib & dbus add more.
@@ -375,8 +387,8 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         ::_exit(127);
     }
 
-    // Parent process — set O_CLOEXEC so master FD doesn't leak to child processes
-    ::fcntl(m_masterFd, F_SETFD, FD_CLOEXEC);
+    // Parent process — FD_CLOEXEC already set immediately after fork
+    // (ANTS-1751, above) to minimise the inheritance window.
 
     // Set master to non-blocking. The QSocketNotifier model below assumes
     // a non-blocking master — a spurious wakeup on a still-blocking fd

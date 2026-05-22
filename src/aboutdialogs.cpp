@@ -3,6 +3,7 @@
 #include "aboutdialogs.h"
 // cppcheck-suppress missingInclude  // ANTS-1682: generated at build time
 #include "build_info.h"  // ANTS-1222: configure-time build metadata
+#include "dialogchrome.h"  // ANTS-1766: theme-aware frameless chrome
 
 #include <QApplication>
 #include <QDialog>
@@ -44,7 +45,14 @@ QDialog *makeAboutDialog(QWidget *parent,
     dlg->setWindowTitle(windowTitle);
     dlg->setObjectName(objectNameStem + QStringLiteral("Dialog"));
 
-    auto *layout = new QVBoxLayout(dlg);
+    // ANTS-1766 — frameless theme-aware chrome (D1). Uses the active
+    // theme (the About entry points carry no themeName). The non-modal
+    // + plain-QPushButton Wayland workaround documented above is
+    // orthogonal and preserved.
+    auto chrome = DialogChrome::install(dlg);
+    QWidget *content = chrome.contentArea;
+
+    auto *layout = new QVBoxLayout(content);
     auto *label = new QLabel(htmlBody, dlg);
     label->setObjectName(objectNameStem + QStringLiteral("Body"));
     label->setTextFormat(Qt::RichText);

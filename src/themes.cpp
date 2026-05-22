@@ -10,6 +10,30 @@
 #include <QJsonArray>
 #include <QJsonParseError>
 
+#include <cmath>
+
+namespace {
+// ANTS-1767 — WCAG 2.1 relative-luminance + contrast-ratio (§ 1.4.3).
+// sRGB channel → linear, weighted luminance, then the standard
+// (L_lighter + 0.05) / (L_darker + 0.05) ratio. Used to warn theme
+// authors about unreadable (e.g. text==bg) colour pairs.
+double srgbLin(double c) {
+    c /= 255.0;
+    return (c <= 0.03928) ? (c / 12.92)
+                          : std::pow((c + 0.055) / 1.055, 2.4);
+}
+double relLuminance(const QColor &c) {
+    return 0.2126 * srgbLin(c.red())
+         + 0.7152 * srgbLin(c.green())
+         + 0.0722 * srgbLin(c.blue());
+}
+double wcagContrast(const QColor &a, const QColor &b) {
+    const double la = relLuminance(a), lb = relLuminance(b);
+    const double hi = std::max(la, lb), lo = std::min(la, lb);
+    return (hi + 0.05) / (lo + 0.05);
+}
+}  // namespace
+
 static std::vector<Theme> buildThemes() {
     std::vector<Theme> t;
 
@@ -362,6 +386,20 @@ std::vector<Theme> Themes::loadUserThemes() {
                 th.ansi[i] = parseColor(ansiArr[i], defaultAnsi[i]);
             else
                 th.ansi[i] = defaultAnsi[i];
+        }
+
+        // ANTS-1767 — warn (don't reject) on a primary text/background
+        // pair that's hard or impossible to read. Pre-fix a theme with
+        // text_primary == bg_primary loaded silently into an invisible
+        // terminal. 3.0:1 is the WCAG AA-large floor; AA for normal text
+        // is 4.5:1, named in the message as the recommended target.
+        const double contrast =
+            wcagContrast(th.textPrimary, th.bgPrimary);
+        if (contrast < 3.0) {
+            qWarning("Ants: user theme \"%s\" has low text/background "
+                     "contrast (%.2f:1; WCAG AA recommends >= 4.5:1) — "
+                     "text may be hard to read",
+                     qUtf8Printable(th.name), contrast);
         }
 
         result.push_back(th);

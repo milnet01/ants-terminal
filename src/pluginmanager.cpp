@@ -27,12 +27,18 @@ PluginManager::PluginManager(QObject *parent) : QObject(parent) {
     // zero because we never call watchPaths() in the non-dev path.
     m_watcher = new QFileSystemWatcher(this);
     connect(m_watcher, &QFileSystemWatcher::fileChanged, this, [this](const QString &path) {
-        if (devMode()) emit logMessage(QString("[plugin-dev] file changed: %1").arg(path));
+        // ANTS-1788 — never reload outside dev mode. Inert today (no
+        // paths are watched in the non-dev path) but a future watch
+        // added outside dev mode would otherwise trigger a surprise
+        // reloadAll teardown of live plugins.
+        if (!devMode()) return;
+        emit logMessage(QString("[plugin-dev] file changed: %1").arg(path));
         // Debounce: editors often write-truncate-write which fires twice.
         QTimer::singleShot(150, this, [this]() { reloadAll(m_watchedEnabled); });
     });
     connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, [this](const QString &path) {
-        if (devMode()) emit logMessage(QString("[plugin-dev] dir changed: %1").arg(path));
+        if (!devMode()) return;  // ANTS-1788 — see fileChanged above
+        emit logMessage(QString("[plugin-dev] dir changed: %1").arg(path));
         QTimer::singleShot(150, this, [this]() { reloadAll(m_watchedEnabled); });
     });
 }

@@ -10,6 +10,8 @@
 #include <QScopeGuard>
 #include <QTemporaryFile>
 
+#include <type_traits>
+
 KWinPositionTracker::KWinPositionTracker(QWidget *trackedWindow)
     : m_window(trackedWindow) {
 }
@@ -28,6 +30,15 @@ void KWinPositionTracker::setPosition(int x, int y) {
     if (!kwinPresent()) return;
 
     qint64 pid = QApplication::applicationPid();
+    // ANTS-1768 — this script is built by interpolating values straight
+    // into KWin JS with no escaping, so EVERY interpolated value MUST be
+    // integral. A string field added here would be a compositor-script
+    // injection (RCE-adjacent). Enforce integral-only at compile time so
+    // a future maintainer can't quietly add a string arg.
+    static_assert(std::is_integral_v<decltype(pid)> &&
+                  std::is_integral_v<decltype(x)> &&
+                  std::is_integral_v<decltype(y)>,
+                  "KWin JS interpolation must stay integral-only (ANTS-1768)");
     QString kwinJs = QString(
         "var clients = workspace.windowList();\n"
         "for (var i = 0; i < clients.length; i++) {\n"

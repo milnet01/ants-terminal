@@ -2042,33 +2042,28 @@ void TerminalWidget::wheelEvent(QWheelEvent *event) {
         int col = cellPos.y() + 1;
         int row = cellPos.x() - m_grid->scrollbackSize() + m_scrollOffset + 1;
         if (row >= 1 && row <= m_grid->rows()) {
-            int delta = event->angleDelta().y();
-            int button = (delta > 0) ? 64 : 65; // 64=wheel up, 65=wheel down
-            if (m_grid->mouseSgrMode()) {
-                QString seq = QString("\x1B[<%1;%2;%3M").arg(button).arg(col).arg(row);
-                ptyWrite(seq.toUtf8());
+            // ANTS-1752 — report BOTH axes (pre-fix dropped horizontal
+            // scroll) and route through the shared emitMouseReport
+            // encoder instead of re-implementing SGR/X10 here. xterm
+            // wheel buttons: 64 up, 65 down, 66 left, 67 right. Modifiers
+            // now ride along (Shift is consumed by the scrollback-override
+            // guard above, so only Ctrl/Alt reach here).
+            const QPoint d = event->angleDelta();
+            int button = -1;
+            if (qAbs(d.y()) >= qAbs(d.x())) {
+                if (d.y() > 0)      button = 64;  // wheel up
+                else if (d.y() < 0) button = 65;  // wheel down
             } else {
-                // 0.7.53 (2026-04-27 indie-review HIGH) — clamp X10
-                // mouse coordinates to 223 so the encoded byte stays
-                // <= 255 (col + 32 <= 255 → col <= 223). Without the
-                // clamp, a 224+col terminal produces a 0xE0+ byte that
-                // looks like a UTF-8 lead byte to apps reading the
-                // terminal-emit stream; the next event's bytes get
-                // mis-framed as continuation bytes and the app
-                // misinterprets the click position. SGR mouse mode
-                // (above) doesn't have this problem — coordinates are
-                // ASCII decimal, no byte-encoding aliasing.
-                const int colC = std::min(col, 223);
-                const int rowC = std::min(row, 223);
-                char cb = static_cast<char>(button + 32);
-                char cx = static_cast<char>(colC + 32);
-                char cy = static_cast<char>(rowC + 32);
-                QByteArray seq;
-                seq.append("\x1B[M");
-                seq.append(cb);
-                seq.append(cx);
-                seq.append(cy);
-                ptyWrite(seq);
+                if (d.x() > 0)      button = 66;  // wheel left
+                else if (d.x() < 0) button = 67;  // wheel right
+            }
+            if (button >= 0) {
+                int mods = 0;
+                if (event->modifiers() & Qt::ShiftModifier) mods |= 4;
+                if (event->modifiers() & Qt::AltModifier)   mods |= 8;
+                if (event->modifiers() & Qt::ControlModifier) mods |= 16;
+                emitMouseReport(button, col, row, mods,
+                                /*press=*/true, /*release=*/false);
             }
             return;
         }
@@ -3093,6 +3088,49 @@ bool TerminalWidget::mouseReportingActive() const {
     return m_grid->mouseButtonMode() || m_grid->mouseMotionMode() || m_grid->mouseAnyMode();
 }
 
+// ANTS-1752 — single SGR/X10 mouse-report encoder. Shared by
+// sendMouseEvent (clicks / drags / motion) and wheelEvent (wheel
+// buttons 64-67) so the encode + the 0.7.53 X10 223-clamp live in ONE
+// place. `button` is the base xterm button code; modifier + motion bits
+// are added here exactly as the pre-refactor sendMouseEvent did, so the
+// emitted bytes are unchanged for existing callers.
+void TerminalWidget::emitMouseReport(int button, int col, int row,
+                                     int mods, bool press, bool release) {
+    if (!hasPty()) return;
+    if (row < 1 || row > m_grid->rows()) return;
+
+    if (m_grid->mouseSgrMode()) {
+        // SGR mode: CSI < button;col;row M/m
+        char suffix = release ? 'm' : 'M';
+        int btn = button + mods;
+        // Motion events set the +32 motion bit. The no-button motion case
+        // already carries it via button==35 (3 + 32); only a button-held drag
+        // (button 0/1/2) needs the flag added. ANTS-1664 — pre-fix this
+        // unconditionally added +32, so SGR-any-mode reported 67 instead of 35
+        // for no-button motion.
+        if (!press && !release && button < 32) btn += 32; // drag motion
+        QString seq = QString("\x1B[<%1;%2;%3%4").arg(btn).arg(col).arg(row).arg(suffix);
+        ptyWrite(seq.toUtf8());
+    } else {
+        // X10/normal mode: CSI M Cb Cx Cy (all + 32). 0.7.53 — clamp
+        // col/row at 223 so col+32 stays <= 255; otherwise a byte ≥
+        // 0xE0 looks like a UTF-8 lead and the apps reading the
+        // emit stream mis-frame subsequent bytes as continuations.
+        if (release) return; // X10 doesn't report release
+        const int colC = std::min(col, 223);
+        const int rowC = std::min(row, 223);
+        char cb = static_cast<char>(button + mods + 32);
+        char cx = static_cast<char>(colC + 32);
+        char cy = static_cast<char>(rowC + 32);
+        QByteArray seq;
+        seq.append("\x1B[M");
+        seq.append(cb);
+        seq.append(cx);
+        seq.append(cy);
+        ptyWrite(seq);
+    }
+}
+
 void TerminalWidget::sendMouseEvent(QMouseEvent *event, bool press, bool release) {
     if (!hasPty()) return;
     QPoint cell = pixelToCell(event->pos());
@@ -3116,37 +3154,7 @@ void TerminalWidget::sendMouseEvent(QMouseEvent *event, bool press, bool release
     if (event->modifiers() & Qt::AltModifier) mods |= 8;
     if (event->modifiers() & Qt::ControlModifier) mods |= 16;
 
-    if (m_grid->mouseSgrMode()) {
-        // SGR mode: CSI < button;col;row M/m
-        char suffix = release ? 'm' : 'M';
-        int btn = button + mods;
-        // Motion events set the +32 motion bit. The no-button motion case
-        // already carries it via button==35 (3 + 32); only a button-held drag
-        // (button 0/1/2) needs the flag added. ANTS-1664 — pre-fix this
-        // unconditionally added +32, so SGR-any-mode reported 67 instead of 35
-        // for no-button motion.
-        if (!press && !release && button < 32) btn += 32; // drag motion
-        QString seq = QString("\x1B[<%1;%2;%3%4").arg(btn).arg(col).arg(row).arg(suffix);
-        ptyWrite(seq.toUtf8());
-    } else {
-        // X10/normal mode: CSI M Cb Cx Cy (all + 32). 0.7.53 — clamp
-        // col/row at 223 so col+32 stays <= 255; otherwise a byte ≥
-        // 0xE0 looks like a UTF-8 lead and the apps reading the
-        // emit stream mis-frame subsequent bytes as continuations.
-        // See wheel-event handler above for the same clamp + rationale.
-        if (release) return; // X10 doesn't report release
-        const int colC = std::min(col, 223);
-        const int rowC = std::min(row, 223);
-        char cb = static_cast<char>(button + mods + 32);
-        char cx = static_cast<char>(colC + 32);
-        char cy = static_cast<char>(rowC + 32);
-        QByteArray seq;
-        seq.append("\x1B[M");
-        seq.append(cb);
-        seq.append(cx);
-        seq.append(cy);
-        ptyWrite(seq);
-    }
+    emitMouseReport(button, col, row, mods, press, release);
 }
 
 void TerminalWidget::mousePressEvent(QMouseEvent *event) {

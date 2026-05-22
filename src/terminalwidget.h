@@ -329,6 +329,9 @@ private:
 
     // Mouse reporting
     void sendMouseEvent(QMouseEvent *event, bool press, bool release = false);
+    // ANTS-1752 — shared SGR/X10 mouse-report encoder (clicks + wheel).
+    void emitMouseReport(int button, int col, int row, int mods,
+                         bool press, bool release);
     bool mouseReportingActive() const;
 
     // URL and file path detection (includes OSC 8 hyperlinks)
