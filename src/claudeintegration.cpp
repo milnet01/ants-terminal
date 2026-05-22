@@ -6366,6 +6366,15 @@ void ClaudeIntegration::onMcpConnection() {
             else            envelope["error"]  = error;
 
             QByteArray resp = QJsonDocument(envelope).toJson(QJsonDocument::Compact);
+            // ANTS-1769 — append a '\n' end-of-reply terminator. Compact
+            // JSON contains no raw newline bytes (string newlines are
+            // escaped as the two chars \n), so a trailing raw '\n' is an
+            // unambiguous "reply complete" marker. The client (mcp-bridge)
+            // treats a missing terminator on a parse failure as truncation
+            // (-32000) rather than malformed (-32700). Back-compatible: an
+            // older client that reads to EOF + json.loads ignores the
+            // trailing whitespace.
+            resp.append('\n');
             socket->write(resp);
             socket->flush();
             socket->disconnectFromServer();

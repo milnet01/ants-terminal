@@ -110,13 +110,28 @@ def forward(req: dict):
         s.close()
         if not buf:
             return err_reply(req_id, -32000, "empty reply from Ants MCP")
-        return json.loads(buf)
+        # ANTS-1769 — the server appends a '\n' end-of-reply terminator.
+        # Its presence means the reply arrived complete; its absence on a
+        # parse failure means the server closed mid-write (truncation),
+        # which is a transport fault (-32000), NOT a malformed reply
+        # (-32700). Back-compatible with an older server that sends no
+        # terminator: a complete reply still parses, so we only fall into
+        # the truncation branch when json.loads actually fails.
+        had_terminator = buf.endswith(b"\n")
+        payload = buf[:-1] if had_terminator else buf
+        try:
+            return json.loads(payload)
+        except json.JSONDecodeError as e:
+            if not had_terminator:
+                return err_reply(
+                    req_id, -32000,
+                    f"truncated reply from Ants MCP (connection closed "
+                    f"mid-write): {e}")
+            return err_reply(req_id, -32700,
+                             f"malformed reply from Ants MCP: {e}")
     except (OSError, socket.timeout) as e:
         return None if is_notification else err_reply(
             req_id, -32000, f"Ants MCP transport: {e}")
-    except json.JSONDecodeError as e:
-        return err_reply(req_id, -32700,
-                         f"malformed reply from Ants MCP: {e}")
 
 
 def main() -> int:
