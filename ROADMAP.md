@@ -7515,6 +7515,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: claudeintegration, remotecontrol.
   Source: in-session-2026-05-21.
 
+- 📋 [ANTS-1793] **`roadmap_log` op:"flip" can't append a resolution note — closing a deferred item needs a second manual ROADMAP edit.**
+  Hit during indie-review #5 deferred remediation (2026-05-22): closing ANTS-1764 meant flipping 📋→✅ AND appending a "Resolved (date): ..." body line documenting how the bounded slice was fixed. `roadmap_log` op:"flip" only changes the status emoji (+ injects the `^anchor`); it has no way to append/amend body prose, so the resolution note fell back to a hand `Edit` of ROADMAP.md — defeating the point of using the MCP write path. Proposed: add an optional `append_body` (or `note`) param to op:"flip" that appends an indented continuation line under the flipped bullet (same 2-space-indent verbatim treatment as op:"append"'s `body`). Common path every remediation session — flip + resolution-note is the standard close shape, not status-only.
+  Kind: enhancement.
+  Lanes: remotecontrol, roadmapdialog.
+  Source: in-session-2026-05-22 (indie-review #5 deferred remediation).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
