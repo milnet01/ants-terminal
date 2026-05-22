@@ -225,19 +225,20 @@ TEST(McpOutputSanitisationWiring, ControlPlaneExemptSetExact) {
         << "control-plane bypass missing token_usage entry";
 }
 
-// REG-5 — CLAUDE.md Conventions section mentions the wrap so
-// future tool authors discover it.
+// REG-5 — CLAUDE.md documents the ANTS-1294 wrap so future tool authors
+// discover it. The wrap now lives in the "## MCP tool authoring" section
+// (it moved out of "## Conventions" when CLAUDE.md was reorganised).
 TEST(McpOutputSanitisationWiring, ConventionDocumentedInClaudeMd) {
     const std::string md = slurp(ANTS_CLAUDE_MD_PATH);
     ASSERT_FALSE(md.empty());
 
-    auto convStart = md.find("## Conventions");
-    ASSERT_NE(convStart, std::string::npos)
-        << "CLAUDE.md has no '## Conventions' section";
-    auto convEnd = md.find("## ", convStart + 5);
-    if (convEnd == std::string::npos) convEnd = md.size();
-    const std::string section = md.substr(convStart, convEnd - convStart);
+    auto secStart = md.find("## MCP tool authoring");
+    ASSERT_NE(secStart, std::string::npos)
+        << "CLAUDE.md has no '## MCP tool authoring' section";
+    auto secEnd = md.find("\n## ", secStart + 5);
+    if (secEnd == std::string::npos) secEnd = md.size();
+    const std::string section = md.substr(secStart, secEnd - secStart);
 
     EXPECT_NE(section.find("ants_mcp_data"), std::string::npos)
-        << "ANTS-1294 wrap not documented in CLAUDE.md Conventions";
+        << "ANTS-1294 wrap not documented in CLAUDE.md '## MCP tool authoring'";
 }

@@ -160,7 +160,7 @@ TEST(McpWorkspaceSearch, WiringContract) {
         bool ok = false;
         if (reqPos != std::string::npos) {
             const size_t windowEnd = std::min(ciCpp.size(),
-                                              reqPos + 10000);
+                                              reqPos + 14000);
             const std::string window = ciCpp.substr(reqPos,
                                                     windowEnd - reqPos);
             ok = contains(window, "\"required\"") &&

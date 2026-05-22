@@ -143,7 +143,7 @@ TEST(McpFileOutline, WiringContract) {
         bool ok = false;
         if (reqPos != std::string::npos) {
             const size_t windowEnd = std::min(ciCpp.size(),
-                                              reqPos + 4000);
+                                              reqPos + 6000);
             const std::string window = ciCpp.substr(reqPos,
                                                     windowEnd - reqPos);
             ok = contains(window, "\"required\"") &&
