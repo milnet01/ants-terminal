@@ -127,7 +127,10 @@ QList<Lane> derivePartition(const QString &projectPath) {
 
     const QString claudeMdPath =
         projectPath + QStringLiteral("/CLAUDE.md");
-    const auto smLanes = SubsystemMap::cachedLanes(claudeMdPath);
+    // ANTS-1292: the module map moved to docs/subsystems.md; resolveSource
+    // prefers it and falls back to CLAUDE.md for un-migrated projects.
+    const QString sourcePath = SubsystemMap::resolveSource(claudeMdPath);
+    const auto smLanes = SubsystemMap::cachedLanes(sourcePath);
     QList<Lane> out;
     out.reserve(smLanes.size());
     // ANTS-1685 — drop lanes whose name resolves to no source files (library

@@ -52,8 +52,18 @@ same shape as ANTS-1248 / 1249 / 1250.
 ## Floor (assertion 12)
 
 The spec's § 10 step 2 floor of ≥ 15 lane entries is the canary:
-if a future CLAUDE.md edit drops below 15 (e.g. a developer
-reorganises the Module map into a different shape), this test
-flips red and forces a parser update. The single named lane
-`"vtparser"` is also asserted as a sanity check that the parser
-isn't returning garbage on a successful parse.
+if a future edit drops below 15 (e.g. a developer reorganises the
+Module map into a different shape), this test flips red and forces a
+parser update. The single named lane `"vtparser"` is also asserted as a
+sanity check that the parser isn't returning garbage on a successful
+parse.
+
+## ANTS-1292 addendum — module map moved to `docs/subsystems.md`
+
+The canonical module map moved out of CLAUDE.md (reloaded into every
+Claude session) into `docs/subsystems.md`, served on demand via the
+`subsystem` tool. See `docs/specs/ANTS-1292.md`. Assertions 12-14 lock it:
+INV-12 parses the *resolved* source (≥ 15 lanes incl. `vtparser`),
+INV-13 asserts `resolveSource()` prefers `docs/subsystems.md`, and INV-14
+asserts the post-split CLAUDE.md parses to zero lanes (no duplicate
+catalogue in the preamble).

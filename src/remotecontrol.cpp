@@ -4499,17 +4499,28 @@ QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
     // ANTS-1391: caller_cwd anchors the root when present.
     const QString rootCanonical = resolveRootCanonical(m_main, req);
     const QString claudeMdPath  = findClaudeMdForRoot(rootCanonical);
+    // ANTS-1292: the module map lives in docs/subsystems.md when present,
+    // else falls back to CLAUDE.md (un-migrated projects).
+    const QString sourcePath = SubsystemMap::resolveSource(claudeMdPath);
     // Note: cachedLanes returns empty when the file is missing; that
     // collapses to an empty `lanes[]` for op:"map" (INV-7) and a
     // unknown_lane error for the other ops.
     const QVector<SubsystemMap::Lane> lanes =
-        SubsystemMap::cachedLanes(claudeMdPath);
+        SubsystemMap::cachedLanes(sourcePath);
 
     if (op == QLatin1String("map")) {
         QJsonObject ok;
         ok["ok"]     = true;
         ok["op"]     = "map";
-        ok["source"] = "CLAUDE.md";
+        // Report the source relative to root so callers can see whether
+        // it came from docs/subsystems.md (ANTS-1292) or legacy CLAUDE.md.
+        QString srcLabel = sourcePath;
+        if (!rootCanonical.isEmpty() && srcLabel.startsWith(rootCanonical)) {
+            srcLabel.remove(0, rootCanonical.size());
+            if (srcLabel.startsWith(QLatin1Char('/'))) srcLabel.remove(0, 1);
+        }
+        ok["source"] = srcLabel.isEmpty() ? QStringLiteral("CLAUDE.md")
+                                          : srcLabel;
         ok["lanes"]  = lanesAsJson(lanes).value("lanes");
         return QJsonDocument(ok);
     }
@@ -7107,7 +7118,8 @@ QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req) {
     if (allLanes.isEmpty()) return QJsonDocument(irErr(
         QStringLiteral("no_lanes"),
         QStringLiteral("indie_review_dispatch: partition resolved empty "
-                       "(no ## Module map in CLAUDE.md, no override)")));
+                       "(no ## Module map in docs/subsystems.md or "
+                       "CLAUDE.md, no override)")));
 
     QStringList requestedLanes;
     const QJsonArray lanesArr =

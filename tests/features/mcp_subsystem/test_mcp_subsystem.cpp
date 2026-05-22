@@ -200,23 +200,44 @@ TEST(McpSubsystem, WiringContract) {
            "CMakeLists.txt does not list src/subsystemmap.cpp in "
            "ants_core_lib SOURCES");
 
-    // INV-12 — current CLAUDE.md parses to >= 15 unique lanes
-    // including "vtparser" (spec § 10 step 2 floor).
+    // INV-12 — the resolved module-map source parses to >= 15 unique
+    // lanes including "vtparser" (spec § 10 step 2 floor). Post-ANTS-1292
+    // the source is docs/subsystems.md; resolveSource() finds it.
     SubsystemMap::clearCacheForTests();
     const QString claudeMdPath = QString::fromUtf8(ANTS_CLAUDE_MD_PATH);
+    const QString resolvedSrc  = SubsystemMap::resolveSource(claudeMdPath);
     const QVector<SubsystemMap::Lane> lanes =
-        SubsystemMap::cachedLanes(claudeMdPath);
+        SubsystemMap::cachedLanes(resolvedSrc);
     bool haveVtparser = false;
     for (const auto &l : lanes) {
         if (l.name == QStringLiteral("vtparser")) { haveVtparser = true; break; }
     }
     char detail12[200];
     std::snprintf(detail12, sizeof detail12,
-                  "parsed %lld lanes from CLAUDE.md, expected >=15 "
+                  "parsed %lld lanes from resolved source, expected >=15 "
                   "including \"vtparser\" (haveVtparser=%s)",
                   static_cast<long long>(lanes.size()),
                   haveVtparser ? "true" : "false");
     expect(lanes.size() >= 15 && haveVtparser, "INV-12", detail12);
 
-    EXPECT_EQ(0, expect_failures()) << expect_failures() << " ANTS-1251 invariant(s) failed";
+    // ANTS-1292 INV-13 — resolveSource() prefers docs/subsystems.md when
+    // present (the canonical home), not CLAUDE.md.
+    expect(resolvedSrc.endsWith(QStringLiteral("docs/subsystems.md")),
+           "ANTS-1292/INV-13",
+           "resolveSource(CLAUDE.md) did not resolve to docs/subsystems.md");
+
+    // ANTS-1292 INV-14 — the catalogue moved OUT of CLAUDE.md: parsing the
+    // (stub) CLAUDE.md directly yields no lanes, so it no longer bloats the
+    // session preamble.
+    SubsystemMap::clearCacheForTests();
+    const QVector<SubsystemMap::Lane> claudeMdLanes =
+        SubsystemMap::cachedLanes(claudeMdPath);
+    char detail14[160];
+    std::snprintf(detail14, sizeof detail14,
+                  "CLAUDE.md still parses to %lld lanes; the module map "
+                  "should be a stub pointing at docs/subsystems.md",
+                  static_cast<long long>(claudeMdLanes.size()));
+    expect(claudeMdLanes.isEmpty(), "ANTS-1292/INV-14", detail14);
+
+    EXPECT_EQ(0, expect_failures()) << expect_failures() << " ANTS-1251/ANTS-1292 invariant(s) failed";
 }

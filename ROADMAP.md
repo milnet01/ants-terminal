@@ -10285,7 +10285,7 @@ template / mutate this state atomically" → movable. If it's
 
 #### 🔌 MCP — context-loading discipline
 
-- 📋 [ANTS-1292] **Split CLAUDE.md: core (always-loaded) vs lane
+- ✅ [ANTS-1292] **Split CLAUDE.md: core (always-loaded) vs lane
   details (on-demand via `subsystem` MCP).** CLAUDE.md is loaded
   every Claude session and is ~330 lines and growing. The "Module
   map (src/)" subsection alone is ~80 lines of lane summaries —

@@ -254,6 +254,15 @@ for security-relevant changes.
 
 ### Changed
 
+- **Leaner Claude sessions — the per-subsystem module map moved out of
+  CLAUDE.md (ANTS-1292).** The ~130-line catalogue describing each `src/`
+  subsystem used to sit in CLAUDE.md, which Claude Code reloads into every
+  session. It now lives in `docs/subsystems.md` and is fetched only on
+  demand via the `subsystem` MCP tool (`op=map`), trimming ~2–3 K tokens
+  off every session preamble. Behaviour is unchanged for the `subsystem`
+  tool and `/indie-review` partitioning — both transparently read the new
+  location, falling back to CLAUDE.md for projects that haven't migrated.
+
 - **Lua plugins now run off the GUI thread — a misbehaving plugin can no
   longer freeze the terminal (ANTS-1750).** Each plugin's VM moved onto
   its own background worker thread and events are delivered

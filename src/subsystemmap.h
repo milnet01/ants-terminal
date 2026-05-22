@@ -1,7 +1,13 @@
-// ANTS-1251 — subsystemmap: parses CLAUDE.md's `## Module map (src/)`
-// section into [{name, summary}, ...] and caches the result keyed on
-// CLAUDE.md mtime (no wall-clock TTL — INV-2). One copy lives on
+// ANTS-1251 — subsystemmap: parses the `## Module map (src/)` section
+// into [{name, summary}, ...] and caches the result keyed on the source
+// file's mtime (no wall-clock TTL — INV-2). One copy lives on
 // RemoteControl. See docs/specs/ANTS-1251.md.
+//
+// ANTS-1292 — the canonical module map moved out of CLAUDE.md into
+// docs/subsystems.md so the ~130-line lane catalogue is not reloaded
+// into every Claude session preamble. resolveSource() picks
+// docs/subsystems.md when present and falls back to CLAUDE.md for
+// projects that have not migrated. See docs/specs/ANTS-1292.md.
 
 #ifndef ANTS_SUBSYSTEMMAP_H
 #define ANTS_SUBSYSTEMMAP_H
@@ -23,10 +29,18 @@ struct Lane {
 QVector<Lane> parse(const QString &claudeMdBody);
 
 // Synchronous mtime-keyed cache. Returns the parsed lanes for
-// `claudeMdPath`. Re-reads only when mtime changes (INV-2).
+// `sourcePath`. Re-reads only when mtime changes (INV-2).
 // On read error returns an empty vector. Thread-unsafe; intended to
 // be called from the IPC thread (RemoteControl::dispatch chain).
-QVector<Lane> cachedLanes(const QString &claudeMdPath);
+QVector<Lane> cachedLanes(const QString &sourcePath);
+
+// ANTS-1292 — resolve the canonical module-map source for a project,
+// given a path to (or candidate for) the project's CLAUDE.md. Prefers
+// `<root>/docs/subsystems.md` when it exists; otherwise returns
+// `claudeMdPath` unchanged (back-compat for un-migrated projects).
+// `<root>` is the directory containing `claudeMdPath`. Empty in →
+// empty out.
+QString resolveSource(const QString &claudeMdPath);
 
 // Test-only: clear the cache so a fixture run starts clean.
 void clearCacheForTests();
