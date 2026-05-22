@@ -198,7 +198,7 @@ static void releaseIfLarge(std::string &s) {
     }
 }
 
-void VtParser::appendUtf8(std::string &out, uint32_t ch, size_t maxBytes) {
+bool VtParser::appendUtf8(std::string &out, uint32_t ch, size_t maxBytes) {
     // Compute encoded length first so we can reject atomically without a
     // partial write that would overshoot maxBytes by up to 3 bytes.
     size_t need;
@@ -207,7 +207,7 @@ void VtParser::appendUtf8(std::string &out, uint32_t ch, size_t maxBytes) {
     else if (ch < 0x10000) need = 3;
     else                  need = 4;
 
-    if (out.size() + need > maxBytes) return;
+    if (out.size() + need > maxBytes) return false;
 
     if (ch < 0x80) {
         out += static_cast<char>(ch);
@@ -224,6 +224,7 @@ void VtParser::appendUtf8(std::string &out, uint32_t ch, size_t maxBytes) {
         out += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
         out += static_cast<char>(0x80 | (ch & 0x3F));
     }
+    return true;
 }
 
 void VtParser::processChar(uint32_t ch) {
@@ -391,8 +392,10 @@ void VtParser::processChar(uint32_t ch) {
         } else if (ch >= 0x20 && ch <= 0x2F) {
             // Intermediate byte
             if (m_currentParam >= 0) {
-                m_params.push_back(m_currentParam);
-                m_colonSep.push_back(m_nextIsSubParam);
+                if (m_params.size() < 32) { // honour the same 32-param DoS cap as ';'
+                    m_params.push_back(m_currentParam);
+                    m_colonSep.push_back(m_nextIsSubParam);
+                }
                 m_currentParam = -1;
                 m_nextIsSubParam = false;
             }
@@ -400,7 +403,7 @@ void VtParser::processChar(uint32_t ch) {
             m_state = CsiIntermediate;
         } else if (ch >= 0x40 && ch <= 0x7E) {
             // Final byte — dispatch
-            if (m_currentParam >= 0) {
+            if (m_currentParam >= 0 && m_params.size() < 32) { // honour the 32-param DoS cap
                 m_params.push_back(m_currentParam);
                 m_colonSep.push_back(m_nextIsSubParam);
             }
@@ -469,6 +472,7 @@ void VtParser::processChar(uint32_t ch) {
             VtAction a;
             a.type = VtAction::OscEnd;
             a.oscString = std::move(m_oscString);
+            a.truncated = m_stringTruncated;
             m_callback(a);
             releaseIfLarge(m_oscString);
             transition(Ground);
@@ -488,11 +492,13 @@ void VtParser::processChar(uint32_t ch) {
             VtAction a;
             a.type = VtAction::OscEnd;
             a.oscString = std::move(m_oscString);
+            a.truncated = m_stringTruncated;
             m_callback(a);
             releaseIfLarge(m_oscString);
             transition(OscStringEsc);
         } else {
-            appendUtf8(m_oscString, ch, 10 * 1024 * 1024); // 10MB cap for inline images
+            if (!appendUtf8(m_oscString, ch, 10 * 1024 * 1024)) // 10MB cap for inline images
+                m_stringTruncated = true;
         }
         break;
 
@@ -511,6 +517,7 @@ void VtParser::processChar(uint32_t ch) {
             VtAction a;
             a.type = VtAction::DcsEnd;
             a.oscString = std::move(m_dcsString); // Reuse oscString field for payload
+            a.truncated = m_stringTruncated;
             m_callback(a);
             releaseIfLarge(m_dcsString);
             transition(Ground);
@@ -519,11 +526,13 @@ void VtParser::processChar(uint32_t ch) {
             VtAction a;
             a.type = VtAction::DcsEnd;
             a.oscString = std::move(m_dcsString);
+            a.truncated = m_stringTruncated;
             m_callback(a);
             releaseIfLarge(m_dcsString);
             transition(DcsStringEsc);
         } else {
-            appendUtf8(m_dcsString, ch, 10 * 1024 * 1024); // 10MB cap
+            if (!appendUtf8(m_dcsString, ch, 10 * 1024 * 1024)) // 10MB cap
+                m_stringTruncated = true;
         }
         break;
 
@@ -536,6 +545,7 @@ void VtParser::processChar(uint32_t ch) {
             VtAction a;
             a.type = VtAction::ApcEnd;
             a.oscString = std::move(m_apcString); // Reuse oscString field for payload
+            a.truncated = m_stringTruncated;
             m_callback(a);
             releaseIfLarge(m_apcString);
             transition(Ground);
@@ -544,11 +554,13 @@ void VtParser::processChar(uint32_t ch) {
             VtAction a;
             a.type = VtAction::ApcEnd;
             a.oscString = std::move(m_apcString);
+            a.truncated = m_stringTruncated;
             m_callback(a);
             releaseIfLarge(m_apcString);
             transition(ApcStringEsc);
         } else {
-            appendUtf8(m_apcString, ch, 10 * 1024 * 1024); // 10MB cap
+            if (!appendUtf8(m_apcString, ch, 10 * 1024 * 1024)) // 10MB cap
+                m_stringTruncated = true;
         }
         break;
 
@@ -580,6 +592,11 @@ void VtParser::transition(State newState) {
         m_intermediate.clear();
     } else if (newState == Escape) {
         m_intermediate.clear();
+    } else if (newState == OscString || newState == DcsString ||
+               newState == ApcString) {
+        // Fresh string sequence — clear the carried-over truncation flag so it
+        // reflects only this payload. ANTS-1663.
+        m_stringTruncated = false;
     }
 }
 

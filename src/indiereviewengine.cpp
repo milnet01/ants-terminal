@@ -130,12 +130,32 @@ QList<Lane> derivePartition(const QString &projectPath) {
     const auto smLanes = SubsystemMap::cachedLanes(claudeMdPath);
     QList<Lane> out;
     out.reserve(smLanes.size());
+    // ANTS-1685 — drop lanes whose name resolves to no source files (library
+    // aggregates like `ants_core_lib` that name no concrete subsystem) and
+    // deduplicate lanes that resolve to an identical source set (CLAUDE.md
+    // groups several names under one paragraph; if two resolve to the same
+    // files they are one review unit). The surviving lane carries both names so
+    // nothing is silently hidden.
+    QHash<QString, int> bySig;  // sorted-paths signature -> index in `out`
     for (const auto &sm : smLanes) {
         Lane l;
         l.name        = sm.name;
         l.summary     = sm.summary;
         l.sourcePaths = sourcePathsForLane(projectPath, sm.name);
-        out << l;
+        if (l.sourcePaths.isEmpty()) continue;  // nothing to review — drop
+        QStringList sorted = l.sourcePaths;
+        sorted.sort();
+        const QString sig = sorted.join(QChar('\0'));
+        auto it = bySig.constFind(sig);
+        if (it == bySig.constEnd()) {
+            bySig.insert(sig, out.size());
+            out << l;
+        } else {
+            Lane &existing = out[it.value()];
+            if (existing.name != l.name &&
+                !existing.name.split(QStringLiteral(", ")).contains(l.name))
+                existing.name += QStringLiteral(", ") + l.name;
+        }
     }
     return out;
 }

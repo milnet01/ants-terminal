@@ -626,7 +626,9 @@ bool TerminalWidget::event(QEvent *event) {
             keyPressEvent(ke);
             return true;
         }
-        // Scratchpad: Ctrl+Enter to send, Escape to close
+        // Scratchpad: Ctrl+Enter to send, Escape to close. Fallback for when
+        // the TerminalWidget itself holds focus with the scratchpad open; the
+        // common case (edit focused) is handled in eventFilter(). ANTS-1656.
         if (m_scratchpad && m_scratchpad->isVisible()) {
             if (ke->key() == Qt::Key_Escape) {
                 hideScratchpad();
@@ -634,16 +636,7 @@ bool TerminalWidget::event(QEvent *event) {
             }
             if ((ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) &&
                 (ke->modifiers() & Qt::ControlModifier)) {
-                auto *edit = m_scratchpad->findChild<QPlainTextEdit *>();
-                if (edit) {
-                    QString text = edit->toPlainText();
-                    if (!text.isEmpty() && hasPty()) {
-                        pasteToTerminal(text.toUtf8());
-                        ptyWrite("\r");
-                    }
-                    edit->clear();
-                    hideScratchpad();
-                }
+                sendScratchpad();
                 return true;
             }
         }
@@ -2815,7 +2808,13 @@ void TerminalWidget::clickToMoveCursor(int col, int row) {
     if (delta == 0) return;
 
     QByteArray arrows;
-    const char *arrow = (delta > 0) ? "\x1B[C" : "\x1B[D";
+    // ANTS-1666 — honour DECCKM (application cursor keys). zsh vi-mode and
+    // readline put the cursor keys in application mode (ESC O x); emitting the
+    // normal-mode form (ESC [ x) there makes click-to-move land on the wrong
+    // column. Mirrors the keyPressEvent arrow-key switch.
+    const bool appCursor = m_grid->applicationCursorKeys();
+    const char *arrow = (delta > 0) ? (appCursor ? "\x1BOC" : "\x1B[C")
+                                    : (appCursor ? "\x1BOD" : "\x1B[D");
     int count = std::abs(delta);
     for (int i = 0; i < count && i < 200; ++i)
         arrows += arrow;
@@ -3123,7 +3122,12 @@ void TerminalWidget::sendMouseEvent(QMouseEvent *event, bool press, bool release
         // SGR mode: CSI < button;col;row M/m
         char suffix = release ? 'm' : 'M';
         int btn = button + mods;
-        if (!press && !release) btn = button + 32 + mods; // motion
+        // Motion events set the +32 motion bit. The no-button motion case
+        // already carries it via button==35 (3 + 32); only a button-held drag
+        // (button 0/1/2) needs the flag added. ANTS-1664 — pre-fix this
+        // unconditionally added +32, so SGR-any-mode reported 67 instead of 35
+        // for no-button motion.
+        if (!press && !release && button < 32) btn += 32; // drag motion
         QString seq = QString("\x1B[<%1;%2;%3%4").arg(btn).arg(col).arg(row).arg(suffix);
         ptyWrite(seq.toUtf8());
     } else {
@@ -4227,19 +4231,16 @@ void TerminalWidget::showScratchpad() {
         "QPushButton:hover { background: rgba(80,80,120,220); }"
     );
 
-    connect(sendBtn, &QPushButton::clicked, this, [this, edit]() {
-        QString text = edit->toPlainText();
-        if (!text.isEmpty() && hasPty()) {
-            pasteToTerminal(text.toUtf8());
-            ptyWrite("\r");
-        }
-        edit->clear();
-        hideScratchpad();
-    });
+    connect(sendBtn, &QPushButton::clicked, this, &TerminalWidget::sendScratchpad);
 
     connect(closeBtn, &QPushButton::clicked, this, &TerminalWidget::hideScratchpad);
 
-    // Ctrl+Enter to send, Escape to close
+    // Ctrl+Enter to send, Escape to close. The edit child holds focus while the
+    // scratchpad is visible, so its key events never reach TerminalWidget's
+    // event() override — they must be intercepted via eventFilter() instead.
+    // ANTS-1656 (pre-fix this installed the filter but no eventFilter() existed,
+    // so QPlainTextEdit swallowed Ctrl+Enter as a newline and the shortcut was
+    // dead).
     edit->installEventFilter(this);
 
     // Position and size
@@ -4254,6 +4255,40 @@ void TerminalWidget::hideScratchpad() {
         m_scratchpad->hide();
         setFocus();
     }
+}
+
+void TerminalWidget::sendScratchpad() {
+    if (!m_scratchpad) return;
+    auto *edit = m_scratchpad->findChild<QPlainTextEdit *>();
+    if (!edit) return;
+    QString text = edit->toPlainText();
+    if (!text.isEmpty() && hasPty()) {
+        pasteToTerminal(text.toUtf8());
+        ptyWrite("\r");
+    }
+    edit->clear();
+    hideScratchpad();
+}
+
+bool TerminalWidget::eventFilter(QObject *obj, QEvent *ev) {
+    // ANTS-1656 — the scratchpad's QPlainTextEdit holds focus while visible, so
+    // its Ctrl+Enter (send) / Escape (close) shortcuts are intercepted here
+    // rather than in event(), which only sees events delivered to the widget
+    // itself. Without this, QPlainTextEdit swallows Ctrl+Enter as a newline.
+    if (m_scratchpad && ev->type() == QEvent::KeyPress &&
+        obj == m_scratchpad->findChild<QPlainTextEdit *>()) {
+        auto *ke = static_cast<QKeyEvent *>(ev);
+        if (ke->key() == Qt::Key_Escape) {
+            hideScratchpad();
+            return true;
+        }
+        if ((ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) &&
+            (ke->modifiers() & Qt::ControlModifier)) {
+            sendScratchpad();
+            return true;
+        }
+    }
+    return QWidget::eventFilter(obj, ev);
 }
 
 // --- Terminal Recording (asciicast v2) ---

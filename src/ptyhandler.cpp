@@ -544,11 +544,10 @@ void Pty::onReadReady() {
             // and leaking the child as an init-adopted zombie. Now
             // we leave m_childPid populated so destructor cleanup
             // can escalate.
-            // ANTS-1175 — emit childUnreapedAtEof() when w==0 so UI
-            // consumers can tell apart "child crashed, reaped, exit
-            // -1" from "child still alive at EOF, exit unknown."
-            // finished(-1) continues to fire for legacy callers.
-            if (w == 0) emit childUnreapedAtEof();
+            // ANTS-1657 — the ANTS-1175 childUnreapedAtEof() signal was
+            // emitted here but never connected to any consumer; removed as a
+            // zombie. finished(exitCode) is the only EOF signal callers rely
+            // on (exitCode == -1 when the child wasn't yet reaped at EOF).
             emit finished(exitCode);
             break;
         } else {

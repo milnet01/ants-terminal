@@ -282,7 +282,7 @@ void TerminalGrid::processAction(const VtAction &action) {
         handleEsc(action);
         break;
     case VtAction::OscEnd:
-        handleOsc(action.oscString);
+        handleOsc(action.oscString, action.truncated);
         break;
     case VtAction::DcsEnd:
         handleDcs(action.oscString);
@@ -882,11 +882,18 @@ void TerminalGrid::handleCsi(const VtAction &a) {
             // DECRC — Restore cursor position
             restoreCursor();
         } else if (a.intermediate == ">") {
-            // CSI > flags u — Kitty keyboard: push current flags, set new
+            // CSI > flags u — Kitty keyboard: push current flags, set new.
+            // ANTS-1653 — the push must be atomic: when the stack is full,
+            // refuse it entirely rather than mutating m_kittyKeyFlags without
+            // saving the prior value (which silently dropped a level and
+            // desynced every subsequent `CSI < N u` pop permanently). Cap
+            // raised 16→256 for headroom; real apps nest at most a level or
+            // two (push on entry, pop on exit).
             int flags = (!p.empty() && p[0] > 0) ? p[0] : 0;
-            if (m_kittyKeyStack.size() < 16) // Cap stack size
+            if (m_kittyKeyStack.size() < 256) {
                 m_kittyKeyStack.push_back(m_kittyKeyFlags);
-            m_kittyKeyFlags = flags & 0x1F; // Only bits 0-4 valid
+                m_kittyKeyFlags = flags & 0x1F; // Only bits 0-4 valid
+            }
         } else if (a.intermediate == "<") {
             // CSI < number u — Kitty keyboard: pop flags from stack
             int count = (!p.empty() && p[0] > 0) ? p[0] : 1;
@@ -979,12 +986,34 @@ void TerminalGrid::handleEsc(const VtAction &a) {
     }
 }
 
-void TerminalGrid::handleOsc(const std::string &payload) {
+// Strip C1 control bytes (0x80–0x9F) from a string bound for a desktop
+// notification. C1 controls carry terminal-control semantics and have no place
+// in a notification daemon's title/body. C0 controls are left intact so a
+// legitimately multi-line body keeps its newlines. ANTS-1667.
+static QString stripC1Controls(const QString &in) {
+    QString out;
+    out.reserve(in.size());
+    for (const QChar &ch : in) {
+        const ushort u = ch.unicode();
+        if (!(u >= 0x80 && u <= 0x9F))
+            out += ch;
+    }
+    return out;
+}
+
+void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
     if (payload.empty()) return;
 
     // Find the OSC number (everything before the first ';')
     size_t semi = payload.find(';');
     std::string oscNum = (semi != std::string::npos) ? payload.substr(0, semi) : payload;
+
+    // ANTS-1663 — a payload that overflowed the parser's 10 MiB accumulator was
+    // silently truncated. The byte-exact consumers (OSC 8 hyperlink URI, OSC 52
+    // base64 clipboard) would otherwise act on a corrupt prefix: a half URI or
+    // garbage clipboard bytes. Refuse the directive outright. Other OSC numbers
+    // (title, colour query, progress) degrade gracefully on truncation.
+    if (truncated && (oscNum == "8" || oscNum == "52")) return;
 
     // OSC 0 or OSC 2 — window title
     if ((oscNum == "0" || oscNum == "2") && semi != std::string::npos) {
@@ -992,7 +1021,11 @@ void TerminalGrid::handleOsc(const std::string &payload) {
         QString sanitized;
         sanitized.reserve(title.size());
         for (const QChar &ch : title) {
-            if (ch.unicode() >= 0x20 && ch.unicode() != 0x7F)
+            const ushort u = ch.unicode();
+            // Strip C0 (< 0x20), DEL (0x7F) and — ANTS-1667 — C1 controls
+            // (0x80–0x9F), which would otherwise reach the window-manager
+            // title surface as raw control bytes.
+            if (u >= 0x20 && u != 0x7F && !(u >= 0x80 && u <= 0x9F))
                 sanitized += ch;
         }
         m_windowTitle = sanitized;
@@ -1374,11 +1407,28 @@ void TerminalGrid::handleOsc(const std::string &payload) {
                 // Reject empty / overlong names. iTerm2 caps NAME to identifier-
                 // ish; we match that pragmatically (≤128 chars, non-empty).
                 if (!name.empty() && name.size() <= 128) {
+                    constexpr int kMaxUserVarBytes = 4096;
+                    // ANTS-1655 — bound the base64 input BEFORE decoding so a
+                    // hostile multi-MB payload can't force a ~7.5 MB transient
+                    // allocation only to be truncated to 4 KiB. base64 inflates
+                    // 4:3, so 4 KiB of value needs ≤ ~5.5 KiB of base64; the
+                    // small slack covers padding.
+                    constexpr int kMaxUserVarB64 = (kMaxUserVarBytes / 3 + 1) * 4 + 4;
+                    if (b64.size() > static_cast<size_t>(kMaxUserVarB64))
+                        b64.resize(kMaxUserVarB64);
+                    // Per-terminal rolling 60s write quota mirroring OSC 52 —
+                    // bounds drip-spam of the user-var surface. ANTS-1655.
+                    qint64 now = QDateTime::currentMSecsSinceEpoch();
+                    if (now - m_userVarWindowStartMs >= 60'000) {
+                        m_userVarWindowStartMs = now;
+                        m_userVarWriteCount = 0;
+                    }
+                    if (m_userVarWriteCount >= USERVAR_MAX_WRITES_PER_MIN) return;
+                    m_userVarWriteCount += 1;
                     QByteArray decoded = QByteArray::fromBase64(
                         QByteArray::fromRawData(b64.data(), static_cast<int>(b64.size())));
                     // Cap decoded value at 4 KiB — this is a status payload, not
                     // a transport. Anything larger is hostile or buggy.
-                    constexpr int kMaxUserVarBytes = 4096;
                     if (decoded.size() > kMaxUserVarBytes)
                         decoded.truncate(kMaxUserVarBytes);
                     m_userVarCallback(QString::fromUtf8(name.c_str(), static_cast<int>(name.size())),
@@ -1435,7 +1485,7 @@ void TerminalGrid::handleOsc(const std::string &payload) {
     // freedesktop notification daemon. Clamp aggressively before forwarding.
     else if (oscNum == "9" && semi != std::string::npos && m_notifyCallback) {
         constexpr int kMaxNotifyBody = 1024;
-        QString body = QString::fromUtf8(payload.c_str() + semi + 1).left(kMaxNotifyBody);
+        QString body = stripC1Controls(QString::fromUtf8(payload.c_str() + semi + 1).left(kMaxNotifyBody));
         m_notifyCallback(QString(), body);
     }
     // OSC 777 — Desktop notification (notify;title;body, foot/Ghostty/WezTerm style)
@@ -1448,11 +1498,11 @@ void TerminalGrid::handleOsc(const std::string &payload) {
             rest = rest.substr(7);
             size_t semi2 = rest.find(';');
             if (semi2 != std::string::npos) {
-                QString title = QString::fromUtf8(rest.c_str(), static_cast<int>(semi2)).left(kMaxNotifyTitle);
-                QString body = QString::fromUtf8(rest.c_str() + semi2 + 1).left(kMaxNotifyBody);
+                QString title = stripC1Controls(QString::fromUtf8(rest.c_str(), static_cast<int>(semi2)).left(kMaxNotifyTitle));
+                QString body = stripC1Controls(QString::fromUtf8(rest.c_str() + semi2 + 1).left(kMaxNotifyBody));
                 m_notifyCallback(title, body);
             } else {
-                m_notifyCallback(QString(), QString::fromUtf8(rest.c_str()).left(kMaxNotifyBody));
+                m_notifyCallback(QString(), stripC1Controls(QString::fromUtf8(rest.c_str()).left(kMaxNotifyBody)));
             }
         }
     }
@@ -2038,6 +2088,9 @@ void TerminalGrid::scrollDown(int count) {
     if (count <= 0 || regionSize <= 0) return;
     count = std::min(count, regionSize);
 
+    const int hlSize = static_cast<int>(m_screenHyperlinks.size());
+    const bool hlInRange = m_scrollBottom < hlSize;
+
     // Salvage the bottom `count` rows' cells into the pool so they can
     // feed the new top rows. Walk top-to-bottom of the doomed range
     // for cache-friendly access.
@@ -2049,18 +2102,25 @@ void TerminalGrid::scrollDown(int count) {
     // Rotate the region down by `count`: with the new-first iterator
     // pointing at (bottom + 1 - count), elements shift right by
     // `count`. The moved-from TermLines land at [top..top+count-1] and
-    // get overwritten with fresh blanks below. (scrollDown does not
-    // shift hyperlinks — matches the prior implementation; reverse
-    // index is rare enough that hyperlink drift is acceptable.)
+    // get overwritten with fresh blanks below.
     std::rotate(m_screenLines.begin() + m_scrollTop,
                 m_screenLines.begin() + m_scrollBottom + 1 - count,
                 m_screenLines.begin() + m_scrollBottom + 1);
+    // ANTS-1668 — keep OSC 8 hyperlink spans aligned with their rows on
+    // reverse-index / RI / IL-driven downward scrolls (mirrors scrollUp,
+    // which already rotates its hyperlink side-table).
+    if (hlInRange) {
+        std::rotate(m_screenHyperlinks.begin() + m_scrollTop,
+                    m_screenHyperlinks.begin() + m_scrollBottom + 1 - count,
+                    m_screenHyperlinks.begin() + m_scrollBottom + 1);
+    }
 
     for (int i = 0; i < count; ++i) {
         const int dstRow = m_scrollTop + i;
         TermLine tl;
         tl.cells = takeBlankedCellsRow();
         m_screenLines[dstRow] = std::move(tl);
+        if (hlInRange) m_screenHyperlinks[dstRow].clear();
     }
 }
 
@@ -2660,28 +2720,72 @@ void TerminalGrid::resize(int rows, int cols) {
         m_screenLines = std::move(newScreen);
     }
 
-    // Also resize alt screen buffer if it exists. Same combining-map
-    // preservation as the main-screen simple-copy path above — alt-screen
-    // TUIs (vim, less, htop) render accented filenames and ZWJ emoji that
-    // would otherwise disappear on window resize.
+    // Also resize the saved alt-screen buffer if it exists. m_altScreen holds
+    // the saved MAIN screen while alt-screen is active (empty otherwise), so on
+    // a width change it MUST reflow soft-wrap boundaries through the same
+    // join/rewrap path as the live screen — otherwise exiting alt-screen
+    // (1049 l) restores a main buffer whose wrapped lines are corrupted.
+    // ANTS-1654. Pre-fix this branch did a column-clip simple-copy for all
+    // resizes, which broke every wrapped line in the restored buffer.
     if (!m_altScreen.empty()) {
-        std::vector<TermLine> newAlt(rows);
-        for (auto &line : newAlt)
-            line.cells = makeRow(cols, m_defaultFg, m_defaultBg);
-        int altCopyRows = std::min(rows, static_cast<int>(m_altScreen.size()));
-        int altCopyCols = std::min(cols, m_cols);
-        for (int r = 0; r < altCopyRows; ++r) {
-            for (int c = 0; c < altCopyCols && c < static_cast<int>(m_altScreen[r].cells.size()); ++c)
-                newAlt[r].cells[c] = m_altScreen[r].cells[c];
-            newAlt[r].softWrapped = m_altScreen[r].softWrapped;
-            for (const auto &kv : m_altScreen[r].combining) {
-                if (kv.first < altCopyCols)
-                    newAlt[r].combining.emplace(kv.first, kv.second);
+        if (cols != oldCols) {
+            // Width changed — reflow the saved main buffer, pushing overflow to
+            // the (already-reflowed) main scrollback exactly as the live
+            // main-screen path does. The saved main buffer + main scrollback
+            // together are the primary screen's history.
+            auto logicalAlt = joinLogical(m_altScreen);
+            std::vector<TermLine> reflowedAlt;
+            for (auto &logical : logicalAlt)
+                rewrap(logical, reflowedAlt);
+            auto isBlankLine = [](const TermLine &tl) {
+                for (const Cell &c : tl.cells)
+                    if (c.codepoint != ' ' && c.codepoint != 0) return false;
+                return tl.combining.empty();
+            };
+            while (static_cast<int>(reflowedAlt.size()) > rows) {
+                TermLine front = std::move(reflowedAlt.front());
+                reflowedAlt.erase(reflowedAlt.begin());
+                if (!isBlankLine(front)) {
+                    m_scrollback.push_back(std::move(front));
+                    m_scrollbackHyperlinks.emplace_back();
+                }
             }
+            std::vector<TermLine> newAlt(rows);
+            for (auto &line : newAlt)
+                line.cells = makeRow(cols, m_defaultFg, m_defaultBg);
+            for (int r = 0; r < static_cast<int>(reflowedAlt.size()) && r < rows; ++r)
+                newAlt[r] = std::move(reflowedAlt[r]);
+            m_altScreen = std::move(newAlt);
+        } else {
+            // Rows-only resize — no soft-wrap boundary change, simple copy.
+            // Same combining-map preservation as the main-screen simple-copy
+            // path above (alt-screen TUIs render accented filenames / ZWJ emoji
+            // that would otherwise disappear).
+            std::vector<TermLine> newAlt(rows);
+            for (auto &line : newAlt)
+                line.cells = makeRow(cols, m_defaultFg, m_defaultBg);
+            int altCopyRows = std::min(rows, static_cast<int>(m_altScreen.size()));
+            int altCopyCols = std::min(cols, oldCols);
+            for (int r = 0; r < altCopyRows; ++r) {
+                for (int c = 0; c < altCopyCols && c < static_cast<int>(m_altScreen[r].cells.size()); ++c)
+                    newAlt[r].cells[c] = m_altScreen[r].cells[c];
+                newAlt[r].softWrapped = m_altScreen[r].softWrapped;
+                for (const auto &kv : m_altScreen[r].combining) {
+                    if (kv.first < altCopyCols)
+                        newAlt[r].combining.emplace(kv.first, kv.second);
+                }
+            }
+            m_altScreen = std::move(newAlt);
         }
-        m_altScreen = std::move(newAlt);
         m_altCursorRow = std::clamp(m_altCursorRow, 0, rows - 1);
         m_altCursorCol = std::clamp(m_altCursorCol, 0, cols - 1);
+        // ANTS-1654 — length-lock the saved main-screen hyperlink side-table to
+        // the new row count so the restore (m_screenHyperlinks =
+        // m_altScreenHyperlinks) stays consistent with m_screenLines. (After a
+        // cols reflow the spans no longer map row-for-row — the same accepted
+        // limitation as the live path per ANTS-1333 INV-4 — but the length is
+        // correct and rows-only resizes keep the spans aligned.)
+        m_altScreenHyperlinks.resize(rows);
     }
 
     m_rows = rows;

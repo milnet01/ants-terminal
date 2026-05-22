@@ -60,12 +60,18 @@ QString surrogateAwareTruncate(const QString &in, int cap) {
 }
 
 // Strip control bytes from header-class fields (lane, topic,
-// loggedBy). They appear outside the data fence so a `\n` would
-// let an entry's lane field break out into its own line.
+// loggedBy). They appear outside the data fence so a control byte would
+// let an entry's field break out — a `\n` onto its own line, or (ANTS-1673)
+// an ESC injecting a terminal escape sequence into the brief header.
+// Strips ALL C0 controls (0x00–0x1F) + DEL (0x7F), not just CR/LF.
 QString stripLineBreaks(const QString &in) {
-    QString out = in;
-    out.remove(QChar('\n'));
-    out.remove(QChar('\r'));
+    QString out;
+    out.reserve(in.size());
+    for (const QChar &ch : in) {
+        const ushort u = ch.unicode();
+        if (u >= 0x20 && u != 0x7F)
+            out += ch;
+    }
     return out;
 }
 

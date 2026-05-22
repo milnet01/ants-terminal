@@ -74,7 +74,8 @@ private:
     // in-process-runner path (runNextCheck calls this directly after
     // invoking AuditCheck::inProcessRunner).
     void handleCheckOutput(const QString &output);
-    bool toolExists(const QString &tool);
+    // ANTS-1681 — static: delegates to ToolDetectionEngine, no `this` access.
+    static bool toolExists(const QString &tool);
 
     // Feature-coverage lane runners. Each is a pure C++ callable attached
     // to an AuditCheck via `inProcessRunner`. Returns `file:line: message`
@@ -194,7 +195,8 @@ private:
     // a single mypy run are missing-stub hints, fold them into one Info-level
     // finding listing the stub packages to install. Called from
     // renderResults() before path-rule application.
-    void consolidateMypyStubHints(CheckResult &r) const;
+    // ANTS-1681 — static: forwards to AuditEngine, no `this` access.
+    static void consolidateMypyStubHints(CheckResult &r);
 
     // Check-definition helpers (collapse repeated boilerplate)
     void addGrepCheck(const QString &id, const QString &name,

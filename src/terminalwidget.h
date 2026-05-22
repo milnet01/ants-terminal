@@ -184,6 +184,7 @@ public:
     // Scratchpad (multi-line command editor)
     void showScratchpad();
     void hideScratchpad();
+    void sendScratchpad();
 
     // Badge text (watermark in terminal background)
     void setBadgeText(const QString &text);
@@ -282,6 +283,7 @@ signals:
 
 protected:
     bool event(QEvent *event) override;
+    bool eventFilter(QObject *obj, QEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;

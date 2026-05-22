@@ -1147,7 +1147,10 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
     const int idShorthand = parseIdShorthand(searchPredicate);
     const QString idMarker =
         idShorthand >= 0
-            ? QStringLiteral("[ANTS-%1]").arg(idShorthand)
+            // ANTS-1660 — match `[<prefix>-NNNN]` for any prefix via the
+            // `-NNNN]` suffix (the leading '-' + close bracket anchor it so
+            // `-42]` won't match `-142]`/`-420]`). ANTS-NNNN still matches.
+            ? QStringLiteral("-%1]").arg(idShorthand)
             : QString();
     const QString plainSearch =
         (idShorthand >= 0) ? QString() : searchPredicate.trimmed();
@@ -1494,7 +1497,10 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     const int idShorthand = parseIdShorthand(searchPredicate);
     const QString idMarker =
         idShorthand >= 0
-            ? QStringLiteral("[ANTS-%1]").arg(idShorthand)
+            // ANTS-1660 — match `[<prefix>-NNNN]` for any prefix via the
+            // `-NNNN]` suffix (the leading '-' + close bracket anchor it so
+            // `-42]` won't match `-142]`/`-420]`). ANTS-NNNN still matches.
+            ? QStringLiteral("-%1]").arg(idShorthand)
             : QString();
     const QString plainSearch =
         (idShorthand >= 0) ? QString() : searchPredicate.trimmed();
@@ -1821,10 +1827,11 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         QString summary = rec.layman;
         if (summary.isEmpty()) {
             summary = rec.headline;
-            // Strip leading ANTS-NNNN — token (the ID is shown
-            // separately on the meta row).
+            // Strip leading <prefix>-NNNN — token (the ID is shown
+            // separately on the meta row). ANTS-1660 — match any project-ID
+            // prefix, not just ANTS-.
             static const QRegularExpression rxLeadId(
-                QStringLiteral("^ANTS-\\d+\\s*[—-]\\s*"));
+                QStringLiteral("^[A-Za-z][A-Za-z0-9_-]*-\\d+\\s*[—-]\\s*"));
             summary.remove(rxLeadId);
         }
         html += QStringLiteral("<span class=\"rm-summary\">%1</span>")
@@ -1834,6 +1841,10 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // which painted a different bg under dark themes for the
         // same reason ANTS-1240 hit on rm-body). Larger 12 px font
         // so the number is scannable at a glance.
+        // ANTS abbreviates to #NNNN (the local prefix); foreign project-ID
+        // prefixes show in full (#VEST-0042) to disambiguate. This already
+        // handles multi-prefix correctly — see AdapterRenderGfm.
+        // BoldIdRenderedInIdSlot.
         const QString hashedId = rec.id.startsWith(QStringLiteral("ANTS-"))
             ? QStringLiteral("#") + rec.id.mid(5)
             : QStringLiteral("#") + rec.id;
@@ -1903,6 +1914,18 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         }
         return j - 1;
     };
+
+    // ANTS-1662 — bullets that appear before the first ##/### heading have an
+    // empty section slug, so the heading-driven walk below never emits them and
+    // they vanish from the cards view (v1 renderHtml shows them). Emit the
+    // unsectioned bucket here at the top of the body, preserving the INV-16
+    // superset contract. No section header — these bullets have none.
+    {
+        const QVector<const BulletRecord *> &unsectioned =
+            bySection.value(QString());
+        for (const BulletRecord *rec : unsectioned)
+            emitCard(*rec);
+    }
 
     for (int i = 0; i < lines.size(); ++i) {
         const QString &raw = lines[i];
@@ -2049,8 +2072,11 @@ RoadmapDialog::parseShippedDates(const QString &changelogPath) {
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return out;
     static const QRegularExpression rxHeading(
         QStringLiteral("^##\\s*\\[([^\\]]+)\\]\\s*(?:[—-]\\s*(\\d{4}-\\d{2}-\\d{2}))?"));
+    // ANTS-1660 — match any project-ID prefix, not just ANTS- (multi-prefix
+    // repos are permitted per roadmap-format.md § 3.10.4; the viewer is reused
+    // by other projects). ANTS-NNNN still matches.
     static const QRegularExpression rxId(
-        QStringLiteral("\\bANTS-(\\d+)\\b"));
+        QStringLiteral("\\b([A-Za-z][A-Za-z0-9_-]*-\\d+)\\b"));
     QString currentDate;
     while (!f.atEnd()) {
         const QString line = QString::fromUtf8(f.readLine()).trimmed();
@@ -2064,7 +2090,7 @@ RoadmapDialog::parseShippedDates(const QString &changelogPath) {
         auto it = rxId.globalMatch(line);
         while (it.hasNext()) {
             const auto m = it.next();
-            const QString id = QStringLiteral("ANTS-") + m.captured(1);
+            const QString id = m.captured(1);
             // First-wins: keep the earliest shipped date for any ID
             // that appears in multiple versions (e.g. a follow-on
             // patch references the original).
@@ -2092,7 +2118,11 @@ RoadmapDialog::parseLastTouchDates(const QString &roadmapPath) {
                QStringLiteral("--"),
                fi.fileName()});
     if (!git.waitForStarted(2000)) return out;
-    if (!git.waitForFinished(30000)) {
+    // ANTS-1661 — runs synchronously on the GUI thread; cap the budget at 5 s
+    // (was 30 s) so a slow/large blame can't freeze the dialog for half a
+    // minute on open / Refresh / search-debounce rebuild. Off-thread move via
+    // QtConcurrent is the longer-term fix tracked separately.
+    if (!git.waitForFinished(5000)) {
         git.kill();
         return out;
     }
@@ -2144,8 +2174,9 @@ RoadmapDialog::parseLastTouchDates(const QString &roadmapPath) {
     const QByteArray body = f.readAll();
     f.close();
     const QList<QByteArray> mdLines = body.split('\n');
+    // ANTS-1660 — match any project-ID prefix, not just ANTS-.
     static const QRegularExpression rxInProgress(
-        QStringLiteral("^- 🚧 \\[(ANTS-\\d+)\\]"));
+        QStringLiteral("^- 🚧 \\[([A-Za-z][A-Za-z0-9_-]*-\\d+)\\]"));
     for (int i = 0; i < mdLines.size(); ++i) {
         const QString line = QString::fromUtf8(mdLines.at(i));
         const auto m = rxInProgress.match(line);

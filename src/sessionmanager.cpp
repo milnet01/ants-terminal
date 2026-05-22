@@ -244,8 +244,18 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
     in >> rows >> cols >> curRow >> curCol;
     if (in.status() != QDataStream::Ok) return false;
 
-    // Bounds-check deserialized dimensions to prevent memory exhaustion
-    if (rows <= 0 || rows > 500 || cols <= 0 || cols > 1000) return false;
+    // Bounds-check deserialized dimensions to prevent memory exhaustion.
+    // ANTS-1658 — raised from (500,1000) to (2000,4000): 4K/8K ultrawide
+    // setups already exceed 1000 cols at small font sizes, and the old cap
+    // silently dropped the entire session on a monitor change. qWarning so the
+    // rejection is diagnosable instead of a silent empty restore.
+    constexpr int kMaxRestoreRows = 2000;
+    constexpr int kMaxRestoreCols = 4000;
+    if (rows <= 0 || rows > kMaxRestoreRows || cols <= 0 || cols > kMaxRestoreCols) {
+        qWarning("sessionmanager: refusing restore with out-of-range dimensions %dx%d (max %dx%d)",
+                 rows, cols, kMaxRestoreRows, kMaxRestoreCols);
+        return false;
+    }
 
     // Resize grid to match saved dimensions
     grid->resize(rows, cols);

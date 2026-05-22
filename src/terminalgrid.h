@@ -408,7 +408,7 @@ private:
     void handleExecute(char ch);
     void handleCsi(const VtAction &a);
     void handleEsc(const VtAction &a);
-    void handleOsc(const std::string &payload);
+    void handleOsc(const std::string &payload, bool truncated = false);
     void handleDcs(const std::string &payload);  // Sixel graphics
     void handleApc(const std::string &payload);  // Kitty graphics
 
@@ -582,6 +582,12 @@ private:
     qint64 m_osc52WriteBytes = 0;
     static constexpr int OSC52_MAX_WRITES_PER_MIN = 32;
     static constexpr qint64 OSC52_MAX_BYTES_PER_MIN = 1 * 1024 * 1024;
+
+    // OSC 1337 SetUserVar per-terminal rolling write quota — mirrors OSC 52.
+    // Each value is already capped at 4 KiB; this bounds spam. ANTS-1655.
+    qint64 m_userVarWindowStartMs = 0;
+    int m_userVarWriteCount = 0;
+    static constexpr int USERVAR_MAX_WRITES_PER_MIN = 64;
 
     // Response callback
     ResponseCallback m_responseCallback;

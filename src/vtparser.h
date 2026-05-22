@@ -42,6 +42,11 @@ struct VtAction {
     std::vector<bool> colonSep;   // true if param[i] was preceded by ':' (sub-parameter)
     std::string intermediate;     // Intermediate bytes
     std::string oscString;        // OSC payload
+    // True when the OSC/DCS/APC payload hit the 10 MiB accumulator cap and was
+    // silently truncated. Consumers that act on the payload byte-for-byte
+    // (OSC 52 base64 clipboard, OSC 8 hyperlink URI) MUST refuse a truncated
+    // payload rather than decode a corrupt prefix. ANTS-1663.
+    bool truncated = false;
 };
 
 // VT100/xterm escape sequence parser — state machine based on
@@ -79,8 +84,10 @@ private:
     void feedByte(uint8_t byte);
     void flushCodepoint(uint32_t cp);
 
-    // Append a codepoint to an OSC/DCS/APC accumulator as UTF-8, bounded by maxBytes
-    static void appendUtf8(std::string &out, uint32_t ch, size_t maxBytes);
+    // Append a codepoint to an OSC/DCS/APC accumulator as UTF-8, bounded by
+    // maxBytes. Returns false (without writing) when the append would exceed
+    // the cap, so the caller can flag the payload as truncated. ANTS-1663.
+    static bool appendUtf8(std::string &out, uint32_t ch, size_t maxBytes);
 
     ActionCallback m_callback;
     State m_state = Ground;
@@ -94,6 +101,9 @@ private:
     std::string m_oscString;
     std::string m_dcsString;  // DCS payload (Sixel data)
     std::string m_apcString;  // APC payload (Kitty graphics)
+    bool m_stringTruncated = false; // set when the active OSC/DCS/APC payload
+                                    // overflowed its cap; surfaced on the End
+                                    // action's `truncated` field. ANTS-1663.
 
     // UTF-8 decoder state
     uint32_t m_utf8Accum = 0;

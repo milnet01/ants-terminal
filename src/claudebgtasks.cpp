@@ -9,6 +9,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QRegularExpression>
 #include <QSet>
 
 namespace {
@@ -303,9 +304,18 @@ QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseTranscript(const QString &
                         }
                     } else {
                         // Fallback: scan result text for any tracked id.
+                        // ANTS-1669 — match on a word boundary so a short id
+                        // ("abc") isn't falsely flipped finished by a result
+                        // that merely contains a longer id ("abc123") as a
+                        // substring. Ids are escaped so regex metacharacters in
+                        // an id are matched literally.
                         const QString resultText = c.value(QStringLiteral("content")).toString();
                         for (auto it = idxByBgId.begin(); it != idxByBgId.end(); ++it) {
-                            if (resultText.contains(it.key())) {
+                            const QRegularExpression rx(
+                                QStringLiteral("\\b") +
+                                QRegularExpression::escape(it.key()) +
+                                QStringLiteral("\\b"));
+                            if (rx.match(resultText).hasMatch()) {
                                 out[it.value()].finished = true;
                             }
                         }

@@ -3188,7 +3188,7 @@ void AuditDialog::onDebtTriageClicked() {
 // Collapse mypy "Library stubs not installed" findings into a single Info
 // entry listing the packages to install. Bulk-installing is deterministic
 // and the stub-install nag doesn't need to consume 20 finding slots.
-void AuditDialog::consolidateMypyStubHints(CheckResult &r) const {
+void AuditDialog::consolidateMypyStubHints(CheckResult &r) {
     // ANTS-1343 — body lifted to AuditEngine so the consolidator can
     // run in non-GUI contexts (test bundles, future CLI) and so the
     // pre-collapse-count authoring is co-located with the data shape.

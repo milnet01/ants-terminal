@@ -1,6 +1,7 @@
 // ANTS-1181 — see aboutdialogs.h for rationale.
 
 #include "aboutdialogs.h"
+// cppcheck-suppress missingInclude  // ANTS-1682: generated at build time
 #include "build_info.h"  // ANTS-1222: configure-time build metadata
 
 #include <QApplication>

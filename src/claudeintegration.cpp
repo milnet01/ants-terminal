@@ -1025,7 +1025,10 @@ void ClaudeIntegration::onHookConnection() {
         connect(socket, &QLocalSocket::readyRead, this, [socket]() {
             QByteArray buf = socket->property("_buf").toByteArray();
             buf += socket->readAll();
-            if (buf.size() > 10 * 1024 * 1024) { socket->disconnectFromServer(); return; }
+            // ANTS-1659 — hook events are <8 KiB; cap at 256 KiB to close a
+            // same-UID OOM vector (deeply-nested JSON balloons 3-5× in QJson
+            // tree allocation). Was 10 MiB.
+            if (buf.size() > 256 * 1024) { socket->disconnectFromServer(); return; }
             socket->setProperty("_buf", buf);
         });
         connect(socket, &QLocalSocket::disconnected, this, [this, socket]() {
@@ -1411,7 +1414,10 @@ void ClaudeIntegration::onMcpConnection() {
             if (socket->property("_handled").toBool()) return;
             QByteArray buf = socket->property("_buf").toByteArray();
             buf += socket->readAll();
-            if (buf.size() > 10 * 1024 * 1024) { socket->disconnectFromServer(); return; }
+            // ANTS-1659 — MCP requests are small (tool name + args); cap at
+            // 256 KiB to close the same nested-JSON OOM vector as the hook
+            // path. Was 10 MiB.
+            if (buf.size() > 256 * 1024) { socket->disconnectFromServer(); return; }
             socket->setProperty("_buf", buf);
             QJsonDocument doc = QJsonDocument::fromJson(buf);
             if (!doc.isObject()) return; // wait for more data

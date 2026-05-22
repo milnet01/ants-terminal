@@ -53,7 +53,13 @@ QJsonObject driftCheck(const QJsonObject & /*request*/,
     // caller supplied. Do NOT require a `.git` directory — INV-5 (bogus
     // repo root) doesn't restrict the helper to git checkouts; tests
     // pass tmpdirs with no VCS.
-    if (repoRoot.contains(QStringLiteral("..")) || repoRoot.contains(QChar('\0'))) {
+    // ANTS-1649 — reject `..` as a path *component*, not as a substring: the
+    // old `contains("..")` wrongly refused legitimate directories like
+    // "my..project". The canonicalisation below resolves any genuine traversal.
+    bool hasTraversalComponent = false;
+    for (const QString &comp : repoRoot.split(QChar('/')))
+        if (comp == QStringLiteral("..")) { hasTraversalComponent = true; break; }
+    if (hasTraversalComponent || repoRoot.contains(QChar('\0'))) {
         setExit(1);
         return errorObj(
             QStringLiteral("repoRoot contains traversal or control bytes"),
