@@ -63,6 +63,18 @@ Check validatePath(const QString &rawPath,
     // canonicalisation pipeline above. `resolved` is still set when
     // the path canonicalises so callers can sanity-check existence.
     if (!allowOutsideRoot) {
+        // ANTS-1805 — fail CLOSED on an empty root. Otherwise the anchor
+        // check below collapses to `resolved.startsWith("/")`, which is true
+        // for every absolute path — the single project-wide path chokepoint
+        // would silently accept /etc/passwd if any one of its ~14 call-sites
+        // ever forgot its own empty-root guard. Cheap defense-in-depth that
+        // changes no current behaviour (all call-sites pass non-empty roots).
+        if (rootCanonical.isEmpty()) {
+            pc.bad = true;
+            pc.err = makeErr(toolName, paramName,
+                QStringLiteral("no project root to anchor against"));
+            return pc;
+        }
         // If the path canonicalises, the canonical form is the source of
         // truth — symlink escapes from inside the tree to outside get
         // caught. If it doesn't canonicalise (e.g. a git pathspec for a

@@ -4087,13 +4087,21 @@ TerminalWidget::BracketPair TerminalWidget::findMatchingBracket() const {
         return bp;
     };
 
+    // ANTS-1815 — bound the scan window. An off-screen match can never be
+    // highlighted, but an unmatched open/close bracket at the cursor with a
+    // deep (up to 1M-line) scrollback would otherwise walk the entire buffer
+    // on the GUI thread inside paintEvent — a multi-hundred-ms paint stall.
+    // A few screens past the viewport is more than enough for a visible match.
+    const int scanSpan = std::max(64, m_grid->rows() * 8);
+
     for (int i = 0; i < 3; ++i) {
         if (ch == openBrackets[i]) {
             int depth = 1;
             int gl = cursorGL, col = cursorCol + 1;
             int totalLines = scrollbackSize + m_grid->rows();
+            const int maxGl = cursorGL + scanSpan;
             int cols = m_grid->cols();
-            while (gl < totalLines && depth > 0) {
+            while (gl < totalLines && gl <= maxGl && depth > 0) {
                 if (col >= cols) { col = 0; ++gl; continue; }
                 uint32_t c = getCellCodepoint(gl, col);
                 if (c == openBrackets[i]) ++depth;
@@ -4109,8 +4117,9 @@ TerminalWidget::BracketPair TerminalWidget::findMatchingBracket() const {
         if (ch == closeBrackets[i]) {
             int depth = 1;
             int gl = cursorGL, col = cursorCol - 1;
+            const int minGl = cursorGL - scanSpan;
             int cols = m_grid->cols();
-            while (gl >= 0 && depth > 0) {
+            while (gl >= 0 && gl >= minGl && depth > 0) {
                 if (col < 0) { --gl; col = cols - 1; continue; }
                 uint32_t c = getCellCodepoint(gl, col);
                 if (c == closeBrackets[i]) ++depth;

@@ -67,9 +67,10 @@ struct SectionCounts {
 // `direct` carries only sections whose immediate bullets contributed
 // at least one count; the returned hash includes every section in
 // `index` (level-2 parents pick up their level-3 children even when
-// the level-2 heading has no direct bullets). Pure / Qt-Core-only;
-// O(n²) over section count, which is fine at the ~150-section scale
-// the live roadmap has reached.
+// the level-2 heading has no direct bullets). Pure / Qt-Core-only.
+// ANTS-1813 — implemented as a single linear stack pass over the
+// section list (ANTS-1783), NOT the original O(n²) all-pairs
+// containment scan; the header previously mis-described the cost.
 QHash<QString, SectionCounts> rollupCounts(
     const QVector<Section> &index,
     const QHash<QString, SectionCounts> &direct);

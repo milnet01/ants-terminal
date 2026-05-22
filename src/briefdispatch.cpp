@@ -142,6 +142,10 @@ QString inlineRelevantSections(const QString &projectPath,
             if (hit) {
                 matched += section;
                 if (!matched.endsWith(QChar('\n'))) matched += QChar('\n');
+                // ANTS-1819 — stop once past the cap; `slice` is truncated to
+                // perDocCapBytes below, so accumulating an entire keyword-dense
+                // doc (e.g. ROADMAP.md) into `matched` first is wasted memory.
+                if (perDocCapBytes > 0 && matched.size() >= perDocCapBytes) break;
             }
             i = j;
         }

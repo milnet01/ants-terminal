@@ -552,8 +552,13 @@ QJsonArray ClaudeIntegration::loadTranscript(const QString &path) const {
         return entries;
     }
 
+    // ANTS-1806 — cap per-line read. The transcript is written by an external
+    // process (Claude Code) and is an untrusted parse boundary; a corrupt
+    // multi-GiB single line would otherwise OOM the process even under the
+    // whole-file guard above. Matches extractCwdFromTranscript's cap.
+    constexpr qint64 kMaxLineBytes = 64 * 1024;
     while (!file.atEnd()) {
-        QByteArray line = file.readLine().trimmed();
+        QByteArray line = file.readLine(kMaxLineBytes).trimmed();
         if (line.isEmpty()) continue;
         QJsonDocument doc = QJsonDocument::fromJson(line);
         if (doc.isObject())
@@ -988,17 +993,25 @@ void ClaudeIntegration::onHookConnection() {
         // same-UID-but-different-process attacker (e.g. a
         // malicious browser plugin) could otherwise inject hook
         // events shaped like processHookEvent consumes.
+        // ANTS-1797 — fail CLOSED: an unavailable socket fd means the peer
+        // UID cannot be verified, so the connection must be refused rather
+        // than served unauthenticated. (A bare `if (fd >= 0)` guard would
+        // skip the check entirely on fd<0.)
         const qintptr fd = socket->socketDescriptor();
+        bool peerVerified = false;
         if (fd >= 0) {
             struct ucred cred{};
             socklen_t len = sizeof(cred);
             if (::getsockopt(static_cast<int>(fd), SOL_SOCKET,
-                             SO_PEERCRED, &cred, &len) != 0 ||
-                cred.uid != ::getuid()) {
-                socket->disconnectFromServer();
-                socket->deleteLater();
-                continue;
+                             SO_PEERCRED, &cred, &len) == 0 &&
+                len == sizeof(cred) && cred.uid == ::getuid()) {
+                peerVerified = true;
             }
+        }
+        if (!peerVerified) {
+            socket->disconnectFromServer();
+            socket->deleteLater();
+            continue;
         }
         // ANTS-1151 — slow-loris defence. A peer that connects
         // and never sends bytes (or never closes) used to hold a
@@ -1388,17 +1401,25 @@ void ClaudeIntegration::onMcpConnection() {
         // onHookConnection. MCP socket carries higher-leverage
         // verbs (filesystem reads, git status, environment),
         // peer-cred check is more important here.
+        // ANTS-1797 — fail CLOSED: an unavailable socket fd means the peer
+        // UID cannot be verified, so the connection must be refused rather
+        // than served unauthenticated. (A bare `if (fd >= 0)` guard would
+        // skip the check entirely on fd<0.)
         const qintptr fd = socket->socketDescriptor();
+        bool peerVerified = false;
         if (fd >= 0) {
             struct ucred cred{};
             socklen_t len = sizeof(cred);
             if (::getsockopt(static_cast<int>(fd), SOL_SOCKET,
-                             SO_PEERCRED, &cred, &len) != 0 ||
-                cred.uid != ::getuid()) {
-                socket->disconnectFromServer();
-                socket->deleteLater();
-                continue;
+                             SO_PEERCRED, &cred, &len) == 0 &&
+                len == sizeof(cred) && cred.uid == ::getuid()) {
+                peerVerified = true;
             }
+        }
+        if (!peerVerified) {
+            socket->disconnectFromServer();
+            socket->deleteLater();
+            continue;
         }
         QTimer *idleTimer = new QTimer(socket);
         idleTimer->setSingleShot(true);
@@ -7197,9 +7218,12 @@ QString ClaudeIntegration::sessionSummary(const QString &transcriptPath) const {
     if (!file.open(QIODevice::ReadOnly)) return {};
 
     // Read up to 50 lines to find the first user message
+    // ANTS-1806 — cap per-line read (untrusted transcript, no file-size guard
+    // on this path); a single huge line would OOM otherwise.
+    constexpr qint64 kMaxLineBytes = 64 * 1024;
     int linesRead = 0;
     while (!file.atEnd() && linesRead < 50) {
-        QByteArray line = file.readLine().trimmed();
+        QByteArray line = file.readLine(kMaxLineBytes).trimmed();
         ++linesRead;
         if (line.isEmpty()) continue;
 

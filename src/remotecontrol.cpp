@@ -776,26 +776,44 @@ void RemoteControl::onNewConnection() {
         // ever moved (ANTS_REMOTE_SOCKET env override, abstract
         // socket migration), the file ACL stops applying and only
         // the peer-cred check holds the line.
+        // ANTS-1797 — fail CLOSED: if the socket fd is unavailable we cannot
+        // verify the peer UID, so the connection must be refused rather than
+        // served unauthenticated. (A bare `if (fd >= 0)` guard would skip the
+        // whole check on fd<0 — exactly the moved-socket scenario the comment
+        // above names as the case where only peer-cred holds the line.)
         const qintptr fd = socket->socketDescriptor();
+        bool peerVerified = false;
         if (fd >= 0) {
             struct ucred cred{};
             socklen_t len = sizeof(cred);
             const int gscRet = ::getsockopt(static_cast<int>(fd), SOL_SOCKET,
                                             SO_PEERCRED, &cred, &len);
-            // If getsockopt failed OR returned a truncated struct, treat
-            // as a hostile peer rather than logging cred.uid==0 (which
-            // would surface as a fake "root tried to connect" alarm).
-            if (gscRet != 0 || len != sizeof(cred) ||
-                cred.uid != ::getuid()) {
-                ANTS_LOG(DebugLog::Network,
-                    "remote-control: peer UID mismatch "
-                    "(peer=%d self=%d) — disconnecting",
-                    static_cast<int>(cred.uid),
-                    static_cast<int>(::getuid()));
-                socket->disconnectFromServer();
-                socket->deleteLater();
-                continue;
+            if (gscRet == 0 && len == sizeof(cred) && cred.uid == ::getuid()) {
+                peerVerified = true;
+            } else {
+                // getsockopt failed OR truncated struct OR UID mismatch.
+                // Log strerror on the syscall-failure path so a zero-init
+                // cred.uid isn't reported as a fake "root tried to connect".
+                if (gscRet != 0 || len != sizeof(cred))
+                    ANTS_LOG(DebugLog::Network,
+                        "remote-control: SO_PEERCRED failed (%s) — disconnecting",
+                        std::strerror(errno));
+                else
+                    ANTS_LOG(DebugLog::Network,
+                        "remote-control: peer UID mismatch "
+                        "(peer=%d self=%d) — disconnecting",
+                        static_cast<int>(cred.uid),
+                        static_cast<int>(::getuid()));
             }
+        } else {
+            ANTS_LOG(DebugLog::Network,
+                "remote-control: no socket fd for peer-cred check — "
+                "disconnecting (fail-closed)");
+        }
+        if (!peerVerified) {
+            socket->disconnectFromServer();
+            socket->deleteLater();
+            continue;
         }
         // ANTS-1132 — slow-loris defence. Cap idle time per
         // connection at 5 seconds. Each message is one-shot; if
@@ -8775,7 +8793,17 @@ QJsonDocument RemoteControl::cmdColdEyesSingleDoc(const QJsonObject &req) {
         return QJsonDocument(err);
     }
 
-    const auto b = ColdEyesEngine::assembleSingleDocBrief(root, docPathRaw);
+    // ANTS-1807 — pass the canonical resolved form (project-relative), not the
+    // raw input. assembleSingleDocBrief re-derives projectPath + "/" + docPath
+    // and opens it; passing the raw form leaves a symlink-swap TOCTOU window
+    // between validatePath's canonicalisation and the engine's read. Mirrors
+    // the debt_sweep_apply_fix fix above.
+    QString safeDoc = docPathRaw;
+    if (!check.resolved.isEmpty() &&
+        check.resolved.startsWith(root + QLatin1Char('/'))) {
+        safeDoc = check.resolved.mid(root.size() + 1);
+    }
+    const auto b = ColdEyesEngine::assembleSingleDocBrief(root, safeDoc);
 
     QJsonObject related;
     QJsonArray  sibs;

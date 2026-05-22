@@ -45,12 +45,13 @@ struct ClaudeTabIndicator {
     // invalid QColor so callers can suppress paint with `isValid()`.
     static QColor color(Glyph g);
 
-    // ANTS-1185: human-readable glyph name for screen-reader exposure
-    // via `QTabBar::setTabAccessibleName()`. AT-SPI / Orca read tab
-    // labels verbatim and the dot is invisible to them; appending
-    // " — Claude <name>" to the accessible name keeps assistive
-    // surfaces in sync with the visual state. None returns an empty
-    // string — caller suppresses the suffix in that case.
+    // ANTS-1185: human-readable glyph name for screen-reader exposure.
+    // ANTS-1818 — exposed via `QTabBar::setTabToolTip()`, NOT
+    // setTabAccessibleName (Qt6's QTabBar has no per-tab accessible-name
+    // setter; AT-SPI / Orca read the tab tooltip). AT-SPI / Orca read tab
+    // labels verbatim and the dot is invisible to them; the tooltip keeps
+    // assistive surfaces in sync with the visual state. None returns an
+    // empty string — caller suppresses the suffix in that case.
     static QString glyphName(Glyph g);
 };
 

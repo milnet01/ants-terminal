@@ -345,7 +345,12 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
     // Read and restore screen lines
     int32_t screenRows;
     in >> screenRows;
-    if (in.status() != QDataStream::Ok || screenRows < 0 || screenRows > 500) return false;
+    // ANTS-1800 — cap screen rows at the same ceiling as the grid dimensions
+    // (kMaxRestoreRows). The old hardcoded 500 silently failed to restore any
+    // session saved from a >500-row grid — exactly the tall 4K/ultrawide setups
+    // the ANTS-1658 dimension bump (2000) was meant to support.
+    if (in.status() != QDataStream::Ok || screenRows < 0 ||
+        screenRows > kMaxRestoreRows) return false;
 
     for (int row = 0; row < screenRows && row < rows; ++row) {
         int32_t colCount;

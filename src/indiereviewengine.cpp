@@ -809,7 +809,12 @@ QString templateIndieReviewFoldInBlock(
             out += QString::number(f.line);
         }
         out += QStringLiteral("`.**\n");
-        out += QStringLiteral("  Lanes: ");
+        // ANTS-1812 — review metadata (which reviewer lanes flagged it) goes in
+        // its own field, NOT a second `Lanes:` line. roadmap-format defines
+        // `Lanes:` as the single subsystem-ownership field; emitting it twice
+        // (citing-lanes + path-derived) produced a malformed bullet that
+        // parseBullets/roadmap-query mis-read.
+        out += QStringLiteral("  Cited-by: ");
         out += f.citingLanes.join(QStringLiteral(", "));
         out += QStringLiteral(".\n");
         out += QStringLiteral("  Kind: review-fix.\n");

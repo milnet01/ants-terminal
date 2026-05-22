@@ -115,6 +115,11 @@ void PluginManager::teardownEngine(const QString &name, LuaEngine *engine,
         // null) and quit. Deleting the engine on the GUI thread is safe now
         // the worker has finished; ~LuaEngine's shutdown() is a no-op (no
         // lua_close on the GUI thread). INV-11 / INV-12.
+        // ANTS-1803 — drop the health-bookkeeping keys BEFORE delete so a
+        // reused heap address can't make the next-loaded engine alias a stale
+        // "demoted" entry (the keys are raw LuaEngine* pointers).
+        m_demoted.remove(engine);
+        m_execStart.remove(engine);
         delete engine;
         delete thread;
     } else {
@@ -122,6 +127,14 @@ void PluginManager::teardownEngine(const QString &name, LuaEngine *engine,
         // or shutdown (its lua_State is owned by the stuck C frame); hold the
         // pair until process exit. The thread is parentless so PM destruction
         // never deletes a still-running QThread. INV-4.
+        // ANTS-1804 — sever the zombie's signals to this PluginManager first.
+        // A worker that returns from its stuck C call after detach would
+        // otherwise deliver queued sendToTerminal/eventCompleted/etc. into a
+        // PluginManager that may already be destroyed (it is parented to
+        // MainWindow, torn down at app exit while zombies are never joined).
+        QObject::disconnect(engine, nullptr, this, nullptr);
+        m_demoted.remove(engine);
+        m_execStart.remove(engine);
         m_zombies.append(Zombie{thread, engine});
         emit logMessage(QString("Plugin worker did not stop in %1ms — "
                                 "detached: %2")

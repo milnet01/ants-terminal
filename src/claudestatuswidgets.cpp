@@ -559,6 +559,14 @@ void ClaudeStatusBarController::resetForTabSwitch() {
     // contribute tasks under the newly-focused tab. The next
     // refreshTasksButton tick re-binds via INV-1.
     if (m_tasks)       m_tasks->setTranscriptPath(QString());
+    // ANTS-1814 — the model-recommender chip was the one tracker omitted from
+    // the tab-switch reset: it would keep showing the prior tab's "→ Opus"
+    // recommendation (with a click that sends `/model …` to the now-focused,
+    // wrong tab) until the next 2 s timer tick. Hide it and drop its mtime
+    // cache so refreshModelChip re-scores against the newly-focused tab.
+    if (m_modelBtn)    m_modelBtn->hide();
+    m_modelChipPath.clear();
+    m_modelChipMtimeMs = -1;
     apply();
 }
 

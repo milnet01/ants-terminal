@@ -90,9 +90,15 @@ Decision ModalClient::prompt(const QString &projectPath,
           shortHex,
           preview.toHtmlEscaped()));
 
+    // ANTS-1808 — label this accurately: %2 is the entire .ants/verify.json
+    // file (all gates), not just the first gate's command. The previous
+    // "Full first-gate command" label was a trust-decision hazard — a user
+    // reading it would not realise a multi-gate config's 2nd/3rd commands are
+    // also shown (and will run). The informative text above shows the first
+    // command preview; this detailed view shows the whole config.
     box.setDetailedText(QObject::tr(
         "Full SHA-256:\n%1\n\n"
-        "Full first-gate command:\n%2"
+        "Full config file (.ants/verify.json):\n%2"
     ).arg(shaHex, QString::fromUtf8(configBytes)));
 
     auto *bTrustSha  = box.addButton(QObject::tr("Trust this SHA"),

@@ -311,6 +311,12 @@ QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseTranscript(const QString &
                         // an id are matched literally.
                         const QString resultText = c.value(QStringLiteral("content")).toString();
                         for (auto it = idxByBgId.begin(); it != idxByBgId.end(); ++it) {
+                            // ANTS-1817 — cheap substring pre-filter before the
+                            // word-boundary regex. Avoids compiling a fresh
+                            // QRegularExpression per tracked id per completion
+                            // event on every transcript-append rescan (the
+                            // id isn't even present in the 99% no-match case).
+                            if (!resultText.contains(it.key())) continue;
                             const QRegularExpression rx(
                                 QStringLiteral("\\b") +
                                 QRegularExpression::escape(it.key()) +

@@ -105,11 +105,14 @@ QString saveStore(const QString &path, const QByteArray &body) {
             return QStringLiteral("session_memory: failed to create "
                                   "directory ") + parent.absolutePath();
         }
-        // mkpath honours umask; tighten the leaf to 0700 explicitly.
-        QFile::setPermissions(parent.absolutePath(),
-            QFileDevice::ReadOwner | QFileDevice::WriteOwner
-            | QFileDevice::ExeOwner);
     }
+    // ANTS-1801 — tighten to 0700 unconditionally, not only on create. An
+    // already-existing dir (made at 0755 by an older build / permissive umask /
+    // another tool) was never re-tightened, leaving the per-project state store
+    // dir-listable by other local users.
+    QFile::setPermissions(parent.absolutePath(),
+        QFileDevice::ReadOwner | QFileDevice::WriteOwner
+        | QFileDevice::ExeOwner);
 
     // INV-3 — QSaveFile = temp + rename, atomic on commit.
     QSaveFile sf(path);

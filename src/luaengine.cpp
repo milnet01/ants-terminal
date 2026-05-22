@@ -484,15 +484,26 @@ int LuaEngine::lua_ants_notify(lua_State *L) {
     return 0;
 }
 
+// ANTS-1802 — push a QString as a length-counted Lua string. lua_pushstring
+// is NUL-terminated C-string semantics: it truncates at the first embedded
+// '\0'. Terminal output (m_recentOutput) is attacker-influenced, so a single
+// NUL byte in the shell's output would silently blind any plugin scanning
+// get_output. lua_pushlstring carries the exact byte count.
+static void pushQString(lua_State *L, const QString &s) {
+    const QByteArray ba = s.toUtf8();
+    lua_pushlstring(L, ba.constData(), static_cast<size_t>(ba.size()));
+}
+
 int LuaEngine::lua_ants_get_output(lua_State *L) {
     LuaEngine *engine = getEngine(L);
     if (engine) {
         int n = luaL_optinteger(L, 1, 50);
+        if (n < 0) n = 0;  // negative count would over-run lines.mid()
         QStringList lines = engine->m_recentOutput.split('\n');
         if (lines.size() > n) {
             lines = lines.mid(lines.size() - n);
         }
-        lua_pushstring(L, lines.join('\n').toUtf8().constData());
+        pushQString(L, lines.join('\n'));
     } else {
         lua_pushstring(L, "");
     }
@@ -502,7 +513,7 @@ int LuaEngine::lua_ants_get_output(lua_State *L) {
 int LuaEngine::lua_ants_get_cwd(lua_State *L) {
     LuaEngine *engine = getEngine(L);
     if (engine) {
-        lua_pushstring(L, engine->m_cwd.toUtf8().constData());
+        pushQString(L, engine->m_cwd);
     } else {
         lua_pushstring(L, "");
     }
@@ -573,7 +584,7 @@ int LuaEngine::lua_ants_settings_get(lua_State *L) {
         if (out.isNull()) {
             lua_pushnil(L);
         } else {
-            lua_pushstring(L, out.toUtf8().constData());
+            pushQString(L, out);  // ANTS-1802 — NUL-safe length-counted push
         }
         return 1;
     }

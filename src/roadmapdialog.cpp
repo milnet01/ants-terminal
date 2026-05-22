@@ -582,6 +582,18 @@ static QString idTokenPattern() {
     return QStringLiteral("[A-Za-z][A-Za-z0-9_-]*-\\d+");
 }
 
+// ANTS-1811 — truncate to maxChars + "…" without splitting a UTF-16 surrogate
+// pair. A headline whose maxChars boundary lands on the high half of an emoji
+// (common — headlines carry status/theme emoji) would otherwise emit a lone
+// surrogate that the card renderer shows as U+FFFD / a broken glyph.
+static void truncateEllipsis(QString &s, int maxChars) {
+    if (s.size() <= maxChars) return;
+    int cut = maxChars;
+    if (cut > 0 && s.at(cut - 1).isHighSurrogate()) --cut;
+    s.truncate(cut);
+    s.append(QStringLiteral("…"));
+}
+
 QString splitOnEmDash(const QString &head) {
     static const QString sep1 = QString::fromUtf8(" \xE2\x80\x94 ");  // " — "
     int idx = head.indexOf(sep1);
@@ -789,10 +801,7 @@ parsePassHeadingBullets(const QStringList &lines) {
         if (!meta.isEmpty()) {
             headline = QStringLiteral("(%1) %2").arg(meta, tail).trimmed();
         }
-        if (headline.size() > 120) {
-            headline.truncate(120);
-            headline.append(QStringLiteral("…"));
-        }
+        truncateEllipsis(headline, 120);  // ANTS-1811 — surrogate-safe
         rec.headline       = headline;
         rec.body           = headline;
         rec.sectionHeading = currentSectionHeading;
@@ -1040,7 +1049,7 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
                     QStringLiteral("\\s*\\^[a-z0-9-]+\\s*$"));
                 h.replace(rxTrailAnchor, QString());
                 h = h.trimmed();
-                if (h.size() > 120) { h.truncate(120); h.append(QStringLiteral("…")); }
+                truncateEllipsis(h, 120);  // ANTS-1811 — surrogate-safe
                 rec.headline = h;
             }
         }
@@ -1069,7 +1078,7 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
                     if (nl >= 0) h = h.left(nl).trimmed();
                 }
             }
-            if (h.size() > 120) { h.truncate(120); h.append(QStringLiteral("…")); }
+            truncateEllipsis(h, 120);  // ANTS-1811 — surrogate-safe
             rec.headline = h;
         } else if (gfmHere) {
             // ANTS-1428 — GFM bullets often have no `**bold**`
@@ -1084,7 +1093,7 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
                 QStringLiteral("\\s*\\^[a-z0-9-]+\\s*$"));
             h.replace(rxTrailAnchor, QString());
             h = h.trimmed();
-            if (h.size() > 120) { h.truncate(120); h.append(QStringLiteral("…")); }
+            truncateEllipsis(h, 120);  // ANTS-1811 — surrogate-safe
             rec.headline = h;
         }
         // ANTS-1428 — synthetic ID when GFM bullet has no bold-ID

@@ -1839,7 +1839,13 @@ void TerminalGrid::eraseInDisplay(int mode) {
         // Mode 3 clears scrollback *unless* it's the Ink-repaint pattern.
         // Standalone `\e[3J` (no recent 2J, or on alt screen) is the
         // explicit user-asked clear-scrollback semantics.
-        if (mode == 3 && !isInkOverflowRepaint) m_scrollback.clear();
+        if (mode == 3 && !isInkOverflowRepaint) {
+            m_scrollback.clear();
+            // ANTS-1799 — keep the parallel hyperlink side-table lockstep.
+            // Clearing m_scrollback alone leaves stale OSC 8 spans (with
+            // their old URIs) that re-attach to unrelated post-clear rows.
+            m_scrollbackHyperlinks.clear();
+        }
         break;
     }
 

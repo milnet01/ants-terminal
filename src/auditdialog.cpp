@@ -5485,7 +5485,16 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
             return;
         }
         const QJsonObject o = inner.object();
-        const QString verdict = o.value("verdict").toString("NEEDS_REVIEW").toUpper();
+        QString verdict = o.value("verdict").toString("NEEDS_REVIEW").toUpper();
+        // ANTS-1809 — constrain to the known enum. verdict is interpolated into
+        // the in-app QTextBrowser render and the shareable HTML export (which
+        // opens in a real browser and executes JS); an out-of-enum value from a
+        // compromised/MitM'd AI endpoint — reachable via prompt-injection from
+        // the audited project's own source — is a stored-XSS vector. Whitelist
+        // at the parse boundary so no render path ever sees attacker bytes.
+        if (verdict != QStringLiteral("TRUE_POSITIVE") &&
+            verdict != QStringLiteral("FALSE_POSITIVE"))
+            verdict = QStringLiteral("NEEDS_REVIEW");
         const int conf = std::clamp(o.value("confidence").toInt(50), 0, 100);
         const QString reasoning = o.value("reasoning").toString().left(600);
 
@@ -5754,7 +5763,13 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
             const QJsonObject o = v.toObject();
             const QString key = o.value("key").toString();
             if (key.isEmpty()) continue;
-            const QString verdict = o.value("verdict").toString("NEEDS_REVIEW").toUpper();
+            QString verdict = o.value("verdict").toString("NEEDS_REVIEW").toUpper();
+            // ANTS-1809 — constrain to the known enum (stored-XSS guard; see
+            // the single-verdict path). Whitelist at the parse boundary.
+            if (verdict != QStringLiteral("TRUE_POSITIVE") &&
+                verdict != QStringLiteral("FALSE_POSITIVE")) {
+                verdict = QStringLiteral("NEEDS_REVIEW");
+            }
             const int conf = std::clamp(o.value("confidence").toInt(50), 0, 100);
             const QString reasoning = o.value("reasoning").toString().left(600);
 
@@ -6192,7 +6207,7 @@ QString AuditDialog::exportHtml() const {
           ? `<span class="blame" title="git blame">[${escape(f.blame.author)} · ${escape(f.blame.date)} · ${escape(f.blame.sha)}]</span>`
           : '';
         const verdict = f.ai
-          ? `<span class="verdict ${f.ai.verdict}" title="AI: ${f.ai.confidence}/100">${f.ai.verdict.replace('_',' ')}</span>`
+          ? (() => { const v = escape(f.ai.verdict); return `<span class="verdict ${v}" title="AI: ${escape(String(f.ai.confidence))}/100">${v.replace('_',' ')}</span>`; })()
           : '';
         let snippet = '';
         if (f.snippet) {

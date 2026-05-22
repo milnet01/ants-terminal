@@ -70,6 +70,21 @@ bool LlmClient::isPlaintextRemote(const QString &endpoint) {
     return !isLocal;
 }
 
+// ANTS-1798 — private / link-local / metadata / special IPv4 ranges.
+// Factored out so the IPv6 embedded-IPv4 path (NAT64, IPv4-compatible)
+// applies the identical test on the trailing 32 bits.
+static bool isBlockedV4(quint32 v4) {
+    const quint32 a = (v4 >> 24) & 0xff;
+    const quint32 b = (v4 >> 16) & 0xff;
+    if (a == 10) return true;                          // 10.0.0.0/8
+    if (a == 172 && b >= 16 && b <= 31) return true;   // 172.16.0.0/12
+    if (a == 192 && b == 168) return true;             // 192.168.0.0/16
+    if (a == 169 && b == 254) return true;             // 169.254.0.0/16 (metadata)
+    if (a == 100 && b >= 64 && b <= 127) return true;  // 100.64.0.0/10 (CGNAT)
+    if (a == 0) return true;                           // 0.0.0.0/8
+    return false;
+}
+
 bool LlmClient::isEndpointHostBlocked(const QString &endpoint) {
     const QString host = QUrl(endpoint).host();
     if (host.isEmpty()) return false;  // scheme gate handles empties
@@ -82,20 +97,30 @@ bool LlmClient::isEndpointHostBlocked(const QString &endpoint) {
 
     bool isV4 = false;
     const quint32 v4 = addr.toIPv4Address(&isV4);  // also unwraps ::ffff:a.b.c.d
-    if (isV4) {
-        const quint32 a = (v4 >> 24) & 0xff;
-        const quint32 b = (v4 >> 16) & 0xff;
-        if (a == 10) return true;                          // 10.0.0.0/8
-        if (a == 172 && b >= 16 && b <= 31) return true;   // 172.16.0.0/12
-        if (a == 192 && b == 168) return true;             // 192.168.0.0/16
-        if (a == 169 && b == 254) return true;             // 169.254.0.0/16 (metadata)
-        if (a == 100 && b >= 64 && b <= 127) return true;  // 100.64.0.0/10 (CGNAT)
-        if (a == 0) return true;                           // 0.0.0.0/8
-        return false;
-    }
+    if (isV4) return isBlockedV4(v4);
+
     // IPv6 literal.
     if (addr.isLinkLocal()) return true;            // fe80::/10
     if (addr.isUniqueLocalUnicast()) return true;   // fc00::/7
+    // ANTS-1798 — embedded-IPv4 forms that toIPv4Address does NOT unwrap:
+    // NAT64 well-known prefix 64:ff9b::/96 and the deprecated IPv4-compatible
+    // ::/96. A NAT64 gateway would route e.g. [64:ff9b::169.254.169.254] to
+    // the metadata IP, so extract the trailing 32 bits and apply the v4 test.
+    const Q_IPV6ADDR a6 = addr.toIPv6Address();
+    auto bytesZero = [&](int from, int to) {
+        for (int i = from; i <= to; ++i)
+            if (a6[i] != 0) return false;
+        return true;
+    };
+    const bool nat64 = (a6[0] == 0x00 && a6[1] == 0x64 && a6[2] == 0xff &&
+                        a6[3] == 0x9b && bytesZero(4, 11));
+    const bool v4compat = bytesZero(0, 11);  // ::/96 (loopback handled above)
+    if (nat64 || v4compat) {
+        const quint32 embedded =
+            (quint32(a6[12]) << 24) | (quint32(a6[13]) << 16) |
+            (quint32(a6[14]) << 8) | quint32(a6[15]);
+        return isBlockedV4(embedded);
+    }
     return false;
 }
 
@@ -190,6 +215,14 @@ void LlmClient::send(const LlmRequest &req) {
     if (!req.apiKey.isEmpty())
         httpReq.setRawHeader("Authorization", ("Bearer " + req.apiKey).toUtf8());
 
+    // ANTS-1798 — do NOT auto-follow redirects. Qt's default
+    // NoLessSafeRedirectPolicy would follow a 3xx Location into a host the
+    // SSRF guard (isEndpointHostBlocked) never re-validates — a hostile
+    // endpoint returning `307 Location: http://169.254.169.254/...` would
+    // defeat the allowlist and re-POST the body to cloud metadata. Refuse
+    // redirects outright; AI chat endpoints do not legitimately redirect.
+    httpReq.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::ManualRedirectPolicy);
     m_reply = m_net.post(httpReq, bodyBytes);
     connect(m_reply, &QNetworkReply::readyRead, this, &LlmClient::drain);
     connect(m_reply, &QNetworkReply::finished, this, &LlmClient::onFinished);

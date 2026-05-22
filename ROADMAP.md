@@ -5067,6 +5067,252 @@ minor tag (next: pre-0.8.0).
 
 ## 0.7.92 — indie-review #4 + Ants MCP roadmap pass (target: 2026-05-21)
 
+### 🔍 Indie-review #6 + audit fold-in (2026-05-22)
+
+*19-lane independent-review sweep (every subsystem, remotecontrol.cpp split
+A/B by line range) + `/audit` (cppcheck · clazy · semgrep · gitleaks ·
+shellcheck · ruff · bandit · trivy). Static analysis essentially clean:
+semgrep 0, trivy-secret 0, cppcheck 0 error/warning (style/info only),
+gitleaks 4 = test-fixture by-design (logged), ruff S108 + bandit B108 on
+mcp-bridge.py standing FPs, clazy = the deferred ANTS-1789 style sweep
+(range-loop-detach ×178, no-module-include ×264, etc. — counts refreshed).
+Gold cross-cutting signal: the SO_PEERCRED fail-open was flagged
+independently by the `remotecontrol` and `claudeintegration` agents.*
+
+*Pre-flight: the running MCP server was a STALE binary (launched 16:14, before
+the 17:10 ANTS-1292 commit that moved the module map to docs/subsystems.md),
+so `subsystem`/`indie_review_partition` returned empty lanes — not a code bug,
+fixed by relaunch. The cold re-read also surfaced [[ANTS-1796]], a real parser
+defect (below).*
+
+**24 verified findings fixed inline this loop** (all severities; full suite
+1394/1394 green):
+
+- ✅ [ANTS-1796] **`subsystem op=map` emitted bogus lanes from backticked
+  library-name qualifiers** inside paren forms (`(Qt6::Core, \`ants_core_lib\`)`)
+  in docs/subsystems.md — `SubsystemMap::parse` harvested every backticked
+  token in the prefix. Now strips paren qualifiers before harvesting. Red/green
+  test `mcp_subsystem/ParenQualifierLibNameNotHarvested`.
+- ✅ [ANTS-1797] **SO_PEERCRED fail-open** (×3: remotecontrol `onNewConnection`,
+  claudeintegration `onHookConnection` + `onMcpConnection`). `if (fd >= 0)`
+  skipped the peer-UID check when the descriptor was unavailable — now
+  fails CLOSED (refuse the connection if the peer can't be verified).
+- ✅ [ANTS-1798] **AI-endpoint SSRF** — `LlmClient` auto-followed redirects
+  (Qt default), so a hostile endpoint's `307 Location: 169.254.169.254` defeated
+  the host allowlist; now `ManualRedirectPolicy`. Plus the IPv6 SSRF arm missed
+  NAT64 `64:ff9b::/96` + IPv4-compatible `::/96` embedded-v4 — now extracted and
+  run through the shared v4 block test.
+- ✅ [ANTS-1799] **CSI 3J cleared `m_scrollback` but not the parallel
+  `m_scrollbackHyperlinks`** — stale OSC 8 spans (old URIs) re-attached to
+  unrelated post-clear rows. terminalgrid.cpp.
+- ✅ [ANTS-1800] **Session restore rejected `screenRows > 500`** while grid rows
+  go to 2000 (ANTS-1658) — tall 4K/ultrawide sessions silently failed to
+  restore. Capped at `kMaxRestoreRows`. sessionmanager.cpp.
+- ✅ [ANTS-1801] **`session_memory` dir 0700 only on create** — an existing
+  0755 dir was never re-tightened. Now unconditional. sessionmemoryengine.cpp.
+- ✅ [ANTS-1802] **Lua `ants.get_output/get_cwd/settings.get` truncated at the
+  first embedded NUL** (`lua_pushstring` C-string semantics on
+  attacker-influenced terminal output) — now `lua_pushlstring` via a NUL-safe
+  `pushQString` helper. luaengine.cpp.
+- ✅ [ANTS-1803] **Plugin teardown left stale `LuaEngine*` keys in
+  `m_demoted`/`m_execStart`** (UAF-by-address-reuse trap) — cleared before
+  delete. pluginmanager.cpp.
+- ✅ [ANTS-1804] **A detached (zombie) plugin worker could signal a destroyed
+  `PluginManager`** (parented to MainWindow, torn down at app exit while zombies
+  are never joined) — now `disconnect(engine, …, this, …)` on the detach path.
+- ✅ [ANTS-1805] **`PathValidation::validatePath` failed OPEN on an empty root**
+  (anchor check collapsed to `startsWith("/")`) — the project-wide path
+  chokepoint now refuses an empty root. pathvalidation.cpp.
+- ✅ [ANTS-1806] **Uncapped `readLine()` on the untrusted transcript** in
+  `loadTranscript` + `sessionSummary` (OOM via a multi-GiB single line) — capped
+  at 64 KiB to match `extractCwdFromTranscript`. claudeintegration.cpp.
+- ✅ [ANTS-1807] **`cold_eyes_single_doc` passed the raw doc_path to the engine**
+  after validating `check.resolved` — symlink-swap TOCTOU. Now passes the
+  canonical project-relative form (mirrors debt_sweep_apply_fix). remotecontrol.cpp.
+- ✅ [ANTS-1808] **Trust prompt mislabeled the whole `.ants/verify.json` as
+  "Full first-gate command"** — a multi-gate config's 2nd/3rd commands hid behind
+  a label claiming only the first; relabeled "Full config file". verifytrustmodal.cpp.
+- ✅ [ANTS-1809] **Stored XSS via the AI-triage `verdict`** — interpolated
+  unescaped into the shareable HTML export (executes JS in a browser) and the
+  in-app render; the verdict is LLM-controlled (reachable via prompt-injection
+  from audited source). Whitelisted to the enum at the parse boundary +
+  escaped the export sink. auditdialog.cpp.
+- ✅ [ANTS-1810] **Audit SARIF/HTML/rule-quality writers skipped
+  `fsyncParentDir`** (manifest was durable, the file it points at wasn't) and
+  `RuleQualityTracker::save` swallowed the commit result — both fixed.
+  auditrunner.cpp / auditrulequality.cpp.
+- ✅ [ANTS-1811] **Roadmap headline `truncate(120)` split UTF-16 surrogate
+  pairs** (emoji near the cut → U+FFFD/broken glyph) — surrogate-safe
+  `truncateEllipsis` helper across all four sites. roadmapdialog.cpp.
+- ✅ [ANTS-1812] **Indie-review fold-in emitted two `Lanes:` lines per bullet**
+  (citing-lanes + path-derived) — malformed vs roadmap-format's single field;
+  the citing list is now `Cited-by:`. indiereviewengine.cpp.
+- ✅ [ANTS-1813] **`rollupCounts` header comment claimed O(n²)** on the
+  ANTS-1783 linear stack pass — corrected. roadmapindex.h.
+- ✅ [ANTS-1814] **Model-recommender chip not reset on tab switch** — kept the
+  prior tab's "→ Opus" recommendation (with a click that sends `/model` to the
+  wrong tab) until the next 2 s tick; now hidden + cache-invalidated in
+  `resetForTabSwitch`. claudestatuswidgets.cpp.
+- ✅ [ANTS-1815] **`findMatchingBracket` scanned the entire (≤1M-line)
+  scrollback on the GUI thread** inside paintEvent on an unmatched bracket —
+  bounded to a few screens (an off-screen match can't be highlighted). terminalwidget.cpp.
+- ✅ [ANTS-1816] **`audit_run` rawCount/noiseRatePct counted tool banners** as
+  findings for plain-text tools — now counts only location-shaped lines. auditrunner.cpp.
+- ✅ [ANTS-1817] **bg-task completion fallback recompiled a regex per tracked id
+  per event** on every transcript-append rescan — cheap `contains()` pre-filter.
+  claudebgtasks.cpp.
+- ✅ [ANTS-1818] **Stale a11y comment** claimed `setTabAccessibleName()` where
+  the code uses `setTabToolTip()` (Qt6 has no per-tab accessible-name setter).
+  coloredtabbar.h.
+- ✅ [ANTS-1819] **`inlineRelevantSections` accumulated the whole keyword-dense
+  doc** (e.g. ROADMAP.md) before truncating to the byte cap — early-break.
+  briefdispatch.cpp.
+
+Items below are deferred — verified-real but larger than a one-loop fix.
+Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/perf.
+
+#### 🔒 Tier 1 — security + data-loss (deferred)
+
+- 📋 [ANTS-1820] **`applyLearnedFpSuppressions` is a zombie + headless gap.**
+  `auditengine.cpp:353` has no production caller (the GUI inlines the body at
+  `auditdialog.cpp:~4713`; `AuditRunner::runAudit` never loads the ledger) — a
+  learned FP recorded in the GUI re-surfaces on every MCP/CI sweep. Wire the
+  engine fn into both paths. Verified 2026-05-22.
+- 📋 [ANTS-1821] **`SessionManager::sessionDir` create-then-chmod TOCTOU +
+  swallowed `setPermissions` return.** `sessionmanager.cpp:24` `mkpath` (umask
+  0755) then post-chmod 0700; want an atomic `mkdir(0700)` shared helper (the
+  same create-then-chmod shape recurs in sessionmemoryengine + others). Same-UID
+  threat model so defense-in-depth. Verified 2026-05-22.
+- 📋 [ANTS-1822] **`cleanupOldSessions` purges `*.tmp` indiscriminately.**
+  `sessionmanager.cpp:~605` glob is broader than the two filenames it owns;
+  scope to `session_*.dat.tmp` / `tab_order.txt.tmp` so it can't delete a
+  foreign/in-flight temp. Verified 2026-05-22.
+- 📋 [ANTS-1823] **`session_memory`/`workflow_state` read-modify-write is
+  unlocked across concurrent same-cwd CC sessions** (last-writer-wins drops a
+  key), and `workflow_state` set does the load/mutate/save TWICE (TTL purge +
+  Set). Collapse to one cycle + add advisory lock in `saveStore`. The
+  multi-session-tester workflow makes this reachable. Verified 2026-05-22.
+- 📋 [ANTS-1824] **Learned-FP / autofix JSONL appends are non-atomic** (two
+  `write()` calls, not O_APPEND-guaranteed) — `auditfpledger.cpp:113`,
+  `auditautofix.cpp:157`; a concurrent CC session can interleave the JSON + the
+  newline. Single-buffer write or QLockFile. Verified 2026-05-22.
+- 📋 [ANTS-1825] **Trust-file `version` written but never read.** `verifytrust.cpp`
+  `saveToDisk` stamps `kSchemaVersion`; `loadFromDisk` ignores it, so a future
+  v2 file is consumed as authoritative by a v1 reader. Add a schema-version gate
+  (log/refuse-and-reprompt on unknown future version). Verified 2026-05-22.
+- 📋 [ANTS-1826] **AI-triage POSTs key + source over cleartext `http`.**
+  `auditdialog.cpp:~5434` accepts `http` and attaches `Authorization: Bearer`;
+  warn/refuse on non-HTTPS when an API key is set (localhost exception). Mirrors
+  the llmclient cleartext note. Verified 2026-05-22.
+
+#### ⚡ Tier 2 — hardening + correctness (deferred)
+
+- 📋 [ANTS-1827] **VtParser CSI param truncation is silent.** `vtparser.cpp:386`
+  drops params past 32 with no `paramsTruncated` flag (unlike OSC/DCS/APC string
+  truncation) — a long SGR chain can apply a different state than the stream
+  specified, undetectably. Add a flag to `VtAction`. (Folds in: digit
+  accumulation continues past the cap; `vtstream onPtyFinished` flushes past the
+  in-flight cap.) Verified 2026-05-22.
+- 📋 [ANTS-1828] **Image budget omits `m_altInlineImages`.** `terminalgrid.cpp`
+  `recomputeImageBudget` sums only main + Kitty, so the documented 256 MB
+  per-terminal cap is breachable ~2× by loading images on both the main and
+  alt-screen buffers. Include alt images or document as per-buffer. Verified 2026-05-22.
+- 📋 [ANTS-1829] **iTerm2 inline-image base64 is lenient + uncapped.**
+  `terminalgrid.cpp:~1525` uses the permissive decoder with no encoded-size cap
+  before `fromBase64` (only the 10 MiB OSC cap backstops) — bring to the OSC 52
+  strictness/size discipline. Verified 2026-05-22.
+- 📋 [ANTS-1830] **auditdialog single-quote attribute escaping.** `toHtmlEscaped`
+  doesn't escape `'`, but the QTextBrowser render path single-quotes attributes
+  with escaped untrusted content (reasoning, blame author) — switch to
+  double-quote delimiters across the render path. Verified 2026-05-22.
+- 📋 [ANTS-1831] **`cold_eyes_brief` hand-rolls `doc_paths` validation** instead
+  of `PathValidation::validatePath` (`remotecontrol.cpp:~8425`) and drops bad
+  entries silently — route through the central chokepoint (ANTS-1295) + signal
+  rejects. Verified 2026-05-22.
+- 📋 [ANTS-1832] **indie-review override `sourcePaths` only `startsWith("src/")`,
+  not component-anchored** (`indiereviewengine.cpp:~110`) — `src/../../etc/...`
+  passes the prefix; reaches the brief header before the canonicalisation guard.
+  Cold-eyes already hardened this (CR-1); apply parity. Verified 2026-05-22.
+- 📋 [ANTS-1833] **Inline `audit_run`/`indie_review_dispatch` handlers don't
+  bad_path-validate `caller_cwd`** (`mainwindow.cpp:~4047/4487`) — a non-existent
+  root canonicalises to "" and collapses the in-flight key; the dispatcher only
+  enforces non-empty. Add an isDir/bad_path gate. Verified 2026-05-22.
+- 📋 [ANTS-1834] **Contract-drift guard is `Q_ASSERT_X` (compiled out in
+  Release).** `claudeintegration.cpp:~1207` — a call-site `caller_cwd`
+  classification that disagrees with `callerCwdContractFor` neither refuses nor
+  aborts in a Release build, contradicting the comment. Make it a compiled
+  check. Verified 2026-05-22.
+- 📋 [ANTS-1835] **Permission prompt leaks to the focused tab's bottom bar.**
+  `claudestatuswidgets.cpp:~344` emits `statusMessageRequested` (+ Allow/Deny
+  buttons acting on the focused terminal) before session routing, so a
+  background tab's prompt paints on the focused tab. Gate the message/buttons on
+  the same routing the glyph uses. Verified 2026-05-22.
+- 📋 [ANTS-1836] **Test-audit report writes are non-atomic / no 0600 /
+  silent-fail.** `testauditdialog.cpp:~48/259` plain `QFile` WriteOnly|Truncate,
+  return discarded — use `QSaveFile` + 0600 + checked commit (the auditcache
+  pattern). Verified 2026-05-22.
+- 📋 [ANTS-1837] **`validatePath` trusts `rootCanonical` NFC form.**
+  `pathvalidation.cpp:72` NFC-normalises the input but compares against a
+  possibly differently-normalised root — false-reject on decomposed accented
+  home dirs. Normalise the root too. Verified 2026-05-22.
+- 📋 [ANTS-1838] **`plan_template` doesn't validate `antsId` up front.**
+  `plantemplateengine.cpp` splices `opts.antsId` into the plan filename; only
+  the `pathStrictlyBelowPlans` INV-4 canonicalisation backstops a malformed id.
+  Add an `isValidAntsId` guard at the trust boundary (needs a `bad_args`
+  return). Verified 2026-05-22.
+- 📋 [ANTS-1839] **`GitWrap::run` caps stderr but not stdout.** `gitwrap.cpp:35`
+  — latent (current callers bounded), but the next caller running `git diff`/
+  `log -p` feeds an unbounded blob into a JSON envelope. Add a per-caller stdout
+  budget. Verified 2026-05-22.
+- 📋 [ANTS-1840] **Model-chip / tracker freshness gaps.** Model-chip mtime gate
+  ignores a current-model change so it lingers after a manual `/model`
+  (`claudestatuswidgets.cpp` — partially mitigated by [[ANTS-1814]]'s reset);
+  `sweepLiveness` latches `finished=true` without un-latching on resume
+  (`claudebgtasks.cpp`); `extractIdFromResultBody` depends on the brittle
+  `Task #N` prose string (`claudetasklist.cpp`). Verified 2026-05-22.
+
+#### 🏗 Tier 3 — structural / perf / accessibility (deferred)
+
+- 📋 [ANTS-1841] **terminalwidget hot-path perf cluster.** `mouseMoveEvent` runs
+  the URL regex on every pixel of movement (bypasses `m_urlSpanCache`,
+  `:3349`); `loadHistory` slurps the whole shell history with an O(n²)
+  `QStringList::contains` dedup (`:5088`); triple-click + Alt-rect-selection
+  leaves `m_rectSelection` set (`:3270`); redundant `isCellSearchMatch` per cell
+  under opacity (`:850`). Distinct from the cache-wipe/resize item ANTS-1781.
+  Verified 2026-05-22.
+- 📋 [ANTS-1842] **Dialog D2/D3/D4 conformance migration.** The three review
+  dialogs + settings/ssh/about/diffviewer are frameless (DialogChrome) but lack
+  a `QSizeGrip` (D2), size persistence (D3), and showEvent re-centering (D4).
+  Fold the affordances into `DialogChrome::install` once (the standard's own
+  recommendation) rather than per-dialog. Verified 2026-05-22.
+- 📋 [ANTS-1843] **Review-dialog interaction bugs.** `briefFor` re-partitions
+  mid-dispatch on a `stale_partition` miss (token/lanes can diverge from the
+  enqueued set); the Dispatch button never re-enables after the user fixes
+  `ai_endpoint` while the modeless dialog is open; `setLanes()` wipes already-
+  collected reports on any lane checkbox toggle. `reviewdialogbase.cpp` /
+  `testauditdialog.cpp`. Verified 2026-05-22.
+- 📋 [ANTS-1844] **`roadmap_query` re-splits the 19k-line ROADMAP 3-4× per
+  call.** `sliceSection` (`roadmapindex.cpp:189`), `buildIndex`, `parseBullets`,
+  `renderCardsHtml` each `split('\n')` the whole doc; `sliceSection` should walk
+  from a cached offset. Verified 2026-05-22.
+- 📋 [ANTS-1845] **claudeintegration scan/probe cluster.** `processStartTimeMs`
+  has a PID-reuse window with no liveness cross-check; `findClaudeChildPid`'s
+  fallback scans all of `/proc` with no early-out every 2 s × tabs;
+  `decodeProjectPath` drives `QFileInfo::exists` probes from
+  attacker-influenced encoded dir names. All same-UID, low impact. Verified 2026-05-22.
+- 📋 [ANTS-1846] **llm cap-unit + loopback-predicate cleanup.** `accumulateCapped`
+  compares `QString::size()` (UTF-16 units) against `kMaxBytes` (~40 MiB real
+  ceiling) — rename/byte-accurate; `isPlaintextRemote`'s loopback set is
+  narrower than `isEndpointHostBlocked`'s `isLoopback()` (spurious cleartext
+  warnings on 127.0.0.2). Unify. Verified 2026-05-22.
+- 📋 [ANTS-1847] **Claude state-dot WCAG contrast on light themes.**
+  `coloredtabbar.cpp` ships a fixed dot palette; 7/8 dots fall below WCAG 3:1 on
+  the Light/Catppuccin-Latte tab backgrounds (incl. the operationally-critical
+  `AwaitingInput` orange at 2.28:1). NOTE: a per-state outline/variant directly
+  conflicts with `tests/features/claude_state_dot_palette/spec.md` (flat,
+  outline-free mandate) — see [[ANTS-1767]]; needs a spec revisit, not an inline
+  change. Verified 2026-05-22.
+
 ### 🔍 Indie-review #5 + audit fold-in (2026-05-21)
 
 *17-lane independent-review sweep (every subsystem) + `/audit`

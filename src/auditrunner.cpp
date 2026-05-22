@@ -518,12 +518,18 @@ ParsedOutput parseToolOutput(const QString &tool,
     }
     // Line-based fallback for plain-text tools.
     const QStringList lines = raw.split(QChar('\n'), Qt::SkipEmptyParts);
-    out.rawCount = lines.size();
     static const QRegularExpression rxFileLine(
         QStringLiteral("^([^:]+):(\\d+)(?::\\d+)?:\\s*(.+)$"));
-    for (int i = 0; i < lines.size() && out.samples.size() < sampleCap; ++i) {
+    // ANTS-1816 — count only location-shaped lines, not every non-empty line.
+    // Tool banners, "N files scanned", and blank-separated context were being
+    // counted as findings, inflating rawCount / noiseRatePct (the headline
+    // numbers audit_run returns + persists) for plain-text tools.
+    int located = 0;
+    for (int i = 0; i < lines.size(); ++i) {
         const QRegularExpressionMatch m = rxFileLine.match(lines.at(i));
         if (!m.hasMatch()) continue;
+        ++located;
+        if (out.samples.size() >= sampleCap) continue;
         QJsonObject s;
         s["file"]    = m.captured(1);
         s["line"]    = m.captured(2).toInt();
@@ -532,6 +538,7 @@ ParsedOutput parseToolOutput(const QString &tool,
         s["severity"]= QStringLiteral("UNKNOWN");
         out.samples.append(s);
     }
+    out.rawCount = located;
     return out;
 }
 
@@ -639,6 +646,7 @@ bool writeSarif(const QString &path,
     if (f.write(bytes) != bytes.size()) return false;
     if (!f.commit()) return false;
     setOwnerOnlyPerms(path);
+    fsyncParentDir(path);  // ANTS-1810 — durable like the cache manifest
     return true;
 }
 
@@ -665,6 +673,7 @@ bool writeHtml(const QString &path,
     s.flush();
     if (!f.commit()) return false;
     setOwnerOnlyPerms(path);
+    fsyncParentDir(path);  // ANTS-1810 — durable like the cache manifest
     return true;
 }
 

@@ -226,11 +226,21 @@ void RuleQualityTracker::save() const {
     // Prevents torn writes from corrupting the long-lived quality history on
     // crash / kill -9 between recordFire calls.
     QSaveFile f(m_path);
-    if (f.open(QIODevice::WriteOnly)) {
-        setOwnerOnlyPerms(f);
-        f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
-        f.commit();
+    if (!f.open(QIODevice::WriteOnly)) {
+        qWarning("auditrulequality: cannot open %s for write: %s",
+                 m_path.toUtf8().constData(), f.errorString().toUtf8().constData());
+        return;
     }
+    setOwnerOnlyPerms(f);
+    f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
+    // ANTS-1810 — check commit + fsync the dir: a full disk / perms failure
+    // silently lost the entire 90-day quality history before this guard.
+    if (!f.commit()) {
+        qWarning("auditrulequality: commit failed for %s: %s",
+                 m_path.toUtf8().constData(), f.errorString().toUtf8().constData());
+        return;
+    }
+    fsyncParentDir(m_path);
 }
 
 void RuleQualityTracker::reload() {
