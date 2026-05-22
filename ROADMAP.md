@@ -10428,7 +10428,7 @@ template / mutate this state atomically" → movable. If it's
 
 #### 📦 Docs — user-facing surface
 
-- 📋 [ANTS-1298] **Rewrite README.md as a Claude Code companion,
+- ✅ [ANTS-1298] **Rewrite README.md as a Claude Code companion,
   user-friendly tone, token-savings front-and-centre.** The
   current README is 1072 lines, feature-list-heavy, written in
   developer-tools voice ("VT100 state machine", "QPainter +

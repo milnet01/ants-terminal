@@ -5,1094 +5,190 @@
 </p>
 
 <p align="center">
-  <strong>A real terminal emulator built from scratch in C++ with Qt6.</strong><br>
-  No terminal libraries -- custom VT100/xterm parser, PTY management, and ligature-aware QPainter rendering.
+  <strong>A fast, modern terminal that makes Claude Code cheaper and easier to use.</strong>
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> &bull;
-  <a href="#claude-code-integration">Claude Code</a> &bull;
+  <a href="#what-is-this">What is this?</a> &bull;
+  <a href="#why-use-it-with-claude-code">Why use it with Claude Code</a> &bull;
   <a href="#install">Install</a> &bull;
-  <a href="#building">Building</a> &bull;
-  <a href="#keyboard-shortcuts">Shortcuts</a> &bull;
-  <a href="#themes">Themes</a> &bull;
-  <a href="#architecture">Architecture</a> &bull;
-  <a href="#configuration">Configuration</a> &bull;
-  <a href="PLUGINS.md">Plugins</a> &bull;
-  <a href="ROADMAP.md">Roadmap</a> &bull;
-  <a href="CHANGELOG.md">Changelog</a> &bull;
-  <a href="#license">License</a>
+  <a href="#settings">Settings</a> &bull;
+  <a href="#for-developers">For developers</a>
 </p>
 
 <p align="center">
-  Current version: <strong>0.7.92</strong> — see the <a href="CHANGELOG.md">CHANGELOG</a> for release notes, the <a href="ROADMAP.md">ROADMAP</a> for what's coming, <a href="PLUGINS.md">PLUGINS</a> for the plugin authoring guide, and <a href="docs/standards/">docs/standards/</a> for the four shareable v1 standards (coding · documentation · testing · commits) any project can adopt — including the ROADMAP and CHANGELOG format specs.
+  Version <strong>0.7.92</strong> ·
+  <a href="CHANGELOG.md">What's new</a> ·
+  <a href="ROADMAP.md">What's planned</a>
 </p>
 
 ---
 
-## Features
-
-### Terminal Emulation
-
-- **Real shell** -- spawns your login shell (bash, zsh, etc.) via `forkpty()` with full interactive support
-- **VT100/xterm compatible** -- custom state machine parser based on the Paul Williams DEC model
-- **UTF-8** -- complete 1-4 byte decoding with overlong rejection; invalid sequences replaced with U+FFFD
-- **Alt screen buffer** -- vim, htop, less, nano, and other full-screen programs work correctly
-- **Scrollback history** -- configurable up to 1,000,000 lines, navigable by mouse wheel or keyboard
-- **Bracketed paste mode** -- supported for shells and editors that use it
-- **Device Attributes** -- responds to DA1 (`CSI c`) and DA2 (`CSI > c`) queries
-- **Cursor Position Report** -- responds to `CSI 6n` with current cursor position
-- **Window title** -- reads OSC 0/2 title sequences from your shell prompt or running programs
-- **Dynamic resize** -- window size changes propagate to the PTY via `TIOCSWINSZ` (the kernel then sends `SIGWINCH` to the child process), with scrollback reflow
-
-### Rendering
-
-Ants Terminal paints via `QPainter` + `QTextLayout` (HarfBuzz). One render path, ligature-aware out of the box, partial-rect updates for sub-millisecond redraws on noisy output. The earlier optional GL-atlas renderer (last seen as `src/glrenderer.cpp`; GLSL 3.3 core, 2048x2048 texture atlas, instanced quads) was retired and deleted in 0.7.44 after sitting compiled-but-unreachable since 0.7.4 — see `CHANGELOG.md` for the post-mortem.
-
-### Ligature Support
-
-Text is rendered using `QTextLayout` with HarfBuzz shaping, enabling proper ligatures in fonts like:
-- **JetBrains Mono** -- `!=`, `<=`, `>=`, `->`, `=>`, `|>`
-- **Fira Code** -- `www`, `::`, `===`, `!==`, `</>`, `<!--`
-
-### Inline Graphics
-
-| Protocol | Support |
-|----------|---------|
-| **Sixel** | Full DCS parser, two-pass rendering, 4096x4096 max, palette colors |
-| **Kitty Graphics** | Chunked base64, PNG/RGBA/RGB, image cache (200 entries), transmit/display/delete |
-| **iTerm2** | OSC 1337 inline images, cell-based sizing |
-
-### Color Support
-
-| Mode | Range | Description |
-|------|-------|-------------|
-| Standard ANSI | 16 colors | Overridable per theme |
-| Extended 256 | 256 colors | 6x6x6 RGB cube + 24 grayscale |
-| True Color | 16.7M colors | 24-bit RGB via `38;2;R;G;B` / `48;2;R;G;B` SGR |
-
-Sets `TERM=xterm-256color` and `COLORTERM=truecolor` so programs detect capabilities automatically.
-
-### Text Attributes
-
-Bold, italic, underline, dim, inverse, and strikethrough -- all rendered natively with font variants and QPainter drawing.
-
-### Advanced Underline Styles
-
-| Style | SGR | Rendering |
-|-------|-----|-----------|
-| Single | `4` or `4:1` | Straight line |
-| Double | `4:2` or `21` | Two parallel lines |
-| Curly (undercurl) | `4:3` | Wavy/squiggly line |
-| Dotted | `4:4` | Dotted line |
-| Dashed | `4:5` | Dashed line |
-
-Underline color is independently settable via `CSI 58;2;R;G;B m`. Used by Neovim for LSP diagnostic highlights.
-
-### Unicode Support
-
-- **UTF-8** -- complete 1-4 byte decoding with overlong encoding rejection
-- **CJK double-width** -- `wcwidth()` detection, double-cell rendering
-- **Combining characters** -- diacritical marks attached to base characters (e.g., e + combining acute = e)
-- **Emoji** -- via font fallback (Noto Color Emoji, Symbola)
-
-### Selection and Copy/Paste
-
-- **Click and drag** to select text across lines
-- **Alt+drag** for rectangular/column selection (great for `ls -l`, `ps aux`, log timestamps)
-- **Double-click** to select a word
-- **Triple-click** to select an entire line
-- **Ctrl+Shift+C** to copy selection to clipboard
-- **Ctrl+Shift+V** to paste text (or images) from clipboard
-- **Middle-click** to paste the X11 primary selection
-- **Shift+Enter** inserts a literal newline without executing (multi-line command editing)
-
-### Image Paste (Claude Code Integration)
-
-Paste images directly from the clipboard with **Ctrl+Shift+V**. Images are automatically saved as timestamped PNGs to `~/Pictures/ClaudePaste/` (configurable) and the **full filepath is inserted into the terminal** as text. This enables seamless screenshot sharing with Claude Code -- just paste and press Enter.
-
-### URL Detection & Extended Hints Mode
-
-URLs (`http://`, `https://`, `ftp://`, `file://`) are automatically detected, underlined, and colored with the theme accent. Hold **Ctrl** and the cursor changes to a pointing hand -- **Ctrl+Click** opens the URL in your default browser.
-
-Applications can also emit **explicit hyperlinks** via the OSC 8 protocol (`ESC ] 8 ; params ; URI ST`). These take priority over regex-detected URLs.
-
-Press **Ctrl+Shift+G** to enter **hints mode** -- all URLs, file paths, git SHAs, IP addresses, and email addresses on screen get labeled with a letter badge. Press the letter to open URLs, open file paths in your editor, or copy other patterns to clipboard.
-
-### Search in Scrollback
-
-Press **Ctrl+Shift+F** to open the search bar. All case-insensitive matches are highlighted across the entire scrollback and visible screen.
-
-### Command Palette
-
-Press **Ctrl+Shift+P** to open the command palette -- a searchable list of all available actions with their keyboard shortcuts. Type to filter, arrow keys to navigate, Enter to execute.
-
-### Bracket Matching
-
-When the cursor sits on a bracket character -- `(`, `)`, `[`, `]`, `{`, or `}` -- the matching bracket is highlighted with a subtle background.
-
-### Line Bookmarks
-
-Toggle bookmarks on any line with **Ctrl+Shift+B**. Navigate between bookmarks with **Ctrl+Alt+Down** (next) and **Ctrl+Alt+Up** (previous). Bookmarks are shown as colored dots in the left gutter.
-
-### Prompt Navigation (OSC 133)
-
-When your shell emits OSC 133 markers, jump between command prompts with **Ctrl+Shift+Up/Down**.
-
-### Sticky Command Header
-
-When scrolling through long command output, the command that produced it pins to the top of the viewport as a sticky header. Shows the command text and execution duration. Automatically uses OSC 133 shell integration markers.
-
-### Command Timestamps & Duration
-
-Each command prompt displays execution time (e.g. "2.3s") and timestamp (HH:mm:ss) in dim right-aligned text. Requires OSC 133 shell integration.
-
-### Command Output Folding
-
-Click the triangle indicator in the left gutter to collapse/expand completed command output blocks, or use **Ctrl+Shift+.**. Collapsed output shows a summary bar with line count.
-
-### Scratchpad (Multi-line Command Editor)
-
-Press **Ctrl+Shift+Enter** to open a floating text editor for composing complex multi-line commands. Write your pipeline or loop in the scratchpad, then press **Ctrl+Enter** to send it to the shell (uses bracketed paste for proper handling).
-
-### Command Snippets Library
-
-Press **Ctrl+Shift+;** to open the snippets dialog. Save frequently-used commands with names, descriptions, and `{{placeholder}}` parameters. When inserting a snippet, you're prompted for each placeholder value. Snippets are searchable and persist across sessions.
-
-### Mouse Reporting
-
-Full SGR mouse reporting for TUI applications:
-
-- **Button events** (`?1000h`) -- press and release
-- **Button+motion** (`?1002h`) -- drag tracking
-- **Any motion** (`?1003h`) -- full mouse position tracking
-- **SGR encoding** (`?1006h`) -- unlimited coordinates, explicit release
-
-Hold **Shift** to override mouse reporting and use terminal selection instead.
-
-### Focus Reporting
-
-When enabled (`CSI ?1004h`), the terminal sends `CSI I` on focus gain and `CSI O` on focus loss.
-
-### Synchronized Output
-
-Applications can bracket rapid output updates with `CSI ?2026h` / `CSI ?2026l` to prevent screen tearing.
-
-### Clipboard Access (OSC 52)
-
-Remote applications can set the system clipboard via OSC 52 sequences. Clipboard read (query) is disabled for security.
-
-### Session Recording
-
-Record terminal sessions in **asciicast v2** format via **Ctrl+Shift+R** or the Settings menu. Recordings are saved to `~/.local/share/ants-terminal/recordings/` and can be played back with [asciinema](https://asciinema.org).
-
-### Session Persistence
-
-Enable in Settings to save terminal scrollback on exit and restore it on next launch. Session data is compressed and stored in `~/.local/share/ants-terminal/sessions/`.
-
-### Per-Pixel Background Transparency
-
-Set terminal-area transparency via **View → Opacity** (UI clamps to 70 % – 100 %; the underlying `opacity` config key accepts 0.1–1.0 if edited directly). Only the terminal grid becomes translucent; the menu bar, tabs, and status bar stay fully opaque so chrome remains readable. Works with KDE/KWin compositor blur.
-
-### AI Assistant
-
-Press **Ctrl+Shift+A** to open the AI assistant. Ask questions about terminal output, get command suggestions, or debug errors. Supports any OpenAI-compatible API endpoint (Ollama, LM Studio, OpenAI, Anthropic via proxy).
-
-Configure in `config.json`:
-```json
-{
-    "ai_endpoint": "http://localhost:11434/v1/chat/completions",
-    "ai_model": "llama3",
-    "ai_api_key": ""
-}
-```
-
-Features:
-- Streaming responses (SSE)
-- Terminal context injection (last N lines)
-- "Insert Command" button to paste AI suggestions into the terminal
-- Works with local LLMs (no data leaves your machine with Ollama)
-
-### SSH Manager
-
-Press **Ctrl+Shift+S** to open the SSH manager. Manage connection bookmarks and connect to remote hosts.
-
-Features:
-- Quick connect bar (`user@host:port`)
-- Bookmark management (save, edit, delete)
-- Connect in new tab or current tab
-- Identity file and extra SSH args support
-- Passwords are never stored -- authentication is interactive
-
-### Scriptable Plugin System (Lua)
-
-Extend Ants Terminal with Lua plugins. Plugins react to terminal events and can send commands, show notifications, and modify behavior.
-
-**Plugin API:**
-```lua
--- ~/.config/ants-terminal/plugins/my-plugin/init.lua
-ants.on("output", function(data)
-    ants.log("Got output: " .. data)
-end)
-
-ants.on("command_finished", function(payload)
-    ants.log("command done: " .. payload)  -- payload: "exit_code=0&duration_ms=142"
-end)
-
-ants.send("echo hello")
-ants.notify("Title", "Message")
-ants.get_output(50)  -- Last 50 lines
-ants.get_cwd()       -- Current directory
-ants.set_status("Custom status text")
-```
-
-**Events:** 16 total — see PLUGINS.md § Events for the full list. Note: `output`, `line`, `prompt`, `keypress`, `title_changed`, `tab_created`, `tab_closed` are registered but not yet fired; the 9 functional events (keybinding, command_finished, theme_changed, etc.) added since 0.6.9 are the ones that actually trigger handlers.
-
-**Security:** Plugins run in a sandbox with `os`, `io`, `debug`, `require`, `setmetatable`, `collectgarbage` removed. 100,000-instruction timeout prevents infinite loops (resistant to `pcall` bypass attacks; pure-C call interiors remain uninterruptible). Memory capped at 10MB to prevent `string.rep` OOM attacks.
-
-### Background Opacity & Blur
-
-- **Opacity** -- adjustable from 70 % to 100 % via View menu (saved to config). Per-pixel transparency on the terminal area only; chrome paints opaque.
-- **Translucent background** -- works with KDE Plasma / KWin compositor
-- **Background blur** -- toggleable in Settings menu (requires compositor support)
-
-### Project Audit Dialog
-
-Press **Tools > Project Audit** to open a built-in static-analysis panel
-over the current project. The dialog auto-detects language and framework
-(C/C++, Qt, Python, JS/TS, Rust, Go, Shell, Lua, Java, Git) and runs a
-catalogue of checks spanning general hygiene, security, and per-ecosystem
-linters.
-
-Highlights:
-
-- **AST-aware Qt checks** via [clazy](https://github.com/KDE/clazy)
-  (connect-3arg-lambda, container-inside-loop, old-style-connect, etc.) —
-  reads `compile_commands.json` from the active build directory.
-- **SonarQube-style taxonomy** — every finding carries a type
-  (Info / CodeSmell / Bug / Hotspot / Vulnerability) and a 5-level
-  severity (Info / Minor / Major / Critical / Blocker).
-- **Per-finding dedup keys** (first 24 hex chars of SHA-256 of file:line:checkId:title) power
-  stable baselines, suppressions, and trend tracking across runs.
-- **Baseline diff** — save current findings, later runs highlight only
-  what's new; toggle "New since baseline" to hide known issues.
-- **Trend tracking** — severity counts persisted at
-  `.audit_cache/trend.json` (last 50 runs) and shown as a delta banner
-  against the previous run.
-- **Interactive suppression** — click the dedup-key hash next to any
-  finding to add it (with an optional reason) to `.audit_suppress`.
-  File format is JSONL: `{"key", "rule", "reason", "timestamp"}` per line.
-- **User-defined rules** — drop an `audit_rules.json` at the project
-  root to append or override checks without rebuilding the app. Schema
-  matches the internal `AuditCheck` struct: `id`, `name`, `severity`,
-  `type`, `command`, `drop_if_contains`, `keep_only_if_contains`,
-  `drop_if_matches`, `max_lines`. User rules run through the full
-  filter / parse / dedup / suppress pipeline like built-ins.
-- **Recent-changes scope** — toggle to restrict findings to files
-  touched in the last 10 commits, or the stricter "Changed lines only"
-  toggle which filters to exact diff hunk ranges (what CI pre-merge
-  review would flag).
-- **Multi-tool correlation** — a ★ badge appears on findings that two
-  or more distinct tools flag at the same `file:line`. Orthogonal to
-  severity; surfaces cross-validated hits above single-tool noise.
-- **Confidence score (0-100)** — weighted sum of severity, cross-tool
-  agreement, tool class (AST-aware vs. regex), and path heuristics
-  (test files and generated code shed confidence). Shown as a coloured
-  pip next to every finding; toggle "Sort by confidence" to surface
-  the most trustworthy findings first.
-- **Comment/string-aware filtering** — grep-style pattern checks run
-  a tiny state-machine over the source to drop matches that live in
-  `//` comments, `/* */` blocks, or `"string literals"`.
-- **Inline suppression directives** — recognises ants-native
-  `// ants-audit: disable[=rule-id]` (same line), `disable-next-line`
-  (line above), and `disable-file` (first 20 lines), plus pass-through
-  for every major tool's native markers: clang-tidy `NOLINT` /
-  `NOLINTNEXTLINE`, cppcheck `cppcheck-suppress`, flake8 `noqa`,
-  bandit `nosec`, semgrep `nosemgrep`, gitleaks `#gitleaks:allow`,
-  eslint `eslint-disable-*`, pylint `pylint: disable`.
-- **Generated-file auto-skip** — findings in `moc_*`, `ui_*`, `qrc_*`,
-  `*.pb.cc` / `*.pb.h`, `/generated/` paths, and `*_generated.*` files
-  are dropped silently. Stops Qt MOC output and protobuf-generated
-  code from drowning the report.
-- **Path-based rules** — extend `audit_rules.json` with `path_rules[]`
-  entries to shift severity or skip findings by glob, e.g. lowering
-  everything under `tests/**` by one severity band or skipping every
-  `**/moc_*.cpp`.
-- **Code snippet context (±3 lines)** — every finding with a
-  `file:line` expands on click to show the surrounding lines, with
-  the finding line highlighted. SARIF export includes this as
-  `physicalLocation.contextRegion` (consumed by GitHub Code Scanning
-  and VSCode's SARIF Viewer natively).
-- **Git blame enrichment** — each finding is tagged with the last
-  author, author date, and short SHA. Cached per `(file, line)` so
-  the enrichment pass adds 1-2s to a run on a 50-finding audit.
-- **AI triage (optional)** — click "🧠 Triage with AI" on any
-  expanded finding to send the rule, message, snippet, and blame to
-  the project's configured OpenAI-compatible endpoint (the same one
-  powering the AI assistant). The response is parsed as
-  `{verdict, confidence, reasoning}` and displayed inline as a
-  coloured verdict badge.
-- **Live filter + severity pills** — filter findings across all
-  checks by text (matches file, message, rule, author) or toggle
-  severity pills to hide whole categories. "Sort by confidence"
-  reorders every check's findings by their computed confidence.
-- **Semgrep integration (optional)** — when `semgrep` is installed,
-  a Security-category check runs `p/security-audit` + language-
-  specific community rule packs. Adds structural pattern matching
-  beyond grep for cross-cutting vulnerability families; complements
-  clazy's Qt-aware AST checks.
-- **Exports** — SARIF v2.1.0 (OASIS standard, consumed by GitHub Code
-  Scanning / VSCode SARIF Viewer / SonarQube) with `contextRegion`
-  and `properties.blame` bag populated; single-file HTML report with
-  severity filter pills, text search, collapsible check cards,
-  inline snippet reveal, and verdict badges (no external assets).
-- **Claude review handoff** — "Review with Claude" emits a plain-text
-  report with snippets and confidence/blame/verdict tags, plus
-  `CLAUDE.md`, `docs/standards/coding.md`, and `CONTRIBUTING.md`
-  prepended, then signals the main window to open a Claude Code
-  session on the report.
-
-Sample `audit_rules.json` showing the full schema:
-
-```json
-{
-  "version": 1,
-  "rules": [
-    {
-      "id": "no-std-cout",
-      "name": "Direct std::cout in production code",
-      "description": "Use qDebug() or the logging subsystem instead",
-      "category": "Project",
-      "severity": "minor",
-      "type": "smell",
-      "command": "grep -rnI --include='*.cpp' --include='*.h' -E 'std::cout\\s*<<' src/",
-      "auto_select": true,
-      "max_lines": 50,
-      "drop_if_contains": ["// allow-cout", "example", "debug only"]
-    }
-  ],
-  "path_rules": [
-    { "glob": "tests/**",           "severity_shift": -2 },
-    { "glob": "**/moc_*.cpp",       "skip": true },
-    { "glob": "third_party/**",     "skip": true },
-    { "glob": "src/legacy/**",      "severity_shift": -1, "skip_rules": ["memory_patterns"] }
-  ]
-}
-```
-
-Inline suppression examples:
-
-```cpp
-// ants-audit: disable-file=secrets_scan
-const char *kDemoToken = "dummy-token-for-demo";   // ants-audit: disable=secrets_scan
-auto *raw = new char[N];                           // NOLINT(cppcoreguidelines-owning-memory)
-// ants-audit: disable-next-line
-printf(userInput);
-```
-
-### Claude Code Integration
-
-Deep integration with [Claude Code](https://claude.ai/claude-code) for AI-assisted development workflows.
-
-**Live Status Monitoring** -- The status bar shows Claude's current state (idle, thinking, bash, reading a file, editing, searching, planning, auditing, prompting, compacting) with context window usage. Process detection via `/proc` polling automatically tracks running Claude sessions; transcript state is derived from `~/.claude/projects/<encoded-cwd>/*.jsonl` via a `QFileSystemWatcher` with a 50 ms debounce.
-
-**Real-time status hooks (opt-in)** -- For sub-second state transitions, install the Claude Code hooks from **Settings > General > Claude Code > Install Claude Code status-bar hooks**. That one-click action writes:
-
-1. A helper script at `~/.config/ants-terminal/hooks/claude-forward.sh` that reads a hook-event JSON from stdin, walks up the process tree to find the parent `ants-terminal`, and forwards the event to that instance's Unix socket (`/tmp/ants-claude-hooks-<pid>`).
-2. Hook entries in `~/.claude/settings.json` under `"hooks"` for `SessionStart`, `PreToolUse`, `PostToolUse`, `Stop`, and `PreCompact`, each pointing at the helper script.
-
-Existing hooks you have configured (e.g. `UserPromptSubmit`) are preserved -- the installer only appends, and it's idempotent (re-running won't double-wire the same events). Without hooks installed, Ants Terminal falls back to the transcript-file watcher path and still delivers updates within ~100 ms of each event.
-
-**Project & Session Browser** (**Ctrl+Shift+J**) -- Browse all your Claude Code projects discovered from `~/.claude/projects/`. For each project, see every session with its first message summary, timestamp, file size, and active status. Resume any session, continue the latest, or fork a session -- all directly from the terminal.
-
-**Permission Allowlist Editor** (**Ctrl+Shift+L**) -- Visual editor for `.claude/settings.local.json` permission rules. Add, remove, and organize allow/deny/ask rules with preset suggestions for common tools (git, npm, cargo, etc.). Changes are written atomically with proper file permissions.
-
-**Session Transcript Viewer** -- Read-only viewer for Claude Code JSONL transcripts. Displays user messages, assistant responses, tool calls, and token usage in a formatted HTML view.
-
-**Slash Command Shortcuts** -- Quick menu entries for sending `/compact`, `/clear`, `/cost`, `/help`, and `/status` to a running Claude session.
-
-**Token-saving hook pack** (ANTS-1252) -- Optional bash hook pack that nudges Claude toward cheaper MCP tool calls. Install via `tools/install-hooks.sh` from a checkout (writes into `~/.claude/settings.json` under sentinel key `ants_hooks_pack_v1` and copies the scripts to `~/.claude/hooks/`). Five hooks: a SessionStart preamble (≤ 500 B summary of branch/ahead/last commit), a PreToolUse Bash veto that redirects `grep -r src/` / `git status` / `cat ROADMAP.md | grep` to the matching MCP tool (escape per command via trailing `# ants-bypass` comment), a PreToolUse Read veto on full reads of large `ROADMAP.md` (use `mcp__ants__roadmap_query` instead), a Stop drift-check launcher (side-effect-only, `flock`-guarded), and a PreCompact todo-snapshot writer for smoother resume. Per-project gate via committed `.ants-project` marker -- the hooks fire silently in non-ants sessions. Uninstall: `tools/install-hooks.sh --uninstall`.
-
-**Project Directory Management** -- Configure directories where new Claude Code projects can be created. Start new projects in any managed directory directly from the Projects dialog.
-
-### Configurable Keybindings
-
-All keyboard shortcuts can be customized via the `keybindings` section in `config.json`.
-
-### Font Fallback & Nerd Font Symbols
-
-The terminal automatically detects and uses fallback fonts for characters not available in the primary font. **Nerd Font symbols** (Powerline, Devicons, etc.) are automatically detected -- if you have any Nerd Font installed, Powerline prompts and Starship icons will render correctly even without using a patched font as your primary font.
-
-### Tab/Pane Badges
-
-Set a badge text in Settings > Appearance to display a large, semi-transparent watermark in the terminal background. Useful for identifying terminals at a glance (e.g., showing hostname, project name, or environment).
-
-### Dark/Light Auto-Switching
-
-Enable "Auto-switch theme with system dark/light mode" in Settings > Appearance. Configure separate themes for dark and light modes -- the terminal automatically switches when your system color scheme changes.
-
-### Auto Profile Switching
-
-Configure rules in `auto_profile_rules` to automatically switch terminal profiles based on patterns. Match against window title, current directory, or foreground process. Useful for changing appearance when SSHing to production or switching to root.
-
-### Hot-Reload Configuration
-
-Edit `~/.config/ants-terminal/config.json` externally and changes are applied instantly without restarting. Theme, fonts, keybindings, opacity, and all other settings update live.
-
-### 11 Built-in Themes
-
-Switch themes from the **View** menu. Your choice is saved between sessions.
-
-| Theme | Background | Accent | Style |
-|-------|-----------|--------|-------|
-| **Dark** (default) | `#1E1E2E` | `#89B4FA` | Catppuccin Mocha |
-| **Light** | `#FFFFFF` | `#1A73E8` | Clean light |
-| **Nord** | `#2E3440` | `#88C0D0` | Arctic, blue-green |
-| **Dracula** | `#282A36` | `#BD93F9` | Purple accent |
-| **Monokai** | `#272822` | `#66D9EF` | Warm classic |
-| **Solarized Dark** | `#002B36` | `#268BD2` | Ethan Schoonover |
-| **Gruvbox** | `#282828` | `#FABD2F` | Retro warm |
-| **Tokyo Night** | `#1A1B26` | `#7AA2F7` | Japanese cityscape |
-| **Catppuccin Latte** | `#EFF1F5` | `#1E66F5` | Pastel light |
-| **One Dark** | `#282C34` | `#61AFEF` | Atom editor |
-| **Kanagawa** | `#1F1F28` | `#7E9CD8` | Muted Japanese |
-
-### Window Management
-
-- **Persistent geometry** -- window size and position saved/restored between sessions
-- **Center window** -- **Ctrl+Shift+M** or View menu
-- **Zoom** -- **Ctrl+=** / **Ctrl+-** / **Ctrl+0** (keyboard zoom range 8–32pt; config key `font_size` accepts 4–48)
-- **Tabs** -- Ctrl+Shift+T/W for new/close
-- **Split panes** -- horizontal (Ctrl+Shift+E) and vertical (Ctrl+Shift+O)
-
----
+## What is this?
+
+A **terminal** is the window where you type commands to your computer. Ants
+Terminal is a fast, good-looking one for Linux — but its real party trick is
+that it works hand-in-hand with [Claude Code](https://claude.ai/claude-code),
+Anthropic's AI coding assistant, to **save you money** and make sessions
+smoother.
+
+It's built from scratch (the only thing it needs to run is Qt6), so it's
+quick and light, and everything it does for Claude happens **on your own
+machine** — nothing is sent anywhere.
+
+## Why use it with Claude Code
+
+Claude Code charges by the **token** — think of a token as a small chunk of
+text it reads or writes. Every time Claude runs a command to look something
+up (checking what changed in your code, searching files, reading a long
+to-do list), it reads all that output, and you pay for it.
+
+Ants Terminal answers a lot of those questions **itself** and hands Claude a
+short, tidy summary instead of a wall of text. Less text read means fewer
+tokens spent. Three things make that happen:
+
+- **A built-in toolkit Claude can use.** 58 ready-made tools that answer
+  Claude's common questions directly — often saving thousands of tokens per
+  question (more below).
+- **Gentle nudges.** An optional set of "hooks" quietly steers Claude toward
+  the cheap built-in tools instead of the expensive long-hand commands.
+- **A live view of what Claude is doing.** The bar along the bottom shows
+  Claude's status (thinking, editing, searching…) at a glance, and you can
+  browse and resume past Claude sessions without leaving the terminal.
+
+### The built-in toolkit, in plain terms
+
+Each tool replaces a slow, token-hungry command with one quick answer:
+
+| Instead of Claude… | …it just asks for |
+|---|---|
+| scrolling back to re-read command output | the recent output, errors, or last command |
+| searching your whole project with `grep` | matching lines, a file's outline, where a function is defined/used |
+| running several `git` commands | your branch, recent commits, and changes in one go |
+| reading a giant to-do / roadmap file | only the items it needs |
+| re-running builds and tests to read the logs | the latest build/test results |
+| running a pile of code-quality checkers by hand | one combined report |
+| reading a whole spec to learn the rules | just that spec's checklist |
+
+You don't have to memorise any of this — Claude picks the right tool on its
+own once Ants Terminal is connected. There's even a counter
+(`token_usage`) that shows how many tokens the tools have saved you so far.
+
+### Living alongside Claude
+
+- **See its status** — the bottom bar shows what Claude is up to right now,
+  plus how full its memory ("context") is getting.
+- **Browse & resume sessions** (Ctrl+Shift+J) — every Claude project and
+  session, with a one-click resume, continue, or fork.
+- **Edit permissions visually** (Ctrl+Shift+L) — manage what Claude is
+  allowed to do without hand-editing a settings file.
+- **Paste a screenshot** (Ctrl+Shift+V) — it's saved automatically and the
+  file path is dropped into the prompt, so you can paste-and-send an image
+  to Claude in one move.
+
+> Power users: the tools are [Model Context Protocol](https://modelcontextprotocol.io)
+> tools in the `mcp__ants__*` namespace, and the hook pack installs with
+> `tools/install-hooks.sh`. Details in [CLAUDE.md](CLAUDE.md).
+
+## It's also a great terminal
+
+Even with Claude out of the picture, it's a fast, capable terminal:
+
+- Opens your normal shell (bash, zsh, …) with full colour and Unicode, and
+  handles full-screen programs like `vim`, `htop`, and `less`.
+- **Programming-font ligatures**, italics, fancy underlines, and emoji.
+- **Inline images** — show pictures and charts right in the terminal.
+- **Find things fast** — search your history (Ctrl+Shift+F), a command
+  palette to run any action (Ctrl+Shift+P), and a "hint mode" that lets you
+  open any link or file path on screen with a keypress (Ctrl+Shift+G).
+- **Click links and file paths** to open them.
+- **Handy editors** — a pop-out box for writing long multi-line commands,
+  and a saved-snippets library for ones you reuse.
+- **Remembers your session** — your scrollback can be restored next launch.
+- **Looks the way you like** — 11 built-in colour themes, adjustable
+  see-through background, and automatic dark/light switching.
+- **Plugins** — extend it with small Lua scripts ([PLUGINS.md](PLUGINS.md)).
+- **Built-in code checker** — Tools → Project Audit runs popular code-quality
+  tools and shows the results in one place.
+
+(Full keyboard shortcuts are in the command palette, Ctrl+Shift+P. The
+list of supported terminal codes is in
+[docs/escape-sequences.md](docs/escape-sequences.md).)
 
 ## Install
 
-### Pre-built AppImage (x86_64 Linux)
+### The easy way (Linux, 64-bit)
 
-The fastest path. Each tagged release ships an x86_64 AppImage on the
-[Releases page](https://github.com/milnet01/ants-terminal/releases/latest):
+Grab the ready-to-run **AppImage** from the
+[Releases page](https://github.com/milnet01/ants-terminal/releases/latest) —
+download it, make it executable, and run it:
 
 ```bash
-# Download the latest AppImage (the URL pins 0.7.92 — update this comment on each release;
-# `/latest/download/` always redirects to the newest tagged AppImage):
-curl -L -o Ants_Terminal-x86_64.AppImage \
-  https://github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-0.7.92-x86_64.AppImage
-chmod +x Ants_Terminal-x86_64.AppImage
-./Ants_Terminal-x86_64.AppImage
+chmod +x Ants_Terminal-*-x86_64.AppImage
+./Ants_Terminal-*-x86_64.AppImage
 ```
 
-Runs on any glibc-2.35+ distro (Ubuntu 22.04+, Debian 12+, Fedora 36+,
-openSUSE Tumbleweed, Arch). Bundles Qt6 + Lua 5.4. To get the desktop
-entry + icons, integrate the AppImage with
-[AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher) —
-optional; the AppImage runs fine without it. Configuration lives in
-the user's home dir (`~/.config/ants-terminal/`) regardless of how the
-binary is launched.
+It works on most recent Linux distributions and bundles everything it needs.
+Your settings live in `~/.config/ants-terminal/`.
 
-For other architectures (aarch64, riscv64) or distro-native packaging
-(`.deb`, `.rpm`, AUR, Flatpak) — build from source per the section
-below; native packaging is tracked in
-[ROADMAP.md § Distribution readiness](ROADMAP.md).
+### Build it yourself
 
-## Building
-
-### Dependencies
-
-| Dependency | Version | Notes |
-|-----------|---------|-------|
-| C++ compiler | C++20 (GCC 12+, Clang 15+) | |
-| Qt6 | 6.2+ | Core, Gui, Widgets, Network, OpenGL, OpenGLWidgets, DBus, Test |
-| CMake | 3.20+ | |
-| libutil | -- | Included with glibc (provides `forkpty`) |
-| Lua 5.4 | 5.4.x | Optional -- enables plugin system |
-| clazy | 1.17+ | Optional -- enables Qt-aware AST checks in the Project Audit dialog |
-| semgrep | 1.0+ | Optional -- enables structural pattern matching (`p/security-audit` + language packs) in the Project Audit dialog |
-| cppcheck / clang-tidy / shellcheck / pylint / bandit / ruff | any | Optional -- each enables the matching ecosystem check if installed |
-
-### Install Dependencies
-
-**openSUSE Tumbleweed:**
-```bash
-sudo zypper install qt6-base-devel cmake gcc-c++ lua54-devel
-```
-
-**Ubuntu / Debian:**
-```bash
-sudo apt install qt6-base-dev libqt6opengl6-dev cmake g++ liblua5.4-dev
-```
-
-**Fedora:**
-```bash
-sudo dnf install qt6-qtbase-devel cmake gcc-c++ lua-devel
-```
-
-**Arch Linux:**
-```bash
-sudo pacman -S qt6-base cmake gcc lua
-```
-
-### Compile
+You'll need a C++ compiler, Qt6, CMake, and (optionally) Lua 5.4:
 
 ```bash
+# openSUSE:  sudo zypper install qt6-base-devel cmake gcc-c++ lua54-devel
+# Ubuntu:    sudo apt install qt6-base-dev libqt6opengl6-dev cmake g++ liblua5.4-dev
+# Fedora:    sudo dnf install qt6-qtbase-devel cmake gcc-c++ lua-devel
+# Arch:      sudo pacman -S qt6-base cmake gcc lua
+
 git clone https://github.com/milnet01/ants-terminal.git
 cd ants-terminal
-cmake -G Ninja -B build
-cmake --build build
+cmake -G Ninja -B build && cmake --build build
+./build/ants-terminal
 ```
 
-Ninja is preferred: the in-tree `JOB_POOLS` cap (compile = max(2, nproc/4),
-link = 1) applies only under Ninja. Building with `make -j$(nproc)`
-bypasses the cap and can OOM on Qt-heavy translation units.
+Use **Ninja** (as above), not plain `make` — it keeps the build from using
+too much memory. To install system-wide: `sudo cmake --install build`.
+More build options are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Tests are built by default. To skip them for a faster main-exe-only
-iteration: `cmake -G Ninja -B build -DANTS_TESTS=OFF`.
+## Settings
 
-#### Faster local builds
+Open **Settings** from the menu, or edit `~/.config/ants-terminal/config.json`
+directly (it's saved so only you can read it). Common things to change:
 
-Five overlapping knobs cut wall-clock and peak RAM on the workstation
-loop. Combine as many as the situation justifies:
+| Setting | What it does |
+|---|---|
+| Theme | Pick from 11 colour schemes (View → Themes) |
+| Font size | 4–48 points |
+| Opacity | How see-through the background is |
+| Scrollback | How much history to keep (up to 1,000,000 lines) |
+| AI assistant | Connect a local or cloud AI for the built-in chat (Ctrl+Shift+A) |
 
-| Pattern | What it does | How to invoke |
-|---|---|---|
-| Target-specific build | Skips the ~11 test binaries (7 GoogleTest bundles + 4 standalone) when only the main app changed. | `cmake --build build --target ants-terminal` |
-| `-DANTS_TESTS=OFF` | Drops every test target from the graph entirely. | `cmake -G Ninja -B build -DANTS_TESTS=OFF` |
-| `-DANTS_CCACHE=ON` *(default)* | Wires `ccache` as the C/C++ compiler launcher when installed; second build of any file is a cache hit (zero compile cost). Pass `-DANTS_CCACHE=OFF` to disable. | `zypper install ccache` (or distro equivalent), then `cmake -G Ninja -B build` |
-| `-DANTS_UNITY_BUILD=ON` | Folds groups of `.cpp` into one TU per CMake target, dropping `cc1plus` instance count (each holds ~600 MiB of Qt headers). **Experimental** — incompatible with the current test-bundle selective-link layout (see ANTS-1553). Use only on main-exe-only builds. | `cmake -G Ninja -B build -DANTS_TESTS=OFF -DANTS_UNITY_BUILD=ON` |
-| `fast` preset | Bundles ccache + per-lib PCH in `build-fast/`. | `cmake --preset=fast && cmake --build --preset=fast` |
+## Privacy & security
 
-The `fast` preset is the recommended starting point for hot-loop work
-once your workstation has `ccache` installed. It deliberately leaves
-Unity builds off until ANTS-1553 ships.
+- Your settings file and any saved keys are readable only by you.
+- It makes **no network connections** unless you set up the optional AI chat.
+- The link Claude Code talks to is locked to your user account.
+- Plugins run in a locked-down sandbox and can't freeze the terminal.
+- Full details in [SECURITY.md](SECURITY.md).
 
-#### Constrained hardware: workstation preset
+## For developers
 
-For 8–16 GiB hosts (laptops, modest workstations) — or any time the
-build is competing with a heavy desktop session — the `JOB_POOLS`
-heuristic of `nproc/4` concurrent compiles can still feel stuttery.
-`CMakePresets.json` ships a `workstation` preset hard-capped at `-j3`:
+Ants Terminal is a from-scratch VT100/xterm terminal in C++/Qt6 with no
+terminal-library dependencies. The architecture, the per-subsystem map (also
+served live via the `subsystem` MCP tool), and the build/MCP authoring
+contracts live in [CLAUDE.md](CLAUDE.md) and
+[docs/standards/](docs/standards/). Specs are in [docs/specs/](docs/specs/),
+decision records in [docs/decisions/](docs/decisions/).
+
+Before contributing, read [CONTRIBUTING.md](CONTRIBUTING.md) and
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md); report security issues via
+[SECURITY.md](SECURITY.md).
 
 ```bash
-cmake --preset=workstation
-cmake --build --preset=workstation
-ctest --preset=workstation
+cmake -G Ninja -B build && cmake --build build && ctest --test-dir build --output-on-failure
 ```
-
-#### Last-resort: memory-bounded build
-
-If after a kernel update or new Qt major release a `cmake --build`
-ever oversubscribes again, `tools/safe-build.sh` wraps the build in a
-systemd-user scope with `MemoryMax=24G` + `MemorySwapMax=8G`. The
-kernel kills the *build* if the cap is exceeded, not the active
-session.
-
-```bash
-tools/safe-build.sh                 # builds ./build with defaults
-tools/safe-build.sh build-workstation
-```
-
-### Run
-
-```bash
-./ants-terminal
-```
-
-### Tests
-
-```bash
-ctest --test-dir build --output-on-failure
-```
-
-Runs `tests/audit_self_test.sh` (audit-rule grep regression tests
-against `tests/audit_fixtures/`) plus the GoogleTest feature-bundle
-suites — `test_vt`, `test_chrome`, `test_claude`, `test_audit`,
-`test_dialogs`, `test_lua`, `test_core` — registered as individual
-ctest entries by `gtest_discover_tests`. Total ≈ 1382 entries (run `ctest -N` for the current count). Use
-`ctest -L features` to limit to the bundle entries; `ctest -R 'Suite\.Name'`
-filters to a single TEST block.
-
-### Install System-wide
-
-```bash
-sudo cmake --install build   # installs to /usr/local by default
-```
-
-That picks up every install rule in `CMakeLists.txt`:
-
-| Path | What |
-|------|------|
-| `<prefix>/bin/ants-terminal` | Binary |
-| `<prefix>/share/applications/org.ants.Terminal.desktop` | App-menu entry |
-| `<prefix>/share/metainfo/org.ants.Terminal.metainfo.xml` | AppStream metadata (GNOME Software, KDE Discover) |
-| `<prefix>/share/icons/hicolor/<size>/apps/ants-terminal.png` | Icon at six sizes (16/32/48/64/128/256) |
-| `<prefix>/share/man/man1/ants-terminal.1` | Section-1 manual page (`man ants-terminal`) |
-| `<prefix>/share/bash-completion/completions/ants-terminal` | Bash tab-completion |
-| `<prefix>/share/zsh/site-functions/_ants-terminal` | Zsh tab-completion |
-| `<prefix>/share/fish/vendor_completions.d/ants-terminal.fish` | Fish tab-completion |
-
-Distros should stage into a build root with `DESTDIR=…` (all rules use
-`GNUInstallDirs`, so Debian/Fedora/openSUSE/Arch packaging tooling
-works without patches).
-
-### Desktop Entry for development (run uninstalled)
-
-If you prefer to run straight out of the build tree without a
-system install, `ants-terminal.desktop.in` is a template that points at
-your checkout via `launch.sh`:
-
-```bash
-# From the repo root:
-sed "s|@INSTALL_DIR@|$PWD|" ants-terminal.desktop.in > ants-terminal.desktop
-cp ants-terminal.desktop ~/.local/share/applications/
-cp assets/ants-terminal-256.png ~/.local/share/icons/hicolor/256x256/apps/ants-terminal.png
-```
-
-The generated `ants-terminal.desktop` is git-ignored since it contains a
-machine-specific path. The packaged entry under `packaging/linux/` is
-the one distros ship.
-
----
-
-## Keyboard Shortcuts
-
-### General
-
-| Shortcut | Action |
-|----------|--------|
-| Ctrl+Shift+N | New window |
-| Ctrl+Shift+Q | Quit |
-| Ctrl+Shift+P | Command palette |
-
-### Editing
-
-| Shortcut | Action |
-|----------|--------|
-| Shift+Enter | Insert literal newline (multi-line editing) |
-| Ctrl+Shift+C | Copy selection to clipboard |
-| Ctrl+Shift+V | Paste from clipboard (text or image with auto-save) |
-| Ctrl+Shift+U | Clear entire input line |
-| Middle-click | Paste X11 primary selection |
-| Alt+Drag | Rectangular/column selection |
-| Ctrl+Shift+Enter | Open scratchpad (multi-line command editor) |
-| Ctrl+Enter | Send scratchpad command (inside scratchpad) |
-
-### Navigation
-
-| Shortcut | Action |
-|----------|--------|
-| Mouse wheel | Scroll through history |
-| Shift+Page Up/Down | Scroll by screen |
-| Shift+Home/End | Scroll to top/bottom |
-| Ctrl+Shift+Up/Down | Jump to prev/next prompt (OSC 133) |
-| Ctrl+Shift+B | Toggle line bookmark |
-| Ctrl+Alt+Down / Ctrl+Alt+Up | Next/previous bookmark |
-
-### Search
-
-| Shortcut | Action |
-|----------|--------|
-| Ctrl+Shift+F | Open search bar |
-| Enter | Next match |
-| Shift+Enter | Previous match |
-| Escape | Close search bar |
-
-### View
-
-| Shortcut | Action |
-|----------|--------|
-| Ctrl+= | Zoom in |
-| Ctrl+- | Zoom out |
-| Ctrl+0 | Reset zoom (11pt) |
-| Ctrl+Shift+M | Center window on screen |
-
-### Tabs & Splits
-
-| Shortcut | Action |
-|----------|--------|
-| Ctrl+Shift+T | New tab |
-| Ctrl+Shift+W | Close tab |
-| Ctrl+Shift+Z | Undo close tab |
-| Ctrl+PgDown / Ctrl+PgUp | Next / previous tab |
-| Ctrl+Shift+E | Split horizontal |
-| Ctrl+Shift+O | Split vertical |
-| Ctrl+Shift+X | Close focused pane |
-| Ctrl+Shift+I | Broadcast input across panes |
-
-### Productivity
-
-| Shortcut | Action |
-|----------|--------|
-| Ctrl+Shift+Alt+C | Rich copy (with ANSI formatting) |
-| Ctrl+Alt+O | Copy last command output |
-| Ctrl+Alt+R | Rerun last command |
-| Ctrl+, | Preferences |
-| Ctrl+Shift+F12 | Performance dialog |
-
-### Tools
-
-| Shortcut | Action |
-|----------|--------|
-| Ctrl+Shift+A | AI Assistant |
-| Ctrl+Shift+S | SSH Manager |
-| Ctrl+Shift+R | Toggle session recording |
-| Ctrl+Shift+G | Extended hints mode (URLs, SHAs, IPs, emails) |
-| Ctrl+Shift+; | Command snippets library |
-| Ctrl+Shift+. | Toggle command output fold |
-| Ctrl+Shift+J | Claude Code Projects & Sessions |
-| Ctrl+Shift+L | Claude Code Allowlist Editor |
-
----
-
-## Themes
-
-Themes are selectable from the **View > Themes** menu. Each theme defines:
-
-- Primary and secondary background colors
-- Primary and secondary text colors
-- Accent and border colors
-- Cursor color
-- Full ANSI 16-color palette (colors 0-15)
-
----
-
-## Architecture
-
-```
-┌──────────┐     ┌──────────┐     ┌──────────────┐     ┌────────────────┐
-│ Keyboard │────>│   PTY    │────>│   Shell      │────>│   PTY          │
-│ / Mouse  │     │ (master) │     │ (bash/zsh)   │     │ (master read)  │
-└──────────┘     └──────────┘     └──────────────┘     └───────┬────────┘
-                                                               │
-                                                               v
-                                                        ┌──────────┐
-                                                        │ VtParser │
-                                                        │ State    │
-                                                        │ machine  │
-                                                        └────┬─────┘
-                                                             │ VtAction
-                                                             v
-                                                      ┌──────────────┐
-                                                      │TerminalGrid  │
-                                                      │ Cells +      │
-                                                      │ scrollback   │
-                                                      └──────┬───────┘
-                                                             │
-                                          ┌──────────────────┼──────────────────┐
-                                          v                                     v
-                                   ┌─────────────────────┐               ┌──────────┐
-                                   │ QPainter +          │               │ Session  │
-                                   │ QTextLayout/HarfBuzz│               │ Manager  │
-                                   └─────────────────────┘               └──────────┘
-```
-
-### Components
-
-| Component | File | Responsibility |
-|-----------|------|----------------|
-| **Pty** | `ptyhandler.h/cpp` | Spawns shell via `forkpty()`, `QSocketNotifier`-driven I/O, PTY resize |
-| **VtParser** | `vtparser.h/cpp` | DEC VT100/xterm state machine, UTF-8 decoding, emits VtActions |
-| **TerminalGrid** | `terminalgrid.h/cpp` | Cell buffer, scrollback, cursor, ANSI colors, alt screen, Sixel/Kitty |
-| **TerminalWidget** | `terminalwidget.h/cpp` | QPainter+QTextLayout rendering, input, selection, search, URLs |
-| **MainWindow** | `mainwindow.h/cpp` | Window chrome, menus, themes, config, dialogs |
-| **AiDialog** | `aidialog.h/cpp` | AI chat dialog, OpenAI API, streaming SSE |
-| **SshDialog** | `sshdialog.h/cpp` | SSH bookmark manager, connection via PTY |
-| **SessionManager** | `sessionmanager.h/cpp` | Scrollback serialization, save/restore |
-| **LuaEngine** | `luaengine.h/cpp` | Embedded Lua 5.4, sandboxed API, event handlers |
-| **PluginManager** | `pluginmanager.h/cpp` | Plugin discovery, loading, lifecycle |
-| **CommandPalette** | `commandpalette.h/cpp` | Searchable action overlay (Ctrl+Shift+P) |
-| **TitleBar** | `titlebar.h/cpp` | Custom frameless title bar with drag support |
-| **KwinPositionTracker** | `kwinpositiontracker.h/cpp` | Window position tracking via KWin D-Bus (renamed from XcbPositionTracker in ANTS-1045) |
-| **ClaudeIntegration** | `claudeintegration.h/cpp` | Claude Code process detection, status, hooks |
-| **ClaudeProjects** | `claudeprojects.h/cpp` | Project/session browser and resume dialog |
-| **ClaudeAllowlist** | `claudeallowlist.h/cpp` | Permission rule editor for Claude settings |
-| **ClaudeTranscript** | `claudetranscript.h/cpp` | Session transcript viewer |
-| **AuditDialog** | `auditdialog.h/cpp` | Static analysis panel, SARIF/HTML export, baseline diff, trend tracking |
-| **Themes** | `themes.h/cpp` | 11 built-in themes with ANSI palette overrides |
-| **Config** | `config.h/cpp` | JSON config persistence (0600 perms) |
-
----
-
-## Supported Escape Sequences
-
-### CSI Sequences (`ESC [`)
-
-| Code | Name | Description |
-|------|------|-------------|
-| A | CUU | Cursor up |
-| B | CUD | Cursor down |
-| C | CUF | Cursor forward |
-| D | CUB | Cursor backward |
-| E | CNL | Cursor next line |
-| F | CPL | Cursor previous line |
-| G | CHA | Cursor horizontal absolute |
-| H | CUP | Cursor position |
-| J | ED | Erase in display (0/1/2/3) |
-| K | EL | Erase in line (0/1/2) |
-| L | IL | Insert lines |
-| M | DL | Delete lines |
-| P | DCH | Delete characters |
-| S | SU | Scroll up |
-| T | SD | Scroll down |
-| X | ECH | Erase characters |
-| @ | ICH | Insert blank characters |
-| d | VPA | Vertical position absolute |
-| f | HVP | Horizontal/vertical position |
-| m | SGR | Select graphic rendition |
-| c | DA | Device attributes (DA1/DA2 responses) |
-| n | DSR | Device status report |
-| r | DECSTBM | Set scrolling region |
-| s | DECSC | Save cursor position |
-| u | DECRC | Restore cursor position |
-
-### Private Modes (`ESC [ ? ... h/l`)
-
-| Mode | Description |
-|------|-------------|
-| 1 | Application cursor keys |
-| 6 | Origin mode |
-| 7 | Auto-wrap mode |
-| 25 | Cursor visibility |
-| 47/1047/1049 | Alt screen buffer |
-| 1000 | Mouse button reporting |
-| 1002 | Mouse button+motion reporting |
-| 1003 | Mouse any-motion reporting |
-| 1004 | Focus reporting |
-| 1006 | SGR mouse encoding |
-| 2004 | Bracketed paste mode |
-| 2026 | Synchronized output |
-
-### OSC Sequences (`ESC ]`)
-
-| Code | Description |
-|------|-------------|
-| 0/2 | Set window title |
-| 8 | Hyperlinks (open/close explicit links) |
-| 9 | Desktop notification (body only) |
-| 52 | Clipboard access (write only) |
-| 133 | Shell integration (A/B/C/D markers) |
-| 777 | Desktop notification (title + body) |
-| 1337 | iTerm2 inline images |
-| 9;4 | Progress indicator (state + percent) |
-
-### DCS / APC Sequences
-
-| Protocol | Description |
-|----------|-------------|
-| DCS (Sixel) | Sixel graphics with palette, RLE, raster attributes |
-| APC (Kitty) | Kitty graphics protocol with chunked transmission |
-
----
-
-## Configuration
-
-Config is stored at `~/.config/ants-terminal/config.json` with **0600** file permissions.
-
-```json
-{
-    "theme": "Dark",
-    "font_size": 11,
-    "opacity": 1.0,
-    "scrollback_lines": 50000,
-    "auto_copy_on_select": true,
-    "session_logging": false,
-    "background_blur": false,
-    "session_persistence": true,
-    "image_paste_dir": "",
-    "editor_command": "",
-    "ai_endpoint": "",
-    "ai_api_key": "",
-    "ai_model": "llama3",
-    "ai_context_lines": 50,
-    "ai_enabled": false,
-    "ssh_bookmarks": [],
-    "plugin_dir": "",
-    "enabled_plugins": [],
-    "claude_project_dirs": [],
-    "keybindings": {},
-    "snippets": [],
-    "auto_profile_rules": [],
-    "badge_text": "",
-    "auto_color_scheme": false,
-    "dark_theme": "Dark",
-    "light_theme": "Light"
-}
-```
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `theme` | string | `"Dark"` | Active theme name |
-| `font_size` | int | `11` | Font size in points (4-48) |
-| `opacity` | double | `1.0` | Terminal-area opacity (0.1-1.0); chrome stays opaque |
-| `scrollback_lines` | int | `50000` | Max scrollback lines (1000-1000000) |
-| `auto_copy_on_select` | bool | `true` | Copy to clipboard on text selection |
-| `session_logging` | bool | `false` | Log raw session to file |
-| `background_blur` | bool | `false` | Enable KWin background blur |
-| `session_persistence` | bool | `true` | Save/restore scrollback across restarts |
-| `image_paste_dir` | string | `""` | Image paste save directory |
-| `editor_command` | string | `""` | Editor for file path clicking |
-| `ai_endpoint` | string | `""` | OpenAI-compatible API URL |
-| `ai_api_key` | string | `""` | API key for AI endpoint |
-| `ai_model` | string | `"llama3"` | LLM model to use |
-| `ai_context_lines` | int | `50` | Lines of terminal output sent to AI |
-| `ai_enabled` | bool | `false` | Enable AI assistant features |
-| `ssh_bookmarks` | array | `[]` | Saved SSH connection bookmarks |
-| `plugin_dir` | string | `""` | Lua plugin directory |
-| `enabled_plugins` | array | `[]` | List of enabled plugin names |
-| `plugin_grants` | object | `{}` | Per-plugin permission grants (set via Settings → Plugins) |
-| `claude_project_dirs` | array | `[]` | Directories for Claude Code projects |
-| `keybindings` | object | `{}` | Custom keybindings (action -> key) |
-| `snippets` | array | `[]` | Saved command snippets with placeholders |
-| `auto_profile_rules` | array | `[]` | Auto profile switch rules |
-| `badge_text` | string | `""` | Watermark text in terminal background |
-| `auto_color_scheme` | bool | `false` | Auto dark/light theme switching |
-| `dark_theme` | string | `"Dark"` | Theme for dark system mode |
-| `light_theme` | string | `"Light"` | Theme for light system mode |
-
----
-
-## Plugins
-
-See [**PLUGINS.md**](PLUGINS.md) for the full plugin-authoring guide,
-API reference, event list, sandbox boundaries, resource limits, and
-forward-compatibility notes. Quick-start:
-
-1. Create a directory: `~/.config/ants-terminal/plugins/my-plugin/`
-2. Create `init.lua`:
-
-```lua
-ants.log("My plugin loaded!")
-
-ants.on("prompt", function(data)
-    ants.notify("Prompt", "New command prompt")
-end)
-```
-
-3. Optionally create `manifest.json`:
-
-```json
-{
-    "name": "My Plugin",
-    "version": "1.0.0",
-    "description": "Does cool things",
-    "author": "Your Name"
-}
-```
-
-### Plugin API (summary)
-
-| Function | Description |
-|----------|-------------|
-| `ants.on(event, callback)` | Register event handler |
-| `ants.send(text)` | Send text to terminal PTY |
-| `ants.notify(title, message)` | Show desktop notification |
-| `ants.get_output(n)` | Get last N lines of output |
-| `ants.get_cwd()` | Get current working directory |
-| `ants.set_status(text)` | Set status bar text |
-| `ants.log(message)` | Log message to status bar |
-
-Full signatures, return values, examples, and planned additions (0.7
-triggers, 0.8 marketplace) live in [PLUGINS.md](PLUGINS.md).
-
-### Events
-
-| Event | Data | Description |
-|-------|------|-------------|
-| `output` | Raw bytes | PTY data received |
-| `line` | Line text | Complete line received |
-| `prompt` | -- | OSC 133 prompt detected |
-| `keypress` | Key name | Before key sent to PTY (return false to cancel) |
-| `title_changed` | Title | Window title changed |
-| `tab_created` | -- | New tab created |
-| `tab_closed` | -- | Tab closed |
-
----
-
-## Security
-
-- **Config file permissions**: created with `0600` (owner read/write only)
-- **No network access** by default -- AI assistant requires explicit configuration
-- **OSC 52 clipboard**: write-only -- read disabled
-- **Lua sandbox**: dangerous functions removed, 100,000-instruction timeout (pcall-resistant via sticky-kill latch), 10MB memory limit
-- **SSH**: no password storage, interactive authentication only
-- **AI**: API keys stored in 0600-permission config, 30-second network timeout
-- **Session files**: bounds-validated on load, 100MB compressed size limit
-- **Buffer limits**: CSI params capped at 32, images capped at 100+200, combining chars at 8
-- **UTF-8 security**: overlong encodings, surrogates, out-of-range rejected
-- **Bracketed paste**: prevents clipboard injection attacks
-
----
-
-## Project Structure
-
-```
-ants-terminal/
-├── CMakeLists.txt              # Build configuration
-├── README.md                   # This file
-├── LICENSE                     # MIT License
-├── CLAUDE.md                   # Development context
-├── ROADMAP.md                  # Planned work (ROADMAP_FORMAT v1)
-├── CHANGELOG.md                # Keep-a-Changelog history
-├── PLUGINS.md                  # Plugin author contract
-├── launch.sh                   # Self-locating launcher wrapper
-├── ants-terminal.desktop.in    # Desktop entry template (@INSTALL_DIR@)
-├── assets/                     # App icons (16-256px PNGs)
-├── packaging/linux/            # Spec-compliant .desktop + AppStream metainfo
-├── docs/standards/             # Shareable v1 standards bundle (coding · documentation · testing · commits + roadmap-format sub-spec) plus project-local extras (see docs/standards/README.md for the full list)
-├── docs/decisions/             # Architecture Decision Records (Michael Nygard format)
-├── docs/specs/                 # Per-feature spec drafts (spec-first authoring)
-├── docs/journal/               # Per-phase outcomes / session notes
-├── docs/roadmap/               # Rotated/archived minor sections (0.5.x, 0.6.x) per ANTS-1125
-├── docs/screenshots/           # README and dialog screenshots
-└── src/
-    ├── main.cpp                # Entry point, OpenGL format setup
-    ├── mainwindow.h/cpp        # Window, menus, themes, dialogs
-    ├── titlebar.h/cpp          # Custom frameless title bar
-    ├── terminalwidget.h/cpp    # Rendering, input, selection, search
-    ├── terminalgrid.h/cpp      # Cell grid, scrollback, VtAction processing
-    ├── vtparser.h/cpp          # VT100/xterm state machine, UTF-8 decoder
-    ├── ptyhandler.h/cpp        # PTY via forkpty(), QSocketNotifier I/O
-    ├── themes.h/cpp            # 11 built-in themes with ANSI palettes
-    ├── config.h/cpp            # JSON config persistence (0600 perms)
-    ├── commandpalette.h/cpp    # Searchable command palette overlay
-    ├── sessionmanager.h/cpp    # Session save/restore
-    ├── aidialog.h/cpp          # AI assistant (OpenAI API)
-    ├── sshdialog.h/cpp         # SSH bookmark manager
-    ├── kwinpositiontracker.h/cpp # KWin D-Bus window position tracking
-    ├── claudeintegration.h/cpp # Claude Code status, hooks, MCP
-    ├── claudeprojects.h/cpp    # Claude Code project/session browser
-    ├── claudeallowlist.h/cpp   # Claude Code permission editor
-    ├── claudetranscript.h/cpp  # Claude Code transcript viewer
-    ├── auditdialog.h/cpp       # Project audit panel + SARIF/HTML export
-    ├── luaengine.h/cpp         # Lua 5.4 scripting engine
-    └── pluginmanager.h/cpp     # Plugin discovery + loading
-
-tests/
-├── audit_self_test.sh         # CTest regression harness for audit rule patterns
-├── audit_fixtures/            # Per-rule bad.*/good.* fixture pairs with @expect markers
-├── features/                  # Feature-conformance test suite (spec.md + test_*.cpp per feature)
-├── perf/                      # Performance / stress tests
-├── coverage-map.json          # Maps source files → ctest -R patterns for focused_test MCP tool
-├── lsan-suppressions.txt      # LeakSanitizer suppression rules
-└── _support/                  # Shared test utilities and bundle main stubs
-```
-
----
-
-## Contributing
-
-Contributions are welcome! This project is built from scratch with no terminal library dependencies, so understanding the VT100 state machine and PTY layer is helpful context.
-
-Before contributing, please read [`CONTRIBUTING.md`](CONTRIBUTING.md) (build + PR conventions) and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) (Contributor Covenant 2.1). Security issues and conduct reports go through the private channels documented in [`SECURITY.md`](SECURITY.md) and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) respectively — not public GitHub issues.
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Build and test: `cmake -G Ninja -B build && cmake --build build && ctest --test-dir build --output-on-failure` (Ninja honours the in-tree job-pool cap; plain Make does not. For constrained hardware use `cmake --preset=workstation`.)
-5. Submit a pull request
-
----
 
 ## License
 
-[MIT License](LICENSE) -- Copyright (c) 2026 Ants Terminal Contributors
+[MIT License](LICENSE) — Copyright (c) 2026 Ants Terminal Contributors

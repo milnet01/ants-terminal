@@ -284,6 +284,14 @@ for security-relevant changes.
 
 ### Changed
 
+- **README rewritten as a plain-language Claude Code companion (ANTS-1298).**
+  The front page dropped from ~1100 lines to ~190, rewritten in everyday
+  language that leads with *why* it pairs with Claude Code (it answers
+  Claude's questions itself to save tokens/money) and what its 58 built-in
+  tools do for you, before the terminal feature list. The escape-sequence
+  reference table moved to `docs/escape-sequences.md`; deep build/architecture
+  detail now links to CLAUDE.md / docs rather than being inlined.
+
 - **Leaner Claude sessions — the per-subsystem module map moved out of
   CLAUDE.md (ANTS-1292).** The ~130-line catalogue describing each `src/`
   subsystem used to sit in CLAUDE.md, which Claude Code reloads into every
