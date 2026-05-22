@@ -10,10 +10,16 @@
 // established by ANTS-1123.
 namespace ants::regex {
 
-// Conservative catastrophic-backtracking shape detector. Matches
-// quantifier-under-quantifier (`(.+)+`) and alternation-under-quantifier
-// (`(a|b)+`) groups. Errs toward rejecting safe-but-suspicious patterns rather
-// than admitting adversarial ones.
+// BEST-EFFORT catastrophic-backtracking shape detector (ANTS-1758).
+// Recognises exactly two grouped shapes: quantifier-under-quantifier
+// (`(.+)+`) and alternation-under-quantifier (`(a|b)+`). It does NOT
+// catch every ReDoS shape — notably ungrouped consecutive quantified
+// atoms (`a+a+`, `\d+\d+`) and some multi-level nesting slip through.
+// Comprehensive static ReDoS detection is intractable with a regex, so
+// this is a heuristic warning pre-filter only; the actual runtime
+// backstop is `hardenUserRegex`'s `(*LIMIT_MATCH)` prefix, which aborts
+// a slow match in milliseconds regardless of shape. Treat a `false`
+// result as "no obvious red flag", not "proven safe".
 bool isCatastrophicRegex(const QString &pattern);
 
 // Prefix a user-supplied pattern with PCRE2's inline `(*LIMIT_MATCH=100000)` so

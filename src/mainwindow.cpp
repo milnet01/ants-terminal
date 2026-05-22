@@ -988,75 +988,7 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // Quake mode (from config or constructor flag)
     if (quakeMode || m_config.quakeMode()) {
         setupQuakeMode();
-
-        // Two-path activation: an in-app QShortcut that fires when Ants
-        // has focus, plus a Freedesktop Portal GlobalShortcuts binding
-        // that fires whether or not Ants has focus (0.6.39). The in-app
-        // path from 0.6.38 stays as the always-on fallback because the
-        // portal is only implemented by some backends (KDE Plasma 6,
-        // xdg-desktop-portal-hyprland, -wlr) — GNOME Shell and the
-        // X11-on-legacy-portal cases fall back to the in-app binding.
-        //
-        // Double-fire debounce: on focused systems where both paths
-        // deliver the same key press, we'd hide-then-show (visible
-        // flicker). The in-app lambda and the portal lambda both stamp
-        // m_lastQuakeToggleMs and reject if the previous stamp is less
-        // than 500 ms old. QShortcut is in-process and fires first; the
-        // portal's D-Bus round-trip makes its event arrive second, so
-        // the debounce drops the portal's duplicate.
-        QString hotkeyStr = m_config.quakeHotkey();
-        if (!hotkeyStr.isEmpty()) {
-            QKeySequence hotkey(hotkeyStr);
-            if (!hotkey.isEmpty()) {
-                auto *sc = new QShortcut(hotkey, this);
-                sc->setContext(Qt::ApplicationShortcut);
-                connect(sc, &QShortcut::activated, this, [this]() {
-                    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-                    if (now - m_lastQuakeToggleMs < 500) return;
-                    m_lastQuakeToggleMs = now;
-                    toggleQuakeVisibility();
-                });
-            }
-        }
-
-        // Portal binding (only when xdg-desktop-portal is on the bus).
-        // Request the same hotkey the user configured — the portal's
-        // preferred_trigger is advisory, and on first bind KDE's
-        // backend shows a system-settings prompt that takes our
-        // suggestion as the default. Translation from Qt's
-        // "Ctrl+Shift+`" to the portal's "CTRL+SHIFT+grave" is
-        // best-effort; unrecognised keys pass through unchanged and
-        // the user adjusts in System Settings if needed.
-        if (!hotkeyStr.isEmpty() && GlobalShortcutsPortal::isAvailable()) {
-            m_gsPortal = new GlobalShortcutsPortal(this);
-            connect(m_gsPortal, &GlobalShortcutsPortal::activated, this,
-                    [this](const QString &id) {
-                        if (id != QStringLiteral("toggle-quake")) return;
-                        const qint64 now = QDateTime::currentMSecsSinceEpoch();
-                        if (now - m_lastQuakeToggleMs < 500) return;
-                        m_lastQuakeToggleMs = now;
-                        toggleQuakeVisibility();
-                    });
-            // ANTS-1142 — listen to sessionFailed with a status-bar
-            // notification fallback. Pre-fix code emitted
-            // sessionFailed to no listener — on GNOME (where
-            // CreateSession succeeds but BindShortcuts fails) the
-            // user just saw "F12 doesn't work" with no diagnostic.
-            // Surface it once, then move on (sessionFailed is
-            // terminal-per-process per the post-ANTS-1142 contract).
-            connect(m_gsPortal, &GlobalShortcutsPortal::sessionFailed,
-                    this, [this](const QString &reason) {
-                qWarning("GlobalShortcutsPortal::sessionFailed: %s",
-                         qUtf8Printable(reason));
-                showStatusMessage(
-                    tr("Global hotkey unavailable — %1").arg(reason),
-                    6000);
-            });
-            m_gsPortal->bindShortcut(
-                QStringLiteral("toggle-quake"),
-                tr("Toggle Ants Terminal drop-down"),
-                qtKeySequenceToPortalTrigger(hotkeyStr));
-        }
+        wireQuakeHotkey();
     }
 
     // Hot-reload: watch config.json for external changes
@@ -1952,9 +1884,14 @@ void MainWindow::setupSettingsMenu() {
                 if (m_broadcastAction)
                     m_broadcastAction->setChecked(m_broadcastMode);
 
-                // Update quake mode
-                if (m_config.quakeMode() && !m_quakeMode)
+                // Update quake mode. Wire the hotkey too — pre-ANTS-1738
+                // this site called only setupQuakeMode(), so enabling Quake
+                // via Preferences gave a drop-down with no working hotkey
+                // until the next restart.
+                if (m_config.quakeMode() && !m_quakeMode) {
                     setupQuakeMode();
+                    wireQuakeHotkey();
+                }
 
 #ifdef ANTS_LUA_PLUGINS
                 // 0.6.9 — let plugins react to settings changes (re-read their
@@ -3886,18 +3823,22 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("get_cwd",
         ClaudeIntegration::CallerCwdContract::TabSpecific,
         [this](const QJsonObject &args) -> QString {
-            // ANTS-1391: if the caller passes its own cwd, echo it back.
-            // get_cwd's contract is "the terminal's cwd"; without
-            // caller_cwd that's the focused-tab cwd (which may not be
-            // the caller's tab in a multi-Ants-tab setup).
-            const QString callerRaw =
+            // ANTS-1391: get_cwd's contract is "the terminal's cwd". The
+            // caller passes caller_cwd so we resolve the right tab in a
+            // multi-Ants-tab setup; empty caller_cwd → focused tab.
+            // ANTS-1749 — route through terminalForCaller (like the
+            // sibling tab-specific tools) so we only ever return an OPEN
+            // tab's actual shellCwd(). Pre-fix this canonicalised and
+            // echoed back ANY existing path the caller supplied — an
+            // info-disclosure smell (confirms arbitrary path existence +
+            // leaks the symlink-resolved form) that the ANTS-1295/-1392
+            // tab-membership contract is meant to prevent.
+            const QString callerCwd =
                 args.value(QStringLiteral("caller_cwd")).toString();
-            if (!callerRaw.isEmpty()) {
-                const QString canonical =
-                    QFileInfo(callerRaw).canonicalFilePath();
-                if (!canonical.isEmpty()) return canonical;
+            if (auto *t = terminalForCaller(callerCwd)) {
+                const QString cwd = t->shellCwd();
+                if (!cwd.isEmpty()) return cwd;
             }
-            if (auto *t = focusedTerminal()) return t->shellCwd();
             return QDir::currentPath();
         });
     m_claudeIntegration->registerToolProvider("get_last_command",
@@ -5419,6 +5360,83 @@ QString qtKeySequenceToPortalTrigger(const QString &qtHotkey) {
     return out.join(QLatin1Char('+'));
 }
 }  // anonymous
+
+void MainWindow::wireQuakeHotkey() {
+    // Two-path activation: an in-app QShortcut that fires when Ants
+    // has focus, plus a Freedesktop Portal GlobalShortcuts binding
+    // that fires whether or not Ants has focus (0.6.39). The in-app
+    // path from 0.6.38 stays as the always-on fallback because the
+    // portal is only implemented by some backends (KDE Plasma 6,
+    // xdg-desktop-portal-hyprland, -wlr) — GNOME Shell and the
+    // X11-on-legacy-portal cases fall back to the in-app binding.
+    //
+    // Double-fire debounce: on focused systems where both paths
+    // deliver the same key press, we'd hide-then-show (visible
+    // flicker). The in-app lambda and the portal lambda both stamp
+    // m_lastQuakeToggleMs and reject if the previous stamp is less
+    // than 500 ms old. QShortcut is in-process and fires first; the
+    // portal's D-Bus round-trip makes its event arrive second, so
+    // the debounce drops the portal's duplicate.
+    //
+    // Idempotent: the !m_gsPortal guard means a second call (e.g. the
+    // Settings toggle after the constructor already wired it) won't
+    // double-bind the portal. The constructor and the toggle paths are
+    // mutually exclusive in practice (the toggle's !m_quakeMode guard),
+    // but the helper stays safe if a future caller breaks that.
+    QString hotkeyStr = m_config.quakeHotkey();
+    if (!hotkeyStr.isEmpty()) {
+        QKeySequence hotkey(hotkeyStr);
+        if (!hotkey.isEmpty()) {
+            auto *sc = new QShortcut(hotkey, this);
+            sc->setContext(Qt::ApplicationShortcut);
+            connect(sc, &QShortcut::activated, this, [this]() {
+                const qint64 now = QDateTime::currentMSecsSinceEpoch();
+                if (now - m_lastQuakeToggleMs < 500) return;
+                m_lastQuakeToggleMs = now;
+                toggleQuakeVisibility();
+            });
+        }
+    }
+
+    // Portal binding (only when xdg-desktop-portal is on the bus).
+    // Request the same hotkey the user configured — the portal's
+    // preferred_trigger is advisory, and on first bind KDE's
+    // backend shows a system-settings prompt that takes our
+    // suggestion as the default. Translation from Qt's
+    // "Ctrl+Shift+`" to the portal's "CTRL+SHIFT+grave" is
+    // best-effort; unrecognised keys pass through unchanged and
+    // the user adjusts in System Settings if needed.
+    if (!hotkeyStr.isEmpty() && !m_gsPortal && GlobalShortcutsPortal::isAvailable()) {
+        m_gsPortal = new GlobalShortcutsPortal(this);
+        connect(m_gsPortal, &GlobalShortcutsPortal::activated, this,
+                [this](const QString &id) {
+                    if (id != QStringLiteral("toggle-quake")) return;
+                    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+                    if (now - m_lastQuakeToggleMs < 500) return;
+                    m_lastQuakeToggleMs = now;
+                    toggleQuakeVisibility();
+                });
+        // ANTS-1142 — listen to sessionFailed with a status-bar
+        // notification fallback. Pre-fix code emitted
+        // sessionFailed to no listener — on GNOME (where
+        // CreateSession succeeds but BindShortcuts fails) the
+        // user just saw "F12 doesn't work" with no diagnostic.
+        // Surface it once, then move on (sessionFailed is
+        // terminal-per-process per the post-ANTS-1142 contract).
+        connect(m_gsPortal, &GlobalShortcutsPortal::sessionFailed,
+                this, [this](const QString &reason) {
+            qWarning("GlobalShortcutsPortal::sessionFailed: %s",
+                     qUtf8Printable(reason));
+            showStatusMessage(
+                tr("Global hotkey unavailable — %1").arg(reason),
+                6000);
+        });
+        m_gsPortal->bindShortcut(
+            QStringLiteral("toggle-quake"),
+            tr("Toggle Ants Terminal drop-down"),
+            qtKeySequenceToPortalTrigger(hotkeyStr));
+    }
+}
 
 void MainWindow::setupQuakeMode() {
     m_quakeMode = true;

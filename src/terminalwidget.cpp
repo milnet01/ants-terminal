@@ -117,34 +117,31 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     // Initial grid
     m_grid = std::make_unique<TerminalGrid>(24, 80);
 
-    // Response callback: DA, CPR replies go back to PTY; OSC 52 sets clipboard.
+    // Response callback: DA, CPR, DSR replies go back to PTY only.
     // Under the threaded parse path (0.7.0), PTY writes from this callback cross
-    // the GUI → worker thread boundary via ptyWrite(); clipboard stays on GUI.
+    // the GUI → worker thread boundary via ptyWrite().
     m_grid->setResponseCallback([this](const std::string &response) {
-        // OSC 52 sentinel envelope: "\0OSC52:<selChar>:<decoded-bytes>"
-        // where selChar is 'c' (system clipboard) or 'p' (primary
-        // selection / X11 middle-click buffer). ANTS-1201 — pre-fix
-        // shipped "\0OSC52:<bytes>" with no selection field so every
-        // OSC 52 hit the system clipboard regardless of the shell's
-        // request; modern xterm-style apps that target primary now
-        // get routed correctly.
-        if (response.size() > 8 && response.compare(1, 6, "OSC52:") == 0 &&
-            response[8] == ':') {
-            const char selChar = response[7];
-            QClipboard::Mode mode = (selChar == 'p')
-                                        ? QClipboard::Selection
-                                        : QClipboard::Clipboard;
-            QString text = QString::fromUtf8(response.data() + 9,
-                                              static_cast<int>(response.size()) - 9);
-            // ANTS-1014 — OSC 52 is the headline exfil vector;
-            // funnel through clipboardguard so the 1 MiB cap +
-            // NUL strip apply uniformly.
-            clipboardguard::writeText(text,
-                clipboardguard::Source::UntrustedPty,
-                mode);
-            return;
-        }
         ptyWrite(QByteArray(response.data(), static_cast<int>(response.size())));
+    });
+
+    // Clipboard callback (OSC 52). ANTS-1739 — a dedicated channel,
+    // never the PTY response path, so an untrusted clipboard payload
+    // cannot be written to the shell. selChar is 'c' (system clipboard)
+    // or 'p' (primary selection / X11 middle-click buffer); ANTS-1201
+    // routes the selection the shell actually requested. Clipboard
+    // mutation stays on the GUI thread.
+    m_grid->setClipboardCallback([](const std::string &data, char selChar) {
+        QClipboard::Mode mode = (selChar == 'p')
+                                    ? QClipboard::Selection
+                                    : QClipboard::Clipboard;
+        QString text = QString::fromUtf8(data.data(),
+                                         static_cast<int>(data.size()));
+        // ANTS-1014 — OSC 52 is the headline exfil vector; funnel
+        // through clipboardguard so the 1 MiB cap + NUL strip apply
+        // uniformly.
+        clipboardguard::writeText(text,
+            clipboardguard::Source::UntrustedPty,
+            mode);
     });
 
     // ANTS-1195 — emoji/CJK + Nerd Font fallback used to be probed

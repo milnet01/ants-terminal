@@ -5,6 +5,10 @@
 namespace ants::regex {
 
 bool isCatastrophicRegex(const QString &pattern) {
+    // BEST-EFFORT (ANTS-1758): catches the two grouped shapes below.
+    // Ungrouped consecutive quantified atoms (`a+a+`) and some deep
+    // nesting are NOT caught — `hardenUserRegex`'s (*LIMIT_MATCH) is the
+    // real runtime backstop. See the header for the full caveat.
     // Shape A — quantifier-under-quantifier inside a group: `(.+)+`, `(a*)+`,
     // `(a+b)*`, etc.
     static const QRegularExpression nestedQuant(

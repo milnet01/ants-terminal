@@ -1888,6 +1888,23 @@ QString AuditDialog::resolveProjectPath(const QString &maybeRelative) const {
     return canonCandidate;
 }
 
+// ANTS-1759 — is the 'R' at rIdx a C++ raw-string prefix? The
+// contiguous identifier run ending at R must be exactly one of the
+// string-literal raw prefixes (R / LR / u8R / uR / UR); this rejects
+// `fooR"..."` where R is just the tail of an identifier.
+static bool isRawStringPrefix(const QString &src, int rIdx) {
+    int start = rIdx;
+    while (start > 0) {
+        const QChar p = src[start - 1];
+        if (p.isLetterOrNumber() || p == QLatin1Char('_')) --start;
+        else break;
+    }
+    const QString run = src.mid(start, rIdx - start + 1);
+    return run == QLatin1String("R")  || run == QLatin1String("LR") ||
+           run == QLatin1String("u8R")|| run == QLatin1String("uR") ||
+           run == QLatin1String("UR");
+}
+
 bool AuditDialog::lineIsCode(const QString &absPath, int line) {
     if (line <= 0 || absPath.isEmpty()) return true;
     QFile f(absPath);
@@ -1899,11 +1916,13 @@ bool AuditDialog::lineIsCode(const QString &absPath, int line) {
     const QByteArray all = f.readAll();
     f.close();
 
-    // State: 0=code, 1=line-comment (until \n), 2=block-comment, 3=string.
+    // State: 0=code, 1=line-comment (until \n), 2=block-comment,
+    // 3=string, 4=C++ raw string (ANTS-1759).
     int state = 0;
     int curLine = 1;
     bool hasCodeOnLine = false;
     QChar stringQuote;
+    QString rawTerminator;  // ")" + d-char-seq + "\"" for state 4
 
     const QString src = QString::fromUtf8(all);
     for (int i = 0; i < src.size(); ++i) {
@@ -1942,6 +1961,32 @@ bool AuditDialog::lineIsCode(const QString &absPath, int line) {
         case 0:  // code
             if (c == '/' && n == '/') { state = 1; ++i; }
             else if (c == '/' && n == '*') { state = 2; ++i; }
+            else if (c == '"' && i > 0 && src[i - 1] == QLatin1Char('R') &&
+                     isRawStringPrefix(src, i - 1)) {
+                // ANTS-1759 — C++ raw string R"delim( ... )delim". Capture
+                // the d-char-seq (up to '(', ≤16 chars, no ()\"/ws) so an
+                // embedded //, " or \ inside the literal can't desync the
+                // scanner for the rest of the file. Fall back to a normal
+                // string if no valid delimiter terminates in '(' — covers
+                // e.g. Python's R"foo" (no paren-delimited form).
+                QString delim;
+                int j = i + 1;
+                bool isRaw = false;
+                for (; j < src.size() && delim.size() <= 16; ++j) {
+                    const QChar d = src[j];
+                    if (d == QLatin1Char('(')) { isRaw = true; break; }
+                    if (d == QLatin1Char(')') || d == QLatin1Char('\\') ||
+                        d == QLatin1Char('"') || d.isSpace()) break;
+                    delim += d;
+                }
+                if (isRaw) {
+                    rawTerminator = QLatin1Char(')') + delim + QLatin1Char('"');
+                    state = 4;
+                    i = j;  // resume after '(' (loop does ++i)
+                } else {
+                    state = 3; stringQuote = c;
+                }
+            }
             else if (c == '"' || c == '\'') { state = 3; stringQuote = c; }
             break;
         case 1:  // line comment — terminated only by newline (handled above)
@@ -1952,6 +1997,13 @@ bool AuditDialog::lineIsCode(const QString &absPath, int line) {
         case 3:  // string
             if (c == '\\') { ++i; }  // skip escape
             else if (c == stringQuote) state = 0;
+            break;
+        case 4:  // C++ raw string — ends only at )delim" (no escapes)
+            if (c == QLatin1Char(')') &&
+                src.mid(i, rawTerminator.size()) == rawTerminator) {
+                i += rawTerminator.size() - 1;  // loop does ++i
+                state = 0;
+            }
             break;
         }
     }

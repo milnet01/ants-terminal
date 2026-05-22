@@ -207,6 +207,20 @@ public:
     // Send a response directly (used for unsolicited reports like color scheme change)
     void sendResponse(const std::string &data) { if (m_responseCallback) m_responseCallback(data); }
 
+    // Clipboard callback (OSC 52 set-clipboard). ANTS-1739 — kept on a
+    // SEPARATE channel from the PTY ResponseCallback so untrusted
+    // clipboard payloads can never reach the PTY write path. Pre-fix
+    // the bytes were muxed through m_responseCallback behind a
+    // "\0OSC52:" sentinel; a refactor/headless wiring that pointed the
+    // response callback at a raw PTY write would have turned clipboard
+    // content into shell injection. selChar is 'c' (system clipboard)
+    // or 'p' (primary/X11 selection).
+    using ClipboardCallback =
+        std::function<void(const std::string &data, char selChar)>;
+    void setClipboardCallback(ClipboardCallback cb) {
+        m_clipboardCallback = std::move(cb);
+    }
+
     // Bell callback (invoked on BEL character)
     using BellCallback = std::function<void()>;
     void setBellCallback(BellCallback cb) { m_bellCallback = std::move(cb); }
@@ -591,6 +605,8 @@ private:
 
     // Response callback
     ResponseCallback m_responseCallback;
+    // Clipboard callback (OSC 52) — separate channel, see ANTS-1739.
+    ClipboardCallback m_clipboardCallback;
 
     // Bell callback
     BellCallback m_bellCallback;

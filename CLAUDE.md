@@ -249,8 +249,11 @@ Listed only where behavior isn't obvious from the name.
   `claudestatuswidgets` for the ANTS-1226 model recommender chip.
   No side effects; safe to call on the UI thread. ANTS-1226.
 - `roadmapdialog` — ROADMAP.md viewer. Two renderers coexist:
-  `renderHtml` (the v1 markdown→HTML helper, kept for tests + the
-  `roadmap-query` IPC verb consumers) and `renderCardsHtml` (the v2
+  `renderHtml` (the v1 markdown→HTML helper, **test-only** — no
+  production callers since ANTS-1747; retained because its suite locks
+  the shared filter/sort/anchor/TOC semantics. The `roadmap-query` IPC
+  verb uses `parseBullets` + `RoadmapIndex`, not this renderer) and
+  `renderCardsHtml` (the v2
   card-style renderer the dialog now uses). v2 wraps each
   status-emoji bullet as a `<div class="rm-card">` with state icon +
   Kind chip + summary + meta row; section headers (`##`/`###`) emit
@@ -522,7 +525,10 @@ as a type and flags every signal emission.
   `workflow_state get`, entire `project_layout`) anchor to `caller_cwd`
   directly — canonicalise + isDir check, no focused-tab match.
   `workflow_state` keys are stored as `wf.<skill>` in the same backing
-  file as `session_memory`; 72 h lazy-TTL purge on every `set`.
+  file as `session_memory`; `workflow_state`'s `set` op lazily purges
+  only its own `wf.`-prefixed keys older than 72 h (ANTS-1773 —
+  `session_memory` entries have NO TTL and are never auto-purged; the
+  purge lives in `cmdWorkflowState`, not `SessionMemoryEngine`).
   ANTS-1723. The storage at
   `~/.cache/ants-terminal/mcp-state/<sha256(cwd)>.json` is per-cwd-
   hashed and reads of the caller's own bucket are self-scoped.

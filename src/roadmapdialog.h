@@ -27,10 +27,15 @@
 // (saveGeometry → base64 → restoreGeometry round-trip); default
 // 1200x800 on first open, minimum 720x480.
 //
-// Renderer: `RoadmapDialog::renderHtml` is a static pure helper so
-// tests can drive it without spinning a Qt widget tree. The dialog's
-// rebuild() chain composes signal-set discovery + parsing + HTML
-// emission into the QTextBrowser.
+// Renderer: the dialog's rebuild() chain uses `renderCardsHtml` (the
+// v2 card renderer) to compose signal-set discovery + parsing + HTML
+// emission into the QTextBrowser. `RoadmapDialog::renderHtml` is the
+// v1 markdown→HTML helper; it has NO production callers (ANTS-1747 —
+// the `roadmap-query` IPC verb uses parseBullets + RoadmapIndex, not
+// this renderer). It is retained as a static pure helper because its
+// test suite locks the shared filter/sort/anchor/TOC semantics that
+// renderCardsHtml also depends on; tests drive it without a widget
+// tree.
 
 #include <QDialog>
 #include <QFileSystemWatcher>

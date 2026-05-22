@@ -204,6 +204,30 @@ QString rcHeadlineOneline(const QString &headline) {
     return s.trimmed();
 }
 
+// ANTS-1743 — sanitise a single-line bullet field (headline / layman /
+// source) before splicing it into ROADMAP.md. rcHeadlineOneline folds
+// embedded \n/\r/\t + whitespace runs to single spaces so a stray
+// newline can't split the bullet and break the markdown; this then
+// drops any leftover C0/C1 control chars rcHeadlineOneline doesn't
+// treat as whitespace, and caps length so a pathological field can't
+// bloat the file. `body` is exempt — it is intentionally multi-line.
+static QString rcSanitizeBulletField(const QString &in, int maxLen) {
+    const QString folded = rcHeadlineOneline(in);
+    QString out;
+    out.reserve(folded.size());
+    for (QChar c : folded) {
+        const ushort u = c.unicode();
+        if (u < 0x20 || u == 0x7f) continue;
+        out.append(c);
+    }
+    if (maxLen > 0 && out.size() > maxLen) {
+        out.truncate(maxLen);
+        out = out.trimmed();
+        out.append(QChar(0x2026));  // …
+    }
+    return out;
+}
+
 // ANTS-1646 — walk a bullet-cache array and return an array of
 // duplicate-ID descriptors. Each descriptor names an ID that
 // appeared on more than one bullet (rollups + narrators with empty
@@ -2559,7 +2583,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     QString bullet;
     bullet += QStringLiteral("- ") + statusEmoji + QChar(' ') +
               QChar('[') + idStr + QChar(']') + QChar(' ') +
-              QStringLiteral("**") + headline + QStringLiteral("**\n");
+              QStringLiteral("**") +
+              rcSanitizeBulletField(headline, 500) +
+              QStringLiteral("**\n");
 
     // ANTS-1551 — defensive scrub of leaked tool-call XML. Some
     // harnesses serialise sibling array/object params (lanes,
@@ -2641,7 +2667,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     const QString layman =
         req.value(QStringLiteral("layman")).toString();
     if (!layman.isEmpty()) {
-        bullet += QStringLiteral("  **Layman:** ") + layman +
+        bullet += QStringLiteral("  **Layman:** ") +
+                  rcSanitizeBulletField(layman, 1000) +
                   QChar('\n');
     }
     bullet += QStringLiteral("  Kind: ") + kind + QStringLiteral(".\n");
@@ -2654,7 +2681,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                   laneStrs.join(QStringLiteral(", ")) +
                   QStringLiteral(".\n");
     }
-    bullet += QStringLiteral("  Source: ") + source +
+    bullet += QStringLiteral("  Source: ") +
+              rcSanitizeBulletField(source, 200) +
               QStringLiteral(".\n\n");
 
     // Splice bullet at the section's lineEnd. lineEnd is 0-indexed
@@ -9047,31 +9075,32 @@ QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
             QStringLiteral("workflow_state: state payload exceeds 4 KiB")));
     }
 
-    // Lazy TTL purge: delete all wf. keys older than 72 h before writing.
+    // Lazy TTL purge: drop all wf. keys older than 72 h before writing.
+    // ANTS-1774 — single load / in-memory filter / single write. The
+    // pre-fix loop issued one List + a Get per wf. key + a Delete per
+    // expired key, and EACH SessionMemoryEngine::execute re-loaded and
+    // re-parsed the whole store (and Delete re-serialised + re-wrote it),
+    // i.e. O(N) full-store JSON parses per `set`. Now we load once, prune
+    // in memory, and write back once (only when something expired — the
+    // store can only shrink, so no cap re-check is needed). The
+    // subsequent Op::Set does the capped write.
     {
-        SessionMemoryEngine::OpResult listR =
-            SessionMemoryEngine::execute(cwd,
-                SessionMemoryEngine::Op::List,
-                QString(), QJsonValue());
-        if (listR.ok) {
-            for (const QJsonValue &kv : listR.keys) {
-                // OpResult::keys is [{key:str, bytes:N}, ...] for List.
-                const QString k =
-                    kv.toObject().value(QStringLiteral("key")).toString();
-                if (!k.startsWith(QStringLiteral("wf."))) continue;
-                SessionMemoryEngine::OpResult getR =
-                    SessionMemoryEngine::execute(cwd,
-                        SessionMemoryEngine::Op::Get, k, QJsonValue());
-                if (!getR.ok || !getR.found) continue;
-                const qint64 ts =
-                    getR.value.toObject()
-                        .value(QStringLiteral("updated_at_ms"))
-                        .toDouble(0);
-                if (ts > 0 && (nowMs - ts) > kTtlMs) {
-                    SessionMemoryEngine::execute(cwd,
-                        SessionMemoryEngine::Op::Delete, k, QJsonValue());
-                }
+        const QString storePath = SessionMemoryEngine::storePathFor(cwd);
+        QJsonObject store = SessionMemoryEngine::loadStore(storePath);
+        bool changed = false;
+        const QStringList allKeys = store.keys();
+        for (const QString &k : allKeys) {
+            if (!k.startsWith(QStringLiteral("wf."))) continue;
+            const qint64 ts = store.value(k).toObject()
+                .value(QStringLiteral("updated_at_ms")).toDouble(0);
+            if (ts > 0 && (nowMs - ts) > kTtlMs) {
+                store.remove(k);
+                changed = true;
             }
+        }
+        if (changed) {
+            SessionMemoryEngine::saveStore(storePath,
+                QJsonDocument(store).toJson(QJsonDocument::Compact));
         }
     }
 

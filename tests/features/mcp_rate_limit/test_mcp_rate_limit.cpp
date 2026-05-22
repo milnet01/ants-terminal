@@ -234,7 +234,11 @@ TEST_F(RateLimitTestFixture, Inv12OrderVsCallerCwdRequired) {
     ASSERT_FALSE(cc.empty());
     const auto dispatchStart = cc.find("else if (method == \"tools/call\")");
     ASSERT_NE(dispatchStart, std::string::npos);
-    const std::string region = cc.substr(dispatchStart, 9000);
+    // Window sized to comfortably span from the dispatch start through
+    // the rate-limit block. Bumped 9000→12000 (ANTS-1772) — the
+    // tool-existence + contract-gate prologue grew; the ordering
+    // assertion below is what matters, not the exact window size.
+    const std::string region = cc.substr(dispatchStart, 12000);
     const auto cwdRequired =
         region.find("CallerCwdContract::Required &&");
     const auto rateLimit = region.find("// ANTS-1356 — per-tool");

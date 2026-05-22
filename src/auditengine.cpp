@@ -466,98 +466,109 @@ std::optional<AuditSummary> summariseSarif(
     const QJsonArray runs = root.value(QStringLiteral("runs")).toArray();
     if (runs.isEmpty()) return std::nullopt;  // INV-10 → not_audited
 
-    const QJsonObject run = runs.first().toObject();
-
     AuditSummary s;
     s.sarifPath    = sarifPath;
     s.sourceFormat = QStringLiteral("sarif");  // ANTS-1459
 
-    // INV-1 single-run; ignore runs[1..]. invocations[0].startTimeUtc.
-    const QJsonArray invocations = run.value(QStringLiteral("invocations")).toArray();
-    if (!invocations.isEmpty()) {
-        s.runAtIso = invocations.first().toObject()
-                         .value(QStringLiteral("startTimeUtc")).toString();
-    }
-
-    // ANTS-1539 — scrape SARIF run.versionControlProvenance § 3.14.18.
-    // First entry wins (single-repo audits the only shape we emit).
-    // Fields left empty when the SARIF omits the block — buildLasEnvelope
-    // skips emission for empty strings, so the envelope stays trim on
-    // pre-1539 SARIFs.
-    const QJsonArray vcp = run.value(
-        QStringLiteral("versionControlProvenance")).toArray();
-    if (!vcp.isEmpty()) {
-        const QJsonObject vcs = vcp.first().toObject();
-        s.branch        = vcs.value(QStringLiteral("branch")).toString();
-        s.commit        = vcs.value(QStringLiteral("revisionId")).toString();
-        s.repositoryUri = vcs.value(QStringLiteral("repositoryUri")).toString();
-    }
-
-    // Spec § 3.1 step 3 — build rule index keyed by id → severity string.
-    QHash<QString, QString> ruleSeverity;
-    const QJsonObject tool = run.value(QStringLiteral("tool")).toObject();
-    const QJsonObject driver = tool.value(QStringLiteral("driver")).toObject();
-    const QJsonArray rules = driver.value(QStringLiteral("rules")).toArray();
-    for (const QJsonValue &rv : rules) {
-        const QJsonObject ro = rv.toObject();
-        const QString id = ro.value(QStringLiteral("id")).toString();
-        if (id.isEmpty()) continue;
-        const QString sev = ro.value(QStringLiteral("properties")).toObject()
-                              .value(QStringLiteral("severity")).toString();
-        if (!sev.isEmpty()) ruleSeverity.insert(id, sev);
-    }
-
     const int floorOrd = levelOrdinal(levelFloor);
-
-    // Spec § 3.1 step 4 — walk results, count, filter, build pool.
     QList<AuditSummaryFinding> pool;
-    const QJsonArray results = run.value(QStringLiteral("results")).toArray();
-    pool.reserve(results.size());
-    for (const QJsonValue &rv : results) {
-        const QJsonObject res = rv.toObject();
-        const QString level = res.value(QStringLiteral("level")).toString(
-            QStringLiteral("warning"));
 
-        const int ord = levelOrdinal(level);
-        if (ord == 2) ++s.countError;
-        else if (ord == 0) ++s.countNote;
-        else ++s.countWarning;
+    // ANTS-1760 — fold ALL runs[]. The headless AuditRunner emits one
+    // run per tool (idiomatic SARIF), so the pre-fix runs.first()-only
+    // read summarised just the first tool in hash order and dropped the
+    // rest. The dialog's single-run export still works (one run →
+    // identical result). Per-run rule index resolves each result against
+    // its own tool's rules; run-level metadata (run time, VCS) is
+    // first-run-wins.
+    for (const QJsonValue &runv : runs) {
+        const QJsonObject run = runv.toObject();
 
-        const QJsonArray suppressions = res.value(
-            QStringLiteral("suppressions")).toArray();
-        if (!suppressions.isEmpty()) ++s.countSuppressed;
-
-        if (ord < floorOrd) continue;
-
-        AuditSummaryFinding asf;
-        asf.level   = level;
-        asf.ruleId  = res.value(QStringLiteral("ruleId")).toString();
-        asf.message = res.value(QStringLiteral("message")).toObject()
-                          .value(QStringLiteral("text")).toString();
-
-        const QJsonArray locs = res.value(QStringLiteral("locations")).toArray();
-        if (!locs.isEmpty()) {
-            const QJsonObject phys = locs.first().toObject()
-                .value(QStringLiteral("physicalLocation")).toObject();
-            asf.file = phys.value(QStringLiteral("artifactLocation")).toObject()
-                           .value(QStringLiteral("uri")).toString();
-            asf.line = phys.value(QStringLiteral("region")).toObject()
-                           .value(QStringLiteral("startLine")).toInt(0);
+        // invocations[0].startTimeUtc — first run that carries it.
+        if (s.runAtIso.isEmpty()) {
+            const QJsonArray invocations =
+                run.value(QStringLiteral("invocations")).toArray();
+            if (!invocations.isEmpty()) {
+                s.runAtIso = invocations.first().toObject()
+                    .value(QStringLiteral("startTimeUtc")).toString();
+            }
         }
 
-        const QJsonObject props = res.value(QStringLiteral("properties")).toObject();
-        if (props.contains(QStringLiteral("confidence"))) {
-            asf.confidence = props.value(QStringLiteral("confidence")).toInt(-1);
+        // ANTS-1539 — SARIF run.versionControlProvenance § 3.14.18.
+        // First run that carries the block wins (single-repo audits).
+        if (s.branch.isEmpty() && s.commit.isEmpty() &&
+            s.repositoryUri.isEmpty()) {
+            const QJsonArray vcp = run.value(
+                QStringLiteral("versionControlProvenance")).toArray();
+            if (!vcp.isEmpty()) {
+                const QJsonObject vcs = vcp.first().toObject();
+                s.branch        = vcs.value(QStringLiteral("branch")).toString();
+                s.commit        = vcs.value(QStringLiteral("revisionId")).toString();
+                s.repositoryUri = vcs.value(QStringLiteral("repositoryUri")).toString();
+            }
         }
-        asf.highConfidence = props.value(
-            QStringLiteral("highConfidence")).toBool(false);
 
-        // Resolve severity via rule index, fall back to level map.
-        const auto it = ruleSeverity.constFind(asf.ruleId);
-        asf.severity = (it != ruleSeverity.constEnd())
-                           ? it.value() : severityFromLevel(level);
+        // Spec § 3.1 step 3 — build rule index keyed by id → severity.
+        QHash<QString, QString> ruleSeverity;
+        const QJsonObject tool = run.value(QStringLiteral("tool")).toObject();
+        const QJsonObject driver = tool.value(QStringLiteral("driver")).toObject();
+        const QJsonArray rules = driver.value(QStringLiteral("rules")).toArray();
+        for (const QJsonValue &rv : rules) {
+            const QJsonObject ro = rv.toObject();
+            const QString id = ro.value(QStringLiteral("id")).toString();
+            if (id.isEmpty()) continue;
+            const QString sev = ro.value(QStringLiteral("properties")).toObject()
+                                  .value(QStringLiteral("severity")).toString();
+            if (!sev.isEmpty()) ruleSeverity.insert(id, sev);
+        }
 
-        pool.append(std::move(asf));
+        // Spec § 3.1 step 4 — walk results, count, filter, build pool.
+        const QJsonArray results = run.value(QStringLiteral("results")).toArray();
+        for (const QJsonValue &rv : results) {
+            const QJsonObject res = rv.toObject();
+            const QString level = res.value(QStringLiteral("level")).toString(
+                QStringLiteral("warning"));
+
+            const int ord = levelOrdinal(level);
+            if (ord == 2) ++s.countError;
+            else if (ord == 0) ++s.countNote;
+            else ++s.countWarning;
+
+            const QJsonArray suppressions = res.value(
+                QStringLiteral("suppressions")).toArray();
+            if (!suppressions.isEmpty()) ++s.countSuppressed;
+
+            if (ord < floorOrd) continue;
+
+            AuditSummaryFinding asf;
+            asf.level   = level;
+            asf.ruleId  = res.value(QStringLiteral("ruleId")).toString();
+            asf.message = res.value(QStringLiteral("message")).toObject()
+                              .value(QStringLiteral("text")).toString();
+
+            const QJsonArray locs = res.value(QStringLiteral("locations")).toArray();
+            if (!locs.isEmpty()) {
+                const QJsonObject phys = locs.first().toObject()
+                    .value(QStringLiteral("physicalLocation")).toObject();
+                asf.file = phys.value(QStringLiteral("artifactLocation")).toObject()
+                               .value(QStringLiteral("uri")).toString();
+                asf.line = phys.value(QStringLiteral("region")).toObject()
+                               .value(QStringLiteral("startLine")).toInt(0);
+            }
+
+            const QJsonObject props = res.value(QStringLiteral("properties")).toObject();
+            if (props.contains(QStringLiteral("confidence"))) {
+                asf.confidence = props.value(QStringLiteral("confidence")).toInt(-1);
+            }
+            asf.highConfidence = props.value(
+                QStringLiteral("highConfidence")).toBool(false);
+
+            // Resolve severity via rule index, fall back to level map.
+            const auto it = ruleSeverity.constFind(asf.ruleId);
+            asf.severity = (it != ruleSeverity.constEnd())
+                               ? it.value() : severityFromLevel(level);
+
+            pool.append(std::move(asf));
+        }
     }
 
     // Spec § 3.1 step 5 — sort: level desc → confidence desc →

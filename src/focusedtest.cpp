@@ -22,16 +22,29 @@ void addPatterns(QStringList &into, const QStringList &more) {
     }
 }
 
-// A file matches an ignore entry if it ends with the entry (suffix
-// match; a leading "*" is stripped so "*.md" -> ".md") OR its path
-// starts with the entry (so "docs/" matches "docs/specs/x.md").
+// Limited glob support (ANTS-1775): a file matches an ignore entry if
+//   (a) it ends with the entry as a suffix — a single leading "*" is
+//       stripped so "*.md" -> ".md", and a bare ".md" / "config.cpp"
+//       also matches by suffix; OR
+//   (b) the entry names a path-segment prefix — "docs/" or "build"
+//       matches "build/x.cpp" and the exact path "build", but NOT
+//       "build_config.cpp". Pre-fix this used a raw startsWith(), so
+//       "build" wrongly swallowed "build_config.cpp".
+// This is NOT a full glob: interior "*"/"?"/character classes are not
+// interpreted (only a single leading "*" on the suffix form).
 bool matchesIgnore(const QString &file, const QStringList &globs) {
     for (const QString &g : globs) {
         if (g.isEmpty()) continue;
         QString suffix = g;
         if (suffix.startsWith(QLatin1Char('*'))) suffix = suffix.mid(1);
         if (!suffix.isEmpty() && file.endsWith(suffix)) return true;
-        if (file.startsWith(g)) return true;
+        // Path-segment-anchored prefix: exact match, or match up to a
+        // segment boundary ("/"). Honour an explicit trailing slash.
+        if (file == g) return true;
+        QString prefix = g;
+        if (!prefix.endsWith(QLatin1Char('/')))
+            prefix += QLatin1Char('/');
+        if (file.startsWith(prefix)) return true;
     }
     return false;
 }

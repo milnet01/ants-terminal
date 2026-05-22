@@ -15,7 +15,9 @@
 #include <cstdio>
 #include <cstdlib>
 
-#define DBGLOG(fmt, ...) do { if (m_debugLog && m_debugFile) { fprintf(m_debugFile, fmt "\n", ##__VA_ARGS__); fflush(m_debugFile); } } while(0)
+// ANTS-1792 — C++20 __VA_OPT__ instead of the GNU `, ##__VA_ARGS__`
+// comma-elision extension (clang -Wgnu-zero-variadic-macro-arguments).
+#define DBGLOG(fmt, ...) do { if (m_debugLog && m_debugFile) { fprintf(m_debugFile, fmt "\n" __VA_OPT__(,) __VA_ARGS__); fflush(m_debugFile); } } while(0)
 
 void TerminalGrid::setDebugLog(bool enabled) {
     m_debugLog = enabled;
@@ -962,6 +964,7 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             // configuration read from the environment and also survives.
             // Documented ROADMAP § Tier 2 (2026-04-23 re-review).
             auto responseCb        = std::move(m_responseCallback);
+            auto clipboardCb       = std::move(m_clipboardCallback);
             auto bellCb            = std::move(m_bellCallback);
             auto notifyCb          = std::move(m_notifyCallback);
             auto lineCompletionCb  = std::move(m_lineCompletionCallback);
@@ -972,6 +975,7 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             QByteArray osc133Key   = m_osc133Key;
             *this = TerminalGrid(m_rows, m_cols);
             m_responseCallback        = std::move(responseCb);
+            m_clipboardCallback       = std::move(clipboardCb);
             m_bellCallback            = std::move(bellCb);
             m_notifyCallback          = std::move(notifyCb);
             m_lineCompletionCallback  = std::move(lineCompletionCb);
@@ -1220,19 +1224,17 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
                     m_osc52WriteCount += 1;
                     m_osc52WriteBytes += decoded.size();
 
-                    // Emit clipboard set via response callback with special prefix.
-                    // ANTS-1201 — sentinel format extended:
-                    //   "\0OSC52:<selChar>:<decoded-bytes>"
-                    // where <selChar> is 'c' (system clipboard) or 'p'
-                    // (primary/X11 selection). Widget callback maps to
+                    // ANTS-1739 — emit clipboard set on the DEDICATED
+                    // clipboard channel, never the PTY response callback.
+                    // selChar is 'c' (system clipboard) or 'p' (primary/
+                    // X11 selection); the widget maps it to
                     // QClipboard::Clipboard / QClipboard::Selection.
-                    if (m_responseCallback) {
-                        std::string clipData(1, '\0');
-                        clipData += "OSC52:";
-                        clipData += selChar;
-                        clipData += ':';
-                        clipData += std::string(decoded.constData(), decoded.size());
-                        m_responseCallback(clipData);
+                    // (Pre-fix this muxed through m_responseCallback
+                    // behind a "\0OSC52:" sentinel — see header rationale.)
+                    if (m_clipboardCallback) {
+                        m_clipboardCallback(
+                            std::string(decoded.constData(), decoded.size()),
+                            selChar);
                     }
                 }
             }

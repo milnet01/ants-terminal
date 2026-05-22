@@ -29,8 +29,9 @@ even though their status is ✅.
   ShowInProgress | ShowConsidered | ShowCurrent`, asserts the ✅
   bullet IS in the output.
 - **INV-3 / Parallel fix in the v1 `renderHtml` path.** The
-  pre-cards `renderHtml` renderer (still used by the `roadmap-query`
-  IPC verb and v1 tests) has the same OR'd current-signal bug; both
+  pre-cards `renderHtml` renderer (test-only since ANTS-1747 — no
+  production callers; the `roadmap-query` IPC verb uses parseBullets +
+  RoadmapIndex) has the same OR'd current-signal bug; both
   paths get the same gate so consumers downstream of either renderer
   see consistent filter semantics. Anchor: `ANTS-1423` in
   `src/roadmapdialog.cpp::renderHtml`'s `keepStatus` block.

@@ -328,6 +328,7 @@ private:
     // when Ants is focused and both paths route the same key press.
     qint64 m_lastQuakeToggleMs = 0;
     void setupQuakeMode();
+    void wireQuakeHotkey();
     void toggleQuakeVisibility();
 
     // Undo close tab

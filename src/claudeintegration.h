@@ -273,6 +273,12 @@ public:
                           const QString &callerCwd,
                           qint64 nowMs);
 
+    // ANTS-1771 — canonicalise a caller_cwd into a stable rate-limit
+    // bucket key (existing path → canonicalFilePath; non-existent →
+    // QDir::cleanPath lexical fallback so synonyms still collapse).
+    // Static + pure so the dedup logic is unit-testable.
+    static QString canonicaliseCallerKey(const QString &callerCwd);
+
     // Test-only probes (mirror the existing *ForTest convention).
     int rateLimitBucketCountForTest() const {
         return m_rateLimitBuckets.size();

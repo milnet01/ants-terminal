@@ -6015,7 +6015,20 @@ void ClaudeIntegration::onMcpConnection() {
                 const QString callerCwd =
                     argsObj.value(QStringLiteral("caller_cwd"))
                         .toString();
-                if (contract == CallerCwdContract::Required &&
+                // ANTS-1772 — resolve tool existence BEFORE the
+                // caller_cwd contract gate (default Required), else an
+                // unknown tool with no caller_cwd would wrongly refuse
+                // `caller_cwd_required` instead of `tool_not_found`.
+                // Inline tools (get_session_info, tool_info) aren't in
+                // m_toolProviders; token_usage / mcp_trace are. Gating
+                // contract + rate-limit on toolKnown lets an unknown tool
+                // fall through to the registry-miss else-branch below.
+                const bool toolKnown =
+                    toolName == QStringLiteral("get_session_info") ||
+                    toolName == QStringLiteral("tool_info") ||
+                    m_toolProviders.find(toolName) != m_toolProviders.end();
+                if (toolKnown &&
+                    contract == CallerCwdContract::Required &&
                     callerCwd.isEmpty()) {
                     QJsonObject env;
                     env["ok"]    = false;
@@ -6065,7 +6078,7 @@ void ClaudeIntegration::onMcpConnection() {
                 // (the handler ignores it), else it would bypass the
                 // gate and still fall back to focused. See
                 // docs/standards/mcp-error-codes.md § 3 + docs/specs/ANTS-1415.md.
-                if (!toolHandled &&
+                if (!toolHandled && toolKnown &&
                     contract == CallerCwdContract::TabSpecific) {
                     const bool tabIsRoutingKey =
                         tabSpecificAcceptsTabIndex(toolName);
@@ -6110,7 +6123,7 @@ void ClaudeIntegration::onMcpConnection() {
                 // toolHandled=true with a {ok:false, code:"rate_limited",
                 // retry_after_ms} envelope; downstream wrap + record
                 // paths see it like any other completed call.
-                if (!toolHandled) {
+                if (!toolHandled && toolKnown) {
                     const qint64 nowMs = s_rateLimitClock.elapsed();
                     const qint64 retryAfter =
                         rateLimitCheck(toolName, callerCwd, nowMs);
@@ -6800,26 +6813,44 @@ ClaudeIntegration::rateLimitTierFor(RateLimitClass cls) {
     }
 }
 
+// ANTS-1771 — canonicalise a caller_cwd into a stable rate-limit bucket
+// key. Existing paths resolve via canonicalFilePath (symlink + `.`/`..`
+// + case on case-insensitive mounts); non-existent paths fall back to
+// QDir::cleanPath (lexical-only) so synonyms still collapse. Empty in →
+// empty out (the "absent caller_cwd" bucket).
+QString ClaudeIntegration::canonicaliseCallerKey(const QString &callerCwd) {
+    if (callerCwd.isEmpty()) return QString();
+    const QString resolved = QFileInfo(callerCwd).canonicalFilePath();
+    if (!resolved.isEmpty()) return resolved;
+    return QDir::cleanPath(callerCwd);
+}
+
 qint64 ClaudeIntegration::rateLimitCheck(
     const QString &toolName, const QString &callerCwd, qint64 nowMs) {
     const RateLimitClass cls = rateLimitClassFor(toolName);
     if (cls == RateLimitClass::ControlPlane) return 0;
     const RateLimitTier tier = rateLimitTierFor(cls);
 
-    // indie-review-2026-05-19 claudeintegration H1 — canonicalise the
-    // bucket key. Raw callerCwd values (`/foo`, `/foo/`, `/foo/./`,
-    // `/foo//bar/..`, case-variants on case-insensitive mounts) would
-    // otherwise produce distinct map entries and let a same-UID peer
-    // multiply their effective budget by routing through synonyms.
-    // QFileInfo::canonicalFilePath returns "" if the path doesn't
-    // exist — we fall back to the raw form on that (matches pre-fix
-    // behaviour for non-existent callers) AND on the empty-string
-    // case (the "absent caller_cwd" bucket).
-    QString canon = callerCwd;
-    if (!canon.isEmpty()) {
-        const QString resolved = QFileInfo(canon).canonicalFilePath();
-        if (!resolved.isEmpty()) canon = resolved;
-    }
+    // indie-review-2026-05-19 claudeintegration H1 + ANTS-1771 —
+    // canonicalise the bucket key. Raw callerCwd values (`/foo`,
+    // `/foo/`, `/foo/./`, `/foo//bar/..`, case-variants on
+    // case-insensitive mounts) would otherwise produce distinct map
+    // entries and let a same-UID peer multiply their effective budget
+    // by routing through synonyms.
+    //
+    // ANTS-1771 — QFileInfo::canonicalFilePath returns "" for a
+    // non-existent path; the pre-fix code fell back to the RAW string
+    // there, so two non-existent synonyms (`/nope` vs `/nope/.`) still
+    // landed in distinct buckets. We now fall back to QDir::cleanPath
+    // (lexical normalisation: collapses `.`/`..`/`//`/trailing slash)
+    // so the budget-multiplication hole closes for non-existent callers
+    // too. The empty-string ("absent caller_cwd") bucket stays empty.
+    //
+    // Note: the tab-ROUTING path (ants::resolveCallerCwdRoot) is
+    // deliberately NOT unified with this helper — routing must REJECT a
+    // non-existent path (no tab can match it) rather than lexically
+    // coerce it, so it keeps the existence-only canonicalFilePath rule.
+    QString canon = canonicaliseCallerKey(callerCwd);
     const QPair<QString, QString> key{toolName, canon};
     auto it = m_rateLimitBuckets.find(key);
 
