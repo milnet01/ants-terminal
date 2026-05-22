@@ -959,12 +959,27 @@ void Config::setShellCommand(const QString &cmd) {
     save();
 }
 
-// Tab title format
+// Tab title format — fixed enum. The consumer (updateTabTitles in
+// mainwindow.cpp) matches exactly these four values; any other string
+// degrades every tab to the "Shell" fallback. Validate at both ends
+// (ANTS-1764, same pattern as setRoadmapActivePreset/-Density per
+// ANTS-1179) so a zombie value can't linger on disk.
+static const QSet<QString> &knownTabTitleFormats() {
+    static const QSet<QString> kKnown = {
+        QStringLiteral("title"), QStringLiteral("cwd"),
+        QStringLiteral("process"), QStringLiteral("cwd-process"),
+    };
+    return kKnown;
+}
+
 QString Config::tabTitleFormat() const {
-    return m_data.value("tab_title_format").toString("title");
+    const QString fmt = m_data.value("tab_title_format").toString("title");
+    if (knownTabTitleFormats().contains(fmt)) return fmt;
+    return QStringLiteral("title");
 }
 
 void Config::setTabTitleFormat(const QString &fmt) {
+    if (!knownTabTitleFormats().contains(fmt)) return;
     if (!storeIfChanged("tab_title_format", fmt)) return;
     save();
 }

@@ -1454,6 +1454,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_projection/test_mcp_projection.cpp
                 # ANTS-1727 — ai_review_concurrency config clamp (INV-14).
                 tests/features/config_ai_review_concurrency/test_config_ai_review_concurrency.cpp
+                # ANTS-1764 — tab_title_format fixed-enum getter/setter validation.
+                tests/features/config_tab_title_format/test_config_tab_title_format.cpp
                 # ANTS-1727 — BriefDispatch is moc-free, links here. The
                 # LlmClient/LlmDispatcher tests reference Q_OBJECT classes,
                 # which pull ants_core_lib's aggregated moc (co-references
