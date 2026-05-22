@@ -9286,39 +9286,32 @@ QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
             QStringLiteral("workflow_state: state payload exceeds 4 KiB")));
     }
 
-    // Lazy TTL purge: drop all wf. keys older than 72 h before writing.
-    // ANTS-1774 — single load / in-memory filter / single write. The
-    // pre-fix loop issued one List + a Get per wf. key + a Delete per
-    // expired key, and EACH SessionMemoryEngine::execute re-loaded and
-    // re-parsed the whole store (and Delete re-serialised + re-wrote it),
-    // i.e. O(N) full-store JSON parses per `set`. Now we load once, prune
-    // in memory, and write back once (only when something expired — the
-    // store can only shrink, so no cap re-check is needed). The
-    // subsequent Op::Set does the capped write.
-    {
-        const QString storePath = SessionMemoryEngine::storePathFor(cwd);
-        QJsonObject store = SessionMemoryEngine::loadStore(storePath);
-        bool changed = false;
-        const QStringList allKeys = store.keys();
-        for (const QString &k : allKeys) {
-            if (!k.startsWith(QStringLiteral("wf."))) continue;
-            const qint64 ts = store.value(k).toObject()
-                .value(QStringLiteral("updated_at_ms")).toDouble(0);
-            if (ts > 0 && (nowMs - ts) > kTtlMs) {
-                store.remove(k);
-                changed = true;
-            }
-        }
-        if (changed) {
-            SessionMemoryEngine::saveStore(storePath,
-                QJsonDocument(store).toJson(QJsonDocument::Compact));
-        }
-    }
-
-    // Write the new state.
-    SessionMemoryEngine::OpResult wr =
-        SessionMemoryEngine::execute(cwd,
-            SessionMemoryEngine::Op::Set, key, QJsonValue(state));
+    // ANTS-1823 — prune expired wf.* keys AND write the new state in ONE
+    // locked read-modify-write cycle. The pre-fix path ran two separate
+    // *unlocked* cycles — a lazy-TTL purge (load → filter → save) then a
+    // distinct execute(Set) (load → insert → save). Across two concurrent
+    // same-cwd CC sessions (the multi-tester workflow) that interleaving
+    // last-writer-wins-dropped a key; the gap between the purge write and
+    // the set write doubled the window. mutateLocked holds an advisory
+    // cross-process lock for the whole load → mutate → save and enforces
+    // the store-level caps. ANTS-1774's single-pass purge is preserved —
+    // it's just folded into the same locked mutation as the set now.
+    // (The per-value cap execute(Set) used is moot: the 4 KiB payload
+    // cap above is stricter than the engine's 16 KiB per-value cap.)
+    const QString storePath = SessionMemoryEngine::storePathFor(cwd);
+    const SessionMemoryEngine::OpResult wr =
+        SessionMemoryEngine::mutateLocked(storePath,
+            [&](QJsonObject &store) {
+                const QStringList allKeys = store.keys();
+                for (const QString &k : allKeys) {
+                    if (!k.startsWith(QStringLiteral("wf."))) continue;
+                    const qint64 ts = store.value(k).toObject()
+                        .value(QStringLiteral("updated_at_ms")).toDouble(0);
+                    if (ts > 0 && (nowMs - ts) > kTtlMs) store.remove(k);
+                }
+                store.insert(key, QJsonValue(state));
+                return true;
+            });
     if (!wr.ok) return QJsonDocument(csErr(wr.code, wr.error));
 
     QJsonObject out;

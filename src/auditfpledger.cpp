@@ -122,10 +122,15 @@ bool appendEntry(const QString &projectPath, Entry e) {
     o[QStringLiteral("rule")]        = e.rule;
     o[QStringLiteral("reason")]      = e.reason;
     o[QStringLiteral("timestamp")]   = e.timestamp;
-    f.write(QJsonDocument(o).toJson(QJsonDocument::Compact));
-    f.write("\n");
+    // ANTS-1824 — one write() for record + newline. The file is opened
+    // O_APPEND, so a single write lands atomically at EOF; the pre-fix
+    // two-call form let a concurrent CC session's append interleave
+    // between the JSON and its terminating '\n', corrupting the JSONL.
+    const QByteArray line =
+        QJsonDocument(o).toJson(QJsonDocument::Compact) + '\n';
+    const bool wrote = f.write(line) == line.size();
     f.close();
-    return true;
+    return wrote;
 }
 
 }  // namespace auditfp

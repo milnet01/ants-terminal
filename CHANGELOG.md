@@ -223,6 +223,32 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Safer local file writes — private dirs, atomic logs, no key loss
+  (ANTS-1821/1822/1823/1824/1836).** A sweep of the places where Ants
+  writes to disk, hardened so other local users can't peek and concurrent
+  Claude sessions can't trip over each other:
+  - The saved-session and MCP-state folders are now created already locked
+    to your account (mode 0700) instead of being made world-listable for a
+    brief moment and then tightened — closing a window in which another
+    local user could see your tab names and scrollback sizes. A new shared
+    `ensurePrivateDir` helper (in `secureio.h`) does this in one step and
+    reports failure instead of silently ignoring it (ANTS-1821).
+  - The old-session cleanup now only deletes the two temp-file names it
+    actually owns (`session_*.dat.tmp`, `tab_order.txt.tmp`) rather than
+    every `*.tmp` in the folder, so it can't remove an unrelated file
+    another tool left there (ANTS-1822).
+  - When two Claude Code sessions share a project folder, the per-project
+    note store (`session_memory` / `workflow_state`) could lose a key if
+    both wrote at once (last-writer-wins). Reads-modify-writes now take a
+    short cross-process lock, and `workflow_state` does its expiry-purge
+    and write in a single locked pass instead of two (ANTS-1823).
+  - The audit "learned false-positive" and auto-fix logs now append each
+    record and its newline in one write, so a second session appending at
+    the same time can't split a line and corrupt the log (ANTS-1824).
+  - The Test-audit dialog now writes its per-lane reports atomically and
+    owner-only (0600), and reports a write failure instead of leaving a
+    half-written file (ANTS-1836).
+
 - **Review briefs silently dropped absolute file paths (ANTS-1731).**
   `BriefDispatch::inlineBodies` joined the project path onto every input,
   so an already-absolute path (as the Test-audit dialog produces) became

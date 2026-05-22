@@ -169,10 +169,13 @@ bool logRepair(const QString &cacheDir, const Repair &r) {
     o[QStringLiteral("fixed")]     = r.removeLine ? QString() : r.fixed;
     o[QStringLiteral("timestamp")] =
         QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
-    f.write(QJsonDocument(o).toJson(QJsonDocument::Compact));
-    f.write("\n");
+    // ANTS-1824 — single O_APPEND write for record + newline so a
+    // concurrent appender can't split the JSON from its '\n'.
+    const QByteArray line =
+        QJsonDocument(o).toJson(QJsonDocument::Compact) + '\n';
+    const bool wrote = f.write(line) == line.size();
     f.close();
-    return true;
+    return wrote;
 }
 
 }  // namespace autofix

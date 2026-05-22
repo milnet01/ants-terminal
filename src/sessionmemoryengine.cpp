@@ -2,12 +2,15 @@
 
 #include "sessionmemoryengine.h"
 
+#include "secureio.h"
+
 #include <QCryptographicHash>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QLockFile>
 #include <QSaveFile>
 #include <QStandardPaths>
 
@@ -97,22 +100,14 @@ QString saveStore(const QString &path, const QByteArray &body) {
     // ANTS-1364 — body is pre-serialized by the caller. INV-3 + INV-10
     // logic (atomic temp+rename, parent-dir 0700, leaf 0600) is
     // unchanged byte-for-byte; only the serialize moved up the stack.
-    // INV-10 — ensure parent dir exists with mode 0700.
-    const QFileInfo fi(path);
-    const QDir parent = fi.absoluteDir();
-    if (!parent.exists()) {
-        if (!QDir().mkpath(parent.absolutePath())) {
-            return QStringLiteral("session_memory: failed to create "
-                                  "directory ") + parent.absolutePath();
-        }
+    // INV-10 — parent dir exists at mode 0700. ANTS-1821 — create it
+    // privately (no mkpath-then-chmod-0755 window) and re-tighten an
+    // already-existing 0755 dir (subsumes the old ANTS-1801 chmod).
+    const QString parent = QFileInfo(path).absolutePath();
+    if (!ensurePrivateDir(parent)) {
+        return QStringLiteral("session_memory: failed to secure "
+                              "directory ") + parent;
     }
-    // ANTS-1801 — tighten to 0700 unconditionally, not only on create. An
-    // already-existing dir (made at 0755 by an older build / permissive umask /
-    // another tool) was never re-tightened, leaving the per-project state store
-    // dir-listable by other local users.
-    QFile::setPermissions(parent.absolutePath(),
-        QFileDevice::ReadOwner | QFileDevice::WriteOwner
-        | QFileDevice::ExeOwner);
 
     // INV-3 — QSaveFile = temp + rename, atomic on commit.
     QSaveFile sf(path);
@@ -147,6 +142,61 @@ qint64 serializedSize(const QJsonValue &value) {
     wrap[QStringLiteral("v")] = value;
     const qint64 total = QJsonDocument(wrap).toJson(QJsonDocument::Compact).size();
     return total > 6 ? total - 6 : 0;
+}
+
+OpResult mutateLocked(const QString &path,
+                      const std::function<bool(QJsonObject &)> &mutator) {
+    OpResult r;
+    r.ok   = true;
+    r.path = path;
+
+    // ANTS-1823 — the lock file lives beside the store, so the store dir
+    // must exist before we can take the lock. ensurePrivateDir is
+    // idempotent and saveStore re-checks, so this is cheap and safe.
+    ensurePrivateDir(QFileInfo(path).absolutePath());
+
+    // Advisory cross-process lock spanning load → mutate → save. Best
+    // effort: a crashed holder is reclaimed after the stale window, and a
+    // timeout falls through to an unlocked cycle (the pre-fix behaviour)
+    // rather than failing the op — correctness degrades to last-writer-
+    // wins, the tool never wedges.
+    QLockFile lock(path + QStringLiteral(".lock"));
+    lock.setStaleLockTime(30 * 1000);   // 30 s — generous for a JSON RMW
+    lock.tryLock(5000);                 // 5 s budget; ignore the result
+
+    QJsonObject store = loadStore(path);
+    const bool needWrite = mutator(store);
+    if (!needWrite) {
+        r.totalBytes = serializedSize(store);
+        return r;
+    }
+
+    // INV-2 / HI-4 — store-level caps, identical codes to execute().
+    if (store.size() > kMaxStoreKeys) {
+        r.ok   = false;
+        r.code = QStringLiteral("cap_exceeded");
+        r.error = QStringLiteral("session_memory: store would exceed "
+                                 "%1-key cap (%2 keys)")
+                      .arg(kMaxStoreKeys).arg(store.size());
+        return r;
+    }
+    const QByteArray body = QJsonDocument(store).toJson(QJsonDocument::Compact);
+    if (body.size() > kMaxStoreBytes) {
+        r.ok   = false;
+        r.code = QStringLiteral("cap_exceeded");
+        r.error = QStringLiteral("session_memory: store would exceed "
+                                 "100 KiB cap (%1 bytes)").arg(body.size());
+        return r;
+    }
+    const QString saveErr = saveStore(path, body);
+    if (!saveErr.isEmpty()) {
+        r.ok   = false;
+        r.code = QStringLiteral("io_error");
+        r.error = saveErr;
+        return r;
+    }
+    r.totalBytes = body.size();
+    return r;
 }
 
 namespace {
@@ -203,8 +253,6 @@ OpResult execute(const QString &cwd, Op op,
                        path);
     }
 
-    QJsonObject store = loadStore(path);
-
     OpResult r;
     r.ok   = true;
     r.op   = opName(op);
@@ -213,6 +261,9 @@ OpResult execute(const QString &cwd, Op op,
 
     switch (op) {
         case Op::Get: {
+            // Read op — no lock; QSaveFile's atomic rename means a
+            // concurrent write is seen whole or not at all (ANTS-1823).
+            const QJsonObject store = loadStore(path);
             if (store.contains(key)) {
                 r.found = true;
                 r.value = store.value(key);
@@ -223,7 +274,8 @@ OpResult execute(const QString &cwd, Op op,
             return r;
         }
         case Op::Set: {
-            // INV-8 — per-value cap.
+            // INV-8 — per-value cap. Checked pre-load: it depends only on
+            // the incoming value, and yields the specific bad_value code.
             const qint64 valBytes = serializedSize(value);
             if (valBytes > kMaxValueBytes) {
                 return makeErr(op, key, QStringLiteral("bad_value"),
@@ -232,62 +284,36 @@ OpResult execute(const QString &cwd, Op op,
                         .arg(valBytes),
                     path);
             }
-            QJsonObject next = store;
-            next[key] = value;
-            // Indie-review-2026-05-14 lane-5 HI-4: cap distinct key
-            // count. The byte caps don't bound the number of keys,
-            // which dominates the List-op sort cost.
-            if (next.size() > kMaxStoreKeys) {
-                return makeErr(op, key, QStringLiteral("cap_exceeded"),
-                    QStringLiteral("session_memory: store would exceed "
-                                   "%1-key cap (%2 keys)")
-                        .arg(kMaxStoreKeys).arg(next.size()),
-                    path);
-            }
-            // ANTS-1364 — serialize once; reuse the bytes for both the
-            // total-cap check and the on-disk write. Pre-fix code did
-            // this work twice (serializedSize(next) + an internal
-            // QJsonDocument(store).toJson() inside saveStore).
-            const QByteArray body = QJsonDocument(next)
-                .toJson(QJsonDocument::Compact);
-            const qint64 total = body.size();
-            // INV-2 — total cap.
-            if (total > kMaxStoreBytes) {
-                return makeErr(op, key, QStringLiteral("cap_exceeded"),
-                    QStringLiteral("session_memory: store would exceed "
-                                   "100 KiB cap (%1 bytes)").arg(total),
-                    path);
-            }
-            const QString saveErr = saveStore(path, body);
-            if (!saveErr.isEmpty()) {
-                return makeErr(op, key, QStringLiteral("io_error"),
-                               saveErr, path);
-            }
+            // ANTS-1823 — locked RMW. mutateLocked loads the store under
+            // an advisory lock, applies the insert, enforces the store-
+            // level caps (HI-4 key count + INV-2 total bytes), and writes
+            // once — so a concurrent same-cwd set can't drop this key.
+            const OpResult mr = mutateLocked(path,
+                [&](QJsonObject &store) {
+                    store[key] = value;
+                    return true;
+                });
+            if (!mr.ok) return makeErr(op, key, mr.code, mr.error, path);
             r.bytesWritten = valBytes;
-            r.totalBytes   = total;
+            r.totalBytes   = mr.totalBytes;
             return r;
         }
         case Op::Delete: {
-            const bool had = store.contains(key);
-            if (had) {
-                QJsonObject next = store;
-                next.remove(key);
-                // ANTS-1364 — serialize once for write + totalBytes.
-                const QByteArray body = QJsonDocument(next)
-                    .toJson(QJsonDocument::Compact);
-                const QString saveErr = saveStore(path, body);
-                if (!saveErr.isEmpty()) {
-                    return makeErr(op, key, QStringLiteral("io_error"),
-                                   saveErr, path);
-                }
-                r.totalBytes = body.size();
-            } else {
-                r.totalBytes = serializedSize(store);
-            }
-            r.found = had;
+            // ANTS-1823 — locked RMW; only writes when the key existed.
+            bool had = false;
+            const OpResult mr = mutateLocked(path,
+                [&](QJsonObject &store) {
+                    had = store.contains(key);
+                    if (had) store.remove(key);
+                    return had;
+                });
+            if (!mr.ok) return makeErr(op, key, mr.code, mr.error, path);
+            r.found      = had;
+            r.totalBytes = mr.totalBytes;
             return r;
         }
         case Op::List: {
+            const QJsonObject store = loadStore(path);
             // INV-5 — keys + per-key bytes, no inline values.
             QList<QPair<QString, qint64>> rows;
             rows.reserve(store.size());

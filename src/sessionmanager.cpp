@@ -21,17 +21,15 @@
 QString SessionManager::sessionDir() {
     QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
                   + "/ants-terminal/sessions";
-    QDir().mkpath(dir);
-    // ANTS-1141 — tighten the directory perms to 0700. Pre-fix
-    // code inherited the process umask (typically 0022 → 0755),
-    // which left filenames + mtimes + sizes enumerable to other
-    // local users. Individual session_*.dat files are 0600 (per
-    // the saveSession path), but the directory listing leaks
-    // active-session timing and scrollback volume — symmetric
-    // with the config dir which is already 0700.
-    QFile::setPermissions(dir,
-        QFileDevice::ReadOwner | QFileDevice::WriteOwner |
-        QFileDevice::ExeOwner);
+    // ANTS-1141 — the directory must be 0700: individual session_*.dat
+    // files are 0600 (saveSession), but the directory listing leaks
+    // active-session timing + scrollback volume to other local users.
+    // ANTS-1821 — create it private (no mkpath-then-chmod 0755 window)
+    // and surface a failure rather than swallowing the perms-set return.
+    if (!ensurePrivateDir(dir)) {
+        qWarning("SessionManager::sessionDir: could not secure %s at 0700",
+                 qUtf8Printable(dir));
+    }
     return dir;
 }
 
@@ -607,7 +605,12 @@ void SessionManager::cleanupOldSessions(int maxAgeDays) {
     // (ENOSPC, EROFS, EBUSY etc.) the tmp is QFile::removed in
     // the failure branch. But a hard kill mid-rename can leave
     // the tmp behind. Without this sweep they'd accumulate.
-    QFileInfoList tmps = dir.entryInfoList({"*.tmp"}, QDir::Files);
+    // ANTS-1822 — scope the glob to the two temp names we actually
+    // own (session_<id>.dat.tmp, tab_order.txt.tmp). A bare `*.tmp`
+    // would also delete a foreign or in-flight temp another tool
+    // dropped in the sessions dir.
+    QFileInfoList tmps = dir.entryInfoList(
+        {"session_*.dat.tmp", "tab_order.txt.tmp"}, QDir::Files);
     QDateTime tmpCutoff = QDateTime::currentDateTime().addDays(-1);
     for (const QFileInfo &fi : tmps) {
         if (fi.lastModified() < tmpCutoff)

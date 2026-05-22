@@ -9,6 +9,8 @@
 #include <QJsonValue>
 #include <QString>
 
+#include <functional>
+
 namespace SessionMemoryEngine {
 
 constexpr qint64 kMaxStoreBytes = 100 * 1024;   // INV-2 — 100 KiB total cap
@@ -50,6 +52,21 @@ QJsonObject loadStore(const QString &path, bool *corruptOut = nullptr);
 QString     saveStore(const QString &path, const QByteArray &body);
 qint64      serializedSize(const QJsonObject &store);
 qint64      serializedSize(const QJsonValue &value);
+
+// ANTS-1823 — locked read-modify-write. Loads the store at `path`, hands
+// it to `mutator`, and (when the mutator returns true) writes it back
+// once — all under an advisory cross-process lock so two concurrent
+// same-cwd sessions can't last-writer-wins-drop each other's keys.
+// `mutator` returns true to request a write, false for a read-only pass
+// (no write, no lock contention beyond the load). Enforces the same
+// store-level caps execute() does (kMaxStoreKeys / kMaxStoreBytes →
+// code "cap_exceeded"); on save failure → code "io_error". The lock is
+// best-effort: if it can't be taken within the timeout the cycle still
+// runs (degrading to the pre-fix last-writer-wins), so the tool never
+// wedges on a stuck holder. OpResult carries ok / code / error / path /
+// totalBytes only.
+OpResult    mutateLocked(const QString &path,
+                         const std::function<bool(QJsonObject &)> &mutator);
 
 OpResult    execute(const QString &cwd, Op op,
                     const QString &key, const QJsonValue &value,

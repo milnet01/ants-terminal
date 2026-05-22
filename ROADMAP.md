@@ -5178,21 +5178,21 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   `auditdialog.cpp:~4713`; `AuditRunner::runAudit` never loads the ledger) — a
   learned FP recorded in the GUI re-surfaces on every MCP/CI sweep. Wire the
   engine fn into both paths. Verified 2026-05-22.
-- 📋 [ANTS-1821] **`SessionManager::sessionDir` create-then-chmod TOCTOU +
+- ✅ [ANTS-1821] **`SessionManager::sessionDir` create-then-chmod TOCTOU +
   swallowed `setPermissions` return.** `sessionmanager.cpp:24` `mkpath` (umask
   0755) then post-chmod 0700; want an atomic `mkdir(0700)` shared helper (the
   same create-then-chmod shape recurs in sessionmemoryengine + others). Same-UID
   threat model so defense-in-depth. Verified 2026-05-22.
-- 📋 [ANTS-1822] **`cleanupOldSessions` purges `*.tmp` indiscriminately.**
+- ✅ [ANTS-1822] **`cleanupOldSessions` purges `*.tmp` indiscriminately.**
   `sessionmanager.cpp:~605` glob is broader than the two filenames it owns;
   scope to `session_*.dat.tmp` / `tab_order.txt.tmp` so it can't delete a
   foreign/in-flight temp. Verified 2026-05-22.
-- 📋 [ANTS-1823] **`session_memory`/`workflow_state` read-modify-write is
+- ✅ [ANTS-1823] **`session_memory`/`workflow_state` read-modify-write is
   unlocked across concurrent same-cwd CC sessions** (last-writer-wins drops a
   key), and `workflow_state` set does the load/mutate/save TWICE (TTL purge +
   Set). Collapse to one cycle + add advisory lock in `saveStore`. The
   multi-session-tester workflow makes this reachable. Verified 2026-05-22.
-- 📋 [ANTS-1824] **Learned-FP / autofix JSONL appends are non-atomic** (two
+- ✅ [ANTS-1824] **Learned-FP / autofix JSONL appends are non-atomic** (two
   `write()` calls, not O_APPEND-guaranteed) — `auditfpledger.cpp:113`,
   `auditautofix.cpp:157`; a concurrent CC session can interleave the JSON + the
   newline. Single-buffer write or QLockFile. Verified 2026-05-22.
@@ -5247,7 +5247,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   buttons acting on the focused terminal) before session routing, so a
   background tab's prompt paints on the focused tab. Gate the message/buttons on
   the same routing the glyph uses. Verified 2026-05-22.
-- 📋 [ANTS-1836] **Test-audit report writes are non-atomic / no 0600 /
+- ✅ [ANTS-1836] **Test-audit report writes are non-atomic / no 0600 /
   silent-fail.** `testauditdialog.cpp:~48/259` plain `QFile` WriteOnly|Truncate,
   return discarded — use `QSaveFile` + 0600 + checked commit (the auditcache
   pattern). Verified 2026-05-22.
@@ -7780,6 +7780,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** Asking the roadmap tool to "show me item ANTS-1750" should be one quick call, instead of dumping the whole list or falling back to a plain text search.
   Kind: enhancement.
   Lanes: RemoteControl, MCP.
+  Source: in-session-2026-05-22.
+
+- 📋 [ANTS-1848] **`roadmap_query` `mode:section_index` ignores the `status` filter — returns all sections including zero-active ones.**
+  Observed running this MCP-first session: `roadmap_query mode:section_index status:active` returned ~140 sections, the large majority with `active_count:0` (e.g. all the shipped 0.7.x release blocks). For a planning query that's pure noise — the response is dominated by sections with nothing to do. The `status` arg currently only narrows `bullets` mode; in `section_index` it's effectively ignored. Proposal: when `status:active` (or `shipped`) is combined with `mode:section_index`, drop sections whose matching `*_count_id_only` is 0 (keep the full set under the default `status:all` so slug-discovery is unaffected). Cheap server-side filter, large token saving on the common planning call. Relates to [[ANTS-1844]] (roadmap re-split perf) but is orthogonal — this is response-shaping, not parse cost.
+  **Layman:** Asking the roadmap tool for just the active sections still lists every empty one, wasting space.
+  Kind: optimize.
   Source: in-session-2026-05-22.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)

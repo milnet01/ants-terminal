@@ -5,6 +5,7 @@
 
 #include "briefdispatch.h"
 #include "config.h"
+#include "secureio.h"
 #include "sessionmemoryengine.h"
 
 #include <QDir>
@@ -16,6 +17,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QSaveFile>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -45,10 +47,21 @@ QString jsonArrayBlock(const QString &title, const QJsonArray &arr) {
     return s;
 }
 
+// ANTS-1836 — atomic, owner-only report write (was a plain QFile with a
+// discarded write() return: a torn report on disk-full, no 0600, silent
+// failure). QSaveFile gives temp+rename atomicity; the verbatim model
+// reports may quote source the user keeps private, so 0600 like the
+// audit-cache pattern. Returns false on any failure so the caller can tell.
 bool writeReport(const QString &path, const QString &body) {
-    QFile f(path);
+    QSaveFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
-    f.write(body.toUtf8());
+    const QByteArray bytes = body.toUtf8();
+    if (f.write(bytes) != bytes.size()) {
+        f.cancelWriting();
+        return false;
+    }
+    if (!f.commit()) return false;
+    setOwnerOnlyPerms(path);
     return true;
 }
 

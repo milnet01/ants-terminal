@@ -1448,6 +1448,8 @@ if(ANTS_TESTS)
                 tests/features/persistence_post_rename_chmod/test_persistence_post_rename_chmod.cpp
                 tests/features/concurrent_writer_lock/test_concurrent_writer_lock.cpp
                 tests/features/secureio_configbackup_split/test_secureio_configbackup_split.cpp
+                # ANTS-1821/1822/1823/1824/1836 — local-persistence write-safety bundle.
+                tests/features/local_persistence_hardening/test_local_persistence_hardening.cpp
                 tests/features/build_warning_repo_visibility_null_deref/test_build_warning_repo_visibility_null_deref.cpp
                 # ANTS-1450 — test_audit pattern/dimension JSON drift guard.
                 tests/features/test_audit_pattern_drift/test_pattern_drift.cpp
@@ -1486,6 +1488,11 @@ if(ANTS_TESTS)
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
         SRC_SECUREIO_H_PATH="${CMAKE_SOURCE_DIR}/src/secureio.h"
         SRC_CONFIGBACKUP_H_PATH="${CMAKE_SOURCE_DIR}/src/configbackup.h"
+        # ANTS-1821/1823/1824/1836 — local-persistence write-safety wiring greps.
+        SRC_SESSIONMEMORYENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/sessionmemoryengine.cpp"
+        SRC_AUDITFPLEDGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditfpledger.cpp"
+        SRC_AUDITAUTOFIX_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditautofix.cpp"
+        SRC_TESTAUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/testauditdialog.cpp"
         SRC_DEBUGLOG_PATH="${CMAKE_SOURCE_DIR}/src/debuglog.cpp"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
         SRC_RC_CPP="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"

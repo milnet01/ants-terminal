@@ -1,8 +1,10 @@
 #pragma once
 
+#include <QDir>
 #include <QFile>
 #include <QFileDevice>
 #include <QString>
+#include <QStringList>
 
 #include <cerrno>
 #include <fcntl.h>
@@ -119,4 +121,55 @@ inline bool ensureSocketDir(const QString &dir) {
     if (st.st_uid != ::getuid()) return false;
     if ((st.st_mode & 0777) != 0700) return false;
     return true;
+}
+
+// ANTS-1821 — create `dir` (and any missing parents) at mode 0700 with no
+// create-then-chmod window. The pre-fix idiom (`QDir::mkpath` then a
+// post-hoc `QFile::setPermissions(0700)`) created the directory under the
+// process umask (typically 0755), leaving a TOCTOU window in which the
+// directory's name + mtimes + child listing were enumerable by other local
+// users before the chmod landed — and the chmod's return was usually
+// swallowed. Sensitive dirs (session blobs, MCP state) hold scrollback /
+// per-project state.
+//
+// Each *missing* component is born private via `::mkdir(0700)`, so it is
+// never group/world-accessible even briefly. Pre-existing ancestors are left
+// untouched (we must not narrow e.g. ~/.local/share, which other apps share).
+// The leaf is force-tightened to 0700 even when it already existed, because
+// an older build / permissive umask / another tool may have left it 0755
+// (mirrors the ANTS-1801 unconditional-tighten intent). A file or symlink
+// found where a directory component must be is a hard failure (no follow).
+//
+// Returns true iff `dir` exists as a real directory at mode 0700 on return.
+// Callers should surface false (it means the private dir could not be
+// secured) rather than swallow it.
+inline bool ensurePrivateDir(const QString &dir) {
+    const QString clean = QDir::cleanPath(dir);
+    if (clean.isEmpty()) return false;
+
+    const bool absolute = clean.startsWith(QLatin1Char('/'));
+    const QStringList parts = clean.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    if (parts.isEmpty()) return false;
+
+    QString cur = absolute ? QString() : QString();
+    for (const QString &part : parts) {
+        cur = cur.isEmpty()
+                  ? (absolute ? QLatin1Char('/') + part : part)
+                  : cur + QLatin1Char('/') + part;
+        const QByteArray b = QFile::encodeName(cur);
+        struct stat st{};
+        if (::lstat(b.constData(), &st) == 0) {
+            if (!S_ISDIR(st.st_mode)) return false;  // file/symlink blocks us
+            continue;                                 // pre-existing dir: leave
+        }
+        if (errno != ENOENT) return false;
+        // Lost a create race? EEXIST is benign — re-confirm it's a dir below.
+        if (::mkdir(b.constData(), 0700) != 0 && errno != EEXIST) return false;
+        if (::lstat(b.constData(), &st) != 0) return false;
+        if (!S_ISDIR(st.st_mode)) return false;
+    }
+
+    // Force the leaf to 0700 — it holds our private data (ANTS-1801).
+    const QByteArray leaf = QFile::encodeName(clean);
+    return ::chmod(leaf.constData(), 0700) == 0;
 }
