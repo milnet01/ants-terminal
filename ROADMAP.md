@@ -9981,7 +9981,7 @@ The items below identify the next batch of leverage.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1280] **End-to-end `audit_orchestrate` MCP tool.** Mirror
+- ✅ [ANTS-1280] **End-to-end `audit_orchestrate` MCP tool.** Mirror
   shape to ANTS-1279 but for /audit. Single call: probe installed
   tools, run them in parallel with the documented invocations,
   pipe outputs through the audit-triage flow (already on the
@@ -9995,6 +9995,16 @@ The items below identify the next batch of leverage.
   shell runs + Python-parsing each tool's output.
   Kind: implement.
   Source: indie-review-2026-05-13.
+  **Resolution 2026-05-22: superseded by `audit_run` (ANTS-1351 +
+  ANTS-1555).** That tool already delivers this exact surface — one
+  call probes/auto-detects the tools, runs them server-side with the
+  documented invocations + per-tool wall-clock caps, pipes through the
+  AuditEngine triage pipeline, and returns a superset envelope
+  (`by_tool` = tools_run, `total_raw` = total_findings,
+  `total_actionable` = actionable, `noise_rate_pct`, `sarif_path`, plus
+  `.audit_cache/` SARIF + `prior_run`). Building a second tool would
+  duplicate it (CLAUDE.md §3 reuse-before-rewriting); closed without new
+  code.
 
 - ✅ [ANTS-1281] **`indie_review_brief` returns manifest, not source
   bodies** (shipped to `[Unreleased]` 2026-05-13 — first item of
