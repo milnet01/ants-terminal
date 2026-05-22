@@ -220,6 +220,79 @@ public:
         return r;
     }
 
+    // ANTS-1293 — server-side byte cap for structured read-tool responses
+    // whose payload is a JSON array (file_outline `symbols[]`,
+    // workspace_search `matches[]`). Count caps (max_symbols / max_results)
+    // bound the *number* of items; this bounds the *total size* so a few
+    // pathologically long items can't blow the transport budget. Mirrors
+    // the get_text cap (ANTS-1348) but trims the array from the TAIL so the
+    // leading items (earliest symbols / first matches) always survive.
+    //
+    // Defined inline so feature tests can exercise it without the full
+    // MainWindow dep chain.
+    static constexpr int kReadToolDefaultBytesCap = 512 * 1024;      // 512 KiB
+    static constexpr int kReadToolMaxBytesCeiling = 4 * 1024 * 1024; // 4 MiB
+
+    struct ArrayByteCap {
+        int  itemsDropped = 0;
+        bool truncated    = false;
+        bool capClamped   = false;
+    };
+
+    // Trim `env[arrayField]` from the tail until the compact serialization
+    // of `env` fits within `maxBytes`. Mutates env in place; on trim sets
+    // env["truncated"]=true and env[droppedField]=<dropped count>.
+    // `maxBytes <= 0` → default cap; `> ceiling` → clamp + capClamped.
+    static inline ArrayByteCap capJsonArrayToBytes(
+            QJsonObject &env, const QString &arrayField,
+            const QString &droppedField, int maxBytes) {
+        ArrayByteCap r;
+        int cap = maxBytes;
+        if (cap > kReadToolMaxBytesCeiling) {
+            cap = kReadToolMaxBytesCeiling;
+            r.capClamped = true;
+        }
+        if (cap <= 0) cap = kReadToolDefaultBytesCap;
+
+        // Fast path: whole envelope already fits.
+        if (QJsonDocument(env).toJson(QJsonDocument::Compact).size() <= cap) {
+            return r;
+        }
+
+        const QJsonArray items = env.value(arrayField).toArray();
+        // Base envelope size with an empty array stand-in for the field AND
+        // the metadata fields we will add on trim reserved at worst-case
+        // size, so the final serialized env (incl. truncated + dropped
+        // count) stays within `cap`.
+        QJsonObject base = env;
+        base[arrayField]   = QJsonArray();
+        base["truncated"]  = true;
+        base[droppedField] = items.size();
+        int running =
+            QJsonDocument(base).toJson(QJsonDocument::Compact).size();
+
+        QJsonArray kept;
+        for (const QJsonValue &v : items) {
+            // Standalone element size: `[X]` minus the two bracket bytes.
+            const int itemSize =
+                QJsonDocument(QJsonArray{v}).toJson(QJsonDocument::Compact)
+                    .size() - 2;
+            const int delta = itemSize + (kept.isEmpty() ? 0 : 1);  // comma
+            if (running + delta > cap) break;
+            running += delta;
+            kept.append(v);
+        }
+
+        r.itemsDropped = items.size() - kept.size();
+        if (r.itemsDropped > 0) {
+            r.truncated       = true;
+            env[arrayField]   = kept;
+            env["truncated"]  = true;
+            env[droppedField] = r.itemsDropped;
+        }
+        return r;
+    }
+
     // ANTS-1347 — path-side byte hygiene for the `cwd` field on
     // `launch` and `new-tab`. Reject-not-strip semantics: silently
     // mutating a path would change its identity and mislead the

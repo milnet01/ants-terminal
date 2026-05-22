@@ -14,6 +14,18 @@ for security-relevant changes.
 
 ### Added
 
+- **Response size caps for `file_outline` and `workspace_search`
+  (ANTS-1293).** Both tools accept an optional `max_bytes` (default
+  512 KiB, server-clamped to 4 MiB). When a response would exceed it,
+  trailing items are dropped (the leading symbols / first matches always
+  survive) and the envelope reports `truncated:true` plus
+  `symbols_dropped` / `results_dropped`. The existing count caps
+  (`max_symbols` / `max_results`) bound how many items come back; this
+  bounds total size so a file full of long signatures or a wide context
+  window can't blow the transport budget. Completes the read-tool
+  size-cap set begun with `get_text` (ANTS-1348) and `roadmap_query`
+  pagination.
+
 - **`indie_review_partition` flags duplicate review lanes (ANTS-1288).**
   The partition response now carries `suggested_merges` — pairs of
   subsystems whose module-map summaries are identical or near-identical

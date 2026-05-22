@@ -2240,11 +2240,25 @@ void ClaudeIntegration::onMcpConnection() {
                         "mid-size project (> 2 k files) hard-kills "
                         "the default; fall back to `Bash rg` for "
                         "queries that need longer than 30 s.");
+                    // ANTS-1293 — response byte cap. max_results bounds
+                    // the count; this bounds total size. Trims matches[]
+                    // from the tail and sets truncated + results_dropped.
+                    QJsonObject maxBytesProp;
+                    maxBytesProp["type"]    = "integer";
+                    maxBytesProp["minimum"] = 1;
+                    maxBytesProp["description"] = QStringLiteral(
+                        "Cap on the serialized response in bytes "
+                        "(default 512 KiB, server-clamped to 4 MiB). When "
+                        "exceeded, trailing matches are dropped and the "
+                        "envelope carries truncated:true + "
+                        "results_dropped:<n> (+ bytes_cap_clamped:true if "
+                        "the requested cap exceeded the ceiling).");
                     props["pattern"]     = patternProp;
                     props["regex"]       = regexProp;
                     props["lane"]        = laneProp;
                     props["glob"]        = globProp;
                     props["max_results"] = maxProp;
+                    props["max_bytes"]   = maxBytesProp;
                     props["context"]     = ctxProp;
                     props["case"]        = caseProp;
                     props["respect_gitignore"] = respectGitignoreProp;
@@ -2309,10 +2323,22 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject maxSymProp;   maxSymProp["type"]   = "integer";
                                               maxSymProp["default"] = 200;
                                               maxSymProp["maximum"] = 1000;
+                    // ANTS-1293 — response byte cap. max_symbols bounds the
+                    // count; this bounds total size. Trims symbols[] from
+                    // the tail and sets truncated + symbols_dropped.
+                    QJsonObject maxBytesProp; maxBytesProp["type"] = "integer";
+                                              maxBytesProp["minimum"] = 1;
+                                              maxBytesProp["description"] =
+                        QStringLiteral("Cap on the serialized response in "
+                            "bytes (default 512 KiB, server-clamped to "
+                            "4 MiB). When exceeded, trailing symbols are "
+                            "dropped and the envelope carries "
+                            "truncated:true + symbols_dropped:<n>.");
                     props["path"]                 = pathProp;
                     props["mode"]                 = modeProp;
                     props["include_doc_comment"]  = hdrProp;
                     props["max_symbols"]          = maxSymProp;
+                    props["max_bytes"]            = maxBytesProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"]           = makeCallerCwdReadProp();
                     props["etag_match"]           = makeEtagMatchProp();   // ANTS-1499

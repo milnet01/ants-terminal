@@ -3687,6 +3687,17 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // see whether they got their requested timeout_sec or the default.
     out["timeout_sec"] = budgetSec;
     out["elapsed_ms"] = static_cast<int>(wall.elapsed());
+    // ANTS-1293: byte-cap the response. max_results bounds the count; this
+    // bounds total size so wide context windows / long lines can't blow
+    // the transport budget. Trims matches[] from the tail and sets
+    // truncated=true (the existing flag already means "not everything").
+    {
+        const int maxBytes = req.value("max_bytes").toInt(0);
+        const auto cap = RemoteControl::capJsonArrayToBytes(
+            out, QStringLiteral("matches"),
+            QStringLiteral("results_dropped"), maxBytes);
+        if (cap.capClamped) out["bytes_cap_clamped"] = true;
+    }
     // ANTS-1248-INV-6: stateless — no cache, no member-state mutation.
     // ANTS-1248-INV-10: reachability gated by the existing UDS +
     // MCP-socket trust model (SO_PEERCRED UID + 0700 + S_ISSOCK).
@@ -3768,6 +3779,14 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
         if (abs.startsWith(rootCanonical + QLatin1Char('/'))) {
             result["path"] = abs.mid(rootCanonical.size() + 1);
         }
+        // ANTS-1293: byte-cap the response. max_symbols bounds the count;
+        // this bounds total size so a file full of long signatures can't
+        // blow the transport budget. Trims symbols[] from the tail.
+        const int maxBytes = req.value("max_bytes").toInt(0);
+        const auto cap = RemoteControl::capJsonArrayToBytes(
+            result, QStringLiteral("symbols"),
+            QStringLiteral("symbols_dropped"), maxBytes);
+        if (cap.capClamped) result["bytes_cap_clamped"] = true;
     }
     // ANTS-1249-INV-10: reachability gate — UDS / MCP socket
     // SO_PEERCRED UID match (same as ANTS-1248). Nothing extra here.

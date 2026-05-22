@@ -1428,6 +1428,7 @@ if(ANTS_TESTS)
                 tests/features/remote_control_opt_in/test_remote_control_opt_in.cpp
                 tests/features/rc_c1_byte_filter/test_rc_c1_byte_filter.cpp
                 tests/features/rc_get_text_byte_cap/test_rc_get_text_byte_cap.cpp
+                tests/features/rc_read_tool_byte_cap/test_rc_read_tool_byte_cap.cpp
                 tests/features/rc_socket_dir_hardening/test_rc_socket_dir_hardening.cpp
                 tests/features/rc_launch_cwd_anchor/test_rc_launch_cwd_anchor.cpp
                 tests/features/verify_trust_gate/test_verify_trust_gate.cpp

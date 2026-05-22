@@ -10304,7 +10304,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: refactor.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1293] **MCP response pagination + size-cap headers.**
+- ✅ [ANTS-1293] **MCP response pagination + size-cap headers.**
   `file_outline` on a 5000-line file, `get_text` on a long
   scrollback, `roadmap_query` filtering against a 9000-line
   source — each can produce a multi-K-token response today.
