@@ -3412,11 +3412,18 @@ void ClaudeIntegration::onMcpConnection() {
                     t["name"] = "indie_review_partition";
                     t["description"] = QStringLiteral(
                         "Return the subsystem (lane) partition for "
-                        "indie-review. Reads CLAUDE.md `## Module map "
-                        "(src/)` (or the `.indie-review/partition.json` "
-                        "override if present) and computes per-lane "
-                        "source-file lists. Saves N file-walk passes "
-                        "the orchestrator would otherwise do.");
+                        "indie-review. Reads the module map from "
+                        "`docs/subsystems.md` (or CLAUDE.md `## Module map "
+                        "(src/)` when un-migrated; or the "
+                        "`.indie-review/partition.json` override if "
+                        "present) and computes per-lane source-file lists. "
+                        "Saves N file-walk passes the orchestrator would "
+                        "otherwise do. The envelope also carries "
+                        "`suggested_merges:[{lanes:[a,b],rationale}]` "
+                        "(ANTS-1288) — lanes whose summaries duplicate each "
+                        "other (e.g. a multi-name module-map bullet) so you "
+                        "can fold them into one review unit rather than "
+                        "dispatching two near-identical briefs.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to split source files for multi-reviewer "
                         "indie-review dispatch. Pairs with "

@@ -63,6 +63,20 @@ struct Citation {
     QString context;  // ±40 chars
 };
 
+// ANTS-1288 — a suggested merge of two review lanes whose CLAUDE.md /
+// docs/subsystems.md summaries are duplicate or near-duplicate. Advisory
+// only: derivePartition already merges lanes with identical source-file
+// sets (ANTS-1685); this flags lanes that describe the same component in
+// the same words yet resolve to *different* files (e.g. the
+// `luaengine` / `pluginmanager` multi-name bullet), so a caller or
+// downstream orchestrator can fold them rather than dispatching two
+// near-identical briefs.
+struct MergeSuggestion {
+    QStringList lanes;      // exactly two lane names (the candidate pair)
+    QString     rationale;  // human-readable reason ("identical summary
+                            // text" / "near-identical summary text (NN% similar)")
+};
+
 struct CorroboratedFinding {
     QString     file;
     int         line = -1;
@@ -87,6 +101,14 @@ struct BriefManifest {
 };
 
 QList<Lane> derivePartition(const QString &projectPath);
+
+// ANTS-1288 — scan a partition for lanes whose summaries are duplicate or
+// near-duplicate and return one MergeSuggestion per candidate pair (in
+// stable lane order). Pure, side-effect-free. Identical summaries (after
+// trimming) are flagged outright; otherwise a length-gated normalised
+// Levenshtein similarity ≥ 0.90 flags a near-duplicate. Empty input or no
+// duplicates → empty list.
+QList<MergeSuggestion> suggestedMerges(const QList<Lane> &lanes);
 
 // v2 brief shape (ANTS-1281). New callers should use this.
 BriefManifest assembleBriefManifest(const QString &projectPath,

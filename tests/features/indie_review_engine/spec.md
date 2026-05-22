@@ -37,3 +37,12 @@ Locks the six pure helpers in src/indiereviewengine.{h,cpp}.
 - assembleThreatModelExtras concatenates CLAUDE.md / SECURITY.md /
   .semgrep.yml under `=== <header> ===` markers; missing files
   contribute empty bodies.
+- INV-12 (ANTS-1288): suggestedMerges flags pairs of lanes with
+  duplicate summaries — byte-identical summaries → rationale
+  "identical summary text"; length-gated normalised Levenshtein
+  similarity ≥ 0.90 → "near-identical summary text (NN% similar)";
+  distinct summaries are never flagged. Advisory only — it does not
+  mutate the partition (complements the ANTS-1685 file-set dedup,
+  which already merges lanes resolving to the *same* files). The
+  `indie_review_partition` MCP envelope surfaces these as
+  `suggested_merges:[{lanes:[a,b],rationale}]`.

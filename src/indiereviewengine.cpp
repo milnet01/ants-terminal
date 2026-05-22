@@ -16,6 +16,7 @@
 #include <QPair>
 #include <QRegularExpression>
 #include <QSet>
+#include <QVector>
 
 #include <algorithm>
 
@@ -158,6 +159,78 @@ QList<Lane> derivePartition(const QString &projectPath) {
             if (existing.name != l.name &&
                 !existing.name.split(QStringLiteral(", ")).contains(l.name))
                 existing.name += QStringLiteral(", ") + l.name;
+        }
+    }
+    return out;
+}
+
+namespace {
+
+// Two-row Levenshtein, dimensions capped so an adversarial summary can't
+// blow up the O(m*n) DP. Inputs are pre-gated by length ratio (below) so
+// this only runs on plausibly-similar pairs. Returns edit distance.
+int levenshtein(const QString &a, const QString &b) {
+    const int m = a.size();
+    const int n = b.size();
+    if (m == 0) return n;
+    if (n == 0) return m;
+    QVector<int> prev(n + 1), curr(n + 1);
+    for (int j = 0; j <= n; ++j) prev[j] = j;
+    for (int i = 1; i <= m; ++i) {
+        curr[0] = i;
+        const QChar ai = a.at(i - 1);
+        for (int j = 1; j <= n; ++j) {
+            const int cost = (ai == b.at(j - 1)) ? 0 : 1;
+            curr[j] = std::min({ prev[j] + 1, curr[j - 1] + 1,
+                                 prev[j - 1] + cost });
+        }
+        prev.swap(curr);
+    }
+    return prev[n];
+}
+
+}  // namespace
+
+QList<MergeSuggestion> suggestedMerges(const QList<Lane> &lanes) {
+    QList<MergeSuggestion> out;
+    constexpr int   kMaxDpChars = 512;    // DP dimension cap (perf guard)
+    constexpr double kLenRatioGate = 0.80; // skip the DP when lengths differ a lot
+    constexpr double kSimThreshold = 0.90; // near-duplicate cut-off
+
+    for (int i = 0; i < lanes.size(); ++i) {
+        const QString a = lanes.at(i).summary.trimmed();
+        if (a.isEmpty()) continue;
+        for (int j = i + 1; j < lanes.size(); ++j) {
+            const QString b = lanes.at(j).summary.trimmed();
+            if (b.isEmpty()) continue;
+
+            QString rationale;
+            if (a == b) {
+                rationale = QStringLiteral("identical summary text");
+            } else {
+                const int la = a.size(), lb = b.size();
+                const double ratio =
+                    double(std::min(la, lb)) / double(std::max(la, lb));
+                if (ratio >= kLenRatioGate) {
+                    const QString ca = a.left(kMaxDpChars);
+                    const QString cb = b.left(kMaxDpChars);
+                    const int dist = levenshtein(ca, cb);
+                    const int maxLen = std::max(ca.size(), cb.size());
+                    const double sim =
+                        maxLen == 0 ? 1.0 : 1.0 - double(dist) / double(maxLen);
+                    if (sim >= kSimThreshold) {
+                        rationale =
+                            QStringLiteral("near-identical summary text (%1% similar)")
+                                .arg(int(sim * 100.0 + 0.5));
+                    }
+                }
+            }
+            if (rationale.isEmpty()) continue;
+
+            MergeSuggestion s;
+            s.lanes     = { lanes.at(i).name, lanes.at(j).name };
+            s.rationale = rationale;
+            out.push_back(s);
         }
     }
     return out;

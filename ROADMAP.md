@@ -10091,7 +10091,7 @@ The items below identify the next batch of leverage.
   new feature tests (11 engine + 6 MCP-layer); ctest 466 → 483
   green.
 
-- 📋 [ANTS-1288] **`indie_review_partition` suggests lane merges.**
+- ✅ [ANTS-1288] **`indie_review_partition` suggests lane merges.**
   Two lanes (`luaengine`+`pluginmanager`, `claudetasklist`+
   `claudebgtasks`) have byte-identical summaries in CLAUDE.md;
   the orchestrator has to spot the duplication manually and

@@ -6684,11 +6684,30 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
     QJsonObject env;
     env["ok"]    = true;
     env["lanes"] = arr;
-    // Project-relative path to the partition source (CLAUDE.md or override).
+    // ANTS-1288: flag lanes whose summaries duplicate each other so a
+    // caller (or ANTS-1279 orchestrator) can fold them rather than
+    // dispatching two near-identical briefs.
+    QJsonArray merges;
+    for (const auto &s : IndieReviewEngine::suggestedMerges(lanes)) {
+        QJsonObject mo;
+        QJsonArray pair;
+        for (const QString &nm : s.lanes) pair.append(nm);
+        mo["lanes"]     = pair;
+        mo["rationale"] = s.rationale;
+        merges.append(mo);
+    }
+    env["suggested_merges"] = merges;
+    // Project-relative path to the partition source (override / module map).
     if (QFileInfo(root + QStringLiteral("/.indie-review/partition.json")).exists()) {
         env["path"] = QStringLiteral(".indie-review/partition.json");
     } else {
-        env["path"] = QStringLiteral("CLAUDE.md");
+        // ANTS-1292: module map lives in docs/subsystems.md when present.
+        QString src = SubsystemMap::resolveSource(root + QStringLiteral("/CLAUDE.md"));
+        if (!root.isEmpty() && src.startsWith(root)) {
+            src.remove(0, root.size());
+            if (src.startsWith(QLatin1Char('/'))) src.remove(0, 1);
+        }
+        env["path"] = src.isEmpty() ? QStringLiteral("CLAUDE.md") : src;
     }
     return QJsonDocument(env);
 }

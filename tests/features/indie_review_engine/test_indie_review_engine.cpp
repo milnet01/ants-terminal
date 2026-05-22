@@ -67,6 +67,60 @@ TEST(IndieReviewEngine, Inv1DerivePartitionFromClaudeMd) {
     EXPECT_TRUE(sawBar);
 }
 
+// ANTS-1288 — suggestedMerges flags lanes with duplicate/near-duplicate
+// summaries (advisory; complements the ANTS-1685 file-set dedup).
+TEST(IndieReviewEngine, Ants1288SuggestedMergesIdentical) {
+    QList<IndieReviewEngine::Lane> lanes;
+    auto mk = [](const QString &n, const QString &s) {
+        IndieReviewEngine::Lane l; l.name = n; l.summary = s; return l;
+    };
+    lanes << mk("luaengine",   "sandboxed Lua 5.4 plugin VM and lifecycle.")
+          << mk("pluginmanager","sandboxed Lua 5.4 plugin VM and lifecycle.")
+          << mk("vtparser",    "VT100/xterm state machine emitting actions.");
+
+    const auto merges = IndieReviewEngine::suggestedMerges(lanes);
+    ASSERT_EQ(merges.size(), 1);
+    EXPECT_EQ(merges[0].lanes.size(), 2);
+    EXPECT_TRUE(merges[0].lanes.contains("luaengine"));
+    EXPECT_TRUE(merges[0].lanes.contains("pluginmanager"));
+    EXPECT_EQ(merges[0].rationale, QStringLiteral("identical summary text"));
+}
+
+TEST(IndieReviewEngine, Ants1288SuggestedMergesNearAndDistinct) {
+    QList<IndieReviewEngine::Lane> lanes;
+    auto mk = [](const QString &n, const QString &s) {
+        IndieReviewEngine::Lane l; l.name = n; l.summary = s; return l;
+    };
+    // Near-identical: one trailing word differs in a long summary.
+    lanes << mk("a", "per-tab JSONL tracker watching the transcript for task events alpha")
+          << mk("b", "per-tab JSONL tracker watching the transcript for task events beta")
+          // Distinct: should never be flagged against the others.
+          << mk("c", "QPainter glyph renderer with HarfBuzz ligatures and SGR mouse.");
+
+    const auto merges = IndieReviewEngine::suggestedMerges(lanes);
+    ASSERT_EQ(merges.size(), 1);
+    EXPECT_TRUE(merges[0].lanes.contains("a"));
+    EXPECT_TRUE(merges[0].lanes.contains("b"));
+    EXPECT_TRUE(merges[0].rationale.startsWith(QStringLiteral("near-identical")));
+}
+
+TEST(IndieReviewEngine, Ants1288MultiNameBulletSurvivesAndIsSuggested) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    // A multi-name bullet yields two lanes with identical summaries; they
+    // resolve to different source files so the ANTS-1685 dedup leaves them
+    // separate — exactly the case suggestedMerges is for.
+    seedProject(tmp,
+                "# x\n## Module map (src/)\n"
+                "- `aaa` / `bbb` \xe2\x80\x94 shared component summary text\n",
+                QStringList{"aaa.cpp", "bbb.cpp"});
+    const auto lanes = IndieReviewEngine::derivePartition(tmp.path());
+    ASSERT_EQ(lanes.size(), 2);
+    const auto merges = IndieReviewEngine::suggestedMerges(lanes);
+    ASSERT_EQ(merges.size(), 1);
+    EXPECT_EQ(merges[0].rationale, QStringLiteral("identical summary text"));
+}
+
 TEST(IndieReviewEngine, Inv2DerivePartitionHonoursOverride) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());

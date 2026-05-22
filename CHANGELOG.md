@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **`indie_review_partition` flags duplicate review lanes (ANTS-1288).**
+  The partition response now carries `suggested_merges` — pairs of
+  subsystems whose module-map summaries are identical or near-identical
+  (e.g. a `name-a` / `name-b` multi-name bullet that resolves to different
+  files). A reviewer or orchestrator can fold these into one review unit
+  instead of dispatching two near-identical briefs. Advisory only; it does
+  not change the partition itself.
+
 - **Review-dialog foundation — run AI doc/test reviews in-app without
   spending Claude tokens (ANTS-1727).** New shared plumbing for the
   upcoming Cold-Eyes (ANTS-1721) and Test-Audit (ANTS-1722) dialogs:

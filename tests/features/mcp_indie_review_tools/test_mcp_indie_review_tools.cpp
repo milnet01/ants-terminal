@@ -91,6 +91,21 @@ TEST(McpIndieReviewTools, AllCmdMethodsDefinedInCpp) {
     }
 }
 
+// ANTS-1288 — the partition handler emits suggested_merges, computed via
+// the engine helper (locks the wiring against accidental removal).
+TEST(McpIndieReviewTools, Ants1288PartitionEmitsSuggestedMerges) {
+    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    ASSERT_FALSE(rc.empty());
+    const auto p = rc.find("RemoteControl::cmdIndieReviewPartition");
+    ASSERT_NE(p, std::string::npos);
+    const std::string body = rc.substr(p, 2000);
+    EXPECT_NE(body.find("suggested_merges"), std::string::npos)
+        << "cmdIndieReviewPartition no longer emits suggested_merges";
+    EXPECT_NE(body.find("IndieReviewEngine::suggestedMerges"),
+              std::string::npos)
+        << "cmdIndieReviewPartition no longer calls the engine helper";
+}
+
 TEST(McpIndieReviewTools, AllSchemasUseAdditionalPropertiesFalse) {
     // Defensive: every new tool's inputSchema sets additionalProperties=false
     // so unknown keys are rejected. Region scoped to JUST the indie_review_*
