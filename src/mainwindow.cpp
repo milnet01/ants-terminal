@@ -3897,19 +3897,25 @@ void MainWindow::setupClaudeMcpProviders() {
             if (!t) return {};
             QString cwd = t->shellCwd();
             if (cwd.isEmpty()) return {};
-            QProcess git;
-            git.setWorkingDirectory(cwd);
-            git.setProgram("git");
+            // ANTS-1748 — run the three probes concurrently on separate
+            // QProcess objects instead of serially. Each waitForFinished
+            // has a 2 s timeout; serial start/wait stalled the UI thread
+            // up to ~6 s on a slow/locked repo (the exact freeze the
+            // status-bar's async branch-probe exists to avoid). Started
+            // together they run in parallel, so the worst-case GUI block
+            // is one 2 s timeout, not three. Output format unchanged.
+            QProcess branchProc, statusProc, logProc;
+            for (QProcess *p : {&branchProc, &statusProc, &logProc})
+                p->setWorkingDirectory(cwd);
+            branchProc.start("git", {"rev-parse", "--abbrev-ref", "HEAD"});
+            statusProc.start("git", {"status", "--porcelain", "-sb"});
+            logProc.start("git", {"log", "--oneline", "-5"});
+            for (QProcess *p : {&branchProc, &statusProc, &logProc})
+                p->waitForFinished(2000);
             QStringList result;
-            git.setArguments({"rev-parse", "--abbrev-ref", "HEAD"});
-            git.start(); git.waitForFinished(2000);
-            result << "Branch: " + QString::fromUtf8(git.readAllStandardOutput()).trimmed();
-            git.setArguments({"status", "--porcelain", "-sb"});
-            git.start(); git.waitForFinished(2000);
-            result << "Status:\n" + QString::fromUtf8(git.readAllStandardOutput()).trimmed();
-            git.setArguments({"log", "--oneline", "-5"});
-            git.start(); git.waitForFinished(2000);
-            result << "Recent commits:\n" + QString::fromUtf8(git.readAllStandardOutput()).trimmed();
+            result << "Branch: " + QString::fromUtf8(branchProc.readAllStandardOutput()).trimmed();
+            result << "Status:\n" + QString::fromUtf8(statusProc.readAllStandardOutput()).trimmed();
+            result << "Recent commits:\n" + QString::fromUtf8(logProc.readAllStandardOutput()).trimmed();
             return result.join("\n\n");
         });
     m_claudeIntegration->registerToolProvider("get_environment",

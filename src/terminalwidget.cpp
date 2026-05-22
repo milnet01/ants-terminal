@@ -763,24 +763,20 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         // --- Ligature-aware text rendering ---
         // We accumulate runs of same-attribute cells and draw them together
         // to let Qt apply font ligatures (JetBrains Mono, Fira Code, etc.).
-        // 0.7.9 — codepoints are accumulated into std::vector<char32_t> and
+        // 0.7.9 — codepoints are accumulated into a char32_t buffer and
         // converted to QString once per run at draw time, instead of calling
         // QString::fromUcs4() per cell and reallocating a per-run QString on
         // each append. Saves N per-frame small-QString constructions in the
         // common case of ASCII-only TUI output.
-        struct TextRun {
-            int startCol;
-            std::vector<char32_t> codepoints;
-            QColor fg;
-            QColor bg;
-            bool bold;
-            bool italic;
-            bool underline;
-            bool strikethrough;
-            bool isUrl;
-        };
-        std::vector<TextRun> runs;
-        TextRun current{};
+        // ANTS-1779 — m_paintRuns / m_paintCps are members reused across
+        // rows and frames; clear() retains capacity so the per-row run
+        // vector and the codepoint arena are no longer reallocated every
+        // row of every frame. `current` is a small POD descriptor that
+        // records its codepoint slice as [cpStart, cpStart+cpLen) into
+        // m_paintCps rather than owning a nested vector.
+        m_paintRuns.clear();
+        m_paintCps.clear();
+        PaintTextRun current{};
         current.startCol = 0;
         bool currentValid = false;
 
@@ -885,11 +881,13 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
 
             if (c.codepoint != ' ' && c.codepoint != 0) {
                 if (!sameAttrs) {
-                    if (currentValid && !current.codepoints.empty()) {
-                        runs.push_back(std::move(current));
+                    if (currentValid && current.cpLen > 0) {
+                        m_paintRuns.push_back(current);
                     }
-                    current = TextRun{};
+                    current = PaintTextRun{};
                     current.startCol = col;
+                    current.cpStart = static_cast<int>(m_paintCps.size());
+                    current.cpLen = 0;
                     current.fg = fg;
                     current.bg = bg;
                     current.bold = c.attrs.bold;
@@ -899,15 +897,18 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                     current.isUrl = isUrl;
                     currentValid = true;
                 }
-                current.codepoints.push_back(static_cast<char32_t>(c.codepoint));
+                m_paintCps.push_back(static_cast<char32_t>(c.codepoint));
+                ++current.cpLen;
                 if (auto *comb = combiningAt(globalLine, col)) {
-                    for (uint32_t combCp : *comb)
-                        current.codepoints.push_back(static_cast<char32_t>(combCp));
+                    for (uint32_t combCp : *comb) {
+                        m_paintCps.push_back(static_cast<char32_t>(combCp));
+                        ++current.cpLen;
+                    }
                 }
             } else {
                 // Space or null breaks the run
-                if (currentValid && !current.codepoints.empty()) {
-                    runs.push_back(std::move(current));
+                if (currentValid && current.cpLen > 0) {
+                    m_paintRuns.push_back(current);
                     currentValid = false;
                 }
             }
@@ -1005,8 +1006,8 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         }
 
         // Flush last run
-        if (currentValid && !current.codepoints.empty()) {
-            runs.push_back(std::move(current));
+        if (currentValid && current.cpLen > 0) {
+            m_paintRuns.push_back(current);
         }
 
         // ANTS-1180: flush trailing bg-fill run for this row.
@@ -1032,7 +1033,7 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         // optimisation, deferred). m_paintLayout is a mutable member
         // so paintEvent's const-correctness is preserved.
         const QFont *lastFont = nullptr;
-        for (const auto &run : runs) {
+        for (const auto &run : m_paintRuns) {
             const QFont *drawFont = &m_font;
             if (run.bold && run.italic) drawFont = &m_fontBoldItalic;
             else if (run.bold) drawFont = &m_fontBold;
@@ -1046,8 +1047,8 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
             // Pre-allocated QString + QChar copy is roughly 2-3× faster
             // than fromUcs4 on the hot run loop.
             QString runText;
-            const auto &cps = run.codepoints;
-            const int n = static_cast<int>(cps.size());
+            const char32_t *cps = m_paintCps.data() + run.cpStart;
+            const int n = run.cpLen;
             bool allAscii = true;
             for (int i = 0; i < n; ++i) {
                 if (cps[i] >= 0x80) { allAscii = false; break; }
@@ -1058,7 +1059,7 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                     runText[i] = QChar(static_cast<ushort>(cps[i]));
                 }
             } else {
-                runText = QString::fromUcs4(cps.data(), n);
+                runText = QString::fromUcs4(cps, n);
             }
             // ANTS-1205 — m_paintLayout is reused across runs and
             // across paint events. setText() resets the layout's
@@ -1300,6 +1301,29 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         int remaining = cols - cursorCol;
         QString text = m_currentSuggestion.left(remaining);
         p.drawText(gx, gy + m_fontAscent, text);
+    }
+
+    // ANTS-1780 — IME pre-edit (composition) text, drawn inline at the
+    // cursor with an underline so uncommitted CJK / dead-key input is
+    // visible while composing. Painted after the cursor so it overlays
+    // the block-cursor cell; the bg fill clears whatever is underneath.
+    if (m_scrollOffset == 0 && !m_preeditString.isEmpty()) {
+        int cursorCol = effectiveCursorCol();
+        int gx = m_padding + cursorCol * m_cellWidth;
+        int gy = m_padding + effectiveCursorRow() * m_cellHeight;
+        QString text = m_preeditString;
+        QFontMetrics fm(m_font);
+        int textW = fm.horizontalAdvance(text);
+        // Don't paint past the right padding edge.
+        int maxW = width() - m_padding - gx;
+        if (textW > maxW) textW = maxW;
+        if (textW > 0) {
+            p.fillRect(gx, gy, textW, m_cellHeight, m_grid->defaultBg());
+            p.setPen(m_grid->defaultFg());
+            p.setFont(m_font);
+            p.drawText(gx, gy + m_fontAscent, text);
+            p.fillRect(gx, gy + m_cellHeight - 1, textW, 1, m_grid->defaultFg());
+        }
     }
 
     // Dim overlay for unfocused split panes
@@ -2108,6 +2132,17 @@ void TerminalWidget::inputMethodEvent(QInputMethodEvent *event) {
     if (!event->commitString().isEmpty() && hasPty()) {
         QByteArray data = event->commitString().toUtf8();
         ptyWrite(data);
+    }
+    // ANTS-1780 — hold the in-progress composition (pre-edit) string so
+    // paintEvent can render it inline at the cursor. The widget already
+    // advertises WA_InputMethodEnabled + ImCursorRectangle, but pre-fix
+    // code only consumed commitString(), so CJK / dead-key composition
+    // was completely invisible while typing. On commit the IME sends a
+    // final event with an empty preeditString(), which clears it here.
+    const QString newPreedit = event->preeditString();
+    if (newPreedit != m_preeditString) {
+        m_preeditString = newPreedit;
+        update();
     }
     event->accept();
 }

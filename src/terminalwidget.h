@@ -602,6 +602,29 @@ private:
     // paintEvent's const-correctness is preserved.
     mutable QTextLayout m_paintLayout;
 
+    // ANTS-1779 — paint-cycle run buffers hoisted to members. Pre-fix
+    // code declared `std::vector<TextRun> runs` (each TextRun owning a
+    // nested std::vector<char32_t>) inside the per-row paint loop, so
+    // every row of every frame reallocated the run vector plus a fresh
+    // codepoints vector per run. Hoisting the run list and a flat
+    // codepoints arena to members (cleared per row, capacity retained)
+    // reuses the allocation across rows and frames. Mutable so
+    // paintEvent's const-correctness is preserved.
+    struct PaintTextRun {
+        int startCol;
+        int cpStart;   // offset into m_paintCps
+        int cpLen;
+        QColor fg;
+        QColor bg;
+        bool bold;
+        bool italic;
+        bool underline;
+        bool strikethrough;
+        bool isUrl;
+    };
+    mutable std::vector<PaintTextRun> m_paintRuns;
+    mutable std::vector<char32_t> m_paintCps;
+
     // Trigger rules
     std::vector<TriggerRule> m_triggerRules;
     void checkTriggers(const QByteArray &data);
@@ -614,6 +637,12 @@ private:
 
     // Exit code tracking for error detection
     int m_lastTrackedExitCode = 0;
+
+    // ANTS-1780 — IME pre-edit (composition) text. Held between
+    // inputMethodEvent updates so paintEvent can render in-progress
+    // CJK / dead-key composition inline at the cursor. Empty when not
+    // composing; cleared on commit.
+    QString m_preeditString;
 
     // Autocomplete / history suggestions
     QStringList m_historyEntries;
