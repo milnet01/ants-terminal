@@ -2,6 +2,7 @@
 
 #include "falseposledger.h"
 #include "indiereviewengine.h"
+#include "pathvalidation.h"
 
 #include <QChar>
 #include <QDateTime>
@@ -27,16 +28,10 @@ QString slurpUtf8(const QString &absPath) {
     return QString::fromUtf8(f.readAll());
 }
 
-// INV-13 path-rule defence: canonicalise candidate, accept only if it
-// remains under projectPath's canonical form.
-bool isInsideProject(const QString &projectPath, const QString &candidate) {
-    const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
-    if (rootCanon.isEmpty()) return false;
-    const QString candCanon = QFileInfo(candidate).canonicalFilePath();
-    if (candCanon.isEmpty()) return false;
-    return candCanon == rootCanon
-           || candCanon.startsWith(rootCanon + QChar('/'));
-}
+// INV-13 path-rule defence now lives in the shared, NFC-aware
+// PathValidation::isInsideProject (ANTS-1832) — same canonicalise-both-
+// and-anchor semantics this helper used to carry, reused here and by
+// indiereviewengine's partition-override parser.
 
 bool fileExists(const QString &projectPath, const QString &rel) {
     return QFileInfo::exists(projectPath + QChar('/') + rel);
@@ -191,7 +186,7 @@ OverrideReadResult readPartitionOverride(const QString &projectPath) {
             // entries and require they resolve inside the project.
             if (QFileInfo(d).isAbsolute()) { ++filteredPaths; continue; }
             const QString joined = projectPath + QChar('/') + d;
-            if (!isInsideProject(projectPath, joined)) {
+            if (!PathValidation::isInsideProject(projectPath, joined)) {
                 ++filteredPaths;
                 continue;
             }
@@ -882,7 +877,7 @@ QStringList extractCitedCodePaths(const QString &projectPath,
         // before it reached the staleCitationsOut sink.
         const QString abs = projectPath + QChar('/') + hit;
         if (QFileInfo::exists(abs)) {
-            if (!isInsideProject(projectPath, abs)) return;
+            if (!PathValidation::isInsideProject(projectPath, abs)) return;
             if (seenResolved.contains(hit)) return;
             seenResolved.insert(hit);
             out << hit;

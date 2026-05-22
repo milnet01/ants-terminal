@@ -3683,6 +3683,34 @@ void MainWindow::setupStatusBarChrome() {
         [this]() { checkForUpdates(/*userInitiated=*/false); });
 }
 
+// ANTS-1833 — resolve+validate the caller_cwd that the inline audit_run /
+// indie_review_dispatch handlers use as their in-flight-gate key. A
+// non-existent root canonicalises to "" and would collapse every such
+// call onto one shared key (one bogus caller blocks real sweeps); the
+// dispatcher only enforces non-empty, not is-a-directory. On reject the
+// `errOut` is a ready-to-return bad_cwd envelope. Returns true (and
+// fills canonOut) only for an existing directory.
+static bool resolveInflightCallerCwd(const QString &callerCwd,
+                                     const char *tool,
+                                     QString *canonOut, QString *errOut) {
+    const QString canon = QFileInfo(callerCwd).canonicalFilePath();
+    if (canon.isEmpty() || !QFileInfo(canon).isDir()) {
+        QJsonObject env;
+        env[QStringLiteral("ok")]    = false;
+        // `bad_cwd` per docs/standards/mcp-error-codes.md — the precise
+        // code for "caller_cwd does not exist or isn't a directory".
+        env[QStringLiteral("code")]  = QStringLiteral("bad_cwd");
+        env[QStringLiteral("error")] =
+            QStringLiteral("%1: \"caller_cwd\" is not an existing directory")
+                .arg(QLatin1String(tool));
+        *errOut = QString::fromUtf8(
+            QJsonDocument(env).toJson(QJsonDocument::Compact));
+        return false;
+    }
+    *canonOut = canon;
+    return true;
+}
+
 // ANTS-1146 — MCP-provider plumbing for ClaudeIntegration.
 // Provides the scrollback / cwd / lastCommand / git-status /
 // environment lookups MCP needs from MainWindow's tab/terminal
@@ -4046,8 +4074,12 @@ void MainWindow::setupClaudeMcpProviders() {
         [this](const QJsonObject &args) -> QString {
             const QString callerCwd = args.value(
                 QStringLiteral("caller_cwd")).toString();
-            const QString canon =
-                QFileInfo(callerCwd).canonicalFilePath();
+            // ANTS-1833 — reject a non-existent root before it can
+            // collapse the in-flight key (canon would be empty).
+            QString canon, badEnv;
+            if (!resolveInflightCallerCwd(callerCwd, "audit_run",
+                                          &canon, &badEnv))
+                return badEnv;
             // In-flight gate (INV-11).
             const qint64 existing =
                 m_claudeIntegration->verbInFlightTryAcquire(
@@ -4484,8 +4516,12 @@ void MainWindow::setupClaudeMcpProviders() {
             if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
             const QString callerCwd = args.value(
                 QStringLiteral("caller_cwd")).toString();
-            const QString canon =
-                QFileInfo(callerCwd).canonicalFilePath();
+            // ANTS-1833 — reject a non-existent root before it can
+            // collapse the in-flight key (canon would be empty).
+            QString canon, badEnv;
+            if (!resolveInflightCallerCwd(callerCwd, "indie_review_dispatch",
+                                          &canon, &badEnv))
+                return badEnv;
             const qint64 existing =
                 m_claudeIntegration->verbInFlightTryAcquire(
                     QStringLiteral("indie_review_dispatch"), canon);

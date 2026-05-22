@@ -2,6 +2,7 @@
 
 #include "briefdispatch.h"
 #include "falseposledger.h"
+#include "pathvalidation.h"
 #include "subsystemmap.h"
 
 #include <QChar>
@@ -90,7 +91,8 @@ QString readPartitionOverride(const QString &projectPath) {
                      + QStringLiteral("/.indie-review/partition.json"));
 }
 
-QList<Lane> parsePartitionOverride(const QString &json) {
+QList<Lane> parsePartitionOverride(const QString &json,
+                                  const QString &projectPath) {
     QJsonParseError pe{};
     const auto doc = QJsonDocument::fromJson(json.toUtf8(), &pe);
     if (pe.error != QJsonParseError::NoError || !doc.isObject()) return {};
@@ -107,9 +109,15 @@ QList<Lane> parsePartitionOverride(const QString &json) {
         if (l.name.isEmpty()) continue;  // schema: name required
         for (const auto &sp : o.value(QStringLiteral("sourcePaths")).toArray()) {
             const QString s = sp.toString();
-            if (!s.isEmpty() && s.startsWith(QStringLiteral("src/"))) {
-                l.sourcePaths << s;
-            }
+            if (s.isEmpty() || !s.startsWith(QStringLiteral("src/"))) continue;
+            // ANTS-1832 — the src/ prefix alone is not an anchor:
+            // "src/../../etc/passwd" satisfies startsWith yet escapes the
+            // tree, and the entry would reach the brief header before any
+            // canonicalisation guard. Require each path to canonicalise
+            // inside the project (parity with cold-eyes lane-5 CR-1).
+            const QString joined = projectPath + QChar('/') + s;
+            if (!PathValidation::isInsideProject(projectPath, joined)) continue;
+            l.sourcePaths << s;
         }
         out << l;
     }
@@ -121,7 +129,7 @@ QList<Lane> parsePartitionOverride(const QString &json) {
 QList<Lane> derivePartition(const QString &projectPath) {
     const QString override = readPartitionOverride(projectPath);
     if (!override.isEmpty()) {
-        const auto lanes = parsePartitionOverride(override);
+        const auto lanes = parsePartitionOverride(override, projectPath);
         if (!lanes.isEmpty()) return lanes;
         // fall-through: malformed override → try CLAUDE.md
     }

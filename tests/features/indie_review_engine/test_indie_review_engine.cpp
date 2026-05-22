@@ -141,6 +141,34 @@ TEST(IndieReviewEngine, Inv2DerivePartitionHonoursOverride) {
     EXPECT_TRUE(lanes[0].sourcePaths.contains("src/ignored.h"));
 }
 
+// ANTS-1832 — an override sourcePaths entry that satisfies the `src/`
+// prefix but escapes the tree (`src/../../etc/passwd`) must be dropped;
+// the prefix is not an anchor. A legitimate sibling entry survives.
+TEST(IndieReviewEngine, Ants1832OverrideSourcePathsRejectsTraversal) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp,
+                "# x\n## Module map (src/)\n- `ignored` \xe2\x80\x94 wrong\n",
+                QStringList{"real.cpp"});
+
+    writeFile(tmp.path(), ".indie-review/partition.json",
+              "{\"version\":1,\"lanes\":[{"
+              "\"name\":\"override-lane\","
+              "\"summary\":\"from override\","
+              "\"sourcePaths\":[\"src/real.cpp\","
+              "\"src/../../../../../../etc/passwd\"]}]}");
+
+    const auto lanes = IndieReviewEngine::derivePartition(tmp.path());
+    ASSERT_EQ(lanes.size(), 1);
+    EXPECT_TRUE(lanes[0].sourcePaths.contains("src/real.cpp"));
+    EXPECT_EQ(lanes[0].sourcePaths.size(), 1)
+        << "the traversal entry must be dropped, leaving only src/real.cpp";
+    for (const QString &p : lanes[0].sourcePaths) {
+        EXPECT_FALSE(p.contains(QStringLiteral("..")))
+            << "no escaping entry should survive: " << p.toStdString();
+    }
+}
+
 TEST(IndieReviewEngine, Inv3AssembleBriefShape) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());

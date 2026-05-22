@@ -80,6 +80,53 @@ TEST(PlanTemplateEngine, Inv1RejectsBadFeatureNames) {
 }
 
 // ---------------------------------------------------------------------------
+// INV-10 (ANTS-1838) — ants_id validation at the trust boundary.
+// ---------------------------------------------------------------------------
+TEST(PlanTemplateEngine, Inv10RejectsBadAntsId) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    const char *bad[] = {
+        "../../etc/passwd",   // traversal
+        "ANTS-1234/../x",     // embedded slash + traversal
+        "ants-1234",          // lowercase prefix
+        "ANTS_1234",          // underscore separator
+        "ANTS-",              // no number
+        "-1234",              // no prefix
+        "ANTS 1234",          // space
+        "ANTS-12.34",         // dot
+    };
+    for (const char *id : bad) {
+        auto opts = defaultOpts(QStringLiteral("foo"));
+        opts.antsId = QString::fromUtf8(id);
+        const auto r = PlanTemplateEngine::buildPlan(tmp.path(), opts);
+        EXPECT_FALSE(r.ok) << "expected reject for ants_id: " << id;
+        EXPECT_EQ(r.errorCode, QStringLiteral("bad_args"))
+            << "ants_id: " << id;
+    }
+
+    // Well-formed project-prefixed ids accept (dry-run, no counter).
+    const char *good[] = { "ANTS-1234", "RETRO-42", "VEST-7", "A-1" };
+    for (const char *id : good) {
+        auto opts = defaultOpts(QStringLiteral("foo"));
+        opts.antsId = QString::fromUtf8(id);
+        const auto r = PlanTemplateEngine::buildPlan(tmp.path(), opts);
+        EXPECT_TRUE(r.ok) << "expected accept for ants_id: " << id
+                          << " err=" << r.errorCode.toStdString();
+    }
+
+    // Empty ants_id is still allowed (means "allocate"); with no
+    // .roadmap-counter present it falls through to AntsIdSource::None.
+    {
+        PlanTemplateEngine::PlanOptions opts;
+        opts.featureName = QStringLiteral("foo");
+        const auto r = PlanTemplateEngine::buildPlan(tmp.path(), opts);
+        EXPECT_TRUE(r.ok) << "empty ants_id must remain valid; err="
+                          << r.errorCode.toStdString();
+    }
+}
+
+// ---------------------------------------------------------------------------
 // INV-2 — deterministic output.
 // ---------------------------------------------------------------------------
 TEST(PlanTemplateEngine, Inv2DeterministicOutput) {

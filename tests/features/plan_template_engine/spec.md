@@ -21,6 +21,10 @@ The test ensures the engine:
 - clamps `task_count_hint` to `[1, 12]` (INV-6)
 - performs zero disk writes on `save:false` when `ants_id` is
   provided (INV-9 dry-run)
+- rejects a malformed `ants_id` (traversal, embedded slash, wrong
+  shape) with `bad_args` before it reaches the filename / skeleton,
+  while accepting well-formed project-prefixed ids and an empty id
+  (INV-10, ANTS-1838)
 - maps `AntsIdSource` to the lowercase JSON key strings the MCP
   response uses
 

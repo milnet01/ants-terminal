@@ -32,6 +32,18 @@ QJsonObject makeErr(const QString &toolName, const QString &paramName,
     return o;
 }
 
+// ANTS-1837 — NFC-insensitive anchor test. Both arguments are expected to
+// be canonical or cleaned absolute paths. Normalise BOTH sides to NFC
+// before comparing: `validatePath` already NFC-normalises its input, so
+// without normalising the root too a decomposed (NFD) accented home dir
+// false-rejects a composed (NFC) candidate that genuinely lives inside
+// it. ASCII paths are unaffected (NFC == NFD == identity).
+bool anchoredUnder(const QString &candidate, const QString &root) {
+    const QString c = candidate.normalized(QString::NormalizationForm_C);
+    const QString r = root.normalized(QString::NormalizationForm_C);
+    return c == r || c.startsWith(r + QLatin1Char('/'));
+}
+
 }  // namespace
 
 Check validatePath(const QString &rawPath,
@@ -81,8 +93,7 @@ Check validatePath(const QString &rawPath,
         // deleted file), apply the lexical fallback so non-existent
         // escapes still reject.
         if (!resolved.isEmpty()) {
-            if (!(resolved == rootCanonical ||
-                  resolved.startsWith(rootCanonical + QLatin1Char('/')))) {
+            if (!anchoredUnder(resolved, rootCanonical)) {
                 pc.bad = true;
                 pc.err = makeErr(toolName, paramName,
                     QStringLiteral("escapes project root"));
@@ -91,8 +102,7 @@ Check validatePath(const QString &rawPath,
             pc.resolved = resolved;
         } else {
             const QString cleaned = QDir::cleanPath(joined);
-            if (!(cleaned == rootCanonical ||
-                  cleaned.startsWith(rootCanonical + QLatin1Char('/')))) {
+            if (!anchoredUnder(cleaned, rootCanonical)) {
                 pc.bad = true;
                 pc.err = makeErr(toolName, paramName,
                     QStringLiteral("escapes project root"));
@@ -113,6 +123,14 @@ Check validatePath(const QString &rawPath,
     }
     pc.argvForm = form;
     return pc;
+}
+
+bool isInsideProject(const QString &projectPath, const QString &candidate) {
+    const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
+    if (rootCanon.isEmpty()) return false;
+    const QString candCanon = QFileInfo(candidate).canonicalFilePath();
+    if (candCanon.isEmpty()) return false;
+    return anchoredUnder(candCanon, rootCanon);
 }
 
 }  // namespace PathValidation

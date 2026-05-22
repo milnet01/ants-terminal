@@ -223,6 +223,59 @@ TEST(McpPathAnchor, NonexistentInsideRootAccepts) {
     EXPECT_EQ(check.argvForm, QStringLiteral("new_dir/new_file"));
 }
 
+// PV-11: ANTS-1837 — a project root in decomposed (NFD) Unicode form
+// must not false-reject a path that genuinely lives inside it. Before
+// the fix validatePath NFC-normalised the input but compared it against
+// the raw (NFD) root, so a decomposed accented home dir rejected every
+// path under it with "escapes project root".
+TEST(McpPathAnchor, NfdRootDoesNotFalseReject) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    // Decomposed "café": c, a, f, e, U+0301 combining acute accent.
+    QString nfdName = QStringLiteral("caf");
+    nfdName += QChar(0x0065);
+    nfdName += QChar(0x0301);
+    ASSERT_NE(nfdName, nfdName.normalized(QString::NormalizationForm_C))
+        << "test precondition: the name must actually be decomposed";
+    const QString subdir = QDir(tmp.path()).filePath(nfdName);
+    ASSERT_TRUE(QDir().mkpath(subdir));
+    // canonicalFilePath returns the on-disk (NFD) byte form on Linux.
+    const QString rootNfd = QFileInfo(subdir).canonicalFilePath();
+    ASSERT_FALSE(rootNfd.isEmpty());
+    QFile f(rootNfd + QStringLiteral("/data.txt"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("z");
+    f.close();
+
+    const auto check = PathValidation::validatePath(
+        rootNfd + QStringLiteral("/data.txt"), rootNfd,
+        QStringLiteral("file_outline"));
+    EXPECT_FALSE(check.bad)
+        << "NFD-form root false-rejected an in-root path; err="
+        << check.err.value(QStringLiteral("error")).toString().toStdString();
+}
+
+// PV-12: ANTS-1832 shared helper — isInsideProject accepts a path inside
+// the project and rejects a traversal escape.
+TEST(McpPathAnchor, IsInsideProjectAnchors) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    QDir().mkpath(root + QStringLiteral("/src"));
+    QFile f(root + QStringLiteral("/src/foo.cpp"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("x");
+    f.close();
+
+    EXPECT_TRUE(PathValidation::isInsideProject(
+        root, root + QStringLiteral("/src/foo.cpp")));
+    EXPECT_FALSE(PathValidation::isInsideProject(
+        root, root + QStringLiteral("/src/../../etc/passwd")));
+    // Non-existent candidate → false (canonicalisation miss).
+    EXPECT_FALSE(PathValidation::isInsideProject(
+        root, root + QStringLiteral("/src/does-not-exist.cpp")));
+}
+
 // -------------------- Wiring cases --------------------
 
 // WI-1: header exists and exposes the right names.
@@ -249,10 +302,12 @@ TEST(McpPathAnchorWiring, ImplDefinesValidator) {
     // the unqualified body signature is the right thing to pin.
     EXPECT_NE(c.find("namespace PathValidation"), std::string::npos);
     EXPECT_NE(c.find("Check validatePath("), std::string::npos);
-    // Anchor logic — both halves must be present (and adjacent in the
-    // same TU).
+    // Anchor logic — both halves must be present in the same TU. The
+    // comparison was extracted into the NFC-aware anchoredUnder() helper
+    // (ANTS-1837); pin that + the NFC normalisation it depends on.
     EXPECT_NE(c.find("canonicalFilePath()"), std::string::npos);
-    EXPECT_NE(c.find("startsWith(rootCanonical"), std::string::npos);
+    EXPECT_NE(c.find("anchoredUnder("), std::string::npos);
+    EXPECT_NE(c.find("NormalizationForm_C"), std::string::npos);
 }
 
 // WI-3: remotecontrol.cpp has no inline anchor pair. We count

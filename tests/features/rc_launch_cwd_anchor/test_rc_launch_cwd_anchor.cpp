@@ -150,12 +150,14 @@ void testWiring() {
     // to 11 with ANTS-1352's cmdIndieReviewDispatch, then to 13 with
     // ANTS-1413's cmdColdEyesSingleDoc + ANTS-1414's cmdCrossDocDiff
     // (the new lane-source-agnostic cross-doc-diff alias), then to 14
-    // with ANTS-1302's cmdFocusedTest (validates the build_dir arg).
+    // with ANTS-1302's cmdFocusedTest (validates the build_dir arg),
+    // then to 15 with ANTS-1831's cmdColdEyesBrief (the ad-hoc-lane
+    // doc_paths entries now route through the chokepoint).
     {
         const std::size_t count = ants_test::countOccurrences(
             rc, "PathValidation::validatePath(");
-        expect(count == 14,
-               (std::string("WI-3 expected 14 validatePath call-sites, "
+        expect(count == 15,
+               (std::string("WI-3 expected 15 validatePath call-sites, "
                             "found ")
                 + std::to_string(count)).c_str());
     }

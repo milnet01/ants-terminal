@@ -49,6 +49,16 @@ Check validatePath(const QString &rawPath,
                    const QString &paramName = QStringLiteral("path"),
                    bool allowOutsideRoot = false);
 
+// ANTS-1832 — shared boolean anchor check for *disk-derived* paths that
+// never pass through an MCP arg (override-config entries read off disk).
+// Canonicalises both `projectPath` and `candidate`, then accepts only if
+// the candidate stays within the project root. Builds no error envelope.
+// NFC-aware (ANTS-1837): a composed/decomposed spelling of the same
+// accented path compares equal. Returns false on either canonicalisation
+// miss (e.g. a non-existent candidate). Extracted from coldeyesengine's
+// file-local helper once a third call-site (indiereviewengine) appeared.
+bool isInsideProject(const QString &projectPath, const QString &candidate);
+
 }  // namespace PathValidation
 
 #endif  // ANTS_PATHVALIDATION_H

@@ -5225,15 +5225,15 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   doesn't escape `'`, but the QTextBrowser render path single-quotes attributes
   with escaped untrusted content (reasoning, blame author) — switch to
   double-quote delimiters across the render path. Verified 2026-05-22.
-- 📋 [ANTS-1831] **`cold_eyes_brief` hand-rolls `doc_paths` validation** instead
+- ✅ [ANTS-1831] **`cold_eyes_brief` hand-rolls `doc_paths` validation** instead
   of `PathValidation::validatePath` (`remotecontrol.cpp:~8425`) and drops bad
   entries silently — route through the central chokepoint (ANTS-1295) + signal
   rejects. Verified 2026-05-22.
-- 📋 [ANTS-1832] **indie-review override `sourcePaths` only `startsWith("src/")`,
+- ✅ [ANTS-1832] **indie-review override `sourcePaths` only `startsWith("src/")`,
   not component-anchored** (`indiereviewengine.cpp:~110`) — `src/../../etc/...`
   passes the prefix; reaches the brief header before the canonicalisation guard.
   Cold-eyes already hardened this (CR-1); apply parity. Verified 2026-05-22.
-- 📋 [ANTS-1833] **Inline `audit_run`/`indie_review_dispatch` handlers don't
+- ✅ [ANTS-1833] **Inline `audit_run`/`indie_review_dispatch` handlers don't
   bad_path-validate `caller_cwd`** (`mainwindow.cpp:~4047/4487`) — a non-existent
   root canonicalises to "" and collapses the in-flight key; the dispatcher only
   enforces non-empty. Add an isDir/bad_path gate. Verified 2026-05-22.
@@ -5251,11 +5251,11 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   silent-fail.** `testauditdialog.cpp:~48/259` plain `QFile` WriteOnly|Truncate,
   return discarded — use `QSaveFile` + 0600 + checked commit (the auditcache
   pattern). Verified 2026-05-22.
-- 📋 [ANTS-1837] **`validatePath` trusts `rootCanonical` NFC form.**
+- ✅ [ANTS-1837] **`validatePath` trusts `rootCanonical` NFC form.**
   `pathvalidation.cpp:72` NFC-normalises the input but compares against a
   possibly differently-normalised root — false-reject on decomposed accented
   home dirs. Normalise the root too. Verified 2026-05-22.
-- 📋 [ANTS-1838] **`plan_template` doesn't validate `antsId` up front.**
+- ✅ [ANTS-1838] **`plan_template` doesn't validate `antsId` up front.**
   `plantemplateengine.cpp` splices `opts.antsId` into the plan filename; only
   the `pathStrictlyBelowPlans` INV-4 canonicalisation backstops a malformed id.
   Add an `isValidAntsId` guard at the trust boundary (needs a `bad_args`

@@ -8433,20 +8433,41 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     // not surfaced by the auto-partition) can now use the brief
     // tool without having to commit a .cold-eyes/partition.json.
     ColdEyesEngine::Lane adhoc;
+    // ANTS-1831 — entries the caller supplied that we refused to slurp.
+    // Surfaced in the response (success or not_found) instead of being
+    // dropped silently, so the caller learns *which* path was bad.
+    QJsonArray rejectedDocPaths;
     if (!match) {
         const QJsonValue dpV = req.value(QStringLiteral("doc_paths"));
         if (dpV.isArray()) {
-            const QString rootCanon = QFileInfo(root).canonicalFilePath();
             for (const QJsonValue &v : dpV.toArray()) {
                 const QString d = v.toString().trimmed();
                 if (d.isEmpty()) continue;
-                if (QFileInfo(d).isAbsolute()) continue;
-                const QString joined = root + QLatin1Char('/') + d;
-                const QString cand = QFileInfo(joined).canonicalFilePath();
-                if (cand.isEmpty() || rootCanon.isEmpty()) continue;
-                if (cand != rootCanon
-                    && !cand.startsWith(rootCanon + QLatin1Char('/'))) continue;
-                if (!QFileInfo::exists(joined)) continue;
+                // ANTS-1831 — route through the central cwd-anchor
+                // chokepoint (ANTS-1295) rather than a hand-rolled anchor
+                // pair. `root` is already canonical.
+                const auto pc = PathValidation::validatePath(
+                    d, root, QStringLiteral("cold_eyes_brief"),
+                    QStringLiteral("doc_paths"));
+                if (pc.bad) {
+                    QJsonObject rej;
+                    rej[QStringLiteral("path")]   = d;
+                    rej[QStringLiteral("reason")] =
+                        pc.err.value(QStringLiteral("error")).toString();
+                    rejectedDocPaths.append(rej);
+                    continue;
+                }
+                // validatePath leaves `resolved` empty for a path that
+                // doesn't canonicalise — i.e. doesn't exist. An ad-hoc
+                // lane can only review files that are actually present.
+                if (pc.resolved.isEmpty()) {
+                    QJsonObject rej;
+                    rej[QStringLiteral("path")]   = d;
+                    rej[QStringLiteral("reason")] = QStringLiteral(
+                        "cold_eyes_brief: \"doc_paths\" no such file");
+                    rejectedDocPaths.append(rej);
+                    continue;
+                }
                 adhoc.docPaths << d;
             }
         }
@@ -8468,6 +8489,10 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
         QJsonArray known;
         for (const auto &l : m_coldEyesCache.lanes) known.append(l.name);
         err["known_lanes"] = known;
+        // ANTS-1831 — if every supplied doc_paths entry was rejected the
+        // ad-hoc lane is empty and we land here; tell the caller why.
+        if (!rejectedDocPaths.isEmpty())
+            err["doc_paths_rejected"] = rejectedDocPaths;
         return QJsonDocument(err);
     }
 
@@ -8522,6 +8547,11 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     // have to grep the brief markdown for the H1 line.
     env["summary"]               = m.summary;
     env["byte_count"]            = m.brief.toUtf8().size();
+    // ANTS-1831 — caller-supplied doc_paths the anchor refused (empty
+    // when the lane came from the cached partition or all paths were
+    // valid). Non-empty entries are an accuracy signal for the caller.
+    if (!rejectedDocPaths.isEmpty())
+        env["doc_paths_rejected"] = rejectedDocPaths;
     return QJsonDocument(env);
 }
 

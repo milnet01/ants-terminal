@@ -24,6 +24,20 @@ bool isValidFeatureName(const QString &name) {
     return re.match(name).hasMatch();
 }
 
+// ANTS-1838 — a caller-supplied `ants_id` is spliced verbatim into the
+// plan filename (docs/plans/<ants_id>-<feature>.md) and the rendered
+// skeleton. The INV-4 canonicalisation guard only fires on save:true, so
+// a dry-run call would otherwise echo a traversal id back unchecked.
+// Validate at the trust boundary: project-prefixed roadmap-id shape
+// (ANTS-1234, RETRO-42, …) — uppercase prefix, dash, digits. Empty is
+// allowed (means "allocate from .roadmap-counter").
+bool isValidAntsId(const QString &id) {
+    if (id.isEmpty()) return true;
+    static const QRegularExpression re(
+        QStringLiteral("^[A-Z][A-Z0-9]{0,15}-[0-9]{1,9}$"));
+    return re.match(id).hasMatch();
+}
+
 int clampTaskCount(int hint) {
     if (hint < kTaskCountMin) return kTaskCountMin;
     if (hint > kTaskCountMax) return kTaskCountMax;
@@ -205,6 +219,15 @@ PlanResult buildPlan(const QString &projectRoot, const PlanOptions &opts) {
         r.errorCode = QStringLiteral("bad_feature_name");
         r.errorMessage = QStringLiteral(
             "feature_name must match ^[a-z0-9_-]+$, max 64 chars");
+        return r;
+    }
+
+    // ANTS-1838 — validate ants_id before it reaches the filename / body.
+    if (!isValidAntsId(opts.antsId)) {
+        r.errorCode = QStringLiteral("bad_args");
+        r.errorMessage = QStringLiteral(
+            "ants_id must match ^[A-Z][A-Z0-9]{0,15}-[0-9]{1,9}$ "
+            "(e.g. ANTS-1234) or be empty to allocate one");
         return r;
     }
 
