@@ -1,6 +1,7 @@
 #include "terminalwidget.h"
 #include "clipboardguard.h"  // ANTS-1014 — clipboard write funnel
 #include "debuglog.h"
+#include "regexharden.h"     // ANTS-1665 — harden user search / rule patterns
 
 #include <QImageReader>
 #include <QPainter>
@@ -3903,6 +3904,11 @@ void TerminalWidget::performSearch() {
     if (m_searchWholeWord) {
         effectivePattern = QStringLiteral("\\b(?:") + effectivePattern + QStringLiteral(")\\b");
     }
+    // ANTS-1665 — a catastrophic regex typed into the search box (e.g.
+    // `(a+)+$`) would otherwise backtrack the PCRE2 engine on every scrollback
+    // line and freeze the GUI. Prefix PCRE2's LIMIT_MATCH so a slow match
+    // aborts in milliseconds (surfaced as 0 matches) instead of hanging.
+    effectivePattern = ants::regex::hardenUserRegex(effectivePattern);
 
     QRegularExpression::PatternOptions opts =
         QRegularExpression::UseUnicodePropertiesOption;
@@ -4847,7 +4853,10 @@ void TerminalWidget::setHighlightRules(const QJsonArray &rules) {
         QString pattern = obj["pattern"].toString();
         if (pattern.isEmpty()) continue;
         HighlightRule rule;
-        rule.pattern = QRegularExpression(pattern);
+        // ANTS-1665 — highlight rules run against rendered output every paint;
+        // a catastrophic config/plugin pattern would freeze the GUI. Harden
+        // with PCRE2's LIMIT_MATCH.
+        rule.pattern = QRegularExpression(ants::regex::hardenUserRegex(pattern));
         if (!rule.pattern.isValid()) continue;
         QString fg = obj["fg"].toString();
         if (!fg.isEmpty()) rule.fg = QColor(fg);
@@ -4869,7 +4878,10 @@ void TerminalWidget::setTriggerRules(const QJsonArray &rules) {
         QString pattern = obj["pattern"].toString();
         if (pattern.isEmpty()) continue;
         TriggerRule rule;
-        rule.pattern = QRegularExpression(pattern);
+        // ANTS-1665 — trigger rules run against every PTY chunk; harden the
+        // user/config pattern with PCRE2's LIMIT_MATCH so a catastrophic regex
+        // can't freeze the GUI on streamed output.
+        rule.pattern = QRegularExpression(ants::regex::hardenUserRegex(pattern));
         if (!rule.pattern.isValid()) continue;
         rule.actionType = obj["action_type"].toString("notify");
         rule.actionValue = obj["action_value"].toString();

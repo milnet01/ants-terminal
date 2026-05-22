@@ -48,8 +48,17 @@ slow hardware.
 
 ## Invariants
 
+Since ANTS-1665 the shape detector + step-limit hardener live in
+`src/regexharden.cpp` (`ants::regex::isCatastrophicRegex` /
+`hardenUserRegex`) in `ants_core_lib`; `AuditEngine::` forwards to
+them so the audit entry points are unchanged, and widget-side
+consumers (terminalwidget search / highlight / trigger patterns)
+share the same single source of truth. The source-grep INVs below
+therefore scan the joined `auditdialog.cpp` + `auditengine.cpp` +
+`regexharden.cpp`.
+
 **INV-1 — A regex-shape rejection helper exists and is invoked.**
-Source-grep against `src/auditdialog.cpp`: a function whose name
+Source-grep across the audit pipeline source: a function whose name
 contains a substring like `Catastrophic`, `Dangerous`, `RegexShape`,
 `isCatastrophic`, etc. (case-insensitive) must be defined. It must
 return a bool. The helper must be invoked at the user-pattern entry
@@ -57,18 +66,19 @@ points: somewhere referencing the `dropIfMatches` field AND
 somewhere inside `loadAllowlist`.
 
 **INV-2 — The shape-rejection helper recognizes nested quantifiers.**
-Source-grep against `src/auditdialog.cpp`: the helper's body must
-contain a regex literal that detects nested quantifiers — at minimum
-a pattern containing both `[+*]` and another `[+*]` or `\+` separated
-by characters (the sentinel for `(...+)+`-style shapes). We accept
-any literal shape that includes the substring `[+*]` twice or both
-`+` and `*` (case-insensitive) within a single regex literal.
+Source-grep across the audit pipeline source (the helper body lives
+in `regexharden.cpp` since ANTS-1665): the body must contain a regex
+literal that detects nested quantifiers — at minimum a pattern
+containing both `[+*]` and another `[+*]` or `\+` separated by
+characters (the sentinel for `(...+)+`-style shapes). We accept any
+literal shape that includes the substring `[+*]` twice or both `+`
+and `*` (case-insensitive) within a single regex literal.
 
 **INV-3 — PCRE2 step-limit is applied to user patterns.**
-Source-grep: the string `LIMIT_MATCH=` must appear in
-`auditdialog.cpp` adjacent to the dropIfMatches compilation OR
-inside a regex-hardening helper that's then called from the relevant
-sites. The number after `LIMIT_MATCH=` must be a numeric literal in
+Source-grep: the string `LIMIT_MATCH=` must appear in the audit
+pipeline source (`regexharden.cpp` since ANTS-1665) inside the
+regex-hardening helper that's called from the relevant sites. The
+number after `LIMIT_MATCH=` must be a numeric literal in
 [1000, 1000000] — within the bounds where match-time is bounded but
 real patterns still run to completion.
 
@@ -105,3 +115,8 @@ helper call).
   `audit_rules.json` could hang the GUI on every audit run.
 - **0.7.29 (this fix):** shape-rejection + `(*LIMIT_MATCH=...)` prefix
   on user patterns; legitimate patterns unaffected.
+- **ANTS-1665:** `isCatastrophicRegex` / `hardenUserRegex` extracted
+  from `auditengine` to `ants_core_lib` (`regexharden.cpp`) so
+  `terminalwidget`'s search / highlight / trigger patterns could route
+  through the same hardener without linking the audit lib. `AuditEngine::`
+  now forwards. This watchdog's grep set gained `regexharden.cpp`.

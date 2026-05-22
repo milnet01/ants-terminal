@@ -81,17 +81,25 @@ static std::string extractFnBody(const std::string &src, const char *qualName) {
 
 TEST(AuditRegexDosWatchdog, Main) {
     // ANTS-1119 v1: applyFilter (which calls the catastrophic-regex
-    // shape check + LIMIT_MATCH harden) lives in auditengine.cpp now.
-    // Search both files so the watchdog INVs see the engine-side
-    // copies of `isCatastrophicRegexLocal` / `hardenUserRegexLocal`
-    // and the `dropIfMatches` reference together.
+    // shape check + LIMIT_MATCH harden) lives in auditengine.cpp; the
+    // dropIfMatches / loadAllowlist entry points live in auditdialog.cpp.
+    // ANTS-1665: the shape detector + LIMIT_MATCH bodies were extracted to
+    // ants_core_lib (regexharden.cpp); auditengine.cpp now forwards. Search
+    // all three so the INVs see the helper definitions (regexharden.cpp), the
+    // forwarders + applyFilter call (auditengine.cpp), and the dropIfMatches /
+    // loadAllowlist entry points (auditdialog.cpp) together.
     const std::string dialogCpp = slurp(SRC_AUDIT_CPP_PATH);
 #ifdef SRC_AUDIT_ENGINE_CPP_PATH
     const std::string engineCpp = slurp(SRC_AUDIT_ENGINE_CPP_PATH);
 #else
     const std::string engineCpp;
 #endif
-    const std::string cpp = dialogCpp + engineCpp;
+#ifdef SRC_REGEXHARDEN_CPP_PATH
+    const std::string regexhardenCpp = slurp(SRC_REGEXHARDEN_CPP_PATH);
+#else
+    const std::string regexhardenCpp;
+#endif
+    const std::string cpp = dialogCpp + engineCpp + regexhardenCpp;
     int failures = 0;
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);
@@ -182,8 +190,8 @@ TEST(AuditRegexDosWatchdog, Main) {
     }
     if (helperMatch.size() > 0 && !shapeLiteralFound) {
         fail("INV-2: no shape-helper body across the audit pipeline "
-             "(auditdialog.cpp + auditengine.cpp) contains a regex "
-             "literal that detects nested-quantifier shapes "
+             "(auditdialog.cpp + auditengine.cpp + regexharden.cpp) contains "
+             "a regex literal that detects nested-quantifier shapes "
              "(expected `[+*]` or escaped `\\+ ... \\*`).");
     }
 
@@ -192,8 +200,9 @@ TEST(AuditRegexDosWatchdog, Main) {
     std::regex limitMatch(R"(LIMIT_MATCH=(\d+))");
     std::smatch lm;
     if (!std::regex_search(cpp, lm, limitMatch)) {
-        fail("INV-3: no `(*LIMIT_MATCH=N)` PCRE2 cap found anywhere in "
-             "auditdialog.cpp. The step-limit is the second-line defense "
+        fail("INV-3: no `(*LIMIT_MATCH=N)` PCRE2 cap found anywhere in the "
+             "audit pipeline (auditdialog.cpp + auditengine.cpp + "
+             "regexharden.cpp). The step-limit is the second-line defense "
              "for adversarial patterns that slip past shape rejection.");
     } else {
         const int n = std::atoi(lm[1].str().c_str());

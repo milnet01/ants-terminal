@@ -1,6 +1,7 @@
 #include "auditengine.h"
 
 #include "auditfpledger.h"
+#include "regexharden.h"  // ANTS-1665 — isCatastrophicRegex / hardenUserRegex
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -24,39 +25,17 @@
 
 namespace AuditEngine {
 
-// Catastrophic-regex shape detector (ANTS-1123 indie-review
-// C1/C2/C3 unification: previously this lived in two places —
-// engine's anonymous-namespace local + AuditDialog's static. The
-// shapes detected drifted between them. Single definition now.)
+// ANTS-1665 — the catastrophic-regex detector + LIMIT_MATCH hardener moved to
+// ants_core_lib (src/regexharden.cpp) so widget-side consumers can reach them
+// without linking the audit lib. These remain the AuditEngine:: API (callers
+// like settingsdialog / AuditDialog are unchanged); they forward to the single
+// source of truth in ants::regex. (ANTS-1123 unification preserved.)
 bool isCatastrophicRegex(const QString &pattern) {
-    // Shape A — quantifier-under-quantifier inside a group:
-    // `(.+)+`, `(a*)+`, `(a+b)*`, etc.
-    static const QRegularExpression nestedQuant(
-        QStringLiteral(R"(\([^()]*[+*][^()]*\)[?*+])"));
-    // Indie-review-2026-05-14 lane-4 M4 — Shape B —
-    // alternation-under-quantifier inside a group: `(a|b)+`,
-    // `(a|aa)*`, `(x|y|z)+`. The pre-fix detector advertised in
-    // its comment that it catches these too, but the regex above
-    // requires `[+*]` inside the parens — alternation alone
-    // wouldn't match. PCRE2's LIMIT_MATCH was the only guard.
-    // Now the conservative detector matches its docstring.
-    static const QRegularExpression altQuant(
-        QStringLiteral(R"(\([^()]*\|[^()]*\)[?*+])"));
-    return nestedQuant.match(pattern).hasMatch()
-           || altQuant.match(pattern).hasMatch();
+    return ants::regex::isCatastrophicRegex(pattern);
 }
 
-// Wrap a user-supplied regex with PCRE2's inline LIMIT_MATCH so a
-// slow-match input has bounded cost (ANTS-1123 unification:
-// previously the engine used 200000 and the dialog used 100000;
-// settled on 100000 — accommodates every sane pattern, aborts
-// adversarial in milliseconds. Already-prefixed patterns pass
-// through unchanged so users / config authors can specify their
-// own budget.)
 QString hardenUserRegex(const QString &pattern) {
-    if (pattern.isEmpty()) return {};
-    if (pattern.startsWith(QStringLiteral("(*LIMIT_"))) return pattern;
-    return QStringLiteral("(*LIMIT_MATCH=100000)") + pattern;
+    return ants::regex::hardenUserRegex(pattern);
 }
 
 // ANTS-1709 — centralised directory-exclusion set. See the header for

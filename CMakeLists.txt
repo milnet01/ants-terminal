@@ -266,6 +266,9 @@ add_library(ants_core_lib STATIC
     src/llmdispatcher.cpp
     src/roadmapindex.cpp
     src/roadmapfoldin.cpp
+    # ANTS-1665 — regex-safety helpers (catastrophic-shape detector +
+    # LIMIT_MATCH hardener) shared by auditengine and terminalwidget.
+    src/regexharden.cpp
     src/subsystemmap.cpp
     src/themedstylesheet.cpp
     src/globalshortcutsportal.cpp
@@ -1269,6 +1272,9 @@ if(ANTS_TESTS)
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
         SRC_AUDIT_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
         SRC_AUDIT_ENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.h"
+        # ANTS-1665 — regex-DoS watchdog now also scans regexharden.cpp, the
+        # extracted home of isCatastrophicRegex / hardenUserRegex.
+        SRC_REGEXHARDEN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/regexharden.cpp"
         SRC_AUDIT_CPP="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
         SRC_AUDIT_ENGINE_CPP="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
