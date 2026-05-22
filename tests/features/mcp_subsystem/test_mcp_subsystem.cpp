@@ -257,3 +257,52 @@ TEST(McpSubsystem, WiringContract) {
 
     EXPECT_EQ(0, expect_failures()) << expect_failures() << " ANTS-1251/ANTS-1292 invariant(s) failed";
 }
+
+// ANTS-1796 — a backticked library-name qualifier inside a parenthetical
+// (e.g. ``- `auditautofix` (Qt6::Core, `ants_audit_lib`) — ...``) must NOT
+// be harvested as a separate subsystem lane. The docs/subsystems.md format
+// contract says qualifier-paren forms are *tolerated* (ignored), not parsed
+// for names. Pre-fix, parse() harvested every backticked token in the
+// prefix, so `subsystem op=map` emitted bogus lanes named after CMake
+// library targets (ants_audit_lib / ants_core_lib / ants_dialogs_lib).
+TEST(McpSubsystem, ParenQualifierLibNameNotHarvested) {
+    expect_reset();
+
+    const QString body = QStringLiteral(
+        "## Module map (src/)\n"
+        "\n"
+        "- `auditautofix` (Qt6::Core, `ants_audit_lib`) — native safe-list "
+        "auto-fixer.\n"
+        "- `llmclient` (Qt6::Core+Network, `ants_core_lib`) — streaming chat "
+        "client.\n"
+        "- `luaengine` / `pluginmanager` — sandboxed Lua 5.4.\n");
+
+    const QVector<SubsystemMap::Lane> lanes = SubsystemMap::parse(body);
+
+    bool sawLibQualifier = false;
+    bool sawAutofix = false, sawLlm = false, sawLua = false, sawPlugin = false;
+    for (const auto &l : lanes) {
+        if (l.name == QStringLiteral("ants_audit_lib") ||
+            l.name == QStringLiteral("ants_core_lib") ||
+            l.name == QStringLiteral("ants_dialogs_lib")) {
+            sawLibQualifier = true;
+        }
+        if (l.name == QStringLiteral("auditautofix"))   sawAutofix = true;
+        if (l.name == QStringLiteral("llmclient"))      sawLlm = true;
+        if (l.name == QStringLiteral("luaengine"))      sawLua = true;
+        if (l.name == QStringLiteral("pluginmanager"))  sawPlugin = true;
+    }
+
+    expect(!sawLibQualifier, "ANTS-1796/no-lib-qualifier",
+           "parse() harvested a backticked library-name qualifier inside "
+           "parens as a subsystem lane (must be ignored)");
+    // The legitimate names — including both halves of a ` / `-joined
+    // multi-name bullet — must survive.
+    expect(sawAutofix && sawLlm && sawLua && sawPlugin,
+           "ANTS-1796/legit-names-kept",
+           "parse() dropped a legitimate subsystem name while stripping "
+           "paren qualifiers");
+
+    EXPECT_EQ(0, expect_failures()) << expect_failures()
+        << " ANTS-1796 invariant(s) failed";
+}

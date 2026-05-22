@@ -52,6 +52,16 @@ const QRegularExpression &separatorRe() {
     return re;
 }
 
+// ANTS-1796: a parenthetical qualifier ("(Qt6::Core, `ants_core_lib`)")
+// may itself contain a backticked token (a CMake library target). Strip
+// paren spans from the name-prefix before harvesting so the qualifier's
+// lib name is not emitted as a bogus subsystem lane. The format contract
+// (docs/subsystems.md) tolerates qualifier-paren forms = ignores them.
+const QRegularExpression &parenQualifierRe() {
+    static const QRegularExpression re(QStringLiteral(R"(\([^)]*\))"));
+    return re;
+}
+
 }  // namespace
 
 QVector<Lane> parse(const QString &claudeMdBody) {
@@ -103,7 +113,8 @@ QVector<Lane> parse(const QString &claudeMdBody) {
             flush();
             const auto sep = separatorRe().match(ln);
             if (!sep.hasMatch()) continue;  // INV-3 drop
-            const QString prefix = ln.left(sep.capturedStart());
+            QString       prefix = ln.left(sep.capturedStart());
+            prefix.remove(parenQualifierRe());  // ANTS-1796
             const QString suffix = ln.mid(sep.capturedEnd());
             QStringList   names;
             auto it = nameTokenRe().globalMatch(prefix);
