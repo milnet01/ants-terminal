@@ -5103,7 +5103,7 @@ larger than a one-loop fix. Tiered: 🔒 security/data-loss · ⚡ hardening
 - ✅ [ANTS-1748] **MCP `get_git_status` runs 3 synchronous `git` subprocesses on the UI thread (≤6 s freeze).** `mainwindow.cpp:3958` — reintroduces the exact stall the status-bar's async branch-probe guards exist to avoid. Make it async / single `git status -b --porcelain=v1`.
   Fixed (2026-05-22): the three probes (`rev-parse`, `status -sb`, `log`) now start on three separate `QProcess` objects and are waited on together, so they run in parallel — worst-case GUI block is one 2 s timeout, not three serial ones (~6 s → ~2 s). Output format byte-identical (provider returns `QString` synchronously, so true async would need a provider-contract change; concurrency is the bounded fix). `mainwindow.cpp`.
 - ✅ [ANTS-1749] **MCP `get_cwd` echoes any caller-supplied existing path with no project-root anchoring.** `mainwindow.cpp:3892` — `canonicalFilePath()` only checks existence, not tab membership; an info-disclosure smell vs the ANTS-1295/-1392 contract. Route through `terminalForCaller` or confirm echo-any is the intended ANTS-1391 contract.
-- 📋 [ANTS-1750] **Lua plugin: a single pure-C call (gsub/rep) can't be preempted — freezes the host UI.** `luaengine.cpp:131` instruction-count hook never fires inside C; handlers run synchronously on the GUI thread. Off-thread plugin execution or a cross-thread `lua_sethook` interrupt (architectural — own spec cycle).
+- 🚧 [ANTS-1750] **Lua plugin: a single pure-C call (gsub/rep) can't be preempted — freezes the host UI.** `luaengine.cpp:131` instruction-count hook never fires inside C; handlers run synchronously on the GUI thread. Off-thread plugin execution or a cross-thread `lua_sethook` interrupt (architectural — own spec cycle).
   Deferred (verified 2026-05-22): confirmed `lua_sethook(LUA_MASKCOUNT | LUA_MASKLINE, 100000)` at `luaengine.cpp:136` — the count/line hook cannot interrupt a single long-running pure-C library call (`string.gsub`/`string.rep`), and handlers run on the GUI thread, so a pathological plugin call freezes the UI. Real fix is off-thread plugin execution or a cross-thread interrupt — architectural, needs its own spec cycle + a threading-model decision.
 - ✅ [ANTS-1751] **PTY master-FD CLOEXEC race.** `ptyhandler.cpp:219`/`:371` — `forkpty` returns the master without `O_CLOEXEC`; a concurrent fork (audit/QProcess) in the window before `fcntl` leaks the terminal stream into a subprocess. Document as known-limitation or serialize fork sites.
 - ✅ [ANTS-1752] **Wheel mouse-reporting drops horizontal scroll + duplicates the SGR/X10 encoder.** `terminalwidget.cpp:2047` reads only `angleDelta().y()` (no xterm buttons 66/67) and re-implements the encode from `sendMouseEvent`. Route wheel through `sendMouseEvent` with a wheel-button arg.
@@ -5164,6 +5164,13 @@ larger than a one-loop fix. Tiered: 🔒 security/data-loss · ⚡ hardening
   terminalgrid.cpp:18 — clang emits -Wgnu-zero-variadic-macro-arguments (pedantic; the Ninja build is clean, only the LSP surfaces it). Replace with the C++20 `__VA_OPT__(,)` idiom: `fprintf(m_debugFile, fmt "\n" __VA_OPT__(,) __VA_ARGS__)`. Behaviour-identical, drops the extension. Low priority.
   Kind: refactor.
   Source: in-session-2026-05-22.
+
+- 💭 [ANTS-1795] **Plugin process isolation — run each Lua VM in a SIGKILL-able helper process to fully reclaim a runaway plugin's CPU + RAM.**
+  Follow-up to ANTS-1750 (per-plugin worker thread). ANTS-1750 stops a runaway plugin freezing the UI and neuters the plugin, but cannot reclaim resources from a deliberately-infinite pure-C call: the detached worker thread + its ≤10MB VM + one core's CPU leak until app exit (no thread-based design can safely kill mid-C-call). The only design that fully contains a malicious uninterruptible loop is running each plugin VM in a separate OS process the host can SIGKILL. Cost is large: marshal the entire ants.* API surface + all ~16 PluginEvent types across an IPC boundary (effectively a second IPC subsystem alongside remotecontrol/MCP), per-process RAM (Lua runtime + state, tens of MB each), crash-recovery + lifecycle. Own spec cycle + threading/IPC-model decision. Deferred deliberately: post-ANTS-1750 the residual harm is a bounded, session-scoped, non-escalating DoS (no fs/net/exec — sandbox already strips those), which does not justify a permanent IPC subsystem under the project's shortest-correct-implementation + RAM-discipline rules. Revisit if the plugin marketplace (0.8.0) ships third-party plugins where the trust assumption weakens.
+  **Layman:** A stronger sandbox where a misbehaving plugin runs in a separate program the terminal can force-quit instantly, instead of letting a runaway one tie up a CPU core until you close the app.
+  Kind: security.
+  Lanes: Lua, PluginManager, Security.
+  Source: in-session-2026-05-22 (ANTS-1750 follow-up).
 
 ### 📦 Bundle plan for the 0.7.92 run (logged 2026-05-15)
 
@@ -7521,6 +7528,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Lanes: remotecontrol, roadmapdialog.
   Source: in-session-2026-05-22 (indie-review #5 deferred remediation).
+
+- 📋 [ANTS-1794] **`roadmap_query` has no by-ID lookup — finding one bullet costs a full paginate or an out-of-band grep.**
+  `roadmap_query` filters by `status` / `section` / `mode` but cannot resolve a single bullet by its `[ANTS-NNNN]` id. "Show me ANTS-NNNN" is the most common roadmap lookup an AI session does when working a ticket, yet today it requires either paging the full ~12 K-token bullet list (742 bullets, 26/page) or shelling out to `grep ROADMAP.md` — which leaves the MCP surface entirely and defeats the token-saving goal the MCP exists for. Add an `id:"ANTS-NNNN"` (and/or `ids:[...]`) filter that returns just the matching bullet(s), reusing the existing parse + the same `{id,status,headline,...}` bullet shape (honour `include_body`). Cheap server-side, large token saving per call. Sibling to ANTS-1793 (roadmap_log flip-note gap).
+  **Layman:** Asking the roadmap tool to "show me item ANTS-1750" should be one quick call, instead of dumping the whole list or falling back to a plain text search.
+  Kind: enhancement.
+  Lanes: RemoteControl, MCP.
+  Source: in-session-2026-05-22.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
