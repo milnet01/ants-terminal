@@ -386,11 +386,26 @@ here as the intended API surface for a future wiring commit.
 Returning `false` suppresses default handling; any other value (including
 `nil`, `true`, or omitting the return) lets the event propagate. All
 other events ignore the return value. (Note: `"keypress"` is marked `†` —
-not yet wired — so this contract applies once keypress is eventually wired.)
+not yet wired — so this contract applies once keypress is eventually
+wired. When wired it will use a bounded-timeout handshake: if your
+handler doesn't answer within a few milliseconds the key is sent
+un-vetoed and your plugin is downgraded to observe-only, so a slow
+keypress handler can never block input.)
 
-**Performance:** handlers run synchronously on the UI thread. A slow
-handler stalls the terminal. Keep handler bodies under ~1 ms wall time;
-offload expensive work (don't — you can't, the sandbox blocks threads).
+**Performance:** each plugin runs on its own background thread, and events
+are delivered to it asynchronously — so a slow handler **no longer stalls
+the terminal**. Events for *your* plugin are processed one at a time in
+order, so a slow handler delays only your plugin's later events, not the
+UI and not other plugins. Keeping handler bodies quick (well under a few
+ms) is still good manners, but it is no longer a hard UI rule. A plugin
+that wedges a handler for too long (e.g. a single pathological
+`string.gsub`) is automatically demoted to observe-only and stops
+receiving events, while the terminal stays responsive.
+
+`ants.get_output()` / `ants.get_cwd()` return a **best-effort recent
+snapshot** — because your handler runs off the UI thread, the values
+reflect the most recent state the terminal pushed across, which may lag
+the live screen by a tick.
 
 ## Sandbox Boundaries
 

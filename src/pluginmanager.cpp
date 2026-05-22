@@ -1,5 +1,6 @@
 #include "pluginmanager.h"
 
+#include <QDateTime>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
@@ -9,6 +10,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QThread>
 #include <QTimer>
 
 #include <cstdlib>
@@ -41,6 +43,17 @@ PluginManager::PluginManager(QObject *parent) : QObject(parent) {
         emit logMessage(QString("[plugin-dev] dir changed: %1").arg(path));
         QTimer::singleShot(150, this, [this]() { reloadAll(m_watchedEnabled); });
     });
+
+    // ANTS-1750 — self-owned 2 s health tick. Each plugin VM runs on its own
+    // worker thread; the GUI controller cannot interrupt a single
+    // uninterruptible C call mid-flight, so it detects one here (execution
+    // time past budget + grace) and demotes the plugin to observe-only. This
+    // is deliberately PluginManager's own timer, not MainWindow's status
+    // timer (which the controller can't reach). See healthTick().
+    m_healthTimer = new QTimer(this);
+    m_healthTimer->setInterval(2000);
+    connect(m_healthTimer, &QTimer::timeout, this, &PluginManager::healthTick);
+    m_healthTimer->start();
 }
 
 PluginManager::~PluginManager() {
@@ -53,41 +66,151 @@ void PluginManager::setPluginDir(const QString &dir) {
 }
 
 void PluginManager::unloadAll() {
-    // ANTS-1173: snapshot the engine pointers and clear m_engines BEFORE
-    // firing Unload, mirroring what fireEvent() already does at line 323.
-    // An Unload handler that re-enters the event loop (status signal →
-    // palette repaint → keypress → fireEvent) would otherwise traverse
-    // m_engines.values() against an already-`deleteLater()`d engine in
-    // dev/hot-reload mode — deterministic UAF window.
-    const auto engines = m_engines.values();
+    // ANTS-1750 — tear down each worker. teardownEngine posts Unload +
+    // shutdown to the worker (FIFO), then quit + wait(kTeardownMs); a worker
+    // stuck in an uninterruptible C call is detached into m_zombies rather
+    // than joined (INV-4) and every lua_close stays on the worker (INV-12).
+    // The ANTS-1173 re-entrancy UAF is gone for free: an Unload handler now
+    // runs on the worker and can only signal the GUI via queued connections,
+    // so it cannot synchronously re-enter fireEvent against a half-torn-down
+    // m_engines.
+    const auto names = m_engines.keys();
+    for (const QString &name : names) {
+        teardownEngine(name, m_engines.value(name, nullptr),
+                       m_threads.value(name, nullptr));
+    }
     m_engines.clear();
-    for (auto *engine : engines) {
-        if (engine) {
-            engine->fireEvent(PluginEvent::Unload, engine->pluginName());
-            engine->shutdown();
-            engine->deleteLater();
-        }
+    m_threads.clear();
+    m_execStart.clear();
+    m_demoted.clear();
+}
+
+void PluginManager::teardownEngine(const QString &name, LuaEngine *engine,
+                                   QThread *thread) {
+    Q_UNUSED(name);
+    if (!engine && !thread) return;
+    if (!thread) {            // engine without a worker — should not happen
+        delete engine;        // safe: never moved, lives on the GUI thread
+        return;
+    }
+    if (engine) {
+        // FIFO on the worker: run the Unload handler, then shutdown
+        // (lua_close on the worker — INV-12), then quit the worker's own
+        // event loop from inside it so the two posted calls are guaranteed
+        // to run first. The quit is posted to the ENGINE (worker affinity),
+        // not to the QThread (GUI affinity) — posting to the thread object
+        // would queue onto the GUI loop, which is not running during wait().
+        QMetaObject::invokeMethod(engine, "dispatchEvent", Qt::QueuedConnection,
+                                  Q_ARG(int, int(PluginEvent::Unload)),
+                                  Q_ARG(QString, engine->pluginName()));
+        QMetaObject::invokeMethod(engine, "shutdown", Qt::QueuedConnection);
+        QMetaObject::invokeMethod(engine, [thread]() { thread->quit(); },
+                                  Qt::QueuedConnection);
+    } else {
+        thread->quit();
+    }
+
+    if (thread->wait(kTeardownMs)) {
+        // Clean exit — the worker drained Unload + shutdown (m_state now
+        // null) and quit. Deleting the engine on the GUI thread is safe now
+        // the worker has finished; ~LuaEngine's shutdown() is a no-op (no
+        // lua_close on the GUI thread). INV-11 / INV-12.
+        delete engine;
+        delete thread;
+    } else {
+        // Worker stuck in an uninterruptible C call — detach. Do NOT delete
+        // or shutdown (its lua_State is owned by the stuck C frame); hold the
+        // pair until process exit. The thread is parentless so PM destruction
+        // never deletes a still-running QThread. INV-4.
+        m_zombies.append(Zombie{thread, engine});
+        emit logMessage(QString("Plugin worker did not stop in %1ms — "
+                                "detached: %2")
+                            .arg(kTeardownMs)
+                            .arg(engine ? engine->pluginName() : QString()));
     }
 }
 
 void PluginManager::wireEngine(LuaEngine *engine) {
+    // Outbound signals — Auto connections become queued automatically once
+    // the engine lives on a worker thread (evaluated at emit time), so these
+    // need no change beyond the engine's affinity.
     connect(engine, &LuaEngine::sendToTerminal, this, &PluginManager::sendToTerminal);
     connect(engine, &LuaEngine::showNotification, this, &PluginManager::showNotification);
     connect(engine, &LuaEngine::setStatusText, this, &PluginManager::statusMessage);
     connect(engine, &LuaEngine::logMessage, this, &PluginManager::logMessage);
     connect(engine, &LuaEngine::clipboardWriteRequested,
             this, &PluginManager::clipboardWriteRequested);
+    // ANTS-1750 § 2.3 — settings.get is the one synchronous worker→GUI read.
+    // BlockingQueuedConnection: the WORKER blocks until the GUI fills
+    // QString &out (Config is touched only on the GUI/Config thread). The
+    // GUI never blocks on a worker (§ 2.4), so the directions are acyclic —
+    // no deadlock. Intentionally unbounded (§ 2.3): only the plugin waits,
+    // never the UI. The second hop (PM → MainWindow lambda) stays a direct
+    // same-thread call that runs inside this block, so `out` is filled before
+    // the worker resumes.
     connect(engine, &LuaEngine::settingsGetRequested,
-            this, &PluginManager::settingsGetRequested);
+            this, &PluginManager::settingsGetRequested,
+            Qt::BlockingQueuedConnection);
+    // settings.set returns nothing into Lua — plain queued cross-thread.
     connect(engine, &LuaEngine::settingsSetRequested,
             this, &PluginManager::settingsSetRequested);
     connect(engine, &LuaEngine::paletteEntryRegistered,
             this, &PluginManager::paletteEntryRegistered);
+    // ANTS-1750 — execution-time bracketing for healthTick(). These slots
+    // run on the GUI thread (queued from the worker); m_execStart is touched
+    // only here and in healthTick(). INV-3.
+    connect(engine, &LuaEngine::eventStarted, this, [this, engine](quint64) {
+        m_execStart.insert(engine, QDateTime::currentMSecsSinceEpoch());
+    });
+    connect(engine, &LuaEngine::eventCompleted, this, [this, engine](quint64) {
+        m_execStart.remove(engine);
+    });
 }
 
 void PluginManager::firePaletteAction(const QString &pluginName, const QString &actionId) {
-    if (auto *engine = m_engines.value(pluginName, nullptr)) {
-        engine->fireEvent(PluginEvent::PaletteAction, actionId);
+    // ANTS-1750 INV-10 — targeted dispatch must not run lua_* on the GUI
+    // thread; route through the queued dispatchTo().
+    dispatchTo(pluginName, PluginEvent::PaletteAction, actionId);
+}
+
+void PluginManager::dispatchTo(const QString &pluginName, PluginEvent event,
+                               const QString &data) {
+    LuaEngine *engine = m_engines.value(pluginName, nullptr);
+    if (!engine || m_demoted.contains(engine)) return;
+    QMetaObject::invokeMethod(engine, "dispatchEvent", Qt::QueuedConnection,
+                              Q_ARG(int, int(event)), Q_ARG(QString, data));
+}
+
+QList<LuaEngine *> PluginManager::healthyEngines() const {
+    QList<LuaEngine *> out;
+    out.reserve(m_engines.size());
+    for (auto *engine : m_engines) {
+        if (engine && !m_demoted.contains(engine)) out << engine;
+    }
+    return out;
+}
+
+void PluginManager::healthTick() {
+    if (m_execStart.isEmpty()) return;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    // Collect first so demotion doesn't mutate m_execStart mid-iteration.
+    QList<LuaEngine *> toDemote;
+    for (auto it = m_execStart.cbegin(); it != m_execStart.cend(); ++it) {
+        LuaEngine *engine = it.key();
+        if (!engine || m_demoted.contains(engine)) continue;
+        // Execution time, not queue wait: a backed-up but healthy worker
+        // re-arms eventStarted per event so each stays short; a worker stuck
+        // in one C call emits eventStarted then never eventCompleted, so its
+        // execution time ages past the deadline. INV-3.
+        if (now - it.value() > engine->pcallBudgetMs() + kHealthGraceMs)
+            toDemote << engine;
+    }
+    for (LuaEngine *engine : toDemote) {
+        engine->requestAbort();   // raises luaL_error if the hook can fire
+        m_demoted.insert(engine);
+        emit logMessage(QString("Plugin demoted (handler exceeded %1ms): %2")
+                            .arg(engine->pcallBudgetMs() + kHealthGraceMs)
+                            .arg(engine->pluginName()));
     }
 }
 
@@ -330,54 +453,72 @@ void PluginManager::loadPlugin(const PluginInfo &info) {
         }
     }
 
-    auto *engine = new LuaEngine(this);
+    // ANTS-1750 — parentless engine (Qt refuses moveToThread on a parented
+    // QObject) moved onto its own worker QThread. Lifetime is managed
+    // explicitly: teardownEngine() deletes it worker-side on a clean unload,
+    // or detaches it into m_zombies if its worker is wedged. INV-11.
+    auto *engine = new LuaEngine(nullptr);
     engine->setPluginName(info.name);
     engine->setPermissions(granted);
-    wireEngine(engine);
+    wireEngine(engine);  // connect signals while the engine is still on the GUI thread
 
-    if (!engine->initialize()) {
-        emit logMessage(QString("Failed to initialize VM for plugin: %1").arg(info.name));
-        engine->deleteLater();
-        return;
-    }
+    // Parentless thread too — a zombie (stuck) thread must outlive PM, so it
+    // can't be a PM child (deleting a running QThread aborts). teardownEngine
+    // owns the clean-path delete; zombies leak until process exit by design.
+    auto *thread = new QThread(nullptr);
+    thread->setObjectName(QStringLiteral("ants-plugin-") + info.name);
+    // INV-9 — explicit small worker stack. The sandbox can't deep-recurse
+    // (Lua bounds C-call depth at LUAI_MAXCCALLS = 200 and the ants.* shims
+    // are shallow), so 512 KiB is safe with comfortable headroom.
+    thread->setStackSize(512 * 1024);
+    engine->moveToThread(thread);
+    thread->start();
+
+    m_engines.insert(info.name, engine);
+    m_threads.insert(info.name, thread);
 
     QString initLua = info.path + "/init.lua";
     if (devMode()) {
         emit logMessage(QString("[plugin-dev] loading %1 from %2 (granted: %3)")
                         .arg(info.name, initLua, granted.join(',')));
     }
-    if (!engine->loadScript(initLua)) {
-        emit logMessage(QString("Failed to load plugin: %1").arg(info.name));
-        engine->shutdown();
-        engine->deleteLater();
-        return;
-    }
-
-    m_engines.insert(info.name, engine);
-    // Fire load event now that the script has registered its handlers
-    engine->fireEvent(PluginEvent::Load, info.name);
-    emit logMessage(QString("Loaded plugin: %1 v%2").arg(info.name, info.version));
+    // Three queued posts to the same worker, processed FIFO:
+    // initialize → loadScript(init.lua) → Load. Failure gating is worker-side
+    // via the m_state latch (§ 2.2.2): a failed initialize leaves m_state
+    // null so the following posts no-op; a loadScript script error calls
+    // shutdown() on the worker, nulling m_state and gating Load. The GUI
+    // never waits on any of the three.
+    QMetaObject::invokeMethod(engine, "initialize", Qt::QueuedConnection);
+    QMetaObject::invokeMethod(engine, "loadScript", Qt::QueuedConnection,
+                              Q_ARG(QString, initLua));
+    QMetaObject::invokeMethod(engine, "dispatchEvent", Qt::QueuedConnection,
+                              Q_ARG(int, int(PluginEvent::Load)),
+                              Q_ARG(QString, info.name));
+    emit logMessage(QString("Loading plugin: %1 v%2").arg(info.name, info.version));
 }
 
 bool PluginManager::fireEvent(PluginEvent event, const QString &data) {
-    bool allow = true;
-    // Snapshot engines — a plugin could register a new handler mid-fire.
-    auto snapshot = m_engines.values();
-    for (auto *engine : snapshot) {
-        if (!engine) continue;
-        if (!engine->fireEvent(event, data)) allow = false;
+    // ANTS-1750 — non-blocking broadcast: post to each healthy worker and
+    // return to the GUI event loop immediately (INV-2). No veto for async
+    // events — every event fired today is fire-and-forget; the synchronous-
+    // veto path is ANTS-1736 (§ 2.6).
+    for (auto *engine : healthyEngines()) {
+        QMetaObject::invokeMethod(engine, "dispatchEvent", Qt::QueuedConnection,
+                                  Q_ARG(int, int(event)), Q_ARG(QString, data));
     }
-    return allow;
+    return true;
 }
 
 void PluginManager::setRecentOutput(const QString &output) {
-    for (auto *engine : std::as_const(m_engines)) {
-        if (engine) engine->setRecentOutput(output);
-    }
+    // ANTS-1750 INV-6 — queued so m_recentOutput is mutated on the worker.
+    for (auto *engine : healthyEngines())
+        QMetaObject::invokeMethod(engine, "setRecentOutput", Qt::QueuedConnection,
+                                  Q_ARG(QString, output));
 }
 
 void PluginManager::setCwd(const QString &cwd) {
-    for (auto *engine : std::as_const(m_engines)) {
-        if (engine) engine->setCwd(cwd);
-    }
+    // ANTS-1750 INV-6 — queued so m_cwd is mutated on the worker.
+    for (auto *engine : healthyEngines())
+        QMetaObject::invokeMethod(engine, "setCwd", Qt::QueuedConnection,
+                                  Q_ARG(QString, cwd));
 }

@@ -254,6 +254,22 @@ for security-relevant changes.
 
 ### Changed
 
+- **Lua plugins now run off the GUI thread — a misbehaving plugin can no
+  longer freeze the terminal (ANTS-1750).** Each plugin's VM moved onto
+  its own background worker thread and events are delivered
+  asynchronously, so even a single pathological built-in call (e.g.
+  `string.gsub` with a catastrophic pattern) — which the instruction
+  watchdog can't interrupt mid-call — keeps the UI responsive. A plugin
+  whose handler runs too long is automatically demoted to observe-only;
+  teardown of a wedged plugin is bounded (detached, not waited on). The
+  one synchronous plugin read (`ants.settings.get`) blocks the plugin's
+  own worker, never the UI, so there's no deadlock and no freeze.
+  `ants.get_output()`/`ants.get_cwd()` now return a best-effort recent
+  snapshot (documented in PLUGINS.md). Closes the last residual freeze
+  vector from the ANTS-1172/ANTS-1332 watchdog work; CPU/RAM reclamation
+  of a deliberately-infinite C call is the deferred ANTS-1795
+  follow-up.
+
 - **Audit library split (ANTS-1444, Pull 44).** `auditdialog.cpp` (the
   only Qt6::Widgets-using audit TU) moved into a new
   `ants_audit_dialog_lib`; `ants_audit_lib` now holds only the

@@ -533,10 +533,12 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
                 auto *sc = new QShortcut(ks, this);
                 QString pluginName = info.name;
                 connect(sc, &QShortcut::activated, this, [this, pluginName, actionId]() {
-                    // Route to the plugin's keybinding handler; payload = actionId
-                    if (auto *engine = m_pluginManager->engineFor(pluginName)) {
-                        engine->fireEvent(PluginEvent::Keybinding, actionId);
-                    }
+                    // ANTS-1750 INV-10 — route through the queued dispatchTo()
+                    // so the keybinding handler runs on the plugin's worker,
+                    // not lua_* on the GUI thread (engineFor()->fireEvent()
+                    // would block the UI on a slow handler).
+                    m_pluginManager->dispatchTo(pluginName, PluginEvent::Keybinding,
+                                                actionId);
                 });
                 m_pluginShortcuts.append(sc);
             }

@@ -7,9 +7,13 @@
 #include <QStringList>
 #include <QList>
 #include <QMap>
+#include <QHash>
+#include <QSet>
 #include <QJsonObject>
 
 class QFileSystemWatcher;
+class QThread;
+class QTimer;
 
 struct PluginInfo {
     QString name;          // On-disk directory name — primary key (security-critical)
@@ -70,6 +74,15 @@ public:
     // when the user triggers a plugin-registered palette entry (via click or
     // shortcut). Targeted, not broadcast — only the registering plugin sees it.
     void firePaletteAction(const QString &pluginName, const QString &actionId);
+
+    // ANTS-1750 — targeted, non-blocking dispatch to one named plugin's
+    // worker (the queued twin of fireEvent's broadcast loop, sharing the
+    // healthyEngines() filter). The only supported synchronous-from-GUI
+    // entry into a worker: callers must NOT use engineFor() to invoke a
+    // lua_*-touching method on the GUI thread. firePaletteAction() and the
+    // MainWindow keybinding shortcut both route through here. INV-10.
+    void dispatchTo(const QString &pluginName, PluginEvent event,
+                    const QString &data);
     // Persisted per-plugin grants (plugin -> permission list). Called back by
     // the permission prompt and used for subsequent loads without asking.
     using GrantStore = std::function<QStringList(const QString &pluginName)>;
@@ -96,16 +109,45 @@ signals:
     void paletteEntryRegistered(const QString &pluginName, const QString &title,
                                 const QString &action, const QString &hotkey);
 
+private slots:
+    // ANTS-1750 — 2 s self-owned tick (NOT MainWindow's status timer).
+    // Demotes any plugin whose currently-executing handler has run past
+    // budget + grace (single-uninterruptible-C-call detection): sets the
+    // engine's abort flag, drops it from healthyEngines(), logs it. INV-3.
+    void healthTick();
+
 private:
     void loadPlugin(const PluginInfo &info);
     void unloadAll();
     void wireEngine(LuaEngine *engine);
+    // ANTS-1750 — loaded engines minus the demoted set; the broadcast +
+    // targeted dispatch filter.
+    QList<LuaEngine *> healthyEngines() const;
+    // ANTS-1750 — quit + wait(kTeardownMs); on clean exit destroy the
+    // engine + thread, on timeout detach the pair into m_zombies. Keeps all
+    // lua_close on the worker (INV-12) and bounds teardown (INV-4).
+    void teardownEngine(const QString &name, LuaEngine *engine, QThread *thread);
+
+    static constexpr int kTeardownMs = 2000;     // INV-4 teardown deadline
+    static constexpr qint64 kHealthGraceMs = 1000;  // budget + grace slack
 
     QString m_pluginDir;
     QList<PluginInfo> m_plugins;
     QMap<QString, LuaEngine *> m_engines;  // keyed by plugin name
+    QMap<QString, QThread *> m_threads;    // worker per plugin (parallel key)
     QFileSystemWatcher *m_watcher = nullptr;
     QStringList m_watchedEnabled;  // cached enabled list for hot-reload
+
+    // ANTS-1750 — health bookkeeping. m_execStart: per-engine handler
+    // execution-start ms (set on eventStarted, cleared on eventCompleted),
+    // touched only on the GUI thread. m_demoted: engines neutered this
+    // session. m_zombies: detached worker pairs from a stuck-C-call
+    // teardown — never joined, never deleted (bounded by runaways/session).
+    QHash<LuaEngine *, qint64> m_execStart;
+    QSet<LuaEngine *> m_demoted;
+    struct Zombie { QThread *thread; LuaEngine *engine; };
+    QList<Zombie> m_zombies;
+    QTimer *m_healthTimer = nullptr;
 
     PermissionPrompt m_permissionPrompt;
     GrantStore m_grantLoad;

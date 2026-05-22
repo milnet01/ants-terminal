@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QFile>
+#include <QThread>
 #include <cstdlib>
 
 // Helper to retrieve LuaEngine* from Lua state upvalue
@@ -92,6 +93,10 @@ LuaEngine::~LuaEngine() {
 }
 
 bool LuaEngine::initialize() {
+    // INV-1 — the lua_State is created and only ever touched on the owning
+    // worker thread. In the non-threaded unit tests thread() == the calling
+    // thread, so this also holds there.
+    Q_ASSERT(thread() == QThread::currentThread());
     if (m_state) return true;
 
     m_luaMemUsage = 0;
@@ -145,6 +150,16 @@ void LuaEngine::instructionHook(lua_State *L, lua_Debug * /*ar*/) {
     lua_pop(L, 1);
     if (!eng) {
         luaL_error(L, "Script execution timeout exceeded");
+        return;
+    }
+    // ANTS-1750 — GUI-set abort. The controller sets m_abortRequested when
+    // it demotes a plugin whose handler ran past budget + grace; raise at
+    // the next hook fire (bounded by the 100k-instruction / per-line
+    // cadence, i.e. sub-millisecond for pure-Lua / C-in-loop runaways). It
+    // does nothing for a single uninterruptible C call — the hook is dormant
+    // then — which is exactly why PluginManager's detach path exists. INV-5.
+    if (eng->m_abortRequested.load(std::memory_order_relaxed)) {
+        luaL_error(L, "Plugin aborted by host (unresponsive handler)");
         return;
     }
     // ANTS-1332 — sticky-kill latch. Once a wall-clock timeout has
@@ -319,6 +334,7 @@ void LuaEngine::sandboxEnvironment() {
 }
 
 bool LuaEngine::loadScript(const QString &path) {
+    Q_ASSERT(thread() == QThread::currentThread());  // INV-1
     if (!m_state) return false;
 
     // Reject compiled bytecode — Lua 5.4 has no bytecode verifier, so
@@ -348,6 +364,13 @@ bool LuaEngine::loadScript(const QString &path) {
         const char *err = lua_tostring(m_state, -1);
         emit logMessage(QString("Lua error in %1: %2").arg(path, err ? err : "unknown"));
         lua_pop(m_state, 1);
+        // ANTS-1750 § 2.2.2 — a half-loaded VM must not receive the queued
+        // Load event. Tear it down here, on the worker, so the FIFO-following
+        // Load no-ops on fireEvent's null-m_state guard and lua_close stays
+        // off the GUI thread (INV-12). In the threaded flow a failed init.lua
+        // means a dead plugin; recovery semantics (ANTS-1332) live on the
+        // per-handler pcall path inside fireEvent, not on re-loading a chunk.
+        shutdown();
         return false;
     }
     return true;
@@ -416,6 +439,20 @@ bool LuaEngine::fireEvent(PluginEvent event, const QString &data) {
     }
 
     return allow;
+}
+
+void LuaEngine::dispatchEvent(int event, const QString &data) {
+    // INV-1 — Lua C API must only run on the owning worker thread.
+    Q_ASSERT(thread() == QThread::currentThread());
+    const quint64 seq = ++m_seq;
+    // eventStarted/eventCompleted bracket the actual handler execution so
+    // PluginManager's health tick measures handler runtime (not queue wait):
+    // a worker stuck in one uninterruptible C call emits eventStarted then
+    // never eventCompleted, ageing past budget + grace; a backed-up but
+    // healthy worker keeps pairing them per event, so it is not demoted.
+    emit eventStarted(seq);
+    fireEvent(static_cast<PluginEvent>(event), data);
+    emit eventCompleted(seq);
 }
 
 void LuaEngine::setRecentOutput(const QString &output) {

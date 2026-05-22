@@ -1385,12 +1385,15 @@ if(ANTS_TESTS)
             LIBS    ants_lua_lib ants_core_lib
             SOURCES tests/features/lua_sandbox_hardening/test_lua_sandbox_hardening.cpp
                     tests/features/lua_pcall_nesting_timeout/test_lua_pcall_nesting_timeout.cpp
+                    tests/features/lua_threading/test_lua_threading.cpp
                     tests/features/plugin_manifest_safety/test_plugin_manifest_safety.cpp)
         target_compile_definitions(test_lua PRIVATE
             ANTS_LUA_PLUGINS=1
             SRC_LUAENGINE_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.cpp"
             SRC_LUAENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.h"
-            SRC_PLUGINMANAGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/pluginmanager.cpp")
+            SRC_PLUGINMANAGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/pluginmanager.cpp"
+            SRC_PLUGINMANAGER_H_PATH="${CMAKE_SOURCE_DIR}/src/pluginmanager.h"
+            SRC_MAINWINDOW_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp")
         # ANTS-1332 — A1/A2 loop-nested attacks finish in ~1.5s post-fix
         # and the whole runtime+source suite is ~3-4s total, well under
         # the bundle's gtest_discover_tests default TIMEOUT 10s. Pre-fix

@@ -216,7 +216,28 @@ Listed only where behavior isn't obvious from the name.
   subagent for Claude Code; v1 surface is `drift-check`. ANTS-1116.
 - `luaengine` / `pluginmanager` — sandboxed Lua 5.4; plugins live in
   `~/.config/ants-terminal/plugins/`, gated by `ANTS_LUA_PLUGINS`
-  (compile-time define).
+  (compile-time define). **Per-plugin worker-thread model (ANTS-1750):**
+  each `LuaEngine` is parentless and `moveToThread`'d onto its own
+  `QThread` (512 KiB stack); the `lua_State` is created and only ever
+  touched on that worker. `PluginManager` (GUI controller) delivers
+  events non-blocking via `QMetaObject::invokeMethod(engine,
+  "dispatchEvent", Qt::QueuedConnection, ...)` — broadcast through
+  `fireEvent`/`healthyEngines()`, targeted through `dispatchTo` (the only
+  supported synchronous-from-GUI entry into a worker; keybinding + palette
+  route here, never `engineFor()->fireEvent()`). **The GUI thread never
+  blocks on a worker** — every GUI→worker edge is `QueuedConnection`; the
+  one worker→GUI synchronous read (`ants.settings.get`) is
+  `BlockingQueuedConnection` (worker blocks, never the UI), so the two
+  directions are acyclic → no deadlock. A 2 s `healthTick` measures
+  handler *execution* time (worker→GUI `eventStarted`/`eventCompleted`)
+  and demotes a plugin stuck past budget+grace (atomic `m_abortRequested`
+  read in `instructionHook`). Teardown posts Unload+`shutdown` to the
+  worker then `quit()`+`wait(kTeardownMs)`; a wedged worker is detached
+  into `m_zombies` (never joined/deleted), so all `lua_close` stays on the
+  worker and unload is bounded. A failed `init.lua` calls `shutdown()`
+  worker-side (gates the queued `Load`). Spec `docs/specs/ANTS-1750.md`;
+  the dormant veto contract (`keypress`) is ANTS-1736 (§ 2.6),
+  process-isolation follow-up is ANTS-1795.
 - `claudeintegration` — singleton owning the Claude Code hook
   server (one UDS shared across every Claude under any tab),
   `m_pollTimer` (2 s) for `pollClaudeProcess` PID detection,

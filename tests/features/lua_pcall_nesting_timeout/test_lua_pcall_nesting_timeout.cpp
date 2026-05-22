@@ -147,6 +147,14 @@ void runA2(const QString &dir) {
 
 // A3 — After a kill, a fresh pcall in the same VM runs normally.
 // Proves Invariant 2 (startPcallBudget resets the latch).
+//
+// ANTS-1750 moved recovery onto the EVENT path: loadScript now tears the
+// VM down on a script error (§ 2.2.2), so a failed init.lua means a dead
+// plugin — recovery no longer applies to re-loading a chunk. The realistic
+// place a timeout recovers is between event handlers: one handler times out
+// (latches m_killed), the next handler still runs because startPcallBudget
+// clears the latch + restores the 100k count before each handler's pcall.
+// This rewrite exercises exactly that, on one live VM.
 void runA3(const QString &dir) {
     LuaEngine engine;
     if (!engine.initialize()) {
@@ -154,50 +162,65 @@ void runA3(const QString &dir) {
         return;
     }
     engine.setPcallBudgetMs(kBudgetMs);
-    // First: trigger the kill path with a tiny loop-nested attack.
-    const QByteArray bad =
-        "while true do\n"
-        "  pcall(function()\n"
-        "    local x = 0\n"
-        "    for i = 1, 1000000000 do x = x + 1 end\n"
-        "  end)\n"
-        "end\n";
-    const QString badPath = writeTemp(dir, "a3_bad.lua", bad);
-    if (badPath.isEmpty()) return;
+    // One VM, two handlers: a runaway command_finished handler that burns
+    // past the wall budget, and a benign theme_changed handler that records
+    // it ran. The chunk itself loads cleanly (only ants.on registrations).
+    const QByteArray script =
+        "ants.on('command_finished', function()\n"
+        "  local x = 0\n"
+        "  for i = 1, 1000000000 do x = x + 1 end\n"
+        "end)\n"
+        "ants.on('theme_changed', function()\n"
+        "  _G.ants_test_a3_ran = true\n"
+        "end)\n";
+    const QString path = writeTemp(dir, "a3_handlers.lua", script);
+    if (path.isEmpty()) return;
+    const bool loaded = engine.loadScript(path);
+    expect(loaded,
+           "A3a/handlers-script-loads",
+           QStringLiteral("handler-registration chunk must load cleanly"));
+    if (!loaded) { QFile::remove(path); return; }
+
+    // Fire the runaway handler — the wall-clock budget kills it (latched).
     QElapsedTimer timer; timer.start();
-    (void)engine.loadScript(badPath);
+    engine.fireEvent(PluginEvent::CommandFinished, QString());
     const qint64 killMs = timer.elapsed();
     if (killMs > kRuntimeBoundMs) {
-        // Already a hard fail in A1; don't double-report.
-        QFile::remove(badPath);
+        // The kill-path latency itself is covered by A1; don't double-report.
+        QFile::remove(path);
         return;
     }
 
-    // Second: a benign script should load fine and run quickly.
-    const QByteArray good =
-        "_G.ants_test_a3_ran = true\n";
-    const QString goodPath = writeTemp(dir, "a3_good.lua", good);
+    // Fire the benign handler — it must run normally now the latch is reset.
     QElapsedTimer timer2; timer2.start();
-    const bool ok = engine.loadScript(goodPath);
+    engine.fireEvent(PluginEvent::ThemeChanged, QString());
     const qint64 goodElapsed = timer2.elapsed();
-    expect(ok,
-           "A3a/recovery-benign-loads",
-           QStringLiteral("loadScript on benign script after kill failed "
-                          "(elapsed %1ms)").arg(goodElapsed));
-    // Widened from 200 ms (post-test-audit 2026-05-18): the original
-    // bound matched the kill-path slack of 500 ms × 0.4, but on loaded
-    // CI runners or sanitiser builds a benign script can spike past
-    // 200 ms while still proving the latch reset. 750 ms preserves the
-    // contract (count restored to 100k → benign runs in well under a
-    // second) without flaking.
+
+    // Confirm the benign handler actually executed: a fresh chunk that
+    // errors (→ loadScript returns false) unless the flag is set. This is
+    // the same "loadScript-false-is-our-signal" idiom the sandbox test uses.
+    const QByteArray check =
+        "if not _G.ants_test_a3_ran then\n"
+        "  error('benign handler did not run after kill — latch not reset')\n"
+        "end\n";
+    const QString checkPath = writeTemp(dir, "a3_check.lua", check);
+    const bool ranOk = engine.loadScript(checkPath);
+    expect(ranOk,
+           "A3b/recovery-benign-handler-ran",
+           QStringLiteral("benign handler after kill did not run (latch not "
+                          "reset by startPcallBudget)"));
+    // Widened from 200 ms (post-test-audit 2026-05-18): on loaded CI runners
+    // or sanitiser builds a benign handler can spike past 200 ms while still
+    // proving the latch reset. 750 ms preserves the contract (count restored
+    // to 100k → benign runs in well under a second) without flaking.
     expect(goodElapsed <= 750,
-           "A3b/recovery-benign-fast",
-           QStringLiteral("benign script took %1ms after kill (expected "
+           "A3c/recovery-benign-fast",
+           QStringLiteral("benign handler took %1ms after kill (expected "
                           "≤ 750ms — count must be restored to 100k)")
                .arg(goodElapsed));
 
-    QFile::remove(badPath);
-    QFile::remove(goodPath);
+    QFile::remove(path);
+    QFile::remove(checkPath);
     engine.shutdown();
 }
 

@@ -4,6 +4,7 @@
 #include <QStringList>
 #include <QObject>
 #include <QHash>
+#include <atomic>
 #include <vector>
 
 // Forward declare Lua state + activation record
@@ -50,21 +51,27 @@ public:
     void setPermissions(const QStringList &perms) { m_permissions = perms; }
     bool hasPermission(const QString &perm) const { return m_permissions.contains(perm); }
 
-    bool initialize();
-    bool loadScript(const QString &path);
-    void shutdown();
     bool isInitialized() const { return m_state != nullptr; }
 
     // Memory limit for Lua allocations (default 10MB per-VM)
     static constexpr size_t MAX_LUA_MEMORY = 10 * 1024 * 1024;
 
-    // Fire events to all registered handlers
-    // Returns false if any handler requests cancellation (for keypress)
+    // Fire events to all registered handlers. Returns false if any handler
+    // requests cancellation (the dormant keypress veto — ANTS-1736). Runs
+    // the lua_pcall loop on the owning thread; dispatchEvent() is the queued
+    // worker-side wrapper that brackets it with eventStarted/eventCompleted
+    // for the controller's health check.
     bool fireEvent(PluginEvent event, const QString &data = QString());
 
-    // Set context for the ants API
-    void setRecentOutput(const QString &output);
-    void setCwd(const QString &cwd);
+    // ANTS-1750 — the GUI controller (PluginManager) sets the abort flag
+    // when it demotes a runaway plugin; instructionHook reads it and raises
+    // luaL_error at the next VM boundary. Atomic: the only LuaEngine state
+    // intentionally touched from a thread other than the worker. INV-5.
+    void requestAbort() { m_abortRequested.store(true); }
+    // Per-pcall wall-clock budget (ms). Read by the controller's health tick
+    // to derive the execution-time deadline (budget + grace). Set-once,
+    // before the engine is threaded.
+    qint64 pcallBudgetMs() const { return m_pcallBudgetMs; }
 
     // Per-pcall wall-clock budget (default 1500 ms). Test-only knob —
     // production callers leave it at the default so a normal plugin
@@ -74,6 +81,25 @@ public:
     // `startPcallBudget()` (i.e. the next outer pcall launched by
     // `loadScript` or an event firing).
     void setPcallBudgetMs(qint64 ms) { m_pcallBudgetMs = ms; }
+
+public slots:
+    // Worker-side entry points (ANTS-1750). After the engine is moved onto
+    // its worker QThread, PluginManager invokes these across the thread
+    // boundary with Qt::QueuedConnection so the GUI thread never blocks on a
+    // plugin. All are also safe to call directly on the owning thread (the
+    // non-threaded unit tests do exactly that).
+    bool initialize();
+    bool loadScript(const QString &path);
+    void shutdown();
+    // Run the handlers for `event` (a PluginEvent cast to int for the
+    // queued-call metatype) on the worker. Brackets the run with
+    // eventStarted/eventCompleted so the controller can measure handler
+    // execution time. Async — any veto return is ignored (§ 2.6).
+    void dispatchEvent(int event, const QString &data);
+    // Context setters — queued so m_recentOutput / m_cwd are mutated on the
+    // worker thread only (no GUI-write / worker-read race). INV-6.
+    void setRecentOutput(const QString &output);
+    void setCwd(const QString &cwd);
 
 signals:
     void sendToTerminal(const QString &text);
@@ -93,6 +119,13 @@ signals:
     // payload echoed back via PaletteAction event when the entry fires.
     void paletteEntryRegistered(const QString &pluginName, const QString &title,
                                 const QString &action, const QString &hotkey);
+    // ANTS-1750 — execution-time bracketing for the single-uninterruptible-
+    // C-call health check. Emitted by dispatchEvent at the top (before the
+    // lua_pcall loop) and after it; PluginManager records the execution
+    // start time from eventStarted and clears it on eventCompleted, so the
+    // health tick measures handler execution time, not queue wait.
+    void eventStarted(quint64 seq);
+    void eventCompleted(quint64 seq);
 
 private:
     // ANTS-1332: instruction-count + line + wall-clock hook. Lifted from
@@ -145,6 +178,15 @@ private:
     qint64 m_pcallBudgetMs   = 1500;  // Tunable via setPcallBudgetMs().
     QString m_recentOutput;
     QString m_cwd;
+
+    // ANTS-1750 — GUI-set abort flag (see requestAbort()). Read in
+    // instructionHook; never cleared — a demoted plugin is neutered for the
+    // rest of the session and receives no further events.
+    std::atomic<bool> m_abortRequested{false};
+    // ANTS-1750 — monotonic per-engine event sequence, worker-only. Tags
+    // each eventStarted/eventCompleted pair (FIFO single-worker, so they
+    // strictly alternate; the seq is for robustness + logging).
+    quint64 m_seq = 0;
 
     // Event handlers: event -> list of Lua registry keys (function refs)
     QHash<PluginEvent, std::vector<int>> m_handlers;
