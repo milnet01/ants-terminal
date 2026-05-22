@@ -5,6 +5,7 @@
 
 #include "secretredact.h"
 
+#include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -67,6 +68,35 @@ bool LlmClient::isPlaintextRemote(const QString &endpoint) {
                           || host == QStringLiteral("127.0.0.1")
                           || host == QStringLiteral("::1"));
     return !isLocal;
+}
+
+bool LlmClient::isEndpointHostBlocked(const QString &endpoint) {
+    const QString host = QUrl(endpoint).host();
+    if (host.isEmpty()) return false;  // scheme gate handles empties
+    if (host.compare(QStringLiteral("localhost"), Qt::CaseInsensitive) == 0)
+        return false;                  // local dev LLM server
+
+    const QHostAddress addr(host);
+    if (addr.isNull()) return false;   // DNS hostname — not resolved here
+    if (addr.isLoopback()) return false;  // 127.0.0.0/8, ::1
+
+    bool isV4 = false;
+    const quint32 v4 = addr.toIPv4Address(&isV4);  // also unwraps ::ffff:a.b.c.d
+    if (isV4) {
+        const quint32 a = (v4 >> 24) & 0xff;
+        const quint32 b = (v4 >> 16) & 0xff;
+        if (a == 10) return true;                          // 10.0.0.0/8
+        if (a == 172 && b >= 16 && b <= 31) return true;   // 172.16.0.0/12
+        if (a == 192 && b == 168) return true;             // 192.168.0.0/16
+        if (a == 169 && b == 254) return true;             // 169.254.0.0/16 (metadata)
+        if (a == 100 && b >= 64 && b <= 127) return true;  // 100.64.0.0/10 (CGNAT)
+        if (a == 0) return true;                           // 0.0.0.0/8
+        return false;
+    }
+    // IPv6 literal.
+    if (addr.isLinkLocal()) return true;            // fe80::/10
+    if (addr.isUniqueLocalUnicast()) return true;   // fc00::/7
+    return false;
 }
 
 QString LlmClient::sseContentDelta(const QString &dataLine) {
@@ -140,6 +170,17 @@ void LlmClient::send(const LlmRequest &req) {
                            "permitted (got '%1').").arg(scheme));
         return;
     }
+    if (isEndpointHostBlocked(req.endpoint)) {
+        // ANTS-1746 — refuse SSRF-shaped endpoints (cloud-metadata
+        // 169.254.169.254, RFC-1918, link-local, ULA). Loopback +
+        // hostnames still pass.
+        emitDeferredError(
+            QStringLiteral("AI endpoint rejected — host is a private, "
+                           "link-local, or cloud-metadata address (SSRF "
+                           "guard). Use a public endpoint or a localhost "
+                           "server."));
+        return;
+    }
 
     const QByteArray bodyBytes = buildRequestBody(req, &m_redactedCount);
 
@@ -167,9 +208,18 @@ void LlmClient::drain() {
     if (!m_reply) return;
     m_sseLineBuffer += m_reply->readAll();
 
-    // Cap the line buffer to guard against a misbehaving server.
+    // Cap the line buffer to guard against a misbehaving server. A single
+    // SSE frame larger than the cap (no newline in kMaxBytes of bytes) is
+    // pathological — drop the buffered partial frame, but flag the answer
+    // as truncated so onFinished() doesn't report it as complete. Without
+    // the flag the caller silently resumes parsing on a corrupted offset
+    // and treats a mangled answer as whole (ANTS-1754).
     if (m_sseLineBuffer.size() > kMaxBytes) {
         m_sseLineBuffer.clear();
+        if (!m_truncated) {
+            m_truncated = true;
+            m_text += QStringLiteral("\n[response truncated]");
+        }
         return;
     }
 

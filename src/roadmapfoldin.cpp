@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QScopeGuard>
 #include <QString>
 #include <QStringList>
 #include <QThread>
@@ -141,6 +142,49 @@ void releaseRenameLock(const QString &counterPath_) {
     ::unlink(lockPath.toUtf8().constData());
 }
 
+// ANTS-1742 — exclusive-lock handle over `.roadmap-counter`. Both
+// allocateIds and insertBlock take this so the two halves of a fold-in
+// (ID allocation + ROADMAP.md read-modify-write) serialise against
+// concurrent fold-ins on a single lock. Wraps lockExclusive() with the
+// ANTS-1490 rename-lock fallback. `held()` is false on acquisition
+// failure; the caller must releaseCounterLock() (held or not is a no-op).
+struct CounterLock {
+    int fd = -1;
+    bool usingRenameLock = false;
+    QString path;
+    bool held() const { return fd >= 0; }
+};
+
+CounterLock acquireCounterLock(const QString &counterPath_) {
+    CounterLock lk;
+    lk.path = counterPath_;
+    bool flockBroken = false;
+    lk.fd = lockExclusive(counterPath_, &flockBroken);
+    if (lk.fd < 0) {
+        if (!flockBroken) return lk;  // contention timeout → not held
+        if (!acquireRenameLock(counterPath_)) return lk;
+        lk.usingRenameLock = true;
+        lk.fd = ::open(counterPath_.toUtf8().constData(),
+                       O_RDWR | O_CREAT, 0644);
+        if (lk.fd < 0) {
+            releaseRenameLock(counterPath_);
+            return lk;
+        }
+    }
+    return lk;
+}
+
+void releaseCounterLock(CounterLock &lk) {
+    if (lk.fd < 0) return;
+    if (lk.usingRenameLock) {
+        ::close(lk.fd);
+        releaseRenameLock(lk.path);
+    } else {
+        unlockAndClose(lk.fd);
+    }
+    lk.fd = -1;
+}
+
 } // namespace
 
 QString counterFilePath(const QString &projectPath) {
@@ -198,31 +242,11 @@ QList<int> allocateIds(const QString &projectPath, int n) {
     // any flock / read / write happens.
     if (!counterStaysInProject(projectPath, path)) return {};
 
-    bool flockBroken = false;
-    int fd = lockExclusive(path, &flockBroken);
-    bool usingRenameLock = false;
-    if (fd < 0) {
-        if (!flockBroken) return {};
-        // ANTS-1490 — flock returned systemic errors on every retry;
-        // fall back to O_CREAT|O_EXCL rename-based locking. The lock
-        // file's presence IS the lock.
-        if (!acquireRenameLock(path)) return {};
-        usingRenameLock = true;
-        fd = ::open(path.toUtf8().constData(), O_RDWR | O_CREAT, 0644);
-        if (fd < 0) {
-            releaseRenameLock(path);
-            return {};
-        }
-    }
-
-    auto cleanup = [&](){
-        if (usingRenameLock) {
-            ::close(fd);
-            releaseRenameLock(path);
-        } else {
-            unlockAndClose(fd);
-        }
-    };
+    // ANTS-1490 fallback to rename-based locking is folded into
+    // acquireCounterLock (shared with insertBlock — ANTS-1742).
+    CounterLock lock = acquireCounterLock(path);
+    if (!lock.held()) return {};
+    auto cleanup = [&](){ releaseCounterLock(lock); };
 
     // Read current value.
     QFile f(path);
@@ -306,6 +330,17 @@ bool insertBlock(const QString &projectPath,
     // ANTS-1342: refuse if ROADMAP.md escapes the project root via
     // symlink. Same threat shape as the counter case above.
     if (!roadmapStaysInProject(projectPath, path)) return false;
+
+    // ANTS-1742 — serialise this read-modify-write against concurrent
+    // fold-ins on the same `.roadmap-counter` lock allocateIds takes.
+    // Without it two inserts both read the pre-insert ROADMAP, and the
+    // second commit clobbers the first — silently dropping a block and
+    // orphaning its already-allocated IDs.
+    const QString cpath = counterPath(projectPath);
+    if (!counterStaysInProject(projectPath, cpath)) return false;
+    CounterLock lock = acquireCounterLock(cpath);
+    if (!lock.held()) return false;
+    const auto unlock = qScopeGuard([&]{ releaseCounterLock(lock); });
 
     QFileInfo srcInfo(path);
     QFile::Permissions origPerms = srcInfo.permissions();

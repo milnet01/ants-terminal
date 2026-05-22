@@ -113,10 +113,25 @@ Manifest loadManifest(const QString &canonProject) {
     f.close();
     QJsonParseError err{};
     const QJsonDocument doc = QJsonDocument::fromJson(bytes, &err);
-    if (err.error != QJsonParseError::NoError || !doc.isObject()) return m;
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+        // ANTS-1745 — a corrupt manifest is dropped (start fresh), but
+        // warn: the next recordRun sees empty history, so prior SARIF
+        // files named in the lost manifest are never reaped (leak) and
+        // the audit trail is silently discarded.
+        qWarning() << "AuditCache: corrupt index.json (" << err.errorString()
+                   << ") at" << p << "— starting with empty history;"
+                   << "prior SARIF files may be orphaned.";
+        return m;
+    }
     const QJsonObject obj = doc.object();
     const int version = obj.value(QStringLiteral("version")).toInt(0);
-    if (version != 1) return m;  // ANTS-1555 INV-7: unknown version → treat as empty
+    if (version != 1) {  // ANTS-1555 INV-7: unknown version → treat as empty
+        // ANTS-1745 — surface the version mismatch (a newer Ants wrote a
+        // schema this build can't read) rather than dropping it silently.
+        qWarning() << "AuditCache: index.json version" << version
+                   << "!= 1 at" << p << "— treating as empty history.";
+        return m;
+    }
     m.version = version;
     m.raw     = obj;
     if (obj.contains(QStringLiteral("last_run"))) {
@@ -258,6 +273,12 @@ RecordedRun recordRun(const QString &canonProject,
         return out;
     }
     setOwnerOnlyPerms(manifestPath);
+    // ANTS-1761 — QSaveFile::commit() fsyncs the file + atomically
+    // renames, but the directory entry for the rename isn't durable until
+    // the parent dir is fsynced. Without this, power loss between the
+    // rename and the journal flush can lose the manifest update and
+    // orphan the SARIF it pointed at.
+    fsyncParentDir(manifestPath);
 
     out.ok = true;
     return out;

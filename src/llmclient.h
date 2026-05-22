@@ -50,6 +50,12 @@ public:
     // ---- Widget-free helpers, testable without a network round-trip ----
 
     // Accumulated-content + SSE-line-buffer cap (mirrors aidialog.cpp).
+    // ANTS-1753 — unit note: this value bounds m_sseLineBuffer
+    // (QByteArray) in exact bytes, but accumulateCapped() compares it
+    // against a QString::size() which counts UTF-16 code units. So the
+    // accumulated-text ceiling is ~10 Mi *units* (≈10 MiB ASCII, up to
+    // ~40 MiB RAM for all-4-byte codepoints). It is a memory-DoS bound,
+    // not an exact byte limit on the decoded answer.
     static constexpr qint64 kMaxBytes = 10 * 1024 * 1024;
 
     // True iff `endpoint` parses with an http/https scheme. On true,
@@ -59,6 +65,17 @@ public:
     // True iff endpoint is plaintext http to a non-local host (caller
     // surfaces the "Bearer travels in cleartext" warning).
     static bool isPlaintextRemote(const QString &endpoint);
+
+    // ANTS-1746 — SSRF guard. True iff the endpoint's host is an IP
+    // literal in a private (RFC-1918 / CGNAT), link-local (169.254/16 +
+    // fe80::/10 — the cloud-metadata range 169.254.169.254 lives here),
+    // unique-local (fc00::/7), or 0.0.0.0/8 block. Loopback (127/8, ::1,
+    // "localhost") is allowed so a local dev LLM server still works.
+    // DNS hostnames are NOT resolved here (would block + invite
+    // rebinding races) and pass through — this catches the direct
+    // IP-literal SSRF shapes a malicious/imported ai_endpoint would use
+    // to reach cloud metadata or internal services with the Bearer token.
+    static bool isEndpointHostBlocked(const QString &endpoint);
 
     // Parse one SSE "data:{…}" line → choices[0].delta.content. Empty for
     // "[DONE]", non-data lines, and non-content events.

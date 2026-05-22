@@ -36,7 +36,11 @@ Result score(const QString &transcriptPath)
     def.reason = QStringLiteral("default");
 
     QFile f(transcriptPath);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+    // ANTS-1756 — open without QIODevice::Text. The tail-read seeks by
+    // byte offset (f.size() - kMaxTailBytes); Text-mode CRLF→LF
+    // translation would desync read accounting against that byte seek.
+    // Siblings (claudebgtasks, claudetasklist) open plain ReadOnly.
+    if (!f.open(QIODevice::ReadOnly))
         return def;
 
     // INV-7: tail-read at most 512 KB. Store the flag BEFORE close()

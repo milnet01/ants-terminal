@@ -120,6 +120,14 @@ bool applyRepair(const Repair &r) {
     if (r.line > lines.size()) return false;
     if (lines.at(r.line - 1) != r.original) return false;  // stale plan
 
+    // ANTS-1744 — refuse an ambiguous removal. The exact-text guard above
+    // can pass on a *different* line than the finding meant if an edit
+    // moved a textually-identical line into r.line's slot (e.g. a dead
+    // `#include <X>` and a still-used `#include <X>` elsewhere). When the
+    // line text isn't unique we can't tell which occurrence the finding
+    // referred to, so deleting it could drop a needed line — bail.
+    if (r.removeLine && lines.count(r.original) > 1) return false;
+
     if (r.removeLine)
         lines.removeAt(r.line - 1);
     else

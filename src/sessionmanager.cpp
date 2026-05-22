@@ -225,6 +225,17 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
         (uint32_t(lenBytes[2]) <<  8) |
          uint32_t(lenBytes[3]);
     if (claimedUncompressed > MAX_UNCOMPRESSED) return false;
+    // ANTS-1762 — also bound the claim relative to the input size. The
+    // 500 MB absolute cap above still lets a tiny 50 KB blob declare a
+    // 499 MB length and force a ~499 MB allocation inside qUncompress.
+    // DEFLATE's theoretical ceiling is ~1032:1, so any claim exceeding
+    // compressed.size()*1032 (plus slack for the small-input case) is
+    // unreachable by a legitimate stream and is rejected before we
+    // allocate. A genuinely large session compresses from real bytes, so
+    // its claim stays under this input-relative ceiling.
+    const quint64 ratioBound =
+        quint64(compressed.size()) * 1032ull + 64ull * 1024ull;
+    if (quint64(claimedUncompressed) > ratioBound) return false;
 
     QByteArray raw = qUncompress(compressed);
     if (raw.isEmpty()) return false;

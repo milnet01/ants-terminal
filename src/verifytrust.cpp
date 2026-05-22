@@ -26,11 +26,15 @@ QString defaultTrustFilePath() {
     const QString cfgRoot = QStandardPaths::writableLocation(
         QStandardPaths::AppConfigLocation);
     if (cfgRoot.isEmpty()) {
-        // Last-resort fallback — caller can override via the
-        // explicit-path ctor. We don't crash on a missing config
-        // home; the load/save paths just no-op.
-        return QStringLiteral("/tmp/ants-verify-trust-%1.json")
-            .arg(::getuid());
+        // ANTS-1741 — refuse a predictable /tmp fallback. A
+        // world-writable /tmp/ants-verify-trust-<uid>.json can be
+        // pre-seeded (or symlinked) by a co-tenant to auto-trust an
+        // attacker's `.ants/verify.json` SHA. Return empty instead:
+        // loadFromDisk treats an unopenable path as an empty trust set
+        // and saveToDisk no-ops on an empty path, so trust simply
+        // doesn't persist when there's no config home (rare). A caller
+        // that needs persistence can pass an explicit path to the ctor.
+        return QString();
     }
     return cfgRoot + QStringLiteral("/verify-trust.json");
 }

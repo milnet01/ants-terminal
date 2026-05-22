@@ -3339,8 +3339,15 @@ void TerminalGrid::handleApc(const std::string &payload) {
                     && m_imageBudget.canFit(projected)) {
                     QImage::Format fmt = (format == 32)
                         ? QImage::Format_RGBA8888 : QImage::Format_RGB888;
+                    // ANTS-1740 — pass an explicit tightly-packed stride so
+                    // QImage reads exactly w*h*bpp bytes. The default-stride
+                    // ctor rounds bytesPerLine up to a 32-bit boundary, so an
+                    // odd-width Format_RGB888 image (3-byte rows) would read
+                    // past `decoded` on the last row before .copy().
+                    const qsizetype srcStride =
+                        static_cast<qsizetype>(pixelW) * bytesPerPixel;
                     image = QImage(reinterpret_cast<const uchar *>(decoded.constData()),
-                                   pixelW, pixelH, fmt).copy(); // .copy() to own the data
+                                   pixelW, pixelH, srcStride, fmt).copy(); // .copy() to own the data
                 }
             }
         }

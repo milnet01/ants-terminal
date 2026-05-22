@@ -41,13 +41,32 @@ void LlmDispatcher::enqueue(const QList<LlmJob> &jobs) {
 void LlmDispatcher::cancelAll() {
     m_cancelled = true;
     m_queue.clear();
-    // Abort any in-flight default-runner clients; their finished slot is
-    // guarded by m_cancelled (no jobFinished emitted).
+
+    // ANTS-1755 — account for in-flight default-runner clients here.
+    // LlmClient::abort() suppresses the client's finished() signal (it
+    // nulls m_reply before aborting), so the completion callback that
+    // would normally --m_inFlight and remove the client never fires.
+    // Left as-is the dispatcher wedges: m_inFlight stuck > 0, allFinished
+    // never emitted, and m_activeClients grows with dead clients across
+    // cancel cycles. So drop + free each client and decrement in-flight
+    // for it.
+    const bool hadActiveClients = !m_activeClients.isEmpty();
     const auto clients = m_activeClients;
-    for (const QPointer<LlmClient> &c : clients)
-        if (c) c->abort();
-    // If nothing is in flight, the in-flight set is already drained.
-    if (m_inFlight == 0)
+    m_activeClients.clear();
+    for (const QPointer<LlmClient> &c : clients) {
+        if (c) {
+            c->abort();
+            c->deleteLater();
+        }
+        if (m_inFlight > 0) --m_inFlight;
+    }
+
+    // Emit allFinished only when this call actually drained default-runner
+    // work — a defensive cancelAll() after everything already finished
+    // must not re-fire it (double-teardown). Custom-runner jobs (no client
+    // handles) stay in flight and drive the single allFinished via their
+    // own completion → pump().
+    if (hadActiveClients && m_inFlight == 0)
         emit allFinished();
 }
 

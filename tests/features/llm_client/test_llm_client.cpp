@@ -37,6 +37,40 @@ TEST(LlmClient, INV2_PlaintextRemote) {
     EXPECT_FALSE(LlmClient::isPlaintextRemote(QStringLiteral("http://127.0.0.1/v1")));
 }
 
+// ANTS-1746 — SSRF host guard: private / link-local / metadata IP
+// literals blocked; loopback, hostnames, and public IPs allowed.
+TEST(LlmClient, Ants1746_EndpointHostBlocked) {
+    // Blocked: cloud metadata + RFC-1918 + CGNAT + 0.0.0.0/8.
+    EXPECT_TRUE(LlmClient::isEndpointHostBlocked(
+        QStringLiteral("http://169.254.169.254/latest/meta-data/")));
+    EXPECT_TRUE(LlmClient::isEndpointHostBlocked(
+        QStringLiteral("http://10.0.0.5:11434/v1")));
+    EXPECT_TRUE(LlmClient::isEndpointHostBlocked(
+        QStringLiteral("http://192.168.1.50:1234/v1")));
+    EXPECT_TRUE(LlmClient::isEndpointHostBlocked(
+        QStringLiteral("http://172.16.3.4/v1")));
+    EXPECT_TRUE(LlmClient::isEndpointHostBlocked(
+        QStringLiteral("http://100.100.0.1/v1")));
+    EXPECT_TRUE(LlmClient::isEndpointHostBlocked(
+        QStringLiteral("http://0.0.0.0/v1")));
+    // Blocked: IPv6 link-local + unique-local.
+    EXPECT_TRUE(LlmClient::isEndpointHostBlocked(
+        QStringLiteral("http://[fe80::1]/v1")));
+    EXPECT_TRUE(LlmClient::isEndpointHostBlocked(
+        QStringLiteral("http://[fc00::1]/v1")));
+    // Allowed: loopback (local dev LLM), hostnames, public IPs.
+    EXPECT_FALSE(LlmClient::isEndpointHostBlocked(
+        QStringLiteral("http://127.0.0.1:11434/v1")));
+    EXPECT_FALSE(LlmClient::isEndpointHostBlocked(
+        QStringLiteral("http://localhost:11434/v1")));
+    EXPECT_FALSE(LlmClient::isEndpointHostBlocked(
+        QStringLiteral("http://[::1]:11434/v1")));
+    EXPECT_FALSE(LlmClient::isEndpointHostBlocked(
+        QStringLiteral("https://api.openai.com/v1/chat/completions")));
+    EXPECT_FALSE(LlmClient::isEndpointHostBlocked(
+        QStringLiteral("https://8.8.8.8/v1")));
+}
+
 // INV-3 — secrets scrubbed out of the serialised request body.
 TEST(LlmClient, INV3_BuildRequestBodyScrubsSecrets) {
     // A GitHub classic PAT shape (ghp_ + 36 alphanumerics) — a known
