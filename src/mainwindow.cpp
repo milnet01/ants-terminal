@@ -4469,6 +4469,11 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("indie_review_fold_in",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdIndieReviewFoldIn));
+    // ANTS-1279 — indie_review_orchestrate. Pure read (partition + brief
+    // manifests); no subprocess, so no in-flight gate. caller_cwd Required.
+    m_claudeIntegration->registerToolProvider("indie_review_orchestrate",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdIndieReviewOrchestrate));
 
     // ANTS-1352 — indie_review_dispatch. Inline in-flight gate via
     // verbInFlight* (same pattern as audit_run); caller_cwd Required

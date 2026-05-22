@@ -2333,7 +2333,9 @@ void ClaudeIntegration::onMcpConnection() {
                             "bytes (default 512 KiB, server-clamped to "
                             "4 MiB). When exceeded, trailing symbols are "
                             "dropped and the envelope carries "
-                            "truncated:true + symbols_dropped:<n>.");
+                            "truncated:true + symbols_dropped:<n> "
+                            "(+ bytes_cap_clamped:true if the requested cap "
+                            "exceeded the ceiling).");
                     props["path"]                 = pathProp;
                     props["mode"]                 = modeProp;
                     props["include_doc_comment"]  = hdrProp;
@@ -2421,13 +2423,15 @@ void ClaudeIntegration::onMcpConnection() {
 
                 // ANTS-1251: subsystem — single tool, dispatches on
                 // `op` (map / files / recent_changes). Pre-parses the
-                // CLAUDE.md Module map and serves per-lane chunks so
-                // /indie-review reviewers don't each re-read the file.
+                // module map (docs/subsystems.md, else CLAUDE.md —
+                // ANTS-1292) and serves per-lane chunks so /indie-review
+                // reviewers don't each re-read the file.
                 QJsonObject ssTool;
                 ssTool["name"] = "subsystem";
                 ssTool["description"] = QStringLiteral(
                     "Query the project's subsystem (lane) map parsed "
-                    "from CLAUDE.md. Three ops: map (all lanes), "
+                    "from docs/subsystems.md (falling back to CLAUDE.md "
+                    "when absent — ANTS-1292). Three ops: map (all lanes), "
                     "files (per-lane file list), recent_changes "
                     "(per-lane git log). Required: op. lane required "
                     "for files / recent_changes. n: recent_changes "
@@ -2435,8 +2439,8 @@ void ClaudeIntegration::onMcpConnection() {
                     "per /indie-review run.");
                 ssTool["selection_hint"] = QStringLiteral(
                     "Use as the first call on a 'where does feature "
-                    "X live?' question — walks CLAUDE.md module-map. "
-                    "Collapses 3-5 grep rounds into one.");
+                    "X live?' question — walks the docs/subsystems.md "
+                    "module map. Collapses 3-5 grep rounds into one.");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -3692,6 +3696,54 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonArray req;
                     req.append("caller_cwd");
                     schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                // ANTS-1279 — indie_review_orchestrate (single-call
+                // dispatch manifest for a Claude-Code-driven sweep).
+                {
+                    QJsonObject t;
+                    t["name"] = "indie_review_orchestrate";
+                    t["description"] = QStringLiteral(
+                        "One call that returns the whole dispatch plan for "
+                        "an /indie-review sweep — replaces "
+                        "indie_review_partition + N indie_review_brief "
+                        "calls. Returns {ok, lane_count, reports_dir, "
+                        "lanes:[{name, summary, source_paths, report_path, "
+                        "brief, contract_docs, byte_count}], "
+                        "suggested_merges, next_steps}. Each lane's `brief` "
+                        "is the v2 manifest (no inlined source bodies — the "
+                        "subagent Reads source_paths itself), so the "
+                        "response stays compact. Dispatch one Agent per "
+                        "lane (folding any suggested_merges pair first), "
+                        "have each Write its review to "
+                        "`<project_root>/<report_path>`, then call "
+                        "indie_review_corroborate (reports_dir=<reports_dir>) "
+                        "+ indie_review_fold_in to collect. Pass "
+                        "include_briefs:false for a tiny skeleton (names + "
+                        "paths only). Required: caller_cwd (ANTS-1404). "
+                        "See docs/specs/ANTS-1279.md.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to kick off a full multi-lane indie-review in "
+                        "one call instead of partition + per-lane briefs. "
+                        "Collection reuses indie_review_corroborate + "
+                        "indie_review_fold_in.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject ibProp;
+                    ibProp["type"]    = "boolean";
+                    ibProp["default"] = true;
+                    ibProp["description"] = QStringLiteral(
+                        "When true (default), each lane carries its full "
+                        "`brief` manifest + contract_docs. When false, "
+                        "return only the skeleton (name / summary / "
+                        "source_paths / report_path) for a tiny response.");
+                    props["include_briefs"] = ibProp;
+                    // ANTS-1391 — caller_cwd anchor.
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
@@ -5705,6 +5757,8 @@ void ClaudeIntegration::onMcpConnection() {
                         {QStringLiteral("indie_review_synthesis_prompt"), {2500, 10000}},
                         {QStringLiteral("indie_review_dispatch"),     {3000, 12000}},
                         {QStringLiteral("indie_review_fold_in"),      {1000, 4000}},
+                        // ANTS-1279 — one call replaces partition + N briefs.
+                        {QStringLiteral("indie_review_orchestrate"),  {4000, 20000}},
                         // Test-audit.
                         {QStringLiteral("test_audit_partition"),       {1500, 6000}},
                         {QStringLiteral("test_audit_brief"),           {2000, 8000}},
@@ -6612,6 +6666,7 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("indie_review_brief"))            return C::Required;
     if (toolName == QStringLiteral("indie_review_corroborate"))      return C::Required;
     if (toolName == QStringLiteral("indie_review_fold_in"))          return C::Required;
+    if (toolName == QStringLiteral("indie_review_orchestrate"))      return C::Required;  // ANTS-1279
     if (toolName == QStringLiteral("indie_review_partition"))        return C::Required;
     if (toolName == QStringLiteral("indie_review_synthesis_prompt")) return C::Required;
     // Test-audit verb cluster (ANTS-1397).
@@ -6818,6 +6873,9 @@ ClaudeIntegration::rateLimitClassFor(const QString &toolName) {
     if (toolName == QStringLiteral("indie_review_partition"))   return R::Expensive;
     if (toolName == QStringLiteral("indie_review_corroborate")) return R::Expensive;
     if (toolName == QStringLiteral("indie_review_fold_in"))     return R::Expensive;
+    // ANTS-1279: indie_review_orchestrate derives the partition + N brief
+    // manifests in one call — heavier than a single partition read.
+    if (toolName == QStringLiteral("indie_review_orchestrate")) return R::Expensive;
     // ANTS-1352: indie_review_dispatch
     if (toolName == QStringLiteral("indie_review_dispatch"))    return R::Expensive;
     if (toolName == QStringLiteral("test_audit_partition"))     return R::Expensive;

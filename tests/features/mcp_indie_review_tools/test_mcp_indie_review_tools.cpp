@@ -31,20 +31,22 @@ std::string slurp(const char *p) {
     return ss.str();
 }
 
-constexpr const char *kToolNames[5] = {
+constexpr const char *kToolNames[6] = {
     "indie_review_partition",
     "indie_review_brief",
     "indie_review_corroborate",
     "indie_review_synthesis_prompt",
     "indie_review_fold_in",
+    "indie_review_orchestrate",  // ANTS-1279
 };
 
-constexpr const char *kCmdMethods[5] = {
+constexpr const char *kCmdMethods[6] = {
     "cmdIndieReviewPartition",
     "cmdIndieReviewBrief",
     "cmdIndieReviewCorroborate",
     "cmdIndieReviewSynthesisPrompt",
     "cmdIndieReviewFoldIn",
+    "cmdIndieReviewOrchestrate",  // ANTS-1279
 };
 
 }  // namespace
@@ -91,6 +93,30 @@ TEST(McpIndieReviewTools, AllCmdMethodsDefinedInCpp) {
     }
 }
 
+// ANTS-1279 — the orchestrate handler composes the dispatch manifest from
+// the existing engine functions and emits the report-collection contract.
+TEST(McpIndieReviewTools, Ants1279OrchestrateComposesManifest) {
+    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    ASSERT_FALSE(rc.empty());
+    const auto p = rc.find("RemoteControl::cmdIndieReviewOrchestrate");
+    ASSERT_NE(p, std::string::npos);
+    const std::string body = rc.substr(p, 3500);
+    EXPECT_NE(body.find("derivePartition"), std::string::npos)
+        << "orchestrate must derive the partition";
+    EXPECT_NE(body.find("assembleBriefManifest"), std::string::npos)
+        << "orchestrate must assemble per-lane brief manifests";
+    EXPECT_NE(body.find("suggestedMerges"), std::string::npos)
+        << "orchestrate must surface suggested_merges (ANTS-1288 reuse)";
+    EXPECT_NE(body.find("reports_dir"), std::string::npos)
+        << "orchestrate must emit a reports_dir for the collect phase";
+    EXPECT_NE(body.find("report_path"), std::string::npos)
+        << "orchestrate must emit a per-lane report_path";
+    EXPECT_NE(body.find("next_steps"), std::string::npos)
+        << "orchestrate must emit next_steps wiring to corroborate/fold_in";
+    EXPECT_NE(body.find("include_briefs"), std::string::npos)
+        << "orchestrate must honour the include_briefs toggle";
+}
+
 // ANTS-1288 — the partition handler emits suggested_merges, computed via
 // the engine helper (locks the wiring against accidental removal).
 TEST(McpIndieReviewTools, Ants1288PartitionEmitsSuggestedMerges) {
@@ -133,7 +159,8 @@ TEST(McpIndieReviewTools, AllSchemasUseAdditionalPropertiesFalse) {
         ++count;
         ++pos;
     }
-    EXPECT_EQ(count, 6)
-        << "expected 6 additionalProperties=false (5 original "
-           "indie_review_* tools + ANTS-1352 indie_review_dispatch)";
+    EXPECT_EQ(count, 7)
+        << "expected 7 additionalProperties=false (5 original "
+           "indie_review_* tools + ANTS-1352 indie_review_dispatch "
+           "+ ANTS-1279 indie_review_orchestrate)";
 }

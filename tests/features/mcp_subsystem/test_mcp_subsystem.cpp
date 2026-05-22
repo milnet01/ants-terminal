@@ -239,5 +239,21 @@ TEST(McpSubsystem, WiringContract) {
                   static_cast<long long>(claudeMdLanes.size()));
     expect(claudeMdLanes.isEmpty(), "ANTS-1292/INV-14", detail14);
 
+    // ANTS-1292 INV-2 — empty input → empty output (no crash, no
+    // fabricated path).
+    expect(SubsystemMap::resolveSource(QString()).isEmpty(),
+           "ANTS-1292/INV-2",
+           "resolveSource(\"\") must return empty, not a fabricated path");
+
+    // ANTS-1292 INV-3 — un-migrated project (no sibling docs/subsystems.md)
+    // falls back to the given CLAUDE.md path unchanged. Use a path whose
+    // directory has no docs/subsystems.md sibling.
+    const QString unmigrated =
+        QStringLiteral("/nonexistent-ants-1292-probe/CLAUDE.md");
+    expect(SubsystemMap::resolveSource(unmigrated) == unmigrated,
+           "ANTS-1292/INV-3",
+           "resolveSource must return the CLAUDE.md path unchanged when no "
+           "docs/subsystems.md sibling exists (back-compat fallback)");
+
     EXPECT_EQ(0, expect_failures()) << expect_failures() << " ANTS-1251/ANTS-1292 invariant(s) failed";
 }

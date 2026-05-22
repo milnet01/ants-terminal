@@ -6781,6 +6781,109 @@ QJsonDocument RemoteControl::cmdIndieReviewBrief(const QJsonObject &req) {
     return QJsonDocument(env);
 }
 
+namespace {
+// ANTS-1279 — filesystem-safe stem for a lane's report file. Lane names
+// can be comma-joined multi-name groups ("a, b"); collapse any run of
+// non-[A-Za-z0-9_] to a single '-' so the stem is a clean filename and
+// round-trips as corroborate's filename-stem lane key.
+QString laneReportStem(const QString &laneName) {
+    QString s;
+    s.reserve(laneName.size());
+    bool lastDash = false;
+    for (const QChar c : laneName) {
+        if (c.isLetterOrNumber() || c == QLatin1Char('_')) {
+            s.append(c);
+            lastDash = false;
+        } else if (!lastDash) {
+            s.append(QLatin1Char('-'));
+            lastDash = true;
+        }
+    }
+    while (s.endsWith(QLatin1Char('-'))) s.chop(1);
+    while (s.startsWith(QLatin1Char('-'))) s.remove(0, 1);
+    return s.isEmpty() ? QStringLiteral("lane") : s;
+}
+}  // namespace
+
+QJsonDocument RemoteControl::cmdIndieReviewOrchestrate(const QJsonObject &req) {
+    if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
+        QStringLiteral("indie_review_orchestrate: no MainWindow")));
+    // ANTS-1391: caller_cwd anchors the root when present.
+    const QString root = resolveRootCanonical(m_main, req);
+    if (root.isEmpty()) return QJsonDocument(irErr(
+        QStringLiteral("no_project"),
+        QStringLiteral("indie_review_orchestrate: no focused project")));
+
+    const auto lanes = IndieReviewEngine::derivePartition(root);
+    if (lanes.isEmpty()) return QJsonDocument(irErr(
+        QStringLiteral("no_lanes"),
+        QStringLiteral("indie_review_orchestrate: partition resolved empty "
+                       "(no ## Module map in docs/subsystems.md or "
+                       "CLAUDE.md, no override)")));
+
+    // include_briefs (default true): when false, return the skeleton
+    // (names / source paths / report paths) without the per-lane brief
+    // text — a tiny response for callers that only want the plan.
+    const bool includeBriefs =
+        req.value(QStringLiteral("include_briefs")).toBool(true);
+
+    const QString date = QDate::currentDate().toString(Qt::ISODate);
+    const QString reportsDir =
+        QStringLiteral(".indie-review/reports-") + date;
+
+    QJsonArray laneArr;
+    for (const auto &lane : lanes) {
+        QJsonObject o;
+        o["name"]    = lane.name;
+        o["summary"] = lane.summary;
+        QJsonArray sps;
+        for (const QString &sp : lane.sourcePaths) sps.append(sp);
+        o["source_paths"] = sps;
+        o["report_path"]  =
+            reportsDir + QLatin1Char('/') + laneReportStem(lane.name)
+            + QStringLiteral(".md");
+        if (includeBriefs) {
+            const auto manifest =
+                IndieReviewEngine::assembleBriefManifest(root, lane);
+            o["brief"] = manifest.brief;
+            QJsonArray cds;
+            for (const QString &p : manifest.contractDocs) cds.append(p);
+            o["contract_docs"] = cds;
+            o["byte_count"]    = manifest.brief.toUtf8().size();
+        }
+        laneArr.append(o);
+    }
+
+    // ANTS-1288 — fold duplicate lanes into the manifest so the caller
+    // can collapse them before dispatch.
+    QJsonArray merges;
+    for (const auto &s : IndieReviewEngine::suggestedMerges(lanes)) {
+        QJsonObject mo;
+        QJsonArray pair;
+        for (const QString &nm : s.lanes) pair.append(nm);
+        mo["lanes"]     = pair;
+        mo["rationale"] = s.rationale;
+        merges.append(mo);
+    }
+
+    QJsonObject env;
+    env["ok"]               = true;
+    env["lane_count"]       = laneArr.size();
+    env["reports_dir"]      = reportsDir;
+    env["lanes"]            = laneArr;
+    env["suggested_merges"] = merges;
+    env["next_steps"] = QStringLiteral(
+        "Dispatch one subagent per lane (skip/merge any pair in "
+        "suggested_merges first). Brief each agent with the lane's `brief` "
+        "and instruct it to Read the lane's source_paths, then Write its "
+        "review to `<project_root>/<report_path>`. When all reports are "
+        "written, call indie_review_corroborate with reports_dir=\"")
+        + reportsDir + QStringLiteral("\" (min_lanes 2), then "
+        "indie_review_fold_in to land the corroborated findings on "
+        "ROADMAP.md.");
+    return QJsonDocument(env);
+}
+
 QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
         QStringLiteral("indie_review_corroborate: no MainWindow")));

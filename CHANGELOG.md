@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **`indie_review_orchestrate` — one-call indie-review dispatch plan
+  (ANTS-1279).** A single MCP call returns the whole sweep manifest —
+  the lane partition, each lane's source paths + compact v2 brief, a
+  per-lane report path, duplicate-lane merge suggestions, and the
+  collect-phase next steps — replacing one `indie_review_partition` call
+  plus one `indie_review_brief` call per subsystem (~14). Dispatch stays in
+  the parent (the MCP server can't spawn subagents); collection reuses the
+  existing `indie_review_corroborate` + `indie_review_fold_in` tools. Pass
+  `include_briefs:false` for a names-and-paths-only skeleton.
+
 - **Response size caps for `file_outline` and `workspace_search`
   (ANTS-1293).** Both tools accept an optional `max_bytes` (default
   512 KiB, server-clamped to 4 MiB). When a response would exceed it,

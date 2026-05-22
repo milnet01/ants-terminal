@@ -9958,7 +9958,7 @@ The items below identify the next batch of leverage.
 
 #### 🔌 MCP token-reduction — orchestration consolidation
 
-- 📋 [ANTS-1279] **End-to-end `indie_review_orchestrate` MCP tool.**
+- ✅ [ANTS-1279] **End-to-end `indie_review_orchestrate` MCP tool.**
   Single call that runs the whole Phase-1 → Phase-4 pipeline server
   side: (a) load partition; (b) for each lane, dispatch a subagent
   with the standard brief template + per-lane augmentation block
@@ -9980,6 +9980,18 @@ The items below identify the next batch of leverage.
   briefs by hand each time.
   Kind: implement.
   Source: indie-review-2026-05-13.
+  **Resolution 2026-05-22: shipped, narrowed to a dispatch manifest.**
+  The MCP server can't spawn Claude subagents, so the tool returns the
+  per-lane manifest (partition + v2 briefs + report paths + suggested_merges
+  + next_steps) and the parent fires its `Agent` tool per lane. (Report
+  paths land under project-relative `.indie-review/reports-<date>/`, not the
+  `/tmp/...` path in the original (a)–(f) sketch above, so they compose with
+  `indie_review_corroborate`'s project-relative `reports_dir`.) The (c)–(e)
+  collect phase reuses `indie_review_corroborate` + `indie_review_fold_in`
+  rather than a new server-side collect verb (would duplicate them). The
+  proposed compact `{severity_totals, corroborated_lanes,
+  foldin_block_inserted}` summary belongs to that collect phase and is
+  delivered by those existing tools. Spec: docs/specs/ANTS-1279.md.
 
 - ✅ [ANTS-1280] **End-to-end `audit_orchestrate` MCP tool.** Mirror
   shape to ANTS-1279 but for /audit. Single call: probe installed
@@ -10298,7 +10310,7 @@ template / mutate this state atomically" → movable. If it's
 - ✅ [ANTS-1292] **Split CLAUDE.md: core (always-loaded) vs lane
   details (on-demand via `subsystem` MCP).** CLAUDE.md is loaded
   every Claude session and is ~330 lines and growing. The "Module
-  map (src/)" subsection alone is ~80 lines of lane summaries —
+  map (src/)" subsection alone is ~130 lines of lane summaries —
   exactly the data `mcp__ants__subsystem op=map` returns on
   demand. Move the per-lane bullets out of CLAUDE.md into the
   subsystem MCP (already parsed from CLAUDE.md today, can switch
@@ -10327,6 +10339,14 @@ template / mutate this state atomically" → movable. If it's
   of dumping everything in one reply.
   Kind: refactor.
   Source: indie-review-2026-05-13.
+  **Resolution 2026-05-22: shipped as drop-and-flag, not continuation
+  pagination.** `get_text` (ANTS-1348) and `roadmap_query` pagination
+  already shipped; this closed the gap for `file_outline` + `workspace_search`
+  with a `max_bytes` cap (512 KiB default, 4 MiB ceiling) that trims trailing
+  items and flags `truncated` + `symbols_dropped`/`results_dropped` — the
+  simpler model `get_text` set the precedent for. No `continuation_token`
+  (these tools have no stable cross-call cursor) and no `tools/list`
+  response-size class. Spec: docs/specs/ANTS-1293.md.
 
 #### 🔒 MCP — security hardening (token-economy adjacent)
 

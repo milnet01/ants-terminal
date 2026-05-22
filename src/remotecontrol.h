@@ -476,6 +476,14 @@ public:
     // reports_dir. See docs/specs/ANTS-1352.md.
     QJsonDocument cmdIndieReviewDispatch(const QJsonObject &req);
 
+    // ANTS-1279 — single-call dispatch manifest for a Claude-Code-driven
+    // /indie-review sweep: derivePartition + per-lane brief manifest +
+    // suggested_merges + per-lane report paths + next-steps, so the parent
+    // fires one Agent per lane without first calling partition + N briefs.
+    // Collection reuses indie_review_corroborate + indie_review_fold_in.
+    // See docs/specs/ANTS-1279.md.
+    QJsonDocument cmdIndieReviewOrchestrate(const QJsonObject &req);
+
     // ANTS-1113 — four `debt_sweep_*` MCP tools. Same project-path
     // resolution as `indie_review_*`. Pure delegation to
     // DebtSweepEngine + (for cmdDebtSweepDefer) RoadmapFoldIn helpers.

@@ -4,7 +4,7 @@
 // RemoteControl::capJsonArrayToBytes helper, plus source-grep on the two
 // handler bodies for the wiring.
 //
-// BC-1..BC-6 exercise the helper directly (no Qt event loop).
+// BC-1..BC-5 exercise the helper directly (no Qt event loop).
 // WI-1..WI-2 grep remotecontrol.cpp for the wiring.
 
 #include "../../_support/expect.h"
