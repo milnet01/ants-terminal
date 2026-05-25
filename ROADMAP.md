@@ -12211,7 +12211,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-audit-run.
   Source: RetroArch cross-session report 2026-05-18 (Bundle 64 addendum).
 
-- 📋 [ANTS-1513] ****`test_audit_recheck <finding-id>` — verify cited file:line still contains the smell when picking up deferred work.****
+- ✅ [ANTS-1513] ****`test_audit_recheck <finding-id>` — verify cited file:line still contains the smell when picking up deferred work.****
   Vestige Observation #7. When a session picks up a deferred
   test-audit follow-up days later (e.g. working through 22 deferred
   Ts19 items from a prior audit), the obvious question is "which files
@@ -12251,6 +12251,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Lanes: mcp-test-audit.
   Source: Vestige cross-session report 2026-05-18 (Slice 19 addendum).
+  Shipped 2026-05-25. test_audit_recheck(caller_cwd, finding_id) — read-only verb that parses ROADMAP.md for the [finding_id] bullet, extracts the first path:line cite, and reports file_exists / line_exists / current_line_text / line_still_matches_pattern (+ matched_pattern_id/dimension, re-matched against all pre-pass patterns). Best-effort git rename drift_hint when the file is gone. Path-confined (cites resolving outside the project root are never read). Engine (testauditengine.cpp recheck) stays shell-free per trio INV-1 — the git hint lives in the MCP registration lambda. 6 behavioural tests (tests/features/test_audit_recheck). Vestige Observation #7.
 
 - ✅ [ANTS-1514] **`last_audit_summary` falls back to raw cppcheck XML / clang-tidy text / semgrep JSON when no SARIF exists.**
   RetroArch §2 has been recurring across **at least 3 sessions** —

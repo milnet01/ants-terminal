@@ -221,6 +221,35 @@ BriefResult     brief(const BriefRequest &req);
 SynthResult     synthesize(const SynthRequest &req);
 FoldInResult    foldIn(const FoldInRequest &req);
 
+// ANTS-1513 — recheck a deferred finding's cite before picking the work
+// back up days later. Parses ROADMAP.md for the bullet `[<findingId>]`,
+// pulls the first `path:line` cite out of its body, and reports whether
+// the file still exists and whether the cited line still trips any
+// pre-pass smell pattern. When the file is gone, a best-effort git
+// rename hint is offered. Read-only; no project mutation.
+struct RecheckRequest {
+    QString callerCwd;
+    QString findingId;     // e.g. "ANTS-1234" (the roadmap bullet id)
+};
+struct RecheckResult {
+    bool    ok = false;
+    QString error;
+    QString code;
+    bool    found = false;          // bullet `[<findingId>]` located
+    QString citedFile;              // path as cited (relative to project)
+    int     citedLine = -1;         // 1-based; -1 when no cite parsed
+    bool    fileExists = false;
+    bool    lineExists = false;     // citedLine within the file's bounds
+    QString currentLineText;        // trimmed content now at citedLine
+    bool    lineStillMatchesPattern = false;  // any pre-pass regex hits
+    QString matchedPatternId;       // first matching pattern's id
+    QString matchedDimension;       // ...and its dimension
+    // NB: the best-effort git rename `drift_hint` for a missing file is
+    // added by the MCP registration lambda (mainwindow.cpp) — the engine
+    // stays shell-free / pure (test_audit trio INV-1).
+};
+RecheckResult   recheck(const RecheckRequest &req);
+
 // In-process partition cache so brief / synth can recover the
 // chunk layout for a given token without re-walking the tree.
 // Bounded; LRU-evicted to kPartitionCacheCap entries.

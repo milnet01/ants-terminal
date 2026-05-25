@@ -1903,4 +1903,103 @@ FoldInResult foldIn(const FoldInRequest &req) {
     return r;
 }
 
+// ANTS-1513 — recheck a deferred finding's cite. Read-only; confines all
+// file reads to under the project root (a hostile ROADMAP cite to an
+// absolute/outside path is reported as fileExists:false, never read).
+RecheckResult recheck(const RecheckRequest &req) {
+    RecheckResult r;
+    if (req.findingId.isEmpty()) {
+        r.ok = false; r.code = QStringLiteral("missing_field");
+        r.error = QStringLiteral("test_audit_recheck: finding_id is required");
+        return r;
+    }
+    const QString canon = QFileInfo(req.callerCwd).canonicalFilePath();
+    if (canon.isEmpty()) {
+        r.ok = false; r.code = QStringLiteral("no_project");
+        r.error = QStringLiteral("test_audit_recheck: caller_cwd does not "
+                                 "resolve to an existing directory");
+        return r;
+    }
+    const QString roadmapPath = canon + QLatin1String("/ROADMAP.md");
+    QFile rf(roadmapPath);
+    if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        r.ok = false; r.code = QStringLiteral("no_roadmap");
+        r.error = QStringLiteral("test_audit_recheck: no readable ROADMAP.md "
+                                 "at project root");
+        return r;
+    }
+    const QStringList lines =
+        QString::fromUtf8(rf.readAll()).split(QChar('\n'));
+    rf.close();
+
+    // Locate the bullet carrying `[<findingId>]`.
+    const QString idToken = QLatin1Char('[') + req.findingId + QLatin1Char(']');
+    int bulletIdx = -1;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (lines.at(i).contains(idToken)) { bulletIdx = i; break; }
+    }
+    if (bulletIdx < 0) {
+        r.ok = true; r.found = false;  // not an error — caller can branch
+        return r;
+    }
+    r.found = true;
+
+    // Accumulate the bullet body: its line + continuation lines until the
+    // next top-level bullet or heading.
+    QString body = lines.at(bulletIdx);
+    for (int j = bulletIdx + 1; j < lines.size(); ++j) {
+        const QString &ln = lines.at(j);
+        if (ln.startsWith(QStringLiteral("- ")) ||
+            ln.startsWith(QStringLiteral("#"))) break;
+        body += QLatin1Char('\n') + ln;
+    }
+
+    // First `path.ext:line` cite in the body.
+    static const QRegularExpression citeRx(QStringLiteral(
+        "([A-Za-z0-9_][\\w./\\-]*\\.[A-Za-z0-9_]+):(\\d+)"));
+    const QRegularExpressionMatch cm = citeRx.match(body);
+    if (!cm.hasMatch()) {
+        r.ok = true;  // bullet found, but no file:line to recheck
+        return r;
+    }
+    r.citedFile = cm.captured(1);
+    r.citedLine = cm.captured(2).toInt();
+
+    // Resolve under the project root only (security: never read outside).
+    const QString resolved =
+        QFileInfo(QDir(canon).absoluteFilePath(r.citedFile)).canonicalFilePath();
+    const bool underProject = !resolved.isEmpty() &&
+        (resolved == canon || resolved.startsWith(canon + QLatin1Char('/')));
+    r.fileExists = underProject && QFileInfo::exists(resolved);
+
+    if (r.fileExists) {
+        QFile cf(resolved);
+        if (cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            const QStringList flines =
+                QString::fromUtf8(cf.readAll()).split(QChar('\n'));
+            cf.close();
+            if (r.citedLine >= 1 && r.citedLine <= flines.size()) {
+                r.lineExists = true;
+                const QString raw = flines.at(r.citedLine - 1);
+                r.currentLineText = raw.trimmed();
+                // Re-match against every pre-pass pattern; first hit wins.
+                for (const PrePassPattern &p : prePassPatterns()) {
+                    const QRegularExpression rx(p.regex);
+                    if (rx.isValid() && rx.match(raw).hasMatch()) {
+                        r.lineStillMatchesPattern = true;
+                        r.matchedPatternId  = p.id;
+                        r.matchedDimension  = p.dimension;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    // NB: the best-effort git rename `drift_hint` for a missing file is
+    // computed by the MCP registration lambda (mainwindow.cpp), NOT here
+    // — the test-audit engine stays shell-free / pure (trio INV-1).
+    r.ok = true;
+    return r;
+}
+
 }  // namespace TestAuditEngine

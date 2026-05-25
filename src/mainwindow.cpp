@@ -4453,6 +4453,72 @@ void MainWindow::setupClaudeMcpProviders() {
             env["partial"]               = r.partial;
             return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
         });
+    // ANTS-1513 — test_audit_recheck: verify a deferred finding's cite
+    // is still live before resuming the work. Read-only project query.
+    m_claudeIntegration->registerToolProvider("test_audit_recheck",
+        ClaudeIntegration::CallerCwdContract::Required,
+        [](const QJsonObject &args) -> QString {
+            TestAuditEngine::RecheckRequest req;
+            req.callerCwd  = args.value(QStringLiteral("caller_cwd")).toString();
+            req.findingId  = args.value(QStringLiteral("finding_id")).toString();
+            const auto r = TestAuditEngine::recheck(req);
+            QJsonObject env;
+            if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;
+                return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact)); }
+            env["ok"]    = true;
+            env["found"] = r.found;
+            if (r.found) {
+                env["cited_file"]  = r.citedFile;
+                env["cited_line"]  = r.citedLine;
+                env["file_exists"] = r.fileExists;
+                env["line_exists"] = r.lineExists;
+                if (r.lineExists) {
+                    env["current_line_text"]         = r.currentLineText;
+                    env["line_still_matches_pattern"] = r.lineStillMatchesPattern;
+                    if (r.lineStillMatchesPattern) {
+                        env["matched_pattern_id"] = r.matchedPatternId;
+                        env["matched_dimension"]  = r.matchedDimension;
+                    }
+                }
+                // ANTS-1513 — best-effort git rename hint for a gone file.
+                // Lives here (not the engine) so testauditengine.cpp stays
+                // QProcess-free (test_audit trio INV-1). Only for a
+                // relative cite under an existing project root.
+                if (!r.fileExists && !r.citedFile.isEmpty() &&
+                    !r.citedFile.startsWith(QLatin1Char('/'))) {
+                    const QString canon = QFileInfo(
+                        args.value(QStringLiteral("caller_cwd")).toString())
+                        .canonicalFilePath();
+                    if (!canon.isEmpty()) {
+                        QProcess git;
+                        git.setWorkingDirectory(canon);
+                        git.start(QStringLiteral("git"), {
+                            QStringLiteral("log"), QStringLiteral("--all"),
+                            QStringLiteral("--diff-filter=R"),
+                            QStringLiteral("--name-status"),
+                            QStringLiteral("--format="), QStringLiteral("--"),
+                            r.citedFile });
+                        if (git.waitForFinished(3000) &&
+                            git.exitStatus() == QProcess::NormalExit) {
+                            const QStringList outLines = QString::fromUtf8(
+                                git.readAllStandardOutput())
+                                .split(QChar('\n'), Qt::SkipEmptyParts);
+                            for (const QString &ol : outLines) {
+                                if (!ol.startsWith(QChar('R'))) continue;
+                                const QStringList parts = ol.split(QChar('\t'));
+                                if (parts.size() >= 3) {
+                                    env["drift_hint"] = QStringLiteral(
+                                        "file likely moved to %1")
+                                        .arg(parts.at(2));
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
+        });
     m_claudeIntegration->registerToolProvider("get_text",
         ClaudeIntegration::CallerCwdContract::TabSpecific,
         [this](const QJsonObject &args) -> QString {

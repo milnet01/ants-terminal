@@ -1296,6 +1296,8 @@ if(ANTS_TESTS)
                 tests/features/cold_eyes_partition_deterministic/test_cold_eyes_partition_deterministic.cpp
                 # ANTS-1615/1616/1617 — 2026-05-19 test_audit bundle fold-in.
                 tests/features/test_audit_bundle_2026_05_19/test_test_audit_bundle.cpp
+                # ANTS-1513 — test_audit_recheck deferred-cite verifier.
+                tests/features/test_audit_recheck/test_test_audit_recheck.cpp
                 # ANTS-1709 — centralised dir-exclusion set + openUrl idiom.
                 tests/features/audit_exclusion_set/test_audit_exclusion_set.cpp
                 # ANTS-1708 — fingerprint-keyed learned-FP ledger.

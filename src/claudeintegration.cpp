@@ -4776,6 +4776,61 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-1513 — test_audit_recheck
+                {
+                    QJsonObject t;
+                    t["name"] = "test_audit_recheck";
+                    t["description"] = QStringLiteral(
+                        "[test-audit] Recheck a deferred test-audit "
+                        "finding's cite before resuming the work days "
+                        "later. Parses ROADMAP.md for the bullet "
+                        "`[<finding_id>]`, extracts the first `path:line` "
+                        "citation from its body, and reports whether the "
+                        "file still exists and whether the cited line "
+                        "still trips any pre-pass smell pattern "
+                        "(line_still_matches_pattern + matched_pattern_id "
+                        "/ matched_dimension). When the file is gone, a "
+                        "best-effort git rename `drift_hint` is offered "
+                        "(\"file likely moved to …\"). Read-only; reads "
+                        "are confined to under the project root. Returns "
+                        "{ok, found, cited_file, cited_line, file_exists, "
+                        "line_exists, current_line_text, "
+                        "line_still_matches_pattern, drift_hint?}. "
+                        "found:false when no bullet matches the id "
+                        "(ANTS-1513).");
+                    t["selection_hint"] = QStringLiteral(
+                        "Recheck whether a deferred test-audit finding's "
+                        "cited file:line is still valid (file present, "
+                        "line still smells) before resuming the work.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Your $PWD — the project whose ROADMAP.md "
+                            "carries the finding (Required; refuses "
+                            "caller_cwd_required when absent).");
+                        props["caller_cwd"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "The roadmap bullet id to recheck, e.g. "
+                            "\"ANTS-1234\" (matched as the `[id]` token).");
+                        props["finding_id"] = p;
+                    }
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("caller_cwd");
+                    req.append("finding_id");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-1290 — plan_template
                 {
                     QJsonObject t;
@@ -7201,6 +7256,7 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("test_audit_fold_in"))          return C::Required;
     if (toolName == QStringLiteral("test_audit_partition"))        return C::Required;
     if (toolName == QStringLiteral("test_audit_synthesis_prompt")) return C::Required;
+    if (toolName == QStringLiteral("test_audit_recheck"))          return C::Required;
 
     // Unclassified — fall through. Future tools should be added
     // above; the ANTS-1417 coverage test fails the build if a
