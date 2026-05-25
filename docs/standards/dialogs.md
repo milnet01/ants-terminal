@@ -84,9 +84,9 @@ is a bug.
   ```
 
   (or an edge-resize handler folded into `DialogChrome` / `TitleBar`).
-  Neither exists today — see Project overrides. The maximize button
-  alone does NOT satisfy D2: the user must be able to pick an arbitrary
-  size.
+  As of ANTS-1842 `DialogChrome::install(…, resizable=true)` adds this
+  grip for you — see Project overrides. The maximize button alone does
+  NOT satisfy D2: the user must be able to pick an arbitrary size.
 - Inner scrollable regions (a `QTextBrowser`, a long form) belong in a
   `QScrollArea` / scroll host so growing the dialog reveals more
   content rather than just stretching whitespace.
@@ -127,12 +127,13 @@ dialog, and survive an app restart.
 - **Position is NOT persisted** — see D4. Persist size only; the
   dialog is re-centered on every open.
 
-**Known non-conformers:** `roadmapDialogGeometry`
-(stores a base64 `saveGeometry()` blob — position included — instead
-of a bare `QSize`). All other dialogs either persist nothing or use the
-`saveGeometry` blob form. No dialog yet uses the spec-conformant
-`QSize`-only approach. The first new dialog to add a D3 key SHOULD
-follow the `QSize` pattern above.
+**Mechanism (ANTS-1842):** the bare-`QSize` persistence above is now
+provided by `DialogChrome::install(…, resizable=true, sizeKey)` via the
+generic `Config::dialogSize` / `setDialogSize` map — opt in with a key
+rather than hand-rolling save/restore. **Known non-conformer:**
+`roadmapDialogGeometry` still stores a base64 `saveGeometry()` blob
+(position included) instead of a bare `QSize`; its migration onto the
+`install` path is open follow-up.
 
 ## D4 — Always open centered on the terminal window
 
@@ -164,28 +165,46 @@ monitor or resized since the last open.
 
 ## Checklist for a new dialog
 
-1. `DialogChrome::install(this)`; lay out into `contentArea`. (D1)
-2. No `setFixedSize`; set `setMinimumSize` + a default size; add a
-   `QSizeGrip` / resize affordance; wrap long content in a scroll
-   host. (D2)
-3. Save/restore a bare `QSize` via a `Config` setter (which locks +
-   chmods internally); never `saveGeometry()` here. (D3)
-4. Re-center over `parentWidget()->window()->frameGeometry()` on every
-   `showEvent`. (D4)
+1. `DialogChrome::install(this, themeName, /*resizable=*/true, "MyDialog")`;
+   lay out into `contentArea`. The `resizable` flag gives you D2 (grip),
+   D4 (re-center on open), and — with the `sizeKey` + the startup
+   `setConfig` registration — D3 (size persistence) in one call. (D1–D4)
+2. No `setFixedSize`; set `setMinimumSize` + a default size; wrap long
+   content in a scroll host so growing the dialog reveals more. (D2)
+3. Nothing to wire by hand for D3/D4 once you pass `resizable=true` +
+   a `sizeKey` — `install` owns save/restore (bare `QSize`, never
+   `saveGeometry()`) and re-centering.
 
 ## Project overrides
 
-`DialogChrome` currently centralises D1 only. D2's resize affordance,
-D3's geometry persistence, and D4's re-centering are per-dialog today;
-the highest-leverage follow-up is to fold a `QSizeGrip` +
-size-persistence helper + parent-centering into `DialogChrome::install`
-so a single call satisfies D1–D4 and new dialogs can't drift. Until
-that lands, each dialog wires D2–D4 itself per the checklist above.
+**ANTS-1842 — D2–D4 are now folded into `DialogChrome::install`.** Pass
+`resizable=true` (and a `sizeKey`) and a single call satisfies D1–D4:
 
-Known non-conformers at the time of writing (migration targets, not
-exemptions): `RoadmapDialog` is the one dialog that persists geometry
-today, and it does so with `QWidget::saveGeometry()` /
-`restoreGeometry()` — which D3 forbids because it restores the absolute
-*position* instead of re-centering per D4. Migrating it to bare-`QSize`
-+ re-center is open follow-up. No dialog yet ships a `QSizeGrip`, so the
-D2 affordance is currently aspirational across the board.
+```cpp
+auto chrome = DialogChrome::install(this, themeName,
+                                    /*resizable=*/true,
+                                    QStringLiteral("MyDialog"));
+```
+
+- **D2** — `install` adds a bottom-right `QSizeGrip`, kept pinned to the
+  corner by an internal `ChromeGuard` event filter.
+- **D4** — `ChromeGuard` re-centers over the parent window's *current*
+  frame on every show (falls back to the cursor's screen when parentless).
+- **D3** — when a `sizeKey` is given AND `DialogChrome::setConfig(Config*)`
+  has been called (MainWindow does this once at startup, mirroring
+  `setActiveTheme`), the bare `QSize` is restored on first show and saved
+  on close under `Config::dialogSize(key)` / `setDialogSize(key, …)` — a
+  single `dialog_sizes` map, so new dialogs need no per-key schema growth.
+
+`resizable` defaults to `false`, so a plain `install(this)` /
+`install(this, theme)` stays **D1-only** (unchanged). Opted-in today:
+SettingsDialog, the review-dialog family (cold-eyes / test-audit /
+independent-review, one shared `"ReviewDialog"` key), SshDialog, the About
+box, and the diff viewer.
+
+Remaining non-conformer (migration target, not an exemption):
+`RoadmapDialog` still persists geometry with `QWidget::saveGeometry()` /
+`restoreGeometry()` — which D3 forbids because it restores absolute
+*position*. It is NOT opted into the `install` path; migrating it to
+`resizable=true` + a `"RoadmapDialog"` key (dropping the base64 blob) is
+open follow-up.

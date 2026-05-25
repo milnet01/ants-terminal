@@ -594,6 +594,11 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     });
 #endif
 
+    // ANTS-1842 — register Config for DialogChrome D3 size persistence
+    // (mirrors the setActiveTheme broadcast). Must precede any dialog
+    // construction so resizable dialogs can restore their saved size.
+    DialogChrome::setConfig(&m_config);
+
     // Apply saved theme
     applyTheme(m_config.theme());
 

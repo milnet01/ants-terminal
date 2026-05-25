@@ -4,6 +4,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QList>
+#include <QSize>
 
 // Forward declare
 struct SshBookmark;
@@ -32,6 +33,14 @@ public:
     // base64-encoded saveGeometry() bytes.
     QString roadmapDialogGeometry() const;
     void setRoadmapDialogGeometry(const QString &base64);
+
+    // ANTS-1842 — generic per-dialog persisted SIZE (D3). Keyed by the
+    // DialogChrome sizeKey (a stable dialog id). Stores width/height only:
+    // D3/D4 forbid persisting position (the dialog re-centers on open).
+    // Returns an invalid QSize when unset. Backed by a single
+    // "dialog_sizes" object so new dialogs need no per-key schema growth.
+    QSize dialogSize(const QString &key) const;
+    void setDialogSize(const QString &key, const QSize &size);
 
     // ANTS-1150 — UI / chrome state persistence Phase 1.
     //

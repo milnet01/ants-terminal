@@ -69,6 +69,9 @@ protected:
     LlmRequest        composeBrief(const ReviewLane &lane) override;
     void onAllReportsCollected(const QHash<QString, QString> &reportsById) override;
     void performFoldIn() override;
+    // ANTS-1843 — refresh the partition (token + chunks + lanes) once before
+    // the base dispatch loop, so briefFor() never re-partitions mid-loop.
+    void prepareDispatch() override;
 
 private:
     void    buildControls();

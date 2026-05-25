@@ -1360,10 +1360,14 @@ if(ANTS_TESTS)
                 tests/features/remote_control_roadmap_query/test_remote_control_roadmap_query.cpp
                 # ANTS-1638 + ANTS-1639 — Task List dialog right-click copy
                 # + malformed-markup flagging.
-                tests/features/task_list_dialog_context_menu/test_task_list_dialog_context_menu.cpp)
+                tests/features/task_list_dialog_context_menu/test_task_list_dialog_context_menu.cpp
+                # ANTS-1842 — DialogChrome D2–D4 affordances.
+                tests/features/dialog_chrome_affordances/test_dialog_chrome_affordances.cpp)
     target_compile_definitions(test_dialogs PRIVATE
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
         SRC_SETTINGSDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
+        # ANTS-1843 — review-dialog interaction source-scrape (INV-17/18).
+        SRC_REVIEWDIALOGBASE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/reviewdialogbase.cpp"
         SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeallowlist.cpp"
         SRC_MAINWINDOW_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"

@@ -174,6 +174,17 @@ QList<ReviewLane> TestAuditDialog::derivePartition() {
     return out;
 }
 
+void TestAuditDialog::prepareDispatch() {
+    // ANTS-1843 — re-derive the partition once up-front. runPartition()
+    // refreshes m_token + m_chunks (repopulating the in-process engine
+    // cache after a restart) AND rebuilds the lane set via setLanes(), so
+    // the base startDispatch loop enqueues lanes that match the live token.
+    // This pre-empts briefFor()'s own stale_partition recovery, which kept
+    // firing mid-loop and could diverge the token/lanes from enqueued jobs.
+    // briefFor() retains that recovery for direct callers (INV-6).
+    runPartition();
+}
+
 TestAuditEngine::BriefResult TestAuditDialog::briefFor(const QString &chunkId) {
     TestAuditEngine::BriefRequest br;
     br.callerCwd      = projectCwd();

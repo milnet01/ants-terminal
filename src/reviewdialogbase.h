@@ -53,6 +53,16 @@ protected:
     virtual LlmRequest        composeBrief(const ReviewLane &lane) = 0;      // step 2 (bodies inlined)
     virtual void onAllReportsCollected(const QHash<QString, QString> &reportsById) = 0; // step 3
     virtual void performFoldIn() = 0;                                        // step 4 (subclass owns the sequence)
+    // ANTS-1843 — called once at the top of startDispatch(), before any job
+    // is composed. A subclass whose composeBrief() depends on a partition
+    // token (TestAuditDialog) refreshes it here, so the per-lane loop never
+    // re-partitions mid-dispatch and the enqueued set stays consistent.
+    virtual void prepareDispatch() {}
+
+    // ANTS-1843 — re-evaluate the Dispatch button when the window regains
+    // activation (the user may have set ai_endpoint in config.json while
+    // this modeless dialog was open; Config is reloaded in place upstream).
+    void changeEvent(QEvent *e) override;
 
     // ---- base services ----
     QString projectCwd() const { return m_projectCwd; }

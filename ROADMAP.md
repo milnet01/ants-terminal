@@ -5292,12 +5292,12 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   leaves `m_rectSelection` set (`:3270`); redundant `isCellSearchMatch` per cell
   under opacity (`:850`). Distinct from the cache-wipe/resize item ANTS-1781.
   Verified 2026-05-22.
-- 📋 [ANTS-1842] **Dialog D2/D3/D4 conformance migration.** The three review
+- ✅ [ANTS-1842] **Dialog D2/D3/D4 conformance migration.** The three review
   dialogs + settings/ssh/about/diffviewer are frameless (DialogChrome) but lack
   a `QSizeGrip` (D2), size persistence (D3), and showEvent re-centering (D4).
   Fold the affordances into `DialogChrome::install` once (the standard's own
   recommendation) rather than per-dialog. Verified 2026-05-22.
-- 📋 [ANTS-1843] **Review-dialog interaction bugs.** `briefFor` re-partitions
+- ✅ [ANTS-1843] **Review-dialog interaction bugs.** `briefFor` re-partitions
   mid-dispatch on a `stale_partition` miss (token/lanes can diverge from the
   enqueued set); the Dispatch button never re-enables after the user fixes
   `ai_endpoint` while the modeless dialog is open; `setLanes()` wipes already-

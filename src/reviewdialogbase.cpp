@@ -7,6 +7,7 @@
 #include "dialogchrome.h"
 #include "roadmapfoldin.h"
 
+#include <QEvent>
 #include <QLabel>
 #include <QLayout>
 #include <QPushButton>
@@ -22,7 +23,12 @@ ReviewDialogBase::ReviewDialogBase(QString projectCwd, QWidget *parent,
     setMinimumSize(640, 480);
     resize(900, 880);
 
-    auto chrome = DialogChrome::install(this);
+    // ANTS-1842 — the review-dialog family (cold-eyes / test-audit /
+    // independent-review) shares one size key: they share a layout, so a
+    // size the user likes for one is sensible for the others.
+    auto chrome = DialogChrome::install(this, QString(),
+                                        /*resizable=*/true,
+                                        QStringLiteral("ReviewDialog"));
     QWidget *content = chrome.contentArea;
 
     // The content column stacks several tall/stretchy widgets (lane tabs,
@@ -113,11 +119,28 @@ void ReviewDialogBase::setJobRunner(LlmDispatcher::JobRunner runner) {
 void ReviewDialogBase::updateDispatchEnabled() {
     const bool ok = m_config && endpointDispatchable(m_config->aiEndpoint());
     if (m_dispatchBtn) m_dispatchBtn->setEnabled(ok);
-    if (!ok && m_statusLabel) {
-        m_statusLabel->setText(
+    if (m_statusLabel) {
+        const QString disabledMsg =
             tr("Dispatch disabled — set ai_endpoint (http/https) in "
-               "config.json to enable AI review."));
+               "config.json to enable AI review.");
+        if (!ok) {
+            m_statusLabel->setText(disabledMsg);
+        } else if (m_statusLabel->text() == disabledMsg) {
+            // ANTS-1843 — endpoint fixed since we last disabled; drop the
+            // stale hint (but leave any other status message alone).
+            m_statusLabel->clear();
+        }
     }
+}
+
+void ReviewDialogBase::changeEvent(QEvent *e) {
+    QDialog::changeEvent(e);
+    // ANTS-1843 — the dialog is modeless; the user can edit ai_endpoint in
+    // config.json while it's open. MainWindow reloads Config in place, so
+    // re-reading on re-activation surfaces the new value and re-enables
+    // Dispatch without a reopen.
+    if (e->type() == QEvent::ActivationChange && isActiveWindow())
+        updateDispatchEnabled();
 }
 
 void ReviewDialogBase::setResultsWidget(QWidget *w) {
@@ -139,14 +162,26 @@ void ReviewDialogBase::runPartition() {
 }
 
 void ReviewDialogBase::setLanes(const QList<ReviewLane> &lanes) {
+    // ANTS-1843 — preserve already-collected reports for lanes that survive
+    // a re-partition or lane-checkbox toggle; only drop reports whose lane
+    // is gone. Previously this cleared EVERY report on any toggle, throwing
+    // away AI output for lanes the user kept selected.
+    QHash<QString, QString> preserved;
+    for (const ReviewLane &lane : lanes) {
+        const auto it = m_reports.constFind(lane.id);
+        if (it != m_reports.constEnd()) preserved.insert(lane.id, it.value());
+    }
     m_lanes = lanes;
-    m_reports.clear();
+    m_reports = preserved;
     if (m_laneTabs) {
         m_laneTabs->clear();
         for (const ReviewLane &lane : m_lanes) {
             auto *view = new QTextEdit(m_laneTabs);
             view->setReadOnly(true);
-            view->setPlainText(lane.summary);
+            // Show the surviving report if we kept one; else the lane summary.
+            const auto rep = m_reports.constFind(lane.id);
+            view->setPlainText(rep != m_reports.constEnd() ? rep.value()
+                                                           : lane.summary);
             m_laneTabs->addTab(view, lane.title.isEmpty() ? lane.id : lane.title);
         }
     }
@@ -157,6 +192,12 @@ void ReviewDialogBase::startDispatch() {
         updateDispatchEnabled();
         return;
     }
+    // ANTS-1843 — refresh the partition ONCE here so the per-lane loop
+    // below composes briefs against a single consistent snapshot. Without
+    // this, TestAuditDialog::briefFor re-partitioned lazily mid-loop on a
+    // stale_partition (post-restart cache miss), diverging the token/lanes
+    // from jobs already enqueued.
+    prepareDispatch();
     m_reports.clear();
     QList<LlmJob> jobs;
     jobs.reserve(m_lanes.size());

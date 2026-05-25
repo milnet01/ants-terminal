@@ -25,7 +25,10 @@ public:
     using ReviewDialogBase::allocateFoldInIds;
     using ReviewDialogBase::dispatchOne;
     using ReviewDialogBase::lastFoldInError;
+    using ReviewDialogBase::redispatch;
+    using ReviewDialogBase::reports;
     using ReviewDialogBase::setJobRunner;
+    using ReviewDialogBase::setLanes;
 
     int allCollectedCalls = 0;
 
@@ -102,4 +105,63 @@ TEST(ReviewDialogBase, INV15_DispatchOneBypassesBatchComplete) {
     EXPECT_EQ(cbCalls, 1);
     EXPECT_EQ(dlg.allCollectedCalls, 0)
         << "dispatchOne must not re-enter onAllReportsCollected";
+}
+
+// INV-16 (ANTS-1843) — setLanes preserves already-collected reports for
+// lanes that survive a re-partition / lane toggle, and only drops reports
+// whose lane is gone.
+TEST(ReviewDialogBase, INV16_SetLanesPreservesSurvivingReports) {
+    TestReviewDialog dlg(QString(), nullptr, nullptr);
+    // Synchronous runner so redispatch fills reports() before it returns.
+    dlg.setJobRunner([](const LlmJob &job,
+                        std::function<void(const LlmResult &)> done) {
+        LlmResult r; r.ok = true;
+        r.text = QStringLiteral("R:") + job.id;
+        done(r);
+    });
+
+    dlg.setLanes({ {"A", "A", ""}, {"B", "B", ""}, {"C", "C", ""} });
+    dlg.redispatch({ "A", "B", "C" });
+    ASSERT_EQ(dlg.reports().size(), 3) << "all three lanes collected";
+
+    // Toggle: keep A and C, drop B.
+    dlg.setLanes({ {"A", "A", ""}, {"C", "C", ""} });
+    EXPECT_EQ(dlg.reports().size(), 2);
+    EXPECT_TRUE(dlg.reports().contains(QStringLiteral("A")));
+    EXPECT_TRUE(dlg.reports().contains(QStringLiteral("C")));
+    EXPECT_FALSE(dlg.reports().contains(QStringLiteral("B")))
+        << "removed lane's report must be dropped";
+    EXPECT_EQ(dlg.reports().value(QStringLiteral("A")), QStringLiteral("R:A"))
+        << "surviving lane keeps its collected text";
+}
+
+// INV-17 (ANTS-1843) — startDispatch refreshes the partition once up-front
+// (so per-lane briefFor can't re-partition mid-loop) via the prepareDispatch
+// hook. Source-scrape: wiring is GUI-bound and not worth a live dispatch.
+TEST(ReviewDialogBase, INV17_StartDispatchCallsPrepareDispatch) {
+    QFile f(QStringLiteral(SRC_REVIEWDIALOGBASE_CPP_PATH));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QString src = QString::fromUtf8(f.readAll());
+    const int s = src.indexOf(QStringLiteral("void ReviewDialogBase::startDispatch("));
+    ASSERT_GE(s, 0);
+    const int e = src.indexOf(QStringLiteral("m_dispatcher->enqueue"), s);
+    ASSERT_GT(e, s);
+    EXPECT_TRUE(src.mid(s, e - s).contains(QStringLiteral("prepareDispatch()")))
+        << "startDispatch must call prepareDispatch() before enqueuing jobs";
+}
+
+// INV-18 (ANTS-1843) — the Dispatch button re-evaluates on window
+// re-activation, so fixing ai_endpoint in config.json re-enables it without
+// a reopen. Source-scrape (window activation is unreliable offscreen).
+TEST(ReviewDialogBase, INV18_ChangeEventRechecksDispatch) {
+    QFile f(QStringLiteral(SRC_REVIEWDIALOGBASE_CPP_PATH));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QString src = QString::fromUtf8(f.readAll());
+    const int s = src.indexOf(QStringLiteral("void ReviewDialogBase::changeEvent("));
+    ASSERT_GE(s, 0) << "changeEvent override missing";
+    const int e = src.indexOf(QStringLiteral("\n}"), s);  // end of function
+    ASSERT_GT(e, s);
+    const QString body = src.mid(s, e - s);
+    EXPECT_TRUE(body.contains(QStringLiteral("ActivationChange")));
+    EXPECT_TRUE(body.contains(QStringLiteral("updateDispatchEnabled()")));
 }

@@ -49,7 +49,10 @@ QDialog *makeAboutDialog(QWidget *parent,
     // theme (the About entry points carry no themeName). The non-modal
     // + plain-QPushButton Wayland workaround documented above is
     // orthogonal and preserved.
-    auto chrome = DialogChrome::install(dlg);
+    // ANTS-1842 — resizable + re-center + size persistence (D2–D4).
+    auto chrome = DialogChrome::install(dlg, QString(),
+                                        /*resizable=*/true,
+                                        QStringLiteral("AboutDialog"));
     QWidget *content = chrome.contentArea;
 
     auto *layout = new QVBoxLayout(content);

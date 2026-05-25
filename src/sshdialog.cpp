@@ -160,7 +160,10 @@ SshDialog::SshDialog(QWidget *parent) : QDialog(parent) {
     resize(700, 450);
 
     // ANTS-1242 — frameless + theme-aware TitleBar.
-    auto chrome = DialogChrome::install(this);
+    // ANTS-1842 — resizable + re-center + size persistence (D2–D4).
+    auto chrome = DialogChrome::install(this, QString(),
+                                        /*resizable=*/true,
+                                        QStringLiteral("SshDialog"));
     QWidget *content = chrome.contentArea;
 
     auto *mainLayout = new QVBoxLayout(content);

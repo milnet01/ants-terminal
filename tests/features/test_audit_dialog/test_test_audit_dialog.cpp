@@ -31,6 +31,7 @@ public:
     using TestAuditDialog::derivePartition;
     using TestAuditDialog::onAllReportsCollected;
     using TestAuditDialog::performFoldIn;
+    using TestAuditDialog::prepareDispatch;
 };
 
 bool writeFile(const QString &path, const QString &body) {
@@ -253,6 +254,31 @@ TEST(TestAuditDialog, INV7_ResumeDispatchesUnreviewedOnly) {
             EXPECT_TRUE(unreviewed.contains(c.id));
         }
     }
+}
+
+// INV-9 (ANTS-1843) — prepareDispatch() refreshes a stale token ONCE before
+// the dispatch loop, so briefFor() no longer re-partitions mid-loop. (The
+// recovery in briefFor stays for direct callers — INV-6.)
+TEST(TestAuditDialog, INV9_PrepareDispatchRefreshesStaleToken) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    QTemporaryDir mem; ASSERT_TRUE(mem.isValid());
+    buildSuite(tmp.path());
+
+    Dlg dlg(tmp.path(), nullptr, nullptr);
+    dlg.setSessionMemBaseDir(mem.path());
+    ASSERT_FALSE(dlg.chunks().isEmpty());
+    const QString freshToken = dlg.partitionToken();
+    ASSERT_FALSE(freshToken.isEmpty());
+
+    dlg.setPartitionTokenForTest(QStringLiteral("garbage-token-xyz"));
+    dlg.prepareDispatch();
+
+    EXPECT_NE(dlg.partitionToken(), QStringLiteral("garbage-token-xyz"))
+        << "prepareDispatch must re-derive a valid token before dispatch";
+    EXPECT_EQ(dlg.partitionToken(), freshToken)
+        << "deterministic partition → same token for the same file set";
+    EXPECT_FALSE(dlg.chunks().isEmpty())
+        << "chunks/lanes refreshed consistently with the token";
 }
 
 // INV-8 — smoke: unset endpoint → dispatch disabled; constructs cleanly.

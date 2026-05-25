@@ -24,6 +24,7 @@
 class QDialog;
 class QWidget;
 class TitleBar;
+class Config;
 
 namespace DialogChrome {
 
@@ -37,7 +38,25 @@ struct InstallResult {
 // dialog should use as the layout parent. Applies `themeName` (or
 // DialogChrome::activeTheme() when empty) to the bar + the
 // dialog's QPalette. Returns nullptr fields if `dlg` is null.
-InstallResult install(QDialog *dlg, const QString &themeName = QString());
+//
+// ANTS-1842 — `resizable` opts the dialog into D2–D4 of the dialog
+// standard, folded here so no dialog hand-rolls the boilerplate:
+//   • D2 — a bottom-right QSizeGrip (the frameless window has no OS
+//     edge to drag);
+//   • D4 — re-centering over the parent window's *current* frame on
+//     every open (never persists position);
+//   • D3 — when `sizeKey` is non-empty AND DialogChrome::setConfig has
+//     been called, the user's chosen SIZE is restored on first show and
+//     saved on close under that key (width/height only).
+// Default `false` leaves the call site at D1 only (unchanged behaviour).
+InstallResult install(QDialog *dlg, const QString &themeName = QString(),
+                      bool resizable = false,
+                      const QString &sizeKey = QString());
+
+// Registers the process-wide Config used for D3 size persistence (see
+// `install`'s `sizeKey`). MainWindow calls this once at startup; mirrors
+// the setActiveTheme() pattern so dialog ctors need not plumb a Config.
+void setConfig(Config *config);
 
 // Re-applies the named theme to a chrome bar (and its parent
 // dialog's QPalette). Use from a dialog that supports live theme

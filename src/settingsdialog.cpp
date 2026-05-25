@@ -35,8 +35,9 @@ SettingsDialog::SettingsDialog(Config *config, QWidget *parent)
     // ANTS-1242 — frameless + theme-aware TitleBar. m_config is
     // available so we can pull the persisted theme name directly
     // rather than relying on the module-cached active theme.
-    auto chrome = DialogChrome::install(this,
-                                        m_config ? m_config->theme() : QString());
+    auto chrome = DialogChrome::install(
+        this, m_config ? m_config->theme() : QString(),
+        /*resizable=*/true, QStringLiteral("SettingsDialog"));
     QWidget *content = chrome.contentArea;
 
     auto *mainLayout = new QVBoxLayout(content);

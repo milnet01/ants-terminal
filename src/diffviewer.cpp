@@ -48,7 +48,11 @@ QDialog *show(QWidget *parent,
     // ANTS-1765 — frameless theme-aware chrome (D1). Pre-fix this was a
     // bare QDialog whose title bar fell through to the system colour
     // scheme. Lay the dialog's content into chrome.contentArea.
-    auto chrome = DialogChrome::install(dialog, themeName);
+    // ANTS-1842 — resizable + re-center + size persistence (D2–D4). A
+    // wide diff is the canonical case for wanting a bigger window.
+    auto chrome = DialogChrome::install(dialog, themeName,
+                                        /*resizable=*/true,
+                                        QStringLiteral("DiffViewer"));
     QWidget *content = chrome.contentArea;
 
     auto *layout = new QVBoxLayout(content);
