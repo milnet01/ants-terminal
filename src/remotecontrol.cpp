@@ -298,6 +298,99 @@ QJsonArray rcComputeDuplicateIds(const QJsonArray &bullets) {
     return out;
 }
 
+// ANTS-1424 / ANTS-1717 — strip leaked tool-call XML wrappers from a
+// body/note string before it lands in ROADMAP.md. Some harnesses
+// serialise sibling array/object params as literal
+// `<parameter name="X">…</parameter>` blocks inside the prose; this
+// removes those (and stray `</body>` / `</invoke>` closers), records
+// recognised sibling names in `scrubbedNames` so the caller can warn
+// that a typed argument was lost, collapses blank-line runs, and trims
+// trailing whitespace. Hoisted out of cmdRoadmapLogAppend's local
+// lambda (ANTS-1717) so the flip/annotate note path scrubs identically.
+void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames) {
+    if (text.isEmpty()) return;
+    // Matched <parameter name="X">…</parameter> pairs. [\s\S] spans
+    // newlines (QRegularExpression '.' doesn't by default).
+    static const QRegularExpression pairRx(
+        QStringLiteral("<parameter\\s+name=(?:\"([^\"]*)\"|"
+                       "'([^']*)'|([^\\s>]+))[^>]*>"
+                       "[\\s\\S]*?</parameter>"),
+        QRegularExpression::CaseInsensitiveOption);
+    auto it = pairRx.globalMatch(text);
+    while (it.hasNext()) {
+        const auto m = it.next();
+        QString name = m.captured(1);
+        if (name.isEmpty()) name = m.captured(2);
+        if (name.isEmpty()) name = m.captured(3);
+        if (!name.isEmpty() && !scrubbedNames.contains(name)) {
+            scrubbedNames.append(name);
+        }
+    }
+    text.remove(pairRx);
+    static const QRegularExpression reOrphanOpen(
+        QStringLiteral("<parameter\\s+name=[^>]*>"),
+        QRegularExpression::CaseInsensitiveOption);
+    text.remove(reOrphanOpen);
+    static const QRegularExpression reOrphanClose(
+        QStringLiteral("</parameter>"),
+        QRegularExpression::CaseInsensitiveOption);
+    text.remove(reOrphanClose);
+    static const QRegularExpression reStrayBody(
+        QStringLiteral("</body>"),
+        QRegularExpression::CaseInsensitiveOption);
+    text.remove(reStrayBody);
+    static const QRegularExpression reCloseTag(
+        QStringLiteral("</invoke>"),
+        QRegularExpression::CaseInsensitiveOption);
+    text.remove(reCloseTag);
+    static const QRegularExpression reBlankRun(QStringLiteral("\\n{3,}"));
+    text.replace(reBlankRun, QStringLiteral("\n\n"));
+    QStringList ls = text.split(QChar('\n'));
+    for (QString &l : ls) {
+        while (!l.isEmpty() && (l.endsWith(QChar(' ')) ||
+                                l.endsWith(QChar('\t')))) {
+            l.chop(1);
+        }
+    }
+    text = ls.join(QChar('\n'));
+    while (text.endsWith(QChar('\n'))) text.chop(1);
+}
+
+// ANTS-1717/1793 — append `note` as indented continuation line(s) at
+// the end of the body of the bullet whose headline sits at
+// `headlineLine`. Format-agnostic: the body of both ants-v1 and
+// GFM-task-list bullets is the run of indented continuation lines that
+// follows the headline, terminated by a blank line, a column-0 line
+// (next bullet / heading), or EOF. The note inherits the bullet's
+// existing continuation indent when it has one, else a 2-space hang
+// (matching op:"append"'s body treatment). Blank lines inside a
+// multi-line note stay blank (no trailing-space lint). Returns the
+// 0-based index of the first inserted line.
+int appendBodyNote(QStringList &lines, int headlineLine,
+                   const QString &note) {
+    int insertAt = headlineLine + 1;
+    QString indent = QStringLiteral("  ");
+    bool sawBody = false;
+    while (insertAt < lines.size()) {
+        const QString &ln = lines.at(insertAt);
+        if (ln.isEmpty() || !ln.at(0).isSpace()) break;
+        if (!sawBody) {
+            int w = 0;
+            while (w < ln.size() && ln.at(w) == QLatin1Char(' ')) ++w;
+            if (w > 0) indent = ln.left(w);
+            sawBody = true;
+        }
+        ++insertAt;
+    }
+    const QStringList noteLines = note.split(QChar('\n'));
+    for (int k = 0; k < noteLines.size(); ++k) {
+        const QString &nl = noteLines.at(k);
+        lines.insert(insertAt + k,
+                     nl.isEmpty() ? QString() : indent + nl);
+    }
+    return insertAt;
+}
+
 // ANTS-1462 — render a header-inventory envelope from a built
 // RoadmapIndex. Used by cmdRoadmapQuery as a fall-through when the
 // bullet parser yields zero entries but the file still has ##/###
@@ -2447,13 +2540,18 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     const QString op =
         req.value(QStringLiteral("op")).toString(
             QStringLiteral("append"));
-    if (op == QStringLiteral("flip")) {
+    // ANTS-1717 — op:"annotate" shares the flip handler's locator +
+    // file-surgery machinery; it appends a body note and leaves the
+    // status untouched (the emoji-swap is skipped inside the handler).
+    if (op == QStringLiteral("flip") ||
+        op == QStringLiteral("annotate")) {
         return cmdRoadmapLogFlip(req);
     }
     if (op != QStringLiteral("append")) {
         return rlErr(QStringLiteral("bad_op_combo"),
             QStringLiteral("roadmap_log: unknown op \"%1\" — expected "
-                           "\"append\" (default) or \"flip\"").arg(op));
+                           "\"append\" (default), \"flip\", or "
+                           "\"annotate\"").arg(op));
     }
 
     if (!m_main) {
@@ -2487,6 +2585,14 @@ void RemoteControl::setForceCounterCommitFailForTest(bool on) {
 QJsonDocument RemoteControl::cmdRoadmapLogAppendForTest(
         const QJsonObject &req) {
     return cmdRoadmapLogAppend(req);
+}
+
+// ANTS-1717/1793 — test seam for the flip/annotate path. Flip is
+// m_main-independent (caller_cwd + filesystem only), so the test drives
+// it directly against a synthetic project root.
+QJsonDocument RemoteControl::cmdRoadmapLogFlipForTest(
+        const QJsonObject &req) {
+    return cmdRoadmapLogFlip(req);
 }
 
 // ANTS-1424 — append path, split out of cmdRoadmapLog (ANTS-1433) so a
@@ -2737,76 +2843,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
               QStringLiteral("**\n");
 
     // ANTS-1551 — defensive scrub of leaked tool-call XML. Some
-    // harnesses serialise sibling array/object params (lanes,
-    // layman, source) as literal `<parameter name="X">...</parameter>`
-    // blocks appended inside the body string. Strip those before
-    // they end up in ROADMAP.md, but keep the user's prose. Record
-    // any recognised sibling names so the response envelope can
-    // surface a warning — the caller's typed argument was lost.
+    // harnesses serialise sibling array/object params (lanes, layman,
+    // source) as literal `<parameter name="X">...</parameter>` blocks
+    // appended inside the body string. The shared rcScrubLeakedToolXml
+    // helper (ANTS-1717 hoist) strips those, keeps the user's prose,
+    // and records recognised sibling names so the envelope can warn
+    // that the caller's typed argument was lost.
     QStringList scrubbedNames;
-    auto scrubLeakedToolXml = [&scrubbedNames](QString &text) {
-        if (text.isEmpty()) return;
-        // Matched <parameter name="X">…</parameter> pairs. [\s\S] is
-        // required to span newlines because QRegularExpression's
-        // default '.' doesn't cross them and DotMatchesEverything
-        // would also relax greedy quantifiers elsewhere.
-        static const QRegularExpression pairRx(  // ANTS-1647
-            QStringLiteral("<parameter\\s+name=(?:\"([^\"]*)\"|"
-                           "'([^']*)'|([^\\s>]+))[^>]*>"
-                           "[\\s\\S]*?</parameter>"),
-            QRegularExpression::CaseInsensitiveOption);
-        auto it = pairRx.globalMatch(text);
-        while (it.hasNext()) {
-            const auto m = it.next();
-            QString name = m.captured(1);
-            if (name.isEmpty()) name = m.captured(2);
-            if (name.isEmpty()) name = m.captured(3);
-            if (!name.isEmpty() && !scrubbedNames.contains(name)) {
-                scrubbedNames.append(name);
-            }
-        }
-        text.remove(pairRx);
-        // Orphan openers/closers without a matched pair. ANTS-1647 — hoisted.
-        static const QRegularExpression reOrphanOpen(
-            QStringLiteral("<parameter\\s+name=[^>]*>"),
-            QRegularExpression::CaseInsensitiveOption);
-        text.remove(reOrphanOpen);
-        static const QRegularExpression reOrphanClose(
-            QStringLiteral("</parameter>"),
-            QRegularExpression::CaseInsensitiveOption);
-        text.remove(reOrphanClose);
-        // Stray closing tags from a leaked outer <body> wrapper.
-        static const QRegularExpression reStrayBody(
-            QStringLiteral("</body>"),
-            QRegularExpression::CaseInsensitiveOption);
-        text.remove(reStrayBody);
-        // ANTS-1554 follow-up — `</invoke>` also leaks through some
-        // harnesses (observed in pull-8 on ANTS-1554 and ANTS-1555
-        // bodies). Same shape as the stray `</body>` closer.
-        static const QRegularExpression reCloseTag(  // ANTS-1647
-            QStringLiteral("</invoke>"),
-            QRegularExpression::CaseInsensitiveOption);
-        text.remove(reCloseTag);
-        // Collapse any blank-line runs created by the removal so the
-        // splice doesn't accumulate empty body lines.
-        static const QRegularExpression reBlankRun(  // ANTS-1647
-            QStringLiteral("\\n{3,}"));
-        text.replace(reBlankRun, QStringLiteral("\n\n"));
-        // Trim trailing whitespace from each line + overall.
-        QStringList ls = text.split(QChar('\n'));
-        for (QString &l : ls) {
-            while (!l.isEmpty() && (l.endsWith(QChar(' ')) ||
-                                    l.endsWith(QChar('\t')))) {
-                l.chop(1);
-            }
-        }
-        text = ls.join(QChar('\n'));
-        while (text.endsWith(QChar('\n'))) text.chop(1);
-    };
 
     QString body =
         req.value(QStringLiteral("body")).toString();
-    scrubLeakedToolXml(body);
+    rcScrubLeakedToolXml(body, scrubbedNames);
     if (!body.isEmpty()) {
         const QStringList lines = body.split(QChar('\n'));
         for (const QString &ln : lines) {
@@ -2958,8 +3005,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         return QJsonDocument(env);
     };
 
-    // 1. Required fields: caller_cwd, to_status, plus one of the
-    //    three locators (id / anchor / headline).
+    // ANTS-1717 — annotate mode shares this handler. annotate appends
+    // a body note and leaves status untouched (no emoji swap, no anchor
+    // injection); flip optionally carries a note too (ANTS-1793).
+    const bool annotateMode =
+        req.value(QStringLiteral("op")).toString() ==
+            QStringLiteral("annotate");
+
+    // 1. Required fields: caller_cwd, to_status (flip only), plus one
+    //    of the three locators (id / anchor / headline).
     const QString callerRaw =
         req.value(QStringLiteral("caller_cwd")).toString();
     if (callerRaw.isEmpty()) {
@@ -2968,37 +3022,61 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     }
     const QString toStatus =
         req.value(QStringLiteral("to_status")).toString();
-    if (toStatus.isEmpty()) {
-        return rlErr(QStringLiteral("missing_field"),
-            QStringLiteral("roadmap_log: to_status is required "
-                           "under op:\"flip\""));
-    }
     // to_status accepts either the word form or the emoji directly.
+    // Unused under annotate (status is preserved).
     QString targetEmoji;
-    if      (toStatus == QStringLiteral("planned")     ||
-             toStatus == QStringLiteral("📋")) targetEmoji = QStringLiteral("📋");
-    else if (toStatus == QStringLiteral("in-progress") ||
-             toStatus == QStringLiteral("🚧")) targetEmoji = QStringLiteral("🚧");
-    else if (toStatus == QStringLiteral("shipped")     ||
-             toStatus == QStringLiteral("✅")) targetEmoji = QStringLiteral("✅");
-    else if (toStatus == QStringLiteral("considered")  ||
-             toStatus == QStringLiteral("💭")) targetEmoji = QStringLiteral("💭");
-    else {
-        return rlErr(QStringLiteral("bad_status"),
-            QStringLiteral("roadmap_log: unknown to_status \"%1\" — "
-                           "expected planned / in-progress / shipped / "
-                           "considered (or one of 📋/🚧/✅/💭)")
-                .arg(toStatus));
+    if (annotateMode) {
+        if (!toStatus.isEmpty()) {
+            return rlErr(QStringLiteral("bad_op_combo"),
+                QStringLiteral("roadmap_log: to_status is not accepted "
+                               "under op:\"annotate\" — annotate leaves "
+                               "status unchanged; use op:\"flip\" with a "
+                               "`note` to change status and annotate in "
+                               "one call"));
+        }
+    } else {
+        if (toStatus.isEmpty()) {
+            return rlErr(QStringLiteral("missing_field"),
+                QStringLiteral("roadmap_log: to_status is required "
+                               "under op:\"flip\""));
+        }
+        if      (toStatus == QStringLiteral("planned")     ||
+                 toStatus == QStringLiteral("📋")) targetEmoji = QStringLiteral("📋");
+        else if (toStatus == QStringLiteral("in-progress") ||
+                 toStatus == QStringLiteral("🚧")) targetEmoji = QStringLiteral("🚧");
+        else if (toStatus == QStringLiteral("shipped")     ||
+                 toStatus == QStringLiteral("✅")) targetEmoji = QStringLiteral("✅");
+        else if (toStatus == QStringLiteral("considered")  ||
+                 toStatus == QStringLiteral("💭")) targetEmoji = QStringLiteral("💭");
+        else {
+            return rlErr(QStringLiteral("bad_status"),
+                QStringLiteral("roadmap_log: unknown to_status \"%1\" — "
+                               "expected planned / in-progress / shipped "
+                               "/ considered (or one of 📋/🚧/✅/💭)")
+                    .arg(toStatus));
+        }
     }
 
-    // 2. id_hint is bad_op_combo under op:"flip" — counter is
-    //    consumed only when an anchor is injected, never explicitly
+    // 1b. The note to append (ANTS-1793 flip-with-note / ANTS-1717
+    //     annotate). Scrubbed identically to op:"append"'s body.
+    //     Required + non-empty under annotate; optional under flip.
+    QString note = req.value(QStringLiteral("note")).toString();
+    QStringList noteScrubbedNames;
+    rcScrubLeakedToolXml(note, noteScrubbedNames);
+    if (annotateMode && note.isEmpty()) {
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: op:\"annotate\" requires a "
+                           "non-empty `note` to append to the bullet"));
+    }
+
+    // 2. id_hint is bad_op_combo under op:"flip"/"annotate" — counter
+    //    is consumed only when an anchor is injected, never explicitly
     //    requested. See ANTS-1428 spec § Counter file.
     if (req.contains(QStringLiteral("id_hint"))) {
         return rlErr(QStringLiteral("bad_op_combo"),
             QStringLiteral("roadmap_log: id_hint is not accepted under "
-                           "op:\"flip\" — counter is consumed only on "
-                           "anchor injection"));
+                           "op:\"flip\"/\"annotate\" — counter is "
+                           "consumed only on anchor injection"));
     }
 
     // 3. Pick the locator. id wins over anchor (INV-12 explicit
@@ -3157,11 +3235,20 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 return rlErr(QStringLiteral("anchor_unsafe_context"),
                     QStringLiteral("roadmap_log: located bullet is "
                                    "inside a fenced code block — "
-                                   "refusing to flip"));
+                                   "refusing to edit"));
             }
-            // Apply flip + atomic write.
+            // Apply flip (skipped under annotate) + optional note, then
+            // atomic write. applyAntsV1Flip edits the headline in place
+            // (no line-count change), so appendBodyNote's firstLine
+            // index stays valid when both run.
             const QString fromStatus = v1target.status;
-            applyAntsV1Flip(lines, v1target, targetEmoji);
+            if (!annotateMode) {
+                applyAntsV1Flip(lines, v1target, targetEmoji);
+            }
+            int noteLine = -1;
+            if (!note.isEmpty()) {
+                noteLine = appendBodyNote(lines, v1target.firstLine, note);
+            }
             const QString updated = lines.join(QChar('\n'));
             QSaveFile rw(roadmapPath);
             if (!rw.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -3177,15 +3264,27 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             }
             QJsonObject out;
             out["ok"]              = true;
-            out["op"]              = QStringLiteral("flip");
+            out["op"]              = annotateMode
+                                       ? QStringLiteral("annotate")
+                                       : QStringLiteral("flip");
             out["format"]          = QStringLiteral("ants-v1");
             out["from_status"]     = fromStatus;
-            out["to_status"]       = targetEmoji;
+            out["to_status"]       = annotateMode ? fromStatus
+                                                  : targetEmoji;
             out["file"]            = QStringLiteral("ROADMAP.md");
             out["line"]            = v1target.firstLine + 1;
             out["bytes_written"]   = static_cast<qint64>(utf8.size());
             out["anchor_injected"] = false;
             out["id"]              = v1target.id;
+            if (!note.isEmpty()) {
+                out["note_appended"] = true;
+                out["note_line"]     = noteLine + 1;
+            }
+            if (!noteScrubbedNames.isEmpty()) {
+                QJsonArray dropped;
+                for (const QString &n : noteScrubbedNames) dropped.append(n);
+                out["note_scrubbed_params"] = dropped;
+            }
             return QJsonDocument(out);
         }
         // Neither GFM nor ants-v1 — genuinely unrecognised.
@@ -3295,12 +3394,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     if (target.insideFenced) {
         return rlErr(QStringLiteral("anchor_unsafe_context"),
             QStringLiteral("roadmap_log: located bullet is inside a "
-                           "fenced code block — cannot inject a caret "
-                           "anchor or flip status safely"));
+                           "fenced code block — cannot edit it safely "
+                           "(anchor inject / flip / note append)"));
     }
 
-    // 9. Determine if anchor injection is needed (INV-5).
-    const bool needInjection =
+    // 9. Determine if anchor injection is needed (INV-5). Annotate
+    //    never injects an anchor — it is purely additive prose.
+    const bool needInjection = !annotateMode &&
         target.boldId.isEmpty() && target.anchor.isEmpty();
 
     // 10. If injection needed, derive prefix + consume counter.
@@ -3359,8 +3459,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             prefix.toLower() + QLatin1Char('-') + idPart;
     }
 
-    // 11. Apply the surgery in-place on `lines`.
-    applyGfmFlip(lines, target, targetEmoji, anchorToInject);
+    // 11. Apply the surgery in-place on `lines`. applyGfmFlip is
+    //     skipped under annotate (status preserved, no anchor); the
+    //     note is appended after the body. applyGfmFlip edits the
+    //     headline line in place (no line-count change) so the
+    //     headlineLine index stays valid for appendBodyNote.
+    if (!annotateMode) {
+        applyGfmFlip(lines, target, targetEmoji, anchorToInject);
+    }
+    int noteLine = -1;
+    if (!note.isEmpty()) {
+        noteLine = appendBodyNote(lines, target.headlineLine, note);
+    }
     const QString updated = lines.join(QChar('\n'));
 
     // 12. Write ROADMAP.md atomically.
@@ -3397,9 +3507,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     // 14. Success envelope.
     QJsonObject out;
     out["ok"]              = true;
-    out["op"]              = QStringLiteral("flip");
+    out["op"]              = annotateMode ? QStringLiteral("annotate")
+                                          : QStringLiteral("flip");
     out["from_status"]     = target.status;
-    out["to_status"]       = targetEmoji;
+    out["to_status"]       = annotateMode ? target.status : targetEmoji;
     out["file"]            = QStringLiteral("ROADMAP.md");
     out["line"]            = target.firstLine + 1;  // 1-based
     out["bytes_written"]   = static_cast<qint64>(utf8.size());
@@ -3408,6 +3519,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     if (!target.boldId.isEmpty()) out["id"]      = target.boldId;
     if (needInjection && newCounter >= 0)
         out["counter"] = newCounter;
+    if (!note.isEmpty()) {
+        out["note_appended"] = true;
+        out["note_line"]     = noteLine + 1;
+    }
+    if (!noteScrubbedNames.isEmpty()) {
+        QJsonArray dropped;
+        for (const QString &n : noteScrubbedNames) dropped.append(n);
+        out["note_scrubbed_params"] = dropped;
+    }
     return QJsonDocument(out);
 }
 

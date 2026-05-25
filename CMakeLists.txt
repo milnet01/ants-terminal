@@ -1067,6 +1067,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_roadmap_log_verb/test_mcp_roadmap_log_verb.cpp
                 # ANTS-1433 roadmap_log two-stage commit rollback seam.
                 tests/features/mcp_roadmap_log_atomicity/test_mcp_roadmap_log_atomicity.cpp
+                # ANTS-1717/1793 roadmap_log note append (annotate + flip-note).
+                tests/features/roadmap_log_annotate/test_roadmap_log_annotate.cpp
                 # ANTS-1426 parseBullets blank-line continuation.
                 tests/features/roadmap_parser_blank_line_continuation/test_roadmap_parser_blank_line_continuation.cpp
                 # ANTS-1427 MCP dispatch debug-log audit trail.

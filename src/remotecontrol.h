@@ -592,6 +592,11 @@ public:
     // tests/features/mcp_roadmap_log_atomicity/spec.md.
     static void setForceCounterCommitFailForTest(bool on);
     QJsonDocument cmdRoadmapLogAppendForTest(const QJsonObject &req);
+    // ANTS-1717/1793 — drive the flip/annotate path (note append +
+    // status flip) against a synthetic caller_cwd without a MainWindow.
+    // Flip is m_main-independent. See
+    // tests/features/roadmap_log_annotate/spec.md.
+    QJsonDocument cmdRoadmapLogFlipForTest(const QJsonObject &req);
 
 private slots:
     void onNewConnection();

@@ -14,6 +14,18 @@ for security-relevant changes.
 
 ### Added
 
+- **Roadmap notes without a hand-edit — `roadmap_log` can now append a
+  resolution line (ANTS-1717 / ANTS-1793).** Closing or updating a
+  roadmap item used to need two steps: flip its status via the tool,
+  then hand-edit the file to add the "Resolved (date): …" note. Now
+  `op:"flip"` takes an optional `note` that flips the status AND appends
+  the line in one atomic write, and a new `op:"annotate"` appends a note
+  to a still-open item without changing its status (for recording
+  partial progress). The note lands at the end of the bullet's body,
+  inherits its indent, works on both Ants-v1 and GFM-task-list
+  roadmaps, and is scrubbed of stray tool-call markup the same way
+  bullet bodies are.
+
 - **Per-section "legacy format" flag in the roadmap section summary
   (ANTS-1714).** The section-summary view (`roadmap_query
   mode:"section_index"`) already lists, at the top, which sections use

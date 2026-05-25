@@ -5362,16 +5362,25 @@ void ClaudeIntegration::onMcpConnection() {
                         "headline, kind, source. Optional: body, "
                         "layman, lanes[], id_hint. "
                         "op:\"flip\" (ANTS-1428) — flips a bullet's "
-                        "status without touching anything else; "
-                        "injects an Obsidian-style `^prefix-NNNN` "
-                        "anchor on first touch as the durable "
-                        "handle. Required: caller_cwd, to_status, "
-                        "and one of (id | anchor | headline). "
-                        "Optional: prefix_hint. Refusal codes: "
+                        "status; injects an Obsidian-style "
+                        "`^prefix-NNNN` anchor on first touch as the "
+                        "durable handle. Required: caller_cwd, "
+                        "to_status, and one of (id | anchor | "
+                        "headline). Optional: prefix_hint, and `note` "
+                        "to append a resolution line while flipping in "
+                        "one call (ANTS-1793). "
+                        "op:\"annotate\" (ANTS-1717) — appends `note` "
+                        "to a located bullet's body and leaves status "
+                        "unchanged (no flip, no anchor); for recording "
+                        "partial progress on a still-open item. "
+                        "Required: caller_cwd, note, and one of (id | "
+                        "anchor | headline); rejects to_status with "
+                        "bad_op_combo. Refusal codes: "
                         "bullet_not_found, bullet_ambiguous, "
                         "anchor_unsafe_context, bad_op_combo, "
-                        "unrecognised_format. Returns {ok, id?, "
-                        "file, line, bytes_written, ...op-specific} "
+                        "missing_field, unrecognised_format. Returns "
+                        "{ok, id?, file, line, bytes_written, "
+                        "note_appended?, note_line?, ...op-specific} "
                         "or {ok:false, error, code}. "
                         "SIZE NOTE (ANTS-1853): keep op:\"append\" "
                         "calls small. Large multi-paragraph `body` "
@@ -5504,12 +5513,19 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonArray opEnum;
                     opEnum.append("append");
                     opEnum.append("flip");
+                    opEnum.append("annotate");
                     opProp["enum"] = opEnum;
                     opProp["description"] = QStringLiteral(
                         "Verb mode. Default \"append\" (ANTS-1424). "
                         "\"flip\" routes to the status-flip path "
                         "(ANTS-1428; works on GFM-task-list and "
-                        "Ants-v1 emoji formats — ANTS-1441).");
+                        "Ants-v1 emoji formats — ANTS-1441) and accepts "
+                        "an optional `note` to append a resolution line "
+                        "in the same call (ANTS-1793). \"annotate\" "
+                        "(ANTS-1717) appends a `note` to a located "
+                        "bullet WITHOUT changing its status — for "
+                        "recording partial progress on a still-open "
+                        "item; no status flip, no anchor injection.");
                     QJsonObject toStatusProp;
                     toStatusProp["type"] = "string";
                     QJsonArray toStatusEnum;
@@ -5543,6 +5559,23 @@ void ClaudeIntegration::onMcpConnection() {
                         "uppercase first 4 chars of caller_cwd's "
                         "leaf directory.");
 
+                    // ANTS-1717/1793 — note to append to the located
+                    // bullet's body. Required under op:\"annotate\";
+                    // optional under op:\"flip\".
+                    QJsonObject noteProp;
+                    noteProp["type"]      = "string";
+                    noteProp["maxLength"] = 4000;
+                    noteProp["description"] = QStringLiteral(
+                        "Prose appended as indented continuation "
+                        "line(s) at the end of the located bullet's "
+                        "body — the standard \"Resolved (date): …\" / "
+                        "\"Progress (date): …\" close-or-update line. "
+                        "Required under op:\"annotate\" (status "
+                        "untouched); optional under op:\"flip\" (append "
+                        "the resolution note while flipping in one "
+                        "call). Scrubbed of leaked tool-call XML like "
+                        "op:\"append\"'s body; pre-wrap to ~70 columns.");
+
                     QJsonObject props;
                     props["caller_cwd"]  = callerProp;
                     props["op"]          = opProp;
@@ -5559,6 +5592,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["id"]          = idProp;
                     props["anchor"]      = anchorProp;
                     props["prefix_hint"] = prefixHintProp;
+                    props["note"]        = noteProp;
                     schema["properties"] = props;
 
                     // ANTS-1428 — only caller_cwd is unconditionally

@@ -7801,11 +7801,20 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: claudeintegration, remotecontrol.
   Source: in-session-2026-05-21.
 
-- 📋 [ANTS-1793] **`roadmap_log` op:"flip" can't append a resolution note — closing a deferred item needs a second manual ROADMAP edit.**
+- ✅ [ANTS-1793] **`roadmap_log` op:"flip" can't append a resolution note — closing a deferred item needs a second manual ROADMAP edit.**
   Hit during indie-review #5 deferred remediation (2026-05-22): closing ANTS-1764 meant flipping 📋→✅ AND appending a "Resolved (date): ..." body line documenting how the bounded slice was fixed. `roadmap_log` op:"flip" only changes the status emoji (+ injects the `^anchor`); it has no way to append/amend body prose, so the resolution note fell back to a hand `Edit` of ROADMAP.md — defeating the point of using the MCP write path. Proposed: add an optional `append_body` (or `note`) param to op:"flip" that appends an indented continuation line under the flipped bullet (same 2-space-indent verbatim treatment as op:"append"'s `body`). Common path every remediation session — flip + resolution-note is the standard close shape, not status-only.
   Kind: enhancement.
   Lanes: remotecontrol, roadmapdialog.
   Source: in-session-2026-05-22 (indie-review #5 deferred remediation).
+  Shipped 2026-05-25 (with [[ANTS-1717]]). op:"flip" now takes an
+  optional `note` that appends an indented continuation line at the end
+  of the flipped bullet's body in the same atomic write — chose the
+  `note` param name over `append_body`, shared across flip + annotate.
+  A new format-agnostic `appendBodyNote` helper finds the body end
+  (run of indented continuation lines) and inserts there; the note is
+  scrubbed of leaked tool-XML via the shared `rcScrubLeakedToolXml`
+  (hoisted out of cmdRoadmapLogAppend). Tests:
+  `tests/features/roadmap_log_annotate/` INV-5/6. 1455/1455 features.
 
 - 📋 [ANTS-1794] **`roadmap_query` has no by-ID lookup — finding one bullet costs a full paginate or an out-of-band grep.**
   `roadmap_query` filters by `status` / `section` / `mode` but cannot resolve a single bullet by its `[ANTS-NNNN]` id. "Show me ANTS-NNNN" is the most common roadmap lookup an AI session does when working a ticket, yet today it requires either paging the full ~12 K-token bullet list (742 bullets, 26/page) or shelling out to `grep ROADMAP.md` — which leaves the MCP surface entirely and defeats the token-saving goal the MCP exists for. Add an `id:"ANTS-NNNN"` (and/or `ids:[...]`) filter that returns just the matching bullet(s), reusing the existing parse + the same `{id,status,headline,...}` bullet shape (honour `include_body`). Cheap server-side, large token saving per call. Sibling to ANTS-1793 (roadmap_log flip-note gap).
@@ -13947,12 +13956,21 @@ subsection.
   Lanes: claudeintegration, mcp.
   Source: cross-session-report-2026-05-18 (MAME_Curator).
 
-- 📋 [ANTS-1717] **`roadmap_log op:"annotate"` — append prose to an existing bullet without changing its status.**
+- ✅ [ANTS-1717] **`roadmap_log op:"annotate"` — append prose to an existing bullet without changing its status.**
   From the RetroArch Bundle 76 session (2026-05-20). `roadmap_log op:"flip"` only changes status; there is no way to append a note to a bullet that stays open. Recording partial progress / cross-bundle corroboration on a still-📋 item is as common as closing one (Bundle 76 corroborated an open "orphan-test detection" follow-up — its libcheck suite surfaced link breaks + UB segfaults that an earlier `-fsyntax-only` pass missed — but couldn't close it since no CI hook was wired, so it fell back to a raw Edit). Add `op:"annotate"` taking a locator (`id`|`anchor`|`headline`) + `append:"<prose>"` that appends to the bullet body and leaves status untouched. Shares the renderer with [[ANTS-1690]]'s `flip_batch` `annotate:` — and that `annotate` must be PER-LOCATOR (Bundle 76 needed 7 distinct closure notes, forcing 14 hand-Edits), not one shared tag.
   **Layman:** Let Claude add a "this bundle made progress on X" note to a roadmap item without marking it done — today the only structured option flips the status, so partial-progress notes are hand-edited.
   Kind: enhancement.
   Lanes: remotecontrol, roadmap-stack, mcp.
   Source: cross-session-report-2026-05-20 (RetroArch Bundle 76).
+  Shipped 2026-05-25 (with [[ANTS-1793]]). New `op:"annotate"` takes a
+  locator (`id`|`anchor`|`headline`) + `note` and appends it to the
+  bullet body, status untouched (no flip, no anchor injection); rejects
+  `to_status` with bad_op_combo and an empty note with missing_field.
+  Used `note` as the param name (not `append`) for one consistent name
+  across flip + annotate. Per-locator batch annotate (the flip_batch
+  ANTS-1690 `annotate:` and shared renderer) is still open under
+  [[ANTS-1690]]; this ships the single-bullet verb. Tests:
+  `tests/features/roadmap_log_annotate/` (8 INVs, ants-v1 + GFM).
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
