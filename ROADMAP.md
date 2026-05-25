@@ -2796,6 +2796,27 @@ minor tag (next: pre-0.8.0).
 
 ### 🔍 CI fold-in (2026-04-28)
 
+- ✅ [ANTS-1869] **UBSan vptr error in `DialogChrome::ChromeGuard::eventFilter`
+  reded every dialog test under the sanitizer build (~40 tests).**
+  The guard's identity check `if (obj == m_dlg)` compared a
+  `QPointer<QDialog>` against the filtered object. Events still flow to the
+  filter while the dialog is mid-destruction — a `~QVBoxLayout`
+  `ChildRemoved` arrives during `~QWidget`, *before* `~QObject` clears
+  QPointers — so the `==` calls `QPointer<QDialog>::data()`, which downcasts
+  the already-`QWidget`-degraded object to `QDialog*`: UBSan
+  `runtime error: downcast of address … which does not point to an object
+  of type 'QDialog'`. Release builds lack `-fsanitize=vptr`, so `build-test`
+  stayed green while `build-asan` failed on ColdEyesDialog / TestAuditDialog
+  / ReviewDialogBase (every dialog that destroys with the chrome installed).
+  Pre-existing — failing on `build-asan` before today's session. Fix: add a
+  base-typed `QPointer<QObject> m_dlgObj` and do the identity check against
+  it (no downcast); `m_dlg` stays `QPointer<QDialog>` for the typed ops,
+  which only run on live-dialog Show/Resize/Close events.
+  **Layman:** the build server's strict checker tripped over how dialog windows clean themselves up; harmless in the shipped app, but it was failing the tests — fixed.
+  Kind: fix.
+  Lanes: dialogchrome, dialogs.
+  Source: ci-failure-2026-05-25 (build-asan dialog cluster, found while fixing ANTS-1867).
+
 - ✅ [ANTS-1867] **`findClaudeChildPid` missed a Claude child forked from a
   non-leader thread → `ClaudeTranscriptRobustness` red on CI.**
   The kernel `/proc/<pid>/task/<tid>/children` file is per-THREAD. The fast

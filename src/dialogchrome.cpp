@@ -39,14 +39,21 @@ Config *g_config = nullptr;
 class ChromeGuard : public QObject {
 public:
     ChromeGuard(QDialog *dlg, QSizeGrip *grip, QString sizeKey)
-        : QObject(dlg), m_dlg(dlg), m_grip(grip),
+        : QObject(dlg), m_dlg(dlg), m_dlgObj(dlg), m_grip(grip),
           m_sizeKey(std::move(sizeKey)) {
         dlg->installEventFilter(this);
     }
 
 protected:
     bool eventFilter(QObject *obj, QEvent *ev) override {
-        if (obj == m_dlg) {
+        // Identity-check against the QObject base, never the QPointer<QDialog>
+        // (ANTS-1869): events still flow to this filter while `dlg` is mid-
+        // destruction (a ~QVBoxLayout ChildRemoved arrives during ~QWidget,
+        // before ~QObject clears QPointers). Comparing against
+        // QPointer<QDialog> there calls data(), which downcasts the already-
+        // QWidget-degraded object to QDialog* — a UBSan vptr error that was
+        // reding every dialog test under the sanitizer build.
+        if (obj == m_dlgObj) {
             switch (ev->type()) {
             case QEvent::Show:   onShow();      break;
             case QEvent::Resize: positionGrip(); break;
@@ -98,6 +105,7 @@ private:
     }
 
     QPointer<QDialog> m_dlg;
+    QPointer<QObject> m_dlgObj;  // same object, base type — downcast-free identity check
     QPointer<QSizeGrip> m_grip;
     QString m_sizeKey;
     bool m_restored = false;

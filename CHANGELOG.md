@@ -274,6 +274,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **DialogChrome no longer trips a UBSan vptr error while a dialog is closing (was reding ~31 dialog tests under the sanitizer build).** (ANTS-1869)
+  The chrome's event filter compared a QPointer<QDialog> against the dialog mid-destruction, downcasting an already-degraded object; switched the identity check to a base-typed pointer. Harmless in release builds.
+
 - **`findClaudeChildPid` missed a Claude child forked from a non-leader thread → `ClaudeTranscriptRobustness` red on CI.** (ANTS-1867)
   Ants' "is Claude running in this tab?" check could miss Claude in some setups, which broke an automated test on the build server; now it looks in all the right places.
 
