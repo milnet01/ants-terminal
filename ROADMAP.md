@@ -5321,7 +5321,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   call.** `sliceSection` (`roadmapindex.cpp:189`), `buildIndex`, `parseBullets`,
   `renderCardsHtml` each `split('\n')` the whole doc; `sliceSection` should walk
   from a cached offset. Verified 2026-05-22.
-- 📋 [ANTS-1845] **claudeintegration scan/probe cluster.** `processStartTimeMs`
+- ✅ [ANTS-1845] **claudeintegration scan/probe cluster.** `processStartTimeMs`
   has a PID-reuse window with no liveness cross-check; `findClaudeChildPid`'s
   fallback scans all of `/proc` with no early-out every 2 s × tabs;
   `decodeProjectPath` drives `QFileInfo::exists` probes from

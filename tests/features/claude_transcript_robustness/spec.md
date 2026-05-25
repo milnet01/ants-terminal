@@ -55,6 +55,17 @@ without embedded hyphens, so well-formed cases don't regress.
 where `/mnt/Storage/Scripts/Linux/Ants` exists still decodes to
 `/mnt/Storage/Scripts/Linux/Ants`.
 
+**INV-7** — `findClaudeChildPid` still detects a direct child (ANTS-1845).
+After the early-out refactor (both the kernel-children fast path and the
+`/proc`-scan fallback now check each candidate's binary inline and return
+on the first Claude match, instead of building a full child list and
+re-looping), a `claude`-named direct child of the calling process must
+still be returned by `findClaudeChildPid(getpid())`. This is the live
+detection primitive (runs every 2 s per tab); a regression silently
+disables every Claude status indicator, so the behaviour is pinned with a
+real spawned child rather than source-grep. Skips gracefully when no
+`sleep` binary is on PATH.
+
 ## Out of scope
 
 - Rendering/presentation of `thinking` blocks in the transcript

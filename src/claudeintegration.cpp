@@ -164,42 +164,6 @@ void ClaudeIntegration::setShellPid(pid_t pid) {
 pid_t ClaudeIntegration::findClaudeChildPid(pid_t shellPid) {
     if (shellPid <= 0) return 0;
 
-    // Read child PIDs from the kernel's children file (much faster than
-    // scanning all /proc).
-    QList<pid_t> childPids;
-    QFile childFile(QString("/proc/%1/task/%1/children").arg(shellPid));
-    if (childFile.open(QIODevice::ReadOnly)) {
-        QString children = QString::fromUtf8(childFile.readAll()).trimmed();
-        childFile.close();
-        for (const QString &pidStr : children.split(' ', Qt::SkipEmptyParts)) {
-            bool ok;
-            pid_t pid = pidStr.toInt(&ok);
-            if (ok && pid > 0) childPids.append(pid);
-        }
-    } else {
-        // Fallback: scan /proc but only check stat for ppid match.
-        // Resilience for kernels / containers that don't expose
-        // /proc/<pid>/task/<pid>/children.
-        QDir procDir("/proc");
-        for (const QString &entry : procDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
-            bool ok;
-            pid_t pid = entry.toInt(&ok);
-            if (!ok || pid <= 0) continue;
-
-            QFile statFile(QString("/proc/%1/stat").arg(pid));
-            if (!statFile.open(QIODevice::ReadOnly)) continue;
-            QString stat = QString::fromUtf8(statFile.readAll());
-            statFile.close();
-
-            int closeParenIdx = stat.lastIndexOf(')');
-            if (closeParenIdx < 0) continue;
-            QStringList fields = stat.mid(closeParenIdx + 2).split(' ');
-            if (fields.size() < 2) continue;
-            pid_t ppid = fields[1].toInt();
-            if (ppid == shellPid) childPids.append(pid);
-        }
-    }
-
     // Match the executable, not any substring. "grep claude file" or a
     // user with "~/bin/claude-search" must NOT be mistaken for Claude Code.
     auto basename = [](const QString &path) -> QString {
@@ -210,37 +174,74 @@ pid_t ClaudeIntegration::findClaudeChildPid(pid_t shellPid) {
         return name == QLatin1String("claude") ||
                name == QLatin1String("claude-code");
     };
-
-    for (pid_t pid : childPids) {
+    // True when `pid`'s argv resolves to Claude Code — a direct
+    // `claude`/`claude-code` binary, or a node/deno/bun launcher running
+    // the claude script. Used inline by both the fast path and the
+    // fallback so each returns on the FIRST matching child rather than
+    // building a full child list and re-looping (ANTS-1845: bounds the
+    // fallback's per-tab 2 s /proc scan).
+    auto isClaudePid = [&](pid_t pid) -> bool {
         QFile cmdFile(QString("/proc/%1/cmdline").arg(pid));
-        if (!cmdFile.open(QIODevice::ReadOnly)) continue;
+        if (!cmdFile.open(QIODevice::ReadOnly)) return false;
         QByteArray raw = cmdFile.readAll();
         cmdFile.close();
         QList<QByteArray> argv = raw.split('\0');
         while (!argv.isEmpty() && argv.last().isEmpty()) argv.removeLast();
-        if (argv.isEmpty()) continue;
+        if (argv.isEmpty()) return false;
 
         QString arg0 = basename(QString::fromUtf8(argv.first()));
-        bool match = isClaudeBin(arg0);
+        if (isClaudeBin(arg0)) return true;
 
         // Node/deno/bun launchers: inspect argv[1..] for a script basename
         // or a path containing "/claude/" or "/claude-code/".
-        if (!match && (arg0 == QLatin1String("node") ||
-                       arg0 == QLatin1String("deno") ||
-                       arg0 == QLatin1String("bun"))) {
+        if (arg0 == QLatin1String("node") || arg0 == QLatin1String("deno") ||
+            arg0 == QLatin1String("bun")) {
             for (qsizetype i = 1; i < argv.size(); ++i) {
                 QString scriptName = basename(QString::fromUtf8(argv[i]));
                 QString full = QString::fromUtf8(argv[i]);
                 if (isClaudeBin(scriptName) ||
                     full.contains(QLatin1String("/claude-code/")) ||
-                    full.contains(QLatin1String("/claude/"))) {
-                    match = true;
-                    break;
-                }
+                    full.contains(QLatin1String("/claude/")))
+                    return true;
             }
         }
+        return false;
+    };
 
-        if (match) return pid;
+    // Fast path: the kernel's children file lists this shell's direct
+    // children (much faster than scanning all /proc).
+    QFile childFile(QString("/proc/%1/task/%1/children").arg(shellPid));
+    if (childFile.open(QIODevice::ReadOnly)) {
+        QString children = QString::fromUtf8(childFile.readAll()).trimmed();
+        childFile.close();
+        for (const QString &pidStr : children.split(' ', Qt::SkipEmptyParts)) {
+            bool ok;
+            pid_t pid = pidStr.toInt(&ok);
+            if (ok && pid > 0 && isClaudePid(pid)) return pid;
+        }
+        return 0;
+    }
+
+    // Fallback: scan /proc, checking each ppid match's binary inline.
+    // Resilience for kernels / containers that don't expose
+    // /proc/<pid>/task/<pid>/children.
+    QDir procDir("/proc");
+    for (const QString &entry : procDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        bool ok;
+        pid_t pid = entry.toInt(&ok);
+        if (!ok || pid <= 0) continue;
+
+        QFile statFile(QString("/proc/%1/stat").arg(pid));
+        if (!statFile.open(QIODevice::ReadOnly)) continue;
+        QString stat = QString::fromUtf8(statFile.readAll());
+        statFile.close();
+
+        int closeParenIdx = stat.lastIndexOf(')');
+        if (closeParenIdx < 0) continue;
+        QStringList fields = stat.mid(closeParenIdx + 2).split(' ');
+        if (fields.size() < 2) continue;
+        if (fields[1].toInt() != shellPid) continue;
+        if (isClaudePid(pid)) return pid;
     }
     return 0;
 }
@@ -388,6 +389,16 @@ qint64 ClaudeIntegration::lastEventTimestampMs(const QString &path) {
 qint64 ClaudeIntegration::processStartTimeMs(pid_t pid) {
     if (pid <= 0) return 0;
 
+    // ANTS-1845: the read of /proc/<pid>/stat IS the liveness check — a
+    // dead pid fails to open and returns 0. The narrow window where pid
+    // was reused between findClaudeChildPid and here is benign: callers
+    // feed the result to sessionPathForCwd as the freshness FLOOR
+    // (minLastEventMs). A reused pid yields a NEWER start time, i.e. a
+    // STRICTER floor, so the worst case is a false-negative (no transcript
+    // bound) that self-heals on the next 2 s poll once the correct pid is
+    // detected. It can never bind another project's transcript (scoping is
+    // by cwd, and the floor only moves up), so no extra cross-check is
+    // warranted.
     QFile statF(QStringLiteral("/proc/%1/stat").arg(static_cast<int>(pid)));
     if (!statF.open(QIODevice::ReadOnly)) return 0;
     const QByteArray statRaw = statF.readAll();
@@ -7069,6 +7080,14 @@ QString ClaudeIntegration::decodeProjectPath(const QString &encoded) {
     // something that exists on disk and prefer that. When neither candidate
     // exists we default to `/` (matches the legacy behavior for paths
     // without embedded hyphens, so well-formed cases don't regress).
+    //
+    // ANTS-1845: the QFileInfo::exists() probes run on paths built from a
+    // `~/.claude/projects/<dir>` entry name. Those entries are written by
+    // Claude Code under the user's own home (same UID), the probe count is
+    // bounded by the hyphen count in the name, and this path is only
+    // reached as a last resort (session metadata + transcript cwd both
+    // failed). No write, no symlink follow — pure existence checks — so
+    // the attacker-influence surface is negligible.
     if (!encoded.startsWith('-')) return encoded;
     const QStringList tokens = encoded.mid(1).split('-');
     if (tokens.isEmpty() || tokens.first().isEmpty()) return QStringLiteral("/");

@@ -13,10 +13,13 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QProcess>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 
 #include <cstdio>
+#include <unistd.h>
 
 namespace {
 
@@ -178,6 +181,54 @@ int inv6LegacyCaseStillWorks() {
     return ok ? 0 : 1;
 }
 
+int inv7FindClaudeChildPidDetectsChild() {
+    // ANTS-1845: after the early-out refactor of findClaudeChildPid, a
+    // direct `claude`-named child of the shell must still be detected via
+    // the kernel children file (the fast path). This is the live detection
+    // primitive (every 2 s × tab) — a refactor bug here silently breaks
+    // every Claude status indicator, so lock the behaviour.
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) return 1;
+
+    const QString sleepBin = QStandardPaths::findExecutable("sleep");
+    if (sleepBin.isEmpty()) {
+        std::fprintf(stderr, "[inv7] no 'sleep' on PATH — skipping\n");
+        return 0;
+    }
+
+    // Symlink the real sleep binary under the basename "claude" so the
+    // child's argv[0] basename matches isClaudeBin(). exec follows the
+    // symlink; QProcess sets argv[0] to the program path we hand it.
+    const QString fakeClaude = tmp.path() + "/claude";
+    if (!QFile::link(sleepBin, fakeClaude)) {
+        std::fprintf(stderr, "[inv7] could not symlink %s -> %s\n",
+                     qUtf8Printable(fakeClaude), qUtf8Printable(sleepBin));
+        return 1;
+    }
+
+    QProcess proc;
+    proc.setProgram(fakeClaude);
+    proc.setArguments({QStringLiteral("30")});
+    proc.start();
+    if (!proc.waitForStarted(3000)) {
+        std::fprintf(stderr, "[inv7] fake claude failed to start\n");
+        return 1;
+    }
+    const pid_t child = static_cast<pid_t>(proc.processId());
+
+    const pid_t found = ClaudeIntegration::findClaudeChildPid(::getpid());
+
+    proc.kill();
+    proc.waitForFinished(3000);
+
+    const bool ok = (found == child);
+    std::fprintf(stderr,
+                 "[inv7 findclaudechildpid-detects-child] child=%d found=%d  %s\n",
+                 static_cast<int>(child), static_cast<int>(found),
+                 ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
 }  // namespace
 
 TEST(ClaudeTranscriptRobustness, Main) {
@@ -188,6 +239,7 @@ TEST(ClaudeTranscriptRobustness, Main) {
     failures += inv4IntermediateHyphenPreserved();
     failures += inv5MissingPathFallsBackToSeparator();
     failures += inv6LegacyCaseStillWorks();
+    failures += inv7FindClaudeChildPidDetectsChild();
     if (failures) FAIL();
 }
 
