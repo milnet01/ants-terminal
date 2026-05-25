@@ -10751,7 +10751,7 @@ template / mutate this state atomically" → movable. If it's
 
 #### 🔌 MCP — refactor / API hygiene
 
-- 📋 [ANTS-1296] **MCP tool namespacing — group by feature.**
+- ✅ [ANTS-1296] **MCP tool namespacing — group by feature.**
   The current 30+ tools live in a flat `mcp__ants__<name>`
   namespace. As tool count grows the assistant's `tools/list`
   payload bloats (~1–3 K just for descriptions). Group into
@@ -10766,8 +10766,19 @@ template / mutate this state atomically" → movable. If it's
   doesn't read every tool's description on every session.
   Kind: refactor.
   Source: indie-review-2026-05-13.
+  Closed 2026-05-25 as superseded (no code change). The token
+  rationale is gone: [[ANTS-1502]] ships the lite `tools/list`
+  shape and [[ANTS-1505]] the per-tool cost hints, while the Claude
+  Code harness now loads tool schemas lazily on demand
+  (deferred-tools / ToolSearch). The grouping/discoverability goal is
+  already met by the `kindForName` bucketer ([[ANTS-1502]]/[[ANTS-1567]])
+  — every tool carries a `kind` family + `[<kind>]` description prefix,
+  grep-able without a rename. Implementing the literal
+  `mcp__ants__<family>_*` rename would break every skill, doc,
+  CallerCwdContract entry, test, and external caller for zero remaining
+  benefit. User-confirmed close 2026-05-25.
 
-- 📋 [ANTS-1297] **Lazy MCP tool registration (`tools/list` returns
+- ✅ [ANTS-1297] **Lazy MCP tool registration (`tools/list` returns
   namespace summaries, expand on demand).** Pairs with ANTS-1296.
   Today every Claude Code session enumerates ~30 tools via the MCP
   `tools/list` protocol; each description is loaded into the
@@ -10787,6 +10798,15 @@ template / mutate this state atomically" → movable. If it's
   for that family.
   Kind: refactor.
   Source: indie-review-2026-05-13.
+  Closed 2026-05-25 as superseded (no code change). Delivered by
+  [[ANTS-1502]] (server-side lite `tools/list` — names + 1-line
+  summaries, full schema via `tool_info`) AND the Claude Code harness's
+  own deferred-tools mechanism (tool schemas are fetched on demand via
+  ToolSearch rather than dumped up front — observed live this session).
+  Both halves of "don't load every descriptor up front" are now in
+  place; the proposed `--list-mode=summary` / `expand=<namespace>`
+  side-channel is redundant. Pairs with the [[ANTS-1296]] close.
+  User-confirmed close 2026-05-25.
 
 #### 📦 Docs — user-facing surface
 
