@@ -40,6 +40,15 @@ int     headingLevel(const QString &raw, QString *text = nullptr);
 QString slugifyHeading(const QString &heading);
 QString uniqueSlug(QSet<QString> &seen, const QString &heading);
 
+// ANTS-1688 — shared canonical-ID predicate. True iff `id` matches a
+// `[A-Za-z][A-Za-z0-9_-]*-<digits>` token (e.g. ANTS-1688, VEST-0042)
+// — the only ID shape roadmap_log allocates. Synthetic content-hash
+// nonces (10-char base36 like `35ra39wbn1`), Obsidian `^anchor`
+// tokens, and legacy hyphen-less bold IDs (`Sh4`) are NOT canonical.
+// The duplicate-ID detector keys on this so anchors/hashes can't
+// masquerade as ID collisions (ANTS-1784 single-source ID-token regex).
+bool    isCanonicalId(const QString &id);
+
 // ANTS-1442 — per-section tally used by roadmap_query's section_index
 // mode. Same shape as the `{active,shipped,total}` triplet the verb
 // emits.

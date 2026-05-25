@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **Per-section "legacy format" flag in the roadmap section summary
+  (ANTS-1714).** The section-summary view (`roadmap_query
+  mode:"section_index"`) already lists, at the top, which sections use
+  the older tag-less bullet style. Each of those sections now also
+  carries its own `legacy_format: true` marker, so a tool reading one
+  section's numbers can tell it's tag-less without cross-referencing
+  the top-level list. (The companion "only show active sections"
+  filter for this view shipped earlier under ANTS-1848.)
+
 - **`roadmap_query` single-item `id` selector (ANTS-1856).** Pass
   `id:"ANTS-1853"` to fetch exactly that one bullet in a single call
   instead of paging the whole roadmap (a no-arg query returns 15 of
@@ -233,6 +242,18 @@ for security-relevant changes.
   Claude Code session is deferred to ANTS-1713.
 
 ### Fixed
+
+- **Roadmap "duplicate ID" check no longer cries wolf on big legacy
+  roadmaps (ANTS-1688).** When Ants reads a project's roadmap it flags
+  any task ID that accidentally appears on two bullets. On large
+  roadmaps from older projects it was mistaking auto-generated tag
+  codes (like `35ra39wbn1`) and Obsidian-style anchor markers for real
+  task IDs — one such tag got reported as a 7-times "duplicate", and
+  the bloated list pushed the section-summary response past its size
+  limit (≈55 KB). The check now counts only proper task IDs (the
+  `ABC-123` shape) and caps each ID's example list at three with a
+  `truncated_count` of any extras, so the response stays small and the
+  warnings are real.
 
 - **Safer local file writes — private dirs, atomic logs, no key loss
   (ANTS-1821/1822/1823/1824/1836).** A sweep of the places where Ants

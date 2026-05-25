@@ -414,6 +414,22 @@ TEST(roadmap_query_section_index, Inv12EmitsIdOnlyAndLegacyHint) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-1714b INV-13 — per-section legacy_format flag mirrors the
+// top-level legacy_format_sections[] array so a caller reading a
+// section object knows it is ID-less without grepping the slug against
+// the top-level list. Set under the same self.total>0 &&
+// self.totalWithId==0 predicate that feeds the array.
+TEST(roadmap_query_section_index, Inv13PerSectionLegacyFlag) {
+    expect_reset();
+    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "obj[\"legacy_format\"] = true;"),
+           "INV-13: per-section legacy_format flag set on the section "
+           "object");
+    expect(contains(cpp, "ANTS-1714b"),
+           "INV-13: anchor comment present");
+    EXPECT_EQ(0, expect_failures());
+}
+
 // Dispatch — mainwindow's MCP→cmdRoadmapQuery lambda forwards the
 // `mode` arg (and `include_section_headers`, caught during 1437
 // live-test). Without this, the schema advertises args the

@@ -3,8 +3,11 @@
 // matches sibling roadmap_query feature tests.
 
 #include "../../_support/expect.h"
+#include "roadmapindex.h"
 
 #include <gtest/gtest.h>
+
+#include <QString>
 
 #include <cstdio>
 #include <fstream>
@@ -110,6 +113,50 @@ TEST(roadmap_query_duplicate_ids, Inv45EmissionGatedAndThreePaths) {
     expect(contains(cpp, "!m_roadmapCacheDuplicateIds.isEmpty()"),
            "INV-4: emission gated on non-empty descriptor (keeps "
            "back-compat envelope shape on a clean roadmap)");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-1688 INV-7 — canonical-ID predicate behaviour. The detector
+// must key only on the allocated `[A-Za-z][A-Za-z0-9_-]*-<digits>`
+// shape; this is the unit reproduction of the cross-session bug where
+// a 10-char content-hash nonce / Obsidian `^anchor` token (e.g.
+// `35ra39wbn1`) was surfaced as a duplicate "ID" on a legacy roadmap.
+TEST(roadmap_query_duplicate_ids, Inv7CanonicalIdPredicate) {
+    expect_reset();
+    // Accept: real allocated IDs across projects.
+    expect(RoadmapIndex::isCanonicalId(QStringLiteral("ANTS-1688")),
+           "INV-7: ANTS-1688 is canonical");
+    expect(RoadmapIndex::isCanonicalId(QStringLiteral("VEST-0042")),
+           "INV-7: multi-letter-prefix VEST-0042 is canonical");
+    expect(RoadmapIndex::isCanonicalId(QStringLiteral("PROJ-1")),
+           "INV-7: single-digit suffix is canonical");
+    // Reject: the bug shapes + empties.
+    expect(!RoadmapIndex::isCanonicalId(QStringLiteral("35ra39wbn1")),
+           "INV-7: content-hash nonce is NOT a duplicate ID (the "
+           "over-report bug)");
+    expect(!RoadmapIndex::isCanonicalId(QString()),
+           "INV-7: empty id is not canonical");
+    expect(!RoadmapIndex::isCanonicalId(QStringLiteral("Sh4")),
+           "INV-7: hyphen-less legacy bold-id is not canonical");
+    expect(!RoadmapIndex::isCanonicalId(QStringLiteral("ANTS-")),
+           "INV-7: prefix without digits is not canonical");
+    expect(!RoadmapIndex::isCanonicalId(QStringLiteral("Phase 9F-1")),
+           "INV-7: narrator headline with a space is not canonical");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-1688 INV-8 — the detector is wired to the predicate + caps the
+// per-ID occurrences tail so a legacy roadmap can't blow the response
+// size budget.
+TEST(roadmap_query_duplicate_ids, Inv8DetectorFiltersAndCaps) {
+    expect_reset();
+    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "RoadmapIndex::isCanonicalId"),
+           "INV-8: rcComputeDuplicateIds keys on the canonical-ID "
+           "predicate so anchors/hashes don't masquerade as IDs");
+    expect(contains(cpp, "truncated_count"),
+           "INV-8: occurrences tail capped with a truncated_count "
+           "field (payload-shrink for large legacy roadmaps)");
     EXPECT_EQ(0, expect_failures());
 }
 

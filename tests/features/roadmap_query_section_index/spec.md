@@ -58,6 +58,29 @@ tripping a full bullet payload.
   (one whose `[lineStart, lineEnd)` is nested inside the parent's).
   Pure helper: `RoadmapIndex::rollupCounts(index, direct)`. Anchor:
   `ANTS-1442` in `src/roadmapindex.cpp`.
+- **INV-11 / ID-only parallel counts + top-level legacy hint
+  (ANTS-1622).** Each emitted section carries
+  `active_count_id_only` / `shipped_count_id_only` /
+  `total_count_id_only` beside the emoji-only counts, so a caller
+  sees whether a section's bullets survive the default `bullets[]`
+  ID-filter predicate. When ≥1 section's direct bullets all lack a
+  `[PROJ-NNNN]` id, the envelope adds a top-level
+  `legacy_format_sections[]` array + `legacy_format_hint`. Both stay
+  absent on a well-tagged roadmap. Anchor: `ANTS-1622`.
+- **INV-12 / `status` shapes section_index emission (ANTS-1848).**
+  `status:"active"` drops sections whose `active_count_id_only` is 0;
+  `status:"shipped"` drops sections whose `shipped_count_id_only` is
+  0; the default `status:"all"` emits every indexed section. Keeps
+  the kept set aligned with the default `bullets[]` predicate and is
+  the lean planning call. Anchor: `ANTS-1848`.
+- **INV-13 / per-section `legacy_format` flag (ANTS-1714b).** A
+  section object whose direct (un-rolled) bullets all lack
+  `[PROJ-NNNN]` ids (`self.total > 0 && self.totalWithId == 0`)
+  carries `legacy_format: true`, mirroring the top-level
+  `legacy_format_sections[]` array (INV-11) so a caller reading one
+  section object knows it is ID-less without grepping the slug
+  against the top-level list. Absent on well-tagged sections.
+  Anchor: `ANTS-1714b`.
 
 ## Test scope
 

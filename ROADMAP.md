@@ -13844,7 +13844,7 @@ subsection.
   Source: cross-session-report-2026-05-19 (RetroArch CC session
   bundle 71); refined 2026-05-20 (bundles 73-75).
 
-- 📋 [ANTS-1688] **`roadmap_query mode:"section_index"` payload
+- ✅ [ANTS-1688] **`roadmap_query mode:"section_index"` payload
   shrink for legacy-format roadmaps with many duplicate-ID
   occurrences.** On a 456 KB ROADMAP from a sibling project,
   `mode:"section_index"` returned a 54.9 KB envelope dominated
@@ -13870,6 +13870,18 @@ subsection.
   Kind: refactor.
   Source: cross-session-report-2026-05-19 (3D_Engine CC session);
   correctness facet 2026-05-20 (Ts20-IS/CV).
+  Shipped 2026-05-25. `rcComputeDuplicateIds` now keys on a shared
+  `RoadmapIndex::isCanonicalId` predicate (`^[A-Za-z][A-Za-z0-9_-]*-\d+$`,
+  the pure-lib home the open ANTS-1784 ID-token consolidation should
+  route through), so synthetic content-hash nonces and `^anchor`
+  tokens no longer surface as collisions — this removes the bulk of
+  the 54.9 KB envelope at its source. `occurrences[]` is additionally
+  capped at `kDuplicateOccurrencesCap` (3) with the dropped tail in a
+  per-ID `truncated_count` (did NOT take the `duplicate_id_count` /
+  opt-in-flag alternative — the canonical-ID fix alone collapses the
+  legacy bloat). Tests: `tests/features/roadmap_query_duplicate_ids/`
+  INV-7 (behavioural predicate) + INV-8 (detector wiring + cap).
+  1449/1449 ctest.
 
 - 📋 [ANTS-1689] **`test_audit_synthesis_prompt` markdown
   `[SEVERITY]` fallback parser.** ANTS-1617 (pull 18) taught the
@@ -13905,12 +13917,21 @@ subsection.
   Source: cross-session-report-2026-05-19 (RetroArch CC session
   bundle 71).
 
-- 📋 [ANTS-1714] **`roadmap_query mode:"section_index"` ignores `status:"active"` + lacks a per-section legacy-format flag.**
+- ✅ [ANTS-1714] **`roadmap_query mode:"section_index"` ignores `status:"active"` + lacks a per-section legacy-format flag.**
   Two related section_index ergonomics gaps from the 2026-05-20 cross-session reports (3D_Engine Ts20-PA/IS/CV addenda + RetroArch Bundle 72 §3). (a) `status:"active"` is a no-op in `mode:"section_index"`: on a 456 KB / ~223-section ROADMAP every section is returned including fully-shipped ones with `active_count==0`, producing a ~54 KB envelope that trips the persisted-output truncation path — contradicting the tool doc's "< 5 KB on a 500-bullet roadmap" claim (the estimate is bullet-count-based but the cost is section-count-based). Fix: when `status:"active"` is passed, drop sections whose `active_count==0` from `sections[]`; OR add an explicit `nonempty_only:true` flag; and correct the doc estimate to ~250 bytes/section. Pagination (offset/limit) for section_index would also help. (b) For legacy/narrator-format roadmaps (no `[PROJ-NNNN]` ids), the per-section `active_count_id_only:0` reads as "section empty" even when the section has N active narrator bullets — the top-level `legacy_format_sections[]` (ANTS-1622) covers it but a per-section `legacy_format:true` flag mirroring that array would let a caller spot the discrepancy without grepping the section name against the top-level list.
   **Layman:** When asking the roadmap tool for just a section summary of active work, it returns every section (including long-finished ones) on big roadmaps, blowing the size limit — and on roadmaps without ID tags it can look empty when it isn't. Make it honour the "active only" filter and flag the no-ID case per section.
   Kind: enhancement.
   Lanes: remotecontrol, roadmap-stack, mcp.
   Source: cross-session-report-2026-05-20 (3D_Engine Ts20 + RetroArch Bundle 72).
+  Shipped 2026-05-25. Facet (a) — `status:"active"`/`"shipped"`
+  drops zero-id-count sections in `section_index` — landed earlier as
+  ANTS-1848. Facet (b) closed here: each ID-less section object now
+  carries `legacy_format: true` mirroring the top-level
+  `legacy_format_sections[]` array. Not done (low value, left open if
+  ever needed): the optional section_index pagination + the ~250
+  bytes/section doc-estimate rewording — the ANTS-1848 active-filter
+  already keeps the common planning call small. Tests:
+  `tests/features/roadmap_query_section_index/` INV-13. 1449/1449 ctest.
 
 - 💭 [ANTS-1715] **`verify_reexport` MCP verb — confirm a public symbol still aliases its internal definition.**
   Speculative idea from the MAME_Curator FP31 /test-audit session (2026-05-18, overnight). That repo added a top-of-file `assert MediaFetchError is _MediaFetchError_public` runtime fence that fails at import time if a public re-export silently breaks — the same "is the surface still the surface?" check `verify_changes` does for build/test contracts. Proposed verb: `verify_reexport({module:"mame_curator.media", symbol:"MediaFetchError", internal_module:"mame_curator.media.cache"})` → `{exported:true, identity_match:true, last_changed_commit:"…"}`, so the ~5-line in-test guard doesn't get copy-pasted as re-exports accumulate. Considered (not planned): demand is single-project + speculative, and the Python-import-introspection surface is non-trivial to do safely from the MCP server. Revisit if a second project asks.

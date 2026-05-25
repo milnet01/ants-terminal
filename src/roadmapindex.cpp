@@ -3,6 +3,7 @@
 #include "roadmapindex.h"
 
 #include <QChar>
+#include <QRegularExpression>
 #include <QStringList>
 
 #include <algorithm>
@@ -50,6 +51,18 @@ QString slugifyHeading(const QString &heading) {
     }
     while (out.endsWith('-')) out.chop(1);
     return out;
+}
+
+// ANTS-1688 — see header. Anchored full match on the canonical
+// allocated-ID shape; ANTS-1249 static-const lambda-init so the
+// pattern compiles once.
+bool isCanonicalId(const QString &id) {
+    static const QRegularExpression rxCanonicalId = [] {
+        QRegularExpression re(QStringLiteral("^[A-Za-z][A-Za-z0-9_-]*-[0-9]+$"));
+        re.optimize();
+        return re;
+    }();
+    return rxCanonicalId.match(id).hasMatch();
 }
 
 // Moved from roadmapdialog.cpp:511. Walk-order rule for duplicate

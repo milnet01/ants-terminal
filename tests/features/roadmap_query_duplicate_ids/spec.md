@@ -67,9 +67,36 @@ The `roadmap_query` tool description in `claudeintegration.cpp`
 names the `duplicate_ids[]` field, its shape, and its purpose
 (surfacing hand-edited drift past the `.roadmap-counter` guard).
 
+### INV-7 — detector keys only on canonical allocated IDs (ANTS-1688)
+
+`rcComputeDuplicateIds` counts a bullet's `id` only when it matches
+the canonical allocated-ID shape `^[A-Za-z][A-Za-z0-9_-]*-<digits>$`
+(`RoadmapIndex::isCanonicalId`). The GFM adapter (ANTS-1428)
+synthesises 10-char content-hash nonces for ID-less bullets and
+surfaces Obsidian `^anchor` tokens; neither is an allocated ID, so
+neither can be a `.roadmap-counter` drift collision. Before this
+fix a legacy-format roadmap over-reported — e.g. a `35ra39wbn1`
+hash surfaced as a 7× "duplicate ID", and the inflated
+`occurrences[]` lists drove the `section_index` envelope to ~55 KB
+(tripping the persisted-output truncation path). Keying on the
+canonical shape removes the over-report and the bulk of the payload.
+
+### INV-8 — occurrences tail capped (ANTS-1688)
+
+Each duplicate entry emits at most `kDuplicateOccurrencesCap` (3)
+occurrences; when an ID genuinely collides more than that, the
+dropped tail count is recorded in a per-entry `truncated_count`
+field. A real collision set can't blow the response-size budget,
+and the caller still learns the true multiplicity. Entries at or
+under the cap carry no `truncated_count` (envelope shape unchanged
+for the common case).
+
 ## Test plan
 
-Each INV is verified by a source-grep against the implementation,
-matching the project's feature-conformance style (no live MCP
-round-trip needed at this layer — the detector is pure-function
-over the bullets array).
+INV-1 through INV-6 and INV-8 are verified by a source-grep against
+the implementation, matching the project's feature-conformance style
+(no live MCP round-trip needed at this layer — the detector is a
+pure function over the bullets array). INV-7's predicate
+(`RoadmapIndex::isCanonicalId`) lives in the Qt-Core-only
+`ants_core_lib` and is verified behaviourally (accept allocated IDs,
+reject hash nonces / anchors / hyphen-less bold IDs / empties).

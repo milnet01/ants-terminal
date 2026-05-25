@@ -242,6 +242,19 @@ static QString rcSanitizeBulletField(const QString &in, int maxLen) {
 // empty on a clean roadmap; cmdRoadmapQuery's emission gate suppresses
 // the field entirely in that case so the envelope shape is unchanged
 // for the common path.
+//
+// ANTS-1688 — two refinements for large legacy-format roadmaps:
+//  (1) Correctness: key only on canonical allocated IDs
+//      (RoadmapIndex::isCanonicalId). The GFM adapter (ANTS-1428)
+//      synthesises 10-char content-hash nonces for bullets without a
+//      [PROJ-NNNN] token, and surfaces Obsidian `^anchor` tokens; both
+//      previously collided wholesale and surfaced as bogus duplicate
+//      IDs (a `35ra39wbn1` reported 7×).
+//  (2) Payload shrink: cap occurrences[] at kDuplicateOccurrencesCap
+//      and record the dropped tail in a per-ID `truncated_count` so a
+//      genuine large collision set can't blow the response-size budget.
+constexpr int kDuplicateOccurrencesCap = 3;
+
 QJsonArray rcComputeDuplicateIds(const QJsonArray &bullets) {
     QJsonArray out;
     if (bullets.isEmpty()) return out;
@@ -250,7 +263,9 @@ QJsonArray rcComputeDuplicateIds(const QJsonArray &bullets) {
     for (const auto &v : bullets) {
         const QJsonObject o = v.toObject();
         const QString id = o.value(QStringLiteral("id")).toString();
-        if (id.isEmpty()) continue;
+        // ANTS-1688 — anchors / hash nonces / hyphen-less legacy bold
+        // IDs are not allocated IDs and can't be drift collisions.
+        if (!RoadmapIndex::isCanonicalId(id)) continue;
         QJsonObject occ;
         occ[QStringLiteral("section_slug")] =
             o.value(QStringLiteral("section_slug")).toString();
@@ -266,7 +281,18 @@ QJsonArray rcComputeDuplicateIds(const QJsonArray &bullets) {
         if (occs.size() < 2) continue;
         QJsonObject entry;
         entry[QStringLiteral("id")] = id;
-        entry[QStringLiteral("occurrences")] = occs;
+        // ANTS-1688 — emit at most the cap; record any dropped tail.
+        if (occs.size() > kDuplicateOccurrencesCap) {
+            QJsonArray capped;
+            for (int i = 0; i < kDuplicateOccurrencesCap; ++i) {
+                capped.append(occs.at(i));
+            }
+            entry[QStringLiteral("occurrences")] = capped;
+            entry[QStringLiteral("truncated_count")] =
+                occs.size() - kDuplicateOccurrencesCap;
+        } else {
+            entry[QStringLiteral("occurrences")] = occs;
+        }
         out.append(entry);
     }
     return out;
@@ -1872,16 +1898,20 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             obj["active_count_id_only"]  = t.activeWithId;
             obj["shipped_count_id_only"] = t.shippedWithId;
             obj["total_count_id_only"]   = t.totalWithId;
-            sections.append(obj);
             // Self-only (un-rolled) check: if this section directly
-            // owns bullets, all of which lack IDs, surface its slug
-            // at the top level so a caller scanning the envelope sees
-            // the legacy-format sections at a glance.
+            // owns bullets, all of which lack IDs, it is legacy-format.
+            // Surface the slug at the top level (ANTS-1622) AND mark
+            // the per-section object (ANTS-1714b) so a caller spotting
+            // the discrepancy doesn't have to grep the slug against
+            // the top-level array. Absent on well-tagged sections so
+            // the response shape is unchanged for the common case.
             const auto self = direct.value(sec.slug,
                                            RoadmapIndex::SectionCounts{});
             if (self.total > 0 && self.totalWithId == 0) {
+                obj["legacy_format"] = true;
                 legacyFormatSections.append(sec.slug);
             }
+            sections.append(obj);
         }
 
         out["ok"] = true;
