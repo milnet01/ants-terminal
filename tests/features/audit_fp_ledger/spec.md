@@ -17,9 +17,19 @@ stays hidden across edits.
 - `ants::auditfp::appendEntry(projectPath, entry)` — atomic-ish append, 0600,
   mkpath, dedup.
 - `AuditEngine::applyLearnedFpSuppressions(findings, fpSet)` — marks matching
-  findings `suppressed = true` (does not drop — surfaces in SARIF
-  `suppressions[]`, mirroring `.audit_suppress`). Shared by the GUI dialog and
-  the headless `audit_run` path (ANTS-1706).
+  `Finding` objects `suppressed = true` (does not drop — surfaces in SARIF
+  `suppressions[]`, mirroring `.audit_suppress`). Consumed by the GUI dialog,
+  which produces `Finding` lists.
+- The headless `audit_run` runner (`AuditRunner`) does not materialise `Finding`
+  objects (v1 heuristic counter), so it consumes the **same ledger** via the
+  shared `computeFingerprint` directly: a learned FP recorded in the GUI is
+  dropped from the runner's count + samples on every MCP/CI sweep (ANTS-1820).
+  Cross-path matching holds for the line-based tools (cppcheck / clazy / mypy /
+  shellcheck), whose check id is the tool name — equal to the GUI's
+  `Finding::checkId`. JSON tools (semgrep / bandit / ruff / gitleaks / trivy)
+  key on the tool's own `check_id`, a different namespace, so they don't
+  cross-match (the same v1 limitation under which the runner does no other
+  per-finding filtering).
 
 ## Invariants
 
@@ -37,6 +47,13 @@ stays hidden across edits.
 - **INV-6** `applyLearnedFpSuppressions` marks a finding whose fingerprint is in
   the set as `suppressed`, leaves non-matching findings untouched, and records a
   "learned false positive" note in `aiReasoning` when it was empty.
+- **INV-7** (ANTS-1820) The headless runner drops learned FPs: given a non-empty
+  ledger, a line-based tool's matching finding is excluded from
+  `afterFilterCount` and from `samples`, while `rawCount` keeps the tool's raw
+  total. With an empty ledger nothing is suppressed. Cross-path matching holds
+  because `computeFingerprint` strips the location prefix, so the GUI's
+  full-line `Finding::message` and the runner's already-stripped message hash to
+  the same value.
 
 ## Out of scope (v1)
 

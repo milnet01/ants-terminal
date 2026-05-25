@@ -4891,6 +4891,18 @@ minor tag (next: pre-0.8.0).
   behaviour change). Source: user-2026-04-30. Lanes: MainWindow,
   status bar.
 
+- 📋 [ANTS-1849] **Suggested-model chip click should return focus to the terminal.**
+  The model-chip click handler (`claudestatuswidgets.cpp:136`) sends `/model
+  <tier>` to the focused terminal via `sendToPty` but never calls
+  `focused->setFocus()` afterwards, so keyboard focus stays on the QPushButton —
+  the user must click back into the terminal to keep typing. After dispatching
+  the command, restore focus to the terminal widget. Sibling to [[ANTS-1840]]
+  (model-chip freshness).
+  **Layman:** After you click the little model-suggestion button in the status bar, your typing should go straight back to the terminal instead of staying stuck on the button.
+  Kind: ux.
+  Lanes: claudestatuswidgets.
+  Source: user-request-2026-05-25.
+
 ### 📚 Roadmap split — per-version archive (user request 2026-04-30)
 
 > ROADMAP.md crossed 260 KiB and is becoming unwieldy in tooling
@@ -5173,7 +5185,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
 
 #### 🔒 Tier 1 — security + data-loss (deferred)
 
-- 📋 [ANTS-1820] **`applyLearnedFpSuppressions` is a zombie + headless gap.**
+- ✅ [ANTS-1820] **`applyLearnedFpSuppressions` is a zombie + headless gap.**
   `auditengine.cpp:353` has no production caller (the GUI inlines the body at
   `auditdialog.cpp:~4713`; `AuditRunner::runAudit` never loads the ledger) — a
   learned FP recorded in the GUI re-surfaces on every MCP/CI sweep. Wire the
@@ -5200,7 +5212,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   `saveToDisk` stamps `kSchemaVersion`; `loadFromDisk` ignores it, so a future
   v2 file is consumed as authoritative by a v1 reader. Add a schema-version gate
   (log/refuse-and-reprompt on unknown future version). Verified 2026-05-22.
-- 📋 [ANTS-1826] **AI-triage POSTs key + source over cleartext `http`.**
+- ✅ [ANTS-1826] **AI-triage POSTs key + source over cleartext `http`.**
   `auditdialog.cpp:~5434` accepts `http` and attaches `Authorization: Bearer`;
   warn/refuse on non-HTTPS when an API key is set (localhost exception). Mirrors
   the llmclient cleartext note. Verified 2026-05-22.
@@ -5221,7 +5233,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   `terminalgrid.cpp:~1525` uses the permissive decoder with no encoded-size cap
   before `fromBase64` (only the 10 MiB OSC cap backstops) — bring to the OSC 52
   strictness/size discipline. Verified 2026-05-22.
-- 📋 [ANTS-1830] **auditdialog single-quote attribute escaping.** `toHtmlEscaped`
+- ✅ [ANTS-1830] **auditdialog single-quote attribute escaping.** `toHtmlEscaped`
   doesn't escape `'`, but the QTextBrowser render path single-quotes attributes
   with escaped untrusted content (reasoning, blame author) — switch to
   double-quote delimiters across the render path. Verified 2026-05-22.

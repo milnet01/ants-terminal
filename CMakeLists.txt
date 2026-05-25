@@ -1266,7 +1266,10 @@ if(ANTS_TESTS)
                 # ANTS-1708 — fingerprint-keyed learned-FP ledger.
                 tests/features/audit_fp_ledger/test_audit_fp_ledger.cpp
                 # ANTS-1719 — native safe-list auto-fix engine.
-                tests/features/audit_low_confidence_autofix/test_audit_low_confidence_autofix.cpp)
+                tests/features/audit_low_confidence_autofix/test_audit_low_confidence_autofix.cpp
+                # ANTS-1826/1830 — AI-triage cleartext-key refusal + verdict-badge
+                # title double-quote escaping.
+                tests/features/audit_dialog_render_hardening/test_audit_dialog_render_hardening.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"

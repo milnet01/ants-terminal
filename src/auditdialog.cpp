@@ -4702,25 +4702,18 @@ void AuditDialog::handleCheckOutput(const QString &output) {
     QList<Finding> parsed = AuditEngine::parseFindings(filtered.body, check);
     QSet<QString> recent;
     if (m_recentOnly) for (const QString &p : std::as_const(m_recentFiles)) recent.insert(p);
-    for (Finding &f : parsed) {
-        // Mark suppressed instead of dropping so the SARIF export can
-        // surface them via result.suppressions[] (SARIF §3.34). All
-        // user-facing render paths (results pane, HTML export, summary)
-        // continue to filter on isSuppressed and never display them.
+    // Mark suppressed instead of dropping so the SARIF export can surface
+    // them via result.suppressions[] (SARIF §3.34). All user-facing render
+    // paths (results pane, HTML export, summary) continue to filter on
+    // isSuppressed and never display them.
+    for (Finding &f : parsed)
         f.suppressed = isSuppressed(f.dedupKey);
-        // ANTS-1708 — also honour the drift-resilient learned-FP ledger,
-        // keyed by line-independent content fingerprint.
-        if (!f.suppressed && !m_learnedFpFingerprints.isEmpty()) {
-            const QString fp = ants::auditfp::computeFingerprint(
-                f.file, f.checkId, f.message);
-            if (m_learnedFpFingerprints.contains(fp)) {
-                f.suppressed = true;
-                if (f.aiReasoning.isEmpty())
-                    f.aiReasoning = QStringLiteral(
-                        "learned false positive "
-                        "(.audit_cache/learned-fp.jsonl)");
-            }
-        }
+    // ANTS-1708 / ANTS-1820 — also honour the drift-resilient learned-FP
+    // ledger, keyed by line-independent content fingerprint. Route through
+    // the shared AuditEngine filter rather than inlining its body so the
+    // GUI and the headless audit_run path stay in lockstep.
+    AuditEngine::applyLearnedFpSuppressions(parsed, m_learnedFpFingerprints);
+    for (Finding &f : parsed) {
         if (!applyPathRules(f)) continue;       // generated files + path rules
         if (allowlisted(f)) continue;           // project-local allowlist
         if (inlineSuppressed(f)) continue;      // inline // ants-audit: disable ...
@@ -5241,9 +5234,14 @@ void AuditDialog::renderResults() {
                 if (f.aiVerdict == "NEEDS_REVIEW")   vc = "#FFA500";
                 QString verdictLabel = f.aiVerdict;
                 verdictLabel.replace('_', ' ');
+                // ANTS-1830 — double-quote the title attribute. toHtmlEscaped()
+                // escapes " but NOT ', so the untrusted aiReasoning (from the AI
+                // endpoint, reachable via prompt-injection from the audited
+                // project's own source) could break out of a single-quoted
+                // attribute. Double quotes + the existing escaping close that.
                 verdictBadge = QString(
-                    " <span style='color:%1; font-size:9px; font-weight:bold;' "
-                    "title='AI triage: %2/100 — %3'>%4</span>")
+                    " <span style=\"color:%1; font-size:9px; font-weight:bold;\" "
+                    "title=\"AI triage: %2/100 — %3\">%4</span>")
                     .arg(vc, QString::number(f.aiConfidence),
                          f.aiReasoning.left(160).toHtmlEscaped(),
                          verdictLabel);
@@ -5433,6 +5431,17 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
     }
     if (endpointUrl.scheme() != "https" && endpointUrl.scheme() != "http") {
         if (m_statusLabel) m_statusLabel->setFullText("AI triage: endpoint must be http(s)");
+        return;
+    }
+    // ANTS-1826 — never let the Bearer API key travel in cleartext to a remote
+    // host. Reuse LlmClient's plaintext-remote predicate (loopback/localhost
+    // exempt so a local dev LLM server still works) rather than re-deriving the
+    // scheme/host test here.
+    if (!apiKey.isEmpty() && LlmClient::isPlaintextRemote(endpointUrl.toString())) {
+        if (m_statusLabel)
+            m_statusLabel->setFullText(
+                "AI triage: refusing to send the API key over cleartext http "
+                "to a remote host — use https (localhost is exempt)");
         return;
     }
 

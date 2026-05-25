@@ -33,9 +33,10 @@
 
 #include "auditrunner.h"
 
-#include "auditcache.h"   // ANTS-1555
-#include "auditengine.h"  // ANTS-1576 buildVcsProvenanceBlock
-#include "secureio.h"     // setOwnerOnlyPerms — 0600 on SARIF/HTML
+#include "auditcache.h"     // ANTS-1555
+#include "auditengine.h"    // ANTS-1576 buildVcsProvenanceBlock
+#include "auditfpledger.h"  // ANTS-1820 learned-FP ledger (headless gap)
+#include "secureio.h"       // setOwnerOnlyPerms — 0600 on SARIF/HTML
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -51,6 +52,7 @@
 #include <QProcessEnvironment>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QSet>
 #include <QStandardPaths>
 #include <QString>
 #include <QTextStream>
@@ -448,12 +450,29 @@ QString allocSarifPath() {
 // AuditEngine helpers.
 struct ParsedOutput {
     int        rawCount = 0;
+    int        suppressedCount = 0;  // ANTS-1820 — learned-FP matches
     QJsonArray samples;  // first N matching lines as {file,line,message,severity}
 };
 
+// ANTS-1820 — learned-FP suppression for the headless path. The GUI's
+// `applyLearnedFpSuppressions` operates on `Finding` objects, which the v1
+// runner never materialises; this path consumes the same ledger via the
+// shared content fingerprint. Cross-path matching works for the line-based
+// tools (cppcheck/clazy/mypy/shellcheck), whose check id IS the tool name —
+// matching the GUI's `Finding::checkId`. JSON tools key on the tool's own
+// `check_id`, a different namespace, so they don't cross-match (the same v1
+// limitation under which the runner already does no per-finding filtering).
+bool isLearnedFp(const QSet<QString> &learnedFps, const QString &file,
+                 const QString &checkId, const QString &message) {
+    if (learnedFps.isEmpty()) return false;
+    return learnedFps.contains(
+        ants::auditfp::computeFingerprint(file, checkId, message));
+}
+
 ParsedOutput parseToolOutput(const QString &tool,
                              const QString &raw,
-                             int sampleCap) {
+                             int sampleCap,
+                             const QSet<QString> &learnedFps) {
     ParsedOutput out;
     if (raw.trimmed().isEmpty()) return out;
     // Quick JSON sniff: tools that emit a JSON results[] array (semgrep,
@@ -481,21 +500,14 @@ ParsedOutput parseToolOutput(const QString &tool,
             out.rawCount = arr.size();
             for (int i = 0; i < arr.size() && out.samples.size() < sampleCap; ++i) {
                 const QJsonObject e = arr.at(i).toObject();
-                QJsonObject s;
                 // Best-effort field extraction (tools vary).
+                QString fileStr;
                 if (e.contains(QStringLiteral("filename")))
-                    s["file"] = e.value(QStringLiteral("filename"));
+                    fileStr = e.value(QStringLiteral("filename")).toString();
                 else if (e.contains(QStringLiteral("path")))
-                    s["file"] = e.value(QStringLiteral("path"));
+                    fileStr = e.value(QStringLiteral("path")).toString();
                 else if (e.contains(QStringLiteral("File")))
-                    s["file"] = e.value(QStringLiteral("File"));
-                if (e.contains(QStringLiteral("line_number")))
-                    s["line"] = e.value(QStringLiteral("line_number"));
-                else if (e.contains(QStringLiteral("start"))) {
-                    const QJsonObject st =
-                        e.value(QStringLiteral("start")).toObject();
-                    s["line"] = st.value(QStringLiteral("line"));
-                }
+                    fileStr = e.value(QStringLiteral("File")).toString();
                 QString msg;
                 if (e.contains(QStringLiteral("message"))) {
                     const QJsonValue mv = e.value(QStringLiteral("message"));
@@ -505,8 +517,25 @@ ParsedOutput parseToolOutput(const QString &tool,
                 } else if (e.contains(QStringLiteral("Description"))) {
                     msg = e.value(QStringLiteral("Description")).toString();
                 }
+                const QString ruleStr =
+                    e.value(QStringLiteral("check_id")).toString();
+                // ANTS-1820 — drop learned false positives before the sample
+                // is built; rawCount keeps the tool's raw total.
+                if (isLearnedFp(learnedFps, fileStr, ruleStr, msg)) {
+                    ++out.suppressedCount;
+                    continue;
+                }
+                QJsonObject s;
+                if (!fileStr.isEmpty()) s["file"] = fileStr;
+                if (e.contains(QStringLiteral("line_number")))
+                    s["line"] = e.value(QStringLiteral("line_number"));
+                else if (e.contains(QStringLiteral("start"))) {
+                    const QJsonObject st =
+                        e.value(QStringLiteral("start")).toObject();
+                    s["line"] = st.value(QStringLiteral("line"));
+                }
                 s["message"]  = internal::capMessage(msg);
-                s["rule"]     = e.value(QStringLiteral("check_id")).toString();
+                s["rule"]     = ruleStr;
                 s["severity"] = e.value(QStringLiteral("severity")).toString();
                 out.samples.append(s);
             }
@@ -528,12 +557,21 @@ ParsedOutput parseToolOutput(const QString &tool,
     for (int i = 0; i < lines.size(); ++i) {
         const QRegularExpressionMatch m = rxFileLine.match(lines.at(i));
         if (!m.hasMatch()) continue;
-        ++located;
+        ++located;  // rawCount keeps the raw total, learned FPs included
+        const QString fileStr = m.captured(1);
+        const QString msg     = m.captured(3);
+        // ANTS-1820 — the line-based tools (cppcheck/clazy/mypy/shellcheck)
+        // key the ledger by tool name, matching the GUI's Finding::checkId,
+        // so learned FPs recorded in the dialog suppress here too.
+        if (isLearnedFp(learnedFps, fileStr, tool, msg)) {
+            ++out.suppressedCount;
+            continue;
+        }
         if (out.samples.size() >= sampleCap) continue;
         QJsonObject s;
-        s["file"]    = m.captured(1);
+        s["file"]    = fileStr;
         s["line"]    = m.captured(2).toInt();
-        s["message"] = internal::capMessage(m.captured(3));
+        s["message"] = internal::capMessage(msg);
         s["rule"]    = tool;
         s["severity"]= QStringLiteral("UNKNOWN");
         out.samples.append(s);
@@ -1007,6 +1045,17 @@ QStringList splitCommandString(const QString &cmd) {
     return splitCommandStringImpl(cmd);
 }
 
+// ANTS-1820 — test hook delegating to the anonymous-namespace parser.
+ParsedCounts parseWithSuppression(const QString &tool, const QString &raw,
+                                  int sampleCap,
+                                  const QSet<QString> &learnedFps) {
+    const ParsedOutput p =
+        parseToolOutput(tool, raw, sampleCap, learnedFps);
+    return ParsedCounts{p.rawCount,
+                        p.rawCount - p.suppressedCount,
+                        static_cast<int>(p.samples.size())};
+}
+
 }  // namespace internal
 
 RunResult runAudit(const RunRequest &req) {
@@ -1110,6 +1159,12 @@ RunResult runAudit(const RunRequest &req) {
     const QJsonObject projectConfig =
         loadProjectAuditConfig(canonProject);
 
+    // ── ANTS-1820 — load the drift-resilient learned-FP ledger once per run.
+    // The GUI dialog records FPs into `.audit_cache/learned-fp.jsonl`; without
+    // this the headless MCP/CI sweep re-surfaces every learned false positive.
+    const QSet<QString> learnedFps = ants::auditfp::fingerprintSet(
+        ants::auditfp::loadEntries(canonProject));
+
     // ── INV-10 / resolve absolute paths for the requested tool list.
     QStringList wantedTools = req.tools;
     if (wantedTools.isEmpty()) wantedTools = kKnownTools();
@@ -1206,9 +1261,11 @@ RunResult runAudit(const RunRequest &req) {
         tr.elapsedMs  = elapsedMs;
         rawByTool[tool] = rawOutput;
         const ParsedOutput parsed =
-            parseToolOutput(tool, rawOutput, kSamplesPerToolDefault);
+            parseToolOutput(tool, rawOutput, kSamplesPerToolDefault, learnedFps);
         tr.rawCount         = parsed.rawCount;
-        tr.afterFilterCount = parsed.rawCount;  // v1: no filter pipeline yet
+        // ANTS-1820 — the only filter the v1 runner applies is the learned-FP
+        // ledger; afterFilterCount drops the suppressed total.
+        tr.afterFilterCount = parsed.rawCount - parsed.suppressedCount;
         tr.samples          = parsed.samples;
         r.byTool[tool]      = tr;
         --pending;

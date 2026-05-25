@@ -18,6 +18,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QPair>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -105,6 +106,21 @@ void trimSamplesCascade(QHash<QString, ToolResult> &byTool,
 
 // Cap message text to 256 B (UTF-8); appends "…" when truncated.
 QString capMessage(const QString &msg);
+
+// ANTS-1820 — test hook for the headless learned-FP suppression path.
+// Parses raw tool output applying the fingerprint ledger and returns the
+// resulting counts, so the feature test can assert suppression without
+// spawning a real tool. rawCount is the tool's raw total (learned FPs
+// included); afterFilterCount drops the suppressed total; sampleCount is the
+// number of (non-suppressed) samples retained.
+struct ParsedCounts {
+    int rawCount = 0;
+    int afterFilterCount = 0;
+    int sampleCount = 0;
+};
+ParsedCounts parseWithSuppression(const QString &tool, const QString &raw,
+                                  int sampleCap,
+                                  const QSet<QString> &learnedFps);
 
 // ANTS-1446 — compile_commands.json include-path validation.
 //

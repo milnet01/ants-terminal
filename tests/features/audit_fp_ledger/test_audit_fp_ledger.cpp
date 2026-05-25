@@ -5,6 +5,7 @@
 
 #include "auditengine.h"
 #include "auditfpledger.h"
+#include "auditrunner.h"  // ANTS-1820 — headless suppression hook
 
 #include <gtest/gtest.h>
 
@@ -113,4 +114,37 @@ TEST(AuditFpLedger, FilterMarksMatchingSuppressed) {
     EXPECT_FALSE(findings[1].suppressed) << "non-matching finding untouched";
     EXPECT_FALSE(findings[0].aiReasoning.isEmpty())
         << "a learned-FP note must be recorded";
+}
+
+// INV-7 — the headless audit_run runner consumes the same ledger. A learned
+// FP recorded via the GUI (keyed on the full-line Finding::message) suppresses
+// the matching finding the runner sees in raw tool output (stripped message).
+TEST(AuditFpLedger, HeadlessRunnerSuppressesLearnedFp) {
+    QSet<QString> learned;
+    learned.insert(ants::auditfp::computeFingerprint(
+        "src/foo.cpp", "cppcheck",
+        "src/foo.cpp:42:7: warning: bogus thing [-Wunused]"));
+
+    // cppcheck is line-based; the runner re-keys by (file, tool-name, message).
+    const QString raw =
+        "src/foo.cpp:42:7: warning: bogus thing [-Wunused]\n"
+        "src/bar.cpp:9:1: warning: a real finding\n";
+
+    const auto counts = AuditRunner::internal::parseWithSuppression(
+        "cppcheck", raw, 10, learned);
+    EXPECT_EQ(counts.rawCount, 2) << "rawCount keeps the tool's raw total";
+    EXPECT_EQ(counts.afterFilterCount, 1) << "the learned FP is filtered out";
+    EXPECT_EQ(counts.sampleCount, 1) << "a suppressed finding yields no sample";
+}
+
+// INV-7 — an empty ledger suppresses nothing.
+TEST(AuditFpLedger, HeadlessRunnerEmptyLedgerNoSuppression) {
+    const QString raw =
+        "src/foo.cpp:42:7: warning: bogus thing [-Wunused]\n"
+        "src/bar.cpp:9:1: warning: a real finding\n";
+    const auto counts = AuditRunner::internal::parseWithSuppression(
+        "cppcheck", raw, 10, {});
+    EXPECT_EQ(counts.rawCount, 2);
+    EXPECT_EQ(counts.afterFilterCount, 2);
+    EXPECT_EQ(counts.sampleCount, 2);
 }
