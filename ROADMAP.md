@@ -11784,7 +11784,26 @@ template / mutate this state atomically" → movable. If it's
   with its own design pass; don't bundle into a token-saver pull. The
   honest next step is to ship `.audit_cache/` infrastructure first
   (separate roadmap entry — TODO), then `since-last-run` on top.
-  
+
+  **Update (2026-05-25):** the deferral note above is now stale — both
+  prerequisites it named have since shipped. ANTS-1555 added the
+  per-project `.audit_cache/` layout (`src/auditcache.cpp`) with an
+  `index.json` manifest whose last-run record stores the run `commit`
+  (auditrunner.cpp:1447) + `iso_timestamp` + the prior SARIF basename;
+  ANTS-1512 added scoped paths (`req.paths`, "narrow means narrow",
+  argv-sanitised) so a narrowed file list already flows to every tool.
+  So `since-last-run` no longer needs new infra: read the prior run's
+  `commit` from the manifest, compute `git diff --name-only
+  <commit>..HEAD ∪ git status --porcelain`, feed that set through the
+  existing `req.paths` mechanism. The genuinely net-new work is (a)
+  merging fresh findings with the prior SARIF so old findings on
+  untouched files carry forward, (b) the `delta:{added, removed,
+  carried_forward}` envelope, (c) the stale-cache fallback
+  (`scope_demoted:"full"` when the prior HEAD is gone from history).
+  Smaller than the original ~200-400 line estimate, but still wants a
+  spec-first pass + cold-eyes before code (the SARIF carry-forward merge
+  semantics are the part to nail down).
+
   Kind: enhancement.
   Lanes: mcp-token-reduction, mcp-audit-run.
   Source: in-session-2026-05-18 (token-saving brainstorm).
