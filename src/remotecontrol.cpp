@@ -2577,11 +2577,15 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
         op == QStringLiteral("annotate")) {
         return cmdRoadmapLogFlip(req);
     }
+    // ANTS-1690 — batch flip: N bullets, one read + one commit.
+    if (op == QStringLiteral("flip_batch")) {
+        return cmdRoadmapLogFlipBatch(req);
+    }
     if (op != QStringLiteral("append")) {
         return rlErr(QStringLiteral("bad_op_combo"),
             QStringLiteral("roadmap_log: unknown op \"%1\" — expected "
-                           "\"append\" (default), \"flip\", or "
-                           "\"annotate\"").arg(op));
+                           "\"append\" (default), \"flip\", \"flip_batch\", "
+                           "or \"annotate\"").arg(op));
     }
 
     if (!m_main) {
@@ -2623,6 +2627,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendForTest(
 QJsonDocument RemoteControl::cmdRoadmapLogFlipForTest(
         const QJsonObject &req) {
     return cmdRoadmapLogFlip(req);
+}
+
+// ANTS-1690 — test seam for the batch-flip path (m_main-independent).
+QJsonDocument RemoteControl::cmdRoadmapLogFlipBatchForTest(
+        const QJsonObject &req) {
+    return cmdRoadmapLogFlipBatch(req);
 }
 
 // ANTS-1548 — changelog_log. Renders one Keep-a-Changelog bullet and
@@ -3733,6 +3743,420 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         for (const QString &n : noteScrubbedNames) dropped.append(n);
         out["note_scrubbed_params"] = dropped;
     }
+    return QJsonDocument(out);
+}
+
+// ANTS-1690 — roadmap_log op:"flip_batch". Flip N bullets to one
+// to_status in a single read + single QSaveFile commit, so a bundle
+// close (cold-eyes / indie-review / release sweep) doesn't pay N
+// round-trips or race the file watcher across N writes. Each locator
+// is {id|anchor|headline|line_range} + optional per-locator `note` and
+// `no_anchor` opt-out. Partial success: an unresolvable locator lands
+// in skipped[] and the rest still apply. Reuses the same walk/apply
+// helpers as the single-flip path (cmdRoadmapLogFlip).
+//
+// Index-stability: status flips + anchor injection are in-place (no
+// line-count change); only appendBodyNote shifts lines. So targets are
+// resolved once (one walk) and applied in DESCENDING firstLine order —
+// a note inserted below a target only shifts already-applied (lower)
+// targets, leaving every not-yet-applied target's captured line valid.
+QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
+    auto rlErr = [](const QString &code, const QString &message) {
+        QJsonObject env;
+        env["ok"]    = false;
+        env["code"]  = code;
+        env["error"] = message;
+        return QJsonDocument(env);
+    };
+
+    // 1. caller_cwd + to_status (required; no annotate mode here).
+    const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
+    if (callerRaw.isEmpty())
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: caller_cwd is required"));
+    const QString toStatus = req.value(QStringLiteral("to_status")).toString();
+    QString targetEmoji;
+    if      (toStatus == QStringLiteral("planned")     ||
+             toStatus == QStringLiteral("📋")) targetEmoji = QStringLiteral("📋");
+    else if (toStatus == QStringLiteral("in-progress") ||
+             toStatus == QStringLiteral("🚧")) targetEmoji = QStringLiteral("🚧");
+    else if (toStatus == QStringLiteral("shipped")     ||
+             toStatus == QStringLiteral("✅")) targetEmoji = QStringLiteral("✅");
+    else if (toStatus == QStringLiteral("considered")  ||
+             toStatus == QStringLiteral("💭")) targetEmoji = QStringLiteral("💭");
+    else if (toStatus.isEmpty())
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: to_status is required under "
+                           "op:\"flip_batch\""));
+    else
+        return rlErr(QStringLiteral("bad_status"),
+            QStringLiteral("roadmap_log: unknown to_status \"%1\" — expected "
+                           "planned / in-progress / shipped / considered")
+                .arg(toStatus));
+
+    // 2. locators array (required, non-empty).
+    if (!req.value(QStringLiteral("locators")).isArray())
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: op:\"flip_batch\" needs a `locators` "
+                           "array of {id|anchor|headline|line_range} objects"));
+    const QJsonArray locators = req.value(QStringLiteral("locators")).toArray();
+    if (locators.isEmpty())
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: `locators` is empty"));
+
+    // 3. resolve caller_cwd → ROADMAP.md.
+    const QString callerCanonical = QFileInfo(callerRaw).canonicalFilePath();
+    if (callerCanonical.isEmpty())
+        return rlErr(QStringLiteral("no_roadmap"),
+            QStringLiteral("roadmap_log: caller_cwd \"%1\" does not "
+                           "canonicalise to an existing directory")
+                .arg(callerRaw));
+    const QString roadmapPath = findRoadmapUnder(callerCanonical);
+    if (roadmapPath.isEmpty())
+        return rlErr(QStringLiteral("no_roadmap"),
+            QStringLiteral("roadmap_log: no ROADMAP.md under \"%1\"")
+                .arg(callerCanonical));
+
+    // 4. read once.
+    QFile rf(roadmapPath);
+    if (!rf.open(QIODevice::ReadOnly | QIODevice::Text))
+        return rlErr(QStringLiteral("roadmap_read_failed"),
+            QStringLiteral("roadmap_log: could not read \"%1\"").arg(roadmapPath));
+    const QString markdown = QString::fromUtf8(rf.readAll());
+    rf.close();
+    const qint64 markdownBytes = markdown.toUtf8().size();
+    QStringList lines = markdown.split(QChar('\n'));
+
+    // 5. format detect (GFM first, then ants-v1 — mirrors single-flip).
+    const bool isGfm = !walkGfmBullets(lines).isEmpty();
+    bool isV1 = false;
+    if (!isGfm && markdownBytes > kRoadmapMinParseableSize)
+        isV1 = !walkAntsV1Bullets(lines).isEmpty();
+    if (!isGfm && !isV1)
+        return rlErr(QStringLiteral("unrecognised_format"),
+            QStringLiteral("roadmap_log: \"%1\" parsed zero bullets (neither "
+                           "GFM-task-list nor ants-v1) — cannot flip_batch")
+                .arg(roadmapPath));
+
+    auto headlineHash = [](const QString &h) {
+        return rcFnv1a64(rcNormaliseHeadline(h));
+    };
+
+    // 6. Phase 1 — resolve every locator against ONE walk. A target
+    //    carries everything needed to apply later: line indices, note,
+    //    and (GFM) whether anchor injection is wanted.
+    struct Target {
+        int     firstLine     = -1;
+        int     headlineLine  = -1;  // GFM note/anchor target; == firstLine for v1
+        QString fromStatus;
+        QString id;                  // boldId (GFM) or [PREFIX-NNNN] id (v1)
+        QString anchor;              // existing anchor, if any (GFM)
+        QString note;
+        QStringList noteScrubbed;
+        bool    wantAnchor    = false;  // GFM: inject because no id & no anchor
+        QString anchorToInject;         // filled in phase 1.5
+        int     locatorIndex  = -1;
+    };
+    QVector<Target> targets;
+    QJsonArray skipped;
+    QSet<int> claimedFirstLines;  // dedup: a bullet flips at most once
+
+    const QVector<GfmBullet>    gbs = isGfm ? walkGfmBullets(lines)
+                                            : QVector<GfmBullet>();
+    const QVector<AntsV1Bullet> vbs = isV1  ? walkAntsV1Bullets(lines)
+                                            : QVector<AntsV1Bullet>();
+
+    auto skip = [&](int idx, const QString &code, const QString &err) {
+        QJsonObject s;
+        s["locator_index"] = idx;
+        s["code"]          = code;
+        s["error"]         = err;
+        skipped.append(s);
+    };
+
+    for (int li = 0; li < locators.size(); ++li) {
+        const QJsonObject loc = locators.at(li).toObject();
+        const QString locId       = loc.value(QStringLiteral("id")).toString();
+        const QString locAnchor   = loc.value(QStringLiteral("anchor")).toString();
+        const QString locHeadline = loc.value(QStringLiteral("headline")).toString();
+        const QJsonArray locRange = loc.value(QStringLiteral("line_range")).toArray();
+        const bool noAnchor       = loc.value(QStringLiteral("no_anchor")).toBool(false);
+        QString note              = loc.value(QStringLiteral("note")).toString();
+        QStringList noteScrubbed;
+        if (!note.isEmpty()) rcScrubLeakedToolXml(note, noteScrubbed);
+
+        const bool hasRange = (locRange.size() == 2);
+        if (locId.isEmpty() && locAnchor.isEmpty() &&
+            locHeadline.isEmpty() && !hasRange) {
+            skip(li, QStringLiteral("missing_field"),
+                 QStringLiteral("locator needs one of id / anchor / "
+                                "headline / line_range"));
+            continue;
+        }
+
+        // Collect candidate firstLines for this locator (precedence
+        // id > anchor > headline > line_range; range may match many).
+        QVector<int> candFirstLines;
+        bool isRange = false;
+        if (isGfm) {
+            if (!locId.isEmpty()) {
+                for (const auto &b : gbs)
+                    if (b.boldId == locId) candFirstLines.append(b.firstLine);
+            } else if (!locAnchor.isEmpty()) {
+                for (const auto &b : gbs)
+                    if (b.anchor == locAnchor) candFirstLines.append(b.firstLine);
+            } else if (!locHeadline.isEmpty()) {
+                const quint64 need = headlineHash(locHeadline);
+                for (const auto &b : gbs)
+                    if (headlineHash(b.headline) == need)
+                        candFirstLines.append(b.firstLine);
+            } else {
+                isRange = true;
+                const int a = locRange.at(0).toInt(), z = locRange.at(1).toInt();
+                for (const auto &b : gbs)
+                    if (b.firstLine + 1 >= a && b.firstLine + 1 <= z)
+                        candFirstLines.append(b.firstLine);
+            }
+        } else {  // ants-v1
+            if (!locAnchor.isEmpty()) {
+                skip(li, QStringLiteral("bad_op_combo"),
+                     QStringLiteral("anchor locator unsupported on ants-v1 "
+                                    "— use id, headline, or line_range"));
+                continue;
+            }
+            if (!locId.isEmpty()) {
+                for (const auto &b : vbs)
+                    if (b.id == locId) candFirstLines.append(b.firstLine);
+            } else if (!locHeadline.isEmpty()) {
+                const quint64 need = headlineHash(locHeadline);
+                for (const auto &b : vbs)
+                    if (headlineHash(b.headline) == need)
+                        candFirstLines.append(b.firstLine);
+            } else {
+                isRange = true;
+                const int a = locRange.at(0).toInt(), z = locRange.at(1).toInt();
+                for (const auto &b : vbs)
+                    if (b.firstLine + 1 >= a && b.firstLine + 1 <= z)
+                        candFirstLines.append(b.firstLine);
+            }
+        }
+
+        if (candFirstLines.isEmpty()) {
+            skip(li, QStringLiteral("bullet_not_found"),
+                 QStringLiteral("locator matched zero bullets"));
+            continue;
+        }
+        if (!isRange && candFirstLines.size() > 1) {
+            skip(li, QStringLiteral("bullet_ambiguous"),
+                 QStringLiteral("locator matched %1 bullets — narrow with id")
+                     .arg(candFirstLines.size()));
+            continue;
+        }
+
+        // Materialise a Target per matched bullet (dedup on firstLine).
+        for (const int fl : candFirstLines) {
+            if (claimedFirstLines.contains(fl)) continue;
+            Target t;
+            t.firstLine    = fl;
+            t.note         = note;
+            t.noteScrubbed = noteScrubbed;
+            t.locatorIndex = li;
+            if (isGfm) {
+                const auto it = std::find_if(gbs.begin(), gbs.end(),
+                    [fl](const GfmBullet &b){ return b.firstLine == fl; });
+                if (it->insideFenced) {
+                    skip(li, QStringLiteral("anchor_unsafe_context"),
+                         QStringLiteral("bullet at line %1 is inside a fenced "
+                                        "code block — refusing").arg(fl + 1));
+                    continue;
+                }
+                t.headlineLine = it->headlineLine;
+                t.fromStatus   = it->status;
+                t.id           = it->boldId;
+                t.anchor       = it->anchor;
+                t.wantAnchor   = !noAnchor && it->boldId.isEmpty() &&
+                                 it->anchor.isEmpty();
+            } else {
+                const auto it = std::find_if(vbs.begin(), vbs.end(),
+                    [fl](const AntsV1Bullet &b){ return b.firstLine == fl; });
+                if (it->insideFenced) {
+                    skip(li, QStringLiteral("anchor_unsafe_context"),
+                         QStringLiteral("bullet at line %1 is inside a fenced "
+                                        "code block — refusing").arg(fl + 1));
+                    continue;
+                }
+                t.headlineLine = fl;
+                t.fromStatus   = it->status;
+                t.id           = it->id;
+            }
+            claimedFirstLines.insert(fl);
+            targets.append(t);
+        }
+    }
+
+    if (targets.isEmpty()) {
+        QJsonObject out;
+        out["ok"]            = true;
+        out["op"]            = QStringLiteral("flip_batch");
+        out["format"]        = isGfm ? QStringLiteral("gfm")
+                                     : QStringLiteral("ants-v1");
+        out["file"]          = QStringLiteral("ROADMAP.md");
+        out["flipped"]       = QJsonArray();
+        out["flipped_count"] = 0;
+        out["skipped"]       = skipped;
+        out["skipped_count"] = skipped.size();
+        return QJsonDocument(out);
+    }
+
+    // 6.5 Anchor assignment (GFM injections) — deterministic ascending
+    //     firstLine order so counter consumption is stable.
+    qint64 newCounter = -1, counterStart = -1;
+    QString counterPath;
+    {
+        QVector<Target*> injectTargets;
+        for (Target &t : targets) if (t.wantAnchor) injectTargets.append(&t);
+        if (!injectTargets.isEmpty()) {
+            std::sort(injectTargets.begin(), injectTargets.end(),
+                [](Target *a, Target *b){ return a->firstLine < b->firstLine; });
+            QString prefix = req.value(QStringLiteral("prefix_hint")).toString();
+            if (prefix.isEmpty()) {
+                prefix = QFileInfo(callerCanonical).fileName().left(4).toUpper();
+                if (prefix.isEmpty()) prefix = QStringLiteral("ROOT");
+            } else {
+                static const QRegularExpression rxPrefix(
+                    QStringLiteral("^[A-Z][A-Z0-9_-]{0,15}$"));
+                if (!rxPrefix.match(prefix).hasMatch())
+                    return rlErr(QStringLiteral("bad_op_combo"),
+                        QStringLiteral("roadmap_log: prefix_hint \"%1\" does "
+                                       "not match ^[A-Z][A-Z0-9_-]{0,15}$")
+                            .arg(prefix));
+            }
+            counterPath = callerCanonical + QLatin1Char('/') +
+                          QStringLiteral(".roadmap-counter");
+            qint64 counter = 0;
+            if (QFile::exists(counterPath)) {
+                QFile cf(counterPath);
+                if (!cf.open(QIODevice::ReadOnly | QIODevice::Text))
+                    return rlErr(QStringLiteral("counter_read_failed"),
+                        QStringLiteral("roadmap_log: could not read "
+                                       ".roadmap-counter"));
+                const QByteArray raw = cf.readAll().trimmed();
+                if (!raw.isEmpty()) {
+                    bool ok = false;
+                    counter = QString::fromUtf8(raw).toLongLong(&ok);
+                    if (!ok)
+                        return rlErr(QStringLiteral("counter_read_failed"),
+                            QStringLiteral("roadmap_log: .roadmap-counter is "
+                                           "not a number"));
+                }
+            }
+            counterStart = counter;
+            for (Target *t : injectTargets) {
+                ++counter;
+                t->anchorToInject = prefix.toLower() + QLatin1Char('-') +
+                    QStringLiteral("%1").arg(counter, 4, 10, QLatin1Char('0'));
+            }
+            newCounter = counter;
+        }
+    }
+
+    // 7. Phase 2 — apply DESCENDING firstLine so note inserts only shift
+    //    already-applied (lower) targets. Build result in input order.
+    QVector<Target> applyOrder = targets;
+    std::sort(applyOrder.begin(), applyOrder.end(),
+        [](const Target &a, const Target &b){ return a.firstLine > b.firstLine; });
+    QHash<int, QJsonObject> resultByFirstLine;
+    for (const Target &t : applyOrder) {
+        // Locate the live bullet at t.firstLine and apply.
+        if (isGfm) {
+            const QVector<GfmBullet> live = walkGfmBullets(lines);
+            const auto it = std::find_if(live.begin(), live.end(),
+                [&t](const GfmBullet &b){ return b.firstLine == t.firstLine; });
+            if (it == live.end()) continue;  // should not happen
+            applyGfmFlip(lines, *it, targetEmoji, t.anchorToInject);
+        } else {
+            const QVector<AntsV1Bullet> live = walkAntsV1Bullets(lines);
+            const auto it = std::find_if(live.begin(), live.end(),
+                [&t](const AntsV1Bullet &b){ return b.firstLine == t.firstLine; });
+            if (it == live.end()) continue;
+            applyAntsV1Flip(lines, *it, targetEmoji);
+        }
+        int noteLine = -1;
+        if (!t.note.isEmpty())
+            noteLine = appendBodyNote(lines, t.headlineLine, t.note);
+
+        QJsonObject r;
+        r["line"]        = t.firstLine + 1;
+        r["from_status"] = t.fromStatus;
+        r["to_status"]   = targetEmoji;
+        if (!t.id.isEmpty())     r["id"]     = t.id;
+        if (!t.anchor.isEmpty()) r["anchor"] = t.anchor;
+        if (!t.anchorToInject.isEmpty()) {
+            r["anchor_injected"] = true;
+            r["anchor"]          = t.anchorToInject;
+        }
+        if (!t.note.isEmpty()) {
+            r["note_appended"] = true;
+            r["note_line"]     = noteLine + 1;
+        }
+        if (!t.noteScrubbed.isEmpty()) {
+            QJsonArray dropped;
+            for (const QString &n : t.noteScrubbed) dropped.append(n);
+            r["note_scrubbed_params"] = dropped;
+        }
+        resultByFirstLine.insert(t.firstLine, r);
+    }
+
+    // 8. write once.
+    const QString updated = lines.join(QChar('\n'));
+    QSaveFile rw(roadmapPath);
+    if (!rw.open(QIODevice::WriteOnly | QIODevice::Text))
+        return rlErr(QStringLiteral("roadmap_write_failed"),
+            QStringLiteral("roadmap_log: could not open \"%1\" for writing")
+                .arg(roadmapPath));
+    const QByteArray utf8 = updated.toUtf8();
+    if (rw.write(utf8) != utf8.size() || !rw.commit())
+        return rlErr(QStringLiteral("roadmap_write_failed"),
+            QStringLiteral("roadmap_log: atomic write of \"%1\" failed")
+                .arg(roadmapPath));
+
+    // 9. counter once, only if an anchor was injected.
+    if (newCounter >= 0 && newCounter != counterStart) {
+        QSaveFile cw(counterPath);
+        if (!cw.open(QIODevice::WriteOnly | QIODevice::Text))
+            return rlErr(QStringLiteral("counter_write_failed"),
+                QStringLiteral("roadmap_log: could not open .roadmap-counter "
+                               "for writing"));
+        const QByteArray cv =
+            (QString::number(newCounter) + QChar('\n')).toUtf8();
+        if (cw.write(cv) != cv.size() || !cw.commit())
+            return rlErr(QStringLiteral("counter_write_failed"),
+                QStringLiteral("roadmap_log: atomic write of .roadmap-counter "
+                               "failed"));
+    }
+
+    // 10. envelope — `flipped` in firstLine-ascending order.
+    QList<int> orderedFirstLines = claimedFirstLines.values();
+    std::sort(orderedFirstLines.begin(), orderedFirstLines.end());
+    QJsonArray flipped;
+    for (const int fl : orderedFirstLines)
+        if (resultByFirstLine.contains(fl))
+            flipped.append(resultByFirstLine.value(fl));
+
+    QJsonObject out;
+    out["ok"]            = true;
+    out["op"]            = QStringLiteral("flip_batch");
+    out["format"]        = isGfm ? QStringLiteral("gfm")
+                                 : QStringLiteral("ants-v1");
+    out["file"]          = QStringLiteral("ROADMAP.md");
+    out["to_status"]     = targetEmoji;
+    out["flipped"]       = flipped;
+    out["flipped_count"] = flipped.size();
+    out["skipped"]       = skipped;
+    out["skipped_count"] = skipped.size();
+    out["bytes_written"] = static_cast<qint64>(utf8.size());
+    if (newCounter >= 0 && newCounter != counterStart)
+        out["counter"] = newCounter;
     return QJsonDocument(out);
 }
 

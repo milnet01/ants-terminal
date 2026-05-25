@@ -14113,7 +14113,7 @@ on roadmap); Music_Production + RetroArch surfaced four small
 follow-ups below. Items ordered by severity within this
 subsection.
 
-- 📋 [ANTS-1690] **`roadmap_log op:flip_batch` for closing N
+- ✅ [ANTS-1690] **`roadmap_log op:flip_batch` for closing N
   bullets atomically.** Fold-in bundles routinely close 5-15
   bullets in lockstep (cold-eyes / indie-review / test-audit
   sweeps). Per-bullet `op:flip` calls force N round-trips; the
@@ -14143,6 +14143,7 @@ subsection.
   Kind: enhance.
   Source: cross-session-report-2026-05-19 (RetroArch CC session
   bundle 71); refined 2026-05-20 (bundles 73-75).
+  Shipped 2026-05-25. roadmap_log op:"flip_batch" — flips N bullets to one to_status in a single read + single QSaveFile commit. Locators: id|anchor|headline|line_range, each with optional per-locator note + no_anchor opt-out; partial success via skipped[]. Applies in descending line order so per-locator note inserts never shift not-yet-applied targets (index stability). GFM anchor injection consumes .roadmap-counter exactly once across the batch. remotecontrol.cpp cmdRoadmapLogFlipBatch + 8 behavioural tests (tests/features/roadmap_log_flip_batch). The flip_batch annotate suffix the report asked for is the per-locator `note`.
 
 - ✅ [ANTS-1688] **`roadmap_query mode:"section_index"` payload
   shrink for legacy-format roadmaps with many duplicate-ID

@@ -607,6 +607,10 @@ public:
     // Flip is m_main-independent. See
     // tests/features/roadmap_log_annotate/spec.md.
     QJsonDocument cmdRoadmapLogFlipForTest(const QJsonObject &req);
+    // ANTS-1690 — drive the batch-flip path against a synthetic
+    // caller_cwd without a MainWindow. See
+    // tests/features/roadmap_log_flip_batch/spec.md.
+    QJsonDocument cmdRoadmapLogFlipBatchForTest(const QJsonObject &req);
 
 private slots:
     void onNewConnection();
@@ -617,6 +621,10 @@ private:
     // Dispatched from cmdRoadmapLog when req["op"] == "flip". See
     // docs/specs/ANTS-1428.md § Tier 2.
     QJsonDocument cmdRoadmapLogFlip(const QJsonObject &req);
+    // ANTS-1690 — batch flip: flip N bullets to one to_status in a
+    // single read + single QSaveFile commit. Dispatched from
+    // cmdRoadmapLog when req["op"] == "flip_batch".
+    QJsonDocument cmdRoadmapLogFlipBatch(const QJsonObject &req);
     // ANTS-1433 — append path, split out of cmdRoadmapLog so the
     // mcp_roadmap_log_atomicity test can drive it without the m_main
     // guard. cmdRoadmapLog keeps op-dispatch + the m_main guard, then

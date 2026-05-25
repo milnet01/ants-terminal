@@ -1080,6 +1080,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_roadmap_log_atomicity/test_mcp_roadmap_log_atomicity.cpp
                 # ANTS-1717/1793 roadmap_log note append (annotate + flip-note).
                 tests/features/roadmap_log_annotate/test_roadmap_log_annotate.cpp
+                # ANTS-1690 roadmap_log op:flip_batch (N bullets, one commit).
+                tests/features/roadmap_log_flip_batch/test_roadmap_log_flip_batch.cpp
                 # ANTS-1548 changelog_log token-frugal CHANGELOG writer.
                 tests/features/changelog_log_writer/test_changelog_log_writer.cpp
                 # ANTS-1426 parseBullets blank-line continuation.

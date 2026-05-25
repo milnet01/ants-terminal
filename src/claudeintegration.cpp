@@ -5637,6 +5637,7 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonArray opEnum;
                     opEnum.append("append");
                     opEnum.append("flip");
+                    opEnum.append("flip_batch");
                     opEnum.append("annotate");
                     opProp["enum"] = opEnum;
                     opProp["description"] = QStringLiteral(
@@ -5645,7 +5646,16 @@ void ClaudeIntegration::onMcpConnection() {
                         "(ANTS-1428; works on GFM-task-list and "
                         "Ants-v1 emoji formats — ANTS-1441) and accepts "
                         "an optional `note` to append a resolution line "
-                        "in the same call (ANTS-1793). \"annotate\" "
+                        "in the same call (ANTS-1793). \"flip_batch\" "
+                        "(ANTS-1690) flips N bullets to one `to_status` "
+                        "in a single read + single atomic commit — pass "
+                        "`locators[]` (each {id|anchor|headline|"
+                        "line_range} + optional per-locator `note` and "
+                        "`no_anchor`); an unresolvable locator lands in "
+                        "the response `skipped[]` while the rest apply. "
+                        "Use it to close a whole bundle without N "
+                        "round-trips or racing the file watcher. "
+                        "\"annotate\" "
                         "(ANTS-1717) appends a `note` to a located "
                         "bullet WITHOUT changing its status — for "
                         "recording partial progress on a still-open "
@@ -5700,9 +5710,80 @@ void ClaudeIntegration::onMcpConnection() {
                         "call). Scrubbed of leaked tool-call XML like "
                         "op:\"append\"'s body; pre-wrap to ~70 columns.");
 
+                    // ANTS-1690 — flip_batch locators array. Each item
+                    // carries one locator (id|anchor|headline|line_range)
+                    // plus optional per-locator note + no_anchor opt-out.
+                    QJsonObject locItem;
+                    locItem["type"] = "object";
+                    QJsonObject locItemProps;
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Bold-ID / [PREFIX-NNNN] locator for this bullet.");
+                        locItemProps["id"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Caret-anchor locator (GFM only).");
+                        locItemProps["anchor"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Headline locator (hash-matched, like op:\"flip\").");
+                        locItemProps["headline"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "array";
+                        QJsonObject ip; ip["type"] = "integer";
+                        p["items"] = ip;
+                        p["minItems"] = 2;
+                        p["maxItems"] = 2;
+                        p["description"] = QStringLiteral(
+                            "[start,end] 1-based line range; flips every "
+                            "bullet whose line falls inside it.");
+                        locItemProps["line_range"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["maxLength"] = 4000;
+                        p["description"] = QStringLiteral(
+                            "Optional per-locator resolution note appended "
+                            "to this bullet's body (scrubbed like a flip "
+                            "note). Lets each bundle bullet carry its own "
+                            "closure line.");
+                        locItemProps["note"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "boolean";
+                        p["description"] = QStringLiteral(
+                            "If true, do NOT inject a caret anchor on a GFM "
+                            "bullet that lacks an id/anchor (keeps a "
+                            "narrator-format section anchor-free).");
+                        locItemProps["no_anchor"] = p;
+                    }
+                    locItem["properties"] = locItemProps;
+                    QJsonObject locatorsProp;
+                    locatorsProp["type"]  = "array";
+                    locatorsProp["items"] = locItem;
+                    locatorsProp["description"] = QStringLiteral(
+                        "Required under op:\"flip_batch\": the bullets to "
+                        "flip to `to_status`. Each is one locator "
+                        "(id|anchor|headline|line_range) + optional `note` "
+                        "and `no_anchor`. Single read + single atomic "
+                        "commit across all of them.");
+
                     QJsonObject props;
                     props["caller_cwd"]  = callerProp;
                     props["op"]          = opProp;
+                    props["locators"]    = locatorsProp;
                     props["section"]     = sectionProp;
                     props["status"]      = statusProp;
                     props["to_status"]   = toStatusProp;
