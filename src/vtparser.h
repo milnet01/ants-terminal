@@ -47,6 +47,11 @@ struct VtAction {
     // (OSC 52 base64 clipboard, OSC 8 hyperlink URI) MUST refuse a truncated
     // payload rather than decode a corrupt prefix. ANTS-1663.
     bool truncated = false;
+    // True when a CSI's parameter list hit the 32-param DoS cap and one or
+    // more params were dropped. Parallels `truncated` for OSC/DCS/APC strings:
+    // a consumer that would otherwise apply a partial/garbage param chain (a
+    // state the stream never specified) can detect + refuse it. ANTS-1827.
+    bool paramsTruncated = false;
 };
 
 // VT100/xterm escape sequence parser — state machine based on
@@ -104,6 +109,9 @@ private:
     bool m_stringTruncated = false; // set when the active OSC/DCS/APC payload
                                     // overflowed its cap; surfaced on the End
                                     // action's `truncated` field. ANTS-1663.
+    bool m_paramsTruncated = false; // set when the active CSI dropped a param
+                                    // at the 32-param cap; surfaced on the
+                                    // CsiDispatch `paramsTruncated`. ANTS-1827.
 
     // UTF-8 decoder state
     uint32_t m_utf8Accum = 0;

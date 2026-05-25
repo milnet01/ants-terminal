@@ -501,6 +501,14 @@ void TerminalGrid::handleExecute(char ch) {
 
 void TerminalGrid::handleCsi(const VtAction &a) {
     m_wrapNext = false;
+    // ANTS-1827 — a CSI whose params overflowed the 32-param cap is
+    // pathological (no legitimate sequence approaches it); applying the
+    // partial chain would set a state the stream never specified. Refuse
+    // it, mirroring handleOsc()'s truncated-payload refusal.
+    if (a.paramsTruncated) {
+        DBGLOG("CSI '%c' dropped: param list exceeded 32-param cap", a.finalChar);
+        return;
+    }
     const auto &p = a.params;
     auto param = [&](int idx, int def = 1) -> int {
         return (idx < static_cast<int>(p.size()) && p[idx] > 0) ? p[idx] : def;
@@ -1522,7 +1530,18 @@ void TerminalGrid::handleOscImage(const std::string &payload) {
     // Check inline=1
     if (params.find("inline=1") == std::string::npos) return;
 
-    QByteArray decoded = QByteArray::fromBase64(QByteArray::fromRawData(b64data.data(), b64data.size()));
+    // ANTS-1829 — bound the base64 BEFORE decoding and strict-decode, matching
+    // the OSC 52 / SetUserVar discipline. The 10 MiB OSC payload cap is the
+    // only other backstop; an explicit local ceiling keeps this path bounded
+    // even if that changes, and AbortOnBase64DecodingErrors rejects a corrupt
+    // payload outright rather than feeding a garbage prefix to the image loader.
+    constexpr size_t kMaxInlineImageB64Bytes = 12 * 1024 * 1024;  // ~9 MiB decoded
+    if (b64data.size() > kMaxInlineImageB64Bytes) return;
+    auto decRes = QByteArray::fromBase64Encoding(
+        QByteArray::fromRawData(b64data.data(), static_cast<int>(b64data.size())),
+        QByteArray::Base64Encoding | QByteArray::AbortOnBase64DecodingErrors);
+    if (decRes.decodingStatus != QByteArray::Base64DecodingStatus::Ok) return;
+    QByteArray decoded = decRes.decoded;
     // Peek at the declared image dimensions BEFORE committing to a full
     // decode. A "compression bomb" PNG can advertise 100k×100k in its
     // header while the compressed payload is <1 KB — QImage::loadFromData
@@ -2356,6 +2375,11 @@ void TerminalGrid::writeInlineError(const QString &text) {
 void TerminalGrid::recomputeImageBudget() {
     size_t total = 0;
     for (const auto &img : m_inlineImages) total += imageByteCost(img.image);
+    // ANTS-1828 — the saved other-buffer images (held in m_altInlineImages
+    // across a 1049 alt-screen swap) still occupy RAM, so they count toward
+    // the per-terminal cap. Omitting them let a program breach the 256 MB
+    // budget ~2× by filling both the main and alt buffers.
+    for (const auto &img : m_altInlineImages) total += imageByteCost(img.image);
     for (const auto &kv  : m_kittyImages) total += imageByteCost(kv.second);
     m_imageBudget.used = total;
 }

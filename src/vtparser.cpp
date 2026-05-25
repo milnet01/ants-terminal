@@ -364,6 +364,7 @@ void VtParser::processChar(uint32_t ch) {
     case CsiEntry:
         m_params.clear();
         m_currentParam = -1;
+        m_paramsTruncated = false;  // ANTS-1827 — fresh CSI, clear carry-over
         m_intermediate.clear();
         if (ch >= 0x3C && ch <= 0x3F) {
             // Private parameter prefix: ?, >, =, <
@@ -386,6 +387,8 @@ void VtParser::processChar(uint32_t ch) {
             if (m_params.size() < 32) { // Cap at 32 params to prevent DoS
                 m_params.push_back(m_currentParam < 0 ? 0 : m_currentParam);
                 m_colonSep.push_back(m_nextIsSubParam);
+            } else {
+                m_paramsTruncated = true;  // ANTS-1827 — param dropped at cap
             }
             m_currentParam = -1;
             m_nextIsSubParam = false;
@@ -395,6 +398,8 @@ void VtParser::processChar(uint32_t ch) {
                 if (m_params.size() < 32) { // honour the same 32-param DoS cap as ';'
                     m_params.push_back(m_currentParam);
                     m_colonSep.push_back(m_nextIsSubParam);
+                } else {
+                    m_paramsTruncated = true;  // ANTS-1827
                 }
                 m_currentParam = -1;
                 m_nextIsSubParam = false;
@@ -403,9 +408,13 @@ void VtParser::processChar(uint32_t ch) {
             m_state = CsiIntermediate;
         } else if (ch >= 0x40 && ch <= 0x7E) {
             // Final byte — dispatch
-            if (m_currentParam >= 0 && m_params.size() < 32) { // honour the 32-param DoS cap
-                m_params.push_back(m_currentParam);
-                m_colonSep.push_back(m_nextIsSubParam);
+            if (m_currentParam >= 0) {
+                if (m_params.size() < 32) { // honour the 32-param DoS cap
+                    m_params.push_back(m_currentParam);
+                    m_colonSep.push_back(m_nextIsSubParam);
+                } else {
+                    m_paramsTruncated = true;  // ANTS-1827 — in-flight param dropped
+                }
             }
             m_nextIsSubParam = false;
             VtAction a;
@@ -414,6 +423,7 @@ void VtParser::processChar(uint32_t ch) {
             a.params = m_params;
             a.colonSep = m_colonSep;
             a.intermediate = m_intermediate;
+            a.paramsTruncated = m_paramsTruncated;
             m_callback(a);
             transition(Ground);
         } else if (ch == ':') {
@@ -421,6 +431,8 @@ void VtParser::processChar(uint32_t ch) {
             if (m_params.size() < 32) {
                 m_params.push_back(m_currentParam < 0 ? 0 : m_currentParam);
                 m_colonSep.push_back(m_nextIsSubParam);
+            } else {
+                m_paramsTruncated = true;  // ANTS-1827 — sub-param dropped at cap
             }
             m_currentParam = -1;
             m_nextIsSubParam = true;  // Mark next param as a colon sub-parameter
@@ -446,6 +458,7 @@ void VtParser::processChar(uint32_t ch) {
             a.params = m_params;
             a.intermediate = m_intermediate;
             a.colonSep = m_colonSep;
+            a.paramsTruncated = m_paramsTruncated;
             m_callback(a);
             transition(Ground);
         } else if (ch < 0x20) {

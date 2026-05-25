@@ -6,7 +6,8 @@
 
 namespace GitWrap {
 
-Result run(const QString &workingDir, const QStringList &argv) {
+Result run(const QString &workingDir, const QStringList &argv,
+           int maxStdoutBytes) {
     Result r;
     QProcess p;
     p.setWorkingDirectory(workingDir);
@@ -33,6 +34,13 @@ Result run(const QString &workingDir, const QStringList &argv) {
     }
 
     r.stdoutBytes = p.readAllStandardOutput();
+    // ANTS-1839 — bound stdout like stderr so an unexpectedly large output
+    // (e.g. a future `git diff` caller) can't feed an unbounded blob into a
+    // JSON envelope. stdoutTruncated lets the caller flag the partial read.
+    if (maxStdoutBytes >= 0 && r.stdoutBytes.size() > maxStdoutBytes) {
+        r.stdoutBytes.truncate(maxStdoutBytes);
+        r.stdoutTruncated = true;
+    }
     r.stderrTail  = p.readAllStandardError();
     if (r.stderrTail.size() > kStderrCapBytes) {
         r.stderrTail.truncate(kStderrCapBytes);

@@ -1,0 +1,73 @@
+// Feature-conformance test for spec.md (ANTS-1828 / ANTS-1829).
+//
+// Source-grep verification (mirrors image_bomb_png_header_peek): a live
+// image-budget test would pass silently or hang CI, so we guard the
+// regression class "a future edit drops the guard".
+
+#include <gtest/gtest.h>
+
+#include <fstream>
+#include <sstream>
+#include <string>
+
+#ifndef SRC_TERMINALGRID_CPP_PATH
+#error "SRC_TERMINALGRID_CPP_PATH must be baked at compile time"
+#endif
+
+namespace {
+
+std::string slurp(const char *path) {
+    std::ifstream in(path);
+    if (!in) return {};
+    std::stringstream ss;
+    ss << in.rdbuf();
+    return ss.str();
+}
+
+bool contains(const std::string &hay, const char *needle) {
+    return hay.find(needle) != std::string::npos;
+}
+
+// Extract the body of a function by brace-matching from its signature.
+std::string functionBody(const std::string &src, const char *signature) {
+    const auto sigPos = src.find(signature);
+    if (sigPos == std::string::npos) return {};
+    const auto open = src.find('{', sigPos);
+    if (open == std::string::npos) return {};
+    int depth = 0;
+    for (size_t i = open; i < src.size(); ++i) {
+        if (src[i] == '{') ++depth;
+        else if (src[i] == '}') { if (--depth == 0) return src.substr(open, i - open + 1); }
+    }
+    return {};
+}
+
+}  // namespace
+
+// INV-1 (ANTS-1828) — recomputeImageBudget counts the alt-screen images.
+TEST(TerminalGridImageHardening, BudgetIncludesAltImages) {
+    const std::string src = slurp(SRC_TERMINALGRID_CPP_PATH);
+    ASSERT_FALSE(src.empty());
+    const std::string body =
+        functionBody(src, "TerminalGrid::recomputeImageBudget");
+    ASSERT_FALSE(body.empty()) << "recomputeImageBudget not found";
+    EXPECT_TRUE(contains(body, "m_altInlineImages"))
+        << "recomputeImageBudget must sum m_altInlineImages so the per-terminal "
+           "cap holds across a 1049 alt-screen swap";
+    EXPECT_TRUE(contains(body, "m_inlineImages"));
+    EXPECT_TRUE(contains(body, "m_kittyImages"));
+}
+
+// INV-2 (ANTS-1829) — handleOscImage strict-decodes + caps the base64.
+TEST(TerminalGridImageHardening, ITerm2ImageStrictDecodeAndCap) {
+    const std::string src = slurp(SRC_TERMINALGRID_CPP_PATH);
+    ASSERT_FALSE(src.empty());
+    const std::string body = functionBody(src, "TerminalGrid::handleOscImage");
+    ASSERT_FALSE(body.empty()) << "handleOscImage not found";
+    EXPECT_TRUE(contains(body, "AbortOnBase64DecodingErrors"))
+        << "handleOscImage must strict-decode the base64 (reject corrupt input)";
+    EXPECT_TRUE(contains(body, "fromBase64Encoding"))
+        << "handleOscImage must use the strict fromBase64Encoding decoder";
+    EXPECT_TRUE(contains(body, "kMaxInlineImageB64Bytes"))
+        << "handleOscImage must bound the base64 size before decoding";
+}

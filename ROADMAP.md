@@ -5219,17 +5219,17 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
 
 #### ⚡ Tier 2 — hardening + correctness (deferred)
 
-- 📋 [ANTS-1827] **VtParser CSI param truncation is silent.** `vtparser.cpp:386`
+- ✅ [ANTS-1827] **VtParser CSI param truncation is silent.** `vtparser.cpp:386`
   drops params past 32 with no `paramsTruncated` flag (unlike OSC/DCS/APC string
   truncation) — a long SGR chain can apply a different state than the stream
   specified, undetectably. Add a flag to `VtAction`. (Folds in: digit
   accumulation continues past the cap; `vtstream onPtyFinished` flushes past the
   in-flight cap.) Verified 2026-05-22.
-- 📋 [ANTS-1828] **Image budget omits `m_altInlineImages`.** `terminalgrid.cpp`
+- ✅ [ANTS-1828] **Image budget omits `m_altInlineImages`.** `terminalgrid.cpp`
   `recomputeImageBudget` sums only main + Kitty, so the documented 256 MB
   per-terminal cap is breachable ~2× by loading images on both the main and
   alt-screen buffers. Include alt images or document as per-buffer. Verified 2026-05-22.
-- 📋 [ANTS-1829] **iTerm2 inline-image base64 is lenient + uncapped.**
+- ✅ [ANTS-1829] **iTerm2 inline-image base64 is lenient + uncapped.**
   `terminalgrid.cpp:~1525` uses the permissive decoder with no encoded-size cap
   before `fromBase64` (only the 10 MiB OSC cap backstops) — bring to the OSC 52
   strictness/size discipline. Verified 2026-05-22.
@@ -5272,7 +5272,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   the `pathStrictlyBelowPlans` INV-4 canonicalisation backstops a malformed id.
   Add an `isValidAntsId` guard at the trust boundary (needs a `bad_args`
   return). Verified 2026-05-22.
-- 📋 [ANTS-1839] **`GitWrap::run` caps stderr but not stdout.** `gitwrap.cpp:35`
+- ✅ [ANTS-1839] **`GitWrap::run` caps stderr but not stdout.** `gitwrap.cpp:35`
   — latent (current callers bounded), but the next caller running `git diff`/
   `log -p` feeds an unbounded blob into a JSON envelope. Add a per-caller stdout
   budget. Verified 2026-05-22.
@@ -5312,7 +5312,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   fallback scans all of `/proc` with no early-out every 2 s × tabs;
   `decodeProjectPath` drives `QFileInfo::exists` probes from
   attacker-influenced encoded dir names. All same-UID, low impact. Verified 2026-05-22.
-- 📋 [ANTS-1846] **llm cap-unit + loopback-predicate cleanup.** `accumulateCapped`
+- ✅ [ANTS-1846] **llm cap-unit + loopback-predicate cleanup.** `accumulateCapped`
   compares `QString::size()` (UTF-16 units) against `kMaxBytes` (~40 MiB real
   ceiling) — rename/byte-accurate; `isPlaintextRemote`'s loopback set is
   narrower than `isEndpointHostBlocked`'s `isLoopback()` (spurious cleartext

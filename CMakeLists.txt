@@ -788,7 +788,11 @@ if(ANTS_TESTS)
                 tests/features/themedstylesheet_extraction/test_themedstylesheet_extraction.cpp
                 tests/features/origin_mode_correctness/test_origin_mode.cpp
                 tests/features/osc_color_query/test_osc_color_query.cpp
-                tests/features/decrqss/test_decrqss.cpp)
+                tests/features/decrqss/test_decrqss.cpp
+                # ANTS-1827 — CSI param-truncation flag.
+                tests/features/vtparser_csi_param_truncation/test_csi_param_truncation.cpp
+                # ANTS-1828/1829 — inline-image budget + iTerm2 base64 hardening.
+                tests/features/terminalgrid_image_budget_hardening/test_terminalgrid_image_budget_hardening.cpp)
     # scrollback_frozen_view test reads terminalwidget.cpp source via grep —
     # the path must be passed as a compile definition same as the standalone
     # had it. Apply target-wide so any future bundle source can reuse.
@@ -968,6 +972,8 @@ if(ANTS_TESTS)
                 # ANTS-1406 last_audit_summary `since_commit` short-circuit.
                 tests/features/mcp_last_audit_summary_since_commit/test_mcp_last_audit_summary_since_commit.cpp
                 tests/features/mcp_git_state/test_mcp_git_state.cpp
+                # ANTS-1839 — GitWrap per-caller stdout budget.
+                tests/features/gitwrap_stdout_cap/test_gitwrap_stdout_cap.cpp
                 tests/features/mcp_subsystem/test_mcp_subsystem.cpp
                 tests/features/mcp_provider_registry/test_mcp_provider_registry.cpp
                 tests/features/mcp_last_audit_summary/test_mcp_last_audit_summary.cpp

@@ -29,12 +29,16 @@ TEST(LlmClient, INV2_EndpointAllowlist) {
     EXPECT_FALSE(LlmClient::isEndpointAllowed(QString()));
 }
 
-// INV-2 — isPlaintextRemote: http+remote yes; https or localhost no.
+// INV-2 — isPlaintextRemote: http+remote yes; https or loopback no.
 TEST(LlmClient, INV2_PlaintextRemote) {
     EXPECT_TRUE(LlmClient::isPlaintextRemote(QStringLiteral("http://example.com/v1")));
     EXPECT_FALSE(LlmClient::isPlaintextRemote(QStringLiteral("https://example.com/v1")));
     EXPECT_FALSE(LlmClient::isPlaintextRemote(QStringLiteral("http://localhost:1234/v1")));
     EXPECT_FALSE(LlmClient::isPlaintextRemote(QStringLiteral("http://127.0.0.1/v1")));
+    // ANTS-1846 — the whole 127.0.0.0/8 loopback range + ::1, matching
+    // isEndpointHostBlocked. 127.0.0.2 was wrongly treated as remote pre-fix.
+    EXPECT_FALSE(LlmClient::isPlaintextRemote(QStringLiteral("http://127.0.0.2/v1")));
+    EXPECT_FALSE(LlmClient::isPlaintextRemote(QStringLiteral("http://[::1]:1234/v1")));
 }
 
 // ANTS-1746 — SSRF host guard: private / link-local / metadata IP
@@ -106,22 +110,37 @@ TEST(LlmClient, INV3_NoScrubWhenDisabled) {
 // INV-4 — accumulation cap flips truncated once; no further append.
 TEST(LlmClient, INV4_AccumulateCapped) {
     QString acc;
+    qint64 accBytes = 0;
     bool truncated = false;
-    // Below cap: normal append.
-    EXPECT_TRUE(LlmClient::accumulateCapped(acc, truncated, QStringLiteral("hello")));
+    // Below cap: normal append, byte total advances.
+    EXPECT_TRUE(LlmClient::accumulateCapped(acc, accBytes, truncated, QStringLiteral("hello")));
     EXPECT_FALSE(truncated);
-    // Empty delta: no append.
-    EXPECT_FALSE(LlmClient::accumulateCapped(acc, truncated, QString()));
+    EXPECT_EQ(accBytes, 5);
+    // Empty delta: no append, byte total unchanged.
+    EXPECT_FALSE(LlmClient::accumulateCapped(acc, accBytes, truncated, QString()));
+    EXPECT_EQ(accBytes, 5);
 
-    // Fill to the cap, then attempt to cross it.
-    acc = QString(static_cast<int>(LlmClient::kMaxBytes), QLatin1Char('x'));
-    EXPECT_FALSE(LlmClient::accumulateCapped(acc, truncated, QStringLiteral("more")));
+    // At the byte cap, the next append is refused + marker added once.
+    accBytes = LlmClient::kMaxBytes;
+    EXPECT_FALSE(LlmClient::accumulateCapped(acc, accBytes, truncated, QStringLiteral("more")));
     EXPECT_TRUE(truncated);
     EXPECT_TRUE(acc.contains(QStringLiteral("[response truncated]")));
     const int sizeAfterFirst = acc.size();
     // A second overflow attempt does not append a second marker.
-    EXPECT_FALSE(LlmClient::accumulateCapped(acc, truncated, QStringLiteral("again")));
+    EXPECT_FALSE(LlmClient::accumulateCapped(acc, accBytes, truncated, QStringLiteral("again")));
     EXPECT_EQ(acc.size(), sizeAfterFirst);
+}
+
+// ANTS-1846 — the cap is byte-accurate: a multi-byte codepoint advances the
+// byte total by its UTF-8 length (3), not its QString::size() unit count (1).
+TEST(LlmClient, Ants1846_AccumulateBytesAreUtf8) {
+    QString acc;
+    qint64 accBytes = 0;
+    bool truncated = false;
+    const QString euro = QString::fromUtf8("\xE2\x82\xAC");  // € — 1 unit, 3 bytes
+    ASSERT_EQ(euro.size(), 1);
+    EXPECT_TRUE(LlmClient::accumulateCapped(acc, accBytes, truncated, euro));
+    EXPECT_EQ(accBytes, 3) << "byte total must count UTF-8 bytes, not UTF-16 units";
 }
 
 // INV-5 — SSE line parsing table.

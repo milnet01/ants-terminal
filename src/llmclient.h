@@ -50,12 +50,11 @@ public:
     // ---- Widget-free helpers, testable without a network round-trip ----
 
     // Accumulated-content + SSE-line-buffer cap (mirrors aidialog.cpp).
-    // ANTS-1753 — unit note: this value bounds m_sseLineBuffer
-    // (QByteArray) in exact bytes, but accumulateCapped() compares it
-    // against a QString::size() which counts UTF-16 code units. So the
-    // accumulated-text ceiling is ~10 Mi *units* (≈10 MiB ASCII, up to
-    // ~40 MiB RAM for all-4-byte codepoints). It is a memory-DoS bound,
-    // not an exact byte limit on the decoded answer.
+    // Bounds m_sseLineBuffer (QByteArray) in exact bytes; accumulateCapped()
+    // now tracks the accumulated text in exact UTF-8 bytes too (ANTS-1846,
+    // superseding the ANTS-1753 unit-note), so the answer is bounded to
+    // kMaxBytes of decoded content regardless of codepoint width. A
+    // memory-DoS bound on streamed responses, not a per-tick limit.
     static constexpr qint64 kMaxBytes = 10 * 1024 * 1024;
 
     // True iff `endpoint` parses with an http/https scheme. On true,
@@ -87,11 +86,13 @@ public:
     static QByteArray buildRequestBody(const LlmRequest &req,
                                        int *redactedCount = nullptr);
 
-    // Append `delta` to `acc` unless the kMaxBytes cap is reached; on the
-    // first overflow sets `truncated` and appends a one-time marker.
-    // Returns true if `delta` was appended.
-    static bool accumulateCapped(QString &acc, bool &truncated,
-                                 const QString &delta);
+    // Append `delta` to `acc` (advancing the running UTF-8 byte total in
+    // `accBytes`) unless the kMaxBytes byte cap is reached; on the first
+    // overflow sets `truncated` and appends a one-time marker. Returns true
+    // if `delta` was appended. ANTS-1846 — byte-accurate cap (each `delta` is
+    // one SSE chunk, so the per-call toUtf8() is O(delta), not O(acc)).
+    static bool accumulateCapped(QString &acc, qint64 &accBytes,
+                                 bool &truncated, const QString &delta);
 
 signals:
     void chunk(const QString &delta);        // streamed content
@@ -106,6 +107,7 @@ private:
     QNetworkReply *m_reply = nullptr;
     QByteArray     m_sseLineBuffer;   // buffers incomplete SSE lines
     QString        m_text;            // accumulated assistant content
+    qint64         m_textBytes = 0;   // running UTF-8 byte total of m_text (ANTS-1846)
     bool           m_truncated = false;
     int            m_redactedCount = 0;
 };

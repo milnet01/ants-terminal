@@ -19,7 +19,14 @@ without a live network.
   and `redactedCount > 0`.
 - **INV-4** — accumulated content is capped at `kMaxBytes` (10 MiB) with
   `truncated` set on overflow (and the marker emitted once); the SSE line
-  buffer is capped at the same bound.
+  buffer is capped at the same bound. ANTS-1846 — the accumulator cap is
+  byte-accurate: `accumulateCapped` tracks the running UTF-8 byte total
+  (advancing by each delta's UTF-8 length, not its UTF-16 unit count), so the
+  cap bounds decoded content regardless of codepoint width.
+- **INV-2b** (ANTS-1846) — `isPlaintextRemote` treats the entire 127.0.0.0/8
+  loopback range + `::1` as local (via `QHostAddress::isLoopback`), matching
+  `isEndpointHostBlocked`; e.g. `http://127.0.0.2` is not flagged as a
+  cleartext-remote endpoint.
 - **INV-5** — `sseContentDelta` returns content for a
   `data:{…delta.content…}` line and empty for `[DONE]` / non-content / non-
   data lines.

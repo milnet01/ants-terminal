@@ -64,10 +64,15 @@ bool LlmClient::isPlaintextRemote(const QString &endpoint) {
     const QUrl u(endpoint);
     if (u.scheme().toLower() != QStringLiteral("http")) return false;
     const QString host = u.host();
-    const bool isLocal = (host == QStringLiteral("localhost")
-                          || host == QStringLiteral("127.0.0.1")
-                          || host == QStringLiteral("::1"));
-    return !isLocal;
+    // ANTS-1846 — unify with isEndpointHostBlocked's loopback handling.
+    // QHostAddress::isLoopback covers all of 127.0.0.0/8 + ::1, not just the
+    // three literals the old set listed — 127.0.0.2 was wrongly treated as a
+    // remote host, producing a spurious cleartext warning for a local dev LLM.
+    if (host.compare(QStringLiteral("localhost"), Qt::CaseInsensitive) == 0)
+        return false;
+    const QHostAddress addr(host);
+    if (!addr.isNull() && addr.isLoopback()) return false;
+    return true;
 }
 
 // ANTS-1798 — private / link-local / metadata / special IPv4 ranges.
@@ -167,10 +172,12 @@ QByteArray LlmClient::buildRequestBody(const LlmRequest &req,
     return QJsonDocument(body).toJson(QJsonDocument::Compact);
 }
 
-bool LlmClient::accumulateCapped(QString &acc, bool &truncated,
-                                 const QString &delta) {
+bool LlmClient::accumulateCapped(QString &acc, qint64 &accBytes,
+                                 bool &truncated, const QString &delta) {
     if (delta.isEmpty()) return false;
-    if (acc.size() >= kMaxBytes) {
+    // ANTS-1846 — gate on the exact UTF-8 byte total, not QString::size()
+    // (UTF-16 units), so the cap means kMaxBytes of decoded content.
+    if (accBytes >= kMaxBytes) {
         if (!truncated) {
             acc += QStringLiteral("\n[response truncated]");
             truncated = true;
@@ -178,6 +185,7 @@ bool LlmClient::accumulateCapped(QString &acc, bool &truncated,
         return false;
     }
     acc += delta;
+    accBytes += delta.toUtf8().size();
     return true;
 }
 
@@ -185,6 +193,7 @@ void LlmClient::send(const LlmRequest &req) {
     abort();
     m_sseLineBuffer.clear();
     m_text.clear();
+    m_textBytes = 0;  // ANTS-1846 — reset the byte counter alongside m_text
     m_truncated = false;
     m_redactedCount = 0;
 
@@ -269,7 +278,7 @@ void LlmClient::drain() {
         m_sseLineBuffer = m_sseLineBuffer.mid(nlPos + 1);
 
         const QString delta = sseContentDelta(line);
-        if (accumulateCapped(m_text, m_truncated, delta))
+        if (accumulateCapped(m_text, m_textBytes, m_truncated, delta))
             emit chunk(delta);
     }
 
