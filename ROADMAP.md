@@ -11834,7 +11834,9 @@ template / mutate this state atomically" → movable. If it's
   `index.json` manifest whose last-run record stores the run `commit`
   (auditrunner.cpp:1447) + `iso_timestamp` + the prior SARIF basename;
   ANTS-1512 added scoped paths (`req.paths`, "narrow means narrow",
-  argv-sanitised) so a narrowed file list already flows to every tool.
+  argv-sanitised) so a narrowed file list flows to cppcheck + clang-tidy
+  (extending it to the other file-oriented tools is part of this item —
+  see the Spec re-scope note below).
   So `since-last-run` no longer needs new infra: read the prior run's
   `commit` from the manifest, compute `git diff --name-only
   <commit>..HEAD ∪ git status --porcelain`, feed that set through the
