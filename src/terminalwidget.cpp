@@ -7,6 +7,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QUuid>
+#include <QSet>
 #include <QTextLayout>
 #include <QEvent>
 #include <QKeyEvent>
@@ -733,12 +734,7 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         int px_y = m_padding + vr * m_cellHeight;
 
         // URL spans — use cache to avoid per-frame regex matching
-        auto urlCacheIt = m_urlSpanCache.find(globalLine);
-        if (urlCacheIt == m_urlSpanCache.end()) {
-            auto computed = detectUrls(globalLine);
-            urlCacheIt = m_urlSpanCache.emplace(globalLine, std::move(computed)).first;
-        }
-        const auto &urlSpans = urlCacheIt->second;
+        const auto &urlSpans = urlSpansForLine(globalLine);
 
         // Highlight spans — use cache to avoid per-frame regex matching
         auto hlCacheIt = m_hlSpanCache.find(globalLine);
@@ -821,13 +817,20 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
             }
 
             bool selected = cellInSelection(globalLine, col);
+            // ANTS-1841 — compute the search-match predicate once per
+            // cell. It was evaluated here AND again at the opacity check
+            // below; with opacity < 255 and an active search that doubled
+            // a binary-search probe on every painted cell. `!selected`
+            // short-circuits it for selected cells (which never reach the
+            // opacity branch anyway), so this is strictly non-pessimizing.
+            const bool searchMatch = !selected && isCellSearchMatch(globalLine, col);
             if (selected) {
                 fg = m_selectionFg;
                 bg = m_selectionBg;
             } else if (isCellCurrentMatch(globalLine, col)) {
                 fg = m_searchCurrentFg;
                 bg = m_searchCurrentBg;
-            } else if (isCellSearchMatch(globalLine, col)) {
+            } else if (searchMatch) {
                 fg = m_searchHighlightFg;
                 bg = m_searchHighlightBg;
             } else if ((globalLine == bp.line1 && col == bp.col1) ||
@@ -847,7 +850,7 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
             bool wantBgFill = false;
             if (bg != defaultBg) {
                 cellBg = bg;
-                if (effectiveAlpha < 255 && !selected && !isCellSearchMatch(globalLine, col))
+                if (effectiveAlpha < 255 && !selected && !searchMatch)
                     cellBg.setAlpha(effectiveAlpha);
                 wantBgFill = true;
             }
@@ -3209,7 +3212,7 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
         // Ctrl+Click opens URLs and file paths
         if (event->modifiers() & Qt::ControlModifier) {
             QPoint cell = pixelToCell(event->pos());
-            auto spans = detectUrls(cell.x());
+            const auto &spans = urlSpansForLine(cell.x());
             for (const auto &s : spans) {
                 if (cell.y() >= s.startCol && cell.y() <= s.endCol) {
                     if (s.isFilePath) {
@@ -3270,6 +3273,13 @@ void TerminalWidget::mousePressEvent(QMouseEvent *event) {
         if (m_clickCount >= 3) {
             // Triple-click: select entire line
             int globalLine = cell.x();
+            // ANTS-1841 — declare LINEAR selection mode. This branch
+            // returns before the fall-through `m_rectSelection = false`
+            // below, so an Alt-drag (which sets m_rectSelection) followed
+            // by a triple-click on the same cell would otherwise leave
+            // the flag set and run this full-line selection under
+            // rect-selection semantics.
+            m_rectSelection = false;
             m_selStart = QPoint(globalLine, 0);
             m_selEnd = QPoint(globalLine, m_grid->cols() - 1);
             m_hasSelection = true;
@@ -3346,7 +3356,7 @@ void TerminalWidget::mouseMoveEvent(QMouseEvent *event) {
     m_hoverGlobalLine = -1;
     m_hoverCol = -1;
 
-    auto spans = detectUrls(cell.x());
+    const auto &spans = urlSpansForLine(cell.x());
     bool onLink = false;
     for (const auto &s : spans) {
         if (cell.y() >= s.startCol && cell.y() <= s.endCol) {
@@ -3605,6 +3615,21 @@ QString TerminalWidget::lineText(int globalLine) const {
         }
     }
     return text;
+}
+
+const std::vector<TerminalWidget::UrlSpan> &
+TerminalWidget::urlSpansForLine(int globalLine) const {
+    // ANTS-1841 — find-or-compute against the per-line span cache. The
+    // cache is invalidated lazily at paint (invalidateSpanCaches via
+    // m_spanCacheDirty), so an entry filled from an event handler while
+    // the cache is dirty is correctly dropped on the next paint. The
+    // returned reference is valid until the next mutation of
+    // m_urlSpanCache; every caller consumes it within the same statement
+    // block, so a later emplace can't dangle it.
+    auto it = m_urlSpanCache.find(globalLine);
+    if (it == m_urlSpanCache.end())
+        it = m_urlSpanCache.emplace(globalLine, detectUrls(globalLine)).first;
+    return it->second;
 }
 
 std::vector<TerminalWidget::UrlSpan> TerminalWidget::detectUrls(int globalLine) const {
@@ -4156,7 +4181,7 @@ void TerminalWidget::enterUrlQuickSelect() {
 
     for (int gl = viewStart; gl < viewEnd && labelIdx < labels.size(); ++gl) {
         // First: URLs and file paths (from existing detection)
-        auto spans = detectUrls(gl);
+        const auto &spans = urlSpansForLine(gl);
         for (const auto &s : spans) {
             if (labelIdx >= labels.size()) break;
             QuickSelectLabel ql;
@@ -4678,7 +4703,7 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
 
     // Open URL (if cursor is on a link)
     QPoint cell = pixelToCell(event->pos());
-    auto spans = detectUrls(cell.x());
+    const auto &spans = urlSpansForLine(cell.x());
     int ctxLine = cell.x();
     for (const auto &s : spans) {
         if (cell.y() >= s.startCol && cell.y() <= s.endCol) {
@@ -5097,6 +5122,14 @@ void TerminalWidget::loadHistory() {
         QByteArray content = file.readAll();
         QStringList lines = QString::fromUtf8(content).split('\n', Qt::SkipEmptyParts);
 
+        // ANTS-1841 — O(1) dedup via a seen-set. The previous linear
+        // membership scan over m_historyEntries cost O(n²) per line on a
+        // large ~50k-line .zsh_history at the first suggestion lookup. The
+        // set mirrors the list exactly (first occurrence wins its prepend
+        // position; later duplicates skip), so most-recent-first ordering
+        // is unchanged.
+        QSet<QString> seen;
+        seen.reserve(lines.size());
         for (const QString &line : lines) {
             QString cmd = line.trimmed();
             // zsh extended history format: ": timestamp:0;command"
@@ -5109,8 +5142,10 @@ void TerminalWidget::loadHistory() {
             if (cmd.startsWith("- cmd: ")) {
                 cmd = cmd.mid(7);
             }
-            if (!cmd.isEmpty() && !m_historyEntries.contains(cmd))
+            if (!cmd.isEmpty() && !seen.contains(cmd)) {
+                seen.insert(cmd);
                 m_historyEntries.prepend(cmd); // Most recent first
+            }
         }
         if (!m_historyEntries.isEmpty()) break; // Use the first available history
     }

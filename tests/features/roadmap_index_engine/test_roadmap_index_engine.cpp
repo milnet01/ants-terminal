@@ -5,6 +5,7 @@
 
 #include "roadmapindex.h"
 
+#include <QFile>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -31,6 +32,26 @@ QString sampleDoc() {
           << ""                          // 15
           << "## Trailing";              // 16 H2 — slug "trailing"
     return lines.join('\n');
+}
+
+// Brace-balanced body of the named function from a source file.
+QString functionBody(const QString &path, const QString &signature) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
+    const QString src = QString::fromUtf8(f.readAll());
+    const int start = src.indexOf(signature);
+    if (start < 0) return QString();
+    const int braceStart = src.indexOf(QChar('{'), start);
+    if (braceStart < 0) return QString();
+    int depth = 1;
+    int i = braceStart + 1;
+    while (i < src.size() && depth > 0) {
+        const QChar c = src.at(i);
+        if (c == QChar('{')) ++depth;
+        else if (c == QChar('}')) --depth;
+        ++i;
+    }
+    return src.mid(braceStart, i - braceStart);
 }
 
 }  // namespace
@@ -153,4 +174,23 @@ TEST(RoadmapIndexEngine, EmptyHeadingDoesNotConsumeCounter) {
     EXPECT_EQ(RoadmapIndex::uniqueSlug(seen, ""), QString());
     EXPECT_EQ(RoadmapIndex::uniqueSlug(seen, "foo"), QString("foo"));
     EXPECT_EQ(RoadmapIndex::uniqueSlug(seen, "foo"), QString("foo-2"));
+}
+
+// ENG-8 (ANTS-1844) — sliceSection must not split('\n') the whole
+// document. It extracts a contiguous line range, so it walks newline
+// offsets and returns one mid(). ENG-5 already locks the byte-identical
+// output; this guards the perf shape so a future "simplification" back to
+// split() can't silently land. buildIndex legitimately splits (it scans
+// every line for headings), so the assertion is scoped to sliceSection.
+TEST(RoadmapIndexEngine, SliceSectionDoesNotSplitWholeDoc) {
+    const QString body = functionBody(
+        QStringLiteral(SRC_ROADMAPINDEX_CPP_PATH),
+        QStringLiteral("QString sliceSection("));
+    ASSERT_FALSE(body.isEmpty()) << "sliceSection body not found";
+    EXPECT_FALSE(body.contains(QStringLiteral(".split(")))
+        << "sliceSection split()s the whole document — it should walk to "
+           "the [lineStart, lineEnd) char span instead";
+    EXPECT_TRUE(body.contains(QStringLiteral(".mid(")))
+        << "sliceSection should return a single mid() of the contiguous "
+           "line range";
 }

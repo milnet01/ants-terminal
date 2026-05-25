@@ -5285,7 +5285,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
 
 #### 🏗 Tier 3 — structural / perf / accessibility (deferred)
 
-- 📋 [ANTS-1841] **terminalwidget hot-path perf cluster.** `mouseMoveEvent` runs
+- ✅ [ANTS-1841] **terminalwidget hot-path perf cluster.** `mouseMoveEvent` runs
   the URL regex on every pixel of movement (bypasses `m_urlSpanCache`,
   `:3349`); `loadHistory` slurps the whole shell history with an O(n²)
   `QStringList::contains` dedup (`:5088`); triple-click + Alt-rect-selection
@@ -5303,7 +5303,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   `ai_endpoint` while the modeless dialog is open; `setLanes()` wipes already-
   collected reports on any lane checkbox toggle. `reviewdialogbase.cpp` /
   `testauditdialog.cpp`. Verified 2026-05-22.
-- 📋 [ANTS-1844] **`roadmap_query` re-splits the 19k-line ROADMAP 3-4× per
+- ✅ [ANTS-1844] **`roadmap_query` re-splits the 19k-line ROADMAP 3-4× per
   call.** `sliceSection` (`roadmapindex.cpp:189`), `buildIndex`, `parseBullets`,
   `renderCardsHtml` each `split('\n')` the whole doc; `sliceSection` should walk
   from a cached offset. Verified 2026-05-22.

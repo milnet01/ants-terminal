@@ -792,7 +792,9 @@ if(ANTS_TESTS)
                 # ANTS-1827 — CSI param-truncation flag.
                 tests/features/vtparser_csi_param_truncation/test_csi_param_truncation.cpp
                 # ANTS-1828/1829 — inline-image budget + iTerm2 base64 hardening.
-                tests/features/terminalgrid_image_budget_hardening/test_terminalgrid_image_budget_hardening.cpp)
+                tests/features/terminalgrid_image_budget_hardening/test_terminalgrid_image_budget_hardening.cpp
+                # ANTS-1841 — terminalwidget hot-path hygiene (source-scrape).
+                tests/features/terminalwidget_hotpath_perf/test_terminalwidget_hotpath_perf.cpp)
     # scrollback_frozen_view test reads terminalwidget.cpp source via grep —
     # the path must be passed as a compile definition same as the standalone
     # had it. Apply target-wide so any future bundle source can reuse.
@@ -1306,7 +1308,9 @@ if(ANTS_TESTS)
         # ANTS-1579 — verify_changes description source-scrape (INV-4).
         SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
         # ANTS-1709 — centralised exclusion-set drift guard (INV-7).
-        SRC_FEATURECOVERAGE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/featurecoverage.cpp")
+        SRC_FEATURECOVERAGE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/featurecoverage.cpp"
+        # ANTS-1844 — sliceSection perf-shape lock (roadmap_index_engine ENG-7).
+        SRC_ROADMAPINDEX_CPP_PATH="${CMAKE_SOURCE_DIR}/src/roadmapindex.cpp")
 
     # ANTS-1217 Phase 6 — test_dialogs bundle. Subject: settingsdialog +
     # roadmapdialog + diffviewer (the dialogs hosted by chrome). 11 tests

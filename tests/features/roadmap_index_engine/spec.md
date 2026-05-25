@@ -18,6 +18,12 @@ The pure-engine surface of `RoadmapIndex` (`src/roadmapindex.h`):
 5. **ENG-5.** `sliceSection` returns the substring covering
    `[lineStart, lineEnd)` joined with '\n'. The first line of the
    slice IS the section's heading.
+   - **ENG-8 (ANTS-1844).** `sliceSection` extracts that contiguous
+     range by walking newline offsets and returning one `mid()`, NOT by
+     `split('\n')`-ing the whole ~19k-line document. ENG-5 locks the
+     output; ENG-8 locks the perf shape (source-scrape) so a revert to
+     `split()` can't silently land. `buildIndex` legitimately splits
+     (it scans every line), so the assertion is scoped to `sliceSection`.
 6. **ENG-6.** `slugifyHeading` collapses non-alnum runs to single
    `-`, lower-cases, trims trailing `-` (byte-identical to the old
    `roadmapdialog.cpp:485` static).

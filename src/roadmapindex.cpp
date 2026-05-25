@@ -186,15 +186,32 @@ QString sliceSection(const QString &markdown, const Section &section) {
     if (section.lineStart < 0 || section.lineEnd <= section.lineStart) {
         return {};
     }
-    const QStringList lines = markdown.split('\n');
-    const int hi = qMin(section.lineEnd, lines.size());
-    if (section.lineStart >= hi) return {};
-    QStringList out;
-    out.reserve(hi - section.lineStart);
-    for (int i = section.lineStart; i < hi; ++i) {
-        out.append(lines[i]);
+    // ANTS-1844 — walk newlines to the char span of [lineStart, lineEnd)
+    // and return one mid(), instead of split('\n')-ing the whole ~19k-line
+    // ROADMAP (allocating ~19k QStrings + a second QStringList) just to
+    // extract one contiguous run. roadmap_query already re-entered this on
+    // every section+body call. Byte-identical to the old
+    // lines[lineStart..hi-1].join('\n'):
+    //   • lo  = first char of `lineStart` (offset just past its leading \n)
+    //   • end = the \n that begins `lineEnd` (excluded), or end-of-string
+    //     when `lineEnd` is at/after the last line — which reproduces the
+    //     trailing-newline part that split() would have emitted.
+    const int n = markdown.size();
+    int line = 0;
+    int lo = (section.lineStart == 0) ? 0 : -1;
+    int end = n;
+    for (int i = 0; i < n; ++i) {
+        if (markdown.at(i) != QLatin1Char('\n')) continue;
+        ++line;
+        if (line == section.lineStart) {
+            lo = i + 1;
+        } else if (line == section.lineEnd) {
+            end = i;  // the separator before lineEnd — excluded from mid()
+            break;
+        }
     }
-    return out.join('\n');
+    if (lo < 0 || lo > end) return {};  // lineStart past end-of-document
+    return markdown.mid(lo, end - lo);
 }
 
 }  // namespace RoadmapIndex

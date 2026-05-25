@@ -337,6 +337,14 @@ private:
     // URL and file path detection (includes OSC 8 hyperlinks)
     struct UrlSpan { int startCol; int endCol; QString url; bool isFilePath; bool isOsc8; };
     std::vector<UrlSpan> detectUrls(int globalLine) const;
+    // ANTS-1841 — cached front-end for detectUrls. Returns the line's
+    // spans from m_urlSpanCache, computing + memoising on a miss. Event
+    // handlers (hover/click/menu) must use this, not detectUrls directly:
+    // mouseMoveEvent fires per pixel, so re-running the regex there was a
+    // measurable hot path. The cache is what the last paint left, i.e.
+    // what the user actually sees on screen — the correct source for a
+    // click/hover hit-test.
+    const std::vector<UrlSpan> &urlSpansForLine(int globalLine) const;
     QString lineText(int globalLine) const;
     void openFileAtPath(const QString &path);
     // Opens a hyperlink, with OSC 8 homograph-attack warning when the visible
