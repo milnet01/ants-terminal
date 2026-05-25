@@ -5208,7 +5208,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   `write()` calls, not O_APPEND-guaranteed) — `auditfpledger.cpp:113`,
   `auditautofix.cpp:157`; a concurrent CC session can interleave the JSON + the
   newline. Single-buffer write or QLockFile. Verified 2026-05-22.
-- 📋 [ANTS-1825] **Trust-file `version` written but never read.** `verifytrust.cpp`
+- ✅ [ANTS-1825] **Trust-file `version` written but never read.** `verifytrust.cpp`
   `saveToDisk` stamps `kSchemaVersion`; `loadFromDisk` ignores it, so a future
   v2 file is consumed as authoritative by a v1 reader. Add a schema-version gate
   (log/refuse-and-reprompt on unknown future version). Verified 2026-05-22.
@@ -5249,7 +5249,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   bad_path-validate `caller_cwd`** (`mainwindow.cpp:~4047/4487`) — a non-existent
   root canonicalises to "" and collapses the in-flight key; the dispatcher only
   enforces non-empty. Add an isDir/bad_path gate. Verified 2026-05-22.
-- 📋 [ANTS-1834] **Contract-drift guard is `Q_ASSERT_X` (compiled out in
+- ✅ [ANTS-1834] **Contract-drift guard is `Q_ASSERT_X` (compiled out in
   Release).** `claudeintegration.cpp:~1207` — a call-site `caller_cwd`
   classification that disagrees with `callerCwdContractFor` neither refuses nor
   aborts in a Release build, contradicting the comment. Make it a compiled

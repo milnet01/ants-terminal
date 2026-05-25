@@ -1207,7 +1207,8 @@ void ClaudeIntegration::stopMcpServer() {
 // preserved for inline-dispatched tools (get_session_info,
 // tool_info) and as a runtime drift-check below — if a future
 // maintainer updates the table but not the registration (or vice
-// versa) the assertion fails loudly at start-up.
+// versa) the registration is refused in every build config
+// (ANTS-1834), and a debug build additionally aborts via Q_ASSERT_X.
 void ClaudeIntegration::registerToolProvider(
     const QString &name,
     CallerCwdContract contract,
@@ -1229,6 +1230,14 @@ void ClaudeIntegration::registerToolProvider(
         Q_ASSERT_X(false, "registerToolProvider",
                    "ANTS-1419: contract drift between call-site and "
                    "callerCwdContractFor table");
+        // ANTS-1834 — Q_ASSERT_X compiles out under NDEBUG, so without
+        // this a Release build would fall through and register the tool
+        // with a possibly-wrong caller_cwd classification (a Required
+        // tool silently registered as Optional would bypass the
+        // caller_cwd_required refusal at dispatch). Refuse the
+        // registration in every build config: the tool goes missing —
+        // loud in its own right — rather than running mis-classified.
+        return;
     }
     // ANTS-1427 — wrap every handler with a lambda-entry log line so
     // multi-checkpoint debugging sees: lambda-enter (here) → cmd*

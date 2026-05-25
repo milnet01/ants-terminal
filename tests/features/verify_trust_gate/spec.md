@@ -33,5 +33,11 @@ callers (nullptr client) see no behavior change. Phase 2 wires
   half-written file (test simulates via direct rename check).
 - **TF-3** Corrupt JSON tolerated — bad file loads as empty trust
   set; next write replaces it.
+- **TF-4** (ANTS-1825) Schema-version gate. `saveToDisk` stamps
+  `version`; `loadFromDisk` reads it. A file whose `version` exceeds
+  `kSchemaVersion` (written by a newer Ants) is refused: no entries
+  load (trust falls closed) and `saveToDisk` no-ops so the older
+  client cannot downgrade-clobber the newer file. A missing `version`
+  defaults to the current schema (back-compat with hand-edits).
 
 Phase 2 will add MD-* (modal) and MC-* (MCP envelope) tests.

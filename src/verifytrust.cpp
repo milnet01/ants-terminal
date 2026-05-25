@@ -160,6 +160,30 @@ bool FilePersistedTrustClient::loadFromDisk() {
     }
 
     const QJsonObject root = doc.object();
+
+    // ANTS-1825 — schema-version gate. saveToDisk stamps `version`
+    // but a v1 reader previously ignored it, so a file written by a
+    // future Ants (whose `trusted_shas` / `trusted_repos` field
+    // semantics may differ) would be consumed as authoritative —
+    // potentially auto-trusting entries this build can't validate.
+    // A missing `version` defaults to the current schema (every file
+    // we've ever written stamps it, so absence means a hand-edit /
+    // pre-history file — treat as compatible, don't regress it). A
+    // version GREATER than we understand falls closed: load nothing
+    // and flag m_futureSchema so saveToDisk won't clobber the newer
+    // file on the next write.
+    const int fileVersion =
+        root.value(QStringLiteral("version")).toInt(kSchemaVersion);
+    if (fileVersion > kSchemaVersion) {
+        std::fprintf(stderr,
+            "verifytrust: %s is schema v%d but this build understands "
+            "only v%d — refusing to load (trust falls closed) and "
+            "leaving the file untouched.\n",
+            qUtf8Printable(m_path), fileVersion, kSchemaVersion);
+        m_futureSchema = true;
+        return false;
+    }
+
     const QJsonObject shas = root.value(QStringLiteral("trusted_shas"))
                                 .toObject();
     for (auto it = shas.constBegin(); it != shas.constEnd(); ++it) {
@@ -182,6 +206,14 @@ bool FilePersistedTrustClient::loadFromDisk() {
 
 bool FilePersistedTrustClient::saveToDisk() const {
     if (m_path.isEmpty()) return false;
+
+    // ANTS-1825 — never downgrade-clobber a future-schema file. If
+    // loadFromDisk saw a `version` newer than we understand, the file
+    // belongs to a newer Ants; rewriting it as v1 would silently strip
+    // whatever v2 added. Refuse the write (the in-RAM add is lost,
+    // which is correct: this build can't safely persist into a schema
+    // it doesn't understand).
+    if (m_futureSchema) return false;
 
     // Ensure the parent directory exists. AppConfigLocation under
     // XDG is `$XDG_CONFIG_HOME/ants-terminal` on Linux; first call

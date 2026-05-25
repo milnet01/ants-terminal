@@ -236,6 +236,63 @@ void testTrustFile() {
         expect(perr.error == QJsonParseError::NoError,
                "TF-3 corrupt file replaced by valid JSON");
     }
+
+    // TF-4 (ANTS-1825) — a trust file stamped with a FUTURE schema
+    // version is refused: the v1 reader honours none of its entries
+    // (fail-closed) and a subsequent write no-ops, leaving the newer
+    // file byte-identical (no downgrade-clobber).
+    {
+        QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+        const QString path =
+            tmp.path() + QStringLiteral("/verify-trust.json");
+
+        // A real SHA so we can prove the future file's trust entry is
+        // NOT honoured via outcomeForConfig.
+        const QByteArray cfgBytes =
+            "{\"build\":{\"command\":\"echo hi\"}}";
+        const QString shaHex = QString::fromLatin1(
+            QCryptographicHash::hash(cfgBytes,
+                                     QCryptographicHash::Sha256).toHex());
+
+        const QByteArray futureFile =
+            QByteArray("{\n  \"version\": 999,\n  "
+                       "\"trusted_shas\": {\n    \"")
+            + shaHex.toLatin1()
+            + "\": {\"first_trusted\": \"x\"}\n  }\n}\n";
+        {
+            QFile f(path);
+            ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            ASSERT_GT(f.write(futureFile), 0);
+            f.close();
+        }
+
+        VerifyTrust::FilePersistedTrustClient client(path);
+
+        // Fail-closed: the future file's trusted SHA must NOT be
+        // honoured (base client has no modal → Headless, never
+        // Trusted). Without the gate, the v999 entry would load and
+        // this would return Trusted.
+        const auto dec =
+            client.outcomeForConfig(QStringLiteral("/some/proj"), cfgBytes);
+        expect(dec.outcome != VerifyTrust::Outcome::Trusted,
+               "TF-4 future-schema trust entry not honoured "
+               "(fail-closed)");
+
+        // Refuse-to-clobber: a write attempt no-ops (returns false)
+        // and leaves the newer file untouched.
+        const bool saved =
+            client.addTrustedSha(QString(64, QLatin1Char('b')));
+        expect(!saved,
+               "TF-4 addTrustedSha no-ops under a future-schema file");
+
+        QFile after(path);
+        ASSERT_TRUE(after.open(QIODevice::ReadOnly));
+        const QByteArray onDiskAfter = after.readAll();
+        after.close();
+        expect(onDiskAfter == futureFile,
+               "TF-4 future-schema file left byte-identical "
+               "(no downgrade-clobber)");
+    }
 }
 
 // ---- MCP envelope wiring (Phase 2) --------------------------------

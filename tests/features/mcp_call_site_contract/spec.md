@@ -56,6 +56,15 @@ the passed value against the table.
   static `callerCwdContractFor` table — registered tools use the
   call-site value; inline tools (`get_session_info`, `tool_info`)
   use the table.
+- **INV-6 / drift refused in every build (ANTS-1834).** The drift
+  branch in `registerToolProvider` must contain a compiled `return;`
+  after the `Q_ASSERT_X`, so a Release build (where `Q_ASSERT_X`
+  compiles out under `NDEBUG`) refuses the registration instead of
+  falling through and registering with a possibly-wrong contract. A
+  `Required` tool silently registered as `Optional` would bypass the
+  `caller_cwd_required` refusal at dispatch — exactly the class of
+  hole this gate exists to close. Debug builds additionally abort via
+  `Q_ASSERT_X`.
 
 ## Test scope
 

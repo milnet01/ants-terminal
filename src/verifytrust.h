@@ -137,6 +137,13 @@ private:
 
     QString m_path;
 
+    // ANTS-1825 — set when loadFromDisk saw a `version` greater than
+    // kSchemaVersion (a file written by a newer Ants whose schema this
+    // build doesn't understand). When true, trust falls closed (no
+    // entries loaded) and saveToDisk no-ops so the older client can't
+    // downgrade-clobber the newer file.
+    bool m_futureSchema = false;
+
     // Trusted SHA → metadata (first-trusted ISO8601 + optional note).
     QHash<QString, QString> m_trustedShas;
     // Trusted canonical repo path → (SHA pin, untilShaChanges flag).

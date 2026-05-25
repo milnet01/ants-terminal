@@ -178,3 +178,41 @@ TEST(mcp_call_site_contract, Inv5DispatcherUsesStoredContract) {
            "(get_session_info, tool_info)");
     EXPECT_EQ(0, expect_failures());
 }
+
+// INV-6 (ANTS-1834) — the drift branch refuses the registration in
+// EVERY build config, not only via the debug-only Q_ASSERT_X (which
+// compiles out under NDEBUG). The branch must contain a compiled
+// `return;` so a Release build can't fall through and register a
+// mis-classified tool (a Required tool registered as Optional would
+// bypass the caller_cwd_required refusal at dispatch).
+TEST(mcp_call_site_contract, Inv6DriftRefusesInRelease) {
+    expect_reset();
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const auto pos = ci.find(
+        "void ClaudeIntegration::registerToolProvider(");
+    ASSERT_NE(pos, std::string::npos)
+        << "INV-6 precondition: registerToolProvider definition "
+           "missing from claudeintegration.cpp";
+    const std::string region = ci.substr(pos, 2000);
+    // Scope precisely to the drift `if` block: from the Q_ASSERT_X to
+    // the next `}` (the if-close). A bare `return;` in that slice is
+    // the compiled Release refusal. Bounding to the block avoids a
+    // false pass on the wrapper lambda's `return inner(args);` further
+    // down (which is `return <expr>;`, not a bare `return;`).
+    const auto assertPos = region.find("Q_ASSERT_X");
+    ASSERT_NE(assertPos, std::string::npos)
+        << "INV-6 precondition: Q_ASSERT_X anchor missing";
+    const auto braceClose = region.find('}', assertPos);
+    ASSERT_NE(braceClose, std::string::npos)
+        << "INV-6 precondition: drift-branch close brace missing";
+    const std::string driftBranch =
+        region.substr(assertPos, braceClose - assertPos);
+    expect(driftBranch.find("return;") != std::string::npos,
+           "INV-6: the drift branch must `return;` after Q_ASSERT_X so "
+           "a Release build refuses the registration instead of "
+           "falling through and registering a mis-classified tool "
+           "(ANTS-1834)");
+    expect(contains(region, "ANTS-1834"),
+           "INV-6: ANTS-1834 anchor comment present at the refuse site");
+    EXPECT_EQ(0, expect_failures());
+}
