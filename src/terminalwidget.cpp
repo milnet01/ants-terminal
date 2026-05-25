@@ -4509,6 +4509,51 @@ void TerminalWidget::checkForClaudePermissionPrompt() {
     // Notify listeners that the terminal has recent output (debounced)
     emit outputReceived();
 
+    // ANTS-1858 — AskUserQuestion / pure-selection prompt detection.
+    // Claude blocks on the user just like a tool-permission prompt, but
+    // it is auto-allowed (no PermissionRequest hook) and renders a
+    // different footer: "Enter to select · ↑/↓ to navigate · Esc to
+    // cancel". The tool-permission scan below anchors on "Tab to
+    // accept" / "Do you want to proceed", so without this branch the
+    // tab dot never leaves Idle (grey) during a question. Emit a
+    // rule-less signal so mainwindow lights the "awaiting input" dot +
+    // "Claude: prompting" label WITHOUT an allow/deny/allowlist button
+    // (a question has no rule). "Enter to select" is the ASCII-stable
+    // anchor; a genuine permission prompt (which wins) is excluded so a
+    // future Claude Code that renders both strings doesn't double-fire.
+    {
+        const int total = m_grid->scrollbackSize() + m_grid->rows();
+        bool questionFooter = false;
+        bool permFooter = false;
+        for (int i = total - 1; i >= std::max(0, total - 12); --i) {
+            const QString text = lineText(i);
+            if (text.contains(QLatin1String("Tab to accept")) ||
+                text.contains(QLatin1String("Do you want to proceed")) ||
+                text.contains(QLatin1String("allow access to")) ||
+                text.contains(QLatin1String("always allow"))) {
+                permFooter = true;
+            }
+            if (text.contains(QLatin1String("Enter to select"))) {
+                questionFooter = true;
+            }
+        }
+        const bool questionVisible = questionFooter && !permFooter;
+        if (questionVisible) {
+            m_claudeQuestionMissedCount = 0;
+            if (!m_claudeQuestionActive) {
+                m_claudeQuestionActive = true;
+                emit claudeQuestionDetected();
+            }
+        } else if (m_claudeQuestionActive) {
+            // Same N=3 debounce as the permission footer below.
+            if (++m_claudeQuestionMissedCount >= 3) {
+                m_claudeQuestionActive = false;
+                m_claudeQuestionMissedCount = 0;
+                emit claudeQuestionCleared();
+            }
+        }
+    }
+
     // Claude Code permission prompts have this structure:
     //   <Tool header>          e.g. "Bash command", "Read", "Edit", etc.
     //   <command/path details>

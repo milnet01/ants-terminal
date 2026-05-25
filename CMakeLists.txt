@@ -960,6 +960,8 @@ if(ANTS_TESTS)
                 tests/features/claude_statusbar_focus_routing/test_claude_statusbar_focus_routing.cpp
                 # ANTS-1850/1851 — per-shell prompt dedup + tab-switch re-show.
                 tests/features/claude_prompt_lifecycle/test_claude_prompt_lifecycle.cpp
+                # ANTS-1858 — AskUserQuestion lights the awaiting-input dot.
+                tests/features/claude_question_prompt_dot/test_claude_question_prompt_dot.cpp
                 tests/features/claude_state_dot_palette/test_claude_state_dot_palette.cpp
                 tests/features/claude_statusbar_extraction/test_claude_statusbar_extraction.cpp
                 tests/features/claude_task_list/test_claude_task_list.cpp

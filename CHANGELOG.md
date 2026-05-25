@@ -255,6 +255,17 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Tab dot now glows orange when Claude asks you a question
+  (ANTS-1858).** When Claude shows a multiple-choice `AskUserQuestion`
+  prompt it is blocked waiting on you, but the little per-tab status dot
+  stayed grey (idle) — so from the tab strip you couldn't tell it
+  needed an answer. Ants only lit the "waiting on you" dot for
+  tool-permission prompts (which say *"Do you want to proceed?"*); a
+  question shows a different footer (*"Enter to select…"*) and isn't a
+  permission gate, so nothing flipped the dot. Ants now recognises the
+  question prompt too and lights the orange dot + "Claude: prompting"
+  label (no allow/deny button — a question has no rule to allow).
+
 - **Roadmap "duplicate ID" check no longer cries wolf on big legacy
   roadmaps (ANTS-1688).** When Ants reads a project's roadmap it flags
   any task ID that accidentally appears on two bullets. On large

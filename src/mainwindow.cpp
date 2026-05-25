@@ -2315,6 +2315,33 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
             }, Qt::SingleShotConnection);
         }
     });
+
+    // ANTS-1858 — AskUserQuestion / selection-prompt detection. Unlike
+    // the permission path above there is no rule and no allow/deny
+    // button: Claude is blocked on the user's choice, so we light the
+    // owning tab's "awaiting input" dot + the "Claude: prompting" label
+    // and nothing else. Routed by the emitting terminal pointer (no
+    // session-id needed), mirroring the scroll-scan permission branch.
+    connect(terminal, &TerminalWidget::claudeQuestionDetected, this,
+            [this, terminal]() {
+        if (terminal != focusedTerminal() && terminal != currentTerminal())
+            return;
+        const pid_t pid =
+            (terminal && m_claudeTabTracker) ? terminal->shellPid() : pid_t(0);
+        if (pid > 0)
+            m_claudeTabTracker->markShellAwaitingInput(pid, true);
+        if (m_claudeStatusBarController)
+            m_claudeStatusBarController->setPromptActive(true);
+    });
+    connect(terminal, &TerminalWidget::claudeQuestionCleared, this,
+            [this, terminal]() {
+        const pid_t pid =
+            (terminal && m_claudeTabTracker) ? terminal->shellPid() : pid_t(0);
+        if (pid > 0)
+            m_claudeTabTracker->markShellAwaitingInput(pid, false);
+        if (m_claudeStatusBarController)
+            m_claudeStatusBarController->setPromptActive(false);
+    });
 }
 
 void MainWindow::newTab() {

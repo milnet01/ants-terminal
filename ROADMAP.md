@@ -2737,7 +2737,7 @@ minor tag (next: pre-0.8.0).
   Kind: fix.
   Source: regression.
 
-- 📋 [ANTS-1858] **Per-tab Claude dot stays grey (idle) during an AskUserQuestion prompt instead of orange (awaiting-input).**
+- ✅ [ANTS-1858] **Per-tab Claude dot stays grey (idle) during an AskUserQuestion prompt instead of orange (awaiting-input).**
   **Layman:** When Claude asks you a multiple-choice question, the little dot on the tab should glow orange to say it's waiting on you — but it stays grey like it's idle.
   Kind: fix.
   Lanes: claudeintegration, status-bar, claudetabtracker.
@@ -2764,6 +2764,15 @@ minor tag (next: pre-0.8.0).
   toolFinished/sessionStopped belt. Test: source-scrape +
   `markShellAwaitingInput` behavioural, mirroring
   `tests/features/claude_prompt_lifecycle/`.
+  Shipped 2026-05-25. `checkForClaudePermissionPrompt` gained a
+  self-contained selection-prompt branch (anchor "Enter to select",
+  excluded when a permission footer is co-present) emitting new
+  `claudeQuestionDetected` / `claudeQuestionCleared` signals (N=3
+  debounce); mainwindow lights `markShellAwaitingInput(true)` +
+  `setPromptActive(true)` for the owning tab with NO allowlist button,
+  and clears on the cleared signal. Tests:
+  `tests/features/claude_question_prompt_dot/` (5 INVs). 78/78 Claude
+  tests green. Requires a relaunch to take effect.
 
 ### 🔍 CI fold-in (2026-04-28)
 

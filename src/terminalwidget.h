@@ -262,6 +262,14 @@ signals:
     // tick while the prompt is still up, which would retract the button
     // prematurely during Claude Code's continuous TUI animation.
     void claudePermissionCleared();
+    // ANTS-1858 — fires when an AskUserQuestion / pure-selection prompt
+    // (footer "Enter to select · …", NOT a tool-permission gate) is on
+    // screen. Distinct from claudePermissionDetected: there is no
+    // allowlist rule and no allow/deny button — only the per-tab
+    // "awaiting input" dot + "Claude: prompting" label. claudeQuestionCleared
+    // fires (debounced) when that footer leaves the screen.
+    void claudeQuestionDetected();
+    void claudeQuestionCleared();
     void triggerFired(const QString &pattern, const QString &actionType, const QString &actionValue);
     void commandFailed(int exitCode, const QString &output);
     void outputReceived();  // debounced notification of PTY output
@@ -580,6 +588,12 @@ private:
     // ~1s past the approve/decline, well below the user's frustration
     // threshold). 0 means "footer visible last scan."
     int m_claudePermissionMissedCount = 0;
+    // ANTS-1858 — sticky-state + debounce for the AskUserQuestion /
+    // selection-prompt detector (mirrors the permission-footer debounce
+    // above). Separate from m_lastDetectedRule because a question has no
+    // allowlist rule.
+    bool m_claudeQuestionActive = false;
+    int m_claudeQuestionMissedCount = 0;
     void checkForClaudePermissionPrompt();
 
     // Broadcast callback
