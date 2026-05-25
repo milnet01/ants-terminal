@@ -2737,6 +2737,34 @@ minor tag (next: pre-0.8.0).
   Kind: fix.
   Source: regression.
 
+- 📋 [ANTS-1858] **Per-tab Claude dot stays grey (idle) during an AskUserQuestion prompt instead of orange (awaiting-input).**
+  **Layman:** When Claude asks you a multiple-choice question, the little dot on the tab should glow orange to say it's waiting on you — but it stays grey like it's idle.
+  Kind: fix.
+  Lanes: claudeintegration, status-bar, claudetabtracker.
+  Source: user-report-2026-05-25 (screenshot during this session's AskUserQuestion).
+  Root cause (2026-05-25, verified against the live transcript +
+  source): the orange "awaiting-input" dot is driven only by
+  `TerminalWidget::checkForClaudePermissionPrompt`
+  (`terminalwidget.cpp:4508`), which anchors on the tool-PERMISSION
+  footer ("Tab to accept" / "Do you want to proceed" / "allow access
+  to") → emits `claudePermissionDetected(rule)` →
+  `markShellAwaitingInput(true)`. AskUserQuestion renders a different
+  footer ("Enter to select · ↑/↓ to navigate · Esc to cancel") and
+  fires NO `PermissionRequest` hook (it is auto-allowed, not a gate),
+  so neither awaiting-input path triggers. The transcript parser
+  resolves the tail (an `assistant`+`tool_use` event,
+  name="AskUserQuestion") to `ToolUse`, but because the file is static
+  during the wait the watcher-driven reparse doesn't re-fire and a Stop
+  hook leaves the dot at Idle/grey. Fix locus: add an AskUserQuestion/
+  selection-prompt branch to `checkForClaudePermissionPrompt` (anchor
+  on the ASCII-stable "Enter to select") emitting a NEW
+  question-detected signal (no rule) → dot orange + "Claude:
+  prompting" label but NO allow/deny/allowlist button (decouple from
+  the permission-rule path); clear on the same footer-gone debounce +
+  toolFinished/sessionStopped belt. Test: source-scrape +
+  `markShellAwaitingInput` behavioural, mirroring
+  `tests/features/claude_prompt_lifecycle/`.
+
 ### 🔍 CI fold-in (2026-04-28)
 
 - ✅ [ANTS-1099] **Unescaped `&` in 0.7.55 metainfo `<release>` body
@@ -8499,6 +8527,18 @@ indie-review finding.
   Kind: enhancement.
   Lanes: dialogchrome, config, roadmapdialog.
   Source: cold-eyes-2026-05-21 (dialogs.md authoring).
+
+- 📋 [ANTS-1859] **tasks/refresh debug line still spams during an active session — ANTS-1854 dedup key includes transcript mtime.**
+  **Layman:** The Claude debug log fills up with near-identical 'tasks/refresh' lines every couple of seconds while Claude is working, even when nothing about the task list changed.
+  Kind: optimize.
+  Lanes: claudestatuswidgets, observability.
+  Source: user-request-2026-05-25 (live debug-log review).
+
+- 📋 [ANTS-1860] **Add Claude hook-event logging (PreToolUse/PostToolUse/Stop/PermissionRequest) to the Claude debug category.**
+  **Layman:** The Claude debug log shows tool calls and task refreshes but not the hook events that drive the tab dot — adding them would make dot/prompt bugs diagnosable from the log.
+  Kind: enhancement.
+  Lanes: claudeintegration, observability.
+  Source: in-session-2026-05-25 (ANTS-1858 was hard to diagnose with no hook lines in the log).
 
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
