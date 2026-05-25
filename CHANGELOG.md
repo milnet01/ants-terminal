@@ -274,6 +274,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Claude debug log no longer spams a 'tasks/refresh' line every couple of seconds.** (ANTS-1859)
+  While Claude was working, the debug log filled with near-identical task-refresh lines even when nothing about the task list changed; the de-duplication now ignores the transcript's last-modified time (which ticks on every output write) so a line is only logged when the task list actually changes.
+
 - **AskUserQuestion awaiting-input dot never cleared after the question was answered (ANTS-1858 follow-up).** (ANTS-1862)
   After Claude asked you a multiple-choice question and you answered, the little orange dot on the tab stayed lit forever; now it goes back to normal once you answer.
 

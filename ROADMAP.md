@@ -8559,11 +8559,12 @@ indie-review finding.
   Lanes: dialogchrome, config, roadmapdialog.
   Source: cold-eyes-2026-05-21 (dialogs.md authoring).
 
-- 📋 [ANTS-1859] **tasks/refresh debug line still spams during an active session — ANTS-1854 dedup key includes transcript mtime.**
+- ✅ [ANTS-1859] **tasks/refresh debug line still spams during an active session — ANTS-1854 dedup key includes transcript mtime.**
   **Layman:** The Claude debug log fills up with near-identical 'tasks/refresh' lines every couple of seconds while Claude is working, even when nothing about the task list changed.
   Kind: optimize.
   Lanes: claudestatuswidgets, observability.
   Source: user-request-2026-05-25 (live debug-log review).
+  Resolved (2026-05-25): dropped `preMtimeMs` from the dedup key in ClaudeStatusBarController::refreshTasksButton (sig 8→7 fields), matching the already-correct refreshBgTasksButton sibling. Claude streams output into the JSONL so the mtime ticked every poll, defeating the ANTS-1854 dedup; the line now logs only on a real task-state transition (counts/visibility), and mtime stays in the logged line as the ANTS-1458 latency column. Regression-locked by tests/features/tasks_refresh_log_dedup (source-grep, INV-1..4).
 
 - ✅ [ANTS-1860] **Add Claude hook-event logging (PreToolUse/PostToolUse/Stop/PermissionRequest) to the Claude debug category.**
   **Layman:** The Claude debug log shows tool calls and task refreshes but not the hook events that drive the tab dot — adding them would make dot/prompt bugs diagnosable from the log.

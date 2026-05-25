@@ -896,17 +896,23 @@ void ClaudeStatusBarController::refreshTasksButton() {
         const qint64 mtimeDeltaMs = (preMtimeMs < 0 || preRescanMs <= 0)
             ? -1 : (preMtimeMs - preRescanMs);
         // ANTS-1854 — suppress consecutive no-op poll lines. The
-        // signature keys on the transition set the proposal named
-        // (path, transcript mtime, all task counts, visibility
-        // branch) and deliberately excludes poll-dur-us (pure per-tick
-        // timing) and the prev-changed flag, so a quiet 2 s tick that
-        // re-derives identical state emits nothing. A real transcript
-        // append advances preMtimeMs → new signature → logged, so the
-        // ANTS-1458 latency signal is preserved on genuine changes.
-        const QString sig = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8")
+        // signature keys on the transition set (focus, path, all task
+        // counts, visibility branch) and deliberately excludes
+        // poll-dur-us (pure per-tick timing) and the prev-changed flag,
+        // so a quiet 2 s tick that re-derives identical state emits
+        // nothing.
+        //
+        // ANTS-1859 — the transcript mtime is excluded from the key.
+        // Claude streams its output into the JSONL continuously, so the
+        // mtime advanced on essentially every poll even when the task
+        // list was unchanged, re-logging a near-identical line every
+        // ~2 s for the whole session. mtime stays in the logged *line*
+        // below (the ANTS-1458 latency column) so a genuine state change
+        // still carries its mtime context — it is just no longer part of
+        // the dedup key.
+        const QString sig = QStringLiteral("%1|%2|%3|%4|%5|%6|%7")
             .arg(focusedTabPresent ? 1 : 0)
             .arg(pathShort)
-            .arg(static_cast<long long>(preMtimeMs))
             .arg(total)
             .arg(unfinished)
             .arg(inProgress)
