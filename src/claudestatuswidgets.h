@@ -172,6 +172,16 @@ private:
     QString                m_modelChipPath;
     qint64                 m_modelChipMtimeMs = -1;
 
+    // ANTS-1854 — last emitted diagnostic-line signatures for the two
+    // 2 s poll refreshers. The Claude debug lane wrote a bgtasks +
+    // tasks line on EVERY tick (≈25 k no-op lines / 5.7 MB across a
+    // few sessions), burying the rare `mcp dispatch` lines a reviewer
+    // actually needs. Gate each poll line on a state-transition: log
+    // only when the signature differs from the last one emitted. Empty
+    // sentinel forces the first line through.
+    QString                m_lastBgTasksLogSig;
+    QString                m_lastTasksLogSig;
+
     // Render state — formerly the m_claude{LastState, LastDetail,
     // PromptActive, PlanMode, Auditing} fivesome on MainWindow.
     ClaudeState m_lastState = ClaudeState::NotRunning;

@@ -786,14 +786,28 @@ void ClaudeStatusBarController::refreshBgTasksButton() {
             path.isEmpty() ? "HIDE/no-path" :
             (total == 0)  ? "HIDE/no-tasks-parsed" :
                             "HIDE/all-finished";
-        ANTS_LOG(DebugLog::Claude,
-                 "bgtasks/refresh: focused-tab=%s cwd=%s path=%s "
-                 "prev-changed=%s running=%d total=%d → %s",
-                 focusedTabPresent ? "yes" : "no",
-                 cwdShort.toUtf8().constData(),
-                 pathShort.toUtf8().constData(),
-                 (path == prevPath) ? "no" : "yes",
-                 running, total, branch);
+        // ANTS-1854 — log only on a state transition. The signature
+        // excludes the prev-changed flag (a pure per-tick artifact)
+        // and keys on the fields a reviewer cares about: tab presence,
+        // resolved path, running/total counts, and the visibility
+        // branch. Consecutive identical no-op polls are suppressed.
+        const QString sig = QStringLiteral("%1|%2|%3|%4|%5")
+            .arg(focusedTabPresent ? 1 : 0)
+            .arg(pathShort)
+            .arg(running)
+            .arg(total)
+            .arg(QLatin1String(branch));
+        if (sig != m_lastBgTasksLogSig) {
+            m_lastBgTasksLogSig = sig;
+            ANTS_LOG(DebugLog::Claude,
+                     "bgtasks/refresh: focused-tab=%s cwd=%s path=%s "
+                     "prev-changed=%s running=%d total=%d → %s",
+                     focusedTabPresent ? "yes" : "no",
+                     cwdShort.toUtf8().constData(),
+                     pathShort.toUtf8().constData(),
+                     (path == prevPath) ? "no" : "yes",
+                     running, total, branch);
+        }
     }
 
     if (running <= 0) {
@@ -881,22 +895,42 @@ void ClaudeStatusBarController::refreshTasksButton() {
         const int totalDelta = total - beforeTotal;
         const qint64 mtimeDeltaMs = (preMtimeMs < 0 || preRescanMs <= 0)
             ? -1 : (preMtimeMs - preRescanMs);
-        ANTS_LOG(DebugLog::Claude,
-                 "tasks/refresh: focused-tab=%s cwd=%s path=%s "
-                 "prev-changed=%s mtime=%lld rescan-mtime=%lld "
-                 "mtime-delta-ms=%lld poll-dur-us=%lld "
-                 "delta=%+d total=%d unfinished=%d "
-                 "in-progress=%d pending=%d done=%d → %s",
-                 focusedTabPresent ? "yes" : "no",
-                 cwdShort.toUtf8().constData(),
-                 pathShort.toUtf8().constData(),
-                 (path == prevPath) ? "no" : "yes",
-                 static_cast<long long>(preMtimeMs),
-                 static_cast<long long>(preRescanMs),
-                 static_cast<long long>(mtimeDeltaMs),
-                 static_cast<long long>(pollDurUs),
-                 totalDelta,
-                 total, unfinished, inProgress, pending, done, branch);
+        // ANTS-1854 — suppress consecutive no-op poll lines. The
+        // signature keys on the transition set the proposal named
+        // (path, transcript mtime, all task counts, visibility
+        // branch) and deliberately excludes poll-dur-us (pure per-tick
+        // timing) and the prev-changed flag, so a quiet 2 s tick that
+        // re-derives identical state emits nothing. A real transcript
+        // append advances preMtimeMs → new signature → logged, so the
+        // ANTS-1458 latency signal is preserved on genuine changes.
+        const QString sig = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8")
+            .arg(focusedTabPresent ? 1 : 0)
+            .arg(pathShort)
+            .arg(static_cast<long long>(preMtimeMs))
+            .arg(total)
+            .arg(unfinished)
+            .arg(inProgress)
+            .arg(pending)
+            .arg(QStringLiteral("%1|%2").arg(done).arg(QLatin1String(branch)));
+        if (sig != m_lastTasksLogSig) {
+            m_lastTasksLogSig = sig;
+            ANTS_LOG(DebugLog::Claude,
+                     "tasks/refresh: focused-tab=%s cwd=%s path=%s "
+                     "prev-changed=%s mtime=%lld rescan-mtime=%lld "
+                     "mtime-delta-ms=%lld poll-dur-us=%lld "
+                     "delta=%+d total=%d unfinished=%d "
+                     "in-progress=%d pending=%d done=%d → %s",
+                     focusedTabPresent ? "yes" : "no",
+                     cwdShort.toUtf8().constData(),
+                     pathShort.toUtf8().constData(),
+                     (path == prevPath) ? "no" : "yes",
+                     static_cast<long long>(preMtimeMs),
+                     static_cast<long long>(preRescanMs),
+                     static_cast<long long>(mtimeDeltaMs),
+                     static_cast<long long>(pollDurUs),
+                     totalDelta,
+                     total, unfinished, inProgress, pending, done, branch);
+        }
     }
 
     // ANTS-1219-INV-3 / ANTS-1216 / ANTS-1246: hide branch covers

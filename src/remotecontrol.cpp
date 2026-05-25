@@ -1421,6 +1421,22 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // path (existing behaviour, INV-6).
     const QString section = req.value(QStringLiteral("section")).toString();
 
+    // ANTS-1856 — optional `id` single-item selector. When set, the
+    // query returns just the bullet(s) whose id equals this value,
+    // bypassing the status filter + pagination so a caller after one
+    // item (e.g. "show me ANTS-1853") gets it in a single small call
+    // instead of paging the whole roadmap. Match is case-sensitive
+    // exact (ids are canonically the upper-case [PROJ-NNNN] token);
+    // a case-only mismatch surfaces bad_case + canonical_id, mirroring
+    // the section= contract (ANTS-1524). 64-byte + control-char hygiene
+    // matches bad_status / bad_section so a stray id can't smuggle
+    // ANSI/control bytes into the echoed envelope.
+    QString idArg = req.value(QStringLiteral("id")).toString();
+    if (idArg.size() > 64) idArg.truncate(64);
+    for (int i = 0; i < idArg.size(); ++i) {
+        if (idArg.at(i).unicode() < 0x20) idArg[i] = QChar('?');
+    }
+
     // ANTS-1436-INV-8 — optional `offset` + `limit` args. Forwarded
     // verbatim from the dispatch lambda (NOT type-gated there) so
     // we can emit bad_args on non-numeric. isUndefined() is the
@@ -1505,6 +1521,26 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["ok"] = false;
         out["error"] = QStringLiteral(
             "section_index mode does not accept offset/limit");
+        out["code"] = QStringLiteral("bad_mode_combo");
+        return QJsonDocument(out);
+    }
+    // ANTS-1856 — `id` is a single-bullet selector that scans the whole
+    // roadmap. section_index is the section-discovery surface and
+    // section= is a sub-slice; neither composes with a global id lookup,
+    // so reject loudly (vs silently ignoring one) — same stance as the
+    // section_index combos above.
+    if (!idArg.isEmpty() && mode == QLatin1String("section_index")) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "id selector does not combine with mode:section_index");
+        out["code"] = QStringLiteral("bad_mode_combo");
+        return QJsonDocument(out);
+    }
+    if (!idArg.isEmpty() && !section.isEmpty()) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "id selector searches the whole roadmap; do not combine "
+            "with section");
         out["code"] = QStringLiteral("bad_mode_combo");
         return QJsonDocument(out);
     }
@@ -2170,6 +2206,62 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         env["hint"]            = kUnrecognisedFormatHint();
         env["expected_format"] = kUnrecognisedFormatExpected();
         return QJsonDocument(env);
+    }
+
+    // ANTS-1856 — single-item fetch. Runs on the full bullets cache
+    // (section= is rejected upstream when id is set, so the cache is
+    // the whole-file array here), bypassing the status filter and
+    // pagination: an explicit id request wants THAT item regardless of
+    // lifecycle, and the result is at most a handful of bullets. Body
+    // is included by default for an id fetch — the intent is "give me
+    // the whole item" — and stripped only on an explicit
+    // include_body:false. A case-only mismatch returns bad_case with
+    // the canonical id so a wrong-case caller gets the exact spelling
+    // (mirrors section= ANTS-1524) rather than a bare found:false.
+    if (!idArg.isEmpty()) {
+        QJsonArray matches;
+        for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
+            if (v.toObject().value(QStringLiteral("id")).toString() == idArg)
+                matches.append(v);
+        }
+        if (matches.isEmpty()) {
+            QString canonical;
+            for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
+                const QString bid =
+                    v.toObject().value(QStringLiteral("id")).toString();
+                if (!bid.isEmpty() &&
+                    bid.compare(idArg, Qt::CaseInsensitive) == 0) {
+                    canonical = bid;
+                    break;
+                }
+            }
+            if (!canonical.isEmpty()) {
+                out["ok"] = false;
+                out["error"] = QStringLiteral(
+                    "id case mismatch: \"%1\" — did you mean \"%2\"?")
+                        .arg(idArg, canonical);
+                out["code"] = QStringLiteral("bad_case");
+                out["canonical_id"] = canonical;
+                return QJsonDocument(out);
+            }
+        }
+        if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
+        out["ok"]      = true;
+        out["bullets"] = matches;
+        out["path"]    = path;
+        out["count"]   = matches.size();
+        out["id"]      = idArg;
+        out["found"]   = !matches.isEmpty();
+        if (hasModeArg) out["mode"] = mode;
+        if (hasIncludeBodyArg) out["include_body"] = includeBody;
+        // ANTS-1646 — surface duplicate-id descriptors (cache is the
+        // full-file array, so they are current) when the same id was
+        // seen on more than one bullet — exactly the case an id fetch
+        // most needs to flag (matches.size() > 1).
+        if (!m_roadmapCacheDuplicateIds.isEmpty()) {
+            out["duplicate_ids"] = m_roadmapCacheDuplicateIds;
+        }
+        return QJsonDocument(out);
     }
 
     // ANTS-1247-INV-2/3: filter the cached array post-cache.

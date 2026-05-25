@@ -14,6 +14,17 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_query` single-item `id` selector (ANTS-1856).** Pass
+  `id:"ANTS-1853"` to fetch exactly that one bullet in a single call
+  instead of paging the whole roadmap (a no-arg query returns 15 of
+  ~214 bullets, so the wanted item is rarely on the first page). The
+  id fetch bypasses the `status` filter and pagination, includes the
+  bullet body by default, and returns `{ok, bullets, count, id,
+  found}`. Match is case-sensitive; a case-only mismatch returns
+  `code:"bad_case"` with `canonical_id`, an unknown id returns
+  `found:false`, and `id` combined with `section` or
+  `mode:section_index` is rejected with `bad_mode_combo`.
+
 - **`indie_review_orchestrate` — one-call indie-review dispatch plan
   (ANTS-1279).** A single MCP call returns the whole sweep manifest —
   the lane partition, each lane's source paths + compact v2 brief, a
@@ -309,6 +320,24 @@ for security-relevant changes.
   with `make -j$(nproc)`).
 
 ### Changed
+
+- **Claude debug-lane poll traces gated on state change (ANTS-1854).**
+  The `bgtasks/refresh` + `tasks/refresh` diagnostic lines were written
+  on every 2-second tick even when nothing changed — ~25 k no-op lines
+  / 5.7 MB across a few sessions, burying the rare `mcp dispatch` lines
+  a reviewer actually needs. Each line is now emitted only on a real
+  state transition (path / transcript mtime / task counts / visibility
+  branch); quiet ticks emit nothing, genuine changes still log.
+
+- **Size-aware steer for dropped tool-call payloads (ANTS-1857,
+  follow-on to ANTS-1853).** Large structured tool-call arguments are
+  intermittently dropped *before* reaching Ants (they arrive as `{}`),
+  so Ants cannot accept an input it never received. Rather than only
+  suggesting a retry, the `roadmap_log` descriptor now carries a
+  proactive **SIZE NOTE** steering callers to keep `body` small or use
+  the Edit tool for long prose, and the empty-arguments refusal message
+  names the large-payload root cause plus both mitigations (shrink the
+  call / use Edit) instead of just "resend."
 
 - **README rewritten as a plain-language Claude Code companion (ANTS-1298).**
   The front page dropped from ~1100 lines to ~190, rewritten in everyday

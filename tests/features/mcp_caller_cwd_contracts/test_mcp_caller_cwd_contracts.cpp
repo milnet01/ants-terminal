@@ -180,7 +180,10 @@ TEST(McpCallerCwdContracts, ProviderDispatchGuardedByToolHandled) {
     // Window widened to 16000 (ANTS-1415 Phase 3b grew the dispatch
     // block; the provider-dispatch !toolHandled guard now sits past
     // the original 9000-char window).
-    const std::string region = cc.substr(pos, 16000);
+    // ANTS-1857 widened 16000→18000: the size-aware empty-arguments
+    // steer added a few lines ahead of the provider-dispatch guard,
+    // pushing `if (!toolHandled) {` to offset ~16.5 KiB.
+    const std::string region = cc.substr(pos, 18000);
     // The provider-dispatch block historically guarded on `!cachedHit`;
     // ANTS-1404 widens that to `!toolHandled` so refusals also
     // short-circuit the provider lambda invocation.

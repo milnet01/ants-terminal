@@ -7828,7 +7828,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: investigate.
   Source: in-session-2026-05-25.
 
-- 📋 [ANTS-1854] **Claude debug-lane floods the log with no-op 2-second poll traces — gate poll logging on state change.**
+- ✅ [ANTS-1854] **Claude debug-lane floods the log with no-op 2-second poll traces — gate poll logging on state change.**
   Found while reviewing the DebugLog::Claude log for ANTS-1853 (2026-05-25). The lane writes a `bgtasks/refresh` + a `tasks/refresh` line on EVERY 2-second poll, including when nothing changed (prev-changed=no, identical totals/mtime). Result: 25,303 of ~25,267 lines (5.7 MB across 3 sessions) were no-op polls; the 6 meaningful `mcp dispatch` lines were needles in a haystack — the spam directly impeded the log review. Proposal: suppress consecutive identical no-op poll lines (log only on a state transition: total/unfinished/running/mtime change, or HIDE↔SHOW flip), or move the per-tick trace behind a finer opt-in sub-flag while keeping change events in the main Claude lane. Keeps the lane useful for diagnosing the tasks-chip + MCP paths without the flood. Lanes: claudeintegration, claudetabtracker.
   **Layman:** The Claude debug log writes two lines every 2 seconds even when nothing has changed, so a real problem is buried under thousands of identical status lines. Only log when something actually changes.
   Kind: enhancement.
@@ -7838,6 +7838,20 @@ fixes don't address. Roadmapped here as their own design tasks.
   User request 2026-05-25, motivated by this session: reviewing the 5.7 MB Claude debug log for ANTS-1853 required Claude to shell out to grep/tail repeatedly. A native MCP verb (e.g. read_log) should let Claude Code query a log file — the Ants debug log (~/.local/share/ants-terminal/debug.log) and arbitrary log paths under caller_cwd — with grep-like filtering (regex include/exclude, category/lane, since-timestamp, tail-N) and return only matching lines plus counts, instead of CC reading the whole file. Fits the token-saving offload theme (sibling to recent_errors/get_scrollback). Must reuse the standard MCP contracts: PathValidation::validatePath for path args (ANTS-1295, reject bad_path), caller_cwd contract (Required), response size caps (ANTS-1293 max_bytes pattern, truncated flag), ETag/fields projection where it composes. Consider a since-cursor incremental mode like get_scrollback (ANTS-1500) so a polling caller only sees new lines. Lanes: remotecontrol, claudeintegration.
   **Layman:** Add an Ants tool that lets Claude Code ask for just the relevant parts of a log file, instead of Claude reading a huge multi-megabyte log itself and burning tokens.
   Kind: feature.
+  Source: user-request-2026-05-25.
+
+- ✅ [ANTS-1856] **roadmap_query `id=` single-item selector — fetch one bullet by ID in one call.**
+  User ask 2026-05-25: querying for one item (e.g. ANTS-1853) returned 15 of 214 bullets and the wanted item wasn't on the first page, forcing a grep / a ~13 K-token section_index page. Adds an optional `id` arg: `roadmap_query(caller_cwd, id:"ANTS-1853")` returns just that bullet — bypasses the status filter + pagination, includes the body by default, returns {ok, bullets, count, id, found}. Case-sensitive exact match; case-only mismatch → bad_case + canonical_id (mirrors section=); unknown id → found:false. Rejects id+section / id+section_index (bad_mode_combo). Feature test tests/features/roadmap_query_by_id. Lanes: remotecontrol, claudeintegration, mainwindow.
+  **Layman:** Ask Ants for one roadmap item by its number and get exactly that, instead of flipping through pages to find it.
+  Kind: enhancement.
+  Lanes: remotecontrol, claudeintegration, mainwindow.
+  Source: user-request-2026-05-25.
+
+- ✅ [ANTS-1857] **Proactive large-payload size steer for dropped tool-call args (follow-on to ANTS-1853).**
+  ANTS-1853 root-caused the intermittent arguments_empty refusals as an UPSTREAM drop: large structured tool-call payloads arrive at Ants as `{}`, so Ants cannot accept an input it never received — only the caller can avoid the drop. User ask 2026-05-25: do better than "just retry". Two Ants-side levers shipped: (1) a SIZE NOTE on the roadmap_log tool descriptor steering callers to keep `body` small / use Edit for long prose BEFORE the drop; (2) the empty-arguments refusal steer is now size-aware — names the large-payload root cause and the two mitigations (shrink the call / use the Edit tool) instead of only "resend". Diagnostic logging retained. Test: mcp_refusal_envelope_hints INV-9. Lanes: claudeintegration.
+  **Layman:** Big requests sometimes get lost before they reach Ants. Ants can't rebuild data it never got, so we now warn you up front to keep big roadmap entries small (or use a file edit), and the error message tells you that instead of just saying "try again".
+  Kind: enhancement.
+  Lanes: claudeintegration.
   Source: user-request-2026-05-25.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)

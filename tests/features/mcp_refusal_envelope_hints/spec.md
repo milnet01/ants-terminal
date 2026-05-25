@@ -45,6 +45,16 @@ Same for the ANTS-1336 / ANTS-1372 RcGate `cwd_missing` refusal.
   upstream; non-empty-without-caller_cwd → genuine caller error). The
   `code` stays `caller_cwd_required` (taxonomy unchanged). Anchor:
   `ANTS-1853` in `src/claudeintegration.cpp` tools/call dispatch.
+- **INV-9 (ANTS-1857) / the dropped-payload steer is size-aware.**
+  Since the drop correlates with payload size (large structured
+  appends drop; small calls don't), the empty-arguments steer MUST go
+  beyond "resend": it names the size root cause ("too large") and the
+  two caller-side mitigations — shrink the call, or write the content
+  with the Edit tool. The `roadmap_log` tool descriptor MUST also carry
+  a proactive `SIZE NOTE (ANTS-1853)` so a caller keeps appends small
+  BEFORE the drop happens. Anchors: `ANTS-1857` + `Edit tool` in the
+  dispatch steer, `SIZE NOTE (ANTS-1853)` in the roadmap_log
+  descriptor.
 
 ## Test scope
 

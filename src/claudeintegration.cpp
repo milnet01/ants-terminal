@@ -1797,7 +1797,12 @@ void ClaudeIntegration::onMcpConnection() {
                     "~12 K tokens). Optional `section` slug — returns "
                     "only bullets within that ## or ### heading "
                     "(e.g. \"performance\", \"080\"); response carries "
-                    "`section` echo. Optional `mode` — \"bullets\" "
+                    "`section` echo. Optional `id` — fetch ONE bullet "
+                    "by its [PROJ-NNNN] id (e.g. \"ANTS-1853\") in a "
+                    "single call instead of paging; bypasses status + "
+                    "pagination, includes the body by default, returns "
+                    "{ok, bullets, count, id, found} (ANTS-1856). "
+                    "Optional `mode` — \"bullets\" "
                     "(default) / \"section_index\" (returns a compact "
                     "{slug, headline, level, active_count, "
                     "shipped_count, total_count, active_count_id_only, "
@@ -1870,6 +1875,26 @@ void ClaudeIntegration::onMcpConnection() {
                         "with `canonical_slug` surfaced (ANTS-1524). "
                         "Unknown slug → code=bad_section.");
                     props["section"] = sectionProp;
+                    // ANTS-1856 — `id` single-item selector. The
+                    // one-call answer to \"show me ANTS-NNNN\" without
+                    // paging the whole roadmap.
+                    QJsonObject idProp;
+                    idProp["type"] = "string";
+                    idProp["description"] = QStringLiteral(
+                        "Fetch a single bullet by its [PROJ-NNNN] id "
+                        "(e.g. \"ANTS-1853\") in one call instead of "
+                        "paging. Returns {ok, bullets:[the item], "
+                        "count, id, found}. Bypasses the `status` "
+                        "filter + pagination (an id request wants THAT "
+                        "item regardless of lifecycle), and includes "
+                        "the body by default (pass include_body:false "
+                        "to drop it). Case-sensitive exact match; a "
+                        "case-only mismatch → code=bad_case with "
+                        "`canonical_id`. Unknown id → {ok:true, "
+                        "found:false, count:0}. Cannot combine with "
+                        "`section` or mode:section_index "
+                        "(bad_mode_combo).");
+                    props["id"] = idProp;
                     // ANTS-1398 — opt-in to retain section-rollup
                     // bullets (empty id/headline, status emoji only).
                     // Default false; the dropped rollups are visual
@@ -5338,12 +5363,27 @@ void ClaudeIntegration::onMcpConnection() {
                         "anchor_unsafe_context, bad_op_combo, "
                         "unrecognised_format. Returns {ok, id?, "
                         "file, line, bytes_written, ...op-specific} "
-                        "or {ok:false, error, code}.");
+                        "or {ok:false, error, code}. "
+                        "SIZE NOTE (ANTS-1853): keep op:\"append\" "
+                        "calls small. Large multi-paragraph `body` "
+                        "payloads (many embedded newlines/quotes) are "
+                        "intermittently dropped in transit by the "
+                        "tool-call transport — the arguments arrive "
+                        "empty and the call refuses with "
+                        "arguments_empty (NOT an Ants bug; the data "
+                        "never reaches the server). Small bodies are "
+                        "reliable. For a long entry, prefer a concise "
+                        "`body` (≲1–2 short paragraphs) or write the "
+                        "prose with the Edit tool directly into "
+                        "ROADMAP.md. If a call refuses with "
+                        "arguments_empty, just resend it.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to append a new bullet or flip an "
                         "existing one's status on ROADMAP.md. "
                         "Mutates project state — caller_cwd "
-                        "required.");
+                        "required. Keep append bodies small — large "
+                        "payloads can be dropped in transit "
+                        "(ANTS-1853); use Edit for long prose.");
                     QJsonObject schema;
                     schema["type"] = "object";
 
@@ -6184,12 +6224,21 @@ void ClaudeIntegration::onMcpConnection() {
                         "so the tool routes to your project rather "
                         "than whichever tab Ants has focused.")
                         .arg(toolName)
+                        // ANTS-1857 — size-aware steer: name the
+                        // large-payload root cause + the two mitigations
+                        // (shrink / use Edit), not just "resend".
                         + (argumentsEmpty
                             ? QStringLiteral(
                                 " NOTE: this call arrived with NO arguments "
                                 "at all — if you DID pass caller_cwd, the "
                                 "whole parameter payload was dropped in "
-                                "transit; resend the entire call verbatim "
+                                "transit (the data never reached Ants; not "
+                                "an Ants bug). Resend the entire call "
+                                "verbatim. If it keeps dropping, the payload "
+                                "is likely too large — shrink it (e.g. a "
+                                "shorter roadmap_log `body`, or split the "
+                                "work) or write the content with the Edit "
+                                "tool directly. Small calls are reliable "
                                 "(ANTS-1853).")
                             : QString());
                     // ANTS-1418 — surface the diagnostic verb so a

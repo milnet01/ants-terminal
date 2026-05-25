@@ -4006,6 +4006,11 @@ void MainWindow::setupClaudeMcpProviders() {
             // matches the ANTS-1247 INV-9 pattern for `status`.
             const QJsonValue sectionVal = args.value("section");
             const QString section = sectionVal.isString() ? sectionVal.toString() : QString();
+            // ANTS-1856 — optional `id` single-item selector. Same
+            // isString() gate as status/section; empty/missing → the
+            // handler takes its existing list path.
+            const QJsonValue idVal = args.value("id");
+            const QString idArg = idVal.isString() ? idVal.toString() : QString();
             // ANTS-1393 — forward caller_cwd so cmdRoadmapQuery's
             // per-project ROADMAP.md resolution at
             // remotecontrol.cpp:738 sees it. Without this the selective
@@ -4016,6 +4021,7 @@ void MainWindow::setupClaudeMcpProviders() {
             QJsonObject req;
             if (!status.isEmpty()) req["status"] = status;
             if (!section.isEmpty()) req["section"] = section;
+            if (!idArg.isEmpty()) req["id"] = idArg;
             if (!callerCwd.isEmpty()) req["caller_cwd"] = callerCwd;
             // ANTS-1437 — forward `mode` so section_index dispatch
             // sees it. Same isString() gate as status/section. Empty

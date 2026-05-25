@@ -1040,6 +1040,8 @@ if(ANTS_TESTS)
                 tests/features/session_memory_read_caller_cwd/test_session_memory_read_caller_cwd.cpp
                 # ANTS-1436 roadmap_query pagination + auto-truncate.
                 tests/features/roadmap_query_pagination/test_roadmap_query_pagination.cpp
+                # ANTS-1856 roadmap_query single-item id selector.
+                tests/features/roadmap_query_by_id/test_roadmap_query_by_id.cpp
                 # ANTS-1441 roadmap_log op:flip for ants-v1 native format.
                 tests/features/roadmap_log_flip_ants_v1/test_roadmap_log_flip_ants_v1.cpp
                 # ANTS-1410 /audit skill spec-anchor drift detection.

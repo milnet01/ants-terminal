@@ -200,3 +200,22 @@ TEST(mcp_refusal_envelope_hints,
            "so a recurrence can be confirmed empty vs genuinely-missing");
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-1857 INV-9 — the dropped-payload steer is size-aware: rather
+// than only "resend", it names the size root cause (large payloads
+// drop) and the two mitigations (shrink the call / use the Edit tool),
+// and the roadmap_log descriptor carries the same SIZE NOTE so a
+// caller is warned BEFORE it builds an oversized append.
+TEST(mcp_refusal_envelope_hints, Inv9SizeAwareSteer) {
+    expect_reset();
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    expect(contains(ci, "ANTS-1857") || contains(ci, "too large"),
+           "INV-9: empty-args steer names the large-payload root cause");
+    expect(contains(ci, "Edit tool"),
+           "INV-9: steer points the caller at the Edit tool for long "
+           "content");
+    expect(contains(ci, "SIZE NOTE (ANTS-1853)"),
+           "INV-9: roadmap_log descriptor carries a proactive SIZE NOTE "
+           "so the caller keeps appends small up front");
+    EXPECT_EQ(0, expect_failures());
+}
