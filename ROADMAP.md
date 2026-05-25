@@ -8611,6 +8611,21 @@ indie-review finding.
   Lanes: terminalwidget, rendering.
   Source: user-request-2026-05-25 (screenshot: opaque green/red diff highlights on a translucent terminal).
 
+- 📋 [ANTS-1865] **Expose the per-tab Claude state dot (idle/thinking/tooluse/awaiting-input) via MCP so dot/prompt-state behavior is programmatically verifiable.**
+  tab_list exposes {claude_running, color} but `color` is the tab's
+  assigned color, not the ClaudeTabTracker glyph state. There is no MCP
+  way to read shellState(pid) — idle/thinking/tooluse/awaitingInput +
+  the resolved dot color. Verifying dot/prompt-state fixes (ANTS-1858 /
+  ANTS-1862) therefore requires the user to eyeball the tab strip. Add a
+  field to tab_list (e.g. claude_state + awaiting_input) or a small
+  dedicated tool so a Claude session can confirm the dot programmatically.
+  Observability sibling to ANTS-1860 (hook logging) / ANTS-1863 (persist
+  debug category).
+  **Layman:** When checking whether the tab's little Claude status dot behaves correctly, there's no way for Claude Code to read the dot's state — it has to ask you to look at the screen. Expose it so dot bugs can be checked automatically.
+  Kind: enhancement.
+  Lanes: claudetabtracker, remotecontrol, observability.
+  Source: in-session-2026-05-25 (couldn't self-verify the ANTS-1862 dot fix — no MCP surface for the dot state).
+
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
 5-lane in-house audit of the 584-test suite across perf,
@@ -13879,6 +13894,20 @@ template / mutate this state atomically" → movable. If it's
   Kind: doc-fix.
   Lanes: roadmap-format, claude-md, readme.
   Source: Cold-eyes 2026-05-18 (spec/ANTS-1160 lane).
+
+- 📋 [ANTS-1866] **roadmap-format.md Kind table is stale vs the live roadmap_log/validKinds enum (missing feature, enhancement, optimize, investigate, accessibility, package, marketing).**
+  roadmap-format.md §3.5.3's "Recognised Kind: values" table lists
+  implement/fix/audit-fix/review-fix/doc/doc-fix/refactor/test/chore/
+  release/research/ux, but the roadmap_log MCP enum + RemoteControl
+  validKinds accept more (feature, enhancement, optimize, investigate,
+  accessibility, package, marketing). The doc is the stale side. Reconcile
+  the table (and specs.md §3.2's Kind reference) with the live enum so
+  spec/roadmap authors + cold-eyes reviewers stop treating valid kinds as
+  errors.
+  **Layman:** The doc that lists valid roadmap 'Kind' labels is out of date — the actual tool accepts several kinds (like 'feature') the doc doesn't list, so reviewers keep flagging valid kinds as invalid.
+  Kind: doc-fix.
+  Lanes: docs, roadmap-format.
+  Source: cold-eyes-2026-05-25 (ANTS-1855 spec review — Kind: feature flagged as not-in-table across multiple loops; live enum at remotecontrol.cpp validKinds + claudeintegration.cpp kindEnum accept it).
 
 ### 🔌 Ants-MCP discoverability — tool-selection guidance (cross-session report 2026-05-17)
 
