@@ -2774,6 +2774,25 @@ minor tag (next: pre-0.8.0).
   `tests/features/claude_question_prompt_dot/` (5 INVs). 78/78 Claude
   tests green. Requires a relaunch to take effect.
 
+- ✅ [ANTS-1862] **AskUserQuestion awaiting-input dot never cleared after the question was answered (ANTS-1858 follow-up).**
+  ANTS-1858 lit the dot but its only clear path was the footer-gone
+  N=3 debounce in checkForClaudePermissionPrompt, which runs on the
+  trailing-edge m_claudeDetectTimer (single-shot 300ms restarted on every
+  PTY batch). Claude's spinner repaints faster than 300ms during active
+  work, so the scan rarely fires and the debounce never reaches 3 misses;
+  the dot stayed orange indefinitely. Fix: new
+  TerminalWidget::clearClaudeQuestionPrompt() (resets the sticky
+  m_claudeQuestionActive + emits claudeQuestionCleared) wired to
+  ClaudeIntegration::toolFinished + sessionStopped in connectTerminal —
+  the same belt the permission path uses. For a mid-turn AskUserQuestion
+  PostToolUse fires on answer and Stop at end-of-turn, so neither clears
+  while the question is on screen. Tests: claude_question_prompt_dot
+  INV-6/7 (749 green). Verified live pending relaunch.
+  **Layman:** After Claude asked you a multiple-choice question and you answered, the little orange dot on the tab stayed lit forever; now it goes back to normal once you answer.
+  Kind: fix.
+  Lanes: claudeintegration, status-bar, terminalwidget.
+  Source: user-report-2026-05-25 (live during this session's AskUserQuestion test).
+
 ### 🔍 CI fold-in (2026-04-28)
 
 - ✅ [ANTS-1099] **Unescaped `&` in 0.7.55 metainfo `<release>` body
@@ -8543,11 +8562,12 @@ indie-review finding.
   Lanes: claudestatuswidgets, observability.
   Source: user-request-2026-05-25 (live debug-log review).
 
-- 📋 [ANTS-1860] **Add Claude hook-event logging (PreToolUse/PostToolUse/Stop/PermissionRequest) to the Claude debug category.**
+- ✅ [ANTS-1860] **Add Claude hook-event logging (PreToolUse/PostToolUse/Stop/PermissionRequest) to the Claude debug category.**
   **Layman:** The Claude debug log shows tool calls and task refreshes but not the hook events that drive the tab dot — adding them would make dot/prompt bugs diagnosable from the log.
   Kind: enhancement.
   Lanes: claudeintegration, observability.
   Source: in-session-2026-05-25 (ANTS-1858 was hard to diagnose with no hook lines in the log).
+  Resolved (2026-05-25): added a single "hook recv: hook=.. tool=.. session=.. focused=.." line at the top of ClaudeIntegration::processHookEvent, guarded by DebugLog::enabled(DebugLog::Claude). Covers every hook (PreToolUse/PostToolUse/Stop/PermissionRequest/SessionStart) in one place; the success path was previously silent. Builds clean; takes effect on relaunch.
 
 - 📋 [ANTS-1861] **parseBullets rxLayman doesn't match the bold **Layman:** form that roadmap_log writes.**
   **Layman:** The roadmap card view pulls a plain-English one-liner from each item, but the pattern it looks for misses the bold-styled label the logging tool actually writes, so those one-liners can come back blank.

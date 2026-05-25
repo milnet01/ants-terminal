@@ -1102,6 +1102,20 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
     // routes via m_lastHookSessionId, not via the singleton state.
     const bool isFocused = isFocusedTabSession(incomingSessionId);
 
+    // ANTS-1860 — log every received hook so tab-dot / prompt-state bugs
+    // are diagnosable from the Claude debug category. The success path
+    // was previously silent (only the cold-start drop below logged), so
+    // ANTS-1858's missing PostToolUse/Stop clear could not be confirmed
+    // from the log. Session id truncated to keep the line compact.
+    if (DebugLog::enabled(DebugLog::Claude)) {
+        ANTS_LOG(DebugLog::Claude,
+                 "hook recv: hook=%s tool=%s session=%.8s focused=%s",
+                 hookName.isEmpty() ? "-" : hookName.toUtf8().constData(),
+                 toolName.isEmpty() ? "-" : toolName.toUtf8().constData(),
+                 incomingSessionId.toUtf8().constData(),
+                 isFocused ? "yes" : "no");
+    }
+
     // Indie-review 2026-05-13: cold-start tightening. During the 1-3s
     // window between setShellPid()'s synchronous m_transcriptPath
     // clear and the next pollClaudeProcess tick, isFocusedTabSession

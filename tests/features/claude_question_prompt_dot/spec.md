@@ -11,6 +11,16 @@ cancel") and fires no `PermissionRequest` hook (it is auto-allowed, not
 a gate). So the dot stayed grey (Idle) during a question — the user
 couldn't tell from the tab strip that Claude was waiting on them.
 
+**Follow-up (2026-05-25):** the first fix lit the dot but it never
+cleared — it stayed orange after the user answered. The clear relied
+solely on the footer-gone N=3 debounce, which runs on the trailing-edge
+`m_claudeDetectTimer` (single-shot 300 ms, restarted on every PTY
+batch). Claude's spinner repaints faster than 300 ms during active work,
+so the scan rarely runs and the debounce never accumulates 3 misses; at
+idle it fires once. So `claudeQuestionCleared()` never emitted. The
+permission path survives this only because of its
+`toolFinished`/`sessionStopped` belt — which the question path lacked.
+
 ## Invariants
 
 ### INV-1 — scanner detects the selection-prompt footer
@@ -47,9 +57,30 @@ has no allowlist rule). `claudeQuestionCleared` calls
 `shellState(pid).awaitingInput == true` with an empty `awaitingRule`,
 which the glyph provider maps to `Glyph::AwaitingInput` (orange).
 
+### INV-6 — reliable hook-driven clear belt
+
+Because the footer-gone debounce can't be trusted to complete (see
+Follow-up), `connectTerminal` wires both
+`ClaudeIntegration::toolFinished` and `ClaudeIntegration::sessionStopped`
+to `TerminalWidget::clearClaudeQuestionPrompt()`, mirroring the
+permission path's belt. For a mid-turn `AskUserQuestion` tool call
+`PostToolUse` fires on answer and `Stop` at end-of-turn, so neither
+fires while the question is on screen — the dot never clears
+prematurely.
+
+### INV-7 — clear resets the sticky flag (no desync)
+
+`clearClaudeQuestionPrompt()` no-ops unless `m_claudeQuestionActive`,
+then resets `m_claudeQuestionActive` + `m_claudeQuestionMissedCount` and
+emits `claudeQuestionCleared()`. Resetting the sticky flag is required:
+the detect signal only fires on the `!m_claudeQuestionActive` rising
+edge, so an external clear that dropped the dot without resetting the
+flag would leave the *next* question's dot dark.
+
 ## Test plan
 
-INV-1..4 lock the scanner branch + GUI wiring by source-scrape (the
-scanner needs a PTY-backed grid; the handler needs a live QStatusBar) —
-same approach as `claude_prompt_lifecycle`. INV-5 is exercised
-behaviourally through the real `ClaudeTabTracker` API.
+INV-1..4, INV-6, INV-7 lock the scanner branch + GUI wiring + clear
+method by source-scrape (the scanner needs a PTY-backed grid; the
+handler needs a live QStatusBar) — same approach as
+`claude_prompt_lifecycle`. INV-5 is exercised behaviourally through the
+real `ClaudeTabTracker` API.

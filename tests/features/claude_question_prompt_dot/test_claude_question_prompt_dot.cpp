@@ -99,6 +99,45 @@ TEST(ClaudeQuestionPromptDot, MainwindowWiringNoButton) {
         << "INV-4: cleared handler drops the awaiting-input dot";
 }
 
+// INV-6 — reliable hook-driven clear belt (toolFinished + sessionStopped),
+// mirroring the permission path, since the footer debounce can't complete.
+TEST(ClaudeQuestionPromptDot, HookClearBeltWired) {
+    const std::string mw = slurp(ANTS_SOURCE_DIR "/src/mainwindow.cpp");
+    const std::string belt = between(mw,
+        "&TerminalWidget::claudeQuestionCleared",
+        "void MainWindow::newTab()");
+    ASSERT_FALSE(belt.empty()) << "question-clear region not found";
+
+    EXPECT_TRUE(contains(belt, "ClaudeIntegration::toolFinished"))
+        << "INV-6: PostToolUse (toolFinished) clears the question dot on "
+           "answer";
+    EXPECT_TRUE(contains(belt, "ClaudeIntegration::sessionStopped"))
+        << "INV-6: Stop (sessionStopped) clears the question dot at "
+           "end-of-turn";
+    EXPECT_TRUE(contains(belt, "clearClaudeQuestionPrompt()"))
+        << "INV-6: both belt signals route through clearClaudeQuestionPrompt";
+}
+
+// INV-7 — clearClaudeQuestionPrompt resets the sticky flag and routes
+// through the shared cleared signal (no next-question desync).
+TEST(ClaudeQuestionPromptDot, ClearResetsStickyFlag) {
+    const std::string tw = slurp(ANTS_SOURCE_DIR "/src/terminalwidget.cpp");
+    const std::string body = between(tw,
+        "void TerminalWidget::clearClaudeQuestionPrompt()",
+        "// --- Write command to PTY ---");
+    ASSERT_FALSE(body.empty())
+        << "INV-7: clearClaudeQuestionPrompt definition not found";
+
+    EXPECT_TRUE(contains(body, "if (!m_claudeQuestionActive)"))
+        << "INV-7: no-ops unless a question is active";
+    EXPECT_TRUE(contains(body, "m_claudeQuestionActive = false"))
+        << "INV-7: resets the sticky flag so the next question re-lights";
+    EXPECT_TRUE(contains(body, "m_claudeQuestionMissedCount = 0"))
+        << "INV-7: resets the debounce miss counter";
+    EXPECT_TRUE(contains(body, "emit claudeQuestionCleared()"))
+        << "INV-7: routes through the shared cleared signal";
+}
+
 // INV-5 — tracker awaiting overlay (no rule) drives the orange glyph.
 TEST(ClaudeQuestionPromptDot, AwaitingOverlayNoRule) {
     QTemporaryDir tmp;

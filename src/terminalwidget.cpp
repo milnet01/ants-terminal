@@ -4688,6 +4688,24 @@ void TerminalWidget::checkForClaudePermissionPrompt() {
     }
 }
 
+void TerminalWidget::clearClaudeQuestionPrompt() {
+    // Belt-and-suspenders clear for the AskUserQuestion dot (ANTS-1858
+    // follow-up). The footer-gone debounce above needs N=3 quiet-gap
+    // scans, but m_claudeDetectTimer is a single-shot trailing-edge
+    // timer restarted on every PTY batch — Claude's spinner repaints
+    // faster than its 300 ms interval, so during active output the scan
+    // never runs and the debounce can't accumulate. Without an external
+    // clear the dot stays orange until the next genuine ≥300 ms quiet
+    // gap, which may never come. Reset the sticky state here so the next
+    // question's rising edge re-fires, and route through the same
+    // claudeQuestionCleared signal the debounce uses.
+    if (!m_claudeQuestionActive)
+        return;
+    m_claudeQuestionActive = false;
+    m_claudeQuestionMissedCount = 0;
+    emit claudeQuestionCleared();
+}
+
 // --- Write command to PTY ---
 
 void TerminalWidget::writeCommand(const QString &cmd) {

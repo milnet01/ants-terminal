@@ -110,6 +110,16 @@ public:
     // Get the shell's PID (for process tree inspection)
     pid_t shellPid() const;
 
+    // ANTS-1858 follow-up — reliably drop the AskUserQuestion "awaiting
+    // input" state from outside the footer scanner. The footer-gone
+    // debounce in checkForClaudePermissionPrompt only completes after
+    // N=3 quiet-gap scans, which the trailing-edge m_claudeDetectTimer
+    // rarely delivers while Claude streams output, so the dot would
+    // otherwise stay orange forever after the user answered. Wired to
+    // ClaudeIntegration::toolFinished / sessionStopped (the same belt
+    // the permission path uses). No-op unless a question is active.
+    void clearClaudeQuestionPrompt();
+
     // Get the foreground process name (what's running in the shell)
     QString foregroundProcess() const;
 

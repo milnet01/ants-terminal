@@ -2342,6 +2342,28 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         if (m_claudeStatusBarController)
             m_claudeStatusBarController->setPromptActive(false);
     });
+
+    // ANTS-1858 follow-up — reliable hook-driven clear for the question
+    // dot, mirroring the permission path's belt (see ~line 2302). The
+    // footer-gone debounce in checkForClaudePermissionPrompt can't
+    // complete while Claude streams output (the trailing-edge detect
+    // timer rarely fires N=3 times), so the dot would stay orange after
+    // the user answered. An AskUserQuestion is a mid-turn tool call:
+    // PostToolUse (→ toolFinished) fires the instant it is answered and
+    // Stop (→ sessionStopped) at end-of-turn — neither fires while the
+    // question is still on screen, so this never clears prematurely.
+    // clearClaudeQuestionPrompt no-ops unless a question is active and
+    // resets the sticky flag so the next question re-lights.
+    if (m_claudeIntegration) {
+        connect(m_claudeIntegration, &ClaudeIntegration::toolFinished,
+                terminal, [terminal](const QString &, bool) {
+            terminal->clearClaudeQuestionPrompt();
+        });
+        connect(m_claudeIntegration, &ClaudeIntegration::sessionStopped,
+                terminal, [terminal](const QString &) {
+            terminal->clearClaudeQuestionPrompt();
+        });
+    }
 }
 
 void MainWindow::newTab() {

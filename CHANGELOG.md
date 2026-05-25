@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Add Claude hook-event logging (PreToolUse/PostToolUse/Stop/PermissionRequest) to the Claude debug category.** (ANTS-1860)
+  The Claude debug log shows tool calls and task refreshes but not the hook events that drive the tab dot — adding them would make dot/prompt bugs diagnosable from the log.
+
 - **`changelog_log` MCP tool — write CHANGELOG entries without a
   hand-edit (ANTS-1548).** Adding a CHANGELOG line used to mean reading
   the file and hand-formatting a Keep-a-Changelog bullet under the right
@@ -267,6 +270,9 @@ for security-relevant changes.
   Claude Code session is deferred to ANTS-1713.
 
 ### Fixed
+
+- **AskUserQuestion awaiting-input dot never cleared after the question was answered (ANTS-1858 follow-up).** (ANTS-1862)
+  After Claude asked you a multiple-choice question and you answered, the little orange dot on the tab stayed lit forever; now it goes back to normal once you answer.
 
 - **Tab dot now glows orange when Claude asks you a question
   (ANTS-1858).** When Claude shows a multiple-choice `AskUserQuestion`
