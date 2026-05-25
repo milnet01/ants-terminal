@@ -14240,12 +14240,13 @@ subsection.
   Lanes: mcp.
   Source: cross-session-report-2026-05-18 (MAME_Curator FP31 sweep).
 
-- 📋 [ANTS-1716] **Required-`caller_cwd` refusal bodies should include a concrete `caller_cwd` example.**
+- ✅ [ANTS-1716] **Required-`caller_cwd` refusal bodies should include a concrete `caller_cwd` example.**
   Minor ergonomic from the MAME_Curator sessions (2026-05-18): the first call of a session that forgets `caller_cwd` on a project-scoped tool (e.g. `session_memory op:list`) refuses cleanly with `code:"caller_cwd_required"` (ANTS-1336/1520) — correct, but the error body carries no example, so a fresh Claude self-corrects a beat slower. Add a one-line example to the `caller_cwd_required` refusal envelope, e.g. `hint:"pass caller_cwd:\"<your $PWD>\" — anchors the call to your project"`. Cheap, mirrors the precise schema-hint style ANTS-1524's `bad_case`/`canonical_slug` and the `.cold-eyes/partition.json` override-warning already use. Applies wherever the dispatcher emits `caller_cwd_required`.
   **Layman:** When a tool call is rejected for missing the project-path argument, the error should show an example of what to pass, so the next attempt gets it right immediately.
   Kind: enhancement.
   Lanes: claudeintegration, mcp.
   Source: cross-session-report-2026-05-18 (MAME_Curator).
+  Resolved (2026-05-25): already satisfied by ANTS-1543. The dispatcher caller_cwd_required envelope (claudeintegration.cpp:6556-6559) carries a structured example:{caller_cwd:"<your $PWD>"} field, and session_memory (the MAME-reported tool) is CallerCwdContract::Required so it refuses at that gate with the example present. The structured example is better than an inline hint string (machine-readable, copy-pasteable). No code change needed; verified live.
 
 - ✅ [ANTS-1717] **`roadmap_log op:"annotate"` — append prose to an existing bullet without changing its status.**
   From the RetroArch Bundle 76 session (2026-05-20). `roadmap_log op:"flip"` only changes status; there is no way to append a note to a bullet that stays open. Recording partial progress / cross-bundle corroboration on a still-📋 item is as common as closing one (Bundle 76 corroborated an open "orphan-test detection" follow-up — its libcheck suite surfaced link breaks + UB segfaults that an earlier `-fsyntax-only` pass missed — but couldn't close it since no CI hook was wired, so it fell back to a raw Edit). Add `op:"annotate"` taking a locator (`id`|`anchor`|`headline`) + `append:"<prose>"` that appends to the bullet body and leaves status untouched. Shares the renderer with [[ANTS-1690]]'s `flip_batch` `annotate:` — and that `annotate` must be PER-LOCATOR (Bundle 76 needed 7 distinct closure notes, forcing 14 hand-Edits), not one shared tag.
@@ -19069,6 +19070,19 @@ contributors don't duplicate research.
   models for you — so you get Haiku's speed for simple tasks and Opus's
   power for hard ones, without having to click anything.
   Kind: implement. Source: user-2026-05-21.
+  Progress (2026-05-25): spec drafted at docs/specs/ANTS-1735.md and run through a 3-loop cold-eyes review (converged, clean pass) — awaiting user sign-off. Research finding: hooks cannot set the model and the cooperative session-pause idea is infeasible on the interactive CLI today, so the design uses idle-window /model injection (inject at the Idle turn-boundary before the user's first keystroke) with effectiveness-ledger tracking as the trust signal. Implementation gated on spikes S1 (does injected /model raise a picker?) + S2 (empty-composer proxy) and the user's design-synthesis step. No code landed.
+
+- 💭 [ANTS-1871] **Upstream ask — Claude Code "pause-for-switch" model handshake.**
+  Research for ANTS-1735 found the cooperative session-pause (pause -> external model change -> resume) infeasible on the interactive Claude Code CLI: no hook output sets the model; the CLI exposes no pause/resume; input-queue ordering during a blocking hook is undocumented. The Agent SDK (Managed Agents) HAS interrupt + session.update(model), but the CLI doesn't surface it. File a feature request for a turn-boundary handshake with defined ordering. If it lands, ANTS-1735 adopts it as the primary mechanism and demotes idle-window /model injection to fallback, removing the residual injection race (OQ-1).
+  **Layman:** Ask the Claude Code team for a clean way to pause Claude, switch its model, then resume — so the auto-switcher never has to time its move around your typing.
+  Kind: research.
+  Source: in-session-2026-05-25 (ANTS-1735 cooperative-handshake research).
+
+- 💭 [ANTS-1872] **Auto thinking-level control (extends the ANTS-1735 auto-switcher).**
+  Blocked by ANTS-1735. Once the effectiveness ledger shows a low regret+under-route rate, extend the controller to also tune the thinking budget per turn. Caveat (from the ANTS-1735 spec § 5): thinking level is a per-turn decision, but the model switcher is debounced to task boundaries (90 s dwell) — the extension needs a separate finer cadence and its own mechanism+cache research, so "reuse the same controller" understates the work.
+  **Layman:** Once the auto model-switcher is trusted, also let Ants pick how hard Claude thinks (think / think-hard / ultrathink) for the task at hand — so a hard turn gets both the big model and deeper thinking, automatically.
+  Kind: feature.
+  Source: user-request-2026-05-25 (ANTS-1735 expansion).
 
 ### 🔒 Security
 
