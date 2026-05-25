@@ -34,6 +34,7 @@
 #include "auditrunner.h"
 
 #include "auditcache.h"     // ANTS-1555
+#include "auditscope.h"     // ANTS-1504 changed-file resolver
 #include "auditengine.h"    // ANTS-1576 buildVcsProvenanceBlock
 #include "auditfpledger.h"  // ANTS-1820 learned-FP ledger (headless gap)
 #include "secureio.h"       // setOwnerOnlyPerms — 0600 on SARIF/HTML
@@ -286,10 +287,15 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
         else                        args += srcRoot;
         return args;
     }
-    if (tool == QLatin1String("clazy"))
-        return {QStringLiteral("-checks=level1"),
-                QStringLiteral("-p"),
-                projectRoot + QLatin1String("/build/compile_commands.json")};
+    if (tool == QLatin1String("clazy")) {
+        QStringList args = {QStringLiteral("-checks=level1"),
+                            QStringLiteral("-p"),
+                            projectRoot + QLatin1String("/build/compile_commands.json")};
+        // ANTS-1504 — narrowing scopes append the changed source files;
+        // clazy-standalone takes source positionals like clang-tidy.
+        if (!scopedPaths.isEmpty()) args += scopedPaths;
+        return args;
+    }
     // ANTS-1512 — clang-tidy scoped invocation. Default argv when no
     // paths given is a no-op (the tool needs explicit file args), so
     // we surface a graceful failure via empty argv → "crashed" status.
@@ -305,21 +311,34 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
         if (!scopedPaths.isEmpty()) args += scopedPaths;
         return args;
     }
-    if (tool == QLatin1String("ruff"))
-        return {QStringLiteral("check"), QStringLiteral("."),
-                QStringLiteral("--output-format=json")};
-    if (tool == QLatin1String("bandit"))
-        return {QStringLiteral("-r"), srcRoot,
-                QStringLiteral("-f"), QStringLiteral("json"),
-                QStringLiteral("-ll")};
-    if (tool == QLatin1String("semgrep"))
-        return {QStringLiteral("--json"),
-                QStringLiteral("--timeout"),
-                QStringLiteral("60"),
-                QStringLiteral("--metrics=off"),
-                QStringLiteral("--config"),
-                QStringLiteral("p/security-audit"),
-                QStringLiteral(".")};
+    // ANTS-1504 — the file-oriented tools below take the narrowed file set
+    // (when non-empty) in place of their default whole-tree target.
+    if (tool == QLatin1String("ruff")) {
+        QStringList args = {QStringLiteral("check")};
+        if (!scopedPaths.isEmpty()) args += scopedPaths;
+        else                        args += QStringLiteral(".");
+        args += QStringLiteral("--output-format=json");
+        return args;
+    }
+    if (tool == QLatin1String("bandit")) {
+        QStringList args;
+        if (!scopedPaths.isEmpty()) args += scopedPaths;  // explicit files
+        else args += {QStringLiteral("-r"), srcRoot};      // recurse src dir
+        args += {QStringLiteral("-f"), QStringLiteral("json"),
+                 QStringLiteral("-ll")};
+        return args;
+    }
+    if (tool == QLatin1String("semgrep")) {
+        QStringList args = {QStringLiteral("--json"),
+                            QStringLiteral("--timeout"),
+                            QStringLiteral("60"),
+                            QStringLiteral("--metrics=off"),
+                            QStringLiteral("--config"),
+                            QStringLiteral("p/security-audit")};
+        if (!scopedPaths.isEmpty()) args += scopedPaths;
+        else                        args += QStringLiteral(".");
+        return args;
+    }
     if (tool == QLatin1String("gitleaks"))
         return {QStringLiteral("detect"),
                 QStringLiteral("--no-banner"),
@@ -338,15 +357,21 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
                 QStringLiteral("json"),
                 QStringLiteral(".")};
     if (tool == QLatin1String("shellcheck")) {
-        // shellcheck wants files on argv; v1 passes the project root
-        // and lets it discover via shell-glob — most users have a
-        // small set of *.sh files.
-        return {QStringLiteral("-f"), QStringLiteral("json"),
-                QStringLiteral("-S"), QStringLiteral("warning"),
-                QStringLiteral("scripts")};
+        // shellcheck wants files on argv; v1 passes the `scripts` dir and
+        // lets it discover *.sh. ANTS-1504 — narrowing scopes pass the
+        // changed shell files instead.
+        QStringList args = {QStringLiteral("-f"), QStringLiteral("json"),
+                            QStringLiteral("-S"), QStringLiteral("warning")};
+        if (!scopedPaths.isEmpty()) args += scopedPaths;
+        else                        args += QStringLiteral("scripts");
+        return args;
     }
-    if (tool == QLatin1String("mypy"))
-        return {QStringLiteral("--no-color-output"), QStringLiteral(".")};
+    if (tool == QLatin1String("mypy")) {
+        QStringList args = {QStringLiteral("--no-color-output")};
+        if (!scopedPaths.isEmpty()) args += scopedPaths;
+        else                        args += QStringLiteral(".");
+        return args;
+    }
     return {};
 }
 
@@ -1212,6 +1237,78 @@ RunResult runAudit(const RunRequest &req) {
         }
     }
 
+    // ── ANTS-1504 — narrowing-scope resolution. A narrowing scope
+    // (since-last-run / files / branch-diff / since-tag) resolves the
+    // changed-file set and runs each file-oriented tool against only its
+    // matching files; repo-global tools (gitleaks/trivy) and tools with no
+    // matching changed file are skipped. `auto` (default) keeps the full
+    // tree. Each tool's scoped list (or the caller's `req.paths` under
+    // `auto` / a demoted full scan) flows through `perToolPaths`.
+    QHash<QString, QStringList> perToolPaths;
+    {
+        const QString priorCommit =
+            AuditCache::loadManifest(canonProject)
+                .lastRun.value(QStringLiteral("commit")).toString();
+        const AuditScope::Resolution sr =
+            AuditScope::resolveChangedFiles(canonProject, req.scope, priorCommit);
+
+        auto applyFullScan = [&](const QString &resolvedLabel) {
+            r.scopeResolved = resolvedLabel;
+            for (auto it = toolAbsPath.constBegin();
+                 it != toolAbsPath.constEnd(); ++it)
+                perToolPaths[it.key()] = req.paths;
+        };
+
+        if (!sr.narrowed) {
+            applyFullScan(req.scope.isEmpty() ? QStringLiteral("auto")
+                                              : req.scope);
+        } else if (!sr.demotedReason.isEmpty()) {
+            // Stale-cache fallback → full scan (INV-6).
+            r.scopeDemoted       = QStringLiteral("full");
+            r.scopeDemotedReason = sr.demotedReason;
+            applyFullScan(QStringLiteral("full"));
+        } else if (sr.noChanges) {
+            // Empty-changeset short-circuit (INV-7): spawn nothing, record
+            // nothing — preserve the prior anchor for the next run. Returns
+            // before the SARIF write + recordRun block below.
+            r.ok                = true;
+            r.scopeResolved     = req.scope;
+            r.scopeAnchorCommit = sr.anchorCommit;
+            r.changedFilesCount = 0;
+            r.noChanges         = true;
+            return r;
+        } else {
+            // Narrowed with changes: per-tool filtered file sets
+            // (INV-3 language filter / INV-4 global-tool skip / INV-5 path
+            // safety drop).
+            r.scopeResolved     = req.scope;
+            r.scopeAnchorCommit = sr.anchorCommit;
+            r.changedFilesCount = static_cast<int>(sr.files.size());
+            QStringList toDrop;
+            for (auto it = toolAbsPath.constBegin();
+                 it != toolAbsPath.constEnd(); ++it) {
+                const QString tool = it.key();
+                if (!AuditScope::isFileScopedTool(tool)) {
+                    r.toolsSkipped.append({tool,
+                        QStringLiteral("not_file_scoped")});
+                    toDrop.append(tool);
+                    continue;
+                }
+                QStringList safe;
+                for (const QString &p : AuditScope::filterForTool(sr.files, tool))
+                    if (isAuditArgSafe(p)) safe.append(p);
+                if (safe.isEmpty()) {
+                    r.toolsSkipped.append({tool,
+                        QStringLiteral("no_changed_files_for_languages")});
+                    toDrop.append(tool);
+                    continue;
+                }
+                perToolPaths[tool] = safe;
+            }
+            for (const QString &t : toDrop) toolAbsPath.remove(t);
+        }
+    }
+
     // ── ANTS-1446 — compile_commands.json include-path validation.
     // Only relevant when clazy or clang-tidy is in the resolved tool
     // list; both consume the JSON via `-p`. Cheap when absent (no
@@ -1323,7 +1420,7 @@ RunResult runAudit(const RunRequest &req) {
         ++pending;
         proc->start(it.value(),
                     toolArgv(tool, canonProject, projectConfig,
-                             req.paths, req.checks));
+                             perToolPaths.value(tool), req.checks));
     }
 
     // Aggregate cap.

@@ -369,6 +369,8 @@ add_library(ants_audit_lib STATIC
     src/auditrunner.cpp
     # ANTS-1555 — per-project .audit_cache/ manifest + retention reaper.
     src/auditcache.cpp
+    # ANTS-1504 — changed-file resolver for audit_run narrowing scopes.
+    src/auditscope.cpp
     # ANTS-1719 — native safe-list auto-fix engine.
     src/auditautofix.cpp
     # ANTS-1352 — indie-review dispatcher (Qt6::Network).
@@ -1120,6 +1122,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_roadmap_branch_drift/test_mcp_roadmap_branch_drift.cpp
                 # ANTS-1555 audit_run per-project .audit_cache/ infra.
                 tests/features/audit_run_cache/test_audit_run_cache.cpp
+                # ANTS-1504 audit_run since-last-run scope.
+                tests/features/audit_run_since_last_run/test_audit_run_since_last_run.cpp
                 # ANTS-1642 schema-vs-lambda dispatch-forward completeness.
                 tests/features/mcp_dispatch_forward_completeness/test_mcp_dispatch_forward_completeness.cpp
                 # ANTS-1569 current_state MCP aggregator.
@@ -1197,6 +1201,8 @@ if(ANTS_TESTS)
         # ANTS-1555 — audit_run per-project .audit_cache/ infra source-scrape.
         SRC_AUDITCACHE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditcache.cpp"
         SRC_AUDITCACHE_H_PATH="${CMAKE_SOURCE_DIR}/src/auditcache.h"
+        # ANTS-1504 — audit_run since-last-run scope source-scrape.
+        SRC_AUDITSCOPE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditscope.cpp"
         # ANTS-1299 + ANTS-1300 — build/test cache MCP source-scrape.
         SRC_BUILDCACHE_H_PATH="${CMAKE_SOURCE_DIR}/src/buildcache.h"
         SRC_TESTRESCACHE_H_PATH="${CMAKE_SOURCE_DIR}/src/testrescache.h"

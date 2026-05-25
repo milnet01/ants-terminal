@@ -4253,12 +4253,25 @@ void MainWindow::setupClaudeMcpProviders() {
             // `<root>/.audit_cache/`; `prior_run` carries the
             // pre-existing manifest's last_run snapshot (empty
             // object on a project's first sweep). ANTS-1504 reads
-            // `prior_run.commit` + `prior_run.sarif` to compute
-            // the since-last-run delta.
+            // `prior_run.commit` as the since-last-run diff anchor
+            // (precise findings delta deferred — ANTS-1504 § 5).
             if (!r.cachePath.isEmpty())
                 env["cache_path"] = r.cachePath;
             if (!r.priorRun.isEmpty())
                 env["prior_run"] = r.priorRun;
+            // ANTS-1504 — narrowing-scope surface.
+            if (!r.scopeResolved.isEmpty())
+                env["scope_resolved"] = r.scopeResolved;
+            if (!r.scopeAnchorCommit.isEmpty())
+                env["scope_anchor_commit"] = r.scopeAnchorCommit;
+            if (!r.scopeResolved.isEmpty())
+                env["changed_files_count"] = r.changedFilesCount;
+            if (!r.scopeDemoted.isEmpty()) {
+                env["scope_demoted"] = r.scopeDemoted;
+                env["scope_demoted_reason"] = r.scopeDemotedReason;
+            }
+            if (r.noChanges)
+                env["no_changes"] = true;
             return QString::fromUtf8(
                 QJsonDocument(env).toJson(QJsonDocument::Compact));
         });

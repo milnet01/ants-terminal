@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`audit_run` since-last-run scope — re-scan only the files changed since the prior cached run (and the `files`/`branch-diff`/`since-tag` scopes now actually narrow).** (ANTS-1504)
+  Each file-oriented tool runs against only its matching changed files (gitleaks/trivy skip; an absent prior commit falls back to a full scan). Makes the edit/re-audit loop much faster.
+
 - **Ants-MCP verb to read + filter log files and surface only relevant lines to Claude Code.** (ANTS-1855)
   Add an Ants tool that lets Claude Code ask for just the relevant parts of a log file, instead of Claude reading a huge multi-megabyte log itself and burning tokens.
 

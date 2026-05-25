@@ -313,10 +313,14 @@ TEST(AuditRunCompileCommandsValidation, Inv13RunAuditWiresValidator) {
     const std::string src = slurp(SRC_AUDITRUNNER_CPP_PATH);
     ASSERT_FALSE(src.empty());
 
-    // validator is called before any spawn.
+    // validator is called before any spawn. Bound the region by the spawn
+    // marker rather than a fixed char window so later additions ahead of it
+    // (e.g. ANTS-1504 scope resolution) don't push the check out of view.
     const auto fn = src.find("runAudit(const RunRequest");
     ASSERT_NE(fn, std::string::npos);
-    const std::string region = src.substr(fn, 8000);
+    const auto spawn = src.find("Spawn QProcesses", fn);
+    ASSERT_NE(spawn, std::string::npos);
+    const std::string region = src.substr(fn, spawn - fn);
     EXPECT_TRUE(contains(region, "validateCompileCommandsImpl"))
         << "runAudit must call validateCompileCommandsImpl before spawn";
     EXPECT_TRUE(contains(region, "compile_commands_escape"))

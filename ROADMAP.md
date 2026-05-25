@@ -11811,7 +11811,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-token-reduction, mcp-get-last-command.
   Source: in-session-2026-05-18 (token-saving brainstorm).
 
-- 📋 [ANTS-1504] ****`audit_run` since-last-run mode — re-scan only files touched since prior cached run.****
+- ✅ [ANTS-1504] ****`audit_run` since-last-run mode — re-scan only files touched since prior cached run.**** **Shipped 2026-05-25** — spec `docs/specs/ANTS-1504.md` (accepted, 6-loop cold-eyes); `src/auditscope.{h,cpp}` resolver + `toolArgv` extension to every file-oriented tool + runAudit wiring (gitleaks/trivy skip, stale-cache demotion, empty-changeset short-circuit) + envelope fields; `files`/`branch-diff`/`since-tag` now actually narrow (were cosmetic). Test `tests/features/audit_run_since_last_run/` (8 cases). Precise delta/carry-forward deferred → ANTS-1870 (v2 per-finding SARIF parser). Lanes widened: + auditrunner, auditscope.
   audit_run currently scans the full project (or whatever scope arg
   specifies) on every invocation, even when the previous run was 30 s
   ago and only one file changed. Per-tool wall-clock caps mean the work
@@ -11884,6 +11884,24 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Lanes: mcp-token-reduction, mcp-audit-run, auditrunner.
   Source: in-session-2026-05-18 (token-saving brainstorm).
+
+- 📋 [ANTS-1870] **`audit_run` precise since-last-run delta +
+  carry-forward SARIF merge (the deferred half of ANTS-1504).**
+  ANTS-1504 ships the file-narrowing but NOT the
+  `delta:{added, removed, carried_forward}` envelope or the carry-forward
+  merge (prior findings on untouched files folded into the new SARIF),
+  because the v1 SARIF is a per-tool raw-output blob, not per-finding
+  result entries (`auditrunner.cpp:18-28`). This item is gated on that v2
+  per-finding SARIF parser: once findings are addressable per file, (a)
+  carry forward the prior run's findings on files NOT in the changed set,
+  (b) diff the changed-set findings against the prior run on those files,
+  (c) emit the precise delta. Until then `since-last-run` reports
+  `changed_files_count` + the changed-set counts (honest, no false
+  cross-scope comparison).
+  **Layman:** make the fast re-audit also tell you exactly which warnings appeared, disappeared, or carried over — needs a smarter results parser first.
+  Kind: enhancement.
+  Lanes: mcp-audit-run, auditrunner, auditengine.
+  Source: in-session-2026-05-25 (ANTS-1504 spec re-scope).
 
 - ✅ [ANTS-1505] ****Per-tool `typical_token_cost` + `worst_case_tokens` on every descriptor.****
   Sister to ANTS-1453 (selection_hint): add two integer fields to every

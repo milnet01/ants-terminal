@@ -79,9 +79,23 @@ struct RunResult {
     // /tmp fallback). priorRun is the manifest's pre-existing
     // last_run snapshot before this run was recorded — empty on the
     // first sweep of a project. ANTS-1504 (`since-last-run`) reads
-    // priorRun.commit + priorRun.sarif to compute the delta.
+    // priorRun.commit as the diff anchor (a precise findings delta is
+    // deferred to the v2 per-finding SARIF parser — see ANTS-1504 § 5).
     QString                    cachePath;
     QJsonObject                priorRun;
+    // ANTS-1504 — narrowing-scope surface. `scopeResolved` is the
+    // effective scope ("auto" / the requested narrowing scope / "full"
+    // when demoted). `scopeAnchorCommit` is the commit diffed against when
+    // a narrowing scope ran. `changedFilesCount` is the resolved file-set
+    // size. `scopeDemoted`/`scopeDemotedReason` are set only on a
+    // stale-cache fallback to a full scan. `noChanges` marks the
+    // empty-changeset short-circuit (no tools spawned, no run recorded).
+    QString                    scopeResolved;
+    QString                    scopeAnchorCommit;
+    int                        changedFilesCount = 0;
+    QString                    scopeDemoted;
+    QString                    scopeDemotedReason;
+    bool                       noChanges = false;
 };
 
 // Aggregate cap = min(tools.count * capPerToolSeconds * 1.5, 240 s).
