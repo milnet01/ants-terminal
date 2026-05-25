@@ -67,16 +67,25 @@ real spawned child rather than source-grep. Skips gracefully when no
 `sleep` binary is on PATH.
 
 **INV-8** — `findClaudeChildPid` enumerates children across all parent
-threads (ANTS-1867). The kernel's `children` file is per-TID: a child
-forked by a non-leader thread of the parent appears only under that
-thread's `/proc/<pid>/task/<tid>/children`, never the leader's. The fast
-path previously read only the leader file and returned 0 on no match —
-without consulting the `/proc`-scan fallback — so a Claude child launched
-from a worker thread (Qt's QProcess launcher on some Qt builds, which is
-why INV-7 passed on dev machines but the same spawn was invisible on CI)
-went undetected. `findClaudeChildPid(getpid())` must return a child forked
-from a non-leader thread. Skips gracefully when no `sleep` binary is on
-PATH.
+threads, then falls back to the `/proc` ppid scan (ANTS-1867). The
+kernel's `children` file is per-TID: a child forked by a non-leader thread
+appears only under that thread's `/proc/<pid>/task/<tid>/children`, never
+the leader's. The function unions over every `task/<tid>/children` as a
+fast positive path, and on a miss **always** falls through to the `/proc`
+ppid scan (the complete view). `findClaudeChildPid(getpid())` must return
+a `claude` child forked from a live non-leader thread (union path). Skips
+gracefully when no `sleep` binary is on PATH.
+
+**INV-9** — `findClaudeChildPid` finds a child whose forking thread has
+exited (ANTS-1867). A child forked by a thread that then terminates is no
+longer reachable through the forking thread's `task/<tid>/children` (the
+tid is gone), but its `ppid` remains the process — so the `/proc` ppid
+scan must still find it. This is the load-bearing fallback: the union fast
+path can legitimately miss a child (the exact failure shape behind INV-7's
+CI redness), and the function must not return 0 without the scan.
+`findClaudeChildPid(getpid())` must return a `claude` child forked from a
+QThread that has since exited. Skips gracefully when no `sleep` binary is
+on PATH.
 
 ## Out of scope
 

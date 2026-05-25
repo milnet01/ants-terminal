@@ -208,22 +208,26 @@ pid_t ClaudeIntegration::findClaudeChildPid(pid_t shellPid) {
         return false;
     };
 
-    // Fast path: the kernel's children file lists this shell's direct
-    // children (much faster than scanning all /proc). The `children` file
-    // is per-THREAD, not per-process: a child forked by a non-leader thread
-    // appears under that thread's task entry, never the leader's. Real
-    // shells are single-threaded so the leader file alone suffices in
-    // production, but the only *complete* view is the union over every
-    // /proc/<pid>/task/<tid>/children (ANTS-1867: under Qt's QProcess the
-    // child is launched from a worker thread, so the leader-only read missed
-    // it and the fast path returned 0 without consulting the fallback —
-    // ClaudeTranscriptRobustness inv7 was red on CI's Qt build).
+    // Fast positive path: the kernel's `children` files list this shell's
+    // direct children (much cheaper than scanning all /proc). The file is
+    // per-THREAD, not per-process — a child forked by a non-leader thread
+    // appears under that thread's task entry, never the leader's — so union
+    // over every /proc/<pid>/task/<tid>/children. On a hit, return early.
+    //
+    // A miss here is NOT authoritative: a child whose forking thread has
+    // since EXITED is orphaned from every task/<tid>/children (the tid is
+    // gone) yet still has ppid == this process. That is exactly Qt's
+    // QProcess launcher behaviour on some builds — it forks the child from
+    // a transient internal thread that then dies — which left
+    // ClaudeTranscriptRobustness inv7 red on CI when the union short-cut
+    // skipped the scan (ANTS-1867). So always fall through to the ppid
+    // scan below, which is the complete (if pricier) view. Real shells are
+    // single-threaded and long-lived, so production claude detection hits
+    // the union fast path and never pays the scan.
     QDir taskDir(QString("/proc/%1/task").arg(shellPid));
-    bool readAnyChildrenFile = false;
     for (const QString &tid : taskDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
         QFile childFile(QString("/proc/%1/task/%2/children").arg(shellPid).arg(tid));
         if (!childFile.open(QIODevice::ReadOnly)) continue;
-        readAnyChildrenFile = true;
         const QString children = QString::fromUtf8(childFile.readAll()).trimmed();
         childFile.close();
         for (const QString &pidStr : children.split(' ', Qt::SkipEmptyParts)) {
@@ -232,13 +236,10 @@ pid_t ClaudeIntegration::findClaudeChildPid(pid_t shellPid) {
             if (ok && pid > 0 && isClaudePid(pid)) return pid;
         }
     }
-    // The children files exist (CONFIG_PROC_CHILDREN) and none named a
-    // Claude child → that union is authoritative; skip the full /proc scan.
-    if (readAnyChildrenFile) return 0;
 
-    // Fallback: scan /proc, checking each ppid match's binary inline.
-    // Resilience for kernels / containers that don't expose
-    // /proc/<pid>/task/<pid>/children.
+    // Authoritative fallback: scan /proc, checking each ppid match's binary
+    // inline. Catches orphaned children (forking thread gone) and kernels /
+    // containers that don't expose /proc/<pid>/task/<tid>/children at all.
     QDir procDir("/proc");
     for (const QString &entry : procDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
         bool ok;

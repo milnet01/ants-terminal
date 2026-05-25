@@ -21,6 +21,8 @@
 
 #include <atomic>
 #include <cstdio>
+#include <signal.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 namespace {
@@ -183,6 +185,49 @@ int inv6LegacyCaseStillWorks() {
     return ok ? 0 : 1;
 }
 
+// ANTS-1867 investigation: on a found!=child mismatch, dump enough /proc
+// state to decide WHY findClaudeChildPid missed the child — is the child a
+// direct child of this process (ppid==self), and which task/<tid>/children
+// (if any) list it? Prints only on failure, so it's free on green.
+void dumpChildProcDiag(const char *tag, pid_t self, pid_t child) {
+    // child ppid + comm
+    QFile st(QString("/proc/%1/stat").arg(child));
+    QString ppid = "?", comm = "?";
+    if (st.open(QIODevice::ReadOnly)) {
+        const QString s = QString::fromUtf8(st.readAll());
+        const int rp = s.lastIndexOf(')');
+        if (rp >= 0) {
+            const QStringList f = s.mid(rp + 2).split(' ');
+            if (f.size() >= 2) ppid = f[1];
+        }
+        const int lp = s.indexOf('(');
+        if (lp >= 0 && rp > lp) comm = s.mid(lp + 1, rp - lp - 1);
+    } else {
+        ppid = "<no /proc/child/stat>";
+    }
+    QFile cl(QString("/proc/%1/cmdline").arg(child));
+    QByteArray cmd;
+    if (cl.open(QIODevice::ReadOnly)) { cmd = cl.readAll(); cmd.replace('\0', '|'); }
+    std::fprintf(stderr,
+                 "[%s DIAG] self=%d child=%d child_ppid=%s child_comm=%s "
+                 "child_cmdline=[%s]\n",
+                 tag, static_cast<int>(self), static_cast<int>(child),
+                 ppid.toUtf8().constData(), comm.toUtf8().constData(),
+                 cmd.constData());
+    QDir td(QString("/proc/%1/task").arg(self));
+    for (const QString &tid : td.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        QFile cf(QString("/proc/%1/task/%2/children").arg(self).arg(tid));
+        if (!cf.open(QIODevice::ReadOnly)) {
+            std::fprintf(stderr, "[%s DIAG]   task %s children=<no-open>\n",
+                         tag, tid.toUtf8().constData());
+            continue;
+        }
+        const QString kids = QString::fromUtf8(cf.readAll()).trimmed();
+        std::fprintf(stderr, "[%s DIAG]   task %s children=[%s]\n",
+                     tag, tid.toUtf8().constData(), kids.toUtf8().constData());
+    }
+}
+
 int inv7FindClaudeChildPidDetectsChild() {
     // ANTS-1845: after the early-out refactor of findClaudeChildPid, a
     // direct `claude`-named child of the shell must still be detected via
@@ -220,10 +265,12 @@ int inv7FindClaudeChildPidDetectsChild() {
 
     const pid_t found = ClaudeIntegration::findClaudeChildPid(::getpid());
 
+    const bool ok = (found == child);
+    if (!ok) dumpChildProcDiag("inv7", ::getpid(), child);  // before kill()
+
     proc.kill();
     proc.waitForFinished(3000);
 
-    const bool ok = (found == child);
     std::fprintf(stderr,
                  "[inv7 findclaudechildpid-detects-child] child=%d found=%d  %s\n",
                  static_cast<int>(child), static_cast<int>(found),
@@ -296,6 +343,69 @@ int inv8FindClaudeChildFromWorkerThread() {
     return ok ? 0 : 1;
 }
 
+int inv9FindClaudeChildAfterForkingThreadExits() {
+    // ANTS-1867: the load-bearing case. A child whose forking thread has
+    // EXITED is orphaned from every /proc/<pid>/task/<tid>/children (the
+    // tid is gone) but still carries ppid == this process. The per-thread
+    // children union therefore misses it; only the /proc ppid scan finds
+    // it. This is the exact shape of Qt's QProcess transient launcher
+    // thread on CI's Qt build — inv7 was red there because the union
+    // short-cut skipped the scan. Reproduced deterministically here by
+    // forking from a QThread that then exits before detection runs.
+    const QString sleepBin = QStandardPaths::findExecutable("sleep");
+    if (sleepBin.isEmpty()) {
+        std::fprintf(stderr, "[inv9] no 'sleep' on PATH — skipping\n");
+        return 0;
+    }
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) return 1;
+    const QString fakeClaude = tmp.path() + "/claude";
+    if (!QFile::link(sleepBin, fakeClaude)) {
+        std::fprintf(stderr, "[inv9] could not symlink %s -> %s\n",
+                     qUtf8Printable(fakeClaude), qUtf8Printable(sleepBin));
+        return 1;
+    }
+
+    // Precompute argv byte buffers BEFORE fork — only async-signal-safe
+    // calls (execl/_exit) run in the child between fork and exec.
+    const QByteArray prog = fakeClaude.toLocal8Bit();
+    const QByteArray arg = QByteArrayLiteral("30");
+    std::atomic<pid_t> child{0};
+
+    QThread *forker = QThread::create([&]() {
+        const pid_t pid = ::fork();
+        if (pid == 0) {
+            ::execl(prog.constData(), prog.constData(), arg.constData(),
+                    static_cast<char *>(nullptr));
+            ::_exit(127);
+        }
+        child.store(pid);  // parent (this thread) records, then returns
+    });
+    forker->start();
+    for (int i = 0; i < 300 && child.load() == 0; ++i) QThread::msleep(10);
+    forker->wait(5000);   // thread fully exits → its task/<tid> disappears
+    delete forker;
+    QThread::msleep(50);  // let the kernel retire the dead tid
+
+    const pid_t c = child.load();
+    pid_t found = -1;
+    if (c > 0) found = ClaudeIntegration::findClaudeChildPid(::getpid());
+
+    if (c > 0) {  // reap the orphaned child
+        ::kill(c, SIGKILL);
+        int status = 0;
+        ::waitpid(c, &status, 0);
+    }
+
+    const bool ok = (c > 0 && found == c);
+    std::fprintf(stderr,
+                 "[inv9 findclaudechildpid-orphaned-after-thread-exit] "
+                 "child=%d found=%d  %s\n",
+                 static_cast<int>(c), static_cast<int>(found),
+                 ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
 }  // namespace
 
 TEST(ClaudeTranscriptRobustness, Main) {
@@ -308,6 +418,7 @@ TEST(ClaudeTranscriptRobustness, Main) {
     failures += inv6LegacyCaseStillWorks();
     failures += inv7FindClaudeChildPidDetectsChild();
     failures += inv8FindClaudeChildFromWorkerThread();
+    failures += inv9FindClaudeChildAfterForkingThreadExits();
     if (failures) FAIL();
 }
 

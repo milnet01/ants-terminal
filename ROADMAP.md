@@ -2807,10 +2807,19 @@ minor tag (next: pre-0.8.0).
   `task/<worker-tid>/children`, invisible to the leader-only read —
   `found=0`, test red on every push since ANTS-1845. Dev machines (newer Qt)
   fork from the main thread, so the same test stayed green locally. Fix:
-  union over every `/proc/<pid>/task/<tid>/children`; treat the union as
-  authoritative (skip the full scan) only when at least one children file
-  opened. New regression INV-8 forks the child from a QThread and
-  deterministically reproduced `found=0` against pre-fix code.
+  union over every `/proc/<pid>/task/<tid>/children` as a fast positive
+  path, then **always fall through to the `/proc` ppid scan on a miss**
+  (the scan is the complete view — it also catches a child whose forking
+  thread has since exited; a real shell hits the union and never pays the
+  scan). Regression tests: INV-8 (live worker-thread fork — union path),
+  INV-9 (fork from a thread that exits — fallback path).
+  **First commit (bf2c10f) was incomplete:** it took the union but kept an
+  `if (readAnyChildrenFile) return 0` short-cut, so CI stayed red (inv7
+  still `found=0`). Removing that short-cut is the actual fix. The exact CI
+  mechanism (why inv7's main-thread QProcess child is absent from every
+  live `task/<tid>/children`) could not be reproduced on the newer dev Qt,
+  so inv7 now dumps the child's ppid + every `task/<tid>/children` on
+  failure to confirm the root cause from the CI log.
   **Layman:** Ants' "is Claude running in this tab?" check could miss Claude in some setups, which broke an automated test on the build server; now it looks in all the right places.
   Kind: fix.
   Lanes: claudeintegration.
@@ -11838,8 +11847,19 @@ template / mutate this state atomically" → movable. If it's
   spec-first pass + cold-eyes before code (the SARIF carry-forward merge
   semantics are the part to nail down).
 
+  **Spec re-scope (2026-05-25, `docs/specs/ANTS-1504.md`):** drafted
+  spec-first. On grounding, the v1 SARIF is a per-tool raw blob (not
+  per-finding result entries, `auditrunner.cpp:18-28`), so net-new items
+  (a) carry-forward merge and (b) the `delta` envelope are **deferred** to
+  a follow-up gated on the v2 per-finding SARIF parser — the blob shape is
+  the blocker, not effort. This pass ships the file-narrowing +
+  (c) stale-cache fallback, extends scoped paths to every file-oriented
+  tool, and wires the previously-no-op `files`/`branch-diff`/`since-tag`
+  scopes (they were cosmetic — consumed only at `auditrunner.cpp:1101`/
+  `:1452`). Repo-global tools (gitleaks/trivy) skip under narrowing.
+
   Kind: enhancement.
-  Lanes: mcp-token-reduction, mcp-audit-run.
+  Lanes: mcp-token-reduction, mcp-audit-run, auditrunner.
   Source: in-session-2026-05-18 (token-saving brainstorm).
 
 - ✅ [ANTS-1505] ****Per-tool `typical_token_cost` + `worst_case_tokens` on every descriptor.****
