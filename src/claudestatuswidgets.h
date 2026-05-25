@@ -107,9 +107,25 @@ signals:
     void statusMessageRequested(const QString &text, int timeoutMs);
     void statusMessageCleared();
 
+public:
+    // ANTS-1851 — re-paint a still-pending permission prompt's bottom-bar
+    // message + Allow/Deny buttons when the user switches TO the tab that
+    // owns it. Called from MainWindow::refreshStatusBarForActiveTab AFTER
+    // its Category-C anchor teardown. No-op unless the focused shell's
+    // tracker entry has awaitingInput && a retained rule.
+    void maybeShowPromptForActiveTab(pid_t focusedPid);
+
 private:
     void apply();   // private status-label renderer (formerly
                     // MainWindow::applyClaudeStatusLabel)
+
+    // ANTS-1835/1850/1851 — build (or rebuild) the permission-prompt UI for
+    // an owning shell: per-shell dedup, lifecycle anchor, Allow/Deny/Add
+    // buttons (only when belongsToFocused), and retraction wiring scoped to
+    // the owning terminal. Shared by the permissionRequested slot and the
+    // tab-switch rebuild path so both stay byte-identical.
+    void showPermissionPrompt(pid_t awaitingPid, bool belongsToFocused,
+                              const QString &rule);
 
     QStatusBar          *m_statusBar = nullptr;
     QString              m_currentThemeName;

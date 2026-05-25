@@ -354,11 +354,10 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
         // PermissionRequest hook is deliberately ungated at the integration
         // layer (claude_status_bar_per_tab I3) — the slot must do the
         // routing. Resolve the owning shell from the hook's session_id (the
-        // SAME routing the glyph already used below); the message + buttons
-        // are shown only when that shell belongs to the focused tab. When the
-        // session isn't tracked yet (first prompt before the poll notices the
-        // new Claude child) fall back to the focused tab, matching the
-        // pre-1835 contract that the bottom bar owns the active tab's prompt.
+        // SAME routing the glyph used). When the session isn't tracked yet
+        // (first prompt before the poll notices the new Claude child) fall
+        // back to the focused tab, matching the pre-1835 contract that the
+        // bottom bar owns the active tab's prompt.
         const pid_t owningPid = m_tracker
             ? m_tracker->shellForSessionId(m_integration->lastHookSessionId())
             : 0;
@@ -369,14 +368,6 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
         const pid_t awaitingPid = owningPid > 0 ? owningPid : focusedPid;
         const bool belongsToFocused = owningPid <= 0 || owningPid == focusedPid;
 
-        // Tab-glyph feedback: flag the owning tab's shell as awaiting input
-        // so its tab-bar dot turns loud/orange — ALWAYS, even for a
-        // background-tab prompt. Only the bottom-bar message/buttons are
-        // gated on belongsToFocused (the glyph IS the at-a-glance signal for
-        // a prompt on a tab you're not looking at).
-        if (m_tracker && awaitingPid > 0)
-            m_tracker->markShellAwaitingInput(awaitingPid, true);
-
         QString rawRule = tool;
         if (!input.isEmpty()) rawRule += "(" + input + ")";
         // Normalize and generalize to a useful allowlist pattern
@@ -384,156 +375,193 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
         QString gen = ClaudeAllowlistDialog::generalizeRule(rule);
         if (!gen.isEmpty()) rule = gen;
 
-        // Dedup: a PermissionRequest hook that arrives while a scroll-scan
-        // permission button is already on screen should not stack a second
-        // button group beside it. Remove any existing "claudeAllowBtn"
-        // widgets (from either path) first — same objectName as the
-        // scroll-scan path so the onTabChanged cleanup catches both.
-        for (auto *w : m_statusBar->findChildren<QWidget *>(QStringLiteral("claudeAllowBtn")))
-            w->deleteLater();
+        // Tab-glyph feedback: flag the owning tab's shell as awaiting input
+        // so its tab-bar dot turns loud/orange — ALWAYS, even for a
+        // background-tab prompt. Only the bottom-bar message/buttons are
+        // gated on belongsToFocused (the glyph IS the at-a-glance signal for
+        // a prompt on a tab you're not looking at). The rule is retained so
+        // a switch back to a backgrounded tab can rebuild its prompt UI
+        // (ANTS-1851).
+        if (m_tracker && awaitingPid > 0)
+            m_tracker->markShellAwaitingInput(awaitingPid, true, rule);
 
-        // btnWidget is the lifecycle anchor for the retraction connections
-        // that clear the glyph (wired unconditionally below). It exists even
-        // for a background-tab prompt — kept hidden — so the owning tab's dot
-        // is cleared when the prompt resolves.
-        // 0.6.29 — same objectName as the scroll-scan path's button
-        // (see mainwindow.cpp commandFailed handler) so the tab-switch
-        // cleanup in onTabChanged removes both. Previously this widget
-        // had no objectName, so switching tabs mid-prompt left a
-        // stranded button group visible on the wrong tab.
-        auto *btnWidget = new QWidget(m_statusBar);
-        btnWidget->setObjectName(QStringLiteral("claudeAllowBtn"));
-        // Fixed horizontal sizePolicy — must never be squeezed when
-        // the notification slot is wide. See layout principle at
-        // mainwindow.cpp:~320 (user spec 2026-04-18).
-        btnWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-
-        auto clearPromptActive = [this, awaitingPid, belongsToFocused]() {
-            if (belongsToFocused) {
-                m_promptActive = false;
-                apply();
-            }
-            if (m_tracker && awaitingPid > 0)
-                m_tracker->markShellAwaitingInput(awaitingPid, false);
-        };
-
-        if (belongsToFocused) {
-            emit statusMessageRequested(QString("Claude permission: %1").arg(rule), 0);
-
-            // Enhanced permission action buttons
-            auto *btnLayout = new QHBoxLayout(btnWidget);
-            btnLayout->setContentsMargins(0, 0, 0, 0);
-            btnLayout->setSpacing(4);
-
-            const Theme &th = Themes::byName(m_currentThemeName);
-            auto *allowBtn = new QPushButton("Allow", btnWidget);
-            allowBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
-                .arg(th.ansi[2].name(), th.bgPrimary.name()));
-            auto *denyBtn = new QPushButton("Deny", btnWidget);
-            denyBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
-                .arg(th.ansi[1].name(), th.bgPrimary.name()));
-            auto *addBtn = new QPushButton("Add to allowlist", btnWidget);
-            addBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
-                .arg(th.bgSecondary.name(), th.textPrimary.name()));
-
-            btnLayout->addWidget(allowBtn);
-            btnLayout->addWidget(denyBtn);
-            btnLayout->addWidget(addBtn);
-            m_statusBar->addPermanentWidget(btnWidget);
-
-            // Mark prompt active so the Claude status label switches to
-            // "prompting" — matches the scroll-scan path's behavior and
-            // gives the user a second at-a-glance indicator beyond the
-            // button group itself.
-            m_promptActive = true;
-            apply();
-
-            connect(allowBtn, &QPushButton::clicked, btnWidget, [this, btnWidget, clearPromptActive]() {
-                btnWidget->deleteLater();
-                emit statusMessageCleared();
-                clearPromptActive();
-            });
-            connect(denyBtn, &QPushButton::clicked, btnWidget, [this, btnWidget, clearPromptActive]() {
-                btnWidget->deleteLater();
-                emit statusMessageCleared();
-                clearPromptActive();
-            });
-            connect(addBtn, &QPushButton::clicked, this, [this, rule, btnWidget, clearPromptActive]() {
-                emit allowlistRequested(rule);
-                btnWidget->deleteLater();
-                emit statusMessageCleared();
-                clearPromptActive();
-            });
-        } else {
-            // Background-tab prompt — the owning tab's glyph above already
-            // flags it; don't paint the message/buttons on the focused tab.
-            // btnWidget stays a hidden anchor for the retraction wiring.
-            btnWidget->hide();
-        }
-
-        // Remove buttons when the prompt disappears from the screen.
-        // Same lesson as the grid-scan path above: don't tie retraction to
-        // `outputReceived`, which fires on every repaint and would retract
-        // the buttons while the prompt is still visible. `claudePermissionCleared`
-        // fires only on the transition to "no prompt on screen".
-        //
-        // Listen on ALL terminals (not just currentTerminal) so a prompt
-        // raised via hook on tab A disappears when the user approves/declines
-        // in tab A even after briefly visiting tab B. Multiple connects are
-        // fine; each disconnects itself via the shared pointer once fired.
-        if (m_tabWidget) {
-            for (auto *term : m_tabWidget->findChildren<TerminalWidget *>()) {
-                auto conn = std::make_shared<QMetaObject::Connection>();
-                *conn = connect(term, &TerminalWidget::claudePermissionCleared,
-                                btnWidget, [btnWidget, conn, clearPromptActive]() {
-                    QObject::disconnect(*conn);
-                    btnWidget->deleteLater();
-                    clearPromptActive();
-                });
-            }
-        }
-
-        // 0.6.31 — `claudePermissionCleared` above only fires if the terminal
-        // scroll-scanner previously emitted `claudePermissionDetected` for
-        // this prompt (gated on `m_lastDetectedRule` being non-empty in
-        // terminalwidget.cpp:3658). When a PermissionRequest HOOK fires for
-        // a prompt the scroll-scanner never saw — unmatched prompt format,
-        // prompt already scrolled past the 12-line lookback window, or a
-        // headless Claude Code session where the hook is the only signal
-        // — `m_lastDetectedRule` stays empty and `claudePermissionCleared`
-        // never fires, orphaning the button forever. User-reported symptom:
-        // "Claude Code permission: Bash(cd * && cmake * | tail *) —" visible
-        // with no live prompt in any terminal.
-        //
-        // Retract on `toolFinished` (permission was granted and the tool
-        // completed), `sessionStopped` (session ended — prompt is moot),
-        // and `permissionRequested` (a new prompt implicitly resolves the
-        // previous one; the existing `findChildren` dedup at the top of
-        // this handler already removes the old btnWidget, which auto-
-        // disconnects these connections via the btnWidget context).
-        //
-        // These are proxy signals — Claude Code has no canonical
-        // "PermissionResolved" hook (confirmed in claudeintegration.cpp
-        // processHookEvent; PermissionRequest has no inverse). Using
-        // toolFinished/sessionStopped errs on the side of closing the
-        // button too early (user never clicks it) rather than too late
-        // (button lingers indefinitely on a resolved prompt, inviting a
-        // misdirected click).
-        auto finishedConn = std::make_shared<QMetaObject::Connection>();
-        *finishedConn = connect(m_integration, &ClaudeIntegration::toolFinished,
-                                btnWidget, [btnWidget, finishedConn, clearPromptActive](const QString &, bool) {
-            QObject::disconnect(*finishedConn);
-            btnWidget->deleteLater();
-            clearPromptActive();
-        });
-        auto stoppedConn = std::make_shared<QMetaObject::Connection>();
-        *stoppedConn = connect(m_integration, &ClaudeIntegration::sessionStopped,
-                               btnWidget, [btnWidget, stoppedConn, clearPromptActive](const QString &) {
-            QObject::disconnect(*stoppedConn);
-            btnWidget->deleteLater();
-            clearPromptActive();
-        });
+        showPermissionPrompt(awaitingPid, belongsToFocused, rule);
     });
+}
+
+void ClaudeStatusBarController::showPermissionPrompt(pid_t awaitingPid,
+                                                     bool belongsToFocused,
+                                                     const QString &rule) {
+    // Per-shell dedup (ANTS-1850). Remove only anchors this prompt
+    // legitimately supersedes:
+    //   * the SAME owning shell's prior anchor (a re-prompt), and
+    //   * the scroll-scan path's bare buttons (no awaitingPid property),
+    //     which must never stack beside the hook UI.
+    // A DIFFERENT shell's pending hook anchor is LEFT ALONE: deleting it
+    // would sever the retraction connections that clear ITS tab's glyph,
+    // orphaning that dot until restart (the original ANTS-1850 symptom —
+    // two prompts in different tabs, one dot stuck lit). Keeping each
+    // pending prompt's anchor independent is what lets its own resolution
+    // clear its own glyph.
+    for (auto *w : m_statusBar->findChildren<QWidget *>(QStringLiteral("claudeAllowBtn"))) {
+        const QVariant pidVar = w->property("claudeAwaitingPid");
+        const qlonglong p = pidVar.toLongLong();
+        const bool sameShell = (p > 0 && p == static_cast<qlonglong>(awaitingPid));
+        const bool scrollScanButton = !pidVar.isValid() || p <= 0;
+        if (sameShell || scrollScanButton)
+            w->deleteLater();
+    }
+
+    // btnWidget is the lifecycle anchor for the retraction connections
+    // that clear the glyph (wired below). It exists even for a
+    // background-tab prompt — kept hidden — so the owning tab's dot is
+    // cleared when the prompt resolves.
+    // 0.6.29 — same objectName as the scroll-scan path's button so the
+    // tab-switch cleanup in refreshStatusBarForActiveTab removes both.
+    auto *btnWidget = new QWidget(m_statusBar);
+    btnWidget->setObjectName(QStringLiteral("claudeAllowBtn"));
+    // Tag the anchor with its owning shell so the per-shell dedup above can
+    // tell a re-prompt (same pid → supersede) from a different tab's still-
+    // pending prompt (keep). ANTS-1850.
+    btnWidget->setProperty("claudeAwaitingPid", static_cast<qlonglong>(awaitingPid));
+    // Fixed horizontal sizePolicy — must never be squeezed when the
+    // notification slot is wide (user spec 2026-04-18).
+    btnWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+
+    auto clearPromptActive = [this, awaitingPid, belongsToFocused]() {
+        if (belongsToFocused) {
+            m_promptActive = false;
+            apply();
+        }
+        if (m_tracker && awaitingPid > 0)
+            m_tracker->markShellAwaitingInput(awaitingPid, false);
+    };
+
+    if (belongsToFocused) {
+        emit statusMessageRequested(QString("Claude permission: %1").arg(rule), 0);
+
+        // Enhanced permission action buttons
+        auto *btnLayout = new QHBoxLayout(btnWidget);
+        btnLayout->setContentsMargins(0, 0, 0, 0);
+        btnLayout->setSpacing(4);
+
+        const Theme &th = Themes::byName(m_currentThemeName);
+        auto *allowBtn = new QPushButton("Allow", btnWidget);
+        allowBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
+            .arg(th.ansi[2].name(), th.bgPrimary.name()));
+        auto *denyBtn = new QPushButton("Deny", btnWidget);
+        denyBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
+            .arg(th.ansi[1].name(), th.bgPrimary.name()));
+        auto *addBtn = new QPushButton("Add to allowlist", btnWidget);
+        addBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
+            .arg(th.bgSecondary.name(), th.textPrimary.name()));
+
+        btnLayout->addWidget(allowBtn);
+        btnLayout->addWidget(denyBtn);
+        btnLayout->addWidget(addBtn);
+        m_statusBar->addPermanentWidget(btnWidget);
+
+        // Mark prompt active so the Claude status label switches to
+        // "prompting" — a second at-a-glance indicator beyond the buttons.
+        m_promptActive = true;
+        apply();
+
+        connect(allowBtn, &QPushButton::clicked, btnWidget, [this, btnWidget, clearPromptActive]() {
+            btnWidget->deleteLater();
+            emit statusMessageCleared();
+            clearPromptActive();
+        });
+        connect(denyBtn, &QPushButton::clicked, btnWidget, [this, btnWidget, clearPromptActive]() {
+            btnWidget->deleteLater();
+            emit statusMessageCleared();
+            clearPromptActive();
+        });
+        connect(addBtn, &QPushButton::clicked, this, [this, rule, btnWidget, clearPromptActive]() {
+            emit allowlistRequested(rule);
+            btnWidget->deleteLater();
+            emit statusMessageCleared();
+            clearPromptActive();
+        });
+    } else {
+        // Background-tab prompt — the owning tab's glyph already flags it;
+        // don't paint the message/buttons on the focused tab. btnWidget
+        // stays a hidden anchor for the retraction wiring.
+        btnWidget->hide();
+    }
+
+    // Retraction — clear the buttons + glyph when the prompt resolves.
+    // Scope the primary signal (`claudePermissionCleared`) to the OWNING
+    // terminal so a prompt resolving in tab A can't clear tab B's still-
+    // pending glyph (ANTS-1850; with per-shell anchors now coexisting, the
+    // pre-1850 "listen on every terminal" would mis-fire). When the owning
+    // shell isn't resolvable (untracked / awaitingPid <= 0) fall back to
+    // every terminal — the pre-1835 behaviour.
+    // Don't tie retraction to `outputReceived`, which fires on every
+    // repaint and would retract while the prompt is still visible.
+    TerminalWidget *owningTerm = nullptr;
+    if (m_tabWidget && awaitingPid > 0) {
+        for (auto *term : m_tabWidget->findChildren<TerminalWidget *>()) {
+            if (term->shellPid() == awaitingPid) { owningTerm = term; break; }
+        }
+    }
+    auto wireCleared = [btnWidget, clearPromptActive](TerminalWidget *term) {
+        auto conn = std::make_shared<QMetaObject::Connection>();
+        *conn = connect(term, &TerminalWidget::claudePermissionCleared,
+                        btnWidget, [btnWidget, conn, clearPromptActive]() {
+            QObject::disconnect(*conn);
+            btnWidget->deleteLater();
+            clearPromptActive();
+        });
+    };
+    if (owningTerm) {
+        wireCleared(owningTerm);
+    } else if (m_tabWidget) {
+        for (auto *term : m_tabWidget->findChildren<TerminalWidget *>())
+            wireCleared(term);
+    }
+
+    // 0.6.31 — belt-and-suspenders retraction. `claudePermissionCleared`
+    // above only fires if the scroll-scanner saw this prompt; a hook-only
+    // prompt (unmatched footer format, scrolled past the lookback window,
+    // headless session) needs `toolFinished` (permission granted + tool
+    // done) / `sessionStopped` (session ended) as proxies so the button
+    // doesn't linger. These come from the SINGLETON integration, which
+    // always reflects the FOCUSED tab — guard so a background anchor isn't
+    // wrongly cleared by the focused tab's tool finishing (ANTS-1850).
+    auto focusedMatches = [this, awaitingPid]() -> bool {
+        if (awaitingPid <= 0) return true;   // unrouted → behave as before
+        auto *term = m_currentTerminalProvider ? m_currentTerminalProvider() : nullptr;
+        return term && term->shellPid() == awaitingPid;
+    };
+    auto finishedConn = std::make_shared<QMetaObject::Connection>();
+    *finishedConn = connect(m_integration, &ClaudeIntegration::toolFinished,
+                            btnWidget, [btnWidget, finishedConn, clearPromptActive, focusedMatches](const QString &, bool) {
+        if (!focusedMatches()) return;       // not this tab's tool — keep waiting
+        QObject::disconnect(*finishedConn);
+        btnWidget->deleteLater();
+        clearPromptActive();
+    });
+    auto stoppedConn = std::make_shared<QMetaObject::Connection>();
+    *stoppedConn = connect(m_integration, &ClaudeIntegration::sessionStopped,
+                           btnWidget, [btnWidget, stoppedConn, clearPromptActive, focusedMatches](const QString &) {
+        if (!focusedMatches()) return;
+        QObject::disconnect(*stoppedConn);
+        btnWidget->deleteLater();
+        clearPromptActive();
+    });
+}
+
+void ClaudeStatusBarController::maybeShowPromptForActiveTab(pid_t focusedPid) {
+    if (!m_tracker || focusedPid <= 0) return;
+    const auto st = m_tracker->shellState(focusedPid);
+    if (!st.awaitingInput || st.awaitingRule.isEmpty()) return;
+    // The newly-focused tab has a still-pending permission prompt whose
+    // bottom-bar buttons were torn down on the previous tab switch
+    // (refreshStatusBarForActiveTab Category C). Re-paint them so the user
+    // can Allow/Deny from the bar without hunting in the terminal. The
+    // prompt now belongs to the focused tab, so belongsToFocused is true.
+    // ANTS-1851.
+    showPermissionPrompt(focusedPid, /*belongsToFocused=*/true, st.awaitingRule);
 }
 
 void ClaudeStatusBarController::setPromptActive(bool active) {

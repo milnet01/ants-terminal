@@ -56,7 +56,8 @@ void ClaudeTabTracker::untrackShell(pid_t shellPid) {
     if (m_shells.isEmpty()) m_pollTimer.stop();
 }
 
-void ClaudeTabTracker::markShellAwaitingInput(pid_t shellPid, bool awaiting) {
+void ClaudeTabTracker::markShellAwaitingInput(pid_t shellPid, bool awaiting,
+                                              const QString &rule) {
     auto it = m_shells.find(shellPid);
     if (it == m_shells.end()) {
         // Shell isn't tracked yet — create a minimal entry so the flag
@@ -68,12 +69,22 @@ void ClaudeTabTracker::markShellAwaitingInput(pid_t shellPid, bool awaiting) {
         entry.shellPid = shellPid;
         const ShellState before = entry.state;
         entry.state.awaitingInput = true;
+        entry.state.awaitingRule = rule;
         maybeEmit(shellPid, before);
         return;
     }
-    if (it->state.awaitingInput == awaiting) return;
+    if (it->state.awaitingInput == awaiting) {
+        // Glyph state unchanged — no signal — but refresh the retained
+        // rule so a re-prompt's rebuild shows the current prompt text
+        // (ANTS-1851). maybeEmit ignores awaitingRule, so this never
+        // spuriously re-fires shellStateChanged.
+        if (awaiting && it->state.awaitingRule != rule)
+            it->state.awaitingRule = rule;
+        return;
+    }
     const ShellState before = it->state;
     it->state.awaitingInput = awaiting;
+    it->state.awaitingRule = awaiting ? rule : QString();
     maybeEmit(shellPid, before);
 }
 

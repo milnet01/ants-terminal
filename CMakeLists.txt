@@ -958,6 +958,8 @@ if(ANTS_TESTS)
                 tests/features/claude_bg_tasks_button/test_claude_bg_tasks_button.cpp
                 # ANTS-1835/1840/1849 — prompt routing + model-chip focus.
                 tests/features/claude_statusbar_focus_routing/test_claude_statusbar_focus_routing.cpp
+                # ANTS-1850/1851 — per-shell prompt dedup + tab-switch re-show.
+                tests/features/claude_prompt_lifecycle/test_claude_prompt_lifecycle.cpp
                 tests/features/claude_state_dot_palette/test_claude_state_dot_palette.cpp
                 tests/features/claude_statusbar_extraction/test_claude_statusbar_extraction.cpp
                 tests/features/claude_task_list/test_claude_task_list.cpp

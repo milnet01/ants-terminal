@@ -42,37 +42,46 @@ std::string between(const std::string &src, const std::string &begin,
 TEST(ClaudeStatusbarFocusRouting, PermissionPromptGatedOnRouting) {
     const std::string src = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
 
-    // The permissionRequested slot runs from the connect down to the next
-    // method definition (setPromptActive).
-    const std::string handler = between(
+    // ANTS-1850/1851 relocated the prompt-UI build out of the slot into the
+    // showPermissionPrompt() helper (shared with the tab-switch rebuild).
+    // The slot now does only routing + the glyph mark; the helper holds the
+    // belongsToFocused gate + message/buttons. The 1835/1840/1849 invariants
+    // are unchanged in intent, just split across the two regions.
+    const std::string slot = between(
         src, "ClaudeIntegration::permissionRequested",
-        "void ClaudeStatusBarController::setPromptActive");
-    ASSERT_FALSE(handler.empty())
-        << "could not isolate the permissionRequested handler";
+        "void ClaudeStatusBarController::showPermissionPrompt");
+    ASSERT_FALSE(slot.empty())
+        << "could not isolate the permissionRequested slot";
 
-    // INV-1 — routing predicate exists.
-    EXPECT_NE(handler.find("belongsToFocused"), std::string::npos)
+    const std::string helper = between(
+        src, "void ClaudeStatusBarController::showPermissionPrompt",
+        "void ClaudeStatusBarController::maybeShowPromptForActiveTab");
+    ASSERT_FALSE(helper.empty())
+        << "could not isolate the showPermissionPrompt helper";
+
+    // INV-1 — routing predicate computed in the slot and threaded down.
+    EXPECT_NE(slot.find("belongsToFocused"), std::string::npos)
         << "INV-1: slot must compute a belongsToFocused predicate";
 
-    const auto gate = handler.find("if (belongsToFocused)");
+    const auto gate = helper.find("if (belongsToFocused)");
     ASSERT_NE(gate, std::string::npos)
         << "INV-1: message/buttons must be guarded by if (belongsToFocused)";
 
     // INV-1 — the bottom-bar message is emitted only inside the gate.
-    const auto msg = handler.find("statusMessageRequested(QString(\"Claude permission");
+    const auto msg = helper.find("statusMessageRequested(QString(\"Claude permission");
     ASSERT_NE(msg, std::string::npos)
         << "INV-1: permission status message emit not found";
     EXPECT_GT(msg, gate)
         << "INV-1: statusMessageRequested must be inside the belongsToFocused "
            "branch (a background tab's prompt must not paint on the focused tab)";
 
-    // INV-2 — the glyph marking is unconditional (before the gate).
-    const auto glyph = handler.find("markShellAwaitingInput(awaitingPid, true)");
-    ASSERT_NE(glyph, std::string::npos)
-        << "INV-2: glyph set-true call not found";
-    EXPECT_LT(glyph, gate)
-        << "INV-2: markShellAwaitingInput must run before the gate so a "
-           "background tab's dot still lights";
+    // INV-2 — the glyph marking is unconditional: it lives in the slot and
+    // is NOT gated on belongsToFocused, so a background tab's dot still
+    // lights even though its message/buttons are suppressed in the helper.
+    EXPECT_NE(slot.find("markShellAwaitingInput(awaitingPid, true"), std::string::npos)
+        << "INV-2: glyph set-true call not found in the slot";
+    EXPECT_EQ(slot.find("if (belongsToFocused)"), std::string::npos)
+        << "INV-2: the slot must not gate the glyph mark on belongsToFocused";
 }
 
 TEST(ClaudeStatusbarFocusRouting, ModelChipClickHidesAndRefocuses) {

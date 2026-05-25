@@ -39,6 +39,11 @@ public:
         // cleared when the user resolves the prompt. Underlying state
         // preserved so reverting keeps context.
         bool awaitingInput = false;
+        // Normalized permission-prompt rule text for the pending prompt,
+        // retained alongside awaitingInput so a tab switch can re-paint the
+        // bottom-bar Allow/Deny buttons for a backgrounded tab (ANTS-1851).
+        // Set when awaitingInput goes true, cleared when it goes false.
+        QString awaitingRule;
         // /audit skill in flight, derived from the most recent user
         // message in the transcript tail. Spans many tool-use turns —
         // surfaced both on the per-tab dot (Auditing glyph) and on the
@@ -57,7 +62,11 @@ public:
 
     // Flag a shell as awaiting user input (permission prompt active).
     // Overlaid on top of whatever state the transcript parser derives.
-    void markShellAwaitingInput(pid_t shellPid, bool awaiting);
+    // `rule` is the normalized prompt text, retained while awaiting so a
+    // tab switch can rebuild the prompt UI (ANTS-1851); ignored (and
+    // cleared) when awaiting is false.
+    void markShellAwaitingInput(pid_t shellPid, bool awaiting,
+                                const QString &rule = {});
 
     // Read per-shell state. Default-constructed (NotRunning) for
     // untracked PIDs.

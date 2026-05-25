@@ -4903,18 +4903,24 @@ minor tag (next: pre-0.8.0).
   Lanes: claudestatuswidgets.
   Source: user-request-2026-05-25.
 
-- 📋 [ANTS-1850] **Orphaned awaiting-input glyph when a second permission prompt dedup-deletes a prior tab's prompt anchor.**
+- ✅ [ANTS-1850] **Orphaned awaiting-input glyph when a second permission prompt dedup-deletes a prior tab's prompt anchor.**
   The permissionRequested slot's dedup (`findChildren("claudeAllowBtn") -> deleteLater`) removes a prior prompt's anchor widget WITHOUT calling its clearPromptActive, so the prior shell's `markShellAwaitingInput(pid, true)` is never paired with a `false`. The anchor's retraction connections (claudePermissionCleared / toolFinished / sessionStopped) die with the deleted widget, orphaning the glyph until a tab switch or app restart. Pre-existing (the dedup never cleared the old glyph); surfaced while restructuring the slot for ANTS-1835, which now also creates hidden anchors for background prompts that participate in the same dedup. Fix: on dedup-delete, clear the displaced prompt's awaiting-input glyph (track the owning pid per anchor, or have the dedup walk call markShellAwaitingInput(pid,false) before deleteLater). Sibling to [[ANTS-1835]].
   **Layman:** If two Claude permission prompts happen in different tabs close together, a tab's little "needs attention" dot can stay lit even after its prompt is dealt with.
   Kind: fix.
   Lanes: claudestatuswidgets, claudetabtracker.
   Source: in-session-2026-05-25.
 
-- 📋 [ANTS-1851] **Surface a pending background-tab permission prompt when the user switches to that tab.**
+- ✅ [ANTS-1851] **Surface a pending background-tab permission prompt when the user switches to that tab.**
   ANTS-1835 correctly suppresses a background tab's bottom-bar message + Allow/Deny buttons on the focused tab (the prompt is routed to its owning tab's glyph only). The missing half: when the user switches TO the tab that owns a still-pending prompt, nothing re-emits the message/buttons for it — the per-tab dot + the in-terminal prompt are the only cues. Add a tab-switch hook (refreshStatusBarForActiveTab path) that, if the newly-focused tab's shell has awaitingInput == true, re-paints the bottom-bar prompt + buttons for it. Needs the prompt's rule text retained per owning shell so the buttons can be reconstructed. Builds on [[ANTS-1835]]; relates to [[ANTS-1850]] (glyph lifecycle).
   **Layman:** After the fix that stops a background tab's permission prompt from appearing on the wrong tab, switching TO that tab should re-show its Allow/Deny prompt at the bottom — right now you only see the dot and the prompt in the terminal itself.
   Kind: ux.
   Lanes: claudestatuswidgets, mainwindow.
+  Source: in-session-2026-05-25.
+
+- 📋 [ANTS-1852] **Background prompt's dot can stick lit if it resolves after you switch away from its tab.**
+  Follow-up to ANTS-1850/1851. The per-shell permission anchor (which owns the claudePermissionCleared/toolFinished retraction wiring that clears a tab's awaiting-input dot) is torn down by refreshStatusBarForActiveTab Category C on every tab switch. ANTS-1851 rebuilds it when you switch TO the owning tab, but if the prompt resolves while you are viewing a DIFFERENT tab, there is no live anchor to catch the resolution, so the dot stays lit until the next switch to that tab re-paints state. Root cause is the single shared ClaudeIntegration plus the destroy-on-switch anchor model. Options: (a) keep background anchors alive (hide instead of destroy in Category C) so their owning-terminal claudePermissionCleared connection survives; (b) drive the awaiting-input glyph purely from the tracker's transcript poll rather than the widget lifecycle. Lanes: claudestatuswidgets, mainwindow, claudetabtracker.
+  **Layman:** If a Claude permission prompt in a background tab is answered while you're looking at a different tab, that tab's attention dot can stay lit until you click back to it.
+  Kind: fix.
   Source: in-session-2026-05-25.
 
 ### 📚 Roadmap split — per-version archive (user request 2026-04-30)

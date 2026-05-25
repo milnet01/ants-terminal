@@ -5090,6 +5090,13 @@ void MainWindow::refreshStatusBarForActiveTab() {
         m_claudeStatusBarController->refreshBgTasksButton();
     refreshRoadmapButton();
     refreshRepoVisibility();
+
+    // ANTS-1851 — if the tab we just switched TO owns a still-pending
+    // permission prompt, re-paint its bottom-bar Allow/Deny buttons (the
+    // Category-C teardown above removed the previous tab's). Runs last so
+    // it paints over the cleared message slot, not under it.
+    if (m_claudeStatusBarController)
+        m_claudeStatusBarController->maybeShowPromptForActiveTab(t->shellPid());
 }
 
 void MainWindow::updateStatusBar() {
