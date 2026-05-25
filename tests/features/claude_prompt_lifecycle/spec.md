@@ -1,4 +1,4 @@
-# Claude permission-prompt lifecycle — per-shell dedup + tab-switch re-show (ANTS-1850/1851)
+# Claude permission-prompt lifecycle — per-shell dedup + tab-switch re-show (ANTS-1850/1851/1852)
 
 Two follow-ups to ANTS-1835 (per-tab permission-prompt routing). The
 `permissionRequested` slot and the tab-switch refresh share one anchor
@@ -56,20 +56,28 @@ The tracker's rule-retention contract is exercised behaviourally.
   focused shell's tracker entry has `awaitingInput && !awaitingRule.empty()`;
   `MainWindow::refreshStatusBarForActiveTab` calls it after its Category-C
   anchor teardown.
+- **INV-6 (ANTS-1852 — background anchor survives switch-away)** — the
+  Category-C teardown is `ClaudeStatusBarController::clearPromptAnchorsForTabSwitch(newlyFocusedPid)`,
+  which `hide()`s (rather than `deleteLater()`s) any `claudeAllowBtn` anchor
+  whose `claudeAwaitingPid` is a **background** shell (`!= newlyFocusedPid`)
+  still flagged `awaitingInput` in the tracker. Keeping that anchor alive
+  preserves its owning-terminal `claudePermissionCleared` connection (INV-3)
+  so a prompt resolving **while another tab is focused** still clears the
+  owning tab's dot. The focused tab's own anchor, scroll-scan bare buttons
+  (no pid property), and resolved/dead-shell anchors are still
+  `deleteLater()`d; `newlyFocusedPid <= 0` (teardown) deletes everything.
+  Closes the gap formerly listed under "Out of scope".
 
 ## Out of scope
 
 - The scroll-scan permission path (`mainwindow.cpp`
   `claudePermissionDetected`) is active-tab-only and never creates a
   background prompt, so it is not re-shown on switch.
-- Resolving a backgrounded prompt **while viewing another tab** still can't
-  clear that tab's dot via the bottom-bar UI (its anchor was torn down on
-  the switch-away); that gap is a single-integration limitation tracked
-  separately. INV-3 only guarantees no *wrong*-tab clear.
 
 ## Acceptance
 
 `ctest -L features -R ClaudePromptLifecycle` exits zero. Reverting the
 per-shell dedup (deleting all anchors), the pid property, the
-owning-terminal scoping, the rule retention, or the tab-switch rebuild
-each fails the matching invariant.
+owning-terminal scoping, the rule retention, the tab-switch rebuild, or the
+hide-not-delete of still-pending background anchors (INV-6) each fails the
+matching invariant.

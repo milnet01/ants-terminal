@@ -120,6 +120,53 @@ TEST(ClaudePromptLifecycle, PromptAnchorWiring) {
         << "INV-5: refreshStatusBarForActiveTab must call the rebuild on switch";
 }
 
+// INV-6 (ANTS-1852) — a still-pending BACKGROUND tab's anchor is kept
+// alive (hidden) across a switch-away so its retraction wiring can clear
+// the dot if the prompt resolves off-tab. Source-scrape (same rationale as
+// INV-1..3/5 — driving it end-to-end needs live PTY-backed terminals).
+TEST(ClaudePromptLifecycle, BackgroundAnchorSurvivesSwitch) {
+    const std::string widgets =
+        slurp(ANTS_SOURCE_DIR "/src/claudestatuswidgets.cpp");
+    ASSERT_FALSE(widgets.empty());
+
+    const std::string teardown = between(
+        widgets,
+        "void ClaudeStatusBarController::clearPromptAnchorsForTabSwitch",
+        "void ClaudeStatusBarController::setPromptActive");
+    ASSERT_FALSE(teardown.empty())
+        << "INV-6: could not isolate clearPromptAnchorsForTabSwitch";
+
+    // The keep-alive decision keys on the owning shell's pid AND the
+    // tracker's awaitingInput, scoped to a NON-focused (background) shell.
+    EXPECT_TRUE(contains(teardown, "claudeAwaitingPid"))
+        << "INV-6: teardown must read the anchor's owning-pid property";
+    EXPECT_TRUE(contains(teardown, "shellState") &&
+                contains(teardown, "awaitingInput"))
+        << "INV-6: keep-alive must gate on the tracker's awaitingInput";
+    EXPECT_TRUE(contains(teardown,
+                         "p != static_cast<qlonglong>(newlyFocusedPid)"))
+        << "INV-6: only BACKGROUND anchors (pid != focused) are kept alive";
+
+    // Pending background anchor is hidden; everything else deleteLater'd.
+    EXPECT_TRUE(contains(teardown, "w->hide()"))
+        << "INV-6: a still-pending background anchor must be hidden, not deleted";
+    EXPECT_TRUE(contains(teardown, "w->deleteLater()"))
+        << "INV-6: focused / scroll-scan / resolved anchors must still delete";
+
+    // Wired into the tab-switch teardown, fed the tab being switched TO.
+    const std::string mw = slurp(ANTS_SOURCE_DIR "/src/mainwindow.cpp");
+    ASSERT_FALSE(mw.empty());
+    const std::string refresh = between(
+        mw, "void MainWindow::refreshStatusBarForActiveTab",
+        "void MainWindow::updateStatusBar");
+    ASSERT_FALSE(refresh.empty());
+    EXPECT_TRUE(contains(refresh, "clearPromptAnchorsForTabSwitch("))
+        << "INV-6: Category-C teardown must route through the controller helper";
+    // Reverting INV-6 means restoring the blanket loop — guard against it.
+    EXPECT_FALSE(contains(refresh, "for (QWidget *w : staleAllowBtns)"))
+        << "INV-6: the blanket findChildren->deleteLater loop must be replaced";
+}
+
 // INV-4 — tracker rule retention round-trip, underlying state preserved.
 TEST(ClaudePromptLifecycle, RuleRetention) {
     QTemporaryDir tmp;

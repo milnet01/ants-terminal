@@ -1803,7 +1803,9 @@ void ClaudeIntegration::onMcpConnection() {
                     "shipped_count, total_count, active_count_id_only, "
                     "shipped_count_id_only, total_count_id_only}[] "
                     "index instead of bullets[] — use for slug discovery "
-                    "before drilling in via section=). The `*_id_only` "
+                    "before drilling in via section=; honours `status` so "
+                    "status:\"active\" lists only sections with active work "
+                    "(ANTS-1848)). The `*_id_only` "
                     "parallels (ANTS-1622) count only bullets that "
                     "carry a [PROJ-NNNN] id, matching the default "
                     "bullets[] predicate — when `active_count > "
@@ -1930,7 +1932,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "parallels match the default bullets[] "
                         "predicate; ANTS-1622) and no bullets — "
                         "use for slug discovery (response < 5 KB on a "
-                        "500-bullet roadmap). Cannot combine with "
+                        "500-bullet roadmap). ANTS-1848 — honours `status`: "
+                        "status:\"active\"/\"shipped\" drops sections whose "
+                        "matching *_count_id_only is 0 (status:\"active\" is "
+                        "the lean planning call); status:\"all\" (default) "
+                        "emits every section. Cannot combine with "
                         "section= (bad_mode_combo).");
                     props["mode"] = modeProp;
                     // ANTS-1436 — offset/limit pagination args.
@@ -6206,18 +6212,24 @@ void ClaudeIntegration::onMcpConnection() {
                     // payload case so a caller (or test) can branch on it.
                     if (argumentsEmpty)
                         env[QStringLiteral("arguments_empty")] = true;
-                    // ANTS-1853 — diagnostic trace. On every caller_cwd
-                    // refusal record whether the arguments object was empty
-                    // and which keys WERE present, so the intermittent
-                    // "args present in my intent but refused as missing"
-                    // report can be confirmed (empty → dropped upstream;
-                    // non-empty-but-no-caller_cwd → genuine caller error).
+                    // ANTS-1853 — diagnostic trace on every caller_cwd
+                    // refusal. The parsed-key fields alone can't tell a
+                    // truncated-transport drop from an intact request whose
+                    // `arguments` serialised empty upstream, so also log the
+                    // raw whole-request byte length (`buf`), whether the
+                    // `arguments` key was present at all, and a bounded
+                    // request fingerprint (the "raw length + content hash" the
+                    // ROADMAP note asked for). See ANTS-1853 for the matrix.
                     ANTS_LOG(DebugLog::Claude,
                              "ANTS-1853 tools/call refused caller_cwd_required:"
-                             " tool=%s arguments_empty=%d arg_keys=%d keys=[%s]",
+                             " tool=%s arguments_empty=%d args_key_present=%d"
+                             " arg_keys=%d req_bytes=%d req_hash=%u keys=[%s]",
                              toolName.toUtf8().constData(),
                              argumentsEmpty ? 1 : 0,
+                             params.contains(QStringLiteral("arguments")) ? 1 : 0,
                              static_cast<int>(argsObj.size()),
+                             static_cast<int>(buf.size()),
+                             static_cast<unsigned>(qHash(buf)),
                              argsObj.keys().join(QLatin1Char(','))
                                  .toUtf8().constData());
                     responseText = QString::fromUtf8(

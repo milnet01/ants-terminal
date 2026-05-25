@@ -115,6 +115,15 @@ public:
     // tracker entry has awaitingInput && a retained rule.
     void maybeShowPromptForActiveTab(pid_t focusedPid);
 
+    // ANTS-1852 — tear down the bottom-bar permission-prompt anchors on a
+    // tab switch, but KEEP a background tab's still-pending anchor alive
+    // (hidden) so its owning-terminal retraction wiring survives to clear
+    // the tab's awaiting-input dot if the prompt resolves while another tab
+    // is focused. Replaces the blanket findChildren->deleteLater the refresh
+    // used to do inline. `newlyFocusedPid` is the shell of the tab being
+    // switched TO (0 during teardown → delete everything).
+    void clearPromptAnchorsForTabSwitch(pid_t newlyFocusedPid);
+
 private:
     void apply();   // private status-label renderer (formerly
                     // MainWindow::applyClaudeStatusLabel)

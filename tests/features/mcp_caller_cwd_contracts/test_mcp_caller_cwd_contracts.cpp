@@ -143,7 +143,11 @@ TEST(McpCallerCwdContracts, RefusalSetsDispatchResult) {
     ASSERT_FALSE(cc.empty());
     const auto pos = cc.find("else if (method == \"tools/call\")");
     ASSERT_NE(pos, std::string::npos);
-    const std::string region = cc.substr(pos, 9000);
+    // Window 9000→11000 (ANTS-1853): the caller_cwd refusal branch grew
+    // an empty-arguments diagnostic (args_empty flag + DebugLog::Claude
+    // trace recording raw request length / args-key presence / fingerprint),
+    // pushing the branch close brace past the original 9000-char window.
+    const std::string region = cc.substr(pos, 11000);
     // Locate the ANTS-1404 refusal block (anchored on the literal
     // code string already asserted by DISP-2) and walk forward to
     // the toolHandled = true that closes the branch; the

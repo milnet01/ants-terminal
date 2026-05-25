@@ -564,6 +564,39 @@ void ClaudeStatusBarController::maybeShowPromptForActiveTab(pid_t focusedPid) {
     showPermissionPrompt(focusedPid, /*belongsToFocused=*/true, st.awaitingRule);
 }
 
+void ClaudeStatusBarController::clearPromptAnchorsForTabSwitch(pid_t newlyFocusedPid) {
+    if (!m_statusBar) return;
+    // The hook-server path uses a QWidget container named "claudeAllowBtn"
+    // holding Allow/Deny/Add children; the scroll-scan path creates a bare
+    // QPushButton with the same objectName. Finding by QWidget covers both.
+    for (auto *w : m_statusBar->findChildren<QWidget *>(QStringLiteral("claudeAllowBtn"))) {
+        const QVariant pidVar = w->property("claudeAwaitingPid");
+        const qlonglong p = pidVar.toLongLong();
+        // ANTS-1852 — keep a BACKGROUND tab's still-pending anchor alive
+        // (hidden) instead of destroying it. The anchor owns the
+        // claudePermissionCleared / toolFinished / sessionStopped retraction
+        // connections (scoped to the owning terminal — INV-3) that clear the
+        // tab's awaiting-input dot. Pre-1852 the blanket deleteLater severed
+        // them on switch-away, so a prompt resolving while you viewed a
+        // DIFFERENT tab left the dot stuck lit until the next switch back. A
+        // surviving hidden anchor catches its own off-tab resolution and
+        // clears the glyph. Still deleteLater'd: the focused tab's own anchor
+        // (rebuilt fresh by maybeShowPromptForActiveTab right after the
+        // Category-C teardown), scroll-scan bare buttons (no pid property),
+        // and any anchor whose shell is no longer awaiting input (resolved /
+        // shell gone). newlyFocusedPid <= 0 (teardown) deletes everything.
+        const bool pending =
+            newlyFocusedPid > 0 && pidVar.isValid() && p > 0 &&
+            p != static_cast<qlonglong>(newlyFocusedPid) &&
+            m_tracker &&
+            m_tracker->shellState(static_cast<pid_t>(p)).awaitingInput;
+        if (pending)
+            w->hide();
+        else
+            w->deleteLater();
+    }
+}
+
 void ClaudeStatusBarController::setPromptActive(bool active) {
     m_promptActive = active;
     apply();

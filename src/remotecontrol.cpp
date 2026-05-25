@@ -1802,7 +1802,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         const auto rolled = RoadmapIndex::rollupCounts(
             m_roadmapIndex, direct);
 
-        // INV-4 — emit EVERY indexed section, including empties.
+        // INV-4 — emit EVERY indexed section, including empties, under
+        // the default status:all. ANTS-1848 amends ANTS-1437 INV-7: a
+        // status:active / status:shipped query drops sections whose
+        // matching *_id_only tally is 0 (the lean planning call), so the
+        // kept set matches the default bullets[] predicate. See spec.
         // ANTS-1622 — emit the ID-only parallel counts alongside the
         // emoji-only ones so callers see whether a section's bullets
         // would survive the default `bullets[]` ID-filter predicate.
@@ -1817,6 +1821,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         for (const auto &sec : std::as_const(m_roadmapIndex)) {
             const auto t = rolled.value(sec.slug,
                                         RoadmapIndex::SectionCounts{});
+            // ANTS-1848 — status filter drops zero-id-count sections.
+            if ((filter == QLatin1String("active")  && t.activeWithId  == 0) ||
+                (filter == QLatin1String("shipped") && t.shippedWithId == 0)) {
+                continue;
+            }
             QJsonObject obj;
             obj["slug"]                 = sec.slug;
             obj["headline"]             = sec.headingText;
@@ -1842,7 +1851,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["ok"] = true;
         out["mode"] = mode;          // explicit in section_index path
         out["path"] = path;
-        out["filter"] = filter;      // status filter echo (no-op here)
+        out["filter"] = filter;      // status filter echo (ANTS-1848: now shapes emission)
         out["sections"] = sections;
         // ANTS-1622 — top-level legacy-format hint. Only emitted
         // when at least one section's direct bullets all lack

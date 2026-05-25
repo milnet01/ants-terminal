@@ -5026,13 +5026,16 @@ void MainWindow::refreshStatusBarForActiveTab() {
 
     // Category C: event-tied widgets die on tab switch.
     if (m_claudeStatusBarController) m_claudeStatusBarController->clearError();
-    // QWidget (not QPushButton) — the hook-server path uses a QWidget
-    // container named "claudeAllowBtn" holding Allow/Deny/Add-to-allowlist
-    // children; the scroll-scan path creates a bare QPushButton with the
-    // same objectName. Finding by QWidget covers both.
-    const auto staleAllowBtns =
-        statusBar()->findChildren<QWidget *>(QStringLiteral("claudeAllowBtn"));
-    for (QWidget *w : staleAllowBtns) w->deleteLater();
+    // ANTS-1852 — tear down the permission-prompt anchors, but keep a
+    // background tab's still-pending anchor alive (hidden) so its retraction
+    // wiring survives to clear the dot if that prompt resolves while another
+    // tab is focused. The focused tab's anchor is still destroyed and rebuilt
+    // fresh by maybeShowPromptForActiveTab below. Replaces the old blanket
+    // findChildren->deleteLater. `t` is the tab being switched to (null
+    // mid-teardown → delete everything).
+    if (m_claudeStatusBarController)
+        m_claudeStatusBarController->clearPromptAnchorsForTabSwitch(
+            t ? t->shellPid() : 0);
     if (m_claudeStatusBarController)
         m_claudeStatusBarController->setPromptActive(false);
 

@@ -92,6 +92,33 @@ TEST(roadmap_query_section_index, Inv4EmitEverySection) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// INV-7 (ANTS-1848) — status filter shapes section_index emission.
+// Superseded the original "status filter is a no-op for section_index"
+// rule (ANTS-1437 INV-7). Under status:active/shipped the emission loop
+// drops sections whose matching id-only tally is 0; status:all keeps
+// every section. Source-scrape style, matching the sibling emission INVs.
+TEST(roadmap_query_section_index, Inv7Ants1848StatusFiltersEmission) {
+    expect_reset();
+    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "ANTS-1848 — status filter drops zero-id-count"),
+           "ANTS-1848: filter guard anchor present in the section_index "
+           "emission loop");
+    // The guard must key on the *_id_only tally (activeWithId /
+    // shippedWithId), not the emoji-only count, so the kept set matches
+    // the default bullets[] predicate.
+    expect(contains(cpp,
+               "filter == QLatin1String(\"active\")  && t.activeWithId  == 0"),
+           "ANTS-1848: active filter skips sections with activeWithId==0");
+    expect(contains(cpp,
+               "filter == QLatin1String(\"shipped\") && t.shippedWithId == 0"),
+           "ANTS-1848: shipped filter skips sections with shippedWithId==0");
+    // INV-4 must still hold for the default: the loop still walks the
+    // full index so status:all emits every section.
+    expect(contains(cpp, "INV-4 — emit EVERY indexed section"),
+           "ANTS-1848: status:all still emits every section (INV-4 intact)");
+    EXPECT_EQ(0, expect_failures());
+}
+
 // INV-5 — counts use the same emoji predicates as bullet-mode filter.
 TEST(roadmap_query_section_index, Inv5CountsUseSamePredicate) {
     expect_reset();
