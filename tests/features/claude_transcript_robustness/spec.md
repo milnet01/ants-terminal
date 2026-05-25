@@ -66,6 +66,18 @@ disables every Claude status indicator, so the behaviour is pinned with a
 real spawned child rather than source-grep. Skips gracefully when no
 `sleep` binary is on PATH.
 
+**INV-8** — `findClaudeChildPid` enumerates children across all parent
+threads (ANTS-1867). The kernel's `children` file is per-TID: a child
+forked by a non-leader thread of the parent appears only under that
+thread's `/proc/<pid>/task/<tid>/children`, never the leader's. The fast
+path previously read only the leader file and returned 0 on no match —
+without consulting the `/proc`-scan fallback — so a Claude child launched
+from a worker thread (Qt's QProcess launcher on some Qt builds, which is
+why INV-7 passed on dev machines but the same spawn was invisible on CI)
+went undetected. `findClaudeChildPid(getpid())` must return a child forked
+from a non-leader thread. Skips gracefully when no `sleep` binary is on
+PATH.
+
 ## Out of scope
 
 - Rendering/presentation of `thinking` blocks in the transcript

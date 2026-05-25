@@ -17,7 +17,9 @@
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QThread>
 
+#include <atomic>
 #include <cstdio>
 #include <unistd.h>
 
@@ -229,6 +231,71 @@ int inv7FindClaudeChildPidDetectsChild() {
     return ok ? 0 : 1;
 }
 
+// A QThread that forks the fake-claude child from its own (non-leader)
+// thread context, then keeps that thread alive via an event loop so the
+// child stays accounted under the worker tid while the test probes for it.
+// QProcess is created/destroyed in the same thread to respect its affinity.
+class ClaudeLauncherThread : public QThread {
+public:
+    QString program;
+    std::atomic<pid_t> child{0};
+
+protected:
+    void run() override {
+        QProcess proc;
+        proc.setProgram(program);
+        proc.setArguments({QStringLiteral("30")});
+        proc.start();
+        if (proc.waitForStarted(3000))
+            child.store(static_cast<pid_t>(proc.processId()));
+        exec();  // keep this tid alive until quit() so the child stays ours
+        proc.kill();
+        proc.waitForFinished(3000);
+    }
+};
+
+int inv8FindClaudeChildFromWorkerThread() {
+    // ANTS-1867: the kernel `children` file is per-TID. A claude child
+    // forked by a NON-leader thread (exactly what Qt's QProcess launcher
+    // does on CI's Qt build) is absent from /proc/<pid>/task/<pid>/children.
+    // findClaudeChildPid must union across every task/<tid>/children, else
+    // it reports "no claude" while one is running — INV-7 passed on dev
+    // machines (main-thread fork) yet the same spawn was invisible on CI.
+    const QString sleepBin = QStandardPaths::findExecutable("sleep");
+    if (sleepBin.isEmpty()) {
+        std::fprintf(stderr, "[inv8] no 'sleep' on PATH — skipping\n");
+        return 0;
+    }
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) return 1;
+    const QString fakeClaude = tmp.path() + "/claude";
+    if (!QFile::link(sleepBin, fakeClaude)) {
+        std::fprintf(stderr, "[inv8] could not symlink %s -> %s\n",
+                     qUtf8Printable(fakeClaude), qUtf8Printable(sleepBin));
+        return 1;
+    }
+
+    ClaudeLauncherThread launcher;
+    launcher.program = fakeClaude;
+    launcher.start();
+    for (int i = 0; i < 300 && launcher.child.load() == 0; ++i)
+        QThread::msleep(10);
+    const pid_t child = launcher.child.load();
+
+    pid_t found = -1;
+    if (child > 0) found = ClaudeIntegration::findClaudeChildPid(::getpid());
+
+    launcher.quit();
+    launcher.wait(5000);
+
+    const bool ok = (child > 0 && found == child);
+    std::fprintf(stderr,
+                 "[inv8 findclaudechildpid-worker-thread-fork] child=%d found=%d  %s\n",
+                 static_cast<int>(child), static_cast<int>(found),
+                 ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
 }  // namespace
 
 TEST(ClaudeTranscriptRobustness, Main) {
@@ -240,6 +307,7 @@ TEST(ClaudeTranscriptRobustness, Main) {
     failures += inv5MissingPathFallsBackToSeparator();
     failures += inv6LegacyCaseStillWorks();
     failures += inv7FindClaudeChildPidDetectsChild();
+    failures += inv8FindClaudeChildFromWorkerThread();
     if (failures) FAIL();
 }
 

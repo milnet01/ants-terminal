@@ -2796,6 +2796,26 @@ minor tag (next: pre-0.8.0).
 
 ### 🔍 CI fold-in (2026-04-28)
 
+- ✅ [ANTS-1867] **`findClaudeChildPid` missed a Claude child forked from a
+  non-leader thread → `ClaudeTranscriptRobustness` red on CI.**
+  The kernel `/proc/<pid>/task/<tid>/children` file is per-THREAD. The fast
+  path read only the thread-group leader's file (`task/<pid>/children`) and
+  `return 0`'d on no match *without* consulting the `/proc`-scan fallback.
+  Real shells are single-threaded so production detection was unaffected,
+  but the feature test spawns its fake-`claude` child via QProcess: on CI's
+  Qt build the launch happens from a worker thread, so the child sat under
+  `task/<worker-tid>/children`, invisible to the leader-only read —
+  `found=0`, test red on every push since ANTS-1845. Dev machines (newer Qt)
+  fork from the main thread, so the same test stayed green locally. Fix:
+  union over every `/proc/<pid>/task/<tid>/children`; treat the union as
+  authoritative (skip the full scan) only when at least one children file
+  opened. New regression INV-8 forks the child from a QThread and
+  deterministically reproduced `found=0` against pre-fix code.
+  **Layman:** Ants' "is Claude running in this tab?" check could miss Claude in some setups, which broke an automated test on the build server; now it looks in all the right places.
+  Kind: fix.
+  Lanes: claudeintegration.
+  Source: ci-failure-2026-05-25 (ClaudeTranscriptRobustness red on main).
+
 - ✅ [ANTS-1099] **Unescaped `&` in 0.7.55 metainfo `<release>` body
   broke `appstreamcli validate`.** CI's "Validate AppStream metainfo"
   step has been red on every commit since the 0.7.55 release
@@ -6052,6 +6072,20 @@ class; the deferrals below cover the rest.
 The full audit / indie-review / debt-sweep cycle on 2026-05-14
 exposed structural gaps in the MCP surface that the per-finding
 fixes don't address. Roadmapped here as their own design tasks.
+
+- 📋 [ANTS-1868] **`changelog_log` `add_from_roadmap` emits the raw
+  multi-line ROADMAP headline into the CHANGELOG bullet.** When a cited
+  ROADMAP bullet's headline wraps across source lines (common — e.g.
+  ANTS-1099, ANTS-1867), `op:"add_from_roadmap"` copies it verbatim, so
+  the bold summary carries a hard newline whose second line isn't indented
+  as a list continuation. Observed folding ANTS-1867 (2026-05-25): had to
+  hand-collapse the resulting bullet. Fix: collapse the headline to its
+  `headline_oneline` form (the same newline/whitespace-run collapse
+  `roadmap_query` already applies, ANTS-1521) before rendering the summary.
+  **Layman:** A tool that copies a roadmap line into the changelog kept the line's original line-breaks, making the changelog entry look broken; it should squash them to one line.
+  Kind: fix.
+  Lanes: claudeintegration, roadmap.
+  Source: in-session-2026-05-25 (ANTS-1867 CHANGELOG fold-in).
 
 - ✅ [ANTS-1351] **MCP `audit_run` orchestrator tool.** Run the
   full external-tool pipeline (cppcheck / clazy / semgrep /

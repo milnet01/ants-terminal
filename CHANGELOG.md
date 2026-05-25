@@ -274,6 +274,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`findClaudeChildPid` missed a Claude child forked from a non-leader thread → `ClaudeTranscriptRobustness` red on CI.** (ANTS-1867)
+  Ants' "is Claude running in this tab?" check could miss Claude in some setups, which broke an automated test on the build server; now it looks in all the right places.
+
 - **Claude debug log no longer spams a 'tasks/refresh' line every couple of seconds.** (ANTS-1859)
   While Claude was working, the debug log filled with near-identical task-refresh lines even when nothing about the task list changed; the de-duplication now ignores the transcript's last-modified time (which ticks on every output write) so a line is only logged when the task list actually changes.
 

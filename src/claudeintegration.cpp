@@ -209,18 +209,32 @@ pid_t ClaudeIntegration::findClaudeChildPid(pid_t shellPid) {
     };
 
     // Fast path: the kernel's children file lists this shell's direct
-    // children (much faster than scanning all /proc).
-    QFile childFile(QString("/proc/%1/task/%1/children").arg(shellPid));
-    if (childFile.open(QIODevice::ReadOnly)) {
-        QString children = QString::fromUtf8(childFile.readAll()).trimmed();
+    // children (much faster than scanning all /proc). The `children` file
+    // is per-THREAD, not per-process: a child forked by a non-leader thread
+    // appears under that thread's task entry, never the leader's. Real
+    // shells are single-threaded so the leader file alone suffices in
+    // production, but the only *complete* view is the union over every
+    // /proc/<pid>/task/<tid>/children (ANTS-1867: under Qt's QProcess the
+    // child is launched from a worker thread, so the leader-only read missed
+    // it and the fast path returned 0 without consulting the fallback —
+    // ClaudeTranscriptRobustness inv7 was red on CI's Qt build).
+    QDir taskDir(QString("/proc/%1/task").arg(shellPid));
+    bool readAnyChildrenFile = false;
+    for (const QString &tid : taskDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        QFile childFile(QString("/proc/%1/task/%2/children").arg(shellPid).arg(tid));
+        if (!childFile.open(QIODevice::ReadOnly)) continue;
+        readAnyChildrenFile = true;
+        const QString children = QString::fromUtf8(childFile.readAll()).trimmed();
         childFile.close();
         for (const QString &pidStr : children.split(' ', Qt::SkipEmptyParts)) {
             bool ok;
             pid_t pid = pidStr.toInt(&ok);
             if (ok && pid > 0 && isClaudePid(pid)) return pid;
         }
-        return 0;
     }
+    // The children files exist (CONFIG_PROC_CHILDREN) and none named a
+    // Claude child → that union is authoritative; skip the full /proc scan.
+    if (readAnyChildrenFile) return 0;
 
     // Fallback: scan /proc, checking each ppid match's binary inline.
     // Resilience for kernels / containers that don't expose
