@@ -14,6 +14,19 @@ for security-relevant changes.
 
 ### Added
 
+- **`changelog_log` MCP tool — write CHANGELOG entries without a
+  hand-edit (ANTS-1548).** Adding a CHANGELOG line used to mean reading
+  the file and hand-formatting a Keep-a-Changelog bullet under the right
+  category. The new tool does it server-side: `op:"add"` renders
+  `- **<summary>** (<id>)` under the `### Added` / `### Fixed` / …
+  category (taken from `category`, or derived from the work `kind`),
+  creating the category heading in canonical order if needed and
+  inserting newest-first under `## [Unreleased]`. `op:"add_from_roadmap"`
+  cites a ROADMAP item by id and reuses its headline + plain-English
+  "Layman" line verbatim, so the CHANGELOG and ROADMAP stay in step
+  without re-writing the prose. Atomic write; refuses cleanly if there's
+  no `## [Unreleased]` section or the cited id isn't in the roadmap.
+
 - **Roadmap notes without a hand-edit — `roadmap_log` can now append a
   resolution line (ANTS-1717 / ANTS-1793).** Closing or updating a
   roadmap item used to need two steps: flip its status via the tool,

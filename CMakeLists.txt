@@ -265,6 +265,7 @@ add_library(ants_core_lib STATIC
     src/llmclient.cpp
     src/llmdispatcher.cpp
     src/roadmapindex.cpp
+    src/changeloglog.cpp
     src/roadmapfoldin.cpp
     # ANTS-1665 — regex-safety helpers (catastrophic-shape detector +
     # LIMIT_MATCH hardener) shared by auditengine and terminalwidget.
@@ -1071,6 +1072,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_roadmap_log_atomicity/test_mcp_roadmap_log_atomicity.cpp
                 # ANTS-1717/1793 roadmap_log note append (annotate + flip-note).
                 tests/features/roadmap_log_annotate/test_roadmap_log_annotate.cpp
+                # ANTS-1548 changelog_log token-frugal CHANGELOG writer.
+                tests/features/changelog_log_writer/test_changelog_log_writer.cpp
                 # ANTS-1426 parseBullets blank-line continuation.
                 tests/features/roadmap_parser_blank_line_continuation/test_roadmap_parser_blank_line_continuation.cpp
                 # ANTS-1427 MCP dispatch debug-log audit trail.

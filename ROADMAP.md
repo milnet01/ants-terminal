@@ -8549,6 +8549,12 @@ indie-review finding.
   Lanes: claudeintegration, observability.
   Source: in-session-2026-05-25 (ANTS-1858 was hard to diagnose with no hook lines in the log).
 
+- 📋 [ANTS-1861] **parseBullets rxLayman doesn't match the bold **Layman:** form that roadmap_log writes.**
+  **Layman:** The roadmap card view pulls a plain-English one-liner from each item, but the pattern it looks for misses the bold-styled label the logging tool actually writes, so those one-liners can come back blank.
+  Kind: fix.
+  Lanes: roadmapdialog.
+  Source: in-session-2026-05-25 (found building ANTS-1548 add_from_roadmap).
+
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
 5-lane in-house audit of the 584-test suite across perf,
@@ -12495,7 +12501,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-roadmap-query, roadmapdialog, parseBullets.
   Source: in-session-2026-05-18.
 
-- 📋 [ANTS-1548] **`changelog_log` MCP tool — token-frugal CHANGELOG section writer.**
+- ✅ [ANTS-1548] **`changelog_log` MCP tool — token-frugal CHANGELOG section writer.**
   User feedback (2026-05-18): the per-pull CHANGELOG section is currently a hand-written ~70-line Edit (header + bulleted ANTS-IDs + body prose), preceded by a Read for context. Per pull that costs ~2-3K tokens of formatting prose + ~500-800 for the Read setup. Across N weekly pulls that adds up.
   
   Three-tier proposal (ship as one tool with three modes):
@@ -12512,6 +12518,21 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-changelog-log, claudeintegration, remotecontrol, roadmapfoldin.
   Kind: implement.
   Source: user-request-2026-05-18.
+  Shipped 2026-05-25. Implemented against the project's ACTUAL
+  Keep-a-Changelog format (standard `### Added`/`Fixed`/… categories) —
+  the 2026-05-18 proposal's `### <emoji> <Heading> (DATE)` shape was
+  stale (that's the ROADMAP format, not the CHANGELOG). Pure helper
+  `src/changeloglog.{h,cpp}` in ants_core_lib (kindToCategory /
+  formatBullet / insertUnreleasedEntry — newest-first, creates a
+  missing category in canonical order); handler `cmdChangelogLog` in
+  remotecontrol.cpp. Modes 1+2 shipped: `op:"add"` and
+  `op:"add_from_roadmap"` (reuses the bullet headline + Layman, deriving
+  category from Kind). Mode 3 (the `roadmap_log op:flip
+  also_write_changelog` flag) deferred — separate integration, lower
+  value than the bundle path. Found + worked around [[ANTS-1861]]
+  (parseBullets' rxLayman misses the bold `**Layman:**` form). Tests:
+  `tests/features/changelog_log_writer/` (9 INVs, pure-helper +
+  end-to-end + refusals). 1469/1469 green. Available after relaunch.
 
 - ✅ [ANTS-1551] **MCP `roadmap_log` defensive body scrub — strip leaked tool-call XML artifacts.**
   Recurring across at least 3 calls in 2026-05-18 session: when the body parameter is passed alongside an array-typed sibling (lanes), the calling harness occasionally serialises the sibling AS a literal `<parameter name="X">...</parameter>` block appended INSIDE the body string. The MCP server then writes the literal XML into ROADMAP.md. The auto-mode classifier has now started refusing such calls (correctly — they look like prompt injection), so the first-order fix is a defensive scrub at the server's body-sanitiser path: detect and strip `</body>` tokens + `<parameter name="..."\\s*>.*?</parameter>` patterns + raw `<parameter name=` openers before persisting. Optional bonus: when the stripped XML contains a recognised field name (lanes / layman / source), surface a warning in the response envelope so the caller knows their sibling param was lost. Drop the malformed input on the floor rather than rejecting the whole call — the user's prose is the part worth saving. File: `src/remotecontrol.cpp` near `cmdRoadmapLog`'s body handling. Estimated effort: 30 min + a regression test fixture.

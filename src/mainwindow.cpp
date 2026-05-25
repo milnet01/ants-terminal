@@ -4095,6 +4095,11 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("roadmap_log",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdRoadmapLog));
+    // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
+    // Write op → Required contract (refuses absent caller_cwd upstream).
+    m_claudeIntegration->registerToolProvider("changelog_log",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdChangelogLog));
     // ANTS-1583 — roadmap_branch_drift: compare ROADMAP ✅ entries'
     // cited commit SHAs against HEAD's reachable history. caller_cwd
     // is Required (ANTS-1404 contract registered below).

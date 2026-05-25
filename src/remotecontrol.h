@@ -554,6 +554,13 @@ public:
     // byte-for-byte. See docs/specs/ANTS-1428.md § Tier 2.
     QJsonDocument cmdRoadmapLog(const QJsonObject &req);
 
+    // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
+    // op:"add" renders a bullet under a category in `## [Unreleased]`;
+    // op:"add_from_roadmap" reuses a ROADMAP bullet's prose verbatim by
+    // id. caller_cwd-required (write op); atomic via QSaveFile. See
+    // docs/specs/ANTS-1548.md.
+    QJsonDocument cmdChangelogLog(const QJsonObject &req);
+
     // ANTS-1346 test-only inspectors for the section-cache LRU.
     int sectionCacheSizeForTest() const {
         return m_roadmapSectionCache.size();

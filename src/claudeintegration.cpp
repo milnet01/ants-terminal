@@ -5610,6 +5610,132 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-1548 — changelog_log: token-frugal CHANGELOG writer.
+                {
+                    QJsonObject t;
+                    t["name"] = "changelog_log";
+                    t["description"] = QStringLiteral(
+                        "Append a Keep-a-Changelog entry under the "
+                        "`## [Unreleased]` section of CHANGELOG.md "
+                        "without re-emitting the file. Mode picked by "
+                        "`op` (default \"add\"). op:\"add\" — render a "
+                        "bullet `- **<summary>** (<id>)` (+ optional "
+                        "`body` as indented continuation) under the "
+                        "`### <category>` heading; the category is taken "
+                        "from `category` or derived from `kind` "
+                        "(fix/*-fix → Fixed, feature/implement/"
+                        "enhancement → Added, security → Security, else "
+                        "Changed). The `### <category>` heading is "
+                        "created in canonical order if absent. "
+                        "op:\"add_from_roadmap\" — cite a ROADMAP bullet "
+                        "by `id`; its headline becomes the summary and "
+                        "its `Layman:` line the body (reused verbatim, "
+                        "not regenerated — keeps CHANGELOG + ROADMAP in "
+                        "lockstep), category derived from the bullet's "
+                        "`Kind:`. New bullets insert at the TOP of their "
+                        "category (most-recent-first). Required: "
+                        "caller_cwd (+ summary for add, or id for "
+                        "add_from_roadmap). Atomic via QSaveFile. "
+                        "Refusals: not_unreleased (no `## [Unreleased]` "
+                        "heading), bad_category, no_changelog, "
+                        "id_not_in_roadmap, missing_field, bad_op_combo. "
+                        "Returns {ok, op, file, category, line, "
+                        "bytes_written, created_category, id?} or "
+                        "{ok:false, error, code}.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to add a CHANGELOG.md entry under "
+                        "[Unreleased] instead of hand-editing it. "
+                        "Mutates project state — caller_cwd required. "
+                        "add_from_roadmap reuses a ROADMAP bullet's "
+                        "prose by id.");
+
+                    QJsonObject clCaller;
+                    clCaller["type"] = "string";
+                    clCaller["description"] = QStringLiteral(
+                        "Your $PWD. REQUIRED — anchors the write to your "
+                        "project's CHANGELOG.md.");
+
+                    QJsonObject clOp;
+                    clOp["type"] = "string";
+                    QJsonArray clOpEnum;
+                    clOpEnum.append("add");
+                    clOpEnum.append("add_from_roadmap");
+                    clOp["enum"] = clOpEnum;
+                    clOp["description"] = QStringLiteral(
+                        "Verb mode. Default \"add\" (summary + optional "
+                        "body). \"add_from_roadmap\" reuses the cited "
+                        "ROADMAP bullet's headline + Layman prose.");
+
+                    QJsonObject clSummary;
+                    clSummary["type"] = "string";
+                    clSummary["maxLength"] = 300;
+                    clSummary["description"] = QStringLiteral(
+                        "Bold one-line entry summary (op:\"add\"). "
+                        "Ignored under add_from_roadmap (the ROADMAP "
+                        "headline is used).");
+
+                    QJsonObject clCategory;
+                    clCategory["type"] = "string";
+                    QJsonArray clCatEnum;
+                    clCatEnum.append("Added");
+                    clCatEnum.append("Changed");
+                    clCatEnum.append("Deprecated");
+                    clCatEnum.append("Removed");
+                    clCatEnum.append("Fixed");
+                    clCatEnum.append("Security");
+                    clCategory["enum"] = clCatEnum;
+                    clCategory["description"] = QStringLiteral(
+                        "Keep-a-Changelog category. Optional — derived "
+                        "from `kind` (add) or the bullet's `Kind:` "
+                        "(add_from_roadmap) when omitted.");
+
+                    QJsonObject clKind;
+                    clKind["type"] = "string";
+                    clKind["description"] = QStringLiteral(
+                        "Roadmap `Kind:` value used to derive `category` "
+                        "when it is omitted (op:\"add\"). Same enum as "
+                        "roadmap_log's kind.");
+
+                    QJsonObject clBody;
+                    clBody["type"] = "string";
+                    clBody["maxLength"] = 4000;
+                    clBody["description"] = QStringLiteral(
+                        "Optional prose appended under the bullet as "
+                        "2-space-indented continuation line(s). Under "
+                        "add_from_roadmap, overrides the reused Layman "
+                        "line. Pre-wrap to ~70 columns.");
+
+                    QJsonObject clId;
+                    clId["type"] = "string";
+                    clId["description"] = QStringLiteral(
+                        "[PROJ-NNNN] id. Appended as \"(<id>)\" on the "
+                        "bullet under op:\"add\"; REQUIRED under "
+                        "add_from_roadmap (the bullet to cite). "
+                        "Case-sensitive.");
+
+                    QJsonObject clProps;
+                    clProps["caller_cwd"] = clCaller;
+                    clProps["op"]         = clOp;
+                    clProps["summary"]    = clSummary;
+                    clProps["category"]   = clCategory;
+                    clProps["kind"]       = clKind;
+                    clProps["body"]       = clBody;
+                    clProps["id"]         = clId;
+
+                    QJsonObject clSchema;
+                    clSchema["type"] = "object";
+                    clSchema["properties"] = clProps;
+                    // Only caller_cwd is unconditionally required; the
+                    // per-op needs (summary for add, id for
+                    // add_from_roadmap) are enforced at runtime via
+                    // missing_field, mirroring roadmap_log.
+                    QJsonArray clReq;
+                    clReq.append(QStringLiteral("caller_cwd"));
+                    clSchema["required"] = clReq;
+                    clSchema["additionalProperties"] = false;
+                    t["inputSchema"] = clSchema;
+                    tools.append(t);
+                }
                 // ANTS-1399-INV-1 — tool_info(name) descriptor.
                 // Cheaper than re-fetching tools/list when the assistant
                 // only needs to refresh memory on one tool's schema.
@@ -5943,6 +6069,10 @@ void ClaudeIntegration::onMcpConnection() {
                     if (name.startsWith(QStringLiteral("debt_sweep_")))
                         return QStringLiteral("debt-sweep");
                     if (name.startsWith(QStringLiteral("roadmap_")))
+                        return QStringLiteral("roadmap");
+                    // ANTS-1548 — changelog_log is the CHANGELOG-writer
+                    // sibling of the roadmap family.
+                    if (name == QLatin1String("changelog_log"))
                         return QStringLiteral("roadmap");
                     // ANTS-1414 — lane-source-agnostic alias bucket.
                     if (name == QLatin1String("cross_doc_diff"))
@@ -6777,6 +6907,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // an absent caller_cwd refuses at the dispatcher rather than
     // falling back to the focused tab's roadmap.
     if (toolName == QStringLiteral("roadmap_log"))        return C::Required;
+    // ANTS-1548 — changelog_log mutates CHANGELOG.md under the caller's
+    // project root. Required for the same reason as roadmap_log.
+    if (toolName == QStringLiteral("changelog_log"))      return C::Required;
     // ANTS-1583 — roadmap_branch_drift: read-only ROADMAP scan +
     // git reachability check, anchored to the caller's project root.
     if (toolName == QStringLiteral("roadmap_branch_drift")) return C::Required;

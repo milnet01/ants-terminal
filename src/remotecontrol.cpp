@@ -24,6 +24,7 @@
 #include "roadmapdialog.h"
 #include "roadmapfoldin.h"
 #include "roadmapindex.h"
+#include "changeloglog.h"
 #include "subsystemmap.h"
 #include "terminalwidget.h"
 #include "testrescache.h"
@@ -102,6 +103,23 @@ QString findRoadmapUnder(const QString &canonicalRoot) {
         QStringLiteral("docs/internal/roadmap.md"),
         QStringLiteral(".github/ROADMAP.md"),
         QStringLiteral(".github/roadmap.md"),
+    };
+    for (const QString &n : kCandidates) {
+        const QString c = canonicalRoot + QLatin1Char('/') + n;
+        if (QFileInfo::exists(c)) return c;
+    }
+    return {};
+}
+
+// ANTS-1548 — CHANGELOG.md resolver, same shape as findRoadmapUnder.
+QString findChangelogUnder(const QString &canonicalRoot) {
+    if (canonicalRoot.isEmpty()) return {};
+    static const QStringList kCandidates = {
+        QStringLiteral("CHANGELOG.md"),
+        QStringLiteral("changelog.md"),
+        QStringLiteral("Changelog.md"),
+        QStringLiteral("docs/CHANGELOG.md"),
+        QStringLiteral("docs/changelog.md"),
     };
     for (const QString &n : kCandidates) {
         const QString c = canonicalRoot + QLatin1Char('/') + n;
@@ -2593,6 +2611,181 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendForTest(
 QJsonDocument RemoteControl::cmdRoadmapLogFlipForTest(
         const QJsonObject &req) {
     return cmdRoadmapLogFlip(req);
+}
+
+// ANTS-1548 — changelog_log. Renders one Keep-a-Changelog bullet and
+// splices it under the right category in `## [Unreleased]`. m_main-
+// independent (caller_cwd + filesystem only), same as the flip path.
+QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
+    auto clErr = [](const QString &code, const QString &message) {
+        QJsonObject env;
+        env["ok"]    = false;
+        env["code"]  = code;
+        env["error"] = message;
+        return QJsonDocument(env);
+    };
+
+    const QString callerRaw =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    if (callerRaw.isEmpty()) {
+        return clErr(QStringLiteral("missing_field"),
+            QStringLiteral("changelog_log: caller_cwd is required"));
+    }
+    const QString op =
+        req.value(QStringLiteral("op")).toString(QStringLiteral("add"));
+    if (op != QStringLiteral("add") &&
+        op != QStringLiteral("add_from_roadmap")) {
+        return clErr(QStringLiteral("bad_op_combo"),
+            QStringLiteral("changelog_log: unknown op \"%1\" — expected "
+                           "\"add\" (default) or \"add_from_roadmap\"")
+                .arg(op));
+    }
+
+    const QString callerCanonical =
+        QFileInfo(callerRaw).canonicalFilePath();
+    if (callerCanonical.isEmpty()) {
+        return clErr(QStringLiteral("no_changelog"),
+            QStringLiteral("changelog_log: caller_cwd \"%1\" does not "
+                           "canonicalise to an existing directory")
+                .arg(callerRaw));
+    }
+    const QString clPath = findChangelogUnder(callerCanonical);
+    if (clPath.isEmpty()) {
+        return clErr(QStringLiteral("no_changelog"),
+            QStringLiteral("changelog_log: no CHANGELOG.md under \"%1\"")
+                .arg(callerCanonical));
+    }
+
+    // Resolve summary / body / id / category by mode.
+    QString summary, body, id, category;
+    const QString reqCategory =
+        req.value(QStringLiteral("category")).toString();
+    id = req.value(QStringLiteral("id")).toString();
+    body = req.value(QStringLiteral("body")).toString();
+
+    if (op == QStringLiteral("add")) {
+        summary = req.value(QStringLiteral("summary")).toString();
+        if (summary.isEmpty()) {
+            return clErr(QStringLiteral("missing_field"),
+                QStringLiteral("changelog_log: op:\"add\" requires "
+                               "`summary`"));
+        }
+        if (!reqCategory.isEmpty()) {
+            category = reqCategory;
+        } else {
+            const QString kind =
+                req.value(QStringLiteral("kind")).toString();
+            if (kind.isEmpty()) {
+                return clErr(QStringLiteral("missing_field"),
+                    QStringLiteral("changelog_log: op:\"add\" requires "
+                                   "`category` or `kind` (to derive it)"));
+            }
+            category = ChangelogLog::kindToCategory(kind);
+        }
+    } else {  // add_from_roadmap — reuse the ROADMAP bullet's prose.
+        if (id.isEmpty()) {
+            return clErr(QStringLiteral("missing_field"),
+                QStringLiteral("changelog_log: op:\"add_from_roadmap\" "
+                               "requires `id` (the [PROJ-NNNN] to cite)"));
+        }
+        const QString rmPath = findRoadmapUnder(callerCanonical);
+        if (rmPath.isEmpty()) {
+            return clErr(QStringLiteral("no_roadmap"),
+                QStringLiteral("changelog_log: op:\"add_from_roadmap\" "
+                               "needs a ROADMAP.md under \"%1\"")
+                    .arg(callerCanonical));
+        }
+        QFile rf(rmPath);
+        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return clErr(QStringLiteral("roadmap_read_failed"),
+                QStringLiteral("changelog_log: could not read \"%1\"")
+                    .arg(rmPath));
+        }
+        const QString rmMarkdown = QString::fromUtf8(rf.readAll());
+        rf.close();
+        const auto bullets = RoadmapDialog::parseBullets(rmMarkdown);
+        const RoadmapDialog::BulletRecord *match = nullptr;
+        for (const auto &cand : bullets) {
+            if (cand.id == id) { match = &cand; break; }
+        }
+        if (!match) {
+            return clErr(QStringLiteral("id_not_in_roadmap"),
+                QStringLiteral("changelog_log: id \"%1\" not found in "
+                               "%2 (case-sensitive)").arg(id, rmPath));
+        }
+        summary = match->headline;
+        // Reuse the authored user-facing prose: the bullet's Layman
+        // line is CHANGELOG-voice already. An explicit `body` arg
+        // overrides it. (We deliberately do NOT splat the full bullet
+        // body — it carries Kind:/Source:/Lanes: metadata.)
+        if (body.isEmpty()) body = match->layman;
+        if (body.isEmpty()) {
+            // parseBullets' rxLayman only matches a plain "Layman:"
+            // label; roadmap_log writes the bold "**Layman:**" form, so
+            // re-extract here handling both (ANTS-1548 — see ANTS-1861
+            // for the parser-side gap).
+            static const QRegularExpression rxBoldLayman(
+                QStringLiteral("(?:\\*\\*)?Layman:(?:\\*\\*)?\\s*(.+)"),
+                QRegularExpression::CaseInsensitiveOption);
+            const auto lm = rxBoldLayman.match(match->body);
+            if (lm.hasMatch()) body = lm.captured(1).trimmed();
+        }
+        category = !reqCategory.isEmpty()
+            ? reqCategory
+            : ChangelogLog::kindToCategory(match->kind);
+    }
+
+    // Scrub leaked tool-call XML from both fields (parity with
+    // roadmap_log body handling).
+    QStringList scrubbed;
+    rcScrubLeakedToolXml(summary, scrubbed);
+    rcScrubLeakedToolXml(body, scrubbed);
+
+    const QString bullet = ChangelogLog::formatBullet(summary, body, id);
+
+    QFile cf(clPath);
+    if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return clErr(QStringLiteral("changelog_read_failed"),
+            QStringLiteral("changelog_log: could not read \"%1\"")
+                .arg(clPath));
+    }
+    const QString clMarkdown = QString::fromUtf8(cf.readAll());
+    cf.close();
+
+    const auto res = ChangelogLog::insertUnreleasedEntry(
+        clMarkdown, category, bullet);
+    if (!res.ok) {
+        return clErr(res.code, res.error);
+    }
+
+    QSaveFile cw(clPath);
+    if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        return clErr(QStringLiteral("changelog_write_failed"),
+            QStringLiteral("changelog_log: could not open \"%1\" for "
+                           "writing").arg(clPath));
+    }
+    const QByteArray utf8 = res.markdown.toUtf8();
+    if (cw.write(utf8) != utf8.size() || !cw.commit()) {
+        return clErr(QStringLiteral("changelog_write_failed"),
+            QStringLiteral("changelog_log: atomic write of \"%1\" failed")
+                .arg(clPath));
+    }
+
+    QJsonObject out;
+    out["ok"]               = true;
+    out["op"]               = op;
+    out["file"]             = clPath.section('/', -1);
+    out["category"]         = category;
+    out["line"]             = res.line;
+    out["bytes_written"]    = static_cast<qint64>(utf8.size());
+    out["created_category"] = res.created_category;
+    if (!id.isEmpty()) out["id"] = id;
+    if (!scrubbed.isEmpty()) {
+        QJsonArray dropped;
+        for (const QString &n : scrubbed) dropped.append(n);
+        out["scrubbed_params"] = dropped;
+    }
+    return QJsonDocument(out);
 }
 
 // ANTS-1424 — append path, split out of cmdRoadmapLog (ANTS-1433) so a
