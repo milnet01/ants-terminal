@@ -4891,7 +4891,7 @@ minor tag (next: pre-0.8.0).
   behaviour change). Source: user-2026-04-30. Lanes: MainWindow,
   status bar.
 
-- 📋 [ANTS-1849] **Suggested-model chip click should return focus to the terminal.**
+- ✅ [ANTS-1849] **Suggested-model chip click should return focus to the terminal.**
   The model-chip click handler (`claudestatuswidgets.cpp:136`) sends `/model
   <tier>` to the focused terminal via `sendToPty` but never calls
   `focused->setFocus()` afterwards, so keyboard focus stays on the QPushButton —
@@ -5254,7 +5254,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   classification that disagrees with `callerCwdContractFor` neither refuses nor
   aborts in a Release build, contradicting the comment. Make it a compiled
   check. Verified 2026-05-22.
-- 📋 [ANTS-1835] **Permission prompt leaks to the focused tab's bottom bar.**
+- ✅ [ANTS-1835] **Permission prompt leaks to the focused tab's bottom bar.**
   `claudestatuswidgets.cpp:~344` emits `statusMessageRequested` (+ Allow/Deny
   buttons acting on the focused terminal) before session routing, so a
   background tab's prompt paints on the focused tab. Gate the message/buttons on
@@ -5276,7 +5276,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   — latent (current callers bounded), but the next caller running `git diff`/
   `log -p` feeds an unbounded blob into a JSON envelope. Add a per-caller stdout
   budget. Verified 2026-05-22.
-- 📋 [ANTS-1840] **Model-chip / tracker freshness gaps.** Model-chip mtime gate
+- ✅ [ANTS-1840] **Model-chip / tracker freshness gaps.** Model-chip mtime gate
   ignores a current-model change so it lingers after a manual `/model`
   (`claudestatuswidgets.cpp` — partially mitigated by [[ANTS-1814]]'s reset);
   `sweepLiveness` latches `finished=true` without un-latching on resume

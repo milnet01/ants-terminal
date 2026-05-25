@@ -179,6 +179,24 @@ the wire-up that, if reverted, breaks the user-visible behavior.
   only clear on app restart or transcript-rotate; with it, the
   chip falls to 0 within ~60 s of the last task going idle.
 
+- **INV-13** (liveness un-latch, ANTS-1840 — indie-review #6
+  2026-05-22): the INV-12 sweep flips `finished` to `true` from a
+  *heuristic* (output file gone / stale > 60 s), but `sweepLiveness`
+  used to `continue` past any finished task and so never reconsidered
+  it. A long build that goes quiet > 60 s (CMake configure, slow link)
+  was flagged finished and stayed finished even after it resumed
+  printing — `poll()` skips `rescan()` while the transcript mtime is
+  unchanged, so the sweep was the only thing watching, and it never
+  un-latched. Fix: a `finishedByLiveness` flag on
+  `ClaudeBackgroundTask` distinguishes a heuristic finish from a
+  transcript-authoritative one (BashOutput `completed`/`killed`/
+  `failed`, `KillShell`). `sweepLiveness` now re-derives liveness for
+  finished tasks too: a `finishedByLiveness` task whose output file
+  exists and is fresh again flips back to running; a
+  transcript-authoritative finish is permanent and never reconsidered.
+  Behavioral (link-based): `SweepLivenessUnlatchesResumedTask` and
+  `SweepLivenessKeepsTranscriptFinish`.
+
 ## How to verify pre-fix code fails
 
 ```bash

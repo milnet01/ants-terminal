@@ -956,6 +956,8 @@ if(ANTS_TESTS)
                 tests/features/ai_context_redaction/test_ai_context_redaction.cpp
                 tests/features/ssh_control_master/test_ssh_control_master.cpp
                 tests/features/claude_bg_tasks_button/test_claude_bg_tasks_button.cpp
+                # ANTS-1835/1840/1849 — prompt routing + model-chip focus.
+                tests/features/claude_statusbar_focus_routing/test_claude_statusbar_focus_routing.cpp
                 tests/features/claude_state_dot_palette/test_claude_state_dot_palette.cpp
                 tests/features/claude_statusbar_extraction/test_claude_statusbar_extraction.cpp
                 tests/features/claude_task_list/test_claude_task_list.cpp

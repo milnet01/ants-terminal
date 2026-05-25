@@ -8,6 +8,19 @@
 #include <sstream>
 #include <string>
 
+// ANTS-1840 — behavioral half: sweepLiveness un-latch. Drives the real
+// ClaudeBgTaskTracker (the rest of this file is source-grep).
+#include "claudebgtasks.h"
+#include <QDateTime>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QStringLiteral>
+#include <QTemporaryDir>
+#include <utime.h>
+
 #ifndef SRC_BGTASKS_CPP_PATH
 #error "SRC_BGTASKS_CPP_PATH compile definition required"
 #endif
@@ -377,9 +390,9 @@ TEST(ClaudeBgTasksButton, Main) {
     {
         // ANTS-1146 — function moved to controller; member name went
         // from m_claudeBgTasks → m_bgTasks at the same time.
-        const std::string body = functionBody(csw,
+        const std::string refreshBody = functionBody(csw,
             "void ClaudeStatusBarController::refreshBgTasksButton()");
-        if (body.empty()) {
+        if (refreshBody.empty()) {
             fail("INV-12(c): refreshBgTasksButton body not found in claudestatuswidgets.cpp");
         } else {
             // 0.7.55 — the 2 s tick now calls sweepLiveness() (cheap),
@@ -388,9 +401,9 @@ TEST(ClaudeBgTasksButton, Main) {
             // transcript-changed signal, so a same-path tick only
             // needs the mtime sweep.
             const bool callsSweep =
-                body.find("m_bgTasks->sweepLiveness()") != std::string::npos;
+                refreshBody.find("m_bgTasks->sweepLiveness()") != std::string::npos;
             const bool callsRescan =
-                body.find("m_bgTasks->rescan()") != std::string::npos;
+                refreshBody.find("m_bgTasks->rescan()") != std::string::npos;
             if (!callsSweep && !callsRescan) {
                 fail("INV-12(c): refreshBgTasksButton must call either "
                      "sweepLiveness() (preferred — cheap mtime walk) "
@@ -421,5 +434,127 @@ TEST(ClaudeBgTasksButton, Main) {
     }
     std::printf("OK: claude background-tasks button invariants present "
                 "(12/12)\n");
+}
+
+// --- ANTS-1840 arm-2: sweepLiveness un-latch (behavioral) ---------------
+
+namespace {
+
+void setOutputMtime(const QString &path, qint64 secsAgo) {
+    struct utimbuf tb;
+    tb.actime = tb.modtime = QDateTime::currentSecsSinceEpoch() - secsAgo;
+    ::utime(path.toLocal8Bit().constData(), &tb);
+}
+
+// Write a minimal transcript JSONL describing one run_in_background Bash
+// task whose stdout streams to `outPath`. With `withCompletion`, append a
+// BashOutput tool_result carrying status=completed (a transcript-
+// authoritative finish, distinct from the liveness heuristic).
+void writeBgTranscript(const QString &transcriptPath, const QString &outPath,
+                       bool withCompletion) {
+    const auto line = [](const QJsonObject &o) {
+        return QString::fromUtf8(
+                   QJsonDocument(o).toJson(QJsonDocument::Compact)) +
+               QStringLiteral("\n");
+    };
+
+    QJsonObject toolUse{
+        {"type", "tool_use"}, {"name", "Bash"}, {"id", "toolu_1"},
+        {"input", QJsonObject{{"run_in_background", true},
+                              {"command", "make -j2"},
+                              {"description", "long build"}}}};
+    QJsonObject launch{
+        {"type", "assistant"}, {"timestamp", "2026-05-25T00:00:00.000Z"},
+        {"message", QJsonObject{{"content", QJsonArray{toolUse}}}}};
+
+    const QString resultText =
+        QStringLiteral("Command running in background with ID: bgid1. "
+                       "Output is being written to: ") + outPath;
+    QJsonObject confirm{
+        {"type", "user"},
+        {"toolUseResult", QJsonObject{{"backgroundTaskId", "bgid1"}}},
+        {"message", QJsonObject{{"content", QJsonArray{QJsonObject{
+            {"type", "tool_result"}, {"tool_use_id", "toolu_1"},
+            {"content", resultText}}}}}}};
+
+    QString body = line(launch) + line(confirm);
+    if (withCompletion) {
+        QJsonObject complete{
+            {"type", "user"},
+            {"toolUseResult",
+             QJsonObject{{"status", "completed"}, {"shellId", "bgid1"}}},
+            {"message", QJsonObject{{"content", QJsonArray{QJsonObject{
+                {"type", "tool_result"}, {"tool_use_id", "toolu_out"},
+                {"content", "exit 0"}}}}}}};
+        body += line(complete);
+    }
+
+    QFile f(transcriptPath);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write(body.toUtf8());
+}
+
+}  // namespace
+
+// ANTS-1840 — a task flipped finished by the liveness heuristic must
+// un-latch when its output file resumes writing. Without the fix the
+// running-count chip stays at 0 forever (poll() skips rescan while the
+// transcript is unchanged, and sweepLiveness used to `continue` past any
+// finished task).
+TEST(ClaudeBgTasksButton, SweepLivenessUnlatchesResumedTask) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString outPath = dir.filePath(QStringLiteral("task1.output"));
+    {
+        QFile f(outPath);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("progress\n");
+    }
+    const QString tp = dir.filePath(QStringLiteral("session.jsonl"));
+    writeBgTranscript(tp, outPath, /*withCompletion=*/false);
+
+    ClaudeBgTaskTracker tracker;
+    tracker.setTranscriptPath(tp);
+    ASSERT_EQ(tracker.tasks().size(), 1);
+    EXPECT_EQ(tracker.runningCount(), 1) << "fresh output → running";
+
+    // Quiet > 60 s → liveness flips finished.
+    setOutputMtime(outPath, 120);
+    tracker.sweepLiveness();
+    EXPECT_EQ(tracker.runningCount(), 0)
+        << "stale output must be flagged finished by liveness";
+
+    // Producer resumes writing → un-latch (the ANTS-1840 fix).
+    setOutputMtime(outPath, 0);
+    tracker.sweepLiveness();
+    EXPECT_EQ(tracker.runningCount(), 1)
+        << "resumed output must un-latch the liveness-finish";
+}
+
+// ANTS-1840 — a transcript-authoritative finish (BashOutput status
+// completed / KillShell) is permanent: sweepLiveness must NOT resurrect it
+// even if the output file is touched afterwards.
+TEST(ClaudeBgTasksButton, SweepLivenessKeepsTranscriptFinish) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString outPath = dir.filePath(QStringLiteral("task2.output"));
+    {
+        QFile f(outPath);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("done\n");
+    }
+    const QString tp = dir.filePath(QStringLiteral("session2.jsonl"));
+    writeBgTranscript(tp, outPath, /*withCompletion=*/true);
+
+    ClaudeBgTaskTracker tracker;
+    tracker.setTranscriptPath(tp);
+    ASSERT_EQ(tracker.tasks().size(), 1);
+    EXPECT_EQ(tracker.runningCount(), 0)
+        << "transcript completion → finished";
+
+    setOutputMtime(outPath, 0);  // fresh file, but the finish was authoritative
+    tracker.sweepLiveness();
+    EXPECT_EQ(tracker.runningCount(), 0)
+        << "transcript-authoritative finish must never un-latch";
 }
 

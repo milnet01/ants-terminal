@@ -33,6 +33,12 @@ struct ClaudeBackgroundTask {
     QString outputPath;     // /tmp/claude-$UID/.../<id>.output
     QDateTime startedAt;    // assistant event timestamp
     bool finished = false;  // a completion or kill event was seen for this id
+    // ANTS-1840 — true only when `finished` was inferred by the output-file
+    // liveness heuristic (file gone / mtime stale > 60 s), NOT by an
+    // authoritative transcript completion/kill event. sweepLiveness may
+    // un-latch a liveness-finish if the output file resumes writing; a
+    // transcript-finish is permanent.
+    bool finishedByLiveness = false;
     int exitCode = -1;      // captured from completion event when present
 };
 

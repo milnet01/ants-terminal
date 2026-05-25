@@ -14,13 +14,22 @@
 
 namespace {
 
-// Try to extract a task id from a tool_result body — Claude Code's
-// confirmation message follows the shape "Task #N created
-// successfully:" so we capture the digit run after `#`. Empty string
-// when no match, in which case the entry's id stays empty (which is
-// fine — id is only used for TaskUpdate matching, not for display).
+// Best-effort task id from a tool_result body. The authoritative pairing
+// of a result to its TaskCreate is the structured `tool_use_id` (handled
+// by the caller via idxByToolUseId); this only recovers the human-facing
+// numeric id ("#N") that later TaskUpdate events reference as `taskId`.
+//
+// ANTS-1840 — the id lives in prose only ("Task #N created successfully:"),
+// so the match is deliberately tolerant of cosmetic wording drift:
+// case-insensitive and whitespace-flexible around "Task" / "#" (covers
+// "Task #5", "task#5", "Task # 5"). The "Task" anchor is kept so a bare
+// "#5" inside a task subject can't be mis-captured. A miss leaves the id
+// empty, which is fine — id is only used for TaskUpdate matching, not
+// display.
 QString extractIdFromResultBody(const QString &body) {
-    static const QRegularExpression re(QStringLiteral(R"(Task\s+#(\d+))"));
+    static const QRegularExpression re(
+        QStringLiteral(R"(Task\s*#\s*(\d+))"),
+        QRegularExpression::CaseInsensitiveOption);
     const auto m = re.match(body);
     return m.hasMatch() ? m.captured(1) : QString{};
 }

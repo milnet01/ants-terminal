@@ -146,6 +146,19 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
         if (!focused) return;
         focused->sendToPty(
             (QStringLiteral("/model ") + tier + QStringLiteral("\n")).toUtf8());
+        // ANTS-1840 — the user just acted on the recommendation, so hide the
+        // chip immediately rather than letting it linger until the next
+        // assistant turn re-scores the transcript. We deliberately leave the
+        // mtime cache (m_modelChipPath / m_modelChipMtimeMs) untouched: the
+        // short-circuit in refreshModelChip then keeps the chip hidden until
+        // the transcript actually changes, at which point the new turn's
+        // message.model is re-scored and the chip re-shows only if still
+        // warranted (INV-4).
+        m_modelBtn->hide();
+        // ANTS-1849 — clicking the button stole keyboard focus from the
+        // terminal; return it so the user can keep typing without a manual
+        // click back into the terminal.
+        focused->setFocus();
     });
 
     // Error indicator label — surfaces the exit-code from the
@@ -335,13 +348,41 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
 
     connect(m_integration, &ClaudeIntegration::permissionRequested,
             this, [this](const QString &tool, const QString &input) {
+        // ANTS-1835 — route the prompt to its owning tab BEFORE painting the
+        // bottom-bar message + Allow/Deny buttons. The hook server is a
+        // single UDS shared across every Claude in every tab, and the
+        // PermissionRequest hook is deliberately ungated at the integration
+        // layer (claude_status_bar_per_tab I3) — the slot must do the
+        // routing. Resolve the owning shell from the hook's session_id (the
+        // SAME routing the glyph already used below); the message + buttons
+        // are shown only when that shell belongs to the focused tab. When the
+        // session isn't tracked yet (first prompt before the poll notices the
+        // new Claude child) fall back to the focused tab, matching the
+        // pre-1835 contract that the bottom bar owns the active tab's prompt.
+        const pid_t owningPid = m_tracker
+            ? m_tracker->shellForSessionId(m_integration->lastHookSessionId())
+            : 0;
+        pid_t focusedPid = 0;
+        if (auto *term = m_currentTerminalProvider
+                             ? m_currentTerminalProvider() : nullptr)
+            focusedPid = term->shellPid();
+        const pid_t awaitingPid = owningPid > 0 ? owningPid : focusedPid;
+        const bool belongsToFocused = owningPid <= 0 || owningPid == focusedPid;
+
+        // Tab-glyph feedback: flag the owning tab's shell as awaiting input
+        // so its tab-bar dot turns loud/orange — ALWAYS, even for a
+        // background-tab prompt. Only the bottom-bar message/buttons are
+        // gated on belongsToFocused (the glyph IS the at-a-glance signal for
+        // a prompt on a tab you're not looking at).
+        if (m_tracker && awaitingPid > 0)
+            m_tracker->markShellAwaitingInput(awaitingPid, true);
+
         QString rawRule = tool;
         if (!input.isEmpty()) rawRule += "(" + input + ")";
         // Normalize and generalize to a useful allowlist pattern
         QString rule = ClaudeAllowlistDialog::normalizeRule(rawRule);
         QString gen = ClaudeAllowlistDialog::generalizeRule(rule);
         if (!gen.isEmpty()) rule = gen;
-        emit statusMessageRequested(QString("Claude permission: %1").arg(rule), 0);
 
         // Dedup: a PermissionRequest hook that arrives while a scroll-scan
         // permission button is already on screen should not stack a second
@@ -351,91 +392,84 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
         for (auto *w : m_statusBar->findChildren<QWidget *>(QStringLiteral("claudeAllowBtn")))
             w->deleteLater();
 
-        // Enhanced permission action buttons
-        auto *btnWidget = new QWidget(m_statusBar);
+        // btnWidget is the lifecycle anchor for the retraction connections
+        // that clear the glyph (wired unconditionally below). It exists even
+        // for a background-tab prompt — kept hidden — so the owning tab's dot
+        // is cleared when the prompt resolves.
         // 0.6.29 — same objectName as the scroll-scan path's button
         // (see mainwindow.cpp commandFailed handler) so the tab-switch
         // cleanup in onTabChanged removes both. Previously this widget
         // had no objectName, so switching tabs mid-prompt left a
         // stranded button group visible on the wrong tab.
+        auto *btnWidget = new QWidget(m_statusBar);
         btnWidget->setObjectName(QStringLiteral("claudeAllowBtn"));
         // Fixed horizontal sizePolicy — must never be squeezed when
         // the notification slot is wide. See layout principle at
         // mainwindow.cpp:~320 (user spec 2026-04-18).
         btnWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-        auto *btnLayout = new QHBoxLayout(btnWidget);
-        btnLayout->setContentsMargins(0, 0, 0, 0);
-        btnLayout->setSpacing(4);
 
-        const Theme &th = Themes::byName(m_currentThemeName);
-        auto *allowBtn = new QPushButton("Allow", btnWidget);
-        allowBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
-            .arg(th.ansi[2].name(), th.bgPrimary.name()));
-        auto *denyBtn = new QPushButton("Deny", btnWidget);
-        denyBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
-            .arg(th.ansi[1].name(), th.bgPrimary.name()));
-        auto *addBtn = new QPushButton("Add to allowlist", btnWidget);
-        addBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
-            .arg(th.bgSecondary.name(), th.textPrimary.name()));
-
-        btnLayout->addWidget(allowBtn);
-        btnLayout->addWidget(denyBtn);
-        btnLayout->addWidget(addBtn);
-        m_statusBar->addPermanentWidget(btnWidget);
-
-        // Mark prompt active so the Claude status label switches to
-        // "prompting" — matches the scroll-scan path's behavior and
-        // gives the user a second at-a-glance indicator beyond the
-        // button group itself.
-        m_promptActive = true;
-        apply();
-
-        // Tab-glyph feedback: flag the owning tab's shell as awaiting
-        // input so its tab-bar dot turns loud/orange. The hook server
-        // is a single UDS shared across every Claude in every tab, so
-        // we must route by session_id (captured by ClaudeIntegration
-        // before this slot runs) to find the right shell. Fallback
-        // to the active tab when the session isn't tracked (e.g. the
-        // first prompt before the tracker's poll has noticed the new
-        // Claude child) — the bottom-status-bar already shows
-        // "Claude: prompting" for the active tab, so the glyph
-        // matches that contract when routing fails.
-        pid_t awaitingPid = 0;
-        if (m_tracker) {
-            const QString sid = m_integration->lastHookSessionId();
-            awaitingPid = m_tracker->shellForSessionId(sid);
-            if (awaitingPid == 0) {
-                if (auto *term = m_currentTerminalProvider
-                                     ? m_currentTerminalProvider() : nullptr)
-                    awaitingPid = term->shellPid();
+        auto clearPromptActive = [this, awaitingPid, belongsToFocused]() {
+            if (belongsToFocused) {
+                m_promptActive = false;
+                apply();
             }
-            if (awaitingPid > 0)
-                m_tracker->markShellAwaitingInput(awaitingPid, true);
-        }
-
-        auto clearPromptActive = [this, awaitingPid]() {
-            m_promptActive = false;
-            apply();
             if (m_tracker && awaitingPid > 0)
                 m_tracker->markShellAwaitingInput(awaitingPid, false);
         };
 
-        connect(allowBtn, &QPushButton::clicked, btnWidget, [this, btnWidget, clearPromptActive]() {
-            btnWidget->deleteLater();
-            emit statusMessageCleared();
-            clearPromptActive();
-        });
-        connect(denyBtn, &QPushButton::clicked, btnWidget, [this, btnWidget, clearPromptActive]() {
-            btnWidget->deleteLater();
-            emit statusMessageCleared();
-            clearPromptActive();
-        });
-        connect(addBtn, &QPushButton::clicked, this, [this, rule, btnWidget, clearPromptActive]() {
-            emit allowlistRequested(rule);
-            btnWidget->deleteLater();
-            emit statusMessageCleared();
-            clearPromptActive();
-        });
+        if (belongsToFocused) {
+            emit statusMessageRequested(QString("Claude permission: %1").arg(rule), 0);
+
+            // Enhanced permission action buttons
+            auto *btnLayout = new QHBoxLayout(btnWidget);
+            btnLayout->setContentsMargins(0, 0, 0, 0);
+            btnLayout->setSpacing(4);
+
+            const Theme &th = Themes::byName(m_currentThemeName);
+            auto *allowBtn = new QPushButton("Allow", btnWidget);
+            allowBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
+                .arg(th.ansi[2].name(), th.bgPrimary.name()));
+            auto *denyBtn = new QPushButton("Deny", btnWidget);
+            denyBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
+                .arg(th.ansi[1].name(), th.bgPrimary.name()));
+            auto *addBtn = new QPushButton("Add to allowlist", btnWidget);
+            addBtn->setStyleSheet(QStringLiteral("QPushButton { background: %1; color: %2; border-radius: 3px; padding: 1px 8px; font-size: 10px; }")
+                .arg(th.bgSecondary.name(), th.textPrimary.name()));
+
+            btnLayout->addWidget(allowBtn);
+            btnLayout->addWidget(denyBtn);
+            btnLayout->addWidget(addBtn);
+            m_statusBar->addPermanentWidget(btnWidget);
+
+            // Mark prompt active so the Claude status label switches to
+            // "prompting" — matches the scroll-scan path's behavior and
+            // gives the user a second at-a-glance indicator beyond the
+            // button group itself.
+            m_promptActive = true;
+            apply();
+
+            connect(allowBtn, &QPushButton::clicked, btnWidget, [this, btnWidget, clearPromptActive]() {
+                btnWidget->deleteLater();
+                emit statusMessageCleared();
+                clearPromptActive();
+            });
+            connect(denyBtn, &QPushButton::clicked, btnWidget, [this, btnWidget, clearPromptActive]() {
+                btnWidget->deleteLater();
+                emit statusMessageCleared();
+                clearPromptActive();
+            });
+            connect(addBtn, &QPushButton::clicked, this, [this, rule, btnWidget, clearPromptActive]() {
+                emit allowlistRequested(rule);
+                btnWidget->deleteLater();
+                emit statusMessageCleared();
+                clearPromptActive();
+            });
+        } else {
+            // Background-tab prompt — the owning tab's glyph above already
+            // flags it; don't paint the message/buttons on the focused tab.
+            // btnWidget stays a hidden anchor for the retraction wiring.
+            btnWidget->hide();
+        }
 
         // Remove buttons when the prompt disappears from the screen.
         // Same lesson as the grid-scan path above: don't tie retraction to

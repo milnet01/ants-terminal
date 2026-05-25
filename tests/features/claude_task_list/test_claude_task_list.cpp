@@ -195,6 +195,41 @@ void testInv3_taskCreatePairedResult() {
     }
 }
 
+// ANTS-1840 — id extraction tolerates cosmetic wording drift in the
+// confirmation prose (case + whitespace around "Task" / "#"). The
+// authoritative result→TaskCreate pairing is the structured tool_use_id;
+// this only recovers the human "#N" id, so it should not break on a
+// lower-cased verb or a spaced hash.
+void testAnts1840_extractIdTolerantOfWordingDrift() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1840 setup"); return; }
+
+    const QString p = writeFixture(dir, "fix1840.jsonl", {
+        assistantToolUse(QStringLiteral("TaskCreate"),
+            R"({"subject":"Lower verb","description":"x","activeForm":"y"})",
+            QStringLiteral("toolu_a")),
+        // lower-case "task", no space before '#'
+        userToolResult(QStringLiteral("toolu_a"),
+            QStringLiteral("task#5 created successfully: Lower verb")),
+        assistantToolUse(QStringLiteral("TaskCreate"),
+            R"({"subject":"Spaced hash","description":"x","activeForm":"y"})",
+            QStringLiteral("toolu_b")),
+        // extra space after '#'
+        userToolResult(QStringLiteral("toolu_b"),
+            QStringLiteral("Task # 9 created successfully: Spaced hash")),
+    });
+
+    const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    expect(tasks.size() == 2, "ANTS-1840: both TaskCreates parsed",
+           "got " + std::to_string(tasks.size()));
+    if (tasks.size() == 2) {
+        expect(tasks[0].id == QStringLiteral("5"),
+               "ANTS-1840: id parsed from lower-case 'task#5'");
+        expect(tasks[1].id == QStringLiteral("9"),
+               "ANTS-1840: id parsed from spaced 'Task # 9'");
+    }
+}
+
 void testInv4_taskUpdateFlipsStatus() {
     QTemporaryDir dir;
     if (!dir.isValid()) { expect(false, "ANTS-1158-INV-4 setup"); return; }
@@ -1286,6 +1321,12 @@ TEST(ClaudeTaskList, Ants1341Inv6RecentInProgressPreserved) {
 TEST(ClaudeTaskList, Ants1341Inv5MultiTaskAbandoned) {
     const int before = expect_failures();
     testAnts1341Inv5_multiTaskAbandoned();
+    if (expect_failures() > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1840ExtractIdTolerantOfWordingDrift) {
+    const int before = expect_failures();
+    testAnts1840_extractIdTolerantOfWordingDrift();
     if (expect_failures() > before) FAIL();
 }
 

@@ -67,17 +67,38 @@ void ClaudeBgTaskTracker::sweepLiveness() {
     const QDateTime now = QDateTime::currentDateTimeUtc();
     bool changed = false;
     for (auto &t : m_tasks) {
-        if (t.finished) continue;
         if (t.outputPath.isEmpty()) continue;
+        // ANTS-1840 — a task flipped finished by THIS heuristic (not by an
+        // authoritative transcript event) must un-latch when its output file
+        // resumes writing: a long build can go quiet > 60 s (CMake configure,
+        // slow link), get flagged finished, then start printing again. Since
+        // poll() skips rescan() while the transcript mtime is unchanged, this
+        // sweep is the only thing that re-derives liveness — without the
+        // un-latch the running-count chip stays wrong until the next genuine
+        // transcript change. A transcript-finish (finishedByLiveness == false)
+        // is permanent and never reconsidered here.
+        if (t.finished) {
+            if (!t.finishedByLiveness) continue;
+            const QFileInfo fi(t.outputPath);
+            if (fi.exists()
+                    && fi.lastModified().toUTC().secsTo(now) <= kStaleSecs) {
+                t.finished = false;
+                t.finishedByLiveness = false;
+                changed = true;
+            }
+            continue;
+        }
         const QFileInfo fi(t.outputPath);
         if (!fi.exists()) {
             t.finished = true;
+            t.finishedByLiveness = true;
             changed = true;
             continue;
         }
         const QDateTime mtime = fi.lastModified().toUTC();
         if (mtime.secsTo(now) > kStaleSecs) {
             t.finished = true;
+            t.finishedByLiveness = true;
             changed = true;
         }
     }
@@ -377,11 +398,13 @@ QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseTranscript(const QString &
         const QFileInfo fi(t.outputPath);
         if (!fi.exists()) {
             t.finished = true;
+            t.finishedByLiveness = true;  // ANTS-1840: heuristic, not transcript
             continue;
         }
         const QDateTime mtime = fi.lastModified().toUTC();
         if (mtime.secsTo(now) > kStaleSecs) {
             t.finished = true;
+            t.finishedByLiveness = true;  // ANTS-1840: heuristic, not transcript
         }
     }
 
