@@ -105,6 +105,20 @@ Source-grep: the nil-set uses `lua_setfield(m_state, -2, "dump")`
 away an unrelated global. The former is correct; the latter
 would be a silent bug.
 
+### Invariant 7 — sandbox is an allowlist, closed by default (ANTS-1268)
+
+`sandboxEnvironment()` enumerates `_G` and nils every name NOT on
+the documented-safe allowlist (the base safe globals + the four
+loaded stdlib tables + `ants`), instead of nil-ing a fixed
+`dangerous[]` denylist. Behavioural: after init, a `pairs(_G)`
+walk finds only allowlisted names — a representative denied global
+(`os`, `setmetatable`, `collectgarbage`) is nil and a representative
+allowed one (`pairs`, `string`) is present. Source-grep: the
+`dangerous[]` array is gone; `kAllowed` + `lua_next` enumeration is
+present. Rationale: a denylist silently admits any NEW global a
+future Lua release adds (Lua 5.4 already added `warn`); an allowlist
+keeps the sandbox closed without a manual update each release.
+
 ## How this test anchors to reality
 
 The test:

@@ -9988,13 +9988,32 @@ own design + test cycles.
   != 0`, or correlate the SO_PEERCRED pid with
   `findClaudeChildPid(m_shellPid)`. Pairs with the cold-start
   fallthrough fix that already shipped this session.
+  DEFERRED 2026-05-25 (needs hook-owner wiring): neither suggested
+  fix is a clean low-risk drop-in today. (a) `shellForSessionId`
+  lives on `ClaudeTabTracker`, but `ClaudeIntegration` (which owns the
+  single shared hook UDS) holds no tracker reference — only its own
+  `m_shellPid` — so the session→shell lookup needs a tracker pointer
+  threaded into the hook owner, an architectural change to the
+  hot hook-routing path that drives the whole Claude status UX.
+  (b) SO_PEERCRED pid correlation can't authenticate the peer:
+  Claude hooks are shell commands Claude spawns, so the connecting
+  pid is a transient helper (nc / a script), not the `claude`
+  process — `findClaudeChildPid` won't match it. Mitigating context:
+  the path is NOT unguarded today — SO_PEERCRED already rejects other
+  UIDs (ANTS-1151/1797 fail-closed), `isFocusedTabSession` gates every
+  state-mutating branch to the focused tab's exact session_id, and the
+  cold-start drop (this session) closes the bootstrap window. Residual
+  is a same-UID forger who also knows the focused tab's session_id.
+  Next step when picked up: give the hook-owning ClaudeIntegration a
+  `ClaudeTabTracker*` and reject events whose `session_id` has no live
+  `shellForSessionId(...)`; add a feature test on that gate.
   **Layman:** make sure hook messages actually come from the
   Claude process we expect, not from any other program running
   as the same user.
   Kind: review-fix.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1273] **`/tmp/ants-terminal-<uid>.sock` fallback TOCTOU
+- ✅ [ANTS-1273] **`/tmp/ants-terminal-<uid>.sock` fallback TOCTOU
   (remotecontrol).** `src/remotecontrol.cpp:82`. The XDG-runtime-dir
   path is 0700 and safe; the `/tmp` fallback in `defaultSocketPath`
   lives in shared `/tmp`, so a same-UID attacker can race the
@@ -10004,6 +10023,22 @@ own design + test cycles.
   the `/tmp` fallback is ever reached on supported platforms — if
   not (XDG_RUNTIME_DIR is set on every modern systemd distro),
   remove it entirely and fail-closed instead.
+  RESOLVED 2026-05-25 (superseded by ANTS-1365): the specific vuln
+  this cites — a flat `/tmp/ants-terminal-<uid>.sock` in shared /tmp
+  — no longer exists. ANTS-1365 (0.7.66) moved the fallback into a
+  per-user `/tmp/ants-<uid>/` subdir created at 0700 and verified for
+  owner + mode + not-a-symlink by `ensureSocketDir` BEFORE `listen()`
+  (remotecontrol.cpp:692-720); `safeToUnlinkLocalSocket` lstat-checks
+  S_ISSOCK + ownership before any unlink. Cross-user pre-creation /
+  symlink is closed; the residual is a same-UID socket-swap race
+  inside a dir only that UID can enter — inherently low severity (a
+  same-UID process already has broad access to the user's files). The
+  finding's alternative — delete the fallback and fail-closed — is
+  DECLINED: it would disable remote-control / MCP on any environment
+  without XDG_RUNTIME_DIR (non-systemd, some containers, minimal
+  sessions), trading a marginal same-UID hardening for a real
+  availability regression to the MCP surface this project leans on.
+  Closed, no code change.
   **Layman:** drop a never-actually-used fallback that's the only
   weak point in the remote-control socket's permissions story.
   Kind: review-fix.
@@ -10034,7 +10069,7 @@ own design + test cycles.
   Kind: review-fix.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1276] **Anchor-target slug not validated (roadmapdialog).**
+- ✅ [ANTS-1276] **Anchor-target slug not validated (roadmapdialog).**
   `src/roadmapdialog.cpp:2318`. `handleAnchorClicked` parses the
   `ants://` URL and inserts `target` into `m_expandedItems` /
   `m_expandedSections` / `m_tableSections` without validation. A
@@ -10076,7 +10111,7 @@ own design + test cycles.
   Kind: refactor.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1268] **Convert Lua `_G` strip to allowlist (lua-plugins).**
+- ✅ [ANTS-1268] **Convert Lua `_G` strip to allowlist (lua-plugins).**
   `src/luaengine.cpp:223`. The `dangerous[]` array is a denylist —
   fragile against new globals added in future Lua 5.4 patch
   releases. `warn` was added in 5.4 and is harmless; the precedent

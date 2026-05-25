@@ -292,17 +292,52 @@ void LuaEngine::registerApi() {
 }
 
 void LuaEngine::sandboxEnvironment() {
-    // Remove dangerous globals (getmetatable allows string metatable manipulation)
-    const char *dangerous[] = {
-        "os", "io", "loadfile", "dofile", "load",
-        "rawget", "rawset", "rawequal", "rawlen",
-        "setmetatable", "getmetatable", "collectgarbage",
-        "require", "package", "debug", "coroutine",
-        nullptr
+    // ANTS-1268 — allowlist the globals rather than denylisting them.
+    // A denylist silently admits any NEW global a future Lua release
+    // adds (Lua 5.4 already added `warn`; a later patch could add
+    // more), so the sandbox must close by default: enumerate `_G` and
+    // nil every name that is NOT on the documented-safe allowlist
+    // (PLUGINS.md § Sandbox Boundaries). The kept set is exactly the
+    // previously-allowed surface — the base safe globals + the four
+    // stdlib tables loaded above + our `ants` API — so no current
+    // plugin breaks, and the removed set still covers everything the
+    // old denylist did (os/io/load*/raw*/*metatable/collectgarbage/
+    // require/package/debug/coroutine).
+    static const char *const kAllowed[] = {
+        // base safe globals (Lua 5.4 luaopen_base, minus the unsafe)
+        "_G", "_VERSION", "assert", "error", "ipairs", "next",
+        "pairs", "pcall", "print", "select", "tonumber", "tostring",
+        "type", "warn", "xpcall",
+        // safe standard libraries loaded above
+        "string", "table", "math", "utf8",
+        // Ants plugin API
+        "ants",
+        nullptr,
     };
-    for (int i = 0; dangerous[i]; ++i) {
+    auto isAllowed = [&](const char *name) {
+        for (int i = 0; kAllowed[i]; ++i)
+            if (qstrcmp(name, kAllowed[i]) == 0) return true;
+        return false;
+    };
+    // Collect the disallowed names first — modifying `_G` while
+    // iterating it with lua_next is fragile (setting existing fields
+    // to nil mid-traversal is permitted, but collect-then-remove is
+    // unambiguous). The LUA_TSTRING guard keeps lua_tostring from
+    // mutating a numeric key in place (which would corrupt lua_next).
+    QList<QByteArray> toRemove;
+    lua_getglobal(m_state, "_G");
+    lua_pushnil(m_state);
+    while (lua_next(m_state, -2) != 0) {
+        if (lua_type(m_state, -2) == LUA_TSTRING) {
+            const char *name = lua_tostring(m_state, -2);
+            if (name && !isAllowed(name)) toRemove.append(QByteArray(name));
+        }
+        lua_pop(m_state, 1);  // pop value, keep key for the next lua_next
+    }
+    lua_pop(m_state, 1);      // pop _G
+    for (const QByteArray &name : toRemove) {
         lua_pushnil(m_state);
-        lua_setglobal(m_state, dangerous[i]);
+        lua_setglobal(m_state, name.constData());
     }
 
     // Strip string.dump. It returns the bytecode for a Lua function;

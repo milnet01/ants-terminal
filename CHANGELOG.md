@@ -410,6 +410,29 @@ for security-relevant changes.
   (1289/1289 ctest). The 154 `range-loop-detach` sites the same sweep surfaced
   are tracked under ANTS-1650.
 
+### Security
+
+- **Lua sandbox converted from denylist to allowlist (ANTS-1268).**
+  `LuaEngine::sandboxEnvironment` previously nil-ed a fixed
+  `dangerous[]` list of globals, which silently admitted any NEW
+  global a future Lua release adds (Lua 5.4 already shipped `warn`).
+  It now enumerates `_G` and keeps only the documented-safe allowlist
+  (base safe globals + the loaded `string`/`table`/`math`/`utf8`
+  tables + the `ants` API), nil-ing everything else — so the sandbox
+  stays closed by default without a manual update each Lua release.
+  The kept set is exactly the previously-allowed surface, so no
+  existing plugin breaks.
+
+- **Roadmap anchor targets validated before they reach Config
+  (ANTS-1276).** `RoadmapDialog::handleAnchorClicked` inserted the
+  parsed `ants://` target into the expanded-state sets (which
+  serialise to `config.json`) without validation, so a hostile
+  `ROADMAP.md` shipping `ants://expand/' OR 1=1 --` could persist
+  arbitrary strings into the user's settings (`htmlEscape` only
+  strips `& < >`). The target is now validated against the
+  `[A-Za-z0-9_-]`, ≤200-char shape the dialog's own hrefs emit
+  before insertion; anything else is dropped.
+
 ## [0.7.92] — 2026-05-20
 
 **Theme:** MCP token-saver depth + frozen-RC release pipeline. Wires

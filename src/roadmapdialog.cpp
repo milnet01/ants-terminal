@@ -2856,6 +2856,24 @@ void RoadmapDialog::showViewerContextMenu(const QPoint &pos) {
 // toggle a section's slug in m_expandedSections; table toggles a
 // section's slug in m_tableSections. Each mutation triggers a
 // rebuild so the new state renders immediately.
+bool RoadmapDialog::isValidAnchorTarget(const QString &target) {
+    // ANTS-1276 — accept only the shape the dialog's own hrefs emit: a
+    // roadmap item ID (e.g. ANTS-1145, MAME_CURATOR-7) or a section
+    // slug (e.g. performance-2), both drawn from [A-Za-z0-9_-]. Bound
+    // the length so a pathological-but-charset-clean target can't bloat
+    // the persisted config either.
+    if (target.isEmpty() || target.size() > 200) return false;
+    for (const QChar ch : target) {
+        const char16_t u = ch.unicode();
+        const bool ok = (u >= u'A' && u <= u'Z')
+                     || (u >= u'a' && u <= u'z')
+                     || (u >= u'0' && u <= u'9')
+                     || u == u'-' || u == u'_';
+        if (!ok) return false;
+    }
+    return true;
+}
+
 void RoadmapDialog::handleAnchorClicked(const QUrl &link) {
     if (link.scheme() != QLatin1String("ants")) {
         // Internal-anchor jumps (`#roadmap-toc-N`) come through here
@@ -2885,6 +2903,16 @@ void RoadmapDialog::handleAnchorClicked(const QUrl &link) {
     QString target = link.path();
     if (target.startsWith('/')) target.remove(0, 1);
     if (target.isEmpty()) return;
+
+    // ANTS-1276 — validate the target before it lands in the
+    // expanded-state sets, which serialise verbatim to Config on disk.
+    // The hrefs this dialog renders only ever carry a roadmap item ID
+    // or a section slug, both drawn from [A-Za-z0-9_-]. A hostile
+    // ROADMAP.md shipping `ants://expand/' OR 1=1 --` (htmlEscape only
+    // strips & < >) would otherwise persist arbitrary attacker strings
+    // into the user's config. Reject anything outside that charset or
+    // implausibly long.
+    if (!isValidAnchorTarget(target)) return;
 
     if (verb == QLatin1String("expand")) {
         m_expandedItems.insert(target);

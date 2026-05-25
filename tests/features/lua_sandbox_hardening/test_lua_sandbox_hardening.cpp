@@ -118,12 +118,65 @@ void runRuntimeChecks() {
            QStringLiteral("loadScript must return false when the first "
                           "byte is 0x1b (Lua binary-chunk header)"));
 
+    // ANTS-1268 — allowlist behaviour. After sandboxEnvironment(), `_G`
+    // must contain ONLY the documented-safe names; everything else
+    // (including any global a future Lua release adds) must be nil. The
+    // script enumerates _G and records any key outside the allowlist,
+    // then the assert script throws if that set is non-empty or if a
+    // representative denied global leaked / an allowed one vanished.
+    const QByteArray allowlistProbe =
+        "local allowed = {\n"
+        "  _G=true,_VERSION=true,assert=true,error=true,ipairs=true,\n"
+        "  next=true,pairs=true,pcall=true,print=true,select=true,\n"
+        "  tonumber=true,tostring=true,type=true,warn=true,xpcall=true,\n"
+        "  string=true,table=true,math=true,utf8=true,ants=true,\n"
+        "}\n"
+        "local extra = {}\n"
+        "for k,_ in pairs(_G) do\n"
+        // The engine is reused across the earlier check scripts, which
+        // stashed `ants_test_*` scratch keys in _G; those are test
+        // artefacts, not sandbox leaks — skip them.
+        "  if type(k)=='string' and not allowed[k]\n"
+        "     and string.sub(k,1,10) ~= 'ants_test_' then\n"
+        "    extra[#extra+1] = k\n"
+        "  end\n"
+        "end\n"
+        "_G.ants_test_extra_globals = table.concat(extra, ',')\n"
+        "_G.ants_test_os_nil = (os == nil)\n"
+        "_G.ants_test_setmeta_nil = (setmetatable == nil)\n"
+        "_G.ants_test_collectgc_nil = (collectgarbage == nil)\n"
+        "_G.ants_test_pairs_present = (pairs ~= nil)\n"
+        "_G.ants_test_string_present = (string ~= nil)\n";
+    const QString probePath = writeTemp(dir, "allowlist_probe.lua",
+                                        allowlistProbe);
+    expect(engine.loadScript(probePath),
+           "I7-setup/allowlist-probe-loads", QString());
+    const QByteArray allowlistAssert =
+        "if _G.ants_test_extra_globals ~= '' then\n"
+        "  error('non-allowlisted globals present: ' .. "
+        "_G.ants_test_extra_globals)\n"
+        "end\n"
+        "if not _G.ants_test_os_nil then error('os not nil') end\n"
+        "if not _G.ants_test_setmeta_nil then error('setmetatable not nil') end\n"
+        "if not _G.ants_test_collectgc_nil then error('collectgarbage not nil') end\n"
+        "if not _G.ants_test_pairs_present then error('pairs missing') end\n"
+        "if not _G.ants_test_string_present then error('string missing') end\n";
+    const QString allowlistAssertPath =
+        writeTemp(dir, "allowlist_assert.lua", allowlistAssert);
+    expect(engine.loadScript(allowlistAssertPath),
+           "I7/allowlist-closes-by-default",
+           QStringLiteral("after sandboxEnvironment(), _G must hold only "
+                          "the allowlisted names — denied globals nil, "
+                          "allowed globals present, nothing extra"));
+
     engine.shutdown();
 
     // Cleanup.
     QFile::remove(scriptPath);
     QFile::remove(assertPath);
     QFile::remove(bcPath);
+    QFile::remove(probePath);
+    QFile::remove(allowlistAssertPath);
     QDir().rmdir(dir);
 }
 
@@ -178,6 +231,24 @@ void runSourceChecks() {
     // it would add a new global.
     expect(!src.contains(QStringLiteral("lua_setglobal(m_state, \"dump\")")),
            "I6b/no-misplaced-global-named-dump");
+
+    // ANTS-1268 — sandbox uses an allowlist, not a denylist. The old
+    // `dangerous[]` array must be gone (a denylist silently admits any
+    // new global a future Lua adds), replaced by an enumerate-_G +
+    // kAllowed approach.
+    expect(src.contains(QStringLiteral("ANTS-1268")),
+           "I7-src/ants-1268-anchor",
+           QStringLiteral("luaengine.cpp must carry the ANTS-1268 "
+                          "allowlist anchor"));
+    expect(src.contains(QStringLiteral("kAllowed")) &&
+               src.contains(QStringLiteral("lua_next(m_state")),
+           "I7-src/allowlist-enumerates-_G",
+           QStringLiteral("sandboxEnvironment must enumerate _G with "
+                          "lua_next and keep only kAllowed names"));
+    expect(!src.contains(QStringLiteral("const char *dangerous[]")),
+           "I7-src/denylist-removed",
+           QStringLiteral("the old dangerous[] denylist must be gone — "
+                          "an allowlist replaces it"));
 }
 
 }  // namespace

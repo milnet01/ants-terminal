@@ -691,6 +691,38 @@ static int runMain(int argc, char **argv) {
                 "to prevent the labelled chip line from wrapping");
     }
 
+    // ANTS-1276 — anchor-target validation. handleAnchorClicked
+    // persists the parsed target into the expanded-state sets (which
+    // serialise to Config), so a hostile ROADMAP.md anchor must not
+    // smuggle arbitrary strings in. RD is in scope from above.
+    {
+        // Legitimate targets: roadmap item IDs + section slugs.
+        if (!RD::isValidAnchorTarget(QStringLiteral("ANTS-1145")))
+            return fail("AnchorTarget", "valid item ID rejected");
+        if (!RD::isValidAnchorTarget(QStringLiteral("MAME_CURATOR-7")))
+            return fail("AnchorTarget", "valid underscored ID rejected");
+        if (!RD::isValidAnchorTarget(QStringLiteral(
+                "ants-mcp-improvements-from-running-audit-2026-05-14")))
+            return fail("AnchorTarget", "valid long slug rejected");
+        // Hostile / malformed targets must be rejected.
+        if (RD::isValidAnchorTarget(QStringLiteral("' OR 1=1 --")))
+            return fail("AnchorTarget", "SQL-ish injection accepted");
+        if (RD::isValidAnchorTarget(QStringLiteral("a/b")))
+            return fail("AnchorTarget", "path-separator target accepted");
+        if (RD::isValidAnchorTarget(QStringLiteral("a b")))
+            return fail("AnchorTarget", "whitespace target accepted");
+        if (RD::isValidAnchorTarget(QString()))
+            return fail("AnchorTarget", "empty target accepted");
+        if (RD::isValidAnchorTarget(QString(201, QLatin1Char('a'))))
+            return fail("AnchorTarget", "over-long target accepted");
+        // Source guard: validation is actually wired into the handler.
+        const std::string src = slurp(ROADMAPDIALOG_CPP);
+        if (!contains(src, "isValidAnchorTarget(target)"))
+            return fail("AnchorTarget",
+                "handleAnchorClicked must call isValidAnchorTarget(target) "
+                "before inserting into the expanded-state sets");
+    }
+
     std::fprintf(stderr, "OK — RoadmapDialog v2 card INVs hold.\n");
     return 0;
 }
