@@ -2359,7 +2359,20 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
     }
 
     updateScrollBar();
-    m_claudeDetectTimer.start();
+    // ANTS-1862 follow-up — throttle, not a trailing-edge debounce. A
+    // bare .start() restarts the single-shot timer on every PTY batch,
+    // so while Claude Code streams its spinner (frames < the 300 ms
+    // interval apart) the timer is perpetually reset and never fires —
+    // checkForClaudePermissionPrompt never runs during active output, so
+    // the permission/question footer-gone N=3 debounce can't accumulate
+    // and the "awaiting input" dot stays lit after the prompt is
+    // answered. (The hook-driven clear belt only fires when Ants' Claude
+    // hooks are installed, which is not guaranteed.) Starting only when
+    // the timer is idle turns it into a ~300 ms throttle that fires
+    // *during* continuous output while still delivering a trailing scan
+    // once output settles.
+    if (!m_claudeDetectTimer.isActive())
+        m_claudeDetectTimer.start();
 
     int exitCode = m_grid->lastExitCode();
     if (exitCode != 0 && exitCode != m_lastTrackedExitCode) {

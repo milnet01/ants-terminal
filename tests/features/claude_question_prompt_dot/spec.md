@@ -17,9 +17,16 @@ solely on the footer-gone N=3 debounce, which runs on the trailing-edge
 `m_claudeDetectTimer` (single-shot 300 ms, restarted on every PTY
 batch). Claude's spinner repaints faster than 300 ms during active work,
 so the scan rarely runs and the debounce never accumulates 3 misses; at
-idle it fires once. So `claudeQuestionCleared()` never emitted. The
-permission path survives this only because of its
-`toolFinished`/`sessionStopped` belt — which the question path lacked.
+idle it fires once. So `claudeQuestionCleared()` never emitted.
+
+Two-layer fix: (a) the detect timer is made a throttle (fires every
+~300 ms *during* output, not only after it settles) so the footer-gone
+debounce actually accumulates — this is the load-bearing clear and needs
+no hooks; (b) a `toolFinished`/`sessionStopped` belt mirrors the
+permission path for an instant clear *when* Ants' Claude hooks are
+installed. Hook events reach Ants only via an installed
+PreToolUse/PostToolUse/Stop hook POSTing to the UDS hook server, which
+is not guaranteed — so (a) is what fixes the common case.
 
 ## Invariants
 
@@ -57,16 +64,18 @@ has no allowlist rule). `claudeQuestionCleared` calls
 `shellState(pid).awaitingInput == true` with an empty `awaitingRule`,
 which the glyph provider maps to `Glyph::AwaitingInput` (orange).
 
-### INV-6 — reliable hook-driven clear belt
+### INV-6 — best-effort hook-driven clear belt
 
-Because the footer-gone debounce can't be trusted to complete (see
-Follow-up), `connectTerminal` wires both
-`ClaudeIntegration::toolFinished` and `ClaudeIntegration::sessionStopped`
-to `TerminalWidget::clearClaudeQuestionPrompt()`, mirroring the
-permission path's belt. For a mid-turn `AskUserQuestion` tool call
-`PostToolUse` fires on answer and `Stop` at end-of-turn, so neither
-fires while the question is on screen — the dot never clears
-prematurely.
+For an instant clear *when* Ants' Claude hooks are installed,
+`connectTerminal` wires both `ClaudeIntegration::toolFinished` and
+`ClaudeIntegration::sessionStopped` to
+`TerminalWidget::clearClaudeQuestionPrompt()`, mirroring the permission
+path's belt. For a mid-turn `AskUserQuestion` tool call `PostToolUse`
+fires on answer and `Stop` at end-of-turn, so neither fires while the
+question is on screen — the dot never clears prematurely. This is
+best-effort: hook events reach Ants only via an installed hook POSTing
+to the UDS server, so the throttled scanner (INV-8) is the load-bearing
+clear.
 
 ### INV-7 — clear resets the sticky flag (no desync)
 
@@ -77,10 +86,22 @@ the detect signal only fires on the `!m_claudeQuestionActive` rising
 edge, so an external clear that dropped the dot without resetting the
 flag would leave the *next* question's dot dark.
 
+### INV-8 — detect timer is a throttle, not a trailing-edge debounce
+
+The PTY-output path starts `m_claudeDetectTimer` only when it is not
+already active (`if (!m_claudeDetectTimer.isActive())`), never a bare
+`.start()`. A bare start restarts the single-shot timer on every batch,
+so during Claude Code's continuous spinner output (frames < the 300 ms
+interval) the timer never fires and `checkForClaudePermissionPrompt`
+never runs — the footer-gone debounce can't accumulate. The throttle
+fires every ~300 ms *during* output, so the question/permission dot
+clears within ~3 scans of the footer leaving the screen with no hooks
+required. This is the load-bearing clear; INV-6 is the hook fast-path.
+
 ## Test plan
 
-INV-1..4, INV-6, INV-7 lock the scanner branch + GUI wiring + clear
-method by source-scrape (the scanner needs a PTY-backed grid; the
-handler needs a live QStatusBar) — same approach as
+INV-1..4, INV-6, INV-7, INV-8 lock the scanner branch + GUI wiring +
+clear method + throttle by source-scrape (the scanner needs a PTY-backed
+grid; the handler needs a live QStatusBar) — same approach as
 `claude_prompt_lifecycle`. INV-5 is exercised behaviourally through the
 real `ClaudeTabTracker` API.

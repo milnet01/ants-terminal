@@ -2792,6 +2792,7 @@ minor tag (next: pre-0.8.0).
   Kind: fix.
   Lanes: claudeintegration, status-bar, terminalwidget.
   Source: user-report-2026-05-25 (live during this session's AskUserQuestion test).
+  Correction (2026-05-25): the first commit (belt only) did NOT fix it — verified live, dot still stuck orange. Root cause is two-fold: (1) Ants' Claude hooks are not installed in this setup (no PreToolUse/PostToolUse/Stop hook POSTs to the UDS hook server), so the toolFinished/sessionStopped belt never fires — it is best-effort only; (2) the load-bearing bug is that m_claudeDetectTimer was a trailing-edge debounce — `m_claudeDetectTimer.start()` restarts the single-shot timer on every PTY batch, so during Claude Code's sub-300ms spinner output the scanner never runs and the footer-gone N=3 debounce can't accumulate. Real fix: start the timer only when idle (`if (!m_claudeDetectTimer.isActive())`) → ~300ms throttle that fires during continuous output, clearing the dot via the footer scanner alone (no hooks). Test: claude_question_prompt_dot INV-8. Confirmed live pending second relaunch.
 
 ### 🔍 CI fold-in (2026-04-28)
 
@@ -8574,6 +8575,20 @@ indie-review finding.
   Kind: fix.
   Lanes: roadmapdialog.
   Source: in-session-2026-05-25 (found building ANTS-1548 add_from_roadmap).
+
+- 📋 [ANTS-1863] **Persist the debug-log category selection across relaunch (currently resets to off every restart).**
+  The DebugLog category enable state is runtime-only and resets on
+  relaunch, so the user must re-toggle "Claude Code Integration" (and any
+  other category) after every restart — easy to forget before resuming a
+  Claude session, which then produces no hook/state logs when a bug needs
+  diagnosing. Persist the selected category mask to config.json (mode
+  0600 like the rest) and restore it on startup. Consider a CLI flag /
+  env override too. Pairs with ANTS-1860 (hook logging) — both are about
+  making Claude-integration bugs diagnosable from the log.
+  **Layman:** The debug-logging switch turns itself off every time the terminal restarts, so I keep having to re-enable it — and sometimes forget to before resuming Claude Code, losing the logs I wanted. Remember my last choice instead.
+  Kind: enhancement.
+  Lanes: debuglog, settings, observability.
+  Source: user-request-2026-05-25 (debug category off after every relaunch).
 
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 

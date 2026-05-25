@@ -138,6 +138,20 @@ TEST(ClaudeQuestionPromptDot, ClearResetsStickyFlag) {
         << "INV-7: routes through the shared cleared signal";
 }
 
+// INV-8 — the detect timer is throttled (fires during continuous output),
+// not a trailing-edge debounce that a bare .start() resets every batch.
+TEST(ClaudeQuestionPromptDot, DetectTimerIsThrottled) {
+    const std::string tw = slurp(ANTS_SOURCE_DIR "/src/terminalwidget.cpp");
+
+    EXPECT_TRUE(contains(tw, "if (!m_claudeDetectTimer.isActive())"))
+        << "INV-8: timer is started only when idle (throttle), so the "
+           "scanner runs during continuous spinner output";
+    // The bare trailing-edge form must be gone — it never fires while
+    // Claude streams output faster than the 300ms interval.
+    EXPECT_FALSE(contains(tw, "\n    m_claudeDetectTimer.start();"))
+        << "INV-8: no bare unconditional .start() on the output path";
+}
+
 // INV-5 — tracker awaiting overlay (no rule) drives the orange glyph.
 TEST(ClaudeQuestionPromptDot, AwaitingOverlayNoRule) {
     QTemporaryDir tmp;
