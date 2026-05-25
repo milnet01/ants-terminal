@@ -7820,6 +7820,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: optimize.
   Source: in-session-2026-05-22.
 
+- 🚧 [ANTS-1853] **Intermittent roadmap_log op:append refuses with caller_cwd_required despite args being present.**
+  Observed 2026-05-25 while folding in ANTS-1850/1851. A roadmap_log op:append call refused ~6 times in a row with code:caller_cwd_required, as though the entire arguments object was empty — even though caller_cwd plus all required fields (op, section, status, kind, source, headline) were supplied each time. In the SAME session, roadmap_log op:flip (caller_cwd + id + to_status) succeeded twice, roadmap_query reads with caller_cwd succeeded, and the append itself went through unchanged on the 7th attempt. So the dispatcher was seeing an empty params object only for those append calls, not a genuine missing caller_cwd. The failing calls carried a larger multi-field payload including a body with embedded newlines and quotes; the succeeding retry used a single-line body (though earlier the same day a longer multi-line body had appended fine, so payload size alone is not the trigger). Hypothesis: under some condition the tools/call arguments JSON is dropped/empty by the time the handler reads it (transport framing, partial-read, or arg-size/escaping edge), and the required-arg guard then misreports it as caller_cwd_required rather than empty_arguments. Investigation: add debug logging at the MCP dispatch boundary that captures the raw arguments JSON length + a content hash (not full content — may be large) whenever a required-arg refusal fires, so a recurrence reveals whether params arrived empty at the server (transport/server bug) vs were genuinely absent (client). Consider a distinct refusal code for empty-whole-object vs missing-single-field to disambiguate. Lanes: claudeintegration (MCP dispatch), docs/standards/mcp-error-codes.md.
+  **Layman:** Sometimes the tool that adds a roadmap item rejects the request as if no arguments were sent, even though they were — retrying fixes it. We need logging to find out why.
+  Kind: investigate.
+  Source: in-session-2026-05-25.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,

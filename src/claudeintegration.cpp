@@ -6158,6 +6158,17 @@ void ClaudeIntegration::onMcpConnection() {
                 if (toolKnown &&
                     contract == CallerCwdContract::Required &&
                     callerCwd.isEmpty()) {
+                    // ANTS-1853 — distinguish "the whole arguments object
+                    // arrived empty" (the call's parameters were dropped in
+                    // transit — an intermittent tools/call serialisation drop
+                    // observed 2026-05-25) from "caller_cwd was the only
+                    // missing field". The former is NOT a caller error:
+                    // re-adding caller_cwd alone can't help because every
+                    // other arg is gone too. Flagging it steers the caller to
+                    // resend the ENTIRE call rather than fixate on one field,
+                    // and the diagnostic log below lets a recurrence be root-
+                    // caused against the Claude Code integration debug lane.
+                    const bool argumentsEmpty = argsObj.isEmpty();
                     QJsonObject env;
                     env["ok"]    = false;
                     env["code"]  = QStringLiteral("caller_cwd_required");
@@ -6166,7 +6177,15 @@ void ClaudeIntegration::onMcpConnection() {
                         "(ANTS-1404). Pass your $PWD as caller_cwd "
                         "so the tool routes to your project rather "
                         "than whichever tab Ants has focused.")
-                        .arg(toolName);
+                        .arg(toolName)
+                        + (argumentsEmpty
+                            ? QStringLiteral(
+                                " NOTE: this call arrived with NO arguments "
+                                "at all — if you DID pass caller_cwd, the "
+                                "whole parameter payload was dropped in "
+                                "transit; resend the entire call verbatim "
+                                "(ANTS-1853).")
+                            : QString());
                     // ANTS-1418 — surface the diagnostic verb so a
                     // caller who already passes caller_cwd but still
                     // gets the wrong tab (symlinked roots, worktree
@@ -6183,6 +6202,24 @@ void ClaudeIntegration::onMcpConnection() {
                     ex[QStringLiteral("caller_cwd")] =
                         QStringLiteral("<your $PWD>");
                     env[QStringLiteral("example")] = ex;
+                    // ANTS-1853 — machine-readable flag for the dropped-
+                    // payload case so a caller (or test) can branch on it.
+                    if (argumentsEmpty)
+                        env[QStringLiteral("arguments_empty")] = true;
+                    // ANTS-1853 — diagnostic trace. On every caller_cwd
+                    // refusal record whether the arguments object was empty
+                    // and which keys WERE present, so the intermittent
+                    // "args present in my intent but refused as missing"
+                    // report can be confirmed (empty → dropped upstream;
+                    // non-empty-but-no-caller_cwd → genuine caller error).
+                    ANTS_LOG(DebugLog::Claude,
+                             "ANTS-1853 tools/call refused caller_cwd_required:"
+                             " tool=%s arguments_empty=%d arg_keys=%d keys=[%s]",
+                             toolName.toUtf8().constData(),
+                             argumentsEmpty ? 1 : 0,
+                             static_cast<int>(argsObj.size()),
+                             argsObj.keys().join(QLatin1Char(','))
+                                 .toUtf8().constData());
                     responseText = QString::fromUtf8(
                         QJsonDocument(env)
                             .toJson(QJsonDocument::Compact));

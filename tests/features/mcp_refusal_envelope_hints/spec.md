@@ -33,6 +33,18 @@ Same for the ANTS-1336 / ANTS-1372 RcGate `cwd_missing` refusal.
   a `caller_cwd`, it just doesn't resolve / no project / mismatch).
   Test asserts the hint is absent on those branches so future drift
   doesn't bolt it onto every gate error indiscriminately.
+- **INV-8 (ANTS-1853) / `caller_cwd_required` distinguishes an empty
+  arguments object from a single missing field.** When the dispatcher's
+  Required gate fires AND the whole `arguments` object is empty (the
+  call's parameters were dropped in transit — an intermittent tools/call
+  serialisation drop), the envelope MUST set `arguments_empty:true` and
+  the error text MUST steer the caller to resend the entire call, not
+  just re-add `caller_cwd`. The dispatcher MUST also emit a
+  `DebugLog::Claude` diagnostic recording `arguments_empty` + the keys
+  that WERE present, so a recurrence is root-causable (empty → dropped
+  upstream; non-empty-without-caller_cwd → genuine caller error). The
+  `code` stays `caller_cwd_required` (taxonomy unchanged). Anchor:
+  `ANTS-1853` in `src/claudeintegration.cpp` tools/call dispatch.
 
 ## Test scope
 

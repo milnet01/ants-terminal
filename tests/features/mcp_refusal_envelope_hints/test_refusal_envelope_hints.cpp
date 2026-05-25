@@ -175,3 +175,28 @@ TEST(mcp_refusal_envelope_hints,
            "the caller sees the canonical append shape");
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-1853 INV-8 — the dispatcher's caller_cwd_required gate
+// distinguishes a wholly-empty arguments object (parameters dropped in
+// transit) from a single missing field: it sets arguments_empty:true,
+// steers the caller to resend the entire call, and logs a Claude-lane
+// diagnostic so an intermittent recurrence is root-causable. The code
+// stays caller_cwd_required (taxonomy unchanged — INV-1 still holds).
+TEST(mcp_refusal_envelope_hints,
+     Inv8DispatcherFlagsEmptyArguments) {
+    expect_reset();
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    expect(contains(ci, "ANTS-1853"),
+           "INV-8: ANTS-1853 anchor present in the dispatcher gate");
+    expect(contains(ci, "argumentsEmpty") &&
+           contains(ci, "argsObj.isEmpty()"),
+           "INV-8: gate computes argumentsEmpty from the arguments object");
+    expect(contains(ci, "arguments_empty"),
+           "INV-8: refusal envelope carries an arguments_empty flag for "
+           "the dropped-payload case");
+    expect(contains(ci, "ANTS_LOG(DebugLog::Claude") &&
+           contains(ci, "refused caller_cwd_required"),
+           "INV-8: dispatcher logs a Claude-lane diagnostic on the refusal "
+           "so a recurrence can be confirmed empty vs genuinely-missing");
+    EXPECT_EQ(0, expect_failures());
+}
