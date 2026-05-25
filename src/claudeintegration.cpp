@@ -2452,6 +2452,85 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(foTool);
 
+                // ANTS-1855 — read_log: filter a log file, return only
+                // matching lines + counts instead of Read-ing a whole
+                // multi-MB log into context.
+                QJsonObject rlTool;
+                rlTool["name"] = "read_log";
+                rlTool["description"] = QStringLiteral(
+                    "Filter a log file and return only matching lines + "
+                    "counts — instead of Read-ing a whole multi-MB log "
+                    "into context. Default target (no `path`) is the Ants "
+                    "debug log; a `path` is resolved under caller_cwd. "
+                    "Filters: include/exclude (regex), contains "
+                    "(substring), since (keep lines whose leading "
+                    "[yyyy-MM-ddTHH:mm:ss.zzz] prefix >= this), tail "
+                    "(last N). Byte-capped (max_bytes, default 512 KiB, "
+                    "4 MiB ceiling) keeping the NEWEST lines. Pass "
+                    "since_cursor (a prior response's `cursor`) to read "
+                    "only lines appended since — token-frugal polling; a "
+                    "stale/rotated cursor soft-falls-back to a full "
+                    "re-read (cursor_stale:true). caller_cwd required.");
+                rlTool["selection_hint"] = QStringLiteral(
+                    "Use to grep a log file (esp. the Ants debug log) for "
+                    "relevant lines instead of Bash grep/tail or a full "
+                    "Read.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject pathProp; pathProp["type"] = "string";
+                        pathProp["description"] = QStringLiteral(
+                            "Optional. Log file path resolved under "
+                            "caller_cwd. Omit for the Ants debug log.");
+                    QJsonObject incProp; incProp["type"] = "string";
+                        incProp["description"] = QStringLiteral(
+                            "Optional regex; keep only matching lines.");
+                    QJsonObject excProp; excProp["type"] = "string";
+                        excProp["description"] = QStringLiteral(
+                            "Optional regex; drop matching lines.");
+                    QJsonObject cntProp; cntProp["type"] = "string";
+                        cntProp["description"] = QStringLiteral(
+                            "Optional literal substring a line must "
+                            "contain.");
+                    QJsonObject sinceProp; sinceProp["type"] = "string";
+                        sinceProp["description"] = QStringLiteral(
+                            "Optional. Keep lines whose leading "
+                            "[timestamp] prefix is lexically >= this "
+                            "(local-time yyyy-MM-ddTHH:mm:ss.zzz).");
+                    QJsonObject tailProp; tailProp["type"] = "integer";
+                        tailProp["minimum"] = 1; tailProp["maximum"] = 10000;
+                        tailProp["description"] = QStringLiteral(
+                            "Optional. Return only the last N matching "
+                            "lines (clamped to 10000).");
+                    QJsonObject mbProp; mbProp["type"] = "integer";
+                        mbProp["minimum"] = 1;
+                        mbProp["description"] = QStringLiteral(
+                            "Cap on the lines[] bytes (default 512 KiB, "
+                            "server-clamped to 4 MiB). Oldest lines "
+                            "dropped first; sets truncated + lines_dropped "
+                            "(+ bytes_cap_clamped over ceiling).");
+                    QJsonObject curProp; curProp["type"] = "string";
+                        curProp["description"] = QStringLiteral(
+                            "Optional. Byte-offset token from a prior "
+                            "response's `cursor`; reads only lines "
+                            "appended since. A stale/rotated cursor "
+                            "soft-falls-back (cursor_stale:true).");
+                    props["path"]         = pathProp;
+                    props["include"]      = incProp;
+                    props["exclude"]      = excProp;
+                    props["contains"]     = cntProp;
+                    props["since"]        = sinceProp;
+                    props["tail"]         = tailProp;
+                    props["max_bytes"]    = mbProp;
+                    props["since_cursor"] = curProp;
+                    props["caller_cwd"]   = makeCallerCwdReadProp();
+                    props["fields"]       = makeFieldsProp();   // ANTS-1720
+                    schema["properties"] = props;
+                    rlTool["inputSchema"] = schema;
+                }
+                tools.append(rlTool);
+
                 // ANTS-1250: git_state — single tool, dispatches on
                 // `op` (status / log / diff). Collapsed from three
                 // separate tools to save ~240 permanent schema tokens
@@ -6104,6 +6183,9 @@ void ClaudeIntegration::onMcpConnection() {
                         return QStringLiteral("git");
                     if (name == QLatin1String("workspace_search") ||
                         name == QLatin1String("file_outline") ||
+                        // ANTS-1855 — read_log: caller_cwd-Required,
+                        // path-validated file reader (file_outline family).
+                        name == QLatin1String("read_log") ||
                         name == QLatin1String("project_layout") ||
                         name == QLatin1String("subsystem") ||
                         // ANTS-1569 — current_state is a project-scoped
@@ -6894,6 +6976,10 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // session_memory store. Joins session_memory in the gated
     // Required set (see ANTS-1336 INV-7 amendment).
     if (toolName == QStringLiteral("project_layout"))     return C::Required;
+    // ANTS-1855 — read_log resolves project-relative paths + anchors
+    // tenancy; Required even for the debug-log default so the tool can't
+    // be used as an unscoped file reader.
+    if (toolName == QStringLiteral("read_log"))            return C::Required;
     // ANTS-1435 — session_memory: dispatcher refuses empty
     // caller_cwd upstream (Required). The handler still has a
     // body-level cwd_missing for the IPC path which bypasses the

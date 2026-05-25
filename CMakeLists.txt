@@ -223,6 +223,8 @@ add_library(ants_core_lib STATIC
     src/remotecontrol.cpp
     src/remotecontrolgate.cpp
     src/fileoutline.cpp
+    # ANTS-1855 — read_log pure filtering helper (Qt6::Core-only).
+    src/readlog.cpp
     # ANTS-1303 — find_definition / find_caller tree-wide symbol scanner.
     src/symbolquery.cpp
     # ANTS-1305 — similar_code shape matcher (reuses FileOutline extractor).
@@ -975,6 +977,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_tools_list_schema/test_mcp_tools_list_schema.cpp
                 tests/features/mcp_workspace_search/test_mcp_workspace_search.cpp
                 tests/features/mcp_file_outline/test_mcp_file_outline.cpp
+                # ANTS-1855 — read_log filter verb.
+                tests/features/mcp_read_log/test_mcp_read_log.cpp
                 # ANTS-1390 ~global / ~claude-config caller_cwd sentinel
                 # for path tools (workspace_search, file_outline).
                 tests/features/mcp_global_config_sentinel/test_mcp_global_config_sentinel.cpp

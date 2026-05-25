@@ -141,20 +141,20 @@ TEST(McpProjection, Inv9DispatchOrdering) {
         << "dispatch must gate projection on the allowlist";
 }
 
-// INV-10 — each of the seven tools declares a `fields` schema property.
+// INV-10 — each in-scope tool declares a `fields` schema property.
 TEST(McpProjection, Inv10SchemaDeclaresFields) {
     QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
     ASSERT_TRUE(f.open(QIODevice::ReadOnly));
     const QByteArray s = f.readAll();
     EXPECT_TRUE(s.contains("auto makeFieldsProp"))
         << "the shared `fields` schema fragment must be defined once";
-    // Seven call sites of the shared fragment (one per in-scope tool).
-    // The lambda definition reads `makeFieldsProp = [` so it is not
-    // counted by the call-form needle.
+    // One call site per in-scope projection tool (ANTS-1855 added
+    // read_log → 8). The lambda definition reads `makeFieldsProp = [`
+    // so it is not counted by the call-form needle.
     int count = 0;
     int idx = 0;
     const QByteArray needle = "makeFieldsProp();";
     while ((idx = s.indexOf(needle, idx)) != -1) { ++count; idx += needle.size(); }
-    EXPECT_EQ(count, 7) << "expected 7 makeFieldsProp() call sites, got "
+    EXPECT_EQ(count, 8) << "expected 8 makeFieldsProp() call sites, got "
                         << count;
 }

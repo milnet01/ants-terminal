@@ -132,7 +132,10 @@ checklist). The load-bearing contracts, each with its spec:
 
 Behavioral notes (not authoring rules): `get_scrollback` since-cursor
 incremental mode (ANTS-1500); `roadmap_query` recognises ants-v1 /
-github-task-list / pass-headings formats (ANTS-1530).
+github-task-list / pass-headings formats (ANTS-1530); `read_log` filters
+a log file (Ants debug log or a `caller_cwd` path) to matching lines via
+the pure `ReadLog::filter` helper, streaming drop-oldest byte cap +
+since_cursor incremental tailing (ANTS-1855).
 
 ## Project standards
 

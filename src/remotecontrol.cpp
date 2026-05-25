@@ -3,6 +3,7 @@
 #include "coldeyesengine.h"
 #include "debtsweepengine.h"
 #include "fileoutline.h"
+#include "readlog.h"
 #include "focusedtest.h"
 #include "gitwrap.h"
 #include "claudeintegration.h"
@@ -4264,6 +4265,68 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
     // ANTS-1249-INV-10: reachability gate — UDS / MCP socket
     // SO_PEERCRED UID match (same as ANTS-1248). Nothing extra here.
     return QJsonDocument(result);
+}
+
+// ANTS-1855 — read_log: filter a log file, return only matching lines.
+// No `path` → the Ants debug log (DebugLog::logFilePath(), a known
+// internal path read directly). A `path` → resolved under caller_cwd
+// via the central PathValidation chokepoint (ANTS-1295). The filtering
+// + streaming byte-cap + since_cursor logic lives in ReadLog::filter.
+QJsonDocument RemoteControl::cmdReadLog(const QJsonObject &req) {
+    const QString rawPath = req.value(QStringLiteral("path")).toString();
+    QString resolved;
+    if (rawPath.isEmpty()) {
+        resolved = DebugLog::logFilePath();
+    } else {
+        const QString callerRaw =
+            req.value(QStringLiteral("caller_cwd")).toString();
+        const QString sentinelRoot =
+            ants::expandGlobalConfigSentinel(callerRaw);
+        const QString rootCanonical =
+            !sentinelRoot.isEmpty() ? sentinelRoot
+                                    : resolveRootCanonical(m_main, req);
+        if (rootCanonical.isEmpty()) {
+            QJsonObject o;
+            o["ok"]    = false;
+            o["error"] = QStringLiteral("read_log: no focused project");
+            o["code"]  = QStringLiteral("bad_path");
+            return QJsonDocument(o);
+        }
+        const auto check = PathValidation::validatePath(
+            rawPath, rootCanonical,
+            QStringLiteral("read_log"), QStringLiteral("path"));
+        if (check.bad) return QJsonDocument(check.err);
+        if (check.resolved.isEmpty()) {
+            QJsonObject o;
+            o["ok"]    = false;
+            o["error"] = QStringLiteral("read_log: \"%1\" does not exist")
+                             .arg(rawPath);
+            o["code"]  = QStringLiteral("not_found");
+            return QJsonDocument(o);
+        }
+        resolved = check.resolved;
+    }
+
+    ReadLog::Options opts;
+    opts.include  = req.value(QStringLiteral("include")).toString();
+    opts.exclude  = req.value(QStringLiteral("exclude")).toString();
+    opts.contains = req.value(QStringLiteral("contains")).toString();
+    opts.since    = req.value(QStringLiteral("since")).toString();
+    opts.tail     = req.value(QStringLiteral("tail")).toInt(0);
+    opts.maxBytes = req.value(QStringLiteral("max_bytes")).toInt(0);
+    const QJsonValue cursorVal = req.value(QStringLiteral("since_cursor"));
+    if (cursorVal.isString()) {
+        opts.hasSinceCursor = true;
+        opts.sinceCursor = cursorVal.toString();
+    } else if (cursorVal.isDouble()) {
+        opts.hasSinceCursor = true;
+        opts.sinceCursor = QString::number(cursorVal.toInteger());
+    }
+
+    // The echoed `path` stays the ABSOLUTE resolved path (the debug-log
+    // default lives outside any project root, so no reframe — ANTS-1855
+    // § 2.3).
+    return QJsonDocument(ReadLog::filter(resolved, opts));
 }
 
 // ANTS-1250: git_state — single tool collapsing status / log / diff

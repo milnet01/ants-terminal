@@ -4465,6 +4465,10 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("file_outline",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdFileOutline));
+    // ANTS-1855 — read_log: filter a log file (debug log or caller_cwd path).
+    m_claudeIntegration->registerToolProvider("read_log",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdReadLog));
     m_claudeIntegration->registerToolProvider("git_state",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdGitState));

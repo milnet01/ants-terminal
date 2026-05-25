@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Ants-MCP verb to read + filter log files and surface only relevant lines to Claude Code.** (ANTS-1855)
+  Add an Ants tool that lets Claude Code ask for just the relevant parts of a log file, instead of Claude reading a huge multi-megabyte log itself and burning tokens.
+
 - **Add Claude hook-event logging (PreToolUse/PostToolUse/Stop/PermissionRequest) to the Claude debug category.** (ANTS-1860)
   The Claude debug log shows tool calls and task refreshes but not the hook events that drive the tab dot — adding them would make dot/prompt bugs diagnosable from the log.
 

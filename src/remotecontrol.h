@@ -362,6 +362,9 @@ public:
     // the pathInRepoRoot helper with cmdWorkspaceSearch.
     // See docs/specs/ANTS-1249.md.
     QJsonDocument cmdFileOutline(const QJsonObject &req);
+    // ANTS-1855 — read_log: filter a log file (Ants debug log by
+    // default, or a caller_cwd-relative path) via ReadLog::filter.
+    QJsonDocument cmdReadLog(const QJsonObject &req);
 
     // ANTS-1303: find_definition / find_caller — tree-wide regex
     // symbol scanner. Delegate to SymbolQuery; resolve the root via
