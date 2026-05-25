@@ -1442,6 +1442,47 @@ SynthResult synthesize(const SynthRequest &req) {
         if (jsonFenceState == 2 && !findingsJsonBuf.trimmed().isEmpty()) {
             parseFindingsJson(findingsJsonBuf);
         }
+        // ANTS-1689 — last-resort inline `[SEVERITY]` fallback. The
+        // structured passes above recognise `- [SEV]` bullets,
+        // `### [SEV] dimension:` headings, and `## Findings (JSON)`
+        // blocks. The default /test-audit chunk agent often emits
+        // prose markdown instead — `[HIGH]` / `[MEDIUM]` tags inline
+        // on a line that is neither a dash-bullet nor a heading (e.g.
+        // `**[HIGH]** weak assertion at foo.py:42`). Those reports came
+        // back as `0 findings` + empty severity_histograms even though
+        // the data was right there (cross-session-report 2026-05-19,
+        // Music_Production). Gate on chunkFindings==0 so this never
+        // double-counts the structured shapes (which are line-anchored
+        // and would already have fired). Re-track the current dimension
+        // header so inline tags attribute to the right bucket; uppercase
+        // severity tokens only (matches the structured regexes) to keep
+        // narrative prose like "the [info] section" from registering.
+        if (chunkFindings == 0) {
+            static const QRegularExpression inlineSevRx(QStringLiteral(
+                "\\[(CRIT|CRITICAL|HIGH|MED|MEDIUM|LOW|INFO)\\]"));
+            QString fbDim;
+            for (const QString &line : lines) {
+                if (headerRx.match(line).hasMatch()) {
+                    fbDim.clear();
+                    for (const QString &d : g_kDimensions()) {
+                        if (line.contains(d, Qt::CaseInsensitive)) {
+                            fbDim = d;
+                            break;
+                        }
+                    }
+                    continue;
+                }
+                auto sevIt = inlineSevRx.globalMatch(line);
+                while (sevIt.hasNext()) {
+                    const QRegularExpressionMatch sm = sevIt.next();
+                    ++chunkFindings;
+                    if (!fbDim.isEmpty()) {
+                        const QString sev = sevCanonical(sm.captured(1));
+                        if (kSevs.contains(sev)) ++sevHist[fbDim][sev];
+                    }
+                }
+            }
+        }
         findingCountByChunk.append(chunkFindings);
     }
 

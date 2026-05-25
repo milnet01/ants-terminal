@@ -311,6 +311,106 @@ TEST(TestAuditBundle201926519, Ants1617SynthRecognisesFindingsJsonBlock) {
                   .toObject().value("low").toInt(), 1);
 }
 
+// ── ANTS-1689 ────────────────────────────────────────────────────────
+//
+// Music_Production /test-audit 2026-05-19: chunk reports that emit prose
+// markdown with inline `[SEVERITY]` tags (neither `- [SEV]` bullets,
+// `### [SEV]` headings, nor a `## Findings (JSON)` block) came back as
+// `0 findings` + empty severity_histograms. The last-resort inline
+// fallback only fires when the structured passes found nothing, so it
+// must not double-count the shapes ANTS-1617 already handles.
+TEST(TestAuditBundle201926519, Ants1689SynthRecognisesInlineSeverityProse) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString reportsDir = tmp.path() + "/reports";
+    QDir().mkpath(reportsDir);
+
+    // Prose convention: dimension section header + findings written as
+    // free-text lines carrying an inline `[HIGH]` / `[MEDIUM]` tag.
+    const QString c1 =
+        QStringLiteral(
+            "# c-001 report\n\n"
+            "## flakiness\n\n"
+            "The timing assertion at tests/a.cpp:12 is **[HIGH]** risk "
+            "because the sleep is unbounded.\n\n"
+            "A second concern, **[MEDIUM]**, lives at tests/b.cpp:30.\n");
+    writeFile(reportsDir + "/c-001.md", c1);
+
+    writeFile(tmp.path() + "/CMakeLists.txt",
+              QStringLiteral("project(t)\nenable_testing()\n"));
+    writeFile(tmp.path() + "/tests/test_a.cpp", QStringLiteral("int main(){}"));
+
+    TestAuditEngine::PartitionRequest preq;
+    preq.callerCwd = tmp.path();
+    preq.scope = QStringLiteral("auto");
+    preq.dimensions = QStringLiteral("auto");
+    const auto pr = TestAuditEngine::partition(preq);
+    ASSERT_TRUE(pr.ok) << pr.error.toStdString();
+
+    TestAuditEngine::SynthRequest sreq;
+    sreq.callerCwd = tmp.path();
+    sreq.reportsDir = QStringLiteral("reports");
+    sreq.mode = QStringLiteral("summary");
+    sreq.partitionToken = pr.partitionToken;
+
+    const auto sr = TestAuditEngine::synthesize(sreq);
+    ASSERT_TRUE(sr.ok) << sr.error.toStdString();
+    // Was {} pre-1689; the inline fallback now attributes both tags to
+    // the flakiness bucket.
+    EXPECT_TRUE(sr.severityHistograms.contains("flakiness"));
+    EXPECT_EQ(sr.severityHistograms.value("flakiness")
+                  .toObject().value("high").toInt(), 1);
+    EXPECT_EQ(sr.severityHistograms.value("flakiness")
+                  .toObject().value("med").toInt(), 1);
+}
+
+// ANTS-1689 — the fallback is last-resort: when a chunk already parses
+// findings via the structured shapes, inline `[SEVERITY]` tokens that
+// happen to appear in finding bodies must NOT be double-counted.
+TEST(TestAuditBundle201926519, Ants1689FallbackDoesNotDoubleCountStructured) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString reportsDir = tmp.path() + "/reports";
+    QDir().mkpath(reportsDir);
+
+    // A structured `### [SEV] dimension:` finding whose body prose also
+    // mentions another `[LOW]` token. Only the heading-finding counts.
+    const QString c1 =
+        QStringLiteral(
+            "# c-001 report\n\n"
+            "### [HIGH] dimension: flakiness — tests/a.cpp:12\n"
+            "Body mentions a separate **[LOW]** aside that is not a "
+            "finding of its own.\n");
+    writeFile(reportsDir + "/c-001.md", c1);
+
+    writeFile(tmp.path() + "/CMakeLists.txt",
+              QStringLiteral("project(t)\nenable_testing()\n"));
+    writeFile(tmp.path() + "/tests/test_a.cpp", QStringLiteral("int main(){}"));
+
+    TestAuditEngine::PartitionRequest preq;
+    preq.callerCwd = tmp.path();
+    preq.scope = QStringLiteral("auto");
+    preq.dimensions = QStringLiteral("auto");
+    const auto pr = TestAuditEngine::partition(preq);
+    ASSERT_TRUE(pr.ok) << pr.error.toStdString();
+
+    TestAuditEngine::SynthRequest sreq;
+    sreq.callerCwd = tmp.path();
+    sreq.reportsDir = QStringLiteral("reports");
+    sreq.mode = QStringLiteral("summary");
+    sreq.partitionToken = pr.partitionToken;
+
+    const auto sr = TestAuditEngine::synthesize(sreq);
+    ASSERT_TRUE(sr.ok) << sr.error.toStdString();
+    // Exactly one finding (the HIGH heading); the body's [LOW] is not
+    // promoted because the structured pass already counted >0.
+    EXPECT_TRUE(sr.severityHistograms.contains("flakiness"));
+    EXPECT_EQ(sr.severityHistograms.value("flakiness")
+                  .toObject().value("high").toInt(), 1);
+    EXPECT_EQ(sr.severityHistograms.value("flakiness")
+                  .toObject().value("low").toInt(), 0);
+}
+
 // ── ANTS-1635 narrative_mode ─────────────────────────────────────────
 //
 // Music Production /test-audit 2026-05-18 surfaced the "structured
