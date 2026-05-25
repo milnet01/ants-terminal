@@ -470,3 +470,23 @@ TEST(roadmap_query_section_index, DispatchForwardsIncludeBody) {
            "dispatch: lambda writes include_body into cmdRoadmapQuery req");
     EXPECT_EQ(0, expect_failures());
 }
+
+// INV-14 (ANTS-1729) — section_index paginates / auto-truncates the
+// sections[] array. The old offset/limit refusal is gone, the branch
+// routes the sections array through PaginationEngine::pageBullets, and
+// the envelope carries the pagination fields when they apply.
+TEST(roadmap_query_section_index, Inv14SectionIndexPaginates) {
+    expect_reset();
+    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "ANTS-1729"),
+           "INV-14: ANTS-1729 anchor present in the section_index branch");
+    expect(!contains(cpp, "section_index mode does not accept offset/limit"),
+           "INV-14: the old offset/limit refusal is removed");
+    expect(contains(cpp, "PaginationEngine::pageBullets(sections"),
+           "INV-14: sections[] array is sliced through the pagination "
+           "helper");
+    expect(contains(cpp, "if (secPage.truncated) out[\"next_offset\"]"),
+           "INV-14: next_offset emitted when the section index is "
+           "truncated");
+    EXPECT_EQ(0, expect_failures());
+}

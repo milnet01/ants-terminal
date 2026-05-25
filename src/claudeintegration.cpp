@@ -1984,7 +1984,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "status:\"active\"/\"shipped\" drops sections whose "
                         "matching *_count_id_only is 0 (status:\"active\" is "
                         "the lean planning call); status:\"all\" (default) "
-                        "emits every section. Cannot combine with "
+                        "emits every section. ANTS-1729 — section_index "
+                        "now auto-truncates the sections[] array under the "
+                        "~20 KB soft cap (emitting truncated/next_offset) "
+                        "and accepts offset/limit to page through a "
+                        "many-section roadmap. Cannot combine with "
                         "section= (bad_mode_combo).");
                     props["mode"] = modeProp;
                     // ANTS-1436 — offset/limit pagination args.

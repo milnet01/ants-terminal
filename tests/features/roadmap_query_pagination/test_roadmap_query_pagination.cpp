@@ -167,19 +167,25 @@ TEST(roadmap_query_pagination, Inv8BadArgsAnchors) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// INV-6 source-scrape — section_index + pagination rejection.
-TEST(roadmap_query_pagination, Inv6SectionIndexPaginationRejected) {
+// INV-6 (ANTS-1729) — section_index now ACCEPTS offset/limit and
+// paginates the sections[] array (superseding the ANTS-1436-INV-6
+// rejection). The refusal message must be GONE and the section_index
+// branch must route through the pagination helper.
+TEST(roadmap_query_pagination, Inv6SectionIndexPaginates) {
     expect_reset();
     const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
-    expect(contains(cpp, "ANTS-1436-INV-6"),
-           "INV-6 anchor present in cmdRoadmapQuery");
-    expect(contains(cpp, "section_index mode does not accept offset/limit"),
-           "INV-6: rejection message for section_index + offset/limit");
+    expect(!contains(cpp, "section_index mode does not accept offset/limit"),
+           "INV-6: the old section_index+offset/limit refusal is removed "
+           "(ANTS-1729 enables pagination)");
+    expect(contains(cpp, "ANTS-1729"),
+           "INV-6: ANTS-1729 pagination anchor present in the "
+           "section_index branch");
     EXPECT_EQ(0, expect_failures());
 }
 
-// INV-11 — PaginationEngine::pageBullets called from exactly two
-// sites in cmdRoadmapQuery (section + full-file emission branches).
+// INV-11 — PaginationEngine::pageBullets called from exactly three
+// sites in cmdRoadmapQuery (section + full-file bullet emission +
+// section_index sections[] emission, ANTS-1729).
 TEST(roadmap_query_pagination, Inv11HelperCallSiteCount) {
     expect_reset();
     const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
@@ -190,11 +196,12 @@ TEST(roadmap_query_pagination, Inv11HelperCallSiteCount) {
         ++count;
         pos += needle.size();
     }
-    expect(count == 2,
+    expect(count == 3,
            "INV-11: PaginationEngine::pageBullets must be called "
-           "exactly 2 times in remotecontrol.cpp (section + full-file "
-           "emission paths). If you added a third emission branch, "
-           "wire it through the helper too.");
+           "exactly 3 times in remotecontrol.cpp (section + full-file "
+           "bullet emission + section_index sections[] emission, "
+           "ANTS-1729). If you added another emission branch, wire it "
+           "through the helper too.");
     EXPECT_EQ(0, expect_failures());
 }
 

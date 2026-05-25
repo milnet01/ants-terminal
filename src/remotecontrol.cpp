@@ -1648,19 +1648,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["code"] = QStringLiteral("bad_mode_combo");
         return QJsonDocument(out);
     }
-    // ANTS-1436-INV-6: section_index + offset/limit is also exclusive
-    // — section_index returns a bounded sections array, not bullets,
-    // so pagination is meaningless. Reject-loudly (vs silent-ignore)
-    // so a future spec adding pagination to section_index isn't a
-    // back-compat hazard.
-    if (mode == QLatin1String("section_index") &&
-        (callerPassedOffset || callerPassedLimit)) {
-        out["ok"] = false;
-        out["error"] = QStringLiteral(
-            "section_index mode does not accept offset/limit");
-        out["code"] = QStringLiteral("bad_mode_combo");
-        return QJsonDocument(out);
-    }
+    // ANTS-1729 — section_index now ACCEPTS offset/limit (the future
+    // spec the ANTS-1436-INV-6 refusal left room for). On a many-section
+    // roadmap the active-filtered index can still run to tens of
+    // sections (~10 KB), busting section_index's "compact discovery
+    // surface" budget, so the same PaginationEngine slice + auto-truncate
+    // the bullets path uses is applied to the sections[] array below.
+    // offset/limit are validated for type/range above regardless of
+    // mode, so no extra gating is needed here.
     // ANTS-1856 — `id` is a single-bullet selector that scans the whole
     // roadmap. section_index is the section-discovery surface and
     // section= is a sub-slice; neither composes with a global id lookup,
@@ -2029,7 +2024,23 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["mode"] = mode;          // explicit in section_index path
         out["path"] = path;
         out["filter"] = filter;      // status filter echo (ANTS-1848: now shapes emission)
-        out["sections"] = sections;
+        // ANTS-1729 — paginate / auto-truncate the section index with the
+        // same PaginationEngine the bullets path uses. Auto-pick (limit
+        // omitted → -1) measure-cuts the slice under the soft cap so a
+        // many-section roadmap stops busting the compact-index budget;
+        // explicit offset/limit let a caller page. legacy_format_sections
+        // stays the full-roadmap hint (a small slug list, not per-page).
+        const auto secPage =
+            PaginationEngine::pageBullets(sections, offsetArg, limitArg);
+        out["sections"] = secPage.slice;
+        if (PaginationEngine::shouldEmitPaginationFields(
+                callerPassedOffset, callerPassedLimit, secPage.truncated)) {
+            out["offset"]    = secPage.offset;
+            out["limit"]     = secPage.limit;
+            out["total"]     = secPage.total;
+            out["truncated"] = secPage.truncated;
+            if (secPage.truncated) out["next_offset"] = secPage.nextOffset;
+        }
         // ANTS-1622 — top-level legacy-format hint. Only emitted
         // when at least one section's direct bullets all lack
         // [PROJ-NNNN] ids — staying absent on well-tagged roadmaps

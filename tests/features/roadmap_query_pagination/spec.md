@@ -22,10 +22,13 @@ responses come back in chunks the caller can parse directly.
   `next_offset == offset + slice.length` when truncated.
 - **INV-5 / offset past end returns empty.** `offset >= total`
   returns empty bullets[], offset == total, no next_offset.
-- **INV-6 / section_index + offset/limit rejected.** mode:
-  section_index with offset or limit returns
-  `code:"bad_mode_combo"`. Source anchor: `ANTS-1436-INV-6` in
-  cmdRoadmapQuery.
+- **INV-6 / section_index paginates (ANTS-1729, supersedes the
+  ANTS-1436 rejection).** mode: section_index now ACCEPTS offset/limit
+  and routes its `sections[]` array through
+  `PaginationEngine::pageBullets` (auto-truncate under the soft cap when
+  limit omitted; explicit offset/limit page). The old
+  `"section_index mode does not accept offset/limit"` refusal is gone.
+  Source anchor: `ANTS-1729` in cmdRoadmapQuery.
 - **INV-7 / filter order: status/rollup before pagination.** Total
   reflects post-filter count; pagination operates on that set.
 - **INV-8 / bad_args on non-numeric or negative.** `offset:"foo"`,

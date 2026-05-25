@@ -81,6 +81,16 @@ tripping a full bullet payload.
   section object knows it is ID-less without grepping the slug
   against the top-level list. Absent on well-tagged sections.
   Anchor: `ANTS-1714b`.
+- **INV-14 / section_index paginates + auto-truncates (ANTS-1729).**
+  `mode:"section_index"` now ACCEPTS `offset`/`limit` (superseding the
+  ANTS-1436 rejection) and routes its `sections[]` array through
+  `PaginationEngine::pageBullets`: when `limit` is omitted the array is
+  measure-cut under the ~20 KB soft cap; explicit `offset`/`limit` page
+  through it. The envelope carries `offset`/`limit`/`total`/`truncated`
+  (+ `next_offset` when truncated) under the same
+  `shouldEmitPaginationFields` opt-in as the bullets path.
+  `legacy_format_sections[]` stays the full-roadmap hint (not per-page).
+  Anchor: `ANTS-1729`.
 
 ## Test scope
 

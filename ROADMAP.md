@@ -7835,12 +7835,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: auditengine.
   Source: in-session-2026-05-18 Bundle G observation.
 
-- 📋 [ANTS-1729] **roadmap_query mode:section_index needs an active-only filter / pagination — busts its own &lt;5 KB budget on many-section roadmaps.**
+- ✅ [ANTS-1729] **roadmap_query mode:section_index needs an active-only filter / pagination — busts its own &lt;5 KB budget on many-section roadmaps.**
   The section_index mode's doc claims "response < 5 KB on a 500-bullet roadmap", but the budget is bullet-count-based: this ROADMAP has ~150 sections × ~200 B each ⇒ a ~10 K+ token response regardless of bullet count. Add either (a) an `active_only:true` arg that drops sections whose active_count==0 (most are shipped/archive — would cut this response ~60%), or (b) offset/limit pagination on sections[] mirroring the bullets[] path (ANTS-1436). Cheap, and directly on-theme for the token-reduction focus. Workaround today: `fields:["sections"]` trims the envelope but not the per-section payload.
   **Layman:** The tool that lists the roadmap's section headings (so I can find where to file a new item) is supposed to be small, but on this big roadmap it dumps ~150 sections and burns a lot of tokens. Add a way to ask for only the active sections, or page through them.
   Kind: perf.
   Lanes: remotecontrol, claudeintegration.
   Source: in-session-2026-05-21 (noticed while finding a section slug for ANTS-1727).
+  Resolved (2026-05-25): section_index now accepts offset/limit and routes its sections[] array through PaginationEngine::pageBullets (the same engine + ~20KB soft cap the bullets path uses) — auto-truncates when limit is omitted (emitting truncated/next_offset), explicit offset/limit page. Removed the ANTS-1436-INV-6 refusal (that comment had reserved room for exactly this). legacy_format_sections stays the full-roadmap hint. Tests: roadmap_query_section_index INV-14 + roadmap_query_pagination INV-6 reworked + INV-11 call-site count 2→3. 751 green. Note: the active-only filter half (option a) already shipped via ANTS-1848; this adds the pagination half (option b).
 
 - 📋 [ANTS-1733] **roadmap_log append refused 7× with empty param body in one session.**
   During the ANTS-1257/1731 session, ~7 consecutive `roadmap_log` op:append
@@ -8589,6 +8590,26 @@ indie-review finding.
   Kind: enhancement.
   Lanes: debuglog, settings, observability.
   Source: user-request-2026-05-25 (debug category off after every relaunch).
+
+- 📋 [ANTS-1864] **Colored cell backgrounds (diff green/red highlights) appear more opaque than the base when terminal opacity < 1.**
+  Colored cell backgrounds already get effectiveAlpha
+  (terminalwidget.cpp:853-854), but they are painted with
+  CompositionMode_SourceOver on top of the base fill, which was laid down
+  with CompositionMode_Source at the same alpha (:670-671). SourceOver
+  compositing makes the result alpha = src.a + base.a*(1-src.a), so any
+  non-default cell bg (ANSI/diff green/red, highlight rules) ends up MORE
+  opaque than the surrounding terminal area — visibly solid bars on an
+  otherwise translucent window. Fix: composite colored cell-bg fills so
+  they reach the SAME effective transparency as the base (e.g. paint cell
+  bg with CompositionMode_Source, or scale alpha to subtract the base
+  contribution). Keep selected/searchMatch fully opaque as today (they
+  are already excluded at :853). Lanes: terminalwidget, rendering.
+  Relates to the opacity design note in CLAUDE.md (opacity drives the
+  terminal-area fillRect alpha).
+  **Layman:** When you make the terminal see-through, the green/red highlight bars (like Claude's diff view) stay nearly solid instead of going see-through to match the rest of the window. Make them respect the same transparency level.
+  Kind: ux.
+  Lanes: terminalwidget, rendering.
+  Source: user-request-2026-05-25 (screenshot: opaque green/red diff highlights on a translucent terminal).
 
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 

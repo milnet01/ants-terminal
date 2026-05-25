@@ -384,6 +384,13 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_query mode:section_index now paginates / auto-truncates the section list** (ANTS-1729)
+  On a many-section roadmap the section index could run to tens of
+  sections and bust its compact-discovery budget. It now accepts
+  offset/limit and auto-truncates under the ~20 KB soft cap (emitting
+  truncated/next_offset), reusing the same pagination engine as the
+  bullets path.
+
 - **Claude debug-lane poll traces gated on state change (ANTS-1854).**
   The `bgtasks/refresh` + `tasks/refresh` diagnostic lines were written
   on every 2-second tick even when nothing changed — ~25 k no-op lines
