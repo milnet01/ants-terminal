@@ -1009,7 +1009,12 @@ void ClaudeStatusBarController::apply() {
         }
     }
 
-    const QColor color = ClaudeTabIndicator::color(glyph);
+    // ANTS-1847 — same contrast adaptation as the tab dot, against the
+    // status bar's own background (theme.bgSecondary — the surface the
+    // label paints on, identical to the tab bar's), so the text and the
+    // active tab's dot resolve to the same colour on every theme.
+    const QColor bg = Themes::byName(m_currentThemeName).bgSecondary;
+    const QColor color = ClaudeTabIndicator::contrastColor(glyph, bg);
     m_statusLabel->setText(text);
     m_statusLabel->setStyleSheet(
         QStringLiteral("color: %1; %2").arg(color.name(), statusStyle));

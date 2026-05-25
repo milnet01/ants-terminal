@@ -5331,7 +5331,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   ceiling) — rename/byte-accurate; `isPlaintextRemote`'s loopback set is
   narrower than `isEndpointHostBlocked`'s `isLoopback()` (spurious cleartext
   warnings on 127.0.0.2). Unify. Verified 2026-05-22.
-- 📋 [ANTS-1847] **Claude state-dot WCAG contrast on light themes.**
+- ✅ [ANTS-1847] **Claude state-dot WCAG contrast on light themes.**
   `coloredtabbar.cpp` ships a fixed dot palette; 7/8 dots fall below WCAG 3:1 on
   the Light/Catppuccin-Latte tab backgrounds (incl. the operationally-critical
   `AwaitingInput` orange at 2.28:1). NOTE: a per-state outline/variant directly

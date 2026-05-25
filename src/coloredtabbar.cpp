@@ -2,6 +2,31 @@
 
 #include <QPaintEvent>
 #include <QPainter>
+#include <QPen>
+
+#include <cmath>
+
+namespace {
+// WCAG 2.x relative luminance + contrast ratio. Drives the light-theme
+// contrast adaptation of the Claude state dots (ANTS-1847): the fixed
+// dark-tuned palette washes out on near-white tab backgrounds, so the
+// dot/label lightness is lowered until it clears the 3:1 non-text floor.
+double wcagLuminance(const QColor &c) {
+    auto lin = [](int v8) {
+        const double v = v8 / 255.0;
+        return v <= 0.03928 ? v / 12.92
+                            : std::pow((v + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * lin(c.red()) + 0.7152 * lin(c.green()) +
+           0.0722 * lin(c.blue());
+}
+double wcagContrast(const QColor &a, const QColor &b) {
+    const double la = wcagLuminance(a) + 0.05;
+    const double lb = wcagLuminance(b) + 0.05;
+    return la > lb ? la / lb : lb / la;
+}
+constexpr double kMinContrast = 3.0;  // WCAG 1.4.11 non-text contrast.
+}  // namespace
 
 // Single source of truth for the per-state Claude palette. Hex values
 // match `tests/features/claude_state_dot_palette/spec.md` and are
@@ -21,6 +46,59 @@ QColor ClaudeTabIndicator::color(Glyph g) {
         case Glyph::AwaitingInput:  return QColor("#F08A4B");    // orange
     }
     return QColor();
+}
+
+QColor ClaudeTabIndicator::contrastColor(Glyph g, const QColor &background) {
+    const QColor base = color(g);
+    if (!base.isValid() || !background.isValid()) return base;
+    if (wcagContrast(base, background) >= kMinContrast) return base;
+
+    // The base palette is dark-tuned; on a light theme the dot is too
+    // pale. Preserve hue + saturation (state identity) and only lower HSL
+    // lightness until the dot clears the 3:1 floor. Contrast is monotonic
+    // in lightness against a light background, so binary-search the
+    // highest (least-darkened) lightness <= the original that still
+    // passes — black always clears a light background, so a solution
+    // exists. State hue is unchanged, so "orange = needs me" still holds.
+    //
+    // Precondition (true for all 11 shipped themes): every theme's
+    // bgSecondary is either clearly light (lum > 0.8 — darkening the dot
+    // is the correct direction) or clearly dark (lum < 0.05 — the base
+    // already passes 3:1 and we early-returned above). No theme sits in
+    // the mid-luminance band where the dot would instead need lightening;
+    // a future mid-luminance theme would need this to search both
+    // directions.
+    const int h = qMax(0, base.hslHue());  // -1 (achromatic grey) -> 0
+    const int s = base.hslSaturation();
+    const int a = base.alpha();
+    int lo = 0, hi = base.lightness(), best = 0;
+    while (lo <= hi) {
+        const int mid = (lo + hi) / 2;
+        if (wcagContrast(QColor::fromHsl(h, s, mid, a), background) >=
+            kMinContrast) {
+            best = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return QColor::fromHsl(h, s, best, a);
+}
+
+QColor ClaudeTabIndicator::ringColor(const QColor &background) {
+    if (!background.isValid()) return QColor(0, 0, 0, 160);
+    // Theme-tinted, theme-adapted edge: keep the background's own hue +
+    // saturation but push its lightness to the opposite end of the range,
+    // so the ring is dark on a light theme and light on a dark theme while
+    // still reading as part of the selected palette (ANTS-1847). Alpha
+    // keeps it a subtle outline, not a hard stroke. State-independent —
+    // the same ring wraps every dot.
+    const int h = qMax(0, background.hslHue());
+    const int s = background.hslSaturation();
+    const int l = wcagLuminance(background) > 0.4 ? 40 : 220;
+    QColor ring = QColor::fromHsl(h, s, l);
+    ring.setAlpha(160);
+    return ring;
 }
 
 QString ClaudeTabIndicator::glyphName(Glyph g) {
@@ -161,7 +239,11 @@ void ColoredTabBar::paintEvent(QPaintEvent *event) {
         if (tabToolTip(i) != tip)
             setTabToolTip(i, tip);
 
-        const QColor fill = ClaudeTabIndicator::color(ind.glyph);
+        // ANTS-1847 — contrast-adapt the fill against the tab background
+        // so the hue stays perceptible on light themes (the base palette
+        // is dark-tuned). m_bg is theme.bgSecondary, the surface the dot
+        // sits on.
+        const QColor fill = ClaudeTabIndicator::contrastColor(ind.glyph, m_bg);
         if (!fill.isValid()) continue;  // None / unrecognised → no dot
 
         const QRect r = tabRect(i);
@@ -174,7 +256,9 @@ void ColoredTabBar::paintEvent(QPaintEvent *event) {
         // edge and clears the first character of the tab text by ~7 px.
         const int cx = r.left() + 11;
         const int cy = r.center().y();
-        painter.setPen(Qt::NoPen);
+        // ANTS-1847 — uniform theme-adapted ring on every dot (same for
+        // all states), so the dot keeps a crisp edge on any background.
+        painter.setPen(QPen(ClaudeTabIndicator::ringColor(m_bg), 1));
         painter.setBrush(fill);
         painter.drawEllipse(QPoint(cx, cy), kDotRadius, kDotRadius);
     }

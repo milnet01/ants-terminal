@@ -31,6 +31,12 @@
 #include <sstream>
 #include <string>
 
+// INV-9 / INV-10 (ANTS-1847) are behavioural — they link coloredtabbar
+// (already in this GUI bundle) and call the helpers directly.
+#include "coloredtabbar.h"
+#include <QColor>
+#include <cmath>
+
 namespace {
 
 std::string slurp(const char *path) {
@@ -61,6 +67,23 @@ int count(const std::string &hay, const char *needle) {
 int fail(const char *label, const char *why) {
     std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
     return 1;
+}
+
+// WCAG 2.x relative luminance + contrast — independent re-derivation of
+// the formula the implementation uses, so the test verifies the numeric
+// guarantee rather than trusting the impl's own helper.
+double tLum(const QColor &c) {
+    auto lin = [](int v8) {
+        const double v = v8 / 255.0;
+        return v <= 0.03928 ? v / 12.92
+                            : std::pow((v + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * lin(c.red()) + 0.7152 * lin(c.green()) +
+           0.0722 * lin(c.blue());
+}
+double tContrast(const QColor &a, const QColor &b) {
+    const double la = tLum(a) + 0.05, lb = tLum(b) + 0.05;
+    return la > lb ? la / lb : lb / la;
 }
 
 }  // namespace
@@ -117,16 +140,17 @@ TEST(ClaudeStateDotPalette, Main) {
             { fail("INV-3", p.name); FAIL(); }
     }
 
-    // INV-4: paintEvent must call the helper. Easiest signal: the call
-    // site `ClaudeTabIndicator::color(` appears at least twice in the
-    // source (once in the helper itself? no — the helper is a definition,
-    // not a call. The call site is the paintEvent loop). Look for the
-    // call expression specifically.
-    if (!contains(source, "ClaudeTabIndicator::color(ind.glyph)"))
-        { fail("INV-4", "paintEvent does not call ClaudeTabIndicator::color(ind.glyph)"); FAIL(); }
+    // INV-4 (ANTS-1847): paintEvent derives the dot fill via the
+    // contrast-adaptation helper, against the tab background `m_bg`. No
+    // inline hex literals in the dot path; the base palette literals live
+    // only in color().
+    if (!contains(source, "ClaudeTabIndicator::contrastColor(ind.glyph, m_bg)"))
+        { fail("INV-4", "paintEvent does not call contrastColor(ind.glyph, m_bg)"); FAIL(); }
 
-    // INV-5: uniform dot geometry. No per-state radius variable
-    // assignment in the dot pass, no `radius = 5`, single constant.
+    // INV-5: uniform dot geometry + uniform ring. No per-state radius
+    // variable assignment in the dot pass, no `radius = 5`, single
+    // constant. The ring is uniform (one ringColor(m_bg) pen, not inside a
+    // Glyph::-cased branch) and the old per-state outline marker is gone.
     if (contains(source, "radius = 5"))
         { fail("INV-5", "AwaitingInput per-state radius=5 still present"); FAIL(); }
     // The constant for the dot radius — must exist exactly once.
@@ -136,17 +160,23 @@ TEST(ClaudeStateDotPalette, Main) {
     // `outline.alpha()` was the marker for the variant render path.
     if (contains(source, "outline.alpha()"))
         { fail("INV-5", "outline-alpha branch still present in dot pass"); FAIL(); }
+    // Uniform ring: the dot pass sets exactly one ring pen from the
+    // state-independent ringColor(m_bg) helper.
+    if (!contains(source, "ClaudeTabIndicator::ringColor(m_bg)"))
+        { fail("INV-5", "uniform ringColor(m_bg) pen missing from dot pass"); FAIL(); }
+    if (count(source, "ClaudeTabIndicator::ringColor(m_bg)") != 1)
+        { fail("INV-5", "ring pen is not set exactly once (per-state ring?)"); FAIL(); }
 
     // INV-6: ClaudeStatusBarController::apply (formerly
     // mainwindow.cpp::applyClaudeStatusLabel) calls the helper for
     // label colour. The old th.ansi[…] mappings for the Claude label
     // must be gone — search for the four prior call sites in the new
     // TU.
-    if (!contains(cswSource, "ClaudeTabIndicator::color("))
-        { fail("INV-6", "claudestatuswidgets.cpp does not use ClaudeTabIndicator::color()"); FAIL(); }
-    // The applier-specific assignment shape: `ClaudeTabIndicator::color(glyph)`
-    if (!contains(cswSource, "ClaudeTabIndicator::color(glyph)"))
-        { fail("INV-6", "ClaudeStatusBarController::apply doesn't compute color via helper"); FAIL(); }
+    // INV-6 (ANTS-1847): the applier derives the label colour via the
+    // same contrast-adaptation helper as the dot (against bgSecondary),
+    // not the unadjusted color(glyph) or th.ansi[…].
+    if (!contains(cswSource, "ClaudeTabIndicator::contrastColor(glyph"))
+        { fail("INV-6", "apply() doesn't compute colour via contrastColor(glyph, …)"); FAIL(); }
 
     // INV-7: ShellState.auditing + Glyph::Auditing exist
     if (!contains(trackerHeader, "bool auditing = false"))
@@ -171,5 +201,55 @@ TEST(ClaudeStateDotPalette, Main) {
         { fail("INV-8", "Auditing glyph used fewer than 2x in claudestatuswidgets.cpp (expect provider + status applier)"); FAIL(); }
 
     std::puts("OK claude_state_dot_palette: 8/8 invariants");
+}
+
+// INV-9 / INV-10 (ANTS-1847) — behavioural contrast + ring guarantees.
+TEST(ClaudeStateDotPalette, ContrastAdaptation) {
+    using Ind = ClaudeTabIndicator;
+    using G = Ind::Glyph;
+    const G glyphs[] = {G::Idle,     G::Thinking,  G::ToolUse,    G::Bash,
+                        G::Planning, G::Auditing,  G::Compacting, G::AwaitingInput};
+
+    // Light themes: bgSecondary of "Light" (#F5F5F5) + "Catppuccin Latte"
+    // (#E6E9EF) — the surfaces the dot/label actually paint on.
+    const QColor lightBgs[] = {QColor("#F5F5F5"), QColor("#E6E9EF")};
+
+    for (const QColor &bg : lightBgs) {
+        for (G g : glyphs) {
+            const QColor base = Ind::color(g);
+            const QColor adj = Ind::contrastColor(g, bg);
+
+            // INV-9a: clears the 3:1 non-text floor against this bg.
+            EXPECT_GE(tContrast(adj, bg), 3.0)
+                << "glyph " << static_cast<int>(g) << " on bg "
+                << bg.name().toStdString() << " contrast "
+                << tContrast(adj, bg);
+
+            // INV-9b: hue preserved (state identity). Skip achromatic grey
+            // (Idle, saturation 0 → hue is meaningless / -1).
+            if (base.hslSaturation() > 0 && adj.hslHue() >= 0) {
+                EXPECT_EQ(adj.hslHue(), base.hslHue())
+                    << "hue drifted for glyph " << static_cast<int>(g);
+            }
+        }
+    }
+
+    // INV-9c: dark theme passthrough — base palette returned byte-for-byte
+    // unchanged (the shipped dark-theme appearance does not move).
+    const QColor darkBg("#1E1E1E");
+    for (G g : glyphs)
+        EXPECT_EQ(Ind::contrastColor(g, darkBg), Ind::color(g))
+            << "dark-bg adaptation changed glyph " << static_cast<int>(g);
+
+    // INV-10: uniform ring — semi-transparent, dark on light bg, light on
+    // dark bg, and state-independent (one signature, no Glyph arg).
+    const QColor ringLight = Ind::ringColor(QColor("#F5F5F5"));
+    const QColor ringDark = Ind::ringColor(QColor("#1E1E1E"));
+    EXPECT_LT(ringLight.alpha(), 255);
+    EXPECT_LT(ringDark.alpha(), 255);
+    EXPECT_LT(tLum(ringLight), tLum(QColor("#F5F5F5")))
+        << "ring on a light theme must be darker than the background";
+    EXPECT_GT(tLum(ringDark), tLum(QColor("#1E1E1E")))
+        << "ring on a dark theme must be lighter than the background";
 }
 

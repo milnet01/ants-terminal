@@ -43,7 +43,23 @@ struct ClaudeTabIndicator {
     // values drive both the tab-bar dot fill and the bottom status-bar
     // "Claude: …" label colour. None / unrecognised input returns an
     // invalid QColor so callers can suppress paint with `isValid()`.
+    // This is the dark-tuned BASE palette; see contrastColor() for the
+    // light-theme adaptation.
     static QColor color(Glyph g);
+
+    // ANTS-1847 — contrast-adapted dot/label colour. Returns color(g)
+    // unchanged when it already clears WCAG 3:1 against `background`
+    // (every dark theme); on a light theme it lowers only the HSL
+    // lightness (hue + saturation preserved, so state identity holds)
+    // until the 3:1 non-text-contrast floor is met. The contract is a
+    // fixed HUE identity, not a fixed RGB triple — one RGB value cannot
+    // clear 3:1 against both a near-black and a near-white background.
+    static QColor contrastColor(Glyph g, const QColor &background);
+
+    // ANTS-1847 — uniform dot ring colour (state-independent; takes no
+    // Glyph). A semi-transparent stroke, dark on light backgrounds and
+    // light on dark ones, so every dot keeps a crisp edge on any theme.
+    static QColor ringColor(const QColor &background);
 
     // ANTS-1185: human-readable glyph name for screen-reader exposure.
     // ANTS-1818 — exposed via `QTabBar::setTabToolTip()`, NOT
