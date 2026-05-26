@@ -18,6 +18,7 @@
 
 #include "claudeallowlist.h"
 #include "claudebgtasks.h"
+#include "claudestateresolver.h"   // ANTS-1873
 #include "modelrecommender.h"
 #include "claudeintegration.h"
 #include "claudetabtracker.h"
@@ -204,36 +205,30 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
             if (!term) return ind;
             const pid_t pid = term->shellPid();
             if (pid <= 0) return ind;
-            const ClaudeTabTracker::ShellState s = m_tracker->shellState(pid);
-            if (s.awaitingInput) {
-                ind.glyph = ClaudeTabIndicator::Glyph::AwaitingInput;
-                return ind;
-            }
-            if (s.planMode && s.state != ClaudeState::NotRunning) {
-                ind.glyph = ClaudeTabIndicator::Glyph::Planning;
-                return ind;
-            }
-            if (s.auditing && s.state != ClaudeState::NotRunning) {
-                ind.glyph = ClaudeTabIndicator::Glyph::Auditing;
-                return ind;
-            }
-            switch (s.state) {
-                case ClaudeState::NotRunning:
+            // ANTS-1873 — shared resolver. INV-5 widens the Bash check to
+            // case-insensitive (the pre-fix lambda was case-sensitive
+            // `s.tool == "Bash"`); unification with the status bar's
+            // toLower() lookup at apply().
+            const claudestate::Resolved r =
+                claudestate::fromShell(m_tracker->shellState(pid));
+            switch (claudestate::display(r)) {
+                case claudestate::Display::Hidden:
                     ind.glyph = ClaudeTabIndicator::Glyph::None; break;
-                case ClaudeState::Idle:
+                case claudestate::Display::AwaitingInput:
+                    ind.glyph = ClaudeTabIndicator::Glyph::AwaitingInput; break;
+                case claudestate::Display::Planning:
+                    ind.glyph = ClaudeTabIndicator::Glyph::Planning; break;
+                case claudestate::Display::Auditing:
+                    ind.glyph = ClaudeTabIndicator::Glyph::Auditing; break;
+                case claudestate::Display::Idle:
                     ind.glyph = ClaudeTabIndicator::Glyph::Idle; break;
-                case ClaudeState::Thinking:
+                case claudestate::Display::Thinking:
                     ind.glyph = ClaudeTabIndicator::Glyph::Thinking; break;
-                case ClaudeState::ToolUse:
-                    // Bash is the tool with the most user-relevant runtime
-                    // (long-running commands, compilations, greps over
-                    // large repos) — split it out so the glyph carries
-                    // that signal at a glance.
-                    ind.glyph = (s.tool == QLatin1String("Bash"))
-                        ? ClaudeTabIndicator::Glyph::Bash
-                        : ClaudeTabIndicator::Glyph::ToolUse;
-                    break;
-                case ClaudeState::Compacting:
+                case claudestate::Display::ToolUseBash:
+                    ind.glyph = ClaudeTabIndicator::Glyph::Bash; break;
+                case claudestate::Display::ToolUseGeneric:
+                    ind.glyph = ClaudeTabIndicator::Glyph::ToolUse; break;
+                case claudestate::Display::Compacting:
                     ind.glyph = ClaudeTabIndicator::Glyph::Compacting; break;
             }
             return ind;
@@ -280,26 +275,34 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
         });
     }
 
+    // ANTS-1873 — repaint the status-bar label whenever the focused
+    // tab's tracker entry changes. Distinct from the tab-bar repaint
+    // connect above (which updates per-tab dot + tooltips); this one
+    // drives the bottom Claude: <state> label so a tracker write (e.g.
+    // markShellAwaitingInput, watcher-driven reparseTranscript) shows
+    // up on the bar without waiting for an integration signal.
+    if (m_tracker) {
+        connect(m_tracker, &ClaudeTabTracker::shellStateChanged,
+                this, [this](pid_t shellPid) {
+            auto *focused = m_focusedTerminalProvider
+                ? m_focusedTerminalProvider() : nullptr;
+            if (focused && focused->shellPid() == shellPid) apply();
+        });
+    }
+
     if (!m_integration) return;
 
+    // ANTS-1873 — integration signals are kept as apply() nudges; their
+    // payloads are now ignored (the source of truth is the focused tab's
+    // tracker entry, read inside apply()).
     connect(m_integration, &ClaudeIntegration::stateChanged,
-            this, [this](ClaudeState state, const QString &detail) {
-        m_lastState = state;
-        m_lastDetail = detail;
-        apply();
-    });
+            this, [this](ClaudeState, const QString &) { apply(); });
 
     connect(m_integration, &ClaudeIntegration::planModeChanged,
-            this, [this](bool active) {
-        m_planMode = active;
-        apply();
-    });
+            this, [this](bool) { apply(); });
 
     connect(m_integration, &ClaudeIntegration::auditingChanged,
-            this, [this](bool active) {
-        m_auditing = active;
-        apply();
-    });
+            this, [this](bool) { apply(); });
 
     connect(m_integration, &ClaudeIntegration::contextUpdated,
             this, [this](int percent) {
@@ -428,11 +431,9 @@ void ClaudeStatusBarController::showPermissionPrompt(pid_t awaitingPid,
     // notification slot is wide (user spec 2026-04-18).
     btnWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
 
-    auto clearPromptActive = [this, awaitingPid, belongsToFocused]() {
-        if (belongsToFocused) {
-            m_promptActive = false;
-            apply();
-        }
+    auto clearPromptActive = [this, awaitingPid]() {
+        // ANTS-1873 — the tracker is the source of truth. Updating it
+        // emits shellStateChanged → apply() automatically.
         if (m_tracker && awaitingPid > 0)
             m_tracker->markShellAwaitingInput(awaitingPid, false);
     };
@@ -461,9 +462,9 @@ void ClaudeStatusBarController::showPermissionPrompt(pid_t awaitingPid,
         btnLayout->addWidget(addBtn);
         m_statusBar->addPermanentWidget(btnWidget);
 
-        // Mark prompt active so the Claude status label switches to
-        // "prompting" — a second at-a-glance indicator beyond the buttons.
-        m_promptActive = true;
+        // ANTS-1873 — the tracker was set true by the caller
+        // (permissionRequested slot or MainWindow scroll-scan); apply()
+        // is now driven by the tracker's shellStateChanged signal.
         apply();
 
         connect(allowBtn, &QPushButton::clicked, btnWidget, [this, btnWidget, clearPromptActive]() {
@@ -597,18 +598,19 @@ void ClaudeStatusBarController::clearPromptAnchorsForTabSwitch(pid_t newlyFocuse
     }
 }
 
-void ClaudeStatusBarController::setPromptActive(bool active) {
-    m_promptActive = active;
+// ANTS-1873 — setPromptActive / setPlanMode / setAuditing are kept as
+// thin apply() triggers so existing MainWindow callers still compile.
+// The value parameters are ignored: apply() re-derives state from the
+// focused tab's tracker entry every call.
+void ClaudeStatusBarController::setPromptActive(bool /*active*/) {
     apply();
 }
 
-void ClaudeStatusBarController::setPlanMode(bool active) {
-    m_planMode = active;
+void ClaudeStatusBarController::setPlanMode(bool /*active*/) {
     apply();
 }
 
-void ClaudeStatusBarController::setAuditing(bool active) {
-    m_auditing = active;
+void ClaudeStatusBarController::setAuditing(bool /*active*/) {
     apply();
 }
 
@@ -639,11 +641,9 @@ void ClaudeStatusBarController::clearError() {
 }
 
 void ClaudeStatusBarController::resetForTabSwitch() {
-    m_lastState = ClaudeState::NotRunning;
-    m_lastDetail.clear();
-    m_planMode = false;
-    m_auditing = false;
-    m_promptActive = false;
+    // ANTS-1873 — cached scalars deleted; the trailing apply() below
+    // re-derives the new focused tab's display state from its tracker
+    // entry. Widget hides + bg-tasks/tasks/model-chip resets remain.
     if (m_reviewBtn)   m_reviewBtn->hide();
     if (m_contextBar)  m_contextBar->hide();
     if (m_bgTasksBtn)  m_bgTasksBtn->hide();
@@ -1018,9 +1018,15 @@ void ClaudeStatusBarController::apply() {
     if (!m_statusLabel) return;
     const QString statusStyle = QStringLiteral("padding: 0 8px; font-size: 11px;");
 
-    // NotRunning hides both label and the context progress bar regardless
-    // of prompt state — no Claude process = nothing to announce.
-    if (m_lastState == ClaudeState::NotRunning) {
+    // ANTS-1873 — read the focused tab's state via the shared resolver,
+    // same source the tab dot consumes. The two surfaces cannot diverge
+    // because they walk the same precedence ladder over the same data.
+    const claudestate::Resolved r = claudestate::forFocused(
+        m_tracker,
+        m_focusedTerminalProvider ? m_focusedTerminalProvider() : nullptr);
+    const claudestate::Display d = claudestate::display(r);
+
+    if (d == claudestate::Display::Hidden) {
         m_statusLabel->hide();
         if (m_contextBar) m_contextBar->hide();
         return;
@@ -1032,82 +1038,65 @@ void ClaudeStatusBarController::apply() {
     // Status text vocabulary (user spec 2026-04-18):
     //   idle / thinking / prompting / bash / reading a file / planning /
     //   auditing / compacting / etc.
-    // Colour comes from the unified Claude state palette
-    // (`ClaudeTabIndicator::color`) so the status-bar text matches the
-    // per-tab dot one-for-one — see
-    // `tests/features/claude_state_dot_palette/spec.md`.
-    if (m_promptActive) {
-        // Prompt-active overrides the base state — a waiting permission
-        // prompt is what the user needs to see.
-        text = QStringLiteral("Claude: prompting");
-        glyph = ClaudeTabIndicator::Glyph::AwaitingInput;
-    } else if (m_planMode) {
-        // Plan mode is a user-selected interaction mode (Shift+Tab),
-        // orthogonal to the transcript-derived state. While in plan mode
-        // the assistant can think/read but cannot edit or run commands —
-        // "planning" is the honest label.
-        text = QStringLiteral("Claude: planning");
-        glyph = ClaudeTabIndicator::Glyph::Planning;
-    } else if (m_auditing) {
-        // Auditing is detected from a recent user message that invoked
-        // the /audit skill in the transcript. Lives beside state because
-        // the user can audit during tool use, thinking, or idle — the
-        // skill's lifecycle is not the same as any single tool.
-        text = QStringLiteral("Claude: auditing");
-        glyph = ClaudeTabIndicator::Glyph::Auditing;
-    } else {
-        switch (m_lastState) {
-        case ClaudeState::NotRunning:
+    switch (d) {
+        case claudestate::Display::Hidden:
             return;  // handled above
-        case ClaudeState::Idle:
+        case claudestate::Display::AwaitingInput:
+            text = QStringLiteral("Claude: prompting");
+            glyph = ClaudeTabIndicator::Glyph::AwaitingInput;
+            break;
+        case claudestate::Display::Planning:
+            text = QStringLiteral("Claude: planning");
+            glyph = ClaudeTabIndicator::Glyph::Planning;
+            break;
+        case claudestate::Display::Auditing:
+            text = QStringLiteral("Claude: auditing");
+            glyph = ClaudeTabIndicator::Glyph::Auditing;
+            break;
+        case claudestate::Display::Idle:
             text = QStringLiteral("Claude: idle");
             glyph = ClaudeTabIndicator::Glyph::Idle;
             break;
-        case ClaudeState::Thinking:
+        case claudestate::Display::Thinking:
             text = QStringLiteral("Claude: thinking");
             glyph = ClaudeTabIndicator::Glyph::Thinking;
             break;
-        case ClaudeState::ToolUse: {
+        case claudestate::Display::ToolUseBash:
+            text = QStringLiteral("Claude: bash");
+            glyph = ClaudeTabIndicator::Glyph::Bash;
+            break;
+        case claudestate::Display::ToolUseGeneric: {
             // Map tool name → friendly vocabulary per user spec. Unknown
             // tools fall through to the raw name so MCP / custom tools
-            // remain legible. Comparison is case-insensitive because
-            // transcript tool names and hook tool names have historically
-            // differed in casing across Claude Code releases.
-            const QString t = m_lastDetail.trimmed();
-            const QString lower = t.toLower();
-            if (lower == QLatin1String("bash")) {
-                text = QStringLiteral("Claude: bash");
-                glyph = ClaudeTabIndicator::Glyph::Bash;
+            // remain legible.
+            const QString lower = r.tool.trimmed().toLower();
+            if (lower == QLatin1String("read")) {
+                text = QStringLiteral("Claude: reading a file");
+            } else if (lower == QLatin1String("edit") ||
+                       lower == QLatin1String("write") ||
+                       lower == QLatin1String("notebookedit")) {
+                text = QStringLiteral("Claude: editing");
+            } else if (lower == QLatin1String("grep") ||
+                       lower == QLatin1String("glob")) {
+                text = QStringLiteral("Claude: searching");
+            } else if (lower == QLatin1String("webfetch") ||
+                       lower == QLatin1String("websearch")) {
+                text = QStringLiteral("Claude: browsing");
+            } else if (lower == QLatin1String("task") ||
+                       lower == QLatin1String("agent")) {
+                text = QStringLiteral("Claude: delegating");
+            } else if (lower.isEmpty()) {
+                text = QStringLiteral("Claude: thinking");
             } else {
-                if (lower == QLatin1String("read")) {
-                    text = QStringLiteral("Claude: reading a file");
-                } else if (lower == QLatin1String("edit") ||
-                           lower == QLatin1String("write") ||
-                           lower == QLatin1String("notebookedit")) {
-                    text = QStringLiteral("Claude: editing");
-                } else if (lower == QLatin1String("grep") ||
-                           lower == QLatin1String("glob")) {
-                    text = QStringLiteral("Claude: searching");
-                } else if (lower == QLatin1String("webfetch") ||
-                           lower == QLatin1String("websearch")) {
-                    text = QStringLiteral("Claude: browsing");
-                } else if (lower == QLatin1String("task") ||
-                           lower == QLatin1String("agent")) {
-                    text = QStringLiteral("Claude: delegating");
-                } else if (t.isEmpty()) {
-                    text = QStringLiteral("Claude: thinking");
-                } else {
-                    text = QStringLiteral("Claude: %1").arg(t);
-                }
-                glyph = ClaudeTabIndicator::Glyph::ToolUse;
+                text = QStringLiteral("Claude: %1").arg(r.tool.trimmed());
             }
+            glyph = ClaudeTabIndicator::Glyph::ToolUse;
             break;
         }
-        case ClaudeState::Compacting:
+        case claudestate::Display::Compacting:
             text = QStringLiteral("Claude: compacting");
             glyph = ClaudeTabIndicator::Glyph::Compacting;
             break;
-        }
     }
 
     // ANTS-1847 — same contrast adaptation as the tab dot, against the

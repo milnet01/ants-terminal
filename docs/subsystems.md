@@ -136,6 +136,16 @@ Listed only where behavior isn't obvious from the name.
   model-recommender). The repo-visibility label lives in `MainWindow`;
   "audit" is a `m_statusLabel` state, not a chip. Refreshers fire on the
   2 s status timer + `poll()` / `sweepLiveness()` for watch-loss recovery.
+  The bottom `Claude: <state>` label and the per-tab dot read through
+  the shared `claudestateresolver` helper (ANTS-1873) so the two
+  surfaces cannot disagree.
+- `claudestateresolver` (Qt6::Core, `ants_claude_lib`) — single
+  source-of-truth helper for the focused Claude session's display
+  state. `Resolved` value (`base/tool/planMode/auditing/awaitingInput`)
+  + `Display` precedence ladder
+  (`awaitingInput → planMode → auditing → base`), consumed by
+  `claudestatuswidgets`' tab-dot lambda + `apply()` and (in due
+  course) `modelautoswitch`'s INV-2 gate. ANTS-1873.
 - `modelrecommender` (Qt6::Core) — stateless `score(transcriptPath)`:
   tail-reads ≤ 512 KB JSONL, scores the last 20 assistant turns
   (file-writes, tool diversity, plan keywords, length), returns a `Tier`

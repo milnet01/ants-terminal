@@ -182,13 +182,13 @@ private:
     QString                m_lastBgTasksLogSig;
     QString                m_lastTasksLogSig;
 
-    // Render state — formerly the m_claude{LastState, LastDetail,
-    // PromptActive, PlanMode, Auditing} fivesome on MainWindow.
-    ClaudeState m_lastState = ClaudeState::NotRunning;
-    QString     m_lastDetail;
-    bool        m_promptActive = false;
-    bool        m_planMode = false;
-    bool        m_auditing = false;
+    // ANTS-1873 — the five cached scalars (m_lastState, m_lastDetail,
+    // m_promptActive, m_planMode, m_auditing) used to mirror the focused
+    // tab's state via integration signals + manual MainWindow pokes;
+    // they drifted from the tab dot's per-tab tracker entry in both
+    // directions. apply() now reads the focused tab's tracker entry
+    // directly via claudestate::forFocused, so the cache is deleted and
+    // the bar can no longer disagree with the dot by construction.
 
     // Provider callbacks — set by MainWindow before attach().
     std::function<TerminalWidget *()>      m_currentTerminalProvider;

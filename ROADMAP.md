@@ -9728,13 +9728,67 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Lanes: test, auditengine.
   Source: test-audit-2026-05-17.
 
-- 📋 [ANTS-1873] **Tab dot shows Claude idle while the status bar shows thinking — per-tab state desyncs from live state.**
+- ✅ [ANTS-1873] **Tab dot shows Claude idle while the status bar shows thinking — per-tab state desyncs from live state.**
   Screenshot 2026-05-25: the focused tab's dot indicator rendered Idle while the status bar correctly read "thinking" (Claude mid-turn). The per-tab/per-shell state behind the tab dot (ClaudeTabTracker shellState) desynced from the live state the status bar reads. Suspect a stuck/lagging per-tab state write or a missed transition on the tracker path vs the status-bar source. Relevant to ANTS-1735: its auto-switch actuator gates injection on this same per-tab Idle state (INV-2), so a tab stuck at Idle could let it inject mid-turn — must fix/validate before 1735's actuator wiring and spike S2.
   **Layman:** Sometimes the little dot on a tab says Claude has finished when it's actually still working (the bar at the bottom is right). The dot needs to agree with the real state.
   Kind: investigate.
   Lanes: claude-integration, status-bar.
   Source: user-report-2026-05-25.
   Clarification (user, 2026-05-25): the desync is BI-DIRECTIONAL, not tab-dot-only. The "prompting"/awaiting-input state renders correctly on the tab dot but is WRONG in the status bar — the converse of the screenshot case (thinking vs idle), where the dot was wrong and the bar right. So neither surface is consistently authoritative: each gets some ClaudeState values right and others wrong. The fix must reconcile BOTH surfaces against one true per-tab state source (bi-directional), not just make one follow the other.
+  Resolved (2026-05-26): shipped via src/claudestateresolver.{h,cpp}
+  (new) — pure Resolved/Display helper in ants_claude_lib. apply() and
+  the tab-dot indicator lambda both consume claudestate::display(); the
+  five cached scalars (m_lastState/m_lastDetail/m_promptActive/m_planMode/
+  m_auditing) are deleted; a new shellStateChanged → apply() connect
+  re-paints the bar on tracker-driven changes. Side-effect improvement
+  (INV-6): a PermissionRequest on a freshly-bound tab now surfaces on
+  the bar — pre-fix apply() short-circuited to hide on NotRunning before
+  the prompt check. Spec docs/specs/ANTS-1873.md (cold-eyes loops 1–13
+  folded, converged on polish). Tests under
+  tests/features/claude_state_resolver/ (11 RED-verified first). Full
+  ctest: 1551/1551 pass. Pairs with ANTS-1735 (actuator INV-2 can now
+  read claudestate::forFocused for clarity when wired).
+
+- 📋 [ANTS-1874] **Review Changes button doesn't appear when Claude only writes new files (no insertions/deletions on tracked files).**
+  refreshReviewButton's git-diff probe (src/claudestatuswidgets.cpp:339)
+  decides visibility by "is the diff non-empty?". A brand-new file that
+  Claude has written but not yet `git add`ed counts as untracked, so
+  plain `git diff` returns empty and the button stays hidden. Fix:
+  include untracked files in the "has changes" predicate (e.g.
+  `git status --porcelain` or `git ls-files --others --exclude-standard`
+  in addition to the diff), so the button surfaces for new files too.
+  Test: tests/features/claude_review_changes_button/ or extend an
+  existing review-button test to cover the untracked-new-file case.
+  **Layman:** When Claude creates a brand-new file, the bottom-bar "Review Changes" button stays hidden — it only lights up if Claude edits an existing file. So new-file changes have no quick way to be reviewed.
+  Kind: fix.
+  Lanes: claudestatuswidgets.
+  Source: user-report-2026-05-26.
+
+- 📋 [ANTS-1875] **Visual artifacts in the diff viewer's left gutter (red blobs / smudges in margins).**
+  User-flagged 2026-05-26 via Screenshot_20260526_092142.png. The
+  Review Changes diff viewer (DiffViewerDialog) shows red marks /
+  smudges in the left margin at several positions in the diff list.
+  Investigate: is the gutter paint pass leaking colour into the
+  margin (e.g. the line-number column or the +/- indicator column
+  overshooting), or is it the diff-line background fill bleeding past
+  its container clip? Likely candidates: src/diffviewerdialog.cpp
+  gutter paint, or a QTextEdit/QListWidget viewport stylesheet that
+  isn't clipping its background. Reproduce on the user's theme (dark
+  preset visible in the shot) and capture before/after to confirm.
+  **Layman:** Open the "Review Changes" diff window and you'll see odd red dots / smears in the left edge of the diff. They aren't part of the diff content — they're paint glitches we need to clean up.
+  Kind: fix.
+  Lanes: diffviewerdialog.
+  Source: user-report-2026-05-26 screenshot.
+  Correction (2026-05-26): the screenshot is a TERMINAL session
+  showing `git diff` output (window title "Ants Terminal · 0.7.92"),
+  not the DiffViewerDialog. Investigation should start with the
+  TerminalWidget paint path (terminalwidget.cpp QPainter pass and
+  the QTextLayout shaping over coloured cells), not
+  diffviewerdialog.cpp. Specifically check: per-cell background
+  fillRect bleeding past the column clip on coloured runs; selection-
+  ghost or overdraw on adjacent rows; the per-pixel terminal-area
+  fillRect alpha (opacity config) interacting with the cell BG fill.
+  Lane = terminalwidget, not diffviewerdialog.
 
 ## 0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)
 

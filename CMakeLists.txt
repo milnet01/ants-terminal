@@ -347,6 +347,10 @@ add_library(ants_claude_lib STATIC
     # invert the core←claude layering.
     src/modelautoswitch.cpp
     src/claudetabtracker.cpp
+    # ANTS-1873 — single-source-of-truth Claude state resolver shared by
+    # the tab dot, the status-bar label, and (in due course) the
+    # autonomous switcher's INV-2 gate.
+    src/claudestateresolver.cpp
     src/claudetranscript.cpp
     src/claudeprojects.cpp
     src/claudebgtasks.cpp
@@ -980,6 +984,8 @@ if(ANTS_TESTS)
                 tests/features/claude_session_freshness/test_claude_session_freshness.cpp
                 tests/features/claude_task_list_session_isolation/test_claude_task_list_session_isolation.cpp
                 tests/features/claude_pid_replacement/test_claude_pid_replacement.cpp
+                # ANTS-1873 — single-source-of-truth Claude state resolver.
+                tests/features/claude_state_resolver/test_claude_state_resolver.cpp
                 tests/features/mcp_extra_tools/test_mcp_extra_tools.cpp
                 tests/features/tasks_chip_done_over_total/test_tasks_chip_done_over_total.cpp
                 # ANTS-1859 — tasks/refresh dedup key excludes transcript mtime.
