@@ -29,7 +29,56 @@ bool hasPlanKeyword(const QString &text) {
     return false;
 }
 
+// ANTS-1890 — narrow stem regex over the latest user prompt. Per-keyword
+// alternations handle the actual English morphology of each verb (a flat
+// `(?:ed|ing|s)?` would miss `committed` / `pushes` / `rebased`):
+//
+//   commit  → commit | commits | committed | committing   (double-t)
+//   push    → push   | pushes  | pushed    | pushing      (-es plural)
+//   stage   → stage  | stages  | staged    | staging      (final-e elision)
+//   bump    → bump   | bumps   | bumped    | bumping      (regular)
+//   rebase  → rebase | rebases | rebased   | rebasing     (final-e elision)
+//
+// Each compiled as `(?:^|\W)/?<alt>(?:\W|$)`: word-boundary stem, optional
+// `/`-prefix for `/commit` slash-command form. Lazy-built once per process.
+// Linear; no nested quantifiers — no ReDoS surface (sibling regex idiom
+// matches `thinkingLevelFromLatestUserTurn` further down this TU).
+const QStringList kCommitIntentAlternations{
+    QStringLiteral("commit(?:s|ted|ting)?"),
+    QStringLiteral("push(?:es|ed|ing)?"),
+    QStringLiteral("stage(?:s|d|ing)?"),
+    QStringLiteral("bump(?:s|ed|ing)?"),
+    QStringLiteral("rebase(?:s|d|ing)?"),
+};
+
+const QVector<QRegularExpression> &commitIntentPatterns() {
+    static const QVector<QRegularExpression> pats = [] {
+        QVector<QRegularExpression> out;
+        out.reserve(kCommitIntentAlternations.size());
+        for (const QString &alt : kCommitIntentAlternations) {
+            out.append(QRegularExpression(
+                QStringLiteral("(?:^|\\W)/?") + alt +
+                QStringLiteral("(?:\\W|$)")));
+        }
+        return out;
+    }();
+    return pats;
+}
+
 }  // namespace
+
+bool hasCommitIntent(const QString &latestUserText) {
+    if (latestUserText.isEmpty()) return false;
+    for (const QRegularExpression &re : commitIntentPatterns()) {
+        if (re.match(latestUserText).hasMatch()) return true;
+    }
+    return false;
+}
+
+double weightForTurnIndex(int idx, int total) {
+    if (total <= 1) return 1.0;
+    return 1.0 + 2.0 * (static_cast<double>(idx) / (total - 1));
+}
 
 Result score(const QString &transcriptPath)
 {
@@ -64,37 +113,90 @@ Result score(const QString &transcriptPath)
 
     // INV-8: collect the last 20 assistant turns. Walk in reverse, append,
     // then reverse once — O(n) total (avoids prepend's O(n) per call).
+    // ANTS-1890 (INV-5): same single pass also collects the latest
+    // `{type:"user"}` line's joined text (skipping tool_result-only user
+    // lines), feeding the commit-intent hard override. No extra
+    // QFile::open / tail-read.
     QVector<QJsonObject> turns;
     turns.reserve(20);
+    QString latestUserText;
+    bool latestUserFound = false;
     for (int i = allLines.size() - 1; i >= 0 && turns.size() < 20; --i) {
         const QJsonObject obj =
             QJsonDocument::fromJson(allLines[i].toUtf8()).object();
-        if (obj.value(QStringLiteral("type")).toString() ==
-                QStringLiteral("assistant")) {
+        const QString type = obj.value(QStringLiteral("type")).toString();
+        if (type == QStringLiteral("assistant")) {
             turns.append(obj);
+        } else if (!latestUserFound && type == QStringLiteral("user")) {
+            // Joined text-content blocks; skip user lines with no text
+            // (e.g. tool_result envelopes — those carry no human prompt).
+            const QJsonValue content =
+                obj.value(QStringLiteral("message")).toObject()
+                   .value(QStringLiteral("content"));
+            QStringList parts;
+            if (content.isArray()) {
+                for (const QJsonValue &cv : content.toArray()) {
+                    const QJsonObject c = cv.toObject();
+                    if (c.value(QStringLiteral("type")).toString() ==
+                            QStringLiteral("text"))
+                        parts.append(c.value(QStringLiteral("text")).toString());
+                }
+            } else if (content.isString()) {
+                parts.append(content.toString());
+            }
+            const QString joined = parts.join(QLatin1Char(' '));
+            if (!joined.isEmpty()) {
+                latestUserText = joined.toLower();
+                latestUserFound = true;
+            }
         }
     }
     std::reverse(turns.begin(), turns.end());
 
+    // Capture currentModel from the most-recent assistant turn BEFORE the
+    // override branch — the override returns currentModel verbatim and
+    // empty is acceptable on a fresh-session commit-intent.
+    if (!turns.isEmpty()) {
+        def.currentModel =
+            turns.last()
+                .value(QStringLiteral("message")).toObject()
+                .value(QStringLiteral("model")).toString();
+    }
+
+    // INV-2 — commit-intent hard override. Fires AFTER the walk (so
+    // currentModel is captured) and BEFORE the empty-window short-circuit
+    // (so a fresh-session "commit and push" routes to Haiku). The Haiku
+    // target is then subject to ModelAutoSwitch::clampToFloor in the gate.
+    if (hasCommitIntent(latestUserText)) {
+        Result r;
+        r.tier         = Tier::Haiku;
+        r.reason       = QStringLiteral("commit_intent");
+        r.currentModel = def.currentModel;
+        return r;
+    }
+
     if (turns.isEmpty()) return def;
 
-    // Read current model from most-recent assistant turn's message.model.
-    // This field is always present in real Claude Code transcripts.
-    def.currentModel =
-        turns.last()
-            .value(QStringLiteral("message")).toObject()
-            .value(QStringLiteral("model")).toString();
-
     // --- extract features ---
-    int fileWriteCount = 0;
-    bool planKeyword   = false;
+    // ANTS-1890 (INV-4): count-based features (fileWriteCount, avgLen) are
+    // recency-weighted via weightForTurnIndex(idx, total) so a tail of
+    // recent activity is not drowned by 19 old turns. toolDiversity (set
+    // cardinality) and planKeyword (window-wide OR) stay UNWEIGHTED —
+    // weighting is meaningless for them. fileWriteCount also stays as an
+    // unweighted int so the `fileWriteCount == 0` mechanical-feature
+    // predicate keeps its v1 semantics.
+    int fileWriteCount      = 0;        // unweighted — mechanical predicate
+    double weightedWrites   = 0.0;      // weighted sum, threshold >= 8
+    double weightedMsgLen   = 0.0;
+    double weightedMsgCount = 0.0;
+    bool planKeyword        = false;
     QSet<QString> toolNames;
-    qint64 totalMsgLen = 0;
-    int msgCount       = 0;
 
-    for (const QJsonObject &turn : turns) {
+    const int totalTurns = turns.size();
+    for (int t = 0; t < totalTurns; ++t) {
+        const double w = weightForTurnIndex(t, totalTurns);
         const QJsonArray content =
-            turn.value(QStringLiteral("message"))
+            turns[t].value(QStringLiteral("message"))
                 .toObject()
                 .value(QStringLiteral("content"))
                 .toArray();
@@ -108,25 +210,33 @@ Result score(const QString &transcriptPath)
                 if (name == QStringLiteral("Edit") ||
                         name == QStringLiteral("Write")) {
                     ++fileWriteCount;
+                    weightedWrites += w;
                 }
             } else if (type == QStringLiteral("text")) {
                 const QString text =
                     c.value(QStringLiteral("text")).toString();
-                totalMsgLen += text.length();
-                ++msgCount;
+                weightedMsgLen   += w * text.length();
+                weightedMsgCount += w;
                 if (hasPlanKeyword(text)) planKeyword = true;
             }
         }
     }
 
     const int toolDiversity = toolNames.size();
-    const double avgLen =
-        (msgCount > 0) ? static_cast<double>(totalMsgLen) / msgCount : 0.0;
+    // Weighted-average length: ratio of weighted-total to weighted-count
+    // (both scale with the same weights, so the >= 500 threshold is
+    // unchanged from v1).
+    const double avgLen = (weightedMsgCount > 0.0)
+        ? (weightedMsgLen / weightedMsgCount) : 0.0;
 
     // --- score ---
+    // Threshold raises from v1's `>= 4` (equal weights summing to 20) to
+    // `>= 8` (v2 weights sum to 40 across a full window — 2× the v1 mass).
+    // Calibration is 1:1 only under a uniform distribution; recent
+    // clustering trips earlier, old clustering trips later, by design.
     int sc = 0;
     QString reasons;
-    if (fileWriteCount >= 4)     { sc += 2; reasons += QStringLiteral("many_writes "); }
+    if (weightedWrites >= 8.0)   { sc += 2; reasons += QStringLiteral("many_writes "); }
     if (toolDiversity >= 6)      { sc += 1; reasons += QStringLiteral("tool_diversity "); }
     if (planKeyword)             { sc += 2; reasons += QStringLiteral("plan_keyword "); }
     if (avgLen >= 500.0)         { sc += 1; reasons += QStringLiteral("long_prompts "); }

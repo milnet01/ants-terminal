@@ -13,17 +13,30 @@ no assistant turns → treated as Sonnet tier.
 
 ## Scoring algorithm (last 20 assistant turns, tail-read ≤ 512 KB)
 
-Feature                                        | Weight
----------------------------------------------- | ------
-file_write_count ≥ 4 (Edit/Write tool calls)   | +2 (Opus signal)
-tool_diversity ≥ 6 unique tool names           | +1 (Opus signal)
-plan_keyword in assistant text                 | +2 (Opus: "spec","design","architecture","review","plan","refactor")
-avg_message_len ≥ 500 chars                    | +1 (Opus: long context)
-file_write_count == 0 AND tool_diversity ≤ 2   | -2 (Haiku: mechanical)
+Feature                                                                     | Weight
+--------------------------------------------------------------------------- | ------
+weighted_file_write_count ≥ 8 (Edit/Write × recency-weighted, see ANTS-1890)| +2 (Opus signal)
+tool_diversity ≥ 6 unique tool names                                        | +1 (Opus signal)
+plan_keyword in assistant text                                              | +2 (Opus: "spec","design","architecture","review","plan","refactor")
+weighted_avg_message_len ≥ 500 chars                                        | +1 (Opus: long context)
+file_write_count == 0 AND tool_diversity ≤ 2                                | -2 (Haiku: mechanical)
 
 Score ≥ 3  → OPUS_TIER
 Score ≤ -1 → HAIKU_TIER
 Otherwise  → SONNET_TIER
+
+**Recency weighting (ANTS-1890).** Count-based features (writes, message
+length) are weighted by `weightForTurnIndex(idx, total)` returning a
+linear `w ∈ [1.0, 3.0]` so recent activity outweighs old. Set-cardinality
+features (tool_diversity) and window-wide booleans (plan_keyword) stay
+unweighted. The 8-threshold replaces v1's 4 (mass sum doubles from 20 to
+40 across a full window).
+
+**Commit-intent hard override (ANTS-1890).** If the latest user prompt
+matches the `commit/push/stage/bump/rebase` stem regex, `score()`
+returns `Tier::Haiku` with `reason="commit_intent"` directly, bypassing
+the additive ladder. The autoswitcher's `clampToFloor` gate may upclamp
+to the user's configured floor.
 
 ## Invariants
 

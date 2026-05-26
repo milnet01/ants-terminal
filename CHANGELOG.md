@@ -14,6 +14,23 @@ for security-relevant changes.
 
 ### Added
 
+- **Auto model-switcher now recognises "commit and push" as a cheap
+  turn — picks Haiku immediately even after a heavy refactor session.**
+  (ANTS-1890) When you finish a long coding session and type
+  "commit and push" (or "stage these files", "bump to 0.8.0", "rebase
+  onto main", or any of their natural inflections like "committing" /
+  "pushes"), the recommender now jumps straight to Haiku for that turn
+  instead of staying on Opus/Sonnet because the prior 19 turns looked
+  busy. It also pays more attention to your most-recent activity —
+  the scorer weights recent turns up to 3× heavier than old ones, so
+  a quick mechanical tail no longer gets drowned by an earlier
+  refactor. And when you override the auto-switcher with `/model X`,
+  it now backs off for 10 minutes (per project) instead of immediately
+  re-trying when the 90 s dwell expires — so it doesn't argue with
+  you. All three changes drive the trust signal toward the
+  default-ON flip. Tests: 21 new across `model_recommender/`,
+  `model_auto_switch/`, and `model_auto_switch_outcome_fillin/`.
+
 - **`model_switch_stats` now tells you whether the auto-switcher is
   ON, OFF, or quietly waiting — and supports a global view across
   projects.** (ANTS-1889) Before this change, the verb returned

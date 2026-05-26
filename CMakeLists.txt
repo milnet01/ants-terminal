@@ -992,6 +992,8 @@ if(ANTS_TESTS)
                 tests/features/model_auto_switch_actuator/test_model_auto_switch_actuator.cpp
                 # ANTS-1735 §2.5 — outcome fill-in tick wiring guard.
                 tests/features/model_auto_switch_outcome_fillin/test_model_auto_switch_outcome_fillin.cpp
+                # ANTS-1890 INV-7 — behavioural cache wiring (live controller).
+                tests/features/model_auto_switch_outcome_fillin/test_override_cache_controller.cpp
                 tests/features/mcp_extra_tools/test_mcp_extra_tools.cpp
                 tests/features/tasks_chip_done_over_total/test_tasks_chip_done_over_total.cpp
                 # ANTS-1859 — tasks/refresh dedup key excludes transcript mtime.
@@ -1608,6 +1610,10 @@ if(ANTS_TESTS)
         # ANTS-1888 — chip wiring contract.
         SRC_CLAUDESTATUSWIDGETS_H_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.h"
         SRC_CLAUDESTATUSWIDGETS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp"
+        # ANTS-1890 — modelrecommender source-grep paths (INV-5/INV-9 purity).
+        SRC_MODELRECOMMENDER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/modelrecommender.cpp"
+        SRC_MODELRECOMMENDER_H_PATH="${CMAKE_SOURCE_DIR}/src/modelrecommender.h"
+        SRC_MODELAUTOSWITCH_H_PATH="${CMAKE_SOURCE_DIR}/src/modelautoswitch.h"
         SRC_MAIN_CPP="${CMAKE_SOURCE_DIR}/src/main.cpp"
         SRC_CMAKELISTS="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
         FLATPAK_MANIFEST_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/org.ants.Terminal.yml"

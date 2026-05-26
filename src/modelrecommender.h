@@ -49,6 +49,23 @@ enum class ThinkingLevel {
 // present but carries no directive. Pure; no Qt threading.
 ThinkingLevel thinkingLevelFromLatestUserTurn(const QString &transcriptPath);
 
+// ANTS-1890 — Pure stem-regex over the latest user prompt's text. Returns
+// true when any of `commit/push/stage/bump/rebase` (plus their `-ed`/`-ing`/
+// `-s` inflections, optional `/`-prefix for `/commit` style slash commands)
+// matches as a word-boundary stem. Substrings inside other words (e.g.
+// "committee", "pushcart", "thinkpad") do NOT match. Caller pre-lowercases
+// `latestUserText` via QString::toLower() — the helper matches plain ASCII.
+// Pure; O(N) in input length; no I/O. Drives the score() hard override.
+bool hasCommitIntent(const QString &latestUserText);
+
+// ANTS-1890 — Recency weight for a turn at zero-based index `idx` within a
+// window of `total` turns (idx=total-1 is the LATEST turn). Returns a
+// double in [1.0, 3.0]: linear, w = 1.0 + 2.0 * (idx / max(1, total-1)).
+// w(0,n)==1.0 for all n>=1; w(total-1,total)==3.0 for total>=2;
+// w(0,1)==1.0. Undefined for total<1 — caller must short-circuit on empty
+// windows. Pure; no I/O.
+double weightForTurnIndex(int idx, int total);
+
 // thinkingLevelLabel() returns a short human label for the chip.
 // Unknown → empty string (chip hides the thinking half — never "Unknown");
 // Standard → "standard"; rest → "think" / "think hard" / "ultrathink".

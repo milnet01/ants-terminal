@@ -28,6 +28,7 @@ Gate actingGate() {
     g.floor            = Tier::Haiku;
     g.ticksTargetStable = ModelAutoSwitch::kStableTicks;
     g.msSinceLastSwitch = ModelAutoSwitch::kMinDwellMs;
+    g.msSinceLastOverride = -1;   // ANTS-1890: no override on record
     return g;
 }
 
@@ -158,6 +159,67 @@ TEST(ModelAutoSwitch, Inv8ClampTruthTable) {
             << nm(ModelAutoSwitch::clampToFloor(c.rec, c.floor))
             << " want " << nm(c.want);
     }
+}
+
+// ----- ANTS-1890 — override cool-down + commit-intent clamp -----
+
+// INV-6 — A project-scoped override on record within the 10-minute
+// cool-down blocks decide() from acting, even when every other gate
+// holds (dwell included).
+TEST(ModelAutoSwitchCooldown, OverrideCoolDownBlocksAct) {
+    Gate g = actingGate();
+    g.msSinceLastOverride = ModelAutoSwitch::kOverrideCooldownMs - 1;
+    const Decision d = ModelAutoSwitch::decide(g);
+    EXPECT_FALSE(d.act)
+        << "An override on record within kOverrideCooldownMs must block act";
+}
+
+// INV-6 — Once the 10-minute cool-down has elapsed, decide() acts
+// again (assuming every other gate still holds).
+TEST(ModelAutoSwitchCooldown, OverrideCoolDownPassesWhenExpired) {
+    Gate g = actingGate();
+    g.msSinceLastOverride = ModelAutoSwitch::kOverrideCooldownMs;
+    const Decision d = ModelAutoSwitch::decide(g);
+    EXPECT_TRUE(d.act)
+        << "An expired-cool-down override must NOT block act";
+}
+
+// INV-6 — Sentinel -1 (no override on record / no ledger seen yet)
+// does NOT block the cool-down rule, regardless of other field values.
+TEST(ModelAutoSwitchCooldown, OverrideCoolDownIgnoredWhenSentinelMinusOne) {
+    Gate g = actingGate();
+    g.msSinceLastOverride = -1;
+    const Decision d = ModelAutoSwitch::decide(g);
+    EXPECT_TRUE(d.act)
+        << "Sentinel -1 must NOT block act (cool-down only applies when "
+           "msSinceLastOverride >= 0)";
+}
+
+// INV-8 — Per-project scope. An override on a DIFFERENT project (which
+// the cache key lookup returns as -1 sentinel) does not block this
+// project's decide(). This is the gate-side property of INV-8: the
+// per-project interpretation is how decide() reads msSinceLastOverride,
+// not how the cache is populated.
+TEST(ModelAutoSwitchCooldown, OverrideCoolDownIsPerProject) {
+    Gate g = actingGate();
+    // Caller looks up the focused tab's project in m_lastOverrideMsByProject.
+    // For an unknown project key, the lookup returns -1 sentinel.
+    g.msSinceLastOverride = -1;
+    EXPECT_TRUE(ModelAutoSwitch::decide(g).act);
+}
+
+// INV-2a — Commit-intent recommendation (Tier::Haiku from the scorer)
+// is clamped to the user's configured floor in the gate. Haiku with a
+// Sonnet floor must yield tierArg="sonnet".
+TEST(ModelAutoSwitchCooldown, CommitIntentTargetClampedByGate) {
+    Gate g = actingGate();
+    g.current     = Tier::Opus;
+    g.recommended = Tier::Haiku;   // scorer's commit-intent override target
+    g.floor       = Tier::Sonnet;  // user's configured floor
+    const Decision d = ModelAutoSwitch::decide(g);
+    EXPECT_TRUE(d.act);
+    EXPECT_EQ(d.tierArg, QStringLiteral("sonnet"))
+        << "Haiku target must clamp up to Sonnet floor";
 }
 
 // INV-9: security boundary — tierArg of any acting decision is always one of the

@@ -154,22 +154,31 @@ Listed only where behavior isn't obvious from the name.
   passive model-state chip — same tail-read pattern, but walks for the
   most recent `{type:"user"}` line and matches the inline thinking
   directive set (`ultrathink` / `think harder` / `think hard` / `think`
-  / `/nothink` → Standard). Scorer-v2 (ANTS-1890, spec drafting) adds
-  two more pure helpers: `hasCommitIntent` (commit-intent hard override
-  on the latest user turn — stem-regex over commit/push/stage/bump/rebase)
-  and `weightForTurnIndex` (1.0×→3.0× linear recency weighting applied
-  to the count-based scorer features).
+  / `/nothink` → Standard). Scorer-v2 (ANTS-1890, shipped 2026-05-26) adds two pure helpers:
+  `hasCommitIntent` (commit-intent hard override on the latest user turn
+  — stem-regex over commit/push/stage/bump/rebase with per-keyword
+  English morphology) and `weightForTurnIndex` (1.0×→3.0× linear
+  recency weighting applied to fileWriteCount + avgLen; threshold
+  raised 4→8 to compensate for the doubled mass). `score()` now also
+  walks for the latest user-turn text in the same single pass (no extra
+  tail-read) and skips tool_result-only user lines.
 - `modelautoswitch` (Qt6::Core, `ants_claude_lib`) — pure decision helper
   for the autonomous switcher (Shape B): `clampToFloor` + `decide(Gate)`
   gate (enabled / focused-tab Idle / composer-empty / clamped-target
-  hysteresis / stability / dwell → lowercase tier alias via
-  `ModelRecommender::tierName`). In claude_lib (not core) so the
-  `tierName` reuse doesn't invert the layer DAG. The live actuator
-  (`ClaudeStatusBarController::refreshAutoModelSwitch`, timer-driven)
-  injects `/model <tier>\n` on `decide(...).act`, appends a pending
-  ledger record, and suppresses the Shape A chip when enabled (INV-14).
-  Default-OFF via `Config::claudeAutoModel().switch_enabled`; S2 (live
-  composer-empty proxy validation) gates the default-ON flip. ANTS-1735.
+  hysteresis / stability / dwell / per-project override cool-down →
+  lowercase tier alias via `ModelRecommender::tierName`). In claude_lib
+  (not core) so the `tierName` reuse doesn't invert the layer DAG. The
+  live actuator (`ClaudeStatusBarController::refreshAutoModelSwitch`,
+  timer-driven) injects `/model <tier>\n` on `decide(...).act`, appends
+  a pending ledger record, and suppresses the Shape A chip when enabled
+  (INV-14). The per-project cool-down (`Gate::msSinceLastOverride` +
+  `kOverrideCooldownMs=10min`, ANTS-1890) is fed by a controller-side
+  `QHash<QString, qint64> m_lastOverrideMsByProject` cache —
+  bootstrap-seeded from the ledger at `attach()` (restart-safe) and
+  incrementally populated by `fillPendingLedgerOutcomes` after each
+  settled `userOverrideWithin5`. Default-OFF via
+  `Config::claudeAutoModel().switch_enabled`; S2 (live composer-empty
+  proxy validation) gates the default-ON flip. ANTS-1735 + ANTS-1890.
 - `modelswitchledger` (Qt6::Core, `ants_core_lib`) — model-switch
   effectiveness ledger: JSONL append + 256 KiB drop-oldest eviction with
   pending-record pinning (atomic, 0600), plus pure outcome detection

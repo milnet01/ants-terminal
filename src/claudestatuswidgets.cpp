@@ -412,6 +412,14 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
 
         showPermissionPrompt(awaitingPid, belongsToFocused, rule);
     });
+
+    // ANTS-1890 INV-7 — Restart-safety seed of the override cool-down
+    // cache. Runs once at attach() after services are wired but BEFORE
+    // the 2 s status timer fires its first tick. Without this, an
+    // override 30 s before app restart is forgotten — the very turn
+    // that should fire cool-down passes — because
+    // fillPendingLedgerOutcomes only walks pending records.
+    seedOverrideCacheFromLedger(ModelSwitchLedger::defaultLedgerPath());
 }
 
 void ClaudeStatusBarController::showPermissionPrompt(pid_t awaitingPid,
@@ -1377,15 +1385,28 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     const qint64 minDwellMs =
         static_cast<qint64>(autoCfg.value("min_dwell_sec").toInt(90)) * 1000;
 
+    // ANTS-1890 INV-7 / INV-8 — per-project override cool-down. Look up
+    // the cached ms timestamp for the focused tab's project; -1 sentinel
+    // means no override on record for THIS project (an override on
+    // project A must NOT block an auto-switch on project B). Translate
+    // to ms-since-then; the gate's `>= 0 && < kOverrideCooldownMs` rule
+    // does the rest in decide().
+    const QString projectRoot = focused->shellCwd();
+    const qint64 lastOverrideMs =
+        m_lastOverrideMsByProject.value(projectRoot, -1);
+    const qint64 msSinceOverride =
+        (lastOverrideMs > 0) ? (nowMs - lastOverrideMs) : -1;
+
     ModelAutoSwitch::Gate gate;
-    gate.enabled            = true;
-    gate.focusedState       = s.state;
-    gate.composerEmpty      = composerEmpty;
-    gate.current            = current;
-    gate.recommended        = rec.tier;
-    gate.floor              = floor;
-    gate.ticksTargetStable  = m_autoSwitchTicksStable;
-    gate.msSinceLastSwitch  = dwellMs;
+    gate.enabled              = true;
+    gate.focusedState         = s.state;
+    gate.composerEmpty        = composerEmpty;
+    gate.current              = current;
+    gate.recommended          = rec.tier;
+    gate.floor                = floor;
+    gate.ticksTargetStable    = m_autoSwitchTicksStable;
+    gate.msSinceLastSwitch    = dwellMs;
+    gate.msSinceLastOverride  = msSinceOverride;
 
     // Note: the spec's kMinDwellMs (90 s) is the default; the config
     // can override it within [30 s, 1800 s] per §2.7. decide() reads
@@ -1508,8 +1529,15 @@ void ClaudeStatusBarController::fillPendingLedgerOutcomes()
         return;
     }
     m_lastPendingFillMs = nowMs;
+    fillPendingLedgerOutcomes(ModelSwitchLedger::defaultLedgerPath());
+}
 
-    const QString ledgerPath = ModelSwitchLedger::defaultLedgerPath();
+// ANTS-1890 — Test seam. Behavioural overload reachable from
+// behavioural tests; bypasses the 30 s throttle (tests run sub-second).
+// The production caller above pays the throttle and then delegates here.
+void ClaudeStatusBarController::fillPendingLedgerOutcomes(
+    const QString &ledgerPath)
+{
     QList<ModelSwitchLedger::Record> recs =
         ModelSwitchLedger::readRecords(ledgerPath);
     if (recs.isEmpty()) return;
@@ -1569,8 +1597,44 @@ void ClaudeStatusBarController::fillPendingLedgerOutcomes()
             r.outcome = fill.outcome;
             anyChanged = true;
         }
+        // ANTS-1890 INV-7 — once a record settles with userOverrideWithin5,
+        // remember its timestamp per project so the gate cool-down can read
+        // it without re-scanning the ledger every 2 s tick. We use the
+        // computed outcome here (not r.outcome) — fill.outcome is the
+        // post-compute value; r.outcome may be the unchanged input.
+        if (fill.outcome.userOverrideWithin5 && !fill.outcome.pending) {
+            const qint64 tsMs = ModelSwitchLedger::parseIso8601Ms(r.ts);
+            qint64 &slot = m_lastOverrideMsByProject[r.project];
+            if (tsMs > slot) slot = tsMs;
+        }
     }
 
     if (anyChanged)
         ModelSwitchLedger::writeRecords(ledgerPath, recs);
+}
+
+// ANTS-1890 INV-7 — bootstrap seed. Scans the ledger once at controller
+// construction and populates m_lastOverrideMsByProject from any settled
+// `userOverrideWithin5` records already on disk. Without this, an
+// override 30 s before app restart would be "forgotten" (the very turn
+// that should fire cool-down passes) because fillPendingLedgerOutcomes
+// only walks PENDING records, and a 30-s-old override is usually
+// already settled.
+void ClaudeStatusBarController::seedOverrideCacheFromLedger(
+    const QString &ledgerPath)
+{
+    const QList<ModelSwitchLedger::Record> recs =
+        ModelSwitchLedger::readRecords(ledgerPath);
+    for (const ModelSwitchLedger::Record &r : recs) {
+        if (!r.outcome.userOverrideWithin5 || r.outcome.pending) continue;
+        const qint64 tsMs = ModelSwitchLedger::parseIso8601Ms(r.ts);
+        qint64 &slot = m_lastOverrideMsByProject[r.project];
+        if (tsMs > slot) slot = tsMs;
+    }
+}
+
+qint64 ClaudeStatusBarController::lastOverrideMsForProject(
+    const QString &project) const
+{
+    return m_lastOverrideMsByProject.value(project, -1);
 }

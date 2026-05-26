@@ -798,9 +798,11 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // ANTS-1735 §2.5 — outcome fill-in tick. Same 2 s timer, but the
     // method internally throttles to once per 30 s and bails fast when
     // the ledger is empty or has no pending records.
+    // ANTS-1890 — qOverload<> disambiguates the no-arg production
+    // overload from the path-injecting test overload added for INV-7.
     connect(m_statusTimer, &QTimer::timeout,
             m_claudeStatusBarController,
-            &ClaudeStatusBarController::fillPendingLedgerOutcomes);
+            qOverload<>(&ClaudeStatusBarController::fillPendingLedgerOutcomes));
     // ANTS-1735 §8 OQ-3 — first-run nudge. Controller fires this at most
     // once per process when Claude Code is running in the focused tab,
     // the switch is still default-off, and the persistent

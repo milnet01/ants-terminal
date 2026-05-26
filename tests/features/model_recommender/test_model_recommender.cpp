@@ -8,7 +8,43 @@
 #include <QJsonObject>
 #include <QTemporaryFile>
 #include <QTextStream>
+#include <fstream>
+#include <sstream>
+#include <string>
 #include "modelrecommender.h"
+
+#ifndef SRC_MODELRECOMMENDER_CPP_PATH
+#error "SRC_MODELRECOMMENDER_CPP_PATH compile definition required"
+#endif
+#ifndef SRC_MODELRECOMMENDER_H_PATH
+#error "SRC_MODELRECOMMENDER_H_PATH compile definition required"
+#endif
+
+namespace {
+std::string slurpFile(const char *path) {
+    std::ifstream f(path);
+    if (!f) { std::fprintf(stderr, "cannot open %s\n", path); std::exit(2); }
+    std::stringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
+}
+
+// Slice the body of a brace-balanced function definition starting at the
+// marker through to its matching closing brace at column 1.
+std::string functionBody(const std::string &src, const std::string &marker) {
+    const auto headerStart = src.find(marker);
+    if (headerStart == std::string::npos) return {};
+    const auto openBrace = src.find('{', headerStart);
+    if (openBrace == std::string::npos) return {};
+    int depth = 1;
+    size_t i = openBrace + 1;
+    for (; i < src.size() && depth > 0; ++i) {
+        if (src[i] == '{') ++depth;
+        else if (src[i] == '}') --depth;
+    }
+    return src.substr(openBrace, i - openBrace);
+}
+}  // namespace
 
 namespace {
 
@@ -25,6 +61,44 @@ QString writeSyntheticTranscript(const QVector<QJsonArray> &turns,
         QJsonObject msg;
         msg["content"] = content;
         msg["model"] = model;
+        turn["message"] = msg;
+        out << QJsonDocument(turn).toJson(QJsonDocument::Compact) << "\n";
+    }
+    f.close();
+    return f.fileName();
+}
+
+// ANTS-1890 — sibling of writeSyntheticTranscript that emits N assistant
+// turns followed by ONE user turn with arbitrary text. score()'s reverse
+// walk finds the user line first; hasCommitIntent runs against it.
+QString writeSyntheticTranscriptWithUserTail(
+    const QVector<QJsonArray> &assistantTurns,
+    const QString &userText,
+    QTemporaryFile &f,
+    const QString &model = QStringLiteral("claude-sonnet-4-6"))
+{
+    if (!f.open()) return f.fileName();
+    QTextStream out(&f);
+    for (const QJsonArray &content : assistantTurns) {
+        QJsonObject turn;
+        turn["type"] = "assistant";
+        turn["timestamp"] = "2026-05-21T00:00:00.000Z";
+        QJsonObject msg;
+        msg["content"] = content;
+        msg["model"] = model;
+        turn["message"] = msg;
+        out << QJsonDocument(turn).toJson(QJsonDocument::Compact) << "\n";
+    }
+    {
+        QJsonObject turn;
+        turn["type"] = "user";
+        QJsonObject msg;
+        QJsonArray content;
+        QJsonObject block;
+        block["type"] = "text";
+        block["text"] = userText;
+        content.append(block);
+        msg["content"] = content;
         turn["message"] = msg;
         out << QJsonDocument(turn).toJson(QJsonDocument::Compact) << "\n";
     }
@@ -65,17 +139,22 @@ TEST(ModelRecommender, Inv1MissingFileReturnsSonnet) {
     EXPECT_EQ(result.tier, ModelRecommender::Tier::Sonnet);
 }
 
-// INV-2: plan keyword + 4 writes → Opus
-TEST(ModelRecommender, Inv2PlanKeywordPlusFourWritesReturnsOpus) {
+// INV-2: plan keyword + sustained writes → Opus.
+// Under ANTS-1890 v2 weighted writes (sum ≈ 40 across a full 20-turn
+// window), the v1 fixture (1 turn × 4 writes = weighted 4.0 < 8) no
+// longer trips many_writes. The behavioural contract — "writing-heavy
+// session with plan keyword → Opus" — still holds; the fixture is
+// scaled to match v2's weighted threshold by spreading writes across
+// the full window.
+TEST(ModelRecommender, Inv2PlanKeywordPlusManyWritesReturnsOpus) {
     QTemporaryFile f;
-    QJsonArray content;
-    content.append(textBlock(QStringLiteral("Let me design the architecture for this spec.")));
-    content.append(toolUse(QStringLiteral("Edit")));
-    content.append(toolUse(QStringLiteral("Edit")));
-    content.append(toolUse(QStringLiteral("Edit")));
-    content.append(toolUse(QStringLiteral("Edit")));
     QVector<QJsonArray> turns;
-    turns.append(content);
+    for (int i = 0; i < 20; ++i) {
+        QJsonArray content;
+        content.append(textBlock(QStringLiteral("Let me design the architecture for this spec.")));
+        content.append(toolUse(QStringLiteral("Edit")));
+        turns.append(content);
+    }
     const auto result = ModelRecommender::score(writeSyntheticTranscript(turns, f));
     EXPECT_EQ(result.tier, ModelRecommender::Tier::Opus)
         << "reason: " << result.reason.toStdString();
@@ -261,6 +340,287 @@ TEST(ModelRecommenderThinkingLevel, LatestUserTurnWins) {
     f.close();
     EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(f.fileName()),
               ModelRecommender::ThinkingLevel::Standard);
+}
+
+// ----- ANTS-1890 — hasCommitIntent + weightForTurnIndex pure helpers -----
+
+// INV-1 — exact verbs return true (caller pre-lowercases).
+TEST(ModelRecommenderCommitIntent, CommitIntentExactWordsMatch) {
+    using ModelRecommender::hasCommitIntent;
+    EXPECT_TRUE(hasCommitIntent(QStringLiteral("commit and push")));
+    EXPECT_TRUE(hasCommitIntent(QStringLiteral("git commit -m 'x'")));
+    EXPECT_TRUE(hasCommitIntent(QStringLiteral("please bump to 0.8.0")));
+    EXPECT_TRUE(hasCommitIntent(QStringLiteral("rebase onto main")));
+    EXPECT_TRUE(hasCommitIntent(QStringLiteral("stage these files")));
+    EXPECT_TRUE(hasCommitIntent(QStringLiteral("/commit")));
+}
+
+// INV-1 — `-ed`, `-ing`, `-s` inflected forms of every listed verb match.
+TEST(ModelRecommenderCommitIntent, CommitIntentInflectedFormsMatch) {
+    using ModelRecommender::hasCommitIntent;
+    EXPECT_TRUE(hasCommitIntent(QStringLiteral("i just committed; now push it")));
+    EXPECT_TRUE(hasCommitIntent(QStringLiteral("pushing the change now")));
+    EXPECT_TRUE(hasCommitIntent(QStringLiteral("staged everything ready")));
+    EXPECT_TRUE(hasCommitIntent(QStringLiteral("bumping the version")));
+    EXPECT_TRUE(hasCommitIntent(QStringLiteral("rebased onto main")));
+    EXPECT_TRUE(hasCommitIntent(QStringLiteral("commits land cleanly")));
+    EXPECT_TRUE(hasCommitIntent(QStringLiteral("pushes go through")));
+}
+
+// INV-1 — substrings inside larger words do NOT match.
+TEST(ModelRecommenderCommitIntent, CommitIntentSubstringRejected) {
+    using ModelRecommender::hasCommitIntent;
+    EXPECT_FALSE(hasCommitIntent(QStringLiteral("the committee met yesterday")));
+    EXPECT_FALSE(hasCommitIntent(QStringLiteral("we have a pushcart problem")));
+    EXPECT_FALSE(hasCommitIntent(QStringLiteral("on the thinkpad keyboard")));
+    EXPECT_FALSE(hasCommitIntent(QStringLiteral("plan the next sprint")));
+    EXPECT_FALSE(hasCommitIntent(QStringLiteral("")));
+    // "bumper" must not match "bump" (substring rejection).
+    EXPECT_FALSE(hasCommitIntent(QStringLiteral("the front bumper is dented")));
+    // "rebases" — actually IS an inflection of rebase, should match.
+    EXPECT_TRUE(hasCommitIntent(QStringLiteral("rebases the branch")));
+}
+
+// INV-3 — w(idx,total) is monotone non-decreasing in idx.
+TEST(ModelRecommenderWeights, RecencyWeightingMonotone) {
+    using ModelRecommender::weightForTurnIndex;
+    const int total = 20;
+    double prev = weightForTurnIndex(0, total);
+    for (int i = 1; i < total; ++i) {
+        const double curr = weightForTurnIndex(i, total);
+        EXPECT_GE(curr, prev) << "idx=" << i << " curr=" << curr << " prev=" << prev;
+        prev = curr;
+    }
+}
+
+// INV-3 — endpoints: w(0,n)==1.0 for n>=1; w(total-1,total)==3.0 for total>=2.
+TEST(ModelRecommenderWeights, RecencyWeightingEndpoints) {
+    using ModelRecommender::weightForTurnIndex;
+    for (int n : {1, 2, 5, 20, 100}) {
+        EXPECT_DOUBLE_EQ(weightForTurnIndex(0, n), 1.0) << "n=" << n;
+    }
+    for (int n : {2, 5, 20, 100}) {
+        EXPECT_DOUBLE_EQ(weightForTurnIndex(n - 1, n), 3.0) << "n=" << n;
+    }
+}
+
+// INV-3 — singleton window: w(0,1)==1.0 (boundary).
+TEST(ModelRecommenderWeights, RecencyWeightingSingleton) {
+    using ModelRecommender::weightForTurnIndex;
+    EXPECT_DOUBLE_EQ(weightForTurnIndex(0, 1), 1.0);
+}
+
+// INV-2 — commit-intent hard override beats a fully-positive
+// refactoring window. 20 assistant turns each carrying one `Edit`
+// tool_use AND one `text` block with a plan-keyword ("refactor") yields
+// `fileWriteCount=20 (many_writes +2) + planKeyword=true (+2)` = sc=+4
+// → Tier::Opus pre-fix. The trailing user turn "commit and push" must
+// force Tier::Haiku post-fix, with reason "commit_intent".
+TEST(ModelRecommenderCommitIntent, CommitIntentBeatsPriorRefactoringWindow) {
+    QTemporaryFile f;
+    QVector<QJsonArray> turns;
+    for (int i = 0; i < 20; ++i) {
+        QJsonArray content;
+        content.append(textBlock(QStringLiteral("refactor the cache")));
+        content.append(toolUse(QStringLiteral("Edit")));
+        turns.append(content);
+    }
+    const QString path = writeSyntheticTranscriptWithUserTail(
+        turns, QStringLiteral("commit and push"), f);
+    const auto result = ModelRecommender::score(path);
+    EXPECT_EQ(result.tier, ModelRecommender::Tier::Haiku)
+        << "commit-intent override must beat sc=+4 ladder. reason: "
+        << result.reason.toStdString();
+    EXPECT_EQ(result.reason, QStringLiteral("commit_intent"));
+}
+
+// INV-2 — commit-intent fires even on a fresh project where the
+// assistant-turn window is empty (the user typed "commit and push"
+// before Claude responded). Function-body ordering: walk first, then
+// override-branch BEFORE the empty-window short-circuit.
+TEST(ModelRecommenderCommitIntent, CommitIntentFiresOnFreshSession) {
+    QTemporaryFile f;
+    const QString path = writeSyntheticTranscriptWithUserTail(
+        {}, QStringLiteral("commit and push"), f);
+    const auto result = ModelRecommender::score(path);
+    EXPECT_EQ(result.tier, ModelRecommender::Tier::Haiku);
+    EXPECT_EQ(result.reason, QStringLiteral("commit_intent"));
+}
+
+// INV-4 — recency-weighted writes: 4 writes in the LATEST 4 turns of a
+// 20-turn window trip many_writes (weighted sum ≈ 11.368 ≥ 8). All other
+// turns are mechanical (Bash) so plan_keyword + tool_diversity stay
+// pinned low. Result must include "many_writes" in the reason.
+TEST(ModelRecommenderRecency, WeightedWritesRecentClusterTrips) {
+    QTemporaryFile f;
+    QVector<QJsonArray> turns;
+    // Turns 0..15: mechanical Bash (no writes, no plan keyword)
+    for (int i = 0; i < 16; ++i) {
+        QJsonArray content;
+        content.append(toolUse(QStringLiteral("Bash")));
+        turns.append(content);
+    }
+    // Turns 16..19: one Edit each (recent cluster — high weight)
+    for (int i = 0; i < 4; ++i) {
+        QJsonArray content;
+        content.append(toolUse(QStringLiteral("Edit")));
+        turns.append(content);
+    }
+    const auto result = ModelRecommender::score(
+        writeSyntheticTranscript(turns, f));
+    EXPECT_TRUE(result.reason.contains(QStringLiteral("many_writes")))
+        << "Recent-cluster weighted writes should trip many_writes. "
+           "Got reason: " << result.reason.toStdString();
+}
+
+// INV-4 — 4 writes clustered in the OLDEST 4 turns of a 20-turn window
+// do NOT trip many_writes (weighted sum ≈ 4.632 < 8). Reason must not
+// contain "many_writes". (Pre-fix INV-4 would have tripped at >=4 writes
+// regardless of position — RED.)
+TEST(ModelRecommenderRecency, WeightedWritesOldClusterPasses) {
+    QTemporaryFile f;
+    QVector<QJsonArray> turns;
+    // Turns 0..3: one Edit each (oldest — low weight)
+    for (int i = 0; i < 4; ++i) {
+        QJsonArray content;
+        content.append(toolUse(QStringLiteral("Edit")));
+        turns.append(content);
+    }
+    // Turns 4..19: mechanical Bash
+    for (int i = 0; i < 16; ++i) {
+        QJsonArray content;
+        content.append(toolUse(QStringLiteral("Bash")));
+        turns.append(content);
+    }
+    const auto result = ModelRecommender::score(
+        writeSyntheticTranscript(turns, f));
+    EXPECT_FALSE(result.reason.contains(QStringLiteral("many_writes")))
+        << "Old-cluster weighted writes should NOT trip many_writes "
+           "(weighted sum ≈ 4.632 < 8). Got reason: "
+        << result.reason.toStdString();
+}
+
+// INV-4 — toolDiversity stays UNWEIGHTED (set cardinality, position-
+// independent). 6 distinct tool names anywhere in the window trips
+// tool_diversity regardless of which turn each was used in.
+TEST(ModelRecommenderRecency, ToolDiversityUnweighted) {
+    QTemporaryFile f;
+    QVector<QJsonArray> turns;
+    const QStringList tools = {
+        QStringLiteral("Bash"),  QStringLiteral("Grep"),
+        QStringLiteral("Glob"),  QStringLiteral("Read"),
+        QStringLiteral("Edit"),  QStringLiteral("Write"),
+    };
+    // All 6 tools clustered in the OLDEST 6 turns; remaining 14 turns
+    // are filler Bash. If weighting somehow leaked into diversity, the
+    // old cluster wouldn't trip it; this asserts it still does.
+    for (int i = 0; i < 6; ++i) {
+        QJsonArray content;
+        content.append(toolUse(tools[i]));
+        turns.append(content);
+    }
+    for (int i = 0; i < 14; ++i) {
+        QJsonArray content;
+        content.append(toolUse(QStringLiteral("Bash")));
+        turns.append(content);
+    }
+    const auto result = ModelRecommender::score(
+        writeSyntheticTranscript(turns, f));
+    EXPECT_TRUE(result.reason.contains(QStringLiteral("tool_diversity")))
+        << "toolDiversity must stay UNWEIGHTED (set cardinality across "
+           "all turns). Got reason: " << result.reason.toStdString();
+}
+
+// INV-4 — planKeyword stays UNWEIGHTED (boolean OR across all turns).
+// A single plan keyword in the OLDEST turn still trips plan_keyword.
+TEST(ModelRecommenderRecency, PlanKeywordUnweighted) {
+    QTemporaryFile f;
+    QVector<QJsonArray> turns;
+    // Turn 0 (oldest): contains "refactor" plan keyword
+    {
+        QJsonArray content;
+        content.append(textBlock(QStringLiteral("Let's refactor the cache.")));
+        content.append(toolUse(QStringLiteral("Bash")));
+        turns.append(content);
+    }
+    // Turns 1..19: filler Bash, no text
+    for (int i = 0; i < 19; ++i) {
+        QJsonArray content;
+        content.append(toolUse(QStringLiteral("Bash")));
+        turns.append(content);
+    }
+    const auto result = ModelRecommender::score(
+        writeSyntheticTranscript(turns, f));
+    EXPECT_TRUE(result.reason.contains(QStringLiteral("plan_keyword")))
+        << "planKeyword must stay UNWEIGHTED (OR across all turns). "
+           "Got reason: " << result.reason.toStdString();
+}
+
+// INV-5 — single tail-read inside Result score(...). The body must
+// contain exactly one `f.open(QIODevice::` occurrence — no
+// thinkingLevel-style second tail-read.
+TEST(ModelRecommenderSourceGrep, Inv5SingleFileOpenInScoreBody) {
+    const std::string src = slurpFile(SRC_MODELRECOMMENDER_CPP_PATH);
+    const std::string body = functionBody(src, "Result score(const QString");
+    ASSERT_FALSE(body.empty()) << "could not slice score() body";
+    size_t count = 0;
+    size_t pos = 0;
+    while ((pos = body.find("f.open(QIODevice::", pos)) != std::string::npos) {
+        ++count;
+        ++pos;
+    }
+    EXPECT_EQ(count, 1u)
+        << "score() must perform exactly one tail-read; found "
+        << count << " file-open sites in its body";
+}
+
+// INV-9 — purity signatures. Helpers take const QString & / primitives,
+// return primitives, no Q_OBJECT / no slot machinery.
+TEST(ModelRecommenderSourceGrep, Inv9PureHelperSignatures) {
+    const std::string hdr = slurpFile(SRC_MODELRECOMMENDER_H_PATH);
+    EXPECT_NE(hdr.find("bool hasCommitIntent(const QString &"), std::string::npos)
+        << "hasCommitIntent must take const QString &";
+    EXPECT_NE(hdr.find("double weightForTurnIndex(int idx, int total)"),
+              std::string::npos)
+        << "weightForTurnIndex must take (int, int) → double";
+}
+
+// INV-9 — neither helper performs I/O. Source-grep the implementations
+// for any QFile / QIODevice access between their opener and closer.
+TEST(ModelRecommenderSourceGrep, Inv9HelpersDoNoIO) {
+    const std::string src = slurpFile(SRC_MODELRECOMMENDER_CPP_PATH);
+    const std::string commitBody = functionBody(
+        src, "bool hasCommitIntent(const QString &latestUserText)");
+    const std::string weightBody = functionBody(
+        src, "double weightForTurnIndex(int idx, int total)");
+    ASSERT_FALSE(commitBody.empty());
+    ASSERT_FALSE(weightBody.empty());
+    EXPECT_EQ(commitBody.find("QFile"), std::string::npos)
+        << "hasCommitIntent must not touch QFile";
+    EXPECT_EQ(commitBody.find("QIODevice"), std::string::npos)
+        << "hasCommitIntent must not touch QIODevice";
+    EXPECT_EQ(weightBody.find("QFile"), std::string::npos)
+        << "weightForTurnIndex must not touch QFile";
+}
+
+// Non-commit user turn must fall through to the additive ladder
+// unchanged (regression safeguard: the override branch must not eat
+// non-matching user turns).
+TEST(ModelRecommenderCommitIntent, NonCommitUserTurnFallsThroughToLadder) {
+    QTemporaryFile f;
+    QVector<QJsonArray> turns;
+    for (int i = 0; i < 20; ++i) {
+        QJsonArray content;
+        content.append(textBlock(QStringLiteral("refactor the cache")));
+        content.append(toolUse(QStringLiteral("Edit")));
+        turns.append(content);
+    }
+    const QString path = writeSyntheticTranscriptWithUserTail(
+        turns, QStringLiteral("explain the architecture"), f);
+    const auto result = ModelRecommender::score(path);
+    EXPECT_EQ(result.tier, ModelRecommender::Tier::Opus)
+        << "non-commit user turn must NOT short-circuit; ladder should run. "
+           "reason: " << result.reason.toStdString();
 }
 
 TEST(ModelRecommenderThinkingLevel, LabelMappings) {

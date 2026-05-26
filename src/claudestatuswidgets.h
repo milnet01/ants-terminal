@@ -14,6 +14,7 @@
 // stay unqualified.
 
 #include <QObject>
+#include <QHash>
 #include <QString>
 #include <functional>
 
@@ -107,6 +108,30 @@ public:
     // throttled to ≤ once per kPendingFillIntervalMs.
     void fillPendingLedgerOutcomes();
 
+    // ANTS-1890 — Path-injecting overload for behavioural tests. Same
+    // contract as the no-arg form except the ledger path is supplied
+    // directly (defaultLedgerPath() is process-global and unsuitable for
+    // tests). Throttle bypassed when path != defaultLedgerPath() so
+    // tests don't have to wait 30 s between calls.
+    void fillPendingLedgerOutcomes(const QString &ledgerPath);
+
+    // ANTS-1890 — Bootstrap (restart-safety): seed
+    // m_lastOverrideMsByProject from any settled `userOverrideWithin5`
+    // records already on disk. Called once from attach() after services
+    // are wired but before the 2 s status timer fires its first tick.
+    // Public so the behavioural test can inject a fixture path —
+    // defaultLedgerPath() is process-global and unsuitable for tests.
+    void seedOverrideCacheFromLedger(const QString &ledgerPath);
+
+    // ANTS-1890 — Test seam. Returns the cached ms-timestamp for
+    // `project` (the most-recent userOverrideWithin5 record's ts), or
+    // -1 if the project key is not in the cache. Pure, const, O(1)
+    // (QHash lookup). Lives on the public surface alongside the
+    // refresh/fill helpers; behavioural tests in
+    // tests/features/model_auto_switch_outcome_fillin/ assert the
+    // value after a seed or fill-in call.
+    qint64 lastOverrideMsForProject(const QString &project) const;
+
 private:
     // Sentinel returned by msSinceLastSwitch when m_autoSwitchLastMs==0
     // (no switch yet). Large enough to clear any configured min-dwell.
@@ -115,6 +140,16 @@ private:
     // rescans the ledger, so the 2 s tick would be wasteful.
     static constexpr qint64 kPendingFillIntervalMs = 30'000;
     qint64 m_lastPendingFillMs = 0;
+
+    // ANTS-1890 — per-project override cool-down cache. Keyed by the
+    // ledger record's `project` field (== focused tab's shellCwd() at
+    // switch time). Populated at controller bootstrap from any settled
+    // records on disk (seedOverrideCacheFromLedger) and incrementally
+    // by fillPendingLedgerOutcomes after each userOverrideWithin5
+    // settles. Read by refreshAutoModelSwitch to populate
+    // gate.msSinceLastOverride. Single-digit-KB even for a power user
+    // with 50 projects (24-48 bytes per entry).
+    QHash<QString, qint64> m_lastOverrideMsByProject;
 
 public:
 

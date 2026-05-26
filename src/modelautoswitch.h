@@ -31,6 +31,11 @@ struct Gate {
     ModelRecommender::Tier floor       = ModelRecommender::Tier::Haiku;   // config: claude.auto_model_floor
     int    ticksTargetStable = 0;     // consecutive ticks the CLAMPED target != current (INV-5)
     qint64 msSinceLastSwitch = 0;     // dwell since this tab last switched (INV-6)
+    // ANTS-1890 — per-project override cool-down. -1 = no override on record
+    // OR no ledger seen yet (cool-down does NOT block); >= 0 = ms since the
+    // most-recent project-scoped override of an auto-switch. Sentinel avoids
+    // the same-millisecond race that 0 would introduce.
+    qint64 msSinceLastOverride = -1;
 };
 
 struct Decision {
@@ -49,5 +54,9 @@ Decision decide(const Gate &g);
 
 constexpr int    kStableTicks = 2;        // ~4 s at the 2 s status tick (INV-5)
 constexpr qint64 kMinDwellMs  = 90'000;   // 90 s minimum dwell between switches (INV-6)
+// ANTS-1890 — separate, stricter floor that applies only when a
+// project-scoped override is on record. The dwell rule (kMinDwellMs)
+// still applies independently; both must pass.
+constexpr qint64 kOverrideCooldownMs = 10 * 60 * 1'000;   // 10 min
 
 }  // namespace ModelAutoSwitch

@@ -24,6 +24,11 @@ Decision decide(const Gate &g) {
     if (target == g.current) return d;                        // INV-4
     if (g.ticksTargetStable < kStableTicks) return d;         // INV-5
     if (g.msSinceLastSwitch < kMinDwellMs) return d;          // INV-6
+    // ANTS-1890 INV-6 — override cool-down. Sentinel -1 (no override on
+    // record or no ledger seen yet) does NOT block; >= 0 within
+    // kOverrideCooldownMs does.
+    if (g.msSinceLastOverride >= 0 &&
+            g.msSinceLastOverride < kOverrideCooldownMs) return d;
 
     d.act     = true;
     d.tierArg = ModelRecommender::tierName(target);           // INV-7 / INV-9
