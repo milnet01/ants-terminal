@@ -14398,7 +14398,7 @@ subsection.
   Lanes: mcp-roadmap-log, remotecontrol.
   Source: vestige-feedback-2026-05-26 Obs #22.
 
-- 📋 [ANTS-1880] **`spec_query` + `project_layout` recognise `docs/phases/phase_*_design.md` (and similar non-`docs/specs/` design-doc layouts).**
+- ✅ [ANTS-1880] **`spec_query` + `project_layout` recognise `docs/phases/phase_*_design.md` (and similar non-`docs/specs/` design-doc layouts).**
   Vestige's per-phase design docs live at
   `docs/phases/phase_<NN>_<topic>_design.md` — same function as
   `docs/specs/<ANTS-NNNN>.md` (parsed metadata + structured
@@ -14411,6 +14411,15 @@ subsection.
   Kind: enhancement.
   Lanes: mcp-spec-query, mcp-project-layout, projectlayoutengine.
   Source: vestige-feedback-2026-05-26 Obs #23 + Wishlist #6.
+  Resolved 2026-05-26: spec_query + project_layout now recognise
+  docs/phases/phase_<NN>_<topic>_design.md as a first-class spec
+  surface. Per-id-shape routing (ANTS-* → docs/specs/; phase_* →
+  docs/phases/); new `source` field on the response; LayoutEnvelope
+  phasesDir + kProbeSetVersion bumped 3→4 with v4 history entry;
+  cmdInvariantCheck walks both dirs (phases_scanned + total_scanned
+  added, specs_scanned semantics preserved). 7 invariants locked at
+  tests/features/spec_query_phases_layout/. Full ctest 1589/1589
+  green. Spec at docs/specs/ANTS-1880.md folded 2 cold-eyes loops.
 
 - ✅ [ANTS-1881] **`roadmap_query mode:"headline_only"` — return `{id, status, headline_oneline, section_slug}` per bullet, skip body.**
   The 80% case for `roadmap_query section=...` is "what's in this
