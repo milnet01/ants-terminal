@@ -1044,6 +1044,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_query_filter_section_headers/test_roadmap_query_filter_section_headers.cpp
                 # ANTS-1437 roadmap_query section_index mode.
                 tests/features/roadmap_query_section_index/test_roadmap_query_section_index.cpp
+                # ANTS-1881 roadmap_query mode:"headline_only".
+                tests/features/roadmap_query_headline_only/test_roadmap_query_headline_only.cpp
                 # ANTS-1423 Current preset excludes ✅ shipped bullets.
                 tests/features/roadmap_current_preset_excludes_shipped/test_current_preset_excludes_shipped.cpp
                 # ANTS-1417 every registered MCP tool has explicit CallerCwdContract entry.

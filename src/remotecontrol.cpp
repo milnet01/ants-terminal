@@ -198,6 +198,27 @@ void rcStripBodyFields(QJsonArray &arr) {
     }
 }
 
+// ANTS-1881 — project each bullet object to exactly the four-key set
+// {id, status, headline_oneline, section_slug} for
+// mode:"headline_only". Mutates in place. Rollup / narrator bullets
+// keep their natural emptiness (id:"" for both; headline_oneline:""
+// only for rollups whose source `headline` is empty) — INV-2.
+void rcProjectHeadlineOnly(QJsonArray &arr) {
+    for (int i = 0; i < arr.size(); ++i) {
+        const QJsonObject src = arr.at(i).toObject();
+        QJsonObject p;
+        p[QStringLiteral("id")] =
+            src.value(QStringLiteral("id"));
+        p[QStringLiteral("status")] =
+            src.value(QStringLiteral("status"));
+        p[QStringLiteral("headline_oneline")] =
+            src.value(QStringLiteral("headline_oneline"));
+        p[QStringLiteral("section_slug")] =
+            src.value(QStringLiteral("section_slug"));
+        arr.replace(i, p);
+    }
+}
+
 // ANTS-1521 — collapse a possibly multi-line headline to a single
 // line: \r and \n become spaces, then runs of whitespace collapse to
 // one space, then trim. Used to populate the `headline_oneline`
@@ -1630,7 +1651,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     QString mode = req.value(QStringLiteral("mode")).toString().toLower();
     if (mode.isEmpty()) mode = QStringLiteral("bullets");
     if (mode != QLatin1String("bullets") &&
-        mode != QLatin1String("section_index")) {
+        mode != QLatin1String("section_index") &&
+        mode != QLatin1String("headline_only")) {
         QString verbatim = req.value(QStringLiteral("mode")).toString();
         if (verbatim.size() > 64) verbatim.truncate(64);
         for (int i = 0; i < verbatim.size(); ++i) {
@@ -2215,6 +2237,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 callerPassedOffset, callerPassedLimit, page.truncated);
         // ANTS-1517 — strip body fields when include_body is false.
         if (!includeBody) rcStripBodyFields(page.slice);
+        // ANTS-1881 — section-branch projection. INV-3 combinator
+        // equivalence: same pre-pagination iteration as bullets-
+        // mode; mode-driven projection happens at emit time.
+        if (mode == QLatin1String("headline_only")) {
+            rcProjectHeadlineOnly(page.slice);
+        }
         out["ok"] = true;
         out["bullets"] = page.slice;
         out["path"] = path;
@@ -2400,6 +2428,13 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             }
         }
         if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
+        // ANTS-1881 — id-branch projection (second emission surface;
+        // INV-5 anchors the dual-surface requirement). Applied after
+        // body-strip so the projected object inherits the same key
+        // set on every call regardless of include_body.
+        if (mode == QLatin1String("headline_only")) {
+            rcProjectHeadlineOnly(matches);
+        }
         out["ok"]      = true;
         out["bullets"] = matches;
         out["path"]    = path;
@@ -2461,6 +2496,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
 
     // ANTS-1517 — strip body fields when include_body is false.
     if (!includeBody) rcStripBodyFields(page.slice);
+    // ANTS-1881 — full-file projection (main emission surface).
+    // INV-6: PaginationEngine already measured the unprojected
+    // page above; projection happens here so the wire payload is
+    // narrow, but the page boundary was set by the broader shape
+    // — same predicate as bullets-mode, only the keys differ.
+    if (mode == QLatin1String("headline_only")) {
+        rcProjectHeadlineOnly(page.slice);
+    }
 
     out["ok"] = true;
     out["bullets"] = page.slice;

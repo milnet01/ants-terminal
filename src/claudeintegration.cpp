@@ -1839,7 +1839,11 @@ void ClaudeIntegration::onMcpConnection() {
                     "index instead of bullets[] — use for slug discovery "
                     "before drilling in via section=; honours `status` so "
                     "status:\"active\" lists only sections with active work "
-                    "(ANTS-1848)). The `*_id_only` "
+                    "(ANTS-1848)) / \"headline_only\" (ANTS-1881 — "
+                    "bullets[] narrowed to id + status + headline_oneline "
+                    "+ section_slug per bullet, ~10× smaller payload on "
+                    "dense bundle sections; composes with section=, "
+                    "status=, pagination, ETag). The `*_id_only` "
                     "parallels (ANTS-1622) count only bullets that "
                     "carry a [PROJ-NNNN] id, matching the default "
                     "bullets[] predicate — when `active_count > "
@@ -1983,6 +1987,9 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonArray modeEnum;
                     modeEnum.append("bullets");
                     modeEnum.append("section_index");
+                    // ANTS-1881 — third mode value. Narrow per-bullet
+                    // shape for callers that only want the catalogue.
+                    modeEnum.append("headline_only");
                     modeProp["enum"] = modeEnum;
                     modeProp["default"] = "bullets";
                     modeProp["description"] = QStringLiteral(
@@ -2004,7 +2011,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "~20 KB soft cap (emitting truncated/next_offset) "
                         "and accepts offset/limit to page through a "
                         "many-section roadmap. Cannot combine with "
-                        "section= (bad_mode_combo).");
+                        "section= (bad_mode_combo). ANTS-1881 — "
+                        "\"headline_only\" returns bullets[] narrowed to "
+                        "{id, status, headline_oneline, section_slug} per "
+                        "bullet (skips body/lanes/kind) — ~10× smaller "
+                        "payload on dense bundle sections; composes with "
+                        "section=, status=, id=, pagination, and ETag.");
                     props["mode"] = modeProp;
                     // ANTS-1436 — offset/limit pagination args.
                     QJsonObject offsetProp;
