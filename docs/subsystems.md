@@ -154,7 +154,11 @@ Listed only where behavior isn't obvious from the name.
   passive model-state chip — same tail-read pattern, but walks for the
   most recent `{type:"user"}` line and matches the inline thinking
   directive set (`ultrathink` / `think harder` / `think hard` / `think`
-  / `/nothink` → Standard).
+  / `/nothink` → Standard). Scorer-v2 (ANTS-1890, spec drafting) adds
+  two more pure helpers: `hasCommitIntent` (commit-intent hard override
+  on the latest user turn — stem-regex over commit/push/stage/bump/rebase)
+  and `weightForTurnIndex` (1.0×→3.0× linear recency weighting applied
+  to the count-based scorer features).
 - `modelautoswitch` (Qt6::Core, `ants_claude_lib`) — pure decision helper
   for the autonomous switcher (Shape B): `clampToFloor` + `decide(Gate)`
   gate (enabled / focused-tab Idle / composer-empty / clamped-target
