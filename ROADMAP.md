@@ -14499,6 +14499,37 @@ subsection.
   ctest 1600/1600 green. Spec at docs/specs/ANTS-1883.md folded 2
   cold-eyes loops.
 
+- 📋 [ANTS-1884] ****Investigate CI-trigger gap: pushes between SHA 94d2243 and 6ddac5c (2026-05-26) don't trigger workflows.****
+  Pushes between `94d2243` (ANTS-1876, last successful CI run) and
+  `6ddac5c` (cleanup commit, 2026-05-26) did not trigger CI on any
+  of the intervening feat commits (3b3030d ANTS-1882, b591db5
+  ANTS-1880, 7e2efd6 ANTS-1877, 54a9d8d ANTS-1883). Files changed
+  included `src/`, `tests/features/`, `CMakeLists.txt` — none of
+  which match `paths-ignore: [docs/**, ROADMAP.md, ...]`. Also tried
+  a synthetic touch of `src/.cipoke` (commit 6f39928) and an empty
+  commit (4e350d8); neither triggered. Workflow is still "active"
+  per `gh api`, YAML is valid, no skip-ci markers in commit
+  messages. The local test suite remains 1600/1600 green on every
+  commit. Possible causes: GitHub Actions runner availability
+  issue, hidden path-filter rule (e.g. dot-prefix file
+  exclusion), interaction with the v6/v5 action bumps shipped in
+  efc99d2, or rapid-fire push collapsing. Investigate the next
+  push cycle; if persistent, check GH Actions service status and
+  audit-log.
+  
+  **Layman:** Several feature commits this session shipped locally
+  (1600/1600 tests green) but didn't trigger CI on GitHub. Worth a
+  short investigation to see whether GitHub's path-filter or
+  Actions service mis-behaved, since the cause isn't obvious from
+  the workflow file alone.
+  Kind: investigate.
+  Lanes: ci, workflow, github-actions.
+  Source: in-session-2026-05-26.
+  **Layman:** Several feature commits shipped locally but didn't trigger CI on GitHub. Worth investigating whether the path-filter or Actions service mis-behaved.
+  Kind: investigate.
+  Lanes: ci, workflow, github-actions.
+  Source: in-session-2026-05-26.
+
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
 - ✅ [ANTS-1329] **Tasks dialog gets 3 px of vertical row
