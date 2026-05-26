@@ -46,12 +46,18 @@ for security-relevant changes.
     Claude can pick the right file without opening half of them.
 
 - **Per-tab status-bar chip for current Claude model + thinking
-  level.** (ANTS-1888 — roadmap entry only; implementation
-  pending.) With the auto-switcher on, you no longer have a
-  passive readout of which model your focused tab is using. The
-  new roadmap item locks the design for a small chip showing the
-  current tier (Haiku/Sonnet/Opus) and the most recent thinking
-  level (standard / think / think hard / ultrathink), per tab.
+  level.** (ANTS-1888) When the auto-switcher is on, the
+  recommender chip is hidden — you no longer have a passive
+  readout of which model your focused tab is using. The new chip
+  fills that gap: it sits in the same status-bar slot the
+  recommender used and always shows the focused tab's current
+  Claude tier (Haiku/Sonnet/Opus) plus the last-used thinking
+  level (standard / think / think hard / ultrathink), parsed
+  from the most recent user prompt. Different tabs can show
+  different values because each tab has its own Claude session.
+  When the thinking level isn't detectable, the chip drops the
+  thinking half rather than guessing — it never displays
+  "Unknown."
 
 - **Automatic Claude Code model selection — opt-in auto-switch
   (Shape B of ANTS-1226).** (ANTS-1735) A new Settings toggle —

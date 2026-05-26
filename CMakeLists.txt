@@ -1560,6 +1560,9 @@ if(ANTS_TESTS)
                 # source-grep wiring contract (uses SRC_RC_HEADER / SRC_RC_CPP /
                 # SRC_MAINWINDOW_CPP / SRC_CLAUDE_INTEGRATION_CPP_PATH defs below).
                 tests/features/mcp_model_switch_stats/test_mcp_model_switch_stats.cpp
+                # ANTS-1888 — per-tab model + thinking-level chip wiring contract.
+                # Pure source-grep over claudestatuswidgets.{h,cpp} + mainwindow.cpp.
+                tests/features/model_state_chip/test_model_state_chip.cpp
                 # ANTS-1720 — MCP fields= response projection.
                 tests/features/mcp_projection/test_mcp_projection.cpp
                 # ANTS-1727 — ai_review_concurrency config clamp (INV-14).
@@ -1602,6 +1605,9 @@ if(ANTS_TESTS)
         SRC_RC_CPP="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"
         SRC_MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         SRC_MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        # ANTS-1888 — chip wiring contract.
+        SRC_CLAUDESTATUSWIDGETS_H_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.h"
+        SRC_CLAUDESTATUSWIDGETS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp"
         SRC_MAIN_CPP="${CMAKE_SOURCE_DIR}/src/main.cpp"
         SRC_CMAKELISTS="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
         FLATPAK_MANIFEST_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/org.ants.Terminal.yml"

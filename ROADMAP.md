@@ -19411,7 +19411,7 @@ contributors don't duplicate research.
   Kind: feature.
   Source: user-request-2026-05-25 (ANTS-1735 expansion).
 
-- 📋 [ANTS-1888] **Per-tab status-bar chip showing current Claude model + thinking level.**
+- ✅ [ANTS-1888] **Per-tab status-bar chip showing current Claude model + thinking level.**
   Today the user only knows which model is active by reading the recommender chip (suppressed when ANTS-1735 auto-switch is on) or by checking the transcript JSONL by hand. With the ANTS-1735 auto-switcher running, the user explicitly asked for a passive read surface: a chip that always shows "what model + thinking level the focused tab is currently using."
   
   Surface: small chip in the Claude status bar, positioned where the recommender chip used to sit (so when INV-14 hides the recommender, the indicator takes its place). Per-tab/per-cwd specific — refreshes on focused-tab switch and on transcript-mtime change (same pattern as refreshModelChip).
@@ -19429,6 +19429,26 @@ contributors don't duplicate research.
   Kind: feature.
   Lanes: claudestatuswidgets, claudeintegration, modelrecommender.
   Source: user-request-2026-05-26.
+  Resolved (2026-05-26): shipped the passive chip. NEW
+  ModelRecommender::thinkingLevelFromLatestUserTurn() pure helper —
+  tail-reads ≤512 KB, walks for the most recent {type:"user"} line,
+  matches longest-first against the inline directive set
+  (ultrathink / think harder / think hard / nothink → Standard / think).
+  Returns Unknown when no user turn is present; thinkingLevelLabel(Unknown)
+  is empty so the chip never renders the word. NEW
+  ClaudeStatusBarController::m_modelStateBtn + refreshModelStateChip()
+  — placed via addPermanentWidget AFTER m_modelBtn (so when INV-14
+  hides the recommender, the state chip occupies the same slot),
+  Flat + NoFocus so it reads as a passive badge, wired to the 2 s
+  status timer with the same mtime short-circuit pattern as
+  refreshModelChip, reset-on-tab-switch path clears the mtime cache
+  next to m_modelBtn's. Composes as "Opus · ultrathink" / "Sonnet ·
+  standard" / "Haiku" (thinking half dropped when Unknown). Tooltip
+  documents both sources for keyboard-only users. Tests: 12 new
+  cases in tests/features/model_recommender/ for the parser
+  (longest-match, slash forms, /nothink, substring guards,
+  latest-turn-wins, label mappings), 4 source-grep cases in new
+  tests/features/model_state_chip/. Full ctest: 1682/1682 pass.
 
 ### 🔒 Security
 

@@ -170,6 +170,20 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
         focused->setFocus();
     });
 
+    // ANTS-1888 — passive model + thinking-level chip. Placed
+    // immediately after the recommender chip so when INV-14 hides
+    // the recommender, this chip becomes the visible widget in the
+    // same slot. Always read-only; clicks are no-op in v1 (the
+    // tooltip documents the source for keyboard-only users).
+    m_modelStateBtn = new QPushButton(QString(), m_statusBar);
+    m_modelStateBtn->setObjectName(QStringLiteral("claudeModelStateBtn"));
+    m_modelStateBtn->setAccessibleName(tr("Current Claude model and thinking level"));
+    m_modelStateBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    m_modelStateBtn->setFlat(true);   // visual cue: passive readout, not actionable
+    m_modelStateBtn->setFocusPolicy(Qt::NoFocus);
+    m_modelStateBtn->hide();
+    m_statusBar->addPermanentWidget(m_modelStateBtn);
+
     // Error indicator label — surfaces the exit-code from the
     // commandFailed terminal signal, auto-hides after the timeout the
     // caller passes to setError().
@@ -670,6 +684,11 @@ void ClaudeStatusBarController::resetForTabSwitch() {
     if (m_modelBtn)    m_modelBtn->hide();
     m_modelChipPath.clear();
     m_modelChipMtimeMs = -1;
+    // ANTS-1888 — same reset for the model-state chip so it doesn't briefly
+    // show the previous tab's tier after a switch.
+    if (m_modelStateBtn) m_modelStateBtn->hide();
+    m_modelStatePath.clear();
+    m_modelStateMtimeMs = -1;
     apply();
 }
 
@@ -1206,6 +1225,81 @@ void ClaudeStatusBarController::refreshModelChip()
                  ? tr("default heuristic") : rec.reason)
             .arg(ModelRecommender::tierName(rec.tier)));
     m_modelBtn->show();
+}
+
+// ANTS-1888 — Passive readout: current model tier + last-used thinking
+// level for the focused tab. Always shows when a Claude session is active
+// in the focused tab (the recommender chip suppresses itself when the
+// auto-switcher is on; this chip is the always-on counterpart). Hides
+// only the thinking half when the level is undetectable — never renders
+// the word "Unknown".
+void ClaudeStatusBarController::refreshModelStateChip()
+{
+    if (!m_modelStateBtn) return;
+
+    // Resolve transcript path — same pattern as refreshModelChip.
+    QString cwd;
+    auto *focused = m_focusedTerminalProvider
+        ? m_focusedTerminalProvider() : nullptr;
+    if (focused) cwd = focused->shellCwd();
+    QString transcriptPath;
+    if (m_integration) transcriptPath = m_integration->activeSessionPath(cwd);
+
+    if (transcriptPath.isEmpty()) {
+        m_modelStateBtn->hide();
+        return;
+    }
+
+    // mtime short-circuit — score() and thinkingLevelFromLatestUserTurn
+    // both tail-read up to 512 KB on every tick; skip when nothing has
+    // changed since the last paint.
+    const qint64 mtimeMs =
+        QFileInfo(transcriptPath).lastModified().toMSecsSinceEpoch();
+    if (transcriptPath == m_modelStatePath && mtimeMs == m_modelStateMtimeMs) {
+        return;
+    }
+    m_modelStatePath    = transcriptPath;
+    m_modelStateMtimeMs = mtimeMs;
+
+    // Reuse the scorer's transcript parse to get the current model id —
+    // it's the same ≤512 KB tail-read the auto-switcher tick already pays
+    // for in the 2 s status timer.
+    const ModelRecommender::Result rec =
+        ModelRecommender::score(transcriptPath);
+    if (rec.currentModel.isEmpty()) {
+        // No assistant turn yet — the session is brand new. Hide rather
+        // than guess at "Sonnet" (score()'s default fallback).
+        m_modelStateBtn->hide();
+        return;
+    }
+    const ModelRecommender::Tier tier =
+        ModelRecommender::tierFromModelId(rec.currentModel);
+    const QString tierTitle = [&]() -> QString {
+        switch (tier) {
+        case ModelRecommender::Tier::Haiku: return tr("Haiku");
+        case ModelRecommender::Tier::Opus:  return tr("Opus");
+        default:                            return tr("Sonnet");
+        }
+    }();
+
+    const ModelRecommender::ThinkingLevel level =
+        ModelRecommender::thinkingLevelFromLatestUserTurn(transcriptPath);
+    const QString thinkLabel = ModelRecommender::thinkingLevelLabel(level);
+
+    // Compose: "Opus · ultrathink" / "Sonnet · standard" / just "Haiku"
+    // when the thinking half is empty (Unknown).
+    QString text = tierTitle;
+    if (!thinkLabel.isEmpty()) {
+        text += QStringLiteral(" · ") + thinkLabel;
+    }
+    m_modelStateBtn->setText(text);
+    m_modelStateBtn->setToolTip(
+        tr("Focused tab is using %1 (from the transcript's most recent "
+           "assistant turn).\nThinking level: %2 (parsed from the most "
+           "recent user prompt; \"standard\" when no directive is set).")
+            .arg(tierTitle)
+            .arg(thinkLabel.isEmpty() ? tr("unknown") : thinkLabel));
+    m_modelStateBtn->show();
 }
 
 // ANTS-1735 §2.3 — autonomous switcher tick. Runs on the 2 s status

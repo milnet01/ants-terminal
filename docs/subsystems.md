@@ -149,7 +149,12 @@ Listed only where behavior isn't obvious from the name.
 - `modelrecommender` (Qt6::Core) — stateless `score(transcriptPath)`:
   tail-reads ≤ 512 KB JSONL, scores the last 20 assistant turns
   (file-writes, tool diversity, plan keywords, length), returns a `Tier`
-  (Haiku/Sonnet/Opus) + reason. No side effects. ANTS-1226.
+  (Haiku/Sonnet/Opus) + reason. No side effects. ANTS-1226. Sibling
+  `thinkingLevelFromLatestUserTurn` (ANTS-1888) is a pure helper for the
+  passive model-state chip — same tail-read pattern, but walks for the
+  most recent `{type:"user"}` line and matches the inline thinking
+  directive set (`ultrathink` / `think harder` / `think hard` / `think`
+  / `/nothink` → Standard).
 - `modelautoswitch` (Qt6::Core, `ants_claude_lib`) — pure decision helper
   for the autonomous switcher (Shape B): `clampToFloor` + `decide(Gate)`
   gate (enabled / focused-tab Idle / composer-empty / clamped-target

@@ -27,4 +27,31 @@ QString tierName(Tier tier);
 // Contains "haiku" → Haiku, contains "opus" → Opus, else → Sonnet.
 Tier tierFromModelId(const QString &modelId);
 
+// ANTS-1888 — Passive thinking-level readout for the per-tab status chip.
+//
+// Claude Code accepts inline thinking-budget directives in the user's prompt:
+// `ultrathink`, `think harder`, `think hard`, `think`, or the explicit
+// `/nothink` (treated as Standard). This enum makes the directive-set
+// stable across the chip + tests without leaking it into the broader scorer.
+enum class ThinkingLevel {
+    Unknown,     // transcript absent OR no user turn found in the tail window
+    Standard,    // user turn present, no directive matched (or /nothink)
+    Think,
+    ThinkHard,
+    Ultrathink,
+};
+
+// thinkingLevelFromLatestUserTurn() tail-reads up to 512 KB of the JSONL
+// transcript at `transcriptPath`, locates the most recent `{type:"user"}`
+// line, joins its text-content blocks, and returns the matching directive
+// (longest match wins). Returns Unknown when the transcript is missing or
+// no user turn is present in the window; Standard when a user turn is
+// present but carries no directive. Pure; no Qt threading.
+ThinkingLevel thinkingLevelFromLatestUserTurn(const QString &transcriptPath);
+
+// thinkingLevelLabel() returns a short human label for the chip.
+// Unknown → empty string (chip hides the thinking half — never "Unknown");
+// Standard → "standard"; rest → "think" / "think hard" / "ultrathink".
+QString thinkingLevelLabel(ThinkingLevel level);
+
 }  // namespace ModelRecommender

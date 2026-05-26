@@ -90,6 +90,11 @@ own once Ants Terminal is connected. There's even a counter
   hard work. It only ever switches between turns and before you start
   typing, so it never interrupts. Off by default; flip it on in
   Settings → General when you're ready.
+- **A small badge in the status bar shows the current Claude model + thinking
+  level** — so even when Ants is picking the model for you, you can see at a
+  glance whether the focused tab is talking to Haiku/Sonnet/Opus and whether
+  it's set to "standard", "think", "think hard", or "ultrathink". Each tab
+  shows its own value.
 
 > Power users: the tools are [Model Context Protocol](https://modelcontextprotocol.io)
 > tools in the `mcp__ants__*` namespace, and the hook pack installs with

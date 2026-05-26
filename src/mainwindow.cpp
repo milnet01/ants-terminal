@@ -782,6 +782,12 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     connect(m_statusTimer, &QTimer::timeout,
             m_claudeStatusBarController,
             &ClaudeStatusBarController::refreshModelChip);
+    // ANTS-1888 — passive per-tab model + thinking-level chip, same tick.
+    // mtime short-circuit inside the method makes the per-tick cost zero
+    // when the focused tab's transcript hasn't changed.
+    connect(m_statusTimer, &QTimer::timeout,
+            m_claudeStatusBarController,
+            &ClaudeStatusBarController::refreshModelStateChip);
     // ANTS-1735 §2.3 — autonomous switcher gate runs on the same tick.
     // Default-off via Config::claudeAutoModel().switch_enabled (INV-14);
     // the method short-circuits when disabled, so the cost is one

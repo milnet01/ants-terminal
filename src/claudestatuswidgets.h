@@ -82,6 +82,16 @@ public:
     void refreshTasksButton();
     void refreshModelChip();   // ANTS-1226
 
+    // ANTS-1888 — Passive per-tab readout of the focused tab's current
+    // Claude model + last-used thinking level. Pairs with the recommender
+    // chip's INV-14 suppression (when the auto-switcher is on the
+    // recommender hides; this chip stays visible so the user still knows
+    // what model is in use). Hides entirely when no transcript is found
+    // for the focused tab; hides only the thinking half when the level is
+    // undetectable. Reuses ModelRecommender::tierFromModelId +
+    // thinkingLevelFromLatestUserTurn.
+    void refreshModelStateChip();
+
     // ANTS-1735 §2.3 — autonomous switcher tick. Reads the focused
     // tab's tracker entry, builds a ModelAutoSwitch::Gate, calls
     // decide(), and on act: injects `/model <tier>\n` into the focused
@@ -204,6 +214,14 @@ private:
     // hasn't changed since the last score.
     QString                m_modelChipPath;
     qint64                 m_modelChipMtimeMs = -1;
+
+    // ANTS-1888 — Passive model + thinking-level readout. Sibling of
+    // m_modelBtn; placed immediately after it in addPermanentWidget order
+    // so when INV-14 hides the recommender chip, this chip occupies the
+    // same visual slot.
+    QPushButton           *m_modelStateBtn = nullptr;
+    QString                m_modelStatePath;
+    qint64                 m_modelStateMtimeMs = -1;
 
     // ANTS-1735 §2.3 actuator state. Lives on the controller (one set
     // per window — the gate runs on the focused tab's read, so there's
