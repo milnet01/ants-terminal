@@ -80,11 +80,16 @@ TEST(McpModelSwitchStats, EnvelopeAggregates) {
 }
 
 // INV-13 (ANTS-1889): the headline is an avoided/regret ratio string when
-// the switcher is enabled and has measured outcomes.
+// the switcher is enabled and has measured outcomes at/above the floor.
+// ANTS-1891 — the floor (kHeadlineFloorMeasured = 10) means a single record
+// shows "insufficient data" instead of the ratio; this test feeds enough
+// measured downgrades to exceed the floor.
 TEST(McpModelSwitchStats, HeadlineIsRatio) {
     L::StatsConfig cfg;
     cfg.switchEnabled = true;
-    const QList<L::Record> recs = { rec("opus", "haiku", false, 6) };
+    QList<L::Record> recs;
+    for (int i = 0; i < L::kHeadlineFloorMeasured; ++i)
+        recs << rec("opus", "haiku", false, 6);
     const QString headline =
         L::statsEnvelope(recs, cfg).value(QStringLiteral("headline")).toString();
     EXPECT_TRUE(headline.contains(QStringLiteral("avoided"))) << headline.toStdString();

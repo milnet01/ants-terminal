@@ -107,7 +107,10 @@ TEST(ModelSwitchLedger, Inv10EvictionUnderCap) {
 TEST(ModelSwitchLedger, Inv10PendingRecordPinned) {
     QTemporaryDir dir;
     const QString path = dir.filePath(QStringLiteral("ledger.jsonl"));
-    const qint64 cap = 700;
+    // ANTS-1891 — bumped from 700→800: the new
+    // session_cleanly_ended_on_new_tier field grew each record
+    // from ~280B to ~362B; 2 records (PIN + NEW) now total ~728B.
+    const qint64 cap = 800;
     ASSERT_TRUE(L::appendRecord(path, makeRecord("opus","haiku",false,"A"), cap));
     ASSERT_TRUE(L::appendRecord(path, makeRecord("opus","haiku",false,"B"), cap));
     ASSERT_TRUE(L::appendRecord(path, makeRecord("opus","haiku",true ,"PIN"), cap));

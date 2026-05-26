@@ -109,11 +109,17 @@ public:
     void fillPendingLedgerOutcomes();
 
     // ANTS-1890 — Path-injecting overload for behavioural tests. Same
-    // contract as the no-arg form except the ledger path is supplied
-    // directly (defaultLedgerPath() is process-global and unsuitable for
-    // tests). Throttle bypassed when path != defaultLedgerPath() so
-    // tests don't have to wait 30 s between calls.
-    void fillPendingLedgerOutcomes(const QString &ledgerPath);
+    // outcome-fill contract as the no-arg form except (a) the ledger path
+    // is supplied directly (defaultLedgerPath() is process-global and
+    // unsuitable for tests), and (b) the 30 s throttle is bypassed
+    // unconditionally so tests don't have to wait between calls. The
+    // throttle state (`m_lastPendingFillMs`) lives only inside the
+    // no-arg overload above — this path overload never reads or writes
+    // it. ANTS-1891 — `nowMs` is the clock seam for `computeOutcome`'s
+    // quiet-window settlement (defaults to 0 = pre-1891 behaviour;
+    // production caller passes a real `nowMs`).
+    void fillPendingLedgerOutcomes(const QString &ledgerPath,
+                                   qint64 nowMs = 0);
 
     // ANTS-1890 — Bootstrap (restart-safety): seed
     // m_lastOverrideMsByProject from any settled `userOverrideWithin5`

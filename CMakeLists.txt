@@ -1562,6 +1562,10 @@ if(ANTS_TESTS)
                 # source-grep wiring contract (uses SRC_RC_HEADER / SRC_RC_CPP /
                 # SRC_MAINWINDOW_CPP / SRC_CLAUDE_INTEGRATION_CPP_PATH defs below).
                 tests/features/mcp_model_switch_stats/test_mcp_model_switch_stats.cpp
+                # ANTS-1891 — trust-signal v2: inconclusive bucket, regret-folds-
+                # under-route, weighted clean-end, headline floor, quiet-window
+                # settlement. 13 TEST() cases mapping 1:1 to INV-1..INV-13.
+                tests/features/model_switch_stats_v2/test_model_switch_stats_v2.cpp
                 # ANTS-1888 — per-tab model + thinking-level chip wiring contract.
                 # Pure source-grep over claudestatuswidgets.{h,cpp} + mainwindow.cpp.
                 tests/features/model_state_chip/test_model_state_chip.cpp

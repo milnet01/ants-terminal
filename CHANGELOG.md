@@ -12,7 +12,48 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING (envelope): `regret_count` in `model_switch_stats` now
+  includes under-route harm.** (ANTS-1891) Before this change,
+  `regret_count` counted only `user_override` + `correction_signal`;
+  `under_route_signal` (the recommender immediately wanted to switch
+  back up) was reported separately and never folded into the
+  headline. Now `regret_count = user_override OR correction_signal OR
+  under_route` on settled downgrades, and the headline reflects that
+  combined harm. The only known caller is the internal MCP dispatch
+  (which forwards both fields verbatim), but anyone reading
+  `regret_count` against `under_route_count` separately will now
+  double-count harm — drop the separate `under_route_count` addition
+  if you were doing that. Same release also tightens
+  `regret_rate`'s denominator (next item).
+
 ### Added
+
+- **`model_switch_stats` headline no longer lies on small samples.**
+  (ANTS-1891) Before this change, a ledger of 1–2 inconclusive
+  records produced "regret 0.0%" — false confidence right when the
+  default-ON flip decision was being calibrated. The envelope now
+  carries four new fields — `inconclusive_count`, `clean_end_count`,
+  `weighted_avoided`, `headline_floor` — plus `measured_downgrades`,
+  and the headline withholds the ratio entirely until the
+  configurable floor (default 10 measured downgrades) is reached
+  ("auto-switch ON (floor=haiku) in this project: insufficient data
+  (3/10 measured)"). Records with `turnsOnToTier=0` and no signals
+  go into `inconclusive_count` instead of the regret denominator.
+  Records where the user finished cleanly on the cheaper tier
+  (`session_cleanly_ended_on_new_tier`, new outcome field) earn a
+  ½-Opus-turn weighted credit — addressing the dominant ledger
+  shape where most auto-switches happen at end-of-task and never
+  produce a "user kept working" turn-count. `computeOutcome` adds a
+  fourth settlement clause (`dwellEndedByQuietWindow`) so those
+  end-of-task records can actually settle. Pre-1891 legacy records
+  load cleanly (missing field defaults to `false`) and contribute
+  to `inconclusive_count` only — the trust signal effectively
+  resets for post-1891 data, on purpose. 13 new feature tests on
+  the `test_core` bundle; ledger schema unchanged at the byte-cap
+  level (one extra ~50 B field per record). Spec:
+  [`docs/specs/ANTS-1891.md`](docs/specs/ANTS-1891.md).
 
 - **Auto model-switcher now recognises "commit and push" as a cheap
   turn — picks Haiku immediately even after a heavy refactor session.**

@@ -21,15 +21,18 @@
 namespace ModelSwitchLedger {
 
 // INV-10 — drop-oldest byte cap. INV-11 — author-correlation window.
-constexpr qint64 kMaxLedgerBytes     = 256 * 1024;   // 256 KiB
-constexpr qint64 kAuthorWindowMs     = 10'000;       // 10 s
-constexpr int    kOutcomeWindowTurns = 5;            // "within 5 turns"
+constexpr qint64 kMaxLedgerBytes        = 256 * 1024;   // 256 KiB
+constexpr qint64 kAuthorWindowMs        = 10'000;       // 10 s
+constexpr int    kOutcomeWindowTurns    = 5;            // "within 5 turns"
+constexpr qint64 kCleanEndQuietMs       = 10 * 60 * 1000; // ANTS-1891 — 10 min
+constexpr int    kHeadlineFloorMeasured = 10;           // ANTS-1891 — headline floor
 
 struct Outcome {
     int  turnsOnToTier            = 0;
     bool userOverrideWithin5      = false;
     bool correctionSignalWithin5  = false;
     bool underRouteSignalWithin5  = false;
+    bool sessionCleanlyEndedOnNewTier = false;  // ANTS-1891 — positive signal
     bool pending                  = true;   // outcome not yet filled in
 };
 
@@ -128,7 +131,9 @@ OutcomeFillResult computeOutcome(
     const QList<TranscriptTurn> &postSwitchTurns,
     const QList<AutoSwitch> &subsequentAutoSwitches,
     const QStringList &subsequentRecommendedTiers,
-    const Outcome &inputBefore = {});
+    const Outcome &inputBefore = {},
+    qint64 nowMs = 0);   // ANTS-1891 — clock seam for the quiet-window
+                         // settlement (defaulted to 0 = pre-1891 behaviour)
 
 // --- INV-13 — read-only aggregation for the model_switch_stats MCP verb ---
 // statsEnvelope is pure over a record list; statsForScope reads the (global)

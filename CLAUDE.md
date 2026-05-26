@@ -136,15 +136,25 @@ github-task-list / pass-headings formats (ANTS-1530); `read_log` filters
 a log file (Ants debug log or a `caller_cwd` path) to matching lines via
 the pure `ReadLog::filter` helper, streaming drop-oldest byte cap +
 since_cursor incremental tailing (ANTS-1855); `model_switch_stats`
-(ANTS-1735, extended by ANTS-1889) — Required `caller_cwd`, ETag +
-`fields` opt-in, aggregates the model-switch ledger into avoided/regret
-ratios and pending-record counts (the trust signal that gates §8 OQ-3
-default-ON flip; never writes ledger/config). Envelope also surfaces the
-live switcher config (`auto_model_switch_enabled`, `floor_tier`,
-`min_dwell_sec`) + `scope` echo so callers can tell "feature OFF" from
-"ON, no candidates yet" from "ON with measured outcomes"; accepts
-optional `scope:"project"` (default) or `"global"` arg to aggregate
-across all projects (ANTS-1889).
+(ANTS-1735, extended by ANTS-1889, sharpened by ANTS-1891) — Required
+`caller_cwd`, ETag + `fields` opt-in, aggregates the model-switch
+ledger into avoided/regret ratios and pending-record counts (the trust
+signal that gates §8 OQ-3 default-ON flip; never writes ledger/config).
+Envelope surfaces the live switcher config (`auto_model_switch_enabled`,
+`floor_tier`, `min_dwell_sec`) + `scope` echo so callers can tell
+"feature OFF" from "ON, no candidates yet" from "ON with measured
+outcomes"; accepts optional `scope:"project"` (default) or `"global"`
+arg to aggregate across all projects (ANTS-1889). ANTS-1891 —
+`regret_count` includes under-route harm; `measured_downgrades`
+excludes inconclusive 0-turn records (counted in new
+`inconclusive_count` instead); `clean_end_count` + `weighted_avoided`
+credit clean session-ends (no override / correction / under-route
+within ~10 min of session end) as ½ Opus turn avoided each so end-of-
+task downgrades — the dominant ledger shape — are no longer invisible;
+headline withholds the ratio until a configurable floor of measured
+downgrades is reached and reads "insufficient data (N/F measured)"
+below the floor. Envelope readers should check `measured_downgrades >
+0` before treating `regret_rate` as meaningful.
 
 Config keys for the autonomous model switcher (ANTS-1735 §2.7) — single
 Settings toggle "Let Ants pick the Claude model for me" + two

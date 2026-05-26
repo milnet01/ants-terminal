@@ -1529,14 +1529,19 @@ void ClaudeStatusBarController::fillPendingLedgerOutcomes()
         return;
     }
     m_lastPendingFillMs = nowMs;
-    fillPendingLedgerOutcomes(ModelSwitchLedger::defaultLedgerPath());
+    // ANTS-1891 — forward `nowMs` so the path overload (and the pure
+    // `computeOutcome` it calls per pending record) can evaluate the
+    // new quiet-window settlement clause.
+    fillPendingLedgerOutcomes(ModelSwitchLedger::defaultLedgerPath(), nowMs);
 }
 
 // ANTS-1890 — Test seam. Behavioural overload reachable from
 // behavioural tests; bypasses the 30 s throttle (tests run sub-second).
 // The production caller above pays the throttle and then delegates here.
+// ANTS-1891 — `nowMs` is the clock seam for `computeOutcome`'s
+// quiet-window settlement (defaults to 0 = pre-1891 behaviour).
 void ClaudeStatusBarController::fillPendingLedgerOutcomes(
-    const QString &ledgerPath)
+    const QString &ledgerPath, qint64 nowMs)
 {
     QList<ModelSwitchLedger::Record> recs =
         ModelSwitchLedger::readRecords(ledgerPath);
@@ -1592,7 +1597,8 @@ void ClaudeStatusBarController::fillPendingLedgerOutcomes(
         const ModelSwitchLedger::OutcomeFillResult fill =
             ModelSwitchLedger::computeOutcome(
                 r.fromTier, r.toTier, switchMs,
-                turns, nextAutos, recTiers, r.outcome);
+                turns, nextAutos, recTiers, r.outcome,
+                nowMs);   // ANTS-1891 — clock seam for quiet-window
         if (fill.changed) {
             r.outcome = fill.outcome;
             anyChanged = true;

@@ -1,6 +1,8 @@
 // ANTS-1735 — see modelswitchledger.h.
 #include "modelswitchledger.h"
 
+#include <algorithm>     // ANTS-1891 — std::max in computeOutcome
+
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -63,6 +65,9 @@ QJsonObject toJson(const Record &r) {
     oc[QStringLiteral("user_override_within_5_turns")]  = r.outcome.userOverrideWithin5;
     oc[QStringLiteral("correction_signal_within_5_turns")] = r.outcome.correctionSignalWithin5;
     oc[QStringLiteral("under_route_signal_within_5_turns")] = r.outcome.underRouteSignalWithin5;
+    // ANTS-1891 — new positive signal; snake_case matches the existing keys,
+    // omits the _within_N_turns suffix since this is a quiet-window measurement.
+    oc[QStringLiteral("session_cleanly_ended_on_new_tier")] = r.outcome.sessionCleanlyEndedOnNewTier;
     oc[QStringLiteral("pending")]                       = r.outcome.pending;
 
     QJsonObject o;
@@ -91,6 +96,10 @@ Record fromJson(const QJsonObject &o) {
     r.outcome.userOverrideWithin5     = oc.value(QStringLiteral("user_override_within_5_turns")).toBool();
     r.outcome.correctionSignalWithin5 = oc.value(QStringLiteral("correction_signal_within_5_turns")).toBool();
     r.outcome.underRouteSignalWithin5 = oc.value(QStringLiteral("under_route_signal_within_5_turns")).toBool();
+    // ANTS-1891 — INV-10: missing field defaults to false (pre-1891 records
+    // never observed the signal). `toBool(false)` is explicit for clarity.
+    r.outcome.sessionCleanlyEndedOnNewTier =
+        oc.value(QStringLiteral("session_cleanly_ended_on_new_tier")).toBool(false);
     // Absent outcome → pending (a record with no measured outcome is in-flight,
     // hence pinned from eviction).
     r.outcome.pending = oc.value(QStringLiteral("pending")).toBool(true);
@@ -206,7 +215,8 @@ OutcomeFillResult computeOutcome(
     const QList<TranscriptTurn> &postSwitchTurns,
     const QList<AutoSwitch> &subsequentAutoSwitches,
     const QStringList &subsequentRecommendedTiers,
-    const Outcome &inputBefore)
+    const Outcome &inputBefore,
+    qint64 nowMs)   // ANTS-1891 — clock seam for the quiet-window settlement
 {
     OutcomeFillResult res;
     res.outcome = inputBefore;
@@ -277,21 +287,57 @@ OutcomeFillResult computeOutcome(
         res.outcome.underRouteSignalWithin5 = (ur == UnderRoute::Yes);
     }
 
+    // ANTS-1891 — separate scan for `lastAssistantTurnTsMs`. Do NOT fold into
+    // the `onTier` loop above: that loop early-breaks at the first divergent
+    // assistant, so it tracks the last *on-tier* turn, not the last assistant
+    // turn overall. The quiet-window settlement clause below needs the
+    // absolute last assistant turn.
+    qint64 lastAssistantTurnTsMs = 0;
+    for (const TranscriptTurn &t : turns) {
+        if (t.isAssistant && t.tsMs > lastAssistantTurnTsMs)
+            lastAssistantTurnTsMs = t.tsMs;
+    }
+
     // Settlement: dwell ended (subsequent auto-switch exists) OR ≥ kOutcomeWindowTurns
     // post-switch assistant turns observed OR turns_on_to_tier already capped by
     // a divergent assistant turn (a user-driven /model ended the dwell).
+    // ANTS-1891 — additionally: quiet-window settlement for end-of-task 0-turn
+    // downgrades. Guarded by `switchTsMs > 0` so a malformed-ts record (whose
+    // `ts` failed parseIso8601Ms → 0) can't spuriously settle.
     const bool dwellEndedByNextAuto  = !subsequentAutoSwitches.isEmpty();
     const bool fullWindowObserved    = (onTier >= kOutcomeWindowTurns);
     const bool dwellEndedByDivergence = (firstDivergentIdx >= 0);
-    if (dwellEndedByNextAuto || fullWindowObserved || dwellEndedByDivergence)
+    const bool dwellEndedByQuietWindow =
+        isDowngrade && switchTsMs > 0
+        && (nowMs - std::max(switchTsMs, lastAssistantTurnTsMs)
+            >= kCleanEndQuietMs);
+    if (dwellEndedByNextAuto || fullWindowObserved
+        || dwellEndedByDivergence || dwellEndedByQuietWindow)
         res.outcome.pending = false;
+
+    // ANTS-1891 — sessionCleanlyEndedOnNewTier positive predicate. Settled
+    // downgrade with no negative signal AND (turnsOnToTier > 0 OR the
+    // quiet-window settled it). Upgrades never set the field (mirrors the
+    // INV-12 downgrade-only guard).
+    if (isDowngrade && !res.outcome.pending) {
+        const bool noNegativeSignal =
+            !res.outcome.userOverrideWithin5
+         && !res.outcome.correctionSignalWithin5
+         && !res.outcome.underRouteSignalWithin5;
+        const bool hasPositiveEvidence =
+            res.outcome.turnsOnToTier > 0 || dwellEndedByQuietWindow;
+        res.outcome.sessionCleanlyEndedOnNewTier =
+            noNegativeSignal && hasPositiveEvidence;
+    }
 
     // changed flag — caller flushes only when something differs from input.
     res.changed = (res.outcome.pending != inputBefore.pending)
                || (res.outcome.turnsOnToTier != inputBefore.turnsOnToTier)
                || (res.outcome.userOverrideWithin5 != inputBefore.userOverrideWithin5)
                || (res.outcome.correctionSignalWithin5 != inputBefore.correctionSignalWithin5)
-               || (res.outcome.underRouteSignalWithin5 != inputBefore.underRouteSignalWithin5);
+               || (res.outcome.underRouteSignalWithin5 != inputBefore.underRouteSignalWithin5)
+               || (res.outcome.sessionCleanlyEndedOnNewTier
+                       != inputBefore.sessionCleanlyEndedOnNewTier);   // ANTS-1891
     return res;
 }
 
@@ -300,6 +346,8 @@ QJsonObject statsEnvelope(const QList<Record> &recs, const StatsConfig &cfg) {
     int opusAvoided = 0, opusRoutedIn = 0;
     int regretCount = 0, underRouteCount = 0, pendingCount = 0;
     int measuredDowngrades = 0;   // non-pending downgrades — regret denominator
+    int inconclusiveCount = 0;    // ANTS-1891 — 0-turn, 0-signal settled downgrades
+    int cleanEndCount     = 0;    // ANTS-1891 — sessionCleanlyEndedOnNewTier=true
     int toHaiku = 0, toSonnet = 0, toOpus = 0;
 
     const QString haiku = QStringLiteral("haiku");
@@ -327,40 +375,69 @@ QJsonObject statsEnvelope(const QList<Record> &recs, const StatsConfig &cfg) {
         if (r.toTier == opus && r.fromTier != opus)
             opusRoutedIn += r.outcome.turnsOnToTier;
 
-        // Outcome signals count only on a *measured* (non-pending) downgrade —
-        // pending records are reported separately, never as success or harm.
+        // ANTS-1891 — per § 2.2 bucketing on settled downgrades:
+        //   * negative signal = user-override OR correction OR under-route
+        //   * positive evidence = turnsOnToTier > 0 OR sessionCleanlyEndedOnNewTier
+        //   * measured = negative OR positive; else inconclusive
+        //   * regret = negative (now folds under-route in — INV-1)
+        //   * under_route_count gates on its single bool (still standalone)
+        //   * clean_end_count gates on the new positive signal
         if (isDowngrade && !r.outcome.pending) {
-            ++measuredDowngrades;
-            if (r.outcome.userOverrideWithin5 || r.outcome.correctionSignalWithin5)
-                ++regretCount;
+            const bool hasNegativeSignal =
+                r.outcome.userOverrideWithin5
+             || r.outcome.correctionSignalWithin5
+             || r.outcome.underRouteSignalWithin5;
+            const bool hasPositiveEvidence =
+                r.outcome.turnsOnToTier > 0
+             || r.outcome.sessionCleanlyEndedOnNewTier;
+
             if (r.outcome.underRouteSignalWithin5)
                 ++underRouteCount;
+            if (r.outcome.sessionCleanlyEndedOnNewTier)
+                ++cleanEndCount;
+
+            if (hasNegativeSignal || hasPositiveEvidence) {
+                ++measuredDowngrades;
+                if (hasNegativeSignal)
+                    ++regretCount;       // INV-1 — under-route now folded in
+            } else {
+                ++inconclusiveCount;     // INV-2 — 0-turn + 0-signals
+            }
         }
     }
 
     const double regretRate = measuredDowngrades > 0
         ? (100.0 * regretCount / measuredDowngrades) : 0.0;
+    const double weightedAvoided =                       // INV-5 — ½ per clean end
+        static_cast<double>(opusAvoided) + 0.5 * cleanEndCount;
 
     QJsonObject byTier;
     byTier[QStringLiteral("haiku")]  = toHaiku;
     byTier[QStringLiteral("sonnet")] = toSonnet;
     byTier[QStringLiteral("opus")]   = toOpus;
 
-    // ANTS-1889 — headline branches on enable state + scope so the caller
-    // can tell "feature OFF" from "feature ON, no candidates yet" from
-    // "feature ON, measured outcomes". Reported as a ratio, never the
-    // flattering numerator alone (MEDIUM-1).
+    // ANTS-1891 — headline format adds the floor phrase (improvement E) and
+    // withholds the ratio until measuredDowngrades ≥ kHeadlineFloorMeasured.
+    const QString scopePhrase = (cfg.scope == QStringLiteral("global"))
+        ? QStringLiteral("globally")
+        : QStringLiteral("in this project");
     QString headline;
     if (!cfg.switchEnabled) {
         headline = QStringLiteral("auto-switch OFF");
     } else if (recs.isEmpty()) {
-        headline = (cfg.scope == QStringLiteral("global"))
-            ? QStringLiteral("auto-switch ON globally (no switches yet)")
-            : QStringLiteral("auto-switch ON in this project (no switches yet)");
+        headline = QStringLiteral("auto-switch ON (floor=%1) %2: no switches yet")
+            .arg(cfg.floorTier).arg(scopePhrase);
+    } else if (measuredDowngrades < kHeadlineFloorMeasured) {
+        headline = QStringLiteral(
+            "auto-switch ON (floor=%1) %2: insufficient data (%3/%4 measured)")
+            .arg(cfg.floorTier).arg(scopePhrase)
+            .arg(measuredDowngrades).arg(kHeadlineFloorMeasured);
     } else {
         headline = QStringLiteral(
-            "avoided %1 Opus turns, %2 regretted (regret %3%)")
-            .arg(opusAvoided).arg(regretCount)
+            "auto-switch ON (floor=%1) %2: avoided %3 Opus turns "
+            "(+%4 clean end), %5 regretted (regret %6%)")
+            .arg(cfg.floorTier).arg(scopePhrase)
+            .arg(opusAvoided).arg(cleanEndCount).arg(regretCount)
             .arg(QString::number(regretRate, 'f', 1));
     }
 
@@ -376,6 +453,12 @@ QJsonObject statsEnvelope(const QList<Record> &recs, const StatsConfig &cfg) {
     env[QStringLiteral("under_route_count")]        = underRouteCount;
     env[QStringLiteral("pending_count")]            = pendingCount;
     env[QStringLiteral("by_tier")]                  = byTier;
+    // ANTS-1891 — new envelope fields (additive per INV-9).
+    env[QStringLiteral("inconclusive_count")]       = inconclusiveCount;
+    env[QStringLiteral("clean_end_count")]          = cleanEndCount;
+    env[QStringLiteral("weighted_avoided")]         = weightedAvoided;
+    env[QStringLiteral("headline_floor")]           = kHeadlineFloorMeasured;
+    env[QStringLiteral("measured_downgrades")]      = measuredDowngrades;
     // ANTS-1889 — live switcher config triple + scope echo.
     env[QStringLiteral("auto_model_switch_enabled")] = cfg.switchEnabled;
     env[QStringLiteral("floor_tier")]                = cfg.floorTier;
