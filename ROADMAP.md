@@ -14433,7 +14433,7 @@ subsection.
   `docs/specs/ANTS-1881.md` folded 8 cold-eyes loops; the audit trail
   in §9 records the converged contract.
 
-- 📋 [ANTS-1882] **`roadmap_query` per-section ETag — let a `section=foo` call 304 when only OTHER sections changed.**
+- ✅ [ANTS-1882] **`roadmap_query` per-section ETag — let a `section=foo` call 304 when only OTHER sections changed.**
   File-level ETag short-circuits the whole call when ROADMAP.md is
   untouched; per-section ETag would let `section=foo` return
   `{ok:true, unchanged:true}` when ONLY other sections changed. Big
@@ -14447,6 +14447,15 @@ subsection.
   Kind: enhancement.
   Lanes: mcp-roadmap-query, remotecontrol.
   Source: vestige-feedback-2026-05-26 Wishlist #4.
+  Resolved 2026-05-26: section path now emits a section-scoped
+  `duplicate_ids` via the new `rcFilterDuplicateIdsForSection`
+  helper. The existing payload-based ETag pattern delivers the
+  remaining per-section invariance Vestige asked for — file-mtime
+  edits to unrelated sections no longer shift foo's response
+  payload. Full-file path + id-branch keep the unscoped view.
+  4 invariants locked at
+  `tests/features/roadmap_query_per_section_etag/`. Full ctest
+  1582/1582 green. Spec at `docs/specs/ANTS-1882.md`.
 
 - 📋 [ANTS-1883] **`session_orient` bundle verb — one call returning `current_state` + `project_layout` + `roadmap_query mode:section_index status:"active"` under one ETag.**
   Composes `current_state` (ANTS-1569) + `project_layout` +
