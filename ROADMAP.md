@@ -14356,7 +14356,7 @@ subsection.
   claudeintegration.cpp. Spec at `docs/specs/ANTS-1876.md` folded
   2 cold-eyes loops.
 
-- 📋 [ANTS-1877] **`roadmap_log op:append` auto-detect stable-string-ID projects (empty `.roadmap-counter`) and surface `id_strategy:"stable_prefix"` as the default path.**
+- ✅ [ANTS-1877] **`roadmap_log op:append` auto-detect stable-string-ID projects (empty `.roadmap-counter`) and surface `id_strategy:"stable_prefix"` as the default path.**
   Vestige session created 30+ new bullets via Edit because
   `roadmap_log op:append` requires a `.roadmap-counter` (empty on
   stable-string-ID projects). Options:
@@ -14372,6 +14372,17 @@ subsection.
   Kind: enhancement.
   Lanes: mcp-roadmap-log, remotecontrol.
   Source: vestige-feedback-2026-05-26 Obs #20.
+  Resolved 2026-05-26: `counter_read_failed` refusal split into
+  three codes — counter_missing (file absent or empty),
+  stable_prefix_unsupported (file absent + stable-string IDs
+  detected), counter_read_failed (file unreadable or non-numeric).
+  New `rlDetectStablePrefixId` sniffer walks first 50 bullets;
+  envelope carries `detected_prefix_example` + `follow_up`. 4
+  invariants locked at tests/features/roadmap_log_stable_prefix_hint/.
+  Full ctest 1593/1593 green. Out of scope: actual stable-prefix
+  allocator (Vestige option b) — diagnostic hint closes their
+  option (a). Spec at docs/specs/ANTS-1877.md folded 2 cold-eyes
+  loops.
 
 - 📋 [ANTS-1878] **`roadmap_log op:create_section` verb — create a new section header (`{after_section, level, title, intro_body}`) without falling back to Edit.**
   `op:append` requires an existing `section:` slug. New-section
