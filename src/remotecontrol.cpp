@@ -275,6 +275,31 @@ void rcApplyHeadlineOnly(QJsonArray &matches) {
     }
 }
 
+// ANTS-1877 — sniff the existing roadmap for stable-prefix bullet
+// IDs (e.g. "Sh4", "MT8" — anything matching
+// ^[A-Za-z][A-Za-z0-9_-]+$ that is NOT the canonical ^ANTS-[0-9]+$
+// shape). Returns the first matching id within the first 50
+// parsed bullets, or empty string when none. Used by
+// cmdRoadmapLogAppend to surface a helpful hint when the
+// .roadmap-counter is missing AND the project uses stable IDs the
+// allocator doesn't currently support.
+QString rlDetectStablePrefixId(const QString &markdown) {
+    static const QRegularExpression antsRe(
+        QStringLiteral("^ANTS-[0-9]+$"));
+    static const QRegularExpression stableRe(
+        QStringLiteral("^[A-Za-z][A-Za-z0-9_-]+$"));
+    const auto bullets = RoadmapDialog::parseBullets(markdown);
+    constexpr int kSniffCap = 50;
+    const int upTo = std::min<int>(bullets.size(), kSniffCap);
+    for (int i = 0; i < upTo; ++i) {
+        const QString id = bullets.at(i).id;
+        if (id.isEmpty()) continue;
+        if (antsRe.match(id).hasMatch()) continue;
+        if (stableRe.match(id).hasMatch()) return id;
+    }
+    return QString();
+}
+
 // ANTS-1881 — project each bullet object to exactly the four-key set
 // {id, status, headline_oneline, section_slug} for
 // mode:"headline_only". Mutates in place. Rollup / narrator bullets
@@ -3097,16 +3122,79 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     // ANTS-1424-INV-3 — counter allocation. Reads the high-water
     // mark; honours id_hint if present (must be > counter); writes
     // the bumped value back atomically.
+    //
+    // ANTS-1877 — split the legacy `counter_read_failed` blanket
+    // refusal:
+    //   - File doesn't exist:        diagnose project shape first.
+    //     Stable-string IDs detected → stable_prefix_unsupported
+    //     (with detected_prefix_example + follow_up). Otherwise
+    //     counter_missing + the `echo 0 > .roadmap-counter` recipe.
+    //   - File exists empty / whitespace-only: counter_missing
+    //     (caller likely `touch`ed without initialising).
+    //   - File exists but unreadable / not-a-number: keep the
+    //     existing counter_read_failed (back-compat for any caller
+    //     branching on that code).
     qint64 counter = 0;
     {
         QFile cf(counterPath);
+        const bool counterExists = QFile::exists(counterPath);
         if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            if (!counterExists) {
+                // Re-read the roadmap for the prefix sniffer. The
+                // markdown was about to be read for the section
+                // splice anyway; pull it here so we can diagnose
+                // before the splice setup.
+                QFile rmf(roadmapPath);
+                QString rmText;
+                if (rmf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                    rmText = QString::fromUtf8(rmf.readAll());
+                }
+                const QString stablePrefix =
+                    rlDetectStablePrefixId(rmText);
+                if (!stablePrefix.isEmpty()) {
+                    QJsonObject env;
+                    env["ok"]    = false;
+                    env["code"]  = QStringLiteral(
+                        "stable_prefix_unsupported");
+                    env["error"] = QStringLiteral(
+                        "roadmap_log op:append needs "
+                        ".roadmap-counter; this project uses "
+                        "stable-string IDs (e.g. \"%1\") which the "
+                        "allocator doesn't currently support.")
+                            .arg(stablePrefix);
+                    env["detected_prefix_example"] = stablePrefix;
+                    env["hint"] = QStringLiteral(
+                        "Edit ROADMAP.md directly to add bullets; "
+                        "the verb handles ANTS-NNNN-style projects "
+                        "only today.");
+                    env["follow_up"] = QStringLiteral("ANTS-1877");
+                    return QJsonDocument(env);
+                }
+                return rlErr(QStringLiteral("counter_missing"),
+                    QStringLiteral("roadmap_log: .roadmap-counter "
+                                   "does not exist at \"%1\" — "
+                                   "touch the file with the current "
+                                   "high-water mark to enable "
+                                   "op:append. Recipe: "
+                                   "echo 0 > %1")
+                        .arg(counterPath));
+            }
             return rlErr(QStringLiteral("counter_read_failed"),
                 QStringLiteral("roadmap_log: could not read "
                                ".roadmap-counter at \"%1\"")
                     .arg(counterPath));
         }
         const QByteArray raw = cf.readAll().trimmed();
+        if (raw.isEmpty()) {
+            // Empty / whitespace-only file — caller likely `touch`ed
+            // it without initialising. Route to counter_missing with
+            // the same recipe hint.
+            return rlErr(QStringLiteral("counter_missing"),
+                QStringLiteral("roadmap_log: .roadmap-counter at "
+                               "\"%1\" is empty — initialise with: "
+                               "echo 0 > %1")
+                    .arg(counterPath));
+        }
         bool ok = false;
         counter = QString::fromUtf8(raw).toLongLong(&ok);
         if (!ok) {

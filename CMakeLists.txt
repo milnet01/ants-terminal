@@ -1052,6 +1052,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_query_per_section_etag/test_roadmap_query_per_section_etag.cpp
                 # ANTS-1880 spec_query + project_layout phases-dir recognition.
                 tests/features/spec_query_phases_layout/test_spec_query_phases_layout.cpp
+                # ANTS-1877 roadmap_log op:append stable-prefix project hint.
+                tests/features/roadmap_log_stable_prefix_hint/test_roadmap_log_stable_prefix_hint.cpp
                 # ANTS-1423 Current preset excludes ✅ shipped bullets.
                 tests/features/roadmap_current_preset_excludes_shipped/test_current_preset_excludes_shipped.cpp
                 # ANTS-1417 every registered MCP tool has explicit CallerCwdContract entry.
