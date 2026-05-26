@@ -2974,6 +2974,53 @@ void ClaudeIntegration::onMcpConnection() {
                     tools.append(t);
                 }
 
+                // ANTS-1883 — session_orient: bundle of current_state +
+                // project_layout + roadmap_query (section_index, active).
+                {
+                    QJsonObject t;
+                    t["name"] = "session_orient";
+                    t["selection_hint"] = QStringLiteral(
+                        "First read on a fresh /clear session: bundles "
+                        "current_state + project_layout + roadmap_query "
+                        "section_index in one call (one ETag).");
+                    t["description"] = QStringLiteral(
+                        "Single-call session-orientation bundle: composes "
+                        "current_state (project / git / audit state) + "
+                        "project_layout (where docs / specs / roadmap "
+                        "live) + roadmap_query mode:section_index "
+                        "status:\"active\" (active roadmap sections) "
+                        "into one envelope under a single ETag. Use as "
+                        "the first read on a fresh /clear session — "
+                        "saves three MCP round-trips and three ETag "
+                        "misses vs the per-verb-call orientation "
+                        "pattern. Top-level ok is true IFF all three "
+                        "upstreams succeeded; on any upstream failure "
+                        "the failing key carries that upstream's "
+                        "verbatim refusal envelope. ANTS-1883.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    QJsonObject cwdProp;
+                    cwdProp["type"] = "string";
+                    cwdProp["description"] = QStringLiteral(
+                        "Your $PWD (required).");
+                    QJsonObject etagProp;
+                    etagProp["type"] = "string";
+                    etagProp["description"] = QStringLiteral(
+                        "ETag from a previous session_orient call. "
+                        "When it matches: "
+                        "{ok:true,unchanged:true,etag:\"<same>\"}.");
+                    QJsonObject props;
+                    props["caller_cwd"] = cwdProp;
+                    props["etag_match"] = etagProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema["required"] = req;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-1723 — workflow_state: superpowers skill step/phase store.
                 {
                     QJsonObject t;
@@ -6345,6 +6392,9 @@ void ClaudeIntegration::onMcpConnection() {
                         {QStringLiteral("project_layout"),    {600,  2000}},
                         {QStringLiteral("session_memory"),    {200,  1000}},
                         {QStringLiteral("session_brief"),     {300,  1200}},
+                        // ANTS-1883 — composer of three large reads;
+                        // bucket = sum of constituents' worst case.
+                        {QStringLiteral("session_orient"),    {2500, 15000}},
                         {QStringLiteral("workflow_state"),    {200,  1000}},
                         {QStringLiteral("workspace_search"),  {1500, 10000}},
                         {QStringLiteral("file_outline"),      {800,  4000}},
@@ -6457,7 +6507,11 @@ void ClaudeIntegration::onMcpConnection() {
                         // read aggregator (joins project_layout's family).
                         name == QLatin1String("current_state") ||
                         // ANTS-1724 — session_brief is the compact variant.
-                        name == QLatin1String("session_brief"))
+                        name == QLatin1String("session_brief") ||
+                        // ANTS-1883 — session_orient bundles
+                        // current_state + project_layout + roadmap
+                        // section_index; same workspace family.
+                        name == QLatin1String("session_orient"))
                         return QStringLiteral("workspace");
                     if (name == QLatin1String("session_memory") ||
                             name == QLatin1String("workflow_state"))
@@ -7256,6 +7310,7 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // routing: reads anchor to caller_cwd, writes match focused tab.
     if (toolName == QStringLiteral("session_memory"))     return C::Required;
     if (toolName == QStringLiteral("session_brief"))      return C::Required;
+    if (toolName == QStringLiteral("session_orient"))     return C::Required;  // ANTS-1883
     if (toolName == QStringLiteral("workflow_state"))     return C::Required;
     // TabSpecific — classified but not enforced in Phase 3a. The
     // ANTS-1392 routing semantics (caller_cwd as a tab-routing key)
@@ -7418,6 +7473,9 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
         || toolName == QStringLiteral("model_switch_stats")
         // ANTS-1724 — session_brief: compact current_state variant.
         || toolName == QStringLiteral("session_brief")
+        // ANTS-1883 — session_orient: composer over three ETag-
+        // eligible verbs, naturally ETag-eligible too.
+        || toolName == QStringLiteral("session_orient")
         // ANTS-1299 + ANTS-1300 — build/test caches. The envelope on
         // op=read is stable between record calls, so re-reads from
         // peer sessions / tabs short-circuit. Etag injection is

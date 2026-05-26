@@ -418,6 +418,10 @@ public:
     QJsonDocument cmdModelSwitchStats(const QJsonObject &req);
     // ANTS-1724: compact session-state envelope for fresh-session orientation.
     QJsonDocument cmdSessionBrief(const QJsonObject &req);
+    // ANTS-1883: bundle of current_state + project_layout +
+    // roadmap_query mode:section_index status:active in one
+    // envelope under a single ETag — for fresh-session orientation.
+    QJsonDocument cmdSessionOrient(const QJsonObject &req);
     // ANTS-1723: per-project, per-skill step/phase store for superpowers skills.
     QJsonDocument cmdWorkflowState(const QJsonObject &req);
 

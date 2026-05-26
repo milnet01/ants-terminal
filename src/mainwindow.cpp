@@ -4804,6 +4804,12 @@ void MainWindow::setupClaudeMcpProviders() {
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdSessionBrief));
 
+    // ANTS-1883 — session_orient: bundle of current_state +
+    // project_layout + roadmap_query (section_index, active).
+    m_claudeIntegration->registerToolProvider("session_orient",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdSessionOrient));
+
     // ANTS-1430 — project_layout pre-cache.
     m_claudeIntegration->registerToolProvider("project_layout",
         ClaudeIntegration::CallerCwdContract::Required,

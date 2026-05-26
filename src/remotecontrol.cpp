@@ -6758,6 +6758,63 @@ QJsonDocument RemoteControl::cmdSessionBrief(const QJsonObject &req)
     return QJsonDocument(result);
 }
 
+// ANTS-1883 — session_orient: bundle of current_state + project_layout
+// + roadmap_query mode:section_index status:active. Composer-only,
+// no new caches; each upstream call hits its existing cache. The
+// dispatch-layer applyEtagPattern wraps the bundle response with one
+// ETag — flips when any of the three upstreams' payload changes.
+QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
+{
+    if (!m_main) {
+        return QJsonDocument(csErr(QStringLiteral("no_window"),
+            QStringLiteral("session_orient: no MainWindow")));
+    }
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        return QJsonDocument(csErr(QStringLiteral("no_project"),
+            QStringLiteral("session_orient: project root unresolved")));
+    }
+
+    QJsonObject result;
+    bool allOk = true;
+
+    // --- current_state (ANTS-1569) ---
+    {
+        QJsonObject csReq;
+        csReq[QStringLiteral("caller_cwd")] = rootCanonical;
+        const QJsonObject cs = cmdCurrentState(csReq).object();
+        if (!cs.value(QStringLiteral("ok")).toBool(false)) allOk = false;
+        result[QStringLiteral("current_state")] = cs;
+    }
+
+    // --- project_layout ---
+    {
+        QJsonObject plReq;
+        plReq[QStringLiteral("caller_cwd")] = rootCanonical;
+        const QJsonObject pl = cmdProjectLayout(plReq).object();
+        if (!pl.value(QStringLiteral("ok")).toBool(false)) allOk = false;
+        result[QStringLiteral("project_layout")] = pl;
+    }
+
+    // --- sections_index (roadmap_query mode:section_index status:active) ---
+    // Per ANTS-1437 INV-7 as amended by ANTS-1848, status:"active"
+    // is meaningful for section_index mode — drops sections whose
+    // active_count_id_only:0 (the lean planning slice).
+    {
+        QJsonObject rqReq;
+        rqReq[QStringLiteral("caller_cwd")] = rootCanonical;
+        rqReq[QStringLiteral("mode")]       = QStringLiteral("section_index");
+        rqReq[QStringLiteral("status")]     = QStringLiteral("active");
+        const QJsonObject rq = cmdRoadmapQuery(rqReq).object();
+        if (!rq.value(QStringLiteral("ok")).toBool(false)) allOk = false;
+        result[QStringLiteral("sections_index")] = rq;
+    }
+
+    result[QStringLiteral("ok")] = allOk;
+    // ETag injected at the dispatch layer (isEtagSupportedTool).
+    return QJsonDocument(result);
+}
+
 // ----- ANTS-1309 + ANTS-1308 — spec-aware MCP tools ----------------
 //
 // Shared parser for docs/specs/<id>.md. Recognises both the table
