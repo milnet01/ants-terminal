@@ -2096,6 +2096,42 @@ void ClaudeIntegration::onMcpConnection() {
                     tools.append(t);
                 }
 
+                {
+                    // ANTS-1735 — model_switch_stats: read-only effectiveness
+                    // scorecard for the autonomous model switcher. Required
+                    // caller_cwd; ETag + fields opt-in.
+                    QJsonObject t;
+                    t["name"] = "model_switch_stats";
+                    t["description"] = QStringLiteral(
+                        "Read-only scorecard for the autonomous model switcher "
+                        "(ANTS-1735), scoped to the caller's project. Aggregates "
+                        "the effectiveness ledger into Opus turns avoided vs "
+                        "regret/under-route rate — the trust signal that "
+                        "auto-switching is helping. Envelope: {ok, switches, "
+                        "downgrades, upgrades, opus_turns_avoided, "
+                        "opus_turns_routed_in, regret_count, regret_rate, "
+                        "under_route_count, pending_count, by_tier, headline}. "
+                        "An absent ledger returns {ok:true, switches:0, …}; "
+                        "pending records (switch near session end, outcome not "
+                        "yet measured) are counted separately, never as success. "
+                        "The headline is reported as an avoided/regret ratio.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to check whether automatic model switching is "
+                        "paying off before trusting/enabling it more widely — "
+                        "reports avoided Opus turns against the regret rate.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["etag_match"] = makeEtagMatchProp();
+                    props["fields"]     = makeFieldsProp();
+                    schema["properties"] = props;
+                    schema["required"]   = QJsonArray{
+                        QStringLiteral("caller_cwd")};
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 QJsonObject tabListTool;
                 tabListTool["name"] = "tab_list";
                 tabListTool["description"] = QStringLiteral(
@@ -6360,6 +6396,10 @@ void ClaudeIntegration::onMcpConnection() {
                     if (name == QLatin1String("session_memory") ||
                             name == QLatin1String("workflow_state"))
                         return QStringLiteral("mcp-state");
+                    // ANTS-1735 — model_switch_stats: autonomous
+                    // model-switcher effectiveness scorecard.
+                    if (name == QLatin1String("model_switch_stats"))
+                        return QStringLiteral("model");
                     if (name == QLatin1String("plan_template"))
                         return QStringLiteral("plan");
                     // ANTS-1309 + ANTS-1308 — spec-aware tools.
@@ -7209,6 +7249,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // already returns Required; this explicit branch is declarative
     // parity with sibling project-scoped tools.
     if (toolName == QStringLiteral("current_state"))      return C::Required;
+    // ANTS-1735 — model_switch_stats: read-only ledger aggregation scoped to the
+    // caller's project. Required matches sibling project-scoped readers.
+    if (toolName == QStringLiteral("model_switch_stats"))  return C::Required;
     // ANTS-1309 + ANTS-1308 — spec-aware MCP tools. Read under
     // docs/specs/ which lives strictly inside the project root, so
     // Required matches sibling project-scoped readers.
@@ -7304,6 +7347,9 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
         // a session re-asking "what's the state" between upstream
         // changes short-circuits.
         || toolName == QStringLiteral("current_state")
+        // ANTS-1735 — model_switch_stats: the aggregate is stable between
+        // switches, so a session re-polling its scorecard short-circuits.
+        || toolName == QStringLiteral("model_switch_stats")
         // ANTS-1724 — session_brief: compact current_state variant.
         || toolName == QStringLiteral("session_brief")
         // ANTS-1299 + ANTS-1300 — build/test caches. The envelope on

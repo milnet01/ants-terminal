@@ -225,6 +225,9 @@ add_library(ants_core_lib STATIC
     src/fileoutline.cpp
     # ANTS-1855 — read_log pure filtering helper (Qt6::Core-only).
     src/readlog.cpp
+    # ANTS-1735 — model-switch effectiveness ledger. In core (not claude) so the
+    # read-only model_switch_stats MCP verb (mainwindow dispatch) can reach it.
+    src/modelswitchledger.cpp
     # ANTS-1303 — find_definition / find_caller tree-wide symbol scanner.
     src/symbolquery.cpp
     # ANTS-1305 — similar_code shape matcher (reuses FileOutline extractor).
@@ -339,6 +342,10 @@ add_library(ants_claude_lib STATIC
     src/claudeallowlist.cpp
     src/claudestatuswidgets.cpp
     src/modelrecommender.cpp
+    # ANTS-1735 — autonomous model-switch gate. Lives here (not core) because
+    # decide() reuses ModelRecommender::tierName (INV-9); core placement would
+    # invert the core←claude layering.
+    src/modelautoswitch.cpp
     src/claudetabtracker.cpp
     src/claudetranscript.cpp
     src/claudeprojects.cpp
@@ -1502,6 +1509,18 @@ if(ANTS_TESTS)
                 # ANTS-1226 — ModelRecommender scorer.
                 tests/features/model_recommender/test_model_recommender.cpp
                 src/modelrecommender.cpp
+                # ANTS-1735 — autonomous model-switch gate (pure decide/clampToFloor).
+                # modelautoswitch.cpp + modelrecommender.cpp compiled directly here
+                # (test_core links ants_core_lib only, not ants_claude_lib).
+                tests/features/model_auto_switch/test_model_auto_switch.cpp
+                src/modelautoswitch.cpp
+                # ANTS-1735 — effectiveness ledger (modelswitchledger.cpp is in
+                # ants_core_lib, which test_core links — only the test TU here).
+                tests/features/model_switch_ledger/test_model_switch_ledger.cpp
+                # ANTS-1735 — model_switch_stats verb: behavioural aggregation +
+                # source-grep wiring contract (uses SRC_RC_HEADER / SRC_RC_CPP /
+                # SRC_MAINWINDOW_CPP / SRC_CLAUDE_INTEGRATION_CPP_PATH defs below).
+                tests/features/mcp_model_switch_stats/test_mcp_model_switch_stats.cpp
                 # ANTS-1720 — MCP fields= response projection.
                 tests/features/mcp_projection/test_mcp_projection.cpp
                 # ANTS-1727 — ai_review_concurrency config clamp (INV-14).

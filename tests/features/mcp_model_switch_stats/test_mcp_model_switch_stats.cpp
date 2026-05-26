@@ -1,0 +1,156 @@
+// Feature-conformance test for ANTS-1735 — the model_switch_stats MCP verb.
+// See tests/features/mcp_model_switch_stats/spec.md and docs/specs/ANTS-1735.md
+// §2.5 (INV-13). Two halves:
+//   (1) behavioural — the pure aggregation (statsEnvelope/statsForProject),
+//   (2) wiring contract — source-grep that the MCP dispatch is registered
+//       (RemoteControl delegate, mainwindow registration, tools/list descriptor,
+//       Required caller_cwd contract, ETag opt-in).
+
+#include <gtest/gtest.h>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QTemporaryDir>
+
+#include <fstream>
+#include <sstream>
+#include <string>
+
+#include "modelswitchledger.h"
+
+namespace L = ModelSwitchLedger;
+
+namespace {
+
+L::Record rec(const QString &from, const QString &to, bool pending, int turns,
+              bool override_ = false, bool underRoute = false,
+              const QString &project = QStringLiteral("/projA")) {
+    L::Record r;
+    r.ts = QStringLiteral("2026-05-25T14:00:00Z");
+    r.project = project;
+    r.fromTier = from;
+    r.toTier = to;
+    r.trigger = QStringLiteral("auto");
+    r.outcome.pending = pending;
+    r.outcome.turnsOnToTier = turns;
+    r.outcome.userOverrideWithin5 = override_;
+    r.outcome.underRouteSignalWithin5 = underRoute;
+    return r;
+}
+
+std::string slurp(const char *path) {
+    std::ifstream in(path);
+    if (!in) { std::fprintf(stderr, "cannot open %s\n", path); std::exit(2); }
+    std::stringstream ss; ss << in.rdbuf(); return ss.str();
+}
+bool has(const std::string &hay, const char *needle) {
+    return hay.find(needle) != std::string::npos;
+}
+
+}  // namespace
+
+// INV-13: an absent ledger is not an error — ok:true, switches:0.
+TEST(McpModelSwitchStats, AbsentLedgerOkZero) {
+    const QJsonObject env =
+        L::statsForProject(QStringLiteral("/no/such/ledger.jsonl"),
+                           QStringLiteral("/projA"));
+    EXPECT_TRUE(env.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("switches")).toInt(), 0);
+}
+
+// INV-13: aggregation counts downgrades/upgrades, sums avoided/routed Opus
+// turns, and reports a regret ratio.
+TEST(McpModelSwitchStats, EnvelopeAggregates) {
+    const QList<L::Record> recs = {
+        rec("opus", "haiku", /*pending*/false, /*turns*/6),                 // clean downgrade
+        rec("opus", "haiku", false, 4, /*override*/true),                   // regretted downgrade
+        rec("haiku", "opus", false, 3),                                     // upgrade to opus
+    };
+    const QJsonObject env = L::statsEnvelope(recs);
+    EXPECT_TRUE(env.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("switches")).toInt(), 3);
+    EXPECT_EQ(env.value(QStringLiteral("downgrades")).toInt(), 2);
+    EXPECT_EQ(env.value(QStringLiteral("upgrades")).toInt(), 1);
+    EXPECT_EQ(env.value(QStringLiteral("opus_turns_avoided")).toInt(), 10); // 6 + 4
+    EXPECT_EQ(env.value(QStringLiteral("opus_turns_routed_in")).toInt(), 3);
+    EXPECT_EQ(env.value(QStringLiteral("regret_count")).toInt(), 1);
+    // regret_rate = 1 of 2 measured downgrades = 50%.
+    EXPECT_DOUBLE_EQ(env.value(QStringLiteral("regret_rate")).toDouble(), 50.0);
+    EXPECT_EQ(env.value(QStringLiteral("pending_count")).toInt(), 0);
+}
+
+// INV-13: the headline is an avoided/regret ratio string.
+TEST(McpModelSwitchStats, HeadlineIsRatio) {
+    const QList<L::Record> recs = { rec("opus", "haiku", false, 6) };
+    const QString headline =
+        L::statsEnvelope(recs).value(QStringLiteral("headline")).toString();
+    EXPECT_TRUE(headline.contains(QStringLiteral("avoided"))) << headline.toStdString();
+    EXPECT_TRUE(headline.contains(QStringLiteral("regret"))) << headline.toStdString();
+}
+
+// INV-13: pending records are counted separately — never folded into the
+// regret/under-route outcome stats.
+TEST(McpModelSwitchStats, PendingCountedSeparately) {
+    const QList<L::Record> recs = {
+        rec("opus", "haiku", /*pending*/true, 0, /*override*/true, /*underRoute*/true),
+        rec("opus", "haiku", false, 5),
+    };
+    const QJsonObject env = L::statsEnvelope(recs);
+    EXPECT_EQ(env.value(QStringLiteral("pending_count")).toInt(), 1);
+    // The pending record's override/under-route flags must NOT be counted.
+    EXPECT_EQ(env.value(QStringLiteral("regret_count")).toInt(), 0);
+    EXPECT_EQ(env.value(QStringLiteral("under_route_count")).toInt(), 0);
+    // regret_rate denominator excludes the pending downgrade (0 of 1 measured).
+    EXPECT_DOUBLE_EQ(env.value(QStringLiteral("regret_rate")).toDouble(), 0.0);
+}
+
+// INV-13: read-only — aggregating leaves the ledger file byte-for-byte intact.
+TEST(McpModelSwitchStats, ReadOnly) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("ledger.jsonl"));
+    ASSERT_TRUE(L::appendRecord(path, rec("opus", "haiku", false, 6)));
+    QFile f(path); ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QByteArray before = f.readAll(); f.close();
+
+    (void)L::statsForProject(path, QStringLiteral("/projA"));
+
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QByteArray after = f.readAll(); f.close();
+    EXPECT_EQ(before, after);
+}
+
+// INV-13: stats are scoped to the caller's project — other projects' records
+// are excluded.
+TEST(McpModelSwitchStats, ProjectScoped) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("ledger.jsonl"));
+    ASSERT_TRUE(L::appendRecord(path, rec("opus","haiku",false,6,false,false,"/projA")));
+    ASSERT_TRUE(L::appendRecord(path, rec("opus","haiku",false,6,false,false,"/projB")));
+    ASSERT_TRUE(L::appendRecord(path, rec("opus","haiku",false,6,false,false,"/projB")));
+    const QJsonObject env = L::statsForProject(path, QStringLiteral("/projA"));
+    EXPECT_EQ(env.value(QStringLiteral("switches")).toInt(), 1);
+}
+
+// Wiring contract — the MCP dispatch must be registered end to end.
+TEST(McpModelSwitchStats, WiringContract) {
+    const std::string rcHdr = slurp(SRC_RC_HEADER);
+    const std::string rcCpp = slurp(SRC_RC_CPP);
+    const std::string mwCpp = slurp(SRC_MAINWINDOW_CPP);
+    const std::string ciCpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+
+    EXPECT_TRUE(has(rcHdr, "cmdModelSwitchStats(const QJsonObject"))
+        << "decl missing from remotecontrol.h";
+    EXPECT_TRUE(has(rcCpp, "RemoteControl::cmdModelSwitchStats("))
+        << "definition missing from remotecontrol.cpp";
+    EXPECT_TRUE(has(rcCpp, "ANTS-1735")) << "remotecontrol.cpp must anchor ANTS-1735";
+    EXPECT_TRUE(has(rcCpp, "statsForProject"))
+        << "cmdModelSwitchStats must delegate to ModelSwitchLedger::statsForProject";
+    EXPECT_TRUE(has(mwCpp, "registerToolProvider(\"model_switch_stats\""))
+        << "mainwindow.cpp must register model_switch_stats";
+    EXPECT_TRUE(has(mwCpp, "cmdModelSwitchStats"))
+        << "mainwindow registration must delegate to cmdModelSwitchStats";
+    EXPECT_TRUE(has(ciCpp, "t[\"name\"] = \"model_switch_stats\""))
+        << "tools/list must carry a model_switch_stats descriptor";
+    EXPECT_TRUE(has(ciCpp, "\"model_switch_stats\""))
+        << "callerCwdContractFor must classify model_switch_stats";
+}

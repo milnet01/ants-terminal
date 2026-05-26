@@ -16,7 +16,8 @@ bool isFieldProjectionTool(const QString &toolName) {
         || toolName == QStringLiteral("tab_list")
         || toolName == QStringLiteral("subsystem")
         || toolName == QStringLiteral("git_state")
-        || toolName == QStringLiteral("read_log");  // ANTS-1855
+        || toolName == QStringLiteral("read_log")            // ANTS-1855
+        || toolName == QStringLiteral("model_switch_stats"); // ANTS-1735
 }
 
 QString projectFields(const QString &responseText, const QJsonArray &fields) {

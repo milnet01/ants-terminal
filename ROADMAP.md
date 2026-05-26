@@ -9728,6 +9728,14 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Lanes: test, auditengine.
   Source: test-audit-2026-05-17.
 
+- 📋 [ANTS-1873] **Tab dot shows Claude idle while the status bar shows thinking — per-tab state desyncs from live state.**
+  Screenshot 2026-05-25: the focused tab's dot indicator rendered Idle while the status bar correctly read "thinking" (Claude mid-turn). The per-tab/per-shell state behind the tab dot (ClaudeTabTracker shellState) desynced from the live state the status bar reads. Suspect a stuck/lagging per-tab state write or a missed transition on the tracker path vs the status-bar source. Relevant to ANTS-1735: its auto-switch actuator gates injection on this same per-tab Idle state (INV-2), so a tab stuck at Idle could let it inject mid-turn — must fix/validate before 1735's actuator wiring and spike S2.
+  **Layman:** Sometimes the little dot on a tab says Claude has finished when it's actually still working (the bar at the bottom is right). The dot needs to agree with the real state.
+  Kind: investigate.
+  Lanes: claude-integration, status-bar.
+  Source: user-report-2026-05-25.
+  Clarification (user, 2026-05-25): the desync is BI-DIRECTIONAL, not tab-dot-only. The "prompting"/awaiting-input state renders correctly on the tab dot but is WRONG in the status bar — the converse of the screenshot case (thinking vs idle), where the dot was wrong and the bar right. So neither surface is consistently authoritative: each gets some ClaudeState values right and others wrong. The fix must reconcile BOTH surfaces against one true per-tab state source (bi-directional), not just make one follow the other.
+
 ## 0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)
 
 ### 📝 Cold-eyes 2026-05-21
@@ -19073,6 +19081,7 @@ contributors don't duplicate research.
   power for hard ones, without having to click anything.
   Kind: implement. Source: user-2026-05-21.
   Progress (2026-05-25): spec drafted at docs/specs/ANTS-1735.md and run through a 3-loop cold-eyes review (converged, clean pass) — awaiting user sign-off. Research finding: hooks cannot set the model and the cooperative session-pause idea is infeasible on the interactive CLI today, so the design uses idle-window /model injection (inject at the Idle turn-boundary before the user's first keystroke) with effectiveness-ledger tracking as the trust signal. Implementation gated on spikes S1 (does injected /model raise a picker?) + S2 (empty-composer proxy) and the user's design-synthesis step. No code landed.
+  Progress (2026-05-25): spike-independent pure foundation landed under TDD (full suite 1540 tests green). NEW: src/modelautoswitch.{h,cpp} (ants_claude_lib) — decide()/clampToFloor gate (INV-1..9); src/modelswitchledger.{h,cpp} (ants_core_lib) — JSONL append + 256KiB drop-oldest eviction with pending-pinning + override/under-route/correction detection + statsEnvelope aggregation (INV-10..12); model_switch_stats MCP read verb (RemoteControl::cmdModelSwitchStats, Required caller_cwd, ETag+fields opt-in, INV-13). Tests under tests/features/{model_auto_switch,model_switch_ledger,mcp_model_switch_stats} (all RED-verified against stubs first). Placement deviation from spec §4: modelautoswitch lives in ants_claude_lib not ants_core_lib — it reuses ModelRecommender::tierName (INV-9) and core placement would invert the core<-claude layer DAG; ledger stays in core so the stats verb's mainwindow dispatch can reach it. STILL GATED (not landed): live actuator wiring (controller PTY injection, idleSinceMs/lastUserKeystrokeMs stamping, chip suppression INV-14), config keys §2.7, and the S2 live spike. S1 research = GO (Claude Code docs confirm /model <alias> switches directly, no picker). Related: ANTS-1873 (tab-dot vs status-bar state desync) is a precondition for the actuator's per-tab Idle gate (INV-2).
 
 - 💭 [ANTS-1871] **Upstream ask — Claude Code "pause-for-switch" model handshake.**
   Research for ANTS-1735 found the cooperative session-pause (pause -> external model change -> resume) infeasible on the interactive Claude Code CLI: no hook output sets the model; the CLI exposes no pause/resume; input-queue ordering during a blocking hook is undocumented. The Agent SDK (Managed Agents) HAS interrupt + session.update(model), but the CLI doesn't surface it. File a feature request for a turn-boundary handshake with defined ordering. If it lands, ANTS-1735 adopts it as the primary mechanism and demotes idle-window /model injection to fallback, removing the residual injection race (OQ-1).

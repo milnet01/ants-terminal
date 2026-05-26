@@ -4,6 +4,7 @@
 #include "debtsweepengine.h"
 #include "fileoutline.h"
 #include "readlog.h"
+#include "modelswitchledger.h"   // ANTS-1735 — model_switch_stats aggregation
 #include "focusedtest.h"
 #include "gitwrap.h"
 #include "claudeintegration.h"
@@ -6307,6 +6308,25 @@ QJsonDocument RemoteControl::cmdCurrentState(const QJsonObject &req) {
     // applyEtagPattern (ANTS-1499). Return the body without an
     // `etag` field; the dispatcher computes and injects it.
     return QJsonDocument(result);
+}
+
+// ANTS-1735 — model_switch_stats: read-only aggregation of the model-switch
+// effectiveness ledger, scoped to the caller's project. The ledger is a single
+// global JSONL (~/.cache/ants-terminal/model-switch-ledger.jsonl); records carry
+// a `project` field, so this verb filters to the resolved caller root before
+// aggregating. Never writes. Absent ledger → {ok:true, switches:0, …}.
+QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
+    if (!m_main) {
+        return QJsonDocument(csErr(QStringLiteral("no_window"),
+            QStringLiteral("model_switch_stats: no MainWindow")));
+    }
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        return QJsonDocument(csErr(QStringLiteral("no_project"),
+            QStringLiteral("model_switch_stats: project root unresolved")));
+    }
+    return QJsonDocument(ModelSwitchLedger::statsForProject(
+        ModelSwitchLedger::defaultLedgerPath(), rootCanonical));
 }
 
 // ANTS-1724 — session_brief: compact session-state envelope for

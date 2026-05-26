@@ -1,0 +1,179 @@
+// Feature-conformance test for ANTS-1735 — autonomous model-switch gate.
+// See tests/features/model_auto_switch/spec.md and docs/specs/ANTS-1735.md.
+//
+// Covers the pure decision helper (INV-1..INV-9). No live terminal: every case
+// builds a Gate value and asserts decide()/clampToFloor() output.
+
+#include <gtest/gtest.h>
+#include "modelautoswitch.h"
+
+namespace {
+
+using ModelRecommender::Tier;
+using ModelAutoSwitch::Gate;
+using ModelAutoSwitch::Decision;
+
+// A Gate in which *every* condition is satisfied, so decide() acts. Each
+// negative test below flips exactly one field, so the only thing under test in
+// that case is the flipped gate.
+//   current=Opus, recommended=Haiku, floor=Haiku → clamp=Haiku != Opus → act,
+//   tierArg="haiku".
+Gate actingGate() {
+    Gate g;
+    g.enabled          = true;
+    g.focusedState     = ClaudeState::Idle;
+    g.composerEmpty    = true;
+    g.current          = Tier::Opus;
+    g.recommended      = Tier::Haiku;
+    g.floor            = Tier::Haiku;
+    g.ticksTargetStable = ModelAutoSwitch::kStableTicks;
+    g.msSinceLastSwitch = ModelAutoSwitch::kMinDwellMs;
+    return g;
+}
+
+std::string nm(Tier t) { return ModelRecommender::tierName(t).toStdString(); }
+
+}  // namespace
+
+// Baseline: the fully-satisfied gate acts, with the clamped-target alias.
+TEST(ModelAutoSwitch, BaselineActsWithClampedAlias) {
+    const Decision d = ModelAutoSwitch::decide(actingGate());
+    EXPECT_TRUE(d.act);
+    EXPECT_EQ(d.tierArg, QStringLiteral("haiku")) << d.tierArg.toStdString();
+}
+
+// INV-1: disabled → never acts, regardless of everything else.
+TEST(ModelAutoSwitch, Inv1DisabledNeverActs) {
+    Gate g = actingGate();
+    g.enabled = false;
+    EXPECT_FALSE(ModelAutoSwitch::decide(g).act);
+}
+
+// INV-2: any non-Idle focused state → never acts. One case per non-Idle
+// ClaudeState value (claudeintegration.h:47-53).
+TEST(ModelAutoSwitch, Inv2NonIdleNeverActs) {
+    for (ClaudeState s : {ClaudeState::NotRunning, ClaudeState::Thinking,
+                          ClaudeState::ToolUse, ClaudeState::Compacting}) {
+        Gate g = actingGate();
+        g.focusedState = s;
+        EXPECT_FALSE(ModelAutoSwitch::decide(g).act)
+            << "state index " << static_cast<int>(s);
+    }
+}
+
+// INV-3: composer not provably empty → never acts.
+TEST(ModelAutoSwitch, Inv3ComposerNonEmptyNeverActs) {
+    Gate g = actingGate();
+    g.composerEmpty = false;
+    EXPECT_FALSE(ModelAutoSwitch::decide(g).act);
+}
+
+// INV-4: clamped target already equals current → no-op (hysteresis on the
+// clamped target).
+TEST(ModelAutoSwitch, Inv4NoChangeNeverActs) {
+    Gate g = actingGate();
+    g.current = Tier::Haiku;       // clamp(Haiku,Haiku)=Haiku == current
+    g.recommended = Tier::Haiku;
+    g.floor = Tier::Haiku;
+    EXPECT_FALSE(ModelAutoSwitch::decide(g).act);
+}
+
+// INV-5: stability threshold — below kStableTicks never acts; at it, acts.
+TEST(ModelAutoSwitch, Inv5StabilityThreshold) {
+    Gate below = actingGate();
+    below.ticksTargetStable = ModelAutoSwitch::kStableTicks - 1;
+    EXPECT_FALSE(ModelAutoSwitch::decide(below).act);
+
+    Gate at = actingGate();
+    at.ticksTargetStable = ModelAutoSwitch::kStableTicks;
+    EXPECT_TRUE(ModelAutoSwitch::decide(at).act);
+}
+
+// INV-5: a persistent below-floor recommendation that clamps to current must
+// NOT churn — stability is counted on the CLAMPED target, which equals current,
+// so even a huge tick count never acts (no livelock).
+TEST(ModelAutoSwitch, Inv5ClampedToCurrentNeverChurns) {
+    Gate g = actingGate();
+    g.floor = Tier::Sonnet;        // floor=sonnet
+    g.current = Tier::Sonnet;      // already at floor
+    g.recommended = Tier::Haiku;   // persistent Haiku rec → clamp=Sonnet==current
+    g.ticksTargetStable = 1000;    // would churn if counted on the raw rec
+    EXPECT_FALSE(ModelAutoSwitch::decide(g).act);
+}
+
+// INV-6: dwell threshold — below kMinDwellMs never acts; at it, acts.
+TEST(ModelAutoSwitch, Inv6DwellThreshold) {
+    Gate below = actingGate();
+    below.msSinceLastSwitch = ModelAutoSwitch::kMinDwellMs - 1;
+    EXPECT_FALSE(ModelAutoSwitch::decide(below).act);
+
+    Gate at = actingGate();
+    at.msSinceLastSwitch = ModelAutoSwitch::kMinDwellMs;
+    EXPECT_TRUE(ModelAutoSwitch::decide(at).act);
+}
+
+// INV-7: when acting, tierArg is the lowercase alias of the CLAMPED target.
+TEST(ModelAutoSwitch, Inv7TierArgIsClampedAlias) {
+    {   // upgrade: current=Haiku, rec=Opus, floor=Haiku → opus
+        Gate g = actingGate();
+        g.current = Tier::Haiku; g.recommended = Tier::Opus; g.floor = Tier::Haiku;
+        const Decision d = ModelAutoSwitch::decide(g);
+        EXPECT_TRUE(d.act);
+        EXPECT_EQ(d.tierArg, QStringLiteral("opus"));
+    }
+    {   // clamped downgrade: current=Opus, rec=Haiku, floor=Sonnet → sonnet
+        Gate g = actingGate();
+        g.current = Tier::Opus; g.recommended = Tier::Haiku; g.floor = Tier::Sonnet;
+        const Decision d = ModelAutoSwitch::decide(g);
+        EXPECT_TRUE(d.act);
+        EXPECT_EQ(d.tierArg, QStringLiteral("sonnet"));
+    }
+    {   // full downgrade: current=Opus, rec=Haiku, floor=Haiku → haiku
+        Gate g = actingGate();
+        g.current = Tier::Opus; g.recommended = Tier::Haiku; g.floor = Tier::Haiku;
+        const Decision d = ModelAutoSwitch::decide(g);
+        EXPECT_TRUE(d.act);
+        EXPECT_EQ(d.tierArg, QStringLiteral("haiku"));
+    }
+}
+
+// INV-8: clampToFloor truth table — full rec×floor matrix. The result is the
+// higher-ranked of (rec, floor); Opus is never clamped down.
+TEST(ModelAutoSwitch, Inv8ClampTruthTable) {
+    struct Case { Tier rec; Tier floor; Tier want; };
+    const Case cases[] = {
+        {Tier::Haiku,  Tier::Haiku,  Tier::Haiku},
+        {Tier::Haiku,  Tier::Sonnet, Tier::Sonnet},
+        {Tier::Haiku,  Tier::Opus,   Tier::Opus},
+        {Tier::Sonnet, Tier::Haiku,  Tier::Sonnet},
+        {Tier::Sonnet, Tier::Sonnet, Tier::Sonnet},
+        {Tier::Sonnet, Tier::Opus,   Tier::Opus},
+        {Tier::Opus,   Tier::Haiku,  Tier::Opus},
+        {Tier::Opus,   Tier::Sonnet, Tier::Opus},
+        {Tier::Opus,   Tier::Opus,   Tier::Opus},
+    };
+    for (const Case &c : cases) {
+        EXPECT_EQ(ModelAutoSwitch::clampToFloor(c.rec, c.floor), c.want)
+            << "clamp(" << nm(c.rec) << ", " << nm(c.floor) << ") = "
+            << nm(ModelAutoSwitch::clampToFloor(c.rec, c.floor))
+            << " want " << nm(c.want);
+    }
+}
+
+// INV-9: security boundary — tierArg of any acting decision is always one of the
+// three fixed enum aliases, never arbitrary text.
+TEST(ModelAutoSwitch, Inv9TierArgAlwaysEnumAlias) {
+    for (Tier cur : {Tier::Haiku, Tier::Sonnet, Tier::Opus})
+        for (Tier rec : {Tier::Haiku, Tier::Sonnet, Tier::Opus})
+            for (Tier flr : {Tier::Haiku, Tier::Sonnet}) {
+                Gate g = actingGate();
+                g.current = cur; g.recommended = rec; g.floor = flr;
+                const Decision d = ModelAutoSwitch::decide(g);
+                if (d.act) {
+                    EXPECT_TRUE(d.tierArg == QStringLiteral("haiku")
+                             || d.tierArg == QStringLiteral("sonnet")
+                             || d.tierArg == QStringLiteral("opus"))
+                        << d.tierArg.toStdString();
+                }
+            }
+}

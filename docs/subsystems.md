@@ -140,6 +140,21 @@ Listed only where behavior isn't obvious from the name.
   tail-reads ≤ 512 KB JSONL, scores the last 20 assistant turns
   (file-writes, tool diversity, plan keywords, length), returns a `Tier`
   (Haiku/Sonnet/Opus) + reason. No side effects. ANTS-1226.
+- `modelautoswitch` (Qt6::Core, `ants_claude_lib`) — pure decision helper
+  for the autonomous switcher (Shape B): `clampToFloor` + `decide(Gate)`
+  gate (enabled / focused-tab Idle / composer-empty / clamped-target
+  hysteresis / stability / dwell → lowercase tier alias via
+  `ModelRecommender::tierName`). In claude_lib (not core) so the
+  `tierName` reuse doesn't invert the layer DAG. The live actuator
+  (controller PTY injection, chip suppression) is pending spikes S1/S2.
+  ANTS-1735.
+- `modelswitchledger` (Qt6::Core, `ants_core_lib`) — model-switch
+  effectiveness ledger: JSONL append + 256 KiB drop-oldest eviction with
+  pending-record pinning (atomic, 0600), plus pure outcome detection
+  (user-override / under-route / correction) and `statsEnvelope`
+  aggregation (avoided-Opus vs regret/under-route ratio). Read by the
+  `model_switch_stats` MCP verb. In core so the mainwindow dispatch can
+  reach it. ANTS-1735.
 - `roadmapdialog` — ROADMAP.md viewer. `renderCardsHtml` (v2 card
   renderer, in use); `renderHtml` is **test-only** (no prod callers since
   ANTS-1747; its suite locks shared filter/sort/anchor/TOC semantics).

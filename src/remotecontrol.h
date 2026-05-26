@@ -412,6 +412,10 @@ public:
     // upstream verbs already do. MCP-only (mirrors last_audit_summary;
     // no IPC dispatch branch). See docs/specs/ANTS-1569.md.
     QJsonDocument cmdCurrentState(const QJsonObject &req);
+    // ANTS-1735: model_switch_stats — read-only aggregation of the model-switch
+    // effectiveness ledger, scoped to the caller's project. MCP-only (mirrors
+    // current_state; no IPC dispatch branch). See docs/specs/ANTS-1735.md §2.5.
+    QJsonDocument cmdModelSwitchStats(const QJsonObject &req);
     // ANTS-1724: compact session-state envelope for fresh-session orientation.
     QJsonDocument cmdSessionBrief(const QJsonObject &req);
     // ANTS-1723: per-project, per-skill step/phase store for superpowers skills.

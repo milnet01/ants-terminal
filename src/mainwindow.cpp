@@ -4564,6 +4564,13 @@ void MainWindow::setupClaudeMcpProviders() {
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdCurrentState));
 
+    // ANTS-1735 — model_switch_stats. Read-only aggregation of the model-switch
+    // effectiveness ledger, scoped to caller_cwd's project. MCP-only (mirrors
+    // current_state; no IPC dispatch branch). See docs/specs/ANTS-1735.md §2.5.
+    m_claudeIntegration->registerToolProvider("model_switch_stats",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdModelSwitchStats));
+
     // ANTS-1309 + ANTS-1308 — spec-aware token-savers. spec_query
     // returns one spec's parsed {title, status, kind, invariants[]};
     // invariant_check scans docs/specs/*.md for specs that mention
