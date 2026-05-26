@@ -14328,6 +14328,122 @@ subsection.
   [[ANTS-1690]]; this ships the single-bullet verb. Tests:
   `tests/features/roadmap_log_annotate/` (8 INVs, ants-v1 + GFM).
 
+- 📋 [ANTS-1876] **`workspace_search` payload knobs: `max_match_bytes`, `headline_only:true`, auto-fallback to summary shape over `max_bytes`.**
+  Vestige's 87,388-char threading-keyword sweep on ROADMAP.md hit the
+  persisted-output path because each match line was a full 2-5 KB
+  bullet body + context. Asks (any one closes it):
+  1. `max_match_bytes:N` (default ~400) — clip each `text:` field.
+  2. `headline_only:true` — return `{file, line, headline}` triples,
+     skip `text`/`context_before`/`context_after`.
+  3. Auto-fallback: when response would exceed `max_bytes`, drop to
+     the summary shape with `mode_downgraded:"summary"` on the envelope.
+  4. Persist hint pre-counts `X matches across Y files` so the caller
+     can decide narrow-regex vs subagent-slice without opening the
+     file.
+  Implementation lives in `src/remotecontrol.cpp` `cmdWorkspaceSearch`.
+  **Layman:** When you search a project for a word, the tool grabs the full matching line plus context. On a roadmap where each bullet is 2-5 KB long, that explodes into a giant blob that has to be saved to disk. Two small knobs ("just give me the line numbers" or "trim each match to N bytes") would let research-style sweeps fit inline instead.
+  Kind: enhancement.
+  Lanes: mcp-workspace-search, remotecontrol.
+  Source: vestige-feedback-2026-05-26 Issue #19.
+
+- 📋 [ANTS-1877] **`roadmap_log op:append` auto-detect stable-string-ID projects (empty `.roadmap-counter`) and surface `id_strategy:"stable_prefix"` as the default path.**
+  Vestige session created 30+ new bullets via Edit because
+  `roadmap_log op:append` requires a `.roadmap-counter` (empty on
+  stable-string-ID projects). Options:
+  (a) Sniff the last 50 bullets for ID shape; surface a hint when
+      counter is empty: "this project uses stable string IDs — pass
+      `id_strategy:\"stable_prefix\"`".
+  (b) Default `id_strategy:\"stable_prefix\"` when `.roadmap-counter`
+      is empty or absent (still accept a caller override).
+  ANTS-1618's `id_strategy:\"stable_prefix\"` flag exists for
+  `test_audit_fold_in` but isn't wired into `cmdRoadmapLog` yet —
+  the parallel plumbing closes this gap.
+  **Layman:** Some projects use stable string IDs (Sh4, MT8, Ts20-FL1) instead of numeric [PROJ-NNNN] IDs. The append tool's ID-allocator can't help those projects, so a CC session there falls back to Edit-by-hand for every bullet. Auto-detecting the project's style and offering the stable-prefix path would let the append tool work on both shapes.
+  Kind: enhancement.
+  Lanes: mcp-roadmap-log, remotecontrol.
+  Source: vestige-feedback-2026-05-26 Obs #20.
+
+- 📋 [ANTS-1878] **`roadmap_log op:create_section` verb — create a new section header (`{after_section, level, title, intro_body}`) without falling back to Edit.**
+  `op:append` requires an existing `section:` slug. New-section
+  creation requires `Edit` today (Vestige session needed `Phase 10.6:
+  Multi-Threading & Concurrency Architecture` — created via Edit
+  chunk). Suggested verb shape: `op:create_section` taking
+  `{after_section, level, title, intro_body}`, returns the new slug
+  so a follow-up batch of `op:append` calls can key on it. Composes
+  with `op:append_batch` (separate ROADMAP item).
+  **Layman:** When a research session needs to add a brand-new section to the roadmap (not just append a bullet to an existing one), the append tool can't help — you have to hand-edit the file. A small "create_section" verb would close the gap and keep the tool as the single write path.
+  Kind: enhancement.
+  Lanes: mcp-roadmap-log, remotecontrol.
+  Source: vestige-feedback-2026-05-26 Obs #21.
+
+- 📋 [ANTS-1879] **`roadmap_log op:append_batch` — append N bullets to one `section:` in a single atomic call (parity with the Edit path on bulk inserts).**
+  Vestige's audio addendum (14 bullets) was one Edit call vs. 14
+  `op:append` round-trips. Suggested shape: `op:append_batch` taking
+  `bullets:[{headline, body, kind, source, ...}]` keyed on one
+  `section:` slug. Pairs with ANTS-1690's `op:flip_batch` which
+  already shipped — same atomic-commit idea on the read side.
+  Composes with `op:create_section` (separate item).
+  **Layman:** Today appending 14 bullets means 14 round-trips. A batch append (one call carrying a list of bullets) would match what Edit can do in one shot. Pure token-and-latency optimisation; not a correctness gap.
+  Kind: enhancement.
+  Lanes: mcp-roadmap-log, remotecontrol.
+  Source: vestige-feedback-2026-05-26 Obs #22.
+
+- 📋 [ANTS-1880] **`spec_query` + `project_layout` recognise `docs/phases/phase_*_design.md` (and similar non-`docs/specs/` design-doc layouts).**
+  Vestige's per-phase design docs live at
+  `docs/phases/phase_<NN>_<topic>_design.md` — same function as
+  `docs/specs/<ANTS-NNNN>.md` (parsed metadata + structured
+  invariants) but a different path+id scheme. Suggested: `spec_query`
+  accepts `path_prefix` + `id_pattern` config (e.g. via the existing
+  `project_layout` cache), and `project_layout` extends its probe set
+  to include `docs/phases/phase_*.md`. Aligns with the ANTS-1493 +
+  ANTS-1631 probe-widening already shipped for the cold-eyes engine.
+  **Layman:** Some projects keep their design specs under `docs/phases/phase_10_audio_design.md` instead of `docs/specs/ANTS-1234.md`. The spec_query MCP tool only knows the second shape, so the first shape requires a raw Read. Teach the tool (and the project-layout cache) to recognise both shapes.
+  Kind: enhancement.
+  Lanes: mcp-spec-query, mcp-project-layout, projectlayoutengine.
+  Source: vestige-feedback-2026-05-26 Obs #23 + Wishlist #6.
+
+- 📋 [ANTS-1881] **`roadmap_query mode:"headline_only"` — return `{id, status, headline_oneline, section_slug}` per bullet, skip body.**
+  The 80% case for `roadmap_query section=...` is "what's in this
+  section?" — bullet bodies aren't needed. A `mode:"headline_only"`
+  return shape `{id, status, headline_oneline, section_slug}[]` saves
+  ~10× on payload vs `include_body:true` for dense bundle sections
+  (some bullets are 2-5 KB). Composes with the existing `id_only`
+  predicate and ETag short-circuit. Sibling to `mode:"section_index"`
+  which already returns a compact per-section roll-up.
+  **Layman:** When a session opens a roadmap section to ask "what's in here?", it usually doesn't need the bullet bodies — just the headlines. A headline-only mode would cut the payload ~10× for dense bundle sections compared to include_body:true.
+  Kind: enhancement.
+  Lanes: mcp-roadmap-query, remotecontrol.
+  Source: vestige-feedback-2026-05-26 Wishlist #1.
+
+- 📋 [ANTS-1882] **`roadmap_query` per-section ETag — let a `section=foo` call 304 when only OTHER sections changed.**
+  File-level ETag short-circuits the whole call when ROADMAP.md is
+  untouched; per-section ETag would let `section=foo` return
+  `{ok:true, unchanged:true}` when ONLY other sections changed. Big
+  win for `/cold-eyes` and `/test-audit` loops that read many sections
+  across a window punctuated by occasional edits. Compose with
+  existing ANTS-1499 ETag pattern + fields= projection. Implementation:
+  hash the section-slug-bounded byte range, key cache by (path,
+  sectionSlug, sectionHash). Caller can opt in via `section_etag_match`
+  parameter mirroring `etag_match`.
+  **Layman:** Today the roadmap-query tool's "nothing changed" short-circuit is file-level — any edit anywhere makes every cached read miss. A per-section ETag would let cross-section read patterns (cold-eyes, test-audit loops touching many sections) stay cached even when an unrelated section was edited.
+  Kind: enhancement.
+  Lanes: mcp-roadmap-query, remotecontrol.
+  Source: vestige-feedback-2026-05-26 Wishlist #4.
+
+- 📋 [ANTS-1883] **`session_orient` bundle verb — one call returning `current_state` + `project_layout` + `roadmap_query mode:section_index status:"active"` under one ETag.**
+  Composes `current_state` (ANTS-1569) + `project_layout` +
+  `roadmap_query mode:section_index status:"active"` into one
+  envelope; one ETag covers the full bundle so an unchanged session
+  returns `{ok:true, unchanged:true}` for all three. Existing
+  `session_brief` is close but doesn't ship the section_index.
+  Suggested verb name: `session_orient` (distinct semantics: orient
+  vs brief). Saves 3 tool calls + 3 ETag misses per session-start —
+  a compounding win across daily sessions.
+  **Layman:** Every session opens by asking three things: "what state is this project in?" + "where do things live?" + "what active sections are there?". A single bundle verb returning all three (with one ETag covering the lot) would save three tool calls + three cache misses on every session start.
+  Kind: enhancement.
+  Lanes: mcp-session, remotecontrol.
+  Source: vestige-feedback-2026-05-26 Wishlist #3.
+
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
 - ✅ [ANTS-1329] **Tasks dialog gets 3 px of vertical row
