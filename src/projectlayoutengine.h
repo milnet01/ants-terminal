@@ -37,7 +37,8 @@ constexpr int kFormatSniffBytes = 4096;
 //   v1 = initial ANTS-1430 set (root-level ROADMAP/CHANGELOG/docs/{specs,standards,decisions}, packaging .metainfo.xml, .roadmap-counter)
 //   v2 = ANTS-1493 widened to docs/{private,internal,fork}/ + data/changelog.yaml + standards name-glob fallback
 //   v3 = ANTS-1632 format-sniffer recognises "mixed" (GFM task-list + ants-v1 emoji bullets in the same file) and `bullet_count_estimate` counts the union — invalidates pre-1632 caches that returned `format:"unknown"` + `bullet_count_estimate:0` on the same on-disk file
-constexpr int kProbeSetVersion  = 3;
+//   v4 = ANTS-1880 widened to docs/{,private/,internal/,fork/}phases (phasesDir field) — per-phase design docs (Vestige and similar projects keep phase_<NN>_<topic>_design.md outside docs/specs/)
+constexpr int kProbeSetVersion  = 4;
 
 struct RoadmapInfo {
     QString  path;
@@ -61,6 +62,10 @@ struct LayoutEnvelope {
     RoadmapInfo    roadmap;
     ChangelogInfo  changelog;
     QString        specsDir;
+    // ANTS-1880 — per-phase design docs (`docs/phases/` or one of
+    // its private/internal/fork variants). Empty when no phases
+    // dir is present. Same probe-order convention as specsDir.
+    QString        phasesDir;
     QString        standardsDir;
     QString        adrDir;
     QString        appstreamMetainfo;

@@ -6689,10 +6689,13 @@ QJsonObject sqErr(const QString &code, const QString &message) {
     return o;
 }
 
-// Strict ANTS-NNNN id check.
+// Strict id check accepting either ANTS-NNNN (canonical
+// docs/specs/ layout) or phase_<NN>_<topic> (docs/phases/ layout
+// used by some sister projects — ANTS-1880). The two prefixes are
+// disjoint, so the routing in cmdSpecQuery is unambiguous.
 bool isValidSpecId(const QString &id) {
     static const QRegularExpression re(
-        QStringLiteral("^ANTS-[0-9]+$"));
+        QStringLiteral("^(ANTS-[0-9]+|phase_[0-9]+_[a-z0-9_]+)$"));
     return re.match(id).hasMatch();
 }
 
@@ -6814,7 +6817,8 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
     if (!isValidSpecId(id)) {
         return QJsonDocument(sqErr(
             QStringLiteral("bad_id"),
-            QStringLiteral("spec_query: id must match ANTS-NNNN")));
+            QStringLiteral("spec_query: id must match ANTS-NNNN or "
+                           "phase_<NN>_<topic>")));
     }
     const QString rootCanonical = resolveRootCanonical(m_main, req);
     if (rootCanonical.isEmpty()) {
@@ -6822,8 +6826,17 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
             QStringLiteral("no_project"),
             QStringLiteral("spec_query: project root unresolved")));
     }
-    const QString rel  = QStringLiteral("docs/specs/") + id +
-                         QStringLiteral(".md");
+    // ANTS-1880 — per-id-shape routing. ANTS-NNNN ids resolve under
+    // docs/specs/; phase_* ids resolve under docs/phases/. The two
+    // regexes are disjoint (isValidSpecId enforces this), so the
+    // routing is unambiguous. Response carries a `source` field so
+    // a caller scanning results can branch on layout without
+    // re-parsing the path.
+    const bool isPhase = id.startsWith(QStringLiteral("phase_"));
+    const QString dirRel = isPhase
+        ? QStringLiteral("docs/phases/")
+        : QStringLiteral("docs/specs/");
+    const QString rel  = dirRel + id + QStringLiteral(".md");
     const QString full = rootCanonical + QLatin1Char('/') + rel;
     QFileInfo fi(full);
     if (!fi.exists() || !fi.isFile()) {
@@ -6846,6 +6859,10 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
     result["path"]       = rel;
     result["size_bytes"] = fi.size();
     result["mtime_ms"]   = fi.lastModified().toMSecsSinceEpoch();
+    // ANTS-1880 — source-dir discriminator for the caller.
+    result["source"] = isPhase
+        ? QStringLiteral("phases")
+        : QStringLiteral("specs");
     return QJsonDocument(result);
 }
 
@@ -6880,59 +6897,66 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
                            "entries after normalisation")));
     }
 
-    const QString specsDir =
-        rootCanonical + QStringLiteral("/docs/specs");
-    QDir dir(specsDir);
-    if (!dir.exists()) {
-        QJsonObject empty;
-        empty["ok"]              = true;
-        empty["matched_specs"]   = QJsonArray();
-        empty["specs_scanned"]   = 0;
-        empty["matched_count"]   = 0;
-        return QJsonDocument(empty);
-    }
-    const QStringList specFiles =
-        dir.entryList({QStringLiteral("ANTS-*.md")},
-                      QDir::Files | QDir::Readable, QDir::Name);
-
+    // ANTS-1880 — walk both docs/specs/ (ANTS-NNNN canonical) and
+    // docs/phases/ (phase_<NN>_<topic>) when present, merging hits
+    // into one matched_specs[] array. specs_scanned retains its
+    // existing specs-only semantics (back-compat); two new sibling
+    // fields phases_scanned + total_scanned carry the new counts.
     QJsonArray matched;
-    int scanned = 0;
-    for (const QString &fname : specFiles) {
-        ++scanned;
-        QFile f(specsDir + QLatin1Char('/') + fname);
-        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
-        const QString text = QString::fromUtf8(f.readAll());
-        f.close();
-        QStringList hits;
-        for (const QString &needle : needles) {
-            if (text.contains(needle, Qt::CaseSensitive)) {
-                if (!hits.contains(needle)) hits.append(needle);
+    int specsScanned = 0;
+    int phasesScanned = 0;
+    auto scanOneDir = [&](const QString &dirRel,
+                          const QString &glob,
+                          int &counter) {
+        const QString absDir = rootCanonical + QLatin1Char('/') + dirRel;
+        QDir dir(absDir);
+        if (!dir.exists()) return;
+        const QStringList files =
+            dir.entryList({glob},
+                          QDir::Files | QDir::Readable, QDir::Name);
+        for (const QString &fname : files) {
+            ++counter;
+            QFile f(absDir + QLatin1Char('/') + fname);
+            if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+            const QString text = QString::fromUtf8(f.readAll());
+            f.close();
+            QStringList hits;
+            for (const QString &needle : needles) {
+                if (text.contains(needle, Qt::CaseSensitive)) {
+                    if (!hits.contains(needle)) hits.append(needle);
+                }
             }
+            if (hits.isEmpty()) continue;
+            const QJsonObject parsed = parseSpecBody(text);
+            const QJsonArray invs =
+                parsed.value(QStringLiteral("invariants")).toArray();
+            // ID = filename stem (ANTS-NNNN or phase_<NN>_<topic>).
+            QString sid = fname;
+            if (sid.endsWith(QStringLiteral(".md"))) sid.chop(3);
+            QJsonObject entry;
+            entry["id"]    = sid;
+            entry["path"]  = dirRel + QLatin1Char('/') + fname;
+            entry["title"] = parsed.value(QStringLiteral("title"));
+            QJsonArray hitArr;
+            for (const QString &h : hits) hitArr.append(h);
+            entry["matched_terms"] = hitArr;
+            entry["invariants"]    = invs;
+            entry["invariants_count"] = invs.size();
+            matched.append(entry);
         }
-        if (hits.isEmpty()) continue;
-        const QJsonObject parsed = parseSpecBody(text);
-        const QJsonArray invs =
-            parsed.value(QStringLiteral("invariants")).toArray();
-        // Spec ID = filename stem (ANTS-NNNN).
-        QString sid = fname;
-        if (sid.endsWith(QStringLiteral(".md"))) sid.chop(3);
-        QJsonObject entry;
-        entry["id"]    = sid;
-        entry["path"]  = QStringLiteral("docs/specs/") + fname;
-        entry["title"] = parsed.value(QStringLiteral("title"));
-        QJsonArray hitArr;
-        for (const QString &h : hits) hitArr.append(h);
-        entry["matched_terms"] = hitArr;
-        entry["invariants"]    = invs;
-        entry["invariants_count"] = invs.size();
-        matched.append(entry);
-    }
+    };
+    scanOneDir(QStringLiteral("docs/specs"),
+               QStringLiteral("ANTS-*.md"), specsScanned);
+    scanOneDir(QStringLiteral("docs/phases"),
+               QStringLiteral("phase_*.md"), phasesScanned);
 
     QJsonObject result;
-    result["ok"]            = true;
-    result["matched_specs"] = matched;
-    result["specs_scanned"] = scanned;
-    result["matched_count"] = matched.size();
+    result["ok"]             = true;
+    result["matched_specs"]  = matched;
+    result["specs_scanned"]  = specsScanned;
+    result["phases_scanned"] = phasesScanned;
+    result["total_scanned"]  = specsScanned + phasesScanned;
+    result["matched_count"]  = matched.size();
     return QJsonDocument(result);
 }
 

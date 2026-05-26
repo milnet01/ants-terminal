@@ -179,6 +179,14 @@ const QStringList kSpecsCandidates = {
     QStringLiteral("docs/internal/specs"),
     QStringLiteral("docs/fork/specs"),
 };
+// ANTS-1880 — per-phase design docs at `docs/phases/`. Probe order
+// mirrors kSpecsCandidates so the JSON wire shape stays uniform.
+const QStringList kPhasesCandidates = {
+    QStringLiteral("docs/phases"),
+    QStringLiteral("docs/private/phases"),
+    QStringLiteral("docs/internal/phases"),
+    QStringLiteral("docs/fork/phases"),
+};
 const QStringList kStandardsCandidates = {
     QStringLiteral("docs/standards"),
     QStringLiteral("docs/private/standards"),
@@ -371,6 +379,14 @@ LayoutEnvelope scanLayout(const QString &absoluteCwd) {
         scanDir(absoluteCwd, cand, env.specsDir, env.probedPaths,
                 env.discovered);
     }
+    // ANTS-1880 — phases probe mirrors the specs probe; field stays
+    // empty when no phases dir exists (back-compat for ants-terminal
+    // itself, which uses only docs/specs/).
+    for (const QString &cand : kPhasesCandidates) {
+        if (!env.phasesDir.isEmpty()) break;
+        scanDir(absoluteCwd, cand, env.phasesDir, env.probedPaths,
+                env.discovered);
+    }
     for (const QString &cand : kStandardsCandidates) {
         if (!env.standardsDir.isEmpty()) break;
         scanDir(absoluteCwd, cand, env.standardsDir, env.probedPaths,
@@ -416,6 +432,10 @@ QJsonObject toJson(const LayoutEnvelope &env) {
     cl[QStringLiteral("mtime_ms")]   = env.changelog.mtimeMs;
     root[QStringLiteral("changelog")] = cl;
     root[QStringLiteral("specs_dir")]          = env.specsDir;
+    // ANTS-1880 — per-phase design docs dir; empty string when
+    // absent. Pre-1880 cached envelopes deserialize cleanly via
+    // fromJson's missing-key default below.
+    root[QStringLiteral("phases_dir")]         = env.phasesDir;
     root[QStringLiteral("standards_dir")]      = env.standardsDir;
     root[QStringLiteral("adr_dir")]            = env.adrDir;
     root[QStringLiteral("appstream_metainfo")] = env.appstreamMetainfo;
@@ -467,6 +487,8 @@ LayoutEnvelope fromJson(const QJsonObject &obj) {
     env.changelog.sizeBytes = static_cast<qint64>(cl.value(QStringLiteral("size_bytes")).toDouble(0));
     env.changelog.mtimeMs   = static_cast<qint64>(cl.value(QStringLiteral("mtime_ms")).toDouble(0));
     env.specsDir          = obj.value(QStringLiteral("specs_dir")).toString();
+    // ANTS-1880 — missing key → empty string (pre-1880 caches).
+    env.phasesDir         = obj.value(QStringLiteral("phases_dir")).toString();
     env.standardsDir      = obj.value(QStringLiteral("standards_dir")).toString();
     env.adrDir            = obj.value(QStringLiteral("adr_dir")).toString();
     env.appstreamMetainfo = obj.value(QStringLiteral("appstream_metainfo")).toString();

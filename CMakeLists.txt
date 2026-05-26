@@ -1050,6 +1050,8 @@ if(ANTS_TESTS)
                 tests/features/workspace_search_payload_knobs/test_workspace_search_payload_knobs.cpp
                 # ANTS-1882 roadmap_query per-section ETag invariance.
                 tests/features/roadmap_query_per_section_etag/test_roadmap_query_per_section_etag.cpp
+                # ANTS-1880 spec_query + project_layout phases-dir recognition.
+                tests/features/spec_query_phases_layout/test_spec_query_phases_layout.cpp
                 # ANTS-1423 Current preset excludes ✅ shipped bullets.
                 tests/features/roadmap_current_preset_excludes_shipped/test_current_preset_excludes_shipped.cpp
                 # ANTS-1417 every registered MCP tool has explicit CallerCwdContract entry.
@@ -1206,6 +1208,9 @@ if(ANTS_TESTS)
         SRC_BGDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.h"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
         SRC_REMOTECONTROL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"
+        # ANTS-1880 — phases-layout source-grep paths.
+        SRC_PROJECTLAYOUTENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/projectlayoutengine.cpp"
+        SRC_PROJECTLAYOUTENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/projectlayoutengine.h"
         SRC_GITWRAP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/gitwrap.cpp"
         SRC_GITWRAP_H_PATH="${CMAKE_SOURCE_DIR}/src/gitwrap.h"
         SRC_SUBSYSTEMMAP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/subsystemmap.cpp"
