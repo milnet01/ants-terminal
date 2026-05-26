@@ -110,6 +110,13 @@ public:
     // Get the shell's PID (for process tree inspection)
     pid_t shellPid() const;
 
+    // ANTS-1735 §2.4 — epoch-ms of the user's most recent keystroke,
+    // stamped at the top of keyPressEvent BEFORE forwarding to the
+    // PTY. -1 means no keystroke since the widget was constructed,
+    // which (combined with ShellState::idleSinceMs default 0) makes a
+    // fresh post-turn composer read empty.
+    qint64 lastUserKeystrokeMs() const { return m_lastUserKeystrokeMs; }
+
     // ANTS-1858 follow-up — reliably drop the AskUserQuestion "awaiting
     // input" state from outside the footer scanner. The footer-gone
     // debounce in checkForClaudePermissionPrompt only completes after
@@ -327,6 +334,9 @@ private slots:
     void checkIdleNotification();
 
 private:
+    // ANTS-1735 §2.4 — see lastUserKeystrokeMs() getter above.
+    qint64 m_lastUserKeystrokeMs = -1;
+
     void recalcGridSize();
     void updateFontMetrics();
     QPoint pixelToCell(const QPoint &pos) const;

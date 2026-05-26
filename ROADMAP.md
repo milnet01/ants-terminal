@@ -19136,6 +19136,28 @@ contributors don't duplicate research.
   Kind: implement. Source: user-2026-05-21.
   Progress (2026-05-25): spec drafted at docs/specs/ANTS-1735.md and run through a 3-loop cold-eyes review (converged, clean pass) — awaiting user sign-off. Research finding: hooks cannot set the model and the cooperative session-pause idea is infeasible on the interactive CLI today, so the design uses idle-window /model injection (inject at the Idle turn-boundary before the user's first keystroke) with effectiveness-ledger tracking as the trust signal. Implementation gated on spikes S1 (does injected /model raise a picker?) + S2 (empty-composer proxy) and the user's design-synthesis step. No code landed.
   Progress (2026-05-25): spike-independent pure foundation landed under TDD (full suite 1540 tests green). NEW: src/modelautoswitch.{h,cpp} (ants_claude_lib) — decide()/clampToFloor gate (INV-1..9); src/modelswitchledger.{h,cpp} (ants_core_lib) — JSONL append + 256KiB drop-oldest eviction with pending-pinning + override/under-route/correction detection + statsEnvelope aggregation (INV-10..12); model_switch_stats MCP read verb (RemoteControl::cmdModelSwitchStats, Required caller_cwd, ETag+fields opt-in, INV-13). Tests under tests/features/{model_auto_switch,model_switch_ledger,mcp_model_switch_stats} (all RED-verified against stubs first). Placement deviation from spec §4: modelautoswitch lives in ants_claude_lib not ants_core_lib — it reuses ModelRecommender::tierName (INV-9) and core placement would invert the core<-claude layer DAG; ledger stays in core so the stats verb's mainwindow dispatch can reach it. STILL GATED (not landed): live actuator wiring (controller PTY injection, idleSinceMs/lastUserKeystrokeMs stamping, chip suppression INV-14), config keys §2.7, and the S2 live spike. S1 research = GO (Claude Code docs confirm /model <alias> switches directly, no picker). Related: ANTS-1873 (tab-dot vs status-bar state desync) is a precondition for the actuator's per-tab Idle gate (INV-2).
+  Progress (2026-05-26): live actuator landed default-OFF. NEW:
+  ShellState::idleSinceMs (qint64, stamped on every Idle transition
+  in claudetabtracker.cpp); TerminalWidget::lastUserKeystrokeMs()
+  (stamped at top of keyPressEvent before PTY forward — INV-3
+  composerEmpty proxy); Config::claudeAutoModel() typed accessor
+  (switch_enabled bool default false, min_dwell_sec int default 90
+  clamp [30,1800], floor "haiku"|"sonnet" default haiku — §2.7);
+  ClaudeStatusBarController::refreshAutoModelSwitch() wired on the
+  2s status timer alongside refreshModelChip (mainwindow.cpp). On
+  act: focused->sendToPty("/model <tier>\n") + ModelSwitchLedger::
+  appendRecord with outcome.pending=true. INV-14 chip suppression:
+  refreshModelChip bails when switch_enabled=true. Tests under
+  tests/features/model_auto_switch_actuator/ (3 source-grep tests
+  locking the wiring + chip-suppression gate + status-timer
+  connect, all green). Full ctest: 1554/1554 pass. STILL PENDING:
+  §2.5 outcome fill-in tick (turns_on_to_tier, user_override,
+  correction_signal, under_route_signal) — appended records sit
+  pending:true until that lands; the model_switch_stats verb's
+  pending_count correctly surfaces them as separate. S2 live spike:
+  default-OFF in this introducing release; user can flip on to
+  validate the keystroke-timing proxy in the wild before the
+  default-ON flip gate (§8 OQ-3).
 
 - 💭 [ANTS-1871] **Upstream ask — Claude Code "pause-for-switch" model handshake.**
   Research for ANTS-1735 found the cooperative session-pause (pause -> external model change -> resume) infeasible on the interactive Claude Code CLI: no hook output sets the model; the CLI exposes no pause/resume; input-queue ordering during a blocking hook is undocumented. The Agent SDK (Managed Agents) HAS interrupt + session.update(model), but the CLI doesn't surface it. File a feature request for a turn-boundary handshake with defined ordering. If it lands, ANTS-1735 adopts it as the primary mechanism and demotes idle-window /model injection to fallback, removing the residual injection race (OQ-1).

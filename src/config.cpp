@@ -422,6 +422,25 @@ void Config::setRoadmapStatusFilters(const QJsonObject &filters) {
     save();
 }
 
+// ANTS-1735 §2.7 — typed accessor mirrors the roadmapStatusFilters() shape.
+// On-disk keys: claude.auto_model_switch / claude.auto_model_min_dwell_sec /
+// claude.auto_model_floor. Defaults applied here so callers always see a
+// fully-populated object.
+QJsonObject Config::claudeAutoModel() const {
+    QJsonObject out;
+    out.insert("switch_enabled",
+               m_data.value("claude.auto_model_switch").toBool(false));
+    int dwell = m_data.value("claude.auto_model_min_dwell_sec").toInt(90);
+    if (dwell < 30)   dwell = 30;
+    if (dwell > 1800) dwell = 1800;
+    out.insert("min_dwell_sec", dwell);
+    QString floor = m_data.value("claude.auto_model_floor").toString("haiku");
+    if (floor != QLatin1String("haiku") && floor != QLatin1String("sonnet"))
+        floor = QStringLiteral("haiku");
+    out.insert("floor", floor);
+    return out;
+}
+
 // ANTS-1154 v2 card-renderer state. Three string-set keys for
 // per-item / per-section expand state and table-mode toggles.
 // Stored as JSON arrays of strings for diffability — the dialog

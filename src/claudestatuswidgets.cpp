@@ -19,7 +19,10 @@
 #include "claudeallowlist.h"
 #include "claudebgtasks.h"
 #include "claudestateresolver.h"   // ANTS-1873
+#include "config.h"                // ANTS-1735 §2.7 — claudeAutoModel()
+#include "modelautoswitch.h"       // ANTS-1735 §2.3 — decide() gate
 #include "modelrecommender.h"
+#include "modelswitchledger.h"     // ANTS-1735 §2.5 — append + statsEnvelope
 #include "claudeintegration.h"
 #include "claudetabtracker.h"
 #include "claudetasklist.h"
@@ -1124,6 +1127,17 @@ void ClaudeStatusBarController::refreshModelChip()
 {
     if (!m_modelBtn) return;
 
+    // ANTS-1735 INV-14 — Shape A chip is fully suppressed when the
+    // autonomous switcher is enabled. The user opted in to "Ants picks
+    // the model"; showing a clickable → Opus chip during the 90 s dwell
+    // reintroduces the manual-decision surface that pushed the user to
+    // autonomy in the first place.
+    Config cfg;
+    if (cfg.claudeAutoModel().value("switch_enabled").toBool()) {
+        m_modelBtn->hide();
+        return;
+    }
+
     // Resolve transcript path — same pattern as refreshTasksButton.
     QString cwd;
     auto *focused = m_focusedTerminalProvider
@@ -1187,4 +1201,112 @@ void ClaudeStatusBarController::refreshModelChip()
                  ? tr("default heuristic") : rec.reason)
             .arg(ModelRecommender::tierName(rec.tier)));
     m_modelBtn->show();
+}
+
+// ANTS-1735 §2.3 — autonomous switcher tick. Runs on the 2 s status
+// timer, alongside refreshModelChip. Default-off: bails immediately
+// when claude.auto_model_switch is false (INV-14). When enabled,
+// builds the Gate from the focused tab's tracker entry + scorer +
+// keystroke-timing composerEmpty proxy, calls decide(), and on act
+// injects `/model <tier>\n` plus appends a ledger record.
+void ClaudeStatusBarController::refreshAutoModelSwitch()
+{
+    Config cfg;
+    const QJsonObject autoCfg = cfg.claudeAutoModel();
+    const bool enabled = autoCfg.value("switch_enabled").toBool();
+    if (!enabled) return;
+
+    auto *focused = m_focusedTerminalProvider
+        ? m_focusedTerminalProvider() : nullptr;
+    if (!focused || !m_tracker) return;
+    const pid_t pid = focused->shellPid();
+    if (pid <= 0) return;
+
+    // INV-2 — focused tab's per-shell state (not the process-global
+    // currentState()).
+    const ClaudeTabTracker::ShellState s = m_tracker->shellState(pid);
+
+    // §2.4 — keystroke-timing composerEmpty proxy.
+    const bool composerEmpty =
+        focused->lastUserKeystrokeMs() < s.idleSinceMs;
+
+    // Score the focused transcript.
+    QString transcriptPath;
+    if (m_integration) {
+        transcriptPath = m_integration->activeSessionPath(focused->shellCwd());
+    }
+    if (transcriptPath.isEmpty()) return;
+    const ModelRecommender::Result rec =
+        ModelRecommender::score(transcriptPath);
+    const ModelRecommender::Tier current =
+        ModelRecommender::tierFromModelId(rec.currentModel);
+
+    // Resolve floor from config string.
+    const QString floorStr = autoCfg.value("floor").toString(QStringLiteral("haiku"));
+    const ModelRecommender::Tier floor =
+        (floorStr == QLatin1String("sonnet"))
+            ? ModelRecommender::Tier::Sonnet
+            : ModelRecommender::Tier::Haiku;
+
+    // INV-5 — stability is counted against the CLAMPED target.
+    const ModelRecommender::Tier clampedTarget =
+        ModelAutoSwitch::clampToFloor(rec.tier, floor);
+    if (clampedTarget != current) ++m_autoSwitchTicksStable;
+    else                          m_autoSwitchTicksStable = 0;
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const qint64 dwellMs = m_autoSwitchLastMs > 0
+                               ? (nowMs - m_autoSwitchLastMs)
+                               : kMaxDwellSentinel();
+
+    // Configurable min-dwell — clamped via Config::claudeAutoModel().
+    const qint64 minDwellMs =
+        static_cast<qint64>(autoCfg.value("min_dwell_sec").toInt(90)) * 1000;
+
+    ModelAutoSwitch::Gate gate;
+    gate.enabled            = true;
+    gate.focusedState       = s.state;
+    gate.composerEmpty      = composerEmpty;
+    gate.current            = current;
+    gate.recommended        = rec.tier;
+    gate.floor              = floor;
+    gate.ticksTargetStable  = m_autoSwitchTicksStable;
+    gate.msSinceLastSwitch  = dwellMs;
+
+    // Note: the spec's kMinDwellMs (90 s) is the default; the config
+    // can override it within [30 s, 1800 s] per §2.7. decide() reads
+    // gate.msSinceLastSwitch only; we apply the configured min-dwell
+    // by short-circuiting BEFORE decide().
+    if (gate.msSinceLastSwitch < minDwellMs) return;
+
+    const ModelAutoSwitch::Decision dec = ModelAutoSwitch::decide(gate);
+    if (!dec.act) return;
+
+    // Act — INV-9 keeps tierArg derived solely from the enum.
+    focused->sendToPty((u"/model " + dec.tierArg + u"\n").toUtf8());
+
+    // Append ledger record (§2.5). Outcome is `pending:true` — filled
+    // by a later tick once turns-on-to-tier accumulates.
+    ModelSwitchLedger::Record rec_;
+    rec_.ts        = ModelSwitchLedger::nowIso8601();
+    rec_.sessionId = m_integration ? m_integration->lastHookSessionId()
+                                   : QString();
+    rec_.project   = focused->shellCwd();
+    rec_.fromTier  = ModelRecommender::tierName(current);
+    rec_.toTier    = dec.tierArg;
+    rec_.scoreReason = rec.reason;
+    rec_.trigger   = QStringLiteral("auto");
+    rec_.outcome.pending = true;
+    ModelSwitchLedger::appendRecord(
+        ModelSwitchLedger::defaultLedgerPath(), rec_);
+
+    m_autoSwitchLastMs    = nowMs;
+    m_autoSwitchTicksStable = 0;
+    m_autoSwitchLastTier  = dec.tierArg;
+}
+
+// Sentinel for "never switched yet" — large enough to clear any
+// reasonable min-dwell on the first eligible tick.
+qint64 ClaudeStatusBarController::kMaxDwellSentinel() {
+    return 1ll << 50;
 }

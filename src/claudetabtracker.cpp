@@ -255,6 +255,14 @@ void ClaudeTabTracker::reparseTranscript(pid_t shellPid) {
     it->state.planMode = snap.planMode;
     it->state.auditing = snap.auditing;
 
+    // ANTS-1735 §2.4 — stamp idleSinceMs on every transition INTO Idle
+    // (not just the first one) so each turn boundary reopens the empty-
+    // composer window. Off the transition path the field is untouched.
+    if (before.state != ClaudeState::Idle &&
+        it->state.state == ClaudeState::Idle) {
+        it->state.idleSinceMs = QDateTime::currentMSecsSinceEpoch();
+    }
+
     maybeEmit(shellPid, before);
 }
 

@@ -1573,6 +1573,11 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
 }
 
 void TerminalWidget::keyPressEvent(QKeyEvent *event) {
+    // ANTS-1735 §2.4 — stamp the user-keystroke timestamp BEFORE any
+    // forwarding logic runs, so the autonomous-model-switch gate's
+    // composerEmpty proxy (lastUserKeystrokeMs < shellState.idleSinceMs)
+    // sees the freshest signal possible.
+    m_lastUserKeystrokeMs = QDateTime::currentMSecsSinceEpoch();
     ANTS_LOG(DebugLog::Input, "key press: key=0x%x mods=0x%x text=%s",
              event->key(), int(event->modifiers()),
              event->text().toUtf8().toPercentEncoding().constData());

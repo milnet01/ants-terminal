@@ -156,8 +156,11 @@ Listed only where behavior isn't obvious from the name.
   hysteresis / stability / dwell → lowercase tier alias via
   `ModelRecommender::tierName`). In claude_lib (not core) so the
   `tierName` reuse doesn't invert the layer DAG. The live actuator
-  (controller PTY injection, chip suppression) is pending spikes S1/S2.
-  ANTS-1735.
+  (`ClaudeStatusBarController::refreshAutoModelSwitch`, timer-driven)
+  injects `/model <tier>\n` on `decide(...).act`, appends a pending
+  ledger record, and suppresses the Shape A chip when enabled (INV-14).
+  Default-OFF via `Config::claudeAutoModel().switch_enabled`; S2 (live
+  composer-empty proxy validation) gates the default-ON flip. ANTS-1735.
 - `modelswitchledger` (Qt6::Core, `ants_core_lib`) — model-switch
   effectiveness ledger: JSONL append + 256 KiB drop-oldest eviction with
   pending-record pinning (atomic, 0600), plus pure outcome detection

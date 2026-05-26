@@ -82,6 +82,20 @@ public:
     void refreshTasksButton();
     void refreshModelChip();   // ANTS-1226
 
+    // ANTS-1735 §2.3 — autonomous switcher tick. Reads the focused
+    // tab's tracker entry, builds a ModelAutoSwitch::Gate, calls
+    // decide(), and on act: injects `/model <tier>\n` into the focused
+    // terminal + appends a ledger record. Default-off via
+    // Config::claudeAutoModel().switch_enabled (INV-14).
+    void refreshAutoModelSwitch();
+
+private:
+    // Sentinel returned by msSinceLastSwitch when m_autoSwitchLastMs==0
+    // (no switch yet). Large enough to clear any configured min-dwell.
+    static qint64 kMaxDwellSentinel();
+
+public:
+
     // Provider injection — Qt-idiomatic; matches the existing
     // ClaudeIntegration::set*Provider pattern.
     void setCurrentTerminalProvider(std::function<TerminalWidget *()>);
@@ -171,6 +185,14 @@ private:
     // hasn't changed since the last score.
     QString                m_modelChipPath;
     qint64                 m_modelChipMtimeMs = -1;
+
+    // ANTS-1735 §2.3 actuator state. Lives on the controller (one set
+    // per window — the gate runs on the focused tab's read, so there's
+    // no per-tab stab to track here). msSinceLastSwitch derived as
+    // (now - m_autoSwitchLastMs); zero = never switched.
+    int    m_autoSwitchTicksStable = 0;
+    qint64 m_autoSwitchLastMs = 0;
+    QString m_autoSwitchLastTier;          // last tier we injected, for ledger
 
     // ANTS-1854 — last emitted diagnostic-line signatures for the two
     // 2 s poll refreshers. The Claude debug lane wrote a bgtasks +

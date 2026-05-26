@@ -986,6 +986,8 @@ if(ANTS_TESTS)
                 tests/features/claude_pid_replacement/test_claude_pid_replacement.cpp
                 # ANTS-1873 — single-source-of-truth Claude state resolver.
                 tests/features/claude_state_resolver/test_claude_state_resolver.cpp
+                # ANTS-1735 INV-14 — actuator wiring + chip suppression.
+                tests/features/model_auto_switch_actuator/test_model_auto_switch_actuator.cpp
                 tests/features/mcp_extra_tools/test_mcp_extra_tools.cpp
                 tests/features/tasks_chip_done_over_total/test_tasks_chip_done_over_total.cpp
                 # ANTS-1859 — tasks/refresh dedup key excludes transcript mtime.

@@ -782,6 +782,13 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     connect(m_statusTimer, &QTimer::timeout,
             m_claudeStatusBarController,
             &ClaudeStatusBarController::refreshModelChip);
+    // ANTS-1735 §2.3 — autonomous switcher gate runs on the same tick.
+    // Default-off via Config::claudeAutoModel().switch_enabled (INV-14);
+    // the method short-circuits when disabled, so the cost is one
+    // config read + early return.
+    connect(m_statusTimer, &QTimer::timeout,
+            m_claudeStatusBarController,
+            &ClaudeStatusBarController::refreshAutoModelSwitch);
     m_statusTimer->start();
 
     // Main-thread stall detector (ROADMAP § 0.8.0 "Terminal throughput

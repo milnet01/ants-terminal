@@ -76,6 +76,15 @@ public:
     QJsonObject roadmapStatusFilters() const;
     void setRoadmapStatusFilters(const QJsonObject &filters);
 
+    // ANTS-1735 §2.7 — autonomous Claude-Code model-switcher knobs.
+    // claudeAutoModel() returns a QJsonObject keyed by:
+    //   "switch_enabled"   bool — claude.auto_model_switch, default false
+    //   "min_dwell_sec"    int  — claude.auto_model_min_dwell_sec,
+    //                              default 90, clamp [30, 1800]
+    //   "floor"            str  — claude.auto_model_floor, "haiku" | "sonnet",
+    //                              default "haiku"
+    QJsonObject claudeAutoModel() const;
+
     // ANTS-1154 v2 card-renderer state. Each set stores the IDs /
     // slugs the user has manually toggled to "expanded" or
     // "table-view". Restored on dialog open; updated on close.

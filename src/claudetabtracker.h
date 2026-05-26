@@ -49,6 +49,13 @@ public:
         // surfaced both on the per-tab dot (Auditing glyph) and on the
         // bottom status-bar label.
         bool auditing = false;
+        // ANTS-1735 §2.4 — epoch-ms when this shell's state last
+        // *entered* `Idle`. Re-stamped on every transition into Idle so
+        // each turn boundary reopens the "composer is empty" window
+        // (composerEmpty == lastUserKeystrokeMs < idleSinceMs).
+        // Initial 0 with TerminalWidget::lastUserKeystrokeMs() default
+        // -1 makes a fresh post-turn composer read empty.
+        qint64 idleSinceMs = 0;
     };
 
     explicit ClaudeTabTracker(QObject *parent = nullptr);
