@@ -14328,7 +14328,7 @@ subsection.
   [[ANTS-1690]]; this ships the single-bullet verb. Tests:
   `tests/features/roadmap_log_annotate/` (8 INVs, ants-v1 + GFM).
 
-- 📋 [ANTS-1876] **`workspace_search` payload knobs: `max_match_bytes`, `headline_only:true`, auto-fallback to summary shape over `max_bytes`.**
+- ✅ [ANTS-1876] **`workspace_search` payload knobs: `max_match_bytes`, `headline_only:true`, auto-fallback to summary shape over `max_bytes`.**
   Vestige's 87,388-char threading-keyword sweep on ROADMAP.md hit the
   persisted-output path because each match line was a full 2-5 KB
   bullet body + context. Asks (any one closes it):
@@ -14345,6 +14345,16 @@ subsection.
   Kind: enhancement.
   Lanes: mcp-workspace-search, remotecontrol.
   Source: vestige-feedback-2026-05-26 Issue #19.
+  Resolved 2026-05-26: shipped `max_match_bytes` + `headline_only`
+  opt-in args on `workspace_search`. ROADMAP options 3 (auto-fallback
+  summary mode) and 4 (persist-hint pre-counts) deferred — see spec
+  §6 Out of scope. 11 invariants locked at
+  `tests/features/workspace_search_payload_knobs/`. Full ctest
+  1578/1578 green. Implementation at remotecontrol.cpp:
+  `rcClipMatchBytes`, `rcClipMatchTextFields`, `rcApplyHeadlineOnly`
+  helpers + post-dedup wiring; descriptor entries at
+  claudeintegration.cpp. Spec at `docs/specs/ANTS-1876.md` folded
+  2 cold-eyes loops.
 
 - 📋 [ANTS-1877] **`roadmap_log op:append` auto-detect stable-string-ID projects (empty `.roadmap-counter`) and surface `id_strategy:"stable_prefix"` as the default path.**
   Vestige session created 30+ new bullets via Edit because
