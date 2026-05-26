@@ -14,6 +14,21 @@ for security-relevant changes.
 
 ### Added
 
+- **`model_switch_stats` now tells you whether the auto-switcher is
+  ON, OFF, or quietly waiting — and supports a global view across
+  projects.** (ANTS-1889) Before this change, the verb returned
+  `switches: 0, headline: "avoided 0 Opus turns, 0 regretted"`
+  whether the auto-switcher was disabled, or enabled-but-no-switches
+  in this project. A Claude session couldn't tell "feature dormant"
+  from "feature working quietly." The envelope now carries the live
+  configuration (`auto_model_switch_enabled`, `floor_tier`,
+  `min_dwell_sec`) and the headline reads `"auto-switch OFF"`,
+  `"auto-switch ON in this project (no switches yet)"`, or the
+  existing avoided/regret ratio. Pass `scope:"global"` to aggregate
+  across all projects in one call — useful when per-project counts
+  look quiet because the switcher is firing in a sibling project.
+  Pure read-path change; the ledger itself is unchanged.
+
 - **Two new MCP tools for Claude Code sessions — `last_selection` and
   `find_sources`.** (ANTS-1312, ANTS-1636) Both cut the tokens
   Claude burns to gather context.

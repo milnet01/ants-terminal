@@ -131,12 +131,35 @@ OutcomeFillResult computeOutcome(
     const Outcome &inputBefore = {});
 
 // --- INV-13 — read-only aggregation for the model_switch_stats MCP verb ---
-// statsEnvelope is pure over a record list; statsForProject reads the (global)
-// ledger and filters to one project root before aggregating. Both are
-// read-only. An absent ledger yields {ok:true, switches:0, …}. The headline is
-// reported as an avoided/regret ratio; pending records are counted separately
-// from outcome stats (never silently counted as success).
-QJsonObject statsEnvelope(const QList<Record> &recs);
+// statsEnvelope is pure over a record list; statsForScope reads the (global)
+// ledger and either filters to one project root or aggregates across all
+// projects depending on `cfg.scope`. Both are read-only. An absent ledger
+// yields {ok:true, switches:0, …}. Pending records are counted separately from
+// outcome stats (never silently counted as success).
+//
+// ANTS-1889 — the envelope also carries the live switcher configuration
+// (auto_model_switch_enabled / floor_tier / min_dwell_sec / scope) so a
+// caller can distinguish "feature OFF" from "feature ON, no candidate
+// turns yet" from "feature ON with measured outcomes". The headline reads
+// "auto-switch OFF" when disabled, "auto-switch ON … (no switches yet)"
+// when enabled with zero in-scope records, and the avoided/regret ratio
+// otherwise.
+struct StatsConfig {
+    bool    switchEnabled = false;
+    QString floorTier     = QStringLiteral("haiku");   // "haiku" | "sonnet"
+    int     minDwellSec   = 90;
+    QString scope         = QStringLiteral("project"); // "project" | "global"
+};
+QJsonObject statsEnvelope(const QList<Record> &recs,
+                          const StatsConfig &cfg = {});
+// scope:"global" ignores projectRoot and aggregates the whole ledger;
+// scope:"project" filters to projectRoot before aggregating.
+QJsonObject statsForScope(const QString &ledgerPath,
+                          const QString &projectRoot,
+                          const StatsConfig &cfg);
+// Back-compat thin wrapper — defaults to scope:"project" with a
+// disabled switcher (no config surfaced). Prefer statsForScope at the
+// MCP dispatch site so the live config triple lands in the envelope.
 QJsonObject statsForProject(const QString &ledgerPath, const QString &projectRoot);
 
 // haiku=0, sonnet=1, opus=2; unknown alias → -1.

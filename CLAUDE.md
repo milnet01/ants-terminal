@@ -136,10 +136,15 @@ github-task-list / pass-headings formats (ANTS-1530); `read_log` filters
 a log file (Ants debug log or a `caller_cwd` path) to matching lines via
 the pure `ReadLog::filter` helper, streaming drop-oldest byte cap +
 since_cursor incremental tailing (ANTS-1855); `model_switch_stats`
-(ANTS-1735) — Required `caller_cwd`, ETag + `fields` opt-in, aggregates
-the per-project model-switch ledger into avoided/regret ratios and
-pending-record counts (the trust signal that gates §8 OQ-3 default-ON
-flip; never writes ledger/config).
+(ANTS-1735, extended by ANTS-1889) — Required `caller_cwd`, ETag +
+`fields` opt-in, aggregates the model-switch ledger into avoided/regret
+ratios and pending-record counts (the trust signal that gates §8 OQ-3
+default-ON flip; never writes ledger/config). Envelope also surfaces the
+live switcher config (`auto_model_switch_enabled`, `floor_tier`,
+`min_dwell_sec`) + `scope` echo so callers can tell "feature OFF" from
+"ON, no candidates yet" from "ON with measured outcomes"; accepts
+optional `scope:"project"` (default) or `"global"` arg to aggregate
+across all projects (ANTS-1889).
 
 Config keys for the autonomous model switcher (ANTS-1735 §2.7) — single
 Settings toggle "Let Ants pick the Claude model for me" + two

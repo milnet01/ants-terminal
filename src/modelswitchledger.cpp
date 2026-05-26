@@ -295,7 +295,7 @@ OutcomeFillResult computeOutcome(
     return res;
 }
 
-QJsonObject statsEnvelope(const QList<Record> &recs) {
+QJsonObject statsEnvelope(const QList<Record> &recs, const StatsConfig &cfg) {
     int downgrades = 0, upgrades = 0;
     int opusAvoided = 0, opusRoutedIn = 0;
     int regretCount = 0, underRouteCount = 0, pendingCount = 0;
@@ -346,33 +346,59 @@ QJsonObject statsEnvelope(const QList<Record> &recs) {
     byTier[QStringLiteral("sonnet")] = toSonnet;
     byTier[QStringLiteral("opus")]   = toOpus;
 
-    // Reported as a ratio, never the flattering numerator alone (MEDIUM-1).
-    const QString headline = QStringLiteral(
-        "avoided %1 Opus turns, %2 regretted (regret %3%)")
-        .arg(opusAvoided).arg(regretCount)
-        .arg(QString::number(regretRate, 'f', 1));
+    // ANTS-1889 — headline branches on enable state + scope so the caller
+    // can tell "feature OFF" from "feature ON, no candidates yet" from
+    // "feature ON, measured outcomes". Reported as a ratio, never the
+    // flattering numerator alone (MEDIUM-1).
+    QString headline;
+    if (!cfg.switchEnabled) {
+        headline = QStringLiteral("auto-switch OFF");
+    } else if (recs.isEmpty()) {
+        headline = (cfg.scope == QStringLiteral("global"))
+            ? QStringLiteral("auto-switch ON globally (no switches yet)")
+            : QStringLiteral("auto-switch ON in this project (no switches yet)");
+    } else {
+        headline = QStringLiteral(
+            "avoided %1 Opus turns, %2 regretted (regret %3%)")
+            .arg(opusAvoided).arg(regretCount)
+            .arg(QString::number(regretRate, 'f', 1));
+    }
 
     QJsonObject env;
-    env[QStringLiteral("ok")]                   = true;
-    env[QStringLiteral("switches")]             = recs.size();
-    env[QStringLiteral("downgrades")]           = downgrades;
-    env[QStringLiteral("upgrades")]             = upgrades;
-    env[QStringLiteral("opus_turns_avoided")]   = opusAvoided;
-    env[QStringLiteral("opus_turns_routed_in")] = opusRoutedIn;
-    env[QStringLiteral("regret_count")]         = regretCount;
-    env[QStringLiteral("regret_rate")]          = regretRate;
-    env[QStringLiteral("under_route_count")]    = underRouteCount;
-    env[QStringLiteral("pending_count")]        = pendingCount;
-    env[QStringLiteral("by_tier")]              = byTier;
-    env[QStringLiteral("headline")]             = headline;
+    env[QStringLiteral("ok")]                       = true;
+    env[QStringLiteral("switches")]                 = recs.size();
+    env[QStringLiteral("downgrades")]               = downgrades;
+    env[QStringLiteral("upgrades")]                 = upgrades;
+    env[QStringLiteral("opus_turns_avoided")]       = opusAvoided;
+    env[QStringLiteral("opus_turns_routed_in")]     = opusRoutedIn;
+    env[QStringLiteral("regret_count")]             = regretCount;
+    env[QStringLiteral("regret_rate")]              = regretRate;
+    env[QStringLiteral("under_route_count")]        = underRouteCount;
+    env[QStringLiteral("pending_count")]            = pendingCount;
+    env[QStringLiteral("by_tier")]                  = byTier;
+    // ANTS-1889 — live switcher config triple + scope echo.
+    env[QStringLiteral("auto_model_switch_enabled")] = cfg.switchEnabled;
+    env[QStringLiteral("floor_tier")]                = cfg.floorTier;
+    env[QStringLiteral("min_dwell_sec")]             = cfg.minDwellSec;
+    env[QStringLiteral("scope")]                     = cfg.scope;
+    env[QStringLiteral("headline")]                  = headline;
     return env;
 }
 
-QJsonObject statsForProject(const QString &ledgerPath, const QString &projectRoot) {
+QJsonObject statsForScope(const QString &ledgerPath,
+                          const QString &projectRoot,
+                          const StatsConfig &cfg) {
+    const bool global = (cfg.scope == QStringLiteral("global"));
     QList<Record> scoped;
     for (const Record &r : readRecords(ledgerPath))   // absent ledger → empty
-        if (r.project == projectRoot) scoped.append(r);
-    return statsEnvelope(scoped);
+        if (global || r.project == projectRoot) scoped.append(r);
+    return statsEnvelope(scoped, cfg);
+}
+
+// Back-compat thin wrapper — no config surfaced, project scope.
+QJsonObject statsForProject(const QString &ledgerPath, const QString &projectRoot) {
+    StatsConfig cfg;   // defaults: disabled, project scope
+    return statsForScope(ledgerPath, projectRoot, cfg);
 }
 
 int tierRank(const QString &alias) {

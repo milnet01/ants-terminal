@@ -11,13 +11,17 @@ avoided/regret ratio, never a flattering numerator alone.
 ## Scope
 
 - **Aggregation** (`ModelSwitchLedger::statsEnvelope`,
-  `ModelSwitchLedger::statsForProject`) — pure, read-only. Envelope:
+  `ModelSwitchLedger::statsForScope`, back-compat `statsForProject`) —
+  pure, read-only. Envelope:
   `{ok, switches, downgrades, upgrades, opus_turns_avoided,
   opus_turns_routed_in, regret_count, regret_rate, under_route_count,
-  pending_count, by_tier, headline}`.
+  pending_count, by_tier, auto_model_switch_enabled, floor_tier,
+  min_dwell_sec, scope, headline}`. The `_enabled`/`floor_tier`/
+  `min_dwell_sec`/`scope` fields are sourced from a `StatsConfig` struct
+  the dispatch layer fills from `Config::claudeAutoModel()` (ANTS-1889).
 - **MCP wiring** — `RemoteControl::cmdModelSwitchStats` delegate, mainwindow
   registration, tools/list descriptor, `caller_cwd` **Required** contract,
-  ETag/`fields` opt-in.
+  ETag/`fields` opt-in, optional `scope:"project"|"global"` arg (ANTS-1889).
 
 Out of scope: writing records / filling outcomes (the controller, gated on
 spikes); the gate logic (INV-1..9, `model_auto_switch`) and the ledger
@@ -27,9 +31,15 @@ storage/eviction/detection (INV-10..12, `model_switch_ledger`).
 
 - **INV-13** — `model_switch_stats` is read-only (never writes ledger/config),
   returns `{ok:true, switches:0, …}` on an absent ledger, reports the headline
-  as an avoided/regret ratio, and counts `pending` records separately from
-  outcomes (pending records are never folded into regret/under-route stats).
-- Stats are scoped to the caller's project (records filtered by `project`).
+  as an avoided/regret ratio (when enabled with measured outcomes) or
+  `"auto-switch OFF"` / `"auto-switch ON … (no switches yet)"` otherwise
+  (ANTS-1889), and counts `pending` records separately from outcomes (pending
+  records are never folded into regret/under-route stats).
+- Stats default to the caller's project (records filtered by `project`);
+  `scope:"global"` aggregates across all projects in the ledger (ANTS-1889).
+- The envelope carries the live switcher config triple
+  (`auto_model_switch_enabled` / `floor_tier` / `min_dwell_sec`) so callers
+  can distinguish "feature OFF" from "ON, no candidates yet" (ANTS-1889).
 - `caller_cwd` is **Required** (matches `roadmap_query` / `current_state`); the
   verb is registered in the tools/list descriptor with ETag opt-in.
 

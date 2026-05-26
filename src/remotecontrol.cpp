@@ -7537,6 +7537,14 @@ QJsonDocument RemoteControl::cmdCurrentState(const QJsonObject &req) {
 // global JSONL (~/.cache/ants-terminal/model-switch-ledger.jsonl); records carry
 // a `project` field, so this verb filters to the resolved caller root before
 // aggregating. Never writes. Absent ledger → {ok:true, switches:0, …}.
+//
+// ANTS-1889 — also surfaces the live switcher configuration
+// (auto_model_switch_enabled / floor_tier / min_dwell_sec) so callers can
+// distinguish "feature OFF" from "feature ON, no candidates yet"; accepts an
+// optional `scope:"global"` arg that aggregates across all projects in the
+// ledger instead of filtering to the caller. The config triple lives in the
+// response body, so the dispatch-layer ETag flips automatically on Settings
+// toggle changes.
 QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
     if (!m_main) {
         return QJsonDocument(csErr(QStringLiteral("no_window"),
@@ -7547,8 +7555,35 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
         return QJsonDocument(csErr(QStringLiteral("no_project"),
             QStringLiteral("model_switch_stats: project root unresolved")));
     }
-    return QJsonDocument(ModelSwitchLedger::statsForProject(
-        ModelSwitchLedger::defaultLedgerPath(), rootCanonical));
+
+    // ANTS-1889 — scope arg: "project" (default) or "global". Anything else
+    // refuses with bad_args so callers don't silently get project scope.
+    QString scope = QStringLiteral("project");
+    if (req.contains(QStringLiteral("scope"))) {
+        scope = req.value(QStringLiteral("scope")).toString();
+        if (scope != QStringLiteral("project") &&
+                scope != QStringLiteral("global")) {
+            return QJsonDocument(csErr(QStringLiteral("bad_args"),
+                QStringLiteral("model_switch_stats: scope must be "
+                               "\"project\" or \"global\"")));
+        }
+    }
+
+    // Live config — defaults sourced from the in-memory store; same
+    // shape as Config::claudeAutoModel(). RemoteControl can't reach the
+    // MainWindow Config directly without a new accessor, so we construct
+    // a fresh Config (which reads the same on-disk file). This matches
+    // the existing pattern at cmdIndieReviewDispatch's `Config cfg`.
+    Config cfg;
+    const QJsonObject autoCfg = cfg.claudeAutoModel();
+    ModelSwitchLedger::StatsConfig sc;
+    sc.switchEnabled = autoCfg.value(QStringLiteral("switch_enabled")).toBool(false);
+    sc.floorTier     = autoCfg.value(QStringLiteral("floor")).toString(QStringLiteral("haiku"));
+    sc.minDwellSec   = autoCfg.value(QStringLiteral("min_dwell_sec")).toInt(90);
+    sc.scope         = scope;
+
+    return QJsonDocument(ModelSwitchLedger::statsForScope(
+        ModelSwitchLedger::defaultLedgerPath(), rootCanonical, sc));
 }
 
 // ANTS-1724 — session_brief: compact session-state envelope for

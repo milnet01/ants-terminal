@@ -79,13 +79,87 @@ TEST(McpModelSwitchStats, EnvelopeAggregates) {
     EXPECT_EQ(env.value(QStringLiteral("pending_count")).toInt(), 0);
 }
 
-// INV-13: the headline is an avoided/regret ratio string.
+// INV-13 (ANTS-1889): the headline is an avoided/regret ratio string when
+// the switcher is enabled and has measured outcomes.
 TEST(McpModelSwitchStats, HeadlineIsRatio) {
+    L::StatsConfig cfg;
+    cfg.switchEnabled = true;
     const QList<L::Record> recs = { rec("opus", "haiku", false, 6) };
     const QString headline =
-        L::statsEnvelope(recs).value(QStringLiteral("headline")).toString();
+        L::statsEnvelope(recs, cfg).value(QStringLiteral("headline")).toString();
     EXPECT_TRUE(headline.contains(QStringLiteral("avoided"))) << headline.toStdString();
     EXPECT_TRUE(headline.contains(QStringLiteral("regret"))) << headline.toStdString();
+}
+
+// INV-13 (ANTS-1889): the envelope carries the live switcher configuration —
+// auto_model_switch_enabled / floor_tier / min_dwell_sec — so a caller can
+// distinguish "feature off" from "feature on, no candidate turns yet".
+TEST(McpModelSwitchStats, EnvelopeCarriesConfigTriple) {
+    L::StatsConfig cfg;
+    cfg.switchEnabled = true;
+    cfg.floorTier = QStringLiteral("sonnet");
+    cfg.minDwellSec = 120;
+    const QJsonObject env = L::statsEnvelope({}, cfg);
+    EXPECT_TRUE(env.value(QStringLiteral("auto_model_switch_enabled")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("floor_tier")).toString(),
+              QStringLiteral("sonnet"));
+    EXPECT_EQ(env.value(QStringLiteral("min_dwell_sec")).toInt(), 120);
+    EXPECT_EQ(env.value(QStringLiteral("scope")).toString(),
+              QStringLiteral("project"));   // default
+}
+
+// INV-13 (ANTS-1889): when the switcher is disabled, headline says "OFF"
+// regardless of record counts — the dormant-vs-quiet ambiguity closes.
+TEST(McpModelSwitchStats, HeadlineWhenDisabled) {
+    L::StatsConfig cfg;   // switchEnabled defaults to false
+    const QString headline =
+        L::statsEnvelope({}, cfg).value(QStringLiteral("headline")).toString();
+    EXPECT_TRUE(headline.contains(QStringLiteral("OFF"), Qt::CaseInsensitive))
+        << headline.toStdString();
+}
+
+// INV-13 (ANTS-1889): when enabled with zero records in scope, headline
+// signals "ON ... (no switches yet)" — distinct from "OFF" and from the
+// avoided/regret form.
+TEST(McpModelSwitchStats, HeadlineWhenEnabledNoSwitches) {
+    L::StatsConfig cfg;
+    cfg.switchEnabled = true;
+    const QString headline =
+        L::statsEnvelope({}, cfg).value(QStringLiteral("headline")).toString();
+    EXPECT_TRUE(headline.contains(QStringLiteral("ON"), Qt::CaseSensitive))
+        << headline.toStdString();
+    EXPECT_TRUE(headline.contains(QStringLiteral("no switches"),
+                                  Qt::CaseInsensitive))
+        << headline.toStdString();
+}
+
+// INV-13 (ANTS-1889): scope:"global" echoes through the envelope so the
+// caller knows which aggregation it got.
+TEST(McpModelSwitchStats, GlobalScopeEcho) {
+    L::StatsConfig cfg;
+    cfg.scope = QStringLiteral("global");
+    EXPECT_EQ(L::statsEnvelope({}, cfg).value(QStringLiteral("scope")).toString(),
+              QStringLiteral("global"));
+}
+
+// INV-13 (ANTS-1889): statsForScope with "global" aggregates across all
+// projects in the ledger, ignoring the projectRoot filter.
+TEST(McpModelSwitchStats, GlobalScopeAggregatesAcrossProjects) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("ledger.jsonl"));
+    ASSERT_TRUE(L::appendRecord(path, rec("opus","haiku",false,6,false,false,"/projA")));
+    ASSERT_TRUE(L::appendRecord(path, rec("opus","haiku",false,4,false,false,"/projB")));
+    ASSERT_TRUE(L::appendRecord(path, rec("opus","haiku",false,5,false,false,"/projC")));
+
+    L::StatsConfig cfg;
+    cfg.switchEnabled = true;
+    cfg.scope = QStringLiteral("global");
+    const QJsonObject env =
+        L::statsForScope(path, QStringLiteral("/projA"), cfg);
+    EXPECT_EQ(env.value(QStringLiteral("switches")).toInt(), 3);
+    EXPECT_EQ(env.value(QStringLiteral("opus_turns_avoided")).toInt(), 15);  // 6+4+5
+    EXPECT_EQ(env.value(QStringLiteral("scope")).toString(),
+              QStringLiteral("global"));
 }
 
 // INV-13: pending records are counted separately — never folded into the
@@ -143,8 +217,8 @@ TEST(McpModelSwitchStats, WiringContract) {
     EXPECT_TRUE(has(rcCpp, "RemoteControl::cmdModelSwitchStats("))
         << "definition missing from remotecontrol.cpp";
     EXPECT_TRUE(has(rcCpp, "ANTS-1735")) << "remotecontrol.cpp must anchor ANTS-1735";
-    EXPECT_TRUE(has(rcCpp, "statsForProject"))
-        << "cmdModelSwitchStats must delegate to ModelSwitchLedger::statsForProject";
+    EXPECT_TRUE(has(rcCpp, "statsForScope"))
+        << "cmdModelSwitchStats must delegate to ModelSwitchLedger::statsForScope (ANTS-1889)";
     EXPECT_TRUE(has(mwCpp, "registerToolProvider(\"model_switch_stats\""))
         << "mainwindow.cpp must register model_switch_stats";
     EXPECT_TRUE(has(mwCpp, "cmdModelSwitchStats"))
@@ -153,4 +227,15 @@ TEST(McpModelSwitchStats, WiringContract) {
         << "tools/list must carry a model_switch_stats descriptor";
     EXPECT_TRUE(has(ciCpp, "\"model_switch_stats\""))
         << "callerCwdContractFor must classify model_switch_stats";
+
+    // ANTS-1889 — the verb must read the live switcher config and surface
+    // it in the envelope; the tool descriptor must document the `scope` arg.
+    EXPECT_TRUE(has(rcCpp, "claudeAutoModel"))
+        << "cmdModelSwitchStats must read Config::claudeAutoModel for INV-13";
+    EXPECT_TRUE(has(rcCpp, "ANTS-1889"))
+        << "cmdModelSwitchStats must anchor ANTS-1889";
+    EXPECT_TRUE(has(ciCpp, "auto_model_switch_enabled"))
+        << "tool descriptor must mention the new envelope field";
+    EXPECT_TRUE(has(ciCpp, "\"scope\""))
+        << "tool descriptor must declare a scope property";
 }

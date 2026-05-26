@@ -2153,31 +2153,56 @@ void ClaudeIntegration::onMcpConnection() {
                     // ANTS-1735 — model_switch_stats: read-only effectiveness
                     // scorecard for the autonomous model switcher. Required
                     // caller_cwd; ETag + fields opt-in.
+                    // ANTS-1889 — envelope carries the live switcher config
+                    // (auto_model_switch_enabled / floor_tier / min_dwell_sec)
+                    // and accepts an optional `scope:"global"` arg.
                     QJsonObject t;
                     t["name"] = "model_switch_stats";
                     t["description"] = QStringLiteral(
                         "Read-only scorecard for the autonomous model switcher "
-                        "(ANTS-1735), scoped to the caller's project. Aggregates "
-                        "the effectiveness ledger into Opus turns avoided vs "
-                        "regret/under-route rate — the trust signal that "
-                        "auto-switching is helping. Envelope: {ok, switches, "
+                        "(ANTS-1735), scoped to the caller's project by default. "
+                        "Aggregates the effectiveness ledger into Opus turns "
+                        "avoided vs regret/under-route rate — the trust signal "
+                        "that auto-switching is helping. Envelope: {ok, switches, "
                         "downgrades, upgrades, opus_turns_avoided, "
                         "opus_turns_routed_in, regret_count, regret_rate, "
-                        "under_route_count, pending_count, by_tier, headline}. "
-                        "An absent ledger returns {ok:true, switches:0, …}; "
-                        "pending records (switch near session end, outcome not "
-                        "yet measured) are counted separately, never as success. "
-                        "The headline is reported as an avoided/regret ratio.");
+                        "under_route_count, pending_count, by_tier, "
+                        "auto_model_switch_enabled, floor_tier, min_dwell_sec, "
+                        "scope, headline}. The headline reads \"auto-switch OFF\" "
+                        "when disabled, \"auto-switch ON … (no switches yet)\" "
+                        "when enabled with no records in scope, and the "
+                        "avoided/regret ratio otherwise — so a caller can "
+                        "distinguish \"feature dormant\" from \"feature working "
+                        "quietly.\" An absent ledger returns {ok:true, "
+                        "switches:0, …}; pending records (switch near session "
+                        "end, outcome not yet measured) are counted separately, "
+                        "never as success. Pass scope:\"global\" to aggregate "
+                        "across all projects in the ledger instead of filtering "
+                        "to the caller's project (ANTS-1889).");
                     t["selection_hint"] = QStringLiteral(
                         "Use to check whether automatic model switching is "
-                        "paying off before trusting/enabling it more widely — "
-                        "reports avoided Opus turns against the regret rate.");
+                        "paying off before trusting it more widely — reports "
+                        "avoided Opus turns vs regret rate. scope:\"global\" "
+                        "aggregates across all projects.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();
                     props["fields"]     = makeFieldsProp();
+                    {
+                        QJsonObject scopeProp;
+                        scopeProp["type"]        = QStringLiteral("string");
+                        scopeProp["enum"]        = QJsonArray{
+                            QStringLiteral("project"),
+                            QStringLiteral("global")};
+                        scopeProp["description"] = QStringLiteral(
+                            "Optional aggregation scope (ANTS-1889). "
+                            "\"project\" (default) filters the ledger to the "
+                            "caller's project root; \"global\" aggregates "
+                            "across all projects in the ledger.");
+                        props["scope"] = scopeProp;
+                    }
                     schema["properties"] = props;
                     schema["required"]   = QJsonArray{
                         QStringLiteral("caller_cwd")};
