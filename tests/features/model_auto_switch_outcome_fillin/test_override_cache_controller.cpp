@@ -11,6 +11,8 @@
 // keys and the cached ms for known keys.
 
 #include <gtest/gtest.h>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QStatusBar>
 #include <QTemporaryFile>
 #include <QTextStream>
