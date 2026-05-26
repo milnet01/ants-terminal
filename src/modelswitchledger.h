@@ -84,6 +84,52 @@ UnderRoute detectUnderRoute(const QString &toTier,
 // Linear regex (no ReDoS); false-fires on prose by design — never ground truth.
 bool detectCorrection(const QString &firstUserTurnText);
 
+// modelId → alias mapping ("claude-haiku-…" → "haiku", "claude-opus-…" →
+// "opus", everything else → "sonnet"; empty modelId → ""). Mirrors
+// ModelRecommender::tierFromModelId without taking a claude_lib dependency
+// (ants_core_lib must not link claude_lib). Lower-case alias matches
+// `toTier` field encoding in the ledger.
+QString aliasFromModelId(const QString &modelId);
+
+// One assistant or user turn projected from the transcript, with just the
+// fields the outcome fill-in helper needs. Caller (controller) parses the
+// transcript and supplies these in chronological order.
+struct TranscriptTurn {
+    qint64  tsMs        = 0;     // assistant.timestamp parsed to ms
+    bool    isAssistant = false;
+    bool    isUser      = false;
+    QString modelId;             // assistant: message.model
+    QString userText;            // user: joined text content
+};
+
+struct OutcomeFillResult {
+    Outcome outcome;
+    bool    changed = false;     // outcome differs from inputBefore — caller flushes
+};
+
+// computeOutcome — fill in one ledger record's outcome from observed
+// post-switch transcript turns + later auto-records + the latest
+// recommender outputs. Pure.
+//
+// Settlement (`outcome.pending = false`) when ANY of:
+//   - at least one subsequent auto-switch follows this record's ts (the dwell
+//     has ended), OR
+//   - at least `kOutcomeWindowTurns` assistant turns observed post-switch.
+// Otherwise stays pending (controller leaves the record alone).
+//
+// turns_on_to_tier counts assistant turns whose modelId aliases to `toTier`,
+// until the first divergent assistant turn OR a subsequent auto-switch.
+//
+// user_override / correction / under_route follow §2.5 + INV-11/12; correction
+// and under_route only fire on a downgrade (tierRank(from) > tierRank(to)).
+OutcomeFillResult computeOutcome(
+    const QString &fromTier, const QString &toTier,
+    qint64 switchTsMs,
+    const QList<TranscriptTurn> &postSwitchTurns,
+    const QList<AutoSwitch> &subsequentAutoSwitches,
+    const QStringList &subsequentRecommendedTiers,
+    const Outcome &inputBefore = {});
+
 // --- INV-13 — read-only aggregation for the model_switch_stats MCP verb ---
 // statsEnvelope is pure over a record list; statsForProject reads the (global)
 // ledger and filters to one project root before aggregating. Both are

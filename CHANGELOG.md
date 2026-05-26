@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **Automatic model selection — opt-in auto-switch
+(Shape B of ANTS-1226).** (ANTS-1735)
+  Once you've seen the model recommender chip work well
+
+- **`roadmap_log op:append_batch` — append N bullets to one `section:` in a single atomic call (parity with the Edit path on…** (ANTS-1879)
+  Today appending 14 bullets means 14 round-trips. A batch append (one call carrying a list of bullets) would match what Edit can do in one shot. Pure token-and-latency optimisation; not a correctness gap.
+
+- **`roadmap_log op:create_section` verb — create a new section header (`{after_section, level, title, intro_body}`) without…** (ANTS-1878)
+  When a research session needs to add a brand-new section to the roadmap (not just append a bullet to an existing one), the append tool can't help — you have to hand-edit the file. A small "create_section" verb would close the gap and keep the tool as the single write path.
+
 - **`audit_run` since-last-run scope — re-scan only the files changed since the prior cached run (and the `files`/`branch-diff`/`since-tag` scopes now actually narrow).** (ANTS-1504)
   Each file-oriented tool runs against only its matching changed files (gitleaks/trivy skip; an absent prior commit falls back to a full scan). Makes the edit/re-audit loop much faster.
 

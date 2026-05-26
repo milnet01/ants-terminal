@@ -789,6 +789,12 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     connect(m_statusTimer, &QTimer::timeout,
             m_claudeStatusBarController,
             &ClaudeStatusBarController::refreshAutoModelSwitch);
+    // ANTS-1735 §2.5 — outcome fill-in tick. Same 2 s timer, but the
+    // method internally throttles to once per 30 s and bails fast when
+    // the ledger is empty or has no pending records.
+    connect(m_statusTimer, &QTimer::timeout,
+            m_claudeStatusBarController,
+            &ClaudeStatusBarController::fillPendingLedgerOutcomes);
     m_statusTimer->start();
 
     // Main-thread stall detector (ROADMAP § 0.8.0 "Terminal throughput

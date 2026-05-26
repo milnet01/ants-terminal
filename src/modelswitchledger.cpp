@@ -177,6 +177,124 @@ bool detectCorrection(const QString &firstUserTurnText) {
     return re.match(firstUserTurnText).hasMatch();
 }
 
+QString aliasFromModelId(const QString &modelId) {
+    if (modelId.isEmpty()) return {};
+    if (modelId.contains(QStringLiteral("haiku"), Qt::CaseInsensitive))
+        return QStringLiteral("haiku");
+    if (modelId.contains(QStringLiteral("opus"),  Qt::CaseInsensitive))
+        return QStringLiteral("opus");
+    return QStringLiteral("sonnet");
+}
+
+namespace {
+
+// Detect "/model X" prefix in a user turn's joined text content. Returns the
+// alias ("haiku"/"sonnet"/"opus") or empty if not a model command.
+QString parseUserModelCommand(const QString &userText) {
+    static const QRegularExpression re(
+        QStringLiteral("^\\s*/model\\s+(haiku|sonnet|opus)\\b"),
+        QRegularExpression::CaseInsensitiveOption);
+    const auto m = re.match(userText);
+    return m.hasMatch() ? m.captured(1).toLower() : QString();
+}
+
+}  // namespace
+
+OutcomeFillResult computeOutcome(
+    const QString &fromTier, const QString &toTier,
+    qint64 switchTsMs,
+    const QList<TranscriptTurn> &postSwitchTurns,
+    const QList<AutoSwitch> &subsequentAutoSwitches,
+    const QStringList &subsequentRecommendedTiers,
+    const Outcome &inputBefore)
+{
+    OutcomeFillResult res;
+    res.outcome = inputBefore;
+    res.outcome.pending = true;   // start pending; clear once settled
+
+    const bool isDowngrade = (tierRank(fromTier) > tierRank(toTier))
+                          && tierRank(fromTier) >= 0
+                          && tierRank(toTier)   >= 0;
+
+    // Slice turns to strictly post-switch (tsMs > switchTsMs). Pre-switch
+    // turns may slip in when the caller passes a generous window — guard here.
+    QList<TranscriptTurn> turns;
+    turns.reserve(postSwitchTurns.size());
+    for (const TranscriptTurn &t : postSwitchTurns)
+        if (t.tsMs > switchTsMs) turns.append(t);
+
+    // turns_on_to_tier: count contiguous assistant turns whose modelId aliases
+    // to `toTier`. Stop at the first divergent assistant turn.
+    int onTier = 0;
+    int firstDivergentIdx = -1;
+    for (int i = 0; i < turns.size(); ++i) {
+        if (!turns[i].isAssistant) continue;
+        if (aliasFromModelId(turns[i].modelId) == toTier) {
+            ++onTier;
+        } else {
+            firstDivergentIdx = i;
+            break;
+        }
+    }
+    res.outcome.turnsOnToTier = onTier;
+
+    // user_override scan — first kOutcomeWindowTurns user turns post-switch
+    // whose text starts with "/model X". The INV-11 correlation removes any
+    // /model X that an auto record authored within kAuthorWindowMs.
+    QList<ModelEvent> userModelEvents;
+    {
+        int userTurnsSeen = 0;
+        for (const TranscriptTurn &t : turns) {
+            if (!t.isUser) continue;
+            if (userTurnsSeen >= kOutcomeWindowTurns) break;
+            ++userTurnsSeen;
+            const QString cmd = parseUserModelCommand(t.userText);
+            if (!cmd.isEmpty()) {
+                ModelEvent ev;
+                ev.tier = cmd;
+                ev.tsMs = t.tsMs;
+                userModelEvents.append(ev);
+            }
+        }
+    }
+    res.outcome.userOverrideWithin5 =
+        detectUserOverride(userModelEvents, subsequentAutoSwitches);
+
+    // correction signal — first post-switch user turn ONLY, downgrades ONLY.
+    if (isDowngrade) {
+        for (const TranscriptTurn &t : turns) {
+            if (t.isUser) {
+                res.outcome.correctionSignalWithin5 =
+                    detectCorrection(t.userText);
+                break;
+            }
+        }
+    }
+
+    // under_route signal — downgrades only.
+    if (isDowngrade) {
+        const UnderRoute ur = detectUnderRoute(toTier, subsequentRecommendedTiers);
+        res.outcome.underRouteSignalWithin5 = (ur == UnderRoute::Yes);
+    }
+
+    // Settlement: dwell ended (subsequent auto-switch exists) OR ≥ kOutcomeWindowTurns
+    // post-switch assistant turns observed OR turns_on_to_tier already capped by
+    // a divergent assistant turn (a user-driven /model ended the dwell).
+    const bool dwellEndedByNextAuto  = !subsequentAutoSwitches.isEmpty();
+    const bool fullWindowObserved    = (onTier >= kOutcomeWindowTurns);
+    const bool dwellEndedByDivergence = (firstDivergentIdx >= 0);
+    if (dwellEndedByNextAuto || fullWindowObserved || dwellEndedByDivergence)
+        res.outcome.pending = false;
+
+    // changed flag — caller flushes only when something differs from input.
+    res.changed = (res.outcome.pending != inputBefore.pending)
+               || (res.outcome.turnsOnToTier != inputBefore.turnsOnToTier)
+               || (res.outcome.userOverrideWithin5 != inputBefore.userOverrideWithin5)
+               || (res.outcome.correctionSignalWithin5 != inputBefore.correctionSignalWithin5)
+               || (res.outcome.underRouteSignalWithin5 != inputBefore.underRouteSignalWithin5);
+    return res;
+}
+
 QJsonObject statsEnvelope(const QList<Record> &recs) {
     int downgrades = 0, upgrades = 0;
     int opusAvoided = 0, opusRoutedIn = 0;

@@ -988,6 +988,8 @@ if(ANTS_TESTS)
                 tests/features/claude_state_resolver/test_claude_state_resolver.cpp
                 # ANTS-1735 INV-14 — actuator wiring + chip suppression.
                 tests/features/model_auto_switch_actuator/test_model_auto_switch_actuator.cpp
+                # ANTS-1735 §2.5 — outcome fill-in tick wiring guard.
+                tests/features/model_auto_switch_outcome_fillin/test_model_auto_switch_outcome_fillin.cpp
                 tests/features/mcp_extra_tools/test_mcp_extra_tools.cpp
                 tests/features/tasks_chip_done_over_total/test_tasks_chip_done_over_total.cpp
                 # ANTS-1859 — tasks/refresh dedup key excludes transcript mtime.
@@ -1109,6 +1111,10 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_annotate/test_roadmap_log_annotate.cpp
                 # ANTS-1690 roadmap_log op:flip_batch (N bullets, one commit).
                 tests/features/roadmap_log_flip_batch/test_roadmap_log_flip_batch.cpp
+                # ANTS-1878 roadmap_log op:create_section.
+                tests/features/mcp_roadmap_log_create_section/test_mcp_roadmap_log_create_section.cpp
+                # ANTS-1879 roadmap_log op:append_batch.
+                tests/features/mcp_roadmap_log_append_batch/test_mcp_roadmap_log_append_batch.cpp
                 # ANTS-1548 changelog_log token-frugal CHANGELOG writer.
                 tests/features/changelog_log_writer/test_changelog_log_writer.cpp
                 # ANTS-1426 parseBullets blank-line continuation.

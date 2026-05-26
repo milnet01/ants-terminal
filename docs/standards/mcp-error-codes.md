@@ -38,7 +38,15 @@ against the table below.
 | `bad_mode` | A mode-enum argument doesn't match any allowed value. | `roadmap_query mode:"foo"`. |
 | `bad_mode_combo` | A mode + other-arg combo is conceptually exclusive. | `roadmap_query mode:"section_index"` + `section:"x"`. |
 | `bad_section` | A `section` slug isn't in the roadmap's heading index. | `roadmap_query section:"nonexistent"`. |
+| `bad_case` | A slug or id locator differs only in case from a real entry; envelope carries the canonical form. | `roadmap_log section:"Performance"` when the slug is `performance`. Returns `canonical_slug:"performance"`. Used by `roadmap_query`, `roadmap_log op:append`, `roadmap_log op:append_batch`, `roadmap_log op:create_section`, and `spec_query`. |
 | `bad_status` | A status-filter arg doesn't match the enum. | `roadmap_query status:"foo"`. |
+| `bad_kind` | A `kind` enum arg doesn't match the recognised set (per roadmap-format.md § 3.5.3). | `roadmap_log kind:"weird"`. |
+| `bad_level` | The `level` arg under `roadmap_log op:create_section` is not 2 or 3. | `roadmap_log op:create_section level:5` (ANTS-1878). |
+| `bad_intro` | The `intro_body` under `roadmap_log op:create_section` contains a line matching `^#{1,6}\s` (would silently add a heading to the index). | `intro_body:"## stray"` (ANTS-1878). |
+| `bad_title` | The `title` arg slugifies to the empty string (all non-letter-or-number characters). | `roadmap_log op:create_section title:"!@#"`. |
+| `slug_collision` | The computed slug under `op:create_section` already exists in the index. Envelope carries `computed_slug`. | `roadmap_log op:create_section title:"Performance"` when a `performance` slug exists (ANTS-1878). |
+| `headline_empty` | A bullet's `headline` field is empty. | `roadmap_log op:append_batch` bullet with no `headline` field (joins `skipped[]`). |
+| `no_roadmap` | `caller_cwd` doesn't canonicalise to a directory, or no ROADMAP.md was found under the resolved root. | `roadmap_log caller_cwd:"/no/such/path"`. Used by every `roadmap_log` op (ANTS-1424, 1878, 1879). |
 | `bad_feature_name` | A `feature_name` arg doesn't match the allowed pattern. | `plan_template feature_name:"!!!"`. |
 | `missing_name` | A name-typed required arg is empty. | `tool_info name:""`. |
 | `rate_limited` | The caller exceeded the per-tool sliding-window cap (ANTS-1356). The envelope carries `retry_after_ms`. | `audit_run` 11th call within 60 s (Expensive tier cap = 10/min). Caller should honour `retry_after_ms` before retrying. |

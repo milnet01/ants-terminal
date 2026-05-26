@@ -40,13 +40,15 @@ TEST(mcp_roadmap_log_verb, Inv1SchemaDeclared) {
     ASSERT_NE(pos, std::string::npos)
         << "INV-1: roadmap_log name literal missing from "
            "claudeintegration.cpp";
-    // 20 KiB window — the schema block keeps growing (ANTS-1428 added
+    // 28 KiB window — the schema block keeps growing (ANTS-1428 added
     // op / to_status / id / anchor / prefix_hint; ANTS-1717/1793 added
     // the annotate op prose + the `note` property; ANTS-1690 added the
-    // flip_batch op prose + the `locators` array block). 8 KiB held
-    // through ANTS-1424, 12 KiB through Tier 2, 16 KiB through the note
-    // surface; 20 KiB carries the flip_batch surface.
-    const std::string region = ci.substr(pos, 20000);
+    // flip_batch op prose + the `locators` array block; ANTS-1878/1879
+    // added create_section + append_batch ops with their bullets[] +
+    // after_section / level / title / intro_body property surface).
+    // Window sized to outrun the next couple of additions; trim if it
+    // grows unnecessarily.
+    const std::string region = ci.substr(pos, 28000);
     expect(contains(region, "\"caller_cwd\""),
            "INV-1: caller_cwd schema property present");
     expect(contains(region, "\"section\""),

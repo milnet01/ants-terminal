@@ -200,6 +200,192 @@ TEST(ModelSwitchLedger, OutcomeFillInLifecycle) {
     EXPECT_EQ(after[0].outcome.turnsOnToTier, 6);
 }
 
+// --- §2.5 outcome fill-in: pure computeOutcome helper ---
+
+namespace {
+
+L::TranscriptTurn assistantTurn(qint64 tsMs, const char *modelId) {
+    L::TranscriptTurn t;
+    t.tsMs        = tsMs;
+    t.isAssistant = true;
+    t.modelId     = QString::fromLatin1(modelId);
+    return t;
+}
+
+L::TranscriptTurn userTurn(qint64 tsMs, const char *text) {
+    L::TranscriptTurn t;
+    t.tsMs     = tsMs;
+    t.isUser   = true;
+    t.userText = QString::fromLatin1(text);
+    return t;
+}
+
+}  // namespace
+
+// aliasFromModelId — pure mapping, no claude_lib dep.
+TEST(ModelSwitchLedger, AliasFromModelId) {
+    EXPECT_EQ(L::aliasFromModelId("claude-haiku-4-5"), "haiku");
+    EXPECT_EQ(L::aliasFromModelId("claude-sonnet-4-6"), "sonnet");
+    EXPECT_EQ(L::aliasFromModelId("claude-opus-4-7"), "opus");
+    // Unknown model id → "sonnet" (default — matches ModelRecommender).
+    EXPECT_EQ(L::aliasFromModelId("claude-some-future-id"), "sonnet");
+    EXPECT_EQ(L::aliasFromModelId(""), "");
+}
+
+// Outcome fill-in: zero post-switch turns → pending, defaults.
+TEST(ModelSwitchLedger, ComputeOutcomeNoTurnsStaysPending) {
+    auto res = L::computeOutcome("opus", "haiku", 1000, {}, {}, {});
+    EXPECT_TRUE(res.outcome.pending);
+    EXPECT_EQ(res.outcome.turnsOnToTier, 0);
+}
+
+// 5 assistant turns on the new tier → settled, turns counted.
+TEST(ModelSwitchLedger, ComputeOutcome5AssistantTurnsSettled) {
+    const QList<L::TranscriptTurn> turns = {
+        assistantTurn(2000, "claude-haiku-4-5"),
+        assistantTurn(3000, "claude-haiku-4-5"),
+        assistantTurn(4000, "claude-haiku-4-5"),
+        assistantTurn(5000, "claude-haiku-4-5"),
+        assistantTurn(6000, "claude-haiku-4-5"),
+    };
+    auto res = L::computeOutcome("opus", "haiku", 1000, turns, {}, {"haiku"});
+    EXPECT_FALSE(res.outcome.pending);
+    EXPECT_EQ(res.outcome.turnsOnToTier, 5);
+}
+
+// Subsequent auto-switch ends the dwell early; turns_on_to_tier is the count up
+// to that switch.
+TEST(ModelSwitchLedger, ComputeOutcomeSubsequentAutoSettlesEarly) {
+    const QList<L::TranscriptTurn> turns = {
+        assistantTurn(2000, "claude-haiku-4-5"),
+        assistantTurn(3000, "claude-haiku-4-5"),
+    };
+    const QList<L::AutoSwitch> nextAutos = {{"sonnet", 4000}};
+    auto res = L::computeOutcome("opus", "haiku", 1000, turns, nextAutos, {});
+    EXPECT_FALSE(res.outcome.pending);
+    EXPECT_EQ(res.outcome.turnsOnToTier, 2);
+}
+
+// turns_on_to_tier stops counting at the first divergent assistant model id
+// (e.g. a user typed /model and the next assistant turn shows the new model).
+TEST(ModelSwitchLedger, ComputeOutcomeStopsAtModelDivergence) {
+    const QList<L::TranscriptTurn> turns = {
+        assistantTurn(2000, "claude-haiku-4-5"),
+        assistantTurn(3000, "claude-haiku-4-5"),
+        userTurn(3500, "/model sonnet"),
+        assistantTurn(4000, "claude-sonnet-4-6"),
+        assistantTurn(5000, "claude-sonnet-4-6"),
+    };
+    auto res = L::computeOutcome("opus", "haiku", 1000, turns, {}, {"sonnet"});
+    EXPECT_EQ(res.outcome.turnsOnToTier, 2)
+        << "must stop at first non-to_tier assistant turn";
+}
+
+// INV-12: downgrade then higher recommendation → under_route signal.
+TEST(ModelSwitchLedger, ComputeOutcomeUnderRouteOnHigherRec) {
+    const QList<L::TranscriptTurn> turns = {
+        assistantTurn(2000, "claude-haiku-4-5"),
+        assistantTurn(3000, "claude-haiku-4-5"),
+        assistantTurn(4000, "claude-haiku-4-5"),
+        assistantTurn(5000, "claude-haiku-4-5"),
+        assistantTurn(6000, "claude-haiku-4-5"),
+    };
+    auto res = L::computeOutcome("opus", "haiku", 1000, turns, {}, {"opus"});
+    EXPECT_FALSE(res.outcome.pending);
+    EXPECT_TRUE(res.outcome.underRouteSignalWithin5);
+}
+
+// Under_route only fires on a downgrade, never on an upgrade.
+TEST(ModelSwitchLedger, ComputeOutcomeUnderRouteNotOnUpgrade) {
+    const QList<L::TranscriptTurn> turns = {
+        assistantTurn(2000, "claude-opus-4-7"),
+        assistantTurn(3000, "claude-opus-4-7"),
+        assistantTurn(4000, "claude-opus-4-7"),
+        assistantTurn(5000, "claude-opus-4-7"),
+        assistantTurn(6000, "claude-opus-4-7"),
+    };
+    // From haiku → opus is an upgrade; even if scorer later wants opus (same
+    // tier), under_route stays false because it only meaningfully applies to
+    // a downgrade per spec §2.5.
+    auto res = L::computeOutcome("haiku", "opus", 1000, turns, {}, {"opus"});
+    EXPECT_FALSE(res.outcome.underRouteSignalWithin5);
+}
+
+// Correction signal — first post-switch user turn matches the regex (downgrade).
+TEST(ModelSwitchLedger, ComputeOutcomeCorrectionFirstUserTurn) {
+    const QList<L::TranscriptTurn> turns = {
+        userTurn(1500, "no, that was wrong"),
+        assistantTurn(2000, "claude-haiku-4-5"),
+        assistantTurn(3000, "claude-haiku-4-5"),
+        assistantTurn(4000, "claude-haiku-4-5"),
+        assistantTurn(5000, "claude-haiku-4-5"),
+        assistantTurn(6000, "claude-haiku-4-5"),
+    };
+    auto res = L::computeOutcome("opus", "haiku", 1000, turns, {}, {"haiku"});
+    EXPECT_FALSE(res.outcome.pending);
+    EXPECT_TRUE(res.outcome.correctionSignalWithin5);
+}
+
+// Correction signal does NOT fire on an upgrade (per §2.5 — soft signal is
+// "user pushed back on the cheaper tier", not relevant on upgrades).
+TEST(ModelSwitchLedger, ComputeOutcomeCorrectionNotOnUpgrade) {
+    const QList<L::TranscriptTurn> turns = {
+        userTurn(1500, "no, that was wrong"),
+        assistantTurn(2000, "claude-opus-4-7"),
+        assistantTurn(3000, "claude-opus-4-7"),
+        assistantTurn(4000, "claude-opus-4-7"),
+        assistantTurn(5000, "claude-opus-4-7"),
+        assistantTurn(6000, "claude-opus-4-7"),
+    };
+    auto res = L::computeOutcome("haiku", "opus", 1000, turns, {}, {"opus"});
+    EXPECT_FALSE(res.outcome.correctionSignalWithin5);
+}
+
+// User override via inline `/model X` text — no matching auto record → override.
+TEST(ModelSwitchLedger, ComputeOutcomeUserOverrideViaTextCommand) {
+    const QList<L::TranscriptTurn> turns = {
+        assistantTurn(2000, "claude-haiku-4-5"),
+        userTurn(2500, "/model sonnet"),
+        assistantTurn(3000, "claude-sonnet-4-6"),
+        assistantTurn(4000, "claude-sonnet-4-6"),
+        assistantTurn(5000, "claude-sonnet-4-6"),
+        assistantTurn(6000, "claude-sonnet-4-6"),
+    };
+    // No auto record matches the sonnet switch → user typed it → override.
+    auto res = L::computeOutcome("opus", "haiku", 1000, turns, {}, {"sonnet"});
+    EXPECT_TRUE(res.outcome.userOverrideWithin5);
+}
+
+// `/model X` matched by a *subsequent auto* record within the author window
+// → NOT an override (INV-11 author-correlation).
+TEST(ModelSwitchLedger, ComputeOutcomeAutoSwitchIsNotOverride) {
+    const QList<L::TranscriptTurn> turns = {
+        assistantTurn(2000, "claude-haiku-4-5"),
+        userTurn(2500, "/model sonnet"),
+        assistantTurn(3000, "claude-sonnet-4-6"),
+    };
+    // The subsequent ledger auto-record matches by tier + |Δts| ≤ 10s.
+    const QList<L::AutoSwitch> nextAutos = {{"sonnet", 2502}};
+    auto res = L::computeOutcome("opus", "haiku", 1000, turns, nextAutos, {});
+    EXPECT_FALSE(res.outcome.userOverrideWithin5);
+}
+
+// Pre-switch turns (tsMs < switchTsMs) are ignored.
+TEST(ModelSwitchLedger, ComputeOutcomePreSwitchTurnsIgnored) {
+    const QList<L::TranscriptTurn> turns = {
+        assistantTurn(500, "claude-opus-4-7"),     // before switch
+        userTurn(600, "no good"),                   // before switch
+        assistantTurn(2000, "claude-haiku-4-5"),    // after switch
+    };
+    auto res = L::computeOutcome("opus", "haiku", 1000, turns, {}, {});
+    // Only 1 post-switch assistant turn — not yet settled.
+    EXPECT_TRUE(res.outcome.pending);
+    EXPECT_EQ(res.outcome.turnsOnToTier, 1);
+    // Pre-switch "no good" should NOT count as a correction; the helper
+    // examines only post-switch user turns.
+    EXPECT_FALSE(res.outcome.correctionSignalWithin5);
+}
+
 // Tier ranking underpins the higher/lower comparisons.
 TEST(ModelSwitchLedger, TierRankOrdering) {
     EXPECT_EQ(L::tierRank("haiku"), 0);

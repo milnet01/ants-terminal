@@ -1,8 +1,13 @@
 #include "claudestatuswidgets.h"
 
+#include <QDateTime>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QObject>
 #include <QPointer>
@@ -1314,4 +1319,149 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
 // reasonable min-dwell on the first eligible tick.
 qint64 ClaudeStatusBarController::kMaxDwellSentinel() {
     return 1ll << 50;
+}
+
+namespace {
+
+// Parse a JSONL transcript tail into the projection the §2.5 outcome
+// fill-in needs (assistant turns + user turns with their content). Matches
+// the 512 KB tail-read pattern in ModelRecommender::score so behaviour is
+// consistent. Returns turns in chronological order, oldest first.
+QList<ModelSwitchLedger::TranscriptTurn>
+parseTranscriptTurnsForLedger(const QString &path)
+{
+    QList<ModelSwitchLedger::TranscriptTurn> out;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return out;
+    constexpr qint64 kMaxTailBytes = 512LL * 1024LL;
+    const bool didTailSeek = (f.size() > kMaxTailBytes);
+    if (didTailSeek) f.seek(f.size() - kMaxTailBytes);
+
+    QStringList lines;
+    while (!f.atEnd()) {
+        const QString ln = QString::fromUtf8(f.readLine()).trimmed();
+        if (!ln.isEmpty()) lines.append(ln);
+    }
+    f.close();
+    if (didTailSeek && !lines.isEmpty()) lines.removeFirst();   // truncated head
+
+    out.reserve(lines.size());
+    for (const QString &ln : lines) {
+        const QJsonObject obj = QJsonDocument::fromJson(ln.toUtf8()).object();
+        const QString type = obj.value(QStringLiteral("type")).toString();
+        if (type != QStringLiteral("assistant") && type != QStringLiteral("user"))
+            continue;
+
+        ModelSwitchLedger::TranscriptTurn t;
+        const QString ts = obj.value(QStringLiteral("timestamp")).toString();
+        t.tsMs = ModelSwitchLedger::parseIso8601Ms(ts);
+
+        const QJsonObject msg = obj.value(QStringLiteral("message")).toObject();
+        if (type == QStringLiteral("assistant")) {
+            t.isAssistant = true;
+            t.modelId     = msg.value(QStringLiteral("model")).toString();
+        } else {
+            t.isUser = true;
+            // user.message.content can be a string OR an array of content
+            // blocks (text/image/tool_result). Join all text into userText.
+            const QJsonValue cv = msg.value(QStringLiteral("content"));
+            if (cv.isString()) {
+                t.userText = cv.toString();
+            } else if (cv.isArray()) {
+                QStringList parts;
+                for (const QJsonValue &blk : cv.toArray()) {
+                    const QJsonObject b = blk.toObject();
+                    if (b.value(QStringLiteral("type")).toString()
+                            == QStringLiteral("text")) {
+                        parts.append(b.value(QStringLiteral("text")).toString());
+                    }
+                }
+                t.userText = parts.join(QLatin1Char(' '));
+            }
+        }
+        out.append(t);
+    }
+    return out;
+}
+
+}  // namespace
+
+// ANTS-1735 §2.5 — outcome fill-in tick. Runs on the 2 s status timer,
+// internally throttled to once per kPendingFillIntervalMs (30 s). Reads
+// the ledger, fills any pending records whose post-switch transcript has
+// settled, and writes back only when something changed. Cheap when the
+// ledger is empty or has no pending records.
+void ClaudeStatusBarController::fillPendingLedgerOutcomes()
+{
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    if (m_lastPendingFillMs > 0 &&
+        nowMs - m_lastPendingFillMs < kPendingFillIntervalMs) {
+        return;
+    }
+    m_lastPendingFillMs = nowMs;
+
+    const QString ledgerPath = ModelSwitchLedger::defaultLedgerPath();
+    QList<ModelSwitchLedger::Record> recs =
+        ModelSwitchLedger::readRecords(ledgerPath);
+    if (recs.isEmpty()) return;
+
+    // Quick exit when nothing is pending — saves the per-record transcript
+    // lookups in the common steady-state case.
+    bool hasPending = false;
+    for (const ModelSwitchLedger::Record &r : recs) {
+        if (r.outcome.pending) { hasPending = true; break; }
+    }
+    if (!hasPending) return;
+
+    bool anyChanged = false;
+    for (int i = 0; i < recs.size(); ++i) {
+        ModelSwitchLedger::Record &r = recs[i];
+        if (!r.outcome.pending) continue;
+
+        const QString transcriptPath =
+            ClaudeIntegration::sessionPathForCwd(r.project);
+        if (transcriptPath.isEmpty()) continue;
+
+        const QList<ModelSwitchLedger::TranscriptTurn> turns =
+            parseTranscriptTurnsForLedger(transcriptPath);
+        const qint64 switchMs = ModelSwitchLedger::parseIso8601Ms(r.ts);
+
+        // Subsequent auto-switches for the same project — used by
+        // detectUserOverride (author correlation) and to settle the dwell
+        // when the controller has already moved on.
+        QList<ModelSwitchLedger::AutoSwitch> nextAutos;
+        for (int j = i + 1; j < recs.size(); ++j) {
+            if (recs[j].project != r.project) continue;
+            ModelSwitchLedger::AutoSwitch a;
+            a.toTier = recs[j].toTier;
+            a.tsMs   = ModelSwitchLedger::parseIso8601Ms(recs[j].ts);
+            if (a.tsMs > 0) nextAutos.append(a);
+        }
+
+        // INV-12 under-route — pass the live recommender snapshot once at
+        // least one post-switch assistant turn has happened. Earlier than
+        // that, the scorer has nothing new to bite on.
+        QStringList recTiers;
+        int postSwitchAsstCount = 0;
+        for (const ModelSwitchLedger::TranscriptTurn &t : turns) {
+            if (t.isAssistant && t.tsMs > switchMs) ++postSwitchAsstCount;
+        }
+        if (postSwitchAsstCount >= 1) {
+            const ModelRecommender::Result rr =
+                ModelRecommender::score(transcriptPath);
+            recTiers << ModelRecommender::tierName(rr.tier);
+        }
+
+        const ModelSwitchLedger::OutcomeFillResult fill =
+            ModelSwitchLedger::computeOutcome(
+                r.fromTier, r.toTier, switchMs,
+                turns, nextAutos, recTiers, r.outcome);
+        if (fill.changed) {
+            r.outcome = fill.outcome;
+            anyChanged = true;
+        }
+    }
+
+    if (anyChanged)
+        ModelSwitchLedger::writeRecords(ledgerPath, recs);
 }

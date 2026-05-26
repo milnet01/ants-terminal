@@ -5840,14 +5840,22 @@ void ClaudeIntegration::onMcpConnection() {
                     opProp["type"] = "string";
                     QJsonArray opEnum;
                     opEnum.append("append");
+                    opEnum.append("append_batch");
                     opEnum.append("flip");
                     opEnum.append("flip_batch");
                     opEnum.append("annotate");
+                    opEnum.append("create_section");
                     opProp["enum"] = opEnum;
                     opProp["description"] = QStringLiteral(
                         "Verb mode. Default \"append\" (ANTS-1424). "
-                        "\"flip\" routes to the status-flip path "
-                        "(ANTS-1428; works on GFM-task-list and "
+                        "\"append_batch\" (ANTS-1879) appends N bullets "
+                        "to one `section` in a single read + single "
+                        "commit — pass `bullets[]` (each with the same "
+                        "fields as op:\"append\"). Per-bullet validation "
+                        "failures land in `skipped[]` while accepted "
+                        "bullets still apply (semantic parity with "
+                        "flip_batch). \"flip\" routes to the status-flip "
+                        "path (ANTS-1428; works on GFM-task-list and "
                         "Ants-v1 emoji formats — ANTS-1441) and accepts "
                         "an optional `note` to append a resolution line "
                         "in the same call (ANTS-1793). \"flip_batch\" "
@@ -5863,7 +5871,13 @@ void ClaudeIntegration::onMcpConnection() {
                         "(ANTS-1717) appends a `note` to a located "
                         "bullet WITHOUT changing its status — for "
                         "recording partial progress on a still-open "
-                        "item; no status flip, no anchor injection.");
+                        "item; no status flip, no anchor injection. "
+                        "\"create_section\" (ANTS-1878) splices a new "
+                        "## / ### heading after an existing section — "
+                        "pass `after_section` (slug), `level` (2 or 3), "
+                        "`title`, optional `intro_body`. Returns the "
+                        "new slug so a follow-up op:\"append\" / "
+                        "op:\"append_batch\" can key on it.");
                     QJsonObject toStatusProp;
                     toStatusProp["type"] = "string";
                     QJsonArray toStatusEnum;
@@ -5984,25 +5998,119 @@ void ClaudeIntegration::onMcpConnection() {
                         "and `no_anchor`. Single read + single atomic "
                         "commit across all of them.");
 
+                    // ANTS-1879 — bullets[] array for op:"append_batch".
+                    // Each element carries the same shape as the
+                    // single-bullet path's top-level fields.
+                    QJsonObject bulletItem;
+                    bulletItem["type"] = "object";
+                    QJsonObject bulletItemProps;
+                    {
+                        QJsonObject p = headlineProp;
+                        bulletItemProps["headline"] = p;
+                    }
+                    {
+                        QJsonObject p = statusProp;
+                        bulletItemProps["status"] = p;
+                    }
+                    {
+                        QJsonObject p = kindProp;
+                        bulletItemProps["kind"] = p;
+                    }
+                    {
+                        QJsonObject p = sourceProp;
+                        bulletItemProps["source"] = p;
+                    }
+                    {
+                        QJsonObject p = bodyProp;
+                        bulletItemProps["body"] = p;
+                    }
+                    {
+                        QJsonObject p = laymanProp;
+                        bulletItemProps["layman"] = p;
+                    }
+                    {
+                        QJsonObject p = lanesProp;
+                        bulletItemProps["lanes"] = p;
+                    }
+                    {
+                        QJsonObject p = idHintProp;
+                        p["description"] = QStringLiteral(
+                            "Optional explicit ID under op:\"append_batch\". "
+                            "Honoured ONLY on the first bullet (later "
+                            "bullets follow first_id+i to keep the "
+                            "allocation contiguous).");
+                        bulletItemProps["id_hint"] = p;
+                    }
+                    bulletItem["properties"] = bulletItemProps;
+                    QJsonObject bulletsProp;
+                    bulletsProp["type"]  = "array";
+                    bulletsProp["items"] = bulletItem;
+                    bulletsProp["description"] = QStringLiteral(
+                        "Required under op:\"append_batch\": the bullets "
+                        "to append to `section`. Single read + single "
+                        "atomic commit across all of them. Per-bullet "
+                        "validation failures land in `skipped[]` while "
+                        "accepted bullets still apply (semantic parity "
+                        "with flip_batch).");
+
+                    // ANTS-1878 — create_section params.
+                    QJsonObject afterSectionProp;
+                    afterSectionProp["type"] = "string";
+                    afterSectionProp["description"] = QStringLiteral(
+                        "Required under op:\"create_section\": slug of "
+                        "an existing ## / ### heading. The new heading "
+                        "is inserted at this section's end.");
+                    QJsonObject levelProp;
+                    levelProp["type"] = "integer";
+                    QJsonArray levelEnum;
+                    levelEnum.append(2);
+                    levelEnum.append(3);
+                    levelProp["enum"] = levelEnum;
+                    levelProp["description"] = QStringLiteral(
+                        "Required under op:\"create_section\": heading "
+                        "depth (2 for `##`, 3 for `###`).");
+                    QJsonObject titleProp;
+                    titleProp["type"] = "string";
+                    titleProp["maxLength"] = 200;
+                    titleProp["description"] = QStringLiteral(
+                        "Required under op:\"create_section\": literal "
+                        "heading text. The slug is computed from it via "
+                        "the same transform RoadmapIndex uses.");
+                    QJsonObject introBodyProp;
+                    introBodyProp["type"]      = "string";
+                    introBodyProp["maxLength"] = 4000;
+                    introBodyProp["description"] = QStringLiteral(
+                        "Optional under op:\"create_section\": intro "
+                        "paragraph(s) for the new section. Single "
+                        "newlines = paragraph breaks; hard-wrapped at "
+                        "80 cols on word boundaries. Lines matching "
+                        "^#{1,6}\\s (a Markdown heading) refuse with "
+                        "bad_intro.");
+
                     QJsonObject props;
-                    props["caller_cwd"]  = callerProp;
-                    props["op"]          = opProp;
-                    props["locators"]    = locatorsProp;
-                    props["section"]     = sectionProp;
-                    props["status"]      = statusProp;
-                    props["to_status"]   = toStatusProp;
-                    props["headline"]    = headlineProp;
-                    props["kind"]        = kindProp;
-                    props["source"]      = sourceProp;
-                    props["body"]        = bodyProp;
-                    props["layman"]      = laymanProp;
-                    props["lanes"]       = lanesProp;
-                    props["id_hint"]     = idHintProp;
-                    props["id"]          = idProp;
-                    props["anchor"]      = anchorProp;
-                    props["prefix_hint"] = prefixHintProp;
-                    props["note"]        = noteProp;
-                    schema["properties"] = props;
+                    props["caller_cwd"]    = callerProp;
+                    props["op"]            = opProp;
+                    props["locators"]      = locatorsProp;
+                    props["bullets"]       = bulletsProp;
+                    props["section"]       = sectionProp;
+                    props["after_section"] = afterSectionProp;
+                    props["level"]         = levelProp;
+                    props["title"]         = titleProp;
+                    props["intro_body"]    = introBodyProp;
+                    props["status"]        = statusProp;
+                    props["to_status"]     = toStatusProp;
+                    props["headline"]      = headlineProp;
+                    props["kind"]          = kindProp;
+                    props["source"]        = sourceProp;
+                    props["body"]          = bodyProp;
+                    props["layman"]        = laymanProp;
+                    props["lanes"]         = lanesProp;
+                    props["id_hint"]       = idHintProp;
+                    props["id"]            = idProp;
+                    props["anchor"]        = anchorProp;
+                    props["prefix_hint"]   = prefixHintProp;
+                    props["note"]          = noteProp;
+                    schema["properties"]   = props;
 
                     // ANTS-1428 — only caller_cwd is unconditionally
                     // required across both ops. op:"append" needs

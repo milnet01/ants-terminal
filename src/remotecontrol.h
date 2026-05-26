@@ -619,6 +619,13 @@ public:
     // caller_cwd without a MainWindow. See
     // tests/features/roadmap_log_flip_batch/spec.md.
     QJsonDocument cmdRoadmapLogFlipBatchForTest(const QJsonObject &req);
+    // ANTS-1878 — drive the create_section path against a synthetic
+    // caller_cwd without a MainWindow. m_main-independent.
+    QJsonDocument cmdRoadmapLogCreateSectionForTest(const QJsonObject &req);
+    // ANTS-1879 — drive the append_batch path against a synthetic
+    // caller_cwd without a MainWindow. m_main-independent (counter +
+    // markdown only).
+    QJsonDocument cmdRoadmapLogAppendBatchForTest(const QJsonObject &req);
 
 private slots:
     void onNewConnection();
@@ -638,6 +645,22 @@ private:
     // guard. cmdRoadmapLog keeps op-dispatch + the m_main guard, then
     // delegates here for op:"append".
     QJsonDocument cmdRoadmapLogAppend(const QJsonObject &req);
+    // ANTS-1878 — create_section: splice a new ## / ### heading after
+    // an existing section. No counter touch; single atomic write.
+    QJsonDocument cmdRoadmapLogCreateSection(const QJsonObject &req);
+    // ANTS-1879 — append_batch: append N bullets to one section in a
+    // single read + single atomic commit. Mirrors flip_batch's
+    // partial-apply contract (ok:true even when all-skipped); shared
+    // bullet-formatting helper extracted from cmdRoadmapLogAppend.
+    QJsonDocument cmdRoadmapLogAppendBatch(const QJsonObject &req);
+    // ANTS-1879 INV-10 — shared bullet-formatting helper extracted from
+    // cmdRoadmapLogAppend's :3293-3344 block so cmdRoadmapLogAppendBatch
+    // can format each bullet through the same code path. scrubbedNames
+    // is an out-param fed by rcScrubLeakedToolXml.
+    QString formatRoadmapBullet(const QJsonObject &bulletReq,
+                                const QString    &idStr,
+                                const QString    &statusEmoji,
+                                QStringList      &scrubbedNames);
     QJsonDocument cmdLs();
     QJsonDocument cmdSendText(const QJsonObject &req);
     QJsonDocument cmdNewTab(const QJsonObject &req);

@@ -89,10 +89,22 @@ public:
     // Config::claudeAutoModel().switch_enabled (INV-14).
     void refreshAutoModelSwitch();
 
+    // ANTS-1735 §2.5 — outcome fill-in tick. Scans the global ledger for
+    // pending records, finds the matching transcript per record's project,
+    // parses post-switch turns, runs `computeOutcome`, and writes back the
+    // ledger if anything changed. Idempotent; cheap when there are no
+    // pending records. Wired to the same 2 s status timer, internally
+    // throttled to ≤ once per kPendingFillIntervalMs.
+    void fillPendingLedgerOutcomes();
+
 private:
     // Sentinel returned by msSinceLastSwitch when m_autoSwitchLastMs==0
     // (no switch yet). Large enough to clear any configured min-dwell.
     static qint64 kMaxDwellSentinel();
+    // Outcome fill-in tick cadence — runs at most every 30 s. Each call
+    // rescans the ledger, so the 2 s tick would be wasteful.
+    static constexpr qint64 kPendingFillIntervalMs = 30'000;
+    qint64 m_lastPendingFillMs = 0;
 
 public:
 

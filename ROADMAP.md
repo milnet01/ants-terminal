@@ -2794,6 +2794,18 @@ minor tag (next: pre-0.8.0).
   Source: user-report-2026-05-25 (live during this session's AskUserQuestion test).
   Correction (2026-05-25): the first commit (belt only) did NOT fix it — verified live, dot still stuck orange. Root cause is two-fold: (1) Ants' Claude hooks are not installed in this setup (no PreToolUse/PostToolUse/Stop hook POSTs to the UDS hook server), so the toolFinished/sessionStopped belt never fires — it is best-effort only; (2) the load-bearing bug is that m_claudeDetectTimer was a trailing-edge debounce — `m_claudeDetectTimer.start()` restarts the single-shot timer on every PTY batch, so during Claude Code's sub-300ms spinner output the scanner never runs and the footer-gone N=3 debounce can't accumulate. Real fix: start the timer only when idle (`if (!m_claudeDetectTimer.isActive())`) → ~300ms throttle that fires during continuous output, clearing the dot via the footer scanner alone (no hooks). Test: claude_question_prompt_dot INV-8. Confirmed live pending second relaunch.
 
+- 📋 [ANTS-1885] **Status-bar + tab-dot both stuck on "Claude: idle" while Claude is actively working.**
+  Reproduction: long multi-step turn (during the cold-eyes loop on ANTS-1878/1879 specs around 10:21 on 2026-05-26). Both UI indicators (status-bar "Claude: idle" badge + tab-dot colour) showed Idle simultaneously, but Claude was visibly mid-tool-use (Read/Edit calls + spawned sub-agents still running). Related to ANTS-1873 (single-source-of-truth Claude state resolver) but DIFFERENT failure mode — ANTS-1873 was about tab-dot vs status-bar DESYNC; here they agree but both are stuck stale. Likely a missed transition out of Idle when a sub-agent's tool-use re-enters work (the resolver caches Idle and isn't being re-stamped on resumed activity). Investigate: the per-shell `ClaudeState` transition coverage when activity resumes inside an in-flight turn after a brief Idle window. Acceptance: while ANY assistant turn is in flight (any tool_use or thinking block streamed within the last few seconds), the resolver must hold a non-Idle state for both indicators.
+  claude-state-resolver, status-bar, tab-dot, claudetabtracker
+  **Layman:** When Claude is in the middle of doing work (tool calls, thinking, etc.) both the status bar at the bottom and the coloured dot on the tab should show that it's busy — but sometimes both go "idle" while it's still working. The two indicators agree with each other but disagree with reality, so the user can't tell when Claude is actually done.
+  Kind: fix.
+  Source: user-report-2026-05-26 (screenshot — status bar + tab dot both show idle while Claude is actively working).
+
+- 📋 [ANTS-1886] **Review Changes dialog: surface new-file content, not just the bare `??` marker.**
+  **Layman:** Right now the Review Changes window lists brand-new files as just `?? path/to/file.md`, with no preview and no line count. Existing files get a unified diff. Brand-new files are arguably the most interesting bit of a change — you want to see them. Two ideas, in priority order: (1) show new files as additions (every line a `+`) just like the unified diff does for existing files; (2) if that's expensive, at minimum show the line count next to the path, e.g. `NF tests/features/mcp_roadmap_log_append_batch/ (120 lines)`, and swap the cryptic `??` for a friendlier marker like `NF` (new file) or a coloured `+`.</layman> <parameter name="body">Reproduction: branch with both modified and new files; open the Review Changes dialog. Current output uses git's raw porcelain markers (`??`) for new files, which read as "untracked / status unknown" rather than "new file with content to look at". Acceptance for option 1: new files render as a synthetic addition diff (full content prefixed with `+`), ma…
+  Kind: ux.
+  Source: user-request-2026-05-26 (Review Changes dialog UX).
+
 ### 🔍 CI fold-in (2026-04-28)
 
 - ✅ [ANTS-1869] **UBSan vptr error in `DialogChrome::ChromeGuard::eventFilter`
@@ -3315,6 +3327,11 @@ minor tag (next: pre-0.8.0).
   existing `/debt-sweep` skill's triage table). Kind: implement.
   Source: user-2026-04-30. Lanes: MainWindow, new
   `WorkflowDialog`, AuditDialog, Config, build/CMake.
+
+- 📋 [ANTS-1887] **First-run wizard: detect a fresh install and offer to install Claude Code hooks + MCP integration.**
+  **Layman:** On the very first launch (or first launch after a fresh user account), Ants Terminal should notice it has never been set up and ask the user whether to wire up the bits that make the Ants × Claude Code experience work: the hook scripts under `~/.claude/hooks/`, the MCP server registration in `~/.claude.json` (or whichever Claude Code config the runtime version uses), the `.claude/settings.json` template, etc. A single "Set up Claude Code integration" dialog with a checkbox per feature beats today's "read the README and copy these files by hand" path.</layman> <parameter name="body">First-run detection should probably key on `~/.config/ants-terminal/config.json` absence (or an explicit `first_run_completed` flag inside it). The wizard then offers (defaults all ON, each individually opt-out): (1) install/refresh the hook pack into `~/.claude/hooks/` (matches `tests/hook_pack/`); (2) register the Ants MCP server in `~/.claude.json` so the `mcp__ants__*` tools light up in fresh Claude Code…
+  Kind: feature.
+  Source: user-request-2026-05-26.
 
 ### 🎨 Claude Code companion offload (user request 2026-04-30)
 
@@ -14384,7 +14401,7 @@ subsection.
   option (a). Spec at docs/specs/ANTS-1877.md folded 2 cold-eyes
   loops.
 
-- 📋 [ANTS-1878] **`roadmap_log op:create_section` verb — create a new section header (`{after_section, level, title, intro_body}`) without falling back to Edit.**
+- ✅ [ANTS-1878] **`roadmap_log op:create_section` verb — create a new section header (`{after_section, level, title, intro_body}`) without falling back to Edit.**
   `op:append` requires an existing `section:` slug. New-section
   creation requires `Edit` today (Vestige session needed `Phase 10.6:
   Multi-Threading & Concurrency Architecture` — created via Edit
@@ -14396,8 +14413,9 @@ subsection.
   Kind: enhancement.
   Lanes: mcp-roadmap-log, remotecontrol.
   Source: vestige-feedback-2026-05-26 Obs #21.
+  Resolved (2026-05-26): `op:"create_section"` handler shipped. Spec at docs/specs/ANTS-1878.md (cold-eyes loops 1+2+3+4 folded). Code: cmdRoadmapLogCreateSection + ForTest seam in remotecontrol.{h,cpp}; dispatch wired in cmdRoadmapLog; schema extended in claudeintegration.cpp (op enum + after_section/level/title/intro_body properties); mcp-error-codes.md taxonomy catch-up (bad_level/bad_intro/bad_title/slug_collision/bad_case/no_roadmap). 12 feature tests under tests/features/mcp_roadmap_log_create_section/ — all green, full ctest 1641/1641.</note>
 
-- 📋 [ANTS-1879] **`roadmap_log op:append_batch` — append N bullets to one `section:` in a single atomic call (parity with the Edit path on bulk inserts).**
+- ✅ [ANTS-1879] **`roadmap_log op:append_batch` — append N bullets to one `section:` in a single atomic call (parity with the Edit path on bulk inserts).**
   Vestige's audio addendum (14 bullets) was one Edit call vs. 14
   `op:append` round-trips. Suggested shape: `op:append_batch` taking
   `bullets:[{headline, body, kind, source, ...}]` keyed on one
@@ -14408,6 +14426,7 @@ subsection.
   Kind: enhancement.
   Lanes: mcp-roadmap-log, remotecontrol.
   Source: vestige-feedback-2026-05-26 Obs #22.
+  Resolved (2026-05-26): `op:"append_batch"` handler shipped. Spec at docs/specs/ANTS-1879.md (cold-eyes loops 1+2+3+4 folded). Code: cmdRoadmapLogAppendBatch + ForTest seam in remotecontrol.{h,cpp}; shared formatRoadmapBullet helper extracted from cmdRoadmapLogAppend (INV-10 — both handlers call through it); dispatch wired in cmdRoadmapLog; schema extended in claudeintegration.cpp (op enum + bullets[] property). All-skipped envelope mirrors flip_batch's ok:true shape with applied_count/skipped_count counts. 13 feature tests under tests/features/mcp_roadmap_log_append_batch/ — all green, full ctest 1641/1641.</note>
 
 - ✅ [ANTS-1880] **`spec_query` + `project_layout` recognise `docs/phases/phase_*_design.md` (and similar non-`docs/specs/` design-doc layouts).**
   Vestige's per-phase design docs live at
@@ -19360,6 +19379,7 @@ contributors don't duplicate research.
   default-OFF in this introducing release; user can flip on to
   validate the keystroke-timing proxy in the wild before the
   default-ON flip gate (§8 OQ-3).
+  Progress (2026-05-26): §2.5 outcome fill-in landed. NEW pure helpers in modelswitchledger.{h,cpp} — aliasFromModelId() (modelId→tier alias, no claude_lib dep), TranscriptTurn projection, computeOutcome() (settlement = subsequent auto OR ≥5 post-switch assistant turns OR divergent assistant model id; turns_on_to_tier counts contiguous on-tier turns; INV-11 author correlation; INV-12 under-route only on downgrades; correction soft signal only on downgrades). NEW ClaudeStatusBarController::fillPendingLedgerOutcomes() — wired to the 2s status timer next to refreshAutoModelSwitch, internally throttled to ≥30s, early-returns when ledger empty or no pending records, calls ModelRecommender::score() once per pending record to feed under-route detection, persists via writeRecords only when fill.changed. Tests: 14 new gtests in tests/features/model_switch_ledger/ (aliasFromModelId, computeOutcome 13 cases covering settlement/turns/override/correction/under-route/upgrade-vs-downgrade gating/pre-switch ignored) + tests/features/model_auto_switch_outcome_fillin/ source-grep bundle (throttle, computeOutcome delegation, writeRecords gated on anyChanged, m_statusTimer wiring). Full ctest: 1616/1616 pass. STILL PENDING from this item: S2 live spike (still default-OFF), the §8 OQ-3 default-ON flip gate. Spec §2.5 now fully reflected in code.</note>
 
 - 💭 [ANTS-1871] **Upstream ask — Claude Code "pause-for-switch" model handshake.**
   Research for ANTS-1735 found the cooperative session-pause (pause -> external model change -> resume) infeasible on the interactive Claude Code CLI: no hook output sets the model; the CLI exposes no pause/resume; input-queue ordering during a blocking hook is undocumented. The Agent SDK (Managed Agents) HAS interrupt + session.update(model), but the CLI doesn't surface it. File a feature request for a turn-boundary handshake with defined ordering. If it lands, ANTS-1735 adopts it as the primary mechanism and demotes idle-window /model injection to fallback, removing the residual injection race (OQ-1).
