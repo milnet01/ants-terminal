@@ -407,6 +407,60 @@ constexpr int kDuplicateOccurrencesCap = 3;
 // invariance — when section B's duplicates change but foo doesn't
 // have any duplicates, foo's response doesn't carry them). Returns
 // an empty array when no duplicates involve the section.
+// ANTS-1696 — classify a section slice (raw markdown) when
+// parseBullets returned zero entries. Counts non-blank,
+// non-heading, non-bullet content lines; declares the shape
+// "table" iff any such line begins with `|` (after a leading
+// whitespace strip), else "prose". Empty slice → "empty" with
+// non_bullet_lines:0; emit-time skips when shape == "empty"
+// (the existing back-compat envelope shape is preserved). The
+// list comprehension stays in one pass so the helper costs
+// O(slice size) on the rare emit-empty branch.
+QJsonObject rcSectionShape(const QString &slice) {
+    int nonBullet = 0;
+    bool sawPipe = false;
+    const QStringList lines = slice.split(QChar('\n'));
+    for (const QString &raw : lines) {
+        const QString trimmed = raw.trimmed();
+        if (trimmed.isEmpty()) continue;
+        // Skip headings (#, ##, ###, …) — section-marker rows.
+        if (trimmed.startsWith(QChar('#'))) continue;
+        // Skip bullet rows (any of -, *, +). parseBullets accepts
+        // exactly these for ants-v1; GFM uses the same three. A
+        // single-char line "-" is unlikely but still a non-bullet
+        // content line, so require the dash + space.
+        if (trimmed.startsWith(QStringLiteral("- ")) ||
+            trimmed.startsWith(QStringLiteral("* ")) ||
+            trimmed.startsWith(QStringLiteral("+ "))) {
+            continue;
+        }
+        // Skip numbered-list rows (1. 2. 10. etc.). Same rationale.
+        bool isNumberedList = false;
+        if (trimmed.size() >= 3 && trimmed.at(0).isDigit()) {
+            int i = 1;
+            while (i < trimmed.size() && trimmed.at(i).isDigit()) ++i;
+            if (i < trimmed.size() && trimmed.at(i) == QChar('.') &&
+                i + 1 < trimmed.size() &&
+                trimmed.at(i + 1) == QChar(' ')) {
+                isNumberedList = true;
+            }
+        }
+        if (isNumberedList) continue;
+        ++nonBullet;
+        if (trimmed.startsWith(QChar('|'))) sawPipe = true;
+    }
+    QJsonObject out;
+    if (nonBullet == 0) {
+        out[QStringLiteral("shape")] = QLatin1String("empty");
+        out[QStringLiteral("non_bullet_lines")] = 0;
+        return out;
+    }
+    out[QStringLiteral("shape")] =
+        sawPipe ? QLatin1String("table") : QLatin1String("prose");
+    out[QStringLiteral("non_bullet_lines")] = nonBullet;
+    return out;
+}
+
 QJsonArray rcFilterDuplicateIdsForSection(const QJsonArray &dupes,
                                           const QString &sectionSlug) {
     if (dupes.isEmpty() || sectionSlug.isEmpty()) return QJsonArray();
@@ -1823,6 +1877,46 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         if (idArg.at(i).unicode() < 0x20) idArg[i] = QChar('?');
     }
 
+    // ANTS-1726 — optional `ids` plural-selector. Same intent as `id`
+    // (one-call fetch by stable ID) for callers that know N related
+    // bullet ids (e.g. continuing a bundle: ANTS-1719..1724). Per-
+    // element hygiene mirrors the singular branch: truncate to 64
+    // bytes, replace C0 control bytes with `?`. Duplicates de-duped
+    // here (first occurrence wins) so the document-order match loop
+    // in the ids branch below doesn't have to. Empty array (zero
+    // elements) is treated as absent so it falls through to the
+    // normal list path. 100-element cap so a malformed caller can't
+    // blow the cache scan budget.
+    QStringList idsArg;
+    QStringList idsArgInputOrder;  // INV-9 — first-occurrence ordering.
+    {
+        const QJsonValue idsVal = req.value(QStringLiteral("ids"));
+        if (idsVal.isArray()) {
+            const QJsonArray arr = idsVal.toArray();
+            if (arr.size() > 100) {
+                out["ok"] = false;
+                out["error"] = QStringLiteral(
+                    "ids array must contain at most 100 elements; "
+                    "got %1").arg(arr.size());
+                out["code"] = QStringLiteral("bad_args");
+                return QJsonDocument(out);
+            }
+            for (const auto &v : arr) {
+                if (!v.isString()) continue;  // skip non-string elements
+                QString s = v.toString();
+                if (s.size() > 64) s.truncate(64);
+                for (int i = 0; i < s.size(); ++i) {
+                    if (s.at(i).unicode() < 0x20) s[i] = QChar('?');
+                }
+                if (s.isEmpty()) continue;
+                if (!idsArg.contains(s)) {
+                    idsArg.append(s);
+                    idsArgInputOrder.append(s);
+                }
+            }
+        }
+    }
+
     // ANTS-1436-INV-8 — optional `offset` + `limit` args. Forwarded
     // verbatim from the dispatch lambda (NOT type-gated there) so
     // we can emit bad_args on non-numeric. isUndefined() is the
@@ -1923,6 +2017,33 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["error"] = QStringLiteral(
             "id selector searches the whole roadmap; do not combine "
             "with section");
+        out["code"] = QStringLiteral("bad_mode_combo");
+        return QJsonDocument(out);
+    }
+    // ANTS-1726 — `ids` combos. Same rationale as `id`: a multi-id
+    // lookup scans the whole roadmap, section_index is the section-
+    // discovery surface, section= is a sub-slice — neither composes
+    // with a global id-set lookup. Also reject `ids` + `id` (caller
+    // should pick one selector, not mix both).
+    if (!idsArg.isEmpty() && !idArg.isEmpty()) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "ids selector does not combine with id; pick one");
+        out["code"] = QStringLiteral("bad_mode_combo");
+        return QJsonDocument(out);
+    }
+    if (!idsArg.isEmpty() && mode == QLatin1String("section_index")) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "ids selector does not combine with mode:section_index");
+        out["code"] = QStringLiteral("bad_mode_combo");
+        return QJsonDocument(out);
+    }
+    if (!idsArg.isEmpty() && !section.isEmpty()) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "ids selector does not combine with section; ids scans "
+            "the whole roadmap");
         out["code"] = QStringLiteral("bad_mode_combo");
         return QJsonDocument(out);
     }
@@ -2042,6 +2163,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // the heading index. Both regenerate lazily below.
         m_roadmapIndex.clear();
         m_roadmapSectionCache.clear();
+        m_roadmapSectionShape.clear();  // ANTS-1696 — lockstep with bullets cache.
         m_roadmapSectionLru.clear();   // ANTS-1346 — keep INV-2 in sync.
         m_roadmapCacheDuplicateIds = QJsonArray();   // ANTS-1646
         m_roadmapCachePath = path;
@@ -2380,6 +2502,17 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             const QString markdown = QString::fromUtf8(f.readAll());
             const QString slice = RoadmapIndex::sliceSection(markdown, *sec);
             const auto bullets = RoadmapDialog::parseBullets(slice);
+            // ANTS-1696 — classify the slice ONLY when parseBullets
+            // found nothing. The hint exists to disambiguate a
+            // "section is a table" empty from a truly empty section;
+            // computing it for bullet-rich slices wastes cycles and
+            // would just emit shape:"prose" for the inline rationale
+            // text most bullets carry above them. Cache by slug so
+            // subsequent section= hits don't re-classify.
+            if (bullets.empty()) {
+                m_roadmapSectionShape.insert(sec->slug,
+                                             rcSectionShape(slice));
+            }
             for (const auto &b : bullets) {
                 QJsonObject o;
                 o["id"] = b.id;
@@ -2419,6 +2552,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             while (m_roadmapSectionLru.size() > kRoadmapSectionCacheCap) {
                 const QString evicted = m_roadmapSectionLru.takeLast();
                 m_roadmapSectionCache.remove(evicted);
+                m_roadmapSectionShape.remove(evicted);  // ANTS-1696 — lockstep.
             }
         }
 
@@ -2475,6 +2609,28 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["count"] = page.slice.size();
         out["filter"] = filter;
         out["section"] = sec->slug;
+        // ANTS-1696 — surface the section_shape hint when parseBullets
+        // (NOT the status filter) returned zero entries AND the slice
+        // has non-bullet content. Lets a caller distinguish a "table
+        // / prose section, use Read" empty from a "genuinely empty"
+        // empty. Gated on sectionBullets.isEmpty() per INV-4: a section
+        // whose bullets the status filter happened to drop is NOT
+        // shape-hinted (the parsed set wasn't actually empty). Cache-
+        // hit path: m_roadmapSectionShape was populated alongside
+        // m_roadmapSectionCache, so the hint survives a second hit.
+        if (sectionBullets.isEmpty() &&
+            m_roadmapSectionShape.contains(sec->slug)) {
+            const QJsonObject shape =
+                m_roadmapSectionShape.value(sec->slug);
+            const QString s =
+                shape.value(QStringLiteral("shape")).toString();
+            if (s != QLatin1String("empty")) {
+                out["section_shape"]    = s;
+                out["non_bullet_lines"] =
+                    shape.value(QStringLiteral("non_bullet_lines"))
+                        .toInt();
+            }
+        }
         // ANTS-1538 — if every bullet got pruned by the default
         // ID-filter, name the opt-ins so the caller can re-issue
         // with the correct flag instead of misreading the empty
@@ -2682,6 +2838,56 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // full-file array, so they are current) when the same id was
         // seen on more than one bullet — exactly the case an id fetch
         // most needs to flag (matches.size() > 1).
+        if (!m_roadmapCacheDuplicateIds.isEmpty()) {
+            out["duplicate_ids"] = m_roadmapCacheDuplicateIds;
+        }
+        return QJsonDocument(out);
+    }
+
+    // ANTS-1726 — multi-item fetch by id-set. Same shape as the
+    // singular `id` branch: scans m_roadmapCacheBullets ONCE in
+    // document order, keeping bullets whose id is in the requested
+    // set. Result preserves the roadmap's document order (NOT the
+    // input order). Body included by default; explicit
+    // include_body:false strips. The envelope carries matched_ids[]
+    // and missing_ids[] so a caller can spot stale/typoed ids
+    // without diffing the input array against bullets[].id.
+    if (!idsArg.isEmpty()) {
+        const QSet<QString> wanted(idsArg.cbegin(), idsArg.cend());
+        QSet<QString> seen;
+        QJsonArray matches;
+        for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
+            const QString bid =
+                v.toObject().value(QStringLiteral("id")).toString();
+            if (wanted.contains(bid)) {
+                matches.append(v);
+                seen.insert(bid);
+            }
+        }
+        if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
+        if (mode == QLatin1String("headline_only")) {
+            rcProjectHeadlineOnly(matches);
+        }
+        // INV-3 — accounting arrays. Preserve INPUT order so a caller
+        // diffing against the request gets a positional read.
+        QJsonArray matchedIds;
+        QJsonArray missingIds;
+        QJsonArray idsEcho;
+        for (const QString &id : std::as_const(idsArgInputOrder)) {
+            idsEcho.append(id);
+            if (seen.contains(id)) matchedIds.append(id);
+            else                    missingIds.append(id);
+        }
+        out["ok"]          = true;
+        out["bullets"]     = matches;
+        out["path"]        = path;
+        out["count"]       = matches.size();
+        out["ids"]         = idsEcho;
+        out["matched_ids"] = matchedIds;
+        out["missing_ids"] = missingIds;
+        out["found"]       = !matches.isEmpty();
+        if (hasModeArg) out["mode"] = mode;
+        if (hasIncludeBodyArg) out["include_body"] = includeBody;
         if (!m_roadmapCacheDuplicateIds.isEmpty()) {
             out["duplicate_ids"] = m_roadmapCacheDuplicateIds;
         }

@@ -1084,6 +1084,10 @@ if(ANTS_TESTS)
                 tests/features/roadmap_query_pagination/test_roadmap_query_pagination.cpp
                 # ANTS-1856 roadmap_query single-item id selector.
                 tests/features/roadmap_query_by_id/test_roadmap_query_by_id.cpp
+                # ANTS-1726 roadmap_query multi-item ids[] selector.
+                tests/features/roadmap_query_by_ids/test_roadmap_query_by_ids.cpp
+                # ANTS-1696 roadmap_query section_shape hint for non-bullet sections.
+                tests/features/roadmap_query_section_shape/test_roadmap_query_section_shape.cpp
                 # ANTS-1441 roadmap_log op:flip for ants-v1 native format.
                 tests/features/roadmap_log_flip_ants_v1/test_roadmap_log_flip_ants_v1.cpp
                 # ANTS-1410 /audit skill spec-anchor drift detection.

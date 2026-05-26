@@ -700,6 +700,14 @@ private:
     // mtime advance or TTL expiry. See docs/specs/ANTS-1287.md § 2.3.
     mutable QVector<RoadmapIndex::Section> m_roadmapIndex;
     mutable QHash<QString, QJsonArray>     m_roadmapSectionCache;
+    // ANTS-1696 — per-section shape hint for non-bullet sections.
+    // When parseBullets returns zero entries for a section but the
+    // slice has table / prose content, callers want to know to use
+    // Read instead of falling back blindly. Cached alongside the
+    // bullets so the helper runs once per slug. Stored value is
+    // {shape:"table"|"prose"|"empty", non_bullet_lines:N}; emit-
+    // time skips when shape == "empty" (matches INV-3 contract).
+    mutable QHash<QString, QJsonObject>    m_roadmapSectionShape;
     // ANTS-1346 — MRU-front list bounding the section cache at 64
     // slugs. Hit-path bumps the slug to the front; insert-path evicts
     // the tail when size > kRoadmapSectionCacheCap. Cleared together

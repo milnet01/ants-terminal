@@ -6316,7 +6316,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: debtsweepengine.
   Source: deferred from ANTS-1358 (in-session 2026-05-20).
 
-- 📋 [ANTS-1704] **`roadmap_log op:append` drops args on rich body —
+- ✅ [ANTS-1704] **`roadmap_log op:append` drops args on rich body —
   investigate.** Observed 2026-05-20 (Pull 43 session): six
   consecutive `op:append` calls returned
   `{ok:false, code:"caller_cwd_required"}` even though `caller_cwd`
@@ -6337,6 +6337,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: investigate.
   Lanes: roadmap_log, claudeintegration.
   Source: in-session 2026-05-20 (self-observed).
+  Resolved (2026-05-26): superseded by ANTS-1853 (✅) which root-caused the rich-body drop as an upstream tools/call transport issue (data never reaches Ants) and shipped diagnostic logging + the `arguments_empty:true` envelope flag, plus ANTS-1857 (✅) which added the size-aware "shrink payload / use Edit" steer to the refusal envelope. No further Ants-side fix possible — the drop happens before the bytes reach the dispatcher.
 
 - ✅ [ANTS-1359] **`mcp__ants__verify_changes` build-cache.**
   Repeated `verify_changes` calls within the same session no
@@ -7924,7 +7925,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-05-21 (noticed while finding a section slug for ANTS-1727).
   Resolved (2026-05-25): section_index now accepts offset/limit and routes its sections[] array through PaginationEngine::pageBullets (the same engine + ~20KB soft cap the bullets path uses) — auto-truncates when limit is omitted (emitting truncated/next_offset), explicit offset/limit page. Removed the ANTS-1436-INV-6 refusal (that comment had reserved room for exactly this). legacy_format_sections stays the full-roadmap hint. Tests: roadmap_query_section_index INV-14 + roadmap_query_pagination INV-6 reworked + INV-11 call-site count 2→3. 751 green. Note: the active-only filter half (option a) already shipped via ANTS-1848; this adds the pagination half (option b).
 
-- 📋 [ANTS-1733] **roadmap_log append refused 7× with empty param body in one session.**
+- ✅ [ANTS-1733] **roadmap_log append refused 7× with empty param body in one session.**
   During the ANTS-1257/1731 session, ~7 consecutive `roadmap_log` op:append
   calls arrived at the dispatcher with an empty argument object and were
   correctly refused with `caller_cwd_required`; `op:flip` calls in the same
@@ -7939,6 +7940,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: investigate.
   Lanes: claudeintegration, remotecontrol.
   Source: in-session-2026-05-21.
+  Resolved (2026-05-26): superseded by ANTS-1853 (✅) which now branches on argsObj.isEmpty() to set `arguments_empty:true` in the refusal envelope, exactly the disambiguation requested here ("received 0 arguments — the whole param object was empty" vs "forgot caller_cwd"). The size-aware steer text from ANTS-1857 also tells the caller it's a transport drop, not a missing-field error.
 
 - ✅ [ANTS-1793] **`roadmap_log` op:"flip" can't append a resolution note — closing a deferred item needs a second manual ROADMAP edit.**
   Hit during indie-review #5 deferred remediation (2026-05-22): closing ANTS-1764 meant flipping 📋→✅ AND appending a "Resolved (date): ..." body line documenting how the bounded slice was fixed. `roadmap_log` op:"flip" only changes the status emoji (+ injects the `^anchor`); it has no way to append/amend body prose, so the resolution note fell back to a hand `Edit` of ROADMAP.md — defeating the point of using the MCP write path. Proposed: add an optional `append_body` (or `note`) param to op:"flip" that appends an indented continuation line under the flipped bullet (same 2-space-indent verbatim treatment as op:"append"'s `body`). Common path every remediation session — flip + resolution-note is the standard close shape, not status-only.
@@ -8003,6 +8005,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Lanes: claudeintegration.
   Source: user-request-2026-05-25.
+
+- 📋 [ANTS-1889] **`model_switch_stats` envelope should reveal the switcher enable state.**
+  Hit during the 2026-05-26 session while tracking auto-switcher health per user request. `model_switch_stats` returns `switches:0, headline:"avoided 0 Opus turns, 0 regretted (regret 0.0%)"` whether `claude.auto_model_switch` is false (the default-off ship state from ANTS-1735) OR true-but-no-swaps-yet. A session can't distinguish "feature dormant" from "feature on, working as intended". Two-line fix: add `auto_model_switch_enabled:bool` (read from config) + `floor_tier:"haiku"|"sonnet"` + `min_dwell_sec:int` to the envelope. Update `headline` to "auto-switch OFF" when disabled (cuts the misleading "avoided 0 Opus turns" reading). ETag invariant: include the config triple in the ETag hash so a Settings toggle flip invalidates cached responses. Lanes: model_switch_stats, claudeintegration.
+  **Layman:** When the model-switch stats verb returns "0 switches," the caller can't tell whether the auto-switcher is off (waiting for the user to flip the Settings toggle) or on but quiet (no candidate turns yet). Add the enable flag to the envelope so a session understands the silence.
+  Kind: enhancement.
+  Lanes: model_switch_stats, claudeintegration.
+  Source: in-session-2026-05-26.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
@@ -13973,7 +13982,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-indie-review, mcp-test-audit, claudeintegration.
   Source: in-session-2026-05-19 (ANTS-1629 follow-up — extend the new tier to siblings before they report).
 
-- 📋 [ANTS-1726] **roadmap_query `id`/`ids` filter — fetch a bullet by stable ID without a full-section scan.**
+- ✅ [ANTS-1726] **roadmap_query `id`/`ids` filter — fetch a bullet by stable ID without a full-section scan.**
   Today roadmap_query can filter by `section`, `status`, or paginate,
   but there is no way to fetch the bullet(s) for a known `[ANTS-NNNN]`
   id. A session that knows an id (e.g. continuing a bundle) but not its
@@ -13995,6 +14004,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Lanes: remotecontrol, roadmapindex.
   Source: in-session-2026-05-21.
+  Shipped (2026-05-26): roadmap_query now accepts ids[] (max 100, type:array<string>) for N-bullet bundle fetches in one call. Same bypass as singular id (skips status filter + pagination, body default-on), envelope adds matched_ids[] + missing_ids[] for input-order accounting + a found:bool. Composes with include_body, etag, fields, headline_only. Mutually exclusive with id / section / mode:section_index. Spec at tests/features/roadmap_query_by_ids/spec.md (INV-1..10), 8 source-grep conformance tests green; full ctest 1661/1661.
 
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 
@@ -14266,7 +14276,7 @@ subsection.
   INV-7 (behavioural predicate) + INV-8 (detector wiring + cap).
   1449/1449 ctest.
 
-- 📋 [ANTS-1689] **`test_audit_synthesis_prompt` markdown
+- ✅ [ANTS-1689] **`test_audit_synthesis_prompt` markdown
   `[SEVERITY]` fallback parser.** ANTS-1617 (pull 18) taught the
   parser to recognise `### [SEVERITY] dimension:` headers + a
   `## Findings (JSON)` block, but chunk subagents emitting prose-
@@ -14283,6 +14293,7 @@ subsection.
   Kind: enhance.
   Source: cross-session-report-2026-05-19 (Music_Production CC
   session).
+  Resolved (2026-05-26): already shipped in commit 6f66ad5 — TestAuditEngine::synthesisPrompt has the last-resort inline [SEVERITY] fallback at testauditengine.cpp:1445-1485, gated on chunkFindings==0 so it never double-counts the structured shapes. Two conformance tests live at tests/features/test_audit_bundle_2026_05_19/test_test_audit_bundle.cpp (Ants1689SynthRecognisesInlineSeverityProse + Ants1689FallbackDoesNotDoubleCountStructured) — both pass. Roadmap was stale.
 
 - 📋 [ANTS-1691] **`roadmap_log` bundle-progress-table verb.**
   Some projects maintain a `## 📊 Bundle progress` markdown
@@ -15235,11 +15246,12 @@ will be memoized at `docs/private/audit/indie-review-partition.md`
 once the project crosses run #3 of the same partition; today's
 partition (11 lanes) is documented in this fold-in for reuse.
 
-- 📋 [ANTS-1696] **roadmap_query section= gives no signal when the target section is a markdown table, not bullets.**
+- ✅ [ANTS-1696] **roadmap_query section= gives no signal when the target section is a markdown table, not bullets.**
   Hit during pull 39: querying section="bundle-plan-for-pulls-34-logged-2026-05-19" returned bullets:[] count:0 even with include_narrator_bullets+include_body, because the section body is a `| ... |` planning table, not roadmap-format bullets. The empty response is indistinguishable from a genuinely empty section, so the caller falls back to a raw Read to discover the table. Small enhancement: when a section= query finds 0 bullets but the section body has non-bullet content (e.g. a markdown table or prose block), surface a hint field (e.g. `non_bullet_lines:N` or `section_shape:"table"`) so the caller knows to Read rather than assume empty. Mirrors the existing legacy_format_hint affordance but for table/prose sections.
   **Layman:** When asking the roadmap tool about a section that is actually a table, it looks empty instead of saying "this part is a table, go read it" — add that hint.
   Kind: enhancement.
   Source: in-session-2026-05-20 (pull 39).
+  Shipped (2026-05-26): roadmap_query section= envelope now carries section_shape ("table"|"prose") + non_bullet_lines:N when parseBullets returns zero entries AND the slice has non-bullet content. Lets callers skip the raw Read fallback for table-formatted bundle sections (token savings ~2-5 KB per skip). Helper rcSectionShape() in remotecontrol.cpp classifies on the first miss; result cached in m_roadmapSectionShape (per-slug, cleared in lockstep with m_roadmapSectionCache). Spec at tests/features/roadmap_query_section_shape/spec.md (INV-1..7), 6 source-grep conformance tests green; full ctest 1661/1661.
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 

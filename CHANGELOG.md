@@ -120,6 +120,40 @@ for security-relevant changes.
   `found:false`, and `id` combined with `section` or
   `mode:section_index` is rejected with `bad_mode_combo`.
 
+- **`roadmap_query` multi-item `ids` selector (ANTS-1726).** Pass an
+  array of IDs — `ids:["ANTS-1719","ANTS-1721","ANTS-1853"]` — to
+  fetch N bullets in one call instead of N separate `id=` calls or a
+  `status:all` scan. Result is in roadmap *document* order, body
+  included by default, and the envelope adds `matched_ids[]` +
+  `missing_ids[]` (input-order) so the caller can spot stale or
+  typoed ids without diffing. Max 100 ids per call (oversize →
+  `bad_args`); duplicates de-duped (first occurrence wins);
+  empty array falls through to the normal list path. Mutually
+  exclusive with `id`, `section`, and `mode:section_index`.
+
+- **`roadmap_query section=` hint for non-bullet sections
+  (ANTS-1696).** When a section query returns `count:0` but the
+  section body actually contains a planning table or prose block
+  (i.e. parseBullets found nothing to enumerate), the envelope now
+  carries `section_shape:"table"|"prose"` plus `non_bullet_lines:N`.
+  Lets the caller skip the raw-`Read` fallback that previously
+  ate 2–5 K tokens on every dense bundle-plan section. The hint
+  is absent on bullet-rich and truly-empty sections, so existing
+  callers see no envelope shape change.
+
+### Fixed
+
+- **`test_audit_synthesis_prompt` markdown `[SEVERITY]` fallback
+  parser (ANTS-1689).** Already shipped in 6f66ad5 but the roadmap
+  status was stale. When a `/test-audit` chunk subagent emits prose
+  markdown with inline `[HIGH]` / `[MEDIUM]` tags instead of the
+  structured `### [SEV] dimension:` headings or `## Findings (JSON)`
+  block, the synthesis prompt now picks them up via a last-resort
+  inline regex (gated on `chunkFindings==0` so it never
+  double-counts the structured shapes). Closes the
+  `severity_histograms:{}` gap reported in the 2026-05-19 cross-
+  session report.
+
 - **`indie_review_orchestrate` — one-call indie-review dispatch plan
   (ANTS-1279).** A single MCP call returns the whole sweep manifest —
   the lane partition, each lane's source paths + compact v2 brief, a

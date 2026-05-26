@@ -98,7 +98,12 @@ TEST(roadmap_query_filter_section_headers, Inv4SchemaPropertyAdded) {
     // ANTS-1856 bumped 8→10 KiB: the `id` selector added a sentence
     // to the description + an `idProp` block, pushing
     // include_section_headers to offset ~8.5 KiB.
-    const std::string region = ci.substr(pos, 10000);
+    // ANTS-1726 bumped 10→12 KiB: the plural `ids` selector added a
+    // descriptor sentence + an `idsProp` block (~1.2 KiB), pushing
+    // include_section_headers past offset 10 KiB.
+    // ANTS-1696 bumped 12→13 KiB: the section_shape envelope hint
+    // added a sentence to the descriptor (~400 B).
+    const std::string region = ci.substr(pos, 13000);
     expect(contains(region, "include_section_headers"),
            "INV-4: include_section_headers schema property must "
            "be declared on the roadmap_query tool descriptor");

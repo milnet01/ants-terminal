@@ -1832,6 +1832,17 @@ void ClaudeIntegration::onMcpConnection() {
                     "single call instead of paging; bypasses status + "
                     "pagination, includes the body by default, returns "
                     "{ok, bullets, count, id, found} (ANTS-1856). "
+                    "Optional `ids` array — plural sibling of `id` for "
+                    "N-bullet bundle fetches in one call; same bypass + "
+                    "body-by-default, envelope adds matched_ids/"
+                    "missing_ids accounting (ANTS-1726). Max 100 ids. "
+                    "ANTS-1696 — section= empties also carry a "
+                    "`section_shape` (\"table\"|\"prose\") + "
+                    "`non_bullet_lines` hint when the slice has "
+                    "non-bullet content (e.g. a planning table or prose "
+                    "block); lets the caller skip a raw Read fallback. "
+                    "Absent on bullet-rich and truly-empty sections "
+                    "(back-compat). "
                     "Optional `mode` — \"bullets\" "
                     "(default) / \"section_index\" (returns a compact "
                     "{slug, headline, level, active_count, "
@@ -1938,6 +1949,35 @@ void ClaudeIntegration::onMcpConnection() {
                         "`section` or mode:section_index "
                         "(bad_mode_combo).");
                     props["id"] = idProp;
+                    // ANTS-1726 — `ids` plural-selector. The N-call
+                    // answer to "show me ANTS-1719..1724" in one go;
+                    // pairs with the singular `id` selector for
+                    // bundle-continuation sessions. Document-order
+                    // result + matched/missing accounting.
+                    QJsonObject idsProp;
+                    idsProp["type"] = "array";
+                    {
+                        QJsonObject items;
+                        items["type"] = "string";
+                        idsProp["items"] = items;
+                    }
+                    idsProp["maxItems"] = 100;
+                    idsProp["description"] = QStringLiteral(
+                        "Fetch N bullets by their [PROJ-NNNN] ids "
+                        "(e.g. [\"ANTS-1719\",\"ANTS-1721\"]) in one "
+                        "call instead of N separate id= calls or a "
+                        "status:all scan. Bypasses `status` filter + "
+                        "pagination (same as singular `id`), keeps body "
+                        "by default. Result is in DOCUMENT order, not "
+                        "input order. Envelope: {ok, bullets, count, "
+                        "ids, matched_ids, missing_ids, found}. "
+                        "Duplicates de-duped (first occurrence wins). "
+                        "Empty array (zero elements) → falls through to "
+                        "the normal list path. Cannot combine with "
+                        "`id`, `section`, or `mode:section_index` "
+                        "(bad_mode_combo). Max 100 items (bad_args). "
+                        "Pairs with singular `id` (ANTS-1856).");
+                    props["ids"] = idsProp;
                     // ANTS-1398 — opt-in to retain section-rollup
                     // bullets (empty id/headline, status emoji only).
                     // Default false; the dropped rollups are visual

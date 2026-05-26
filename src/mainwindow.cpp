@@ -4123,6 +4123,12 @@ void MainWindow::setupClaudeMcpProviders() {
             // handler takes its existing list path.
             const QJsonValue idVal = args.value("id");
             const QString idArg = idVal.isString() ? idVal.toString() : QString();
+            // ANTS-1726 — optional `ids` plural-selector. Forwarded
+            // VERBATIM as a JSON array (not type-coerced here) so the
+            // handler can emit bad_args on malformed input. Same
+            // silent-drop hazard ANTS-1856 fixed for the singular id.
+            const QJsonValue idsVal = args.value("ids");
+            const QJsonArray idsArg = idsVal.isArray() ? idsVal.toArray() : QJsonArray();
             // ANTS-1393 — forward caller_cwd so cmdRoadmapQuery's
             // per-project ROADMAP.md resolution at
             // remotecontrol.cpp:738 sees it. Without this the selective
@@ -4134,6 +4140,7 @@ void MainWindow::setupClaudeMcpProviders() {
             if (!status.isEmpty()) req["status"] = status;
             if (!section.isEmpty()) req["section"] = section;
             if (!idArg.isEmpty()) req["id"] = idArg;
+            if (!idsArg.isEmpty()) req["ids"] = idsArg;
             if (!callerCwd.isEmpty()) req["caller_cwd"] = callerCwd;
             // ANTS-1437 — forward `mode` so section_index dispatch
             // sees it. Same isString() gate as status/section. Empty

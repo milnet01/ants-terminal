@@ -49,7 +49,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 std::string boundedBetween(const std::string &cpp,
                            const std::string &startSig,
                            const std::string &endSig,
-                           size_t kMaxBound = 52 * 1024) {
+                           size_t kMaxBound = 64 * 1024) {
     // ANTS-1436 bumped 28→32 KB: pagination args parse (~1.5 KB)
     // + PaginationEngine::pageBullets call + envelope augment at
     // each of the 2 emission sites (~600 B × 2). The pagination
@@ -69,6 +69,10 @@ std::string boundedBetween(const std::string &cpp,
     // the id parse + two combo-rejection guards + the bypass branch
     // (~3.7 KB) ahead of the status filter. cmdRoadmapQuery is now
     // ~48.7 KB — still a meaningful runaway ceiling.
+    // ANTS-1726 bumped 52→64 KB: the plural `ids` selector adds the
+    // ids parse + three combo guards + the document-order match
+    // branch with matched/missing accounting (~5 KB total).
+    // cmdRoadmapQuery is now ~57 KB.
     const auto startPos = cpp.find(startSig);
     if (startPos == std::string::npos) return {};
     const auto endPos = cpp.find(endSig, startPos + startSig.size());
