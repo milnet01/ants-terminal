@@ -354,6 +354,56 @@ TEST(IndieReviewEngine, Inv8TemplateFoldInShape) {
     EXPECT_TRUE(out.contains("`src/foo.cpp:42`"));
 }
 
+// INV-13 (ANTS-1278) — when rich fields are supplied, render the
+// standard roadmap-card shape (no TODO placeholder, no "Cited by
+// N lanes at `file:line`" stub headline).
+TEST(IndieReviewEngine, Inv13TemplateFoldInRichFields) {
+    IndieReviewEngine::CorroboratedFinding f;
+    f.file = "src/foo.cpp";
+    f.line = 42;
+    f.citingLanes = {"lane-a", "lane-b"};
+    f.title       = "Foo leaks bytes on cancel.";
+    f.description = "When the parser drops mid-frame the byte budget "
+                    "never decrements, so the next stream over-counts.";
+    f.layman      = "A bug where the size counter forgets to reset, so "
+                    "the next file looks bigger than it is.";
+    f.kind        = "fix";
+    QList<IndieReviewEngine::CorroboratedFinding> findings = {f};
+    QList<int> ids = {1500};
+    const QString out = IndieReviewEngine::templateIndieReviewFoldInBlock(
+        findings, ids, "2026-05-13");
+    EXPECT_TRUE(out.contains("- 📋 [ANTS-1500] **Foo leaks bytes on cancel.**"));
+    EXPECT_TRUE(out.contains("never decrements"));
+    EXPECT_TRUE(out.contains("Layman: A bug where the size counter"));
+    EXPECT_TRUE(out.contains("Kind: fix."));
+    // No TODO placeholder when fields supplied.
+    EXPECT_FALSE(out.contains("TODO: describe this finding"));
+    // No "Cited by N lanes at ..." STUB-headline form when title is given.
+    EXPECT_FALSE(out.contains("Cited by 2 lanes at"));
+    // Cited-by metadata line is still present.
+    EXPECT_TRUE(out.contains("Cited-by: lane-a, lane-b."));
+}
+
+// INV-13 (ANTS-1278) — absent fields emit a LOUD TODO placeholder so a
+// caller cannot accidentally ship a stub bullet. Distinguishable from
+// real prose at a glance.
+TEST(IndieReviewEngine, Inv13TemplateFoldInLoudTodoOnAbsent) {
+    IndieReviewEngine::CorroboratedFinding f;
+    f.file = "src/foo.cpp";
+    f.line = 42;
+    f.citingLanes = {"lane-a", "lane-b"};
+    QList<IndieReviewEngine::CorroboratedFinding> findings = {f};
+    QList<int> ids = {1500};
+    const QString out = IndieReviewEngine::templateIndieReviewFoldInBlock(
+        findings, ids, "2026-05-13");
+    EXPECT_TRUE(out.contains("**TODO: describe this finding"))
+        << "placeholder must be loud enough to fail a code review";
+    EXPECT_TRUE(out.contains("cited by 2 lanes at `src/foo.cpp:42`"))
+        << "placeholder must still surface the file:line + citation count";
+    EXPECT_TRUE(out.contains("Kind: review-fix."))  // default
+        << "Kind: defaults to review-fix when not supplied";
+}
+
 TEST(IndieReviewEngine, TemplateEmptyOnSizeMismatch) {
     IndieReviewEngine::CorroboratedFinding empty;
     QList<IndieReviewEngine::CorroboratedFinding> findings;

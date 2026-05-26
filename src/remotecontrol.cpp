@@ -3244,7 +3244,12 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
                 QStringLiteral("changelog_log: id \"%1\" not found in "
                                "%2 (case-sensitive)").arg(id, rmPath));
         }
-        summary = match->headline;
+        // ANTS-1868 — collapse multi-line headlines to a single line
+        // (same fold roadmap_query applies to `headline_oneline`,
+        // ANTS-1521). A wrapped ROADMAP headline cannot otherwise
+        // leak a hard newline into the rendered CHANGELOG bullet's
+        // bold summary.
+        summary = rcHeadlineOneline(match->headline);
         // Reuse the authored user-facing prose: the bullet's Layman
         // line is CHANGELOG-voice already. An explicit `body` arg
         // overrides it. (We deliberately do NOT splat the full bullet
@@ -9435,6 +9440,15 @@ QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
              o.value(QStringLiteral("citing_lanes")).toArray()) {
             f.citingLanes << lv.toString();
         }
+        // ANTS-1278 — optional rich-card fields. Each falls through
+        // to the renderer's loud TODO placeholder when absent, so
+        // a caller cannot silently ship a stub bullet. Same shape
+        // accepted by indie_review_fold_in and cold_eyes_fold_in,
+        // both of which share the IndieReviewEngine renderer.
+        f.title       = o.value(QStringLiteral("title")).toString();
+        f.description = o.value(QStringLiteral("description")).toString();
+        f.layman      = o.value(QStringLiteral("layman")).toString();
+        f.kind        = o.value(QStringLiteral("kind")).toString();
         if (f.file.isEmpty()) continue;
         actionable.append(f);
     }
@@ -11014,6 +11028,15 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
              o.value(QStringLiteral("citing_lanes")).toArray()) {
             f.citingLanes << lv.toString();
         }
+        // ANTS-1278 — optional rich-card fields. Each falls through
+        // to the renderer's loud TODO placeholder when absent, so
+        // a caller cannot silently ship a stub bullet. Same shape
+        // accepted by indie_review_fold_in and cold_eyes_fold_in,
+        // both of which share the IndieReviewEngine renderer.
+        f.title       = o.value(QStringLiteral("title")).toString();
+        f.description = o.value(QStringLiteral("description")).toString();
+        f.layman      = o.value(QStringLiteral("layman")).toString();
+        f.kind        = o.value(QStringLiteral("kind")).toString();
         if (f.file.isEmpty()) continue;
         actionable.append(f);
     }

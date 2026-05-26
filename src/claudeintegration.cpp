@@ -4152,7 +4152,15 @@ void ClaudeIntegration::onMcpConnection() {
                     actProp["type"] = "array";
                     actProp["description"] = QStringLiteral(
                         "Array of {file, line, citing_lanes[]} "
-                        "objects describing the corroborated set.");
+                        "objects describing the corroborated set. "
+                        "ANTS-1278 — each object MAY also carry "
+                        "{title, description, layman, kind} to "
+                        "render a real roadmap card (bold title + "
+                        "body + Layman: + Kind:). Omit any of them "
+                        "and the renderer emits a LOUD "
+                        "`**TODO: describe this finding (cited by "
+                        "N lanes at file:line).**` placeholder so "
+                        "a caller cannot ship a stub bullet.");
                     QJsonObject dateProp;
                     dateProp["type"] = "string";
                     dateProp["description"] = QStringLiteral(
@@ -5600,7 +5608,15 @@ void ClaudeIntegration::onMcpConnection() {
                     aProp["type"] = "array";
                     aProp["description"] = QStringLiteral(
                         "Array of {file, line, citing_lanes[]} "
-                        "objects describing the corroborated set.");
+                        "objects describing the corroborated set. "
+                        "ANTS-1278 — each object MAY also carry "
+                        "{title, description, layman, kind} to "
+                        "render a real roadmap card (bold title + "
+                        "body + Layman: + Kind:). Omit any of them "
+                        "and the renderer emits a LOUD "
+                        "`**TODO: describe this finding (cited by "
+                        "N lanes at file:line).**` placeholder so "
+                        "a caller cannot ship a stub bullet.");
                     QJsonObject dProp;
                     dProp["type"] = "string";
                     dProp["description"] = QStringLiteral(
@@ -6322,8 +6338,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "its `Layman:` line the body (reused verbatim, "
                         "not regenerated — keeps CHANGELOG + ROADMAP in "
                         "lockstep), category derived from the bullet's "
-                        "`Kind:`. New bullets insert at the TOP of their "
-                        "category (most-recent-first). Required: "
+                        "`Kind:`. A wrapped multi-line headline is "
+                        "collapsed to a single line (ANTS-1868) so the "
+                        "rendered bullet stays a well-formed Markdown "
+                        "list item. New bullets insert at the TOP of "
+                        "their category (most-recent-first). Required: "
                         "caller_cwd (+ summary for add, or id for "
                         "add_from_roadmap). Atomic via QSaveFile. "
                         "Refusals: not_unreleased (no `## [Unreleased]` "

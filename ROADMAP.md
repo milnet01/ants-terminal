@@ -6120,7 +6120,7 @@ The full audit / indie-review / debt-sweep cycle on 2026-05-14
 exposed structural gaps in the MCP surface that the per-finding
 fixes don't address. Roadmapped here as their own design tasks.
 
-- 📋 [ANTS-1868] **`changelog_log` `add_from_roadmap` emits the raw
+- ✅ [ANTS-1868] **`changelog_log` `add_from_roadmap` emits the raw
   multi-line ROADMAP headline into the CHANGELOG bullet.** When a cited
   ROADMAP bullet's headline wraps across source lines (common — e.g.
   ANTS-1099, ANTS-1867), `op:"add_from_roadmap"` copies it verbatim, so
@@ -6133,6 +6133,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Lanes: claudeintegration, roadmap.
   Source: in-session-2026-05-25 (ANTS-1867 CHANGELOG fold-in).
+  Resolved 2026-05-26 (in-session token-savings bundle). cmdChangelogLog's add_from_roadmap branch now folds the cited ROADMAP headline via rcHeadlineOneline (the same `\r`/`\n`/`\t`-and-whitespace-run collapse roadmap_query already applies, ANTS-1521) before it becomes the bold CHANGELOG summary. New INV-7 sub-clause in changelog_log_writer/spec.md; test Inv7AddFromRoadmapCollapsesMultiLineHeadline seeds a wrapped headline and asserts no newline survives inside the bold span.</note>
 
 - ✅ [ANTS-1351] **MCP `audit_run` orchestrator tool.** Run the
   full external-tool pipeline (cppcheck / clazy / semgrep /
@@ -10564,7 +10565,7 @@ own design + test cycles.
 
 #### 🧰 Tooling — surfaced during this fold-in
 
-- 📋 [ANTS-1278] **`indie_review_fold_in` MCP renderer emits
+- ✅ [ANTS-1278] **`indie_review_fold_in` MCP renderer emits
   placeholder bullets + duplicate `Lanes:` line.** Surfaced
   while folding this 2026-05-13 sweep into ROADMAP. The MCP tool
   `mcp__ants__indie_review_fold_in` correctly allocates IDs,
@@ -10591,6 +10592,7 @@ own design + test cycles.
   loud TODO placeholder.
   Kind: tooling.
   Source: indie-review-2026-05-13.
+  Resolved 2026-05-26 (in-session token-savings bundle). CorroboratedFinding now carries optional {title, description, layman, kind} fields. When populated the indie-review/cold-eyes fold-in renderer (shared via IndieReviewEngine::templateIndieReviewFoldInBlock) emits a standard roadmap card — bold title + body + Layman: + Kind:; when absent it emits a LOUD `**TODO: describe this finding (cited by N lanes at file:line).**` placeholder so a stub bullet cannot ship silently. Both cmdIndieReviewFoldIn and cmdColdEyesFoldIn parse the new fields; descriptors document the opt-in (saves the post-insert Edit pass that prompted this finding). Duplicate `Lanes:` row was already removed by ANTS-1812. New INV-13 in indie_review_engine/spec.md; tests Inv13TemplateFoldInRichFields + Inv13TemplateFoldInLoudTodoOnAbsent. Full suite green (1709/1709).</note>
 
 ### 🔌 MCP integration deepening — token + perf (2026-05-13)
 

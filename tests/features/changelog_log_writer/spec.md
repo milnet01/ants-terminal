@@ -62,6 +62,12 @@ bullet's headline (→ summary) and `Layman:` line (→ body) verbatim and
 derives the category from the bullet's `Kind:`. A missing id refuses
 `id_not_in_roadmap`.
 
+The reused headline is collapsed to a single line via the same
+newline/whitespace-run folding `roadmap_query` already applies to
+`headline_oneline` (ANTS-1868) — a wrapped multi-line ROADMAP
+headline cannot leak a hard newline into the rendered CHANGELOG
+bullet's bold summary.
+
 ### INV-8 — caller_cwd Required + descriptor
 
 `changelog_log` is classified `Required` in `callerCwdContractFor` and

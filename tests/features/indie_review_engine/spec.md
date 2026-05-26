@@ -20,7 +20,18 @@ Locks the six pure helpers in src/indiereviewengine.{h,cpp}.
 - INV-7: synthesisPrompt emits `## Lane: <name>` for every lane key.
 - INV-8: templateIndieReviewFoldInBlock first line is
   `### 🔍 Indie-review fold-in (DATE)`; first bullet starts with
-  `- 📋 [ANTS-<id>]`; bullet contains `Kind: review-fix.`.
+  `- 📋 [ANTS-<id>]`; bullet contains `Kind: review-fix.` when no
+  per-finding `kind` override is supplied.
+- INV-13 (ANTS-1278): when `CorroboratedFinding` carries the
+  optional `title` / `description` / `layman` / `kind` fields, the
+  renderer emits the standard roadmap-card shape — bold `title` as
+  the headline, `description` as the body paragraph, `Layman:` line
+  from the supplied `layman`, and `Kind:` from the supplied `kind`.
+  When those fields are absent, the renderer emits a LOUD
+  `**TODO: describe this finding (cited by N lanes at \`file:line\`).**`
+  placeholder so a caller cannot accidentally ship a stub bullet,
+  followed by the same `Cited-by:` / `Kind:` / `Source:` / `Lanes:`
+  metadata as before.
 - INV-9 (ANTS-1445): synthesisPrompt wraps each per-lane report in a
   `<lane_report lane="…">…</lane_report>` fence; the threat-model
   block (when non-empty) wraps in `<threat_model>…</threat_model>`.

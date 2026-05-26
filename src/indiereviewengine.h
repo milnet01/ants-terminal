@@ -82,6 +82,15 @@ struct CorroboratedFinding {
     int         line = -1;
     QStringList citingLanes;  // sorted, unique
     QStringList contexts;     // one per citingLane, same order
+    // ANTS-1278 — optional rich-card fields. When present, the
+    // indie_review_fold_in renderer emits a standard roadmap card
+    // (bold title + body + Layman: + Kind:) instead of the loud
+    // TODO placeholder. Absent → placeholder, so a caller cannot
+    // silently ship a stub bullet.
+    QString     title;
+    QString     description;
+    QString     layman;
+    QString     kind;
 };
 
 // ANTS-1281: brief response without inlined source bodies.

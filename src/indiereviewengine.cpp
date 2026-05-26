@@ -808,15 +808,42 @@ QString templateIndieReviewFoldInBlock(
 
         out += QStringLiteral("- 📋 [ANTS-");
         out += QString::number(id);
-        out += QStringLiteral("] **Cited by ");
-        out += QString::number(f.citingLanes.size());
-        out += QStringLiteral(" lanes at `");
-        out += f.file;
-        if (f.line > 0) {
-            out += QChar(':');
-            out += QString::number(f.line);
+        out += QStringLiteral("] ");
+        // ANTS-1278 — rich-card shape when the caller supplied a
+        // title; otherwise a LOUD `**TODO: describe this finding (…)**`
+        // placeholder so a stub cannot ship silently. The Cited-by /
+        // Kind / Source / Lanes metadata trails in either shape.
+        if (!f.title.isEmpty()) {
+            out += QStringLiteral("**");
+            out += f.title;
+            out += QStringLiteral("**\n");
+        } else {
+            out += QStringLiteral("**TODO: describe this finding "
+                                  "(cited by ");
+            out += QString::number(f.citingLanes.size());
+            out += QStringLiteral(" lanes at `");
+            out += f.file;
+            if (f.line > 0) {
+                out += QChar(':');
+                out += QString::number(f.line);
+            }
+            out += QStringLiteral("`).**\n");
         }
-        out += QStringLiteral("`.**\n");
+        if (!f.description.isEmpty()) {
+            // Indent each body line with two spaces so it parses as a
+            // list-item continuation (roadmap-format §3.5.2).
+            const QStringList lines = f.description.split(QChar('\n'));
+            for (const QString &ln : lines) {
+                out += QStringLiteral("  ");
+                out += ln;
+                out += QChar('\n');
+            }
+        }
+        if (!f.layman.isEmpty()) {
+            out += QStringLiteral("  Layman: ");
+            out += f.layman;
+            out += QStringLiteral("\n");
+        }
         // ANTS-1812 — review metadata (which reviewer lanes flagged it) goes in
         // its own field, NOT a second `Lanes:` line. roadmap-format defines
         // `Lanes:` as the single subsystem-ownership field; emitting it twice
@@ -825,7 +852,9 @@ QString templateIndieReviewFoldInBlock(
         out += QStringLiteral("  Cited-by: ");
         out += f.citingLanes.join(QStringLiteral(", "));
         out += QStringLiteral(".\n");
-        out += QStringLiteral("  Kind: review-fix.\n");
+        out += QStringLiteral("  Kind: ");
+        out += f.kind.isEmpty() ? QStringLiteral("review-fix") : f.kind;
+        out += QStringLiteral(".\n");
         out += QStringLiteral("  Source: indie-review-");
         out += dateIso;
         out += QStringLiteral(".\n");

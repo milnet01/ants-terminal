@@ -259,6 +259,52 @@ TEST(changelog_log_writer, HandlerRefusals) {
     }
 }
 
+// INV-7 (ANTS-1868) — a wrapped multi-line ROADMAP headline is
+// collapsed to a single line before it becomes the bold CHANGELOG
+// summary, so the rendered bullet stays a well-formed Markdown list
+// item.
+TEST(changelog_log_writer, Inv7AddFromRoadmapCollapsesMultiLineHeadline) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kChangelog)));
+    // ants-v1 with the headline wrapped across two source lines (the
+    // ROADMAP shape that triggered ANTS-1868 in the wild).
+    const QByteArray rm =
+        "# Roadmap\n\n"
+        "## Work\n\n"
+        "- \xE2\x9C\x85 [ANTS-0099] **First line of the headline\n"
+        "  that wraps onto the second.**\n"
+        "  Body paragraph.\n"
+        "  **Layman:** plain words for users.\n"
+        "  Kind: feature.\n";
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), rm));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("add_from_roadmap");
+    req[QStringLiteral("id")]         = QStringLiteral("ANTS-0099");
+    const QJsonObject resp = rc.cmdChangelogLog(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    const std::string md = readFileStd(clPath(tmp.path()));
+    // The bold summary is one continuous line; the wrap+indent has
+    // been folded to a single space.
+    EXPECT_TRUE(contains(md,
+        "- **First line of the headline that wraps onto the "
+        "second.** (ANTS-0099)"))
+        << "expected one-line summary; got:\n" << md;
+    // Defensive: ensure NO hard newline survived inside the bold span.
+    const auto bulletPos = md.find("- **First line of the headline");
+    ASSERT_NE(bulletPos, std::string::npos);
+    const auto closeStar = md.find("**", bulletPos + 4);
+    ASSERT_NE(closeStar, std::string::npos);
+    const std::string boldSpan = md.substr(bulletPos, closeStar - bulletPos);
+    EXPECT_EQ(boldSpan.find('\n'), std::string::npos)
+        << "wrapped headline leaked a newline into the bold summary";
+}
+
 // INV-8 — contract + descriptor surface (source-scrape).
 TEST(changelog_log_writer, Inv8ContractAndDescriptor) {
     expect_reset();

@@ -181,6 +181,17 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`changelog_log` `add_from_roadmap` now collapses multi-line
+  ROADMAP headlines before they become the bold CHANGELOG summary
+  (ANTS-1868).** Previously a wrapped headline copied verbatim left
+  a hard newline inside the rendered bullet's `**...**` span, which
+  looked broken and forced a hand-collapse Edit. The handler now
+  folds `\r` / `\n` / `\t` and whitespace runs to a single space
+  (the same `headline_oneline` collapse `roadmap_query` already
+  applies, ANTS-1521) so the rendered CHANGELOG bullet is always
+  a well-formed single-line Markdown list item. (Bundled with
+  ANTS-1278; takes effect after the next Ants Terminal relaunch.)
+
 - **`test_audit_synthesis_prompt` markdown `[SEVERITY]` fallback
   parser (ANTS-1689).** Already shipped in 6f66ad5 but the roadmap
   status was stale. When a `/test-audit` chunk subagent emits prose
@@ -522,6 +533,21 @@ for security-relevant changes.
   with `make -j$(nproc)`).
 
 ### Changed
+
+- **`indie_review_fold_in` (and `cold_eyes_fold_in`) MCP renderers
+  now accept rich-card fields, with a LOUD TODO placeholder when
+  any are missing (ANTS-1278).** The `actionable[]` array on both
+  fold-in verbs now takes optional `{title, description, layman,
+  kind}` per finding; when populated the renderer emits a real
+  roadmap card (bold title + body paragraph + `Layman:` line +
+  `Kind:`). When the caller omits them the renderer emits a
+  **`TODO: describe this finding (cited by N lanes at file:line).`**
+  placeholder loud enough that a stub bullet cannot ship silently.
+  Saves the post-insert Edit pass callers used to need to rewrite
+  every cited-by-N stub bullet by hand — a recurring token tax on
+  every indie-review and cold-eyes fold-in. Tool descriptors
+  document the opt-in. Bundled with ANTS-1868; takes effect after
+  the next Ants Terminal relaunch.
 
 - **roadmap_query mode:section_index now paginates / auto-truncates the section list** (ANTS-1729)
   On a many-section roadmap the section index could run to tens of
