@@ -14477,7 +14477,7 @@ subsection.
   `tests/features/roadmap_query_per_section_etag/`. Full ctest
   1582/1582 green. Spec at `docs/specs/ANTS-1882.md`.
 
-- 📋 [ANTS-1883] **`session_orient` bundle verb — one call returning `current_state` + `project_layout` + `roadmap_query mode:section_index status:"active"` under one ETag.**
+- ✅ [ANTS-1883] **`session_orient` bundle verb — one call returning `current_state` + `project_layout` + `roadmap_query mode:section_index status:"active"` under one ETag.**
   Composes `current_state` (ANTS-1569) + `project_layout` +
   `roadmap_query mode:section_index status:"active"` into one
   envelope; one ETag covers the full bundle so an unchanged session
@@ -14490,6 +14490,14 @@ subsection.
   Kind: enhancement.
   Lanes: mcp-session, remotecontrol.
   Source: vestige-feedback-2026-05-26 Wishlist #3.
+  Resolved 2026-05-26: new `session_orient` MCP tool composes
+  current_state + project_layout + roadmap_query mode:section_index
+  status:active into one envelope under one ETag. All four registration
+  sites wired (tools/list descriptor, isEtagSupportedTool,
+  callerCwdContractFor, tokenCostFor) plus kindForName workspace family.
+  7 invariants locked at tests/features/session_orient_bundle/. Full
+  ctest 1600/1600 green. Spec at docs/specs/ANTS-1883.md folded 2
+  cold-eyes loops.
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
