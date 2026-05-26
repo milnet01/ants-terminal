@@ -2297,9 +2297,17 @@ void ClaudeIntegration::onMcpConnection() {
                     "dedup:false for per-hit context; ANTS-1501), "
                     "timeout_sec (default 5, range [1,30] "
                     "— raise for mid-size projects > 2 k files; "
-                    "ANTS-1565). On hard-kill the rg_failed envelope "
-                    "carries a `hint` field with the three viable "
-                    "next steps. ANTS-1390: pass `caller_cwd: "
+                    "ANTS-1565). ANTS-1876: opt-in payload knobs — "
+                    "`max_match_bytes` (clip every `text` / "
+                    "`headline` to N UTF-8 bytes, default off, range "
+                    "[50, 10000]) and `headline_only:true` (emit "
+                    "`{file, line, headline}` triples without "
+                    "`text` / `context_*` — pair with "
+                    "`max_match_bytes` for ~10× wire reduction on "
+                    "dense bundle sweeps). On hard-kill the "
+                    "rg_failed envelope carries a `hint` field with "
+                    "the three viable next steps. ANTS-1390: pass "
+                    "`caller_cwd: "
                     "\"~global\"` (alias `\"~claude-config\"`) to "
                     "search ~/.claude/ instead of a project root — "
                     "for sessions editing global Claude config "
@@ -2415,12 +2423,58 @@ void ClaudeIntegration::onMcpConnection() {
                         "envelope carries truncated:true + "
                         "results_dropped:<n> (+ bytes_cap_clamped:true if "
                         "the requested cap exceeded the ceiling).");
+                    // ANTS-1876 — per-match text clip. Out-of-range
+                    // falls back to default (off, 0); clamp range
+                    // [50, 10000] guarantees at least the ellipsis +
+                    // 47 bytes of payload.
+                    QJsonObject mmbProp;
+                    mmbProp["type"]    = "integer";
+                    mmbProp["default"] = 0;
+                    mmbProp["minimum"] = 50;
+                    mmbProp["maximum"] = 10000;
+                    mmbProp["description"] = QStringLiteral(
+                        "Per-match `text` (or `headline`, if "
+                        "`headline_only:true`) clip in UTF-8 bytes. "
+                        "When > 0, every text-bearing field — "
+                        "primary `text`, every `text` inside "
+                        "`context_before` / `context_after` — is "
+                        "clipped to *exactly* this many UTF-8 bytes "
+                        "(payload prefix + 3-byte ellipsis \"\xE2\x80\xA6\"). "
+                        "Fields whose unclipped form already fits "
+                        "are emitted verbatim. Server-clamped to "
+                        "[50, 10000]; 0 (default) disables. Dedup "
+                        "runs BEFORE the clip so the key is "
+                        "unaffected (ANTS-1876 INV-4). Echo on the "
+                        "envelope only when activated (> 0).");
+                    // ANTS-1876 — headline_only summary shape:
+                    // emit {file, line, headline} triples instead of
+                    // the bullets-mode {file, line, text, context_*}
+                    // shape. Drops context entirely; rename text →
+                    // headline. Composes with `max_match_bytes` (the
+                    // headline field gets clipped just like text
+                    // would have).
+                    QJsonObject hoProp;
+                    hoProp["type"]    = "boolean";
+                    hoProp["default"] = false;
+                    hoProp["description"] = QStringLiteral(
+                        "When true, each match emits as "
+                        "`{file, line, headline}` (where `headline` "
+                        "is the matched line, renamed from `text`) "
+                        "plus optional `also_at` (unchanged). "
+                        "`context_before` / `context_after` are "
+                        "dropped even when `context > 0` was passed. "
+                        "`also_at` entries remain `{file, line}` "
+                        "(no text to clip). Pairs with "
+                        "`max_match_bytes` for ~10× wire reduction "
+                        "on dense bundle sweeps (ANTS-1876).");
                     props["pattern"]     = patternProp;
                     props["regex"]       = regexProp;
                     props["lane"]        = laneProp;
                     props["glob"]        = globProp;
                     props["max_results"] = maxProp;
                     props["max_bytes"]   = maxBytesProp;
+                    props["max_match_bytes"] = mmbProp;       // ANTS-1876
+                    props["headline_only"]   = hoProp;        // ANTS-1876
                     props["context"]     = ctxProp;
                     props["case"]        = caseProp;
                     props["respect_gitignore"] = respectGitignoreProp;

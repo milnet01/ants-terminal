@@ -198,6 +198,83 @@ void rcStripBodyFields(QJsonArray &arr) {
     }
 }
 
+// ANTS-1876 — clip a single text-bearing field to at most `cap` UTF-8
+// bytes (the ellipsis is counted INSIDE the budget — see ANTS-1876
+// INV-2). Returns the clipped form; fields whose unclipped UTF-8 form
+// already fits are returned verbatim (no ellipsis added). The UTF-8
+// continuation-byte check (0x80..0xBF) backs up to the prior code-
+// point boundary, so we never emit a half-character.
+QString rcClipMatchBytes(const QString &s, int cap) {
+    if (cap <= 0) return s;
+    const QByteArray utf8 = s.toUtf8();
+    if (utf8.size() <= cap) return s;
+    // Reserve 3 bytes for the UTF-8 ellipsis (U+2026 → E2 80 A6).
+    constexpr int kEllipsisBytes = 3;
+    int budget = cap - kEllipsisBytes;
+    if (budget < 0) budget = 0;
+    // Back up across any UTF-8 continuation bytes (0x80..0xBF) at
+    // the budget boundary so we don't split a multi-byte sequence.
+    int cut = std::min<int>(budget, utf8.size());
+    while (cut > 0 &&
+           (static_cast<unsigned char>(utf8.at(cut)) & 0xC0) == 0x80) {
+        --cut;
+    }
+    return QString::fromUtf8(utf8.constData(), cut) +
+           QStringLiteral("\xE2\x80\xA6");
+}
+
+// ANTS-1876 — apply `max_match_bytes` clip to every text-bearing
+// field in the matches array: each match's `text` (or `headline`,
+// post-rename) and every `text` field inside its `context_before`
+// / `context_after` arrays. `also_at` carries no text and is
+// untouched. Pipeline step 3 (after dedup, before headline_only
+// rename + context drop).
+void rcClipMatchTextFields(QJsonArray &matches, int cap) {
+    if (cap <= 0) return;
+    for (int i = 0; i < matches.size(); ++i) {
+        QJsonObject m = matches.at(i).toObject();
+        if (m.contains(QStringLiteral("text"))) {
+            m[QStringLiteral("text")] =
+                rcClipMatchBytes(m.value(QStringLiteral("text"))
+                                     .toString(), cap);
+        }
+        for (const auto &arrKey :
+             {QStringLiteral("context_before"),
+              QStringLiteral("context_after")}) {
+            if (!m.contains(arrKey)) continue;
+            QJsonArray ctx = m.value(arrKey).toArray();
+            for (int j = 0; j < ctx.size(); ++j) {
+                QJsonObject c = ctx.at(j).toObject();
+                if (c.contains(QStringLiteral("text"))) {
+                    c[QStringLiteral("text")] =
+                        rcClipMatchBytes(c.value(QStringLiteral("text"))
+                                             .toString(), cap);
+                }
+                ctx.replace(j, c);
+            }
+            m[arrKey] = ctx;
+        }
+        matches.replace(i, m);
+    }
+}
+
+// ANTS-1876 — apply `headline_only:true` projection to every match.
+// Pipeline step 4 (after clip): rename `text` → `headline`, drop
+// `context_before` / `context_after`. `also_at` (which has no
+// `text` to begin with) is untouched.
+void rcApplyHeadlineOnly(QJsonArray &matches) {
+    for (int i = 0; i < matches.size(); ++i) {
+        QJsonObject m = matches.at(i).toObject();
+        const QString text =
+            m.value(QStringLiteral("text")).toString();
+        m.remove(QStringLiteral("text"));
+        m.remove(QStringLiteral("context_before"));
+        m.remove(QStringLiteral("context_after"));
+        m[QStringLiteral("headline")] = text;
+        matches.replace(i, m);
+    }
+}
+
 // ANTS-1881 — project each bullet object to exactly the four-key set
 // {id, status, headline_oneline, section_slug} for
 // mode:"headline_only". Mutates in place. Rollup / narrator bullets
@@ -4346,6 +4423,23 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     const bool isRegex = req.value("regex").toBool(false);
     const QString caseMode = req.value("case").toString(QStringLiteral("smart"));
 
+    // ANTS-1876 — per-match text clip (INV-1). Out-of-range falls
+    // back to 0 (off), matching the `context` parse idiom above.
+    // Clamp range [50, 10000] guarantees at least the ellipsis + 47
+    // bytes of payload.
+    int maxMatchBytes = 0;
+    const QJsonValue mmbVal = req.value(QStringLiteral("max_match_bytes"));
+    if (mmbVal.isDouble()) {
+        const int requested = mmbVal.toInt();
+        if (requested >= 50 && requested <= 10000) {
+            maxMatchBytes = requested;
+        }
+    }
+    // ANTS-1876 — headline_only projection. Default false; activates
+    // the per-match {file, line, headline} shape.
+    const bool headlineOnly =
+        req.value(QStringLiteral("headline_only")).toBool(false);
+
     // ANTS-1565-INV-1/2: per-call wall-clock budget. Default 5 s
     // (kWorkspaceSearchHardKillMs); accept `timeout_sec` integer in
     // [1, 30]; out-of-range / non-numeric falls back to default. The
@@ -4612,6 +4706,21 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         matches = collapsed;
     }
 
+    // ANTS-1876 — pipeline step 3: max_match_bytes clip (post-dedup
+    // so the dedup key sees the unclipped text, INV-4). The clip
+    // walks both the primary `text` and every `text` inside the
+    // context_before / context_after arrays.
+    if (maxMatchBytes > 0) {
+        rcClipMatchTextFields(matches, maxMatchBytes);
+    }
+    // ANTS-1876 — pipeline step 4: headline_only rename + context
+    // drop. Per match: text → headline; context_before /
+    // context_after removed. also_at is untouched (it carries no
+    // text field; INV-5b).
+    if (headlineOnly) {
+        rcApplyHeadlineOnly(matches);
+    }
+
     QJsonObject out;
     out["ok"]         = true;
     out["pattern"]    = pattern;
@@ -4629,6 +4738,17 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // see whether they got their requested timeout_sec or the default.
     out["timeout_sec"] = budgetSec;
     out["elapsed_ms"] = static_cast<int>(wall.elapsed());
+    // ANTS-1876 — activation-gated echo (INV-6). Default calls
+    // (max_match_bytes == 0 AND headline_only == false) get neither
+    // field — wire byte-identical with pre-fix envelopes. Only the
+    // ok:true path reaches here; error envelopes return early via
+    // wsErr() before this point (INV-6b).
+    if (maxMatchBytes > 0) {
+        out["max_match_bytes"] = maxMatchBytes;
+    }
+    if (headlineOnly) {
+        out["headline_only"] = true;
+    }
     // ANTS-1293: byte-cap the response. max_results bounds the count; this
     // bounds total size so wide context windows / long lines can't blow
     // the transport budget. Trims matches[] from the tail and sets

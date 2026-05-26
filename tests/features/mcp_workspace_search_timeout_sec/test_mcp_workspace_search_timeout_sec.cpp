@@ -117,10 +117,10 @@ TEST(mcp_workspace_search_timeout_sec, Inv5SchemaDeclaresTimeoutSec) {
     const size_t wsAnchor = ci.find("\"workspace_search\"");
     ASSERT_NE(wsAnchor, std::string::npos)
         << "workspace_search registration not found in claudeintegration.cpp";
-    // Window widened from 8000 → 12000 in ANTS-1304 — the
-    // context property block gained a description + minimum +
-    // maximum, pushing timeoutSecProp past the original byte 8000.
-    const size_t end = std::min(ci.size(), wsAnchor + 12000);
+    // Window widened from 8000 → 12000 in ANTS-1304 (context property
+    // block grew); → 16000 in ANTS-1876 (two new prop blocks +
+    // top-level description extension pushed timeoutSecProp past 12000).
+    const size_t end = std::min(ci.size(), wsAnchor + 16000);
     const std::string window = ci.substr(wsAnchor, end - wsAnchor);
     expect(contains(window, "\"timeout_sec\""),
            "INV-5a: workspace_search inputSchema does not declare a "
@@ -143,10 +143,10 @@ TEST(mcp_workspace_search_timeout_sec, Inv6DescriptionMentionsTimeoutSec) {
     const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const size_t wsAnchor = ci.find("\"workspace_search\"");
     ASSERT_NE(wsAnchor, std::string::npos);
-    // Window widened from 8000 → 12000 in ANTS-1304 — the
-    // context property block gained a description + minimum +
-    // maximum, pushing timeoutSecProp past the original byte 8000.
-    const size_t end = std::min(ci.size(), wsAnchor + 12000);
+    // Window widened from 8000 → 12000 in ANTS-1304 (context property
+    // block grew); → 16000 in ANTS-1876 (two new prop blocks +
+    // top-level description extension pushed timeoutSecProp past 12000).
+    const size_t end = std::min(ci.size(), wsAnchor + 16000);
     const std::string window = ci.substr(wsAnchor, end - wsAnchor);
     expect(contains(window, "timeout_sec"),
            "INV-6a: workspace_search description does not mention "
