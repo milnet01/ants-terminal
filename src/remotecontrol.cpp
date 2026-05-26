@@ -373,6 +373,35 @@ static QString rcSanitizeBulletField(const QString &in, int maxLen) {
 //      genuine large collision set can't blow the response-size budget.
 constexpr int kDuplicateOccurrencesCap = 3;
 
+// ANTS-1882 — filter a duplicate-ids descriptor array (the shape
+// produced by `rcComputeDuplicateIds` above) to only entries whose
+// `occurrences[]` array contains at least one bullet inside the
+// named section. Used by the `roadmap_query` section path so the
+// duplicate_ids field is section-scoped (preserves per-section ETag
+// invariance — when section B's duplicates change but foo doesn't
+// have any duplicates, foo's response doesn't carry them). Returns
+// an empty array when no duplicates involve the section.
+QJsonArray rcFilterDuplicateIdsForSection(const QJsonArray &dupes,
+                                          const QString &sectionSlug) {
+    if (dupes.isEmpty() || sectionSlug.isEmpty()) return QJsonArray();
+    QJsonArray out;
+    for (const auto &v : dupes) {
+        const QJsonObject entry = v.toObject();
+        const QJsonArray occs =
+            entry.value(QStringLiteral("occurrences")).toArray();
+        bool relevant = false;
+        for (const auto &o : occs) {
+            if (o.toObject().value(QStringLiteral("section_slug"))
+                    .toString() == sectionSlug) {
+                relevant = true;
+                break;
+            }
+        }
+        if (relevant) out.append(entry);
+    }
+    return out;
+}
+
 QJsonArray rcComputeDuplicateIds(const QJsonArray &bullets) {
     QJsonArray out;
     if (bullets.isEmpty()) return out;
@@ -2366,8 +2395,17 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // duplicate descriptors only when m_roadmapCacheBullets has
         // been populated by a prior full-file / section_index call.
         // Pure section-only first hits stay quiet (cache may be cold).
+        // ANTS-1882 — filter to entries whose occurrences[] include
+        // a bullet inside THIS section, so the field is section-
+        // bound (preserves per-section ETag invariance: an edit to
+        // section B that introduces / removes a duplicate not
+        // involving foo does NOT shift foo's response payload).
         if (!m_roadmapCacheDuplicateIds.isEmpty()) {
-            out["duplicate_ids"] = m_roadmapCacheDuplicateIds;
+            const QJsonArray scoped = rcFilterDuplicateIdsForSection(
+                m_roadmapCacheDuplicateIds, sec->slug);
+            if (!scoped.isEmpty()) {
+                out["duplicate_ids"] = scoped;
+            }
         }
         return QJsonDocument(out);
     }
