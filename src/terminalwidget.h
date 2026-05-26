@@ -340,7 +340,15 @@ private:
     void recalcGridSize();
     void updateFontMetrics();
     QPoint pixelToCell(const QPoint &pos) const;
+
+public:
+    // ANTS-1312 — last_selection MCP needs to read the current
+    // selection text from outside the class. The method is a const
+    // read-only accessor; promoted from private (where it sat by
+    // default) so RemoteControl can delegate without a wrapper.
     QString selectedText() const;
+
+private:
     void copySelection();
     void clearSelection();
     bool hasSelection() const;

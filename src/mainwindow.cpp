@@ -3900,6 +3900,21 @@ void MainWindow::setupClaudeMcpProviders() {
         ClaudeIntegration::CallerCwdContract::TabSpecific,
         rcDelegate(&RemoteControl::cmdRecentErrors));
 
+    // ANTS-1312 — last_selection. Returns the focused (or routed) tab's
+    // current selection text so Claude can pull the highlighted error /
+    // trace / snippet without walking the scrollback to re-find it.
+    // TabSpecific; delegates to RemoteControl::cmdLastSelection.
+    m_claudeIntegration->registerToolProvider("last_selection",
+        ClaudeIntegration::CallerCwdContract::TabSpecific,
+        rcDelegate(&RemoteControl::cmdLastSelection));
+
+    // ANTS-1636 — find_sources. Project-scoped topic-to-files
+    // discovery; reads under <caller_cwd>/src + <caller_cwd>/tests.
+    // Required contract — refuses without caller_cwd at the dispatcher.
+    m_claudeIntegration->registerToolProvider("find_sources",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdFindSources));
+
     m_claudeIntegration->registerToolProvider("get_scrollback",
         ClaudeIntegration::CallerCwdContract::TabSpecific,
         [this](const QJsonObject &args) -> QString {

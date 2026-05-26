@@ -14,6 +14,30 @@ for security-relevant changes.
 
 ### Added
 
+- **Two new MCP tools for Claude Code sessions — `last_selection` and
+  `find_sources`.** (ANTS-1312, ANTS-1636) Both cut the tokens
+  Claude burns to gather context.
+  - `last_selection` returns the text the user has highlighted in the
+    focused tab — so when you say "look at this error" with text
+    selected, Claude no longer has to scan the scrollback to figure
+    out which lines you meant. Direct token saver on every
+    selection-driven question.
+  - `find_sources` maps a free-text topic ("audit cache invalidation",
+    "model auto switch") to a ranked list of source files under
+    `src/` + `tests/`. Replaces the 3-4 grep/find round-trips a
+    session usually does when starting investigation on a topic where
+    the exact symbol isn't yet known. Each result carries a short
+    "matched filename / N occurrences in body" evidence trail so
+    Claude can pick the right file without opening half of them.
+
+- **Per-tab status-bar chip for current Claude model + thinking
+  level.** (ANTS-1888 — roadmap entry only; implementation
+  pending.) With the auto-switcher on, you no longer have a
+  passive readout of which model your focused tab is using. The
+  new roadmap item locks the design for a small chip showing the
+  current tier (Haiku/Sonnet/Opus) and the most recent thinking
+  level (standard / think / think hard / ultrathink), per tab.
+
 - **Automatic Claude Code model selection — opt-in auto-switch
   (Shape B of ANTS-1226).** (ANTS-1735) A new Settings toggle —
   *General → "Let Ants pick the Claude model for me"* — lets Ants

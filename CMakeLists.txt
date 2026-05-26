@@ -234,6 +234,8 @@ add_library(ants_core_lib STATIC
     src/similarcode.cpp
     # ANTS-1301 — recent_errors scrollback error parser.
     src/scrollbackerrors.cpp
+    # ANTS-1636 — find_sources topic-to-files discovery.
+    src/findsources.cpp
     src/gitwrap.cpp
     src/indiereviewengine.cpp
     src/debtsweepengine.cpp
@@ -1181,6 +1183,10 @@ if(ANTS_TESTS)
                 tests/features/mcp_similar_code/test_mcp_similar_code.cpp
                 # ANTS-1301 recent_errors scrollback error extraction.
                 tests/features/mcp_recent_errors/test_mcp_recent_errors.cpp
+                # ANTS-1312 last_selection MCP wiring contract.
+                tests/features/mcp_last_selection/test_mcp_last_selection.cpp
+                # ANTS-1636 find_sources MCP + pure-function tests.
+                tests/features/mcp_find_sources/test_mcp_find_sources.cpp
                 # ANTS-1306 task_priors MCP context bundler.
                 tests/features/mcp_task_priors/test_mcp_task_priors.cpp
                 # ANTS-1307 project_conventions MCP convention summary.

@@ -7955,12 +7955,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   (hoisted out of cmdRoadmapLogAppend). Tests:
   `tests/features/roadmap_log_annotate/` INV-5/6. 1455/1455 features.
 
-- 📋 [ANTS-1794] **`roadmap_query` has no by-ID lookup — finding one bullet costs a full paginate or an out-of-band grep.**
+- ✅ [ANTS-1794] **`roadmap_query` has no by-ID lookup — finding one bullet costs a full paginate or an out-of-band grep.**
   `roadmap_query` filters by `status` / `section` / `mode` but cannot resolve a single bullet by its `[ANTS-NNNN]` id. "Show me ANTS-NNNN" is the most common roadmap lookup an AI session does when working a ticket, yet today it requires either paging the full ~12 K-token bullet list (742 bullets, 26/page) or shelling out to `grep ROADMAP.md` — which leaves the MCP surface entirely and defeats the token-saving goal the MCP exists for. Add an `id:"ANTS-NNNN"` (and/or `ids:[...]`) filter that returns just the matching bullet(s), reusing the existing parse + the same `{id,status,headline,...}` bullet shape (honour `include_body`). Cheap server-side, large token saving per call. Sibling to ANTS-1793 (roadmap_log flip-note gap).
   **Layman:** Asking the roadmap tool to "show me item ANTS-1750" should be one quick call, instead of dumping the whole list or falling back to a plain text search.
   Kind: enhancement.
   Lanes: RemoteControl, MCP.
   Source: in-session-2026-05-22.
+  Resolved (2026-05-26): shipped under ANTS-1856 — the roadmap_query schema now documents the optional `id` parameter that fetches one bullet by [PROJ-NNNN] in a single call, bypassing pagination + status filters. This entry was a duplicate planning ticket that wasn't flipped when the implementation landed. Tracked here as the MCP-hygiene gap: stale planned items whose feature already shipped under a sibling ID — consider a periodic sweep against the documented MCP tool surface to catch these.
 
 - ✅ [ANTS-1848] **`roadmap_query` `mode:section_index` ignores the `status` filter — returns all sections including zero-active ones.**
   Observed running this MCP-first session: `roadmap_query mode:section_index status:active` returned ~140 sections, the large majority with `active_count:0` (e.g. all the shipped 0.7.x release blocks). For a planning query that's pure noise — the response is dominated by sections with nothing to do. The `status` arg currently only narrows `bullets` mode; in `section_index` it's effectively ignored. Proposal: when `status:active` (or `shipped`) is combined with `mode:section_index`, drop sections whose matching `*_count_id_only` is 0 (keep the full set under the default `status:all` so slug-discovery is unaffected). Cheap server-side filter, large token saving on the common planning call. Relates to [[ANTS-1844]] (roadmap re-split perf) but is orthogonal — this is response-shaping, not parse cost.
@@ -13785,11 +13786,12 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-cold-eyes, mcp-indie-review, roadmapfoldin, coldeyesengine, indiereviewengine.
   Source: ANTS-1635 fold-in (out of scope; sibling-tool gap, 2026-05-19).
 
-- 📋 [ANTS-1636] **`find_sources` MCP tool — topic-to-files discovery for subsystems not in the parsed Module map.**
+- ✅ [ANTS-1636] **`find_sources` MCP tool — topic-to-files discovery for subsystems not in the parsed Module map.**
   User asked 2026-05-19: "Can Ants MCP help with finding relevant source files?" Today three MCP tools partially cover this and each has a gap:
   - `workspace_search` finds *exact symbol/string matches* but the caller must already know the symbol — useless for "what files implement the test-audit fold-in?".
   - `subsystem op=files lane=<lane>` returns the file list for a named lane, but only for lanes parsed out of CLAUDE.md's `## Module map (src/)` section. Many real subsystems are not listed there — `testauditengine`, `coldeyesengine`, `indiereviewengine`, `sessionmemoryengine`, `roadmapfoldin`, `pathvalidation`, `resolvedroot`, `auditrunner`, `audit_run` (the helper-CLI verb), `mcp_trace` — all return `code: "unknown_lane"`. Confirmed in this session: `subsystem op=files lane=testauditengine` → `{"code":"unknown_lane", lanes:[20-entry list]}`.
   - `project_layout` returns the doc-tree skeleton, not src/ file mapping.
+  Resolved (2026-05-26): topic-to-files discovery landed as a pure-function unit + MCP wrapper. New: src/findsources.{h,cpp} — tokenise() splits on whitespace+punct, drops <3-char + ANTS-NNNN tokens (INV-1); variantsForToken() expands lowercase/snake/camel/PascalCase/dropped-separator variants (INV-2); findSources() walks <root>/src + <root>/tests, scores by 50×filename_token_matches + min(60, content_hits), classifies role={impl,header,test}, drops generated files (INV-6), returns top-N + unmatchedTerms. MCP wrapper RemoteControl::cmdFindSources is Required-contract project-scoped; registered in mainwindow.cpp; descriptor/cost/bucket/contract in claudeintegration.cpp. Tests: 5 tests in tests/features/mcp_find_sources/ — tokenise/variants/golden-path/bad-root/wiring. Full ctest 1647/1647 pass. v1 deliberately leaner than the spec's full design: no ripgrep subprocess (kept the QFile-based scan; src/+tests/ are bounded), no roadmap-id `lanes:` field reuse (deferred to a v2 once we see usage data). Token savings: replaces 3-4 grep/find cycles with one MCP call per "where is X" investigation.
 
   The natural caller workflow ("I'm investigating ANTS-1615 / a fold_in bug — show me the files") needs a tool that:
   1. Accepts a free-text topic (`"test_audit_fold_in"`, `"MCP tool registration"`, `"audit-cache invalidation"`) OR a roadmap ID (`"ANTS-1615"`).
@@ -15066,7 +15068,7 @@ expected token-leverage per implementation hour.
 
 #### 🔌 Terminal-as-context-source (UI affordances)
 
-- 📋 [ANTS-1312] **"Send selection to Claude" shortcut + MCP.** When
+- ✅ [ANTS-1312] **"Send selection to Claude" shortcut + MCP.** When
   the user has text selected in the terminal (an error message, a
   stack trace, a config snippet), `Ctrl+Shift+K` opens the AI
   dialog pre-populated with that text as context. Server side, an
@@ -15079,6 +15081,7 @@ expected token-leverage per implementation hour.
   the AI dialog opens with that text already loaded.
   Kind: implement.
   Source: indie-review-2026-05-13.
+  Resolved (2026-05-26): server-side MCP tool landed. New: RemoteControl::cmdLastSelection delegating to TerminalWidget::selectedText() (promoted from private; INV-8). Registered in mainwindow.cpp as TabSpecific; descriptor + token-cost + kindForName + callerCwdContractFor branches added in claudeintegration.cpp. Tab routing: explicit `tab` int wins, else caller_cwd → terminalForCaller → focused fallback. Schema accepts `tab` (int) + `caller_cwd`. Tests: tests/features/mcp_last_selection/ source-grep wiring contract. Full ctest 1647/1647 pass. Ctrl+Shift+K dialog (the UI half of the original ANTS-1312 scope) is deferred to a follow-up — server-side tool alone delivers the token-savings (Claude no longer walks scrollback to find user-selected text).
 
 - 📋 [ANTS-1331] **Prev/next prompt-history navigation on Claude
   tabs.** When Claude has been running unattended for a while and
@@ -19393,6 +19396,25 @@ contributors don't duplicate research.
   **Layman:** Once the auto model-switcher is trusted, also let Ants pick how hard Claude thinks (think / think-hard / ultrathink) for the task at hand — so a hard turn gets both the big model and deeper thinking, automatically.
   Kind: feature.
   Source: user-request-2026-05-25 (ANTS-1735 expansion).
+
+- 📋 [ANTS-1888] **Per-tab status-bar chip showing current Claude model + thinking level.**
+  Today the user only knows which model is active by reading the recommender chip (suppressed when ANTS-1735 auto-switch is on) or by checking the transcript JSONL by hand. With the ANTS-1735 auto-switcher running, the user explicitly asked for a passive read surface: a chip that always shows "what model + thinking level the focused tab is currently using."
+  
+  Surface: small chip in the Claude status bar, positioned where the recommender chip used to sit (so when INV-14 hides the recommender, the indicator takes its place). Per-tab/per-cwd specific — refreshes on focused-tab switch and on transcript-mtime change (same pattern as refreshModelChip).
+  
+  Sources:
+  - Model tier — ModelRecommender::tierFromModelId(rec.currentModel) using the focused tab's transcript (already cheap; the 2s status tick already calls ModelRecommender::score for the autonomous switcher).
+  - Thinking level — parse the focused tab's most recent user turn for the standard Claude Code directives ("think" / "think hard" / "ultrathink" prefixes). No prefix = standard. Reuse the 512KB tail-read pattern. If the level isn't detectable, hide the thinking half of the chip rather than guess.
+  
+  Display: "Opus · ultrathink" / "Sonnet · standard" / etc. Clicking does nothing in v1 (passive indicator). Tooltip explains the source.
+  
+  Pairs with ANTS-1872 (active thinking-level control) as the read-surface counterpart; this lands first because read-only is cheap and removes the user's blindspot while the active-controller research progresses.
+  
+  RAM budget: cache one {tier, thinking_level, mtime} per tab in the existing status-bar controller; trivial (single-digit bytes per tab).
+  **Layman:** A small badge in the status bar that tells you which model your focused tab is on (Haiku/Sonnet/Opus) and what thinking depth was last used (standard / think / think hard / ultrathink). Each tab can show a different value because each tab has its own Claude session.
+  Kind: feature.
+  Lanes: claudestatuswidgets, claudeintegration, modelrecommender.
+  Source: user-request-2026-05-26.
 
 ### 🔒 Security
 

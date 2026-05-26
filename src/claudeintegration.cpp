@@ -34,16 +34,17 @@
 static QElapsedTimer s_rateLimitClock;
 #include <unistd.h>
 
-// ANTS-1415 — the two CallerCwdContract::TabSpecific tools whose handler
+// ANTS-1415 — the CallerCwdContract::TabSpecific tools whose handler
 // honours an explicit `tab` index as an alternate routing key
-// (cmdGetText, cmdRecentErrors). The other four (get_scrollback,
-// get_last_command, get_environment, get_cwd) ignore `tab`, so it must
-// NOT count as a routing key for them — else a stray tab:N would bypass
-// the Phase 3b gate and still fall back to the focused tab. See
-// docs/specs/ANTS-1415.md.
+// (cmdGetText, cmdRecentErrors, cmdLastSelection). The other four
+// (get_scrollback, get_last_command, get_environment, get_cwd) ignore
+// `tab`, so it must NOT count as a routing key for them — else a stray
+// tab:N would bypass the Phase 3b gate and still fall back to the
+// focused tab. See docs/specs/ANTS-1415.md.
 static bool tabSpecificAcceptsTabIndex(const QString &toolName) {
     return toolName == QLatin1String("get_text") ||
-           toolName == QLatin1String("recent_errors");
+           toolName == QLatin1String("recent_errors") ||
+           toolName == QLatin1String("last_selection");
 }
 
 ClaudeIntegration::ClaudeIntegration(QObject *parent) : QObject(parent) {
@@ -2256,6 +2257,113 @@ void ClaudeIntegration::onMcpConnection() {
                     }
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
+                // ANTS-1312 — last_selection: return the focused (or
+                // routed) terminal's current selection text.
+                {
+                    QJsonObject t;
+                    t["name"] = "last_selection";
+                    t["description"] = QStringLiteral(
+                        "Return the focused (or routed) terminal's "
+                        "current selection text — the text the user "
+                        "highlighted with the mouse. Use this instead "
+                        "of walking the scrollback to find the error / "
+                        "stack trace / config snippet the user is "
+                        "pointing at. Saves the equivalent of a "
+                        "`get_text lines=500` round-trip whenever the "
+                        "context Claude needs is the same text the "
+                        "user just selected. Returns {ok, "
+                        "has_selection, text, length, bytes}. When the "
+                        "user has no active selection, `has_selection` "
+                        "is false and `text` is the empty string. "
+                        "Optional `tab` (explicit index), `caller_cwd` "
+                        "(anchors to your tab when `tab` is omitted). "
+                        "Refuses `no_window` when no terminal "
+                        "resolves.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Reach for this when the user says \"this\" / "
+                        "\"that error\" / \"the line I selected\" — "
+                        "far cheaper than scanning scrollback. For a "
+                        "structured error block from a recent build, "
+                        "prefer recent_errors.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p; p["type"] = "integer";
+                        p["description"] = QStringLiteral(
+                            "Explicit tab index. Omit to use your own "
+                            "tab (via caller_cwd) or the focused tab.");
+                        props["tab"] = p;
+                    }
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
+                // ANTS-1636 — find_sources: topic-to-files discovery.
+                {
+                    QJsonObject t;
+                    t["name"] = "find_sources";
+                    t["description"] = QStringLiteral(
+                        "Map a free-text topic (\"audit cache "
+                        "invalidation\", \"test audit fold-in\", "
+                        "\"model auto switch actuator\") to a ranked "
+                        "list of source files under the project's "
+                        "src/ + tests/ trees. Use this when you don't "
+                        "already know the symbol/filename and would "
+                        "otherwise run 3-4 grep/find cycles. Returns "
+                        "{ok, files:[{path, score, role, evidence}], "
+                        "files_count, unmatched_terms, files_scanned, "
+                        "truncated}. `role` ∈ impl|header|test; "
+                        "`evidence` carries up to 3 short \"matched "
+                        "filename …\" / \"\\\"…\\\" × N in body\" "
+                        "explanations. Required: `topic`, `caller_cwd`. "
+                        "Optional `max_results` (default 20, server "
+                        "hard-cap 100). Compared to workspace_search: "
+                        "this tool expects a topic, not an exact "
+                        "symbol — it auto-expands snake/camel/dropped-"
+                        "separator variants and ranks files (not "
+                        "lines). Token-savings: typically replaces a "
+                        "3-4 round-trip grep + read cycle with one "
+                        "MCP call.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Reach for this when starting investigation "
+                        "on a topic where you don't know the exact "
+                        "symbol yet. For known symbols, prefer "
+                        "find_definition (one symbol) / similar_code "
+                        "(shape) / workspace_search (exact match).");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p; p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Free-text topic. Tokens shorter than 3 "
+                            "chars and roadmap IDs (ANTS-NNNN) are "
+                            "ignored.");
+                        props["topic"] = p;
+                    }
+                    {
+                        QJsonObject p; p["type"] = "integer";
+                        p["default"] = 20;
+                        p["description"] = QStringLiteral(
+                            "Cap on files[] (default 20, hard-cap 100). "
+                            "`files_count` carries the post-cap count; "
+                            "`truncated` is true when the pre-cap list "
+                            "was longer.");
+                        props["max_results"] = p;
+                    }
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    QJsonArray req; req.append(QStringLiteral("topic"));
+                    schema["required"] = req;
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
@@ -6494,6 +6602,10 @@ void ClaudeIntegration::onMcpConnection() {
                         {QStringLiteral("get_text"),          {1200, 6000}},
                         // Scrollback error extraction (ANTS-1301).
                         {QStringLiteral("recent_errors"),     {800,  4000}},
+                        // Selection read-through (ANTS-1312).
+                        {QStringLiteral("last_selection"),    {200,  2000}},
+                        // Topic-to-files discovery (ANTS-1636).
+                        {QStringLiteral("find_sources"),      {600,  3500}},
                         // Repo / docs.
                         {QStringLiteral("roadmap_query"),     {1700, 12000}},
                         {QStringLiteral("roadmap_log"),       {200,  600}},
@@ -6609,6 +6721,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-1855 — read_log: caller_cwd-Required,
                         // path-validated file reader (file_outline family).
                         name == QLatin1String("read_log") ||
+                        // ANTS-1636 — find_sources: project-scoped
+                        // src/+tests/ topic walker.
+                        name == QLatin1String("find_sources") ||
                         name == QLatin1String("project_layout") ||
                         name == QLatin1String("subsystem") ||
                         // ANTS-1569 — current_state is a project-scoped
@@ -6659,7 +6774,9 @@ void ClaudeIntegration::onMcpConnection() {
                     if (name.startsWith(QStringLiteral("get_")) ||
                         name == QLatin1String("tab_list") ||
                         // ANTS-1301 — reads terminal scrollback.
-                        name == QLatin1String("recent_errors"))
+                        name == QLatin1String("recent_errors") ||
+                        // ANTS-1312 — reads terminal selection.
+                        name == QLatin1String("last_selection"))
                         return QStringLiteral("terminal");
                     if (name == QLatin1String("tool_info") ||
                         name == QLatin1String("token_usage") ||
@@ -7427,6 +7544,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("get_text"))           return C::TabSpecific;
     // ANTS-1301 — reads the focused terminal's scrollback.
     if (toolName == QStringLiteral("recent_errors"))      return C::TabSpecific;
+    // ANTS-1312 — reads the focused terminal's current selection.
+    if (toolName == QStringLiteral("last_selection"))    return C::TabSpecific;
     if (toolName == QStringLiteral("get_last_command"))   return C::TabSpecific;
     if (toolName == QStringLiteral("get_environment"))    return C::TabSpecific;
     if (toolName == QStringLiteral("get_cwd"))            return C::TabSpecific;
@@ -7471,6 +7590,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("roadmap_query"))      return C::Required;
     if (toolName == QStringLiteral("subsystem"))          return C::Required;
     if (toolName == QStringLiteral("workspace_search"))   return C::Required;
+    // ANTS-1636 — find_sources: project-scoped topic-to-files scan.
+    if (toolName == QStringLiteral("find_sources"))       return C::Required;
     if (toolName == QStringLiteral("file_outline"))       return C::Required;
     if (toolName == QStringLiteral("plan_template"))      return C::Required;
     // ANTS-1569 — current_state aggregator: project-scoped read over

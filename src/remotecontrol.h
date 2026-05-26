@@ -349,6 +349,18 @@ public:
     // See docs/specs/ANTS-1301.md.
     QJsonDocument cmdRecentErrors(const QJsonObject &req);
 
+    // ANTS-1312: last_selection — return the focused (or routed)
+    // terminal's current selection text. Delegates to
+    // TerminalWidget::selectedText(). Tab routing mirrors cmdGetText /
+    // cmdRecentErrors: explicit `tab` int wins, else caller_cwd →
+    // terminalForCaller → focused fallback. MCP-only.
+    QJsonDocument cmdLastSelection(const QJsonObject &req);
+
+    // ANTS-1636: find_sources — topic-to-files discovery. Project-
+    // scoped read (Required caller_cwd). Delegates to
+    // FindSources::findSources after resolving the project root.
+    QJsonDocument cmdFindSources(const QJsonObject &req);
+
     // ANTS-1248: ripgrep wrapper. Public for the same reason as the
     // ANTS-1244 trio — MCP server lambda in MainWindow delegates here
     // so the body is reused across IPC + MCP transports. Argv-only

@@ -3,6 +3,7 @@
 #include "coldeyesengine.h"
 #include "debtsweepengine.h"
 #include "fileoutline.h"
+#include "findsources.h"
 #include "readlog.h"
 #include "modelswitchledger.h"   // ANTS-1735 — model_switch_stats aggregation
 #include "focusedtest.h"
@@ -1462,6 +1463,100 @@ QJsonDocument RemoteControl::cmdRecentErrors(const QJsonObject &req) {
     out["errors_count"]  = res.errorsTotal;
     out["lines_scanned"] = res.linesScanned;
     out["truncated"]     = res.truncated;
+    return QJsonDocument(out);
+}
+
+// ANTS-1312 — last_selection. Return the focused (or routed) terminal's
+// current selection text so Claude can pull the highlighted error /
+// trace without walking the scrollback. Sole source of truth is
+// TerminalWidget::selectedText() — no reimplementation.
+QJsonDocument RemoteControl::cmdLastSelection(const QJsonObject &req) {
+    QJsonObject out;
+    TerminalWidget *target = nullptr;
+    const QJsonValue tabVal = req.value(QStringLiteral("tab"));
+    if (tabVal.isDouble()) {
+        target = m_main->terminalAtTab(tabVal.toInt());
+    } else {
+        // ANTS-1392 — caller_cwd anchors to caller's tab; falls back
+        // to focused tab when absent or no match.
+        target = m_main->terminalForCaller(
+            req.value(QStringLiteral("caller_cwd")).toString());
+    }
+    if (!target) {
+        out[QStringLiteral("ok")]    = false;
+        out[QStringLiteral("error")] = QStringLiteral(
+            "last_selection: no terminal to read");
+        out[QStringLiteral("code")]  = QStringLiteral("no_window");
+        return QJsonDocument(out);
+    }
+
+    const QString text = target->selectedText();
+    const bool hasSelection = !text.isEmpty();
+
+    out[QStringLiteral("ok")]            = true;
+    out[QStringLiteral("has_selection")] = hasSelection;
+    out[QStringLiteral("text")]          = text;
+    out[QStringLiteral("length")]        = text.size();
+    out[QStringLiteral("bytes")]         = text.toUtf8().size();
+    return QJsonDocument(out);
+}
+
+// ANTS-1636 — find_sources. Project-scoped topic-to-files discovery.
+QJsonDocument RemoteControl::cmdFindSources(const QJsonObject &req) {
+    QJsonObject out;
+    const QString topic = req.value(QStringLiteral("topic")).toString().trimmed();
+    if (topic.isEmpty()) {
+        out[QStringLiteral("ok")]    = false;
+        out[QStringLiteral("error")] = QStringLiteral(
+            "find_sources: missing or empty \"topic\"");
+        out[QStringLiteral("code")]  = QStringLiteral("bad_args");
+        return QJsonDocument(out);
+    }
+
+    // Project root from caller_cwd (Required contract — dispatcher
+    // refuses the empty case upstream). We still resolve to a
+    // canonical path here so the underlying file walk can join paths
+    // safely.
+    const QString callerCwd =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    const QString root = QFileInfo(callerCwd).canonicalFilePath();
+    if (root.isEmpty() || !QFileInfo(root).isDir()) {
+        out[QStringLiteral("ok")]    = false;
+        out[QStringLiteral("error")] = QStringLiteral(
+            "find_sources: caller_cwd does not canonicalise to a directory");
+        out[QStringLiteral("code")]  = QStringLiteral("bad_path");
+        return QJsonDocument(out);
+    }
+
+    FindSources::Options opts;
+    const QJsonValue maxVal = req.value(QStringLiteral("max_results"));
+    if (maxVal.isDouble()) {
+        const int requested = maxVal.toInt();
+        if (requested > 0) opts.maxResults = requested;
+    }
+    const FindSources::Result res =
+        FindSources::findSources(topic, root, opts);
+
+    QJsonArray files;
+    for (const FindSources::FileHit &h : res.files) {
+        QJsonObject f;
+        f[QStringLiteral("path")]  = h.path;
+        f[QStringLiteral("score")] = h.score;
+        f[QStringLiteral("role")]  = h.role;
+        QJsonArray ev;
+        for (const QString &e : h.evidence) ev.append(e);
+        f[QStringLiteral("evidence")] = ev;
+        files.append(f);
+    }
+    QJsonArray unmatched;
+    for (const QString &t : res.unmatchedTerms) unmatched.append(t);
+
+    out[QStringLiteral("ok")]              = true;
+    out[QStringLiteral("files")]           = files;
+    out[QStringLiteral("files_count")]     = static_cast<int>(res.files.size());
+    out[QStringLiteral("unmatched_terms")] = unmatched;
+    out[QStringLiteral("files_scanned")]   = res.filesScanned;
+    out[QStringLiteral("truncated")]       = res.truncated;
     return QJsonDocument(out);
 }
 
