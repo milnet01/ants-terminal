@@ -10,7 +10,9 @@
 //   INV-4   migrated members no longer referenced in mainwindow.cpp
 //   INV-5   controller member + renamed setup function present
 //   INV-6   setupStatusBarChrome retains the three orphans
-//   INV-7   exactly six connect(m_claudeStatusBarController,) sites
+//   INV-7   exactly eight connect(m_claudeStatusBarController,) sites
+//           (six originals + ANTS-1158 tasksClicked + ANTS-1735
+//           firstRunNudgeRequested)
 //   INV-8   two-sided LoC anchor + removed-function asserts
 
 #include <cstdio>
@@ -258,15 +260,17 @@ TEST(ClaudeStatusbarExtraction, Main) {
             "mainwindow.cpp does not retain the 5 s startup "
             "update-check `QTimer::singleShot(5000`"); FAIL(); }
 
-    // INV-7 — exactly seven connect(m_claudeStatusBarController, …)
+    // INV-7 — exactly eight connect(m_claudeStatusBarController, …)
     // substrings AND exactly one PMF per signal.
     // ANTS-1158 added `tasksClicked` as the 7th signal (task-list
     // status-bar surface, sibling to bgTasksClicked).
+    // ANTS-1735 §8 OQ-3 added `firstRunNudgeRequested` as the 8th
+    // (auto-model-switch first-run opt-in nudge).
     const std::size_t connectCount =
         countOccurrences(mw, "connect(m_claudeStatusBarController,");
-    if (connectCount != 7) {
+    if (connectCount != 8) {
         { fail("INV-7",
-            "mainwindow.cpp must contain exactly 7 "
+            "mainwindow.cpp must contain exactly 8 "
             "`connect(m_claudeStatusBarController,` substrings; found " +
             std::to_string(connectCount)); FAIL(); }
     }
@@ -278,6 +282,7 @@ TEST(ClaudeStatusbarExtraction, Main) {
         "&ClaudeStatusBarController::reviewButtonShouldRefresh",
         "&ClaudeStatusBarController::statusMessageRequested",
         "&ClaudeStatusBarController::statusMessageCleared",
+        "&ClaudeStatusBarController::firstRunNudgeRequested",
     };
     for (const char *pmf : kSignalPmfs) {
         const std::size_t n = countOccurrences(mw, pmf);

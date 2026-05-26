@@ -85,6 +85,11 @@ own once Ants Terminal is connected. There's even a counter
 - **Paste a screenshot** (Ctrl+Shift+V) — it's saved automatically and the
   file path is dropped into the prompt, so you can paste-and-send an image
   to Claude in one move.
+- **Let Ants pick the Claude model for you** (opt-in) — Ants quietly swaps
+  Claude between a fast/cheap model for easy work and a big/slow one for
+  hard work. It only ever switches between turns and before you start
+  typing, so it never interrupts. Off by default; flip it on in
+  Settings → General when you're ready.
 
 > Power users: the tools are [Model Context Protocol](https://modelcontextprotocol.io)
 > tools in the `mcp__ants__*` namespace, and the hook pack installs with

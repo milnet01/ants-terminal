@@ -132,6 +132,13 @@ signals:
     void reviewButtonShouldRefresh();
     void statusMessageRequested(const QString &text, int timeoutMs);
     void statusMessageCleared();
+    // ANTS-1735 §8 OQ-3 — fired at most once per process when the
+    // controller detects Claude Code running in the focused tab while
+    // the auto-model switch is still default-off AND the nudge-shown
+    // flag is false. MainWindow shows a one-shot opt-in prompt and
+    // (regardless of the user's answer) sets the nudge-shown flag so
+    // it never fires again.
+    void firstRunNudgeRequested();
 
 public:
     // ANTS-1851 — re-paint a still-pending permission prompt's bottom-bar
@@ -205,6 +212,10 @@ private:
     int    m_autoSwitchTicksStable = 0;
     qint64 m_autoSwitchLastMs = 0;
     QString m_autoSwitchLastTier;          // last tier we injected, for ledger
+    // ANTS-1735 §8 OQ-3 — per-process latch so the first-run nudge fires
+    // at most once even before MainWindow gets a chance to flip the
+    // persistent claude.auto_model_nudge_shown flag.
+    bool   m_firstRunNudgeEmitted = false;
 
     // ANTS-1854 — last emitted diagnostic-line signatures for the two
     // 2 s poll refreshers. The Claude debug lane wrote a bgtasks +

@@ -84,6 +84,16 @@ public:
     //   "floor"            str  — claude.auto_model_floor, "haiku" | "sonnet",
     //                              default "haiku"
     QJsonObject claudeAutoModel() const;
+    // The Settings dialog only exposes the bool toggle (the dwell + floor
+    // stay config-file-only per §2.7). Persists `claude.auto_model_switch`.
+    void setClaudeAutoModelSwitch(bool enabled);
+
+    // ANTS-1735 §8 OQ-3 first-run nudge — set true once the user has
+    // either accepted or dismissed the one-time prompt to enable the
+    // auto-switch. Off by default; the prompt only fires when Claude
+    // Code has been detected in a tab and this flag is still false.
+    bool claudeAutoModelNudgeShown() const;
+    void setClaudeAutoModelNudgeShown(bool shown);
 
     // ANTS-1154 v2 card-renderer state. Each set stores the IDs /
     // slugs the user has manually toggled to "expanded" or

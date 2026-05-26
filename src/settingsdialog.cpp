@@ -228,6 +228,20 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         "on you to answer a permission prompt in that tab.");
     layout->addRow(m_claudeTabStatusIndicator);
 
+    // ANTS-1735 §2.7 — single prominent toggle for the autonomous
+    // model switcher. Quietly swaps Claude Code between Haiku /
+    // Sonnet / Opus at turn boundaries so the user never has to
+    // think about it. The dwell + floor knobs stay config-file-only
+    // (`claude.auto_model_min_dwell_sec`, `claude.auto_model_floor`).
+    m_claudeAutoModelSwitch = new QCheckBox(
+        "Let Ants pick the Claude model for me", tab);
+    m_claudeAutoModelSwitch->setToolTip(
+        "When on, Ants swaps Claude Code between fast/cheap and big/slow "
+        "models for you — only ever between turns and before you start "
+        "typing, so it never interrupts. Off by default. The Shape A "
+        "recommender chip is suppressed while this is on.");
+    layout->addRow(m_claudeAutoModelSwitch);
+
     // Restore Defaults — resets ONLY the General-tab controls to
     // their schema defaults. Doesn't touch m_config until the user
     // clicks Apply or OK; Cancel rolls everything back as usual.
@@ -247,6 +261,7 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         m_imagePasteDir->clear();
         m_notificationTimeout->setValue(5);
         m_claudeTabStatusIndicator->setChecked(true);
+        if (m_claudeAutoModelSwitch) m_claudeAutoModelSwitch->setChecked(false);
     });
     layout->addRow(QString(), generalDefaultsBtn);
 }
@@ -864,6 +879,9 @@ void SettingsDialog::loadSettings() {
         m_notificationTimeout->setValue(m_config->notificationTimeoutMs() / 1000);
     if (m_claudeTabStatusIndicator)
         m_claudeTabStatusIndicator->setChecked(m_config->claudeTabStatusIndicator());
+    if (m_claudeAutoModelSwitch)
+        m_claudeAutoModelSwitch->setChecked(
+            m_config->claudeAutoModel().value("switch_enabled").toBool());
 
     int fmtIdx = m_tabTitleFormat->findData(m_config->tabTitleFormat());
     if (fmtIdx >= 0) m_tabTitleFormat->setCurrentIndex(fmtIdx);
@@ -975,6 +993,8 @@ void SettingsDialog::applySettings() {
         m_config->setNotificationTimeoutMs(m_notificationTimeout->value() * 1000);
     if (m_claudeTabStatusIndicator)
         m_config->setClaudeTabStatusIndicator(m_claudeTabStatusIndicator->isChecked());
+    if (m_claudeAutoModelSwitch)
+        m_config->setClaudeAutoModelSwitch(m_claudeAutoModelSwitch->isChecked());
 
     // Appearance
     m_config->setFontFamily(m_fontFamily->currentFont().family());

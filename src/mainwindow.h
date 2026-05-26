@@ -85,6 +85,12 @@ private slots:
     // SSH connection
     void onSshConnect(const QString &sshCommand, bool newTab);
 
+    // ANTS-1735 §8 OQ-3 — one-shot opt-in prompt for the autonomous
+    // model switcher. Fires at most once per machine (gated by
+    // Config::claudeAutoModelNudgeShown). Either button persists the
+    // shown-flag; "Enable" additionally flips claude.auto_model_switch.
+    void showClaudeAutoModelNudge();
+
 private:
     // ANTS-1181 — setupMenus() was a 947-line block; split per menu so
     // each TUs-worth of action wiring is independently readable and

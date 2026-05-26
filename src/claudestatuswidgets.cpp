@@ -1219,7 +1219,6 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     Config cfg;
     const QJsonObject autoCfg = cfg.claudeAutoModel();
     const bool enabled = autoCfg.value("switch_enabled").toBool();
-    if (!enabled) return;
 
     auto *focused = m_focusedTerminalProvider
         ? m_focusedTerminalProvider() : nullptr;
@@ -1230,6 +1229,22 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     // INV-2 — focused tab's per-shell state (not the process-global
     // currentState()).
     const ClaudeTabTracker::ShellState s = m_tracker->shellState(pid);
+
+    // ANTS-1735 §8 OQ-3 — first-run nudge. Fire at most once per process
+    // when the user has Claude Code running in the focused tab but hasn't
+    // yet seen the opt-in prompt. MainWindow persists the dismissal via
+    // Config::setClaudeAutoModelNudgeShown so a future session never
+    // re-prompts. The latch m_firstRunNudgeEmitted prevents repeated
+    // emission within this process before MainWindow's slot persists.
+    if (!enabled
+        && !m_firstRunNudgeEmitted
+        && !cfg.claudeAutoModelNudgeShown()
+        && s.state != ClaudeState::NotRunning) {
+        m_firstRunNudgeEmitted = true;
+        emit firstRunNudgeRequested();
+    }
+
+    if (!enabled) return;
 
     // §2.4 — keystroke-timing composerEmpty proxy.
     const bool composerEmpty =

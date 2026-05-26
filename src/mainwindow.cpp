@@ -795,6 +795,15 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     connect(m_statusTimer, &QTimer::timeout,
             m_claudeStatusBarController,
             &ClaudeStatusBarController::fillPendingLedgerOutcomes);
+    // ANTS-1735 §8 OQ-3 — first-run nudge. Controller fires this at most
+    // once per process when Claude Code is running in the focused tab,
+    // the switch is still default-off, and the persistent
+    // claude.auto_model_nudge_shown flag is false. We show a one-shot
+    // QMessageBox; either answer persists the flag so no future session
+    // re-prompts.
+    connect(m_claudeStatusBarController,
+            &ClaudeStatusBarController::firstRunNudgeRequested,
+            this, &MainWindow::showClaudeAutoModelNudge);
     m_statusTimer->start();
 
     // Main-thread stall detector (ROADMAP § 0.8.0 "Terminal throughput
@@ -2432,6 +2441,32 @@ void MainWindow::onSshConnect(const QString &sshCommand, bool inNewTab) {
         QTimer::singleShot(200, this, [t, sshCommand]() {
             t->writeCommand(sshCommand);
         });
+    }
+}
+
+// ANTS-1735 §8 OQ-3 — one-shot opt-in nudge. The controller decides
+// when to fire it; this slot just shows the prompt, persists the
+// shown-flag (regardless of answer), and flips the switch on Yes.
+void MainWindow::showClaudeAutoModelNudge() {
+    QMessageBox box(this);
+    box.setIcon(QMessageBox::Question);
+    box.setWindowTitle(tr("Let Ants pick the Claude model?"));
+    box.setText(tr("Ants can swap Claude Code between fast/cheap and "
+                   "big/slow models for you automatically."));
+    box.setInformativeText(
+        tr("It only ever switches between turns and before you start "
+           "typing, so it never interrupts. You can change this any time "
+           "in Settings → General → \"Let Ants pick the Claude model "
+           "for me\"."));
+    auto *enableBtn = box.addButton(tr("Enable"), QMessageBox::AcceptRole);
+    box.addButton(tr("Not now"), QMessageBox::RejectRole);
+    box.setDefaultButton(enableBtn);
+    box.exec();
+
+    Config cfg;
+    cfg.setClaudeAutoModelNudgeShown(true);
+    if (box.clickedButton() == enableBtn) {
+        cfg.setClaudeAutoModelSwitch(true);
     }
 }
 

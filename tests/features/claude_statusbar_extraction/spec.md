@@ -45,11 +45,13 @@ itself asserts.
 - **INV-6** `setupStatusBarChrome`'s body retains the three
   orphans (Roadmap button construct, Update-available
   QAction construct, 5 s startup `QTimer::singleShot`).
-- **INV-7** `mainwindow.cpp` contains exactly six
+- **INV-7** `mainwindow.cpp` contains exactly eight
   `connect(m_claudeStatusBarController,` substrings — one
   per signal — and exactly one occurrence of each PMF.
   Stricter than "≥ 1 per signal" — duplicates inside an
   `#ifdef` would slip past a per-signal-existence check.
+  (Six originals + `tasksClicked` (ANTS-1158) +
+  `firstRunNudgeRequested` (ANTS-1735 §8 OQ-3).)
 - **INV-8** Two-sided LoC anchor:
   - `claudestatuswidgets.cpp` LoC ≥ 480.
   - `mainwindow.cpp` LoC strictly decreased vs. parent commit

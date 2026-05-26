@@ -84,6 +84,9 @@ private:
     QLabel *m_claudeGitContextStatus = nullptr;
     // Per-tab Claude activity glyph gate. See Config::claudeTabStatusIndicator.
     QCheckBox *m_claudeTabStatusIndicator = nullptr;
+    // ANTS-1735 §2.7 — single prominent toggle for the autonomous
+    // model switcher. The dwell + floor knobs stay config-file-only.
+    QCheckBox *m_claudeAutoModelSwitch = nullptr;
     void installClaudeHooks();
     void refreshClaudeHooksStatus();
     void installClaudeGitContextHook();

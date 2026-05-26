@@ -14,9 +14,27 @@ for security-relevant changes.
 
 ### Added
 
-- **Automatic model selection — opt-in auto-switch
-(Shape B of ANTS-1226).** (ANTS-1735)
-  Once you've seen the model recommender chip work well
+- **Automatic Claude Code model selection — opt-in auto-switch
+  (Shape B of ANTS-1226).** (ANTS-1735) A new Settings toggle —
+  *General → "Let Ants pick the Claude model for me"* — lets Ants
+  quietly swap Claude Code between the cheap-and-fast model (Haiku)
+  for mechanical work and the big-and-slow model (Opus) for hard
+  work, without you having to click anything. Ants only ever switches
+  in the small window between a turn finishing and you starting to
+  type the next prompt, so a switch never lands mid-reply or
+  clobbers a half-typed message. A 90-second cool-off (configurable
+  via `claude.auto_model_min_dwell_sec`) and a configurable floor
+  (`claude.auto_model_floor`, default `haiku`) prevent thrash.
+  Ships **default-off**: the first time Ants notices Claude Code
+  running in a tab, you'll see a one-shot opt-in nudge. While the
+  switch is on, the existing recommender chip is hidden — you don't
+  need a manual button when Ants is doing the picking. Under the
+  hood, a small JSON ledger
+  (`~/.cache/ants-terminal/model-switch-ledger.jsonl`, 256 KiB cap,
+  mode 0600) records each switch and its outcome so the
+  `model_switch_stats` MCP verb can report "avoided N Opus turns, M
+  regretted (regret R%)" — the trust signal that will eventually
+  gate flipping the default to on.
 
 - **`roadmap_log op:append_batch` — append N bullets to one `section:` in a single atomic call (parity with the Edit path on…** (ANTS-1879)
   Today appending 14 bullets means 14 round-trips. A batch append (one call carrying a list of bullets) would match what Edit can do in one shot. Pure token-and-latency optimisation; not a correctness gap.
