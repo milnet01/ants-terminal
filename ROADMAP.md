@@ -14402,7 +14402,7 @@ subsection.
   Lanes: mcp-spec-query, mcp-project-layout, projectlayoutengine.
   Source: vestige-feedback-2026-05-26 Obs #23 + Wishlist #6.
 
-- 📋 [ANTS-1881] **`roadmap_query mode:"headline_only"` — return `{id, status, headline_oneline, section_slug}` per bullet, skip body.**
+- ✅ [ANTS-1881] **`roadmap_query mode:"headline_only"` — return `{id, status, headline_oneline, section_slug}` per bullet, skip body.**
   The 80% case for `roadmap_query section=...` is "what's in this
   section?" — bullet bodies aren't needed. A `mode:"headline_only"`
   return shape `{id, status, headline_oneline, section_slug}[]` saves
@@ -14414,6 +14414,14 @@ subsection.
   Kind: enhancement.
   Lanes: mcp-roadmap-query, remotecontrol.
   Source: vestige-feedback-2026-05-26 Wishlist #1.
+  Resolved 2026-05-26: shipped third `mode` value on `roadmap_query`.
+  `cmdRoadmapQuery` allow-set extended; new `rcProjectHeadlineOnly`
+  helper applied at all three emission surfaces (full-file, section,
+  id branch). `tools/list` descriptor + top-level description updated.
+  8 invariants locked at `tests/features/roadmap_query_headline_only/`
+  (13 tests green, full ctest 1567/1567 green). Spec at
+  `docs/specs/ANTS-1881.md` folded 8 cold-eyes loops; the audit trail
+  in §9 records the converged contract.
 
 - 📋 [ANTS-1882] **`roadmap_query` per-section ETag — let a `section=foo` call 304 when only OTHER sections changed.**
   File-level ETag short-circuits the whole call when ROADMAP.md is
