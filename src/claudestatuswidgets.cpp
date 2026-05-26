@@ -1283,7 +1283,12 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     if (!dec.act) return;
 
     // Act — INV-9 keeps tierArg derived solely from the enum.
-    focused->sendToPty((u"/model " + dec.tierArg + u"\n").toUtf8());
+    // QStringLiteral matches the model-chip click pattern at :152 — CI's
+    // stricter Qt build rejected the `u"..."` form (char16_t[8] vs QString
+    // ambiguity at ants_claude_lib build).
+    focused->sendToPty(
+        (QStringLiteral("/model ") + dec.tierArg + QStringLiteral("\n"))
+            .toUtf8());
 
     // Append ledger record (§2.5). Outcome is `pending:true` — filled
     // by a later tick once turns-on-to-tier accumulates.
