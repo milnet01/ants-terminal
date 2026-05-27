@@ -19407,8 +19407,9 @@ contributors don't duplicate research.
   Kind: research.
   Source: in-session-2026-05-25 (ANTS-1735 cooperative-handshake research).
 
-- 📋 [ANTS-1897] **Ants MCP discoverability: every CC session should know which MCP tool to reach for, not just that ~67 of them exist.**
+- ✅ [ANTS-1897] **Ants MCP discoverability: every CC session should know which MCP tool to reach for, not just that ~67 of them exist.**
   Spec: `docs/specs/ANTS-1897.md` (accepted 2026-05-27; cold-eyes loops 1–5 folded). Foundational: the Ants MCP project has built ~67 token-saving tools (`changelog_log`, `roadmap_log`, `git_state`, `file_outline`, `find_definition`, `find_sources`, `read_log`, `model_switch_stats`, ...), but a fresh CC session sees only the *deferred tool list* at start — names without descriptions, no `{operation → tool name}` mapping. CC defaults to built-in `Edit`/`Write`/`Bash` because they're always-loaded and the MCP tools are deferred behind a `ToolSearch` keyword query. Result: the token-saving features go unused unless the session knows to search. Observed in-session 2026-05-26: CC reached for `Edit` on CHANGELOG.md (~50-line diff) instead of `mcp__ants__changelog_log` (~6-line MCP call) because the mapping wasn't surfaced.
+  Resolved 2026-05-27: shipped in commit 2dbba5c. Spec accepted in b68f34d (cold-eyes loops 1–5 folded). Implementation: src/mcporientation.{h,cpp} (new), src/mainwindow.cpp (qputenv + install after startMcpServer L3867), src/config.{h,cpp} (2 new keys), src/settingsdialog.{h,cpp} (General-tab checkbox), src/claudeintegration.cpp (15 outlier selection_hint rewrites). Tests: 13 new TEST() cases in tests/features/mcp_orientation_install/. All 1735/1735 ctest pass. Mid-implementation note: spec's "Settings → AI Assistant" placement was wrong (that tab is for legacy Ollama-style completion); the Claude toggles all live in General. Implementation lands the toggle in General next to the autoswitch. ANTS-1901 (master MCP on/off toggle) raised by user during implementation and roadmapped as a follow-up.
 
   **Architecture (A + C per user 2026-05-26, mechanism refined 2026-05-27 per AskUserQuestion):**
 
