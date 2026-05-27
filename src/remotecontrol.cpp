@@ -6,6 +6,7 @@
 #include "findsources.h"
 #include "readlog.h"
 #include "modelswitchledger.h"   // ANTS-1735 — model_switch_stats aggregation
+#include "modelnearmissledger.h" // ANTS-1894 — model_switch_stats near-miss arm
 #include "focusedtest.h"
 #include "gitwrap.h"
 #include "claudeintegration.h"
@@ -7574,6 +7575,20 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
         }
     }
 
+    // ANTS-1894 — mode arg: "firings" (default) or "near_misses". Unknown
+    // values refuse with bad_mode (canonical taxonomy entry in
+    // docs/standards/mcp-error-codes.md § "Input validation").
+    QString mode = QStringLiteral("firings");
+    if (req.contains(QStringLiteral("mode"))) {
+        mode = req.value(QStringLiteral("mode")).toString();
+        if (mode != QStringLiteral("firings") &&
+                mode != QStringLiteral("near_misses")) {
+            return QJsonDocument(csErr(QStringLiteral("bad_mode"),
+                QStringLiteral("model_switch_stats: mode must be "
+                               "\"firings\" or \"near_misses\"")));
+        }
+    }
+
     // Live config — defaults sourced from the in-memory store; same
     // shape as Config::claudeAutoModel(). RemoteControl can't reach the
     // MainWindow Config directly without a new accessor, so we construct
@@ -7587,8 +7602,38 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
     sc.minDwellSec   = autoCfg.value(QStringLiteral("min_dwell_sec")).toInt(90);
     sc.scope         = scope;
 
-    return QJsonDocument(ModelSwitchLedger::statsForScope(
-        ModelSwitchLedger::defaultLedgerPath(), rootCanonical, sc));
+    // ANTS-1894 — Read the near-miss ledger once, scope it the same way the
+    // firing aggregator does (empty projectScope → global).
+    const QString nmProjectScope = (scope == QStringLiteral("global"))
+        ? QString()
+        : rootCanonical;
+    const QList<ModelNearMissLedger::Record> nmRecs =
+        ModelNearMissLedger::readRecords(ModelNearMissLedger::defaultLedgerPath());
+    const qint64 nmNowMs = QDateTime::currentMSecsSinceEpoch();
+
+    if (mode == QStringLiteral("near_misses")) {
+        // ANTS-1894 INV-12 — full breakdown envelope; preserve config triple
+        // + scope echo so the caller can still distinguish "feature OFF" / ON.
+        QJsonObject env = ModelNearMissLedger::statsFull(
+            nmRecs, nmProjectScope, nmNowMs);
+        env[QStringLiteral("auto_model_switch_enabled")] = sc.switchEnabled;
+        env[QStringLiteral("floor_tier")] = sc.floorTier;
+        env[QStringLiteral("min_dwell_sec")] = sc.minDwellSec;
+        env[QStringLiteral("scope")] = sc.scope;   // overrides statsFull's
+        return QJsonDocument(env);
+    }
+
+    // Default mode:"firings" — existing envelope, plus a slim near_misses
+    // block (INV-12).
+    QJsonObject env = ModelSwitchLedger::statsForScope(
+        ModelSwitchLedger::defaultLedgerPath(), rootCanonical, sc);
+    const ModelNearMissLedger::StatsSlim slim =
+        ModelNearMissLedger::statsSlim(nmRecs, nmProjectScope, nmNowMs);
+    QJsonObject slimObj;
+    slimObj[QStringLiteral("total_24h")]        = slim.total24h;
+    slimObj[QStringLiteral("dominant_blocker")] = slim.dominantBlocker;
+    env[QStringLiteral("near_misses")] = slimObj;
+    return QJsonDocument(env);
 }
 
 // ANTS-1724 — session_brief: compact session-state envelope for

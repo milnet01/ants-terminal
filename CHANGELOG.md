@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Changed
 
+- **Auto-model switcher internals now report every reason a switch was held back.** (ANTS-1894)
+  (ANTS-1894) Internal refactor enabling the new near-miss telemetry; the
+  firing-side actuator path is bit-for-bit unchanged (any gate state that
+  fired pre-1894 still fires). `ModelAutoSwitch::decide` evaluates every
+  guard instead of short-circuiting and returns the full blocker list; the
+  controller's pre-decide configurable-min-dwell short-circuit moves into
+  the gate so `dwell_time_insufficient` becomes observable. ANTS-1735
+  INV-6 is amended-by-annotation; INV-7's `act → tierArg` postcondition is
+  preserved.
+
 - **BREAKING (envelope): `regret_count` in `model_switch_stats` now
   includes under-route harm.** (ANTS-1891) Before this change,
   `regret_count` counted only `user_override` + `correction_signal`;
@@ -29,6 +39,30 @@ for security-relevant changes.
   `regret_rate`'s denominator (next item).
 
 ### Added
+
+- **Near-miss telemetry: see why the auto-model switcher held back a switch.** (ANTS-1894)
+  (ANTS-1894) Even when Ants doesn't switch the model, the why-not is now
+  recorded so you can see at a glance whether the switcher is silently
+  happy with the current model or constantly held back by composer typing
+  or override cool-down. New `~/.cache/ants-terminal/model-switch-nearmiss.jsonl`
+  sibling ledger, 256 KiB cap, drop-oldest, 0600; emit-on-signature-
+  change with a 5 s per-project floor. 7-token `blocked_by` taxonomy
+  (canonical list at [`docs/specs/ANTS-1894.md`](docs/specs/ANTS-1894.md)
+  INV-9).
+
+- **`model_switch_stats` envelope gains a slim `near_misses` block.** (ANTS-1894)
+  (ANTS-1894) The end-of-session summary now reports a "42 near-misses in
+  24 h, dominated by composer_not_empty" line alongside the existing
+  avoided/regret figures, so "no switches yet" is no longer the only
+  observable signal. New `near_misses:{total_24h, dominant_blocker}` key
+  on every envelope.
+
+- **`mode:"near_misses"` arm on `model_switch_stats`.** (ANTS-1894)
+  (ANTS-1894) Pass `mode:"near_misses"` to get the full per-blocker
+  breakdown (24 h + all-time windows, distinct-signature count). Default
+  mode keeps the slim block for end-of-session summaries; the new arm is
+  for deep diagnostics. New mode enum on the tool descriptor; unknown
+  mode values return `bad_mode` refusal envelope.
 
 - **MCP discoverability — Claude sessions now open with an Ants-MCP cheat-sheet** (ANTS-1897)
   Ants now merges a SessionStart hook entry into `~/.claude/settings.json` (under a marker substring it owns; other entries preserved) pointing at a small bundled script at `~/.config/ants-terminal/hooks/mcp-orientation.sh`. The script prints a short cheat-sheet listing the high-value Ants MCP tools (changelog_log, file_outline, find_definition, etc.) at every Claude Code session start, so the assistant reaches for the dedicated MCP variants instead of the always-loaded Edit/Write/Bash built-ins. The hook is gated on `$ANTS_MCP_SOCKET` being reachable, so it stays silent outside Ants. Toggle off in Settings → General → "Show MCP cheat-sheet at Claude session start" to remove the entry on the next Ants launch.

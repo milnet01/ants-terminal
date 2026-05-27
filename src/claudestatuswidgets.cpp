@@ -28,6 +28,7 @@
 #include "modelautoswitch.h"       // ANTS-1735 §2.3 — decide() gate
 #include "modelrecommender.h"
 #include "modelswitchledger.h"     // ANTS-1735 §2.5 — append + statsEnvelope
+#include "modelnearmissledger.h"   // ANTS-1894 — near-miss telemetry sibling ledger
 #include "claudeintegration.h"
 #include "claudetabtracker.h"
 #include "claudetasklist.h"
@@ -1406,16 +1407,20 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     gate.floor                = floor;
     gate.ticksTargetStable    = m_autoSwitchTicksStable;
     gate.msSinceLastSwitch    = dwellMs;
+    // ANTS-1894 INV-3 — configurable min-dwell folded into the gate so
+    // dwell_time_insufficient is observable as a near-miss reason. The
+    // pre-1894 pre-decide short-circuit at L1415 is removed; decide()
+    // now applies max(kMinDwellMs, configuredMinDwellMs) via the new
+    // effectiveMinDwellMs helper.
+    gate.configuredMinDwellMs = minDwellMs;
     gate.msSinceLastOverride  = msSinceOverride;
 
-    // Note: the spec's kMinDwellMs (90 s) is the default; the config
-    // can override it within [30 s, 1800 s] per §2.7. decide() reads
-    // gate.msSinceLastSwitch only; we apply the configured min-dwell
-    // by short-circuiting BEFORE decide().
-    if (gate.msSinceLastSwitch < minDwellMs) return;
-
     const ModelAutoSwitch::Decision dec = ModelAutoSwitch::decide(gate);
-    if (!dec.act) return;
+    if (!dec.act) {
+        // ANTS-1894 — emit a near-miss record on signature change (INV-5/6).
+        maybeEmitNearMiss(dec, gate, projectRoot, nowMs);
+        return;
+    }
 
     // Act — INV-9 keeps tierArg derived solely from the enum.
     // QStringLiteral matches the model-chip click pattern at :152 — CI's
@@ -1449,6 +1454,77 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
 // reasonable min-dwell on the first eligible tick.
 qint64 ClaudeStatusBarController::kMaxDwellSentinel() {
     return 1ll << 50;
+}
+
+namespace {
+
+// ANTS-1894 — ClaudeState → lowercase snake_case JSON string. NEW helper
+// (no equivalent in claudestateresolver — that switch maps to Display::*
+// glyph enums, a different domain). 5-case mapping over the enum at
+// claudeintegration.h L47-53.
+QString claudeStateName(ClaudeState s) {
+    switch (s) {
+        case ClaudeState::NotRunning: return QStringLiteral("not_running");
+        case ClaudeState::Idle:       return QStringLiteral("idle");
+        case ClaudeState::Thinking:   return QStringLiteral("thinking");
+        case ClaudeState::ToolUse:    return QStringLiteral("tool_use");
+        case ClaudeState::Compacting: return QStringLiteral("compacting");
+    }
+    return QStringLiteral("idle");   // unreachable; satisfies non-void return
+}
+
+}  // namespace
+
+// ANTS-1894 — sole producer of near-miss records. Emits on signature change
+// (INV-5) gated by a 5 s per-project floor (INV-6). dec.blockedBy must be
+// non-empty (caller-enforced: this is called only on the !dec.act branch).
+void ClaudeStatusBarController::maybeEmitNearMiss(
+        const ModelAutoSwitch::Decision &dec,
+        const ModelAutoSwitch::Gate     &gate,
+        const QString                   &projectRoot,
+        qint64                           nowMs,
+        const QString                   &ledgerPathOverride)
+{
+    if (dec.blockedBy.isEmpty()) return;   // defensive — act must be false
+    if (projectRoot.isEmpty())   return;   // can't key the throttle
+
+    // Sort tokens for a stable, order-independent signature comparison.
+    // The emitted record preserves the original (evaluation-order) sequence.
+    QStringList sig = dec.blockedBy;
+    std::sort(sig.begin(), sig.end());
+
+    const QStringList lastSig = m_nearMissLastSigByProject.value(projectRoot);
+    if (sig == lastSig) return;                          // INV-5 — same shape
+
+    // INV-6 — 5 s floor measured against the last emit for THIS project.
+    // When no prior emit exists (key absent), the first transition always
+    // lands — there's nothing to throttle against.
+    if (m_nearMissLastEmitMsByProject.contains(projectRoot)) {
+        const qint64 lastMs = m_nearMissLastEmitMsByProject.value(projectRoot);
+        if (nowMs - lastMs < kNearMissEmitFloorMs) return;
+    }
+
+    ModelNearMissLedger::Record r;
+    r.ts                  = ModelSwitchLedger::nowIso8601();
+    // m_integration is a ClaudeIntegration* member declared in this header.
+    r.sessionId           = m_integration ? m_integration->lastHookSessionId() : QString();
+    r.project             = projectRoot;
+    r.currentTier         = ModelRecommender::tierName(dec.currentTier);
+    r.recommendedTier     = ModelRecommender::tierName(dec.recommendedTier);
+    r.blockedBy           = dec.blockedBy;       // original (evaluation) order
+    r.composerEmpty       = gate.composerEmpty;
+    r.focusedState        = claudeStateName(gate.focusedState);
+    r.ticksTargetStable   = gate.ticksTargetStable;
+    r.dwellMs             = gate.msSinceLastSwitch;
+    r.msSinceLastOverride = gate.msSinceLastOverride;
+
+    const QString ledgerPath = ledgerPathOverride.isEmpty()
+        ? ModelNearMissLedger::defaultLedgerPath()
+        : ledgerPathOverride;
+    ModelNearMissLedger::appendRecord(ledgerPath, r);
+
+    m_nearMissLastSigByProject[projectRoot]    = sig;
+    m_nearMissLastEmitMsByProject[projectRoot] = nowMs;
 }
 
 namespace {

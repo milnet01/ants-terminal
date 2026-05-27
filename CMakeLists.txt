@@ -228,6 +228,9 @@ add_library(ants_core_lib STATIC
     # ANTS-1735 — model-switch effectiveness ledger. In core (not claude) so the
     # read-only model_switch_stats MCP verb (mainwindow dispatch) can reach it.
     src/modelswitchledger.cpp
+    # ANTS-1894 — near-miss telemetry sibling ledger; same lib for the same
+    # reason (model_switch_stats consumes both).
+    src/modelnearmissledger.cpp
     # ANTS-1303 — find_definition / find_caller tree-wide symbol scanner.
     src/symbolquery.cpp
     # ANTS-1305 — similar_code shape matcher (reuses FileOutline extractor).
@@ -994,6 +997,12 @@ if(ANTS_TESTS)
                 tests/features/model_auto_switch_actuator/test_model_auto_switch_actuator.cpp
                 # ANTS-1735 §2.5 — outcome fill-in tick wiring guard.
                 tests/features/model_auto_switch_outcome_fillin/test_model_auto_switch_outcome_fillin.cpp
+                # ANTS-1894 — near-miss telemetry: controller-touching tests.
+                # ClaudeStatusBarController::maybeEmitNearMiss lives in
+                # ants_claude_lib; these two land here (test_claude links
+                # both libs). The pure ledger/decide tests live on test_core.
+                tests/features/model_near_miss_ledger/test_emit_on_sig_change.cpp
+                tests/features/model_near_miss_ledger/test_emit_floor_throttle.cpp
                 # ANTS-1890 INV-7 — behavioural cache wiring (live controller).
                 tests/features/model_auto_switch_outcome_fillin/test_override_cache_controller.cpp
                 tests/features/mcp_extra_tools/test_mcp_extra_tools.cpp
@@ -1568,6 +1577,21 @@ if(ANTS_TESTS)
                 # under-route, weighted clean-end, headline floor, quiet-window
                 # settlement. 13 TEST() cases mapping 1:1 to INV-1..INV-13.
                 tests/features/model_switch_stats_v2/test_model_switch_stats_v2.cpp
+                # ANTS-1894 — near-miss telemetry. Pure tests on the new
+                # modelnearmissledger module (in ants_core_lib) + the
+                # decide() evaluate-all refactor. Controller-touching tests
+                # (INV-5/INV-6) live on test_claude below.
+                tests/features/model_near_miss_ledger/test_decide_act_iff_unblocked.cpp
+                tests/features/model_near_miss_ledger/test_decide_all_blockers.cpp
+                tests/features/model_near_miss_ledger/test_effective_min_dwell.cpp
+                tests/features/model_near_miss_ledger/test_decision_tiers_always_set.cpp
+                tests/features/model_near_miss_ledger/test_ledger_file_shape.cpp
+                tests/features/model_near_miss_ledger/test_evict_to_cap.cpp
+                tests/features/model_near_miss_ledger/test_blocker_taxonomy.cpp
+                tests/features/model_near_miss_ledger/test_stats_slim_dominant.cpp
+                tests/features/model_near_miss_ledger/test_stats_full_windows.cpp
+                tests/features/model_near_miss_ledger/test_json_roundtrip.cpp
+                tests/features/mcp_model_switch_stats_near_misses/test_mode_arm.cpp
                 # ANTS-1897 — MCP discoverability SessionStart hook installer.
                 # mcporientation.cpp lives in ants_claude_lib; test_core only
                 # links ants_core_lib so the TU is compiled directly here

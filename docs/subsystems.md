@@ -138,7 +138,10 @@ Listed only where behavior isn't obvious from the name.
   2 s status timer + `poll()` / `sweepLiveness()` for watch-loss recovery.
   The bottom `Claude: <state>` label and the per-tab dot read through
   the shared `claudestateresolver` helper (ANTS-1873) so the two
-  surfaces cannot disagree.
+  surfaces cannot disagree. ANTS-1894 — also emits near-miss records
+  via `maybeEmitNearMiss` (sole producer for `modelnearmissledger`),
+  using two process-local `QHash<project, …>` maps to throttle by
+  signature change.
 - `claudestateresolver` (Qt6::Core, `ants_claude_lib`) — single
   source-of-truth helper for the focused Claude session's display
   state. `Resolved` value (`base/tool/planMode/auditing/awaitingInput`)
@@ -186,6 +189,20 @@ Listed only where behavior isn't obvious from the name.
   aggregation (avoided-Opus vs regret/under-route ratio). Read by the
   `model_switch_stats` MCP verb. In core so the mainwindow dispatch can
   reach it. ANTS-1735.
+- `modelnearmissledger` (Qt6::Core, `ants_core_lib`) — near-miss
+  sibling to `modelswitchledger`: records gate-evaluated-but-blocked
+  auto-switch decisions to `~/.cache/ants-terminal/model-switch-nearmiss.jsonl`
+  (256 KiB cap, drop-oldest, 0600, no pending-pinning) with the
+  7-token `blocked_by` taxonomy (`auto_switch_disabled`,
+  `focused_state_not_idle`, `composer_not_empty`,
+  `target_equals_current`, `ticks_target_stable_insufficient`,
+  `dwell_time_insufficient`, `override_cooldown_active`).
+  Emit-on-signature-change with a 5 s per-project floor (controller-
+  side throttle on `ClaudeStatusBarController`). Aggregated by
+  `model_switch_stats` — slim `near_misses` block in default mode,
+  full breakdown via `mode:"near_misses"`. Reuses
+  `ModelSwitchLedger::nowIso8601` / `parseIso8601Ms` for timestamps.
+  ANTS-1894.
 - `roadmapdialog` — ROADMAP.md viewer. `renderCardsHtml` (v2 card
   renderer, in use); `renderHtml` is **test-only** (no prod callers since
   ANTS-1747; its suite locks shared filter/sort/anchor/TOC semantics).

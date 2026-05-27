@@ -13,6 +13,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 #include <QtGlobal>
 
 #include "claudeintegration.h"   // ClaudeState
@@ -31,6 +32,12 @@ struct Gate {
     ModelRecommender::Tier floor       = ModelRecommender::Tier::Haiku;   // config: claude.auto_model_floor
     int    ticksTargetStable = 0;     // consecutive ticks the CLAMPED target != current (INV-5)
     qint64 msSinceLastSwitch = 0;     // dwell since this tab last switched (INV-6)
+    // ANTS-1894 INV-3 — configurable min-dwell floor; the controller sets
+    // this from `claude.auto_model_min_dwell_sec`. decide() uses
+    // max(kMinDwellMs, configuredMinDwellMs) so the hard 90 s floor is
+    // never undercut. Default = kMinDwellMs preserves bit-for-bit pre-1894
+    // behaviour for any caller that doesn't set the field.
+    qint64 configuredMinDwellMs = 90'000;   // == kMinDwellMs (forward-declared)
     // ANTS-1890 — per-project override cool-down. -1 = no override on record
     // OR no ledger seen yet (cool-down does NOT block); >= 0 = ms since the
     // most-recent project-scoped override of an auto-switch. Sentinel avoids
@@ -39,8 +46,14 @@ struct Gate {
 };
 
 struct Decision {
-    bool    act = false;
-    QString tierArg;   // "haiku"|"sonnet"|"opus" — clamped target alias (INV-7)
+    bool        act = false;
+    QString     tierArg;       // "haiku"|"sonnet"|"opus" — clamped target alias (INV-7)
+    // ANTS-1894 — populated when act=false; one canonical token per failed
+    // guard, in evaluation order. Empty iff act=true. Tokens are the v1
+    // taxonomy locked by ANTS-1894 INV-9 — never rename or renumber.
+    QStringList blockedBy;
+    ModelRecommender::Tier currentTier     = ModelRecommender::Tier::Sonnet;
+    ModelRecommender::Tier recommendedTier = ModelRecommender::Tier::Sonnet;
 };
 
 // clampToFloor(rec, floor): a recommendation below the floor returns the floor;

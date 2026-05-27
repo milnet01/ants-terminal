@@ -154,7 +154,11 @@ task downgrades — the dominant ledger shape — are no longer invisible;
 headline withholds the ratio until a configurable floor of measured
 downgrades is reached and reads "insufficient data (N/F measured)"
 below the floor. Envelope readers should check `measured_downgrades >
-0` before treating `regret_rate` as meaningful.
+0` before treating `regret_rate` as meaningful (the new `near_misses`
+block — ANTS-1894 INV-12 — is independent and meaningful from the
+first record). ANTS-1894 — envelope additionally carries a slim
+`near_misses:{total_24h, dominant_blocker}` block; pass
+`mode:"near_misses"` for the full blocker breakdown.
 
 Config keys for the autonomous model switcher (ANTS-1735 §2.7) — single
 Settings toggle "Let Ants pick the Claude model for me" + two

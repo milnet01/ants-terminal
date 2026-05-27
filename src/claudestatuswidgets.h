@@ -32,6 +32,11 @@ class ClaudeBgTaskTracker;
 class ClaudeTaskListTracker;
 class TerminalWidget;
 
+// ANTS-1894 — forward decls for maybeEmitNearMiss param types (full defs in
+// modelautoswitch.h; including that header here would pull modelrecommender.h
+// into every claudestatuswidgets.h consumer).
+namespace ModelAutoSwitch { struct Gate; struct Decision; }
+
 class ClaudeStatusBarController : public QObject {
     Q_OBJECT
 public:
@@ -275,6 +280,34 @@ private:
     // at most once even before MainWindow gets a chance to flip the
     // persistent claude.auto_model_nudge_shown flag.
     bool   m_firstRunNudgeEmitted = false;
+
+    // ANTS-1894 — near-miss telemetry throttle. Keyed by the focused tab's
+    // project root (== shellCwd()). m_nearMissLastSigByProject holds the
+    // last emitted (post-sort) blocked_by signature per project;
+    // m_nearMissLastEmitMsByProject holds the wall-clock ts of the last
+    // emit per project. Process-local, not persisted — rebuilt from disk-
+    // less state on relaunch. Bounded by the number of distinct
+    // shellCwd() values seen this process (~1 KiB for 10 projects).
+    QHash<QString, QStringList> m_nearMissLastSigByProject;
+    QHash<QString, qint64>      m_nearMissLastEmitMsByProject;
+    static constexpr qint64     kNearMissEmitFloorMs = 5'000;   // 5 s per project
+
+public:
+    // ANTS-1894 — emit a near-miss record on signature change (INV-5 / INV-6).
+    // Called from refreshAutoModelSwitch's `if (!dec.act)` branch with the
+    // gate snapshot, decision (must have non-empty blockedBy), project root,
+    // and wall-clock nowMs. Public as a test seam — behavioural tests in
+    // tests/features/model_near_miss_ledger/ drive it directly to verify
+    // the signature-change and throttle-floor rules without standing up a
+    // full controller. Sole producer of records in
+    // model-switch-nearmiss.jsonl. Path override used only by tests; the
+    // production caller (refreshAutoModelSwitch) omits it and the helper
+    // writes to ModelNearMissLedger::defaultLedgerPath().
+    void maybeEmitNearMiss(const ModelAutoSwitch::Decision &dec,
+                           const ModelAutoSwitch::Gate     &gate,
+                           const QString                   &projectRoot,
+                           qint64                           nowMs,
+                           const QString                   &ledgerPathOverride = QString());
 
     // ANTS-1854 — last emitted diagnostic-line signatures for the two
     // 2 s poll refreshers. The Claude debug lane wrote a bgtasks +

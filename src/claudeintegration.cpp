@@ -2193,7 +2193,16 @@ void ClaudeIntegration::onMcpConnection() {
                         "regret_rate as meaningful — the new inconclusive_count "
                         "makes the gap visible. Pass scope:\"global\" to "
                         "aggregate across all projects in the ledger instead of "
-                        "filtering to the caller's project (ANTS-1889).");
+                        "filtering to the caller's project (ANTS-1889). "
+                        "ANTS-1894 — envelope additionally carries a slim "
+                        "`near_misses:{total_24h, dominant_blocker}` block "
+                        "summarising auto-switch decisions that were "
+                        "evaluated-but-blocked (composer_not_empty, "
+                        "dwell_time_insufficient, override_cooldown_active, "
+                        "etc.) — diagnostic for \"why doesn't it switch in "
+                        "this project?\". Pass `mode:\"near_misses\"` for "
+                        "the full per-blocker breakdown (24 h + all-time "
+                        "windows, distinct_signatures count).");
                     t["selection_hint"] = QStringLiteral(
                         "Use to check whether automatic model switching is "
                         "paying off before trusting it more widely — reports "
@@ -2217,6 +2226,24 @@ void ClaudeIntegration::onMcpConnection() {
                             "caller's project root; \"global\" aggregates "
                             "across all projects in the ledger.");
                         props["scope"] = scopeProp;
+                    }
+                    {
+                        // ANTS-1894 — mode arm. Optional; defaults to "firings".
+                        // Per mcp-tools.md § 10 schema-hygiene: not in required[];
+                        // per-property description set.
+                        QJsonObject modeProp;
+                        modeProp["type"]        = QStringLiteral("string");
+                        modeProp["enum"]        = QJsonArray{
+                            QStringLiteral("firings"),
+                            QStringLiteral("near_misses")};
+                        modeProp["description"] = QStringLiteral(
+                            "Optional mode arm (ANTS-1894). \"firings\" "
+                            "(default) returns the firing envelope with a "
+                            "slim near_misses block; \"near_misses\" returns "
+                            "the full near-miss breakdown (24 h + all-time "
+                            "windows, by_blocked_by counts, dominant_blocker, "
+                            "distinct_signatures).");
+                        props["mode"] = modeProp;
                     }
                     schema["properties"] = props;
                     schema["required"]   = QJsonArray{
