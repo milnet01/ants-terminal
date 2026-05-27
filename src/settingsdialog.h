@@ -87,6 +87,8 @@ private:
     // ANTS-1735 §2.7 — single prominent toggle for the autonomous
     // model switcher. The dwell + floor knobs stay config-file-only.
     QCheckBox *m_claudeAutoModelSwitch = nullptr;
+    // ANTS-1897 — master toggle for the MCP discoverability hook.
+    QCheckBox *m_claudeMcpOrientation = nullptr;
     void installClaudeHooks();
     void refreshClaudeHooksStatus();
     void installClaudeGitContextHook();

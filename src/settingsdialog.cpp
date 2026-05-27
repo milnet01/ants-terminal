@@ -5,6 +5,7 @@
 #include "configpaths.h"
 #include "dialogchrome.h"
 #include "globalshortcutsportal.h"
+#include "mcporientation.h"  // ANTS-1897 — apply toggle immediately on Apply.
 #include "secureio.h"
 #include "themes.h"
 
@@ -242,6 +243,21 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         "recommender chip is suppressed while this is on.");
     layout->addRow(m_claudeAutoModelSwitch);
 
+    // ANTS-1897 — MCP discoverability via SessionStart hook. On by
+    // default. Installs a small script + a hook entry in
+    // ~/.claude/settings.json that prints a short cheat-sheet at every
+    // Claude Code session start. Toggling off removes the hook entry
+    // on the next Ants launch.
+    m_claudeMcpOrientation = new QCheckBox(
+        "Show MCP cheat-sheet at Claude session start", tab);
+    m_claudeMcpOrientation->setToolTip(
+        "When on, Ants installs a small SessionStart hook in "
+        "~/.claude/settings.json so every Claude Code session opens "
+        "with a short cheat-sheet listing the Ants MCP tools (cheaper "
+        "than the built-in Edit/Write/Bash for many ops). On by "
+        "default. Untick to remove the hook entry on the next launch.");
+    layout->addRow(m_claudeMcpOrientation);
+
     // Restore Defaults — resets ONLY the General-tab controls to
     // their schema defaults. Doesn't touch m_config until the user
     // clicks Apply or OK; Cancel rolls everything back as usual.
@@ -262,6 +278,7 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         m_notificationTimeout->setValue(5);
         m_claudeTabStatusIndicator->setChecked(true);
         if (m_claudeAutoModelSwitch) m_claudeAutoModelSwitch->setChecked(false);
+        if (m_claudeMcpOrientation) m_claudeMcpOrientation->setChecked(true);
     });
     layout->addRow(QString(), generalDefaultsBtn);
 }
@@ -882,6 +899,8 @@ void SettingsDialog::loadSettings() {
     if (m_claudeAutoModelSwitch)
         m_claudeAutoModelSwitch->setChecked(
             m_config->claudeAutoModel().value("switch_enabled").toBool());
+    if (m_claudeMcpOrientation)
+        m_claudeMcpOrientation->setChecked(m_config->claudeMcpOrientationEnabled());
 
     int fmtIdx = m_tabTitleFormat->findData(m_config->tabTitleFormat());
     if (fmtIdx >= 0) m_tabTitleFormat->setCurrentIndex(fmtIdx);
@@ -995,6 +1014,18 @@ void SettingsDialog::applySettings() {
         m_config->setClaudeTabStatusIndicator(m_claudeTabStatusIndicator->isChecked());
     if (m_claudeAutoModelSwitch)
         m_config->setClaudeAutoModelSwitch(m_claudeAutoModelSwitch->isChecked());
+    if (m_claudeMcpOrientation) {
+        const bool wasEnabled = m_config->claudeMcpOrientationEnabled();
+        const bool nowEnabled = m_claudeMcpOrientation->isChecked();
+        m_config->setClaudeMcpOrientationEnabled(nowEnabled);
+        // ANTS-1897 — apply toggle immediately so the user does not
+        // have to restart Ants to see the hook entry appear/disappear
+        // in ~/.claude/settings.json.
+        if (wasEnabled != nowEnabled) {
+            if (nowEnabled) ants::mcp_orientation::install();
+            else ants::mcp_orientation::uninstall();
+        }
+    }
 
     // Appearance
     m_config->setFontFamily(m_fontFamily->currentFont().family());

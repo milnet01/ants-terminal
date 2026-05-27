@@ -28,6 +28,7 @@
 #include "claudeintegration.h"
 #include "claudestatuswidgets.h"
 #include "claudetabtracker.h"
+#include "mcporientation.h"  // ANTS-1897 — SessionStart hook installer.
 #include "themedstylesheet.h"
 #include "claudeprojects.h"
 #include "claudetranscript.h"
@@ -3865,6 +3866,36 @@ void MainWindow::setupClaudeMcpProviders() {
     QString mcpSocket = QDir::tempPath() + "/ants-terminal-mcp-" +
                         QString::number(QApplication::applicationPid());
     m_claudeIntegration->startMcpServer(mcpSocket);
+
+    // ANTS-1897 INV-14 — export the MCP socket path into the parent
+    // process env so every PTY spawned after this point (via the
+    // non-flatpak `environ`-copy loop at ptyhandler.cpp:171)
+    // inherits ANTS_MCP_SOCKET. The orientation prelude script
+    // gates on this var being set + the socket file existing. The
+    // ordering is correct because setupStatusBarChrome() (which
+    // calls this) runs at L609 of the MainWindow ctor, BEFORE the
+    // first newTab() at L612 spawns a PTY. Verified via grep.
+    qputenv("ANTS_MCP_SOCKET", mcpSocket.toLocal8Bit());
+
+    // ANTS-1897 — install the SessionStart hook + bundled orientation
+    // script when the user has not opted out (default ON).
+    if (m_config.claudeMcpOrientationEnabled()) {
+        auto orient = ants::mcp_orientation::install();
+        if (!orient.warning.isEmpty()) {
+            qWarning().noquote() << "[mcp-orientation]" << orient.warning;
+        }
+        // INV-8 — first-run nudge latch. The visible signal to the
+        // user is the prelude appearing at their next Claude session
+        // start; latch the "nudge shown" flag so a future UI
+        // enrichment (full QMessageBox or non-blocking toast) only
+        // fires the once.
+        if (orient.ok && !m_config.claudeMcpOrientationNudgeShown()) {
+            m_config.setClaudeMcpOrientationNudgeShown(true);
+        }
+    } else {
+        // User opted out — make sure no stale Ants entry remains.
+        ants::mcp_orientation::uninstall();
+    }
     // ANTS-1253: 12 tool handlers registered on the single-registry
     // ClaudeIntegration::registerToolProvider surface. Each handler
     // takes the JSON-RPC `arguments` object (extracts what it needs,

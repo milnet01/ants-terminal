@@ -455,6 +455,25 @@ void Config::setClaudeAutoModelNudgeShown(bool shown) {
     save();
 }
 
+// ANTS-1897.
+bool Config::claudeMcpOrientationEnabled() const {
+    return m_data.value("claude.mcp_orientation_enabled").toBool(true);
+}
+
+void Config::setClaudeMcpOrientationEnabled(bool enabled) {
+    if (!storeIfChanged("claude.mcp_orientation_enabled", enabled)) return;
+    save();
+}
+
+bool Config::claudeMcpOrientationNudgeShown() const {
+    return m_data.value("claude.mcp_orientation_nudge_shown").toBool(false);
+}
+
+void Config::setClaudeMcpOrientationNudgeShown(bool shown) {
+    if (!storeIfChanged("claude.mcp_orientation_nudge_shown", shown)) return;
+    save();
+}
+
 // ANTS-1154 v2 card-renderer state. Three string-set keys for
 // per-item / per-section expand state and table-mode toggles.
 // Stored as JSON arrays of strings for diffability — the dialog

@@ -30,6 +30,13 @@ for security-relevant changes.
 
 ### Added
 
+- **MCP discoverability — Claude sessions now open with an Ants-MCP cheat-sheet** (ANTS-1897)
+  Ants now merges a SessionStart hook entry into `~/.claude/settings.json` (under a marker substring it owns; other entries preserved) pointing at a small bundled script at `~/.config/ants-terminal/hooks/mcp-orientation.sh`. The script prints a short cheat-sheet listing the high-value Ants MCP tools (changelog_log, file_outline, find_definition, etc.) at every Claude Code session start, so the assistant reaches for the dedicated MCP variants instead of the always-loaded Edit/Write/Bash built-ins. The hook is gated on `$ANTS_MCP_SOCKET` being reachable, so it stays silent outside Ants. Toggle off in Settings → General → "Show MCP cheat-sheet at Claude session start" to remove the entry on the next Ants launch.
+
+  Also sweeps every Ants MCP tool descriptor: 15 outlier `selection_hint` strings rewritten to follow the canonical "Use when X. <cost cue>." form (regression-guard test at `tests/features/mcp_orientation_install/`).
+
+  Spec: `docs/specs/ANTS-1897.md` (cold-eyes loops 1–5 folded). Implementation: `src/mcporientation.{h,cpp}` (new), `src/mainwindow.cpp` (qputenv + install call after startMcpServer at L3867), `src/config.{h,cpp}` (`claude.mcp_orientation_enabled` + `claude.mcp_orientation_nudge_shown` keys), `src/settingsdialog.{h,cpp}` (General-tab checkbox). Tests: 13 new `TEST()` cases in `tests/features/mcp_orientation_install/` (`test_core` bundle). All 1735/1735 ctest pass.
+
 - **`model_switch_stats` headline no longer lies on small samples.**
   (ANTS-1891) Before this change, a ledger of 1–2 inconclusive
   records produced "regret 0.0%" — false confidence right when the

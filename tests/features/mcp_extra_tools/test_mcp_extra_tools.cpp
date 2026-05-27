@@ -159,10 +159,12 @@ static int runMain() {
             // Window bumped 16→32 KiB after ANTS-1351's audit_run
             // dispatch lambda landed (~5 KiB inline), 32→48 KiB after
             // ANTS-1500 fattened the get_scrollback provider with
-            // since_cursor handling (~3 KiB) which pushed get_text
-            // past the old window. The window is a heuristic body-cap;
-            // raise as new providers slot in.
-            : mwCpp.substr(braceOpen, 48 * 1024);
+            // since_cursor handling (~3 KiB), 48→64 KiB after
+            // ANTS-1897 added the qputenv + mcp_orientation::install
+            // block right after startMcpServer (~1 KiB) which pushed
+            // get_text past the old window. The window is a heuristic
+            // body-cap; raise as new providers slot in.
+            : mwCpp.substr(braceOpen, 64 * 1024);
         inv(6, contains(body, "registerToolProvider(\"roadmap_query\""),
             "setupClaudeMcpProviders does not register roadmap_query");
         inv(6, contains(body, "registerToolProvider(\"tab_list\""),

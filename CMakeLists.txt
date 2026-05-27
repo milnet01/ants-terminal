@@ -359,6 +359,8 @@ add_library(ants_claude_lib STATIC
     src/claudebgtasksdialog.cpp
     src/claudetasklist.cpp
     src/claudetasklistdialog.cpp
+    # ANTS-1897 — MCP discoverability via SessionStart hook installer.
+    src/mcporientation.cpp
 )
 target_link_libraries(ants_claude_lib
     PUBLIC  ants_chrome_lib
@@ -1566,6 +1568,13 @@ if(ANTS_TESTS)
                 # under-route, weighted clean-end, headline floor, quiet-window
                 # settlement. 13 TEST() cases mapping 1:1 to INV-1..INV-13.
                 tests/features/model_switch_stats_v2/test_model_switch_stats_v2.cpp
+                # ANTS-1897 — MCP discoverability SessionStart hook installer.
+                # mcporientation.cpp lives in ants_claude_lib; test_core only
+                # links ants_core_lib so the TU is compiled directly here
+                # (same precedent as modelautoswitch.cpp + modelrecommender.cpp
+                # above).
+                tests/features/mcp_orientation_install/test_mcp_orientation_install.cpp
+                src/mcporientation.cpp
                 # ANTS-1888 — per-tab model + thinking-level chip wiring contract.
                 # Pure source-grep over claudestatuswidgets.{h,cpp} + mainwindow.cpp.
                 tests/features/model_state_chip/test_model_state_chip.cpp

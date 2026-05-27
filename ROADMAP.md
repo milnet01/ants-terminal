@@ -19539,6 +19539,13 @@ contributors don't duplicate research.
   Lanes: ptyhandler, claudeintegration.
   Source: in-session-2026-05-27 (ANTS-1897 spec § 4 follow-up; flatpak branch scoped out of INV-14)..
 
+- 📋 [ANTS-1901] **Master Ants-MCP on/off toggle (Settings + menubar) with graceful-degrade for all MCP-dependent features.**
+  MCP server starts unconditionally in `MainWindow` ctor at `src/mainwindow.cpp:3867` (`m_claudeIntegration->startMcpServer(mcpSocket)`) with no user-facing toggle. Add: (a) new config key `claude.mcp_enabled` (bool, default true); (b) Settings → AI Assistant master checkbox 'Enable Ants MCP integration' above the existing autoswitch + orientation toggles (visual hierarchy: master → per-feature opt-ins); (c) optional menubar shortcut (View → Claude → MCP integration, or similar); (d) graceful-degrade wiring for every MCP-dependent feature when toggled off: ANTS-1735 autoswitcher (skip dwell + decide), ANTS-1888 model chip (read transcript only, no MCP-derived state), ANTS-1891 model_switch_stats (refuse with `code:"mcp_disabled"` envelope), ANTS-1897 orientation prelude (skip install + remove hook), `model_switch_ledger` (don't write records), MCP socket (don't bind, no `/tmp/ants-terminal-mcp-*` file, no `ANTS_MCP_SOCKET` env-var export). Spec needs a dependency-matrix section enumerating every MCP-consumer and its degrade behaviour. Pairs with ANTS-1897 (which already adds the per-feature orientation toggle in the same Settings page; ANTS-1901 inserts the master toggle above it). User raised 2026-05-27 during ANTS-1897 implementation.
+  **Layman:** Ants MCP starts automatically every time you open Ants Terminal — there's no way to turn it off. This adds a master on/off switch (under Settings → AI Assistant, and also in the menubar) so users who don't want Ants observing their Claude sessions can opt out. Every feature that depends on MCP (auto-switcher, status chip, cheat-sheet) gracefully shows 'MCP disabled' instead of being broken.
+  Kind: feature.
+  Lanes: claudeintegration, settingsdialog, menubar.
+  Source: user-feedback-2026-05-27 (raised during ANTS-1897 implementation; user noted MCP itself has no on/off toggle today)..
+
 ### 🔒 Security
 
 - 💭 [ANTS-1095] **Confidential computing**: run the PTY in an SGX/SEV enclave,

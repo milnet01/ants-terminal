@@ -95,6 +95,15 @@ public:
     bool claudeAutoModelNudgeShown() const;
     void setClaudeAutoModelNudgeShown(bool shown);
 
+    // ANTS-1897 — MCP discoverability via SessionStart hook. Master
+    // toggle (default true) gates the install of the orientation
+    // script + the merge into ~/.claude/settings.json. The nudge
+    // latch fires the first-run toast exactly once.
+    bool claudeMcpOrientationEnabled() const;
+    void setClaudeMcpOrientationEnabled(bool enabled);
+    bool claudeMcpOrientationNudgeShown() const;
+    void setClaudeMcpOrientationNudgeShown(bool shown);
+
     // ANTS-1154 v2 card-renderer state. Each set stores the IDs /
     // slugs the user has manually toggled to "expanded" or
     // "table-view". Restored on dialog open; updated on close.

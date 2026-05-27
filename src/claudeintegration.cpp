@@ -2305,10 +2305,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "newest when capped). Refuses `no_window` when "
                         "no terminal resolves.");
                     t["selection_hint"] = QStringLiteral(
-                        "Reach for this right after a build/test/lint "
-                        "command fails — far cheaper than get_text + "
-                        "eyeballing. For the structured ctest summary "
-                        "of a recorded run, prefer test_results.");
+                        "Use right after a build/test/lint command "
+                        "fails — far cheaper than get_text + eyeballing. "
+                        "For the structured ctest summary of a recorded "
+                        "run, prefer test_results.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
@@ -2365,9 +2365,9 @@ void ClaudeIntegration::onMcpConnection() {
                         "Refuses `no_window` when no terminal "
                         "resolves.");
                     t["selection_hint"] = QStringLiteral(
-                        "Reach for this when the user says \"this\" / "
-                        "\"that error\" / \"the line I selected\" — "
-                        "far cheaper than scanning scrollback. For a "
+                        "Use when the user says \"this\" / \"that "
+                        "error\" / \"the line I selected\" — far "
+                        "cheaper than scanning scrollback. For a "
                         "structured error block from a recent build, "
                         "prefer recent_errors.");
                     QJsonObject schema;
@@ -2414,11 +2414,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "3-4 round-trip grep + read cycle with one "
                         "MCP call.");
                     t["selection_hint"] = QStringLiteral(
-                        "Reach for this when starting investigation "
-                        "on a topic where you don't know the exact "
-                        "symbol yet. For known symbols, prefer "
-                        "find_definition (one symbol) / similar_code "
-                        "(shape) / workspace_search (exact match).");
+                        "Use when starting investigation on a topic "
+                        "where you don't know the exact symbol yet. "
+                        "For known symbols, prefer find_definition "
+                        "(one symbol) / similar_code (shape) / "
+                        "workspace_search (exact match).");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
@@ -3101,11 +3101,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "to short-circuit when nothing has changed. "
                         "See docs/specs/ANTS-1569.md.");
                     csTool["selection_hint"] = QStringLiteral(
-                        "Call once at session start instead of "
-                        "chaining roadmap_query + git_state + "
-                        "last_audit_summary. Use the returned `etag` "
-                        "as `etag_match` on subsequent calls within "
-                        "the session.");
+                        "Use once at session start instead of chaining "
+                        "roadmap_query + git_state + last_audit_summary "
+                        "— one round-trip, ~3 KB envelope. Pass the "
+                        "returned `etag` as `etag_match` on subsequent "
+                        "calls within the session for 304 short-circuit.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
@@ -3125,9 +3125,9 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "session_brief";
                     t["selection_hint"] = QStringLiteral(
-                        "Orient a fresh /clear session: returns git "
-                        "branch, build/test result, open audit count, "
-                        "and active roadmap item in one call.");
+                        "Use to orient a fresh /clear session: returns "
+                        "git branch, build/test result, open audit "
+                        "count, and active roadmap item in one call.");
                     t["description"] = QStringLiteral(
                         "Compact session-state envelope for orienting "
                         "a fresh session in one call. Returns git "
@@ -3168,9 +3168,10 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "session_orient";
                     t["selection_hint"] = QStringLiteral(
-                        "First read on a fresh /clear session: bundles "
-                        "current_state + project_layout + roadmap_query "
-                        "section_index in one call (one ETag).");
+                        "Use as the first read on a fresh /clear "
+                        "session: bundles current_state + project_layout "
+                        "+ roadmap_query section_index in one call "
+                        "(one ETag).");
                     t["description"] = QStringLiteral(
                         "Single-call session-orientation bundle: composes "
                         "current_state (project / git / audit state) + "
@@ -3300,10 +3301,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "matching `^ANTS-[0-9]+$`), `not_found` (file "
                         "absent), `no_project` (caller_cwd unresolved).");
                     t["selection_hint"] = QStringLiteral(
-                        "Prefer over `Read` when you only need a spec's "
-                        "INV list (the contract surface), not the full "
-                        "narrative. Typically 5-20× smaller than a "
-                        "full Read.");
+                        "Use instead of `Read` when you only need a "
+                        "spec's INV list (the contract surface), not "
+                        "the full narrative. Typically 5-20× smaller "
+                        "than a full Read.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
@@ -3347,7 +3348,7 @@ void ClaudeIntegration::onMcpConnection() {
                         "BEFORE editing files in `src/` to surface "
                         "documented contracts the edit might break.");
                     t["selection_hint"] = QStringLiteral(
-                        "Call with `files:[...]` from `git diff "
+                        "Use with `files:[...]` from `git diff "
                         "--name-only` (or your own changed-file list) "
                         "before editing source files with associated "
                         "specs. Pairs with spec_query for drilling "
@@ -3403,7 +3404,7 @@ void ClaudeIntegration::onMcpConnection() {
                         "searchable terms after stopword removal), "
                         "`no_project` (caller_cwd unresolved).");
                     t["selection_hint"] = QStringLiteral(
-                        "Call ONCE at task start, before proposing an "
+                        "Use ONCE at task start, before proposing an "
                         "approach, with the user's task description. Cheaper "
                         "and more complete than ad-hoc grep + Read of specs / "
                         "ROADMAP / git log. Drill into a surfaced spec with "
@@ -3464,7 +3465,7 @@ void ClaudeIntegration::onMcpConnection() {
                         "refactor/docs/test), `no_project` (caller_cwd "
                         "unresolved).");
                     t["selection_hint"] = QStringLiteral(
-                        "Call at task start with the kind of work you're "
+                        "Use at task start with the kind of work you're "
                         "about to do (feature/bugfix/refactor/docs/test) to "
                         "get just the relevant rules + their authoritative "
                         "doc paths — cheaper than reading the full CLAUDE.md "
@@ -3515,8 +3516,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "Saves ~3-10 K tokens per build cycle vs. shelling "
                         "`cmake --build` and reading the full output.");
                     t["selection_hint"] = QStringLiteral(
-                        "Call op=record right after every `cmake --build` "
-                        "you run, then call op=read on subsequent steps "
+                        "Use op=record right after every `cmake --build` "
+                        "you run, then op=read on subsequent steps "
                         "instead of re-shelling the build. Pairs with "
                         "test_results for the build → test → commit gate.");
                     QJsonObject schema;
@@ -3600,9 +3601,9 @@ void ClaudeIntegration::onMcpConnection() {
                         "wasn't in failing_tests[]). Saves ~3-15 K "
                         "tokens per test cycle.");
                     t["selection_hint"] = QStringLiteral(
-                        "Call op=record after every `ctest "
+                        "Use op=record after every `ctest "
                         "--output-on-failure`, then op=read for "
-                        "subsequent checks. Use detail=<name> when you "
+                        "subsequent checks. Pass detail=<name> when you "
                         "need the full body of one failing test "
                         "without re-running the suite.");
                     QJsonObject schema;
@@ -3715,7 +3716,7 @@ void ClaudeIntegration::onMcpConnection() {
                         "focused_test_in_flight, bad_args, ctest_missing, "
                         "ctest_failed (timeout/crash), unrecognised_output.");
                     t["selection_hint"] = QStringLiteral(
-                        "Call instead of a full `ctest` to verify a focused "
+                        "Use instead of a full `ctest` to verify a focused "
                         "change (5x-50x faster on mapped files). Build "
                         "FIRST — focused_test does not rebuild. Omit "
                         "`changed_files` to use git status, or pass a set.");
@@ -3782,7 +3783,7 @@ void ClaudeIntegration::onMcpConnection() {
                         "or not a valid identifier), no_project "
                         "(caller_cwd unresolved).");
                     t["selection_hint"] = QStringLiteral(
-                        "Prefer over grep+Read when you need the "
+                        "Use instead of grep+Read when you need the "
                         "definition site of one named symbol. Pairs "
                         "with find_caller (who uses it) and file_outline "
                         "(what's in one file).");
@@ -3849,7 +3850,7 @@ void ClaudeIntegration::onMcpConnection() {
                         "not a valid identifier), no_project "
                         "(caller_cwd unresolved).");
                     t["selection_hint"] = QStringLiteral(
-                        "Prefer over grep+Read for \"who calls Foo?\". "
+                        "Use instead of grep+Read for \"who calls Foo?\". "
                         "Pairs with find_definition; shell matches are "
                         "coarser (no call-paren convention).");
                     QJsonObject schema;
@@ -5144,9 +5145,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "found:false when no bullet matches the id "
                         "(ANTS-1513).");
                     t["selection_hint"] = QStringLiteral(
-                        "Recheck whether a deferred test-audit finding's "
-                        "cited file:line is still valid (file present, "
-                        "line still smells) before resuming the work.");
+                        "Use to recheck whether a deferred test-audit "
+                        "finding's cited file:line is still valid "
+                        "(file present, line still smells) before "
+                        "resuming the work.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
