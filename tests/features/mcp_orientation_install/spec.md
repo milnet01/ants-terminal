@@ -27,6 +27,11 @@ Cases:
 - `Inv2_FirstLaunchWritesFresh` — first install writes the file fresh.
 - `Inv3_SettingsMergeIdempotent` — second install does not duplicate
   the SessionStart entry.
+- `Inv3_SweepsExistingDuplicates` — pre-existing duplicate entries
+  (capital-cased `Ants Terminal` path) are swept down to one
+  canonical entry on install (ANTS-1902 self-healing).
+- `Inv3_CommandRunnableWithSpacesInPath` — the written `command` is
+  bash-runnable when the install path contains a space (ANTS-1902).
 - `Inv4_SettingsMergePreservesUnrelated` — other top-level keys + a
   pre-existing `UserPromptSubmit` hook survive the merge.
 - `Inv5_DisableRemovesEntry` — uninstall removes the marker-bearing

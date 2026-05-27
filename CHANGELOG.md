@@ -263,6 +263,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **MCP-orientation hook installer: dedupe sweep + bash-quote the script path.** (ANTS-1902)
+  Every time Ants Terminal launched, it was supposed to either install or refresh a small entry in Claude Code's settings file so the MCP cheat-sheet appears at session start. Two bugs together meant it (a) added a *new* entry every launch instead of recognising its own previous entry, and (b) wrote that entry without quotes around the path — but the actual install directory contains a space (`Ants Terminal`), so bash split the path and the hook crashed with "No such file or directory" every time a new Claude session started. The fix: recognise our own entries by a more flexible marker, quote the path properly, and on every launch sweep out *any* stale copies and write back exactly one good entry. Self-healing for users whose settings file had already filled up with broken duplicates.
+
 - **`changelog_log` `add_from_roadmap` now collapses multi-line
   ROADMAP headlines before they become the bold CHANGELOG summary
   (ANTS-1868).** Previously a wrapped headline copied verbatim left

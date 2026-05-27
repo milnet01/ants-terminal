@@ -23,9 +23,13 @@ namespace mcp_orientation {
 namespace {
 
 // INV-3 — substring that identifies an Ants-owned SessionStart hook
-// entry. Substring match on `command`. Same string used at write time
-// to construct the entry; never abbreviate or alias.
-constexpr const char *kMarkerSubstring = "ants-terminal/hooks/mcp-orientation.sh";
+// entry. Suffix-only (the filename + parent dir) so the match is
+// robust to directory-name variants: `QStandardPaths::AppConfigLocation`
+// uses Qt's `applicationName` verbatim ("Ants Terminal" — capital +
+// space) while tests and the doc-comment fallback path use the
+// lowercase-hyphenated `ants-terminal`. Both forms end in the same
+// `/hooks/mcp-orientation.sh` suffix. ANTS-1901.
+constexpr const char *kMarkerSubstring = "/hooks/mcp-orientation.sh";
 
 // INV-1 — marker prefix at the start of the second line of the script.
 // The version token that follows is parsed and compared.
@@ -149,11 +153,20 @@ bool writeScriptFile(const QString &path, const QByteArray &body,
     return true;
 }
 
-// Build the `command` value Ants writes into settings.json. Matches the
-// kMarkerSubstring contract — substring match anchors on the resolved
-// install path.
+// Bash-quote a path: wrap in single quotes; any embedded `'` becomes
+// `'\''`. Required because `QStandardPaths::AppConfigLocation` builds
+// `<home>/.config/Ants Terminal/...` from Qt's applicationName (capital
+// + space) — unquoted, bash would split at the space. ANTS-1901.
+QString bashQuote(const QString &s) {
+    QString escaped = s;
+    escaped.replace(QLatin1Char('\''), QLatin1String("'\\''"));
+    return QLatin1Char('\'') + escaped + QLatin1Char('\'');
+}
+
+// Build the `command` value Ants writes into settings.json. The path
+// is bash-single-quoted so spaces survive hook-runner tokenisation.
 QString hookCommand(const QString &scriptPath) {
-    return QStringLiteral("bash ") + scriptPath;
+    return QStringLiteral("bash ") + bashQuote(scriptPath);
 }
 
 // Build the {"type":"command", "command":"...", "timeout":3} entry.
@@ -165,24 +178,39 @@ QJsonObject hookCommandEntry(const QString &scriptPath) {
     return entry;
 }
 
-// INV-3 — substring match. Walks every SessionStart entry's inner
-// `hooks[]` array and returns the (i, j) index of the first match, or
-// {-1, -1} if absent.
-struct EntryLocation { int outerIdx = -1; int innerIdx = -1; };
-EntryLocation findAntsEntry(const QJsonArray &sessionStart) {
+// INV-3 — sweep every SessionStart entry whose inner `hooks[]` array
+// contains an entry with `command` matching the marker substring. The
+// caller appends a single canonical entry afterwards. Walks back-to-
+// front so removals don't invalidate later indices, and drops outer
+// containers that become empty as their last inner entry is removed.
+// Returns the number of entries removed. ANTS-1901 — earlier versions
+// only updated the first match, leaving prior duplicates intact.
+int removeAllAntsEntries(QJsonArray &sessionStart) {
     const QString marker = QString::fromUtf8(kMarkerSubstring);
-    for (int i = 0; i < sessionStart.size(); ++i) {
-        const QJsonObject outer = sessionStart.at(i).toObject();
-        const QJsonArray inner = outer.value(QStringLiteral("hooks"))
-                                      .toArray();
-        for (int j = 0; j < inner.size(); ++j) {
+    int removed = 0;
+    for (int i = sessionStart.size() - 1; i >= 0; --i) {
+        QJsonObject outer = sessionStart.at(i).toObject();
+        QJsonArray inner = outer.value(QStringLiteral("hooks")).toArray();
+        bool innerMutated = false;
+        for (int j = inner.size() - 1; j >= 0; --j) {
             const QJsonObject e = inner.at(j).toObject();
             const QString cmd = e.value(QStringLiteral("command"))
                                  .toString();
-            if (cmd.contains(marker)) return {i, j};
+            if (cmd.contains(marker)) {
+                inner.removeAt(j);
+                innerMutated = true;
+                ++removed;
+            }
+        }
+        if (!innerMutated) continue;
+        if (inner.isEmpty()) {
+            sessionStart.removeAt(i);
+        } else {
+            outer.insert(QStringLiteral("hooks"), inner);
+            sessionStart.replace(i, outer);
         }
     }
-    return {-1, -1};
+    return removed;
 }
 
 // Merge / unmerge the Ants SessionStart entry into settings.json.
@@ -230,46 +258,20 @@ MergeOutcome mergeSettings(const QString &settingsPath,
     QJsonObject hooks = root.value(QStringLiteral("hooks")).toObject();
     QJsonArray sessionStart = hooks.value(QStringLiteral("SessionStart"))
                                    .toArray();
-    EntryLocation existing = findAntsEntry(sessionStart);
+
+    // ANTS-1901 — sweep every existing entry whose `command` carries
+    // the marker. The add-path then appends a single canonical entry;
+    // the remove-path simply stops after the sweep. Both operations
+    // are idempotent and self-healing against settings.json files
+    // that accumulated duplicates from buggy prior versions.
+    const int removed = removeAllAntsEntries(sessionStart);
 
     if (add) {
-        if (existing.outerIdx >= 0) {
-            // Already present — INV-3 idempotent no-op. Update the
-            // command in case the resolved scriptPath changed (e.g.
-            // home moved); preserves the surrounding structure.
-            QJsonObject outer = sessionStart.at(existing.outerIdx).toObject();
-            QJsonArray inner = outer.value(QStringLiteral("hooks"))
-                                    .toArray();
-            QJsonObject entry = inner.at(existing.innerIdx).toObject();
-            const QString currentCmd =
-                entry.value(QStringLiteral("command")).toString();
-            const QString desiredCmd = hookCommand(scriptPath);
-            if (currentCmd == desiredCmd) {
-                return MergeOutcome::Kept;
-            }
-            entry.insert(QStringLiteral("command"), desiredCmd);
-            inner.replace(existing.innerIdx, entry);
-            outer.insert(QStringLiteral("hooks"), inner);
-            sessionStart.replace(existing.outerIdx, outer);
-        } else {
-            // Append a fresh outer container with our one hook entry.
-            QJsonObject outer;
-            QJsonArray inner;
-            inner.append(hookCommandEntry(scriptPath));
-            outer.insert(QStringLiteral("hooks"), inner);
-            sessionStart.append(outer);
-        }
-    } else {
-        if (existing.outerIdx < 0) return MergeOutcome::Kept;
-        QJsonObject outer = sessionStart.at(existing.outerIdx).toObject();
-        QJsonArray inner = outer.value(QStringLiteral("hooks")).toArray();
-        inner.removeAt(existing.innerIdx);
-        if (inner.isEmpty()) {
-            sessionStart.removeAt(existing.outerIdx);
-        } else {
-            outer.insert(QStringLiteral("hooks"), inner);
-            sessionStart.replace(existing.outerIdx, outer);
-        }
+        QJsonObject outer;
+        QJsonArray inner;
+        inner.append(hookCommandEntry(scriptPath));
+        outer.insert(QStringLiteral("hooks"), inner);
+        sessionStart.append(outer);
     }
 
     hooks.insert(QStringLiteral("SessionStart"), sessionStart);
@@ -307,7 +309,8 @@ MergeOutcome mergeSettings(const QString &settingsPath,
     setOwnerOnlyPerms(settingsPath);
 
     if (!fileExisted) return MergeOutcome::Created;
-    return add ? MergeOutcome::Added : MergeOutcome::Removed;
+    if (add) return MergeOutcome::Added;
+    return removed > 0 ? MergeOutcome::Removed : MergeOutcome::Kept;
 }
 
 }  // namespace

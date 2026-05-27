@@ -154,6 +154,79 @@ TEST(McpOrientation_Inv3, SettingsMergeIdempotent) {
     EXPECT_EQ(countAntsEntries(readSettings(tmp.path())), 1);
 }
 
+// ANTS-1901 — installAt must sweep ALL pre-existing marker-matching
+// entries (not just update the first one), then append a single
+// canonical entry. Mimics a settings.json that accumulated duplicates
+// from buggy prior versions where the marker substring failed to match
+// the production path "Ants Terminal/hooks/mcp-orientation.sh".
+TEST(McpOrientation_Inv3, SweepsExistingDuplicates) {
+    QTemporaryDir tmp;
+    const QString sp = settingsPathIn(tmp.path());
+
+    // Seed three entries that all reference a script at the marker
+    // suffix path (the production form with capital + space, plus a
+    // single-quoted variant — three different cosmetic shapes, same
+    // marker suffix).
+    const QString prodLike = "/somewhere/.config/Ants Terminal/hooks/mcp-orientation.sh";
+    const QByteArray seed = QString(R"({
+      "hooks": {
+        "SessionStart": [
+          {"hooks":[{"type":"command","command":"bash %1","timeout":3}]},
+          {"hooks":[{"type":"command","command":"bash %1","timeout":3}]},
+          {"hooks":[{"type":"command","command":"bash '%1'","timeout":3}]}
+        ]
+      }
+    })").arg(prodLike).toUtf8();
+    ASSERT_TRUE(writeFileBytes(sp, seed));
+
+    auto r = MO::installAt(tmp.path());
+    ASSERT_TRUE(r.ok) << r.warning.toStdString();
+    const auto root = readSettings(tmp.path());
+    const auto sessions = root.value("hooks").toObject()
+                              .value("SessionStart").toArray();
+    // Dump the file content for diagnostics.
+    const QByteArray dump = readFileBytes(sp);
+    EXPECT_EQ(sessions.size(), 1)
+        << "stale duplicates not swept: " << sessions.size()
+        << " SessionStart entries remain. File content:\n"
+        << dump.toStdString();
+    EXPECT_EQ(countAntsEntries(root), 1)
+        << "installAt must sweep all marker-matching entries down to one";
+}
+
+// ANTS-1901 — the written hook command must be runnable when the
+// install path contains a space. Production Qt sets the application
+// name to "Ants Terminal" so QStandardPaths::AppConfigLocation
+// resolves to ".../Ants Terminal/...", which bash splits at the space
+// unless the path is quoted.
+TEST(McpOrientation_Inv3, CommandRunnableWithSpacesInPath) {
+    QTemporaryDir tmp;
+    const QString homeWithSpace = tmp.path() + QStringLiteral("/home dir");
+    ASSERT_TRUE(QDir().mkpath(homeWithSpace));
+
+    auto r = MO::installAt(homeWithSpace);
+    ASSERT_TRUE(r.ok) << r.warning.toStdString();
+
+    const auto root = readSettings(homeWithSpace);
+    const auto sessions = root.value("hooks").toObject()
+                              .value("SessionStart").toArray();
+    ASSERT_EQ(sessions.size(), 1);
+    const QString cmd = sessions.at(0).toObject().value("hooks").toArray()
+                                .at(0).toObject().value("command").toString();
+
+    QProcess p;
+    auto env = QProcessEnvironment::systemEnvironment();
+    env.remove("ANTS_MCP_SOCKET");
+    p.setProcessEnvironment(env);
+    p.start("bash", {"-c", cmd});
+    ASSERT_TRUE(p.waitForStarted(2000));
+    ASSERT_TRUE(p.waitForFinished(5000));
+    EXPECT_EQ(p.exitCode(), 0)
+        << "command failed — likely an unquoted path with a space; cmd="
+        << cmd.toStdString()
+        << "; stderr=" << p.readAllStandardError().toStdString();
+}
+
 // INV-4 — merge preserves unrelated top-level keys + sibling
 // SessionStart entries from other tools.
 TEST(McpOrientation_Inv4, SettingsMergePreservesUnrelated) {
