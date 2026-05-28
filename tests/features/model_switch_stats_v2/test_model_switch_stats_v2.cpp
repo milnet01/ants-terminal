@@ -210,9 +210,12 @@ TEST(ModelSwitchStatsV2_INV5, WeightedAvoidedFormula)
 }
 
 // ---------------------------------------------------------------------------
-// INV-6 — headline "insufficient data" form below floor.
+// INV-6 — headline "calibrating" form below floor (ANTS-1909 renamed the
+// pre-floor phrase from "insufficient data" → "calibrating" and added the
+// `dwell=Ns` parenthetical, so the floor parenthetical is no longer a
+// closed `(floor=haiku)` but the multi-key form `(floor=haiku, dwell=…)`).
 // ---------------------------------------------------------------------------
-TEST(ModelSwitchStatsV2_INV6, HeadlineFloorInsufficientData)
+TEST(ModelSwitchStatsV2_INV6, HeadlineFloorCalibrating)
 {
     QList<L::Record> recs;
     for (int i = 0; i < 3; ++i)
@@ -223,9 +226,11 @@ TEST(ModelSwitchStatsV2_INV6, HeadlineFloorInsufficientData)
     const QString headline = env.value(QStringLiteral("headline")).toString();
     const QString want = QStringLiteral("%1/%2 measured")
         .arg(3).arg(L::kHeadlineFloorMeasured);
-    EXPECT_TRUE(headline.contains(QStringLiteral("(floor=haiku)")))
+    EXPECT_TRUE(headline.contains(QStringLiteral("floor=haiku")))
         << headline.toStdString();
-    EXPECT_TRUE(headline.contains(QStringLiteral("insufficient data")))
+    EXPECT_TRUE(headline.contains(QStringLiteral("dwell=")))
+        << headline.toStdString();
+    EXPECT_TRUE(headline.contains(QStringLiteral("calibrating")))
         << headline.toStdString();
     EXPECT_TRUE(headline.contains(want)) << headline.toStdString();
 }
@@ -255,7 +260,9 @@ TEST(ModelSwitchStatsV2_INV7, HeadlineFullForm)
     EXPECT_EQ(env.value(QStringLiteral("regret_count")).toInt(), 1);
 
     const QString headline = env.value(QStringLiteral("headline")).toString();
-    EXPECT_TRUE(headline.contains(QStringLiteral("(floor=haiku)")))
+    EXPECT_TRUE(headline.contains(QStringLiteral("floor=haiku")))
+        << headline.toStdString();
+    EXPECT_TRUE(headline.contains(QStringLiteral("dwell=")))
         << headline.toStdString();
     EXPECT_TRUE(headline.contains(QStringLiteral("avoided 5 Opus turns")))
         << headline.toStdString();
@@ -276,13 +283,71 @@ TEST(ModelSwitchStatsV2_INV8, HeadlineEmptyScope)
     const QString headP = envP.value(QStringLiteral("headline")).toString();
     EXPECT_TRUE(headP.contains(QStringLiteral("no switches yet")));
     EXPECT_TRUE(headP.contains(QStringLiteral("in this project")));
-    EXPECT_TRUE(headP.contains(QStringLiteral("(floor=haiku)")));
+    EXPECT_TRUE(headP.contains(QStringLiteral("floor=haiku")));
+    EXPECT_TRUE(headP.contains(QStringLiteral("dwell=")));
 
     QJsonObject envG = L::statsEnvelope({}, enabledCfg(QStringLiteral("global")));
     const QString headG = envG.value(QStringLiteral("headline")).toString();
     EXPECT_TRUE(headG.contains(QStringLiteral("no switches yet")));
     EXPECT_TRUE(headG.contains(QStringLiteral("globally")));
-    EXPECT_TRUE(headG.contains(QStringLiteral("(floor=haiku)")));
+    EXPECT_TRUE(headG.contains(QStringLiteral("floor=haiku")));
+    EXPECT_TRUE(headG.contains(QStringLiteral("dwell=")));
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-1909 — near-miss enrichment: when the StatsConfig carries a 24 h
+// near-miss count and dominant_blocker, both the "no switches yet" and
+// "calibrating" headlines surface "N near-misses in 24 h blocked by <blocker>"
+// so the trust signal reads as "evaluating but blocked" rather than
+// "feature did nothing".
+// ---------------------------------------------------------------------------
+TEST(ModelSwitchStatsV2_ANTS1909, HeadlineSurfacesNearMissWhenNoSwitches)
+{
+    L::StatsConfig cfg = enabledCfg();
+    cfg.nearMissTotal24h        = 53;
+    cfg.nearMissDominantBlocker = QStringLiteral("composer_not_empty");
+
+    const QString headline =
+        L::statsEnvelope({}, cfg).value(QStringLiteral("headline")).toString();
+    EXPECT_TRUE(headline.contains(QStringLiteral("no switches yet")))
+        << headline.toStdString();
+    EXPECT_TRUE(headline.contains(QStringLiteral("53 near-misses")))
+        << headline.toStdString();
+    EXPECT_TRUE(headline.contains(QStringLiteral("composer_not_empty")))
+        << headline.toStdString();
+}
+
+TEST(ModelSwitchStatsV2_ANTS1909, HeadlineSurfacesNearMissWhileCalibrating)
+{
+    L::StatsConfig cfg = enabledCfg();
+    cfg.nearMissTotal24h        = 12;
+    cfg.nearMissDominantBlocker = QStringLiteral("target_equals_current");
+    QList<L::Record> recs;
+    for (int i = 0; i < 3; ++i)
+        recs << makeDowngrade(2, false, false, false, false, false);
+
+    const QString headline =
+        L::statsEnvelope(recs, cfg).value(QStringLiteral("headline")).toString();
+    EXPECT_TRUE(headline.contains(QStringLiteral("calibrating")))
+        << headline.toStdString();
+    EXPECT_TRUE(headline.contains(QStringLiteral("12 near-misses")))
+        << headline.toStdString();
+    EXPECT_TRUE(headline.contains(QStringLiteral("target_equals_current")))
+        << headline.toStdString();
+}
+
+TEST(ModelSwitchStatsV2_ANTS1909, HeadlineOmitsNearMissWhenBlockerEmpty)
+{
+    // Empty dominantBlocker → no enrichment, no near-miss suffix.
+    L::StatsConfig cfg = enabledCfg();
+    cfg.nearMissTotal24h        = 7;
+    cfg.nearMissDominantBlocker = QString();
+
+    const QString headline =
+        L::statsEnvelope({}, cfg).value(QStringLiteral("headline")).toString();
+    EXPECT_TRUE(headline.contains(QStringLiteral("no switches yet")));
+    EXPECT_FALSE(headline.contains(QStringLiteral("near-miss")))
+        << "near-miss suffix should be hidden when dominant_blocker is empty";
 }
 
 // ---------------------------------------------------------------------------

@@ -154,6 +154,11 @@ struct StatsConfig {
     QString floorTier     = QStringLiteral("haiku");   // "haiku" | "sonnet"
     int     minDwellSec   = 90;
     QString scope         = QStringLiteral("project"); // "project" | "global"
+    // ANTS-1909 — optional near-miss summary, surfaced in the headline when
+    // the firings ledger is empty or below the headline floor. Zero / empty
+    // disables the enrichment so existing callers see no change.
+    int     nearMissTotal24h     = 0;
+    QString nearMissDominantBlocker;
 };
 QJsonObject statsEnvelope(const QList<Record> &recs,
                           const StatsConfig &cfg = {});

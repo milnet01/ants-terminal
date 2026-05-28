@@ -49,34 +49,41 @@ TEST(RoadmapSectionCacheLru, LruMemberDeclared) {
         << "m_roadmapSectionLru member missing";
 }
 
-// INV-4: mtime-stale wipe clears all three structures (index +
-// cache + LRU) in one block.
+// INV-4: mtime-stale wipe clears the sibling caches in one block.
+// ANTS-1907 widened the wipe block to also clear
+// m_roadmapSectionEtags (the per-section ETag cache lives in
+// lockstep with the bullet cache); window widened to 400 chars to
+// cover the new clear-line without making the locality check
+// less meaningful (the original 200 covered three clears; we now
+// have four siblings sitting together).
 TEST(RoadmapSectionCacheLru, StaleWipeClearsAllThree) {
     const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(cpp.empty());
-    // Find the m_roadmapIndex.clear() site (anchor for the wipe
-    // block) and check the next 200 chars contain all three clears.
     const auto idxPos = cpp.find("m_roadmapIndex.clear();");
     ASSERT_NE(idxPos, std::string::npos)
         << "m_roadmapIndex.clear() anchor missing";
-    const std::string region = cpp.substr(idxPos, 200);
+    const std::string region = cpp.substr(idxPos, 400);
     EXPECT_TRUE(contains(region, "m_roadmapSectionCache.clear();"))
         << "section cache not cleared in same block as index";
     EXPECT_TRUE(contains(region, "m_roadmapSectionLru.clear();"))
         << "LRU not cleared in same block as index";
+    // ANTS-1907 — etag cache must also be cleared in the same block
+    // so a content change doesn't leak a stale per-section etag.
+    EXPECT_TRUE(contains(region, "m_roadmapSectionEtags.clear();"))
+        << "section-etag cache not cleared in same block as index";
 }
 
 // Hit-path bump: the contains() branch must bump the slug to MRU.
+// ANTS-1907 widened the hit-path with a `sectionEtag = …` lookup
+// between the contains() check and the MRU bump; window widened
+// to 500 chars to accommodate it.
 TEST(RoadmapSectionCacheLru, HitPathBumpsToMru) {
     const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(cpp.empty());
-    // Anchor: the existing `contains(sec->slug)` branch (single hit
-    // in cmdRoadmapQuery).
     const auto hitPos = cpp.find(
         "m_roadmapSectionCache.contains(sec->slug)");
     ASSERT_NE(hitPos, std::string::npos);
-    // Within ~300 chars after the hit anchor, expect the bump pair.
-    const std::string region = cpp.substr(hitPos, 300);
+    const std::string region = cpp.substr(hitPos, 500);
     EXPECT_TRUE(contains(region,
         "m_roadmapSectionLru.removeOne(sec->slug)"))
         << "hit-path missing removeOne bump";

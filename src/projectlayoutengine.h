@@ -38,15 +38,35 @@ constexpr int kFormatSniffBytes = 4096;
 //   v2 = ANTS-1493 widened to docs/{private,internal,fork}/ + data/changelog.yaml + standards name-glob fallback
 //   v3 = ANTS-1632 format-sniffer recognises "mixed" (GFM task-list + ants-v1 emoji bullets in the same file) and `bullet_count_estimate` counts the union — invalidates pre-1632 caches that returned `format:"unknown"` + `bullet_count_estimate:0` on the same on-disk file
 //   v4 = ANTS-1880 widened to docs/{,private/,internal/,fork/}phases (phasesDir field) — per-phase design docs (Vestige and similar projects keep phase_<NN>_<topic>_design.md outside docs/specs/)
-constexpr int kProbeSetVersion  = 4;
+//   v5 = ANTS-1903 — body-scan fallback resolves the false-unknown case (a long preamble + first-bullet beyond the 4 KB sniff budget); invalidates pre-1903 caches that returned format:"unknown" + bullet_count_estimate:0 on a clearly-structured file
+constexpr int kProbeSetVersion  = 5;
+
+// ANTS-1903 — per-branch trace of the format sniffer's decision.
+// Surfaces which branches scored a hit vs miss on each pass so a
+// failing project ("format:unknown" on a clearly-structured file)
+// can be diagnosed from the envelope alone without round-tripping
+// to instrumented binaries. headBytesScanned / fullScan flags echo
+// the budget so the caller can tell whether the head was too small
+// (pre-1903 4 KB cap missed a long preamble + first bullet) or the
+// file genuinely doesn't carry any of the recognised shapes.
+struct RoadmapSnifferTrace {
+    bool   markerHit         = false;  // <!-- ants-roadmap-format: 1 -->
+    bool   antsV1EmojiHit    = false;  // - ✅/📋/🚧/💭
+    bool   gfmTaskListHit    = false;  // - [ ]/[x]/[X]
+    bool   fullScan          = false;  // true iff sniffer fell back to body
+    qint64 headBytesScanned  = 0;
+};
 
 struct RoadmapInfo {
     QString  path;
-    QString  format;                       // "ants-v1" | "github-task-list" | "unknown" | ""
+    QString  format;                       // "ants-v1" | "github-task-list" | "mixed" | "unknown" | ""
     bool     formatMarkerPresent = false;
     int      bulletCountEstimate = 0;
     qint64   sizeBytes           = 0;
     qint64   mtimeMs             = 0;
+    // ANTS-1903 — populated by detectFormat; emitted as
+    // sniffer_branches_tried in the JSON envelope.
+    RoadmapSnifferTrace snifferTrace;
 };
 
 struct ChangelogInfo {

@@ -40,8 +40,23 @@ Decision decide(const Gate &g) {
         d.blockedBy << QStringLiteral("auto_switch_disabled");
     if (g.focusedState != ClaudeState::Idle)
         d.blockedBy << QStringLiteral("focused_state_not_idle");
-    if (!g.composerEmpty)
-        d.blockedBy << QStringLiteral("composer_not_empty");
+    // ANTS-1908 — composer_not_empty soft-veto. The veto YIELDS when
+    // the composer carries text but hasn't been touched within the
+    // kComposerStaleVetoMs window — this unblocks long autonomous
+    // sessions where the dominant blocker is leftover continuation-
+    // prompt text sitting idle in the composer. -1 sentinel keeps the
+    // legacy hard-veto behaviour for any caller that doesn't supply
+    // keystroke telemetry. The blocker token name stays
+    // `composer_not_empty` for back-compat with the persisted near-
+    // miss ledger; semantics now mean "user is *actively editing*",
+    // matching the safety intent.
+    if (!g.composerEmpty) {
+        const bool stale = (g.composerStaleMs >= 0) &&
+                           (g.composerStaleMs >= kComposerStaleVetoMs);
+        if (!stale) {
+            d.blockedBy << QStringLiteral("composer_not_empty");
+        }
+    }
     if (target == g.current)
         d.blockedBy << QStringLiteral("target_equals_current");
     if (g.ticksTargetStable < kStableTicks)

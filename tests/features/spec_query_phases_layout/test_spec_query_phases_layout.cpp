@@ -92,13 +92,22 @@ TEST(spec_query_phases_layout, Inv4LayoutEnvelopeCarriesPhasesDir) {
 #endif
 
 #ifdef SRC_PROJECTLAYOUTENGINE_H_PATH
-// INV-5 — kProbeSetVersion bumped to 4.
+// INV-5 — kProbeSetVersion bumped to at least 4 (ANTS-1880 raised it
+// from 3→4; ANTS-1903 raised it to 5 after adding the body-scan
+// fallback and the sniffer-trace echo). The contract here is "the
+// counter advanced after the spec-shape probe widening" — any later
+// bump satisfies it.
 TEST(spec_query_phases_layout, Inv5ProbeSetVersionBumped) {
     expect_reset();
     const std::string h = slurp(SRC_PROJECTLAYOUTENGINE_H_PATH);
-    expect(contains(h, "kProbeSetVersion  = 4") ||
-           contains(h, "kProbeSetVersion = 4"),
-           "INV-5: kProbeSetVersion bumped to 4");
+    const bool ge4 =
+        contains(h, "kProbeSetVersion  = 4") ||
+        contains(h, "kProbeSetVersion = 4") ||
+        contains(h, "kProbeSetVersion  = 5") ||
+        contains(h, "kProbeSetVersion = 5") ||
+        contains(h, "kProbeSetVersion  = 6") ||
+        contains(h, "kProbeSetVersion = 6");
+    expect(ge4, "INV-5: kProbeSetVersion bumped (≥4)");
     EXPECT_EQ(0, expect_failures());
 }
 #endif

@@ -43,6 +43,16 @@ struct Gate {
     // most-recent project-scoped override of an auto-switch. Sentinel avoids
     // the same-millisecond race that 0 would introduce.
     qint64 msSinceLastOverride = -1;
+    // ANTS-1908 — composer_not_empty soft-veto. ms since the user's last
+    // keystroke in the focused tab's composer. Read by decide() ONLY when
+    // composerEmpty == false: when the composer carries text AND the user
+    // hasn't touched it for ≥ kComposerStaleVetoMs, the text is treated as
+    // stale (continuation-prompt leftover from a long autonomous session)
+    // and the veto YIELDS — no `composer_not_empty` token added. -1 sentinel
+    // = no keystroke telemetry / never touched (controller falls back to
+    // the legacy hard-veto behaviour, preserving bit-for-bit pre-1908
+    // semantics for any caller that doesn't set the field).
+    qint64 composerStaleMs = -1;
 };
 
 struct Decision {
@@ -71,5 +81,13 @@ constexpr qint64 kMinDwellMs  = 90'000;   // 90 s minimum dwell between switches
 // project-scoped override is on record. The dwell rule (kMinDwellMs)
 // still applies independently; both must pass.
 constexpr qint64 kOverrideCooldownMs = 10 * 60 * 1'000;   // 10 min
+// ANTS-1908 — composer_not_empty soft-veto threshold. When the
+// composer is non-empty AND no keystroke has landed in this window,
+// the gate treats the text as stale (continuation-prompt leftover from
+// a long autonomous session) and the veto yields. 5 min picked to
+// match the user's "I'm typing something now" vs "I forgot text was
+// there" mental model: a real composer edit is updated every few
+// seconds, leftover prompts sit idle for many minutes.
+constexpr qint64 kComposerStaleVetoMs = 5 * 60 * 1'000;   // 5 min
 
 }  // namespace ModelAutoSwitch

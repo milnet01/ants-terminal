@@ -417,6 +417,21 @@ constexpr int kDuplicateOccurrencesCap = 3;
 // (the existing back-compat envelope shape is preserved). The
 // list comprehension stays in one pass so the helper costs
 // O(slice size) on the rare emit-empty branch.
+// ANTS-1907 — per-section ETag. Hash of the section's sliced UTF-8
+// bytes (SHA-256, first 16 hex chars) — matches the "byte range + file
+// content" key proposed in the roadmap bullet without dragging in the
+// file-level etag (the file etag flips on ANY edit; the per-section
+// etag is invariant under edits to OTHER sections, which is the
+// whole point). 16 hex chars = 64 bits of collision space — same
+// budget the dispatch-layer file ETag uses (helpers in remotecontrol.cpp
+// at L10086+). Stable across runs (no salt).
+QString rcComputeSectionEtag(const QString &slice) {
+    return QString::fromUtf8(
+        QCryptographicHash::hash(slice.toUtf8(),
+                                 QCryptographicHash::Sha256)
+            .toHex().left(16));
+}
+
 QJsonObject rcSectionShape(const QString &slice) {
     int nonBullet = 0;
     bool sawPipe = false;
@@ -2165,6 +2180,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         m_roadmapIndex.clear();
         m_roadmapSectionCache.clear();
         m_roadmapSectionShape.clear();  // ANTS-1696 — lockstep with bullets cache.
+        m_roadmapSectionEtags.clear();  // ANTS-1907 — lockstep with bullets cache.
         m_roadmapSectionLru.clear();   // ANTS-1346 — keep INV-2 in sync.
         m_roadmapCacheDuplicateIds = QJsonArray();   // ANTS-1646
         m_roadmapCachePath = path;
@@ -2357,6 +2373,18 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // returns `count: 0` because none of the 11 bullets carry a
         // [PROJ-NNNN] token. Surfacing `active_count_id_only: 0`
         // alongside makes that visible without a second call.
+        // ANTS-1907 — `include_section_etags:true` opt-in adds a
+        // `section_etag` field to each emitted section. The etags are
+        // computed lazily by slicing each kept section's bytes through
+        // the same SHA-256 path the section= branch uses; cached by
+        // slug so a follow-up section= call doesn't recompute. Default
+        // false keeps the envelope shape unchanged for back-compat
+        // callers (and skips the per-section slicing cost when the
+        // caller doesn't need the etag yet).
+        const bool includeSectionEtags =
+            req.value(QStringLiteral("include_section_etags")).toBool(false);
+        QString sectionEtagsMarkdown;   // lazy-loaded once per call
+        bool sectionEtagsMarkdownLoaded = false;
         QJsonArray sections;
         QJsonArray legacyFormatSections;
         for (const auto &sec : std::as_const(m_roadmapIndex)) {
@@ -2377,6 +2405,29 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             obj["active_count_id_only"]  = t.activeWithId;
             obj["shipped_count_id_only"] = t.shippedWithId;
             obj["total_count_id_only"]   = t.totalWithId;
+            // ANTS-1907 — per-section etag emission (opt-in). Honours
+            // the same per-slug cache as section= so the etag stays
+            // stable across mode swaps.
+            if (includeSectionEtags) {
+                QString etag = m_roadmapSectionEtags.value(sec.slug);
+                if (etag.isEmpty()) {
+                    if (!sectionEtagsMarkdownLoaded) {
+                        QFile f(path);
+                        if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                            sectionEtagsMarkdown =
+                                QString::fromUtf8(f.readAll());
+                        }
+                        sectionEtagsMarkdownLoaded = true;
+                    }
+                    if (!sectionEtagsMarkdown.isEmpty()) {
+                        const QString slice = RoadmapIndex::sliceSection(
+                            sectionEtagsMarkdown, sec);
+                        etag = rcComputeSectionEtag(slice);
+                        m_roadmapSectionEtags.insert(sec.slug, etag);
+                    }
+                }
+                if (!etag.isEmpty()) obj["section_etag"] = etag;
+            }
             // Self-only (un-rolled) check: if this section directly
             // owns bullets, all of which lack IDs, it is legacy-format.
             // Surface the slug at the top level (ANTS-1622) AND mark
@@ -2486,8 +2537,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         }
 
         QJsonArray sectionBullets;
+        QString sectionEtag;   // ANTS-1907 — emitted on the response.
         if (m_roadmapSectionCache.contains(sec->slug)) {
             sectionBullets = m_roadmapSectionCache.value(sec->slug);
+            // ANTS-1907 — cache hit path: etag was computed on insert.
+            sectionEtag = m_roadmapSectionEtags.value(sec->slug);
             // ANTS-1346 — bump to MRU front.
             m_roadmapSectionLru.removeOne(sec->slug);
             m_roadmapSectionLru.prepend(sec->slug);
@@ -2502,6 +2556,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             }
             const QString markdown = QString::fromUtf8(f.readAll());
             const QString slice = RoadmapIndex::sliceSection(markdown, *sec);
+            // ANTS-1907 — compute the per-section etag from the sliced
+            // bytes once, cache by slug. Skips dispatch-layer's whole-
+            // file etag; the per-section value is invariant under edits
+            // to OTHER sections, which is the whole point.
+            sectionEtag = rcComputeSectionEtag(slice);
+            m_roadmapSectionEtags.insert(sec->slug, sectionEtag);
             const auto bullets = RoadmapDialog::parseBullets(slice);
             // ANTS-1696 — classify the slice ONLY when parseBullets
             // found nothing. The hint exists to disambiguate a
@@ -2554,7 +2614,30 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 const QString evicted = m_roadmapSectionLru.takeLast();
                 m_roadmapSectionCache.remove(evicted);
                 m_roadmapSectionShape.remove(evicted);  // ANTS-1696 — lockstep.
+                m_roadmapSectionEtags.remove(evicted);  // ANTS-1907 — lockstep.
             }
+        }
+
+        // ANTS-1907 — section_etag_match short-circuit. When the caller
+        // hands back the etag we issued on a prior section= response, and
+        // it still matches the current per-section hash, return an
+        // unchanged envelope that costs ~50 bytes (vs the full bullets[]
+        // body that often runs >5 KB on a dense section). Composes with
+        // the dispatch-layer file etag (the file etag flips on any edit;
+        // the section etag is invariant under edits to OTHER sections,
+        // which is the whole point — see ROADMAP entry's "cross-section
+        // loops" rationale). Section-only contract: a caller asking
+        // section=foo and getting unchanged knows ONLY about foo.
+        const QString sectionEtagMatch =
+            req.value(QStringLiteral("section_etag_match")).toString();
+        if (!sectionEtagMatch.isEmpty() && sectionEtagMatch == sectionEtag) {
+            QJsonObject hit;
+            hit["ok"]           = true;
+            hit["unchanged"]    = true;
+            hit["section"]      = sec->slug;
+            hit["section_etag"] = sectionEtag;
+            hit["path"]         = path;
+            return QJsonDocument(hit);
         }
 
         // ANTS-1287-INV-8: status filter applies post-section.
@@ -2610,6 +2693,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["count"] = page.slice.size();
         out["filter"] = filter;
         out["section"] = sec->slug;
+        // ANTS-1907 — always echo the section's etag on a section=
+        // response so the caller can hand it back as section_etag_match
+        // on the next call and short-circuit when only OTHER sections
+        // have changed (file-level etag would invalidate every read).
+        out["section_etag"] = sectionEtag;
         // ANTS-1696 — surface the section_shape hint when parseBullets
         // (NOT the status filter) returned zero entries AND the slice
         // has non-bullet content. Lets a caller distinguish a "table
@@ -3450,6 +3538,23 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         callerCanonical + QLatin1Char('/') +
         QStringLiteral(".roadmap-counter");
 
+    // ANTS-1905 — id_strategy switch. Default "counter" (back-compat
+    // ANTS-NNNN allocator). "stable_prefix" lets a project that uses
+    // stable string IDs (Sh4, Ts20-FL1, MT8) drive op:append by passing
+    // the new id explicitly via `stable_id` instead of bumping
+    // .roadmap-counter. Unknown values refuse with bad_args.
+    QString idStrategy =
+        req.value(QStringLiteral("id_strategy")).toString();
+    if (!idStrategy.isEmpty() &&
+        idStrategy != QStringLiteral("counter") &&
+        idStrategy != QStringLiteral("stable_prefix")) {
+        return rlErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: id_strategy must be "
+                           "\"counter\" or \"stable_prefix\""));
+    }
+    static const QRegularExpression kStableIdShape(
+        QStringLiteral("^[A-Za-z][A-Za-z0-9_-]+$"));
+
     // ANTS-1424-INV-3 — counter allocation. Reads the high-water
     // mark; honours id_hint if present (must be > counter); writes
     // the bumped value back atomically.
@@ -3465,11 +3570,39 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     //   - File exists but unreadable / not-a-number: keep the
     //     existing counter_read_failed (back-compat for any caller
     //     branching on that code).
+    // ANTS-1905 — stable_prefix path skips the counter entirely.
     qint64 counter = 0;
+    qint64 newId = 0;
+    QString stableId;
+    bool useStablePrefix = false;
     {
         QFile cf(counterPath);
         const bool counterExists = QFile::exists(counterPath);
-        if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+
+        // ANTS-1905 — explicit stable_prefix strategy: validate
+        // stable_id and skip the counter machinery. Works regardless
+        // of whether .roadmap-counter exists (a project that USES the
+        // counter for some bullets and stable IDs for others is
+        // pathological but the verb stays predictable: it honours
+        // whichever strategy the caller named).
+        if (idStrategy == QStringLiteral("stable_prefix")) {
+            stableId = req.value(QStringLiteral("stable_id")).toString();
+            if (stableId.isEmpty()) {
+                return rlErr(QStringLiteral("missing_field"),
+                    QStringLiteral("roadmap_log: id_strategy="
+                                   "\"stable_prefix\" requires "
+                                   "`stable_id` (the full ID string, "
+                                   "e.g. \"Ts20-SP6\")"));
+            }
+            if (!kStableIdShape.match(stableId).hasMatch()) {
+                return rlErr(QStringLiteral("bad_args"),
+                    QStringLiteral("roadmap_log: stable_id \"%1\" "
+                                   "does not match the stable-prefix "
+                                   "shape ^[A-Za-z][A-Za-z0-9_-]+$")
+                        .arg(stableId));
+            }
+            useStablePrefix = true;
+        } else if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
             if (!counterExists) {
                 // Re-read the roadmap for the prefix sniffer. The
                 // markdown was about to be read for the section
@@ -3483,6 +3616,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                 const QString stablePrefix =
                     rlDetectStablePrefixId(rmText);
                 if (!stablePrefix.isEmpty()) {
+                    // ANTS-1905 — surface the new escape hatch as the
+                    // recommended fix; back-compat callers branching
+                    // on `code:stable_prefix_unsupported` still match
+                    // (the code is unchanged), but the hint now points
+                    // at the working path.
                     QJsonObject env;
                     env["ok"]    = false;
                     env["code"]  = QStringLiteral(
@@ -3490,15 +3628,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                     env["error"] = QStringLiteral(
                         "roadmap_log op:append needs "
                         ".roadmap-counter; this project uses "
-                        "stable-string IDs (e.g. \"%1\") which the "
-                        "allocator doesn't currently support.")
+                        "stable-string IDs (e.g. \"%1\"). Pass "
+                        "id_strategy:\"stable_prefix\" + "
+                        "stable_id:\"<your-id>\" to bypass the "
+                        "counter (ANTS-1905).")
                             .arg(stablePrefix);
                     env["detected_prefix_example"] = stablePrefix;
                     env["hint"] = QStringLiteral(
-                        "Edit ROADMAP.md directly to add bullets; "
-                        "the verb handles ANTS-NNNN-style projects "
-                        "only today.");
-                    env["follow_up"] = QStringLiteral("ANTS-1877");
+                        "Re-call with id_strategy:\"stable_prefix\" "
+                        "and stable_id:\"%1\" (or your own "
+                        "project-shaped id); the verb writes the "
+                        "bullet without touching .roadmap-counter.")
+                            .arg(stablePrefix);
+                    env["follow_up"] = QStringLiteral("ANTS-1905");
                     return QJsonDocument(env);
                 }
                 return rlErr(QStringLiteral("counter_missing"),
@@ -3515,37 +3657,40 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                                ".roadmap-counter at \"%1\"")
                     .arg(counterPath));
         }
-        const QByteArray raw = cf.readAll().trimmed();
-        if (raw.isEmpty()) {
-            // Empty / whitespace-only file — caller likely `touch`ed
-            // it without initialising. Route to counter_missing with
-            // the same recipe hint.
-            return rlErr(QStringLiteral("counter_missing"),
-                QStringLiteral("roadmap_log: .roadmap-counter at "
-                               "\"%1\" is empty — initialise with: "
-                               "echo 0 > %1")
-                    .arg(counterPath));
+        if (!useStablePrefix) {
+            const QByteArray raw = cf.readAll().trimmed();
+            if (raw.isEmpty()) {
+                // Empty / whitespace-only file — caller likely `touch`ed
+                // it without initialising. Route to counter_missing with
+                // the same recipe hint.
+                return rlErr(QStringLiteral("counter_missing"),
+                    QStringLiteral("roadmap_log: .roadmap-counter at "
+                                   "\"%1\" is empty — initialise with: "
+                                   "echo 0 > %1")
+                        .arg(counterPath));
+            }
+            bool ok = false;
+            counter = QString::fromUtf8(raw).toLongLong(&ok);
+            if (!ok) {
+                return rlErr(QStringLiteral("counter_read_failed"),
+                    QStringLiteral("roadmap_log: .roadmap-counter is "
+                                   "not a number"));
+            }
+            newId = counter + 1;
+            if (req.contains(QStringLiteral("id_hint"))) {
+                const qint64 hint =
+                    req.value(QStringLiteral("id_hint")).toInteger();
+                if (hint <= counter) {
+                    return rlErr(QStringLiteral("id_taken"),
+                        QStringLiteral("roadmap_log: id_hint %1 is at "
+                                       "or below current counter %2 — "
+                                       "pick a value > counter or omit "
+                                       "the hint")
+                            .arg(hint).arg(counter));
+                }
+                newId = hint;
+            }
         }
-        bool ok = false;
-        counter = QString::fromUtf8(raw).toLongLong(&ok);
-        if (!ok) {
-            return rlErr(QStringLiteral("counter_read_failed"),
-                QStringLiteral("roadmap_log: .roadmap-counter is "
-                               "not a number"));
-        }
-    }
-    qint64 newId = counter + 1;
-    if (req.contains(QStringLiteral("id_hint"))) {
-        const qint64 hint =
-            req.value(QStringLiteral("id_hint")).toInteger();
-        if (hint <= counter) {
-            return rlErr(QStringLiteral("id_taken"),
-                QStringLiteral("roadmap_log: id_hint %1 is at or "
-                               "below current counter %2 — pick a "
-                               "value > counter or omit the hint")
-                    .arg(hint).arg(counter));
-        }
-        newId = hint;
     }
 
     // Read ROADMAP.md for section lookup + body splice.
@@ -3623,10 +3768,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
 
     // Construct the bullet via the shared helper (ANTS-1879 INV-10 —
     // extracted so cmdRoadmapLogAppendBatch can format each bullet
-    // through the same code path).
-    QString idStr = QStringLiteral("ANTS-%1").arg(newId, 4, 10,
-                                                  QLatin1Char('0'));
-    if (newId > 9999) idStr = QStringLiteral("ANTS-%1").arg(newId);
+    // through the same code path). ANTS-1905 — under stable_prefix
+    // strategy the id is the caller-supplied stable_id, not an
+    // ANTS-NNNN string allocated from .roadmap-counter.
+    QString idStr;
+    if (useStablePrefix) {
+        idStr = stableId;
+    } else {
+        idStr = QStringLiteral("ANTS-%1").arg(newId, 4, 10,
+                                              QLatin1Char('0'));
+        if (newId > 9999) idStr = QStringLiteral("ANTS-%1").arg(newId);
+    }
     QStringList scrubbedNames;
     const QString bullet =
         formatRoadmapBullet(req, idStr, statusEmoji, scrubbedNames);
@@ -3668,38 +3820,42 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     // next roadmap_log reuses newId → duplicate IDs). Roll ROADMAP.md
     // back to its pre-splice content (`markdown`, captured before the
     // splice) so the operation is all-or-nothing.
-    auto rollbackRoadmap = [&]() {
-        QSaveFile restore(roadmapPath);
-        if (!restore.open(QIODevice::WriteOnly | QIODevice::Text)) return;
-        const QByteArray orig = markdown.toUtf8();
-        if (restore.write(orig) == orig.size()) restore.commit();
-    };
-    QSaveFile cw(counterPath);
-    if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        rollbackRoadmap();
-        return rlErr(QStringLiteral("counter_write_failed"),
-            QStringLiteral("roadmap_log: could not open "
-                           ".roadmap-counter for writing"));
-    }
-    const QByteArray cv =
-        (QString::number(newId) + QChar('\n')).toUtf8();
-    bool counterCommitted = (cw.write(cv) == cv.size());
-    if (counterCommitted) {
-        if (g_forceCounterCommitFail) {
-            // ANTS-1433 test seam: drop the staged temp file so the
-            // original .roadmap-counter is left untouched, exactly as a
-            // real QSaveFile::commit() failure would.
-            cw.cancelWriting();
-            counterCommitted = false;
-        } else {
-            counterCommitted = cw.commit();
+    // ANTS-1905 — stable_prefix strategy skips the counter rewrite
+    // entirely (no counter file involved in the allocation).
+    if (!useStablePrefix) {
+        auto rollbackRoadmap = [&]() {
+            QSaveFile restore(roadmapPath);
+            if (!restore.open(QIODevice::WriteOnly | QIODevice::Text)) return;
+            const QByteArray orig = markdown.toUtf8();
+            if (restore.write(orig) == orig.size()) restore.commit();
+        };
+        QSaveFile cw(counterPath);
+        if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            rollbackRoadmap();
+            return rlErr(QStringLiteral("counter_write_failed"),
+                QStringLiteral("roadmap_log: could not open "
+                               ".roadmap-counter for writing"));
         }
-    }
-    if (!counterCommitted) {
-        rollbackRoadmap();
-        return rlErr(QStringLiteral("counter_write_failed"),
-            QStringLiteral("roadmap_log: atomic write of "
-                           ".roadmap-counter failed"));
+        const QByteArray cv =
+            (QString::number(newId) + QChar('\n')).toUtf8();
+        bool counterCommitted = (cw.write(cv) == cv.size());
+        if (counterCommitted) {
+            if (g_forceCounterCommitFail) {
+                // ANTS-1433 test seam: drop the staged temp file so the
+                // original .roadmap-counter is left untouched, exactly as a
+                // real QSaveFile::commit() failure would.
+                cw.cancelWriting();
+                counterCommitted = false;
+            } else {
+                counterCommitted = cw.commit();
+            }
+        }
+        if (!counterCommitted) {
+            rollbackRoadmap();
+            return rlErr(QStringLiteral("counter_write_failed"),
+                QStringLiteral("roadmap_log: atomic write of "
+                               ".roadmap-counter failed"));
+        }
     }
 
     // ANTS-1424-INV-8 — success envelope: id (full ANTS-NNNN
@@ -7624,11 +7780,15 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
     }
 
     // Default mode:"firings" — existing envelope, plus a slim near_misses
-    // block (INV-12).
-    QJsonObject env = ModelSwitchLedger::statsForScope(
-        ModelSwitchLedger::defaultLedgerPath(), rootCanonical, sc);
+    // block (INV-12). ANTS-1909 — compute the slim near-miss block BEFORE
+    // statsForScope so the dominant-blocker + 24 h count can flow into the
+    // headline composition via StatsConfig (statsEnvelope owns the wording).
     const ModelNearMissLedger::StatsSlim slim =
         ModelNearMissLedger::statsSlim(nmRecs, nmProjectScope, nmNowMs);
+    sc.nearMissTotal24h        = slim.total24h;
+    sc.nearMissDominantBlocker = slim.dominantBlocker;
+    QJsonObject env = ModelSwitchLedger::statsForScope(
+        ModelSwitchLedger::defaultLedgerPath(), rootCanonical, sc);
     QJsonObject slimObj;
     slimObj[QStringLiteral("total_24h")]        = slim.total24h;
     slimObj[QStringLiteral("dominant_blocker")] = slim.dominantBlocker;
@@ -7857,8 +8017,13 @@ QJsonObject sqErr(const QString &code, const QString &message) {
 // used by some sister projects — ANTS-1880). The two prefixes are
 // disjoint, so the routing in cmdSpecQuery is unambiguous.
 bool isValidSpecId(const QString &id) {
+    // ANTS-1906 — widened the `phase_*` arm to accept hyphens and
+    // mixed case in the topic suffix so non-Ants projects (Vestige
+    // ships `phase_22_threading_design`-style filenames already, but
+    // others use `phase_22_Foo-Bar`) can drive the routing without
+    // an explicit `path` override.
     static const QRegularExpression re(
-        QStringLiteral("^(ANTS-[0-9]+|phase_[0-9]+_[a-z0-9_]+)$"));
+        QStringLiteral("^(ANTS-[0-9]+|phase_[0-9]+_[A-Za-z0-9_-]+)$"));
     return re.match(id).hasMatch();
 }
 
@@ -7972,16 +8137,27 @@ QJsonObject parseSpecBody(const QString &body) {
 
 QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
     const QString id = req.value(QStringLiteral("id")).toString();
-    if (id.isEmpty()) {
+    // ANTS-1906 — optional `path` escape hatch for projects whose
+    // spec / phase docs live at non-standard locations (e.g. Vestige
+    // ships `docs/phases/phase_22_threading_design.md`; another
+    // project may put them under `docs/design/`). When set, the
+    // verb bypasses isValidSpecId + per-shape directory routing and
+    // reads that project-relative path directly, deriving the
+    // response `id` from the basename. The `id` arg becomes optional
+    // under `path`; when both are set the explicit `id` wins (caller
+    // wants a specific display id).
+    const QString pathArg = req.value(QStringLiteral("path")).toString();
+    if (id.isEmpty() && pathArg.isEmpty()) {
         return QJsonDocument(sqErr(
             QStringLiteral("bad_id"),
-            QStringLiteral("spec_query: missing or empty \"id\"")));
+            QStringLiteral("spec_query: pass \"id\" or \"path\"")));
     }
-    if (!isValidSpecId(id)) {
+    if (!id.isEmpty() && pathArg.isEmpty() && !isValidSpecId(id)) {
         return QJsonDocument(sqErr(
             QStringLiteral("bad_id"),
             QStringLiteral("spec_query: id must match ANTS-NNNN or "
-                           "phase_<NN>_<topic>")));
+                           "phase_<NN>_<topic>, or pass an explicit "
+                           "`path` (ANTS-1906)")));
     }
     const QString rootCanonical = resolveRootCanonical(m_main, req);
     if (rootCanonical.isEmpty()) {
@@ -7995,12 +8171,42 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
     // routing is unambiguous. Response carries a `source` field so
     // a caller scanning results can branch on layout without
     // re-parsing the path.
-    const bool isPhase = id.startsWith(QStringLiteral("phase_"));
-    const QString dirRel = isPhase
-        ? QStringLiteral("docs/phases/")
-        : QStringLiteral("docs/specs/");
-    const QString rel  = dirRel + id + QStringLiteral(".md");
-    const QString full = rootCanonical + QLatin1Char('/') + rel;
+    // ANTS-1906 — when `path` is set, skip id-shape routing entirely
+    // and read the project-relative path. The `path` is constrained
+    // to the project root (no leading slash, no `..` traversal) so
+    // the verb stays a read-only on-disk lookup.
+    QString rel, full;
+    bool isPhase = false;
+    QString sourceTag;
+    if (!pathArg.isEmpty()) {
+        QString cleaned = pathArg;
+        while (cleaned.startsWith(QStringLiteral("./"))) cleaned = cleaned.mid(2);
+        if (cleaned.startsWith(QLatin1Char('/'))) {
+            return QJsonDocument(sqErr(
+                QStringLiteral("bad_path"),
+                QStringLiteral("spec_query: path must be project-"
+                               "relative (no leading '/')")));
+        }
+        if (cleaned.contains(QStringLiteral(".."))) {
+            return QJsonDocument(sqErr(
+                QStringLiteral("bad_path"),
+                QStringLiteral("spec_query: path must not contain "
+                               "'..' traversal segments")));
+        }
+        rel  = cleaned;
+        full = rootCanonical + QLatin1Char('/') + rel;
+        sourceTag = QStringLiteral("path");
+    } else {
+        isPhase = id.startsWith(QStringLiteral("phase_"));
+        const QString dirRel = isPhase
+            ? QStringLiteral("docs/phases/")
+            : QStringLiteral("docs/specs/");
+        rel  = dirRel + id + QStringLiteral(".md");
+        full = rootCanonical + QLatin1Char('/') + rel;
+        sourceTag = isPhase
+            ? QStringLiteral("phases")
+            : QStringLiteral("specs");
+    }
     QFileInfo fi(full);
     if (!fi.exists() || !fi.isFile()) {
         return QJsonDocument(sqErr(
@@ -8018,14 +8224,22 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
 
     QJsonObject result = parseSpecBody(body);
     result["ok"]         = true;
-    result["id"]         = id;
+    // ANTS-1906 — derive id from basename when only `path` was passed
+    // and no explicit `id` came in. Strips trailing ".md".
+    QString displayId = id;
+    if (displayId.isEmpty()) {
+        displayId = fi.fileName();
+        if (displayId.endsWith(QStringLiteral(".md"))) displayId.chop(3);
+    }
+    result["id"]         = displayId;
     result["path"]       = rel;
     result["size_bytes"] = fi.size();
     result["mtime_ms"]   = fi.lastModified().toMSecsSinceEpoch();
     // ANTS-1880 — source-dir discriminator for the caller.
-    result["source"] = isPhase
-        ? QStringLiteral("phases")
-        : QStringLiteral("specs");
+    // ANTS-1906 — "path" sentinel for the explicit-path mode so a
+    // caller scanning results can branch on layout without
+    // re-parsing the response path.
+    result["source"] = sourceTag;
     return QJsonDocument(result);
 }
 

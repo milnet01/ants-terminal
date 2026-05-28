@@ -1369,6 +1369,17 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     // §2.4 — keystroke-timing composerEmpty proxy.
     const bool composerEmpty =
         focused->lastUserKeystrokeMs() < s.idleSinceMs;
+    // ANTS-1908 — soft-veto telemetry. ms since the most-recent
+    // keystroke landed in the focused tab; -1 when no keystroke has
+    // been recorded yet (the controller leaves the gate at its
+    // legacy hard-veto behaviour in that case). The decide() helper
+    // honours kComposerStaleVetoMs to yield the veto when the
+    // composer carries text that hasn't been touched recently — the
+    // dominant blocker pattern observed on long autonomous /loop
+    // sessions where the user's last continuation prompt is sitting
+    // idle in the composer (ROADMAP ANTS-1908 + model_switch_stats
+    // near-miss telemetry showing 44/44 blocked by composer_not_empty).
+    const qint64 lastKeystrokeMs = focused->lastUserKeystrokeMs();
 
     // Score the focused transcript.
     QString transcriptPath;
@@ -1431,6 +1442,12 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     // effectiveMinDwellMs helper.
     gate.configuredMinDwellMs = minDwellMs;
     gate.msSinceLastOverride  = msSinceOverride;
+    // ANTS-1908 — populate composerStaleMs from the keystroke
+    // timestamp. -1 when no keystroke recorded yet (matches the gate
+    // sentinel exactly), else the elapsed ms.
+    gate.composerStaleMs      = (lastKeystrokeMs > 0)
+        ? (nowMs - lastKeystrokeMs)
+        : -1;
 
     const ModelAutoSwitch::Decision dec = ModelAutoSwitch::decide(gate);
     if (!dec.act) {

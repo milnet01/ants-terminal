@@ -708,6 +708,16 @@ private:
     // {shape:"table"|"prose"|"empty", non_bullet_lines:N}; emit-
     // time skips when shape == "empty" (matches INV-3 contract).
     mutable QHash<QString, QJsonObject>    m_roadmapSectionShape;
+    // ANTS-1907 — per-section ETag cache. Derived from the section's
+    // sliced byte content (SHA-256 prefix) so two sections with
+    // identical bodies hash identically and an edit to one section
+    // never invalidates another. Lives in lockstep with the section
+    // bullets cache: keys cleared together on mtime advance / TTL
+    // expiry, LRU evicts the same slugs. Used by both the section=
+    // mode (emit + accept section_etag_match for 304 short-circuit)
+    // and the section_index mode (emit per-section section_etag so
+    // a multi-section caller can ask "did any of these change?").
+    mutable QHash<QString, QString>        m_roadmapSectionEtags;
     // ANTS-1346 — MRU-front list bounding the section cache at 64
     // slugs. Hit-path bumps the slug to the front; insert-path evicts
     // the tail when size > kRoadmapSectionCacheCap. Cleared together

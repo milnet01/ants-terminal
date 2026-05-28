@@ -12,6 +12,39 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **`workspace_search` adds `max_match_bytes:` + `headline_only:true` knobs — first-attempt tax on research sweeps with long…** (ANTS-1904)
+  When searching for threading keywords across a big roadmap, the response is dominated by 2-5 KB bullets each. Two new knobs (clip per-match bytes, or skip context entirely) would let the search return manageable results on the first try instead of forcing a regex-narrowing retry.
+
+- **SessionStart orientation cheat-sheet: add `roadmap_query` + `workspace_search` + the verb-modes / ETag-and-fields footno…** (ANTS-1910)
+  The 9-tool cheat-sheet at session start is helpful but misses three things I reach for every session. Add roadmap_query (the read-side partner to roadmap_log), workspace_search (the cheap-grep), and a one-line footnote noting that most write verbs have multiple op: modes and most read verbs accept etag_match + fields=.
+
+- **`spec_query` accepts project-configurable doc-path layouts (e.g. `docs/phases/phase_<NN>_<topic>_design.md`).** (ANTS-1906)
+  spec_query only finds specs at docs/specs/ANTS-NNNN.md — but Vestige's design docs live at docs/phases/phase_NN_topic_design.md. Either re-use the project_layout probe-set discovery, or accept path_prefix + id_pattern args.
+
+- **`roadmap_log op:append` auto-detect stable-string-ID project shape — empty `.roadmap-counter` should default to `id_stra…** (ANTS-1905)
+  Some projects use stable string IDs (Ts20-FL1) instead of numeric ones (ANTS-1234). On those projects the append tool tries to allocate from an empty counter and produces wrong IDs. Auto-detect the project's existing style and default to the stable-prefix escape hatch.
+
+- **`roadmap_query` per-section etag — let `section=X` short-circuit when only other sections changed.** (ANTS-1907)
+  Today reading the same section twice always re-parses if any byte of the file changed. A per-section ETag would let unchanged sections return 'not modified' independently — saves token cost across /cold-eyes and /test-audit loops that touch many sections.
+
+- **Auto-switcher: enrich `model_switch_stats` headline with calibration progress + near-miss dominant-blocker.** (ANTS-1909)
+  When the auto-switcher hasn't fired yet, the headline says 'no switches yet' — which sounds broken. Rewrite the headline to also surface 'N near-misses blocked by composer_not_empty' so it reads as 'evaluating but blocked' instead of 'doing nothing'.
+
+- **Auto-switcher: `composer_not_empty` soft-veto with stale-text detection — unblock long autonomous sessions where the dom…** (ANTS-1908)
+  The auto-switcher won't fire while there's any text in the input box — but in long autonomous sessions there's always leftover text. Make the rule smarter: if the text has been sitting untouched for 5+ minutes, treat it as stale and allow the switch.
+
+### Changed
+
+- **`project_layout` roadmap-format sniffer still returns `unknown` on Vestige despite the ANTS-1632 ship claim — re-investi…** (ANTS-1903)
+  Vestige reports that the format-detector for ROADMAP files is still returning 'unknown' on their project despite the previous fix being marked shipped. Either the fix isn't reaching their build, or it doesn't cover their specific roadmap shape. Needs a trace field + CI fixture.
+
+### Fixed
+
+- **Cross-tab Claude-state mix-up — focused tab's status bar shows ANOTHER tab's `Claude:` state.** (ANTS-1911)
+  When you have two Claude tabs open (e.g. Ants Terminal + Vestige), the status bar at the bottom sometimes shows the WRONG tab's state. Screenshots 2026-05-28: the focused Ants Terminal tab was actively running cold-eyes loops + 3 background agents but the status bar said 'Claude: idle' and the tab dot was idle; switching to the Vestige tab (which was actually idle) showed 'Claude: thinking' — the state of the OTHER tab leaked into this one's status surface.
+
 ## [0.7.93] — 2026-05-28
 
 **Theme:** Auto-switcher visibility — the silent `/model` injection

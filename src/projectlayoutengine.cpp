@@ -25,11 +25,17 @@ namespace {
 // older slices in ants-v1 emoji shape, no explicit format marker),
 // return "mixed" instead of dropping out to "unknown". `countBullets`
 // honours the same disjunction so `bullet_count_estimate` doesn't
-// drop to zero on the mixed case.
-QString detectFormat(const QByteArray &head, bool &markerPresent) {
+// drop to zero on the mixed case. ANTS-1903 — every call fills the
+// trace struct so an "unknown" outcome is diagnosable from the
+// envelope (was it the 4 KB sniff budget? the marker? the bullets?).
+QString detectFormat(const QByteArray &slice,
+                     bool &markerPresent,
+                     RoadmapSnifferTrace &trace) {
     markerPresent = false;
-    if (head.contains("<!-- ants-roadmap-format: 1 -->")) {
+    trace.headBytesScanned = slice.size();
+    if (slice.contains("<!-- ants-roadmap-format: 1 -->")) {
         markerPresent = true;
+        trace.markerHit = true;
         return QStringLiteral("ants-v1");
     }
     // ANTS-1632 — scan once, score both shapes.
@@ -44,7 +50,7 @@ QString detectFormat(const QByteArray &head, bool &markerPresent) {
         QByteArrayLiteral("- \xF0\x9F\x9A\xA7"),     // 🚧
         QByteArrayLiteral("- \xF0\x9F\x92\xAD"),     // 💭
     };
-    const auto lines = head.split('\n');
+    const auto lines = slice.split('\n');
     for (const auto &ln : lines) {
         if (!gfmHit &&
             (ln.startsWith("- [ ]") || ln.startsWith("- [x]") ||
@@ -58,6 +64,8 @@ QString detectFormat(const QByteArray &head, bool &markerPresent) {
         }
         if (gfmHit && antsHit) break;
     }
+    trace.gfmTaskListHit = gfmHit;
+    trace.antsV1EmojiHit = antsHit;
     if (gfmHit && antsHit) return QStringLiteral("mixed");
     if (gfmHit)            return QStringLiteral("github-task-list");
     if (antsHit)           return QStringLiteral("ants-v1");
@@ -233,11 +241,34 @@ void scanRoadmap(const QString &cwd, RoadmapInfo &out,
     const qint64 toRead =
         qMin(static_cast<qint64>(kFormatSniffBytes), out.sizeBytes);
     const QByteArray head = f.read(toRead);
-    out.format = detectFormat(head, out.formatMarkerPresent);
+    out.format = detectFormat(head, out.formatMarkerPresent,
+                              out.snifferTrace);
 
     // Bullet count needs the whole file. Seek to start, read all.
     f.seek(0);
     const QByteArray body = f.readAll();
+
+    // ANTS-1903 — when the 4 KB head sniff returns "unknown" but the
+    // file is larger than the head budget, retry the sniff against
+    // the full body. Vestige's 484 KB mixed-format ROADMAP had a
+    // long preamble + heading block before the first bullet, which
+    // exceeded the head budget on every probe. Re-sniffing the body
+    // is cheap (we just read it for countBullets anyway) and
+    // resolves the false-unknown case without changing the common
+    // back-compat path (when the head sniff hit, we skip this).
+    if (out.format == QStringLiteral("unknown") &&
+        out.sizeBytes > kFormatSniffBytes) {
+        const QString headFormat = out.format;
+        RoadmapSnifferTrace bodyTrace;
+        const QString bodyFormat =
+            detectFormat(body, out.formatMarkerPresent, bodyTrace);
+        if (bodyFormat != headFormat) {
+            out.format = bodyFormat;
+            out.snifferTrace = bodyTrace;
+            out.snifferTrace.fullScan = true;
+        }
+    }
+
     out.bulletCountEstimate = countBullets(body, out.format);
 }
 
@@ -425,6 +456,23 @@ QJsonObject toJson(const LayoutEnvelope &env) {
     rm[QStringLiteral("bullet_count_estimate")] = env.roadmap.bulletCountEstimate;
     rm[QStringLiteral("size_bytes")]            = env.roadmap.sizeBytes;
     rm[QStringLiteral("mtime_ms")]              = env.roadmap.mtimeMs;
+    // ANTS-1903 — per-branch sniffer trace. Emitted only when the
+    // roadmap was found (path non-empty); back-compat callers reading
+    // the existing fields ignore the additive object.
+    if (!env.roadmap.path.isEmpty()) {
+        QJsonObject st;
+        st[QStringLiteral("marker_hit")] =
+            env.roadmap.snifferTrace.markerHit;
+        st[QStringLiteral("ants_v1_emoji_hit")] =
+            env.roadmap.snifferTrace.antsV1EmojiHit;
+        st[QStringLiteral("gfm_task_list_hit")] =
+            env.roadmap.snifferTrace.gfmTaskListHit;
+        st[QStringLiteral("full_scan")] =
+            env.roadmap.snifferTrace.fullScan;
+        st[QStringLiteral("head_bytes_scanned")] =
+            env.roadmap.snifferTrace.headBytesScanned;
+        rm[QStringLiteral("sniffer_branches_tried")] = st;
+    }
     root[QStringLiteral("roadmap")] = rm;
     QJsonObject cl;
     cl[QStringLiteral("path")]       = env.changelog.path;
@@ -482,6 +530,22 @@ LayoutEnvelope fromJson(const QJsonObject &obj) {
     env.roadmap.bulletCountEstimate = rm.value(QStringLiteral("bullet_count_estimate")).toInt(0);
     env.roadmap.sizeBytes           = static_cast<qint64>(rm.value(QStringLiteral("size_bytes")).toDouble(0));
     env.roadmap.mtimeMs             = static_cast<qint64>(rm.value(QStringLiteral("mtime_ms")).toDouble(0));
+    // ANTS-1903 — round-trip the sniffer trace. Missing object (pre-
+    // 1903 caches) leaves the struct at default-init (all false / 0)
+    // — harmless, and the probeSetVersion bump invalidates them
+    // anyway via isStale().
+    const QJsonObject st =
+        rm.value(QStringLiteral("sniffer_branches_tried")).toObject();
+    env.roadmap.snifferTrace.markerHit =
+        st.value(QStringLiteral("marker_hit")).toBool(false);
+    env.roadmap.snifferTrace.antsV1EmojiHit =
+        st.value(QStringLiteral("ants_v1_emoji_hit")).toBool(false);
+    env.roadmap.snifferTrace.gfmTaskListHit =
+        st.value(QStringLiteral("gfm_task_list_hit")).toBool(false);
+    env.roadmap.snifferTrace.fullScan =
+        st.value(QStringLiteral("full_scan")).toBool(false);
+    env.roadmap.snifferTrace.headBytesScanned = static_cast<qint64>(
+        st.value(QStringLiteral("head_bytes_scanned")).toDouble(0));
     const QJsonObject cl = obj.value(QStringLiteral("changelog")).toObject();
     env.changelog.path      = cl.value(QStringLiteral("path")).toString();
     env.changelog.sizeBytes = static_cast<qint64>(cl.value(QStringLiteral("size_bytes")).toDouble(0));

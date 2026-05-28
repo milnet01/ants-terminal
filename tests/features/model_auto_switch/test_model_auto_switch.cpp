@@ -69,6 +69,41 @@ TEST(ModelAutoSwitch, Inv3ComposerNonEmptyNeverActs) {
     EXPECT_FALSE(ModelAutoSwitch::decide(g).act);
 }
 
+// ANTS-1908 — composer_not_empty soft-veto. When the composer carries
+// text AND the user hasn't touched it for ≥ kComposerStaleVetoMs, the
+// veto yields and the gate fires (long /loop sessions where leftover
+// continuation-prompt text is sitting idle).
+TEST(ModelAutoSwitch, Ants1908ComposerStaleVetoYields) {
+    Gate g = actingGate();
+    g.composerEmpty   = false;
+    g.composerStaleMs = ModelAutoSwitch::kComposerStaleVetoMs;
+    const auto dec = ModelAutoSwitch::decide(g);
+    EXPECT_TRUE(dec.act) << "stale composer should yield the veto";
+    EXPECT_FALSE(dec.blockedBy.contains(QStringLiteral("composer_not_empty")))
+        << "blockedBy should not carry composer_not_empty when stale";
+}
+
+// ANTS-1908 — recent keystroke keeps the hard veto.
+TEST(ModelAutoSwitch, Ants1908FreshKeystrokeStillBlocks) {
+    Gate g = actingGate();
+    g.composerEmpty   = false;
+    g.composerStaleMs = ModelAutoSwitch::kComposerStaleVetoMs - 1;
+    const auto dec = ModelAutoSwitch::decide(g);
+    EXPECT_FALSE(dec.act);
+    EXPECT_TRUE(dec.blockedBy.contains(QStringLiteral("composer_not_empty")));
+}
+
+// ANTS-1908 — sentinel -1 (no keystroke telemetry) preserves the
+// pre-1908 hard-veto behaviour (caller hasn't wired the new field).
+TEST(ModelAutoSwitch, Ants1908SentinelKeepsHardVeto) {
+    Gate g = actingGate();
+    g.composerEmpty   = false;
+    g.composerStaleMs = -1;
+    const auto dec = ModelAutoSwitch::decide(g);
+    EXPECT_FALSE(dec.act);
+    EXPECT_TRUE(dec.blockedBy.contains(QStringLiteral("composer_not_empty")));
+}
+
 // INV-4: clamped target already equals current → no-op (hysteresis on the
 // clamped target).
 TEST(ModelAutoSwitch, Inv4NoChangeNeverActs) {

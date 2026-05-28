@@ -2620,17 +2620,56 @@ void MainWindow::cleanupEmptySplitters(QWidget *tabRoot) {
     }
 }
 
+// ANTS-1911 — forward declaration for the file-static helper defined
+// just below focusedTerminal(). Needed because the body of
+// focusedTerminal() now calls activeTerminalInTab() (was added in the
+// ANTS-1911 fix) but the static lives later in the translation unit.
+static TerminalWidget *activeTerminalInTab(QWidget *root);
+
 TerminalWidget *MainWindow::focusedTerminal() const {
+    // ANTS-1911 — scope focus tracking to the CURRENTLY-SELECTED tab's
+    // subtree. Pre-1911 the function walked QApplication::focusWidget()
+    // first and only fell back to currentTerminal() when the walk
+    // returned nullptr — but `QApplication::focusWidget()` is the
+    // *global* focus across all windows, so a sibling tab whose
+    // terminal still held keyboard focus (Qt does not always move
+    // focus on a mouse-driven tab switch) could be returned even when
+    // the user's *visually-current* tab is different. The status bar's
+    // Claude chip + state label, the model chips, and a handful of
+    // other callers ride this resolver — and a wrong-tab read leaks
+    // the other tab's Claude state into the focused tab's chrome
+    // (user report 2026-05-28 screenshots, ROADMAP ANTS-1911).
+    //
+    // The fix: get the current tab's root widget, then only accept a
+    // QApplication::focusWidget() that lives inside that subtree.
+    // Within-tab split-pane focus still resolves to the focused pane;
+    // an unrelated tab's focus is rejected so the chrome stays
+    // anchored to what the user sees.
+    QWidget *currentTabRoot = m_tabWidget
+        ? m_tabWidget->currentWidget() : nullptr;
+    if (!currentTabRoot) return nullptr;
     QWidget *focused = QApplication::focusWidget();
-    if (auto *t = qobject_cast<TerminalWidget *>(focused))
-        return t;
-    // Walk up from focused widget
-    while (focused) {
-        if (auto *t = qobject_cast<TerminalWidget *>(focused))
-            return t;
-        focused = focused->parentWidget();
+    if (focused) {
+        // ancestorOf accepts the widget itself as well.
+        for (QWidget *w = focused; w; w = w->parentWidget()) {
+            if (w == currentTabRoot) {
+                // Focus is inside the current tab — walk up from
+                // `focused` to find the enclosing TerminalWidget (so
+                // a child line-edit or inner subwidget resolves to
+                // its terminal).
+                for (QWidget *p = focused; p; p = p->parentWidget()) {
+                    if (auto *t = qobject_cast<TerminalWidget *>(p)) {
+                        return t;
+                    }
+                }
+                break;  // current-tab subtree but no terminal up the chain
+            }
+        }
     }
-    return currentTerminal();
+    // Fallback (no in-tab focus, or focus is in a foreign tab/window):
+    // resolve to the visually-current tab's terminal so the chrome
+    // tracks the user's view, not Qt's stale focus.
+    return activeTerminalInTab(currentTabRoot);
 }
 
 // For a given tab root (a TerminalWidget or a QSplitter of panes), return the

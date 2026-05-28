@@ -2088,6 +2088,47 @@ void ClaudeIntegration::onMcpConnection() {
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     props["fields"] = makeFieldsProp();          // ANTS-1720
+                    // ANTS-1907 — per-section ETag short-circuit (section=
+                    // mode) + opt-in per-section etag emission
+                    // (section_index mode). Independent of the dispatch-
+                    // layer file-level etag; lets a /cold-eyes or
+                    // /test-audit loop reading many sections per pass
+                    // skip the re-emit on sections that didn't change.
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Per-section ETag short-circuit (ANTS-1907). "
+                            "On a section= query, pass back the "
+                            "`section_etag` field returned by a previous "
+                            "call; when the section's bytes are unchanged "
+                            "the verb returns "
+                            "{ok:true, unchanged:true, section, "
+                            "section_etag, path} — saves the bullets[] "
+                            "body. Independent of `etag_match` (file-"
+                            "level); use this when /cold-eyes / /test-"
+                            "audit loops touch many sections per pass "
+                            "and most are stable across an edit to one. "
+                            "Only honoured in section= mode; ignored in "
+                            "bullets/section_index/headline_only.");
+                        props["section_etag_match"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "boolean";
+                        p["default"] = false;
+                        p["description"] = QStringLiteral(
+                            "If true, each section in section_index "
+                            "carries a `section_etag` field (ANTS-1907) "
+                            "— a SHA-256 hash of the section's byte slice "
+                            "stable under edits to OTHER sections. Pair "
+                            "with `section_etag_match` on follow-up "
+                            "section= calls to avoid re-emitting "
+                            "unchanged bullets. Default false (envelope "
+                            "shape unchanged when omitted; opt-in pays "
+                            "a one-time per-section slicing cost).");
+                        props["include_section_etags"] = p;
+                    }
                     schema["properties"] = props;
                     roadmapTool["inputSchema"] = schema;
                 }
@@ -2179,12 +2220,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "½ Opus turn avoided each, so end-of-task downgrades — the "
                         "dominant ledger shape — are no longer invisible. The "
                         "headline reads \"auto-switch OFF\" when disabled, "
-                        "\"auto-switch ON (floor=X) … no switches yet\" when "
-                        "enabled with no records, \"insufficient data (N/F "
-                        "measured)\" until the headline floor (F=10) is reached, "
-                        "and the full avoided/clean-end/regret breakdown above "
-                        "the floor — so a caller can distinguish \"feature "
-                        "dormant\" from \"feature working quietly\" from \"feature "
+                        "\"auto-switch ON (floor=X, dwell=Ns) … no switches "
+                        "yet\" when enabled with no records, \"calibrating "
+                        "(N/F measured)\" (post-1909 — was \"insufficient "
+                        "data\" pre-1909) until the headline floor (F=10) is "
+                        "reached, and the full avoided/clean-end/regret "
+                        "breakdown above the floor — so a caller can "
+                        "distinguish \"feature dormant\" from \"feature "
+                        "working quietly\" from \"feature "
                         "still in calibration.\" An absent ledger returns "
                         "{ok:true, switches:0, …}; pending records (switch near "
                         "session end, outcome not yet measured) are counted "
@@ -2202,7 +2245,32 @@ void ClaudeIntegration::onMcpConnection() {
                         "etc.) — diagnostic for \"why doesn't it switch in "
                         "this project?\". Pass `mode:\"near_misses\"` for "
                         "the full per-blocker breakdown (24 h + all-time "
-                        "windows, distinct_signatures count).");
+                        "windows, distinct_signatures count). ANTS-1909 — "
+                        "the headline now carries the dwell parenthetical "
+                        "(`floor=X, dwell=Ns`), uses \"calibrating\" in "
+                        "place of \"insufficient data\" below the floor, "
+                        "and — when the 24 h near-miss block is non-empty — "
+                        "appends \"N near-misses in 24 h blocked by "
+                        "<dominant_blocker>\" on both the no-switches and "
+                        "calibrating branches so the trust signal reads "
+                        "as \"evaluating but blocked\" rather than "
+                        "\"feature did nothing\". Blocker-meanings (for "
+                        "the dominant-blocker token): "
+                        "`composer_not_empty` = focused-tab composer "
+                        "carries text (hard veto; ANTS-1908 tracks a "
+                        "stale-text soft-veto); "
+                        "`dwell_time_insufficient` = haven't reached "
+                        "min_dwell_sec on the current tier yet (transient, "
+                        "self-resolving); "
+                        "`override_cooldown_active` = user manually picked "
+                        "the current tier within the cool-down window "
+                        "(transient); "
+                        "`target_equals_current` = recommender already on "
+                        "the target tier — *expected steady-state*, NOT a "
+                        "failure; "
+                        "`ticks_target_stable_insufficient` = recommender "
+                        "hasn't held the new target long enough to act on — "
+                        "*expected steady-state*, NOT a failure.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to check whether automatic model switching is "
                         "paying off before trusting it more widely — reports "
@@ -3315,37 +3383,69 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "spec_query";
                     t["description"] = QStringLiteral(
-                        "Parse a single docs/specs/<id>.md file and "
+                        "Parse a single spec / design markdown file and "
                         "return its parsed metadata + invariant list. "
                         "Returns {ok, id, title, status, kind, path, "
                         "size_bytes, mtime_ms, invariants:[{id, body, "
-                        "test_surface?}], invariants_count}. Recognises "
-                        "both the table form (`| INV-N | body | test "
-                        "surface |`) and the bullet form (`- **INV-N** "
-                        "— body`). Use when you need the contract list "
-                        "of a spec without reading the full ~2 K-line "
-                        "body. Refusals: `bad_id` (missing or not "
-                        "matching `^ANTS-[0-9]+$`), `not_found` (file "
-                        "absent), `no_project` (caller_cwd unresolved).");
+                        "test_surface?}], invariants_count, source}. "
+                        "Recognises both the table form (`| INV-N | "
+                        "body | test surface |`) and the bullet form "
+                        "(`- **INV-N** — body`). Use when you need "
+                        "the contract list of a spec without reading "
+                        "the full ~2 K-line body. ID routing: "
+                        "ANTS-NNNN → docs/specs/<id>.md (source=specs); "
+                        "phase_<NN>_<topic> → docs/phases/<id>.md "
+                        "(source=phases, ANTS-1880). ANTS-1906 — pass "
+                        "an explicit project-relative `path` instead "
+                        "of `id` for projects whose specs live "
+                        "elsewhere (e.g. "
+                        "`docs/phases/phase_22_threading_design.md`); "
+                        "the response `source` becomes \"path\" and "
+                        "`id` is auto-derived from the basename. Path "
+                        "must be project-relative (no leading '/', no "
+                        "'..' traversal). Refusals: `bad_id` (missing "
+                        "or not matching the recognised id shape), "
+                        "`bad_path` (path escaped the project root), "
+                        "`not_found` (file absent), `no_project` "
+                        "(caller_cwd unresolved).");
                     t["selection_hint"] = QStringLiteral(
                         "Use instead of `Read` when you only need a "
                         "spec's INV list (the contract surface), not "
                         "the full narrative. Typically 5-20× smaller "
-                        "than a full Read.");
+                        "than a full Read. Pass `path` for non-Ants "
+                        "spec layouts.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
                     QJsonObject idProp;
                     idProp["type"] = "string";
                     idProp["description"] = QStringLiteral(
-                        "Spec ID matching `^ANTS-[0-9]+$`. The file "
-                        "is resolved as `docs/specs/<id>.md` under "
-                        "the caller's project root.");
+                        "Spec ID. ANTS-NNNN → docs/specs/<id>.md; "
+                        "phase_<NN>_<topic> → docs/phases/<id>.md "
+                        "(ANTS-1880). Optional when `path` is set "
+                        "(ANTS-1906); the explicit `id` then wins as "
+                        "the response's display id.");
                     props["id"]         = idProp;
+                    QJsonObject pathProp;
+                    pathProp["type"] = "string";
+                    pathProp["description"] = QStringLiteral(
+                        "Optional project-relative path to a spec file "
+                        "(e.g. `docs/phases/phase_22_threading_"
+                        "design.md`). When set, bypasses id-shape "
+                        "routing and reads that file directly; the "
+                        "response `id` is auto-derived from the "
+                        "basename. Mutually exclusive shape with `id` "
+                        "(both are accepted; explicit `id` overrides "
+                        "the basename-derived one). Must not start "
+                        "with '/' or contain '..' (ANTS-1906).");
+                    props["path"]       = pathProp;
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray req;
-                    req.append("id");
+                    // ANTS-1906 — only caller_cwd stays unconditionally
+                    // required; the verb enforces "id OR path" at
+                    // runtime so a single JSON Schema entry can't
+                    // express it cleanly without oneOf.
                     req.append("caller_cwd");
                     schema["required"]            = req;
                     schema["additionalProperties"] = false;
@@ -6320,6 +6420,40 @@ void ClaudeIntegration::onMcpConnection() {
                         "^#{1,6}\\s (a Markdown heading) refuse with "
                         "bad_intro.");
 
+                    // ANTS-1905 — id_strategy + stable_id for projects
+                    // that use stable string IDs (Sh4, Ts20-FL1, MT8…)
+                    // instead of [PROJ-NNNN]. Optional escape hatch
+                    // around .roadmap-counter for op:"append" so a
+                    // project that never had a counter can still drive
+                    // the verb from MCP instead of falling back to Edit.
+                    QJsonObject idStrategyProp;
+                    idStrategyProp["type"] = "string";
+                    {
+                        QJsonArray e;
+                        e.append("counter");
+                        e.append("stable_prefix");
+                        idStrategyProp["enum"] = e;
+                    }
+                    idStrategyProp["description"] = QStringLiteral(
+                        "Allocator strategy under op:\"append\". "
+                        "\"counter\" (default) bumps .roadmap-counter "
+                        "and renders an [ANTS-NNNN]-style id. "
+                        "\"stable_prefix\" requires `stable_id` and "
+                        "writes the bullet with that id verbatim — "
+                        "skip the counter for projects that use stable "
+                        "string IDs (Sh4, Ts20-FL1, MT8…) (ANTS-1905). "
+                        "When .roadmap-counter is missing and stable "
+                        "IDs are detected, the counter path's refusal "
+                        "envelope (`stable_prefix_unsupported`) points "
+                        "the caller at this strategy.");
+                    QJsonObject stableIdProp;
+                    stableIdProp["type"] = "string";
+                    stableIdProp["description"] = QStringLiteral(
+                        "Full stable id string when id_strategy="
+                        "\"stable_prefix\" (e.g. \"Ts20-SP6\"). Must "
+                        "match ^[A-Za-z][A-Za-z0-9_-]+$. Not accepted "
+                        "under the default counter strategy.");
+
                     QJsonObject props;
                     props["caller_cwd"]    = callerProp;
                     props["op"]            = opProp;
@@ -6343,6 +6477,8 @@ void ClaudeIntegration::onMcpConnection() {
                     props["anchor"]        = anchorProp;
                     props["prefix_hint"]   = prefixHintProp;
                     props["note"]          = noteProp;
+                    props["id_strategy"]   = idStrategyProp;  // ANTS-1905
+                    props["stable_id"]     = stableIdProp;    // ANTS-1905
                     schema["properties"]   = props;
 
                     // ANTS-1428 — only caller_cwd is unconditionally

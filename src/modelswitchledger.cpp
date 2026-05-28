@@ -418,25 +418,51 @@ QJsonObject statsEnvelope(const QList<Record> &recs, const StatsConfig &cfg) {
 
     // ANTS-1891 — headline format adds the floor phrase (improvement E) and
     // withholds the ratio until measuredDowngrades ≥ kHeadlineFloorMeasured.
+    // ANTS-1909 — adds the `dwell=Ns` parenthetical (always) and surfaces
+    // near-miss dominant-blocker context on the no-switches + below-floor
+    // paths so "no firings yet" reads as "evaluating but blocked", not
+    // "feature did nothing". The enrichment is bounded by the optional
+    // near-miss fields on StatsConfig — empty values fall back to the
+    // pre-1909 wording (back-compat for callers not yet plumbing them).
     const QString scopePhrase = (cfg.scope == QStringLiteral("global"))
         ? QStringLiteral("globally")
         : QStringLiteral("in this project");
+    const QString configPhrase = QStringLiteral("floor=%1, dwell=%2s")
+        .arg(cfg.floorTier).arg(cfg.minDwellSec);
+    auto nearMissSuffix = [&cfg](bool calibrating) -> QString {
+        // Only surface when we actually have near-miss telemetry.
+        if (cfg.nearMissTotal24h <= 0
+            || cfg.nearMissDominantBlocker.isEmpty()) {
+            return QString();
+        }
+        const QString prefix = calibrating
+            ? QStringLiteral(", ")    // appended onto an existing clause
+            : QStringLiteral(" — ");  // headline ends with "no switches yet"
+        return QStringLiteral("%1%2 near-miss%3 in 24 h blocked by %4")
+            .arg(prefix)
+            .arg(cfg.nearMissTotal24h)
+            .arg(cfg.nearMissTotal24h == 1 ? QString() : QStringLiteral("es"))
+            .arg(cfg.nearMissDominantBlocker);
+    };
+
     QString headline;
     if (!cfg.switchEnabled) {
         headline = QStringLiteral("auto-switch OFF");
     } else if (recs.isEmpty()) {
-        headline = QStringLiteral("auto-switch ON (floor=%1) %2: no switches yet")
-            .arg(cfg.floorTier).arg(scopePhrase);
+        headline = QStringLiteral("auto-switch ON (%1) %2: no switches yet")
+            .arg(configPhrase).arg(scopePhrase);
+        headline += nearMissSuffix(/*calibrating=*/false);
     } else if (measuredDowngrades < kHeadlineFloorMeasured) {
         headline = QStringLiteral(
-            "auto-switch ON (floor=%1) %2: insufficient data (%3/%4 measured)")
-            .arg(cfg.floorTier).arg(scopePhrase)
+            "auto-switch ON (%1) %2: calibrating (%3/%4 measured)")
+            .arg(configPhrase).arg(scopePhrase)
             .arg(measuredDowngrades).arg(kHeadlineFloorMeasured);
+        headline += nearMissSuffix(/*calibrating=*/true);
     } else {
         headline = QStringLiteral(
-            "auto-switch ON (floor=%1) %2: avoided %3 Opus turns "
+            "auto-switch ON (%1) %2: avoided %3 Opus turns "
             "(+%4 clean end), %5 regretted (regret %6%)")
-            .arg(cfg.floorTier).arg(scopePhrase)
+            .arg(configPhrase).arg(scopePhrase)
             .arg(opusAvoided).arg(cleanEndCount).arg(regretCount)
             .arg(QString::number(regretRate, 'f', 1));
     }

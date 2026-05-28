@@ -152,13 +152,19 @@ credit clean session-ends (no override / correction / under-route
 within ~10 min of session end) as ½ Opus turn avoided each so end-of-
 task downgrades — the dominant ledger shape — are no longer invisible;
 headline withholds the ratio until a configurable floor of measured
-downgrades is reached and reads "insufficient data (N/F measured)"
-below the floor. Envelope readers should check `measured_downgrades >
-0` before treating `regret_rate` as meaningful (the new `near_misses`
-block — ANTS-1894 INV-12 — is independent and meaningful from the
-first record). ANTS-1894 — envelope additionally carries a slim
+downgrades is reached and reads "calibrating (N/F measured)" below
+the floor (ANTS-1909 renamed the pre-floor phrase from "insufficient
+data"). Envelope readers should check `measured_downgrades > 0` before
+treating `regret_rate` as meaningful (the new `near_misses` block —
+ANTS-1894 INV-12 — is independent and meaningful from the first
+record). ANTS-1894 — envelope additionally carries a slim
 `near_misses:{total_24h, dominant_blocker}` block; pass
-`mode:"near_misses"` for the full blocker breakdown.
+`mode:"near_misses"` for the full blocker breakdown. ANTS-1909 — the
+headline now also carries the `dwell=Ns` parenthetical and, when the
+24 h near-miss block is non-empty, appends "N near-misses in 24 h
+blocked by <dominant_blocker>" on both the no-switches and calibrating
+branches so the trust signal reads as "evaluating but blocked" rather
+than "feature did nothing".
 
 Config keys for the autonomous model switcher (ANTS-1735 §2.7) — single
 Settings toggle "Let Ants pick the Claude model for me" + two
