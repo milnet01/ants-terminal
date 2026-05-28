@@ -13,6 +13,7 @@
 #include <QListWidgetItem>
 #include <QSignalSpy>
 #include <QString>
+#include <QTemporaryDir>
 
 #include <fstream>
 #include <string>
