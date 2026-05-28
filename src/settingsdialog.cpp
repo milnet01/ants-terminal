@@ -280,8 +280,12 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         if (m_claudeAutoModelChipPulse) m_claudeAutoModelChipPulse->setEnabled(on);
         if (m_claudeAutoModelUndo)      m_claudeAutoModelUndo->setEnabled(on);
     };
-    connect(m_claudeAutoModelSwitch, &QCheckBox::checkStateChanged,
-            this, [mirrorMaster](Qt::CheckState) { mirrorMaster(); });
+    // Use the int-overload of stateChanged for Qt-6.4 compatibility
+    // (CI's Ubuntu 24.04 LTS Qt). checkStateChanged(Qt::CheckState)
+    // landed in Qt 6.7; the int overload is deprecated in Qt 6.9 but
+    // still present and accepted on every 6.x. ANTS-1893.
+    connect(m_claudeAutoModelSwitch, &QCheckBox::stateChanged,
+            this, [mirrorMaster](int) { mirrorMaster(); });
     mirrorMaster();   // initial state
 
     // ANTS-1897 — MCP discoverability via SessionStart hook. On by
