@@ -2806,6 +2806,13 @@ minor tag (next: pre-0.8.0).
   Kind: ux.
   Source: user-request-2026-05-26 (Review Changes dialog UX).
 
+- 📋 [ANTS-1911] **Cross-tab Claude-state mix-up — focused tab's status bar shows ANOTHER tab's `Claude:` state.**
+  Reproduction: have two Claude tabs running concurrently (one actively doing work — running tools / agents; the other genuinely idle). The status-bar 'Claude: <state>' label + the per-tab dot indicator can swap, showing the active tab's state under the idle tab's surface and vice versa.\n\nThe bug is in ClaudeStatusBarController's apply() / refresh paths — the focused-tab resolution may be reading a stale shellPid, OR claudestate::fromShell is keying on the wrong tab's tracker entry, OR the indicator-provider lambda at coloredTabBar set up in attach() is closing over a pid that goes stale across tab switches.\n\nInvestigation entry points:\n- src/claudestatuswidgets.cpp apply() — verify it reads focusedTerminalProvider() then shellPid(), not a cached value.\n- src/claudestatuswidgets.cpp:221 m_coloredTabBar->setClaudeIndicatorProvider lambda — captures m_tracker but reads pid per-call from m_terminalAtTabProvider(tabIndex); verify pid is current and not cached on the tab widget.\n- src/claudetabtracker.cpp shellState(pid) — verify pid lookup is by-pid not by-iteration-order.\n- The user-side reproduction is reliable; should add a feature test that drives two concurrent ShellPid tracker entries and asserts the focused-tab's state never reads the other tab's slot.\n\nPriority: medium — the chip is informational only (clicking it sends '/model' commands but those are gated by shellPid which presumably IS correct). However user trust in the chip degrades fast once they see it lie. Pair with ANTS-1873 which was the prior fix in this area (apply() switched to reading focused tab's tracker entry directly); this bug may be a regression from that fold or an additional uncovered path.
+  **Layman:** When you have two Claude tabs open (e.g. Ants Terminal + Vestige), the status bar at the bottom sometimes shows the WRONG tab's state. Screenshots 2026-05-28: the focused Ants Terminal tab was actively running cold-eyes loops + 3 background agents but the status bar said 'Claude: idle' and the tab dot was idle; switching to the Vestige tab (which was actually idle) showed 'Claude: thinking' — the state of the OTHER tab leaked into this one's status surface.
+  Kind: fix.
+  Lanes: claudestatuswidgets, claudetabtracker, claudestateresolver.
+  Source: user-feedback-2026-05-28 (two screenshots: Ants Terminal tab vs Vestige tab).
+
 ### 🔍 CI fold-in (2026-04-28)
 
 - ✅ [ANTS-1869] **UBSan vptr error in `DialogChrome::ChromeGuard::eventFilter`
@@ -14566,6 +14573,48 @@ subsection.
   Lanes: ci, workflow, github-actions.
   Source: in-session-2026-05-26.
 
+- 📋 [ANTS-1903] **`project_layout` roadmap-format sniffer still returns `unknown` on Vestige despite the ANTS-1632 ship claim — re-investigate.**
+  Vestige's 2026-05-28 Ts20-SP4+SP6 session re-tested project_layout(caller_cwd:<vestige>, force_rescan:true) against a 484 KB mixed-format ROADMAP.md (hundreds of `- [x]`/`- [ ]` GFM bullets + 📋/✅ emoji-status sections) and got back roadmap.format:"unknown", bullet_count_estimate:0, format_marker_present:false. probe_set_version:4 is present (so the probe-bump shipped to this binary) but the format-sniffer is not producing a non-unknown answer. Either the sniffer logic isn't reaching this code path, or the heuristic rejects every branch on Vestige's specific shape. Investigation: (a) re-run the ANTS-1632 fixture tests against the actual Vestige ROADMAP.md content (or a synthetic copy) to confirm INV-10a/INV-10b still hold; (b) add a sniffer_branches_tried trace field to the project_layout response so the next failure surfaces which branches matched vs rejected; (c) consider adding the Vestige ROADMAP shape as a CI regression fixture. Trust-eroding because the prior ship-status table is now stale.
+  **Layman:** Vestige reports that the format-detector for ROADMAP files is still returning 'unknown' on their project despite the previous fix being marked shipped. Either the fix isn't reaching their build, or it doesn't cover their specific roadmap shape. Needs a trace field + CI fixture.
+  Kind: investigate.
+  Lanes: mcp-project-layout, projectlayoutengine.
+  Source: vestige-feedback-2026-05-28 ANTS-1632 regression.
+
+- 📋 [ANTS-1904] **`workspace_search` adds `max_match_bytes:` + `headline_only:true` knobs — first-attempt tax on research sweeps with long bullet bodies.**
+  Vestige's 2026-05-26 research session hit an 87 KB persisted-output truncation on a long OR-regex (`thread|parallel|task graph|…`) against ROADMAP.md. The match line is the entire bullet (each ~2-5 KB on a dense bundled roadmap), so 30 matches × ~3 KB = ~90 KB blows past the inline cap. Two narrow knobs would solve the problem without changing defaults: (a) max_match_bytes:int — clip each individual text: field to N bytes (default ~400) so a single 4 KB bullet doesn't dominate; (b) headline_only:true — return only the matched line, omit context_before/context_after entirely. Both are bounded additions to the existing schema. Optional follow-up: auto-fallback to a {file, line, headline} summary shape when the response would exceed max_bytes, with mode_downgraded:"summary" on the envelope so callers know to re-call with narrower regex if they wanted full context.
+  **Layman:** When searching for threading keywords across a big roadmap, the response is dominated by 2-5 KB bullets each. Two new knobs (clip per-match bytes, or skip context entirely) would let the search return manageable results on the first try instead of forcing a regex-narrowing retry.
+  Kind: enhancement.
+  Lanes: mcp-workspace-search, remotecontrol.
+  Source: vestige-feedback-2026-05-26 Issue #19.
+
+- 📋 [ANTS-1905] **`roadmap_log op:append` auto-detect stable-string-ID project shape — empty `.roadmap-counter` should default to `id_strategy:"stable_prefix"`.**
+  Vestige's roadmap uses stable string IDs (`Sh4`, `Ts20-FL1`, `MT8`) rather than `[PROJ-NNNN]` numeric IDs, so `.roadmap-counter` has never been bumped (0 bytes). Calling roadmap_log op:append today hits the counter path, which on this project shape allocates from a zero counter and silently mismatches the project's actual ID style. Either: (a) auto-detect existing ID style by regex over the last ~50 bullets on first call and surface a hint (`"this project uses stable string IDs — pass id_strategy:\"stable_prefix\" to bypass the counter"`); or (b) make id_strategy:"stable_prefix" (the escape hatch already tracked as ANTS-1563/1618) the default when .roadmap-counter is empty or absent. Result: op:append would have worked for Vestige's 30+ bullet research-session additions instead of forcing an Edit fallback.
+  **Layman:** Some projects use stable string IDs (Ts20-FL1) instead of numeric ones (ANTS-1234). On those projects the append tool tries to allocate from an empty counter and produces wrong IDs. Auto-detect the project's existing style and default to the stable-prefix escape hatch.
+  Kind: enhancement.
+  Lanes: mcp-roadmap-log, remotecontrol.
+  Source: vestige-feedback-2026-05-26 Obs #20.
+
+- 📋 [ANTS-1906] **`spec_query` accepts project-configurable doc-path layouts (e.g. `docs/phases/phase_<NN>_<topic>_design.md`).**
+  Vestige's per-phase design docs live at docs/phases/phase_<NN>_<topic>_design.md — same function as docs/specs/ANTS-NNNN.md (parsed metadata + structured invariants) but different path + id scheme. spec_query today hard-codes the docs/specs/<ANTS-NNNN>.md resolver, so Vestige falls back to Read calls. Two paths to fix: (a) project_layout already discovers spec-shaped doc layouts (ANTS-1631 widened the probe-set); spec_query could consume the discovered layout instead of hard-coding the path; (b) accept path_prefix + id_pattern args (e.g. path_prefix="docs/phases/", id_pattern="phase_<NN>_.*_design.md") and resolve based on those. Either approach lets one verb cover multiple project doc-layout styles.
+  **Layman:** spec_query only finds specs at docs/specs/ANTS-NNNN.md — but Vestige's design docs live at docs/phases/phase_NN_topic_design.md. Either re-use the project_layout probe-set discovery, or accept path_prefix + id_pattern args.
+  Kind: enhancement.
+  Lanes: mcp-spec-query, remotecontrol, projectlayoutengine.
+  Source: vestige-feedback-2026-05-26 Obs #23.
+
+- 📋 [ANTS-1907] **`roadmap_query` per-section etag — let `section=X` short-circuit when only other sections changed.**
+  Vestige's wishlist item #4 (2026-05-26 research session): the file-level etag short-circuits the whole roadmap_query response, but a per-section etag would let section=foo return {ok:true, unchanged:true} when only OTHER sections changed. In sessions with many cross-section reads followed by one targeted edit, most reads stay unchanged across the edit — but today every read after the edit pays the full re-parse cost. The /cold-eyes and /test-audit loops touch many sections per loop, so this is a real win. Implementation: derive a per-section hash from the section's byte range + the file-level etag; emit `section_etag` per section in the section_index mode and accept `section_etag_match` on the section= mode to short-circuit. The file-level etag stays the canonical handle for whole-file reads.
+  **Layman:** Today reading the same section twice always re-parses if any byte of the file changed. A per-section ETag would let unchanged sections return 'not modified' independently — saves token cost across /cold-eyes and /test-audit loops that touch many sections.
+  Kind: enhancement.
+  Lanes: mcp-roadmap-query, remotecontrol.
+  Source: vestige-feedback-2026-05-26 wishlist #4.
+
+- 📋 [ANTS-1910] **SessionStart orientation cheat-sheet: add `roadmap_query` + `workspace_search` + the verb-modes / ETag-and-fields footnote.**
+  From in-session 2026-05-28 review of ANTS-1897's shipped orientation.sh body. Three concrete additions:\n\n1. `roadmap_query` is missing — `roadmap_log` (write) is listed but the read-side partner isn't, which is asymmetric. Most sessions that touch ROADMAP.md use roadmap_query for ids[]/section/section_index drills. Same for `spec_query` (consider adding too).\n2. `workspace_search` is missing — the cheap-grep wrapper. Without it on the cheat-sheet a CC session defaults to Bash → grep, costs a permission prompt, and bypasses lane-aware dedup. Vestige's ANTS-1904 feedback flagged the same tool from a different angle.\n3. Multi-mode dispatch invisible. `roadmap_log` listing says "append / status flip / edit" but op:append_batch, op:flip_batch, op:create_section, op:annotate are all separate modes. A one-line footnote at the bottom of the cheat-sheet — "Most write verbs carry op: modes; most read verbs accept etag_match + fields= for cheap re-reads" — covers this and the ETag/fields token-saving patterns universally.\n\nImplementation: ~10-line change to kOrientationScriptBody in src/mcporientation.cpp:40-69. The version-bump on the script triggers reinstall via ANTS-1897's marker-version check, so the new cheat-sheet ships automatically on next Ants release.
+  **Layman:** The 9-tool cheat-sheet at session start is helpful but misses three things I reach for every session. Add roadmap_query (the read-side partner to roadmap_log), workspace_search (the cheap-grep), and a one-line footnote noting that most write verbs have multiple op: modes and most read verbs accept etag_match + fields=.
+  Kind: enhancement.
+  Lanes: mcporientation, claudeintegration.
+  Source: in-session-2026-05-28 (user prompt: is the SessionStart cheat-sheet sufficient?).
+
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
 - ✅ [ANTS-1329] **Tasks dialog gets 3 px of vertical row
@@ -19553,6 +19602,20 @@ contributors don't duplicate research.
   Kind: fix.
   Lanes: mcporientation, settings.
   Source: user-report-2026-05-27 (5 prior CC sessions tried + failed to make the hook error stop coming back).
+
+- 📋 [ANTS-1908] **Auto-switcher: `composer_not_empty` soft-veto with stale-text detection — unblock long autonomous sessions where the dominant blocker is leftover composer text.**
+  Vestige 2026-05-28 reports the auto-switcher has 0 measured switches in 24 h despite 3 near-misses, all blocked by composer_not_empty (100% in window). Same shape observed in this Ants Terminal project (44/44 near-misses dominated by composer_not_empty, 0 firings). Diagnosis: in a long /loop or autonomous-style session the composer is constantly non-empty because the user's previous turn left a continuation prompt waiting while the agent churns through a multi-step task; the dwell timer keeps expiring while there's text-in-progress for the next turn, even though the current turn is steady-state Opus work that could safely downgrade. Fix: rework composer_not_empty from a hard veto to a SOFT veto with a clock — if the composer has been non-empty WITHOUT new keystrokes for ≥ N minutes (default 5), it's stale waiting text and the gate yields. Requires: (a) `time_since_last_keystroke` signal on the focused-tab composer telemetry (the harness already tracks lastUserKeystrokeMs at terminalwidget.cpp — verify it's surfaced to the gate); (b) new Gate field `composerStaleMs` populated by the controller; (c) decide() reads composerStaleMs against a kComposerStaleVetoMs threshold (default 5 min). Consider also renaming the blocker token to `composer_actively_edited` so the taxonomy reads true (the safety intent is 'user is actively editing', not 'has any text'); v1-compat keep the old name as an alias on the wire, taxonomy adds the new one.
+  **Layman:** The auto-switcher won't fire while there's any text in the input box — but in long autonomous sessions there's always leftover text. Make the rule smarter: if the text has been sitting untouched for 5+ minutes, treat it as stale and allow the switch.
+  Kind: enhancement.
+  Lanes: modelautoswitch, claudestatuswidgets.
+  Source: vestige-feedback-2026-05-28 + in-session-2026-05-28.
+
+- 📋 [ANTS-1909] **Auto-switcher: enrich `model_switch_stats` headline with calibration progress + near-miss dominant-blocker.**
+  Vestige 2026-05-28 ask 4: the current headline 'auto-switch ON (floor=haiku) in this project: no switches yet' reads as 'feature did nothing' even when near-miss telemetry shows the feature IS evaluating and being blocked. The envelope already carries measured_downgrades, inconclusive_count, headline_floor, AND the near_misses.dominant_blocker (post-ANTS-1894). Rewrite the below-floor headline to surface that signal directly. Proposed format: 'auto-switch ON (floor=haiku, dwell=90s) — calibrating (M/F measured, N near-misses blocked by <dominant>)' — puts the trust signal IN the headline so a caller quoting just the headline (the common end-of-session summary case per `feedback_model_switch_stats_each_session.md`) gets the diagnostic without having to peek into near_misses{} too. Lives entirely in statsEnvelope's headline composition; no schema change. Pair with: include `dwell=Ns` parenthetical so operators can see the cadence (currently only `floor_tier` is in the headline; min_dwell_sec is in the envelope but not the headline). Document `target_equals_current` and `ticks_target_stable_insufficient` as 'expected steady-state' blockers in the descriptor's blocker-meanings table so operators don't mistake them for failures.
+  **Layman:** When the auto-switcher hasn't fired yet, the headline says 'no switches yet' — which sounds broken. Rewrite the headline to also surface 'N near-misses blocked by composer_not_empty' so it reads as 'evaluating but blocked' instead of 'doing nothing'.
+  Kind: enhancement.
+  Lanes: modelswitchledger, claudeintegration.
+  Source: vestige-feedback-2026-05-28 ask 4 + robustness 1+2.
 
 ### 🔒 Security
 
