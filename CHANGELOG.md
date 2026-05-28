@@ -12,6 +12,13 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.93] — 2026-05-28
+
+**Theme:** Auto-switcher visibility — the silent `/model` injection
+finally announces itself + the operator-trust ledger
+(ANTS-1893 surfacing + ANTS-1894 near-miss telemetry +
+ANTS-1891 honest headline + ANTS-1897 MCP cheat-sheet).
+
 ### Changed
 
 - **Auto-model switcher internals now report every reason a switch was held back.** (ANTS-1894)
@@ -41,7 +48,18 @@ for security-relevant changes.
 ### Added
 
 - **See when Ants auto-switches the Claude model.** (ANTS-1893)
-  A live auto-switch now slides a brief status-bar toast into\nview (e.g. \"Ants switched: Opus → Haiku (commit intent)\"),\nthe per-tab model chip pulses once with the theme accent for\n~0.6 s, and an \"Undo: back to <Tier>\" button appears in the\nstatus bar for 10 seconds — click to revert. Each surface\nmutes independently in Settings → General under the master\n\"Let Ants pick the Claude model for me\" toggle. The Undo\nbutton's per-tab guard (shellPid + shellCwd) refuses an undo\nfrom a different tab/session; a dead PID gets a distinct\n\"original session has ended\" toast. A successful undo seeds\nthe 10-min cool-down so the switcher won't immediately\nre-fire the same pick.
+  A live auto-switch now slides a brief status-bar toast into
+  view (e.g. "Ants switched: Opus → Haiku (commit intent)"),
+  the per-tab model chip pulses once with the theme accent for
+  ~0.6 s, and an "Undo: back to <Tier>" button appears in the
+  status bar for 10 seconds — click to revert. Each surface
+  mutes independently in Settings → General under the master
+  "Let Ants pick the Claude model for me" toggle. The Undo
+  button's per-tab guard (shellPid + shellCwd) refuses an undo
+  from a different tab/session; a dead PID gets a distinct
+  "original session has ended" toast. A successful undo seeds
+  the 10-min cool-down so the switcher won't immediately
+  re-fire the same pick.
 
 - **Near-miss telemetry: see why the auto-model switcher held back a switch.** (ANTS-1894)
   (ANTS-1894) Even when Ants doesn't switch the model, the why-not is now

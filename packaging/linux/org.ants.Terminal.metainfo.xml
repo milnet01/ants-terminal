@@ -103,6 +103,23 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.93" date="2026-05-28">
+      <description>
+        <p>Auto-switcher visibility — the silent model auto-switch finally announces itself with status-bar toast, undo buttons, and near-miss telemetry. Trust signal sharpened with honest headline on small samples, global project aggregation, and MCP cheat-sheet at Claude Code session start (ANTS-1893 live feedback + ANTS-1894 near-miss telemetry + ANTS-1891 honest headline + ANTS-1897 MCP discoverability).</p>
+        <ul>
+          <li><em>Added:</em> Live auto-switch notifications — status-bar toast (e.g. "Ants switched: Opus &amp; Haiku (commit intent)"), per-tab model chip pulse, and 10-second undo button with session validation. Per-surface mute toggles in Settings &amp; General.</li>
+          <li><em>Added:</em> Near-miss telemetry — <code>model-switch-nearmiss.jsonl</code> ledger records why a switch was held back (7-token <code>blocked_by</code> taxonomy: dwell, tier_floor, composer, override cool-down, etc.). MCP verb gains <code>mode:"near_misses"</code> arm for full per-blocker breakdown.</li>
+          <li><em>Added:</em> Honest confidence floor on auto-switcher trust signal — <code>model_switch_stats</code> envelope withholds the regret ratio until a configurable floor (default 10 measured downgrades) is reached; reads "insufficient data (3/10 measured)" below the floor. Addresses false confidence on 1–2 inconclusive records.</li>
+          <li><em>Added:</em> MCP discoverability — Claude Code sessions automatically receive an Ants-MCP cheat-sheet via <code>SessionStart</code> hook pointing at bundled <code>mcp-orientation.sh</code> script. Lists high-value MCP tools (changelog_log, find_definition, find_sources, etc.) so Claude reaches for dedicated variants instead of always-loaded Edit/Write/Bash. Toggleable in Settings &amp; General.</li>
+          <li><em>Added:</em> Auto-model switcher recognises commit-and-push (and natural inflections like "committing", "rebase onto main") as cheap turns — jumps to Haiku immediately post-refactor. Recency weighting (3×) on recent turns so mechanical tail doesn't drown in refactor history. 10-minute user-override cool-down so manual <code>/model X</code> commands prevent arguing.</li>
+          <li><em>Added:</em> Global <code>scope:"global"</code> aggregation on <code>model_switch_stats</code> — report stats across all projects in one call instead of per-project readouts. Live configuration envelope (auto_model_switch_enabled, floor_tier, min_dwell_sec) clarifies "OFF" vs "ON, no switches yet".</li>
+          <li><em>Added:</em> Per-tab status-bar chip for current Claude model &amp; thinking level (Haiku/Sonnet/Opus + standard/think/think hard/ultrathink). Always visible when auto-switcher is on. Drops thinking half when undetectable; never displays "Unknown".</li>
+          <li><em>Added:</em> Two new MCP tools: <code>last_selection</code> (text the user selected in focused tab) and <code>find_sources</code> (free-text topic &amp; to ranked source files under <code>src/</code> &amp; <code>tests/</code>). Token-savers on selection-driven questions and topic discovery.</li>
+          <li><em>Changed:</em> <code>ModelAutoSwitch::decide</code> evaluates every guard instead of short-circuiting; controller's pre-decide dwell check moves into the gate so <code>dwell_time_insufficient</code> becomes observable in near-miss ledger.</li>
+          <li><em>Changed:</em> <code>regret_count</code> in <code>model_switch_stats</code> now includes under-route harm (recommender immediately wanted to switch back up). Fixes double-counting if reading <code>regret_count</code> and <code>under_route_count</code> separately.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.92" date="2026-05-20">
       <description>
         <p>Frozen-RC release pipeline + MCP token-saver depth across 9 tools + test-infra hardening. Weekly-Wednesday + Patron-7-day-RC cadence launch (ANTS-1318). Four MCP context/code-navigation tools (similar_code, focused_test, task_priors, project_conventions), two cache tools (build_status, test_results), two spec-query tools (spec_query, invariant_check), plus scrollback error extraction, tabular symbol queries, roadmap duplicate-ID detector, and 9 defensive docs/test improvements. All 1257 feature tests passing.</p>

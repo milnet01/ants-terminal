@@ -1,3 +1,56 @@
+ants-terminal (0.7.93-1) unstable; urgency=medium
+
+  * Auto-switcher visibility — the silent /model injection now announces
+    itself. ANTS-1893 lands a status-bar toast ("Ants switched: Opus
+    → Haiku (commit intent)") + a per-tab chip pulse + a 10 s "Undo:
+    back to <Tier>" button (per-tab guard via shellPid + shellCwd;
+    dead-PID gets a distinct "session has ended" toast; click seeds
+    the 10-min cool-down). Each surface mutes independently in
+    Settings → General.
+  * Near-miss telemetry — ANTS-1894 records why a switch was held back
+    (composer_not_empty, dwell_time_insufficient, override_cooldown_active,
+    target_equals_current, focused_state_not_idle, ticks_target_stable_insufficient,
+    auto_switch_disabled). New ~/.cache/ants-terminal/model-switch-nearmiss.jsonl
+    sibling ledger (256 KiB drop-oldest, 0600); model_switch_stats gains
+    a slim near_misses block on every envelope + mode:"near_misses"
+    for the full per-blocker breakdown.
+  * model_switch_stats no longer lies on small samples — ANTS-1891
+    withholds the regret ratio until the configurable floor (default
+    10 measured downgrades) is reached. New inconclusive_count /
+    clean_end_count / weighted_avoided / headline_floor fields;
+    session_cleanly_ended_on_new_tier outcome earns a ½-Opus-turn
+    weighted credit so end-of-task switches are no longer invisible.
+  * MCP discoverability — ANTS-1897 installs a SessionStart hook so
+    every Claude Code session opens with a short cheat-sheet listing
+    the high-value Ants MCP tools (changelog_log, file_outline,
+    find_definition, etc.); 15 outlier selection_hint strings
+    rewritten to the canonical "Use when X. <cost cue>." form.
+  * Commit-intent override — ANTS-1890 makes the recommender pick
+    Haiku immediately when the latest prompt is "commit and push" /
+    "bump to 0.8.0" / "rebase onto main" (with morphology). Recency
+    weighting 1×→3× across the 20-turn window. Override cool-down
+    (10 min per project) prevents argue-with-user.
+  * model_switch_stats scope:"global" — ANTS-1889 aggregates across
+    all projects; envelope surfaces the live switcher config
+    (auto_model_switch_enabled, floor_tier, min_dwell_sec) so callers
+    can distinguish "feature OFF" / "feature ON, no switches yet" /
+    "feature ON with measured outcomes".
+  * Per-tab model+thinking chip — ANTS-1888 fills the slot where the
+    recommender chip used to sit when auto-switcher is on. Always
+    shows the focused tab's current Claude tier + last-used thinking
+    level.
+  * Auto-switcher itself — ANTS-1735 Shape B. New General-tab toggle
+    "Let Ants pick the Claude model for me"; 90 s min-dwell;
+    configurable floor (haiku/sonnet); per-tab gate; ledger-backed
+    trust signal. Default-off with first-run nudge.
+  * Two new MCP tools — ANTS-1312 last_selection (returns the user's
+    selected text from the focused tab) + ANTS-1636 find_sources
+    (ranked source-file search by topic).
+  * roadmap_log gains op:create_section (ANTS-1878) + op:append_batch
+    (ANTS-1879) for one-call multi-bullet inserts.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 28 May 2026 17:00:00 +0200
+
 ants-terminal (0.7.92-1) unstable; urgency=medium
 
   * Frozen-RC release pipeline + MCP token-saver depth (9 tools).
