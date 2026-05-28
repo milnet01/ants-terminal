@@ -40,6 +40,9 @@ for security-relevant changes.
 
 ### Added
 
+- **See when Ants auto-switches the Claude model.** (ANTS-1893)
+  A live auto-switch now slides a brief status-bar toast into\nview (e.g. \"Ants switched: Opus → Haiku (commit intent)\"),\nthe per-tab model chip pulses once with the theme accent for\n~0.6 s, and an \"Undo: back to <Tier>\" button appears in the\nstatus bar for 10 seconds — click to revert. Each surface\nmutes independently in Settings → General under the master\n\"Let Ants pick the Claude model for me\" toggle. The Undo\nbutton's per-tab guard (shellPid + shellCwd) refuses an undo\nfrom a different tab/session; a dead PID gets a distinct\n\"original session has ended\" toast. A successful undo seeds\nthe 10-min cool-down so the switcher won't immediately\nre-fire the same pick.
+
 - **Near-miss telemetry: see why the auto-model switcher held back a switch.** (ANTS-1894)
   (ANTS-1894) Even when Ants doesn't switch the model, the why-not is now
   recorded so you can see at a glance whether the switcher is silently

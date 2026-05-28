@@ -455,6 +455,36 @@ void Config::setClaudeAutoModelNudgeShown(bool shown) {
     save();
 }
 
+// ANTS-1893 — switch-event surfacing mute toggles. Default TRUE
+// (the three surfaces are the primary trust-building affordance per
+// the spec §1; users who find any noisy flip one off in Settings).
+bool Config::claudeAutoModelToastEnabled() const {
+    return m_data.value("claude.auto_model_toast_enabled").toBool(true);
+}
+
+void Config::setClaudeAutoModelToastEnabled(bool enabled) {
+    if (!storeIfChanged("claude.auto_model_toast_enabled", enabled)) return;
+    save();
+}
+
+bool Config::claudeAutoModelChipPulseEnabled() const {
+    return m_data.value("claude.auto_model_chip_pulse_enabled").toBool(true);
+}
+
+void Config::setClaudeAutoModelChipPulseEnabled(bool enabled) {
+    if (!storeIfChanged("claude.auto_model_chip_pulse_enabled", enabled)) return;
+    save();
+}
+
+bool Config::claudeAutoModelUndoEnabled() const {
+    return m_data.value("claude.auto_model_undo_enabled").toBool(true);
+}
+
+void Config::setClaudeAutoModelUndoEnabled(bool enabled) {
+    if (!storeIfChanged("claude.auto_model_undo_enabled", enabled)) return;
+    save();
+}
+
 // ANTS-1897.
 bool Config::claudeMcpOrientationEnabled() const {
     return m_data.value("claude.mcp_orientation_enabled").toBool(true);

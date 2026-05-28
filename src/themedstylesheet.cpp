@@ -147,6 +147,23 @@ QString buildAppStylesheet(const Theme &theme) {
         "QPushButton:pressed:enabled { background-color: %4; }"
         "QPushButton:default { border: 1px solid %5; }"
         "QPushButton:disabled { color: %6; border-color: %4; background-color: %2; }"
+        // ANTS-1893 — chip-pulse on the per-tab model+thinking chip
+        // (`m_modelStateBtn`). Dynamic `pulse=true` property + style
+        // unpolish/polish triggers this rule for 600 ms after an
+        // auto-switch fires. %5 = theme.accent so the border follows
+        // the active theme. Triple-selector (base + hover + pressed)
+        // so the generic :hover:enabled rule at L146 doesn't override
+        // the pulse during the 600 ms window. Same padding 6px 14px
+        // as the generic rule = bit-identical interior box = zero
+        // text twitch on engage/disengage.
+        "QPushButton#claudeModelStateBtn[pulse=\"true\"],"
+        "QPushButton#claudeModelStateBtn[pulse=\"true\"]:hover:enabled,"
+        "QPushButton#claudeModelStateBtn[pulse=\"true\"]:pressed:enabled {"
+        "  background-color: %1;"
+        "  color: %3;"
+        "  border: 1px solid %5;"
+        "  padding: 6px 14px;"
+        "  border-radius: 4px; }"
         "QLineEdit { background-color: %1; color: %3; border: 1px solid %4;"
         "  padding: 5px 8px; border-radius: 3px;"
         "  selection-background-color: %5; selection-color: %2; }"

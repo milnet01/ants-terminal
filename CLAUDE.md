@@ -169,6 +169,14 @@ config-file-only tuning keys:
 - `claude.auto_model_floor` (`"haiku"`|`"sonnet"`, default `"haiku"`).
 - `claude.auto_model_nudge_shown` (bool, default false) — first-run
   opt-in nudge latch (§8 OQ-3).
+- `claude.auto_model_toast_enabled` (bool, default true) — ANTS-1893
+  switch-event surfacing: status-bar toast on each live auto-switch.
+- `claude.auto_model_chip_pulse_enabled` (bool, default true) —
+  ANTS-1893: per-tab model chip pulses for ~0.6 s on each switch.
+- `claude.auto_model_undo_enabled` (bool, default true) — ANTS-1893:
+  10 s "Undo: back to <Tier>" button in the status bar after each
+  switch; click seeds the ANTS-1890 cool-down so the same pick
+  won't immediately re-fire.
 
 ## Project standards
 

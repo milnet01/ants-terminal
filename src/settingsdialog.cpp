@@ -243,6 +243,47 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         "recommender chip is suppressed while this is on.");
     layout->addRow(m_claudeAutoModelSwitch);
 
+    // ANTS-1893 — surfacing mute sub-toggles. Greyed out when the
+    // master toggle above is off (INV-14 master mirror).
+    m_claudeAutoModelToast = new QCheckBox(
+        "  Show a toast when a switch fires", tab);
+    m_claudeAutoModelToast->setToolTip(
+        "When on, a brief status-bar message announces each auto-switch "
+        "(e.g. \"Ants switched: Opus → Haiku (commit intent)\"). On by "
+        "default. Mute if you find it noisy; the chip-pulse and Undo "
+        "button still work.");
+    layout->addRow(m_claudeAutoModelToast);
+
+    m_claudeAutoModelChipPulse = new QCheckBox(
+        "  Pulse the model chip when a switch fires", tab);
+    m_claudeAutoModelChipPulse->setToolTip(
+        "When on, the per-tab model chip in the status bar flashes a "
+        "brief accent border (~0.6 s) on every auto-switch — peripheral "
+        "catch without reading. On by default.");
+    layout->addRow(m_claudeAutoModelChipPulse);
+
+    m_claudeAutoModelUndo = new QCheckBox(
+        "  Show an \"Undo\" button for 10 s after a switch", tab);
+    m_claudeAutoModelUndo->setToolTip(
+        "When on, an \"Undo: back to <Tier>\" button appears in the "
+        "status bar for 10 seconds after each switch — click to revert. "
+        "The undo trips the 10-minute cool-down so the switcher won't "
+        "immediately re-fire the same pick. On by default.");
+    layout->addRow(m_claudeAutoModelUndo);
+
+    // INV-14 — sub-toggles mirror the master toggle's enabled state
+    // live. Greyed-but-checked is the muted-default state; flipping
+    // master back on restores the user's prior choice.
+    auto mirrorMaster = [this]() {
+        const bool on = m_claudeAutoModelSwitch->isChecked();
+        if (m_claudeAutoModelToast)     m_claudeAutoModelToast->setEnabled(on);
+        if (m_claudeAutoModelChipPulse) m_claudeAutoModelChipPulse->setEnabled(on);
+        if (m_claudeAutoModelUndo)      m_claudeAutoModelUndo->setEnabled(on);
+    };
+    connect(m_claudeAutoModelSwitch, &QCheckBox::checkStateChanged,
+            this, [mirrorMaster](Qt::CheckState) { mirrorMaster(); });
+    mirrorMaster();   // initial state
+
     // ANTS-1897 — MCP discoverability via SessionStart hook. On by
     // default. Installs a small script + a hook entry in
     // ~/.claude/settings.json that prints a short cheat-sheet at every
@@ -278,6 +319,10 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         m_notificationTimeout->setValue(5);
         m_claudeTabStatusIndicator->setChecked(true);
         if (m_claudeAutoModelSwitch) m_claudeAutoModelSwitch->setChecked(false);
+        // ANTS-1893 — surfacing toggles default TRUE per spec INV-11.
+        if (m_claudeAutoModelToast)     m_claudeAutoModelToast->setChecked(true);
+        if (m_claudeAutoModelChipPulse) m_claudeAutoModelChipPulse->setChecked(true);
+        if (m_claudeAutoModelUndo)      m_claudeAutoModelUndo->setChecked(true);
         if (m_claudeMcpOrientation) m_claudeMcpOrientation->setChecked(true);
     });
     layout->addRow(QString(), generalDefaultsBtn);
@@ -899,6 +944,13 @@ void SettingsDialog::loadSettings() {
     if (m_claudeAutoModelSwitch)
         m_claudeAutoModelSwitch->setChecked(
             m_config->claudeAutoModel().value("switch_enabled").toBool());
+    // ANTS-1893 — load the three surfacing mute toggles (default TRUE).
+    if (m_claudeAutoModelToast)
+        m_claudeAutoModelToast->setChecked(m_config->claudeAutoModelToastEnabled());
+    if (m_claudeAutoModelChipPulse)
+        m_claudeAutoModelChipPulse->setChecked(m_config->claudeAutoModelChipPulseEnabled());
+    if (m_claudeAutoModelUndo)
+        m_claudeAutoModelUndo->setChecked(m_config->claudeAutoModelUndoEnabled());
     if (m_claudeMcpOrientation)
         m_claudeMcpOrientation->setChecked(m_config->claudeMcpOrientationEnabled());
 
@@ -1014,6 +1066,13 @@ void SettingsDialog::applySettings() {
         m_config->setClaudeTabStatusIndicator(m_claudeTabStatusIndicator->isChecked());
     if (m_claudeAutoModelSwitch)
         m_config->setClaudeAutoModelSwitch(m_claudeAutoModelSwitch->isChecked());
+    // ANTS-1893 — persist the three surfacing mute toggles.
+    if (m_claudeAutoModelToast)
+        m_config->setClaudeAutoModelToastEnabled(m_claudeAutoModelToast->isChecked());
+    if (m_claudeAutoModelChipPulse)
+        m_config->setClaudeAutoModelChipPulseEnabled(m_claudeAutoModelChipPulse->isChecked());
+    if (m_claudeAutoModelUndo)
+        m_config->setClaudeAutoModelUndoEnabled(m_claudeAutoModelUndo->isChecked());
     if (m_claudeMcpOrientation) {
         const bool wasEnabled = m_config->claudeMcpOrientationEnabled();
         const bool nowEnabled = m_claudeMcpOrientation->isChecked();

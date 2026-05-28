@@ -20,6 +20,9 @@
 #include <QTimer>
 #include <QWidget>
 #include <memory>
+// ANTS-1893 — ::kill(pid, 0) ESRCH dead-pid probe in onUndoSwitchClicked.
+#include <csignal>
+#include <cerrno>
 
 #include "claudeallowlist.h"
 #include "claudebgtasks.h"
@@ -184,6 +187,20 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_modelStateBtn->setFocusPolicy(Qt::NoFocus);
     m_modelStateBtn->hide();
     m_statusBar->addPermanentWidget(m_modelStateBtn);
+
+    // ANTS-1893 — Undo button. Sits between the model chip and the
+    // error label so the visual order is
+    // [recommender] [model+thinking] [Undo: back to <Tier>] [error].
+    // Hidden by default; emitSwitchSurfacing shows it for ~10 s after
+    // a live auto-switch fires.
+    m_undoSwitchBtn = new QPushButton(QString(), m_statusBar);
+    m_undoSwitchBtn->setObjectName(QStringLiteral("claudeUndoSwitchBtn"));
+    m_undoSwitchBtn->setAccessibleName(tr("Undo last auto-model switch"));
+    m_undoSwitchBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    m_undoSwitchBtn->hide();
+    m_statusBar->addPermanentWidget(m_undoSwitchBtn);
+    connect(m_undoSwitchBtn, &QPushButton::clicked, this,
+            &ClaudeStatusBarController::onUndoSwitchClicked);
 
     // Error indicator label — surfaces the exit-code from the
     // commandFailed terminal signal, auto-hides after the timeout the
@@ -1430,6 +1447,16 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
         (QStringLiteral("/model ") + dec.tierArg + QStringLiteral("\n"))
             .toUtf8());
 
+    // ANTS-1893 — fire the firing-side surfacing (toast + chip-pulse
+    // + Undo button) immediately after sendToPty, BEFORE the ledger
+    // append. The helper is mute-toggle-aware (three Config bools);
+    // when ALL three are off it's a single Config read + early
+    // returns. Reads controller state at call time; does NOT write
+    // any m_autoSwitchLastMs / m_autoSwitchTicksStable / m_autoSwitchLastTier
+    // fields — those are still owned by the post-helper updates below.
+    emitSwitchSurfacing(current, dec.recommendedTier, rec.reason,
+                        focused, projectRoot, nowMs);
+
     // Append ledger record (§2.5). Outcome is `pending:true` — filled
     // by a later tick once turns-on-to-tier accumulates.
     ModelSwitchLedger::Record rec_;
@@ -1471,6 +1498,43 @@ QString claudeStateName(ClaudeState s) {
         case ClaudeState::Compacting: return QStringLiteral("compacting");
     }
     return QStringLiteral("idle");   // unreachable; satisfies non-void return
+}
+
+// ANTS-1893 — Tier-to-capitalised-label for user-facing surfaces.
+// Distinct from ModelRecommender::tierName() which returns the
+// lowercase JSON / /model-command form. The Result.tier and on-disk
+// ledger use the lowercase form; UI strings use this one.
+QString tierTitle(ModelRecommender::Tier tier) {
+    switch (tier) {
+        case ModelRecommender::Tier::Haiku:  return QStringLiteral("Haiku");
+        case ModelRecommender::Tier::Opus:   return QStringLiteral("Opus");
+        default:                              return QStringLiteral("Sonnet");
+    }
+}
+
+// ANTS-1893 — Maps the recommender's `reason` field to a short
+// user-facing label. The reason field comes in three shapes per
+// `modelrecommender.cpp` (cpp:86, 173, 239-244): "default"
+// (no-transcript fallback), "commit_intent" (hard override),
+// or a space-joined token list from the scoring path. First match
+// wins; the precedence is defensive against future reason-string
+// reshapings (today commit_intent never appears alongside the
+// scoring-path tokens — the override returns early). All labels
+// are wrapped in tr() at the call site (Qt i18n discipline).
+QString shortenReason(const QString &reason) {
+    if (reason.contains(QStringLiteral("commit_intent")))
+        return QObject::tr("commit intent");
+    if (reason.contains(QStringLiteral("mechanical")))
+        return QObject::tr("mechanical");
+    if (reason.contains(QStringLiteral("plan_keyword")))
+        return QObject::tr("design / plan");
+    if (reason.contains(QStringLiteral("many_writes")))
+        return QObject::tr("many writes");
+    if (reason.contains(QStringLiteral("long_prompts")))
+        return QObject::tr("long prompts");
+    if (reason.contains(QStringLiteral("tool_diversity")))
+        return QObject::tr("varied tools");
+    return QObject::tr("recommender");
 }
 
 }  // namespace
@@ -1525,6 +1589,158 @@ void ClaudeStatusBarController::maybeEmitNearMiss(
 
     m_nearMissLastSigByProject[projectRoot]    = sig;
     m_nearMissLastEmitMsByProject[projectRoot] = nowMs;
+}
+
+// ANTS-1893 — fire the firing-side surfacing (toast + chip-pulse +
+// Undo button) immediately after a live auto-switch fires. Reads
+// controller state at call time but does NOT write
+// refreshAutoModelSwitch-owned fields (m_autoSwitchLastMs etc.) —
+// the firing-side caller still owns those after the helper returns.
+void ClaudeStatusBarController::emitSwitchSurfacing(
+        ModelRecommender::Tier fromTier,
+        ModelRecommender::Tier toTier,
+        const QString &scoreReason,
+        TerminalWidget *focused,
+        const QString &projectRoot,
+        qint64 /*nowMs*/)
+{
+    if (!focused) return;
+    Config cfg;
+
+    // (1) Toast — reuse the existing statusMessageRequested signal
+    // that MainWindow routes into m_statusMessage (mainwindow.cpp
+    // L725 construct, L728 addWidget). 6 s timeout is short enough
+    // to clear before the next user turn but long enough to catch
+    // with peripheral vision.
+    if (cfg.claudeAutoModelToastEnabled()) {
+        const QString body = tr("Ants switched: %1 → %2 (%3)")
+            .arg(tierTitle(fromTier))
+            .arg(tierTitle(toTier))
+            .arg(shortenReason(scoreReason));
+        emit statusMessageRequested(body, kSwitchToastTimeoutMs);
+    }
+
+    // (2) Chip-pulse — set the dynamic `pulse` property on
+    // m_modelStateBtn and force a style repolish so QSS picks up
+    // the [pulse="true"] attribute selector (Qt requirement). The
+    // single-shot timer clears the property + repolishes after
+    // kModelChipPulseMs (600 ms). A second pulse inside the window
+    // restarts the timer; the property stays true throughout.
+    if (cfg.claudeAutoModelChipPulseEnabled() && m_modelStateBtn) {
+        m_modelStateBtn->setProperty("pulse", true);
+        if (m_modelStateBtn->style()) {
+            m_modelStateBtn->style()->unpolish(m_modelStateBtn);
+            m_modelStateBtn->style()->polish(m_modelStateBtn);
+        }
+        if (!m_modelStatePulseTimer) {
+            m_modelStatePulseTimer = new QTimer(this);
+            m_modelStatePulseTimer->setSingleShot(true);
+            connect(m_modelStatePulseTimer, &QTimer::timeout, this, [this]() {
+                if (!m_modelStateBtn) return;
+                m_modelStateBtn->setProperty("pulse", false);
+                if (m_modelStateBtn->style()) {
+                    m_modelStateBtn->style()->unpolish(m_modelStateBtn);
+                    m_modelStateBtn->style()->polish(m_modelStateBtn);
+                }
+            });
+        }
+        m_modelStatePulseTimer->start(kModelChipPulseMs);
+    }
+
+    // (3) Undo button — show for kUndoVisibleMs (10 s). Pending
+    // fields capture the project + shellPid at switch time so the
+    // click handler can refuse the undo if the user switched tabs.
+    // A second switch fired inside the window overwrites the pending
+    // fields + restarts the timer (most-recent-undo only; see INV-9).
+    if (cfg.claudeAutoModelUndoEnabled() && m_undoSwitchBtn) {
+        m_undoSwitchBtn->setText(
+            tr("Undo: back to %1").arg(tierTitle(fromTier)));
+        m_undoSwitchPendingFromTier     = ModelRecommender::tierName(fromTier);
+        m_undoSwitchPendingFromTierEnum = fromTier;
+        m_undoSwitchPendingProject      = projectRoot;
+        m_undoSwitchPendingShellPid     = focused->shellPid();
+        m_undoSwitchBtn->show();
+        if (!m_undoSwitchHideTimer) {
+            m_undoSwitchHideTimer = new QTimer(this);
+            m_undoSwitchHideTimer->setSingleShot(true);
+            connect(m_undoSwitchHideTimer, &QTimer::timeout, this, [this]() {
+                if (m_undoSwitchBtn) m_undoSwitchBtn->hide();
+                m_undoSwitchPendingFromTier.clear();
+                m_undoSwitchPendingProject.clear();
+                m_undoSwitchPendingShellPid = 0;
+                m_undoSwitchPendingFromTierEnum =
+                    ModelRecommender::Tier::Sonnet;
+            });
+        }
+        m_undoSwitchHideTimer->start(kUndoVisibleMs);
+    }
+}
+
+// ANTS-1893 — Undo click handler. Refuses on cwd or shellPid
+// mismatch (per-tab guard); a dead shellPid gets a distinct
+// "session ended" toast so the user knows the lossy click was due
+// to their shell exiting, not a tab switch.
+void ClaudeStatusBarController::onUndoSwitchClicked()
+{
+    if (m_undoSwitchPendingFromTier.isEmpty() ||
+        m_undoSwitchPendingProject.isEmpty() ||
+        m_undoSwitchPendingShellPid <= 0) return;
+
+    auto *focused = m_focusedTerminalProvider
+        ? m_focusedTerminalProvider() : nullptr;
+    if (!focused) return;
+
+    // Project mismatch first — distinct toast.
+    if (focused->shellCwd() != m_undoSwitchPendingProject) {
+        emit statusMessageRequested(
+            tr("Undo unavailable — switch was on a different project"),
+            3000);
+        return;
+    }
+    // PID mismatch: distinguish dead PID (session ended) from
+    // alive-but-different (another tab in the same project).
+    if (focused->shellPid() != m_undoSwitchPendingShellPid) {
+        if (::kill(m_undoSwitchPendingShellPid, 0) == -1 &&
+                errno == ESRCH) {
+            emit statusMessageRequested(
+                tr("Undo unavailable — the original session has ended"),
+                3000);
+        } else {
+            emit statusMessageRequested(
+                tr("Undo unavailable — switch was on a different session"),
+                3000);
+        }
+        return;
+    }
+
+    // Capture before clearing — the "Switched back to <X>" toast
+    // below reads the prior tier; clearing first would leak a
+    // default-Sonnet read into the toast.
+    const QString priorTierName    = m_undoSwitchPendingFromTier;
+    const QString priorProject     = m_undoSwitchPendingProject;
+    const ModelRecommender::Tier priorTier = m_undoSwitchPendingFromTierEnum;
+
+    focused->sendToPty(
+        (QStringLiteral("/model ") + priorTierName +
+         QStringLiteral("\n")).toUtf8());
+
+    // Seed the in-memory cool-down so the gate's 10-min lock-out
+    // (ANTS-1890 / kOverrideCooldownMs) trips on the next tick.
+    m_lastOverrideMsByProject[priorProject] =
+        QDateTime::currentMSecsSinceEpoch();
+
+    m_undoSwitchBtn->hide();
+    m_undoSwitchPendingFromTier.clear();
+    m_undoSwitchPendingProject.clear();
+    m_undoSwitchPendingShellPid     = 0;
+    m_undoSwitchPendingFromTierEnum = ModelRecommender::Tier::Sonnet;
+    if (m_undoSwitchHideTimer) m_undoSwitchHideTimer->stop();
+
+    emit statusMessageRequested(
+        tr("Switched back to %1").arg(tierTitle(priorTier)),
+        3000);
+
+    focused->setFocus();   // ANTS-1849 — keep typing focus in the terminal
 }
 
 namespace {

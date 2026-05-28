@@ -1003,6 +1003,11 @@ if(ANTS_TESTS)
                 # both libs). The pure ledger/decide tests live on test_core.
                 tests/features/model_near_miss_ledger/test_emit_on_sig_change.cpp
                 tests/features/model_near_miss_ledger/test_emit_floor_throttle.cpp
+                # ANTS-1893 — switch-event surfacing: config-defaults tests.
+                # Full INV coverage (15 tests) deferred pending a
+                # TerminalWidget test seam; see
+                # tests/features/auto_switch_surfacing/spec.md.
+                tests/features/auto_switch_surfacing/test_config_surfacing_defaults.cpp
                 # ANTS-1890 INV-7 — behavioural cache wiring (live controller).
                 tests/features/model_auto_switch_outcome_fillin/test_override_cache_controller.cpp
                 tests/features/mcp_extra_tools/test_mcp_extra_tools.cpp

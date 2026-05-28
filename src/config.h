@@ -95,6 +95,20 @@ public:
     bool claudeAutoModelNudgeShown() const;
     void setClaudeAutoModelNudgeShown(bool shown);
 
+    // ANTS-1893 — switch-event surfacing mute toggles. All three
+    // default TRUE; flipping any off persists `false` and immediately
+    // disables that surface. The master gate
+    // `claude.auto_model_switch` short-circuits all three when off
+    // (refreshAutoModelSwitch returns early before emitSwitchSurfacing
+    // ever runs). Mirrors `claudeAutoModelNudgeShown` (the only other
+    // bool get/set pair in the auto-model family).
+    bool claudeAutoModelToastEnabled() const;
+    void setClaudeAutoModelToastEnabled(bool enabled);
+    bool claudeAutoModelChipPulseEnabled() const;
+    void setClaudeAutoModelChipPulseEnabled(bool enabled);
+    bool claudeAutoModelUndoEnabled() const;
+    void setClaudeAutoModelUndoEnabled(bool enabled);
+
     // ANTS-1897 — MCP discoverability via SessionStart hook. Master
     // toggle (default true) gates the install of the orientation
     // script + the merge into ~/.claude/settings.json. The nudge

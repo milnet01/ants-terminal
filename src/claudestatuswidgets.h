@@ -19,6 +19,9 @@
 #include <functional>
 
 #include "claudeintegration.h"   // ClaudeState — member-typed
+#include "modelrecommender.h"   // ANTS-1893 — ModelRecommender::Tier member-typed
+                                //   (m_undoSwitchPendingFromTierEnum + emitSwitchSurfacing
+                                //   parameter types).
 
 class QStatusBar;
 class QPushButton;
@@ -213,6 +216,14 @@ public:
     // switched TO (0 during teardown → delete everything).
     void clearPromptAnchorsForTabSwitch(pid_t newlyFocusedPid);
 
+private slots:
+    // ANTS-1893 — Undo handler. Refuses on cwd or shellPid mismatch
+    // (per-tab guard); on a dead shellPid distinguishes "session
+    // ended" from "different session". On success, injects
+    // `/model <fromTier>\n` and seeds m_lastOverrideMsByProject so
+    // the gate's 10-min cool-down (ANTS-1890) trips on the next tick.
+    void onUndoSwitchClicked();
+
 private:
     void apply();   // private status-label renderer (formerly
                     // MainWindow::applyClaudeStatusLabel)
@@ -292,7 +303,41 @@ private:
     QHash<QString, qint64>      m_nearMissLastEmitMsByProject;
     static constexpr qint64     kNearMissEmitFloorMs = 5'000;   // 5 s per project
 
+    // ANTS-1893 — switch-event surfacing state. Owned by the controller,
+    // populated by emitSwitchSurfacing on each live auto-switch firing.
+    // Per-tab guard via shellPid: two splits of the same repo share
+    // shellCwd() but have distinct shellPid(); without the PID match an
+    // Undo click in tab B would inject /model into tab B's PTY even
+    // though the switch fired on tab A. The cached enum avoids a
+    // tierFromModelId() round-trip on the bare alias string.
+    QPushButton           *m_undoSwitchBtn = nullptr;
+    QTimer                *m_undoSwitchHideTimer = nullptr;  // single-shot
+    QTimer                *m_modelStatePulseTimer = nullptr; // single-shot
+    QString                m_undoSwitchPendingFromTier;      // empty = no pending
+    QString                m_undoSwitchPendingProject;       // == shellCwd() at switch
+    pid_t                  m_undoSwitchPendingShellPid = 0;  // == shellPid() at switch
+    ModelRecommender::Tier m_undoSwitchPendingFromTierEnum =
+        ModelRecommender::Tier::Sonnet;                      // cached enum
+    static constexpr int   kSwitchToastTimeoutMs = 6'000;    // 6 s
+    static constexpr int   kModelChipPulseMs     = 600;      // 600 ms
+    static constexpr int   kUndoVisibleMs        = 10'000;   // 10 s
+
 public:
+    // ANTS-1893 — fire the firing-side surfacing (toast + chip-pulse +
+    // Undo button) immediately after a live auto-switch sends `/model`
+    // to the PTY. Public to mirror the maybeEmitNearMiss test-seam
+    // precedent below — behavioural tests under
+    // tests/features/auto_switch_surfacing/ drive it directly. Sole
+    // production caller is the `if (dec.act)` branch of
+    // refreshAutoModelSwitch (the `mode=="on"` firing path); under
+    // ANTS-1895 the dry-run branch will reuse this helper too.
+    void emitSwitchSurfacing(ModelRecommender::Tier fromTier,
+                             ModelRecommender::Tier toTier,
+                             const QString &scoreReason,
+                             TerminalWidget *focused,
+                             const QString &projectRoot,
+                             qint64 nowMs);
+
     // ANTS-1894 — emit a near-miss record on signature change (INV-5 / INV-6).
     // Called from refreshAutoModelSwitch's `if (!dec.act)` branch with the
     // gate snapshot, decision (must have non-empty blockedBy), project root,
