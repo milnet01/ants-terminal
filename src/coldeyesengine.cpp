@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -23,9 +24,20 @@ namespace ColdEyesEngine {
 namespace {
 
 QString slurpUtf8(const QString &absPath) {
+    // ANTS-1674 — cache by (absPath, mtime_ms). ROADMAP.md appears in every
+    // lane's cross-refs, so without a cache it is read once per lane during
+    // multi-lane brief assembly. Single-threaded dispatcher — no mutex needed.
+    static QHash<QString, QPair<qint64, QString>> s_cache;
+    const qint64 mtime =
+        QFileInfo(absPath).lastModified().toMSecsSinceEpoch();
+    auto it = s_cache.find(absPath);
+    if (it != s_cache.end() && mtime != 0 && it->first == mtime)
+        return it->second;
     QFile f(absPath);
     if (!f.open(QIODevice::ReadOnly)) return {};
-    return QString::fromUtf8(f.readAll());
+    const QString content = QString::fromUtf8(f.readAll());
+    s_cache.insert(absPath, {mtime, content});
+    return content;
 }
 
 // INV-13 path-rule defence now lives in the shared, NFC-aware

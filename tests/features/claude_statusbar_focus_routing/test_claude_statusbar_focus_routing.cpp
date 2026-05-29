@@ -87,10 +87,12 @@ TEST(ClaudeStatusbarFocusRouting, PermissionPromptGatedOnRouting) {
 TEST(ClaudeStatusbarFocusRouting, ModelChipClickHidesAndRefocuses) {
     const std::string src = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
 
-    // The model-chip click lambda — from the stored-property read to the end
-    // of the connect statement.
+    // The model-chip click lambda — from the stored-property read to the
+    // ANTS-1888 comment that immediately follows the closing }); .
+    // Using "});" as the end anchor broke when ANTS-1918 added a nested
+    // QTimer lambda whose own "}); " was the first match.
     const std::string clickBody = between(
-        src, "m_modelBtn->property(\"modelTier\")", "});");
+        src, "m_modelBtn->property(\"modelTier\")", "// ANTS-1888");
     ASSERT_FALSE(clickBody.empty())
         << "could not isolate the model-chip click handler";
 

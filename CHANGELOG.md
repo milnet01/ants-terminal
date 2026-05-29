@@ -37,6 +37,13 @@ for security-relevant changes.
 
 ### Changed
 
+- **Drop deprecated `cwd` field from `session_memory` schema in 0.7.93.** (ANTS-1420)
+  clean up the placeholder schema entry left behind
+
+- **mcp-review-engines H1 — Ledger load per brief assembly is re-parsed N times for N lanes.** (ANTS-1672)
+
+- **mcp-review-engines M3 — `extractCitedCodePaths` slurps every cited doc body unbounded; ROADMAP.md (~600 KB today) is rea…** (ANTS-1674)
+
 - **`--preset=fast` is functionally identical to `--preset=default` — give it a real differentiator.** (ANTS-1556)
   The "fast build" mode doesn't actually build faster than the normal mode — they have the same settings. Need to make it really faster, or drop it.
 

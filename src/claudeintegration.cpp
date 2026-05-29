@@ -6778,17 +6778,6 @@ void ClaudeIntegration::onMcpConnection() {
                     valProp["description"] = QStringLiteral(
                         "Any JSON value (≤ 16 KiB serialised). "
                         "Required for set.");
-                    // ANTS-1336 — `cwd` is deprecated for one release
-                    // (0.7.92). Handler ignores it; schema keeps the
-                    // field documented so migration errors point at
-                    // the replacement. Field is dropped from the
-                    // schema entirely in 0.7.93.
-                    QJsonObject cwdProp;
-                    cwdProp["type"] = "string";
-                    cwdProp["description"] = QStringLiteral(
-                        "DEPRECATED (ANTS-1336). The handler ignores "
-                        "this field. Pass caller_cwd instead. Removed "
-                        "in 0.7.93.");
                     // ANTS-1389 — surface the caller_cwd gate.
                     // ANTS-1336 promoted caller_cwd to required for
                     // every op (previously required only on
@@ -6811,7 +6800,6 @@ void ClaudeIntegration::onMcpConnection() {
                     props["op"]         = opProp;
                     props["key"]        = keyProp;
                     props["value"]      = valProp;
-                    props["cwd"]        = cwdProp;
                     props["caller_cwd"] = callerProp;
                     schema["properties"] = props;
                     QJsonArray req;

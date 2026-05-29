@@ -6,6 +6,7 @@
 #include <QChar>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QRegularExpression>
 
 namespace BriefDispatch {
@@ -13,9 +14,18 @@ namespace BriefDispatch {
 namespace {
 
 QString slurpUtf8(const QString &absPath) {
+    // ANTS-1674 — cache by (absPath, mtime_ms). Single-threaded dispatcher.
+    static QHash<QString, QPair<qint64, QString>> s_cache;
+    const qint64 mtime =
+        QFileInfo(absPath).lastModified().toMSecsSinceEpoch();
+    auto it = s_cache.find(absPath);
+    if (it != s_cache.end() && mtime != 0 && it->first == mtime)
+        return it->second;
     QFile f(absPath);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
-    return QString::fromUtf8(f.readAll());
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
+    const QString content = QString::fromUtf8(f.readAll());
+    s_cache.insert(absPath, {mtime, content});
+    return content;
 }
 
 // Canonicalise `path` (project-relative OR already-absolute) under

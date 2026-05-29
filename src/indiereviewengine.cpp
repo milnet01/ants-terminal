@@ -26,9 +26,18 @@ namespace IndieReviewEngine {
 namespace {
 
 QString slurpUtf8(const QString &absPath) {
+    // ANTS-1674 — cache by (absPath, mtime_ms). Single-threaded dispatcher.
+    static QHash<QString, QPair<qint64, QString>> s_cache;
+    const qint64 mtime =
+        QFileInfo(absPath).lastModified().toMSecsSinceEpoch();
+    auto it = s_cache.find(absPath);
+    if (it != s_cache.end() && mtime != 0 && it->first == mtime)
+        return it->second;
     QFile f(absPath);
     if (!f.open(QIODevice::ReadOnly)) return {};
-    return QString::fromUtf8(f.readAll());
+    const QString content = QString::fromUtf8(f.readAll());
+    s_cache.insert(absPath, {mtime, content});
+    return content;
 }
 
 // Walk src/ to find files matching `<name>.{h,cpp}` + `<name>*.{h,cpp}`.

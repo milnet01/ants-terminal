@@ -141,21 +141,38 @@ bool LedgerEntry::isValid() const {
 }
 
 QList<LedgerEntry> loadEntries(const QString &projectPath) {
-    QList<LedgerEntry> out;
-    if (projectPath.isEmpty()) return out;
+    if (projectPath.isEmpty()) return {};
     const QString path = projectPath
                          + QStringLiteral("/.ants_review_falsepos.jsonl");
-    if (!isRegularFile(path)) return out;
+    if (!isRegularFile(path)) return {};
+
+    // ANTS-1672 — cache by (path, mtime_s) so N brief-assembly calls
+    // per MCP dispatch (indie-review calls this 3× per session) share
+    // one parse result instead of re-reading the file each time.
+    // Single-threaded dispatcher — no mutex needed.
+    struct CacheEntry {
+        qint64             mtime_s = 0;
+        QList<LedgerEntry> entries;
+    };
+    static QHash<QString, CacheEntry> s_cache;
+    struct stat st {};
+    const qint64 mtime_s = (::stat(path.toUtf8().constData(), &st) == 0)
+                           ? static_cast<qint64>(st.st_mtime) : 0;
+    auto it = s_cache.find(path);
+    if (it != s_cache.end() && it->mtime_s == mtime_s)
+        return it->entries;
+
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) {
         qWarning("falseposLedger: open(%s) failed", qUtf8Printable(path));
-        return out;
+        return {};
     }
     if (f.size() > kFileSizeWarnThreshold) {
         qWarning("falseposLedger: ledger > 1 MiB (%lld bytes); "
                  "consider pruning",
                  static_cast<long long>(f.size()));
     }
+    QList<LedgerEntry> out;
     while (!f.atEnd()) {
         const QByteArray rawLine = f.readLine(kPerLineCap + 1);
         QByteArray line = rawLine;
@@ -164,6 +181,7 @@ QList<LedgerEntry> loadEntries(const QString &projectPath) {
         LedgerEntry e = parseLine(line, &ok);
         if (ok) out.push_back(std::move(e));
     }
+    s_cache.insert(path, {mtime_s, out});
     return out;
 }
 

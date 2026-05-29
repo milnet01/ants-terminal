@@ -2902,6 +2902,33 @@ minor tag (next: pre-0.8.0).
   Lanes: modelrecommender, modelautoswitch, claudestatuswidgets.
   Source: user-report-2026-05-29.
 
+- 📋 [ANTS-1917] **Suppress auto-switch at idle end-of-session — a tail switch changes the NEXT session's default model for no benefit.**
+  ANTS-1916 fixed the thrash (7 fires), but a single switch can still
+    fire when the session is idle/done. Because the /model actuator
+    saves the tier as the default for new sessions, an end-of-session
+    switch silently changes which model the next session opens on.
+    The only state gate today is focused_state_not_idle, but Idle is
+    exactly the end-of-session state. Proposal: require that an
+    assistant turn (or user keystroke) has occurred SINCE the last
+    auto-switch fire before allowing another — i.e. don't switch
+    unless there is fresh work to apply the new tier to. Pairs with
+    ANTS-1914 (composer guard) which currently makes idle fires more
+    likely, not less.
+  **Layman:** The auto-switcher can still fire one model change right as you finish working. That's pointless (no more work this session) and worse: Claude Code's /model saves the choice as the default for your NEXT session, so you can come back to an unexpected model. It should hold off switching when the session is clearly winding down.
+  Kind: enhancement.
+  Lanes: modelautoswitch, claudestatuswidgets.
+  Source: user-report-2026-05-29.
+
+- ✅ [ANTS-1918] **Auto-confirm Claude Code's "Switch model?" confirmation prompt after every `/model` send.**
+  Resolved 2026-05-29. QTimer::singleShot(250ms) sends "1\r" at all
+    three /model sendToPty sites: auto-actuator, chip-click, Undo button.
+    QPointer guard prevents the send if the terminal closes mid-flight.
+    Commit 8ca1b9a.
+  **Layman:** A recent CC update added a confirmation step after /model commands. Without this fix, every model switch — from the auto-switcher, the chip, or the Undo button — would hang waiting for the user to press 1.
+  Kind: fix.
+  Lanes: modelautoswitch, claudestatuswidgets.
+  Source: user-report-2026-05-29.
+
 ### 🔍 CI fold-in (2026-04-28)
 
 - ✅ [ANTS-1869] **UBSan vptr error in `DialogChrome::ChromeGuard::eventFilter`
@@ -6753,7 +6780,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-05-16 (self-observed during ANTS-1404
   design; table-vs-registration trade-off).
 
-- 📋 [ANTS-1420] **Drop deprecated `cwd` field from
+- ✅ [ANTS-1420] **Drop deprecated `cwd` field from
   `session_memory` schema in 0.7.93.** ANTS-1336 (shipped
   2026-05-16) marked the `cwd` field as DEPRECATED in the
   schema descriptor at `claudeintegration.cpp:2596–2606` with
@@ -6773,6 +6800,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: chore.
   Source: in-session-2026-05-16 (deferred cleanup from
   ANTS-1336's two-release migration window).
+  Shipped 2026-05-29. Removed cwdProp object and props["cwd"] assignment from claudeintegration.cpp session_memory schema. With additionalProperties:false, callers still sending cwd get a validation error — migration window (0.7.92) is closed.
 
 - ✅ [ANTS-1422] **`token_usage` refuses with
   `no_claude_integration` on a live, configured Ants —
@@ -10076,9 +10104,11 @@ gets one CHANGELOG section + one drift cycle + one push.
 - ✅ [ANTS-1669] **claude-statusbar H2 — Bg-task completion uses `contains()` substring match; can false-flip a task whose id is a substring of another running task's id.** Switch to word-boundary regex or drop the fallback. Lane: claude-statusbar.
 - 📋 [ANTS-1670] **claudeintegration M1-M4 — Cold-start gate ordering, `wrapMcpData` open/close-tag tolerance asymmetry, `extractCwdFromTranscript` untrusted-cwd consumption, and per-tick transcript re-parse of up to 4 MiB.** All four are quality-of-implementation tightenings; details in indie-review lane report. Lane: claudeintegration.
 - 📋 [ANTS-1671] **ipc-trust H1/H2/M1-M5 — XDG_RUNTIME_DIR client/server-side resolution divergence; JSON nesting cap + value-size cap on `session_memory`; antshelper `..` substring check; remotecontrol.cpp refusal-envelope drift across 30+ sites; QVariant `_buf` round-trip O(N²); `SO_PEERCRED` skipped on `fd < 0`; slow-loris on client wait-loop.** Each item is a small fix; cluster them in one sweep. Lane: remotecontrol / antshelper.
-- 📋 [ANTS-1672] **mcp-review-engines H1 — Ledger load per brief assembly is re-parsed N times for N lanes.** Cache by `(projectPath, mtime)` inside `falseposledger.cpp`, or hoist load to the dispatch handler. Lane: mcp-engines.
+- ✅ [ANTS-1672] **mcp-review-engines H1 — Ledger load per brief assembly is re-parsed N times for N lanes.** Cache by `(projectPath, mtime)` inside `falseposledger.cpp`, or hoist load to the dispatch handler. Lane: mcp-engines.
+  Shipped 2026-05-29. Added function-static QHash<path, {mtime_s, entries}> cache to loadEntries() in falseposledger.cpp. Eliminates 2 extra disk reads on each indie-review dispatch (3 call sites → 1 parse per session).
 - ✅ [ANTS-1673] **mcp-review-engines M1 — `stripLineBreaks` doesn't strip C0 controls; `lane`/`topic`/`logged_by` can carry ESC sequences into brief headers outside the data fence.** Strip `[\x00-\x1F\x7F]` in `stripLineBreaks`. Lane: mcp-engines.
-- 📋 [ANTS-1674] **mcp-review-engines M3 — `extractCitedCodePaths` slurps every cited doc body unbounded; ROADMAP.md (~600 KB today) is read N times per cold-eyes brief.** Cache `slurpUtf8` by `(absPath, mtime)` using a 32-entry LRU. Lane: mcp-engines.
+- ✅ [ANTS-1674] **mcp-review-engines M3 — `extractCitedCodePaths` slurps every cited doc body unbounded; ROADMAP.md (~600 KB today) is read N times per cold-eyes brief.** Cache `slurpUtf8` by `(absPath, mtime)` using a 32-entry LRU. Lane: mcp-engines.
+  Shipped 2026-05-29. Added mtime-keyed QHash cache to slurpUtf8() in coldeyesengine, indiereviewengine, briefdispatch, and debtsweepengine. ROADMAP.md no longer read N times per N-lane brief assembly.
 - 📋 [ANTS-1675] **audit-pipeline M1-M4 — Dedup 16-char legacy hash band; `noiseRatePct` always-0 zombie field; QProcess lambda-capture lifetime tangle; 32 MiB `compile_commands.json` cap allocates 100+ MB transient.** Lane: audit.
 
 ### 🏗 Tier 3 — structural
@@ -14115,6 +14145,27 @@ template / mutate this state atomically" → movable. If it's
   Lanes: remotecontrol, roadmapindex.
   Source: in-session-2026-05-21.
   Shipped (2026-05-26): roadmap_query now accepts ids[] (max 100, type:array<string>) for N-bullet bundle fetches in one call. Same bypass as singular id (skips status filter + pagination, body default-on), envelope adds matched_ids[] + missing_ids[] for input-order accounting + a found:bool. Composes with include_body, etag, fields, headline_only. Mutually exclusive with id / section / mode:section_index. Spec at tests/features/roadmap_query_by_ids/spec.md (INV-1..10), 8 source-grep conformance tests green; full ctest 1661/1661.
+
+- 📋 [ANTS-1919] **Auto-switcher `composer_not_empty` near-miss: queue or debounce the switch intent.**
+  model_switch_stats reported 93 near-misses in 24 h blocked by
+    composer_not_empty — the dominant blocker by far. The current guard
+    is correct (firing mid-composition is jarring), but the fix should
+    preserve intent rather than dropping it:\n
+    Option A (preferred): set a m_pendingSwitch flag when the dwell
+    timer fires but composer is non-empty; re-check on composerCleared()
+    / messageSent() signals and execute the queued switch then.\n
+    Option B: debounce from last keypress — if composer has been idle
+    > N seconds (e.g. 30s), allow the switch even if non-empty.\n
+    Option C: show a small "model switch pending — clear composer to
+    apply" annotation in the status bar so the user knows a switch
+    is waiting.\n
+    A + C compose well: queue silently, execute on send, show chip
+    annotation if the queue age exceeds the dwell threshold.
+    RAM: one bool + one enum (target tier) per tab. Negligible.
+  **Layman:** When you have text typed in the input box, the model auto-switcher refuses to fire — 93 times in 24h in one session. Add a "pending switch" that fires once you send or clear the composer.
+  Kind: enhancement.
+  Lanes: modelautoswitch, claudestatuswidgets.
+  Source: in-session-2026-05-29 (model_switch_stats near-miss analysis).
 
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 
