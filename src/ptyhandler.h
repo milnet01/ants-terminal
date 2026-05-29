@@ -33,6 +33,10 @@ public slots:
 signals:
     void dataReceived(const QByteArray &data);
     void finished(int exitCode);
+    // Emitted when write() drops data due to pending-write queue overflow
+    // (> MAX_PENDING_WRITE_BYTES). Callers can use this to implement back-pressure
+    // or alert the user (ANTS-1349).
+    void writeLost(qint64 byteCount);
 
 private slots:
     void onReadReady();

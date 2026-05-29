@@ -441,6 +441,7 @@ void Pty::write(const QByteArray &data) {
                      "%lld-byte write",
                      (long long)m_pendingWrite.size(),
                      (long long)data.size());
+            emit writeLost(data.size());  // ANTS-1349 — signal data loss
             return;
         }
         m_pendingWrite.append(data);
