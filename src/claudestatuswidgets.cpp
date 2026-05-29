@@ -164,6 +164,11 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
         // next tick via the composer_not_empty gate (ANTS-1908).
         focused->sendToPty(
             (QStringLiteral("/model ") + tier + QStringLiteral("\r")).toUtf8());
+        // ANTS-1918 — auto-confirm the "Switch model?" prompt CC shows after /model.
+        {
+            QPointer<TerminalWidget> g(focused);
+            QTimer::singleShot(250, this, [g]() { if (g) g->sendToPty("1\r"); });
+        }
         // ANTS-1840 — the user just acted on the recommendation, so hide the
         // chip immediately rather than letting it linger until the next
         // assistant turn re-scores the transcript. We deliberately leave the
@@ -1495,6 +1500,14 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     focused->sendToPty(
         (QStringLiteral("/model ") + dec.tierArg + QStringLiteral("\r"))
             .toUtf8());
+    // ANTS-1918 — Claude Code added an interactive "Switch model?" confirmation
+    // prompt after /model. Send "1\r" (yes) after a short pause so the
+    // actuator completes without user interaction. A QPointer guard ensures
+    // the send is a no-op if the terminal closes before the timer fires.
+    QPointer<TerminalWidget> focusedGuard(focused);
+    QTimer::singleShot(250, this, [focusedGuard]() {
+        if (focusedGuard) focusedGuard->sendToPty("1\r");
+    });
 
     // ANTS-1893 — fire the firing-side surfacing (toast + chip-pulse
     // + Undo button) immediately after sendToPty, BEFORE the ledger
@@ -1773,6 +1786,11 @@ void ClaudeStatusBarController::onUndoSwitchClicked()
     focused->sendToPty(
         (QStringLiteral("/model ") + priorTierName +
          QStringLiteral("\r")).toUtf8());
+    // ANTS-1918 — auto-confirm the "Switch model?" prompt (same as chip-click + actuator).
+    {
+        QPointer<TerminalWidget> g(focused);
+        QTimer::singleShot(250, this, [g]() { if (g) g->sendToPty("1\r"); });
+    }
 
     // Seed the in-memory cool-down so the gate's 10-min lock-out
     // (ANTS-1890 / kOverrideCooldownMs) trips on the next tick.
