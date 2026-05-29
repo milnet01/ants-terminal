@@ -1174,7 +1174,8 @@ void AuditDialog::populateChecks() {
         //      ("regenerate compile_commands.json") rather than 34.
         const bool hasClangTidy = toolExists("clang-tidy");
         QString tidyBuildDir;
-        for (const char *cand : {"build", "build-release", "build-debug", "build-test"}) {
+        for (const char *cand : {"build", "build-fast", "build-asan", "build-workstation",
+                                  "build-release", "build-debug", "build-test"}) {
             if (QFile::exists(m_projectPath + "/" + cand + "/compile_commands.json")) {
                 tidyBuildDir = QString::fromLatin1(cand);
                 break;
@@ -1228,7 +1229,7 @@ void AuditDialog::populateChecks() {
             "if [ -f CMakeLists.txt ]; then"
             " tmpdir=$(mktemp -d) && cd \"$tmpdir\""
             " && cmake -DCMAKE_CXX_FLAGS='-Wall -Wextra -Wno-unused-parameter' \"$OLDPWD\" 2>/dev/null"
-            " && make -j$(nproc) 2>&1 | grep -E '(warning:|error:)' | head -60;"
+            " && cmake --build . -j$(( ($(nproc)+3)/4 )) 2>&1 | grep -E '(warning:|error:)' | head -60;"
             " rm -rf \"$tmpdir\";"
             " fi",
             CheckType::Bug, Severity::Major, { {}, "", {}, 60 },
@@ -1288,7 +1289,8 @@ void AuditDialog::populateChecks() {
         // names; user must have built at least once for clazy to work.
         const bool hasClazy = toolExists("clazy-standalone");
         QString clazyBuildDir;
-        for (const char *cand : {"build", "build-release", "build-debug", "build-test"}) {
+        for (const char *cand : {"build", "build-fast", "build-asan", "build-workstation",
+                                  "build-release", "build-debug", "build-test"}) {
             if (QFile::exists(m_projectPath + "/" + cand + "/compile_commands.json")) {
                 clazyBuildDir = QString::fromLatin1(cand);
                 break;

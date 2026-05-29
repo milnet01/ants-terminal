@@ -22,8 +22,6 @@
 #include <QSet>
 #include <QHash>
 
-#include <functional>
-
 class Config;
 class ToggleSwitch;
 class QTabWidget;
