@@ -5,6 +5,7 @@
 #include "themes.h"
 
 #include <QDialog>
+#include <QFile>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QFont>
@@ -188,6 +189,11 @@ QDialog *show(QWidget *parent,
                 if (line.startsWith("##"))
                     html += QStringLiteral("<span style='color: %1;'>")
                                 .arg(lth.ansi[4].name()) + esc + "</span>\n";
+                else if (line.startsWith("?? "))
+                    // Untracked new file — swap the cryptic ?? for a readable NF marker
+                    html += QStringLiteral("<span style='color: %1;'>NF</span> ")
+                                .arg(lth.ansi[2].name())
+                         + line.mid(3).toHtmlEscaped() + "\n";
                 else
                     html += esc + "\n";
             }
@@ -282,6 +288,61 @@ QDialog *show(QWidget *parent,
                     html += esc + "\n";
             }
         }
+        // ANTS-1886 — new (untracked) files: render each as a synthetic
+        // addition diff so their content is visible, not just a bare path.
+        // Binary files and files > 200 KB get a one-line summary instead.
+        {
+            QStringList newFiles;
+            for (const QString &sline : state->status.split('\n')) {
+                if (sline.startsWith("?? ")) {
+                    const QString rel = sline.mid(3).trimmed();
+                    if (!rel.isEmpty() && !rel.endsWith('/'))
+                        newFiles << rel;
+                }
+            }
+            if (!newFiles.isEmpty()) {
+                section(QStringLiteral("New files"));
+                for (const QString &rel : newFiles) {
+                    const QString abs = state->cwd + '/' + rel;
+                    QFile nf(abs);
+                    if (!nf.open(QIODevice::ReadOnly)) {
+                        html += QStringLiteral("<span style='color: %1;'>%2 (unreadable)</span>\n")
+                                    .arg(lth.textSecondary.name(), rel.toHtmlEscaped());
+                        continue;
+                    }
+                    constexpr qint64 kCap = 200 * 1024;
+                    const QByteArray raw = nf.read(kCap + 1);
+                    nf.close();
+                    const bool truncated = (raw.size() > kCap);
+                    const QByteArray body = truncated ? raw.left(kCap) : raw;
+                    if (body.contains('\0')) {
+                        html += QStringLiteral(
+                                    "<span style='color: %1;'>diff --git a/%2 b/%2"
+                                    " (binary, %3 bytes)</span>\n")
+                                    .arg(lth.ansi[3].name(), rel.toHtmlEscaped())
+                                    .arg(QFileInfo(abs).size());
+                        continue;
+                    }
+                    const QStringList bodyLines = QString::fromUtf8(body).split('\n');
+                    html += QStringLiteral(
+                                "<span style='color: %1;'>diff --git a/%2 b/%2</span>\n"
+                                "<span style='color: %1;'>--- /dev/null</span>\n"
+                                "<span style='color: %1;'>+++ b/%2</span>\n")
+                                .arg(lth.ansi[3].name(), rel.toHtmlEscaped());
+                    html += QStringLiteral(
+                                "<span style='color: %1;'>@@ -0,0 +1,%2 @@%3</span>\n")
+                                .arg(lth.ansi[4].name())
+                                .arg(bodyLines.size())
+                                .arg(truncated
+                                     ? QStringLiteral(" (truncated at 200 KB)")
+                                     : QString{});
+                    for (const QString &ln : bodyLines)
+                        html += QStringLiteral("<span style='color: %1;'>+%2</span>\n")
+                                    .arg(lth.ansi[2].name(), ln.toHtmlEscaped());
+                }
+            }
+        }
+
         if (state->status.isEmpty() && state->diff.isEmpty() &&
             state->unpushed.isEmpty() && state->branches.isEmpty() &&
             state->crossUnpushed.isEmpty()) {
