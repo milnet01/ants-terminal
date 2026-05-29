@@ -424,8 +424,11 @@ void Config::setRoadmapStatusFilters(const QJsonObject &filters) {
 
 // ANTS-1735 §2.7 — typed accessor mirrors the roadmapStatusFilters() shape.
 // On-disk keys: claude.auto_model_switch / claude.auto_model_min_dwell_sec /
-// claude.auto_model_floor. Defaults applied here so callers always see a
-// fully-populated object.
+// claude.auto_model_floor / claude.auto_model_composer_stale_ms (ANTS-1914) /
+// claude.auto_model_idle_ceiling_sec (ANTS-1917). Defaults applied here so
+// callers always see a fully-populated object. This object is a WHITELIST —
+// only keys inserted here are visible to claudestatuswidgets; a new tuning
+// knob MUST be surfaced here or the controller read silently gets the default.
 QJsonObject Config::claudeAutoModel() const {
     QJsonObject out;
     out.insert("switch_enabled",
@@ -438,6 +441,18 @@ QJsonObject Config::claudeAutoModel() const {
     if (floor != QLatin1String("haiku") && floor != QLatin1String("sonnet"))
         floor = QStringLiteral("haiku");
     out.insert("floor", floor);
+    // ANTS-1914 — composer-stale veto threshold (ms). -1 sentinel (default)
+    // tells the gate to use kComposerStaleVetoMs (~5 min). Advanced users set
+    // a smaller positive value to unblock queued slash-commands sooner.
+    // Passed through verbatim; the gate clamps semantics (>= 0 applies).
+    out.insert("composer_stale_ms",
+               m_data.value("claude.auto_model_composer_stale_ms").toInt(-1));
+    // ANTS-1917 — idle end-of-session ceiling (seconds). Default 180 s
+    // (== kIdleEndOfSessionMs); a value <= 0 disables the gate. Clamped to a
+    // sane upper bound to avoid runaway values.
+    int idleCeil = m_data.value("claude.auto_model_idle_ceiling_sec").toInt(180);
+    if (idleCeil > 86'400) idleCeil = 86'400;   // 1 day ceiling guard
+    out.insert("idle_ceiling_sec", idleCeil);
     return out;
 }
 

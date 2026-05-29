@@ -35,10 +35,14 @@ class ClaudeBgTaskTracker;
 class ClaudeTaskListTracker;
 class TerminalWidget;
 
-// ANTS-1894 — forward decls for maybeEmitNearMiss param types (full defs in
-// modelautoswitch.h; including that header here would pull modelrecommender.h
-// into every claudestatuswidgets.h consumer).
-namespace ModelAutoSwitch { struct Gate; struct Decision; }
+// ANTS-1928 — modelautoswitch.h is now included directly (was forward-decl'd
+// for the maybeEmitNearMiss/emitSwitchSurfacing by-ref params). The original
+// avoidance — "would pull modelrecommender.h into every consumer" — is moot:
+// modelrecommender.h is already included above (line 22) and is the only
+// header modelautoswitch.h adds beyond claudeintegration.h (also already in).
+// The StabilityState member (ANTS-1928) is held by value and needs the
+// complete type, which a forward declaration cannot provide.
+#include "modelautoswitch.h"
 
 class ClaudeStatusBarController : public QObject {
     Q_OBJECT
@@ -241,6 +245,14 @@ private:
     // continuation prompt so CC resumes without user input.
     void performModelSwitchHandshake(TerminalWidget *focused);
 
+    // ANTS-1915 — fire a deferred manual chip-switch when its owning shell
+    // transitions to Idle. No-op unless a deferral is pending for `shellPid`
+    // AND that shell is now Idle AND its terminal still exists. Resolves the
+    // terminal by shellPid (not focus) so the switch lands on the right PTY
+    // even if the user moved to another tab; seeds the ANTS-1890 override
+    // cool-down so the auto-switcher does not immediately undo it.
+    void maybeFireDeferredChipSwitch(pid_t shellPid);
+
     // ANTS-1835/1850/1851 — build (or rebuild) the permission-prompt UI for
     // an owning shell: per-shell dedup, lifecycle anchor, Allow/Deny/Add
     // buttons (only when belongsToFocused), and retraction wiring scoped to
@@ -300,13 +312,12 @@ private:
     // per window — the gate runs on the focused tab's read, so there's
     // no per-tab stab to track here). msSinceLastSwitch derived as
     // (now - m_autoSwitchLastMs); zero = never switched.
-    int    m_autoSwitchTicksStable = 0;
-    // ANTS-1925 — reset-hysteresis counter. Consecutive ticks where
-    // clampedTarget==current (i.e. "recommendation returned to current").
-    // ticksStable resets only after kStableResetTicks consecutive such ticks,
-    // preventing a single noisy tick at the score boundary from wiping the
-    // stable counter and blocking a valid switch candidate indefinitely.
-    int    m_autoSwitchTicksAtCurrent = 0;
+    // ANTS-1928 — stability accrual (ticksStable + the ANTS-1925 reset-
+    // hysteresis counter + the tier-lock window candidate) is now a single
+    // pure-advanced value. advanceStability() folds each tick's clamped
+    // recommendation in; gate.ticksTargetStable reads .ticksStable. Reset to
+    // a default-constructed value on every actual switch fire.
+    ModelAutoSwitch::StabilityState m_autoSwitchStability;
     // ANTS-1919 — pending-switch intent. Set (to the target tier name) when
     // decide() is blocked ONLY by composer_not_empty — all other guards pass.
     // The natural 2 s tick fires the queued switch as soon as the composer
@@ -316,6 +327,14 @@ private:
     QString m_autoSwitchPendingTier;
     qint64 m_autoSwitchLastMs = 0;
     QString m_autoSwitchLastTier;          // last tier we injected, for ledger
+    // ANTS-1915 — deferred manual chip-switch. When the user clicks the model
+    // chip while Claude is mid-generation, sending `/model` immediately would
+    // sit unsubmitted until the user presses Escape (interrupting the turn).
+    // Instead we record the requested tier + owning shell PID here and fire the
+    // switch when that shell next transitions to Idle (turn complete). Empty
+    // tier = nothing deferred. Cleared on fire, or dropped if the tab closes.
+    QString m_deferredChipTier;
+    pid_t   m_deferredChipShellPid = 0;
     // ANTS-1735 §8 OQ-3 — per-process latch so the first-run nudge fires
     // at most once even before MainWindow gets a chance to flip the
     // persistent claude.auto_model_nudge_shown flag.

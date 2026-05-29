@@ -274,3 +274,75 @@ TEST(ModelAutoSwitch, Inv9TierArgAlwaysEnumAlias) {
                 }
             }
 }
+
+// ---- ANTS-1928: advanceStability tier-lock window ------------------------
+// The pure accrual helper folds one tick's clamped recommendation in. These
+// table tests reproduce the production oscillation patterns that left the
+// switcher stuck at `ticks_target_stable_insufficient` (the dominant
+// near-miss blocker) and assert the tier-lock window lets a candidate reach
+// kStableTicks despite brief reversions.
+
+using ModelAutoSwitch::StabilityState;
+using ModelAutoSwitch::advanceStability;
+
+namespace {
+// Tick spacing — the production status timer fires every 2 s.
+constexpr qint64 kTick = 2'000;
+}  // namespace
+
+// Two consecutive supporting ticks accrue to kStableTicks (baseline, no noise).
+TEST(ModelAutoSwitchStability, ConsecutiveSupportAccrues) {
+    StabilityState s;
+    s = advanceStability(s, Tier::Opus, Tier::Sonnet, 0);
+    EXPECT_EQ(s.ticksStable, 1);
+    s = advanceStability(s, Tier::Opus, Tier::Sonnet, kTick);
+    EXPECT_EQ(s.ticksStable, 2);
+    EXPECT_GE(s.ticksStable, ModelAutoSwitch::kStableTicks);
+}
+
+// THE PRODUCTION BUG: a 1-in-3 duty cycle (candidate, revert, revert, candidate)
+// must still reach kStableTicks — the tier-lock window holds accrual across the
+// two reversions because they fall inside kTierLockWindowMs of the candidate's
+// first appearance. Pre-1928 this reset at the 2nd reversion and never fired.
+TEST(ModelAutoSwitchStability, OscillationWithinWindowStillAccrues) {
+    StabilityState s;
+    qint64 t = 0;
+    s = advanceStability(s, Tier::Opus,   Tier::Sonnet, t); t += kTick;  // cand → 1
+    EXPECT_EQ(s.ticksStable, 1);
+    s = advanceStability(s, Tier::Sonnet, Tier::Sonnet, t); t += kTick;  // revert (held)
+    EXPECT_EQ(s.ticksStable, 1) << "tier-lock window must hold accrual";
+    s = advanceStability(s, Tier::Sonnet, Tier::Sonnet, t); t += kTick;  // revert (held)
+    EXPECT_EQ(s.ticksStable, 1);
+    s = advanceStability(s, Tier::Opus,   Tier::Sonnet, t);             // cand → 2
+    EXPECT_EQ(s.ticksStable, 2) << "candidate reaches kStableTicks despite noise";
+}
+
+// A reversion that OUTLASTS the tier-lock window is a genuine settle-back and
+// resets accrual (no false fire). The candidate first appears at t=0; reversions
+// continue until past kTierLockWindowMs, after which kStableResetTicks consecutive
+// reverts wipe the counter.
+TEST(ModelAutoSwitchStability, ReversionBeyondWindowResets) {
+    StabilityState s;
+    s = advanceStability(s, Tier::Opus, Tier::Sonnet, 0);   // candidate at t=0
+    EXPECT_EQ(s.ticksStable, 1);
+    // Revert at a time strictly past the lock window, twice (kStableResetTicks).
+    const qint64 past = ModelAutoSwitch::kTierLockWindowMs + kTick;
+    s = advanceStability(s, Tier::Sonnet, Tier::Sonnet, past);
+    s = advanceStability(s, Tier::Sonnet, Tier::Sonnet, past + kTick);
+    EXPECT_EQ(s.ticksStable, 0) << "settle-back beyond the window must reset";
+    EXPECT_FALSE(s.hasCandidate);
+}
+
+// A CHANGED candidate tier restarts accrual from 1 (per-tier accrual) — fixes
+// the latent bug where Sonnet→Opus then Sonnet→Haiku ticks both counted toward
+// a single switch, firing whichever tier happened to be current on tick 2.
+TEST(ModelAutoSwitchStability, ChangedCandidateRestartsAccrual) {
+    StabilityState s;
+    s = advanceStability(s, Tier::Opus,  Tier::Sonnet, 0);
+    EXPECT_EQ(s.ticksStable, 1);
+    EXPECT_EQ(s.candidateTier, Tier::Opus);
+    // Next tick recommends a DIFFERENT non-current tier — accrual restarts.
+    s = advanceStability(s, Tier::Haiku, Tier::Sonnet, kTick);
+    EXPECT_EQ(s.ticksStable, 1) << "different candidate must not inherit accrual";
+    EXPECT_EQ(s.candidateTier, Tier::Haiku);
+}

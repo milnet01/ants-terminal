@@ -26,6 +26,42 @@ ModelRecommender::Tier clampToFloor(ModelRecommender::Tier rec,
     return (static_cast<int>(rec) < static_cast<int>(floor)) ? floor : rec;
 }
 
+StabilityState advanceStability(const StabilityState     &prev,
+                                ModelRecommender::Tier     clampedTarget,
+                                ModelRecommender::Tier     current,
+                                qint64                     nowMs) {
+    StabilityState s = prev;
+    if (clampedTarget != current) {
+        if (!s.hasCandidate || s.candidateTier != clampedTarget) {
+            // New (or changed) candidate tier — start the lock window fresh and
+            // begin accrual at 1. Per-tier accrual: a different candidate never
+            // inherits the previous candidate's stability.
+            s.hasCandidate     = true;
+            s.candidateTier    = clampedTarget;
+            s.candidateSinceMs = nowMs;
+            s.ticksStable      = 1;
+        } else {
+            // Same candidate as last supporting tick — keep accumulating.
+            ++s.ticksStable;
+        }
+        s.ticksAtCurrent = 0;
+    } else {
+        // Recommendation clamps back to the current tier this tick.
+        ++s.ticksAtCurrent;
+        const bool withinLock = s.hasCandidate &&
+            (nowMs - s.candidateSinceMs) < kTierLockWindowMs;
+        if (!withinLock && s.ticksAtCurrent >= kStableResetTicks) {
+            // The reversion has outlasted the tier-lock window (or there was no
+            // candidate): a genuine settle-back. Reset accrual (ANTS-1925 rule).
+            s.ticksStable  = 0;
+            s.hasCandidate = false;
+        }
+        // Within the window: hold the candidate and its accrued ticksStable —
+        // a brief boundary-noise reversion must not wipe a near-ready switch.
+    }
+    return s;
+}
+
 Decision decide(const Gate &g) {
     Decision d;
     d.currentTier     = g.current;
@@ -42,7 +78,7 @@ Decision decide(const Gate &g) {
         d.blockedBy << QStringLiteral("focused_state_not_idle");
     // ANTS-1908 — composer_not_empty soft-veto. The veto YIELDS when
     // the composer carries text but hasn't been touched within the
-    // kComposerStaleVetoMs window — this unblocks long autonomous
+    // configurable stale window — this unblocks long autonomous
     // sessions where the dominant blocker is leftover continuation-
     // prompt text sitting idle in the composer. -1 sentinel keeps the
     // legacy hard-veto behaviour for any caller that doesn't supply
@@ -50,9 +86,16 @@ Decision decide(const Gate &g) {
     // `composer_not_empty` for back-compat with the persisted near-
     // miss ledger; semantics now mean "user is *actively editing*",
     // matching the safety intent.
+    // ANTS-1914 — composerStaleThresholdMs is configurable (default
+    // kComposerStaleVetoMs ~ 5 min). Advanced users can lower it to
+    // unblock slash-command queueing. Full detection of slash-commands
+    // requires Claude Code to expose composer text via MCP.
     if (!g.composerEmpty) {
+        const qint64 threshold = (g.composerStaleThresholdMs >= 0)
+            ? g.composerStaleThresholdMs
+            : kComposerStaleVetoMs;
         const bool stale = (g.composerStaleMs >= 0) &&
-                           (g.composerStaleMs >= kComposerStaleVetoMs);
+                           (g.composerStaleMs >= threshold);
         if (!stale) {
             d.blockedBy << QStringLiteral("composer_not_empty");
         }
@@ -69,6 +112,20 @@ Decision decide(const Gate &g) {
     if (g.msSinceLastOverride >= 0 &&
             g.msSinceLastOverride < kOverrideCooldownMs)
         d.blockedBy << QStringLiteral("override_cooldown_active");
+
+    // ANTS-1917 — idle end-of-session suppression (8th token, appended last to
+    // preserve the v1 7-token ordering — INV-9). Only fires when the controller
+    // supplies a real idle duration (idleElapsedMs >= 0, i.e. the shell IS idle
+    // with a known idleSinceMs). A long idle means the session is winding down:
+    // a switch would apply to no fresh work and would change the next session's
+    // default model. -1 sentinel preserves legacy behaviour for callers that
+    // don't supply idle telemetry.
+    if (g.idleElapsedMs >= 0) {
+        const qint64 ceiling = (g.idleCeilingMs >= 0)
+            ? g.idleCeilingMs : kIdleEndOfSessionMs;
+        if (g.idleElapsedMs >= ceiling)
+            d.blockedBy << QStringLiteral("idle_end_of_session");
+    }
 
     if (d.blockedBy.isEmpty()) {
         d.act     = true;

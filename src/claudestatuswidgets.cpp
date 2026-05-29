@@ -156,6 +156,29 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
         auto *focused = m_focusedTerminalProvider
             ? m_focusedTerminalProvider() : nullptr;
         if (!focused) return;
+        // ANTS-1915 — if Claude is mid-generation on this tab, a `/model`
+        // sent now would sit unsubmitted in the composer until the user
+        // presses Escape (interrupting the turn). Defer the switch instead:
+        // record the tier + owning shell PID and fire it when the shell next
+        // goes Idle (maybeFireDeferredChipSwitch on shellStateChanged). This
+        // gives the user a "switch without interrupting" path through Ants's
+        // own UI — the typed-`/model`-in-composer case stays blocked on
+        // Claude Code exposing composer state (tracked on the roadmap).
+        const pid_t pid = focused->shellPid();
+        const ClaudeState st = (m_tracker && pid > 0)
+            ? m_tracker->shellState(pid).state : ClaudeState::NotRunning;
+        const bool generating = (st == ClaudeState::Thinking ||
+                                 st == ClaudeState::ToolUse ||
+                                 st == ClaudeState::Compacting);
+        if (generating) {
+            m_deferredChipTier     = tier;
+            m_deferredChipShellPid = pid;
+            m_modelBtn->setToolTip(
+                tr("Switch to %1 queued — applies when Claude finishes this turn")
+                    .arg(tier));
+            focused->setFocus();
+            return;
+        }
         // ANTS-1912 — submit with `\r`, not `\n`. The Enter key produces
         // CR (0x0D) on a PTY (terminalwidget.cpp:1930); Claude Code's TUI
         // treats `\n` as a literal newline character in the composer and
@@ -335,6 +358,16 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
             auto *focused = m_focusedTerminalProvider
                 ? m_focusedTerminalProvider() : nullptr;
             if (focused && focused->shellPid() == shellPid) apply();
+        });
+    }
+
+    // ANTS-1915 — fire any deferred manual chip-switch when its owning shell
+    // transitions to Idle (turn complete). Event-driven so it works regardless
+    // of whether the autonomous switcher is enabled.
+    if (m_tracker) {
+        connect(m_tracker, &ClaudeTabTracker::shellStateChanged,
+                this, [this](pid_t shellPid) {
+            maybeFireDeferredChipSwitch(shellPid);
         });
     }
 
@@ -1407,13 +1440,19 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     // keystroke landed in the focused tab; -1 when no keystroke has
     // been recorded yet (the controller leaves the gate at its
     // legacy hard-veto behaviour in that case). The decide() helper
-    // honours kComposerStaleVetoMs to yield the veto when the
-    // composer carries text that hasn't been touched recently — the
-    // dominant blocker pattern observed on long autonomous /loop
+    // honours the configured composerStaleThreshold to yield the veto
+    // when the composer carries text that hasn't been touched recently —
+    // the dominant blocker pattern observed on long autonomous /loop
     // sessions where the user's last continuation prompt is sitting
     // idle in the composer (ROADMAP ANTS-1908 + model_switch_stats
-    // near-miss telemetry showing 44/44 blocked by composer_not_empty).
+    // near-miss telemetry; ANTS-1914 makes the threshold configurable).
     const qint64 lastKeystrokeMs = focused->lastUserKeystrokeMs();
+    // ANTS-1914 — read the user-configurable composer-stale threshold.
+    // Defaults to -1 (use kComposerStaleVetoMs); advanced users can lower
+    // it via Config to unblock slash-command queueing (e.g. 30000 ms = 30 s).
+    // The config key is "claude.auto_model_composer_stale_ms".
+    const qint64 composerStaleThresholdMs =
+        static_cast<qint64>(autoCfg.value("composer_stale_ms").toInt(-1));
 
     // Score the focused transcript.
     QString transcriptPath;
@@ -1433,23 +1472,19 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
             ? ModelRecommender::Tier::Sonnet
             : ModelRecommender::Tier::Haiku;
 
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
     // INV-5 — stability is counted against the CLAMPED target.
-    // ANTS-1925 — reset-hysteresis: require kStableResetTicks consecutive
-    // "target==current" ticks before wiping the stable counter. A single
-    // noisy tick back to the current model (score boundary oscillation) no
-    // longer discards an almost-ready switch candidate.
+    // ANTS-1925 — reset-hysteresis: a single noisy tick back to the current
+    // model does not wipe the stable counter. ANTS-1928 — the tier-lock window
+    // additionally holds a near-ready candidate against brief boundary-noise
+    // reversions, and accrual is now per-candidate-tier. All of this is folded
+    // by the pure advanceStability() helper (table-tested in
+    // tests/features/model_auto_switch/).
     const ModelRecommender::Tier clampedTarget =
         ModelAutoSwitch::clampToFloor(rec.tier, floor);
-    if (clampedTarget != current) {
-        ++m_autoSwitchTicksStable;
-        m_autoSwitchTicksAtCurrent = 0;
-    } else {
-        ++m_autoSwitchTicksAtCurrent;
-        if (m_autoSwitchTicksAtCurrent >= ModelAutoSwitch::kStableResetTicks)
-            m_autoSwitchTicksStable = 0;
-    }
-
-    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    m_autoSwitchStability = ModelAutoSwitch::advanceStability(
+        m_autoSwitchStability, clampedTarget, current, nowMs);
     const qint64 dwellMs = m_autoSwitchLastMs > 0
                                ? (nowMs - m_autoSwitchLastMs)
                                : kMaxDwellSentinel();
@@ -1477,7 +1512,7 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     gate.current              = current;
     gate.recommended          = rec.tier;
     gate.floor                = floor;
-    gate.ticksTargetStable    = m_autoSwitchTicksStable;
+    gate.ticksTargetStable    = m_autoSwitchStability.ticksStable;
     gate.msSinceLastSwitch    = dwellMs;
     // ANTS-1894 INV-3 — configurable min-dwell folded into the gate so
     // dwell_time_insufficient is observable as a near-miss reason. The
@@ -1492,6 +1527,23 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     gate.composerStaleMs      = (lastKeystrokeMs > 0)
         ? (nowMs - lastKeystrokeMs)
         : -1;
+    // ANTS-1914 — populate the configurable composer-stale threshold
+    // (default -1 = use kComposerStaleVetoMs).
+    gate.composerStaleThresholdMs = composerStaleThresholdMs;
+    // ANTS-1917 — idle end-of-session suppression. idleElapsedMs is how long
+    // the focused shell has sat in Idle (re-stamped each turn boundary, so a
+    // fresh between-turns gap reads small and a walk-away grows unboundedly).
+    // -1 = not idle or no idleSinceMs stamp yet → the gate doesn't fire. The
+    // ceiling is configurable via claude.auto_model_idle_ceiling_sec (default
+    // kIdleEndOfSessionMs / 1000); a value <= 0 disables the gate entirely by
+    // leaving idleElapsedMs at -1.
+    const int idleCeilingSec = autoCfg.value("idle_ceiling_sec").toInt(
+        static_cast<int>(ModelAutoSwitch::kIdleEndOfSessionMs / 1000));
+    if (idleCeilingSec > 0) {
+        gate.idleCeilingMs = static_cast<qint64>(idleCeilingSec) * 1000;
+        if (s.state == ClaudeState::Idle && s.idleSinceMs > 0)
+            gate.idleElapsedMs = nowMs - s.idleSinceMs;
+    }
 
     const ModelAutoSwitch::Decision dec = ModelAutoSwitch::decide(gate);
     if (!dec.act) {
@@ -1553,8 +1605,9 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
         ModelSwitchLedger::defaultLedgerPath(), rec_);
 
     m_autoSwitchLastMs         = nowMs;
-    m_autoSwitchTicksStable    = 0;
-    m_autoSwitchTicksAtCurrent = 0;   // ANTS-1925 — clear hysteresis on switch
+    // ANTS-1928 — clear the full stability accrual (ticksStable + reset-
+    // hysteresis counter + tier-lock candidate) on every actual switch.
+    m_autoSwitchStability      = ModelAutoSwitch::StabilityState{};
     m_autoSwitchPendingTier.clear();  // ANTS-1919 — switch fired; clear intent
     m_autoSwitchLastTier       = dec.tierArg;
 }
@@ -1584,6 +1637,46 @@ void ClaudeStatusBarController::performModelSwitchHandshake(TerminalWidget *focu
             if (g) g->sendToPty((cont + QStringLiteral("\r")).toUtf8());
         });
     }
+}
+
+// ANTS-1915 — fire a deferred manual chip-switch once its owning shell is Idle.
+void ClaudeStatusBarController::maybeFireDeferredChipSwitch(pid_t shellPid) {
+    if (m_deferredChipTier.isEmpty() || shellPid != m_deferredChipShellPid)
+        return;
+    if (!m_tracker ||
+            m_tracker->shellState(shellPid).state != ClaudeState::Idle)
+        return;   // still generating — keep waiting for the turn to complete.
+
+    // Resolve the terminal that owns this shell by PID, NOT by current focus:
+    // the user may have moved to another tab while the turn finished, and the
+    // /model + handshake must land on the PTY they clicked the chip for.
+    TerminalWidget *term = nullptr;
+    if (m_tabWidget && m_terminalAtTabProvider) {
+        const int n = m_tabWidget->count();
+        for (int i = 0; i < n; ++i) {
+            auto *t = m_terminalAtTabProvider(i);
+            if (t && t->shellPid() == shellPid) { term = t; break; }
+        }
+    }
+    if (!term) {                 // tab closed before the turn ended — drop it.
+        m_deferredChipTier.clear();
+        m_deferredChipShellPid = 0;
+        return;
+    }
+
+    const QString tier = m_deferredChipTier;
+    m_deferredChipTier.clear();
+    m_deferredChipShellPid = 0;
+
+    term->sendToPty(
+        (QStringLiteral("/model ") + tier + QStringLiteral("\r")).toUtf8());
+    performModelSwitchHandshake(term);
+    // ANTS-1890 / ANTS-1915 — seed the per-project override cool-down so the
+    // autonomous switcher does not immediately undo this user-initiated switch
+    // (mirrors the undo + chip-click-while-idle paths).
+    m_lastOverrideMsByProject[term->shellCwd()] =
+        QDateTime::currentMSecsSinceEpoch();
+    if (m_modelBtn) m_modelBtn->setToolTip(QString());
 }
 
 // Sentinel for "never switched yet" — large enough to clear any

@@ -19,8 +19,10 @@ namespace ModelNearMissLedger {
 
 namespace {
 
-// Canonical 7-token taxonomy in evaluation order (matches ModelAutoSwitch::
-// decide() — INV-2 / INV-9). Used for tie-breaking in statsSlim.
+// Canonical blocker taxonomy in evaluation order (matches ModelAutoSwitch::
+// decide() — INV-2 / INV-9). Used for tie-breaking in statsSlim. ANTS-1917
+// appended `idle_end_of_session` as the 8th token (kept last so the v1 7-token
+// ordering is never renumbered).
 const QStringList &taxonomyOrder() {
     static const QStringList order = {
         QStringLiteral("auto_switch_disabled"),
@@ -30,6 +32,7 @@ const QStringList &taxonomyOrder() {
         QStringLiteral("ticks_target_stable_insufficient"),
         QStringLiteral("dwell_time_insufficient"),
         QStringLiteral("override_cooldown_active"),
+        QStringLiteral("idle_end_of_session"),
     };
     return order;
 }

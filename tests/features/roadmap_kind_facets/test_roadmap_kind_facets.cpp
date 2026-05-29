@@ -68,7 +68,7 @@ constexpr unsigned kAllOn = 0x1F;  // ShowDone | Planned | InProgress | Consider
 
 }  // namespace
 
-static int runMain(int argc, char **argv) {
+static int runMain() {
     // QApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
     // INV-1: renderHtml signature gained the kindFilter parameter.
@@ -179,5 +179,5 @@ static int runMain(int argc, char **argv) {
 }
 
 TEST(RoadmapKindFacets, Main) {
-    ASSERT_EQ(0, runMain(0, nullptr));
+    ASSERT_EQ(0, runMain());
 }

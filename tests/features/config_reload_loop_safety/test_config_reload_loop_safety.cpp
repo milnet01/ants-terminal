@@ -344,7 +344,7 @@ void testInv4_failedBlockSignalsRemoved() {
 
 }  // namespace
 
-static int runMain(int argc, char **argv) {
+static int runMain() {
     expect_reset();
     // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
     testInv1_setThemeIdempotent_callShape();
@@ -358,5 +358,5 @@ static int runMain(int argc, char **argv) {
 }
 
 TEST(ConfigReloadLoopSafety, Main) {
-    ASSERT_EQ(0, runMain(0, nullptr));
+    ASSERT_EQ(0, runMain());
 }

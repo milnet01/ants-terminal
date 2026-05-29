@@ -70,7 +70,7 @@ bool qcontains(const QString &hay, const char *needle) {
 
 }  // namespace
 
-static int runMain(int argc, char **argv) {
+static int runMain() {
     // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
     const std::string header = slurp(ROADMAPDIALOG_H);
@@ -296,5 +296,5 @@ static int runMain(int argc, char **argv) {
 }
 
 TEST(RoadmapViewer, Main) {
-    ASSERT_EQ(0, runMain(0, nullptr));
+    ASSERT_EQ(0, runMain());
 }

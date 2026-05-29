@@ -10,9 +10,11 @@ controller's near-miss emit path.
 - **INV-1** — `decide()` returns `act=true` iff `blockedBy.isEmpty()`;
   on act, `tierArg == tierName(recommendedTier)`. Preserves the
   pre-1894 firing-side contract.
-- **INV-2** — Each of the 7 guards in § 2.1 appends its canonical token
-  on failure; tokens land in evaluation order; the 7-token taxonomy is
-  the v1 stable handle list.
+- **INV-2** — Each of the 8 guards in § 2.1 appends its canonical token
+  on failure; tokens land in evaluation order. The v1 7-token taxonomy
+  is never renumbered; ANTS-1917 appended `idle_end_of_session` as the
+  8th token (kept last). A default-constructed Gate still yields exactly
+  the v1 7 tokens because the idle guard is opt-in via the -1 sentinel.
 - **INV-3** — `effectiveMinDwellMs(g) = max(kMinDwellMs,
   g.configuredMinDwellMs)`; degenerate `configuredMinDwellMs=0` still
   respects the 90 s floor.
@@ -28,8 +30,9 @@ controller's near-miss emit path.
   `\n`-terminated JSON per line.
 - **INV-8** — `appendRecord` post-cap-overflow evicts whole oldest
   lines; newest line never dropped; no mid-line truncation.
-- **INV-9** — The 7 blocker tokens are stable handles (source-grep
-  sentinel for accidental renames).
+- **INV-9** — The 8 blocker tokens are stable handles (source-grep
+  sentinel for accidental renames); the v1 7 are never renumbered and
+  `idle_end_of_session` (ANTS-1917) is appended last.
 - **INV-10** — `statsSlim.dominantBlocker` = highest-occurrence token
   across the 24 h window's records (one count per distinct token in a
   record's `blocked_by`); ties broken by taxonomy order; empty window

@@ -295,10 +295,17 @@ Result score(const QString &transcriptPath)
 
     Result r;
     r.currentModel = def.currentModel;
-    if (sc >= 3) {
+    // ANTS-1930 — rebalanced thresholds for symmetric upgrades/downgrades.
+    // Pre-1930: >= 3 (Opus) / <= -1 (Haiku) created a one-way ratchet that
+    // blocked upgrades while favoring downgrades. New thresholds:
+    // - Opus: >= 2 (easier to reach, reflects moderately heavy work)
+    // - Haiku: <= -2 (requires stronger evidence of purely mechanical work)
+    // This encourages balanced movement in both directions instead of a
+    // downgrade-only trajectory.
+    if (sc >= 2) {
         r.tier   = Tier::Opus;
         r.reason = reasons.trimmed();
-    } else if (sc <= -1) {
+    } else if (sc <= -2) {
         r.tier   = Tier::Haiku;
         r.reason = reasons.trimmed();
     } else {

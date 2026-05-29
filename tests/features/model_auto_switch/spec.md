@@ -32,6 +32,19 @@ suppression — INV-14), the effectiveness ledger (INV-10..12), and the
 - **INV-5** — requires `ticksTargetStable >= kStableTicks`, counted against the
   **clamped** target — a recommendation that clamps to current never
   accumulates (no livelock / churn).
+- **INV-16 (ANTS-1928)** — `advanceStability(prev, clampedTarget, current,
+  nowMs)` folds one tick's clamped recommendation into the accrual state.
+  Tier-lock window: once a non-current candidate tier appears, a reversion to
+  `current` **within `kTierLockWindowMs`** does NOT reset accrued
+  `ticksStable` (it holds), so a boundary-oscillation duty cycle down to
+  ~1-in-3 ticks still reaches `kStableTicks`. A reversion that outlasts the
+  window resets via the ANTS-1925 `kStableResetTicks` rule. Accrual is
+  per-candidate-tier: a *changed* candidate restarts at 1 (a Sonnet→Opus then
+  Sonnet→Haiku sequence never fires a switch off mixed evidence). Score
+  hysteresis (the roadmap's part (a)) is **intentionally not applied**: making
+  the current tier sticky would re-bias toward staying put, undoing ANTS-1930's
+  symmetric-movement fix; the 90 s dwell gate (INV-6) is the anti-thrash
+  backstop instead.
 - **INV-6** — requires `msSinceLastSwitch >= kMinDwellMs`.
 - **INV-7** — on act, `tierArg` is the lowercase alias (`haiku`/`sonnet`/`opus`)
   of the **clamped** target.
@@ -40,6 +53,16 @@ suppression — INV-14), the effectiveness ledger (INV-10..12), and the
 - **INV-9** — security boundary: `tierArg` is always one of the three fixed
   enum aliases, derived only from `ModelRecommender::tierName` over the enum —
   never arbitrary text.
+- **INV-15 (ANTS-1917)** — idle end-of-session suppression. When
+  `idleElapsedMs >= 0` (controller supplies it only while the shell is Idle
+  with a known `idleSinceMs`) AND `idleElapsedMs >=` the effective ceiling
+  (`idleCeilingMs` if `>= 0`, else `kIdleEndOfSessionMs` = 3 min), `decide`
+  appends `idle_end_of_session` and does not act — a tail switch would apply
+  to no fresh work and would persist as the next session's default model.
+  The `-1` sentinel (default Gate, no idle telemetry) never blocks, so a
+  default-constructed Gate keeps the v1 7-token behaviour. Token is appended
+  last in evaluation order (INV-9 of the near-miss taxonomy is never
+  renumbered).
 
 ## Method
 

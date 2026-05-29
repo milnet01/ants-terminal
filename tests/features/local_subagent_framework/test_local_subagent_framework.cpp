@@ -60,7 +60,7 @@ bool writeScript(const QString &path, const QString &body) {
 
 }  // namespace
 
-static int runMain(int argc, char **argv) {
+static int runMain() {
     // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
     // INV-2: clean drift script → ok:true, clean:true, exit 0.
@@ -196,5 +196,5 @@ static int runMain(int argc, char **argv) {
 }
 
 TEST(LocalSubagentFramework, Main) {
-    ASSERT_EQ(0, runMain(0, nullptr));
+    ASSERT_EQ(0, runMain());
 }

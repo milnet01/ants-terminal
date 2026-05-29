@@ -1002,6 +1002,8 @@ if(ANTS_TESTS)
                 tests/features/claude_state_resolver/test_claude_state_resolver.cpp
                 # ANTS-1735 INV-14 — actuator wiring + chip suppression.
                 tests/features/model_auto_switch_actuator/test_model_auto_switch_actuator.cpp
+                # ANTS-1915 — deferred manual chip-switch wiring guard.
+                tests/features/model_switch_deferred_chip/test_deferred_chip_wiring.cpp
                 # ANTS-1735 §2.5 — outcome fill-in tick wiring guard.
                 tests/features/model_auto_switch_outcome_fillin/test_model_auto_switch_outcome_fillin.cpp
                 # ANTS-1894 — near-miss telemetry: controller-touching tests.

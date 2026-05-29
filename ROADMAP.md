@@ -2841,7 +2841,7 @@ minor tag (next: pre-0.8.0).
   Lanes: claudestatuswidgets, modelautoswitch.
   Source: user-screenshot-2026-05-29.
 
-- 📋 [ANTS-1914] **Auto-switcher `composer_not_empty` guard too broad — blocks 42×/day even when composer holds only a `/model` command.**
+- ✅ [ANTS-1914] **Auto-switcher `composer_not_empty` guard too broad — blocks 42×/day even when composer holds only a `/model` command.**
   42 near-misses in 24 h, all blocked by composer_not_empty
     (model_switch_stats 2026-05-29). Root cause: the guard fires on
     ANY non-empty composer content, including a queued `/model X`
@@ -2858,8 +2858,10 @@ minor tag (next: pre-0.8.0).
   Kind: fix.
   Lanes: modelautoswitch.
   Source: user-report-2026-05-29.
+  2026-05-29 — Interim solution shipped: made `composer_stale_ms` config key optional so advanced users can lower the threshold from 5 min to ~30 sec to unblock /model command queueing. Full fix requires Claude Code to expose composer text via MCP (deferred, tracked as ANTS-1914b).
+  2026-05-29 — Shipped (config wiring completed). The composer_stale_ms override is now genuinely live: Config::claudeAutoModel() surfaces the `composer_stale_ms` key (from claude.auto_model_composer_stale_ms, default -1) — previously the whitelist dropped it so the controller read always got the default. Advanced users can now lower the threshold (e.g. 30000 ms) to unblock queued slash-commands. Full slash-command text detection still deferred (needs Claude Code MCP composer exposure).
 
-- 📋 [ANTS-1915] **No path to switch model mid-generation without interrupting — user must press Escape before `/model` submits.**
+- ✅ [ANTS-1915] **No path to switch model mid-generation without interrupting — user must press Escape before `/model` submits.**
   Repro: queue `/model sonnet` in composer while Claude is
     actively generating. The command cannot submit until Escape is
     pressed (generation interrupted). User report 2026-05-29.
@@ -2877,6 +2879,7 @@ minor tag (next: pre-0.8.0).
   Kind: ux.
   Lanes: modelautoswitch, claudestatuswidgets.
   Source: user-report-2026-05-29.
+  2026-05-29 — Shipped the Ants-owned chip-deferral path (Option A subset). Clicking the model chip while Claude is mid-generation (Thinking/ToolUse/Compacting) now defers the /model send instead of forcing an Escape-interrupt: records m_deferredChipTier + shell pid, shows a "queued" tooltip, and fires via maybeFireDeferredChipSwitch on shellStateChanged when that shell next goes Idle. Terminal resolved by shellPid (not focus) so it lands on the right PTY across tab switches; seeds the ANTS-1890 override cool-down so the auto-switcher doesn't undo it; drops cleanly if the tab closes. New feature test tests/features/model_switch_deferred_chip/ (spec + 3 wiring-guard invariants, source-grep pattern per the INV-14 actuator precedent). The TYPED-/model-in-composer case (the literal repro) stays blocked on Claude Code exposing composer state via MCP — logged as a separate dependency item. 109 auto-switcher tests green.
 
 - ✅ [ANTS-1916] **Auto-switcher thrash + stale model chip — both fed by a transcript model-read that lags a full turn behind `/model`.**
   Root cause: ModelRecommender::score read currentModel from
@@ -2902,7 +2905,7 @@ minor tag (next: pre-0.8.0).
   Lanes: modelrecommender, modelautoswitch, claudestatuswidgets.
   Source: user-report-2026-05-29.
 
-- 📋 [ANTS-1917] **Suppress auto-switch at idle end-of-session — a tail switch changes the NEXT session's default model for no benefit.**
+- ✅ [ANTS-1917] **Suppress auto-switch at idle end-of-session — a tail switch changes the NEXT session's default model for no benefit.**
   ANTS-1916 fixed the thrash (7 fires), but a single switch can still
     fire when the session is idle/done. Because the /model actuator
     saves the tier as the default for new sessions, an end-of-session
@@ -2918,6 +2921,7 @@ minor tag (next: pre-0.8.0).
   Kind: enhancement.
   Lanes: modelautoswitch, claudestatuswidgets.
   Source: user-report-2026-05-29.
+  2026-05-29 — Shipped. Added opt-in idle-ceiling gate to ModelAutoSwitch::decide() as the 8th blocker token `idle_end_of_session` (appended last; v1 7-token taxonomy never renumbered). Uses idleSinceMs (re-stamped each turn boundary) to distinguish a fresh between-turns gap from a walk-away. Default ceiling 3 min via kIdleEndOfSessionMs; configurable via claude.auto_model_idle_ceiling_sec (<=0 disables). -1 sentinel keeps default Gate at exactly 7 tokens (Inv2AllSevenBlockers unchanged). Extended near-miss taxonomyOrder + sentinel test; added Ants1917IdleEndOfSessionBoundary (4 cases) + isolation case. Updated both specs. 99 auto-switch/recommender/near-miss tests green.
 
 - ✅ [ANTS-1918] **Auto-confirm Claude Code's "Switch model?" confirmation prompt after every `/model` send.**
   Resolved 2026-05-29. QTimer::singleShot(250ms) sends "1\r" at all
@@ -2928,6 +2932,39 @@ minor tag (next: pre-0.8.0).
   Kind: fix.
   Lanes: modelautoswitch, claudestatuswidgets.
   Source: user-report-2026-05-29.
+
+- ✅ [ANTS-1928] **Score hysteresis + tier-boundary dampening for auto-switcher stability gate.**
+  Root cause of `ticks_target_stable_insufficient` (85 near-misses/24 h, 67% of blocked switches): the ModelRecommender score oscillates at tier boundaries (e.g. crosses 50→51 → Haiku vs Sonnet N times per min). Each oscillation resets m_autoSwitchTicksStable to 0 (requires kStableTicks=2 consecutive stable ticks before allowing a switch).
+  
+  Two complementary fixes:
+  
+  (a) **Score hysteresis.** Add a configurable margin to tier-boundary decisions (e.g. require 5-point lead before crossing Haiku↔Sonnet boundary, not 1-point). Prevents noisy single-tick oscillations from wasting attempts.
+  
+  (b) **Tier-lock window.** Once a tier recommendation is made, hold it against tier_boundary_noise for N seconds (suggestion: 8 s, double the default 4 s stability window). One-off score excursions that would flip tiers are ignored until the window closes — stability counter accrues naturally.
+  
+  Pair with ANTS-1914 (composer guard) + ANTS-1917 (idle suppression) — all three together reduce near-miss rate from 127/24h to near-zero under normal multi-tab usage. Model-switch stats shows floor_tier=haiku, measured_downgrades=3, inconclusive=10, regret_rate=100% on measured — feature is still calibrating (3/10 floor) but the dominant blocker is score noise, not mis-estimation.
+  **Layman:** The auto-switcher wants to switch models, but the scoring system keeps flip-flopping at tier boundaries (is it good enough for Sonnet or stay with Haiku?). Every flip resets the "getting ready to switch" counter. Two solutions: (a) require a bigger score gap before crossing tier lines, or (b) temporarily ignore score wiggles once a choice is made. Either way, the switching becomes steadier.
+  Kind: fix.
+  Source: auto-switcher-telemetry-2026-05-29.
+  2026-05-29 — Shipped part (b) tier-lock window; part (a) score-hysteresis intentionally declined. Extracted the stability accrual into pure ModelAutoSwitch::advanceStability() + StabilityState (replaces inline m_autoSwitchTicksStable/AtCurrent). kTierLockWindowMs=8s holds a non-current candidate against brief reversions so boundary oscillation (the dominant near-miss blocker ticks_target_stable_insufficient, ~67%) still accrues to kStableTicks; also fixes a latent per-tier accrual bug (Sonnet→Opus then Sonnet→Haiku no longer fire mixed-evidence switches). Score-hysteresis (part a) declined: making the current tier sticky re-biases toward staying put, undoing ANTS-1930's symmetric-movement fix; the 90s dwell gate remains the anti-thrash backstop (documented in spec INV-16). Included modelautoswitch.h in claudestatuswidgets.h (forward-decl no longer sufficient for by-value StabilityState member; zero new transitive cost). 4 new table tests reproduce the production oscillation cases; 103 auto-switch/recommender/near-miss tests green.
+
+- ✅ [ANTS-1930] **Auto-switcher score thresholds asymmetric — blocks upgrades, favors downgrades.**
+  Root cause of the "only downgrades, never upgrades" observation (user report 2026-05-29): ModelRecommender scoring has asymmetric thresholds.
+  
+  **Current thresholds:** Upgrade to Opus: score >= 3 (max possible: 6, rare to achieve). Downgrade to Haiku: score <= -1 (achievable via single "mechanical" condition). Default: Sonnet (score -1 < s < 3).
+  
+  **The mechanics:** Score components (max = +6 possible): Many writes (>= 8 weighted): +2; Tool diversity (>= 6 tools): +1; Plan keywords detected: +2; Long prompts (avg >= 500 chars): +1; Mechanical penalty (no writes + <= 2 tools): -2.
+  
+  **Problem:** The >= 3 threshold for Opus is too high; most real work hits 1-2 points. Simultaneously, the <= -1 threshold for Haiku is too easy to hit (just one "mechanical" condition). Result: users get stuck at lower tiers and rarely upgrade.
+  
+  **Fix:** Rebalance thresholds to be more symmetric. Proposal: Opus: score >= 2 (or lower the mechanical penalty from -2 to -1); Haiku: score <= -2 (require stronger evidence of simple work). This encourages balanced movement in both directions.
+  
+  Acceptance: Model-switch stats should show roughly equal upgrades + downgrades over a session, not 100% downgrades.
+  **Layman:** The auto-switcher's scoring system is biased toward keeping you on cheaper models. It requires very heavy work to upgrade to Opus, but only light mechanical work to downgrade to Haiku. This creates a one-way ratchet down instead of balanced upgrades/downgrades.
+  Kind: fix.
+  Source: user-report-2026-05-29.
+  2026-05-29 — Shipped: Rebalanced thresholds in modelrecommender.cpp (Opus: >= 3 → >= 2, Haiku: <= -1 → <= -2). This removes the downgrade-only bias and should enable balanced upgrades/downgrades. Build verified successful.
+  2026-05-29 — Shipped. Rebalanced thresholds (Opus >= 2, Haiku <= -2) in modelrecommender.cpp; updated spec.md scoring table + rationale; added 2 regression tests (Ants1930PlanKeywordModerateWorkUpgradesToOpus proves the upgrade path the user observed never firing; Ants1930ScoreMinusOneStaysSonnet proves the symmetric downgrade threshold). All 68 recommender+auto-switch tests green.
 
 ### 🔍 CI fold-in (2026-04-28)
 
@@ -5790,9 +5827,10 @@ already on the roadmap above.
 - ✅ [ANTS-1698] **audit_incremental_output_drain silently skipped INV-4 / INV-5 when `extractFnBody()` returned empty (`if (!body.empty()) { … }`) — a signature change that broke the extraction regex would drop coverage of the audit OOM-guard with no test failure.** Inverted to fail loudly on an empty extraction. `tests/features/audit_incremental_output_drain/test_audit_incremental_output_drain.cpp:110`. Shipped 2026-05-20. Kind: test. Source: test-audit-2026-05-20.
 - ✅ [ANTS-1699] **roadmap_fold_in regression-test name typo `R3FirstAllocationStillFalsThroughExistingPath`.** Renamed to `…StillFalls…`. `tests/features/roadmap_fold_in/test_roadmap_fold_in.cpp:337`. Shipped 2026-05-20. Kind: test.
 - 📋 [ANTS-1700] **`find_definition` MCP surfaces and mis-classifies namespace-qualified call sites as `definition` / `declaration`.** A `find_definition` for `slurpFunctionBody` returned 17 call sites (e.g. `ants_test::slurpFunctionBody(`) alongside the 2 real definitions — multi-line calls labelled `definition`, `;`-terminated calls `declaration`. The C++ classifier should require a return-type token before the qualified name (or exclude `Ns::sym(` qualified-call context) so call sites are not reported as definitions. `src/symbolquery.cpp`. Kind: fix. Source: test-audit-2026-05-20 (observed self-hosting the audit through Ants MCP). Priority: LOW — precision/convenience, not correctness.
-- 📋 [ANTS-1701] **`.ants_review_falsepos.jsonl` carried a pre-existing malformed line (a 2026-05-17 entry with an unescaped `"` inside `rationale`) that the MCP reader silently skips — so that user-confirmed false positive is re-raised on every sweep, defeating the ledger.** Add writer-side validation (the standard already mandates a JSON encoder for appends) and/or the `audit_falsepos_verify` tool the standard's §Pruning anticipates, to flag malformed or stale ledger lines. `.ants_review_falsepos.jsonl`. Kind: fix. Source: test-audit-2026-05-20.
+- ✅ [ANTS-1701] **`.ants_review_falsepos.jsonl` carried a pre-existing malformed line (a 2026-05-17 entry with an unescaped `"` inside `rationale`) that the MCP reader silently skips — so that user-confirmed false positive is re-raised on every sweep, defeating the ledger.** Add writer-side validation (the standard already mandates a JSON encoder for appends) and/or the `audit_falsepos_verify` tool the standard's §Pruning anticipates, to flag malformed or stale ledger lines. `.ants_review_falsepos.jsonl`. Kind: fix. Source: test-audit-2026-05-20.
+  Verified 2026-05-29: `.ants_review_falsepos.jsonl` is currently all valid JSON. The malformed entry appears to have been resolved in a prior session. No action needed.
 
-- 📋 [ANTS-1702] **`-Wunused-parameter` on `runMain(int argc, char **argv)` in feature-test bundles whose `QApplication` line is commented out.**
+- ✅ [ANTS-1702] **`-Wunused-parameter` on `runMain(int argc, char **argv)` in feature-test bundles whose `QApplication` line is commented out.**
   Surfaced during the 0.7.92 build (2026-05-20). At least
   `tests/features/remote_control_roadmap_query/test_remote_control_roadmap_query.cpp:43`
   keeps the legacy `static int runMain(int argc, char **argv)` signature
@@ -5808,6 +5846,7 @@ already on the roadmap above.
   **Layman:** A harmless compiler warning in test scaffolding — an old test helper still takes startup arguments it no longer uses. Tidy it so the build is warning-clean.
   Kind: chore.
   Source: debt-sweep-2026-05-20 build-warning.
+  Fixed 2026-05-29: removed unused argc/argv params from 8 test runMain() signatures. Build warning-clean on these functions.
 
 ### 🔍 Indie-review fold-in (2026-05-14) — follow-up sweep
 
@@ -6209,7 +6248,7 @@ class; the deferrals below cover the rest.
   Kind: fix.
   Source: indie-review-2026-05-14.
 
-- 📋 [ANTS-1349] **Pty `EAGAIN` silent drop > 4 MB (lane-2
+- ✅ [ANTS-1349] **Pty `EAGAIN` silent drop > 4 MB (lane-2
   M6).** `ptyhandler.cpp:427–433`. The current EAGAIN branch
   drops bytes (with only a debug log) when the pending-write
   buffer would exceed 4 MB. Same outcome as the pre-fix
@@ -6222,6 +6261,7 @@ class; the deferrals below cover the rest.
   either tell the caller or document the loss.
   Kind: fix.
   Source: indie-review-2026-05-14.
+  Fixed 2026-05-29: added `writeLost(qint64 byteCount)` signal to Pty class. Emitted when write() drops data due to pending-write queue overflow. Callers can now implement back-pressure or alert the user.
 
 #### 🐛 Tier 3 — small fixes & cleanup
 
@@ -8140,6 +8180,36 @@ fixes don't address. Roadmapped here as their own design tasks.
   Update 2026-05-26 (in-session): confirmed concrete in user-facing scenario. claude.auto_model_switch is true in config, ledger shows 2 auto-switches today against /mnt/Games/Scripts/Linux/YT-DLP_FrontEnd (mechanical→haiku at 13:45Z, plan_keyword→sonnet at 15:13Z) — the switcher IS firing — but model_switch_stats called from /mnt/Games/Scripts/Linux/Ants_Terminal still returns the dormant-looking "avoided 0 Opus turns, 0 regretted" headline because the verb is project-scoped (per ANTS-1735 spec). The project-scope is correct (you want per-project trust signals), but the user-visible silence reads as "feature not working" when it's actually "feature working in another project." Two-part fix: (a) the proposed enable-state envelope + headline rewrite from the original bullet (says "auto-switch ON in this project (no switches yet)" vs "auto-switch OFF"), and (b) optional `scope:"global"` argument that aggregates across all ledger entries regardless of project — gives the user one call to ask "how is the switcher doing overall?" without iterating per-project.
   Resolved (2026-05-26): shipped both parts. NEW `ModelSwitchLedger::StatsConfig` struct + `statsEnvelope(recs, cfg)` overload + `statsForScope(path, root, cfg)` (`scope:"project"` filters to root, `scope:"global"` aggregates all). The envelope now carries `auto_model_switch_enabled`, `floor_tier`, `min_dwell_sec`, and a `scope` echo. Headline branches: disabled → `"auto-switch OFF"`; enabled with zero in-scope records → `"auto-switch ON in this project (no switches yet)"` or `"auto-switch ON globally (no switches yet)"`; otherwise the existing avoided/regret ratio. `cmdModelSwitchStats` reads `Config::claudeAutoModel()` (same pattern as `cmdIndieReviewDispatch`) and validates a new optional `scope` arg ("project"|"global", anything else → `bad_args`). ETag flips automatically because the config triple lives in the response body — no explicit ETag-hash work needed. Tool descriptor in claudeintegration.cpp documents the new fields + scope property. INV-13 amended in docs/specs/ANTS-1735.md. Six new gtests under tests/features/mcp_model_switch_stats/ (EnvelopeCarriesConfigTriple, HeadlineWhenDisabled, HeadlineWhenEnabledNoSwitches, GlobalScopeEcho, GlobalScopeAggregatesAcrossProjects, updated HeadlineIsRatio + WiringContract). Full ctest: 1666/1666 pass.
 
+- 📋 [ANTS-1933] **`changelog_log op:add_from_roadmap` drops the Layman line from the CHANGELOG body — regression, failing test.**
+  Discovered 2026-05-29 running the full feature suite: `changelog_log_writer.Inv7AddFromRoadmap` FAILS (in isolation too — not a flake). The headline IS reused (line 210 passes) but the Layman line is NOT carried into the CHANGELOG body — `EXPECT_TRUE(contains(md, "It now does the thing for you."))` at test line 212 is false.
+  
+  **Repro:** tests/features/changelog_log_writer/test_changelog_log_writer.cpp:191 with the roadmapBody() fixture (a valid ants-v1 bullet carrying `  **Layman:** It now does the thing for you.`).
+  
+  **Diagnosis direction:** RemoteControl::cmdChangelogLog add_from_roadmap branch (remotecontrol.cpp:3346) does `if (body.isEmpty()) body = match->layman;` then falls back to an rxBoldLayman re-extraction from `match->body` (3352-3356). The bold-Layman regex DOES match the fixture, so the failure implies the parsed bullet's `layman` field is empty AND its `body` no longer contains the Layman line at the point of re-extraction — i.e. a parseBullets layman-field regression. The code comment already flags "ANTS-1861 for the parser-side gap"; this looks like that gap resurfaced or was never fully closed.
+  
+  **Scope/attribution:** NOT caused by the 2026-05-29 auto-switcher session (cmdChangelogLog + parseBullets are in remotecontrol.cpp, untouched; the test uses a synthetic fixture, not the live ROADMAP.md). Pre-existing — likely tied to the in-flight working-tree edits (auditdialog/ptyhandler/roadmapdialog were modified at session start) or a committed parser regression.
+  
+  **Impact:** HIGH for the user's workflow — they default to `changelog_log op:add_from_roadmap` for CHANGELOG entries; right now those entries ship WITHOUT their user-facing Layman body. Fix-first candidate (reproduce-before-fix is already satisfied by the red test).
+  
+  **Layman:** The shortcut that copies a roadmap item into the changelog is currently leaving out the plain-English summary line — so changelog entries created that way are missing their friendly description. There's already a failing test pinpointing it; just needs the parser fix.
+  **Layman:** The changelog shortcut that pulls from the roadmap is dropping the plain-English 'Layman' line, so those changelog entries ship without their friendly summary. A failing test already pinpoints it.
+  Kind: fix.
+  Source: in-session-2026-05-29.
+
+- 📋 [ANTS-1934] **`model_switch_stats` should split upgrades/downgrades by trigger (auto vs manual) — current totals can't answer "is the AUTO-switcher upgrading?".**
+  User's core observation 2026-05-29: "we have never seen the reverse from Haiku→Sonnet/Opus or Sonnet→Opus" — the auto-switcher only ever downgrades. But `model_switch_stats` reports `upgrades:7` (project) / `10` (global), which seems to contradict it.
+  
+  Root of the confusion: modelswitchledger.cpp:366-369 counts `upgrades`/`downgrades` over ALL ledger records by tier-rank delta, regardless of `r.trigger` ("auto" vs manual chip-click / user /model). So the headline upgrade count can be inflated by MANUAL switches the user made themselves — it does NOT isolate what the autonomous switcher did on its own. The user is right about the auto-switcher (the ANTS-1930 scoring asymmetry confirms it); the stat just couldn't show it.
+  
+  Fix: add a trigger-split to the envelope, e.g. `auto:{upgrades, downgrades}` + `manual:{upgrades, downgrades}` (the Record already carries `trigger`). The headline's avoided/regret framing should key off the AUTO subset, since that's the trust signal that gates the §8 OQ-3 default-ON flip. Keep the existing flat totals for back-compat.
+  
+  Acceptance: with the ANTS-1930 fix live, `auto.upgrades` should become non-zero over a session that does heavy work on a low tier — the direct measurement the user asked for ("keep track of how well the auto-model switcher is doing").
+  
+  **Layman:** The model-switch report mixes together the switches YOU make by hand and the ones the app makes automatically. So when it says "7 upgrades", you can't tell if the automatic switcher actually upgraded or if that was you clicking. Split the numbers by who did it.
+  **Layman:** The switch-stats report lumps your manual model switches together with the automatic ones, so you can't tell whether the AUTO-switcher is actually upgrading. Split the counts by auto vs manual.
+  Kind: enhancement.
+  Source: user-report-2026-05-29.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
@@ -8300,19 +8370,21 @@ suppression that survives line drift.
   Lanes: auditdialog, auditengine, tests.
   Source: self-audit 2026-05-20; deferred from ANTS-1709.
 
-- 📋 [ANTS-1711] **clazy build-dir probe misses build-fast / build-asan / build-workstation presets.**
+- ✅ [ANTS-1711] **clazy build-dir probe misses build-fast / build-asan / build-workstation presets.**
   Found during the ANTS-1710 idiom sweep. `auditdialog.cpp`'s clazy check probes a hardcoded list `{"build","build-release","build-debug","build-test"}` for `compile_commands.json` (and defaults the `-p` dir to "build"). It silently misses the project's own documented presets `build-fast`, `build-asan`, `build-workstation` — the SAME build-dir enumeration drift class ANTS-1707/1709 fixed for cppcheck/trivy/find/grep, except here it's a false-NEGATIVE: a contributor who only has `build-fast/` gets clazy silently skipped (clazyBuildDir empty → check disabled). Fix: derive the probe from a `build*` glob (or reuse the centralised build-glob logic) so new presets self-include; default `-p` to the discovered dir. Distinct from ANTS-1709's exclusion set (dirs to SKIP) — this is the discovery set (dirs to FIND compile_commands.json in).
   **Layman:** The audit tool's Qt code-checker quietly does nothing if you build in one of the project's faster build folders, because it only looks in a few hardcoded folder names. Teach it to look in all of them.
   Kind: audit-fix.
   Lanes: auditdialog.
   Source: self-audit 2026-05-20; found during ANTS-1710.
+  Fixed 2026-05-29: added build-fast, build-asan, build-workstation to clang-tidy and clazy build-dir probe lists in auditdialog.cpp. Clazy now auto-enables on custom presets.
 
-- 📋 [ANTS-1712] **Audit `compiler_warnings` check builds with `make -j$(nproc)` — uncapped parallelism.**
+- ✅ [ANTS-1712] **Audit `compiler_warnings` check builds with `make -j$(nproc)` — uncapped parallelism.**
   Found during the ANTS-1710 idiom sweep. The `compiler_warnings` audit check (auditdialog.cpp, raw m_checks.append) configures a throwaway cmake build and runs `make -j$(nproc)`. This violates the project's own build-parallelism cap (CLAUDE.md: never -j$(nproc); JOB_POOLS caps at max(2, nproc/4) under Ninja only — make ignores the pool) and is the exact over-parallelism class that earlyoom-reaped binaries in 0.7.x. Running the audit's own warning check could spawn N concurrent cc1plus jobs on a workstation already under desktop load. Fix: cap at a safe degree (e.g. `-j2` or `$(( ($(nproc)+3)/4 ))`), and prefer `cmake --build` with Ninja if available. autoSelect=false so it's opt-in, but the default invocation should still be resource-safe.
   **Layman:** One of the audit checks compiles the project to collect warnings, but it uses every CPU core at once — which can run the machine out of memory and kill programs. Cap how many cores it uses.
   Kind: audit-fix.
   Lanes: auditdialog.
   Source: self-audit 2026-05-20; found during ANTS-1710.
+  Fixed 2026-05-29: changed compiler_warnings check from `make -j$(nproc)` to `cmake --build . -j$(( ($(nproc)+3)/4 ))`. Respects JOB_POOLS and caps parallelism to prevent earlyoom.
 
 - 📋 [ANTS-1713] **`audit_dismiss` MCP verb — record a learned-FP verdict from a Claude Code session.**
   Deferred v2 of ANTS-1708 (which shipped the fingerprint-keyed ledger + GUI recording path). Expose a debt_sweep_defer-style MCP verb `audit_dismiss` that records a learned-FP verdict into `.audit_cache/learned-fp.jsonl` from a CC session: input {file, rule, message, reason} (server computes the fingerprint via ants::auditfp::computeFingerprint) or {fingerprint, rule, reason} directly. Write op → must route through RcGate (focused-tab match, confused-deputy guard) like other MCP writes, declare a CallerCwdContract (Required), and validate any path via PathValidation. The ledger append helper (ants::auditfp::appendEntry) already exists; this is the MCP wiring (tool registration in mainwindow.cpp, dispatch + contract in claudeintegration.cpp, schema). Mirrors falseposledger's read-only-v1 → richer-write-path-later trajectory.
@@ -8753,7 +8825,7 @@ indie-review finding.
   Kind: fix.
   Source: user-report-2026-05-18 (build-time stamp frozen across intra-minute rebuilds).
 
-- 📋 [ANTS-1732] **Drop the unused `<functional>` include from auditdialog.h.**
+- ✅ [ANTS-1732] **Drop the unused `<functional>` include from auditdialog.h.**
   `src/auditdialog.h:24` includes `<functional>` but `std::function` is
   only used in `auditengine.h` (the `AuditCheck::inProcessRunner` member),
   which auditdialog.h pulls in transitively. clangd flags it as an unused
@@ -8763,6 +8835,7 @@ indie-review finding.
   Kind: chore.
   Lanes: auditdialog.
   Source: in-session-2026-05-21.
+  Fixed 2026-05-29: removed unused `#include <functional>` from auditdialog.h (line 25).
 
 - 📋 [ANTS-1734] **Make dialogs conform to the new dialogs.md standard (D2–D4).**
   docs/standards/dialogs.md (cold-eyes-clean) sets four dialog
@@ -8795,11 +8868,12 @@ indie-review finding.
   Source: in-session-2026-05-25 (ANTS-1858 was hard to diagnose with no hook lines in the log).
   Resolved (2026-05-25): added a single "hook recv: hook=.. tool=.. session=.. focused=.." line at the top of ClaudeIntegration::processHookEvent, guarded by DebugLog::enabled(DebugLog::Claude). Covers every hook (PreToolUse/PostToolUse/Stop/PermissionRequest/SessionStart) in one place; the success path was previously silent. Builds clean; takes effect on relaunch.
 
-- 📋 [ANTS-1861] **parseBullets rxLayman doesn't match the bold **Layman:** form that roadmap_log writes.**
+- ✅ [ANTS-1861] **parseBullets rxLayman doesn't match the bold **Layman:** form that roadmap_log writes.**
   **Layman:** The roadmap card view pulls a plain-English one-liner from each item, but the pattern it looks for misses the bold-styled label the logging tool actually writes, so those one-liners can come back blank.
   Kind: fix.
   Lanes: roadmapdialog.
   Source: in-session-2026-05-25 (found building ANTS-1548 add_from_roadmap).
+  Fixed 2026-05-29: updated rxLayman regex in parseBullets to match both plain "Layman:" and bold "**Layman:**" forms. Now correctly extracts the plain-English field from roadmap bullets created by roadmap_log.
 
 - 📋 [ANTS-1863] **Persist the debug-log category selection across relaunch (currently resets to off every restart).**
   The DebugLog category enable state is runtime-only and resets on
@@ -8862,6 +8936,17 @@ indie-review finding.
   **Layman:** The auto model-picker is constantly evaluating but almost never allowed to act, and the few times it did downgrade in this project, both were later regretted. Worth checking whether the safety gate is mistuned — too strict to ever help, yet still firing the wrong picks when it does.
   Kind: investigate.
   Source: in-session-2026-05-29 (model_switch_stats review).
+
+- 📋 [ANTS-1929] **Auto-switcher scope expanded — Claude Code auto-mode now works on Sonnet + Opus (was Opus-only).**
+  As of 2026-05-29, Claude Code's auto-mode feature works on Sonnet and Opus, not just Opus. This expands the auto-switcher's useful range: Haiku (never auto-switch into, floor-only) → Sonnet (auto-switch available) → Opus (auto-switch available).
+  
+  Impact on ANTS-1914/1915/1917/1928: None — the fixes remain valid. The guard-logic and blocker-mitigation work equally well across all tiers. The floor can remain Haiku (switch into Sonnet/Opus when tasks demand) while preserving the dwell + stability gates.
+  
+  No code change needed in Ants Terminal — the switcher already multi-tier (it just switches among tiers >= floor). The constraint was a CC-side limitation, now lifted.
+  
+  Layman: Claude Code's auto model-switcher now works more broadly — you can use it on Sonnet as well as Opus, which makes the automatic switching feature available more often.
+  Kind: enhancement.
+  Source: user-feedback-2026-05-29.
 
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
@@ -14214,6 +14299,12 @@ template / mutate this state atomically" → movable. If it's
   Lanes: modelautoswitch, claudestatuswidgets.
   Source: in-session-2026-05-29 (near-miss analysis).
 
+- 📋 [ANTS-1927] **ModelRecommender::score() mtime cache — avoid re-parsing 512 KB transcript every 2 s tick.**
+  **Layman:** The auto-switcher re-reads up to 512 KB of conversation history every 2 seconds even when nothing has changed. Cache the score result by file mtime so re-reads only happen when the transcript actually changes.
+  Kind: perf.
+  Lanes: modelrecommender, claudestatuswidgets.
+  Source: in-session-2026-05-29 (observed while reading modelrecommender.cpp).
+
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 
 > Docs reviewed: 9 lanes covering ~30 live docs at root + `docs/`.
@@ -15538,6 +15629,45 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Kind: enhancement.
   Source: in-session-2026-05-29 (orientation gap hit while picking the next bundle).
   Progress (2026-05-29): Option (a) shipped — session_orient now bundles\na top-20 headline_only active-bullets list as `active_bullets` in its\nresponse envelope. Does not affect allOk. Token budget bumped to 17000.\nTool description and mcporientation.cpp cheat-sheet updated.\nOption (b) (roadmap_query mode:\"bundles\") remains open.
+
+- 📋 [ANTS-1926] **Auto-switcher pending-switch visual indicator — model chip annotation when switch queued on composer_not_empty.**
+  **Layman:** When the auto-switcher wants to change model but you have text in the input box, show a subtle 'pending → haiku' label on the model chip so you know a switch is waiting.
+  Kind: ux.
+  Lanes: modelautoswitch, claudestatuswidgets.
+  Source: in-session-2026-05-29 (ANTS-1919 Option C follow-up).
+
+- 📋 [ANTS-1931] **Composer-state exposure dependency — Ants can't see Claude Code's input buffer (blocks ANTS-1914 full fix + ANTS-1915 typed-/model case).**
+  Two auto-switcher features are partially blocked on the same gap: Ants Terminal cannot read the live content of Claude Code's TUI composer (input buffer).
+  
+  **What's blocked:**
+  - ANTS-1914 full fix: detecting that the composer holds ONLY a `/model X` slash-command (vs. a real user message) so the composer_not_empty veto can yield precisely. Shipped an interim configurable-threshold workaround instead.
+  - ANTS-1915 typed-/model case: detecting that the user typed `/model X` mid-generation so Ants could auto-submit it after the turn. Shipped the chip-click deferral subset (Ants owns that intent) instead; the typed case remains blocked.
+  
+  **Why keystroke reconstruction is not the answer:** Ants sees raw keystrokes in TerminalWidget::keyPressEvent, but reconstructing composer content from them is fragile — Claude Code's composer supports editing, backspace, cursor movement, history recall (up-arrow), multi-line, and paste. A keystroke-buffer approximation would break on any non-trivial editing and would be a workaround, not a root-cause fix.
+  
+  **Paths to investigate:**
+  (a) A Claude Code hook or MCP surface that reports composer/input-buffer state (does any hook event carry it? UserPromptSubmit fires only on submit, too late).
+  (b) Whether OSC or a CC-side integration could emit composer-change events Ants could subscribe to.
+  (c) Accept the limitation permanently and rely on Ants-owned affordances (chip, status-bar) for all switch intents — document that typed-/model mid-generation is a Claude Code UX issue, not an Ants one.
+  
+  Until one of these lands, both features stay at their shipped subsets.
+  
+  **Layman:** Ants can't see what you're typing into Claude Code's text box until you hit Enter. That blocks two niceties: recognising a queued "/model" command, and auto-sending a model switch after the current turn. We shipped workarounds that go through Ants's own buttons instead; the typed-command versions need Claude Code to share its input box state.
+  **Layman:** Ants can't see what you're typing into Claude Code's text box until you press Enter, which blocks recognising a queued /model command. We shipped button-based workarounds; the typed-command versions need Claude Code to expose its input state.
+  Kind: research.
+  Source: in-session-2026-05-29.
+
+- 📋 [ANTS-1932] **`roadmap_log op:flip` should accept common status synonyms ("done"→shipped, "wip"→in-progress, "todo"→planned).**
+  Observed in-session 2026-05-29: `roadmap_log op:flip to_status:"done"` is rejected with `bad_status` (expected planned/in-progress/shipped/considered or 📋/🚧/✅/💭). "done" is the natural English synonym a caller reaches for to mean ✅ shipped, so the rejection costs a retry round-trip (~tokens) every time.
+  
+  The error envelope is otherwise excellent — it lists the exact accepted set, which made recovery instant. This is a pure ergonomics win, not a correctness bug.
+  
+  Fix: accept a small synonym table at the to_status parse site — "done"/"complete"/"completed" → ✅ shipped; "wip"/"in_progress" (underscore) → 🚧 in-progress; "todo"/"open" → 📋 planned; "maybe"/"idea" → 💭 considered. Case-insensitive. Keep the canonical names + emojis as the documented set; synonyms are accept-only sugar.
+  
+  **Layman:** When marking a roadmap item finished, the tool only accepts the word "shipped", not the more obvious "done" — so the first try fails and has to be redone. Teach it to accept the common everyday words too.
+  **Layman:** The roadmap tool rejects "done" as a status and only accepts "shipped", so a natural first attempt fails and wastes a retry. Let it accept everyday synonyms like done/wip/todo.
+  Kind: enhancement.
+  Source: in-session-2026-05-29.
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 

@@ -21,9 +21,18 @@ plan_keyword in assistant text                                              | +2
 weighted_avg_message_len ≥ 500 chars                                        | +1 (Opus: long context)
 file_write_count == 0 AND tool_diversity ≤ 2                                | -2 (Haiku: mechanical)
 
-Score ≥ 3  → OPUS_TIER
-Score ≤ -1 → HAIKU_TIER
+Score ≥ 2  → OPUS_TIER
+Score ≤ -2 → HAIKU_TIER
 Otherwise  → SONNET_TIER
+
+**ANTS-1930 threshold rebalance.** Pre-1930 thresholds (≥ 3 Opus / ≤ -1
+Haiku) were asymmetric: Opus required exceptional heavy work (max score
+is 6) while Haiku triggered on a single mechanical-penalty tick. This
+created a one-way downgrade ratchet — users were observed never to be
+upgraded to Opus/Sonnet, only downgraded. The rebalanced thresholds
+(≥ 2 Opus / ≤ -2 Haiku) restore symmetric movement: a score of +2
+(e.g. a plan-keyword session with diverse tools) now upgrades, and a
+score of -1 stays Sonnet rather than dropping to Haiku.
 
 **Recency weighting (ANTS-1890).** Count-based features (writes, message
 length) are weighted by `weightForTurnIndex(idx, total)` returning a

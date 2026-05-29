@@ -48,6 +48,7 @@ TEST(ModelNearMissLedger, Inv9TaxonomyTokensPresent) {
         QStringLiteral("ticks_target_stable_insufficient"),
         QStringLiteral("dwell_time_insufficient"),
         QStringLiteral("override_cooldown_active"),
+        QStringLiteral("idle_end_of_session"),   // ANTS-1917 — 8th token
     };
     for (const QString &tok : tokens) {
         EXPECT_TRUE(content.contains(tok.toUtf8()))

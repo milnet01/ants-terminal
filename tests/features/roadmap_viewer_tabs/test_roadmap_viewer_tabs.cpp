@@ -45,7 +45,7 @@ int fail(const char *label, const char *why) {
 
 }  // namespace
 
-static int runMain(int argc, char **argv) {
+static int runMain() {
     // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
     const std::string source = slurp(ROADMAPDIALOG_CPP);
@@ -248,5 +248,5 @@ static int runMain(int argc, char **argv) {
 }
 
 TEST(RoadmapViewerTabs, Main) {
-    ASSERT_EQ(0, runMain(0, nullptr));
+    ASSERT_EQ(0, runMain());
 }

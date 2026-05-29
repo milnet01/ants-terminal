@@ -197,10 +197,55 @@ TEST(ModelRecommender, Inv8OnlyLast20TurnsScored) {
     }
     const auto result = ModelRecommender::score(
         writeSyntheticTranscript(turns, f));
-    // With 20 mechanical turns: score ≤ -1 → Haiku
+    // With 20 mechanical turns: score == -2 (mechanical penalty) ≤ -2 → Haiku
+    // (ANTS-1930 raised the Haiku threshold from ≤ -1 to ≤ -2).
     EXPECT_EQ(result.tier, ModelRecommender::Tier::Haiku)
         << "Only the last 20 turns should be scored. "
            "reason: " << result.reason.toStdString();
+}
+
+// ANTS-1930: rebalanced thresholds enable upgrades at sc == +2.
+// Pre-1930 a score of exactly 2 routed to Sonnet (Opus needed >= 3),
+// producing a downgrade-only ratchet — users were observed never to be
+// upgraded. A plan-keyword session with 3 distinct non-write tools
+// scores exactly +2 (plan_keyword) with NO mechanical penalty
+// (toolDiversity > 2) and must now route to Opus.
+TEST(ModelRecommender, Ants1930PlanKeywordModerateWorkUpgradesToOpus) {
+    QTemporaryFile f;
+    QVector<QJsonArray> turns;
+    for (int i = 0; i < 5; ++i) {
+        QJsonArray content;
+        content.append(textBlock(QStringLiteral("Let me review the plan.")));
+        content.append(toolUse(QStringLiteral("Bash")));
+        content.append(toolUse(QStringLiteral("Grep")));
+        content.append(toolUse(QStringLiteral("Read")));
+        turns.append(content);
+    }
+    const auto result = ModelRecommender::score(writeSyntheticTranscript(turns, f));
+    EXPECT_EQ(result.tier, ModelRecommender::Tier::Opus)
+        << "sc should be +2 (plan_keyword, no mechanical penalty via "
+           "toolDiversity=3); ANTS-1930 routes +2 to Opus. reason: "
+        << result.reason.toStdString();
+}
+
+// ANTS-1930: a score of exactly -1 now stays Sonnet (pre-1930 it routed
+// to Haiku at <= -1). Long prompts (+1) with mechanical tool use (-2)
+// nets -1 — the rebalanced Haiku threshold (<= -2) keeps it on Sonnet.
+TEST(ModelRecommender, Ants1930ScoreMinusOneStaysSonnet) {
+    QTemporaryFile f;
+    const QString longText(600, QLatin1Char('x'));   // avgLen >= 500 → +1
+    QVector<QJsonArray> turns;
+    for (int i = 0; i < 5; ++i) {
+        QJsonArray content;
+        content.append(textBlock(longText));
+        content.append(toolUse(QStringLiteral("Bash")));   // no writes, 1 tool
+        turns.append(content);
+    }
+    const auto result = ModelRecommender::score(writeSyntheticTranscript(turns, f));
+    EXPECT_EQ(result.tier, ModelRecommender::Tier::Sonnet)
+        << "sc should be -1 (long_prompts +1, mechanical -2); ANTS-1930 "
+           "keeps -1 on Sonnet rather than Haiku. reason: "
+        << result.reason.toStdString();
 }
 
 // INV-4/INV-5: tierFromModelId maps correctly

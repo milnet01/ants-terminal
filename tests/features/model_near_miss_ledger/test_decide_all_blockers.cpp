@@ -70,6 +70,49 @@ TEST(ModelNearMissLedger, Inv2SingleGuardTokens) {
         ASSERT_EQ(bb.size(), 1);
         EXPECT_EQ(bb[0], QStringLiteral("override_cooldown_active"));
     }
+    {
+        // ANTS-1917 — idle longer than the ceiling → idle_end_of_session, in
+        // isolation. okGate() leaves idleElapsedMs at -1 (gate off), so this is
+        // the only guard tripped.
+        MAS::Gate g = okGate(); g.idleElapsedMs = MAS::kIdleEndOfSessionMs;
+        const auto bb = MAS::decide(g).blockedBy;
+        ASSERT_EQ(bb.size(), 1);
+        EXPECT_EQ(bb[0], QStringLiteral("idle_end_of_session"));
+    }
+}
+
+// ANTS-1917 — the idle gate is opt-in via the -1 sentinel and only trips once
+// the idle duration reaches the ceiling. A fresh (short) idle must still act.
+TEST(ModelNearMissLedger, Ants1917IdleEndOfSessionBoundary) {
+    {
+        // Sentinel -1 (default): gate never fires — switch acts.
+        MAS::Gate g = okGate();
+        EXPECT_TRUE(MAS::decide(g).act)
+            << "idleElapsedMs == -1 must not block (legacy-safe).";
+    }
+    {
+        // Fresh idle just under the ceiling: still acts (more work may come).
+        MAS::Gate g = okGate();
+        g.idleElapsedMs = MAS::kIdleEndOfSessionMs - 1;
+        EXPECT_TRUE(MAS::decide(g).act)
+            << "idle below the ceiling must not block.";
+    }
+    {
+        // At the ceiling: blocked.
+        MAS::Gate g = okGate();
+        g.idleElapsedMs = MAS::kIdleEndOfSessionMs;
+        EXPECT_FALSE(MAS::decide(g).act);
+    }
+    {
+        // A custom (lower) ceiling trips earlier.
+        MAS::Gate g = okGate();
+        g.idleCeilingMs = 30'000;          // 30 s
+        g.idleElapsedMs = 31'000;
+        const auto dec = MAS::decide(g);
+        EXPECT_FALSE(dec.act);
+        ASSERT_EQ(dec.blockedBy.size(), 1);
+        EXPECT_EQ(dec.blockedBy[0], QStringLiteral("idle_end_of_session"));
+    }
 }
 
 // Multiple guards failing → tokens in evaluation order.
