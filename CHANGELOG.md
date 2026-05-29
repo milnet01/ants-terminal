@@ -37,10 +37,22 @@ for security-relevant changes.
 
 ### Changed
 
+- **`--preset=fast` is functionally identical to `--preset=default` — give it a real differentiator.** (ANTS-1556)
+  The "fast build" mode doesn't actually build faster than the normal mode — they have the same settings. Need to make it really faster, or drop it.
+
+- **`--preset=fast` differentiator: bump link_pool from 1 → 2 for parallel test-bundle linking.** (ANTS-1558)
+  Let the "fast build" mode link two programs at the same time instead of one — should make full rebuilds a few minutes faster.
+
 - **`project_layout` roadmap-format sniffer still returns `unknown` on Vestige despite the ANTS-1632 ship claim — re-investi…** (ANTS-1903)
   Vestige reports that the format-detector for ROADMAP files is still returning 'unknown' on their project despite the previous fix being marked shipped. Either the fix isn't reaching their build, or it doesn't cover their specific roadmap shape. Needs a trace field + CI fixture.
 
 ### Fixed
+
+- **Strip the "ccache + PCH" framing from `--preset=fast` docs.** (ANTS-1557)
+  Update the "fast build" mode's description to match what it actually does (just an isolated build folder).
+
+- **`/model` actuator sent `\n` not `\r` — text landed in composer, never submitted (auto-switch dead loop).** (ANTS-1912)
+  When the auto-switcher fired `/model sonnet`, the text appeared in the Claude composer waiting for the user to press Enter — it never actually submitted. Single-char fix: send CR (0x0D, what the Enter key produces per terminalwidget.cpp:1930) instead of LF (0x0A).
 
 - **Cross-tab Claude-state mix-up — focused tab's status bar shows ANOTHER tab's `Claude:` state.** (ANTS-1911)
   When you have two Claude tabs open (e.g. Ants Terminal + Vestige), the status bar at the bottom sometimes shows the WRONG tab's state. Screenshots 2026-05-28: the focused Ants Terminal tab was actively running cold-eyes loops + 3 background agents but the status bar said 'Claude: idle' and the tab dot was idle; switching to the Vestige tab (which was actually idle) showed 'Claude: thinking' — the state of the OTHER tab leaked into this one's status surface.

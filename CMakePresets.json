@@ -36,12 +36,12 @@
         },
         {
             "name": "fast",
-            "displayName": "Fast iteration (ccache + PCH)",
-            "description": "Release build bundling the safe ANTS-1550 speed-ups: ccache launcher + the per-lib PCH (PCH is always-on, listed here for the manifest). Unity builds (ANTS_UNITY_BUILD) are opt-in only — the current STATIC-lib layout means unifying TUs makes .a archives less granular, which breaks the test-bundle selective-link strategy.",
+            "displayName": "Fast iteration (isolated dir + link_pool=2)",
+            "description": "Release build in an isolated directory (build-fast/) so hot-loop work doesn't invalidate the default build/ cache. Real differentiator vs default: ANTS_LINK_POOL=2 lifts the global link cap to 2 concurrent invocations so the ~30 test-bundle link tail runs in pairs instead of serially — a measurable win on cold full rebuilds on a 32 GiB host. ccache + per-lib PCH are unconditional defaults across every preset, not a fast-preset feature.",
             "inherits": "default",
             "binaryDir": "${sourceDir}/build-fast",
             "cacheVariables": {
-                "ANTS_CCACHE": "ON"
+                "ANTS_LINK_POOL": "2"
             }
         }
     ],

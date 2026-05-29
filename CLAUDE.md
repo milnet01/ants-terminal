@@ -47,8 +47,9 @@ ctest --test-dir build --output-on-failure 2>&1 | tail -20
   skips `cc1plus` entirely.
 - `-DANTS_UNITY_BUILD=ON` — experimental, opt-in; the current STATIC-lib
   layout breaks test-bundle links (ANTS-1553 tracks the rework).
-- `cmake --preset=fast` — ccache + per-lib PCH in `build-fast/`; best for
-  hot loops (Unity off until ANTS-1553).
+- `cmake --preset=fast` — isolated `build-fast/` dir + `ANTS_LINK_POOL=2`
+  (parallel test-bundle linking); ccache + PCH are unconditional defaults
+  on every preset, not fast-only.
 
 ### CMake presets
 
@@ -59,7 +60,7 @@ Each preset: `cmake --preset=X && cmake --build --preset=X && ctest --preset=X`.
 | `default` | Release + Ninja in `build/`; honours the JOB_POOLS cap. |
 | `workstation` | Release in `build-workstation/`, hard-capped `-j3` for constrained hardware / heavy desktop sessions. |
 | `debug` | Debug + ASan/UBSan in `build-asan/`, sanitizer env wired into `ctest --preset=debug`. |
-| `fast` | Release in `build-fast/` with ccache + per-lib PCH (Unity off). |
+| `fast` | Release in `build-fast/` with `ANTS_LINK_POOL=2` (parallel test-bundle linking) for hot iteration loops; isolated dir keeps `build/` warm. |
 
 ### Backstop: `tools/safe-build.sh`
 

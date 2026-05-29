@@ -157,8 +157,15 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
         auto *focused = m_focusedTerminalProvider
             ? m_focusedTerminalProvider() : nullptr;
         if (!focused) return;
+        // ANTS-1912 — submit with `\r`, not `\n`. The Enter key produces
+        // CR (0x0D) on a PTY (terminalwidget.cpp:1930); Claude Code's TUI
+        // treats `\n` as a literal newline character in the composer and
+        // does NOT submit. Sending `\n` left `/model <tier>` sitting in
+        // the prompt waiting for the user to press Enter manually —
+        // defeats the entire auto-switch loop and also self-vetoes the
+        // next tick via the composer_not_empty gate (ANTS-1908).
         focused->sendToPty(
-            (QStringLiteral("/model ") + tier + QStringLiteral("\n")).toUtf8());
+            (QStringLiteral("/model ") + tier + QStringLiteral("\r")).toUtf8());
         // ANTS-1840 — the user just acted on the recommendation, so hide the
         // chip immediately rather than letting it linger until the next
         // assistant turn re-scores the transcript. We deliberately leave the
@@ -1460,8 +1467,9 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     // QStringLiteral matches the model-chip click pattern at :152 — CI's
     // stricter Qt build rejected the `u"..."` form (char16_t[8] vs QString
     // ambiguity at ants_claude_lib build).
+    // ANTS-1912 — `\r` (CR) not `\n` — see chip-click site for rationale.
     focused->sendToPty(
-        (QStringLiteral("/model ") + dec.tierArg + QStringLiteral("\n"))
+        (QStringLiteral("/model ") + dec.tierArg + QStringLiteral("\r"))
             .toUtf8());
 
     // ANTS-1893 — fire the firing-side surfacing (toast + chip-pulse
@@ -1737,9 +1745,10 @@ void ClaudeStatusBarController::onUndoSwitchClicked()
     const QString priorProject     = m_undoSwitchPendingProject;
     const ModelRecommender::Tier priorTier = m_undoSwitchPendingFromTierEnum;
 
+    // ANTS-1912 — `\r` (CR) not `\n` — see chip-click site for rationale.
     focused->sendToPty(
         (QStringLiteral("/model ") + priorTierName +
-         QStringLiteral("\n")).toUtf8());
+         QStringLiteral("\r")).toUtf8());
 
     // Seed the in-memory cool-down so the gate's 10-min lock-out
     // (ANTS-1890 / kOverrideCooldownMs) trips on the next tick.

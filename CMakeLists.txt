@@ -145,12 +145,18 @@ else()
         set(_ANTS_COMPILE_CAP 2)
     endif()
 endif()
+# ANTS-1558 — link_pool cap is overridable via ANTS_LINK_POOL (default 1).
+# The `fast` preset bumps it to 2 so the ~30 test-bundle link tail runs in
+# pairs on 32 GiB hosts where two concurrent Qt links (~1.5–2 GiB peak RSS
+# each) stay well clear of the OOM ceiling. Other presets keep the safer
+# link_pool=1 (each Qt link is the single heaviest process in the build).
+set(ANTS_LINK_POOL 1 CACHE STRING "Concurrent link invocations cap (Ninja JOB_POOLS)")
 set_property(GLOBAL APPEND PROPERTY JOB_POOLS
     compile_pool=${_ANTS_COMPILE_CAP}
-    link_pool=1)
+    link_pool=${ANTS_LINK_POOL})
 set(CMAKE_JOB_POOL_COMPILE compile_pool)
 set(CMAKE_JOB_POOL_LINK    link_pool)
-message(STATUS "Build job pools: compile=${_ANTS_COMPILE_CAP} link=1 (host nproc=${_ANTS_NPROC})")
+message(STATUS "Build job pools: compile=${_ANTS_COMPILE_CAP} link=${ANTS_LINK_POOL} (host nproc=${_ANTS_NPROC})")
 
 # ---------------------------------------------------------------------------
 # Shared compile-flag interface (ANTS-1217 Phase 1)

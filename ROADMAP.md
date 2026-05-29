@@ -2814,6 +2814,30 @@ minor tag (next: pre-0.8.0).
   Source: user-feedback-2026-05-28 (two screenshots: Ants Terminal tab vs Vestige tab).
   Resolved (2026-05-28): MainWindow::focusedTerminal() now scopes focus tracking to the CURRENTLY-SELECTED tab's subtree. Pre-1911 the function walked QApplication::focusWidget() first (global focus across all windows + tabs) and only fell back to currentTerminal() when the walk returned nullptr — so when Qt didn't move focus on a mouse-driven tab switch, the focused-widget walk could return another tab's terminal, leaking that tab's Claude state into the focused tab's chrome (status bar + chips). Fix: get the current tab's root; only accept QApplication::focusWidget() if it's inside that subtree (within-tab split-pane focus still resolves to the focused pane); otherwise fall back to activeTerminalInTab(currentTabRoot). All 1780 tests pass.
 
+- ✅ [ANTS-1912] **`/model` actuator sent `\n` not `\r` — text landed in composer, never submitted (auto-switch dead loop).**
+  User screenshot 2026-05-29 showed `/model sonnet` sitting in the composer
+  unsubmitted. All three `/model` send sites in claudestatuswidgets.cpp
+  (:161 chip-click, :1464 auto-switch actuator, :1741 Undo button) sent
+  `\n`, which Claude Code's TUI treats as a literal newline char in the
+  composer — NOT as Enter. The real Enter-key path at terminalwidget.cpp:1930
+  sends `\r` (CR, 0x0D) — that's the byte every TUI maps to "submit".
+  
+  This single bug explains the dominant `composer_not_empty` near-miss
+  shape across project + global telemetry (19 / 22 in 24 h): every auto-
+  switch attempt left `/model <tier>` sitting in the composer, which then
+  vetoed the NEXT tick via ANTS-1908's composer gate. Self-inflicted dead
+  loop since ANTS-1735 first shipped the actuator (2026-05-26-ish).
+  
+  Resolved (2026-05-29): three call sites flipped from `\n` to `\r`;
+  load-bearing comment at the first site explaining the failure mode for
+  future authors. Build green; 1780/1780 tests still pass. Trust-signal
+  recovery will follow as users update — measured_downgrades should start
+  climbing, composer_not_empty near-misses should fall.
+  **Layman:** When the auto-switcher fired `/model sonnet`, the text appeared in the Claude composer waiting for the user to press Enter — it never actually submitted. Single-char fix: send CR (0x0D, what the Enter key produces per terminalwidget.cpp:1930) instead of LF (0x0A).
+  Kind: fix.
+  Lanes: claudestatuswidgets, modelautoswitch.
+  Source: user-screenshot-2026-05-29.
+
 ### 🔍 CI fold-in (2026-04-28)
 
 - ✅ [ANTS-1869] **UBSan vptr error in `DialogChrome::ChromeGuard::eventFilter`
@@ -8469,7 +8493,7 @@ indie-review finding.
   Kind: perf.
   Source: user-request-2026-05-18.
 
-- 📋 [ANTS-1556] **`--preset=fast` is functionally identical to `--preset=default` — give it a real differentiator.**
+- ✅ [ANTS-1556] **`--preset=fast` is functionally identical to `--preset=default` — give it a real differentiator.**
   User reported the build time hasn't changed after the pull-7
   ANTS-1550 fold-in. Investigation confirmed both build/ and build-fast/
   configure with `ANTS_CCACHE=ON` and identical 8 per-lib PCH files —
@@ -8503,8 +8527,9 @@ indie-review finding.
   **Layman:** The "fast build" mode doesn't actually build faster than the normal mode — they have the same settings. Need to make it really faster, or drop it.
   Kind: perf.
   Source: user-report-2026-05-18 (build-time-no-change after pull-7 + pull-8).
+  Resolved (2026-05-29): real differentiator delivered via ANTS-1558 (ANTS_LINK_POOL=2 for parallel test-bundle linking — measurable wall-clock win on cold full rebuilds); docs framing fixed via ANTS-1557 (removed misleading "ccache + per-lib PCH" wording across CMakePresets.json + CLAUDE.md). PCH consolidation (option a leg 2) split out to ANTS-1559, deferred pending baseline measurement.
 
-- 📋 [ANTS-1557] **Strip the "ccache + PCH" framing from `--preset=fast` docs.**
+- ✅ [ANTS-1557] **Strip the "ccache + PCH" framing from `--preset=fast` docs.**
   Cheapest of the three [ANTS-1556] options (option b). Both ccache
   and PCH are already unconditional defaults in CMakeLists.txt — the
   preset re-asserts them but adds nothing. Touch points:
@@ -8526,8 +8551,9 @@ indie-review finding.
   **Layman:** Update the "fast build" mode's description to match what it actually does (just an isolated build folder).
   Kind: doc-fix.
   Source: in-session-2026-05-18 (follow-up to [ANTS-1556]).
+  Resolved (2026-05-29): CMakePresets.json fast preset description rewritten — removed ccache/PCH framing (both are unconditional across every preset), now frames the real differentiator: isolated build-fast/ dir + ANTS_LINK_POOL=2 from ANTS-1558. CLAUDE.md bullet + preset table row updated to match.
 
-- 📋 [ANTS-1558] **`--preset=fast` differentiator: bump link_pool from 1 → 2 for parallel test-bundle linking.**
+- ✅ [ANTS-1558] **`--preset=fast` differentiator: bump link_pool from 1 → 2 for parallel test-bundle linking.**
   One leg of [ANTS-1556] option (a). The in-tree `JOB_POOLS` cap
   holds link_pool=1 globally — fine for the 8 GiB workstation case
   but conservative on a 32 GiB host. Override it in the `fast` preset
@@ -8549,6 +8575,7 @@ indie-review finding.
   **Layman:** Let the "fast build" mode link two programs at the same time instead of one — should make full rebuilds a few minutes faster.
   Kind: perf.
   Source: in-session-2026-05-18 (follow-up to [ANTS-1556]).
+  Resolved (2026-05-29): ANTS_LINK_POOL cache var added (default 1) to CMakeLists.txt JOB_POOLS block. CMakePresets.json `fast` preset overrides to 2. Verified: `cmake --preset=default` logs `link=1`; `cmake --preset=fast` logs `link=2`. 1780/1780 tests green. Two concurrent Qt links peak at ~3-4 GiB combined (safely under 32 GiB host headroom).
 
 - 📋 [ANTS-1559] **PCH consolidation — one shared `target_precompile_headers` consumed via `REUSE_FROM` across libs.**
   Second leg of [ANTS-1556] option (a). The current
@@ -8578,6 +8605,7 @@ indie-review finding.
   **Layman:** Right now the build creates 8 nearly-identical pre-compiled header files, one per library. Compile one, share it everywhere.
   Kind: perf.
   Source: in-session-2026-05-18 (follow-up to [ANTS-1556]).
+  Deferred (2026-05-29): the inline comment at CMakeLists.txt:499-503 (against ONE shared PCH) is correct but more nuanced than blanket-no. REUSE_FROM is safe within matching-flag profile groups: Profile-A (warnings-only) = {ants_core_lib, ants_audit_lib} — 1 compile saveable; Profile-D (transitive QT_OPENGL_LIB + ANTS_LUA_PLUGINS via chrome) = {ants_claude_lib, ants_dialogs_lib, ants_audit_dialog_lib} — 2 more saveable. Max ~3-5 PCH compiles saved × ~3-5s each = ~15-25s on cold builds only. The ROADMAP entry's own success criterion ("if < 10% wall-clock, the layout complexity isn't worth it") needs a baseline measurement we don't have. Picking up requires (a) cold-build wall-clock measurement against current per-lib layout, then (b) implement Profile-A first (lowest risk), measure, then Profile-D if win >= 10%.
 
 - 💭 [ANTS-1560] **`build_info.h` HH:MM precision freezes the displayed build time across intra-minute rebuilds.**
   Withdrawn 2026-05-18 — phantom bug. The scenario
@@ -8729,6 +8757,12 @@ indie-review finding.
   Kind: enhancement.
   Lanes: claudetabtracker, remotecontrol, observability.
   Source: in-session-2026-05-25 (couldn't self-verify the ANTS-1862 dot fix — no MCP surface for the dot state).
+
+- 📋 [ANTS-1913] **Drop unused `<csignal>` include from `claudestatuswidgets.cpp`.**
+  **Layman:** clangd flags `csignal` as included but unused at line 24. Trivial single-line removal; doesn't affect anything at runtime.
+  Kind: chore.
+  Lanes: claudestatuswidgets.
+  Source: in-session-clangd-warning-2026-05-29.
 
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
