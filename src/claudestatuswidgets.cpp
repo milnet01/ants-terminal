@@ -1434,10 +1434,20 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
             : ModelRecommender::Tier::Haiku;
 
     // INV-5 — stability is counted against the CLAMPED target.
+    // ANTS-1925 — reset-hysteresis: require kStableResetTicks consecutive
+    // "target==current" ticks before wiping the stable counter. A single
+    // noisy tick back to the current model (score boundary oscillation) no
+    // longer discards an almost-ready switch candidate.
     const ModelRecommender::Tier clampedTarget =
         ModelAutoSwitch::clampToFloor(rec.tier, floor);
-    if (clampedTarget != current) ++m_autoSwitchTicksStable;
-    else                          m_autoSwitchTicksStable = 0;
+    if (clampedTarget != current) {
+        ++m_autoSwitchTicksStable;
+        m_autoSwitchTicksAtCurrent = 0;
+    } else {
+        ++m_autoSwitchTicksAtCurrent;
+        if (m_autoSwitchTicksAtCurrent >= ModelAutoSwitch::kStableResetTicks)
+            m_autoSwitchTicksStable = 0;
+    }
 
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     const qint64 dwellMs = m_autoSwitchLastMs > 0
@@ -1487,8 +1497,24 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     if (!dec.act) {
         // ANTS-1894 — emit a near-miss record on signature change (INV-5/6).
         maybeEmitNearMiss(dec, gate, projectRoot, nowMs);
+        // ANTS-1919 — pending-switch intent tracking. When the ONLY blocker is
+        // composer_not_empty all other guards (dwell, stability, tier delta) are
+        // already satisfied. Record the target tier so the status-bar can show a
+        // "pending switch" annotation on the model chip and the intent is visible
+        // to the user. The natural 2 s tick fires the switch as soon as the
+        // composer empties — no extra polling needed.
+        const bool onlyComposerBlocks =
+            dec.blockedBy.size() == 1 &&
+            dec.blockedBy.first() == QStringLiteral("composer_not_empty");
+        if (onlyComposerBlocks) {
+            // dec.tierArg is empty when act=false; use recommendedTier directly.
+            m_autoSwitchPendingTier = ModelRecommender::tierName(dec.recommendedTier);
+        } else {
+            m_autoSwitchPendingTier.clear();
+        }
         return;
     }
+    m_autoSwitchPendingTier.clear();   // switch is about to fire — clear intent
 
     // Act — INV-9 keeps tierArg derived solely from the enum.
     // QStringLiteral matches the model-chip click pattern at :152 — CI's
@@ -1526,9 +1552,11 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     ModelSwitchLedger::appendRecord(
         ModelSwitchLedger::defaultLedgerPath(), rec_);
 
-    m_autoSwitchLastMs    = nowMs;
-    m_autoSwitchTicksStable = 0;
-    m_autoSwitchLastTier  = dec.tierArg;
+    m_autoSwitchLastMs         = nowMs;
+    m_autoSwitchTicksStable    = 0;
+    m_autoSwitchTicksAtCurrent = 0;   // ANTS-1925 — clear hysteresis on switch
+    m_autoSwitchPendingTier.clear();  // ANTS-1919 — switch fired; clear intent
+    m_autoSwitchLastTier       = dec.tierArg;
 }
 
 // ANTS-1924 — shared PTY handshake for every model-switch path (auto-

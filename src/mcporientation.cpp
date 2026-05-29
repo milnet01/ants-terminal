@@ -62,7 +62,7 @@ constexpr const char *kOrientationScriptBody =
     "  • find_sources     → \"who calls bar?\"\n"
     "  • git_state        → status + branch + ahead/behind in one call\n"
     "  • read_log         → filtered log tail (vs full Read)\n"
-    "  • session_orient   → first-call session bootstrap (state + layout)\n"
+    "  • session_orient   → first-call session bootstrap (state + layout + active_bullets)\n"
     "  • model_switch_stats → switcher trust signal + envelope\n"
     "\n"
     "Most write verbs carry op: modes (append / flip / append_batch / …);\n"

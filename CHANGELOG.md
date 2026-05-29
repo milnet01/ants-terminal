@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **Auto-switcher tracks pending-switch intent when blocked by composer_not_empty** (ANTS-1919)
+  When all guards pass but the composer has recent text, the target tier\nis stored in m_autoSwitchPendingTier so the switch fires on the next\n2 s tick once the composer clears. Status-bar visual annotation TBD.
+
+- **session_orient now includes top-20 active roadmap bullets inline** (ANTS-1922)
+  Adds an `active_bullets` key (headline_only, status:active, limit:20)\nto the session_orient response envelope. Sessions can now identify the\nnext work bundle in one call without a follow-up roadmap_query.\nToken budget bumped to 17 000; does not affect allOk.
+
 - **`workspace_search` adds `max_match_bytes:` + `headline_only:true` knobs — first-attempt tax on research sweeps with long…** (ANTS-1904)
   When searching for threading keywords across a big roadmap, the response is dominated by 2-5 KB bullets each. Two new knobs (clip per-match bytes, or skip context entirely) would let the search return manageable results on the first try instead of forcing a regex-narrowing retry.
 
@@ -57,6 +63,9 @@ for security-relevant changes.
   Vestige reports that the format-detector for ROADMAP files is still returning 'unknown' on their project despite the previous fix being marked shipped. Either the fix isn't reaching their build, or it doesn't cover their specific roadmap shape. Needs a trace field + CI fixture.
 
 ### Fixed
+
+- **Auto-switcher stable-counter reset-hysteresis reduces false ticks_target_stable_insufficient blocks** (ANTS-1925)
+  A single score-boundary noise tick no longer wipes the stability counter.\nRequires kStableResetTicks (=2) consecutive target==current ticks before\nresetting, matching the same 4 s window as the forward stability gate.
 
 - **ANTS-1924: model-switch PTY handshake — ESC + ENTER confirmation sequence + continuation prompt.** (ANTS-1924)
   When Ants switches Claude models, it now sends the right keystrokes to confirm the switch dialog (ESC then Enter), then automatically sends "please continue" so Claude picks up where it left off — no manual typing needed.

@@ -7988,6 +7988,20 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
         result[QStringLiteral("sections_index")] = rq;
     }
 
+    // --- active_bullets (roadmap_query mode:headline_only status:active limit:20) ---
+    // ANTS-1922 — top-20 active item headlines inline so the session can
+    // pick the next bundle without a follow-up roadmap_query round-trip.
+    // Does NOT contribute to allOk — an absent roadmap must not fail orient.
+    {
+        QJsonObject rqReq;
+        rqReq[QStringLiteral("caller_cwd")] = rootCanonical;
+        rqReq[QStringLiteral("mode")]       = QStringLiteral("headline_only");
+        rqReq[QStringLiteral("status")]     = QStringLiteral("active");
+        rqReq[QStringLiteral("limit")]      = 20;
+        const QJsonObject rq = cmdRoadmapQuery(rqReq).object();
+        result[QStringLiteral("active_bullets")] = rq;
+    }
+
     result[QStringLiteral("ok")] = allOk;
     // ETag injected at the dispatch layer (isEtagSupportedTool).
     return QJsonDocument(result);

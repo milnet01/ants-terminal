@@ -14174,6 +14174,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Lanes: modelautoswitch, claudestatuswidgets.
   Source: in-session-2026-05-29 (model_switch_stats near-miss analysis).
+  Progress (2026-05-29): Option A partial — added `m_autoSwitchPendingTier` to\nClaudeStatusBarController. When decide() is blocked ONLY by\ncomposer_not_empty (all other guards pass), the target tier is stored\nso the natural 2 s tick fires the queued switch the moment the composer\nclears. Status-bar visual annotation (Option C) remains open.
 
 - 📋 [ANTS-1920] **Model-switch actuator: confirm by watching PTY output, not a blind 250 ms timer.**
   claudestatuswidgets.cpp:1500-1510 sends `/model <tier>\r` then a
@@ -14205,6 +14206,13 @@ template / mutate this state atomically" → movable. If it's
   **Layman:** When Ants switches Claude models, it now sends the right keystrokes to confirm the switch dialog (ESC then Enter), then automatically sends "please continue" so Claude picks up where it left off — no manual typing needed.
   Kind: fix.
   Source: user-request-2026-05-29.
+
+- ✅ [ANTS-1925] **Auto-switcher stable-counter reset-hysteresis — prevent single noise tick from wiping a near-ready switch candidate.**
+  Root cause of `ticks_target_stable_insufficient` dominating near-miss\ntelemetry (79/119 in 24 h): when the recommender score bounced on a\nsingle tick (e.g. weightedWrites briefly crossing the threshold), the\nstable counter reset to 0 and the 2-tick warmup restarted. Fix: add\n`m_autoSwitchTicksAtCurrent` counter; only reset `ticksStable` after\n`kStableResetTicks` (=2) consecutive ticks of target==current.\nAdds `kStableResetTicks=2` constant to `modelautoswitch.h`.\nClears both counters on actual switch fire.
+  **Layman:** One boundary-crossing tick at the score threshold used to reset the stability counter entirely, blocking valid switches indefinitely. Now requires two consecutive ticks back at 'current' before resetting.
+  Kind: fix.
+  Lanes: modelautoswitch, claudestatuswidgets.
+  Source: in-session-2026-05-29 (near-miss analysis).
 
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 
@@ -15529,6 +15537,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   **Layman:** Every session starts with "pick the next group of related to-dos." The orientation tool tells me the project's state in one call, but finding a coherent bundle still takes 2-3 more manual calls and eyeballing. A tool that returns active items pre-grouped by theme/lane would make the most common session-opening task a single call.
   Kind: enhancement.
   Source: in-session-2026-05-29 (orientation gap hit while picking the next bundle).
+  Progress (2026-05-29): Option (a) shipped — session_orient now bundles\na top-20 headline_only active-bullets list as `active_bullets` in its\nresponse envelope. Does not affect allOk. Token budget bumped to 17000.\nTool description and mcporientation.cpp cheat-sheet updated.\nOption (b) (roadmap_query mode:\"bundles\") remains open.
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 

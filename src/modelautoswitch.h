@@ -75,7 +75,11 @@ ModelRecommender::Tier clampToFloor(ModelRecommender::Tier rec,
 // is tierName(clampToFloor(recommended,floor)) and nothing else (INV-7/INV-9).
 Decision decide(const Gate &g);
 
-constexpr int    kStableTicks = 2;        // ~4 s at the 2 s status tick (INV-5)
+constexpr int    kStableTicks      = 2;   // ~4 s at the 2 s status tick (INV-5)
+// ANTS-1925 — reset-hysteresis. The stable counter resets only after this
+// many consecutive ticks where clampedTarget==current. A single noise tick
+// at the score boundary no longer wipes a near-ready switch candidate.
+constexpr int    kStableResetTicks = 2;   // ~4 s of consistent "already on target"
 constexpr qint64 kMinDwellMs  = 90'000;   // 90 s minimum dwell between switches (INV-6)
 // ANTS-1890 — separate, stricter floor that applies only when a
 // project-scoped override is on record. The dwell rule (kMinDwellMs)

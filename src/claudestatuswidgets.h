@@ -301,6 +301,19 @@ private:
     // no per-tab stab to track here). msSinceLastSwitch derived as
     // (now - m_autoSwitchLastMs); zero = never switched.
     int    m_autoSwitchTicksStable = 0;
+    // ANTS-1925 — reset-hysteresis counter. Consecutive ticks where
+    // clampedTarget==current (i.e. "recommendation returned to current").
+    // ticksStable resets only after kStableResetTicks consecutive such ticks,
+    // preventing a single noisy tick at the score boundary from wiping the
+    // stable counter and blocking a valid switch candidate indefinitely.
+    int    m_autoSwitchTicksAtCurrent = 0;
+    // ANTS-1919 — pending-switch intent. Set (to the target tier name) when
+    // decide() is blocked ONLY by composer_not_empty — all other guards pass.
+    // The natural 2 s tick fires the queued switch as soon as the composer
+    // empties. Cleared on any actual switch or when the recommendation changes
+    // away from the pending tier. Read by the status-bar to show a "pending"
+    // annotation on the model chip.
+    QString m_autoSwitchPendingTier;
     qint64 m_autoSwitchLastMs = 0;
     QString m_autoSwitchLastTier;          // last tier we injected, for ledger
     // ANTS-1735 §8 OQ-3 — per-process latch so the first-run nudge fires

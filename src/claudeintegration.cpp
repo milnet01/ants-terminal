@@ -3279,15 +3279,25 @@ void ClaudeIntegration::onMcpConnection() {
                         "current_state (project / git / audit state) + "
                         "project_layout (where docs / specs / roadmap "
                         "live) + roadmap_query mode:section_index "
-                        "status:\"active\" (active roadmap sections) "
+                        "status:\"active\" (active roadmap sections) + "
+                        "active_bullets (top-20 active item headlines, "
+                        "mode:headline_only — resolve the next work "
+                        "bundle without a follow-up call) "
                         "into one envelope under a single ETag. Use as "
                         "the first read on a fresh /clear session — "
-                        "saves three MCP round-trips and three ETag "
+                        "saves four MCP round-trips and four ETag "
                         "misses vs the per-verb-call orientation "
-                        "pattern. Top-level ok is true IFF all three "
-                        "upstreams succeeded; on any upstream failure "
+                        "pattern. Top-level ok is true IFF the first "
+                        "three upstreams succeeded (active_bullets "
+                        "does not affect ok — absent roadmap is not "
+                        "a failure); on any upstream failure "
                         "the failing key carries that upstream's "
-                        "verbatim refusal envelope. ANTS-1883.");
+                        "verbatim refusal envelope. ANTS-1883. "
+                        "Etag tip: cache the returned `etag` field and "
+                        "pass it back via `etag_match` on subsequent "
+                        "calls in the same session — saves a full "
+                        "re-emit when the underlying file hasn't "
+                        "changed (ANTS-1499 \"304 Not Modified\" pattern).");
                     QJsonObject schema;
                     schema["type"] = "object";
                     schema["additionalProperties"] = false;
@@ -6871,9 +6881,10 @@ void ClaudeIntegration::onMcpConnection() {
                         {QStringLiteral("project_layout"),    {600,  2000}},
                         {QStringLiteral("session_memory"),    {200,  1000}},
                         {QStringLiteral("session_brief"),     {300,  1200}},
-                        // ANTS-1883 — composer of three large reads;
-                        // bucket = sum of constituents' worst case.
-                        {QStringLiteral("session_orient"),    {2500, 15000}},
+                        // ANTS-1883 — composer of three large reads + ANTS-1922
+                        // active_bullets (top-20 headline_only, ~2 KB); bucket
+                        // = sum of constituents' worst case + bullet overhead.
+                        {QStringLiteral("session_orient"),    {2500, 17000}},
                         {QStringLiteral("workflow_state"),    {200,  1000}},
                         {QStringLiteral("workspace_search"),  {1500, 10000}},
                         {QStringLiteral("file_outline"),      {800,  4000}},
