@@ -400,10 +400,12 @@ TEST(ClaudeBgTasksButton, Main) {
             // setTranscriptPath path change + the watcher's
             // transcript-changed signal, so a same-path tick only
             // needs the mtime sweep.
+            // ANTS-1053 — member name changed from m_bgTasks → tracker
+            // (the per-PID hash lookup result); behaviour is unchanged.
             const bool callsSweep =
-                refreshBody.find("m_bgTasks->sweepLiveness()") != std::string::npos;
+                refreshBody.find("->sweepLiveness()") != std::string::npos;
             const bool callsRescan =
-                refreshBody.find("m_bgTasks->rescan()") != std::string::npos;
+                refreshBody.find("->rescan()") != std::string::npos;
             if (!callsSweep && !callsRescan) {
                 fail("INV-12(c): refreshBgTasksButton must call either "
                      "sweepLiveness() (preferred — cheap mtime walk) "
@@ -427,13 +429,63 @@ TEST(ClaudeBgTasksButton, Main) {
         }
     }
 
+    // INV-14 (ANTS-1053) — per-shell tracker hash. The single m_bgTasks
+    // has been replaced by a QHash<pid_t, ClaudeBgTaskTracker*> so each
+    // tab tracks its own session concurrently. Verify the hash member and
+    // the trackBgShell / untrackBgShell lifecycle methods exist.
+    {
+        // Derive the header path from the .cpp path (replace trailing .cpp → .h)
+        std::string hPath(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+        if (hPath.size() > 4)
+            hPath = hPath.substr(0, hPath.size() - 4) + ".h";
+        const std::string cswh = slurp(hPath.c_str());
+
+        std::regex bgTrackersHash(R"(QHash\s*<\s*pid_t\s*,\s*ClaudeBgTaskTracker)");
+        if (!std::regex_search(cswh, bgTrackersHash)) {
+            fail("INV-14: claudestatuswidgets.h must declare "
+                 "QHash<pid_t, ClaudeBgTaskTracker*> m_bgTrackers "
+                 "— per-tab bg-task tracking (ANTS-1053)");
+        }
+        if (cswh.find("void trackBgShell") == std::string::npos) {
+            fail("INV-14: claudestatuswidgets.h must declare "
+                 "void trackBgShell(pid_t) — per-tab lifecycle");
+        }
+        if (cswh.find("void untrackBgShell") == std::string::npos) {
+            fail("INV-14: claudestatuswidgets.h must declare "
+                 "void untrackBgShell(pid_t) — per-tab cleanup");
+        }
+    }
+
+    // INV-15 (ANTS-1053) — bgTasksTracker() returns the focused shell's
+    // tracker, not a shared single m_bgTasks. The dialog uses this to
+    // display the right session's tasks when opened.
+    {
+        const std::string trackerBody = functionBody(csw,
+            "ClaudeBgTaskTracker *ClaudeStatusBarController::bgTasksTracker()");
+        if (trackerBody.empty()) {
+            fail("INV-15: bgTasksTracker() body not found in claudestatuswidgets.cpp");
+        } else {
+            // Must look up by focused shell PID from the hash
+            const bool hasHashLookup =
+                trackerBody.find("m_bgTrackers") != std::string::npos;
+            const bool hasFocusedProvider =
+                trackerBody.find("m_focusedTerminalProvider") != std::string::npos ||
+                trackerBody.find("shellPid") != std::string::npos;
+            if (!hasHashLookup || !hasFocusedProvider) {
+                fail("INV-15: bgTasksTracker() must look up the focused "
+                     "tab's PID in m_bgTrackers — without this the dialog "
+                     "shows tasks from the wrong tab after ANTS-1053");
+            }
+        }
+    }
+
     if (failures > 0) {
         std::fprintf(stderr,
             "\n%d invariant(s) failed — see spec.md for context\n", failures);
         FAIL();
     }
     std::printf("OK: claude background-tasks button invariants present "
-                "(12/12)\n");
+                "(14/14)\n");
 }
 
 // --- ANTS-1840 arm-2: sweepLiveness un-latch (behavioral) ---------------

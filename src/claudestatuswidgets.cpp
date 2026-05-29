@@ -99,11 +99,11 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     connect(m_reviewBtn, &QPushButton::clicked,
             this, &ClaudeStatusBarController::reviewClicked);
 
-    // 0.7.38 — Background tasks button. Sibling to Review Changes; same
-    // size/policy contract. Hidden by default; shown only when the
-    // per-session tracker reports ≥1 background task in the active
-    // Claude Code transcript.
-    m_bgTasks = new ClaudeBgTaskTracker(this);
+    // ANTS-1053 — Background tasks button. One ClaudeBgTaskTracker is
+    // created per shell PID (via trackBgShell) so background tabs keep
+    // their task state live across tab switches. The button itself is a
+    // single widget; refreshBgTasksButton reads from the focused tab's
+    // per-PID tracker entry.
     m_bgTasksBtn = new QPushButton(tr("Background Tasks"), m_statusBar);
     m_bgTasksBtn->setAccessibleName(tr("Background tasks"));
     m_bgTasksBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
@@ -111,8 +111,6 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_statusBar->addPermanentWidget(m_bgTasksBtn);
     connect(m_bgTasksBtn, &QPushButton::clicked,
             this, &ClaudeStatusBarController::bgTasksClicked);
-    connect(m_bgTasks, &ClaudeBgTaskTracker::tasksChanged,
-            this, &ClaudeStatusBarController::refreshBgTasksButton);
 
     // ANTS-1158 — task-list chip. Sibling to bg-tasks; same size
     // contract. Hidden until the focused tab's transcript reports
@@ -702,7 +700,9 @@ void ClaudeStatusBarController::resetForTabSwitch() {
     if (m_reviewBtn)   m_reviewBtn->hide();
     if (m_contextBar)  m_contextBar->hide();
     if (m_bgTasksBtn)  m_bgTasksBtn->hide();
-    if (m_bgTasks)     m_bgTasks->setTranscriptPath(QString());
+    // ANTS-1053 — per-PID trackers retain their transcript paths across
+    // tab switches; only the button visibility is reset here. The next
+    // refreshBgTasksButton tick re-derives the count for the new focused tab.
     if (m_tasksBtn)    m_tasksBtn->hide();
     // ANTS-1219-INV-4: tab-switch reset clears the tracker's bound
     // path synchronously so a stale path from the prior tab cannot
@@ -789,47 +789,55 @@ void ClaudeStatusBarController::applyTheme(const QString &themeName) {
 }
 
 void ClaudeStatusBarController::refreshBgTasksButton() {
-    if (!m_bgTasks || !m_bgTasksBtn) {
-        ANTS_LOG(DebugLog::Claude,
-                 "bgtasks/refresh: tracker=%p btn=%p — early return",
-                 static_cast<void *>(m_bgTasks),
-                 static_cast<void *>(m_bgTasksBtn));
+    if (!m_bgTasksBtn) return;
+    // Resolve the focused shell's PID → look up its per-PID tracker.
+    // Per-PID trackers (ANTS-1053) own their own QFileSystemWatcher so
+    // background tabs stay up-to-date; we only need to update the
+    // focused tab's transcript path on each tick.
+    auto *focused = m_focusedTerminalProvider ? m_focusedTerminalProvider() : nullptr;
+    const bool focusedTabPresent = (focused != nullptr);
+    const pid_t focusedPid = focused ? focused->shellPid() : 0;
+
+    // Lazy-create a tracker for the focused shell in case trackBgShell
+    // wasn't called yet (e.g. restored tabs arriving before the signal
+    // connection is wired).
+    if (focusedPid > 0 && !m_bgTrackers.contains(focusedPid))
+        trackBgShell(focusedPid);
+
+    ClaudeBgTaskTracker *tracker = focusedPid > 0
+        ? m_bgTrackers.value(focusedPid, nullptr) : nullptr;
+    if (!tracker) {
+        if (DebugLog::enabled(DebugLog::Claude))
+            ANTS_LOG(DebugLog::Claude,
+                     "bgtasks/refresh: focused-pid=%d no tracker — early return",
+                     static_cast<int>(focusedPid));
+        m_bgTasksBtn->hide();
         return;
     }
+
     // Resolve the transcript path scoped to the active tab's project
     // tree. activeSessionPath walks up the cwd, encodes each ancestor
     // to Claude Code's `<dashed-cwd>` form, and returns the newest
     // `.jsonl` from the deepest matching `~/.claude/projects/<…>/`
     // subdir. Without this scoping, sessions from *other* projects
     // (e.g. another tab's tree) would leak into the bg-tasks surface
-    // — which is exactly the user-reported 2026-04-27 bug.
+    // — which is exactly the user-reported 2026-04-27 bug (INV-11).
     QString cwd;
-    auto *focused = m_focusedTerminalProvider ? m_focusedTerminalProvider() : nullptr;
     if (focused) cwd = focused->shellCwd();
-    const bool focusedTabPresent = (focused != nullptr);
     QString path;
     if (m_integration) path = m_integration->activeSessionPath(cwd);
-    const QString prevPath = m_bgTasks->transcriptPath();
-    m_bgTasks->setTranscriptPath(path);
-    // 0.7.55 (2026-04-27 indie-review) — sweep liveness only, not full
-    // rescan. setTranscriptPath() already triggers a full rescan when
-    // the path changes (initial bind, tab switch). When the path is
-    // unchanged but we still want a fresh staleness check, the cheap
-    // sweepLiveness() does N stat() calls — avoiding the 16 MiB
-    // transcript walk that the previous rescan() call caused on every
-    // 2 s timer tick. The QFileSystemWatcher continues to drive full
-    // rescan() on transcript-changed (Claude appended JSONL).
+    const QString prevPath = tracker->transcriptPath();
+    tracker->setTranscriptPath(path);
+    // 0.7.55 — sweep liveness only on unchanged path, not full rescan.
+    // setTranscriptPath() triggers a full rescan only when the path changes.
+    // The QFileSystemWatcher drives full rescan on transcript appends.
     if (!path.isEmpty() && path == prevPath) {
-        // poll() handles QFileSystemWatcher's silent drop on
-        // tmpfile+rename (mirror of foreground tracker), then
-        // sweepLiveness() flips finished flags by stat'ing output
-        // files. Both are cheap when nothing changed.
-        m_bgTasks->poll();
-        m_bgTasks->sweepLiveness();
+        tracker->poll();
+        tracker->sweepLiveness();
     }
 
-    const int running = m_bgTasks->runningCount();
-    const int total = m_bgTasks->tasks().size();
+    const int running = tracker->runningCount();
+    const int total = tracker->tasks().size();
 
     // ANTS-1052 diagnostic: log every refresh outcome so the user can
     // capture why the button hides under realistic conditions. Gated
@@ -1063,7 +1071,23 @@ QPushButton *ClaudeStatusBarController::bgTasksButton() const {
 }
 
 ClaudeBgTaskTracker *ClaudeStatusBarController::bgTasksTracker() const {
-    return m_bgTasks;
+    // Return the focused shell's tracker (the one whose count is displayed).
+    auto *focused = m_focusedTerminalProvider ? m_focusedTerminalProvider() : nullptr;
+    if (!focused) return nullptr;
+    return m_bgTrackers.value(focused->shellPid(), nullptr);
+}
+
+void ClaudeStatusBarController::trackBgShell(pid_t pid) {
+    if (pid <= 0 || m_bgTrackers.contains(pid)) return;
+    auto *tracker = new ClaudeBgTaskTracker(this);
+    connect(tracker, &ClaudeBgTaskTracker::tasksChanged,
+            this, &ClaudeStatusBarController::refreshBgTasksButton);
+    m_bgTrackers.insert(pid, tracker);
+}
+
+void ClaudeStatusBarController::untrackBgShell(pid_t pid) {
+    ClaudeBgTaskTracker *tracker = m_bgTrackers.take(pid);
+    delete tracker;  // QObject: disconnects signals and frees; nullptr-safe
 }
 
 QPushButton *ClaudeStatusBarController::tasksButton() const {

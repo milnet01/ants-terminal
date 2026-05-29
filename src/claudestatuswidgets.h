@@ -174,6 +174,14 @@ public:
     void setTerminalAtTabProvider(std::function<TerminalWidget *(int)>);
     void setTabIndicatorEnabledProvider(std::function<bool()>);
 
+    // ANTS-1053 — per-shell bg-task tracker lifecycle. Call trackBgShell
+    // when a terminal tab opens (same site as ClaudeTabTracker::trackShell)
+    // and untrackBgShell when it closes. Each shell gets its own
+    // ClaudeBgTaskTracker so background tabs retain their task state
+    // across tab switches without forcing a 16 MiB transcript re-parse.
+    void trackBgShell(pid_t pid);
+    void untrackBgShell(pid_t pid);
+
     // Accessors (inline non-virtual; legacy MainWindow paths such
     // as refreshReviewButton + showDiffViewer use these rather
     // than re-acquiring direct member references).
@@ -256,12 +264,15 @@ private:
     // first QTimer::singleShot in flight, hiding the second message
     // ~early. Cancellable on re-entry.
     QTimer              *m_errorHideTimer = nullptr;
-    ClaudeBgTaskTracker *m_bgTasks = nullptr;
+    // ANTS-1053 — one tracker per shell PID; replaces the single m_bgTasks.
+    // Each entry owns a QFileSystemWatcher on its own transcript, so
+    // background tabs stay up-to-date without re-parsing on tab switch.
+    QHash<pid_t, ClaudeBgTaskTracker *> m_bgTrackers;
     QPushButton         *m_bgTasksBtn = nullptr;
 
     // ANTS-1158 — Claude Code task-list chip (TodoWrite snapshot
     // OR TaskCreate / TaskUpdate replay of the focused tab's
-    // session JSONL). Sibling to m_bgTasks; one tracker per
+    // session JSONL). Sibling to m_bgTrackers; one tracker per
     // controller, retargeted on tab switch.
     ClaudeTaskListTracker *m_tasks = nullptr;
     QPushButton           *m_tasksBtn = nullptr;

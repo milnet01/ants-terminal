@@ -2424,6 +2424,8 @@ void MainWindow::newTab() {
         m_claudeIntegration->setShellPid(terminal->shellPid());
     if (m_claudeTabTracker && terminal->shellPid() > 0)
         m_claudeTabTracker->trackShell(terminal->shellPid());
+    if (m_claudeStatusBarController && terminal->shellPid() > 0)
+        m_claudeStatusBarController->trackBgShell(terminal->shellPid());
 
     // Hide tab bar when only one tab
     m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
@@ -2744,6 +2746,8 @@ void MainWindow::performTabClose(int index) {
     // the widget is detached we can't recover its shell PID.
     if (m_claudeTabTracker && term && term->shellPid() > 0)
         m_claudeTabTracker->untrackShell(term->shellPid());
+    if (m_claudeStatusBarController && term && term->shellPid() > 0)
+        m_claudeStatusBarController->untrackBgShell(term->shellPid());
     // ANTS-1131 — also prune the ClaudeIntegration plan-mode cache
     // for the same PID. Without this, m_planModeByPid grows
     // unbounded over a long session and Linux PID reuse can poison
@@ -3007,6 +3011,8 @@ int MainWindow::newTabForRemote(const QString &cwd, const QString &command) {
         m_claudeIntegration->setShellPid(terminal->shellPid());
     if (m_claudeTabTracker && terminal->shellPid() > 0)
         m_claudeTabTracker->trackShell(terminal->shellPid());
+    if (m_claudeStatusBarController && terminal->shellPid() > 0)
+        m_claudeStatusBarController->trackBgShell(terminal->shellPid());
 
     // Hide tab bar when only one tab (same logic as newTab slot).
     m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
@@ -3693,6 +3699,8 @@ void MainWindow::restoreSessions() {
             // trackShell — no other path reaches it).
             if (m_claudeTabTracker && tab.terminal->shellPid() > 0)
                 m_claudeTabTracker->trackShell(tab.terminal->shellPid());
+            if (m_claudeStatusBarController && tab.terminal->shellPid() > 0)
+                m_claudeStatusBarController->trackBgShell(tab.terminal->shellPid());
         }
 
         if (auto *t = focusedTerminal()) t->setFocus();
