@@ -37,6 +37,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Colored cell backgrounds (diff green/red highlights) appear more opaque than the base when terminal opacity < 1.** (ANTS-1864)
+  When you make the terminal see-through, the green/red highlight bars (like Claude's diff view) stay nearly solid instead of going see-through to match the rest of the window. Make them respect the same transparency level.
+
 - **Drop deprecated `cwd` field from `session_memory` schema in 0.7.93.** (ANTS-1420)
   clean up the placeholder schema entry left behind
 
@@ -54,6 +57,9 @@ for security-relevant changes.
   Vestige reports that the format-detector for ROADMAP files is still returning 'unknown' on their project despite the previous fix being marked shipped. Either the fix isn't reaching their build, or it doesn't cover their specific roadmap shape. Needs a trace field + CI fixture.
 
 ### Fixed
+
+- **Review Changes button doesn't appear when Claude only writes new files (no insertions/deletions on tracked files).** (ANTS-1874)
+  When Claude creates a brand-new file, the bottom-bar "Review Changes" button stays hidden — it only lights up if Claude edits an existing file. So new-file changes have no quick way to be reviewed.
 
 - **Strip the "ccache + PCH" framing from `--preset=fast` docs.** (ANTS-1557)
   Update the "fast build" mode's description to match what it actually does (just an isolated build folder).

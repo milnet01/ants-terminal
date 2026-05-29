@@ -858,8 +858,19 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                 bgRunWidth += cellDrawWidth;
             } else {
                 if (bgRunWidth > 0) {
+                    // ANTS-1864 — use Source mode so a semi-transparent cell
+                    // bg REPLACES the destination alpha rather than compositing
+                    // on top of the base fill (SourceOver would double-count
+                    // alpha, making coloured cells visibly more opaque than
+                    // the surrounding terminal area on translucent windows).
+                    // alpha=255 cells (selection, searchMatch): Source and
+                    // SourceOver are equivalent when src.a==1 so no regression.
+                    if (bgRunColor.alpha() < 255)
+                        p.setCompositionMode(QPainter::CompositionMode_Source);
                     p.fillRect(bgRunStartX, px_y, bgRunWidth,
                                m_cellHeight, bgRunColor);
+                    if (bgRunColor.alpha() < 255)
+                        p.setCompositionMode(QPainter::CompositionMode_SourceOver);
                 }
                 if (wantBgFill) {
                     bgRunStartX = px_x;
@@ -1014,9 +1025,14 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         }
 
         // ANTS-1180: flush trailing bg-fill run for this row.
+        // ANTS-1864: Source mode for same reason as mid-row flush above.
         if (bgRunWidth > 0) {
+            if (bgRunColor.alpha() < 255)
+                p.setCompositionMode(QPainter::CompositionMode_Source);
             p.fillRect(bgRunStartX, px_y, bgRunWidth,
                        m_cellHeight, bgRunColor);
+            if (bgRunColor.alpha() < 255)
+                p.setCompositionMode(QPainter::CompositionMode_SourceOver);
         }
 
         // Draw all text runs using QTextLayout for proper ligature shaping.

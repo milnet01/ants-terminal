@@ -8815,7 +8815,7 @@ indie-review finding.
   Lanes: debuglog, settings, observability.
   Source: user-request-2026-05-25 (debug category off after every relaunch).
 
-- 📋 [ANTS-1864] **Colored cell backgrounds (diff green/red highlights) appear more opaque than the base when terminal opacity < 1.**
+- ✅ [ANTS-1864] **Colored cell backgrounds (diff green/red highlights) appear more opaque than the base when terminal opacity < 1.**
   Colored cell backgrounds already get effectiveAlpha
   (terminalwidget.cpp:853-854), but they are painted with
   CompositionMode_SourceOver on top of the base fill, which was laid down
@@ -8834,6 +8834,7 @@ indie-review finding.
   Kind: ux.
   Lanes: terminalwidget, rendering.
   Source: user-request-2026-05-25 (screenshot: opaque green/red diff highlights on a translucent terminal).
+  Resolved 2026-05-29: cell bg fillRects now use CompositionMode_Source (same as the base fill) when alpha < 255, so coloured cells replace the destination alpha rather than compounding it via SourceOver. Selected/searchMatch cells (alpha=255) unchanged — Source == SourceOver when src.a=1. Two flush sites fixed (mid-row and end-of-row trailing flush) in terminalwidget.cpp.
 
 - 📋 [ANTS-1865] **Expose the per-tab Claude state dot (idle/thinking/tooluse/awaiting-input) via MCP so dot/prompt-state behavior is programmatically verifiable.**
   tab_list exposes {claude_running, color} but `color` is the tab's
@@ -8855,6 +8856,12 @@ indie-review finding.
   Kind: chore.
   Lanes: claudestatuswidgets.
   Source: in-session-clangd-warning-2026-05-29.
+
+- 📋 [ANTS-1923] **Auto-model-switcher: investigate dominant ticks_target_stable_insufficient near-miss blocker + 100% regret on measured downgrades.**
+  model_switch_stats (project scope, 2026-05-29): switches=17, downgrades=10 (measured=2, inconclusive=8), regret_count=2, regret_rate=100, opus_turns_avoided=0, clean_end_count=0, weighted_avoided=0. near_misses.total_24h=96, ALL blocked by ticks_target_stable_insufficient. Two signals: (1) one gate dominates 96/96 near-misses — is the "target tier stable for N ticks" threshold too strict to ever pass? (2) both measured downgrades regretted — tiny sample (calibrating 2/10) but watch. Action: instrument why ticks_target_stable_insufficient fires so often; consider whether dwell + stability gates double-count. No config change yet — gather more data first.
+  **Layman:** The auto model-picker is constantly evaluating but almost never allowed to act, and the few times it did downgrade in this project, both were later regretted. Worth checking whether the safety gate is mistuned — too strict to ever help, yet still firing the wrong picks when it does.
+  Kind: investigate.
+  Source: in-session-2026-05-29 (model_switch_stats review).
 
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
@@ -9913,7 +9920,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   ctest: 1551/1551 pass. Pairs with ANTS-1735 (actuator INV-2 can now
   read claudestate::forFocused for clarity when wired).
 
-- 📋 [ANTS-1874] **Review Changes button doesn't appear when Claude only writes new files (no insertions/deletions on tracked files).**
+- ✅ [ANTS-1874] **Review Changes button doesn't appear when Claude only writes new files (no insertions/deletions on tracked files).**
   refreshReviewButton's git-diff probe (src/claudestatuswidgets.cpp:339)
   decides visibility by "is the diff non-empty?". A brand-new file that
   Claude has written but not yet `git add`ed counts as untracked, so
@@ -9927,6 +9934,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Kind: fix.
   Lanes: claudestatuswidgets.
   Source: user-report-2026-05-26.
+  Resolved 2026-05-29: untracked-only worktree now enables the button. Predicate extracted to ants::parseReviewPorcelain (src/reviewbuttonstate.h); the obsolete `?? ` skip-branch removed. Behavioural test added (ReviewButtonUntracked.Main, test #123). ANTS-1886 made untracked files reviewable — this was the missing companion fix.
 
 - 📋 [ANTS-1875] **Visual artifacts in the diff viewer's left gutter (red blobs / smudges in margins).**
   User-flagged 2026-05-26 via Screenshot_20260526_092142.png. The
@@ -14167,6 +14175,31 @@ template / mutate this state atomically" → movable. If it's
   Lanes: modelautoswitch, claudestatuswidgets.
   Source: in-session-2026-05-29 (model_switch_stats near-miss analysis).
 
+- 📋 [ANTS-1920] **Model-switch actuator: confirm by watching PTY output, not a blind 250 ms timer.**
+  claudestatuswidgets.cpp:1500-1510 sends `/model <tier>\r` then a
+    fixed `QTimer::singleShot(250, ...)` → `1\r`. Two failure modes the
+    user hit: (a) the "Switch model?" confirmation prompt (CC shows it
+    whenever the conversation has prior output — verified via
+    claude-code-guide, NOT suppressible by any flag) may not have
+    rendered within 250 ms, so `1\r` is lost or mis-targeted; (b) if the
+    session is mid-turn or has queued messages, `/model <tier>` itself
+    queues and the confirmation never appears, leaving the tier
+    command stranded in the composer.\n
+    Fix: replace the blind timer with an output-driven confirm — scan
+    the terminal grid / scrollback for the confirmation-prompt signature
+    ("Switch model?" / the numbered picker) and send `1\r` only once it
+    is visible, with a bounded timeout fallback that ABORTS (does not
+    blind-send) if the prompt never appears. Verify TerminalWidget
+    exposes a visible-text / recent-output query the controller can
+    poll; if not, that capability is a prerequisite. Pairs with
+    ANTS-1919 (queue the intent until composer empty) and the gate's
+    existing idle/mid-turn detection. RAM: none beyond a short-lived
+    poll timer.
+  **Layman:** The auto-switcher sends "/model opus" then blindly waits a quarter-second and presses "1" to confirm. If the confirmation box is slow, or you have a message queued, the "1" lands in the wrong place and the switch gets stuck (observed by the user 2026-05-29 — model stayed on Sonnet, "/model opus" stranded in the composer). Watch for the actual "Switch model?" prompt before answering it.
+  Kind: fix.
+  Lanes: modelautoswitch, claudestatuswidgets, terminalwidget.
+  Source: user-report-2026-05-29 (screenshot: switch stuck, Sonnet retained).
+
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 
 > Docs reviewed: 9 lanes covering ~30 live docs at root + `docs/`.
@@ -15461,6 +15494,35 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Kind: enhancement.
   Source: in-session-2026-05-20 (pull 39).
   Shipped (2026-05-26): roadmap_query section= envelope now carries section_shape ("table"|"prose") + non_bullet_lines:N when parseBullets returns zero entries AND the slice has non-bullet content. Lets callers skip the raw Read fallback for table-formatted bundle sections (token savings ~2-5 KB per skip). Helper rcSectionShape() in remotecontrol.cpp classifies on the first miss; result cached in m_roadmapSectionShape (per-slug, cleared in lockstep with m_roadmapSectionCache). Spec at tests/features/roadmap_query_section_shape/spec.md (INV-1..7), 6 source-grep conformance tests green; full ctest 1661/1661.
+
+- 📋 [ANTS-1921] **Feature request to Anthropic: non-interactive model switch for a running CC session.**
+  Verified via claude-code-guide (CC official docs, 2026-05-29): there
+    is NO supported programmatic path to change the active model of a
+    *running* Claude Code session. MCP tools can't; hooks can't (only
+    SessionStart receives model as read-only context); settings.json
+    `model` is read-once-at-startup; ANTHROPIC_MODEL applies only to the
+    launched session; the Agent SDK has no switch call. The `/model`
+    command is interactive-only and its confirmation prompt (fires when
+    the conversation has prior output) is not suppressible.\n
+    Therefore the keystroke-injection actuator (ANTS-1912/1918/1920) is
+    a workaround for a missing API, not a design choice. File a
+    feature request on anthropics/claude-code: either (a) a
+    non-interactive `claude model set <name>` / `--model` against a
+    running session via the existing control channel, or (b) an MCP/IPC
+    control-plane verb the session honours. Pair with the showcase
+    posts (ANTS-1313/1315) — the auto-switcher is a concrete motivating
+    use case to cite. Until upstream lands, ANTS-1919 + ANTS-1920 make
+    the workaround as robust as the TUI allows.
+  **Layman:** Ants can only change Claude's model by faking keystrokes, because Claude Code has no clean way for an outside program to switch a running session's model. Ask Anthropic to add one — it would make the whole auto-switcher reliable instead of best-effort.
+  Kind: marketing.
+  Lanes: modelautoswitch, claudeintegration.
+  Source: user-suggestion-2026-05-29 ("driven by the CC session itself instead of Ants Terminal").
+
+- 📋 [ANTS-1922] **Bundle-discovery mode for roadmap_query / session_orient — group active items into coherent work bundles in one call.**
+  session_orient returns only ONE active_bullet + section counts; seeing candidate bullets needs a 2nd roadmap_query, and grouping related items a 3rd body fetch. Lanes alone don't cluster thematic bundles (e.g. the diff-viewer bundle ANTS-1874/1875/1864 spans 3 different lanes). Proposals, smallest first: (a) session_orient gains an optional top-N active headline_only list inline; (b) roadmap_query mode:"bundles" groups active items by shared lane + recent-commit affinity + headline-token similarity, returning {bundle_label, ids[]}. Serves the recurring "next bundle of similar items" workflow.
+  **Layman:** Every session starts with "pick the next group of related to-dos." The orientation tool tells me the project's state in one call, but finding a coherent bundle still takes 2-3 more manual calls and eyeballing. A tool that returns active items pre-grouped by theme/lane would make the most common session-opening task a single call.
+  Kind: enhancement.
+  Source: in-session-2026-05-29 (orientation gap hit while picking the next bundle).
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 

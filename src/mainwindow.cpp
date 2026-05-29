@@ -14,6 +14,7 @@
 #include "sessionmanager.h"
 #include "remotecontrol.h"
 #include "resolvedroot.h"      // ANTS-1401 — terminalForCaller helper
+#include "reviewbuttonstate.h" // ANTS-1874 — Review-button porcelain predicate
 #include "verifytrustmodal.h"  // ANTS-1337 Phase 2
 #include "branchchip.h"           // ANTS-1109 helper
 #include "clipboardguard.h"       // ANTS-1014 clipboard funnel
@@ -6064,33 +6065,12 @@ void MainWindow::refreshReviewButton() {
             } else {
                 const QByteArray raw = guard ? guard->readAllStandardOutput()
                                               : QByteArray();
-                const QList<QByteArray> lines = raw.split('\n');
-                bool dirty = false;
-                bool ahead = false;
-                for (const QByteArray &ln : lines) {
-                    if (ln.isEmpty()) continue;
-                    if (ln.startsWith("##")) {
-                        // Branch header. "ahead N" means local has
-                        // unpushed commits; "behind N" alone does not
-                        // indicate reviewable local work (nothing to
-                        // push), so we ignore it for the enabled state.
-                        if (ln.contains("[ahead ") || ln.contains(", ahead "))
-                            ahead = true;
-                    } else if (ln.startsWith("?? ")) {
-                        // User report 2026-05-08: untracked files (`??`)
-                        // shouldn't activate Review Changes — they don't
-                        // appear in `git diff`, so clicking the button
-                        // would open a diff viewer with nothing to show.
-                        // Common false-positive: KDE Dolphin's
-                        // `.directory` metadata, IDE caches, swap files.
-                        // Once the user `git add`s an untracked file it
-                        // becomes `A ` and counts here.
-                        continue;
-                    } else {
-                        dirty = true;
-                    }
-                }
-                btn->setEnabled(dirty || ahead);
+                // ANTS-1874 — untracked files now count as reviewable.
+                // The prior `?? ` carve-out (2026-05-08) is obsolete since
+                // ANTS-1886 renders new files in the diff viewer; predicate
+                // extracted to ants::parseReviewPorcelain for unit coverage.
+                const ants::ReviewButtonState rs = ants::parseReviewPorcelain(raw);
+                btn->setEnabled(rs.dirty || rs.ahead);
                 btn->show();
             }
         }
