@@ -29,6 +29,36 @@ bool hasPlanKeyword(const QString &text) {
     return false;
 }
 
+// ANTS-1916 — extract the tier arg from a `/model <tier>` slash command.
+// Claude Code records these as `{type:"system", subtype:"local_command"}`
+// events whose top-level `content` string is e.g.
+//   <command-name>/model</command-name>
+//   <command-message>model</command-message>
+//   <command-args>haiku</command-args>
+// Returns "haiku" / "sonnet" / "opus" (lower-cased, trimmed) or an empty
+// string when the event is not a /model command or carries no arg (the
+// user opened the picker without choosing). The model field on assistant
+// turns only updates on the NEXT assistant turn, so a /model command that
+// is more recent than the last assistant turn is the true current model —
+// without this the chip + auto-switcher both lag a full turn behind and
+// the switcher re-fires the same tier every dwell window (the thrash bug).
+QString modelTierFromLocalCommand(const QJsonObject &ev) {
+    if (ev.value(QStringLiteral("type")).toString() != QStringLiteral("system"))
+        return {};
+    if (ev.value(QStringLiteral("subtype")).toString()
+            != QStringLiteral("local_command"))
+        return {};
+    const QString content = ev.value(QStringLiteral("content")).toString();
+    if (!content.contains(QStringLiteral("<command-name>/model</command-name>")))
+        return {};
+    static const QRegularExpression kArgRe(
+        QStringLiteral("<command-args>(.*?)</command-args>"),
+        QRegularExpression::DotMatchesEverythingOption);
+    const QRegularExpressionMatch m = kArgRe.match(content);
+    if (!m.hasMatch()) return {};
+    return m.captured(1).trimmed().toLower();
+}
+
 // ANTS-1890 — narrow stem regex over the latest user prompt. Per-keyword
 // alternations handle the actual English morphology of each verb (a flat
 // `(?:ed|ing|s)?` would miss `committed` / `pushes` / `rebased`):
@@ -121,13 +151,26 @@ Result score(const QString &transcriptPath)
     turns.reserve(20);
     QString latestUserText;
     bool latestUserFound = false;
+    // ANTS-1916 — capture a `/model <tier>` command that is MORE RECENT than
+    // the newest assistant turn. Walking in reverse, the first assistant turn
+    // hit is the newest; any /model command seen before it (higher index) is
+    // newer still, and is the true current model. Guard with isEmpty() so we
+    // keep only the most-recent command, and stop honouring it once we pass
+    // the newest assistant turn.
+    QString pendingModelTier;
+    bool sawAssistantTurn = false;
     for (int i = allLines.size() - 1; i >= 0 && turns.size() < 20; --i) {
         const QJsonObject obj =
             QJsonDocument::fromJson(allLines[i].toUtf8()).object();
         const QString type = obj.value(QStringLiteral("type")).toString();
         if (type == QStringLiteral("assistant")) {
             turns.append(obj);
-        } else if (!latestUserFound && type == QStringLiteral("user")) {
+            sawAssistantTurn = true;
+        } else if (!sawAssistantTurn && pendingModelTier.isEmpty()) {
+            const QString tier = modelTierFromLocalCommand(obj);
+            if (!tier.isEmpty()) pendingModelTier = tier;
+        }
+        if (!latestUserFound && type == QStringLiteral("user")) {
             // Joined text-content blocks; skip user lines with no text
             // (e.g. tool_result envelopes — those carry no human prompt).
             const QJsonValue content =
@@ -162,6 +205,13 @@ Result score(const QString &transcriptPath)
                 .value(QStringLiteral("message")).toObject()
                 .value(QStringLiteral("model")).toString();
     }
+    // ANTS-1916 — a /model command newer than the last assistant turn is the
+    // real current model. tierFromModelId() substring-matches on the tier
+    // name, so the raw "haiku"/"sonnet"/"opus" arg flows through unchanged.
+    // Fixes the stale model-state chip AND the auto-switch thrash (the
+    // switcher's gate.current no longer lags a turn behind the actuator).
+    if (!pendingModelTier.isEmpty())
+        def.currentModel = pendingModelTier;
 
     // INV-2 — commit-intent hard override. Fires AFTER the walk (so
     // currentModel is captured) and BEFORE the empty-window short-circuit

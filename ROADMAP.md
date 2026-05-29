@@ -2679,7 +2679,7 @@ minor tag (next: pre-0.8.0).
   itself. Lanes: MainWindow, ClaudeBgTasks, ClaudeIntegration.
   Kind: fix.
   Source: user-2026-04-28.
-- 📋 [ANTS-1053] **HIGH — Per-tab Background-tasks button scoping.**
+- ✅ [ANTS-1053] **HIGH — Per-tab Background-tasks button scoping.**
   **Blocked on ANTS-1052 root cause** — once the regression is
   understood + fixed, the per-tab refactor lands as the natural
   follow-up (the existing single-instance model gets carved into
@@ -2703,6 +2703,7 @@ minor tag (next: pre-0.8.0).
   ClaudeBgTasks, MainWindow, TerminalTab.
   Kind: fix.
   Source: regression.
+  Resolved 2026-05-29: replaced single m_bgTasks with QHash<pid_t,ClaudeBgTaskTracker*> m_bgTrackers. trackBgShell/untrackBgShell wired at all 4 mainwindow tab-lifecycle sites. Tab switch is O(1); background trackers retain state via their own QFileSystemWatcher. INV-14 + INV-15 added to test. Commit 1cd535d.
 - ✅ [ANTS-1054] **MEDIUM — Mystery flashing dialog in centre of terminal.**
   User report: "now and then there is a small dialog box that
   flashes in the centre of the terminal. It is too quick to see
@@ -2794,17 +2795,19 @@ minor tag (next: pre-0.8.0).
   Source: user-report-2026-05-25 (live during this session's AskUserQuestion test).
   Correction (2026-05-25): the first commit (belt only) did NOT fix it — verified live, dot still stuck orange. Root cause is two-fold: (1) Ants' Claude hooks are not installed in this setup (no PreToolUse/PostToolUse/Stop hook POSTs to the UDS hook server), so the toolFinished/sessionStopped belt never fires — it is best-effort only; (2) the load-bearing bug is that m_claudeDetectTimer was a trailing-edge debounce — `m_claudeDetectTimer.start()` restarts the single-shot timer on every PTY batch, so during Claude Code's sub-300ms spinner output the scanner never runs and the footer-gone N=3 debounce can't accumulate. Real fix: start the timer only when idle (`if (!m_claudeDetectTimer.isActive())`) → ~300ms throttle that fires during continuous output, clearing the dot via the footer scanner alone (no hooks). Test: claude_question_prompt_dot INV-8. Confirmed live pending second relaunch.
 
-- 📋 [ANTS-1885] **Status-bar + tab-dot both stuck on "Claude: idle" while Claude is actively working.**
+- ✅ [ANTS-1885] **Status-bar + tab-dot both stuck on "Claude: idle" while Claude is actively working.**
   Reproduction: long multi-step turn (during the cold-eyes loop on ANTS-1878/1879 specs around 10:21 on 2026-05-26). Both UI indicators (status-bar "Claude: idle" badge + tab-dot colour) showed Idle simultaneously, but Claude was visibly mid-tool-use (Read/Edit calls + spawned sub-agents still running). Related to ANTS-1873 (single-source-of-truth Claude state resolver) but DIFFERENT failure mode — ANTS-1873 was about tab-dot vs status-bar DESYNC; here they agree but both are stuck stale. Likely a missed transition out of Idle when a sub-agent's tool-use re-enters work (the resolver caches Idle and isn't being re-stamped on resumed activity). Investigate: the per-shell `ClaudeState` transition coverage when activity resumes inside an in-flight turn after a brief Idle window. Acceptance: while ANY assistant turn is in flight (any tool_use or thinking block streamed within the last few seconds), the resolver must hold a non-Idle state for both indicators.
   claude-state-resolver, status-bar, tab-dot, claudetabtracker
   **Layman:** When Claude is in the middle of doing work (tool calls, thinking, etc.) both the status bar at the bottom and the coloured dot on the tab should show that it's busy — but sometimes both go "idle" while it's still working. The two indicators agree with each other but disagree with reality, so the user can't tell when Claude is actually done.
   Kind: fix.
   Source: user-report-2026-05-26 (screenshot — status bar + tab dot both show idle while Claude is actively working).
+  Resolved 2026-05-29: filter isSidechain events out of parseTranscriptTail's event list (claudeintegration.cpp) before any state walk, mirroring the existing filter in claudebgtasks.cpp. Regression locked in by inv10 in claude_transcript_robustness. Commit 83143f6.
 
-- 📋 [ANTS-1886] **Review Changes dialog: surface new-file content, not just the bare `??` marker.**
+- ✅ [ANTS-1886] **Review Changes dialog: surface new-file content, not just the bare `??` marker.**
   **Layman:** Right now the Review Changes window lists brand-new files as just `?? path/to/file.md`, with no preview and no line count. Existing files get a unified diff. Brand-new files are arguably the most interesting bit of a change — you want to see them. Two ideas, in priority order: (1) show new files as additions (every line a `+`) just like the unified diff does for existing files; (2) if that's expensive, at minimum show the line count next to the path, e.g. `NF tests/features/mcp_roadmap_log_append_batch/ (120 lines)`, and swap the cryptic `??` for a friendlier marker like `NF` (new file) or a coloured `+`.</layman> <parameter name="body">Reproduction: branch with both modified and new files; open the Review Changes dialog. Current output uses git's raw porcelain markers (`??`) for new files, which read as "untracked / status unknown" rather than "new file with content to look at". Acceptance for option 1: new files render as a synthetic addition diff (full content prefixed with `+`), ma…
   Kind: ux.
   Source: user-request-2026-05-26 (Review Changes dialog UX).
+  Resolved 2026-05-29: status section swaps ?? → green NF; new "New files" section reads each untracked file and renders a synthetic addition diff (binary + 200 KB cap handled). Commit 922d7cb.
 
 - ✅ [ANTS-1911] **Cross-tab Claude-state mix-up — focused tab's status bar shows ANOTHER tab's `Claude:` state.**
   Reproduction: have two Claude tabs running concurrently (one actively doing work — running tools / agents; the other genuinely idle). The status-bar 'Claude: <state>' label + the per-tab dot indicator can swap, showing the active tab's state under the idle tab's surface and vice versa.\n\nThe bug is in ClaudeStatusBarController's apply() / refresh paths — the focused-tab resolution may be reading a stale shellPid, OR claudestate::fromShell is keying on the wrong tab's tracker entry, OR the indicator-provider lambda at coloredTabBar set up in attach() is closing over a pid that goes stale across tab switches.\n\nInvestigation entry points:\n- src/claudestatuswidgets.cpp apply() — verify it reads focusedTerminalProvider() then shellPid(), not a cached value.\n- src/claudestatuswidgets.cpp:221 m_coloredTabBar->setClaudeIndicatorProvider lambda — captures m_tracker but reads pid per-call from m_terminalAtTabProvider(tabIndex); verify pid is current and not cached on the tab widget.\n- src/claudetabtracker.cpp shellState(pid) — verify pid lookup is by-pid not by-iteration-order.\n- The user-side reproduction is reliable; should add a feature test that drives two concurrent ShellPid tracker entries and asserts the focused-tab's state never reads the other tab's slot.\n\nPriority: medium — the chip is informational only (clicking it sends '/model' commands but those are gated by shellPid which presumably IS correct). However user trust in the chip degrades fast once they see it lie. Pair with ANTS-1873 which was the prior fix in this area (apply() switched to reading focused tab's tracker entry directly); this bug may be a regression from that fold or an additional uncovered path.
@@ -2837,6 +2840,67 @@ minor tag (next: pre-0.8.0).
   Kind: fix.
   Lanes: claudestatuswidgets, modelautoswitch.
   Source: user-screenshot-2026-05-29.
+
+- 📋 [ANTS-1914] **Auto-switcher `composer_not_empty` guard too broad — blocks 42×/day even when composer holds only a `/model` command.**
+  42 near-misses in 24 h, all blocked by composer_not_empty
+    (model_switch_stats 2026-05-29). Root cause: the guard fires on
+    ANY non-empty composer content, including a queued `/model X`
+    slash-command that IS the switch action.
+    Fix: exempt composers whose trimmed content matches `^/model\s`
+    (or more broadly: any composer that is a lone slash-command with
+    no prose) — treat those as switch-in-progress, not
+    composing-a-message. Alternatively relax to a short debounce
+    (e.g. still block for N s after the user TYPED into the composer,
+    but not just because stale text is present).
+    Acceptance: near-miss count drops to near-zero under normal
+    multi-tab Claude Code usage.
+  **Layman:** The automatic model-switcher wants to fire but always sees text in the input box and backs off — even when that text is a /model switch command the user is about to send. It should recognise a composer containing only a slash command as 'about to switch', not 'user is composing'.
+  Kind: fix.
+  Lanes: modelautoswitch.
+  Source: user-report-2026-05-29.
+
+- 📋 [ANTS-1915] **No path to switch model mid-generation without interrupting — user must press Escape before `/model` submits.**
+  Repro: queue `/model sonnet` in composer while Claude is
+    actively generating. The command cannot submit until Escape is
+    pressed (generation interrupted). User report 2026-05-29.
+    Two options (in priority order):
+    (a) Queue the `/model` actuator: detect a pending `/model X`
+    command in the composer while a turn is in flight; after the
+    turn completes (assistant end_turn), auto-submit it.
+    (b) Surface a 'switch after this turn' chip in the status bar
+    when a `/model` command is queued mid-generation — cheaper UX,
+    no auto-submit.
+    Either way, a user-initiated `/model X` should seed the
+    ANTS-1890 cool-down so the auto-switcher doesn't immediately
+    undo it.
+  **Layman:** If you type /model sonnet while Claude is mid-response, the command just sits there waiting. You have to press Escape to stop Claude first, then submit the switch. There should be a way to queue 'switch model after this response finishes' without interrupting the current turn.
+  Kind: ux.
+  Lanes: modelautoswitch, claudestatuswidgets.
+  Source: user-report-2026-05-29.
+
+- ✅ [ANTS-1916] **Auto-switcher thrash + stale model chip — both fed by a transcript model-read that lags a full turn behind `/model`.**
+  Root cause: ModelRecommender::score read currentModel from
+    turns.last().message.model, which only changes on the NEXT
+    assistant turn. A /model command (recorded as a
+    {type:system,subtype:local_command} event) creates no assistant
+    turn, so currentModel stayed stale. Both the model-state chip
+    (ANTS-1888) and the auto-switch gate.current consume that value;
+    with current pinned to the old tier, ModelAutoSwitch::decide's
+    target_equals_current guard never tripped and the switcher
+    re-fired every 90 s dwell window — worst at end-of-session (idle,
+    no further turns to refresh the read).
+    Fix (ANTS-1916): score() now scans for a /model <tier> command
+    newer than the last assistant turn and uses its arg as
+    currentModel (tierFromModelId substring-matches the tier name).
+    Fixes chip + switcher in one place; also covers user-typed /model.
+    Resolved 2026-05-29. Tests: ModelCommandAfterAssistantTurnWins +
+    EmptyModelCommandArgIgnored in model_recommender. Supersedes the
+    thrash half of the concern; end-of-session suppression tracked
+    separately if residual.
+  **Layman:** The auto-switcher fired /model seven times in a row (haiku x3, opus x4) at the end of a session, and the model chip stayed stuck on 'Sonnet'. Both came from the same cause: the code read the 'current model' from the last AI reply, which only updates when the AI next speaks — so right after a /model switch it was still reading the old model and kept re-firing.
+  Kind: fix.
+  Lanes: modelrecommender, modelautoswitch, claudestatuswidgets.
+  Source: user-report-2026-05-29.
 
 ### 🔍 CI fold-in (2026-04-28)
 

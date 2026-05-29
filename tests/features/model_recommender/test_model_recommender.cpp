@@ -227,6 +227,62 @@ TEST(ModelRecommender, CurrentModelReadFromTranscript) {
     EXPECT_EQ(result.currentModel, QStringLiteral("claude-opus-4-7"));
 }
 
+// ANTS-1916 — a /model command newer than the last assistant turn is the
+// real current model. The model field on assistant turns only updates on
+// the NEXT assistant turn, so without this the chip + auto-switcher lag a
+// full turn (the stale-chip + actuator-thrash bug). Helper writes a
+// {type:"system",subtype:"local_command"} event mirroring Claude Code's
+// on-disk shape.
+namespace {
+QString writeTranscriptWithModelCommand(QTemporaryFile &f,
+                                        const QString &assistantModel,
+                                        const QString &modelArg) {
+    if (!f.open()) return f.fileName();
+    QTextStream out(&f);
+    {
+        QJsonObject turn;
+        turn["type"] = "assistant";
+        QJsonObject msg;
+        msg["content"] = QJsonArray{};
+        msg["model"] = assistantModel;
+        turn["message"] = msg;
+        out << QJsonDocument(turn).toJson(QJsonDocument::Compact) << "\n";
+    }
+    {
+        QJsonObject cmd;
+        cmd["type"] = "system";
+        cmd["subtype"] = "local_command";
+        cmd["content"] = QStringLiteral(
+            "<command-name>/model</command-name>\n"
+            "            <command-message>model</command-message>\n"
+            "            <command-args>%1</command-args>").arg(modelArg);
+        out << QJsonDocument(cmd).toJson(QJsonDocument::Compact) << "\n";
+    }
+    f.close();
+    return f.fileName();
+}
+}  // namespace
+
+TEST(ModelRecommender, ModelCommandAfterAssistantTurnWins) {
+    // Last assistant turn ran on Sonnet; a /model haiku command followed.
+    // currentModel must resolve to the commanded tier, not the stale Sonnet.
+    QTemporaryFile f;
+    const auto result = ModelRecommender::score(writeTranscriptWithModelCommand(
+        f, QStringLiteral("claude-sonnet-4-6"), QStringLiteral("haiku")));
+    EXPECT_EQ(ModelRecommender::tierFromModelId(result.currentModel),
+              ModelRecommender::Tier::Haiku)
+        << "actual currentModel=" << result.currentModel.toStdString();
+}
+
+TEST(ModelRecommender, EmptyModelCommandArgIgnored) {
+    // The user opened the picker without choosing (empty args): the stale
+    // assistant-turn model stands rather than blanking currentModel.
+    QTemporaryFile f;
+    const auto result = ModelRecommender::score(writeTranscriptWithModelCommand(
+        f, QStringLiteral("claude-opus-4-7"), QString()));
+    EXPECT_EQ(result.currentModel, QStringLiteral("claude-opus-4-7"));
+}
+
 // ----- ANTS-1888 — thinkingLevelFromLatestUserTurn() ---------------------
 
 namespace {
