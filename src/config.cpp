@@ -485,6 +485,15 @@ void Config::setClaudeAutoModelUndoEnabled(bool enabled) {
     save();
 }
 
+// ANTS-1924 — text injected into the PTY after a model switch completes
+// so CC resumes without the user having to type anything. Empty = no
+// prompt. PTY layer expects `\r` (CR) as the submit key — `\n` only
+// inserts a newline in CC's composer without submitting.
+QString Config::claudeAutoModelContinuationPrompt() const {
+    return m_data.value("claude.auto_model_switch_continuation_prompt")
+               .toString(QStringLiteral("please continue"));
+}
+
 // ANTS-1897.
 bool Config::claudeMcpOrientationEnabled() const {
     return m_data.value("claude.mcp_orientation_enabled").toBool(true);

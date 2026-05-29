@@ -14200,6 +14200,12 @@ template / mutate this state atomically" → movable. If it's
   Lanes: modelautoswitch, claudestatuswidgets, terminalwidget.
   Source: user-report-2026-05-29 (screenshot: switch stuck, Sonnet retained).
 
+- ✅ [ANTS-1924] **ANTS-1924: model-switch PTY handshake — ESC + ENTER confirmation sequence + continuation prompt.**
+  Prior code sent "1\r" as the confirmation — wrong for CC's dialog. User observed the correct sequence is ESC (\x1b) then \r (CR). Added: (1) ESC at 250ms, (2) \r at 400ms, (3) configurable continuation prompt at 1500ms. Config key claude.auto_model_switch_continuation_prompt (default "please continue", empty = no prompt). All three switch paths updated (auto-switch, chip-click, undo) via shared performModelSwitchHandshake(). The \r vs \n distinction is now documented at the call sites — \n inserts a newline without submitting and would leave /model in the composer, self-vetoing the next auto-switch tick via composer_not_empty gate (ANTS-1908).
+  **Layman:** When Ants switches Claude models, it now sends the right keystrokes to confirm the switch dialog (ESC then Enter), then automatically sends "please continue" so Claude picks up where it left off — no manual typing needed.
+  Kind: fix.
+  Source: user-request-2026-05-29.
+
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 
 > Docs reviewed: 9 lanes covering ~30 live docs at root + `docs/`.

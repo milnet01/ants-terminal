@@ -109,6 +109,12 @@ public:
     bool claudeAutoModelUndoEnabled() const;
     void setClaudeAutoModelUndoEnabled(bool enabled);
 
+    // ANTS-1924 — text sent to CC after a model switch completes so it
+    // continues working without user input. Empty string = no prompt.
+    // Config key: claude.auto_model_switch_continuation_prompt (default
+    // "please continue"). Config-file-only; not exposed in Settings UI.
+    QString claudeAutoModelContinuationPrompt() const;
+
     // ANTS-1897 — MCP discoverability via SessionStart hook. Master
     // toggle (default true) gates the install of the orientation
     // script + the merge into ~/.claude/settings.json. The nudge

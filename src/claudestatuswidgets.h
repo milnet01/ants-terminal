@@ -236,6 +236,11 @@ private:
     void apply();   // private status-label renderer (formerly
                     // MainWindow::applyClaudeStatusLabel)
 
+    // ANTS-1924 — shared model-switch PTY handshake: ESC + ENTER to
+    // confirm CC's "Switch model?" dialog, then a configurable
+    // continuation prompt so CC resumes without user input.
+    void performModelSwitchHandshake(TerminalWidget *focused);
+
     // ANTS-1835/1850/1851 — build (or rebuild) the permission-prompt UI for
     // an owning shell: per-shell dedup, lifecycle anchor, Allow/Deny/Add
     // buttons (only when belongsToFocused), and retraction wiring scoped to

@@ -58,6 +58,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **ANTS-1924: model-switch PTY handshake — ESC + ENTER confirmation sequence + continuation prompt.** (ANTS-1924)
+  When Ants switches Claude models, it now sends the right keystrokes to confirm the switch dialog (ESC then Enter), then automatically sends "please continue" so Claude picks up where it left off — no manual typing needed.
+
 - **Review Changes button doesn't appear when Claude only writes new files (no insertions/deletions on tracked files).** (ANTS-1874)
   When Claude creates a brand-new file, the bottom-bar "Review Changes" button stays hidden — it only lights up if Claude edits an existing file. So new-file changes have no quick way to be reviewed.
 

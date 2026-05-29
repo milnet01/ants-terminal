@@ -21,7 +21,8 @@
 #include <QWidget>
 #include <memory>
 // ANTS-1893 — ::kill(pid, 0) ESRCH dead-pid probe in onUndoSwitchClicked.
-#include <csignal>
+#include <sys/types.h>
+#include <signal.h>
 #include <cerrno>
 
 #include "claudeallowlist.h"
@@ -164,11 +165,8 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
         // next tick via the composer_not_empty gate (ANTS-1908).
         focused->sendToPty(
             (QStringLiteral("/model ") + tier + QStringLiteral("\r")).toUtf8());
-        // ANTS-1918 — auto-confirm the "Switch model?" prompt CC shows after /model.
-        {
-            QPointer<TerminalWidget> g(focused);
-            QTimer::singleShot(250, this, [g]() { if (g) g->sendToPty("1\r"); });
-        }
+        // ANTS-1918/1924 — ESC + ENTER handshake + continuation prompt.
+        performModelSwitchHandshake(focused);
         // ANTS-1840 — the user just acted on the recommendation, so hide the
         // chip immediately rather than letting it linger until the next
         // assistant turn re-scores the transcript. We deliberately leave the
@@ -1500,14 +1498,8 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     focused->sendToPty(
         (QStringLiteral("/model ") + dec.tierArg + QStringLiteral("\r"))
             .toUtf8());
-    // ANTS-1918 — Claude Code added an interactive "Switch model?" confirmation
-    // prompt after /model. Send "1\r" (yes) after a short pause so the
-    // actuator completes without user interaction. A QPointer guard ensures
-    // the send is a no-op if the terminal closes before the timer fires.
-    QPointer<TerminalWidget> focusedGuard(focused);
-    QTimer::singleShot(250, this, [focusedGuard]() {
-        if (focusedGuard) focusedGuard->sendToPty("1\r");
-    });
+    // ANTS-1918/1924 — ESC + ENTER handshake + continuation prompt.
+    performModelSwitchHandshake(focused);
 
     // ANTS-1893 — fire the firing-side surfacing (toast + chip-pulse
     // + Undo button) immediately after sendToPty, BEFORE the ledger
@@ -1537,6 +1529,33 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     m_autoSwitchLastMs    = nowMs;
     m_autoSwitchTicksStable = 0;
     m_autoSwitchLastTier  = dec.tierArg;
+}
+
+// ANTS-1924 — shared PTY handshake for every model-switch path (auto-
+// switch, chip-click, undo). Sequence observed to work reliably with CC:
+//   250 ms — ESC: clears any intermediate picker or composer state
+//   400 ms — \r (CR): confirms the "Switch model?" dialog
+//  1500 ms — continuation prompt + \r: tells CC to resume its task
+// All three terminators are \r (CR, 0x0D). \n only inserts a newline
+// in CC's input buffer without submitting — it leaves /model sitting
+// in the composer and silently self-vetoes the next auto-switch tick
+// via the composer_not_empty gate (ANTS-1908).
+// Continuation prompt text is read from config at call time so it
+// picks up any in-session config change. Empty prompt = no Step 3.
+void ClaudeStatusBarController::performModelSwitchHandshake(TerminalWidget *focused) {
+    QPointer<TerminalWidget> g(focused);
+    QTimer::singleShot(250, this, [g]() {
+        if (g) g->sendToPty("\x1b");          // ESC
+    });
+    QTimer::singleShot(400, this, [g]() {
+        if (g) g->sendToPty("\r");            // ENTER — confirm dialog
+    });
+    const QString cont = Config().claudeAutoModelContinuationPrompt();
+    if (!cont.isEmpty()) {
+        QTimer::singleShot(1500, this, [g, cont]() {
+            if (g) g->sendToPty((cont + QStringLiteral("\r")).toUtf8());
+        });
+    }
 }
 
 // Sentinel for "never switched yet" — large enough to clear any
@@ -1786,11 +1805,8 @@ void ClaudeStatusBarController::onUndoSwitchClicked()
     focused->sendToPty(
         (QStringLiteral("/model ") + priorTierName +
          QStringLiteral("\r")).toUtf8());
-    // ANTS-1918 — auto-confirm the "Switch model?" prompt (same as chip-click + actuator).
-    {
-        QPointer<TerminalWidget> g(focused);
-        QTimer::singleShot(250, this, [g]() { if (g) g->sendToPty("1\r"); });
-    }
+    // ANTS-1918/1924 — ESC + ENTER handshake + continuation prompt.
+    performModelSwitchHandshake(focused);
 
     // Seed the in-memory cool-down so the gate's 10-min lock-out
     // (ANTS-1890 / kOverrideCooldownMs) trips on the next tick.
