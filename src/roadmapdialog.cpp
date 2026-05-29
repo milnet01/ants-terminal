@@ -854,8 +854,10 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
         QRegularExpression::MultilineOption);
     // ANTS-1154-INV-4: optional Layman: line — case-insensitive label,
     // takes the rest of the line up to a period or newline.
+    // ANTS-1861: match both plain "Layman:" and bold "**Layman:**" forms
+    // (roadmap_log writes the bold version).
     static const QRegularExpression rxLayman(
-        QStringLiteral("^\\s*Layman:\\s*(.+?)\\s*[\\.\\n]"),
+        QStringLiteral("^\\s*(?:\\*\\*)?Layman:(?:\\*\\*)?\\s*(.+?)\\s*[\\.\\n]"),
         QRegularExpression::MultilineOption |
         QRegularExpression::CaseInsensitiveOption);
 
