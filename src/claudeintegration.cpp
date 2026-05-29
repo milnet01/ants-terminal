@@ -697,12 +697,19 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
         window = std::min(window * 2, kMaxWindow);
     }
 
+    // Sub-agent (sidechain) events are interleaved in the same transcript but
+    // belong to a child task, not the main session. A sidechain end_turn must
+    // not flip the main session to Idle while the outer Task tool_use is still
+    // in flight. Mirror the filter already present in claudebgtasks.cpp.
     QList<QJsonObject> events;
     for (const QByteArray &raw : tail.split('\n')) {
         const QByteArray line = raw.trimmed();
         if (line.isEmpty()) continue;
         const QJsonDocument doc = QJsonDocument::fromJson(line);
-        if (doc.isObject()) events.append(doc.object());
+        if (!doc.isObject()) continue;
+        const QJsonObject obj = doc.object();
+        if (obj.value(QStringLiteral("isSidechain")).toBool()) continue;
+        events.append(obj);
     }
 
     if (events.isEmpty()) return snap;

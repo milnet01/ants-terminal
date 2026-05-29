@@ -406,6 +406,44 @@ int inv9FindClaudeChildAfterForkingThreadExits() {
     return ok ? 0 : 1;
 }
 
+// ANTS-1885: a sidechain end_turn must not flip the main session to Idle
+// while the outer Task tool_use is still in flight.
+int inv10SidechainEndTurnDoesNotIdle() {
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) return 1;
+
+    // Transcript shape:
+    //   1. user message
+    //   2. assistant: Task tool_use   → main session = ToolUse
+    //   3. assistant: end_turn        → sidechain sub-agent completing
+    //                                   (isSidechain:true, must be ignored)
+    // Without the fix, event 3 is read as the main session's last event → Idle.
+    // With the fix, event 3 is skipped; event 2 wins → ToolUse.
+    const QString path = tmp.path() + "/sidechain.jsonl";
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly)) return 1;
+    f.write(R"({"type":"user","message":{"content":"run a task"}})" "\n");
+    f.write(R"({"type":"assistant","message":{"stop_reason":"tool_use",)"
+            R"("content":[{"type":"tool_use","name":"Task","input":{}}]}})" "\n");
+    // Sidechain sub-agent completes with end_turn — must not poison main state
+    f.write(R"({"type":"assistant","isSidechain":true,"message":{"stop_reason":"end_turn",)"
+            R"("content":[{"type":"text","text":"done"}]}}})" "\n");
+    f.close();
+
+    ClaudeIntegration ci;
+    ci.parseTranscriptForState(path);
+    QCoreApplication::processEvents();
+
+    const ClaudeState state = ci.currentState();
+    const bool ok = (state == ClaudeState::ToolUse);
+    std::fprintf(stderr,
+                 "[inv10 sidechain-end_turn-does-not-idle] state=%d (want %d=ToolUse)  %s\n",
+                 static_cast<int>(state),
+                 static_cast<int>(ClaudeState::ToolUse),
+                 ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
 }  // namespace
 
 TEST(ClaudeTranscriptRobustness, Main) {
@@ -419,6 +457,7 @@ TEST(ClaudeTranscriptRobustness, Main) {
     failures += inv7FindClaudeChildPidDetectsChild();
     failures += inv8FindClaudeChildFromWorkerThread();
     failures += inv9FindClaudeChildAfterForkingThreadExits();
+    failures += inv10SidechainEndTurnDoesNotIdle();
     if (failures) FAIL();
 }
 
