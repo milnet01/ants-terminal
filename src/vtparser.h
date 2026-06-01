@@ -85,6 +85,14 @@ private:
     void processChar(uint32_t ch);
     void transition(State newState);
 
+    // ANTS-1777: from a *StringEsc peek-state, re-enter a string-collecting
+    // state iff `ch` is a string introducer (] OSC, P DCS, _ APC, X SOS,
+    // ^ PM) — performs the transition and returns true. Returns false (no
+    // state change) for every other byte so the caller discards it to
+    // Ground, preserving the 0.7.53 ESC-final hardening (c=RIS, [=CSI, …
+    // stay discarded). See docs/specs/ANTS-1777.md.
+    bool reArmStringIntroducer(uint32_t ch);
+
     // UTF-8 decoding
     void feedByte(uint8_t byte);
     void flushCodepoint(uint32_t cp);

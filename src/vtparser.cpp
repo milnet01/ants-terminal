@@ -516,13 +516,17 @@ void VtParser::processChar(uint32_t ch) {
         break;
 
     case OscStringEsc:
-        // Just consumed ESC inside an OSC. Whatever follows: discard.
-        // The OSC was already terminated and dispatched in the OscString
-        // branch above. We unconditionally fall back to Ground without
-        // dispatching the byte as a new ESC sequence. (xterm parser
-        // table: state OSC_STRING + ESC → 0x18 / 0x1A / ANY → Ground;
-        // the trailing byte is consumed but not acted on.)
-        transition(Ground);
+        // Just consumed ESC inside an OSC. The OSC was already terminated
+        // and dispatched in the OscString branch above. ANTS-1777: if the
+        // next byte is a string introducer (] P _ X ^), re-arm a fresh
+        // string — this restores back-to-back `ESC ] … ESC ] …` /
+        // Sixel / Kitty sequences. Every other byte (incl. the dangerous
+        // ESC-finals `c`=RIS / `D` / `7` … and the CSI introducer `[`) is
+        // still discarded to Ground without dispatch, preserving the
+        // 0.7.53 hardening. See docs/specs/ANTS-1777.md +
+        // tests/features/vt_osc_esc_discard/spec.md.
+        if (!reArmStringIntroducer(ch))
+            transition(Ground);
         break;
 
     case DcsString:
@@ -550,15 +554,11 @@ void VtParser::processChar(uint32_t ch) {
         break;
 
     case DcsStringEsc:
-        // ANTS-1777 — the byte after the string-terminating ESC is
-        // deliberately consumed, NOT re-armed as a fresh ESC sequence
-        // (same security trade as OscStringEsc above): re-arming would
-        // let a hostile DCS payload ending in `ESC c` trigger RIS
-        // (terminal reset) — see tests/features/vt_osc_esc_discard/spec.md.
-        // Accepted cost: back-to-back `ESC P … ESC P` loses the second
-        // `P` (Sixel/Kitty intro). A safe partial re-arm (DCS/APC intro
-        // bytes only) needs its own security-reviewed spec.
-        transition(Ground);
+        // ANTS-1777 — re-arm only on a string introducer (see
+        // OscStringEsc above); dangerous ESC-finals + CSI stay discarded.
+        // Fixes back-to-back `ESC P … ESC P` (Sixel) data loss.
+        if (!reArmStringIntroducer(ch))
+            transition(Ground);
         break;
 
     case ApcString:
@@ -586,10 +586,10 @@ void VtParser::processChar(uint32_t ch) {
         break;
 
     case ApcStringEsc:
-        // ANTS-1777 — see the DcsStringEsc note above: the post-ESC byte
-        // is consumed for the same RIS-injection security reason, at the
-        // cost of losing the intro of an immediately-following APC.
-        transition(Ground);
+        // ANTS-1777 — re-arm only on a string introducer (see
+        // OscStringEsc). Fixes back-to-back `ESC _ … ESC _` (Kitty) loss.
+        if (!reArmStringIntroducer(ch))
+            transition(Ground);
         break;
 
     case IgnoreString:
@@ -601,8 +601,29 @@ void VtParser::processChar(uint32_t ch) {
         break;
 
     case IgnoreStringEsc:
-        transition(Ground);
+        // ANTS-1777 — re-arm only on a string introducer (see
+        // OscStringEsc); SOS/PM payloads carry no accumulator.
+        if (!reArmStringIntroducer(ch))
+            transition(Ground);
         break;
+    }
+}
+
+bool VtParser::reArmStringIntroducer(uint32_t ch) {
+    // Mirror the Ground→Escape string-introducer cases (clear-then-
+    // transition, identical to processChar's Escape state). Any byte not
+    // listed here is NOT a string introducer — the caller discards it to
+    // Ground, so `c`=RIS, `D`=IND, the CSI introducer `[`, intermediates,
+    // and C0 all stay neutralised (the 0.7.53 hardening). ANTS-1777.
+    switch (ch) {
+    case ']': m_oscString.clear(); transition(OscString); return true;
+    case 'P': m_dcsString.clear(); transition(DcsString); return true;
+    case '_': m_apcString.clear(); transition(ApcString); return true;
+    case 'X':   // SOS
+    case '^':   // PM
+        transition(IgnoreString); return true;
+    default:
+        return false;
     }
 }
 

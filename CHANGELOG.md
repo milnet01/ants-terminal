@@ -70,6 +70,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Inline graphics: back-to-back Sixel/Kitty/OSC sequences no longer lose a byte (ANTS-1777)** (ANTS-1777)
+  Terminals that stream pictures in back-to-back chunks (Sixel, Kitty
+  graphics) dropped a byte between two chunks, rendering the second as
+  garbage. The VT parser now re-arms a new string sequence when the byte
+  after a string-terminating ESC is a string introducer (] P _ X ^),
+  while still discarding the dangerous ESC-finals (c=RIS, etc.) and the
+  CSI introducer — so the 0.7.53 hardening against hostile terminal-reset
+  injection is fully preserved.
+
 - **`changelog_log op:add_from_roadmap` drops the Layman line from the CHANGELOG body — regression, failing test.** (ANTS-1933)
   The shortcut that copies a roadmap item into the changelog is currently leaving out the plain-English summary line — so changelog entries created that way are missing their friendly description
 

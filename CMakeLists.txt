@@ -800,6 +800,7 @@ if(ANTS_TESTS)
                 tests/features/sgr_attribute_reset/test_sgr_reset.cpp
                 tests/features/vtparser_simd_scan/test_vtparser_simd.cpp
                 tests/features/vt_osc_esc_discard/test_vt_osc_esc_discard.cpp
+                tests/features/vt_string_rearm/test_vt_string_rearm.cpp
                 tests/features/vtparser_print_run_coalesce/test_print_run_coalesce.cpp
                 tests/features/combining_on_resize/test_combining.cpp
                 tests/features/osc8_insert_delete_lines/test_osc8_linerange.cpp
