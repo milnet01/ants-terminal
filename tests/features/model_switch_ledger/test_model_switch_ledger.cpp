@@ -397,3 +397,37 @@ TEST(ModelSwitchLedger, TierRankOrdering) {
     EXPECT_LT(L::tierRank("haiku"), L::tierRank("opus"));
     EXPECT_EQ(L::tierRank("bogus"), -1);
 }
+
+// ANTS-1936 — recency window filters stale records out of the aggregation.
+// A ledger with one ancient record (2020) and one fresh (now): a 30-day
+// window excludes the ancient one and surfaces excluded_stale_count + the
+// window_days echo; windowDays=0 (all-time) keeps everything.
+TEST(ModelSwitchLedger, Ants1936RecencyWindowExcludesStale) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("ledger.jsonl"));
+
+    L::Record old = makeRecord("opus", "haiku", false);
+    old.ts = QStringLiteral("2020-01-01T00:00:00Z");   // far past
+    L::Record fresh = makeRecord("opus", "haiku", false);
+    fresh.ts = L::nowIso8601();                          // now
+    ASSERT_TRUE(L::appendRecord(path, old));
+    ASSERT_TRUE(L::appendRecord(path, fresh));
+
+    // 30-day window: ancient record excluded.
+    L::StatsConfig windowed;
+    windowed.scope      = QStringLiteral("project");
+    windowed.windowDays = 30;
+    const QJsonObject envW = L::statsForScope(path, QStringLiteral("/mnt/proj"), windowed);
+    EXPECT_EQ(envW.value("window_days").toInt(), 30);
+    EXPECT_EQ(envW.value("excluded_stale_count").toInt(), 1);
+    const int windowedSwitches = envW.value("switches").toInt();
+
+    // All-time (windowDays=0): both records counted, no window fields.
+    L::StatsConfig allTime;
+    allTime.scope      = QStringLiteral("project");
+    allTime.windowDays = 0;
+    const QJsonObject envA = L::statsForScope(path, QStringLiteral("/mnt/proj"), allTime);
+    EXPECT_FALSE(envA.contains("window_days"));
+    EXPECT_FALSE(envA.contains("excluded_stale_count"));
+    EXPECT_GT(envA.value("switches").toInt(), windowedSwitches);
+}

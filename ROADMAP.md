@@ -8961,7 +8961,7 @@ indie-review finding.
   Source: in-session-2026-06-01 (ANTS-1923 investigation).
   Re-baseline 2026-06-01 (this session): NOT yet evaluable — ledger is contaminated. 28/29 records are pre-fix (2 on 2026-05-26, 26 on 2026-05-29); only 1 post-fix record exists (2026-06-01 Ants_Terminal, opus->sonnet, 6 turns, CLEAN session-end, no regret). All 6 under-route regrets date 2026-05-26/29 — exactly the pre-ANTS-1916 thrash ANTS-1923 already explained. So: (a) regret_rate 66.7% global / 75% project is STALE contamination, not fresh harm — do NOT re-open ANTS-1923 on this signal; (b) auto upgrades non-zero ✓ (by_trigger.auto.upgrades=10 global/7 project — ANTS-1930 working); (c) composer_not_empty near-misses rose to 19/24h (was 2/24h this morning) — consistent with active interactive typing, not a regression. Blocker: statsForScope aggregates ALL ledger records with no recency window, so the 2026-05-29 thrash poisons regret_rate until 256KiB drop-oldest evicts them (~never at 11KB usage). This item cannot resolve until that's fixed — see new recency-window item.
 
-- 📋 [ANTS-1936] **`model_switch_stats` firing/regret aggregation needs a recency window — stale pre-fix records poison the trust signal indefinitely.**
+- ✅ [ANTS-1936] **`model_switch_stats` firing/regret aggregation needs a recency window — stale pre-fix records poison the trust signal indefinitely.**
   statsForScope (modelswitchledger.cpp:525) aggregates EVERY ledger record for the scope with no date filter — only the near_misses block has a 24h window; avoided/regret/downgrade/under-route counts are all-time. After a behaviour-changing fix (ANTS-1916 stale-read, ANTS-1930 threshold rebalance) the old records keep regret_rate pinned high until the 256KiB drop-oldest eviction clears them — which at ~11KB current usage is effectively never. Concretely on 2026-06-01: 28/29 records are pre-fix 2026-05-26/29 thrash; the single post-fix record is clean; yet regret_rate reads 66.7% global. Fix: add a recency window to the firing aggregation, e.g. optional `window_days` param (default ~30) or `since_ms`, filtering records in statsForScope before statsEnvelope; surface the window + an `excluded_stale_count` in the envelope so callers know records were dropped. Unblocks ANTS-1935 and the §8 OQ-3 default-ON gate (both need to measure CURRENT behaviour). Pairs with ANTS-1935; keep all-time as the default or expose both.
   **Layman:** The model-switch report mixes in old data from before the May-29 bug fixes, so it keeps showing a high "regret" number even though the one switch since the fix went fine. Let the report focus on recent switches so it reflects how the feature behaves NOW.
   Kind: enhancement.
@@ -14930,28 +14930,28 @@ subsection.
   Source: in-session-2026-05-28 (user prompt: is the SessionStart cheat-sheet sufficient?).
   Resolved (2026-05-28): kOrientationScriptBody now includes roadmap_query + workspace_search bullets and a one-line footnote describing the op:-mode + etag_match+fields= patterns. INV-10 byte budget headroom remains (1154 / 1200). Existing tests (INV-12 byte-identity, INV-10 stdout-cap) cover the new body automatically — they compare against kOrientationScriptBody after arg(ANTS_VERSION) and assert ≤ 1200 chars.
 
-- 📋 [ANTS-1937] **`roadmap_log op:flip`/`flip_batch` can't resolve composite IDs containing comma+space (read-path `roadmap_query id=` can).**
+- ✅ [ANTS-1937] **`roadmap_log op:flip`/`flip_batch` can't resolve composite IDs containing comma+space (read-path `roadmap_query id=` can).**
   flip_batch/flip with id:"Ts20-DE1, Ts20-DE2" returns bullet_not_found, but roadmap_query id:"Ts20-DE1, Ts20-DE2" locates the same bullet. The write-path ID matcher likely splits on the comma; the read-path locator handles the composite. Make flip/flip_batch id-matching consistent with roadmap_query's id locator (or document that composite/comma IDs must use line_range/anchor). line_range fallback works. Low severity but a surprising read/write asymmetry that hits multi-finding Ts-bundle callers.
   **Layman:** When a roadmap item's ID has a comma in it, the "mark it done" tool can't find it — even though the search tool finds it fine. Make the two agree.
   Kind: fix.
   Lanes: remotecontrol, roadmap_log.
   Source: vestige-feedback-2026-05-29 Issue #25.
 
-- 📋 [ANTS-1938] **`model_switch_stats` 24h near-miss count + dominant-blocker disagree between `firings` and `near_misses` modes.**
+- ✅ [ANTS-1938] **`model_switch_stats` 24h near-miss count + dominant-blocker disagree between `firings` and `near_misses` modes.**
   Same 24h window, two modes: mode:firings slim block near_misses.total_24h=2 dominant=composer_not_empty (remotecontrol.cpp:7786-7799) vs mode:near_misses window_24h.total=22 dominant=focused_state_not_idle 86% (modelnearmissledger.cpp:258-272). The two paths compute the 24h near-miss summary differently. Reconcile them, or document precisely what the slim firings block counts (it appears narrower) so callers don't trust the wrong dominant blocker. Diagnostic-only but directly misleads the daily "what's blocking the switcher" read.
   **Layman:** The model-switcher's "what's blocking it today" number is different depending on which report you ask for — one says 2, the other says 22, and they even name different top blockers. Make them agree.
   Kind: fix.
   Lanes: modelnearmissledger, remotecontrol.
   Source: vestige-feedback-2026-06-01 Issue #26.
 
-- 📋 [ANTS-1939] **Extend the ANTS-1908 human-idle soft-veto to the `focused_state_not_idle` gate (now the dominant near-miss blocker).**
+- ✅ [ANTS-1939] **Extend the ANTS-1908 human-idle soft-veto to the `focused_state_not_idle` gate (now the dominant near-miss blocker).**
   focused_state_not_idle is now the dominant 24h near-miss blocker on Vestige (86%, 19/22). ANTS-1908 made composer_not_empty a stale-text soft-veto; this asks the same human-idle treatment for focused_state_not_idle — distinguish human-active (recent keystroke) from agent-active. No human keystroke for N min while the agent runs = autonomous-loop window where a downgrade is appropriate. MUST compose with ANTS-1917 (idle_end_of_session suppression): relax focused_state for agent-active-human-idle WITHOUT re-enabling end-of-session tail switches. A unified "session human-idle for N min" check could subsume both the composer and focused_state gates cleanly (the two together cover ~100% of observed near-misses).
   **Layman:** The auto-switcher won't change models while a Claude session looks "busy" — but during a long hands-off task, "busy" means the agent is grinding away, which is exactly when a cheaper model would save the most. Let it switch when YOU haven't typed in a while, even if the agent is still working.
   Kind: enhancement.
   Lanes: modelautoswitch, claudestatuswidgets.
   Source: vestige-feedback-2026-05-29/06-01 (ANTS-1908 scope-expansion ask).
 
-- 📋 [ANTS-1940] **Auto-switcher calibration robustness — regret-driven conservatism + task-shape downgrade signal.**
+- ✅ [ANTS-1940] **Auto-switcher calibration robustness — regret-driven conservatism + task-shape downgrade signal.**
   First Vestige session the switcher fired (7 switches, opus_turns_avoided 12) but regret_rate 50% at 4/10 measured. Ideas: (1) regret-driven conservatism — while measured_downgrades<headline_floor AND regret_rate>~40%, auto-raise min_dwell_sec or the floor tier so the switcher earns trust before getting eager (today eagerness is constant regardless of observed regret); (2) task-shape signal — factor recent tool-call diversity / edit complexity into the downgrade decision (mechanical Edit/Read/grep streak = safe downgrade window; multi-file spec/design rewrite = not), since the regret cluster aligned with reasoning bursts inside an otherwise-mechanical bundle; (3) surface a combined "mis-route rate" (regret + under-route) in the headline once past the floor (ANTS-1891 already folds under-route into the regret numerator). Pairs with ANTS-1936 (recency window) + ANTS-1935 (re-baseline).
   **Layman:** Now that the auto-switcher actually fires, the first real data shows it guesses wrong about half the time (on a tiny sample). Make it more cautious while it's still learning, and make it notice fiddly mechanical work (safe to use a cheaper model) versus deep reasoning (don't).
   Kind: enhancement.

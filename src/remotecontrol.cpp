@@ -722,11 +722,19 @@ QString rcNormaliseHeadline(const QString &raw) {
 }
 
 bool rcExtractBoldId(const QString &lineHead, QString *id) {
+    // ANTS-1937 — match readmapdialog.cpp::extractBoldId's looser pattern
+    // to support composite IDs like "Ts20-DE1, Ts20-DE2". Captures any text
+    // up to 80 chars, then trims trailing period + whitespace (matching the
+    // read-path post-processing at roadmapdialog.cpp:562-563).
     static const QRegularExpression rx(QStringLiteral(
-        "^\\*\\*([A-Z][A-Za-z0-9_-]{0,15})\\.\\*\\*"));
+        "^\\*\\*(.{1,80}?)\\*\\*"));
     const auto m = rx.match(lineHead);
     if (!m.hasMatch()) return false;
-    if (id) *id = m.captured(1);
+    QString captured = m.captured(1);
+    if (captured.endsWith(QLatin1Char('.'))) captured.chop(1);
+    captured = captured.trimmed();
+    if (captured.isEmpty()) return false;
+    if (id) *id = captured;
     return true;
 }
 

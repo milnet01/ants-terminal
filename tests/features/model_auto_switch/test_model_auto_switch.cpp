@@ -104,6 +104,84 @@ TEST(ModelAutoSwitch, Ants1908SentinelKeepsHardVeto) {
     EXPECT_TRUE(dec.blockedBy.contains(QStringLiteral("composer_not_empty")));
 }
 
+// ANTS-1939 — focused_state_not_idle soft-veto. When the agent is busy
+// (state != Idle) but the human hasn't typed for ≥ the stale threshold, the
+// veto yields: an autonomous-loop window where a cheaper model saves the most.
+TEST(ModelAutoSwitch, Ants1939FocusedStateHumanIdleYields) {
+    Gate g = actingGate();
+    g.focusedState  = ClaudeState::ToolUse;       // agent grinding away
+    g.composerStaleMs = ModelAutoSwitch::kComposerStaleVetoMs;  // human idle
+    const auto dec = ModelAutoSwitch::decide(g);
+    EXPECT_TRUE(dec.act) << "human-idle agent-active window should yield";
+    EXPECT_FALSE(dec.blockedBy.contains(QStringLiteral("focused_state_not_idle")))
+        << "blockedBy should not carry focused_state_not_idle when human idle";
+}
+
+// ANTS-1939 — a recent keystroke while the agent is busy keeps the hard veto
+// (the human is actively driving; don't switch under them).
+TEST(ModelAutoSwitch, Ants1939FreshKeystrokeStillBlocksFocusedState) {
+    Gate g = actingGate();
+    g.focusedState  = ClaudeState::ToolUse;
+    g.composerStaleMs = ModelAutoSwitch::kComposerStaleVetoMs - 1;
+    const auto dec = ModelAutoSwitch::decide(g);
+    EXPECT_FALSE(dec.act);
+    EXPECT_TRUE(dec.blockedBy.contains(QStringLiteral("focused_state_not_idle")));
+}
+
+// ANTS-1939 — sentinel -1 (no keystroke telemetry) preserves the legacy
+// hard-veto behaviour for the focused_state gate.
+TEST(ModelAutoSwitch, Ants1939SentinelKeepsHardVetoFocusedState) {
+    Gate g = actingGate();
+    g.focusedState  = ClaudeState::Thinking;
+    g.composerStaleMs = -1;
+    const auto dec = ModelAutoSwitch::decide(g);
+    EXPECT_FALSE(dec.act);
+    EXPECT_TRUE(dec.blockedBy.contains(QStringLiteral("focused_state_not_idle")));
+}
+
+// ANTS-1939 — composes with ANTS-1917 idle_end_of_session. The two gates
+// cover complementary cases: focused_state fires when NOT idle, idle gate
+// when idle. A human-idle agent-active window (state != Idle, idleElapsedMs
+// == -1 because the shell isn't idle) acts WITHOUT re-enabling end-of-session
+// tail switches. Conversely a genuine end-of-session idle (state == Idle,
+// idleElapsedMs past ceiling) still blocks.
+TEST(ModelAutoSwitch, Ants1939ComposesWithIdleEndOfSession) {
+    // Agent-active, human-idle: focused_state yields, idle gate dormant → act.
+    Gate active = actingGate();
+    active.focusedState  = ClaudeState::ToolUse;
+    active.composerStaleMs = ModelAutoSwitch::kComposerStaleVetoMs;
+    active.idleElapsedMs = -1;                   // shell not idle
+    EXPECT_TRUE(ModelAutoSwitch::decide(active).act);
+
+    // End-of-session: shell idle past the ceiling → idle_end_of_session blocks
+    // even though focused_state is Idle and the human is long gone.
+    Gate eos = actingGate();
+    eos.focusedState  = ClaudeState::Idle;
+    eos.composerStaleMs = ModelAutoSwitch::kComposerStaleVetoMs;
+    eos.idleElapsedMs = ModelAutoSwitch::kIdleEndOfSessionMs;
+    const auto dec = ModelAutoSwitch::decide(eos);
+    EXPECT_FALSE(dec.act);
+    EXPECT_TRUE(dec.blockedBy.contains(QStringLiteral("idle_end_of_session")));
+}
+
+// ANTS-1940 — regret-driven conservatism multiplier truth table.
+TEST(ModelAutoSwitch, Ants1940ConservatismMultiplier) {
+    using ModelAutoSwitch::conservatismDwellMultiplier;
+    const int floor = 10;
+    // Past the floor → no penalty regardless of regret.
+    EXPECT_DOUBLE_EQ(conservatismDwellMultiplier(10, 90, floor, false), 1.0);
+    EXPECT_DOUBLE_EQ(conservatismDwellMultiplier(15, 90, floor, true), 1.0);
+    // Calibrating with low regret → no penalty.
+    EXPECT_DOUBLE_EQ(conservatismDwellMultiplier(4, 40, floor, false), 1.0);
+    EXPECT_DOUBLE_EQ(conservatismDwellMultiplier(4, 30, floor, false), 1.0);
+    // Calibrating with high regret, non-mechanical → full multiplier.
+    EXPECT_DOUBLE_EQ(conservatismDwellMultiplier(4, 50, floor, false),
+                     ModelAutoSwitch::kCalibrationDwellMult);
+    // Calibrating with high regret, mechanical → half the penalty (safe window).
+    EXPECT_DOUBLE_EQ(conservatismDwellMultiplier(4, 50, floor, true),
+                     1.0 + (ModelAutoSwitch::kCalibrationDwellMult - 1.0) * 0.5);
+}
+
 // INV-4: clamped target already equals current → no-op (hysteresis on the
 // clamped target).
 TEST(ModelAutoSwitch, Inv4NoChangeNeverActs) {

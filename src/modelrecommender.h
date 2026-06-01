@@ -11,6 +11,10 @@ struct Result {
     Tier    tier         = Tier::Sonnet;
     QString reason;       // short rationale for the tooltip
     QString currentModel; // message.model from most-recent assistant turn
+    // ANTS-1940 — task-shape signal: true when the last scoring window shows
+    // purely mechanical work (fileWriteCount==0 && toolDiversity<=2). Used by
+    // the auto-switch gate to relax the dwell floor on downgrade-to-Haiku.
+    bool    isMechanical = false;
 };
 
 // score() reads at most 512 KB from the tail of the JSONL transcript

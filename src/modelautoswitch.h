@@ -128,6 +128,20 @@ StabilityState advanceStability(const StabilityState     &prev,
 // is tierName(clampToFloor(recommended,floor)) and nothing else (INV-7/INV-9).
 Decision decide(const Gate &g);
 
+// ANTS-1940 — regret-driven conservatism. While the switcher is still
+// calibrating (measuredDowngrades < headlineFloor) AND observed regret is high
+// (regretRatePct > kRegretConservatismPct), the effective min-dwell is
+// stretched so the switcher earns trust before getting eager. Returns a
+// multiplier in [1.0, kCalibrationDwellMult] applied to the configured dwell.
+// A clearly-mechanical session (isMechanical) is a safe downgrade window, so
+// it halves the penalty; a non-mechanical session under high regret gets the
+// full multiplier. Past the floor OR with acceptable regret it returns 1.0
+// (no change). Pure — table-testable without a live ledger.
+double conservatismDwellMultiplier(int  measuredDowngrades,
+                                   int  regretRatePct,
+                                   int  headlineFloor,
+                                   bool isMechanical);
+
 constexpr int    kStableTicks      = 2;   // ~4 s at the 2 s status tick (INV-5)
 // ANTS-1925 — reset-hysteresis. The stable counter resets only after this
 // many consecutive ticks where clampedTarget==current. A single noise tick
@@ -160,5 +174,14 @@ constexpr qint64 kComposerStaleVetoMs = 5 * 60 * 1'000;   // 5 min
 // On a /loop autonomous session the idle gaps stay short (the loop continues),
 // so switches fire normally until the task actually ends.
 constexpr qint64 kIdleEndOfSessionMs = 3 * 60 * 1'000;    // 3 min
+// ANTS-1940 — regret-driven conservatism tuning.
+// kRegretConservatismPct: regret_rate above this (while still calibrating)
+// trips the conservatism multiplier. 40 % matches the roadmap's "guesses
+// wrong about half the time" trigger without firing on a single bad call.
+constexpr int    kRegretConservatismPct = 40;
+// kCalibrationDwellMult: how far the effective min-dwell is stretched when
+// conservatism is active. 2× doubles the gap between downgrades so the
+// switcher accrues measured outcomes more slowly but with less churn.
+constexpr double kCalibrationDwellMult  = 2.0;
 
 }  // namespace ModelAutoSwitch

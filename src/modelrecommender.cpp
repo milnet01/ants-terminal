@@ -324,15 +324,19 @@ Result score(const QString &transcriptPath)
     // clustering trips earlier, old clustering trips later, by design.
     int sc = 0;
     QString reasons;
+    // ANTS-1940 — mechanical predicate hoisted to a named bool so the
+    // task-shape signal can ride out on the Result (the gate uses it as a
+    // safe-downgrade-window hint). Same condition as the score contribution.
+    const bool mechanical = (fileWriteCount == 0 && toolDiversity <= 2);
     if (weightedWrites >= 8.0)   { sc += 2; reasons += QStringLiteral("many_writes "); }
     if (toolDiversity >= 6)      { sc += 1; reasons += QStringLiteral("tool_diversity "); }
     if (planKeyword)             { sc += 2; reasons += QStringLiteral("plan_keyword "); }
     if (avgLen >= 500.0)         { sc += 1; reasons += QStringLiteral("long_prompts "); }
-    if (fileWriteCount == 0 &&
-            toolDiversity <= 2)  { sc -= 2; reasons += QStringLiteral("mechanical "); }
+    if (mechanical)              { sc -= 2; reasons += QStringLiteral("mechanical "); }
 
     Result r;
     r.currentModel = def.currentModel;
+    r.isMechanical = mechanical;
     // ANTS-1930 — rebalanced thresholds for symmetric upgrades/downgrades.
     // Pre-1930: >= 3 (Opus) / <= -1 (Haiku) created a one-way ratchet that
     // blocked upgrades while favoring downgrades. New thresholds:

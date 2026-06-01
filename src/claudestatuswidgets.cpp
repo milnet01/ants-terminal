@@ -1490,8 +1490,15 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
                                : kMaxDwellSentinel();
 
     // Configurable min-dwell — clamped via Config::claudeAutoModel().
-    const qint64 minDwellMs =
+    // ANTS-1940 — scale by the regret-driven conservatism multiplier (1.0
+    // when trust is established or regret is low; up to 2× while calibrating
+    // with high regret, halved to 1.5× in a clearly-mechanical session).
+    const qint64 minDwellMsBase =
         static_cast<qint64>(autoCfg.value("min_dwell_sec").toInt(90)) * 1000;
+    const double conservMult = conservatismMultiplierFor(
+        focused->shellCwd(), nowMs, rec.isMechanical);
+    const qint64 minDwellMs = static_cast<qint64>(
+        static_cast<double>(minDwellMsBase) * conservMult);
 
     // ANTS-1890 INV-7 / INV-8 — per-project override cool-down. Look up
     // the cached ms timestamp for the focused tab's project; -1 sentinel
@@ -1740,6 +1747,50 @@ QString shortenReason(const QString &reason) {
 }
 
 }  // namespace
+
+// ANTS-1940 — conservatism multiplier, lazily refreshed every 60 s.
+// Reads the firing ledger (with a 30-day window) to get the current regret
+// picture. Result cached per project root; the ledger read only happens on
+// the first tick after the TTL expires, not on every 2 s tick.
+double ClaudeStatusBarController::conservatismMultiplierFor(
+        const QString &projectRoot,
+        qint64         nowMs,
+        bool           isMechanical)
+{
+    // Check TTL.
+    if (m_conservatismStampMsByProject.contains(projectRoot)) {
+        const qint64 stamp = m_conservatismStampMsByProject.value(projectRoot);
+        if (nowMs - stamp < kConservatismTtlMs) {
+            // Cache still fresh; re-derive based on current isMechanical.
+            const double cached = m_conservatismMultByProject.value(projectRoot, 1.0);
+            // Re-apply isMechanical influence to cached multiplier if > 1.
+            if (cached > 1.0 && isMechanical) {
+                const double penalty = ModelAutoSwitch::kCalibrationDwellMult - 1.0;
+                return 1.0 + penalty * 0.5;
+            }
+            return cached;
+        }
+    }
+
+    // TTL expired (or first call) — re-read the ledger.
+    ModelSwitchLedger::StatsConfig sc;
+    sc.scope     = QStringLiteral("project");
+    sc.windowDays = 30;
+    const QJsonObject env = ModelSwitchLedger::statsForScope(
+        ModelSwitchLedger::defaultLedgerPath(), projectRoot, sc);
+
+    const int measured = env.value(QStringLiteral("measured_downgrades")).toInt(0);
+    const int floor    = env.value(QStringLiteral("headline_floor")).toInt(10);
+    const int regret   = static_cast<int>(
+        env.value(QStringLiteral("regret_rate")).toDouble(0.0) + 0.5);
+
+    const double mult = ModelAutoSwitch::conservatismDwellMultiplier(
+        measured, regret, floor, isMechanical);
+
+    m_conservatismMultByProject[projectRoot]    = mult;
+    m_conservatismStampMsByProject[projectRoot] = nowMs;
+    return mult;
+}
 
 // ANTS-1894 — sole producer of near-miss records. Emits on signature change
 // (INV-5) gated by a 5 s per-project floor (INV-6). dec.blockedBy must be

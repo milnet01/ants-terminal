@@ -159,6 +159,10 @@ struct StatsConfig {
     // disables the enrichment so existing callers see no change.
     int     nearMissTotal24h     = 0;
     QString nearMissDominantBlocker;
+    // ANTS-1936 — recency window in days. Records older than this are excluded
+    // from the aggregation to prevent stale pre-fix records from poisoning the
+    // trust signal indefinitely. 0 = no window (all-time). Default ~30 days.
+    int     windowDays           = 30;
 };
 QJsonObject statsEnvelope(const QList<Record> &recs,
                           const StatsConfig &cfg = {});

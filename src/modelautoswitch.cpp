@@ -74,8 +74,25 @@ Decision decide(const Gate &g) {
     // NOT rename or reorder (consumers persist them to disk).
     if (!g.enabled)
         d.blockedBy << QStringLiteral("auto_switch_disabled");
-    if (g.focusedState != ClaudeState::Idle)
-        d.blockedBy << QStringLiteral("focused_state_not_idle");
+    // ANTS-1939 — focused_state_not_idle soft-veto. Mirrors the ANTS-1908
+    // composer gate: when the agent is busy (state != Idle) but the human
+    // hasn't typed for >= composerStaleThresholdMs, treat it as an autonomous
+    // window and allow the downgrade. This is exactly when a cheaper model
+    // saves the most without interrupting the user. Composes safely with
+    // ANTS-1917 idle_end_of_session: that gate only fires when the shell IS
+    // idle (idleElapsedMs >= 0); this gate fires when it is NOT idle — the
+    // two gates cover complementary, non-overlapping cases.
+    // -1 sentinel preserves legacy hard-veto behaviour for callers without
+    // keystroke telemetry (bit-for-bit pre-1939 semantics).
+    if (g.focusedState != ClaudeState::Idle) {
+        const qint64 threshold = (g.composerStaleThresholdMs >= 0)
+            ? g.composerStaleThresholdMs
+            : kComposerStaleVetoMs;
+        const bool humanIdle = (g.composerStaleMs >= 0) &&
+                               (g.composerStaleMs >= threshold);
+        if (!humanIdle)
+            d.blockedBy << QStringLiteral("focused_state_not_idle");
+    }
     // ANTS-1908 — composer_not_empty soft-veto. The veto YIELDS when
     // the composer carries text but hasn't been touched within the
     // configurable stale window — this unblocks long autonomous
@@ -132,6 +149,22 @@ Decision decide(const Gate &g) {
         d.tierArg = ModelRecommender::tierName(target);    // INV-7 / INV-9 (ANTS-1735)
     }
     return d;
+}
+
+double conservatismDwellMultiplier(int  measuredDowngrades,
+                                   int  regretRatePct,
+                                   int  headlineFloor,
+                                   bool isMechanical) {
+    // Past calibration: trust is established, no conservatism penalty.
+    if (measuredDowngrades >= headlineFloor) return 1.0;
+    // Regret within tolerance: the early signal looks fine, stay eager.
+    if (regretRatePct <= kRegretConservatismPct) return 1.0;
+    // Calibrating with high regret — stretch the dwell. A clearly-mechanical
+    // session is a safer downgrade window, so halve the penalty there.
+    const double penalty = kCalibrationDwellMult - 1.0;
+    const double mult = isMechanical ? (1.0 + penalty * 0.5)
+                                     : kCalibrationDwellMult;
+    return mult;
 }
 
 }  // namespace ModelAutoSwitch

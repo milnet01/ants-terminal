@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **Auto-switcher calibration robustness — regret-driven conservatism + task-shape downgrade signal.** (ANTS-1940)
+  Now that the auto-switcher actually fires, the first real data shows it guesses wrong about half the time (on a tiny sample). Make it more cautious while it's still learning, and make it notice fiddly mechanical work (safe to use a cheaper model) versus deep reasoning (don't).
+
+- **Extend the ANTS-1908 human-idle soft-veto to the `focused_state_not_idle` gate (now the dominant near-miss blocker).** (ANTS-1939)
+  The auto-switcher won't change models while a Claude session looks "busy" — but during a long hands-off task, "busy" means the agent is grinding away, which is exactly when a cheaper model would save the most. Let it switch when YOU haven't typed in a while, even if the agent is still working.
+
+- **`model_switch_stats` firing/regret aggregation needs a recency window — stale pre-fix records poison the trust signal in…** (ANTS-1936)
+  The model-switch report mixes in old data from before the May-29 bug fixes, so it keeps showing a high "regret" number even though the one switch since the fix went fine. Let the report focus on recent switches so it reflects how the feature behaves NOW.
+
 - **`model_switch_stats` should split upgrades/downgrades by trigger (auto vs manual) — current totals can't answer "is the …** (ANTS-1934)
   The model-switch report mixes together the switches YOU make by hand and the ones the app makes automatically
 
@@ -69,6 +78,12 @@ for security-relevant changes.
   Vestige reports that the format-detector for ROADMAP files is still returning 'unknown' on their project despite the previous fix being marked shipped. Either the fix isn't reaching their build, or it doesn't cover their specific roadmap shape. Needs a trace field + CI fixture.
 
 ### Fixed
+
+- **`model_switch_stats` 24h near-miss count + dominant-blocker disagree between `firings` and `near_misses` modes.** (ANTS-1938)
+  The model-switcher's "what's blocking it today" number is different depending on which report you ask for — one says 2, the other says 22, and they even name different top blockers. Make them agree.
+
+- **`roadmap_log op:flip`/`flip_batch` can't resolve composite IDs containing comma+space (read-path `roadmap_query id=` can…** (ANTS-1937)
+  When a roadmap item's ID has a comma in it, the "mark it done" tool can't find it — even though the search tool finds it fine. Make the two agree.
 
 - **Inline graphics: back-to-back Sixel/Kitty/OSC sequences no longer lose a byte (ANTS-1777)** (ANTS-1777)
   Terminals that stream pictures in back-to-back chunks (Sixel, Kitty

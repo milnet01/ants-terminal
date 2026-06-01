@@ -527,9 +527,31 @@ QJsonObject statsForScope(const QString &ledgerPath,
                           const StatsConfig &cfg) {
     const bool global = (cfg.scope == QStringLiteral("global"));
     QList<Record> scoped;
-    for (const Record &r : readRecords(ledgerPath))   // absent ledger → empty
-        if (global || r.project == projectRoot) scoped.append(r);
-    return statsEnvelope(scoped, cfg);
+    int excludedStaleCount = 0;
+    // ANTS-1936 — filter by window_days if set (0 = all-time).
+    const qint64 nowMs = (cfg.windowDays > 0)
+        ? QDateTime::currentMSecsSinceEpoch() : -1;
+    const qint64 windowMs = static_cast<qint64>(cfg.windowDays) * 24 * 60 * 60 * 1000;
+
+    for (const Record &r : readRecords(ledgerPath)) {
+        if (!global && r.project != projectRoot) continue;
+        // Apply window filter if enabled.
+        if (cfg.windowDays > 0 && nowMs > 0) {
+            const qint64 tsMs = parseIso8601Ms(r.ts);
+            if (tsMs > 0 && nowMs - tsMs > windowMs) {
+                ++excludedStaleCount;
+                continue;
+            }
+        }
+        scoped.append(r);
+    }
+    QJsonObject env = statsEnvelope(scoped, cfg);
+    // Surface window info for callers to know records were filtered.
+    if (cfg.windowDays > 0) {
+        env[QStringLiteral("window_days")]        = cfg.windowDays;
+        env[QStringLiteral("excluded_stale_count")] = excludedStaleCount;
+    }
+    return env;
 }
 
 // Back-compat thin wrapper — no config surfaced, project scope.
