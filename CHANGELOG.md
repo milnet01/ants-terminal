@@ -70,6 +70,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`changelog_log op:add_from_roadmap` drops the Layman line from the CHANGELOG body — regression, failing test.** (ANTS-1933)
+  The shortcut that copies a roadmap item into the changelog is currently leaving out the plain-English summary line — so changelog entries created that way are missing their friendly description
+
 - **Auto-switcher stable-counter reset-hysteresis reduces false ticks_target_stable_insufficient blocks** (ANTS-1925)
   A single score-boundary noise tick no longer wipes the stability counter.\nRequires kStableResetTicks (=2) consecutive target==current ticks before\nresetting, matching the same 4 s window as the forward stability gate.
 
