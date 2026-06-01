@@ -349,9 +349,20 @@ QJsonObject statsEnvelope(const QList<Record> &recs, const StatsConfig &cfg) {
     int inconclusiveCount = 0;    // ANTS-1891 — 0-turn, 0-signal settled downgrades
     int cleanEndCount     = 0;    // ANTS-1891 — sessionCleanlyEndedOnNewTier=true
     int toHaiku = 0, toSonnet = 0, toOpus = 0;
+    // ANTS-1934 — split upgrades/downgrades by trigger so a reader can answer
+    // "is the AUTONOMOUS switcher upgrading?" without conflating manual
+    // chip-click / user-/model switches. NOTE: today every appended record
+    // carries trigger=="auto" (the chip-click + Undo paths send /model but do
+    // NOT append a ledger record — see claudestatuswidgets.cpp), so the
+    // `manual` bucket is structurally 0 and `auto` mirrors the flat totals.
+    // The split is still load-bearing: it makes that guarantee explicit on the
+    // wire (a caller no longer has to *know* the ledger is auto-only), and it
+    // future-proofs the envelope if manual switches ever start being recorded.
+    int autoUp = 0, autoDown = 0, manualUp = 0, manualDown = 0;
 
     const QString haiku = QStringLiteral("haiku");
     const QString opus  = QStringLiteral("opus");
+    const QString autoTrigger = QStringLiteral("auto");
 
     for (const Record &r : recs) {
         const int rf = tierRank(r.fromTier);
@@ -367,6 +378,11 @@ QJsonObject statsEnvelope(const QList<Record> &recs, const StatsConfig &cfg) {
         const bool isUpgrade   = (rf >= 0 && rt >= 0 && rt > rf);
         if (isDowngrade) ++downgrades;
         if (isUpgrade)   ++upgrades;
+
+        // ANTS-1934 — same delta, partitioned by who initiated the switch.
+        const bool isAuto = (r.trigger == autoTrigger);
+        if (isDowngrade) { if (isAuto) ++autoDown; else ++manualDown; }
+        if (isUpgrade)   { if (isAuto) ++autoUp;   else ++manualUp; }
 
         // Turns on the cheaper tier after leaving Opus are Opus turns avoided;
         // turns on Opus after upgrading to it are Opus turns routed in.
@@ -415,6 +431,17 @@ QJsonObject statsEnvelope(const QList<Record> &recs, const StatsConfig &cfg) {
     byTier[QStringLiteral("haiku")]  = toHaiku;
     byTier[QStringLiteral("sonnet")] = toSonnet;
     byTier[QStringLiteral("opus")]   = toOpus;
+
+    // ANTS-1934 — by_trigger:{auto,manual:{upgrades,downgrades}}.
+    auto triggerObj = [](int up, int down) {
+        QJsonObject o;
+        o[QStringLiteral("upgrades")]   = up;
+        o[QStringLiteral("downgrades")] = down;
+        return o;
+    };
+    QJsonObject byTrigger;
+    byTrigger[QStringLiteral("auto")]   = triggerObj(autoUp, autoDown);
+    byTrigger[QStringLiteral("manual")] = triggerObj(manualUp, manualDown);
 
     // ANTS-1891 — headline format adds the floor phrase (improvement E) and
     // withholds the ratio until measuredDowngrades ≥ kHeadlineFloorMeasured.
@@ -479,6 +506,7 @@ QJsonObject statsEnvelope(const QList<Record> &recs, const StatsConfig &cfg) {
     env[QStringLiteral("under_route_count")]        = underRouteCount;
     env[QStringLiteral("pending_count")]            = pendingCount;
     env[QStringLiteral("by_tier")]                  = byTier;
+    env[QStringLiteral("by_trigger")]               = byTrigger;   // ANTS-1934
     // ANTS-1891 — new envelope fields (additive per INV-9).
     env[QStringLiteral("inconclusive_count")]       = inconclusiveCount;
     env[QStringLiteral("clean_end_count")]          = cleanEndCount;

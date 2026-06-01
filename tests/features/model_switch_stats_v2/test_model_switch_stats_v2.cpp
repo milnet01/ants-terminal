@@ -368,6 +368,45 @@ TEST(ModelSwitchStatsV2_INV9, EnvelopeFieldsPresent)
 }
 
 // ---------------------------------------------------------------------------
+// ANTS-1934 — by_trigger split. Upgrades/downgrades are partitioned by
+// `trigger` so a reader can isolate the autonomous switcher's behaviour.
+// ---------------------------------------------------------------------------
+TEST(ModelSwitchStatsV2_ANTS1934, ByTriggerSplit)
+{
+    QList<L::Record> recs;
+    // 2 auto downgrades (opus→haiku) + 1 auto upgrade (haiku→opus).
+    recs << makeDowngrade(1, false, false, false, false, false);   // auto down
+    recs << makeDowngrade(1, false, false, false, false, false);   // auto down
+    {
+        L::Record up = makeDowngrade(0, false, false, false, false, false,
+                                     QStringLiteral("haiku"),
+                                     QStringLiteral("opus"));       // auto up
+        recs << up;
+    }
+    // 1 MANUAL upgrade (sonnet→opus) — should land in the manual bucket only.
+    {
+        L::Record m = makeDowngrade(0, false, false, false, false, false,
+                                    QStringLiteral("sonnet"),
+                                    QStringLiteral("opus"));
+        m.trigger = QStringLiteral("chip");   // non-"auto" → manual
+        recs << m;
+    }
+
+    QJsonObject env = L::statsEnvelope(recs, enabledCfg());
+    // Flat totals (back-compat) blend both triggers.
+    EXPECT_EQ(env.value(QStringLiteral("upgrades")).toInt(), 2);
+    EXPECT_EQ(env.value(QStringLiteral("downgrades")).toInt(), 2);
+
+    const QJsonObject bt = env.value(QStringLiteral("by_trigger")).toObject();
+    const QJsonObject a  = bt.value(QStringLiteral("auto")).toObject();
+    const QJsonObject m  = bt.value(QStringLiteral("manual")).toObject();
+    EXPECT_EQ(a.value(QStringLiteral("upgrades")).toInt(),   1);
+    EXPECT_EQ(a.value(QStringLiteral("downgrades")).toInt(), 2);
+    EXPECT_EQ(m.value(QStringLiteral("upgrades")).toInt(),   1);
+    EXPECT_EQ(m.value(QStringLiteral("downgrades")).toInt(), 0);
+}
+
+// ---------------------------------------------------------------------------
 // INV-10 — legacy record JSON round-trip (missing field → false).
 // ---------------------------------------------------------------------------
 TEST(ModelSwitchStatsV2_INV10, LegacyRecordRoundTrip)

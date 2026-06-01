@@ -8196,7 +8196,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-05-29.
 
-- 📋 [ANTS-1934] **`model_switch_stats` should split upgrades/downgrades by trigger (auto vs manual) — current totals can't answer "is the AUTO-switcher upgrading?".**
+- ✅ [ANTS-1934] **`model_switch_stats` should split upgrades/downgrades by trigger (auto vs manual) — current totals can't answer "is the AUTO-switcher upgrading?".**
   User's core observation 2026-05-29: "we have never seen the reverse from Haiku→Sonnet/Opus or Sonnet→Opus" — the auto-switcher only ever downgrades. But `model_switch_stats` reports `upgrades:7` (project) / `10` (global), which seems to contradict it.
   
   Root of the confusion: modelswitchledger.cpp:366-369 counts `upgrades`/`downgrades` over ALL ledger records by tier-rank delta, regardless of `r.trigger` ("auto" vs manual chip-click / user /model). So the headline upgrade count can be inflated by MANUAL switches the user made themselves — it does NOT isolate what the autonomous switcher did on its own. The user is right about the auto-switcher (the ANTS-1930 scoring asymmetry confirms it); the stat just couldn't show it.
@@ -8209,6 +8209,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** The switch-stats report lumps your manual model switches together with the automatic ones, so you can't tell whether the AUTO-switcher is actually upgrading. Split the counts by auto vs manual.
   Kind: enhancement.
   Source: user-report-2026-05-29.
+  Resolved 2026-06-01: by_trigger:{auto,manual:{upgrades,downgrades}} added to statsEnvelope(). Note corrected: manual switches are not logged today so manual bucket is structurally 0; the split makes that guarantee explicit on the wire. New test ModelSwitchStatsV2_ANTS1934.ByTriggerSplit covers the 4-record mixed-trigger scenario.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
@@ -8925,17 +8926,19 @@ indie-review finding.
   Lanes: claudetabtracker, remotecontrol, observability.
   Source: in-session-2026-05-25 (couldn't self-verify the ANTS-1862 dot fix — no MCP surface for the dot state).
 
-- 📋 [ANTS-1913] **Drop unused `<csignal>` include from `claudestatuswidgets.cpp`.**
+- ✅ [ANTS-1913] **Drop unused `<csignal>` include from `claudestatuswidgets.cpp`.**
   **Layman:** clangd flags `csignal` as included but unused at line 24. Trivial single-line removal; doesn't affect anything at runtime.
   Kind: chore.
   Lanes: claudestatuswidgets.
   Source: in-session-clangd-warning-2026-05-29.
+  Resolved 2026-06-01: stale — ANTS-1924 already replaced csignal with signal.h (used by ::kill). Nothing to drop.
 
 - 📋 [ANTS-1923] **Auto-model-switcher: investigate dominant ticks_target_stable_insufficient near-miss blocker + 100% regret on measured downgrades.**
   model_switch_stats (project scope, 2026-05-29): switches=17, downgrades=10 (measured=2, inconclusive=8), regret_count=2, regret_rate=100, opus_turns_avoided=0, clean_end_count=0, weighted_avoided=0. near_misses.total_24h=96, ALL blocked by ticks_target_stable_insufficient. Two signals: (1) one gate dominates 96/96 near-misses — is the "target tier stable for N ticks" threshold too strict to ever pass? (2) both measured downgrades regretted — tiny sample (calibrating 2/10) but watch. Action: instrument why ticks_target_stable_insufficient fires so often; consider whether dwell + stability gates double-count. No config change yet — gather more data first.
   **Layman:** The auto model-picker is constantly evaluating but almost never allowed to act, and the few times it did downgrade in this project, both were later regretted. Worth checking whether the safety gate is mistuned — too strict to ever help, yet still firing the wrong picks when it does.
   Kind: investigate.
   Source: in-session-2026-05-29 (model_switch_stats review).
+  Investigation 2026-06-01: the 100% regret (3/3 measured) and 7 rapid sonnet→opus upgrades in the live ledger are pre-ANTS-1916 thrash — captured on 2026-05-29 between 10:57–11:05 (one switch every ~90 s dwell). Post-ANTS-1916 fix the stale-model-state read is gone; the auto->upgrade path is confirmed working (all 28 ledger records are trigger:auto, no manual inflation). Current composer_not_empty near-misses (2/24h) are the post-fix baseline. Re-baseline tracked in ANTS-1935.
 
 - 📋 [ANTS-1929] **Auto-switcher scope expanded — Claude Code auto-mode now works on Sonnet + Opus (was Opus-only).**
   As of 2026-05-29, Claude Code's auto-mode feature works on Sonnet and Opus, not just Opus. This expands the auto-switcher's useful range: Haiku (never auto-switch into, floor-only) → Sonnet (auto-switch available) → Opus (auto-switch available).
@@ -8947,6 +8950,12 @@ indie-review finding.
   Layman: Claude Code's auto model-switcher now works more broadly — you can use it on Sonnet as well as Opus, which makes the automatic switching feature available more often.
   Kind: enhancement.
   Source: user-feedback-2026-05-29.
+
+- 📋 [ANTS-1935] **Auto-switcher post-fix re-baseline — measure effectiveness after ANTS-1912/1916/1918/1924/1930 fixes.**
+  Pre-fix ledger (28 records, all 2026-05-29) showed 100% regret and rapid\nthrash — both artefacts of the ANTS-1916 stale-model-read bug and the\nANTS-1912 CR/LF actuator bug. After a fresh session accumulates ≥10\nmeasured downgrades, re-read model_switch_stats to see whether:\n  (a) regret_rate drops below 50%\n  (b) auto upgrades (by_trigger.auto.upgrades) are non-zero\n  (c) composer_not_empty near-misses stay low\nIf regret_rate is still high, re-open ANTS-1923 for deeper scoring analysis.
+  **Layman:** Check whether the auto-switcher is working well now that the bugs from May 29 have been fixed — look at regret rate, upgrades, and near-misses after a fresh batch of sessions.
+  Kind: investigate.
+  Source: in-session-2026-06-01 (ANTS-1923 investigation).
 
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
@@ -14299,11 +14308,12 @@ template / mutate this state atomically" → movable. If it's
   Lanes: modelautoswitch, claudestatuswidgets.
   Source: in-session-2026-05-29 (near-miss analysis).
 
-- 📋 [ANTS-1927] **ModelRecommender::score() mtime cache — avoid re-parsing 512 KB transcript every 2 s tick.**
+- ✅ [ANTS-1927] **ModelRecommender::score() mtime cache — avoid re-parsing 512 KB transcript every 2 s tick.**
   **Layman:** The auto-switcher re-reads up to 512 KB of conversation history every 2 seconds even when nothing has changed. Cache the score result by file mtime so re-reads only happen when the transcript actually changes.
   Kind: perf.
   Lanes: modelrecommender, claudestatuswidgets.
   Source: in-session-2026-05-29 (observed while reading modelrecommender.cpp).
+  Resolved 2026-06-01: QHash memo keyed by (path, mtime, size) in score(); kCacheCap=16. All 3 post-open return sites go through memoize(). Source-grep INV-5 (single tail-read) still passes.
 
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 

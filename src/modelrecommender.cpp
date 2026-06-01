@@ -1,6 +1,9 @@
 // ANTS-1226 — ModelRecommender implementation.
 #include "modelrecommender.h"
+#include <QDateTime>
 #include <QFile>
+#include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -115,6 +118,41 @@ Result score(const QString &transcriptPath)
     Result def;
     def.reason = QStringLiteral("default");
 
+    // ANTS-1927 — memoize the score by (mtime, size). The controller ticks
+    // score() every ~2 s per focused tab (and several times per refresh:
+    // chip, gate, outcome-fill), yet the transcript only changes when Claude
+    // writes a turn. An unchanged file returns the cached Result without
+    // re-tail-reading + re-parsing up to 512 KB. A transcript append always
+    // grows `size`, so size+mtime keying can never serve a stale parse.
+    // GUI-thread only (the controller's QTimer + the read-only stats verb on
+    // the same thread) — the static cache is deliberately unsynchronised.
+    // Bounded: cleared past kCacheCap distinct paths so a long multi-tab
+    // session can't grow it without limit (RAM budget — one entry per live
+    // transcript path, a handful at most in practice).
+    struct CacheEntry { qint64 mtimeMs = 0; qint64 size = -1; Result result; };
+    static QHash<QString, CacheEntry> cache;
+    constexpr int kCacheCap = 16;
+
+    const QFileInfo fi(transcriptPath);
+    const bool fileExists = fi.exists();
+    const qint64 mtimeMs  = fi.lastModified().toMSecsSinceEpoch();
+    const qint64 fsize    = fi.size();
+    if (fileExists) {
+        const auto it = cache.constFind(transcriptPath);
+        if (it != cache.constEnd() && it->mtimeMs == mtimeMs && it->size == fsize)
+            return it->result;
+    }
+    // Single store-point for every computed (post-open) return below. Skipped
+    // on the open-failure path (def returned directly) so a not-yet-existing
+    // transcript is re-probed each tick rather than pinning an empty result.
+    const auto memoize = [&](const Result &r) -> Result {
+        if (fileExists) {
+            if (cache.size() >= kCacheCap) cache.clear();
+            cache.insert(transcriptPath, {mtimeMs, fsize, r});
+        }
+        return r;
+    };
+
     QFile f(transcriptPath);
     // ANTS-1756 — open without QIODevice::Text. The tail-read seeks by
     // byte offset (f.size() - kMaxTailBytes); Text-mode CRLF→LF
@@ -222,10 +260,10 @@ Result score(const QString &transcriptPath)
         r.tier         = Tier::Haiku;
         r.reason       = QStringLiteral("commit_intent");
         r.currentModel = def.currentModel;
-        return r;
+        return memoize(r);
     }
 
-    if (turns.isEmpty()) return def;
+    if (turns.isEmpty()) return memoize(def);
 
     // --- extract features ---
     // ANTS-1890 (INV-4): count-based features (fileWriteCount, avgLen) are
@@ -312,7 +350,7 @@ Result score(const QString &transcriptPath)
         r.tier   = Tier::Sonnet;
         r.reason = reasons.trimmed();
     }
-    return r;
+    return memoize(r);
 }
 
 QString tierName(Tier tier)
