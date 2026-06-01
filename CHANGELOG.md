@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`model_switch_stats` should split upgrades/downgrades by trigger (auto vs manual) — current totals can't answer "is the …** (ANTS-1934)
+  The model-switch report mixes together the switches YOU make by hand and the ones the app makes automatically
+
 - **Auto-switcher tracks pending-switch intent when blocked by composer_not_empty** (ANTS-1919)
   When all guards pass but the composer has recent text, the target tier\nis stored in m_autoSwitchPendingTier so the switch fires on the next\n2 s tick once the composer clears. Status-bar visual annotation TBD.
 
@@ -42,6 +45,9 @@ for security-relevant changes.
   The auto-switcher won't fire while there's any text in the input box — but in long autonomous sessions there's always leftover text. Make the rule smarter: if the text has been sitting untouched for 5+ minutes, treat it as stale and allow the switch.
 
 ### Changed
+
+- **ModelRecommender::score() mtime cache — avoid re-parsing 512 KB transcript every 2 s tick.** (ANTS-1927)
+  The auto-switcher re-reads up to 512 KB of conversation history every 2 seconds even when nothing has changed
 
 - **Colored cell backgrounds (diff green/red highlights) appear more opaque than the base when terminal opacity < 1.** (ANTS-1864)
   When you make the terminal see-through, the green/red highlight bars (like Claude's diff view) stay nearly solid instead of going see-through to match the rest of the window. Make them respect the same transparency level.
