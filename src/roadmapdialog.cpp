@@ -856,6 +856,10 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
     // takes the rest of the line up to a period or newline.
     // ANTS-1861: match both plain "Layman:" and bold "**Layman:**" forms
     // (roadmap_log writes the bold version).
+    // NOTE — `[\\.\\n]` is intentional: it strips the trailing sentence
+    // period so rec.layman is punctuation-free (INV-4 invariant). CHANGELOG
+    // consumers that need the full sentence should use match->body via
+    // rxBoldLayman (see remotecontrol.cpp cmdChangelogLog, ANTS-1933).
     static const QRegularExpression rxLayman(
         QStringLiteral("^\\s*(?:\\*\\*)?Layman:(?:\\*\\*)?\\s*(.+?)\\s*[\\.\\n]"),
         QRegularExpression::MultilineOption |

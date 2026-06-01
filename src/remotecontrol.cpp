@@ -3343,18 +3343,22 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         // line is CHANGELOG-voice already. An explicit `body` arg
         // overrides it. (We deliberately do NOT splat the full bullet
         // body — it carries Kind:/Source:/Lanes: metadata.)
-        if (body.isEmpty()) body = match->layman;
+        //
+        // ANTS-1933: rxBoldLayman on match->body is tried FIRST because
+        // it captures the full sentence including the trailing period via
+        // greedy (.+). match->layman has the period stripped (INV-4), so
+        // using it directly produced period-less CHANGELOG bodies after
+        // ANTS-1861 fixed parseBullets to recognise the bold form.
         if (body.isEmpty()) {
-            // parseBullets' rxLayman only matches a plain "Layman:"
-            // label; roadmap_log writes the bold "**Layman:**" form, so
-            // re-extract here handling both (ANTS-1548 — see ANTS-1861
-            // for the parser-side gap).
             static const QRegularExpression rxBoldLayman(
                 QStringLiteral("(?:\\*\\*)?Layman:(?:\\*\\*)?\\s*(.+)"),
                 QRegularExpression::CaseInsensitiveOption);
             const auto lm = rxBoldLayman.match(match->body);
             if (lm.hasMatch()) body = lm.captured(1).trimmed();
         }
+        // Fallback: period-stripped layman field (covers plain-form Layman:
+        // bullets where match->body won't contain the bold prefix).
+        if (body.isEmpty()) body = match->layman;
         category = !reqCategory.isEmpty()
             ? reqCategory
             : ChangelogLog::kindToCategory(match->kind);
