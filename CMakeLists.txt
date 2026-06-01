@@ -1580,6 +1580,11 @@ if(ANTS_TESTS)
                 # modelautoswitch.cpp + modelrecommender.cpp compiled directly here
                 # (test_core links ants_core_lib only, not ants_claude_lib).
                 tests/features/model_auto_switch/test_model_auto_switch.cpp
+                # ANTS-1920 — output-driven model-switch confirm: pure detector
+                # + actuator source-grep (uses SRC_CLAUDESTATUSWIDGETS_CPP_PATH
+                # + SRC_MODELAUTOSWITCH_H_PATH defined on test_core below).
+                tests/features/model_switch_confirm/test_switch_confirm_visible.cpp
+                tests/features/model_switch_confirm/test_switch_confirm_actuator.cpp
                 src/modelautoswitch.cpp
                 # ANTS-1735 — effectiveness ledger (modelswitchledger.cpp is in
                 # ants_core_lib, which test_core links — only the test TU here).

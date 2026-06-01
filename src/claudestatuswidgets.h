@@ -15,6 +15,7 @@
 
 #include <QObject>
 #include <QHash>
+#include <QPointer>   // ANTS-1920 — pollModelSwitchConfirm parameter type
 #include <QString>
 #include <functional>
 
@@ -240,10 +241,23 @@ private:
     void apply();   // private status-label renderer (formerly
                     // MainWindow::applyClaudeStatusLabel)
 
-    // ANTS-1924 — shared model-switch PTY handshake: ESC + ENTER to
-    // confirm CC's "Switch model?" dialog, then a configurable
-    // continuation prompt so CC resumes without user input.
+    // ANTS-1924 / ANTS-1920 — shared model-switch PTY handshake. After a
+    // caller injects `/model <tier>\r`, this confirms CC's "Switch model?"
+    // dialog and then sends a configurable continuation prompt so CC resumes
+    // without user input. ANTS-1920 replaced the original blind timer (ESC@250
+    // + \r@400) with an output-driven confirm: it polls recentOutput for the
+    // dialog and presses ENTER only once it is visible, aborting (no blind CR)
+    // if the prompt never renders within the budget.
     void performModelSwitchHandshake(TerminalWidget *focused);
+
+    // ANTS-1920 — one poll tick of the output-driven confirm. Re-arms itself
+    // via singleShot until the dialog is seen (→ send \r + continuation) or the
+    // budget (kSwitchConfirmMaxPolls) is exhausted (→ send a single ESC to
+    // clear any stranded `/model`, no continuation). `g` may dangle if the tab
+    // closes mid-poll; guarded each tick. `cont` is captured once at handshake
+    // start so an in-flight poll uses a stable continuation prompt.
+    void pollModelSwitchConfirm(QPointer<TerminalWidget> g,
+                                const QString &cont, int attempt);
 
     // ANTS-1915 — fire a deferred manual chip-switch when its owning shell
     // transitions to Idle. No-op unless a deferral is pending for `shellPid`
@@ -378,6 +392,18 @@ private:
     static constexpr int   kSwitchToastTimeoutMs = 6'000;    // 6 s
     static constexpr int   kModelChipPulseMs     = 600;      // 600 ms
     static constexpr int   kUndoVisibleMs        = 10'000;   // 10 s
+    // ANTS-1920 — output-driven model-switch confirm tuning. Poll the
+    // terminal tail every kSwitchConfirmPollMs for the "Switch model?"
+    // dialog, up to kSwitchConfirmMaxPolls times (~2 s budget — comfortably
+    // past the old blind 400 ms confirm + a slow render). On confirm, the
+    // continuation prompt fires kSwitchContinuationDelayMs later so CC has
+    // applied the switch first. Scan only the last kSwitchConfirmScanLines
+    // grid rows: the dialog is a live bottom-anchored TUI element, so a stale
+    // confirm from an earlier switch has scrolled out of this window.
+    static constexpr int   kSwitchConfirmPollMs        = 120;     // 120 ms
+    static constexpr int   kSwitchConfirmMaxPolls      = 16;      // ~1.9 s
+    static constexpr int   kSwitchContinuationDelayMs  = 600;     // 600 ms
+    static constexpr int   kSwitchConfirmScanLines     = 12;
 
 public:
     // ANTS-1893 — fire the firing-side surfacing (toast + chip-pulse +

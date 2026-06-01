@@ -79,6 +79,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Model-switch actuator: confirm by watching PTY output, not a blind 250 ms timer.** (ANTS-1920)
+  The auto-switcher sends "/model opus" then blindly waits a quarter-second and presses "1" to confirm. If the confirmation box is slow, or you have a message queued, the "1" lands in the wrong place and the switch gets stuck (observed by the user 2026-05-29 — model stayed on Sonnet, "/model opus" stranded in the composer). Watch for the actual "Switch model?" prompt before answering it.
+
 - **`model_switch_stats` 24h near-miss count + dominant-blocker disagree between `firings` and `near_misses` modes.** (ANTS-1938)
   The model-switcher's "what's blocking it today" number is different depending on which report you ask for — one says 2, the other says 22, and they even name different top blockers. Make them agree.
 

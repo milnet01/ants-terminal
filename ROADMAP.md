@@ -8968,6 +8968,13 @@ indie-review finding.
   Lanes: modelswitchledger, claudeintegration.
   Source: in-session-2026-06-01 (ANTS-1935 re-baseline blocked by stale records).
 
+- 📋 [ANTS-1941] **Trust-signal needs a fix-epoch boundary, not just an age window — pre-fix records poison regret_rate even when only days old.**
+  ANTS-1936 added an age-based window_days filter (default 30) to statsForScope, but the contaminating thrash is from 2026-05-29 — only ~3 days old today — so excluded_stale_count stays 0 and regret_rate reads 71% project / 67% global. Age can't distinguish valid-recent from pre-fix-recent. Fix: tag each ledger record with a behaviour epoch (e.g. a monotonically-bumped `epoch` int or the build/scorer version at write time), bump it whenever a behaviour-changing switcher fix lands (ANTS-1916/1930-class), and let statsForScope/headline default to counting only current-epoch records (surface `excluded_pre_epoch_count`, keep all-time available). Unblocks ANTS-1935 re-baseline and the §8 OQ-3 default-ON gate, both of which must measure CURRENT behaviour. Cheaper interim: a one-time op to archive/rotate the known pre-fix records out of the live ledger. Pairs with ANTS-1936 (age window) + ANTS-1935 (re-baseline).
+  **Layman:** The auto-switcher scorecard still reads ~70% regret, but that is leftover noise from the buggy May-29 sessions, not the fixed behaviour. The 30-day window can't filter it out because the bad records are only a few days old. We need to mark a 'fixed from here' line so the scorecard only counts switches made by the current, fixed logic.
+  Kind: enhancement.
+  Lanes: modelswitchledger, modelautoswitch.
+  Source: in-session-2026-06-01 (model_switch_stats review).
+
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
 5-lane in-house audit of the 584-test suite across perf,
@@ -14281,7 +14288,7 @@ template / mutate this state atomically" → movable. If it's
   Source: in-session-2026-05-29 (model_switch_stats near-miss analysis).
   Progress (2026-05-29): Option A partial — added `m_autoSwitchPendingTier` to\nClaudeStatusBarController. When decide() is blocked ONLY by\ncomposer_not_empty (all other guards pass), the target tier is stored\nso the natural 2 s tick fires the queued switch the moment the composer\nclears. Status-bar visual annotation (Option C) remains open.
 
-- 📋 [ANTS-1920] **Model-switch actuator: confirm by watching PTY output, not a blind 250 ms timer.**
+- ✅ [ANTS-1920] **Model-switch actuator: confirm by watching PTY output, not a blind 250 ms timer.**
   claudestatuswidgets.cpp:1500-1510 sends `/model <tier>\r` then a
     fixed `QTimer::singleShot(250, ...)` → `1\r`. Two failure modes the
     user hit: (a) the "Switch model?" confirmation prompt (CC shows it
@@ -14305,6 +14312,8 @@ template / mutate this state atomically" → movable. If it's
   Kind: fix.
   Lanes: modelautoswitch, claudestatuswidgets, terminalwidget.
   Source: user-report-2026-05-29 (screenshot: switch stuck, Sonnet retained).
+  Implementing 2026-06-01. Verified the actual CC dialog against a live session (no exact text in docs or repo): title "Switch model?" + a cache-warning paragraph + numbered options "❯ 1. Yes, switch to <Model>" / "2. No, go back"; the ❯ pre-highlights row 1 so plain ENTER (\r) confirms — matching the existing handshake terminator. No "Esc to cancel" footer. Detection signature: "Switch model?" AND ("Yes, switch to" | "No, go back") — title-plus-option so bare prose can't trip it. recentOutput() (terminalwidget.cpp) already exposes the tail grid, so no new TerminalWidget capability needed. Replacing the blind ESC@250/\r@400 with: poll recentOutput tail every 120 ms (≤~2 s budget); on detection send \r + fire the continuation prompt; on budget-exhaust ABORT and send a single ESC to clear any stranded /model rather than a blind CR.
+  Resolved (2026-06-01): pure detector `ModelAutoSwitch::switchConfirmVisible` added to modelautoswitch.{h,cpp} — matched against live CC dialog verified this session (title "Switch model?" + "Yes, switch to" / "No, go back" options). `performModelSwitchHandshake` rewritten to poll `recentOutput(12)` every 120 ms, confirming with `\r` only once the dialog is visible; budget-exhaustion aborts with a single ESC (never a blind CR). `pollModelSwitchConfirm` added as a private slot. The original blind `QTimer::singleShot(400, ...)` + `sendToPty("\r")` sequence is gone. 10 new tests (5 pure INV-1..INV-4 + 5 source-grep INV-5/INV-6) in tests/features/model_switch_confirm/. 1817/1817 ctest green.
 
 - ✅ [ANTS-1924] **ANTS-1924: model-switch PTY handshake — ESC + ENTER confirmation sequence + continuation prompt.**
   Prior code sent "1\r" as the confirmation — wrong for CC's dialog. User observed the correct sequence is ESC (\x1b) then \r (CR). Added: (1) ESC at 250ms, (2) \r at 400ms, (3) configurable continuation prompt at 1500ms. Config key claude.auto_model_switch_continuation_prompt (default "please continue", empty = no prompt). All three switch paths updated (auto-switch, chip-click, undo) via shared performModelSwitchHandshake(). The \r vs \n distinction is now documented at the call sites — \n inserts a newline without submitting and would leave /model in the composer, self-vetoing the next auto-switch tick via composer_not_empty gate (ANTS-1908).

@@ -167,4 +167,18 @@ double conservatismDwellMultiplier(int  measuredDowngrades,
     return mult;
 }
 
+bool switchConfirmVisible(const QString &recentOutput) {
+    // Title + at least one option line. The title alone is specific, but
+    // pairing it with an option keeps a stray mention of the phrase in
+    // scrollback prose (or this very source quoted in a transcript) from
+    // tripping a false confirm. Strings verified against live CC 2026-06-01.
+    const bool title  = recentOutput.contains(
+        QStringLiteral("Switch model?"), Qt::CaseInsensitive);
+    const bool option = recentOutput.contains(
+            QStringLiteral("Yes, switch to"), Qt::CaseInsensitive)
+        || recentOutput.contains(
+            QStringLiteral("No, go back"), Qt::CaseInsensitive);
+    return title && option;
+}
+
 }  // namespace ModelAutoSwitch

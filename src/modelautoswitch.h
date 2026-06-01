@@ -128,6 +128,23 @@ StabilityState advanceStability(const StabilityState     &prev,
 // is tierName(clampToFloor(recommended,floor)) and nothing else (INV-7/INV-9).
 Decision decide(const Gate &g);
 
+// ANTS-1920 — true when `recentOutput` (a tail of the terminal grid, e.g.
+// TerminalWidget::recentOutput) shows Claude Code's "Switch model?" confirmation
+// dialog awaiting a keypress. The actuator polls this after injecting
+// `/model <tier>\r` and presses ENTER (confirming the pre-highlighted "Yes" row)
+// ONLY once the dialog is actually visible — replacing the blind 400 ms timer
+// that could fire the confirm before the prompt rendered, stranding `/model` in
+// the composer (the user-reported failure mode).
+//
+// Signature verified against a live CC session (2026-06-01): the dialog renders
+// the title "Switch model?" plus numbered options "❯ 1. Yes, switch to <Model>"
+// / "2. No, go back". Detection requires the title AND at least one option line
+// so a bare mention of the phrase in scrollback prose cannot trip it. Match is
+// case-insensitive; the strings are stable English (no documented localisation
+// today — revisit if CC translates its TUI). Pure so it is table-testable
+// without a live terminal.
+bool switchConfirmVisible(const QString &recentOutput);
+
 // ANTS-1940 — regret-driven conservatism. While the switcher is still
 // calibrating (measuredDowngrades < headlineFloor) AND observed regret is high
 // (regretRatePct > kRegretConservatismPct), the effective min-dwell is

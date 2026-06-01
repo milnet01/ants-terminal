@@ -1619,31 +1619,68 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     m_autoSwitchLastTier       = dec.tierArg;
 }
 
-// ANTS-1924 — shared PTY handshake for every model-switch path (auto-
-// switch, chip-click, undo). Sequence observed to work reliably with CC:
-//   250 ms — ESC: clears any intermediate picker or composer state
-//   400 ms — \r (CR): confirms the "Switch model?" dialog
-//  1500 ms — continuation prompt + \r: tells CC to resume its task
-// All three terminators are \r (CR, 0x0D). \n only inserts a newline
-// in CC's input buffer without submitting — it leaves /model sitting
-// in the composer and silently self-vetoes the next auto-switch tick
-// via the composer_not_empty gate (ANTS-1908).
-// Continuation prompt text is read from config at call time so it
-// picks up any in-session config change. Empty prompt = no Step 3.
+// ANTS-1924 / ANTS-1920 — shared PTY handshake for every model-switch path
+// (auto-switch, chip-click, undo). The caller has already injected
+// `/model <tier>\r`; this confirms CC's "Switch model?" dialog and then sends
+// a continuation prompt so CC resumes its task.
+//
+// ANTS-1920 replaced the original blind sequence (ESC@250 + \r@400 +
+// continuation@1500) with an output-driven confirm. The blind \r@400 fired
+// whether or not the dialog had rendered: when CC was slow to draw it, the CR
+// landed in the wrong place and left `/model <tier>` stranded in the composer
+// (user report 2026-05-29 — model stayed on Sonnet). Now we poll recentOutput
+// for the dialog (ModelAutoSwitch::switchConfirmVisible) and press ENTER —
+// which confirms the pre-highlighted "Yes" row — only once it is actually
+// visible, aborting cleanly (a single ESC, never a blind CR) if it never
+// appears. The original pre-confirm ESC is dropped: every handshake path fires
+// with an empty composer (the auto-switch gate queues on composer_not_empty;
+// chip-click/undo defer while mid-turn), so there was no stale state to clear,
+// and a pre-confirm ESC would have dismissed the very dialog we now wait for.
+//
+// All terminators are \r (CR, 0x0D). \n only inserts a newline in CC's input
+// buffer without submitting (ANTS-1912). Continuation prompt text is read once
+// here so an in-flight poll uses a stable value; empty prompt = no continuation.
 void ClaudeStatusBarController::performModelSwitchHandshake(TerminalWidget *focused) {
     QPointer<TerminalWidget> g(focused);
-    QTimer::singleShot(250, this, [g]() {
-        if (g) g->sendToPty("\x1b");          // ESC
-    });
-    QTimer::singleShot(400, this, [g]() {
-        if (g) g->sendToPty("\r");            // ENTER — confirm dialog
-    });
     const QString cont = Config().claudeAutoModelContinuationPrompt();
-    if (!cont.isEmpty()) {
-        QTimer::singleShot(1500, this, [g, cont]() {
-            if (g) g->sendToPty((cont + QStringLiteral("\r")).toUtf8());
-        });
+    // Delay the first poll one interval: `/model\r` was just injected, so the
+    // dialog has not rendered yet — an immediate check would always miss.
+    QPointer<ClaudeStatusBarController> self(this);
+    QTimer::singleShot(kSwitchConfirmPollMs, this, [self, g, cont]() {
+        if (self) self->pollModelSwitchConfirm(g, cont, 0);
+    });
+}
+
+// ANTS-1920 — one poll tick of the output-driven confirm; see header.
+void ClaudeStatusBarController::pollModelSwitchConfirm(
+        QPointer<TerminalWidget> g, const QString &cont, int attempt) {
+    if (!g) return;   // tab closed mid-poll — nothing to confirm.
+
+    if (ModelAutoSwitch::switchConfirmVisible(
+            g->recentOutput(kSwitchConfirmScanLines))) {
+        g->sendToPty("\r");   // ENTER — confirms the pre-highlighted "Yes" row.
+        if (!cont.isEmpty()) {
+            QPointer<TerminalWidget> g2(g);
+            QTimer::singleShot(kSwitchContinuationDelayMs, this, [g2, cont]() {
+                if (g2) g2->sendToPty((cont + QStringLiteral("\r")).toUtf8());
+            });
+        }
+        return;
     }
+
+    if (attempt + 1 >= kSwitchConfirmMaxPolls) {
+        // Dialog never rendered within the budget. Either `/model` switched
+        // directly (no confirmation needed) or it stranded in the composer.
+        // Send a single ESC to clear any stranded text — NOT a blind CR (the
+        // exact failure mode ANTS-1920 fixes) — and skip the continuation.
+        g->sendToPty("\x1b");
+        return;
+    }
+
+    QPointer<ClaudeStatusBarController> self(this);
+    QTimer::singleShot(kSwitchConfirmPollMs, this, [self, g, cont, attempt]() {
+        if (self) self->pollModelSwitchConfirm(g, cont, attempt + 1);
+    });
 }
 
 // ANTS-1915 — fire a deferred manual chip-switch once its owning shell is Idle.
