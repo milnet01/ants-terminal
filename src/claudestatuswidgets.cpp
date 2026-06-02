@@ -1813,7 +1813,7 @@ double ClaudeStatusBarController::conservatismMultiplierFor(
     // TTL expired (or first call) — re-read the ledger.
     ModelSwitchLedger::StatsConfig sc;
     sc.scope     = QStringLiteral("project");
-    sc.windowDays = 30;
+    sc.windowDays = ModelSwitchLedger::kDefaultStatsWindowDays;   // ANTS-1942 — shared default
     sc.minEpoch  = ModelSwitchLedger::kSwitcherEpoch;   // ANTS-1941 — current-epoch only
     const QJsonObject env = ModelSwitchLedger::statsForScope(
         ModelSwitchLedger::defaultLedgerPath(), projectRoot, sc);

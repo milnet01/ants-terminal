@@ -82,6 +82,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **model_switch_stats MCP verb relies on StatsConfig struct-default for windowDays while the controller sets it explicitly …** (ANTS-1942)
+  Two parts of the auto-switcher read the same scorecard but configure the 'recent window' differently — they agree today only by luck. If the default ever changes, the human-facing number and the switcher's own caution dial would silently disagree.
+
 - **Model-switch actuator: confirm by watching PTY output, not a blind 250 ms timer.** (ANTS-1920)
   The auto-switcher sends "/model opus" then blindly waits a quarter-second and presses "1" to confirm. If the confirmation box is slow, or you have a message queued, the "1" lands in the wrong place and the switch gets stuck (observed by the user 2026-05-29 — model stayed on Sonnet, "/model opus" stranded in the composer). Watch for the actual "Switch model?" prompt before answering it.
 

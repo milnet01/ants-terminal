@@ -7769,7 +7769,11 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
     sc.floorTier     = autoCfg.value(QStringLiteral("floor")).toString(QStringLiteral("haiku"));
     sc.minDwellSec   = autoCfg.value(QStringLiteral("min_dwell_sec")).toInt(90);
     sc.scope         = scope;
-    sc.minEpoch      = ModelSwitchLedger::kSwitcherEpoch;   // ANTS-1941 — current-epoch only
+    // ANTS-1942 — set windowDays explicitly (shared constant) so the MCP
+    // scorecard and the controller's caution dial can never silently diverge on
+    // a struct-default change; ANTS-1941 — current-epoch records only.
+    sc.windowDays    = ModelSwitchLedger::kDefaultStatsWindowDays;
+    sc.minEpoch      = ModelSwitchLedger::kSwitcherEpoch;
 
     // ANTS-1894 — Read the near-miss ledger once, scope it the same way the
     // firing aggregator does (empty projectScope → global).

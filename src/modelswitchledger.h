@@ -26,6 +26,7 @@ constexpr qint64 kAuthorWindowMs        = 10'000;       // 10 s
 constexpr int    kOutcomeWindowTurns    = 5;            // "within 5 turns"
 constexpr qint64 kCleanEndQuietMs       = 10 * 60 * 1000; // ANTS-1891 — 10 min
 constexpr int    kHeadlineFloorMeasured = 10;           // ANTS-1891 — headline floor
+constexpr int    kDefaultStatsWindowDays = 30;          // ANTS-1936/1942 — recency window
 
 // ANTS-1941 — behaviour epoch. Bump by 1 in any commit that changes a
 // behaviour the trust signal measures (recommender scoring, the decide() gate,
@@ -173,8 +174,10 @@ struct StatsConfig {
     QString nearMissDominantBlocker;
     // ANTS-1936 — recency window in days. Records older than this are excluded
     // from the aggregation to prevent stale pre-fix records from poisoning the
-    // trust signal indefinitely. 0 = no window (all-time). Default ~30 days.
-    int     windowDays           = 30;
+    // trust signal indefinitely. 0 = no window (all-time). ANTS-1942 — the
+    // default and both live dispatch sites share kDefaultStatsWindowDays so they
+    // can never silently diverge.
+    int     windowDays           = kDefaultStatsWindowDays;
     // ANTS-1941 — minimum behaviour epoch. Records with epoch < minEpoch are
     // excluded from the aggregation (counted in excluded_pre_epoch_count). A
     // record with epoch >= minEpoch is in-scope (a newer behaviour generation is
