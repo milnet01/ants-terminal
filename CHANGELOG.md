@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_log op:flip` should accept common status synonyms ("done"→shipped, "wip"→in-progress, "todo"→planned).** (ANTS-1932)
+  When marking a roadmap item finished, the tool only accepts the word "shipped", not the more obvious "done" — so the first try fails and has to be redone. Teach it to accept the common everyday words too.
+
 - **Trust-signal needs a fix-epoch boundary, not just an age window — pre-fix records poison regret_rate even when only days…** (ANTS-1941)
   The auto-switcher scorecard still reads ~70% regret, but that is leftover noise from the buggy May-29 sessions, not the fixed behaviour. The 30-day window can't filter it out because the bad records are only a few days old. We need to mark a 'fixed from here' line so the scorecard only counts switches made by the current, fixed logic.
 
@@ -57,6 +60,9 @@ for security-relevant changes.
   The auto-switcher won't fire while there's any text in the input box — but in long autonomous sessions there's always leftover text. Make the rule smarter: if the text has been sitting untouched for 5+ minutes, treat it as stale and allow the switch.
 
 ### Changed
+
+- **Auto-switcher pending-switch visual indicator — model chip annotation when switch queued on composer_not_empty.** (ANTS-1926)
+  When the auto-switcher wants to change model but you have text in the input box, show a subtle 'pending → haiku' label on the model chip so you know a switch is waiting.
 
 - **ModelRecommender::score() mtime cache — avoid re-parsing 512 KB transcript every 2 s tick.** (ANTS-1927)
   The auto-switcher re-reads up to 512 KB of conversation history every 2 seconds even when nothing has changed

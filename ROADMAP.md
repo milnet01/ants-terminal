@@ -15714,11 +15714,12 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: in-session-2026-05-29 (orientation gap hit while picking the next bundle).
   Progress (2026-05-29): Option (a) shipped — session_orient now bundles\na top-20 headline_only active-bullets list as `active_bullets` in its\nresponse envelope. Does not affect allOk. Token budget bumped to 17000.\nTool description and mcporientation.cpp cheat-sheet updated.\nOption (b) (roadmap_query mode:\"bundles\") remains open.
 
-- 🚧 [ANTS-1926] **Auto-switcher pending-switch visual indicator — model chip annotation when switch queued on composer_not_empty.**
+- ✅ [ANTS-1926] **Auto-switcher pending-switch visual indicator — model chip annotation when switch queued on composer_not_empty.**
   **Layman:** When the auto-switcher wants to change model but you have text in the input box, show a subtle 'pending → haiku' label on the model chip so you know a switch is waiting.
   Kind: ux.
   Lanes: modelautoswitch, claudestatuswidgets.
   Source: in-session-2026-05-29 (ANTS-1919 Option C follow-up).
+  Shipped 2026-06-02: m_modelStateLastPendingTier mtime gate + (→ Tier) suffix + tooltip line in refreshModelStateChip.
 
 - 📋 [ANTS-1931] **Composer-state exposure dependency — Ants can't see Claude Code's input buffer (blocks ANTS-1914 full fix + ANTS-1915 typed-/model case).**
   Two auto-switcher features are partially blocked on the same gap: Ants Terminal cannot read the live content of Claude Code's TUI composer (input buffer).
@@ -15741,7 +15742,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Kind: research.
   Source: in-session-2026-05-29.
 
-- 🚧 [ANTS-1932] **`roadmap_log op:flip` should accept common status synonyms ("done"→shipped, "wip"→in-progress, "todo"→planned).**
+- ✅ [ANTS-1932] **`roadmap_log op:flip` should accept common status synonyms ("done"→shipped, "wip"→in-progress, "todo"→planned).**
   Observed in-session 2026-05-29: `roadmap_log op:flip to_status:"done"` is rejected with `bad_status` (expected planned/in-progress/shipped/considered or 📋/🚧/✅/💭). "done" is the natural English synonym a caller reaches for to mean ✅ shipped, so the rejection costs a retry round-trip (~tokens) every time.
   
   The error envelope is otherwise excellent — it lists the exact accepted set, which made recovery instant. This is a pure ergonomics win, not a correctness bug.
@@ -15752,6 +15753,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   **Layman:** The roadmap tool rejects "done" as a status and only accepts "shipped", so a natural first attempt fails and wastes a retry. Let it accept everyday synonyms like done/wip/todo.
   Kind: enhancement.
   Source: in-session-2026-05-29.
+  Shipped 2026-06-02: synonym normalization lambda in remotecontrol.cpp; error message updated to list synonyms.
 
 - 📋 [ANTS-1945] **Auto-switcher `ticks_target_stable_insufficient` — dominant near-miss blocker investigation and tuning.**
   model_switch_stats (2026-06-02) shows 107 of 186 near-miss events (57%)
