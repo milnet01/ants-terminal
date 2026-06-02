@@ -15008,6 +15008,7 @@ subsection.
   Kind: enhancement.
   Lanes: modelrecommender, modelautoswitch, modelnearmissledger.
   Source: vestige-feedback-2026-06-02 (effectiveness bottleneck shift).
+  Observed 2026-06-02: after ANTS-1946 ships, the true dominant blocker\n  should surface more clearly. User had to manually /model sonnet this\n  session (auto-switcher did not fire). Re-evaluate once the new build\n  has accumulated 24h of near-miss data with target_equals_current\n  suppressed.
 
 - ✅ [ANTS-1949] **Clarify whether user `/model` commands enter the model-switch ledger (`by_trigger.manual` stayed 0 after a manual switch).**
   User switched Sonnet→Opus mid-session via /model opus; the envelope's by_trigger.manual stayed {downgrades:0, upgrades:0}. Two possibilities: (a) by_trigger.manual means 'manual override of an auto-PROPOSED switch' (not 'user /model command') — then a one-line docstring clarification suffices; or (b) user /model commands genuinely aren't recorded in the ledger — then the switcher's effectiveness math (notably opus_turns_routed_in) can't see human-forced Opus over an otherwise-downgradeable session. Confirm which, and either document the semantics or record /model events. Low severity; affects how opus_turns_routed_in should be read.
@@ -15023,6 +15024,13 @@ subsection.
   Kind: enhancement.
   Lanes: remotecontrol.
   Source: vestige-feedback-2026-06-02 (minor nicety).
+
+- 📋 [ANTS-1951] **Auto-confirm the 'Switch model?' prompt for user-typed /model commands too.**
+  The ANTS-1918/1924 ESC+Enter handshake fires only when the autonomous\n  switcher sends /model — not when the user types it manually. User-typed\n  /model commands still show the "Switch model? Your next response will\n  be slower/use more tokens" confirmation prompt, adding friction for a\n  deliberate switch. Options: (a) extend the PTY watcher to also\n  intercept the prompt on user-typed /model (same ESC+Enter path); (b)\n  a configurable toggle (auto-confirm all /model prompts). Risk: may\n  mask accidental typos — consider a 1s undo window instead of a prompt.
+  **Layman:** When you manually type /model to switch models, you still get a "are you sure?" popup — even though you just typed the command. This would make that popup automatic too.
+  Kind: enhancement.
+  Lanes: remotecontrol, modelautoswitch.
+  Source: in-session-2026-06-02 (user had to confirm /model sonnet manually after ANTS-1948 blocked the auto-switch).
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
