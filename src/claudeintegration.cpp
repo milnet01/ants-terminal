@@ -1,5 +1,6 @@
 #include "claudeintegration.h"
 
+#include "build_info.h"  // ANTS-1952 — git SHA + build time for serverInfo
 #include "configpaths.h"
 #include "debuglog.h"
 #include "mcpprojection.h"
@@ -1520,6 +1521,16 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject serverInfo;
                 serverInfo["name"] = "ants-terminal";
                 serverInfo["version"] = QStringLiteral(ANTS_VERSION);
+                // ANTS-1952 — build identity so a caller can detect a
+                // ship-vs-live binary gap (same SemVer, rebuilt with a fix).
+                // SemVer alone can't distinguish it; the git SHA can. Lets a
+                // session compare against `git log` and flag "server predates
+                // commit X" instead of chasing stale telemetry (cf. the
+                // ANTS-1632/1903/1947 stale-binary investigations).
+                serverInfo["build_commit"] = QStringLiteral(ANTS_BUILD_COMMIT);
+                serverInfo["build_date"] = QStringLiteral(ANTS_BUILD_DATE);
+                serverInfo["build_time"] = QStringLiteral(ANTS_BUILD_TIME);
+                serverInfo["build_type"] = QStringLiteral(ANTS_BUILD_TYPE);
                 result["protocolVersion"] = "2025-11-25";
                 result["capabilities"] = caps;
                 result["serverInfo"] = serverInfo;
@@ -7516,6 +7527,13 @@ void ClaudeIntegration::onMcpConnection() {
                         info["context_percent"] = m_contextPercent;
                         info["changed_files"] = QJsonArray::fromStringList(m_changedFiles);
                         info["session_id"] = m_activeSessionId;
+                        // ANTS-1952 — re-surface build identity here too, so a
+                        // session that has already handshaked can confirm the
+                        // running binary's SHA without re-issuing initialize.
+                        info["server_build_commit"] = QStringLiteral(ANTS_BUILD_COMMIT);
+                        info["server_build_date"] = QStringLiteral(ANTS_BUILD_DATE);
+                        info["server_build_time"] = QStringLiteral(ANTS_BUILD_TIME);
+                        info["server_build_type"] = QStringLiteral(ANTS_BUILD_TYPE);
                         responseText = QString::fromUtf8(
                             QJsonDocument(info).toJson(QJsonDocument::Compact));
                         toolHandled = true;

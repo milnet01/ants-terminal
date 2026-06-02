@@ -375,6 +375,13 @@ target_link_libraries(ants_claude_lib
     PUBLIC  ants_chrome_lib
     PRIVATE ants_warnings)
 set_target_properties(ants_claude_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# ANTS-1952: claudeintegration.cpp #includes the configure-time-generated
+# build_info.h to stamp the MCP serverInfo with git SHA + build time. The
+# header lives in build/generated/ (ants_chrome_lib has it PRIVATE, so it
+# does not propagate) and is regenerated on every build by ants_build_info.
+target_include_directories(ants_claude_lib
+    PRIVATE "${CMAKE_BINARY_DIR}/generated")
+add_dependencies(ants_claude_lib ants_build_info)
 
 # ANTS-1444: the audit engine/runner/hygiene core is split from the
 # Widgets-using AuditDialog. ants_audit_lib holds the non-GUI TUs (none
@@ -1135,6 +1142,8 @@ if(ANTS_TESTS)
                 tests/features/test_audit_polyglot_and_strip/test_polyglot_and_strip.cpp
                 # ANTS-1399 tool_info(name) MCP verb.
                 tests/features/mcp_tool_info_verb/test_mcp_tool_info_verb.cpp
+                # ANTS-1952 build-identity stamp in serverInfo / get_session_info.
+                tests/features/mcp_build_identity/test_mcp_build_identity.cpp
                 # ANTS-1402 dispatch-observer unification.
                 tests/features/mcp_record_dispatch_unification/test_mcp_record_dispatch_unification.cpp
                 # ANTS-1422 token_usage no_ci diagnostic envelope.
