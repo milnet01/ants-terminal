@@ -797,6 +797,13 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     connect(m_statusTimer, &QTimer::timeout,
             m_claudeStatusBarController,
             &ClaudeStatusBarController::refreshAutoModelSwitch);
+    // ANTS-1951 — auto-confirm a user-typed /model "Switch model?" dialog on
+    // the same tick, independently of the auto-switch master toggle. Gated by
+    // claude.auto_model_confirm_user_switch (default on); cheap early return
+    // when no dialog is visible.
+    connect(m_statusTimer, &QTimer::timeout,
+            m_claudeStatusBarController,
+            &ClaudeStatusBarController::maybeAutoConfirmUserModelSwitch);
     // ANTS-1735 §2.5 — outcome fill-in tick. Same 2 s timer, but the
     // method internally throttles to once per 30 s and bails fast when
     // the ledger is empty or has no pending records.

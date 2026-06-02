@@ -120,6 +120,14 @@ struct ScanState {
     int  callCap = 0;
     QVector<CallMatch> calls;
     int  callsTotal = 0;
+
+    // ANTS-1950 — file-stem fallback hint. When a query matches no symbol
+    // but exactly equals a source file's base name (e.g. asking for
+    // `test_reference_harness`, which is a filename not a symbol), record
+    // the first such file so the caller gets a "did you mean the file?"
+    // nudge instead of a bare zero result.
+    QString symbol;       // the queried symbol, for stem comparison
+    QString fileStemHit;  // first rel path whose base name == symbol ("" = none)
 };
 
 void scanFile(ScanState &st, const QFileInfo &fi, const Anchors &an) {
@@ -208,6 +216,14 @@ void walk(ScanState &st, const QString &dirPath) {
 
         const Lang lang = langForExt(fi.suffix().toLower());
         if (lang == Lang::Auto) continue;  // unknown extension
+
+        // ANTS-1950 — note a file whose base name equals the query, before
+        // the lang filter so a stem hint surfaces even when the filter would
+        // otherwise skip the file. Recorded once (first walk-order hit).
+        if (st.fileStemHit.isEmpty() && !st.symbol.isEmpty()
+            && fi.completeBaseName() == st.symbol)
+            st.fileStemHit = fi.absoluteFilePath().mid(st.rootPrefixLen);
+
         if (st.langFilter != Lang::Auto && lang != st.langFilter) continue;
 
         if (st.filesScanned >= st.maxFiles) { st.walkCapped = true; return; }
@@ -219,6 +235,7 @@ void prepare(ScanState &st, const QString &rootCanonical,
              const QString &symbol, const Options &opts) {
     const QString root = QDir::cleanPath(rootCanonical);
     st.rootPrefixLen = root.length() + 1;  // strip "<root>/"
+    st.symbol = symbol;                     // ANTS-1950 — stem-hint comparison
     st.langFilter = opts.lang;
     st.maxFiles = (opts.maxFiles > 0) ? opts.maxFiles : kDefaultMaxFiles;
 
@@ -288,6 +305,10 @@ DefResult findDefinition(const QString &rootCanonical,
     r.filesScanned = st.filesScanned;
     r.walkCapped = st.walkCapped;
     r.truncated = st.defsTotal > r.definitions.size();
+    // ANTS-1950 — only a hint when there was nothing to find: a real symbol
+    // that also happens to share a file's stem should not be second-guessed.
+    if (r.definitions.isEmpty())
+        r.fileStemHint = st.fileStemHit;
     return r;
 }
 

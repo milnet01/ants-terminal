@@ -70,6 +70,10 @@ struct DefResult {
     int  filesScanned     = 0;
     bool truncated  = false;     // cap dropped entries
     bool walkCapped = false;     // maxFiles cap hit
+    // ANTS-1950 — when no definition matched but the query equals a source
+    // file's base name, the project-relative path of that file ("" = none).
+    // Lets the handler answer "no symbol X; did you mean the file X.cpp?".
+    QString fileStemHint;
 };
 
 struct CallResult {

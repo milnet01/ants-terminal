@@ -166,6 +166,18 @@ Decision decide(const Gate &g);
 // without a live terminal.
 bool switchConfirmVisible(const QString &recentOutput);
 
+// ANTS-1951 — gate for auto-confirming a "Switch model?" dialog that Ants did
+// NOT initiate (the user typed /model directly). Returns true only when the
+// dialog is visible, the feature is enabled, no Ants-initiated handshake is
+// already polling for this dialog (handshakeInFlight — that path confirms it),
+// and we have not already pressed ENTER for the current dialog instance
+// (alreadyConfirmed latch, cleared by the caller when the dialog clears). Pure
+// so the four-way gate is table-testable without a live terminal.
+bool shouldAutoConfirmUnarmedSwitch(bool dialogVisible,
+                                    bool enabled,
+                                    bool handshakeInFlight,
+                                    bool alreadyConfirmed);
+
 // ANTS-1940 — regret-driven conservatism. While the switcher is still
 // calibrating (measuredDowngrades < headlineFloor) AND observed regret is high
 // (regretRatePct > kRegretConservatismPct), the effective min-dwell is

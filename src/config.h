@@ -109,6 +109,12 @@ public:
     bool claudeAutoModelUndoEnabled() const;
     void setClaudeAutoModelUndoEnabled(bool enabled);
 
+    // ANTS-1951 — auto-confirm CC's "Switch model?" dialog for user-typed
+    // /model commands too (the auto-switch/chip paths already confirm via
+    // performModelSwitchHandshake). Config-file-only key
+    // claude.auto_model_confirm_user_switch, default true.
+    bool claudeAutoModelConfirmUserSwitch() const;
+
     // ANTS-1924 — text sent to CC after a model switch completes so it
     // continues working without user input. Empty string = no prompt.
     // Config key: claude.auto_model_switch_continuation_prompt (default

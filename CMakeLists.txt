@@ -1587,6 +1587,8 @@ if(ANTS_TESTS)
                 # + SRC_MODELAUTOSWITCH_H_PATH defined on test_core below).
                 tests/features/model_switch_confirm/test_switch_confirm_visible.cpp
                 tests/features/model_switch_confirm/test_switch_confirm_actuator.cpp
+                # ANTS-1951 — user-typed /model auto-confirm gate (pure helper).
+                tests/features/model_switch_confirm/test_unarmed_confirm.cpp
                 src/modelautoswitch.cpp
                 # ANTS-1735 — effectiveness ledger (modelswitchledger.cpp is in
                 # ants_core_lib, which test_core links — only the test TU here).

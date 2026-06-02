@@ -500,6 +500,16 @@ void Config::setClaudeAutoModelUndoEnabled(bool enabled) {
     save();
 }
 
+// ANTS-1951 — auto-confirm Claude Code's "Switch model?" dialog even when
+// the /model command was typed by the user (not injected by the auto-switcher
+// or a chip-click). The user typed it deliberately, so the confirm prompt is
+// pure friction; a mistyped tier never reaches this dialog (CC errors on an
+// invalid /model arg), so there is no typo to guard. Config-file-only key,
+// default on; flip to false to keep the manual confirmation.
+bool Config::claudeAutoModelConfirmUserSwitch() const {
+    return m_data.value("claude.auto_model_confirm_user_switch").toBool(true);
+}
+
 // ANTS-1924 — text injected into the PTY after a model switch completes
 // so CC resumes without the user having to type anything. Empty = no
 // prompt. PTY layer expects `\r` (CR) as the submit key — `\n` only

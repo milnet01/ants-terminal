@@ -9182,6 +9182,15 @@ QJsonDocument RemoteControl::cmdFindDefinition(const QJsonObject &req) {
     out["files_scanned"]     = res.filesScanned;
     out["truncated"]         = res.truncated;
     out["walk_capped"]       = res.walkCapped;
+    // ANTS-1950 — zero-symbol-but-matches-a-filename nudge. Surfaced only when
+    // there are no definitions and the query equals a source file's stem, so a
+    // caller asking for `test_reference_harness` (a filename, not a symbol)
+    // gets pointed at the file instead of a bare empty result.
+    if (!res.fileStemHint.isEmpty()) {
+        out["file_stem_hint"] = res.fileStemHint;
+        out["hint"] = QStringLiteral("no symbol named '%1'; did you mean the "
+                                     "file '%2'?").arg(symbol, res.fileStemHint);
+    }
     return QJsonDocument(out);
 }
 

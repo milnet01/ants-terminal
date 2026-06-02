@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **Auto-confirm the 'Switch model?' prompt for user-typed /model commands too.** (ANTS-1951)
+  When you manually type /model to switch models, you still get a "are you sure?" popup — even though you just typed the command. This would make that popup automatic too.
+
+- **`find_definition` could hint when a query matches a file stem but no symbol.** (ANTS-1950)
+  If you ask 'where is X defined' and X is actually a filename (not a function), the tool returns nothing — a one-line 'did you mean the file X.cpp?' hint would save a follow-up.
+
 - **`roadmap_log op:flip` should accept common status synonyms ("done"→shipped, "wip"→in-progress, "todo"→planned).** (ANTS-1932)
   When marking a roadmap item finished, the tool only accepts the word "shipped", not the more obvious "done" — so the first try fails and has to be redone. Teach it to accept the common everyday words too.
 

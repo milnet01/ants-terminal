@@ -210,4 +210,13 @@ bool switchConfirmVisible(const QString &recentOutput) {
     return title && option;
 }
 
+bool shouldAutoConfirmUnarmedSwitch(bool dialogVisible,
+                                    bool enabled,
+                                    bool handshakeInFlight,
+                                    bool alreadyConfirmed) {
+    // An Ants-initiated handshake (auto-switch / chip-click / undo) already
+    // polls and confirms its own dialog — never double-press over it.
+    return dialogVisible && enabled && !handshakeInFlight && !alreadyConfirmed;
+}
+
 }  // namespace ModelAutoSwitch

@@ -15009,6 +15009,7 @@ subsection.
   Lanes: modelrecommender, modelautoswitch, modelnearmissledger.
   Source: vestige-feedback-2026-06-02 (effectiveness bottleneck shift).
   Observed 2026-06-02: after ANTS-1946 ships, the true dominant blocker\n  should surface more clearly. User had to manually /model sonnet this\n  session (auto-switcher did not fire). Re-evaluate once the new build\n  has accumulated 24h of near-miss data with target_equals_current\n  suppressed.
+  Still deferred (re-checked 2026-06-02). The premise — "ticks_target_stable_insufficient is the dominant near-miss blocker" — is the pre-ANTS-1946 telemetry artifact (target_equals_current records dragging the stable token along). The 1946 fix is committed and verified in source (maybeEmitNearMiss early-returns on target_equals_current), but the live MCP server is still the stale pre-1946 binary (model_switch_stats this session: 205 near-misses/24h, dominant ticks_target_stable_insufficient — the old shape). Do NOT implement hysteresis speculatively: it risks re-introducing the churn ANTS-1928 tier-lock was added to prevent. Gate: rebuild + relaunch so the MCP server runs the 1946 fix, let it accumulate ~24h of near-miss data with target_equals_current suppressed, then re-read the true dominant blocker. If ticks_target_stable_insufficient is still >20% sole-blocker post-1946, implement the N-of-M / EMA hysteresis; otherwise close as obsoleted by 1946. Blocked on ANTS-1952 (build-identity stamp) would make the stale-binary detection automatic.
 
 - ✅ [ANTS-1949] **Clarify whether user `/model` commands enter the model-switch ledger (`by_trigger.manual` stayed 0 after a manual switch).**
   User switched Sonnet→Opus mid-session via /model opus; the envelope's by_trigger.manual stayed {downgrades:0, upgrades:0}. Two possibilities: (a) by_trigger.manual means 'manual override of an auto-PROPOSED switch' (not 'user /model command') — then a one-line docstring clarification suffices; or (b) user /model commands genuinely aren't recorded in the ledger — then the switcher's effectiveness math (notably opus_turns_routed_in) can't see human-forced Opus over an otherwise-downgradeable session. Confirm which, and either document the semantics or record /model events. Low severity; affects how opus_turns_routed_in should be read.
@@ -15018,19 +15019,28 @@ subsection.
   Source: vestige-feedback-2026-06-02 (robustness note).
   Resolved 2026-06-02. Confirmed answer (b): user /model commands are not recorded in the ledger — every appended record carries trigger=auto (chip-click and user /model go through PTY but do not call appendRecord). by_trigger.manual is structurally 0 by design; the split was added by ANTS-1934 to make that explicit on the wire. Documented in MCP tool descriptor with implication for opus_turns_routed_in semantics.
 
-- 📋 [ANTS-1950] **`find_definition` could hint when a query matches a file stem but no symbol.**
+- ✅ [ANTS-1950] **`find_definition` could hint when a query matches a file stem but no symbol.**
   find_definition for `test_reference_harness` returned 0 definitions after scanning 968 files — correct (it's a filename, not a symbol), but a one-line hint when the query exactly matches a file stem with no matching symbol ('no symbol named X; did you mean the file `X.cpp`?') would save the caller a follow-up. Low priority.
   **Layman:** If you ask 'where is X defined' and X is actually a filename (not a function), the tool returns nothing — a one-line 'did you mean the file X.cpp?' hint would save a follow-up.
   Kind: enhancement.
   Lanes: remotecontrol.
   Source: vestige-feedback-2026-06-02 (minor nicety).
+  Shipped 2026-06-02. SymbolQuery::findDefinition now records the first source file whose base name equals the query (ScanState::fileStemHit) and, when zero definitions matched, surfaces it as DefResult::fileStemHint. The find_definition MCP verb emits file_stem_hint + a ready-to-read hint string ("no symbol named X; did you mean the file X.cpp?"). Pure-logic; covered by tests/features/mcp_symbol_query (app.py stem case + resolving-symbol-carries-no-hint).
 
-- 📋 [ANTS-1951] **Auto-confirm the 'Switch model?' prompt for user-typed /model commands too.**
+- ✅ [ANTS-1951] **Auto-confirm the 'Switch model?' prompt for user-typed /model commands too.**
   The ANTS-1918/1924 ESC+Enter handshake fires only when the autonomous\n  switcher sends /model — not when the user types it manually. User-typed\n  /model commands still show the "Switch model? Your next response will\n  be slower/use more tokens" confirmation prompt, adding friction for a\n  deliberate switch. Options: (a) extend the PTY watcher to also\n  intercept the prompt on user-typed /model (same ESC+Enter path); (b)\n  a configurable toggle (auto-confirm all /model prompts). Risk: may\n  mask accidental typos — consider a 1s undo window instead of a prompt.
   **Layman:** When you manually type /model to switch models, you still get a "are you sure?" popup — even though you just typed the command. This would make that popup automatic too.
   Kind: enhancement.
   Lanes: remotecontrol, modelautoswitch.
   Source: in-session-2026-06-02 (user had to confirm /model sonnet manually after ANTS-1948 blocked the auto-switch).
+  Shipped 2026-06-02. New 2s-tick slot maybeAutoConfirmUserModelSwitch presses ENTER on a user-raised "Switch model?" dialog, gated by the pure ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch (dialogVisible && enabled && !handshakeInFlight && !alreadyConfirmed) + config key claude.auto_model_confirm_user_switch (default true). Runs independently of the auto-switch master toggle; stands down while an Ants-initiated handshake owns the dialog (m_modelHandshakeInFlight) and presses once per dialog instance (m_unarmedSwitchConfirmed latch). Sends only ENTER, no continuation prompt. Chose option (a) extend the watcher over option (c) undo-window: a mistyped tier never reaches this dialog (CC errors on a bad /model arg), so there is no typo to guard. Covered by tests/features/model_switch_confirm INV-7.
+
+- 📋 [ANTS-1952] **Surface the MCP server's build identity (git SHA + build time) so callers can detect a ship-vs-live binary gap.**
+  The MCP `initialize` serverInfo already carries version=ANTS_VERSION, but a SemVer string cannot distinguish "same version, rebuilt with a fix" — exactly the trap behind ANTS-1632/1903/1947, where a committed near-miss/telemetry fix was on disk but the running MCP server was a stale binary, so investigations chased ghosts. Add a build git SHA (short) + ISO build timestamp to serverInfo (and/or a control-plane verb like get_session_info / tool_info), populated at compile time from CMake (e.g. a configure-time git rev-parse + __DATE__/__TIME__ or CMake TIMESTAMP). A CC session reading "server built 2026-06-01T16:14, SHA abc1234" can compare against `git log` and immediately flag "the running server predates commit X" instead of re-running the same telemetry query twice. Keep it cheap: a single generated header, no runtime git calls.
+  **Layman:** When a fix is committed but the running Ants build is older, the MCP tools report stale data and we waste time re-investigating. Expose the build's git SHA and build timestamp so a Claude session can instantly tell the server predates a fix.
+  Kind: enhancement.
+  Lanes: remotecontrol, claudeintegration.
+  Source: in-session-2026-06-02 (recurring ship-vs-live gap: ANTS-1632 / 1903 / 1947).
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 

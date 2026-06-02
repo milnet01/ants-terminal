@@ -46,12 +46,23 @@ the handshake's existing terminator. There is **no** "Esc to cancel" footer.
   `sendToPty("\r")` pattern.
 - **INV-6 — bounded poll.** The poll re-arms at most `kSwitchConfirmMaxPolls`
   times so a dialog that never renders cannot loop forever.
+- **INV-7 — user-typed /model auto-confirm gate (ANTS-1951).**
+  `ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch(dialogVisible, enabled,
+  handshakeInFlight, alreadyConfirmed)` returns true *only* when all four hold:
+  a dialog is visible, the feature is enabled, no Ants-initiated handshake is
+  already polling it (`handshakeInFlight` false), and ENTER has not yet been
+  pressed for the current dialog instance (`alreadyConfirmed` false). This is
+  the gate `maybeAutoConfirmUserModelSwitch` uses to confirm a dialog the user
+  raised by typing `/model` directly, without double-pressing over an
+  auto-switch/chip/undo handshake. Confirm sends only ENTER — no continuation
+  prompt, because the user is driving the session.
 
 ## Tests
 
 - `test_switch_confirm_visible.cpp` (pure, on the core bundle) — INV-1..INV-4.
 - `test_switch_confirm_actuator.cpp` (source-grep on
   `src/claudestatuswidgets.cpp` + `src/modelautoswitch.h`) — INV-5, INV-6.
+- `test_unarmed_confirm.cpp` (pure, on the core bundle) — INV-7.
 
 To confirm the source-grep test would catch a real regression: reverting
 `performModelSwitchHandshake` to the blind `\r@400` sequence reintroduces the

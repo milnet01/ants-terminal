@@ -199,6 +199,12 @@ config-file-only tuning keys:
   10 s "Undo: back to <Tier>" button in the status bar after each
   switch; click seeds the ANTS-1890 cool-down so the same pick
   won't immediately re-fire.
+- `claude.auto_model_confirm_user_switch` (bool, default true) —
+  ANTS-1951: auto-confirm CC's "Switch model?" dialog for user-typed
+  `/model` commands too (the auto-switch/chip/undo paths already
+  confirm via `performModelSwitchHandshake`). Runs on the 2 s tick
+  independently of the master gate; stands down while an Ants-initiated
+  handshake owns the dialog; sends only ENTER (no continuation prompt).
 
 ## Project standards
 

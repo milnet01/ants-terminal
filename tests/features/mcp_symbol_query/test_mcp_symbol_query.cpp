@@ -225,6 +225,21 @@ TEST(McpSymbolQuery, LiveBehaviour) {
     expect(!bad.ok && bad.code == QStringLiteral("bad_args"),
            "INV-8: invalid symbol refused with bad_args");
 
+    // ANTS-1950 — file-stem fallback hint. `app` is a valid identifier but no
+    // symbol named `app` exists; it is the base name of app.py, so the result
+    // carries fileStemHint pointing at the file.
+    const auto stem = SymbolQuery::findDefinition(root, QStringLiteral("app"), def);
+    expect(stem.definitions.isEmpty(), "ANTS-1950: no symbol named app");
+    expect(stem.fileStemHint == QStringLiteral("app.py"),
+           "ANTS-1950: fileStemHint points at app.py");
+    // A symbol that DOES resolve must not be second-guessed with a stem hint
+    // even if it shares a file's name (none here defines a same-named file, so
+    // a resolving symbol simply carries an empty hint).
+    const auto resolved = SymbolQuery::findDefinition(
+        root, QStringLiteral("compute"), def);
+    expect(resolved.fileStemHint.isEmpty(),
+           "ANTS-1950: resolving symbol carries no stem hint");
+
     EXPECT_EQ(0, expect_failures());
 }
 

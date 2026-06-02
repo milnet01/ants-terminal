@@ -113,6 +113,15 @@ public:
     // Config::claudeAutoModel().switch_enabled (INV-14).
     void refreshAutoModelSwitch();
 
+    // ANTS-1951 — auto-confirm a "Switch model?" dialog the user raised by
+    // typing /model directly (no Ants-initiated handshake is polling for it).
+    // Same 2 s tick as refreshAutoModelSwitch but independent of the auto-switch
+    // master toggle — a user who types /model wants the prompt confirmed
+    // regardless. Sends only ENTER (no continuation — the user is driving).
+    // Gated by ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch + the
+    // claude.auto_model_confirm_user_switch config key.
+    void maybeAutoConfirmUserModelSwitch();
+
     // ANTS-1735 §2.5 — outcome fill-in tick. Scans the global ledger for
     // pending records, finds the matching transcript per record's project,
     // parses post-switch turns, runs `computeOutcome`, and writes back the
@@ -357,6 +366,14 @@ private:
     // at most once even before MainWindow gets a chance to flip the
     // persistent claude.auto_model_nudge_shown flag.
     bool   m_firstRunNudgeEmitted = false;
+
+    // ANTS-1951 — auto-confirm coordination. m_modelHandshakeInFlight is true
+    // while performModelSwitchHandshake/pollModelSwitchConfirm is polling for an
+    // Ants-initiated dialog, so the user-typed-/model path stands down (no
+    // double ENTER). m_unarmedSwitchConfirmed latches a single ENTER per dialog
+    // instance; cleared once switchConfirmVisible goes false again.
+    bool   m_modelHandshakeInFlight = false;
+    bool   m_unarmedSwitchConfirmed = false;
 
     // ANTS-1894 — near-miss telemetry throttle. Keyed by the focused tab's
     // project root (== shellCwd()). m_nearMissLastSigByProject holds the
