@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Surface the MCP server's build identity (git SHA + build time) so callers can detect a ship-vs-live binary gap.** (ANTS-1952)
+  When a fix is committed but the running Ants build is older, the MCP tools report stale data and we waste time re-investigating. Expose the build's git SHA and build timestamp so a Claude session can instantly tell the server predates a fix.
+
 - **Auto-confirm the 'Switch model?' prompt for user-typed /model commands too.** (ANTS-1951)
   When you manually type /model to switch models, you still get a "are you sure?" popup — even though you just typed the command. This would make that popup automatic too.
 

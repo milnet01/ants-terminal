@@ -15035,12 +15035,32 @@ subsection.
   Source: in-session-2026-06-02 (user had to confirm /model sonnet manually after ANTS-1948 blocked the auto-switch).
   Shipped 2026-06-02. New 2s-tick slot maybeAutoConfirmUserModelSwitch presses ENTER on a user-raised "Switch model?" dialog, gated by the pure ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch (dialogVisible && enabled && !handshakeInFlight && !alreadyConfirmed) + config key claude.auto_model_confirm_user_switch (default true). Runs independently of the auto-switch master toggle; stands down while an Ants-initiated handshake owns the dialog (m_modelHandshakeInFlight) and presses once per dialog instance (m_unarmedSwitchConfirmed latch). Sends only ENTER, no continuation prompt. Chose option (a) extend the watcher over option (c) undo-window: a mistyped tier never reaches this dialog (CC errors on a bad /model arg), so there is no typo to guard. Covered by tests/features/model_switch_confirm INV-7.
 
-- 📋 [ANTS-1952] **Surface the MCP server's build identity (git SHA + build time) so callers can detect a ship-vs-live binary gap.**
+- ✅ [ANTS-1952] **Surface the MCP server's build identity (git SHA + build time) so callers can detect a ship-vs-live binary gap.**
   The MCP `initialize` serverInfo already carries version=ANTS_VERSION, but a SemVer string cannot distinguish "same version, rebuilt with a fix" — exactly the trap behind ANTS-1632/1903/1947, where a committed near-miss/telemetry fix was on disk but the running MCP server was a stale binary, so investigations chased ghosts. Add a build git SHA (short) + ISO build timestamp to serverInfo (and/or a control-plane verb like get_session_info / tool_info), populated at compile time from CMake (e.g. a configure-time git rev-parse + __DATE__/__TIME__ or CMake TIMESTAMP). A CC session reading "server built 2026-06-01T16:14, SHA abc1234" can compare against `git log` and immediately flag "the running server predates commit X" instead of re-running the same telemetry query twice. Keep it cheap: a single generated header, no runtime git calls.
   **Layman:** When a fix is committed but the running Ants build is older, the MCP tools report stale data and we waste time re-investigating. Expose the build's git SHA and build timestamp so a Claude session can instantly tell the server predates a fix.
   Kind: enhancement.
   Lanes: remotecontrol, claudeintegration.
   Source: in-session-2026-06-02 (recurring ship-vs-live gap: ANTS-1632 / 1903 / 1947).
+  Shipped 2026-06-02. claudeintegration.cpp now #includes build_info.h and stamps build_commit/build_date/build_time/build_type into the MCP initialize serverInfo + server_build_* into get_session_info. ants_claude_lib wired to build/generated include dir + ants_build_info dependency. 4 regression tests in tests/features/mcp_build_identity/ (INV-1..4). A session can now confirm the running SHA matches `git log` instead of re-running telemetry queries — the recurring ship-vs-live ghost that caused ANTS-1632/1903/1947.
+
+- 📋 [ANTS-1953] **User-typed /model: inject a continuation prompt after auto-confirming the switch dialog.**
+  ANTS-1951 auto-confirms the "Switch model?" dialog for user-typed /model
+  commands (presses ENTER), but does not inject a "please continue"
+  continuation prompt afterward — so the session halts at the blank `>`
+  prompt. The auto-switch path via performModelSwitchHandshake injects a
+  continuation prompt and resumes work; the ANTS-1951 path (user-typed)
+  only presses ENTER and stands down.
+  
+  Fix: after maybeAutoConfirmUnarmedSwitch fires ENTER, start a short
+  output-settled wait (same pattern as the actuator in ANTS-1920) and then
+  inject the continuation prompt via the PTY — reusing the same prompt text
+  as performModelSwitchHandshake. Gate on a new config key
+  (claude.auto_model_confirm_user_switch_prompt, default true) to keep it
+  opt-in; share the prompt string constant with the existing path.
+  **Layman:** When you type /model sonnet yourself, Ants now auto-clicks the confirmation dialog — but it still leaves you at a blank prompt instead of typing "please continue" to resume your work. This would add that last step.
+  Kind: enhancement.
+  Lanes: remotecontrol, modelautoswitch.
+  Source: user-feedback-2026-06-02 (ANTS-1951 follow-up — observed after manual /model sonnet).
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
