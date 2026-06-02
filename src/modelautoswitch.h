@@ -94,6 +94,27 @@ struct Decision {
 ModelRecommender::Tier clampToFloor(ModelRecommender::Tier rec,
                                     ModelRecommender::Tier floor);
 
+// ANTS-1944 — reconcileCurrentTier: choose the authoritative "current tier" for
+// the gate. A stale/compressed transcript can drop the /model events ANTS-1916
+// keys on, so score() falls back to the session-start assistant turn and the
+// gate's target_equals_current guard never trips — the switcher thrashes,
+// re-firing /model to the tier it already set. This anchors `current` to the
+// actuator's last-injected tier, but ONLY to suppress re-firing the SAME tier:
+// the override fires only when the clamped recommendation equals the actuated
+// tier AND the transcript read is an assistant turn older than the actuation.
+// A /model command read (transcriptFromCommand) is always authoritative. Because
+// the override is gated on `actuated == recommendedTarget`, it can never steer
+// `current` toward a tier the user manually moved to — it only declines a repeat.
+// Pure: table-testable. lastActuatedTierName is "" when no auto-switch has fired
+// this session; a non-canonical alias (fails the tierName round-trip) is ignored.
+ModelRecommender::Tier reconcileCurrentTier(
+    ModelRecommender::Tier transcriptTier,
+    bool                   transcriptFromCommand,
+    qint64                 transcriptTsMs,
+    const QString         &lastActuatedTierName,
+    qint64                 lastActuatedMs,
+    ModelRecommender::Tier recommendedTarget);
+
 // ANTS-1928 — stability-accrual state, advanced once per status tick by the
 // controller. Factored out as a pure value type so the tier-lock window logic
 // is table-testable without a live terminal. The controller holds one instance

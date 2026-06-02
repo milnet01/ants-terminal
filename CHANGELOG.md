@@ -82,6 +82,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Auto-switcher thrash at context-compression boundary — fires /model to the model already set when the transcript's /mode…** (ANTS-1944)
+  After the conversation fills up and gets summarised, the auto-switcher loses track of which model was already set and keeps issuing the same switch command over and over (8 times in one observed session).
+
 - **model_switch_stats MCP verb relies on StatsConfig struct-default for windowDays while the controller sets it explicitly …** (ANTS-1942)
   Two parts of the auto-switcher read the same scorecard but configure the 'recent window' differently — they agree today only by luck. If the default ever changes, the human-facing number and the switcher's own caution dial would silently disagree.
 

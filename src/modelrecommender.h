@@ -2,6 +2,7 @@
 // Stateless free function: score(transcriptPath) → Tier + reason.
 #pragma once
 #include <QString>
+#include <QtGlobal>   // qint64 (ANTS-1944)
 
 namespace ModelRecommender {
 
@@ -15,6 +16,12 @@ struct Result {
     // purely mechanical work (fileWriteCount==0 && toolDiversity<=2). Used by
     // the auto-switch gate to relax the dwell floor on downgrade-to-Haiku.
     bool    isMechanical = false;
+    // ANTS-1944 — provenance of currentModel, so the auto-switch gate can tell a
+    // stale assistant-turn read from an authoritative /model command (and anchor
+    // `current` to the actuator's last switch when the transcript is stale).
+    bool    currentModelFromCommand = false;  // true: read from a /model command
+    qint64  currentModelTsMs        = 0;       // assistant turn's parsed ts (ms);
+                                               // 0 = none / unparseable / from cmd
 };
 
 // score() reads at most 512 KB from the tail of the JSONL transcript

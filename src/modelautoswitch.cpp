@@ -26,6 +26,35 @@ ModelRecommender::Tier clampToFloor(ModelRecommender::Tier rec,
     return (static_cast<int>(rec) < static_cast<int>(floor)) ? floor : rec;
 }
 
+ModelRecommender::Tier reconcileCurrentTier(
+    ModelRecommender::Tier transcriptTier,
+    bool                   transcriptFromCommand,
+    qint64                 transcriptTsMs,
+    const QString         &lastActuatedTierName,
+    qint64                 lastActuatedMs,
+    ModelRecommender::Tier recommendedTarget) {
+    // ANTS-1944 — see header. A /model command read is authoritative (ANTS-1916).
+    if (transcriptFromCommand) return transcriptTier;
+    // Nothing actuated this session → only the transcript knows the model.
+    if (lastActuatedTierName.isEmpty()) return transcriptTier;
+    // Map the stored alias back to a Tier. tierFromModelId returns Sonnet for any
+    // unrecognised string, so a round-trip check rejects a malformed record
+    // (defensive — the actuator only ever stores a tierName() output).
+    const ModelRecommender::Tier actuated =
+        ModelRecommender::tierFromModelId(lastActuatedTierName);
+    if (ModelRecommender::tierName(actuated) != lastActuatedTierName)
+        return transcriptTier;
+    // Repeat-only: anchor ONLY when this would suppress re-firing the tier we
+    // already injected. Never steer `current` toward a different tier (so an
+    // unlogged user /model to another tier is never reverted by the anchor).
+    if (actuated != recommendedTarget) return transcriptTier;
+    // The actuator's switch is newer than the (stale) assistant-turn read →
+    // trust what we actually set. transcriptTsMs==0 (missing/unparseable) counts
+    // as oldest, so the anchor wins — the intended degradation.
+    if (lastActuatedMs > transcriptTsMs) return actuated;
+    return transcriptTier;
+}
+
 StabilityState advanceStability(const StabilityState     &prev,
                                 ModelRecommender::Tier     clampedTarget,
                                 ModelRecommender::Tier     current,

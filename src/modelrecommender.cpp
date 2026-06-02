@@ -242,14 +242,24 @@ Result score(const QString &transcriptPath)
             turns.last()
                 .value(QStringLiteral("message")).toObject()
                 .value(QStringLiteral("model")).toString();
+        // ANTS-1944 — record the assistant turn's timestamp so the auto-switch
+        // gate can tell a stale read from a fresh one. Inline ISO-8601 parse
+        // (byte-identical to ModelSwitchLedger::parseIso8601Ms) keeps this a
+        // leaf TU — 0 on a missing/unparseable timestamp.
+        const QDateTime ts = QDateTime::fromString(
+            turns.last().value(QStringLiteral("timestamp")).toString(),
+            Qt::ISODate);
+        def.currentModelTsMs = ts.isValid() ? ts.toMSecsSinceEpoch() : 0;
     }
     // ANTS-1916 — a /model command newer than the last assistant turn is the
     // real current model. tierFromModelId() substring-matches on the tier
     // name, so the raw "haiku"/"sonnet"/"opus" arg flows through unchanged.
     // Fixes the stale model-state chip AND the auto-switch thrash (the
     // switcher's gate.current no longer lags a turn behind the actuator).
-    if (!pendingModelTier.isEmpty())
+    if (!pendingModelTier.isEmpty()) {
         def.currentModel = pendingModelTier;
+        def.currentModelFromCommand = true;   // ANTS-1944 — authoritative
+    }
 
     // INV-2 — commit-intent hard override. Fires AFTER the walk (so
     // currentModel is captured) and BEFORE the empty-window short-circuit
@@ -260,6 +270,8 @@ Result score(const QString &transcriptPath)
         r.tier         = Tier::Haiku;
         r.reason       = QStringLiteral("commit_intent");
         r.currentModel = def.currentModel;
+        r.currentModelFromCommand = def.currentModelFromCommand;  // ANTS-1944
+        r.currentModelTsMs        = def.currentModelTsMs;
         return memoize(r);
     }
 
@@ -337,6 +349,8 @@ Result score(const QString &transcriptPath)
     Result r;
     r.currentModel = def.currentModel;
     r.isMechanical = mechanical;
+    r.currentModelFromCommand = def.currentModelFromCommand;  // ANTS-1944
+    r.currentModelTsMs        = def.currentModelTsMs;
     // ANTS-1930 — rebalanced thresholds for symmetric upgrades/downgrades.
     // Pre-1930: >= 3 (Opus) / <= -1 (Haiku) created a one-way ratchet that
     // blocked upgrades while favoring downgrades. New thresholds:

@@ -424,3 +424,110 @@ TEST(ModelAutoSwitchStability, ChangedCandidateRestartsAccrual) {
     EXPECT_EQ(s.ticksStable, 1) << "different candidate must not inherit accrual";
     EXPECT_EQ(s.candidateTier, Tier::Haiku);
 }
+
+// ===== ANTS-1944 — reconcileCurrentTier =====
+// All tests use the 6-arg signature:
+//   reconcileCurrentTier(transcriptTier, fromCommand, transcriptTsMs,
+//                         lastActuatedTierName, lastActuatedMs, recommendedTarget)
+
+namespace {
+using ModelAutoSwitch::reconcileCurrentTier;
+}  // namespace
+
+// INV-3 — fromCommand=true always returns the transcript tier, regardless of
+// the actuator record (ANTS-1916 path is authoritative).
+TEST(ModelAutoSwitch, Ants1944Inv3CommandAlwaysWins) {
+    EXPECT_EQ(reconcileCurrentTier(Tier::Haiku, true, 0,
+                                   "opus", 9000000000LL, Tier::Opus),
+              Tier::Haiku);
+}
+
+// INV-4 — the thrash repro: stale Opus transcript (ts=1000ms), Sonnet actuated
+// later (ms=2000), Sonnet re-recommended → anchor returns Sonnet (repeat-suppressed).
+TEST(ModelAutoSwitch, Ants1944Inv4ActuatorNewerRepeatSuppressed) {
+    EXPECT_EQ(reconcileCurrentTier(Tier::Opus, false, 1000,
+                                   "sonnet", 2000, Tier::Sonnet),
+              Tier::Sonnet);
+}
+
+// INV-5 — missing/unparseable timestamp (tsMs=0) also lets the anchor win on
+// a repeat.
+TEST(ModelAutoSwitch, Ants1944Inv5MissingTimestampAnchorWins) {
+    EXPECT_EQ(reconcileCurrentTier(Tier::Opus, false, 0,
+                                   "sonnet", 2000, Tier::Sonnet),
+              Tier::Sonnet);
+}
+
+// INV-6 — repeat-only: anchor does NOT fire when the clamped recommendation
+// differs from the actuated tier. This is the no-user-revert guarantee.
+TEST(ModelAutoSwitch, Ants1944Inv6NonRepeatAnchorInert) {
+    // Actuated Sonnet, recommending Haiku → NOT a repeat → transcript tier wins.
+    EXPECT_EQ(reconcileCurrentTier(Tier::Opus, false, 1000,
+                                   "sonnet", 2000, Tier::Haiku),
+              Tier::Opus);
+}
+
+// INV-7 — transcript newer than actuator → anchor does not override (transcript
+// has caught up / user changed it).
+TEST(ModelAutoSwitch, Ants1944Inv7TranscriptNewerAnchorInert) {
+    EXPECT_EQ(reconcileCurrentTier(Tier::Opus, false, 3000,
+                                   "sonnet", 2000, Tier::Sonnet),
+              Tier::Opus);
+}
+
+// INV-8 — no override when nothing was actuated (empty name), or when the name
+// is not a canonical alias (round-trip reject).
+TEST(ModelAutoSwitch, Ants1944Inv8NoActuationOrBadAlias) {
+    // 8a: empty name → transcript tier (Haiku, distinct from Sonnet recommendation)
+    EXPECT_EQ(reconcileCurrentTier(Tier::Haiku, false, 1000,
+                                   "", 9000000000LL, Tier::Sonnet),
+              Tier::Haiku);
+    // 8b: bogus alias → round-trip reject → transcript tier
+    EXPECT_EQ(reconcileCurrentTier(Tier::Haiku, false, 1000,
+                                   "bogus", 9000000000LL, Tier::Sonnet),
+              Tier::Haiku);
+    // 8c: model-id shape → round-trip rejects ("claude-opus-4-8"→Opus→"opus" != name)
+    //     transcriptTier=Haiku to make the reject observable vs model-id's Opus
+    EXPECT_EQ(reconcileCurrentTier(Tier::Haiku, false, 1000,
+                                   "claude-opus-4-8", 9000000000LL, Tier::Opus),
+              Tier::Haiku);
+}
+
+// INV-9 — end-to-end anti-thrash: the reconciled `current` makes decide()
+// block the repeat with ONLY target_equals_current (singleton), not an
+// unrelated veto. A second row with the unreconciled stale current asserts
+// the switch would have fired pre-1944.
+TEST(ModelAutoSwitch, Ants1944Inv9EndToEndAntithrash) {
+    const Tier reconciledCurrent = reconcileCurrentTier(
+        Tier::Opus, false, 1000, "sonnet", 2000, Tier::Sonnet);
+    ASSERT_EQ(reconciledCurrent, Tier::Sonnet);  // anchor fired
+
+    // Build a gate where EVERY other guard passes; only target_equals_current
+    // should block.
+    Gate g;
+    g.enabled              = true;
+    g.focusedState         = ClaudeState::Idle;
+    g.composerEmpty        = true;
+    g.recommended          = Tier::Sonnet;   // the re-fire candidate
+    g.floor                = Tier::Haiku;
+    g.current              = reconciledCurrent;  // Sonnet (anchored)
+    g.ticksTargetStable    = ModelAutoSwitch::kStableTicks;
+    g.configuredMinDwellMs = 90'000;
+    g.msSinceLastSwitch    = 9'000'000LL;    // far above any dwell floor
+    g.msSinceLastOverride  = -1;
+    g.idleElapsedMs        = -1;
+    g.idleCeilingMs        = -1;
+    g.composerStaleMs      = -1;
+    g.composerStaleThresholdMs = -1;
+
+    const Decision post = ModelAutoSwitch::decide(g);
+    EXPECT_FALSE(post.act);
+    EXPECT_EQ(post.blockedBy.size(), 1);
+    EXPECT_TRUE(post.blockedBy.contains(QStringLiteral("target_equals_current")))
+        << "expected sole blocker target_equals_current";
+
+    // Pre-1944 scenario: stale transcript current (Opus) — the switch would fire.
+    g.current = Tier::Opus;
+    const Decision pre = ModelAutoSwitch::decide(g);
+    EXPECT_TRUE(pre.act) << "pre-1944: stale current should have caused a re-fire";
+}

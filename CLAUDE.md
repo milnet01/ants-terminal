@@ -165,7 +165,14 @@ headline now also carries the `dwell=Ns` parenthetical and, when the
 24 h near-miss block is non-empty, appends "N near-misses in 24 h
 blocked by <dominant_blocker>" on both the no-switches and calibrating
 branches so the trust signal reads as "evaluating but blocked" rather
-than "feature did nothing". ANTS-1941 — the trust signal now counts only
+than "feature did nothing". ANTS-1944 — `g.current` is actuator-anchored (repeat-suppression only): a
+pure `reconcileCurrentTier` helper in `modelautoswitch` overrides the stale
+transcript read with the actuator's last-injected tier, but ONLY when the
+clamped recommendation equals that tier (suppressing a re-fire, never
+reverting a user's manual `/model`). Provenance fields on `Result`
+(`currentModelFromCommand`, `currentModelTsMs`) let the helper distinguish
+a fresh command read (always wins) from an assistant-turn read that may be
+stale. ANTS-1941 — the trust signal now counts only
 current-epoch records: `StatsConfig::minEpoch` is set to
 `kSwitcherEpoch` at both dispatch sites so pre-fix contamination is
 filtered out by the epoch boundary, not the age window (the age window

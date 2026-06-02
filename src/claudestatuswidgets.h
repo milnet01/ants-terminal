@@ -340,7 +340,8 @@ private:
     // annotation on the model chip.
     QString m_autoSwitchPendingTier;
     qint64 m_autoSwitchLastMs = 0;
-    QString m_autoSwitchLastTier;          // last tier we injected, for ledger
+    QString m_autoSwitchLastTier;          // last tier we injected; ledger +
+                                           // ANTS-1944 gate reconciliation anchor
     // ANTS-1915 — deferred manual chip-switch. When the user clicks the model
     // chip while Claude is mid-generation, sending `/model` immediately would
     // sit unsubmitted until the user presses Escape (interrupting the turn).

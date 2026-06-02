@@ -8993,12 +8993,13 @@ indie-review finding.
   Lanes: docs, remotecontrol.
   Source: cold-eyes-2026-06-02 (ANTS-1941 review).
 
-- 📋 [ANTS-1944] **Auto-switcher thrash at context-compression boundary — fires /model to the model already set when the transcript's /model events fall outside the compressed context.**
+- ✅ [ANTS-1944] **Auto-switcher thrash at context-compression boundary — fires /model to the model already set when the transcript's /model events fall outside the compressed context.**
   Observed 2026-06-02: at 100% context used the auto-switcher fired /model sonnet 8 times in a row while the model was already Sonnet. The ANTS-1916 fix reads the current model from the most recent /model command in the transcript, but context compression drops those events — so score() falls back to reading message.model from the last visible assistant turn, which may reflect the session-start model (Opus). Decision: current=Opus, target=Sonnet — fires. The target_equals_current guard at decide() never trips. Fix: persist the most-recently-confirmed model in a non-transcript state (e.g. the session state written by the actuator, or the model chip's own field) so score() can read it even after compression.
   **Layman:** After the conversation fills up and gets summarised, the auto-switcher loses track of which model was already set and keeps issuing the same switch command over and over (8 times in one observed session).
   Kind: fix.
   Lanes: modelrecommender, modelautoswitch.
   Source: user-report-2026-06-02.
+  Shipped 2026-06-02. score() gains currentModelFromCommand + currentModelTsMs provenance fields (inline QDateTime parse, no new includes). reconcileCurrentTier pure helper in modelautoswitch anchors gate.current to the actuator record ONLY to suppress re-firing the same tier (repeat-only guard: actuated == recommendedTarget). Controller reordered floor/clampedTarget before current; advanceStability now sees the reconciled current. 9 new feature tests (INV-1..9). 1831/1831 green. ANTS-1916 regression confirmed safe (INV-3).
 
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 

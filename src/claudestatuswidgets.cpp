@@ -1462,15 +1462,29 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     if (transcriptPath.isEmpty()) return;
     const ModelRecommender::Result rec =
         ModelRecommender::score(transcriptPath);
-    const ModelRecommender::Tier current =
-        ModelRecommender::tierFromModelId(rec.currentModel);
 
-    // Resolve floor from config string.
+    // Resolve floor from config string. ANTS-1944 — floor + clampedTarget are
+    // computed BEFORE `current` so reconcileCurrentTier can compare the actuator
+    // record against the exact tier decide() would re-fire.
     const QString floorStr = autoCfg.value("floor").toString(QStringLiteral("haiku"));
     const ModelRecommender::Tier floor =
         (floorStr == QLatin1String("sonnet"))
             ? ModelRecommender::Tier::Sonnet
             : ModelRecommender::Tier::Haiku;
+    const ModelRecommender::Tier clampedTarget =
+        ModelAutoSwitch::clampToFloor(rec.tier, floor);
+
+    // ANTS-1944 — anchor `current` to the actuator's last-injected tier when the
+    // transcript read is stale (idle / context-compression drops the /model
+    // events), but ONLY to suppress re-firing the SAME tier — never to override
+    // toward a tier the user manually picked. Pure helper; see modelautoswitch.h.
+    const ModelRecommender::Tier current = ModelAutoSwitch::reconcileCurrentTier(
+        ModelRecommender::tierFromModelId(rec.currentModel),
+        rec.currentModelFromCommand,
+        rec.currentModelTsMs,
+        m_autoSwitchLastTier,
+        m_autoSwitchLastMs,
+        clampedTarget);
 
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
 
@@ -1480,9 +1494,9 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     // additionally holds a near-ready candidate against brief boundary-noise
     // reversions, and accrual is now per-candidate-tier. All of this is folded
     // by the pure advanceStability() helper (table-tested in
-    // tests/features/model_auto_switch/).
-    const ModelRecommender::Tier clampedTarget =
-        ModelAutoSwitch::clampToFloor(rec.tier, floor);
+    // tests/features/model_auto_switch/). ANTS-1944 — advanceStability now sees
+    // the reconciled `current`, so a stale transcript no longer accrues stability
+    // toward a repeat of the switch already made.
     m_autoSwitchStability = ModelAutoSwitch::advanceStability(
         m_autoSwitchStability, clampedTarget, current, nowMs);
     const qint64 dwellMs = m_autoSwitchLastMs > 0

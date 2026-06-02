@@ -742,3 +742,36 @@ TEST(ModelRecommenderThinkingLevel, LabelMappings) {
     EXPECT_TRUE(ModelRecommender::thinkingLevelLabel(
                     ModelRecommender::ThinkingLevel::Unknown).isEmpty());
 }
+
+// ===== ANTS-1944 — score() provenance fields =====
+
+// INV-1 — command path sets fromCommand=true; currentModelTsMs is don't-care
+// (verified zero here because the writeTranscriptWithModelCommand helper omits
+// timestamp on the assistant line — that's fine; INV-3 short-circuits on
+// fromCommand before reading tsMs).
+TEST(ModelRecommender, Ants1944CommandSetsFromCommand) {
+    QTemporaryFile f;
+    const auto result = ModelRecommender::score(writeTranscriptWithModelCommand(
+        f, QStringLiteral("claude-sonnet-4-6"), QStringLiteral("haiku")));
+    EXPECT_TRUE(result.currentModelFromCommand);
+    // Existing command-wins semantics preserved.
+    EXPECT_EQ(ModelRecommender::tierFromModelId(result.currentModel),
+              ModelRecommender::Tier::Haiku);
+}
+
+// INV-2 — assistant-turn path sets fromCommand=false and carries the turn's
+// parsed timestamp in currentModelTsMs. Guards the def→r propagation: if the
+// fresh Result at modelrecommender.cpp:337-339 doesn't copy the fields, this
+// test fails (fields stay at zero/false defaults).
+TEST(ModelRecommender, Ants1944AssistantTurnSetsTimestamp) {
+    // writeSyntheticTranscript stamps every turn with "2026-05-21T00:00:00Z";
+    // QDateTime::fromString("2026-05-21T00:00:00.000Z", Qt::ISODate) → valid ms.
+    QTemporaryFile f;
+    const auto result = ModelRecommender::score(
+        writeSyntheticTranscript({QJsonArray{}}, f, QStringLiteral("claude-opus-4-8")));
+    EXPECT_FALSE(result.currentModelFromCommand);
+    EXPECT_GT(result.currentModelTsMs, 0)
+        << "expected a positive epoch-ms from the timestamp field";
+    EXPECT_EQ(ModelRecommender::tierFromModelId(result.currentModel),
+              ModelRecommender::Tier::Opus);
+}

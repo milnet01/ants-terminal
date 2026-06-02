@@ -151,8 +151,13 @@ Listed only where behavior isn't obvious from the name.
   course) `modelautoswitch`'s INV-2 gate. ANTS-1873.
 - `modelrecommender` (Qt6::Core) — stateless `score(transcriptPath)`:
   tail-reads ≤ 512 KB JSONL, scores the last 20 assistant turns
-  (file-writes, tool diversity, plan keywords, length), returns a `Tier`
-  (Haiku/Sonnet/Opus) + reason. No side effects. ANTS-1226. Sibling
+  (file-writes, tool diversity, plan keywords, length), returns a `Result`
+  struct (`Tier` + reason + `currentModel` + `isMechanical`). ANTS-1944 —
+  `Result` also carries `currentModelFromCommand` (true when currentModel
+  came from a `/model` command, i.e. ANTS-1916 authoritative read) and
+  `currentModelTsMs` (assistant-turn timestamp in ms, 0 on command/absent
+  timestamp) so the gate can reconcile a stale transcript read against the
+  actuator's actual last-set tier. No side effects. ANTS-1226. Sibling
   `thinkingLevelFromLatestUserTurn` (ANTS-1888) is a pure helper for the
   passive model-state chip — same tail-read pattern, but walks for the
   most recent `{type:"user"}` line and matches the inline thinking
@@ -166,7 +171,10 @@ Listed only where behavior isn't obvious from the name.
   walks for the latest user-turn text in the same single pass (no extra
   tail-read) and skips tool_result-only user lines.
 - `modelautoswitch` (Qt6::Core, `ants_claude_lib`) — pure decision helper
-  for the autonomous switcher (Shape B): `clampToFloor` + `decide(Gate)`
+  for the autonomous switcher (Shape B): `clampToFloor` + `decide(Gate)` +
+  `reconcileCurrentTier` (ANTS-1944 — anchors the gate's `current` to the
+  actuator's last-set tier when the transcript is stale, but ONLY to suppress
+  re-firing the same tier; never overrides toward a user-picked tier).
   gate (enabled / focused-tab Idle / composer-empty / clamped-target
   hysteresis / stability / dwell / per-project override cool-down →
   lowercase tier alias via `ModelRecommender::tierName`). In claude_lib
