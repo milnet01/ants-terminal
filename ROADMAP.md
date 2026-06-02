@@ -8986,12 +8986,13 @@ indie-review finding.
   Source: cold-eyes-2026-06-02 (ANTS-1941 review).
   Shipped 2026-06-02. Introduced kDefaultStatsWindowDays (=30) in modelswitchledger.h as the single source; StatsConfig.windowDays default + both dispatch sites (claudestatuswidgets.cpp conservatismMultiplierFor + remotecontrol.cpp model_switch_stats verb) now reference it — they can no longer silently diverge on a struct-default change. Root-cause fix (shared constant), not just an explicit set at the MCP site.
 
-- 📋 [ANTS-1943] **roadmap-format.md Kind taxonomy table is out of sync with the roadmap_log tool's kind enum (12 documented vs 21 accepted).**
+- ✅ [ANTS-1943] **roadmap-format.md Kind taxonomy table is out of sync with the roadmap_log tool's kind enum (12 documented vs 21 accepted).**
   roadmap-format.md §3.5.3 (lines 217-232) lists 12 Kind values (implement, fix, audit-fix, review-fix, doc, doc-fix, refactor, test, chore, release, research, ux). The roadmap_log MCP tool's `kind` enum accepts 21 (adds perf, security, feature, enhancement, investigate, accessibility, optimize, package, marketing). specs.md §3 points Kind at the roadmap-format table, so specs using enhancement/feature/etc. are tool-valid but standard-undocumented. Reconcile: either extend the doc table to the full enum or narrow the enum; then sweep existing specs/bullets. Surfaced when ANTS-1941 used Kind: enhancement (corrected to implement).
   **Layman:** The roadmap's list of allowed work-categories in the docs is shorter than the list the tooling actually accepts, so specs use category names (like 'enhancement') that are valid in the tool but missing from the written standard.
   Kind: doc-fix.
   Lanes: docs, remotecontrol.
   Source: cold-eyes-2026-06-02 (ANTS-1941 review).
+  Shipped 2026-06-02. roadmap-format.md §3.5.3 table extended from 12 to 22 Kind values to match the live roadmap_log/validKinds enum (added feature, enhancement, perf, security, investigate, accessibility, optimize, package, marketing). specs.md §3 references this table, so no separate edit needed.
 
 - ✅ [ANTS-1944] **Auto-switcher thrash at context-compression boundary — fires /model to the model already set when the transcript's /model events fall outside the compressed context.**
   Observed 2026-06-02: at 100% context used the auto-switcher fired /model sonnet 8 times in a row while the model was already Sonnet. The ANTS-1916 fix reads the current model from the most recent /model command in the transcript, but context compression drops those events — so score() falls back to reading message.model from the last visible assistant turn, which may reflect the session-start model (Opus). Decision: current=Opus, target=Sonnet — fires. The target_equals_current guard at decide() never trips. Fix: persist the most-recently-confirmed model in a non-transcript state (e.g. the session state written by the actuator, or the model chip's own field) so score() can read it even after compression.
@@ -14386,7 +14387,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: changelog, release-pipeline.
   Source: Cold-eyes 2026-05-18 (spec/ANTS-1318 lane).
 
-- 📋 [ANTS-1533] **`docs/standards/coding.md` cross-references `~/.claude/CLAUDE.md § 5` — non-portable for shareable standard.**
+- ✅ [ANTS-1533] **`docs/standards/coding.md` cross-references `~/.claude/CLAUDE.md § 5` — non-portable for shareable standard.**
   Cold-eyes standards lane (HIGH). The README at
   `docs/standards/README.md:54-66` claims the four v1 standards
   are "copy verbatim into your project's `docs/standards/`
@@ -14403,6 +14404,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: doc-fix.
   Lanes: docs-standards, skill-templates.
   Source: Cold-eyes 2026-05-18 (standards lane).
+  Shipped 2026-06-02. coding.md no longer points at the author-private ~/.claude/CLAUDE.md §5; inlined a one-line per-language idiom example set (Qt6 connect, React hooks, Python match/case) so the shareable standard is self-contained. Note: the upstream skill template (app-workflow/templates/docs/standards/coding.md) still carries the dangling ref — fix there too on next template touch.
 
 - ✅ [ANTS-1534] **`docs/specs/ANTS-1318.md` §2.5 RC zsync channel mechanism triple-described.**
   Cold-eyes spec/ANTS-1318 lane (HIGH). § 2.5 names three
@@ -14419,7 +14421,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: spec-1318, release-pipeline.
   Source: Cold-eyes 2026-05-18 (spec/ANTS-1318 lane).
 
-- 📋 [ANTS-1535] **HARDWARE_SPONSORS.md vs SUPPORTERS.md tier funding clarity.**
+- ✅ [ANTS-1535] **HARDWARE_SPONSORS.md vs SUPPORTERS.md tier funding clarity.**
   Cold-eyes community lane (MEDIUM). HARDWARE_SPONSORS.md lead-in
   says "One-time 🚀 milestone backers" but line 29 references
   "Recurring … sustained via the monthly tiers" — two mutually
@@ -14432,6 +14434,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: doc-fix.
   Lanes: community-docs, hardware-sponsors, supporters.
   Source: Cold-eyes 2026-05-18 (community lane).
+  Shipped 2026-06-02. HARDWARE_SPONSORS.md lead-in reconciled (one-time + recurring-infrastructure both acknowledged); SUPPORTERS.md Patrons tier now quantifies the 7-day RC lead time (public release Wed; Patrons see the RC the prior Wed).
 
 - ✅ [ANTS-1536] **`PLUGINS.md` feature-detect example uses lexicographic version compare (`ants._version >= "0.6"`) — breaks at 0.10+.**
   Cold-eyes plugins lane (LOW). The §Versioning example at
@@ -14457,8 +14460,9 @@ template / mutate this state atomically" → movable. If it's
   Kind: doc-fix.
   Lanes: roadmap-format, claude-md, readme.
   Source: Cold-eyes 2026-05-18 (spec/ANTS-1160 lane).
+  Re-examined 2026-06-02 — NOT applying the §12 P1 edits this pass. Verified current state: (d) README has no ROADMAP_FORMAT line (already moot); (b) documentation.md:110-118 already references roadmap-format.md §3.2 for the phase-ID scheme (the stale FP##/DS##/DOC##/R## line is already gone). The remaining edits — (a) bump data marker ants-roadmap-format to ":2", (c) change CLAUDE.md to "new bullets use [TASK-NNNN]", (e) bump ROADMAP.md header to v2 — are all gated on the unshipped v2/TASK- migration. roadmap_log still allocates [ANTS-NNNN] (verified: this session allocated ANTS-1953), and the format is internally consistent at v1 (data marker ":1", spec-doc marker ":1.1"). Applying the v2 marker bumps now would assert a format/prefix migration that has not shipped — drift in the wrong direction. Stays 📋, correctly gated on "when the next format change ships" per the original bundle note. Reduce scope to (a)/(c)/(e) only when v2 adoption lands.
 
-- 📋 [ANTS-1866] **roadmap-format.md Kind table is stale vs the live roadmap_log/validKinds enum (missing feature, enhancement, optimize, investigate, accessibility, package, marketing).**
+- ✅ [ANTS-1866] **roadmap-format.md Kind table is stale vs the live roadmap_log/validKinds enum (missing feature, enhancement, optimize, investigate, accessibility, package, marketing).**
   roadmap-format.md §3.5.3's "Recognised Kind: values" table lists
   implement/fix/audit-fix/review-fix/doc/doc-fix/refactor/test/chore/
   release/research/ux, but the roadmap_log MCP enum + RemoteControl
@@ -14471,6 +14475,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: doc-fix.
   Lanes: docs, roadmap-format.
   Source: cold-eyes-2026-05-25 (ANTS-1855 spec review — Kind: feature flagged as not-in-table across multiple loops; live enum at remotecontrol.cpp validKinds + claudeintegration.cpp kindEnum accept it).
+  Shipped 2026-06-02. Same fix as ANTS-1943 (duplicate finding) — roadmap-format.md §3.5.3 Kind table now lists all values the enum accepts. Closed together.
 
 ### 🔌 Ants-MCP discoverability — tool-selection guidance (cross-session report 2026-05-17)
 
