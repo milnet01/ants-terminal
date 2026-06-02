@@ -1013,6 +1013,8 @@ if(ANTS_TESTS)
                 # both libs). The pure ledger/decide tests live on test_core.
                 tests/features/model_near_miss_ledger/test_emit_on_sig_change.cpp
                 tests/features/model_near_miss_ledger/test_emit_floor_throttle.cpp
+                # ANTS-1946 INV-14 — target_equals_current suppression.
+                tests/features/model_near_miss_ledger/test_no_emit_target_equals_current.cpp
                 # ANTS-1893 — switch-event surfacing: config-defaults tests.
                 # Full INV coverage (15 tests) deferred pending a
                 # TerminalWidget test seam; see

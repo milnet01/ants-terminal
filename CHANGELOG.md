@@ -61,6 +61,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **model_switch_stats: document by_blocked_by gate-hit counting and /model ledger semantics** (ANTS-1947 + ANTS-1949)
+  Two clarifications in the MCP tool descriptor. (1) by_blocked_by\n  values can sum to more than window_24h.total — a single near-miss\n  blocked by several gates contributes one count per gate. (2)\n  by_trigger.manual is structurally 0: only the autonomous switcher\n  writes ledger records; user /model commands and chip-clicks do not.
+
 - **Auto-switcher pending-switch visual indicator — model chip annotation when switch queued on composer_not_empty.** (ANTS-1926)
   When the auto-switcher wants to change model but you have text in the input box, show a subtle 'pending → haiku' label on the model chip so you know a switch is waiting.
 
@@ -87,6 +90,9 @@ for security-relevant changes.
   Vestige reports that the format-detector for ROADMAP files is still returning 'unknown' on their project despite the previous fix being marked shipped. Either the fix isn't reaching their build, or it doesn't cover their specific roadmap shape. Needs a trace field + CI fixture.
 
 ### Fixed
+
+- **Near-miss telemetry no longer records idle steady-state as a blocked switch** (ANTS-1946)
+  When the auto-switcher's recommended model already matches the current\n  model, it never wanted to switch — so that tick is no longer logged as\n  a "blocked" event. Previously these idle records dominated the\n  "what's blocking it?" counter, making composer-typing and cool-down\n  look less significant than they are. The fix removes ~36% ledger noise\n  and clears the path for accurate dominant-blocker reporting.
 
 - **Auto-switcher thrash at context-compression boundary — fires /model to the model already set when the transcript's /mode…** (ANTS-1944)
   After the conversation fills up and gets summarised, the auto-switcher loses track of which model was already set and keeps issuing the same switch command over and over (8 times in one observed session).

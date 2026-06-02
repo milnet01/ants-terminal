@@ -87,9 +87,11 @@ TEST(ModelNearMissLedger, Inv5RecordPreservesEvaluationOrder) {
     ClaudeStatusBarController ctrl(&bar, nullptr);
 
     // Emit with a deliberately-non-sorted blockedBy (this is what decide()
-    // returns — evaluation order). The recorded blocked_by must match.
+    // returns — evaluation order, not alpha). The recorded blocked_by must
+    // preserve that order. Note: target_equals_current is excluded per
+    // INV-14 (ANTS-1946) — decisions containing it are suppressed.
     const QStringList eval = {QStringLiteral("composer_not_empty"),
-                              QStringLiteral("target_equals_current"),
+                              QStringLiteral("dwell_time_insufficient"),
                               QStringLiteral("override_cooldown_active")};
     ctrl.maybeEmitNearMiss(blockedDecisionWith(eval), sampleGate(), proj, 0, path);
     const QList<NM::Record> recs = NM::readRecords(path);

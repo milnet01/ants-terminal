@@ -1877,6 +1877,11 @@ void ClaudeStatusBarController::maybeEmitNearMiss(
 {
     if (dec.blockedBy.isEmpty()) return;   // defensive — act must be false
     if (projectRoot.isEmpty())   return;   // can't key the throttle
+    // ANTS-1946 INV-14 — target_equals_current means clamped recommendation
+    // already equals current tier: no switch was ever possible. This is the
+    // healthy idle default, not a blocked switch. Suppress without updating
+    // throttle state so a later real near-miss can still fire unimpeded.
+    if (dec.blockedBy.contains(QStringLiteral("target_equals_current"))) return;
 
     // Sort tokens for a stable, order-independent signature comparison.
     // The emitted record preserves the original (evaluation-order) sequence.

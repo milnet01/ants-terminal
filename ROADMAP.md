@@ -14994,12 +14994,13 @@ subsection.
   Lanes: modelrecommender, modelautoswitch, modelswitchledger.
   Source: vestige-feedback-2026-06-01 (switcher effectiveness ideas, per user tracking request).
 
-- 📋 [ANTS-1947] **`model_switch_stats` firings-vs-near_misses 24h disagreement recurred on the live build despite ANTS-1938 ✅.**
+- ✅ [ANTS-1947] **`model_switch_stats` firings-vs-near_misses 24h disagreement recurred on the live build despite ANTS-1938 ✅.**
   ANTS-1938 was marked shipped, but the 2026-06-02 Vestige session shows the disagreement back and wider: mode:firings slim block near_misses.total_24h=37 dominant=target_equals_current vs mode:near_misses window_24h.total=58 dominant=ticks_target_stable_insufficient. The prior session's 64-vs-65 near-convergence was a timing artifact, not the fix landing. New root-cause detail: near_misses-mode by_blocked_by values sum to 138 against total=58 — a single near-miss is counted once per gate that blocked it (multi-gate near-misses), so the two modes count different things (events vs gate-hits). Asks: (1) make firings-mode total_24h use the SAME event-counting basis as near_misses-mode window_24h.total; (2) document that by_blocked_by can exceed total because one near-miss may trip several gates; (3) confirm the ANTS-1938 fix is actually on the binary the MCP server runs (same ship-vs-live gap pattern as ANTS-1632/1903). Cross-ref ANTS-1938.
   **Layman:** We thought we fixed the model-switcher's mismatched 'what's blocking it' numbers, but on the live build they disagree again — one report says 37, the other 58, and they name different top blockers.
   Kind: fix.
   Lanes: modelnearmissledger, remotecontrol.
   Source: vestige-feedback-2026-06-02 Issue #26 recurrence.
+  Resolved 2026-06-02. Investigation: firings statsSlim and near_misses statsFull already share the same filterWindow basis — Σ disagreement was a stale MCP-server binary (ship-vs-live gap). Documented multi-gate counting (Σ by_blocked_by >= total) in ANTS-1894 INV-10 and the MCP tool descriptor (claudeintegration.cpp mode prop description). No logic change needed.
 
 - 📋 [ANTS-1948] **Auto-switcher target-recommendation hysteresis — `ticks_target_stable_insufficient` is now the dominant near-miss blocker.**
   Post-ANTS-1939 the session-active gates (composer_not_empty, focused_state_not_idle) dropped from ~86% dominant to mid-pack; the bottleneck moved to the target-SELECTION layer. On an ideal-downgrade mechanical session the switcher fired 0×, blocked by ticks_target_stable_insufficient (34/58, 59%) + target_equals_current (32/58). Root: the per-tick target recommendation flickers as the session oscillates between mechanical stretches and short reasoning bursts, so it never holds the required consecutive-tick window. Ideas: (1) hysteresis/smoothing — require N-of-M ticks agreeing (not N consecutive), or EMA the per-tick tier score and switch on a band crossing, so brief reasoning blips don't reset the stable-tick counter; natural pairing with ANTS-1940's subagent-dispatch-rate signal (dispatch-rate flags the bursts, hysteresis stops them poisoning the counter); (2) observability — surface the last-K recommended tiers or a target_flip_count_24h in model_switch_stats so flickering-vs-just-short-of-dwell is observable, not inferred. Extends ANTS-1940 (which targets the downgrade-decision/regret layer); this is the target-recommendation layer.
@@ -15008,12 +15009,13 @@ subsection.
   Lanes: modelrecommender, modelautoswitch, modelnearmissledger.
   Source: vestige-feedback-2026-06-02 (effectiveness bottleneck shift).
 
-- 📋 [ANTS-1949] **Clarify whether user `/model` commands enter the model-switch ledger (`by_trigger.manual` stayed 0 after a manual switch).**
+- ✅ [ANTS-1949] **Clarify whether user `/model` commands enter the model-switch ledger (`by_trigger.manual` stayed 0 after a manual switch).**
   User switched Sonnet→Opus mid-session via /model opus; the envelope's by_trigger.manual stayed {downgrades:0, upgrades:0}. Two possibilities: (a) by_trigger.manual means 'manual override of an auto-PROPOSED switch' (not 'user /model command') — then a one-line docstring clarification suffices; or (b) user /model commands genuinely aren't recorded in the ledger — then the switcher's effectiveness math (notably opus_turns_routed_in) can't see human-forced Opus over an otherwise-downgradeable session. Confirm which, and either document the semantics or record /model events. Low severity; affects how opus_turns_routed_in should be read.
   **Layman:** When the user manually changes the model with /model, the switcher's stats don't seem to notice — so its savings math can't tell the human forced an expensive model for part of a session.
   Kind: investigate.
   Lanes: modelswitchledger, remotecontrol.
   Source: vestige-feedback-2026-06-02 (robustness note).
+  Resolved 2026-06-02. Confirmed answer (b): user /model commands are not recorded in the ledger — every appended record carries trigger=auto (chip-click and user /model go through PTY but do not call appendRecord). by_trigger.manual is structurally 0 by design; the split was added by ANTS-1934 to make that explicit on the wire. Documented in MCP tool descriptor with implication for opus_turns_routed_in semantics.
 
 - 📋 [ANTS-1950] **`find_definition` could hint when a query matches a file stem but no symbol.**
   find_definition for `test_reference_harness` returned 0 definitions after scanning 968 files — correct (it's a filename, not a symbol), but a one-line hint when the query exactly matches a file stem with no matching symbol ('no symbol named X; did you mean the file `X.cpp`?') would save the caller a follow-up. Low priority.
@@ -15812,7 +15814,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: in-session-2026-06-02 (model_switch_stats near-miss analysis — 107/186 blocked by ticks_target_stable_insufficient in 24 h).
   Investigation done (2026-06-02). The "57% ticks_target_stable_insufficient" headline is a telemetry ARTIFACT, not a real blocker. Ledger analysis (541 project records): ticks_target_stable appears in 322 events but is the SOLE blocker in only 19 (3.5%). It rides along mechanically because when target==current, advanceStability can't increment ticksStable, so both tokens always co-fire. Genuine sole-blockers: composer_not_empty (89), dwell_time_insufficient (75) — both already addressed (ANTS-1919/1926/1908/1914; dwell is by-design). The stability constants (kStableTicks=2, kTierLockWindowMs=8s) are working as designed — a 1-in-2 oscillation reaches ticksStable=2 by the 3rd tick. CONCLUSION: do NOT tune the stability constants. The real fix is telemetry-semantics (see follow-up item): target_equals_current records are non-near-misses (no switch was ever wanted) and should not be emitted — they are 36% of the project ledger (198/541) and corrupt the dominant_blocker signal + evict genuine near-misses under the byte cap. Demoted to considered; superseded by the telemetry-correctness item.
 
-- 📋 [ANTS-1946] **Near-miss telemetry: stop recording `target_equals_current` as a near-miss (it corrupts `dominant_blocker`).**
+- ✅ [ANTS-1946] **Near-miss telemetry: stop recording `target_equals_current` as a near-miss (it corrupts `dominant_blocker`).**
   Root cause found while investigating ANTS-1945. A near-miss should mean
     "the switcher wanted to switch but a guard stopped it." When
     target_equals_current is in blocked_by, clampToFloor(recommended,floor)
@@ -15847,6 +15849,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Kind: fix.
   Lanes: modelautoswitch, modelnearmissledger, claudestatuswidgets.
   Source: in-session-2026-06-02 (ANTS-1945 investigation — ledger sole-blocker analysis).
+  Resolved 2026-06-02. Guard added in maybeEmitNearMiss (claudestatuswidgets.cpp): early-return without emitting and without updating throttle state when blockedBy contains target_equals_current. Spec ANTS-1894 amended with INV-14 + INV-5 annotation + statsFull example rework. Regression test test_no_emit_target_equals_current.cpp (3 cases: sole-blocker, co-fire, throttle-not-poisoned). Pre-existing Inv5RecordPreservesEvaluationOrder failure fixed (test used target_equals_current in blocker set; replaced with dwell_time_insufficient). 1834/1834 ctest green.
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 

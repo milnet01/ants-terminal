@@ -2277,7 +2277,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "failure; "
                         "`ticks_target_stable_insufficient` = recommender "
                         "hasn't held the new target long enough to act on — "
-                        "*expected steady-state*, NOT a failure.");
+                        "*expected steady-state*, NOT a failure. "
+                        "ANTS-1949 — `by_trigger.manual` is structurally 0: "
+                        "every ledger record carries trigger=\\\"auto\\\" because "
+                        "user /model commands and chip-clicks are NOT appended "
+                        "to the firing ledger (only the autonomous switcher "
+                        "writes records). Implication: `opus_turns_routed_in` "
+                        "counts turns on Opus after an autonomous upgrade only; "
+                        "it cannot see human-forced Opus sessions.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to check whether automatic model switching is "
                         "paying off before trusting it more widely — reports "
@@ -2317,7 +2324,11 @@ void ClaudeIntegration::onMcpConnection() {
                             "slim near_misses block; \"near_misses\" returns "
                             "the full near-miss breakdown (24 h + all-time "
                             "windows, by_blocked_by counts, dominant_blocker, "
-                            "distinct_signatures).");
+                            "distinct_signatures). Note: by_blocked_by values "
+                            "can sum to MORE than window_24h.total because a "
+                            "single near-miss may be blocked by several gates "
+                            "simultaneously (ANTS-1947: total counts events, "
+                            "by_blocked_by counts gate-hits).");
                         props["mode"] = modeProp;
                     }
                     schema["properties"] = props;
