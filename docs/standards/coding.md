@@ -56,10 +56,10 @@ prefer the latest stable release unless pinned for an explicit
 reason. When calling library APIs, use the current idiomatic
 syntax for that version — not the one current three years ago.
 
-For per-language idiom examples (Qt 6, C++20+, Python 3.10+,
-React 18+), see the "Use the latest external-library version"
-section in the global CLAUDE.md (`~/.claude/CLAUDE.md § 5`).
-When unsure what's current, check the library docs first.
+Examples: Qt 6 uses `connect(sender, &Class::signal, …)` not `SIGNAL/SLOT`
+macros; React 18+ uses functional components + hooks, not class
+components; Python 3.10+ uses `match`/`case` and `list[int]` over
+`List[int]`. When unsure what's current, check the library docs first.
 Stale idioms compile but they age the codebase.
 
 

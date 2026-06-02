@@ -1,8 +1,12 @@
 # Hardware sponsors
 
-One-time 🚀 milestone backers via [GitHub Sponsors](https://github.com/sponsors/milnet01)
+One-time and infrastructure 🚀 milestone backers via [GitHub Sponsors](https://github.com/sponsors/milnet01)
 who've opted in to public acknowledgement on the Ants Terminal repo
 specifically.
+
+Most milestones are one-off hardware or infrastructure targets. A few
+(noted below) are ongoing infrastructure costs sustained via recurring
+monthly tiers rather than a single pledge.
 
 Hardware sponsorships are tied explicitly to published roadmap
 goals — funding tangible infrastructure that accelerates

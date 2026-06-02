@@ -219,6 +219,8 @@ this without adding complexity to the bullet's surface form.
 | Kind | Meaning | Follow-through |
 |------|---------|----------------|
 | `implement` | New code for a planned feature | tests + changelog + docs |
+| `feature` | User-visible capability addition (alias for implement; preferred in UX-facing bullets) | tests + changelog + docs |
+| `enhancement` | Incremental improvement to an existing feature | tests + changelog |
 | `fix` | Code change to repair a bug | regression test + changelog |
 | `audit-fix` | Code change in response to an audit finding | regression test + changelog (cite finding source) |
 | `review-fix` | Code change in response to an indie-review or peer review | regression test + changelog (cite reviewer source) |
@@ -228,7 +230,14 @@ this without adding complexity to the bullet's surface form.
 | `test` | Test-only change (new spec, new fixture, harness improvement) | no changelog |
 | `chore` | Housekeeping (deps, build flags, generated files) | no test, changelog optional |
 | `release` | Version bump, packaging files, tag | drives the release skill |
+| `perf` | Performance improvement (latency, throughput, memory) | benchmark or before/after in changelog |
+| `security` | Security hardening, CVE fix, permission change | changelog + advisory if public |
+| `investigate` | Triage / root-cause work that may not produce code | investigation note or roadmap annotation |
 | `research` | Exploratory / feasibility work | journal artifact or decision doc |
+| `accessibility` | A11y fix or improvement | changelog if user-facing |
+| `optimize` | Resource or algorithmic optimisation (overlap with perf; prefer perf for latency) | changelog optional |
+| `package` | Packaging, distribution, installer, Flatpak/AUR/Homebrew changes | release notes |
+| `marketing` | Website, README, social, demo video, launch post | no test |
 | `ux` | UX or interaction design work | design doc or mockup |
 
 **Required as of v1.1** — every actionable bullet declares its
