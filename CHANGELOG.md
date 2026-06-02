@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **User-typed /model: inject a continuation prompt after auto-confirming the switch dialog.** (ANTS-1953)
+  When you type /model sonnet yourself, Ants now auto-clicks the confirmation dialog — but it still leaves you at a blank prompt instead of typing "please continue" to resume your work. This would add that last step.
+
 - **Surface the MCP server's build identity (git SHA + build time) so callers can detect a ship-vs-live binary gap.** (ANTS-1952)
   When a fix is committed but the running Ants build is older, the MCP tools report stale data and we waste time re-investigating. Expose the build's git SHA and build timestamp so a Claude session can instantly tell the server predates a fix.
 

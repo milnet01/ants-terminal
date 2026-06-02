@@ -1730,8 +1730,10 @@ void ClaudeStatusBarController::pollModelSwitchConfirm(
 // the 2 s status tick independently of the auto-switch master toggle (a user
 // who types /model wants the confirm regardless). Stands down while an
 // Ants-initiated handshake owns the dialog, and presses ENTER at most once per
-// dialog instance (latch cleared when the dialog clears). No continuation
-// prompt — the user is driving the session, not the autonomous switcher.
+// dialog instance (latch cleared when the dialog clears).
+// ANTS-1953 — after confirming, inject the continuation prompt (same as
+// performModelSwitchHandshake) so the session resumes rather than halting at
+// a blank `>` prompt. Uses the same config key and delay constant.
 void ClaudeStatusBarController::maybeAutoConfirmUserModelSwitch() {
     const bool enabled = Config().claudeAutoModelConfirmUserSwitch();
     auto *focused = m_focusedTerminalProvider
@@ -1752,6 +1754,16 @@ void ClaudeStatusBarController::maybeAutoConfirmUserModelSwitch() {
 
     focused->sendToPty("\r");   // ENTER — confirms the pre-highlighted "Yes" row.
     m_unarmedSwitchConfirmed = true;
+
+    // ANTS-1953 — inject continuation prompt after a short settle delay so CC
+    // has rendered the post-confirm prompt before we start typing.
+    const QString cont = Config().claudeAutoModelContinuationPrompt();
+    if (!cont.isEmpty()) {
+        QPointer<TerminalWidget> g(focused);
+        QTimer::singleShot(kSwitchContinuationDelayMs, this, [g, cont]() {
+            if (g) g->sendToPty((cont + QStringLiteral("\r")).toUtf8());
+        });
+    }
 }
 
 // ANTS-1915 — fire a deferred manual chip-switch once its owning shell is Idle.

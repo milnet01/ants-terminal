@@ -15043,7 +15043,7 @@ subsection.
   Source: in-session-2026-06-02 (recurring ship-vs-live gap: ANTS-1632 / 1903 / 1947).
   Shipped 2026-06-02. claudeintegration.cpp now #includes build_info.h and stamps build_commit/build_date/build_time/build_type into the MCP initialize serverInfo + server_build_* into get_session_info. ants_claude_lib wired to build/generated include dir + ants_build_info dependency. 4 regression tests in tests/features/mcp_build_identity/ (INV-1..4). A session can now confirm the running SHA matches `git log` instead of re-running telemetry queries — the recurring ship-vs-live ghost that caused ANTS-1632/1903/1947.
 
-- 📋 [ANTS-1953] **User-typed /model: inject a continuation prompt after auto-confirming the switch dialog.**
+- ✅ [ANTS-1953] **User-typed /model: inject a continuation prompt after auto-confirming the switch dialog.**
   ANTS-1951 auto-confirms the "Switch model?" dialog for user-typed /model
   commands (presses ENTER), but does not inject a "please continue"
   continuation prompt afterward — so the session halts at the blank `>`
@@ -15061,6 +15061,7 @@ subsection.
   Kind: enhancement.
   Lanes: remotecontrol, modelautoswitch.
   Source: user-feedback-2026-06-02 (ANTS-1951 follow-up — observed after manual /model sonnet).
+  Shipped 2026-06-02. maybeAutoConfirmUserModelSwitch now injects the continuation prompt (same config key + kSwitchContinuationDelayMs as performModelSwitchHandshake) after confirming the dialog, so user-typed /model sessions resume at the blank prompt instead of halting. spec.md INV-7 updated to reflect the new behaviour.
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 

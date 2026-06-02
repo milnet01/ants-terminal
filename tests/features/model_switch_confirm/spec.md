@@ -54,8 +54,10 @@ the handshake's existing terminator. There is **no** "Esc to cancel" footer.
   pressed for the current dialog instance (`alreadyConfirmed` false). This is
   the gate `maybeAutoConfirmUserModelSwitch` uses to confirm a dialog the user
   raised by typing `/model` directly, without double-pressing over an
-  auto-switch/chip/undo handshake. Confirm sends only ENTER — no continuation
-  prompt, because the user is driving the session.
+  auto-switch/chip/undo handshake. Confirm sends ENTER, then injects the same
+  continuation prompt as `performModelSwitchHandshake` after
+  `kSwitchContinuationDelayMs` so the session resumes instead of halting at
+  a blank `>` prompt (ANTS-1953).
 
 ## Tests
 
