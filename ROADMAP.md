@@ -14978,6 +14978,7 @@ subsection.
   Kind: fix.
   Lanes: modelnearmissledger, remotecontrol.
   Source: vestige-feedback-2026-06-01 Issue #26.
+  Recurred on the live build (vestige-feedback-2026-06-02): firings total_24h=37 vs near_misses window_24h.total=58, flipped dominant blocker. The 2026-06-01 64-vs-65 near-convergence was a timing artifact, not the fix landing. New root-cause: by_blocked_by sums to 138 vs total=58 (multi-gate counting). Re-opened / tracked forward as ANTS-1947.
 
 - ✅ [ANTS-1939] **Extend the ANTS-1908 human-idle soft-veto to the `focused_state_not_idle` gate (now the dominant near-miss blocker).**
   focused_state_not_idle is now the dominant 24h near-miss blocker on Vestige (86%, 19/22). ANTS-1908 made composer_not_empty a stale-text soft-veto; this asks the same human-idle treatment for focused_state_not_idle — distinguish human-active (recent keystroke) from agent-active. No human keystroke for N min while the agent runs = autonomous-loop window where a downgrade is appropriate. MUST compose with ANTS-1917 (idle_end_of_session suppression): relax focused_state for agent-active-human-idle WITHOUT re-enabling end-of-session tail switches. A unified "session human-idle for N min" check could subsume both the composer and focused_state gates cleanly (the two together cover ~100% of observed near-misses).
@@ -14992,6 +14993,34 @@ subsection.
   Kind: enhancement.
   Lanes: modelrecommender, modelautoswitch, modelswitchledger.
   Source: vestige-feedback-2026-06-01 (switcher effectiveness ideas, per user tracking request).
+
+- 📋 [ANTS-1947] **`model_switch_stats` firings-vs-near_misses 24h disagreement recurred on the live build despite ANTS-1938 ✅.**
+  ANTS-1938 was marked shipped, but the 2026-06-02 Vestige session shows the disagreement back and wider: mode:firings slim block near_misses.total_24h=37 dominant=target_equals_current vs mode:near_misses window_24h.total=58 dominant=ticks_target_stable_insufficient. The prior session's 64-vs-65 near-convergence was a timing artifact, not the fix landing. New root-cause detail: near_misses-mode by_blocked_by values sum to 138 against total=58 — a single near-miss is counted once per gate that blocked it (multi-gate near-misses), so the two modes count different things (events vs gate-hits). Asks: (1) make firings-mode total_24h use the SAME event-counting basis as near_misses-mode window_24h.total; (2) document that by_blocked_by can exceed total because one near-miss may trip several gates; (3) confirm the ANTS-1938 fix is actually on the binary the MCP server runs (same ship-vs-live gap pattern as ANTS-1632/1903). Cross-ref ANTS-1938.
+  **Layman:** We thought we fixed the model-switcher's mismatched 'what's blocking it' numbers, but on the live build they disagree again — one report says 37, the other 58, and they name different top blockers.
+  Kind: fix.
+  Lanes: modelnearmissledger, remotecontrol.
+  Source: vestige-feedback-2026-06-02 Issue #26 recurrence.
+
+- 📋 [ANTS-1948] **Auto-switcher target-recommendation hysteresis — `ticks_target_stable_insufficient` is now the dominant near-miss blocker.**
+  Post-ANTS-1939 the session-active gates (composer_not_empty, focused_state_not_idle) dropped from ~86% dominant to mid-pack; the bottleneck moved to the target-SELECTION layer. On an ideal-downgrade mechanical session the switcher fired 0×, blocked by ticks_target_stable_insufficient (34/58, 59%) + target_equals_current (32/58). Root: the per-tick target recommendation flickers as the session oscillates between mechanical stretches and short reasoning bursts, so it never holds the required consecutive-tick window. Ideas: (1) hysteresis/smoothing — require N-of-M ticks agreeing (not N consecutive), or EMA the per-tick tier score and switch on a band crossing, so brief reasoning blips don't reset the stable-tick counter; natural pairing with ANTS-1940's subagent-dispatch-rate signal (dispatch-rate flags the bursts, hysteresis stops them poisoning the counter); (2) observability — surface the last-K recommended tiers or a target_flip_count_24h in model_switch_stats so flickering-vs-just-short-of-dwell is observable, not inferred. Extends ANTS-1940 (which targets the downgrade-decision/regret layer); this is the target-recommendation layer.
+  **Layman:** Now that the session-busy blocks are mostly handled, the auto-switcher still won't fire because it keeps changing its mind tick-to-tick about which model to pick. Smooth that out so it can commit during a sustained stretch of simple work.
+  Kind: enhancement.
+  Lanes: modelrecommender, modelautoswitch, modelnearmissledger.
+  Source: vestige-feedback-2026-06-02 (effectiveness bottleneck shift).
+
+- 📋 [ANTS-1949] **Clarify whether user `/model` commands enter the model-switch ledger (`by_trigger.manual` stayed 0 after a manual switch).**
+  User switched Sonnet→Opus mid-session via /model opus; the envelope's by_trigger.manual stayed {downgrades:0, upgrades:0}. Two possibilities: (a) by_trigger.manual means 'manual override of an auto-PROPOSED switch' (not 'user /model command') — then a one-line docstring clarification suffices; or (b) user /model commands genuinely aren't recorded in the ledger — then the switcher's effectiveness math (notably opus_turns_routed_in) can't see human-forced Opus over an otherwise-downgradeable session. Confirm which, and either document the semantics or record /model events. Low severity; affects how opus_turns_routed_in should be read.
+  **Layman:** When the user manually changes the model with /model, the switcher's stats don't seem to notice — so its savings math can't tell the human forced an expensive model for part of a session.
+  Kind: investigate.
+  Lanes: modelswitchledger, remotecontrol.
+  Source: vestige-feedback-2026-06-02 (robustness note).
+
+- 📋 [ANTS-1950] **`find_definition` could hint when a query matches a file stem but no symbol.**
+  find_definition for `test_reference_harness` returned 0 definitions after scanning 968 files — correct (it's a filename, not a symbol), but a one-line hint when the query exactly matches a file stem with no matching symbol ('no symbol named X; did you mean the file `X.cpp`?') would save the caller a follow-up. Low priority.
+  **Layman:** If you ask 'where is X defined' and X is actually a filename (not a function), the tool returns nothing — a one-line 'did you mean the file X.cpp?' hint would save a follow-up.
+  Kind: enhancement.
+  Lanes: remotecontrol.
+  Source: vestige-feedback-2026-06-02 (minor nicety).
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
