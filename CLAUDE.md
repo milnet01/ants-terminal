@@ -165,7 +165,15 @@ headline now also carries the `dwell=Ns` parenthetical and, when the
 24 h near-miss block is non-empty, appends "N near-misses in 24 h
 blocked by <dominant_blocker>" on both the no-switches and calibrating
 branches so the trust signal reads as "evaluating but blocked" rather
-than "feature did nothing".
+than "feature did nothing". ANTS-1941 — the trust signal now counts only
+current-epoch records: `StatsConfig::minEpoch` is set to
+`kSwitcherEpoch` at both dispatch sites so pre-fix contamination is
+filtered out by the epoch boundary, not the age window (the age window
+can't evict recent pre-fix records). Envelope adds `min_epoch` +
+`excluded_pre_epoch_count` when epoch-filtered; callers reading
+`regret_rate` from the live MCP verb now measure only the current
+switcher behaviour. `statsForProject` / `statsEnvelope` and any
+`minEpoch=0` caller remain unaffected (all-time forensic view).
 
 Config keys for the autonomous model switcher (ANTS-1735 §2.7) — single
 Settings toggle "Let Ants pick the Claude model for me" + two

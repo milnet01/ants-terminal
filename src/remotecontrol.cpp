@@ -7769,6 +7769,7 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
     sc.floorTier     = autoCfg.value(QStringLiteral("floor")).toString(QStringLiteral("haiku"));
     sc.minDwellSec   = autoCfg.value(QStringLiteral("min_dwell_sec")).toInt(90);
     sc.scope         = scope;
+    sc.minEpoch      = ModelSwitchLedger::kSwitcherEpoch;   // ANTS-1941 — current-epoch only
 
     // ANTS-1894 — Read the near-miss ledger once, scope it the same way the
     // firing aggregator does (empty projectScope → global).

@@ -186,7 +186,9 @@ Listed only where behavior isn't obvious from the name.
   effectiveness ledger: JSONL append + 256 KiB drop-oldest eviction with
   pending-record pinning (atomic, 0600), plus pure outcome detection
   (user-override / under-route / correction) and `statsEnvelope`
-  aggregation (avoided-Opus vs regret/under-route ratio). Read by the
+  aggregation (avoided-Opus vs regret/under-route ratio). `Record` carries
+  an `epoch` int field (ANTS-1941, default 0 = pre-epoch); `StatsConfig`
+  has `minEpoch` to filter only current-behaviour records. Read by the
   `model_switch_stats` MCP verb. In core so the mainwindow dispatch can
   reach it. ANTS-1735.
 - `modelnearmissledger` (Qt6::Core, `ants_core_lib`) — near-miss

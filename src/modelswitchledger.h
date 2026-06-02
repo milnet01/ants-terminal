@@ -27,6 +27,17 @@ constexpr int    kOutcomeWindowTurns    = 5;            // "within 5 turns"
 constexpr qint64 kCleanEndQuietMs       = 10 * 60 * 1000; // ANTS-1891 — 10 min
 constexpr int    kHeadlineFloorMeasured = 10;           // ANTS-1891 — headline floor
 
+// ANTS-1941 — behaviour epoch. Bump by 1 in any commit that changes a
+// behaviour the trust signal measures (recommender scoring, the decide() gate,
+// the actuator, or the outcome fill-in). Records written before this feature
+// shipped carry no `epoch` field and read as 0 (pre-epoch). Epoch 1 == the
+// first switch written *after ANTS-1941 ships* — a point that is ≥ every prior
+// behaviour fix (ANTS-1916/1930/…), so a safe "fixed-from-here" lower bound.
+// NEVER decrement; NEVER reuse a value (monotonicity is a review rule).
+constexpr int    kSwitcherEpoch         = 1;            // ANTS-1941
+static_assert(kSwitcherEpoch >= 1,
+              "epoch is a positive behaviour-generation counter");
+
 struct Outcome {
     int  turnsOnToTier            = 0;
     bool userOverrideWithin5      = false;
@@ -44,6 +55,7 @@ struct Record {
     QString toTier;
     QString scoreReason;   // ModelRecommender rec.reason at switch time
     QString trigger;       // "auto"
+    int     epoch = 0;     // ANTS-1941 — behaviour epoch; 0 = pre-epoch record
     Outcome outcome;
 };
 
@@ -163,6 +175,12 @@ struct StatsConfig {
     // from the aggregation to prevent stale pre-fix records from poisoning the
     // trust signal indefinitely. 0 = no window (all-time). Default ~30 days.
     int     windowDays           = 30;
+    // ANTS-1941 — minimum behaviour epoch. Records with epoch < minEpoch are
+    // excluded from the aggregation (counted in excluded_pre_epoch_count). A
+    // record with epoch >= minEpoch is in-scope (a newer behaviour generation is
+    // trusted): the predicate is a strict `<`, NEVER `!=`. 0 = no epoch filter
+    // (all-time / forensic path). Live dispatch sites set this to kSwitcherEpoch.
+    int     minEpoch             = 0;
 };
 QJsonObject statsEnvelope(const QList<Record> &recs,
                           const StatsConfig &cfg = {});

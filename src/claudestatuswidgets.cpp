@@ -1607,6 +1607,7 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     rec_.toTier    = dec.tierArg;
     rec_.scoreReason = rec.reason;
     rec_.trigger   = QStringLiteral("auto");
+    rec_.epoch     = ModelSwitchLedger::kSwitcherEpoch;   // ANTS-1941
     rec_.outcome.pending = true;
     ModelSwitchLedger::appendRecord(
         ModelSwitchLedger::defaultLedgerPath(), rec_);
@@ -1813,6 +1814,7 @@ double ClaudeStatusBarController::conservatismMultiplierFor(
     ModelSwitchLedger::StatsConfig sc;
     sc.scope     = QStringLiteral("project");
     sc.windowDays = 30;
+    sc.minEpoch  = ModelSwitchLedger::kSwitcherEpoch;   // ANTS-1941 — current-epoch only
     const QJsonObject env = ModelSwitchLedger::statsForScope(
         ModelSwitchLedger::defaultLedgerPath(), projectRoot, sc);
 

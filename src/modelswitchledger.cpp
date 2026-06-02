@@ -78,6 +78,7 @@ QJsonObject toJson(const Record &r) {
     o[QStringLiteral("to_tier")]      = r.toTier;
     o[QStringLiteral("score_reason")] = r.scoreReason;
     o[QStringLiteral("trigger")]      = r.trigger;
+    o[QStringLiteral("epoch")]        = r.epoch;   // ANTS-1941
     o[QStringLiteral("outcome")]      = oc;
     return o;
 }
@@ -91,6 +92,9 @@ Record fromJson(const QJsonObject &o) {
     r.toTier      = o.value(QStringLiteral("to_tier")).toString();
     r.scoreReason = o.value(QStringLiteral("score_reason")).toString();
     r.trigger     = o.value(QStringLiteral("trigger")).toString();
+    // ANTS-1941 — missing key defaults to 0 (pre-epoch record). Explicit
+    // .toInt(0) mirrors the ANTS-1891 .toBool(false) idiom below.
+    r.epoch       = o.value(QStringLiteral("epoch")).toInt(0);
     const QJsonObject oc = o.value(QStringLiteral("outcome")).toObject();
     r.outcome.turnsOnToTier           = oc.value(QStringLiteral("turns_on_to_tier")).toInt();
     r.outcome.userOverrideWithin5     = oc.value(QStringLiteral("user_override_within_5_turns")).toBool();
@@ -528,6 +532,7 @@ QJsonObject statsForScope(const QString &ledgerPath,
     const bool global = (cfg.scope == QStringLiteral("global"));
     QList<Record> scoped;
     int excludedStaleCount = 0;
+    int excludedPreEpochCount = 0;   // ANTS-1941
     // ANTS-1936 — filter by window_days if set (0 = all-time).
     const qint64 nowMs = (cfg.windowDays > 0)
         ? QDateTime::currentMSecsSinceEpoch() : -1;
@@ -535,6 +540,12 @@ QJsonObject statsForScope(const QString &ledgerPath,
 
     for (const Record &r : readRecords(ledgerPath)) {
         if (!global && r.project != projectRoot) continue;
+        // ANTS-1941 — epoch filter first, so a pre-epoch record is never also
+        // counted as stale (INV-4). Strict `<`: epoch >= minEpoch stays in-scope.
+        if (cfg.minEpoch > 0 && r.epoch < cfg.minEpoch) {
+            ++excludedPreEpochCount;
+            continue;
+        }
         // Apply window filter if enabled.
         if (cfg.windowDays > 0 && nowMs > 0) {
             const qint64 tsMs = parseIso8601Ms(r.ts);
@@ -551,12 +562,19 @@ QJsonObject statsForScope(const QString &ledgerPath,
         env[QStringLiteral("window_days")]        = cfg.windowDays;
         env[QStringLiteral("excluded_stale_count")] = excludedStaleCount;
     }
+    // ANTS-1941 — surface epoch filter info (emitted whenever minEpoch > 0, even
+    // when the count is 0 — mirrors the window_days pair above).
+    if (cfg.minEpoch > 0) {
+        env[QStringLiteral("min_epoch")]                = cfg.minEpoch;
+        env[QStringLiteral("excluded_pre_epoch_count")] = excludedPreEpochCount;
+    }
     return env;
 }
 
-// Back-compat thin wrapper — no config surfaced, project scope.
+// Back-compat thin wrapper — all-time forensic view (no epoch/recency filter
+// applied beyond the struct defaults).
 QJsonObject statsForProject(const QString &ledgerPath, const QString &projectRoot) {
-    StatsConfig cfg;   // defaults: disabled, project scope
+    StatsConfig cfg;   // defaults: project scope, windowDays = 30, minEpoch = 0
     return statsForScope(ledgerPath, projectRoot, cfg);
 }
 

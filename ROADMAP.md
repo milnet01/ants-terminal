@@ -8942,6 +8942,7 @@ indie-review finding.
   Kind: investigate.
   Source: in-session-2026-05-29 (model_switch_stats review).
   Investigation 2026-06-01: the 100% regret (3/3 measured) and 7 rapid sonnet→opus upgrades in the live ledger are pre-ANTS-1916 thrash — captured on 2026-05-29 between 10:57–11:05 (one switch every ~90 s dwell). Post-ANTS-1916 fix the stale-model-state read is gone; the auto->upgrade path is confirmed working (all 28 ledger records are trigger:auto, no manual inflation). Current composer_not_empty near-misses (2/24h) are the post-fix baseline. Re-baseline tracked in ANTS-1935.
+  Blocker cleared 2026-06-02: ANTS-1941 epoch filter shipped. The trust signal now counts only current-epoch switches; the ticks_target_stable_insufficient near-miss dominance question remains open but can now be measured cleanly.
 
 - 📋 [ANTS-1929] **Auto-switcher scope expanded — Claude Code auto-mode now works on Sonnet + Opus (was Opus-only).**
   As of 2026-05-29, Claude Code's auto-mode feature works on Sonnet and Opus, not just Opus. This expands the auto-switcher's useful range: Haiku (never auto-switch into, floor-only) → Sonnet (auto-switch available) → Opus (auto-switch available).
@@ -8960,6 +8961,7 @@ indie-review finding.
   Kind: investigate.
   Source: in-session-2026-06-01 (ANTS-1923 investigation).
   Re-baseline 2026-06-01 (this session): NOT yet evaluable — ledger is contaminated. 28/29 records are pre-fix (2 on 2026-05-26, 26 on 2026-05-29); only 1 post-fix record exists (2026-06-01 Ants_Terminal, opus->sonnet, 6 turns, CLEAN session-end, no regret). All 6 under-route regrets date 2026-05-26/29 — exactly the pre-ANTS-1916 thrash ANTS-1923 already explained. So: (a) regret_rate 66.7% global / 75% project is STALE contamination, not fresh harm — do NOT re-open ANTS-1923 on this signal; (b) auto upgrades non-zero ✓ (by_trigger.auto.upgrades=10 global/7 project — ANTS-1930 working); (c) composer_not_empty near-misses rose to 19/24h (was 2/24h this morning) — consistent with active interactive typing, not a regression. Blocker: statsForScope aggregates ALL ledger records with no recency window, so the 2026-05-29 thrash poisons regret_rate until 256KiB drop-oldest evicts them (~never at 11KB usage). This item cannot resolve until that's fixed — see new recency-window item.
+  Blocker cleared 2026-06-02: ANTS-1941 epoch filter shipped. statsForScope now counts only kSwitcherEpoch=1 records at both dispatch sites; pre-fix contamination is excluded. Re-baseline is now evaluable once a fresh session accumulates measured downgrades.
 
 - ✅ [ANTS-1936] **`model_switch_stats` firing/regret aggregation needs a recency window — stale pre-fix records poison the trust signal indefinitely.**
   statsForScope (modelswitchledger.cpp:525) aggregates EVERY ledger record for the scope with no date filter — only the near_misses block has a 24h window; avoided/regret/downgrade/under-route counts are all-time. After a behaviour-changing fix (ANTS-1916 stale-read, ANTS-1930 threshold rebalance) the old records keep regret_rate pinned high until the 256KiB drop-oldest eviction clears them — which at ~11KB current usage is effectively never. Concretely on 2026-06-01: 28/29 records are pre-fix 2026-05-26/29 thrash; the single post-fix record is clean; yet regret_rate reads 66.7% global. Fix: add a recency window to the firing aggregation, e.g. optional `window_days` param (default ~30) or `since_ms`, filtering records in statsForScope before statsEnvelope; surface the window + an `excluded_stale_count` in the envelope so callers know records were dropped. Unblocks ANTS-1935 and the §8 OQ-3 default-ON gate (both need to measure CURRENT behaviour). Pairs with ANTS-1935; keep all-time as the default or expose both.
@@ -8968,12 +8970,34 @@ indie-review finding.
   Lanes: modelswitchledger, claudeintegration.
   Source: in-session-2026-06-01 (ANTS-1935 re-baseline blocked by stale records).
 
-- 📋 [ANTS-1941] **Trust-signal needs a fix-epoch boundary, not just an age window — pre-fix records poison regret_rate even when only days old.**
+- ✅ [ANTS-1941] **Trust-signal needs a fix-epoch boundary, not just an age window — pre-fix records poison regret_rate even when only days old.**
   ANTS-1936 added an age-based window_days filter (default 30) to statsForScope, but the contaminating thrash is from 2026-05-29 — only ~3 days old today — so excluded_stale_count stays 0 and regret_rate reads 71% project / 67% global. Age can't distinguish valid-recent from pre-fix-recent. Fix: tag each ledger record with a behaviour epoch (e.g. a monotonically-bumped `epoch` int or the build/scorer version at write time), bump it whenever a behaviour-changing switcher fix lands (ANTS-1916/1930-class), and let statsForScope/headline default to counting only current-epoch records (surface `excluded_pre_epoch_count`, keep all-time available). Unblocks ANTS-1935 re-baseline and the §8 OQ-3 default-ON gate, both of which must measure CURRENT behaviour. Cheaper interim: a one-time op to archive/rotate the known pre-fix records out of the live ledger. Pairs with ANTS-1936 (age window) + ANTS-1935 (re-baseline).
   **Layman:** The auto-switcher scorecard still reads ~70% regret, but that is leftover noise from the buggy May-29 sessions, not the fixed behaviour. The 30-day window can't filter it out because the bad records are only a few days old. We need to mark a 'fixed from here' line so the scorecard only counts switches made by the current, fixed logic.
   Kind: enhancement.
   Lanes: modelswitchledger, modelautoswitch.
   Source: in-session-2026-06-01 (model_switch_stats review).
+  Shipped 2026-06-02. kSwitcherEpoch=1 constant + static_assert in modelswitchledger.h; Record.epoch field + toJson/fromJson round-trip; StatsConfig.minEpoch filter in statsForScope (epoch before age, INV-4); both live dispatch sites (remotecontrol.cpp:7767 + claudestatuswidgets.cpp:1813) set minEpoch=kSwitcherEpoch explicitly; fire path stamps rec_.epoch; wrapper comment refreshed. 5 new feature tests (INV-1..6, INV-8). 1822/1822 green.
+
+- 📋 [ANTS-1942] **model_switch_stats MCP verb relies on StatsConfig struct-default for windowDays while the controller sets it explicitly — latent scorecard/dial divergence.**
+  `remotecontrol.cpp:7767` builds StatsConfig setting switchEnabled/floorTier/minDwellSec/scope but NOT windowDays, inheriting the struct default 30; `claudestatuswidgets.cpp:1815` sets sc.windowDays=30 explicitly. They coincide only by that default — a future struct-default change diverges the human scorecard (MCP verb) from the caution dial (controller). This is the same contamination-divergence class ANTS-1941 exists to kill. Fix: set windowDays (and minEpoch, once ANTS-1941 lands) explicitly at the MCP site. Out of scope for ANTS-1941; flagged there.
+  **Layman:** Two parts of the auto-switcher read the same scorecard but configure the 'recent window' differently — they agree today only by luck. If the default ever changes, the human-facing number and the switcher's own caution dial would silently disagree.
+  Kind: fix.
+  Lanes: remotecontrol, claudestatuswidgets, modelswitchledger.
+  Source: cold-eyes-2026-06-02 (ANTS-1941 review).
+
+- 📋 [ANTS-1943] **roadmap-format.md Kind taxonomy table is out of sync with the roadmap_log tool's kind enum (12 documented vs 21 accepted).**
+  roadmap-format.md §3.5.3 (lines 217-232) lists 12 Kind values (implement, fix, audit-fix, review-fix, doc, doc-fix, refactor, test, chore, release, research, ux). The roadmap_log MCP tool's `kind` enum accepts 21 (adds perf, security, feature, enhancement, investigate, accessibility, optimize, package, marketing). specs.md §3 points Kind at the roadmap-format table, so specs using enhancement/feature/etc. are tool-valid but standard-undocumented. Reconcile: either extend the doc table to the full enum or narrow the enum; then sweep existing specs/bullets. Surfaced when ANTS-1941 used Kind: enhancement (corrected to implement).
+  **Layman:** The roadmap's list of allowed work-categories in the docs is shorter than the list the tooling actually accepts, so specs use category names (like 'enhancement') that are valid in the tool but missing from the written standard.
+  Kind: doc-fix.
+  Lanes: docs, remotecontrol.
+  Source: cold-eyes-2026-06-02 (ANTS-1941 review).
+
+- 📋 [ANTS-1944] **Auto-switcher thrash at context-compression boundary — fires /model to the model already set when the transcript's /model events fall outside the compressed context.**
+  Observed 2026-06-02: at 100% context used the auto-switcher fired /model sonnet 8 times in a row while the model was already Sonnet. The ANTS-1916 fix reads the current model from the most recent /model command in the transcript, but context compression drops those events — so score() falls back to reading message.model from the last visible assistant turn, which may reflect the session-start model (Opus). Decision: current=Opus, target=Sonnet — fires. The target_equals_current guard at decide() never trips. Fix: persist the most-recently-confirmed model in a non-transcript state (e.g. the session state written by the actuator, or the model chip's own field) so score() can read it even after compression.
+  **Layman:** After the conversation fills up and gets summarised, the auto-switcher loses track of which model was already set and keeps issuing the same switch command over and over (8 times in one observed session).
+  Kind: fix.
+  Lanes: modelrecommender, modelautoswitch.
+  Source: user-report-2026-06-02.
 
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 

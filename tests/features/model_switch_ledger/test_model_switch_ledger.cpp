@@ -431,3 +431,133 @@ TEST(ModelSwitchLedger, Ants1936RecencyWindowExcludesStale) {
     EXPECT_FALSE(envA.contains("excluded_stale_count"));
     EXPECT_GT(envA.value("switches").toInt(), windowedSwitches);
 }
+
+// ===== ANTS-1941 — behaviour-epoch filter =====
+
+// INV-1 / INV-2 — epoch round-trips through toJson/fromJson; a legacy object
+// with no `epoch` key reads back as 0 (pre-epoch); a non-zero epoch survives.
+TEST(ModelSwitchLedger, Ants1941EpochJsonRoundTrip) {
+    L::Record r = makeRecord("opus", "sonnet", false);
+    r.epoch = L::kSwitcherEpoch;
+    EXPECT_EQ(L::fromJson(L::toJson(r)).epoch, L::kSwitcherEpoch);   // INV-1
+
+    r.epoch = 2;                                                      // INV-2 (non-zero)
+    EXPECT_EQ(L::fromJson(L::toJson(r)).epoch, 2);
+
+    QJsonObject legacy = L::toJson(r);                                // INV-2 (missing key)
+    legacy.remove(QStringLiteral("epoch"));
+    EXPECT_EQ(L::fromJson(legacy).epoch, 0);
+}
+
+// INV-3 — minEpoch>0 excludes epoch<minEpoch records (counted in
+// excluded_pre_epoch_count); a record with epoch>minEpoch stays in-scope (strict
+// `<`, not `!=`); and a surviving current-epoch settled downgrade IS counted in
+// measured_downgrades (the positive path, not just stale-exclusion).
+TEST(ModelSwitchLedger, Ants1941EpochFilterExcludesPreEpoch) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("ledger.jsonl"));
+
+    L::Record pre = makeRecord("opus", "haiku", false);   // epoch 0 — excluded
+    L::Record cur = makeRecord("opus", "haiku", false);   // epoch 1 — settled downgrade
+    cur.epoch = 1;
+    cur.outcome.turnsOnToTier = 6;                          // positive evidence → measured
+    L::Record next = makeRecord("opus", "haiku", false);  // epoch 2 — newer generation
+    next.epoch = 2;
+    next.outcome.turnsOnToTier = 4;
+    ASSERT_TRUE(L::appendRecord(path, pre));
+    ASSERT_TRUE(L::appendRecord(path, cur));
+    ASSERT_TRUE(L::appendRecord(path, next));
+
+    L::StatsConfig cfg;
+    cfg.scope      = QStringLiteral("project");
+    cfg.windowDays = 0;          // isolate the epoch filter from the age window
+    cfg.minEpoch   = 1;
+    const QJsonObject env = L::statsForScope(path, QStringLiteral("/mnt/proj"), cfg);
+
+    EXPECT_EQ(env.value("min_epoch").toInt(), 1);
+    EXPECT_EQ(env.value("excluded_pre_epoch_count").toInt(), 1);   // the epoch-0 record
+    EXPECT_EQ(env.value("switches").toInt(), 2);                   // epoch-1 AND epoch-2
+    EXPECT_EQ(env.value("measured_downgrades").toInt(), 2);        // both settled downgrades
+}
+
+// INV-4 — a record both pre-epoch AND older than the window lands ONLY in
+// excluded_pre_epoch_count (the epoch check precedes the age check).
+TEST(ModelSwitchLedger, Ants1941EpochCheckPrecedesAgeCheck) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("ledger.jsonl"));
+
+    L::Record ancientPre = makeRecord("opus", "haiku", false);   // epoch 0 AND stale
+    ancientPre.ts = QStringLiteral("2020-01-01T00:00:00Z");
+    L::Record cur = makeRecord("opus", "haiku", false);
+    cur.epoch = 1;
+    cur.ts = L::nowIso8601();
+    ASSERT_TRUE(L::appendRecord(path, ancientPre));
+    ASSERT_TRUE(L::appendRecord(path, cur));
+
+    L::StatsConfig cfg;
+    cfg.scope      = QStringLiteral("project");
+    cfg.windowDays = 30;
+    cfg.minEpoch   = 1;
+    const QJsonObject env = L::statsForScope(path, QStringLiteral("/mnt/proj"), cfg);
+
+    EXPECT_EQ(env.value("excluded_pre_epoch_count").toInt(), 1);
+    EXPECT_EQ(env.value("excluded_stale_count").toInt(), 0);   // NOT double-counted
+}
+
+// INV-5 / INV-6 — minEpoch=0 (default) counts every epoch and emits neither
+// epoch key; the two keys are additive (appear only when minEpoch>0).
+TEST(ModelSwitchLedger, Ants1941NoEpochFilterByDefault) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("ledger.jsonl"));
+
+    L::Record pre = makeRecord("opus", "haiku", false);   // epoch 0
+    L::Record cur = makeRecord("opus", "haiku", false);
+    cur.epoch = 1;
+    ASSERT_TRUE(L::appendRecord(path, pre));
+    ASSERT_TRUE(L::appendRecord(path, cur));
+
+    L::StatsConfig allEpochs;
+    allEpochs.scope      = QStringLiteral("project");
+    allEpochs.windowDays = 0;
+    allEpochs.minEpoch   = 0;
+    const QJsonObject envAll = L::statsForScope(path, QStringLiteral("/mnt/proj"), allEpochs);
+    EXPECT_EQ(envAll.value("switches").toInt(), 2);            // both counted (INV-5)
+    EXPECT_FALSE(envAll.contains("min_epoch"));
+    EXPECT_FALSE(envAll.contains("excluded_pre_epoch_count"));
+
+    L::StatsConfig filtered = allEpochs;
+    filtered.minEpoch = 1;
+    const QJsonObject envF = L::statsForScope(path, QStringLiteral("/mnt/proj"), filtered);
+    EXPECT_TRUE(envF.contains("min_epoch"));                   // additive (INV-6)
+    EXPECT_TRUE(envF.contains("excluded_pre_epoch_count"));
+}
+
+// INV-8 — an all-pre-epoch ledger filtered with minEpoch=1 yields
+// measured_downgrades=0 and regret_rate=0.0 (the empty current-epoch set the
+// caution-dial chain relies on); excluded_pre_epoch_count == record count. The
+// emit-when-count-0 case: even though one record would have been a regret, it is
+// filtered out, so the dial reads neutral.
+TEST(ModelSwitchLedger, Ants1941AllPreEpochYieldsNeutralStats) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("ledger.jsonl"));
+
+    L::Record a = makeRecord("opus", "haiku", false);
+    a.outcome.turnsOnToTier = 5;
+    L::Record b = makeRecord("opus", "haiku", false);
+    b.outcome.userOverrideWithin5 = true;       // would be a regret if counted
+    L::Record c = makeRecord("opus", "haiku", false);
+    c.outcome.turnsOnToTier = 3;
+    ASSERT_TRUE(L::appendRecord(path, a));
+    ASSERT_TRUE(L::appendRecord(path, b));
+    ASSERT_TRUE(L::appendRecord(path, c));
+
+    L::StatsConfig cfg;
+    cfg.scope      = QStringLiteral("project");
+    cfg.windowDays = 0;
+    cfg.minEpoch   = 1;
+    const QJsonObject env = L::statsForScope(path, QStringLiteral("/mnt/proj"), cfg);
+
+    EXPECT_EQ(env.value("excluded_pre_epoch_count").toInt(), 3);
+    EXPECT_EQ(env.value("measured_downgrades").toInt(), 0);
+    EXPECT_DOUBLE_EQ(env.value("regret_rate").toDouble(), 0.0);
+}

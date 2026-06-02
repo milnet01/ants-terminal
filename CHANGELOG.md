@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Trust-signal needs a fix-epoch boundary, not just an age window — pre-fix records poison regret_rate even when only days…** (ANTS-1941)
+  The auto-switcher scorecard still reads ~70% regret, but that is leftover noise from the buggy May-29 sessions, not the fixed behaviour. The 30-day window can't filter it out because the bad records are only a few days old. We need to mark a 'fixed from here' line so the scorecard only counts switches made by the current, fixed logic.
+
 - **Auto-switcher calibration robustness — regret-driven conservatism + task-shape downgrade signal.** (ANTS-1940)
   Now that the auto-switcher actually fires, the first real data shows it guesses wrong about half the time (on a tiny sample). Make it more cautious while it's still learning, and make it notice fiddly mechanical work (safe to use a cheaper model) versus deep reasoning (don't).
 
