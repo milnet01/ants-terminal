@@ -15714,7 +15714,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: in-session-2026-05-29 (orientation gap hit while picking the next bundle).
   Progress (2026-05-29): Option (a) shipped — session_orient now bundles\na top-20 headline_only active-bullets list as `active_bullets` in its\nresponse envelope. Does not affect allOk. Token budget bumped to 17000.\nTool description and mcporientation.cpp cheat-sheet updated.\nOption (b) (roadmap_query mode:\"bundles\") remains open.
 
-- 📋 [ANTS-1926] **Auto-switcher pending-switch visual indicator — model chip annotation when switch queued on composer_not_empty.**
+- 🚧 [ANTS-1926] **Auto-switcher pending-switch visual indicator — model chip annotation when switch queued on composer_not_empty.**
   **Layman:** When the auto-switcher wants to change model but you have text in the input box, show a subtle 'pending → haiku' label on the model chip so you know a switch is waiting.
   Kind: ux.
   Lanes: modelautoswitch, claudestatuswidgets.
@@ -15741,7 +15741,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Kind: research.
   Source: in-session-2026-05-29.
 
-- 📋 [ANTS-1932] **`roadmap_log op:flip` should accept common status synonyms ("done"→shipped, "wip"→in-progress, "todo"→planned).**
+- 🚧 [ANTS-1932] **`roadmap_log op:flip` should accept common status synonyms ("done"→shipped, "wip"→in-progress, "todo"→planned).**
   Observed in-session 2026-05-29: `roadmap_log op:flip to_status:"done"` is rejected with `bad_status` (expected planned/in-progress/shipped/considered or 📋/🚧/✅/💭). "done" is the natural English synonym a caller reaches for to mean ✅ shipped, so the rejection costs a retry round-trip (~tokens) every time.
   
   The error envelope is otherwise excellent — it lists the exact accepted set, which made recovery instant. This is a pure ergonomics win, not a correctness bug.
@@ -15752,6 +15752,33 @@ partition (11 lanes) is documented in this fold-in for reuse.
   **Layman:** The roadmap tool rejects "done" as a status and only accepts "shipped", so a natural first attempt fails and wastes a retry. Let it accept everyday synonyms like done/wip/todo.
   Kind: enhancement.
   Source: in-session-2026-05-29.
+
+- 📋 [ANTS-1945] **Auto-switcher `ticks_target_stable_insufficient` — dominant near-miss blocker investigation and tuning.**
+  model_switch_stats (2026-06-02) shows 107 of 186 near-miss events (57%)
+    blocked by ticks_target_stable_insufficient — the recommendation must
+    be stable for kStableTicks=2 consecutive ticks before a switch fires.
+    With 0 actual switches in the epoch, every single evaluation is blocked.
+  
+    Investigation steps:
+    (a) Instrument advanceStability() with a debug counter to see whether
+        the recommendation genuinely oscillates every other tick or whether
+        the reset-hysteresis / tier-lock window (kTierLockWindowMs=8 s)
+        resets stability prematurely.
+    (b) Compare kStableTicks=2 vs kStableTicks=1: halving the requirement
+        lets a stable recommendation through in ~2 s instead of ~4 s.
+        Risk: may re-enable churn that ANTS-1928 tier-lock was added to prevent.
+    (c) Extend kTierLockWindowMs (currently 8 s) to 15-20 s to dampen
+        boundary oscillation more aggressively without changing kStableTicks.
+    (d) Add score-momentum weighting: if the last N consecutive scores
+        agree on the same tier, treat that as pre-accrued stability even
+        when the raw tick counter hasn't reached kStableTicks yet.
+  
+    Success criterion: ticks_target_stable_insufficient drops below 20%
+    of near-misses in a 24 h window with at least one successful auto-switch.
+  **Layman:** 107 of 186 near-misses in 24 h (57%) are blocked because the model recommendation keeps changing between checks — investigate why the score oscillates at tier boundaries and tune the stability accrual so the switcher can actually fire.
+  Kind: investigate.
+  Lanes: modelautoswitch, modelrecommender.
+  Source: in-session-2026-06-02 (model_switch_stats near-miss analysis — 107/186 blocked by ticks_target_stable_insufficient in 24 h).
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 

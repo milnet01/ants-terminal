@@ -3958,19 +3958,43 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 QStringLiteral("roadmap_log: to_status is required "
                                "under op:\"flip\""));
         }
-        if      (toStatus == QStringLiteral("planned")     ||
-                 toStatus == QStringLiteral("📋")) targetEmoji = QStringLiteral("📋");
-        else if (toStatus == QStringLiteral("in-progress") ||
-                 toStatus == QStringLiteral("🚧")) targetEmoji = QStringLiteral("🚧");
-        else if (toStatus == QStringLiteral("shipped")     ||
-                 toStatus == QStringLiteral("✅")) targetEmoji = QStringLiteral("✅");
-        else if (toStatus == QStringLiteral("considered")  ||
-                 toStatus == QStringLiteral("💭")) targetEmoji = QStringLiteral("💭");
+        // ANTS-1932 — synonym expansion (case-insensitive). Accept the
+        // natural English words a caller reaches for on the first try, mapping
+        // them to the canonical form before the check below. The canonical
+        // names + emojis remain the documented API; synonyms are accept-only.
+        const QString toStatusResolved = [&]() -> QString {
+            const QString lo = toStatus.toLower();
+            if (lo == QLatin1String("done")      ||
+                    lo == QLatin1String("complete")  ||
+                    lo == QLatin1String("completed"))
+                return QStringLiteral("shipped");
+            if (lo == QLatin1String("wip") ||
+                    lo == QLatin1String("in_progress"))
+                return QStringLiteral("in-progress");
+            if (lo == QLatin1String("todo") ||
+                    lo == QLatin1String("open"))
+                return QStringLiteral("planned");
+            if (lo == QLatin1String("maybe") ||
+                    lo == QLatin1String("idea"))
+                return QStringLiteral("considered");
+            return toStatus;
+        }();
+        if      (toStatusResolved == QStringLiteral("planned")     ||
+                 toStatusResolved == QStringLiteral("📋")) targetEmoji = QStringLiteral("📋");
+        else if (toStatusResolved == QStringLiteral("in-progress") ||
+                 toStatusResolved == QStringLiteral("🚧")) targetEmoji = QStringLiteral("🚧");
+        else if (toStatusResolved == QStringLiteral("shipped")     ||
+                 toStatusResolved == QStringLiteral("✅")) targetEmoji = QStringLiteral("✅");
+        else if (toStatusResolved == QStringLiteral("considered")  ||
+                 toStatusResolved == QStringLiteral("💭")) targetEmoji = QStringLiteral("💭");
         else {
             return rlErr(QStringLiteral("bad_status"),
                 QStringLiteral("roadmap_log: unknown to_status \"%1\" — "
                                "expected planned / in-progress / shipped "
-                               "/ considered (or one of 📋/🚧/✅/💭)")
+                               "/ considered (or one of 📋/🚧/✅/💭); "
+                               "synonyms also accepted: done/complete/completed "
+                               "→ shipped, wip/in_progress → in-progress, "
+                               "todo/open → planned, maybe/idea → considered")
                     .arg(toStatus));
         }
     }

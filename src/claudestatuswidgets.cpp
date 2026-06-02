@@ -1348,11 +1348,15 @@ void ClaudeStatusBarController::refreshModelStateChip()
     // changed since the last paint.
     const qint64 mtimeMs =
         QFileInfo(transcriptPath).lastModified().toMSecsSinceEpoch();
-    if (transcriptPath == m_modelStatePath && mtimeMs == m_modelStateMtimeMs) {
+    // ANTS-1926 — also invalidate when pending-switch tier changes (set/cleared
+    // by refreshAutoModelSwitch independently of transcript mtime).
+    if (transcriptPath == m_modelStatePath && mtimeMs == m_modelStateMtimeMs
+            && m_autoSwitchPendingTier == m_modelStateLastPendingTier) {
         return;
     }
-    m_modelStatePath    = transcriptPath;
-    m_modelStateMtimeMs = mtimeMs;
+    m_modelStatePath              = transcriptPath;
+    m_modelStateMtimeMs           = mtimeMs;
+    m_modelStateLastPendingTier   = m_autoSwitchPendingTier;
 
     // Reuse the scorer's transcript parse to get the current model id —
     // it's the same ≤512 KB tail-read the auto-switcher tick already pays
@@ -1385,13 +1389,29 @@ void ClaudeStatusBarController::refreshModelStateChip()
     if (!thinkLabel.isEmpty()) {
         text += QStringLiteral(" · ") + thinkLabel;
     }
+    // ANTS-1926 — pending-switch annotation. When the auto-switcher has
+    // queued a switch (blocked only by composer_not_empty), append a
+    // "(→ Haiku)" suffix so the user can see the intent at a glance.
+    if (!m_autoSwitchPendingTier.isEmpty()) {
+        const QString pendingTitle =
+            m_autoSwitchPendingTier.left(1).toUpper() +
+            m_autoSwitchPendingTier.mid(1);
+        text += QStringLiteral(" (→ ") + pendingTitle + QStringLiteral(")");
+    }
     m_modelStateBtn->setText(text);
+    const QString pendingTip = m_autoSwitchPendingTier.isEmpty()
+        ? QString()
+        : tr("\nAuto-switch to %1 is queued — will fire when you send "
+             "or clear the composer.")
+              .arg(m_autoSwitchPendingTier.left(1).toUpper() +
+                   m_autoSwitchPendingTier.mid(1));
     m_modelStateBtn->setToolTip(
         tr("Focused tab is using %1 (from the transcript's most recent "
            "assistant turn).\nThinking level: %2 (parsed from the most "
            "recent user prompt; \"standard\" when no directive is set).")
             .arg(tierTitle)
-            .arg(thinkLabel.isEmpty() ? tr("unknown") : thinkLabel));
+            .arg(thinkLabel.isEmpty() ? tr("unknown") : thinkLabel)
+        + pendingTip);
     m_modelStateBtn->show();
 }
 

@@ -321,6 +321,9 @@ private:
     QPushButton           *m_modelStateBtn = nullptr;
     QString                m_modelStatePath;
     qint64                 m_modelStateMtimeMs = -1;
+    // ANTS-1926 — tracks last-rendered pending tier so the mtime short-circuit
+    // can be bypassed when pending state changes independently of the transcript.
+    QString                m_modelStateLastPendingTier;
 
     // ANTS-1735 §2.3 actuator state. Lives on the controller (one set
     // per window — the gate runs on the focused tab's read, so there's
