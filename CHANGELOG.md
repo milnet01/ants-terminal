@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Near-miss telemetry needs the ANTS-1941 epoch boundary too — dominant_blocker stays contaminated by stale-binary records…** (ANTS-1954)
+  When you rebuild Ants, the auto-switcher's "why didn't it fire?" stats keep showing yesterday's reasons for about a day, because they don't reset at the rebuild boundary like the other stats do. That's exactly why we can't yet judge whether the switcher's remaining block is real. This makes those stats reset cleanly at each rebuild.
+
 - **User-typed /model: inject a continuation prompt after auto-confirming the switch dialog.** (ANTS-1953)
   When you type /model sonnet yourself, Ants now auto-clicks the confirmation dialog — but it still leaves you at a blank prompt instead of typing "please continue" to resume your work. This would add that last step.
 

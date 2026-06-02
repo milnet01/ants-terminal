@@ -89,6 +89,7 @@ QJsonObject toJson(const Record &r) {
     o[QStringLiteral("dwell_ms")]            = static_cast<double>(r.dwellMs);
     o[QStringLiteral("ms_since_last_override")] =
         static_cast<double>(r.msSinceLastOverride);
+    o[QStringLiteral("epoch")]              = r.epoch; // ANTS-1954
     return o;
 }
 
@@ -111,6 +112,9 @@ Record fromJson(const QJsonObject &o) {
         ? static_cast<qint64>(
               o.value(QStringLiteral("ms_since_last_override")).toDouble(-1.0))
         : -1;
+    // ANTS-1954 — missing key defaults to 0 (pre-epoch record, written before
+    // the field existed). Same semantics as the firing ledger (ANTS-1941).
+    r.epoch = o.value(QStringLiteral("epoch")).toInt(0);
     return r;
 }
 
@@ -150,12 +154,16 @@ QList<Record> readRecords(const QString &path) {
 namespace {
 
 // Filter records by (24h window relative to nowMs) AND (project match when
-// projectScope is non-empty). Empty projectScope → no project filter (global).
+// projectScope is non-empty) AND (epoch >= minEpoch when minEpoch > 0).
+// ANTS-1954 — minEpoch mirrors the firing-ledger ANTS-1941 filter so the
+// dominant_blocker reading resets cleanly at each rebuild, not after 24 h.
 QList<Record> filterWindow(const QList<Record> &recs,
                            const QString       &projectScope,
-                           qint64               nowMs) {
+                           qint64               nowMs,
+                           int                  minEpoch = 0) {
     QList<Record> out;
     for (const Record &r : recs) {
+        if (minEpoch > 0 && r.epoch < minEpoch) continue; // pre-epoch excluded
         if (!projectScope.isEmpty() && r.project != projectScope) continue;
         if (nowMs > 0) {
             const qint64 tsMs = ModelSwitchLedger::parseIso8601Ms(r.ts);
@@ -168,11 +176,14 @@ QList<Record> filterWindow(const QList<Record> &recs,
 }
 
 QList<Record> filterProject(const QList<Record> &recs,
-                            const QString       &projectScope) {
-    if (projectScope.isEmpty()) return recs;
+                            const QString       &projectScope,
+                            int                  minEpoch = 0) {
     QList<Record> out;
-    for (const Record &r : recs)
-        if (r.project == projectScope) out.append(r);
+    for (const Record &r : recs) {
+        if (minEpoch > 0 && r.epoch < minEpoch) continue;
+        if (!projectScope.isEmpty() && r.project != projectScope) continue;
+        out.append(r);
+    }
     return out;
 }
 
@@ -234,8 +245,9 @@ int distinctSignatures(const QList<Record> &recs) {
 
 StatsSlim statsSlim(const QList<Record> &recs,
                     const QString       &projectScope,
-                    qint64               nowMs) {
-    const QList<Record> windowed = filterWindow(recs, projectScope, nowMs);
+                    qint64               nowMs,
+                    int                  minEpoch) {
+    const QList<Record> windowed = filterWindow(recs, projectScope, nowMs, minEpoch);
     StatsSlim out;
     out.total24h        = windowed.size();
     out.dominantBlocker = dominantBlocker(tallyBlockedBy(windowed));
@@ -244,9 +256,10 @@ StatsSlim statsSlim(const QList<Record> &recs,
 
 QJsonObject statsFull(const QList<Record> &recs,
                       const QString       &projectScope,
-                      qint64               nowMs) {
-    const QList<Record> all      = filterProject(recs, projectScope);
-    const QList<Record> windowed = filterWindow(recs, projectScope, nowMs);
+                      qint64               nowMs,
+                      int                  minEpoch) {
+    const QList<Record> all      = filterProject(recs, projectScope, minEpoch);
+    const QList<Record> windowed = filterWindow(recs, projectScope, nowMs, minEpoch);
 
     const QHash<QString, int> tallyWindow = tallyBlockedBy(windowed);
     const QHash<QString, int> tallyAll    = tallyBlockedBy(all);
@@ -264,6 +277,14 @@ QJsonObject statsFull(const QList<Record> &recs,
     allTime[QStringLiteral("distinct_signatures")]    = distinctSignatures(all);
 
     QJsonObject env;
+    // ANTS-1954 — count records excluded by the epoch filter (pre-epoch records
+    // that exist on disk but are not counted in window_24h or all_time).
+    int excludedPreEpochCount = 0;
+    if (minEpoch > 0) {
+        for (const Record &r : recs)
+            if (r.epoch < minEpoch) ++excludedPreEpochCount;
+    }
+
     env[QStringLiteral("ok")]          = true;
     env[QStringLiteral("mode")]        = QStringLiteral("near_misses");
     env[QStringLiteral("scope")]       = projectScope.isEmpty()
@@ -271,6 +292,10 @@ QJsonObject statsFull(const QList<Record> &recs,
                                             : QStringLiteral("project");
     env[QStringLiteral("window_24h")]  = window24h;
     env[QStringLiteral("all_time")]    = allTime;
+    if (minEpoch > 0) {
+        env[QStringLiteral("min_epoch")]                = minEpoch;
+        env[QStringLiteral("excluded_pre_epoch_count")] = excludedPreEpochCount;
+    }
 
     // Headline — human-readable summary of the 24 h window.
     QString headline;

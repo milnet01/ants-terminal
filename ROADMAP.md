@@ -15068,6 +15068,38 @@ subsection.
   Source: user-feedback-2026-06-02 (ANTS-1951 follow-up — observed after manual /model sonnet).
   Shipped 2026-06-02. maybeAutoConfirmUserModelSwitch now injects the continuation prompt (same config key + kSwitchContinuationDelayMs as performModelSwitchHandshake) after confirming the dialog, so user-typed /model sessions resume at the blank prompt instead of halting. spec.md INV-7 updated to reflect the new behaviour.
 
+- ✅ [ANTS-1954] **Near-miss telemetry needs the ANTS-1941 epoch boundary too — dominant_blocker stays contaminated by stale-binary records after a relaunch.**
+  ANTS-1941 gave the FIRING/regret trust signal a fix-epoch boundary
+  (kSwitcherEpoch / StatsConfig::minEpoch) so regret_rate counts only
+  current-epoch records. The NEAR-MISS aggregation (ANTS-1894) was never
+  retrofitted: ModelNearMissLedger::statsSlim/statsFull window ONLY by
+  wall-clock (kStatsWindowMs = 24h, filterWindow at modelnearmissledger.cpp
+  ~154), the Record struct has no epoch field, maybeEmitNearMiss
+  (claudestatuswidgets.cpp ~1919) does not stamp one, and the
+  model_switch_stats dispatch (remotecontrol.cpp ~7807) passes no epoch.
+  
+  Consequence (observed this session, 2026-06-02): the live MCP server was
+  relaunched ~17:04 running the ANTS-1946 fix (target_equals_current no
+  longer recorded), yet model_switch_stats still reported
+  target_equals_current=63 in window_24h and dominant_blocker
+  =ticks_target_stable_insufficient — those are pre-relaunch records the
+  OLD binary wrote earlier the same day. So the near-miss dominant_blocker
+  cannot be trusted for ~24h after any rebuild, which is exactly the gate
+  ANTS-1948 (hysteresis) is waiting on. The ANTS-1952 build-identity stamp
+  makes the staleness *detectable*; this makes the telemetry *self-clean*.
+  
+  Fix (mirror ANTS-1941): add int epoch to ModelNearMissLedger::Record,
+  stamp rec.epoch = ModelSwitchLedger::kSwitcherEpoch on append, add a
+  minEpoch filter to statsSlim/statsFull, and surface min_epoch +
+  excluded_pre_epoch_count in the near_misses envelope. Pre-epoch records
+  (no epoch field) read as epoch 0 and are excluded once minEpoch=1.
+  Unblocks a trustworthy re-evaluation of ANTS-1945 / ANTS-1948.
+  **Layman:** When you rebuild Ants, the auto-switcher's "why didn't it fire?" stats keep showing yesterday's reasons for about a day, because they don't reset at the rebuild boundary like the other stats do. That's exactly why we can't yet judge whether the switcher's remaining block is real. This makes those stats reset cleanly at each rebuild.
+  Kind: enhancement.
+  Lanes: modelnearmissledger, modelautoswitch, remotecontrol.
+  Source: in-session-2026-06-02 (verified design gap during ANTS-1948 gating analysis; pairs with ANTS-1941 + ANTS-1952).
+  Shipped 2026-06-02. ModelNearMissLedger::Record gains int epoch=0; toJson/fromJson round-trips it. filterWindow + filterProject accept minEpoch; statsSlim/statsFull signatures extended with minEpoch=0 default. statsFull surfaces min_epoch + excluded_pre_epoch_count when minEpoch>0. maybeEmitNearMiss stamps rec.epoch = kSwitcherEpoch. Dispatch site (remotecontrol.cpp) passes nmMinEpoch = kSwitcherEpoch to both statsFull and statsSlim. On the next relaunch, the 24h dominant_blocker reading will contain only current-epoch records; pre-relaunch stale-binary records are excluded automatically. Unblocks trustworthy evaluation of ANTS-1945/ANTS-1948.
+
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
 - ✅ [ANTS-1329] **Tasks dialog gets 3 px of vertical row

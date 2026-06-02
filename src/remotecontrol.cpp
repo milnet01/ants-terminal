@@ -7808,11 +7808,15 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
         ModelNearMissLedger::readRecords(ModelNearMissLedger::defaultLedgerPath());
     const qint64 nmNowMs = QDateTime::currentMSecsSinceEpoch();
 
+    // ANTS-1954 — pass the same epoch boundary as the firing ledger so the
+    // near-miss dominant_blocker resets cleanly at each rebuild, not after 24h.
+    const int nmMinEpoch = ModelSwitchLedger::kSwitcherEpoch;
+
     if (mode == QStringLiteral("near_misses")) {
         // ANTS-1894 INV-12 — full breakdown envelope; preserve config triple
         // + scope echo so the caller can still distinguish "feature OFF" / ON.
         QJsonObject env = ModelNearMissLedger::statsFull(
-            nmRecs, nmProjectScope, nmNowMs);
+            nmRecs, nmProjectScope, nmNowMs, nmMinEpoch);
         env[QStringLiteral("auto_model_switch_enabled")] = sc.switchEnabled;
         env[QStringLiteral("floor_tier")] = sc.floorTier;
         env[QStringLiteral("min_dwell_sec")] = sc.minDwellSec;
@@ -7825,7 +7829,7 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
     // statsForScope so the dominant-blocker + 24 h count can flow into the
     // headline composition via StatsConfig (statsEnvelope owns the wording).
     const ModelNearMissLedger::StatsSlim slim =
-        ModelNearMissLedger::statsSlim(nmRecs, nmProjectScope, nmNowMs);
+        ModelNearMissLedger::statsSlim(nmRecs, nmProjectScope, nmNowMs, nmMinEpoch);
     sc.nearMissTotal24h        = slim.total24h;
     sc.nearMissDominantBlocker = slim.dominantBlocker;
     QJsonObject env = ModelSwitchLedger::statsForScope(

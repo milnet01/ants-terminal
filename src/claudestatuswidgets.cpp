@@ -1960,6 +1960,7 @@ void ClaudeStatusBarController::maybeEmitNearMiss(
     r.ticksTargetStable   = gate.ticksTargetStable;
     r.dwellMs             = gate.msSinceLastSwitch;
     r.msSinceLastOverride = gate.msSinceLastOverride;
+    r.epoch               = ModelSwitchLedger::kSwitcherEpoch;  // ANTS-1954
 
     const QString ledgerPath = ledgerPathOverride.isEmpty()
         ? ModelNearMissLedger::defaultLedgerPath()

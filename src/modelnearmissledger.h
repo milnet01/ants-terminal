@@ -39,6 +39,9 @@ struct Record {
     int         ticksTargetStable   = 0;
     qint64      dwellMs             = 0;
     qint64      msSinceLastOverride = -1; // sentinel matches Gate.msSinceLastOverride
+    int         epoch              = 0;  // ANTS-1954 — behaviour epoch (mirrors
+                                          // firing ledger ANTS-1941); 0 = pre-epoch
+                                          // record (written before the field existed)
 };
 
 // --- I/O paths + helpers ---------------------------------------------------
@@ -73,16 +76,24 @@ struct StatsSlim {
     int     total24h = 0;
     QString dominantBlocker;
 };
+// ANTS-1954 — minEpoch mirrors the firing-ledger ANTS-1941 filter: records
+// with epoch < minEpoch are excluded from both window_24h and all_time, so
+// dominant_blocker resets cleanly after a rebuild rather than after 24h.
+// Pass ModelSwitchLedger::kSwitcherEpoch at live dispatch sites; 0 = no filter.
 StatsSlim statsSlim(const QList<Record> &recs,
                     const QString       &projectScope,   // "" for global
-                    qint64               nowMs);
+                    qint64               nowMs,
+                    int                  minEpoch = 0);
 
 // Full breakdown — returned when model_switch_stats is called with
 // mode:"near_misses". window_24h is filtered by nowMs; all_time has no
 // window filter. distinct_signatures counts distinct post-sort blocked_by
 // arrays. Headline gives the human summary.
+// ANTS-1954 — minEpoch: excludes pre-epoch records; surfaces min_epoch +
+// excluded_pre_epoch_count in the envelope when > 0.
 QJsonObject statsFull(const QList<Record> &recs,
                       const QString       &projectScope,
-                      qint64               nowMs);
+                      qint64               nowMs,
+                      int                  minEpoch = 0);
 
 }  // namespace ModelNearMissLedger
