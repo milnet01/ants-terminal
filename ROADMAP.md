@@ -15755,7 +15755,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: in-session-2026-05-29.
   Shipped 2026-06-02: synonym normalization lambda in remotecontrol.cpp; error message updated to list synonyms.
 
-- 📋 [ANTS-1945] **Auto-switcher `ticks_target_stable_insufficient` — dominant near-miss blocker investigation and tuning.**
+- 💭 [ANTS-1945] **Auto-switcher `ticks_target_stable_insufficient` — dominant near-miss blocker investigation and tuning.**
   model_switch_stats (2026-06-02) shows 107 of 186 near-miss events (57%)
     blocked by ticks_target_stable_insufficient — the recommendation must
     be stable for kStableTicks=2 consecutive ticks before a switch fires.
@@ -15781,6 +15781,43 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Kind: investigate.
   Lanes: modelautoswitch, modelrecommender.
   Source: in-session-2026-06-02 (model_switch_stats near-miss analysis — 107/186 blocked by ticks_target_stable_insufficient in 24 h).
+  Investigation done (2026-06-02). The "57% ticks_target_stable_insufficient" headline is a telemetry ARTIFACT, not a real blocker. Ledger analysis (541 project records): ticks_target_stable appears in 322 events but is the SOLE blocker in only 19 (3.5%). It rides along mechanically because when target==current, advanceStability can't increment ticksStable, so both tokens always co-fire. Genuine sole-blockers: composer_not_empty (89), dwell_time_insufficient (75) — both already addressed (ANTS-1919/1926/1908/1914; dwell is by-design). The stability constants (kStableTicks=2, kTierLockWindowMs=8s) are working as designed — a 1-in-2 oscillation reaches ticksStable=2 by the 3rd tick. CONCLUSION: do NOT tune the stability constants. The real fix is telemetry-semantics (see follow-up item): target_equals_current records are non-near-misses (no switch was ever wanted) and should not be emitted — they are 36% of the project ledger (198/541) and corrupt the dominant_blocker signal + evict genuine near-misses under the byte cap. Demoted to considered; superseded by the telemetry-correctness item.
+
+- 📋 [ANTS-1946] **Near-miss telemetry: stop recording `target_equals_current` as a near-miss (it corrupts `dominant_blocker`).**
+  Root cause found while investigating ANTS-1945. A near-miss should mean
+    "the switcher wanted to switch but a guard stopped it." When
+    target_equals_current is in blocked_by, clampToFloor(recommended,floor)
+    == current, so NO switch was ever possible — it is not a near-miss.
+    maybeEmitNearMiss currently emits these anyway (spec ANTS-1894 INV-5
+    treats all 7 tokens equally). Consequences measured on the live ledger
+    (541 Ants_Terminal records): 198 (36%) carry target_equals_current;
+    because advanceStability can't accrue ticksStable when target==current,
+    every one drags ticks_target_stable_insufficient along, inflating that
+    token to 322 and making it the false "dominant_blocker". After
+    excluding target_equals_current records the dominant blocker is the
+    real one (composer_not_empty); sole-blocker stable drops to 19 (3.5%).
+  
+    Fix (spec-first — touches ANTS-1894 INV-5/INV-9/INV-10, so write a
+    superseding INV + run /cold-eyes before coding per rule 14):
+    - maybeEmitNearMiss: early-return without emitting AND without
+      updating the throttle state when blockedBy contains
+      target_equals_current (mirror the dec.blockedBy.isEmpty() guard).
+      A target_equals_current state is the healthy idle default, not a
+      blocked switch.
+    - Add a regression test under model_near_miss_ledger asserting a
+      decision blocked by [target_equals_current, ...] emits no record.
+    - Net effect: total_24h becomes "real near-misses", dominant_blocker
+      auto-corrects, and the 256 KiB eviction cap stops dropping genuine
+      near-misses in favour of non-events.
+  
+    Alternative considered (rejected as symptom-level): keep emitting but
+    exclude target_equals_current from dominantBlocker/tallyBlockedBy.
+    Leaves the ledger full of noise and the cap still evicts real data —
+    not a root-cause fix.
+  **Layman:** The auto-switcher's "what's blocking me" stats are polluted: 36% of the records are just "the model was already correct" — not a blocked switch at all. They drown out the real signal and push the wrong fix. Stop logging those non-events.
+  Kind: fix.
+  Lanes: modelautoswitch, modelnearmissledger, claudestatuswidgets.
+  Source: in-session-2026-06-02 (ANTS-1945 investigation — ledger sole-blocker analysis).
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
