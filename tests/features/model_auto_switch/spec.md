@@ -63,6 +63,15 @@ suppression — INV-14), the effectiveness ledger (INV-10..12), and the
   default-constructed Gate keeps the v1 7-token behaviour. Token is appended
   last in evaluation order (INV-9 of the near-miss taxonomy is never
   renumbered).
+- **INV-16 (ANTS-1959)** — downgrade-at-idle suppression + long-ToolUse
+  yield. (a) A **downgrade** (`tierRank(target) < tierRank(current)`) appends
+  `downgrade_requires_active_work` and does not act whenever `idleElapsedMs >=
+  0` (the shell is idle: end of work, between turns, winding down). Upgrades
+  are never blocked by it (direction-sensitive). The `-1` sentinel keeps a
+  default Gate at the v1 7-token behaviour. (b) The `focused_state_not_idle`
+  veto YIELDS when `toolUseElapsedMs >= kLongToolUseMs` (10 s): a long
+  foreground tool/build/test run is the one downgrade-safe active window. Net
+  effect: downgrades fire only during sustained active work, never at idle.
 
 ## Method
 
