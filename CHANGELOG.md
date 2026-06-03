@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Auto-switcher task-shape signals round 2 — foreground-subprocess-wait (safe-downgrade) + post-clarification suppression …** (ANTS-1959)
+  Make the model-switcher smarter about WHEN it's safe to drop to a cheaper model: it's safe while waiting on a long build/test, but risky right after you answer a design question (hard work usually follows). Two cheap signals that catch the most common real sessions.
+
 - **`model_switch_stats` surfacing/scoring polish — suppress calibration `regret_rate`, credit clean idle-end downgrades, do…** (ANTS-1960)
   Three small honesty fixes to the model-switcher's stats: don't show a scary "50% regret" when it's based on one event; give credit when it correctly wanted a cheaper model right at a clean session end; and note that two of its counters only match when read at the same instant.
 
