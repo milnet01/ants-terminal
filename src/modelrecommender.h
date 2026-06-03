@@ -26,9 +26,22 @@ struct Result {
 
 // score() reads at most 512 KB from the tail of the JSONL transcript
 // at transcriptPath, scores the last 20 assistant turns.
-// Returns Sonnet if the file is absent or has no assistant turns.
+// Returns the home tier if the file is absent or has no assistant turns.
 // Stateless: no per-call mutable state.
-Result score(const QString &transcriptPath);
+// ANTS-1974 — `homeTier` is the user's baseline/neutral tier. The default
+// Tier::Sonnet reproduces the pre-1974 mapping byte-for-byte (so every existing
+// caller + test is unchanged). The memo cache keys on homeTier too.
+Result score(const QString &transcriptPath, Tier homeTier = Tier::Sonnet);
+
+// ANTS-1974 — pure band helper: maps a task-shape score + mechanical flag to a
+// tier RELATIVE to the home (baseline) tier. Tier is ordered Haiku<Sonnet<Opus.
+//   sc >= 2 (up)                       -> min(home+1, Opus)
+//   -2 < sc < 2 (neutral)              -> home
+//   sc <= -2, not mechanical (mild)    -> max(home-1, Haiku)
+//   sc <= -2, mechanical (strong)      -> max(home-2, Haiku)
+// home == Sonnet reproduces the legacy mapping (up->Opus, down->Haiku, else
+// Sonnet). Pure; no I/O.
+Tier tierForScore(int sc, bool mechanical, Tier homeTier);
 
 // tierName() converts a Tier to the /model command argument string.
 // Haiku → "haiku", Sonnet → "sonnet", Opus → "opus".

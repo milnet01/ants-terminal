@@ -243,6 +243,22 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         "recommender chip is suppressed while this is on.");
     layout->addRow(m_claudeAutoModelSwitch);
 
+    // ANTS-1974 — home/baseline tier dropdown. The auto-switcher centres on
+    // this tier (neutral band → home; only downgrades below it on clear
+    // evidence, only upgrades above it on heavy work). Default Sonnet
+    // reproduces the pre-1974 behaviour.
+    m_claudeAutoModelHomeTier = new QComboBox(tab);
+    m_claudeAutoModelHomeTier->addItem("Haiku (cheapest baseline)", "haiku");
+    m_claudeAutoModelHomeTier->addItem("Sonnet (balanced baseline)", "sonnet");
+    m_claudeAutoModelHomeTier->addItem("Opus (most capable baseline)", "opus");
+    m_claudeAutoModelHomeTier->setToolTip(
+        "The model Ants treats as your baseline. The auto-switcher stays on "
+        "this tier for ordinary work, steps down only on clear mechanical "
+        "evidence, and steps up only on heavy work. Pick Opus to keep Claude "
+        "on the most capable model and only drop to Sonnet/Haiku when the work "
+        "is clearly cheap. Default: Sonnet.");
+    layout->addRow("  Home model (auto-switch baseline)", m_claudeAutoModelHomeTier);
+
     // ANTS-1893 — surfacing mute sub-toggles. Greyed out when the
     // master toggle above is off (INV-14 master mirror).
     m_claudeAutoModelToast = new QCheckBox(
@@ -276,6 +292,7 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
     // master back on restores the user's prior choice.
     auto mirrorMaster = [this]() {
         const bool on = m_claudeAutoModelSwitch->isChecked();
+        if (m_claudeAutoModelHomeTier)  m_claudeAutoModelHomeTier->setEnabled(on);
         if (m_claudeAutoModelToast)     m_claudeAutoModelToast->setEnabled(on);
         if (m_claudeAutoModelChipPulse) m_claudeAutoModelChipPulse->setEnabled(on);
         if (m_claudeAutoModelUndo)      m_claudeAutoModelUndo->setEnabled(on);
@@ -323,6 +340,10 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         m_notificationTimeout->setValue(5);
         m_claudeTabStatusIndicator->setChecked(true);
         if (m_claudeAutoModelSwitch) m_claudeAutoModelSwitch->setChecked(false);
+        // ANTS-1974 — home tier default Sonnet.
+        if (m_claudeAutoModelHomeTier)
+            m_claudeAutoModelHomeTier->setCurrentIndex(
+                m_claudeAutoModelHomeTier->findData(QStringLiteral("sonnet")));
         // ANTS-1893 — surfacing toggles default TRUE per spec INV-11.
         if (m_claudeAutoModelToast)     m_claudeAutoModelToast->setChecked(true);
         if (m_claudeAutoModelChipPulse) m_claudeAutoModelChipPulse->setChecked(true);
@@ -949,6 +970,13 @@ void SettingsDialog::loadSettings() {
         m_claudeAutoModelSwitch->setChecked(
             m_config->claudeAutoModel().value("switch_enabled").toBool());
     // ANTS-1893 — load the three surfacing mute toggles (default TRUE).
+    if (m_claudeAutoModelHomeTier) {
+        const QString home = m_config->claudeAutoModel()
+            .value("home_tier").toString(QStringLiteral("sonnet"));
+        const int idx = m_claudeAutoModelHomeTier->findData(home);
+        m_claudeAutoModelHomeTier->setCurrentIndex(idx >= 0 ? idx
+            : m_claudeAutoModelHomeTier->findData(QStringLiteral("sonnet")));
+    }
     if (m_claudeAutoModelToast)
         m_claudeAutoModelToast->setChecked(m_config->claudeAutoModelToastEnabled());
     if (m_claudeAutoModelChipPulse)
@@ -1071,6 +1099,9 @@ void SettingsDialog::applySettings() {
     if (m_claudeAutoModelSwitch)
         m_config->setClaudeAutoModelSwitch(m_claudeAutoModelSwitch->isChecked());
     // ANTS-1893 — persist the three surfacing mute toggles.
+    if (m_claudeAutoModelHomeTier)
+        m_config->setClaudeAutoModelHomeTier(
+            m_claudeAutoModelHomeTier->currentData().toString());
     if (m_claudeAutoModelToast)
         m_config->setClaudeAutoModelToastEnabled(m_claudeAutoModelToast->isChecked());
     if (m_claudeAutoModelChipPulse)

@@ -441,6 +441,21 @@ QJsonObject Config::claudeAutoModel() const {
     if (floor != QLatin1String("haiku") && floor != QLatin1String("sonnet"))
         floor = QStringLiteral("haiku");
     out.insert("floor", floor);
+    // ANTS-1974 — home/baseline tier: the neutral-band recommendation. Default
+    // "sonnet" reproduces the pre-1974 mapping. An unrecognised value coerces to
+    // "sonnet". Clamped up to the floor here (effectiveHome = max(home, floor))
+    // so the envelope never advertises a home the floor forbids.
+    QString home = m_data.value("claude.auto_model_home_tier").toString("sonnet");
+    if (home != QLatin1String("haiku") && home != QLatin1String("sonnet")
+        && home != QLatin1String("opus"))
+        home = QStringLiteral("sonnet");
+    // One-sided clamp: rank order haiku < sonnet < opus. If home is below the
+    // floor, raise it to the floor (the floor is the hard lower bound).
+    auto rank = [](const QString &t) {
+        return t == QLatin1String("opus") ? 2 : (t == QLatin1String("sonnet") ? 1 : 0);
+    };
+    if (rank(home) < rank(floor)) home = floor;
+    out.insert("home_tier", home);
     // ANTS-1914 — composer-stale veto threshold (ms). -1 sentinel (default)
     // tells the gate to use kComposerStaleVetoMs (~5 min). Advanced users set
     // a smaller positive value to unblock queued slash-commands sooner.
@@ -458,6 +473,17 @@ QJsonObject Config::claudeAutoModel() const {
 
 void Config::setClaudeAutoModelSwitch(bool enabled) {
     if (!storeIfChanged("claude.auto_model_switch", enabled)) return;
+    save();
+}
+
+// ANTS-1974 — persist the home/baseline tier. Accepts "haiku"|"sonnet"|"opus";
+// anything else is normalised to "sonnet" before storing.
+void Config::setClaudeAutoModelHomeTier(const QString &tier) {
+    QString t = tier;
+    if (t != QLatin1String("haiku") && t != QLatin1String("sonnet")
+        && t != QLatin1String("opus"))
+        t = QStringLiteral("sonnet");
+    if (!storeIfChanged("claude.auto_model_home_tier", t)) return;
     save();
 }
 

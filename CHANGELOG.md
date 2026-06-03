@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Settings: user-selectable default/home model tier — auto-switcher returns to it and only downgrades on clear evidence.** (ANTS-1974)
+  Let the user pick their home model (e.g. Opus) in Settings. The auto-switcher then treats that as the baseline — staying there for normal work and only stepping down to Sonnet/Haiku when the work is clearly mechanical/cheap.
+
 - **Yield the composer_not_empty veto during a long-ToolUse foreground wait (the 67%-dominant near-miss blocker).** (ANTS-1973)
   During a long build/test wait the text box often holds stale queued text, not active typing — yet that blocks the cheaper-model switch 67% of the time. When a foreground command has been running a while and the box hasn't changed, treat the text as abandoned and allow the downgrade.
 

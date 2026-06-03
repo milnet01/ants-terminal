@@ -40,7 +40,11 @@ constexpr int    kDefaultStatsWindowDays = 30;          // ANTS-1936/1942 — re
 // old "any override = regret" rule) are not comparable and are excluded by the
 // epoch boundary. The trust signal recalibrates cleanly from the first switch
 // written after this ships.
-constexpr int    kSwitcherEpoch         = 2;            // ANTS-1941, ANTS-1957
+// ANTS-1974 — bumped 2 → 3: the recommender's neutral band is now relative to a
+// user-selectable home tier, so the *meaning* of a downgrade record changes
+// (a downgrade from an Opus home is a different event than from a Sonnet home).
+// Pre-1974 records are not comparable; the epoch boundary excludes them.
+constexpr int    kSwitcherEpoch         = 3;            // ANTS-1941, ANTS-1957, ANTS-1974
 static_assert(kSwitcherEpoch >= 1,
               "epoch is a positive behaviour-generation counter");
 

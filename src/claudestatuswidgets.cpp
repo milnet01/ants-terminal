@@ -46,6 +46,19 @@
 // 12-row external touch-site rewrite map, and the per-test
 // re-pointing contract.
 
+namespace {
+// ANTS-1974 — the recommender's home/baseline tier, read from config and mapped
+// to a ModelRecommender::Tier. Config already clamps home up to the floor and
+// normalises unrecognised strings to "sonnet" (see Config::claudeAutoModel).
+ModelRecommender::Tier homeTierFromConfig() {
+    const QString home = Config().claudeAutoModel()
+        .value(QStringLiteral("home_tier")).toString(QStringLiteral("sonnet"));
+    if (home == QLatin1String("opus"))  return ModelRecommender::Tier::Opus;
+    if (home == QLatin1String("haiku")) return ModelRecommender::Tier::Haiku;
+    return ModelRecommender::Tier::Sonnet;
+}
+}  // namespace
+
 ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
                                                      QObject *parent)
     : QObject(parent), m_statusBar(statusBar) {
@@ -1282,7 +1295,7 @@ void ClaudeStatusBarController::refreshModelChip()
     m_modelChipMtimeMs = mtimeMs;
 
     const ModelRecommender::Result rec =
-        ModelRecommender::score(transcriptPath);
+        ModelRecommender::score(transcriptPath, homeTierFromConfig());
 
     // INV-4: hide chip when recommendation matches current model tier.
     const ModelRecommender::Tier currentTier =
@@ -1362,7 +1375,7 @@ void ClaudeStatusBarController::refreshModelStateChip()
     // it's the same ≤512 KB tail-read the auto-switcher tick already pays
     // for in the 2 s status timer.
     const ModelRecommender::Result rec =
-        ModelRecommender::score(transcriptPath);
+        ModelRecommender::score(transcriptPath, homeTierFromConfig());
     if (rec.currentModel.isEmpty()) {
         // No assistant turn yet — the session is brand new. Hide rather
         // than guess at "Sonnet" (score()'s default fallback).
@@ -1484,7 +1497,7 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     }
     if (transcriptPath.isEmpty()) return;
     const ModelRecommender::Result rec =
-        ModelRecommender::score(transcriptPath);
+        ModelRecommender::score(transcriptPath, homeTierFromConfig());
 
     // Resolve floor from config string. ANTS-1944 — floor + clampedTarget are
     // computed BEFORE `current` so reconcileCurrentTier can compare the actuator
@@ -2400,7 +2413,7 @@ void ClaudeStatusBarController::fillPendingLedgerOutcomes(
         }
         if (postSwitchAsstCount >= 1) {
             const ModelRecommender::Result rr =
-                ModelRecommender::score(transcriptPath);
+                ModelRecommender::score(transcriptPath, homeTierFromConfig());
             recTiers << ModelRecommender::tierName(rr.tier);
         }
 

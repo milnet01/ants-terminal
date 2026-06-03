@@ -1594,6 +1594,8 @@ if(ANTS_TESTS)
                 tests/features/test_audit_pattern_drift/test_pattern_drift.cpp
                 # ANTS-1226 — ModelRecommender scorer.
                 tests/features/model_recommender/test_model_recommender.cpp
+                # ANTS-1974 — home/baseline tier band (tierForScore + score home arg).
+                tests/features/model_home_tier/test_model_home_tier.cpp
                 src/modelrecommender.cpp
                 # ANTS-1735 — autonomous model-switch gate (pure decide/clampToFloor).
                 # modelautoswitch.cpp + modelrecommender.cpp compiled directly here

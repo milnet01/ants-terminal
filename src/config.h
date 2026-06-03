@@ -83,10 +83,17 @@ public:
     //                              default 90, clamp [30, 1800]
     //   "floor"            str  — claude.auto_model_floor, "haiku" | "sonnet",
     //                              default "haiku"
+    //   "home_tier"        str  — claude.auto_model_home_tier, "haiku" |
+    //                              "sonnet" | "opus", default "sonnet"; the
+    //                              auto-switcher's baseline/neutral tier
+    //                              (ANTS-1974), clamped up to floor.
     QJsonObject claudeAutoModel() const;
-    // The Settings dialog only exposes the bool toggle (the dwell + floor
-    // stay config-file-only per §2.7). Persists `claude.auto_model_switch`.
+    // The Settings dialog exposes the bool toggle + the home-tier dropdown
+    // (ANTS-1974); dwell + floor stay config-file-only per §2.7.
     void setClaudeAutoModelSwitch(bool enabled);
+    // ANTS-1974 — persist the home/baseline tier ("haiku"|"sonnet"|"opus");
+    // unrecognised values normalise to "sonnet".
+    void setClaudeAutoModelHomeTier(const QString &tier);
 
     // ANTS-1735 §8 OQ-3 first-run nudge — set true once the user has
     // either accepted or dismissed the one-time prompt to enable the

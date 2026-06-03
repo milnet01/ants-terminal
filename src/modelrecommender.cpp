@@ -113,10 +113,26 @@ double weightForTurnIndex(int idx, int total) {
     return 1.0 + 2.0 * (static_cast<double>(idx) / (total - 1));
 }
 
-Result score(const QString &transcriptPath)
+Tier tierForScore(int sc, bool mechanical, Tier homeTier)
+{
+    // Tier is enum class {Haiku=0, Sonnet=1, Opus=2}. Step relative to home in
+    // int space, clamp to [Haiku, Opus], re-cast. See ANTS-1974 §Band design.
+    const int home = static_cast<int>(homeTier);
+    const auto clampTier = [](int v) -> Tier {
+        if (v < static_cast<int>(Tier::Haiku)) v = static_cast<int>(Tier::Haiku);
+        if (v > static_cast<int>(Tier::Opus))  v = static_cast<int>(Tier::Opus);
+        return static_cast<Tier>(v);
+    };
+    if (sc >= 2)  return clampTier(home + 1);          // up
+    if (sc <= -2) return clampTier(home - (mechanical ? 2 : 1));  // strong / mild down
+    return homeTier;                                   // neutral
+}
+
+Result score(const QString &transcriptPath, Tier homeTier)
 {
     Result def;
     def.reason = QStringLiteral("default");
+    def.tier   = homeTier;   // ANTS-1974 — absent transcript ⇒ home, not hardcoded Sonnet.
 
     // ANTS-1927 — memoize the score by (mtime, size). The controller ticks
     // score() every ~2 s per focused tab (and several times per refresh:
@@ -137,8 +153,13 @@ Result score(const QString &transcriptPath)
     const bool fileExists = fi.exists();
     const qint64 mtimeMs  = fi.lastModified().toMSecsSinceEpoch();
     const qint64 fsize    = fi.size();
+    // ANTS-1974 — the home tier shifts the band mapping, so the same transcript
+    // scored under two home tiers yields different tiers. Fold homeTier into the
+    // cache key so a home change is never served a stale tier.
+    const QString cacheKey = transcriptPath + QLatin1Char('\x1f')
+                           + QString::number(static_cast<int>(homeTier));
     if (fileExists) {
-        const auto it = cache.constFind(transcriptPath);
+        const auto it = cache.constFind(cacheKey);
         if (it != cache.constEnd() && it->mtimeMs == mtimeMs && it->size == fsize)
             return it->result;
     }
@@ -148,7 +169,7 @@ Result score(const QString &transcriptPath)
     const auto memoize = [&](const Result &r) -> Result {
         if (fileExists) {
             if (cache.size() >= kCacheCap) cache.clear();
-            cache.insert(transcriptPath, {mtimeMs, fsize, r});
+            cache.insert(cacheKey, {mtimeMs, fsize, r});
         }
         return r;
     };
@@ -351,23 +372,12 @@ Result score(const QString &transcriptPath)
     r.isMechanical = mechanical;
     r.currentModelFromCommand = def.currentModelFromCommand;  // ANTS-1944
     r.currentModelTsMs        = def.currentModelTsMs;
-    // ANTS-1930 — rebalanced thresholds for symmetric upgrades/downgrades.
-    // Pre-1930: >= 3 (Opus) / <= -1 (Haiku) created a one-way ratchet that
-    // blocked upgrades while favoring downgrades. New thresholds:
-    // - Opus: >= 2 (easier to reach, reflects moderately heavy work)
-    // - Haiku: <= -2 (requires stronger evidence of purely mechanical work)
-    // This encourages balanced movement in both directions instead of a
-    // downgrade-only trajectory.
-    if (sc >= 2) {
-        r.tier   = Tier::Opus;
-        r.reason = reasons.trimmed();
-    } else if (sc <= -2) {
-        r.tier   = Tier::Haiku;
-        r.reason = reasons.trimmed();
-    } else {
-        r.tier   = Tier::Sonnet;
-        r.reason = reasons.trimmed();
-    }
+    // ANTS-1930 — rebalanced thresholds for symmetric upgrades/downgrades
+    // (>= 2 up, <= -2 down). ANTS-1974 — the up/neutral/down decision is now
+    // RELATIVE to the user's home tier via tierForScore(); home==Sonnet
+    // reproduces the pre-1974 Opus/Sonnet/Haiku mapping exactly.
+    r.tier   = tierForScore(sc, mechanical, homeTier);
+    r.reason = reasons.trimmed();
     return memoize(r);
 }
 

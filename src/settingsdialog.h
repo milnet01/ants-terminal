@@ -87,6 +87,8 @@ private:
     // ANTS-1735 §2.7 — single prominent toggle for the autonomous
     // model switcher. The dwell + floor knobs stay config-file-only.
     QCheckBox *m_claudeAutoModelSwitch = nullptr;
+    // ANTS-1974 — home/baseline tier dropdown (haiku|sonnet|opus).
+    QComboBox *m_claudeAutoModelHomeTier = nullptr;
     // ANTS-1893 — switch-event surfacing mute sub-toggles. Enabled
     // state mirrors the master m_claudeAutoModelSwitch above (INV-14).
     QCheckBox *m_claudeAutoModelToast     = nullptr;
