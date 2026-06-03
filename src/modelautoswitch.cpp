@@ -99,8 +99,10 @@ Decision decide(const Gate &g) {
 
     // Evaluate every guard in canonical taxonomy order (INV-2). Each failing
     // guard appends ONE token; reader of blockedBy sees the full diagnostic
-    // picture. The seven tokens are the ANTS-1894 INV-9 stable handles — do
-    // NOT rename or reorder (consumers persist them to disk).
+    // picture. The tokens are the ANTS-1894 INV-9 stable handles — do NOT
+    // rename or reorder (consumers persist them to disk). v1 = 7 tokens;
+    // ANTS-1917 appended idle_end_of_session (8th); ANTS-1959 appended
+    // downgrade_requires_active_work (9th). New tokens always go last.
     if (!g.enabled)
         d.blockedBy << QStringLiteral("auto_switch_disabled");
     // ANTS-1939 — focused_state_not_idle soft-veto. Mirrors the ANTS-1908
@@ -178,6 +180,27 @@ Decision decide(const Gate &g) {
         if (g.idleElapsedMs >= ceiling)
             d.blockedBy << QStringLiteral("idle_end_of_session");
     }
+
+    // ANTS-1959 — downgrades are unsafe while the shell is idle (9th token,
+    // appended last to preserve the v1 8-token ordering — INV-9). A downgrade
+    // at idle — end of work, between turns, winding down — is ALL-RISK and
+    // little reward: it can pollute the next session's default model, it
+    // precedes a reasoning burst as often as not, and (the user's key concern)
+    // when paired with any continuation it can start BILLABLE work that wasn't
+    // asked for. Meanwhile the cheaper tier isn't even exercised while idle —
+    // the recommender re-scores the tier on the next active turn anyway, so a
+    // genuinely-mechanical stretch still gets its downgrade then (during the
+    // ToolUse grind, where focused_state_not_idle yields — Signal 1). So we
+    // suppress downgrades whenever the shell IS idle and permit them only
+    // during active work. Keyed on idleElapsedMs >= 0 (real idle telemetry,
+    // mirroring idle_end_of_session); the -1 sentinel keeps legacy/no-telemetry
+    // callers bit-for-bit. UPGRADES are unrestricted — you always want Opus the
+    // moment work turns hard. Tier enum is Haiku<Sonnet<Opus, so a smaller rank
+    // == a cheaper tier == a downgrade.
+    const bool isDowngrade =
+        static_cast<int>(target) < static_cast<int>(g.current);
+    if (isDowngrade && g.idleElapsedMs >= 0)
+        d.blockedBy << QStringLiteral("downgrade_requires_active_work");
 
     if (d.blockedBy.isEmpty()) {
         d.act     = true;

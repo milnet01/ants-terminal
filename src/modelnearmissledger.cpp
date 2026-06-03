@@ -21,8 +21,9 @@ namespace {
 
 // Canonical blocker taxonomy in evaluation order (matches ModelAutoSwitch::
 // decide() — INV-2 / INV-9). Used for tie-breaking in statsSlim. ANTS-1917
-// appended `idle_end_of_session` as the 8th token (kept last so the v1 7-token
-// ordering is never renumbered).
+// appended `idle_end_of_session` as the 8th token; ANTS-1959 appended
+// `downgrade_requires_active_work` as the 9th (both kept last so the v1
+// 7-token ordering is never renumbered).
 const QStringList &taxonomyOrder() {
     static const QStringList order = {
         QStringLiteral("auto_switch_disabled"),
@@ -33,6 +34,7 @@ const QStringList &taxonomyOrder() {
         QStringLiteral("dwell_time_insufficient"),
         QStringLiteral("override_cooldown_active"),
         QStringLiteral("idle_end_of_session"),
+        QStringLiteral("downgrade_requires_active_work"),
     };
     return order;
 }

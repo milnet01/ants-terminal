@@ -1574,10 +1574,13 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     // ANTS-1917 — idle end-of-session suppression. idleElapsedMs is how long
     // the focused shell has sat in Idle (re-stamped each turn boundary, so a
     // fresh between-turns gap reads small and a walk-away grows unboundedly).
-    // -1 = not idle or no idleSinceMs stamp yet → the gate doesn't fire. The
-    // ceiling is configurable via claude.auto_model_idle_ceiling_sec (default
-    // kIdleEndOfSessionMs / 1000); a value <= 0 disables the gate entirely by
-    // leaving idleElapsedMs at -1.
+    // -1 = not idle or no idleSinceMs stamp yet → the idle gates don't fire.
+    // The ceiling is configurable via claude.auto_model_idle_ceiling_sec
+    // (default kIdleEndOfSessionMs / 1000); a value <= 0 disables the idle
+    // gates entirely by leaving idleElapsedMs at -1.
+    // ANTS-1959 — idleElapsedMs also drives downgrade_requires_active_work
+    // (idle ⇒ no downgrade); under the default ceiling (180 s > 0) it is always
+    // populated when the shell is idle, so idle downgrades are suppressed.
     const int idleCeilingSec = autoCfg.value("idle_ceiling_sec").toInt(
         static_cast<int>(ModelAutoSwitch::kIdleEndOfSessionMs / 1000));
     if (idleCeilingSec > 0) {
@@ -1689,7 +1692,21 @@ void ClaudeStatusBarController::performModelSwitchHandshake(TerminalWidget *focu
     // ANTS-1951 — mark the handshake in-flight so maybeAutoConfirmUserModelSwitch
     // stands down (this path owns the confirm for the dialog it raised).
     m_modelHandshakeInFlight = true;
-    const QString cont = Config().claudeAutoModelContinuationPrompt();
+    // ANTS-1959 — billing safety: only send the "please continue" continuation
+    // prompt when there is an ACTIVE turn for the switch-confirm to resume
+    // (state == Thinking / ToolUse). If the shell is Idle, the turn already
+    // finished — injecting "please continue" would START NEW WORK the user
+    // never asked for, which on a depleted plan bills as unrequested extra
+    // usage. So at idle we confirm the dialog but send NO continuation. This
+    // covers every caller: an auto-switch fired mid-build resumes the build;
+    // an auto-upgrade / deferred-chip / undo fired while idle starts nothing.
+    const pid_t pid = focused ? focused->shellPid() : 0;
+    const ClaudeState st = (m_tracker && pid > 0)
+        ? m_tracker->shellState(pid).state : ClaudeState::NotRunning;
+    const bool activeTurn =
+        (st == ClaudeState::Thinking || st == ClaudeState::ToolUse);
+    const QString cont = activeTurn
+        ? Config().claudeAutoModelContinuationPrompt() : QString();
     // Delay the first poll one interval: `/model\r` was just injected, so the
     // dialog has not rendered yet — an immediate check would always miss.
     QPointer<ClaudeStatusBarController> self(this);
