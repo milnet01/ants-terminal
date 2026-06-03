@@ -1731,15 +1731,18 @@ void ClaudeStatusBarController::pollModelSwitchConfirm(
 // who types /model wants the confirm regardless). Stands down while an
 // Ants-initiated handshake owns the dialog, and presses ENTER at most once per
 // dialog instance (latch cleared when the dialog clears).
-// ANTS-1953 — after confirming, inject the continuation prompt (same as
-// performModelSwitchHandshake) so the session resumes rather than halting at
-// a blank `>` prompt. Uses the same config key and delay constant.
+// ANTS-1953 — after confirming, inject the continuation prompt.
+// ANTS-1955 — when the dialog has not yet rendered at tick time, arms a
+// kSwitchConfirmPollMs-interval burst (pollUnarmedSwitchConfirm) so the dialog
+// is confirmed within ~120 ms of rendering rather than up to 2 s later.
 void ClaudeStatusBarController::maybeAutoConfirmUserModelSwitch() {
+    if (m_unarmedPollActive) return;   // ANTS-1955 — burst already running
+
     const bool enabled = Config().claudeAutoModelConfirmUserSwitch();
     auto *focused = m_focusedTerminalProvider
         ? m_focusedTerminalProvider() : nullptr;
     if (!enabled || !focused) {
-        m_unarmedSwitchConfirmed = false;   // nothing on screen we own
+        m_unarmedSwitchConfirmed = false;
         return;
     }
 
@@ -1749,20 +1752,74 @@ void ClaudeStatusBarController::maybeAutoConfirmUserModelSwitch() {
             visible, enabled, m_modelHandshakeInFlight,
             m_unarmedSwitchConfirmed)) {
         if (!visible) m_unarmedSwitchConfirmed = false;  // dialog gone — re-arm
+        // ANTS-1955 — arm a burst so a dialog that renders shortly after this
+        // tick is caught at kSwitchConfirmPollMs granularity.
+        if (!visible && !m_unarmedSwitchConfirmed
+                && enabled && !m_modelHandshakeInFlight) {
+            m_unarmedPollActive = true;
+            QPointer<ClaudeStatusBarController> self(this);
+            QTimer::singleShot(kSwitchConfirmPollMs, this, [self]() {
+                if (self) self->pollUnarmedSwitchConfirm(0);
+            });
+        }
         return;
     }
 
-    focused->sendToPty("\r");   // ENTER — confirms the pre-highlighted "Yes" row.
+    focused->sendToPty("\r");
     m_unarmedSwitchConfirmed = true;
 
-    // ANTS-1953 — inject continuation prompt after a short settle delay so CC
-    // has rendered the post-confirm prompt before we start typing.
     const QString cont = Config().claudeAutoModelContinuationPrompt();
     if (!cont.isEmpty()) {
         QPointer<TerminalWidget> g(focused);
         QTimer::singleShot(kSwitchContinuationDelayMs, this, [g, cont]() {
             if (g) g->sendToPty((cont + QStringLiteral("\r")).toUtf8());
         });
+    }
+}
+
+// ANTS-1955 — short-poll burst for user-typed /model confirm. Mirrors
+// pollModelSwitchConfirm but does NOT set m_modelHandshakeInFlight (this path
+// does not own the dialog — it only presses ENTER if it finds one that was
+// user-initiated). Budget: kSwitchConfirmMaxPolls × kSwitchConfirmPollMs (~1.9s).
+void ClaudeStatusBarController::pollUnarmedSwitchConfirm(int attempt) {
+    auto *focused = m_focusedTerminalProvider
+        ? m_focusedTerminalProvider() : nullptr;
+    if (!focused) {
+        m_unarmedPollActive = false;
+        return;
+    }
+
+    const bool enabled = Config().claudeAutoModelConfirmUserSwitch();
+    const bool visible = ModelAutoSwitch::switchConfirmVisible(
+        focused->recentOutput(kSwitchConfirmScanLines));
+
+    if (ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch(
+            visible, enabled, m_modelHandshakeInFlight,
+            m_unarmedSwitchConfirmed)) {
+        focused->sendToPty("\r");
+        m_unarmedSwitchConfirmed = true;
+        m_unarmedPollActive = false;
+
+        const QString cont = Config().claudeAutoModelContinuationPrompt();
+        if (!cont.isEmpty()) {
+            QPointer<TerminalWidget> g(focused);
+            QTimer::singleShot(kSwitchContinuationDelayMs, this, [g, cont]() {
+                if (g) g->sendToPty((cont + QStringLiteral("\r")).toUtf8());
+            });
+        }
+        return;
+    }
+
+    if (!visible) m_unarmedSwitchConfirmed = false;  // re-arm for next dialog
+
+    if (attempt + 1 < kSwitchConfirmMaxPolls) {
+        QPointer<ClaudeStatusBarController> self(this);
+        QTimer::singleShot(kSwitchConfirmPollMs, this, [self, attempt]() {
+            if (self) self->pollUnarmedSwitchConfirm(attempt + 1);
+        });
+        // m_unarmedPollActive stays true — burst is continuing
+    } else {
+        m_unarmedPollActive = false;  // budget exhausted
     }
 }
 

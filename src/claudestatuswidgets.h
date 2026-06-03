@@ -117,10 +117,19 @@ public:
     // typing /model directly (no Ants-initiated handshake is polling for it).
     // Same 2 s tick as refreshAutoModelSwitch but independent of the auto-switch
     // master toggle — a user who types /model wants the prompt confirmed
-    // regardless. Sends only ENTER (no continuation — the user is driving).
+    // regardless. Sends ENTER + continuation prompt (ANTS-1953).
     // Gated by ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch + the
     // claude.auto_model_confirm_user_switch config key.
+    // When the dialog has not yet rendered at tick time, arms a short polling
+    // burst (pollUnarmedSwitchConfirm) so it is caught within
+    // kSwitchConfirmPollMs rather than waiting a full 2-s tick cycle.
     void maybeAutoConfirmUserModelSwitch();
+
+    // ANTS-1955 — one poll step of the burst started by
+    // maybeAutoConfirmUserModelSwitch when the dialog had not rendered yet.
+    // Mirrors pollModelSwitchConfirm (auto-switch path) but without setting
+    // m_modelHandshakeInFlight (this path does not own the dialog).
+    void pollUnarmedSwitchConfirm(int attempt);
 
     // ANTS-1735 §2.5 — outcome fill-in tick. Scans the global ledger for
     // pending records, finds the matching transcript per record's project,
@@ -372,8 +381,11 @@ private:
     // Ants-initiated dialog, so the user-typed-/model path stands down (no
     // double ENTER). m_unarmedSwitchConfirmed latches a single ENTER per dialog
     // instance; cleared once switchConfirmVisible goes false again.
+    // ANTS-1955 — m_unarmedPollActive is true while pollUnarmedSwitchConfirm
+    // is running its burst; prevents the 2-s tick from stacking a second burst.
     bool   m_modelHandshakeInFlight = false;
     bool   m_unarmedSwitchConfirmed = false;
+    bool   m_unarmedPollActive      = false;
 
     // ANTS-1894 — near-miss telemetry throttle. Keyed by the focused tab's
     // project root (== shellCwd()). m_nearMissLastSigByProject holds the

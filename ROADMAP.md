@@ -15044,6 +15044,13 @@ subsection.
   Lanes: remotecontrol, modelautoswitch.
   Source: in-session-2026-06-02 (user had to confirm /model sonnet manually after ANTS-1948 blocked the auto-switch).
   Shipped 2026-06-02. New 2s-tick slot maybeAutoConfirmUserModelSwitch presses ENTER on a user-raised "Switch model?" dialog, gated by the pure ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch (dialogVisible && enabled && !handshakeInFlight && !alreadyConfirmed) + config key claude.auto_model_confirm_user_switch (default true). Runs independently of the auto-switch master toggle; stands down while an Ants-initiated handshake owns the dialog (m_modelHandshakeInFlight) and presses once per dialog instance (m_unarmedSwitchConfirmed latch). Sends only ENTER, no continuation prompt. Chose option (a) extend the watcher over option (c) undo-window: a mistyped tier never reaches this dialog (CC errors on a bad /model arg), so there is no typo to guard. Covered by tests/features/model_switch_confirm INV-7.
+  ANTS-1955 fix (2026-06-03): the 2-s tick was the sole trigger so a dialog
+    rendering just after a tick fire was missed for up to 2 s — enough that
+    users manually confirmed before the next tick. Added a pollUnarmedSwitchConfirm
+    burst (mirrors pollModelSwitchConfirm) armed by the tick when dialog not yet
+    visible; catches the dialog within kSwitchConfirmPollMs (~120 ms) of it
+    rendering instead of up to 2 s later. m_unarmedPollActive guards against
+    stacked bursts from consecutive ticks.
 
 - ✅ [ANTS-1952] **Surface the MCP server's build identity (git SHA + build time) so callers can detect a ship-vs-live binary gap.**
   The MCP `initialize` serverInfo already carries version=ANTS_VERSION, but a SemVer string cannot distinguish "same version, rebuilt with a fix" — exactly the trap behind ANTS-1632/1903/1947, where a committed near-miss/telemetry fix was on disk but the running MCP server was a stale binary, so investigations chased ghosts. Add a build git SHA (short) + ISO build timestamp to serverInfo (and/or a control-plane verb like get_session_info / tool_info), populated at compile time from CMake (e.g. a configure-time git rev-parse + __DATE__/__TIME__ or CMake TIMESTAMP). A CC session reading "server built 2026-06-01T16:14, SHA abc1234" can compare against `git log` and immediately flag "the running server predates commit X" instead of re-running the same telemetry query twice. Keep it cheap: a single generated header, no runtime git calls.
@@ -15104,6 +15111,32 @@ subsection.
   Lanes: modelnearmissledger, modelautoswitch, remotecontrol.
   Source: in-session-2026-06-02 (verified design gap during ANTS-1948 gating analysis; pairs with ANTS-1941 + ANTS-1952).
   Shipped 2026-06-02. ModelNearMissLedger::Record gains int epoch=0; toJson/fromJson round-trips it. filterWindow + filterProject accept minEpoch; statsSlim/statsFull signatures extended with minEpoch=0 default. statsFull surfaces min_epoch + excluded_pre_epoch_count when minEpoch>0. maybeEmitNearMiss stamps rec.epoch = kSwitcherEpoch. Dispatch site (remotecontrol.cpp) passes nmMinEpoch = kSwitcherEpoch to both statsFull and statsSlim. On the next relaunch, the 24h dominant_blocker reading will contain only current-epoch records; pre-relaunch stale-binary records are excluded automatically. Unblocks trustworthy evaluation of ANTS-1945/ANTS-1948.
+
+- ✅ [ANTS-1955] **User-typed /model auto-confirm intermittent — 2-s tick misses dialog that renders after the tick fires.**
+  Root cause: maybeAutoConfirmUserModelSwitch fires on the 2-s tick. If the
+    tick fires before the dialog renders, the next opportunity is 2 s away.
+    pollModelSwitchConfirm (auto-switch path) already polls at 120 ms intervals;
+    the user-typed path had no equivalent. Fix: arm a pollUnarmedSwitchConfirm
+    burst (16 × 120 ms = 1.9 s budget) when the tick fires and the dialog is not
+    yet visible. m_unarmedPollActive flag prevents stacked bursts from
+    consecutive ticks. Shipped as ANTS-1955.
+  **Layman:** When you type /model to switch models, the auto-confirm sometimes needed the full 2 seconds (or you confirmed manually) because the confirmation dialog appeared just after the detection tick fired. Now it detects and confirms within ~120 ms of the dialog appearing.
+  Kind: fix.
+  Lanes: claudestatuswidgets, modelautoswitch.
+  Source: user-report-2026-06-03.
+
+- 📋 [ANTS-1956] **Pending-switch chip annotation `(→ Tier)` reads as a recommendation rather than an automatic queued action.**
+  ANTS-1926 added the "(→ Tier)" suffix to signal a queued switch blocked by
+    composer_not_empty. User feedback: it looks like a recommendation to approve
+    rather than an automatic pending action. Options: (a) rewording to
+    "(auto → Sonnet)" or "(queued: Sonnet)"; (b) tooltip-only with no chip text
+    change; (c) a subtle animation/pulse without text. The chip annotation itself
+    is valuable — removing it entirely would make the switch feel magical/surprising.
+    Pairs with ANTS-1931 (composer-state visibility).
+  **Layman:** The model chip shows "Haiku (→ Sonnet)" when a switch is queued, but users interpret it as "Ants is suggesting you switch" rather than "Ants will switch automatically once you send your message." Rewording or a tooltip would make the intent clear.
+  Kind: ux.
+  Lanes: claudestatuswidgets.
+  Source: user-report-2026-06-03.
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 

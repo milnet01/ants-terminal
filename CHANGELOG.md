@@ -106,6 +106,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Auto-confirm user-typed /model dialog now catches it within ~120 ms instead of up to 2 s (ANTS-1955)**
+  The 2-s status tick was the sole trigger, so a dialog rendering just after a
+  tick fire was missed for nearly 2 full seconds. Added a short polling burst
+  (mirrors the auto-switch handshake path) that fires every 120 ms for up to
+  1.9 s after each tick, ensuring the confirm lands almost immediately after the
+  dialog appears.
+
 - **Near-miss telemetry no longer records idle steady-state as a blocked switch** (ANTS-1946)
   When the auto-switcher's recommended model already matches the current\n  model, it never wanted to switch — so that tick is no longer logged as\n  a "blocked" event. Previously these idle records dominated the\n  "what's blocking it?" counter, making composer-typing and cool-down\n  look less significant than they are. The fix removes ~36% ledger noise\n  and clears the path for accurate dominant-blocker reporting.
 
