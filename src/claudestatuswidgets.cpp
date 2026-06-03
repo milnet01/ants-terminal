@@ -1760,7 +1760,10 @@ void ClaudeStatusBarController::pollModelSwitchConfirm(
 // who types /model wants the confirm regardless). Stands down while an
 // Ants-initiated handshake owns the dialog, and presses ENTER at most once per
 // dialog instance (latch cleared when the dialog clears).
-// ANTS-1953 — after confirming, inject the continuation prompt.
+// ANTS-1969 — confirm + continuation routed through sendUnarmedConfirm: it
+// injects the continuation prompt only when auto mode is on AND a turn is
+// active (so a mid-work /model resumes the task, while a one-off /model at idle
+// or with auto mode off stays silent — ANTS-1958/1959).
 // ANTS-1955 — when the dialog has not yet rendered at tick time, arms a
 // kSwitchConfirmPollMs-interval burst (pollUnarmedSwitchConfirm) so the dialog
 // is confirmed within ~120 ms of rendering rather than up to 2 s later.
@@ -1794,10 +1797,7 @@ void ClaudeStatusBarController::maybeAutoConfirmUserModelSwitch() {
         return;
     }
 
-    // ANTS-1958 — no continuation prompt here. The user deliberately typed
-    // /model; they have their own next message ready. Injecting "please
-    // continue" would appear as a spurious second post in the transcript.
-    focused->sendToPty("\r");
+    sendUnarmedConfirm(focused);
     m_unarmedSwitchConfirmed = true;
 }
 
@@ -1820,8 +1820,7 @@ void ClaudeStatusBarController::pollUnarmedSwitchConfirm(int attempt) {
     if (ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch(
             visible, enabled, m_modelHandshakeInFlight,
             m_unarmedSwitchConfirmed)) {
-        // ANTS-1958 — no continuation prompt (see maybeAutoConfirmUserModelSwitch).
-        focused->sendToPty("\r");
+        sendUnarmedConfirm(focused);
         m_unarmedSwitchConfirmed = true;
         m_unarmedPollActive = false;
         return;
@@ -1838,6 +1837,36 @@ void ClaudeStatusBarController::pollUnarmedSwitchConfirm(int attempt) {
     } else {
         m_unarmedPollActive = false;  // budget exhausted
     }
+}
+
+// ANTS-1969 — confirm a user-typed /model dialog, then resume work. ENTER
+// confirms the pre-highlighted "Yes" row; the continuation prompt fires only
+// when shouldContinueAfterUnarmedConfirm holds: auto mode ON (the user opted
+// into "Ants drives the model") AND an active turn to resume. At idle the turn
+// already finished, so injecting "please continue" would START unrequested
+// billable work (ANTS-1959); when auto mode is OFF the user typed /model as a
+// one-off and has their own next message ready (ANTS-1958). The active-turn
+// read mirrors performModelSwitchHandshake exactly.
+void ClaudeStatusBarController::sendUnarmedConfirm(TerminalWidget *term) {
+    if (!term) return;
+    term->sendToPty("\r");   // ENTER — confirms the dialog.
+
+    const bool autoModeOn =
+        Config().claudeAutoModel().value("switch_enabled").toBool();
+    const pid_t pid = term->shellPid();
+    const ClaudeState st = (m_tracker && pid > 0)
+        ? m_tracker->shellState(pid).state : ClaudeState::NotRunning;
+    const bool activeTurn =
+        (st == ClaudeState::Thinking || st == ClaudeState::ToolUse);
+    if (!ModelAutoSwitch::shouldContinueAfterUnarmedConfirm(autoModeOn, activeTurn))
+        return;
+
+    const QString cont = Config().claudeAutoModelContinuationPrompt();
+    if (cont.isEmpty()) return;
+    QPointer<TerminalWidget> g(term);
+    QTimer::singleShot(kSwitchContinuationDelayMs, this, [g, cont]() {
+        if (g) g->sendToPty((cont + QStringLiteral("\r")).toUtf8());
+    });
 }
 
 // ANTS-1915 — fire a deferred manual chip-switch once its owning shell is Idle.

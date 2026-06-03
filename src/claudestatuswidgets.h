@@ -117,7 +117,8 @@ public:
     // typing /model directly (no Ants-initiated handshake is polling for it).
     // Same 2 s tick as refreshAutoModelSwitch but independent of the auto-switch
     // master toggle — a user who types /model wants the prompt confirmed
-    // regardless. Sends ENTER + continuation prompt (ANTS-1953).
+    // regardless. Sends ENTER, then a continuation prompt only when auto mode
+    // is on + a turn is active (ANTS-1969, via sendUnarmedConfirm).
     // Gated by ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch + the
     // claude.auto_model_confirm_user_switch config key.
     // When the dialog has not yet rendered at tick time, arms a short polling
@@ -130,6 +131,12 @@ public:
     // Mirrors pollModelSwitchConfirm (auto-switch path) but without setting
     // m_modelHandshakeInFlight (this path does not own the dialog).
     void pollUnarmedSwitchConfirm(int attempt);
+
+    // ANTS-1969 — confirm a user-typed /model dialog: press ENTER, then inject
+    // the continuation prompt when shouldContinueAfterUnarmedConfirm holds (auto
+    // mode on + an active turn to resume). Shared by both unarmed-confirm sites
+    // so the auto-mode + billing-safety gate lives in one place.
+    void sendUnarmedConfirm(TerminalWidget *term);
 
     // ANTS-1735 §2.5 — outcome fill-in tick. Scans the global ledger for
     // pending records, finds the matching transcript per record's project,

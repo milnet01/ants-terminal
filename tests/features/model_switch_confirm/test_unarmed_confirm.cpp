@@ -10,6 +10,7 @@
 #include "modelautoswitch.h"
 
 using ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch;
+using ModelAutoSwitch::shouldContinueAfterUnarmedConfirm;
 
 // The happy path: dialog up, feature on, nobody else handling it, not yet
 // confirmed → press ENTER.
@@ -37,4 +38,22 @@ TEST(UnarmedConfirm, HandshakeInFlightStandsDown) {
 // Already pressed ENTER for this dialog instance → don't press again.
 TEST(UnarmedConfirm, LatchPreventsDoublePress) {
     EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, true, false, true));
+}
+
+// ANTS-1969 — continuation after a user-typed confirm.
+// Auto mode ON + active turn → resume the task automatically.
+TEST(UnarmedConfirm, ContinuesWhenAutoModeOnAndActiveTurn) {
+    EXPECT_TRUE(shouldContinueAfterUnarmedConfirm(
+        /*autoModeOn=*/true, /*activeTurn=*/true));
+}
+
+// Auto mode OFF → ANTS-1958 holds: the user has their own next message ready.
+TEST(UnarmedConfirm, NoContinuationWhenAutoModeOff) {
+    EXPECT_FALSE(shouldContinueAfterUnarmedConfirm(false, true));
+}
+
+// Idle (no active turn) → ANTS-1959 billing safety: never start unrequested work.
+TEST(UnarmedConfirm, NoContinuationAtIdle) {
+    EXPECT_FALSE(shouldContinueAfterUnarmedConfirm(true, false));
+    EXPECT_FALSE(shouldContinueAfterUnarmedConfirm(false, false));
 }

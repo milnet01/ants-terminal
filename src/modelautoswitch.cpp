@@ -248,4 +248,10 @@ bool shouldAutoConfirmUnarmedSwitch(bool dialogVisible,
     return dialogVisible && enabled && !handshakeInFlight && !alreadyConfirmed;
 }
 
+bool shouldContinueAfterUnarmedConfirm(bool autoModeOn, bool activeTurn) {
+    // Drive the workflow forward only when the user opted into auto mode AND a
+    // turn is still active to resume (idle ⇒ no continuation, ANTS-1959).
+    return autoModeOn && activeTurn;
+}
+
 }  // namespace ModelAutoSwitch

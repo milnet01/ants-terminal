@@ -97,6 +97,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **User-typed /model does not continue work after auto-confirm (ANTS-1958 revisit).** (ANTS-1969)
+  When you manually type /model X and Ants auto-confirms the dialog, Claude Code goes idle rather than continuing work — you have to send a new message. When auto mode is on, a continuation prompt should fire just like after an auto-switch.
+
 - **Pending-switch chip annotation `(→ Tier)` reads as a recommendation rather than an automatic queued action.** (ANTS-1956)
   The model chip shows "Haiku (→ Sonnet)" when a switch is queued, but users interpret it as "Ants is suggesting you switch" rather than "Ants will switch automatically once you send your message." Rewording or a tooltip would make the intent clear.
 

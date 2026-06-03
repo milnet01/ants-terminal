@@ -15243,7 +15243,7 @@ subsection.
   Lanes: remotecontrol, claudeintegration.
   Source: in-session-2026-06-03 (ANTS-1961 §5 out-of-scope).
 
-- 📋 [ANTS-1969] **User-typed /model does not continue work after auto-confirm (ANTS-1958 revisit).**
+- ✅ [ANTS-1969] **User-typed /model does not continue work after auto-confirm (ANTS-1958 revisit).**
   ANTS-1958 deliberately omits the continuation prompt for user-typed /model
     ("The user deliberately typed /model; they have their own next message
     ready."). User feedback 2026-06-03 shows this assumption is wrong in
@@ -15258,6 +15258,14 @@ subsection.
   Kind: ux.
   Lanes: claudestatuswidgets, modelautoswitch.
   Source: user-report-2026-06-03.
+  Shipped 2026-06-03: sendUnarmedConfirm injects the continuation prompt after a user-typed /model confirm when auto mode is ON and a turn is active (Thinking/ToolUse) — mirroring performModelSwitchHandshake's ANTS-1959 billing-safety gate. Pure helper ModelAutoSwitch::shouldContinueAfterUnarmedConfirm(autoModeOn, activeTurn); 3 new truth-table tests + spec INV-8. Auto mode OFF keeps ANTS-1958 silence; idle keeps ANTS-1959 safety. 18/18 confirm tests green.
+
+- 📋 [ANTS-1970] **SessionStart orientation prelude exceeds its 1200-byte cap (test red).**
+  McpOrientation_Inv10.ScriptOutputByteCap fails: the installed orientation\nscript prints 1312 bytes vs the 1200-byte cap asserted in\ntests/features/mcp_orientation_install/test_mcp_orientation_install.cpp:333.\nThe prelude grew as the cheat-sheet gained tools (session_orient,\nroadmap_query, workspace_search per ANTS-1897; later additions) without the\ncap or the text being re-trimmed. Pre-existing — not from the ANTS-1969 work\nthat surfaced it. Fix is a judgment call: (a) trim the prelude back under\n1200 (drop less-load-bearing lines), or (b) raise the cap in mcporientation\n+ the test if the larger cheat-sheet is intentional. Prefer (a) — the prelude\nis loaded into every session's context, so keeping it lean is the token-\nfrugal choice the cap was protecting.
+  **Layman:** The MCP cheat-sheet that prints when a Claude session starts grew past its size limit as new tools were added, so a test that guards the limit is failing. Either trim the cheat-sheet or raise the limit.
+  Kind: fix.
+  Lanes: mcporientation.
+  Source: in-session-2026-06-03.
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 

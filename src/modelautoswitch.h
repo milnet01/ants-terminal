@@ -186,6 +186,18 @@ bool shouldAutoConfirmUnarmedSwitch(bool dialogVisible,
                                     bool handshakeInFlight,
                                     bool alreadyConfirmed);
 
+// ANTS-1969 — after auto-confirming a user-typed /model dialog, should Ants also
+// inject the continuation prompt so Claude Code resumes the task on its own?
+// Yes iff the autonomous switcher master toggle is ON (the user opted into "Ants
+// drives the model", so driving the workflow forward is in-contract) AND there
+// is an active turn to resume (activeTurn == focusedState in {Thinking, ToolUse}).
+// The active-turn gate is the SAME ANTS-1959 billing safety performModelSwitch-
+// Handshake uses: at idle the turn already finished, so a continuation would
+// START unrequested billable work. When auto mode is OFF, ANTS-1958 holds — the
+// user typed /model as a one-off and has their own next message ready. Pure so
+// the two-way gate is table-testable without a live terminal.
+bool shouldContinueAfterUnarmedConfirm(bool autoModeOn, bool activeTurn);
+
 // ANTS-1940 — regret-driven conservatism. While the switcher is still
 // calibrating (measuredDowngrades < headlineFloor) AND observed regret is high
 // (regretRatePct > kRegretConservatismPct), the effective min-dwell is

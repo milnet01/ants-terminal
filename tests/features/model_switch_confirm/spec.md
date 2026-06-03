@@ -54,17 +54,25 @@ the handshake's existing terminator. There is **no** "Esc to cancel" footer.
   pressed for the current dialog instance (`alreadyConfirmed` false). This is
   the gate `maybeAutoConfirmUserModelSwitch` uses to confirm a dialog the user
   raised by typing `/model` directly, without double-pressing over an
-  auto-switch/chip/undo handshake. Confirm sends ENTER, then injects the same
-  continuation prompt as `performModelSwitchHandshake` after
-  `kSwitchContinuationDelayMs` so the session resumes instead of halting at
-  a blank `>` prompt (ANTS-1953).
+  auto-switch/chip/undo handshake.
+- **INV-8 — continuation after a user-typed confirm (ANTS-1969).**
+  `ModelAutoSwitch::shouldContinueAfterUnarmedConfirm(autoModeOn, activeTurn)`
+  returns true *only* when auto mode is on AND a turn is active. The confirm
+  path (`sendUnarmedConfirm`) sends ENTER unconditionally, then injects the
+  continuation prompt (after `kSwitchContinuationDelayMs`) only when the gate
+  holds. Rationale: with auto mode on, a mid-work `/model` is a "bump the model,
+  keep going" action and should resume the task; at idle the turn already
+  finished, so a continuation would start unrequested billable work (ANTS-1959);
+  with auto mode off the user typed `/model` as a one-off and has their own next
+  message ready (ANTS-1958). The active-turn read mirrors
+  `performModelSwitchHandshake`.
 
 ## Tests
 
 - `test_switch_confirm_visible.cpp` (pure, on the core bundle) — INV-1..INV-4.
 - `test_switch_confirm_actuator.cpp` (source-grep on
   `src/claudestatuswidgets.cpp` + `src/modelautoswitch.h`) — INV-5, INV-6.
-- `test_unarmed_confirm.cpp` (pure, on the core bundle) — INV-7.
+- `test_unarmed_confirm.cpp` (pure, on the core bundle) — INV-7, INV-8.
 
 To confirm the source-grep test would catch a real regression: reverting
 `performModelSwitchHandshake` to the blind `\r@400` sequence reintroduces the
