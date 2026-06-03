@@ -1765,16 +1765,11 @@ void ClaudeStatusBarController::maybeAutoConfirmUserModelSwitch() {
         return;
     }
 
+    // ANTS-1958 — no continuation prompt here. The user deliberately typed
+    // /model; they have their own next message ready. Injecting "please
+    // continue" would appear as a spurious second post in the transcript.
     focused->sendToPty("\r");
     m_unarmedSwitchConfirmed = true;
-
-    const QString cont = Config().claudeAutoModelContinuationPrompt();
-    if (!cont.isEmpty()) {
-        QPointer<TerminalWidget> g(focused);
-        QTimer::singleShot(kSwitchContinuationDelayMs, this, [g, cont]() {
-            if (g) g->sendToPty((cont + QStringLiteral("\r")).toUtf8());
-        });
-    }
 }
 
 // ANTS-1955 — short-poll burst for user-typed /model confirm. Mirrors
@@ -1796,17 +1791,10 @@ void ClaudeStatusBarController::pollUnarmedSwitchConfirm(int attempt) {
     if (ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch(
             visible, enabled, m_modelHandshakeInFlight,
             m_unarmedSwitchConfirmed)) {
+        // ANTS-1958 — no continuation prompt (see maybeAutoConfirmUserModelSwitch).
         focused->sendToPty("\r");
         m_unarmedSwitchConfirmed = true;
         m_unarmedPollActive = false;
-
-        const QString cont = Config().claudeAutoModelContinuationPrompt();
-        if (!cont.isEmpty()) {
-            QPointer<TerminalWidget> g(focused);
-            QTimer::singleShot(kSwitchContinuationDelayMs, this, [g, cont]() {
-                if (g) g->sendToPty((cont + QStringLiteral("\r")).toUtf8());
-            });
-        }
         return;
     }
 

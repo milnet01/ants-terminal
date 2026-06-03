@@ -517,6 +517,11 @@ QJsonObject statsEnvelope(const QList<Record> &recs, const StatsConfig &cfg) {
     env[QStringLiteral("weighted_avoided")]         = weightedAvoided;
     env[QStringLiteral("headline_floor")]           = kHeadlineFloorMeasured;
     env[QStringLiteral("measured_downgrades")]      = measuredDowngrades;
+    // ANTS-1960 — callers should check this flag before treating regret_rate
+    // as meaningful. The field is always present so callers don't need to
+    // second-guess what "no field" means.
+    env[QStringLiteral("regret_rate_calibrating")]  =
+        measuredDowngrades < kHeadlineFloorMeasured;
     // ANTS-1889 — live switcher config triple + scope echo.
     env[QStringLiteral("auto_model_switch_enabled")] = cfg.switchEnabled;
     env[QStringLiteral("floor_tier")]                = cfg.floorTier;

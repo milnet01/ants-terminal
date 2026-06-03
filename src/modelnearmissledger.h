@@ -75,6 +75,10 @@ QList<QByteArray> evictToCap(QList<QByteArray> lines, qint64 capBytes);
 struct StatsSlim {
     int     total24h = 0;
     QString dominantBlocker;
+    // ANTS-1960 — idle_end_of_session-only records excluded from total24h and
+    // dominantBlocker (blocking at session-end is correct behaviour, not a
+    // missed opportunity). Exposed as a separate count in the envelope.
+    int     idleEndSuppressed24h = 0;
 };
 // ANTS-1954 — minEpoch mirrors the firing-ledger ANTS-1941 filter: records
 // with epoch < minEpoch are excluded from both window_24h and all_time, so

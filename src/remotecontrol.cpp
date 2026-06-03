@@ -7770,6 +7770,10 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
     // ANTS-1894 — mode arg: "firings" (default) or "near_misses". Unknown
     // values refuse with bad_mode (canonical taxonomy entry in
     // docs/standards/mcp-error-codes.md § "Input validation").
+    // ANTS-1960 — firings near_misses.total_24h and near_misses mode's
+    // window_24h.total agree ONLY when read at the same moment. Across-time
+    // reads legitimately differ because the 24 h window advances; this is
+    // expected, not a bug (closes the ANTS-1947 false-alarm class).
     QString mode = QStringLiteral("firings");
     if (req.contains(QStringLiteral("mode"))) {
         mode = req.value(QStringLiteral("mode")).toString();
@@ -7835,8 +7839,12 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
     QJsonObject env = ModelSwitchLedger::statsForScope(
         ModelSwitchLedger::defaultLedgerPath(), rootCanonical, sc);
     QJsonObject slimObj;
-    slimObj[QStringLiteral("total_24h")]        = slim.total24h;
-    slimObj[QStringLiteral("dominant_blocker")] = slim.dominantBlocker;
+    slimObj[QStringLiteral("total_24h")]              = slim.total24h;
+    slimObj[QStringLiteral("dominant_blocker")]       = slim.dominantBlocker;
+    // ANTS-1960 — idle_end_of_session-only near-misses are correct behaviour
+    // (suppress at session-end), not missed opportunities; surfaced separately
+    // so callers don't mistake them for actionable gaps.
+    slimObj[QStringLiteral("idle_end_suppressed_24h")] = slim.idleEndSuppressed24h;
     env[QStringLiteral("near_misses")] = slimObj;
     return QJsonDocument(env);
 }

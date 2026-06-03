@@ -248,9 +248,24 @@ StatsSlim statsSlim(const QList<Record> &recs,
                     qint64               nowMs,
                     int                  minEpoch) {
     const QList<Record> windowed = filterWindow(recs, projectScope, nowMs, minEpoch);
+    // ANTS-1960 — split into "idle_end_only" (sole blocker = idle_end_of_session)
+    // and "actionable" records. Blocking at session-end is correct behaviour;
+    // counting it as a near-miss inflates the total and poisons dominant_blocker
+    // with a token that represents good switcher behaviour, not a gap.
+    QList<Record> actionable;
+    int idleEndOnly = 0;
+    for (const Record &r : windowed) {
+        if (r.blockedBy.size() == 1 &&
+                r.blockedBy.at(0) == QStringLiteral("idle_end_of_session")) {
+            ++idleEndOnly;
+        } else {
+            actionable.append(r);
+        }
+    }
     StatsSlim out;
-    out.total24h        = windowed.size();
-    out.dominantBlocker = dominantBlocker(tallyBlockedBy(windowed));
+    out.total24h               = actionable.size();
+    out.dominantBlocker        = dominantBlocker(tallyBlockedBy(actionable));
+    out.idleEndSuppressed24h   = idleEndOnly;
     return out;
 }
 
