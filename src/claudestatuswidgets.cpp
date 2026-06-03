@@ -1586,6 +1586,15 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
             gate.idleElapsedMs = nowMs - s.idleSinceMs;
     }
 
+    // ANTS-1959 — long-ToolUse safe-downgrade window. Stamp when we first
+    // see ToolUse; clear when the state leaves it.
+    if (s.state == ClaudeState::ToolUse) {
+        if (m_toolUseSinceMs <= 0) m_toolUseSinceMs = nowMs;
+        gate.toolUseElapsedMs = nowMs - m_toolUseSinceMs;
+    } else {
+        m_toolUseSinceMs = 0;
+    }
+
     const ModelAutoSwitch::Decision dec = ModelAutoSwitch::decide(gate);
     if (!dec.act) {
         // ANTS-1894 — emit a near-miss record on signature change (INV-5/6).

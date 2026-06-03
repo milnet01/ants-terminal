@@ -76,6 +76,14 @@ struct Gate {
     // kIdleEndOfSessionMs; a value <= 0 there disables the gate by leaving
     // idleElapsedMs at -1).
     qint64 idleCeilingMs = -1;
+    // ANTS-1959 — long ToolUse safe-downgrade window. ms since the focused tab
+    // entered ClaudeState::ToolUse (-1 = not in ToolUse / no telemetry). When
+    // this is >= kLongToolUseMs, decide() yields the focused_state_not_idle
+    // veto: a long-running Bash call (cmake --build, test suite, …) is I/O-
+    // bound and human-idle — exactly the window where a cheaper model saves the
+    // most without interrupting work. Sentinel -1 preserves v1 behaviour for
+    // callers that don't set the field.
+    qint64 toolUseElapsedMs = -1;
 };
 
 struct Decision {
@@ -224,6 +232,10 @@ constexpr qint64 kComposerStaleVetoMs = 5 * 60 * 1'000;   // 5 min
 // On a /loop autonomous session the idle gaps stay short (the loop continues),
 // so switches fire normally until the task actually ends.
 constexpr qint64 kIdleEndOfSessionMs = 3 * 60 * 1'000;    // 3 min
+// ANTS-1959 — long-ToolUse safe-downgrade window. When a Bash/tool call has
+// been running for this long, the main loop is I/O-bound + human-idle: a
+// downgrade is safe even though focusedState != Idle.
+constexpr qint64 kLongToolUseMs = 10'000;                  // 10 s
 // ANTS-1940 — regret-driven conservatism tuning.
 // kRegretConservatismPct: regret_rate above this (while still calibrating)
 // trips the conservatism multiplier. 40 % matches the roadmap's "guesses

@@ -119,7 +119,13 @@ Decision decide(const Gate &g) {
             : kComposerStaleVetoMs;
         const bool humanIdle = (g.composerStaleMs >= 0) &&
                                (g.composerStaleMs >= threshold);
-        if (!humanIdle)
+        // ANTS-1959 — long-ToolUse yield: if a Bash/tool call has been
+        // running for >= kLongToolUseMs the main loop is I/O-bound and
+        // human-idle (build/test wait). Safe to downgrade regardless of
+        // composer state. Sentinel -1 preserves v1 behaviour.
+        const bool longToolUse = (g.toolUseElapsedMs >= 0) &&
+                                 (g.toolUseElapsedMs >= kLongToolUseMs);
+        if (!humanIdle && !longToolUse)
             d.blockedBy << QStringLiteral("focused_state_not_idle");
     }
     // ANTS-1908 — composer_not_empty soft-veto. The veto YIELDS when

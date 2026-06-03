@@ -383,6 +383,10 @@ private:
     // instance; cleared once switchConfirmVisible goes false again.
     // ANTS-1955 — m_unarmedPollActive is true while pollUnarmedSwitchConfirm
     // is running its burst; prevents the 2-s tick from stacking a second burst.
+    // ANTS-1959 — track when the focused tab entered ToolUse so decide()
+    // can compute toolUseElapsedMs. Reset to 0 when state leaves ToolUse.
+    qint64 m_toolUseSinceMs = 0;
+
     bool   m_modelHandshakeInFlight = false;
     bool   m_unarmedSwitchConfirmed = false;
     bool   m_unarmedPollActive      = false;
