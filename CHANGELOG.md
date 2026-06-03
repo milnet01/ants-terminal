@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **`model_switch_stats` surfacing/scoring polish — suppress calibration `regret_rate`, credit clean idle-end downgrades, do…** (ANTS-1960)
+  Three small honesty fixes to the model-switcher's stats: don't show a scary "50% regret" when it's based on one event; give credit when it correctly wanted a cheaper model right at a clean session end; and note that two of its counters only match when read at the same instant.
+
+- **Auto-switcher task-shape signals round 2 — foreground-subprocess-wait (safe-downgrade) + post-clarification suppression …** (ANTS-1959)
+  Make the model-switcher smarter about WHEN it's safe to drop to a cheaper model: it's safe while waiting on a long build/test, but risky right after you answer a design question (hard work usually follows). Two cheap signals that catch the most common real sessions.
+
 - **Near-miss telemetry needs the ANTS-1941 epoch boundary too — dominant_blocker stays contaminated by stale-binary records…** (ANTS-1954)
   When you rebuild Ants, the auto-switcher's "why didn't it fire?" stats keep showing yesterday's reasons for about a day, because they don't reset at the rebuild boundary like the other stats do. That's exactly why we can't yet judge whether the switcher's remaining block is real. This makes those stats reset cleanly at each rebuild.
 
@@ -105,6 +111,9 @@ for security-relevant changes.
   Vestige reports that the format-detector for ROADMAP files is still returning 'unknown' on their project despite the previous fix being marked shipped. Either the fix isn't reaching their build, or it doesn't cover their specific roadmap shape. Needs a trace field + CI fixture.
 
 ### Fixed
+
+- **`/model` slash command double-posts in the transcript (command + confirmation echoed twice from one invocation).** (ANTS-1958)
+  When you type /model to switch models, the command and its "model set" confirmation sometimes show up twice from a single press. Harmless but messy — this de-duplicates it.
 
 - **Auto-confirm user-typed /model dialog now catches it within ~120 ms instead of up to 2 s (ANTS-1955)**
   The 2-s status tick was the sole trigger, so a dialog rendering just after a
