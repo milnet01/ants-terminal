@@ -206,6 +206,26 @@ config-file-only tuning keys:
   independently of the master gate; stands down while an Ants-initiated
   handshake owns the dialog; sends only ENTER (no continuation prompt).
 
+## Cross-session MCP feedback
+
+Other CC sessions (Vestige, MAME Curator, Album Builder, RetroArch,
+RetroDB) write MCP observations to `*_Ants_MCP_Feedback.md` files under
+`/mnt/Games/Scripts/Linux/`. Format spec:
+[`docs/standards/mcp-feedback-files.md`](docs/standards/mcp-feedback-files.md).
+
+Reviewing feedback efficiently (don't re-read the whole file):
+- **`feedback_query`** (ANTS-1961, planned) — returns the un-triaged tail
+  (contributor blocks after the last maintainer tracking block) + already-
+  mapped `ANTS-NNNN` IDs; saves ~60k tokens vs. a full read.
+- **`feedback_log`** (ANTS-1962, planned) — write side; `op:"append_finding"`
+  for contributors, `op:"append_tracking"` for the maintainer to stamp
+  a mapping table with roadmap IDs.
+
+Until those verbs ship: read only the tail manually (search for the last
+`## 📋 Ants Terminal roadmap tracking` heading; everything after it is
+un-triaged). Assign IDs via `roadmap_log op:append` in the cross-session
+section, then edit the feedback file to record them.
+
 ## Project standards
 
 Shared v1 standards in `docs/standards/` (from the `/start-app` template):

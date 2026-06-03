@@ -15190,6 +15190,13 @@ subsection.
   Lanes: remotecontrol, claudeintegration.
   Source: user-request-2026-06-03 (Vestige feedback-file ingestion).
 
+- 📋 [ANTS-1962] **`feedback_log` MCP verb — write to a `*_Ants_MCP_Feedback.md` file (contributor append + maintainer tracking block).**
+  Write counterpart to feedback_query (ANTS-1961). Two ops: op:"append_finding" — contributor appends a dated session block + one or more finding sub-blocks (title, what, repro, impact, suggested fix); op:"append_tracking" — maintainer appends a ## 📋 Ants Terminal roadmap tracking update block with a mapping table (finding → ANTS-NNNN). Mirrors roadmap_log's design: allocates no IDs (maintainer passes them explicitly), enforces append-at-end (rejects if caller tries to insert above the last maintainer block), validates file path per PathValidation (ANTS-1295). Caller_cwd contract: Required. Format contract per docs/standards/mcp-feedback-files.md.
+  **Layman:** Lets any CC session add feedback to the shared report files, and lets the maintainer session stamp a tracking block with roadmap IDs, without manually editing markdown.
+  Kind: implement.
+  Lanes: remotecontrol, claudeintegration.
+  Source: user-request-2026-06-03.
+
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
 - ✅ [ANTS-1329] **Tasks dialog gets 3 px of vertical row
