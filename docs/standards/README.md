@@ -33,6 +33,7 @@ template):
 | [mcp-error-codes.md](mcp-error-codes.md) | Canonical taxonomy for the `code` field on MCP refusal envelopes (ANTS-1353). Five categories: input validation, resource state, caller-cwd contract, I/O, dispatcher. |
 | [specs.md](specs.md) | Spec-authoring standard for `docs/specs/ANTS-NNNN.md` (ANTS-1728): required structure, INV-N bullet form, grounding/RAM/security conventions, `spec_query` machine-readability contract. |
 | [test-audit-resume.md](test-audit-resume.md) | Resume recipe for picking up a partially-completed `/test-audit` in a follow-up session — `partition_token` is in-process LRU, not durable; the recipe covers the explicit `session_memory` round-trip and the partition-re-run fallback (ANTS-1580). |
+| [mcp-feedback-files.md](mcp-feedback-files.md) | Format spec for the cross-session `*_Ants_MCP_Feedback.md` files that other CC sessions use to report MCP issues — contributor/maintainer roles, the maintainer-block watermark anchor, and the un-triaged-delta parser contract the `feedback_query` verb (ANTS-1961) consumes. |
 
 ## Historical / superseded
 

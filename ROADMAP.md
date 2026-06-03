@@ -15138,6 +15138,58 @@ subsection.
   Lanes: claudestatuswidgets.
   Source: user-report-2026-06-03.
 
+- 📋 [ANTS-1957] **Regret signal over-counts: any non-auto-authored /model is scored as a user-override regret, even when it's an independent manual switch.**
+  detectUserOverride (modelswitchledger.cpp:158) flags ANY post-switch
+    `/model X` the controller didn't author as userOverrideWithin5, which
+    feeds regretCount (statsEnvelope:405-422) — with no way to tell a
+    corrective override (user disagreed with the auto-route) from an
+    independent switch (testing / task-phase / cost). regret_rate gates the
+    §8 OQ-3 default-ON flip, so this keeps the feature from earning trust —
+    worst during dogfooding sessions, which dominate the ledger.
+    Candidate mitigations (design in a future spec): (a) direction-aware —
+    only count an override that UNDOES the auto-switch (auto downgraded →
+    user moved back up); same-tier / lateral / further-downgrade are not
+    regret against this switch; (b) require a co-signal — correction text
+    ("no/wrong/undo") or under-route alongside the override before counting
+    regret; (c) dwell-proximity weighting — an override after several
+    on-tier turns is independent intent, not a snap correction; (d)
+    pragmatic guard — when the focused project is the switcher's own repo
+    with recent modelautoswitch/ledger edits, treat manual switches as
+    test-driven. Pairs with ANTS-1940 (regret-driven conservatism consumes
+    this signal) + ANTS-1934 (trigger split).
+  **Layman:** The "regret rate" that decides whether to trust the auto-switcher counts every manual model switch you make after it acts as the switcher being wrong — even when you switched for your own reasons (testing, or picking a model for a specific task). So the feature looks worse than it is, especially during sessions where you're switching models a lot by hand.
+  Kind: enhancement.
+  Lanes: modelswitchledger, modelautoswitch.
+  Source: in-session-2026-06-03 (regret 0→1 project / 0→2 global tracked to deliberate manual /model switches this session).
+
+- 📋 [ANTS-1958] **`/model` slash command double-posts in the transcript (command + confirmation echoed twice from one invocation).**
+  User-reported via screenshot (2026-06-02). Running `/model opus` (and earlier `/model sonnet`) registered twice — two back-to-back command echoes + two "Set model to X and saved as your default" confirmations from one invocation. User notes "sometimes still posts twice," implying recurring, not a one-off. Likely area: slash-command submission handler double-firing (Enter handler registered twice / keypress not debounced / event not consumed). Low severity (idempotent — setting the model twice is harmless) but a visible transcript-clutter polish defect. Ask: dedupe the submission (consume the event / guard double-dispatch within a short window). Distinct from ANTS-1951/ANTS-1955 (those auto-confirm the "Switch model?" dialog; this is the command itself posting twice).
+  **Layman:** When you type /model to switch models, the command and its "model set" confirmation sometimes show up twice from a single press. Harmless but messy — this de-duplicates it.
+  Kind: fix.
+  Lanes: remotecontrol, claudestatuswidgets.
+  Source: vestige-feedback-2026-06-02 (CE3+Sh4a continuation, user screenshot).
+
+- 📋 [ANTS-1959] **Auto-switcher task-shape signals round 2 — foreground-subprocess-wait (safe-downgrade) + post-clarification suppression (regret-guard).**
+  Two concrete task-shape signals surfaced live across the 2026-06-02/03 Vestige sessions, both extending ANTS-1940 (downgrade-decision layer) and pairing with ANTS-1948 (target hysteresis). (1) Foreground-subprocess-wait = safe-downgrade trigger: the dominant downgrade-safe windows are the many multi-second foreground `cmake --build` / full-suite test runs (~8 build+test cycles, 17 s each in Sh4b) — main loop blocked on a Bash subprocess, human idle, zero reasoning — yet composer_not_empty/focused_state_not_idle blocked every one (9 near-misses). The harness knows a Bash call is in flight and how long it has run; "main loop blocked on a foreground subprocess > N s" is a cheap, high-confidence "I/O-bound not reasoning-bound" downgrade signal. Sibling of ANTS-1940's background-subagent-dispatch case. (2) Post-AskUserQuestion / post-plan-exit = regret-guard (suppress downgrades): a clarifying question almost always precedes a high-reasoning burst; Sh4b's single regret most plausibly came from a downgrade taken near the architecture-decision AskUserQuestion. "Last K turns included an AskUserQuestion or a plan-mode exit" → suppress downgrades for a few turns. Directly targets the regret class that hurts most (downgrading right before hard work).
+  **Layman:** Make the model-switcher smarter about WHEN it's safe to drop to a cheaper model: it's safe while waiting on a long build/test, but risky right after you answer a design question (hard work usually follows). Two cheap signals that catch the most common real sessions.
+  Kind: enhancement.
+  Lanes: modelrecommender, modelautoswitch, modelnearmissledger.
+  Source: vestige-feedback-2026-06-02/03 (Sh4b ideas #1/#3, CE3+Sh4a subagent-dispatch evidence).
+
+- 📋 [ANTS-1960] **`model_switch_stats` surfacing/scoring polish — suppress calibration `regret_rate`, credit clean idle-end downgrades, doc same-moment agreement.**
+  Three small polish nits on model_switch_stats output, all low-severity, surfaced 2026-06-02/03 Vestige sessions. (1) Headline regret_rate during calibration: headline reads "calibrating (2/10 measured)" but the envelope still surfaces regret_rate:50 — 50% on measured_downgrades:2 is one event, noise. Docstring already warns to check measured_downgrades>0, but a reader scanning the headline sees a scary 50%. Omit regret_rate from the headline (or tag "(n=2 — not yet significant)") until measured_downgrades >= a small floor (~5) so calibration doesn't look like a failing feature. (2) idle_end_of_session credit: a high count (12 in one CE3 session) of near-misses blocked by the session-end idle gate — when idle_end_of_session fires AND the target is a downgrade AND the session is otherwise clean, credit it as a clean_end_count (½ Opus turn, like ANTS-1891) rather than a pure near-miss; same outcome (no switch) but the effectiveness score reflects the right target was identified at a clean end. (3) Docstring same-moment note (closes the ANTS-1947 false-alarm class): the slim firings near_misses block and near_misses-mode window_24h agree only when read in the same call; across-time reads legitimately differ as near-misses accumulate + the 24h window slides. A one-line docstring note stops the next session re-filing it as a bug.
+  **Layman:** Three small honesty fixes to the model-switcher's stats: don't show a scary "50% regret" when it's based on one event; give credit when it correctly wanted a cheaper model right at a clean session end; and note that two of its counters only match when read at the same instant.
+  Kind: enhancement.
+  Lanes: modelnearmissledger, modelswitchledger, remotecontrol.
+  Source: vestige-feedback-2026-06-02/03 (CE3 idle-end idea, Sh4b regret-headline + ANTS-1947 doc nuance).
+
+- 📋 [ANTS-1961] **`feedback_query` MCP verb — read the un-triaged tail of a `*_Ants_MCP_Feedback.md` file.**
+  Read verb that parses a *_Ants_MCP_Feedback.md file per docs/standards/mcp-feedback-files.md and returns {new_addenda, mapped_ids[]}: the un-triaged tail (everything after the last maintainer tracking block) plus the ANTS-NNNN IDs already mapped in maintainer blocks, so the caller distinguishes new findings from re-checks. Saves ~60k tokens/review (largest file ~2.5k lines; actionable content is the last few hundred). Parser contract is in the standard: anchor regex on the maintainer heading, fence-skip, #/## boundaries only, maintainer-block-scoped ID scan. Reuse standard MCP contracts: PathValidation (ANTS-1295), caller_cwd Required, size caps + ETag/fields where it composes (sibling to read_log ANTS-1855). Follow-on (b): SessionStart surfacing of pending-addenda counts. Source: user-request 2026-06-03.
+  **Layman:** Lets the Ants maintainer session pull just the new feedback from a cross-session report file instead of re-reading the whole thing every week.
+  Kind: implement.
+  Lanes: remotecontrol, claudeintegration.
+  Source: user-request-2026-06-03 (Vestige feedback-file ingestion).
+
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
 - ✅ [ANTS-1329] **Tasks dialog gets 3 px of vertical row
