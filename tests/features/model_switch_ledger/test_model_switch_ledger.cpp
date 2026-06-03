@@ -59,12 +59,14 @@ TEST(ModelSwitchLedger, JsonRoundTrip) {
     L::Record r = makeRecord("sonnet", "opus", false);
     r.outcome.turnsOnToTier = 6;
     r.outcome.userOverrideWithin5 = true;
+    r.outcome.overrideUndidDowngrade = true;   // ANTS-1957
     r.outcome.underRouteSignalWithin5 = true;
     const L::Record back = L::fromJson(L::toJson(r));
     EXPECT_EQ(back.fromTier, r.fromTier);
     EXPECT_EQ(back.toTier, r.toTier);
     EXPECT_EQ(back.outcome.turnsOnToTier, 6);
     EXPECT_TRUE(back.outcome.userOverrideWithin5);
+    EXPECT_TRUE(back.outcome.overrideUndidDowngrade);   // ANTS-1957
     EXPECT_TRUE(back.outcome.underRouteSignalWithin5);
     EXPECT_FALSE(back.outcome.pending);
 }
@@ -107,10 +109,12 @@ TEST(ModelSwitchLedger, Inv10EvictionUnderCap) {
 TEST(ModelSwitchLedger, Inv10PendingRecordPinned) {
     QTemporaryDir dir;
     const QString path = dir.filePath(QStringLiteral("ledger.jsonl"));
-    // ANTS-1891 — bumped from 700→800: the new
-    // session_cleanly_ended_on_new_tier field grew each record
-    // from ~280B to ~362B; 2 records (PIN + NEW) now total ~728B.
-    const qint64 cap = 800;
+    // ANTS-1891 — bumped 700→800: the new session_cleanly_ended_on_new_tier
+    // field grew each record from ~280B to ~362B.
+    // ANTS-1957 — bumped 800→900: the new override_undid_downgrade field grew
+    // each record to ~406B; 2 records (PIN + NEW) now total ~813B, so the cap
+    // must clear that for both mandatory records to survive.
+    const qint64 cap = 900;
     ASSERT_TRUE(L::appendRecord(path, makeRecord("opus","haiku",false,"A"), cap));
     ASSERT_TRUE(L::appendRecord(path, makeRecord("opus","haiku",false,"B"), cap));
     ASSERT_TRUE(L::appendRecord(path, makeRecord("opus","haiku",true ,"PIN"), cap));
@@ -152,6 +156,21 @@ TEST(ModelSwitchLedger, Inv11AutoThenUserIsOverride) {
     EXPECT_TRUE(L::detectUserOverride(mistimed, autos));
     // No auto records at all → user typed it.
     EXPECT_TRUE(L::detectUserOverride({{"sonnet", 5000}}, {}));
+}
+
+// INV-13 (ANTS-1957): detectCorrectiveOverride only flags a non-auto /model that
+// moves to a tier ABOVE toTier (the user undid the downgrade by moving up).
+TEST(ModelSwitchLedger, Inv13CorrectiveOverrideDirectionAware) {
+    // opus→haiku downgrade. A user /model up (sonnet or opus) undoes it.
+    EXPECT_TRUE(L::detectCorrectiveOverride({{"sonnet", 5000}}, {}, "haiku"));
+    EXPECT_TRUE(L::detectCorrectiveOverride({{"opus",   5000}}, {}, "haiku"));
+    // opus→sonnet downgrade. A user /model haiku is a FURTHER downgrade (agreed,
+    // not a regret); /model sonnet is the same tier (no-op). Neither is corrective.
+    EXPECT_FALSE(L::detectCorrectiveOverride({{"haiku",  5000}}, {}, "sonnet"));
+    EXPECT_FALSE(L::detectCorrectiveOverride({{"sonnet", 5000}}, {}, "sonnet"));
+    // An auto-authored upward move is the controller's own switch, not the user.
+    EXPECT_FALSE(L::detectCorrectiveOverride(
+        {{"opus", 5000}}, {{"opus", 5002}}, "haiku"));
 }
 
 // INV-12: a higher tier re-recommended within the window after a downgrade.
@@ -359,6 +378,31 @@ TEST(ModelSwitchLedger, ComputeOutcomeUserOverrideViaTextCommand) {
     EXPECT_TRUE(res.outcome.userOverrideWithin5);
 }
 
+// INV-13 (ANTS-1957): computeOutcome populates overrideUndidDowngrade only when
+// the user's manual switch moves above toTier; a lateral/further-down manual
+// switch leaves userOverrideWithin5=true but overrideUndidDowngrade=false.
+TEST(ModelSwitchLedger, Inv13ComputeOutcomeCorrectiveVsNeutralOverride) {
+    // opus→haiku, then user /model sonnet → upward → corrective (regret-worthy).
+    const QList<L::TranscriptTurn> up = {
+        assistantTurn(2000, "claude-haiku-4-5"),
+        userTurn(2500, "/model sonnet"),
+        assistantTurn(3000, "claude-sonnet-4-6"),
+    };
+    auto resUp = L::computeOutcome("opus", "haiku", 1000, up, {}, {});
+    EXPECT_TRUE(resUp.outcome.userOverrideWithin5);
+    EXPECT_TRUE(resUp.outcome.overrideUndidDowngrade);
+
+    // opus→sonnet, then user /model haiku → further DOWN → not corrective.
+    const QList<L::TranscriptTurn> down = {
+        assistantTurn(2000, "claude-sonnet-4-6"),
+        userTurn(2500, "/model haiku"),
+        assistantTurn(3000, "claude-haiku-4-5"),
+    };
+    auto resDown = L::computeOutcome("opus", "sonnet", 1000, down, {}, {});
+    EXPECT_TRUE(resDown.outcome.userOverrideWithin5);    // still a manual switch
+    EXPECT_FALSE(resDown.outcome.overrideUndidDowngrade); // but not a regret
+}
+
 // `/model X` matched by a *subsequent auto* record within the author window
 // → NOT an override (INV-11 author-correlation).
 TEST(ModelSwitchLedger, ComputeOutcomeAutoSwitchIsNotOverride) {
@@ -544,7 +588,7 @@ TEST(ModelSwitchLedger, Ants1941AllPreEpochYieldsNeutralStats) {
     L::Record a = makeRecord("opus", "haiku", false);
     a.outcome.turnsOnToTier = 5;
     L::Record b = makeRecord("opus", "haiku", false);
-    b.outcome.userOverrideWithin5 = true;       // would be a regret if counted
+    b.outcome.overrideUndidDowngrade = true;    // ANTS-1957 — regret if counted
     L::Record c = makeRecord("opus", "haiku", false);
     c.outcome.turnsOnToTier = 3;
     ASSERT_TRUE(L::appendRecord(path, a));

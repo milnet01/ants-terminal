@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Regret signal over-counts: any non-auto-authored /model is scored as a user-override regret, even when it's an independe…** (ANTS-1957)
+  The "regret rate" that decides whether to trust the auto-switcher counts every manual model switch you make after it acts as the switcher being wrong — even when you switched for your own reasons (testing, or picking a model for a specific task). So the feature looks worse than it is, especially during sessions where you're switching models a lot by hand.
+
 - **`spec_log` MCP write verb — append cold-eyes loop entries / flip Status / append INVs on `docs/specs/*.md`.** (ANTS-1963)
   Lets Claude update a spec file's status and review-log through Ants MCP instead of expensive hand-edits.
 
@@ -93,6 +96,9 @@ for security-relevant changes.
   The auto-switcher won't fire while there's any text in the input box — but in long autonomous sessions there's always leftover text. Make the rule smarter: if the text has been sitting untouched for 5+ minutes, treat it as stale and allow the switch.
 
 ### Changed
+
+- **Pending-switch chip annotation `(→ Tier)` reads as a recommendation rather than an automatic queued action.** (ANTS-1956)
+  The model chip shows "Haiku (→ Sonnet)" when a switch is queued, but users interpret it as "Ants is suggesting you switch" rather than "Ants will switch automatically once you send your message." Rewording or a tooltip would make the intent clear.
 
 - **model_switch_stats: document by_blocked_by gate-hit counting and /model ledger semantics** (ANTS-1947 + ANTS-1949)
   Two clarifications in the MCP tool descriptor. (1) by_blocked_by\n  values can sum to more than window_24h.total — a single near-miss\n  blocked by several gates contributes one count per gate. (2)\n  by_trigger.manual is structurally 0: only the autonomous switcher\n  writes ledger records; user /model commands and chip-clicks do not.

@@ -15081,6 +15081,7 @@ subsection.
     visible; catches the dialog within kSwitchConfirmPollMs (~120 ms) of it
     rendering instead of up to 2 s later. m_unarmedPollActive guards against
     stacked bursts from consecutive ticks.
+  Reinforcing instance 2026-06-03: user typed /model opus from Sonnet mid-session; the \"Switch model?\" dialog appeared and required manual approval despite ANTS-1951 being on and the matcher looking correct on code inspection. Possible timing race: the dialog appeared while m_unarmedPollActive was still armed from a prior tick (burst budget exhausted before dialog rendered). Investigate kSwitchConfirmMaxPolls budget vs. dialog render latency on Opus switch (slower model init?). Also confirmed ANTS-1969 (no continuation after confirm) as a real UX blocker same session."
 
 - ✅ [ANTS-1952] **Surface the MCP server's build identity (git SHA + build time) so callers can detect a ship-vs-live binary gap.**
   The MCP `initialize` serverInfo already carries version=ANTS_VERSION, but a SemVer string cannot distinguish "same version, rebuilt with a fix" — exactly the trap behind ANTS-1632/1903/1947, where a committed near-miss/telemetry fix was on disk but the running MCP server was a stale binary, so investigations chased ghosts. Add a build git SHA (short) + ISO build timestamp to serverInfo (and/or a control-plane verb like get_session_info / tool_info), populated at compile time from CMake (e.g. a configure-time git rev-parse + __DATE__/__TIME__ or CMake TIMESTAMP). A CC session reading "server built 2026-06-01T16:14, SHA abc1234" can compare against `git log` and immediately flag "the running server predates commit X" instead of re-running the same telemetry query twice. Keep it cheap: a single generated header, no runtime git calls.
@@ -15155,7 +15156,7 @@ subsection.
   Lanes: claudestatuswidgets, modelautoswitch.
   Source: user-report-2026-06-03.
 
-- 📋 [ANTS-1956] **Pending-switch chip annotation `(→ Tier)` reads as a recommendation rather than an automatic queued action.**
+- ✅ [ANTS-1956] **Pending-switch chip annotation `(→ Tier)` reads as a recommendation rather than an automatic queued action.**
   ANTS-1926 added the "(→ Tier)" suffix to signal a queued switch blocked by
     composer_not_empty. User feedback: it looks like a recommendation to approve
     rather than an automatic pending action. Options: (a) rewording to
@@ -15167,8 +15168,9 @@ subsection.
   Kind: ux.
   Lanes: claudestatuswidgets.
   Source: user-report-2026-06-03.
+  Shipped 2026-06-03: chip now reads "(auto → Tier)" instead of "(→ Tier)"; the word "auto" makes clear the switch is automatic, not a suggestion to approve.
 
-- 📋 [ANTS-1957] **Regret signal over-counts: any non-auto-authored /model is scored as a user-override regret, even when it's an independent manual switch.**
+- ✅ [ANTS-1957] **Regret signal over-counts: any non-auto-authored /model is scored as a user-override regret, even when it's an independent manual switch.**
   detectUserOverride (modelswitchledger.cpp:158) flags ANY post-switch
     `/model X` the controller didn't author as userOverrideWithin5, which
     feeds regretCount (statsEnvelope:405-422) — with no way to tell a
@@ -15191,6 +15193,7 @@ subsection.
   Kind: enhancement.
   Lanes: modelswitchledger, modelautoswitch.
   Source: in-session-2026-06-03 (regret 0→1 project / 0→2 global tracked to deliberate manual /model switches this session).
+  Shipped 2026-06-03: added overrideUndidDowngrade field + detectCorrectiveOverride helper; regret now counts only upward (undo) manual switches. kSwitcherEpoch bumped 1→2 for clean recalibration. All 68 model-switch tests green.
 
 - ✅ [ANTS-1958] **`/model` slash command double-posts in the transcript (command + confirmation echoed twice from one invocation).**
   User-reported via screenshot (2026-06-02). Running `/model opus` (and earlier `/model sonnet`) registered twice — two back-to-back command echoes + two "Set model to X and saved as your default" confirmations from one invocation. User notes "sometimes still posts twice," implying recurring, not a one-off. Likely area: slash-command submission handler double-firing (Enter handler registered twice / keypress not debounced / event not consumed). Low severity (idempotent — setting the model twice is harmless) but a visible transcript-clutter polish defect. Ask: dedupe the submission (consume the event / guard double-dispatch within a short window). Distinct from ANTS-1951/ANTS-1955 (those auto-confirm the "Switch model?" dialog; this is the command itself posting twice).
@@ -15239,6 +15242,22 @@ subsection.
   Kind: implement.
   Lanes: remotecontrol, claudeintegration.
   Source: in-session-2026-06-03 (ANTS-1961 §5 out-of-scope).
+
+- 📋 [ANTS-1969] **User-typed /model does not continue work after auto-confirm (ANTS-1958 revisit).**
+  ANTS-1958 deliberately omits the continuation prompt for user-typed /model
+    ("The user deliberately typed /model; they have their own next message
+    ready."). User feedback 2026-06-03 shows this assumption is wrong in
+    practice: when operating in auto mode the user expects work to resume
+    automatically after a model switch regardless of who initiated it.
+    Proposed fix: inject the same continuation prompt that performModelSwitch-
+    Handshake uses, but only when the unarmed-confirm path fires while auto
+    mode is on (gate on Config().claudeAutoModelSwitch()). If auto mode is off,
+    the user explicitly typed /model as a one-off action and the original
+    ANTS-1958 rationale holds. Pairs with ANTS-1951 (auto-confirm gap).
+  **Layman:** When you manually type /model X and Ants auto-confirms the dialog, Claude Code goes idle rather than continuing work — you have to send a new message. When auto mode is on, a continuation prompt should fire just like after an auto-switch.
+  Kind: ux.
+  Lanes: claudestatuswidgets, modelautoswitch.
+  Source: user-report-2026-06-03.
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 

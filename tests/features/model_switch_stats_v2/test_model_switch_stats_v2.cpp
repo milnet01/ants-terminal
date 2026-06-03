@@ -14,6 +14,11 @@
 //   INV-11  quiet-window inclusive boundary edge
 //   INV-12  changed flag detects clean-end-only flip
 //   INV-13  quiet-window settlement (additive to the three pre-existing)
+//
+// ANTS-1957 — regret reads the narrow `override_undid_downgrade` signal, NOT the
+// broad `user_override_within_5_turns`: a lateral / further-down / same-tier
+// manual switch is not evidence the downgrade was wrong and must not inflate
+// regret. (NonCorrectiveOverrideIsNotRegret.)
 
 #include <gtest/gtest.h>
 #include <QJsonDocument>
@@ -39,6 +44,11 @@ L::Record makeDowngrade(int turnsOnToTier,
     r.trigger     = QStringLiteral("auto");
     r.outcome.turnsOnToTier              = turnsOnToTier;
     r.outcome.userOverrideWithin5        = override_;
+    // ANTS-1957 — regret now reads the narrow direction-aware signal. These
+    // tests' `override_` means "a regret-worthy (corrective/upward) override",
+    // so mirror it onto overrideUndidDowngrade. A new test below covers the
+    // case where the two diverge (lateral/down override → not regret).
+    r.outcome.overrideUndidDowngrade     = override_;
     r.outcome.correctionSignalWithin5    = correction;
     r.outcome.underRouteSignalWithin5    = underRoute;
     r.outcome.sessionCleanlyEndedOnNewTier = cleanEnd;
@@ -88,6 +98,33 @@ TEST(ModelSwitchStatsV2_INV1, RegretFoldsInUnderRoute)
     recs2 << makeDowngrade(0, true,  false, false, false, false);  // override only
     QJsonObject env2 = L::statsEnvelope(recs2, enabledCfg());
     EXPECT_EQ(env2.value(QStringLiteral("regret_count")).toInt(), 2);
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-1957 — a broad manual override that is NOT corrective (lateral / further
+// down) must NOT count as regret. Regret reads overrideUndidDowngrade only.
+// ---------------------------------------------------------------------------
+TEST(ModelSwitchStatsV2_ANTS1957, NonCorrectiveOverrideIsNotRegret)
+{
+    // A downgrade where the user manually switched (userOverrideWithin5=true)
+    // but NOT upward (overrideUndidDowngrade=false) — e.g. a lateral or
+    // further-down /model. With turns accrued it is a measured non-regret.
+    L::Record r = makeDowngrade(/*turns=*/3, /*override_=*/true,
+                                /*correction=*/false, /*underRoute=*/false,
+                                /*cleanEnd=*/false, /*pending=*/false);
+    r.outcome.overrideUndidDowngrade = false;   // diverge from the broad signal
+
+    QJsonObject env = L::statsEnvelope({r}, enabledCfg());
+    EXPECT_EQ(env.value(QStringLiteral("regret_count")).toInt(), 0);
+    EXPECT_EQ(env.value(QStringLiteral("measured_downgrades")).toInt(), 1);
+
+    // Same record with 0 turns and no other signal → inconclusive, still 0 regret.
+    L::Record z = makeDowngrade(0, true, false, false, false, false);
+    z.outcome.overrideUndidDowngrade = false;
+    QJsonObject envZ = L::statsEnvelope({z}, enabledCfg());
+    EXPECT_EQ(envZ.value(QStringLiteral("regret_count")).toInt(), 0);
+    EXPECT_EQ(envZ.value(QStringLiteral("inconclusive_count")).toInt(), 1);
+    EXPECT_EQ(envZ.value(QStringLiteral("measured_downgrades")).toInt(), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -428,6 +465,7 @@ TEST(ModelSwitchStatsV2_INV10, LegacyRecordRoundTrip)
 
     L::Record r = L::fromJson(obj);
     EXPECT_FALSE(r.outcome.sessionCleanlyEndedOnNewTier);  // default
+    EXPECT_FALSE(r.outcome.overrideUndidDowngrade);        // ANTS-1957 default
     EXPECT_TRUE(r.outcome.underRouteSignalWithin5);        // round-tripped
     EXPECT_FALSE(r.outcome.pending);
 

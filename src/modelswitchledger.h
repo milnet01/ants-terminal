@@ -35,7 +35,12 @@ constexpr int    kDefaultStatsWindowDays = 30;          // ANTS-1936/1942 — re
 // first switch written *after ANTS-1941 ships* — a point that is ≥ every prior
 // behaviour fix (ANTS-1916/1930/…), so a safe "fixed-from-here" lower bound.
 // NEVER decrement; NEVER reuse a value (monotonicity is a review rule).
-constexpr int    kSwitcherEpoch         = 1;            // ANTS-1941
+// ANTS-1957 — bumped 1 → 2: the regret signal now counts only a *corrective*
+// (upward) override, not any manual /model, so pre-fix records (scored under the
+// old "any override = regret" rule) are not comparable and are excluded by the
+// epoch boundary. The trust signal recalibrates cleanly from the first switch
+// written after this ships.
+constexpr int    kSwitcherEpoch         = 2;            // ANTS-1941, ANTS-1957
 static_assert(kSwitcherEpoch >= 1,
               "epoch is a positive behaviour-generation counter");
 
@@ -45,6 +50,14 @@ struct Outcome {
     bool correctionSignalWithin5  = false;
     bool underRouteSignalWithin5  = false;
     bool sessionCleanlyEndedOnNewTier = false;  // ANTS-1891 — positive signal
+    // ANTS-1957 — direction-aware regret signal: true iff a non-auto-authored
+    // /model within the window moved to a tier ABOVE this downgrade's toTier
+    // (i.e. the user undid the downgrade). Distinct from userOverrideWithin5
+    // (which flags ANY manual switch and still drives the ANTS-1890 cool-down +
+    // clean-end conservatism). REGRET counts this narrow signal, not the broad
+    // one — a lateral / further-down / same-tier manual switch is not evidence
+    // the downgrade was wrong.
+    bool overrideUndidDowngrade   = false;
     bool pending                  = true;   // outcome not yet filled in
 };
 
@@ -89,6 +102,17 @@ struct AutoSwitch { QString toTier; qint64 tsMs = 0; }; // an auto ledger record
 bool detectUserOverride(const QList<ModelEvent> &windowModelEvents,
                         const QList<AutoSwitch> &autoRecords,
                         qint64 authorWindowMs = kAuthorWindowMs);
+
+// INV-13 (ANTS-1957) — true iff any in-window non-auto-authored /model event
+// moves to a tier strictly ABOVE `toTier` (the user undid the downgrade by
+// moving back up). Lateral / same-tier / further-down overrides are NOT
+// corrective and never count as regret against this switch. Direction-aware
+// refinement of detectUserOverride that feeds the regret signal ONLY; the broad
+// detectUserOverride still drives the cool-down + clean-end conservatism.
+bool detectCorrectiveOverride(const QList<ModelEvent> &windowModelEvents,
+                              const QList<AutoSwitch> &autoRecords,
+                              const QString &toTier,
+                              qint64 authorWindowMs = kAuthorWindowMs);
 
 // INV-12 — under-route on a downgrade: a higher tier re-recommended within the
 // window. Zero following turns → Pending (never counted as not-under-routed).

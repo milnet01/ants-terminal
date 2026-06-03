@@ -68,6 +68,8 @@ QJsonObject toJson(const Record &r) {
     // ANTS-1891 — new positive signal; snake_case matches the existing keys,
     // omits the _within_N_turns suffix since this is a quiet-window measurement.
     oc[QStringLiteral("session_cleanly_ended_on_new_tier")] = r.outcome.sessionCleanlyEndedOnNewTier;
+    // ANTS-1957 — narrow direction-aware regret signal (see Outcome struct).
+    oc[QStringLiteral("override_undid_downgrade")]      = r.outcome.overrideUndidDowngrade;
     oc[QStringLiteral("pending")]                       = r.outcome.pending;
 
     QJsonObject o;
@@ -104,6 +106,11 @@ Record fromJson(const QJsonObject &o) {
     // never observed the signal). `toBool(false)` is explicit for clarity.
     r.outcome.sessionCleanlyEndedOnNewTier =
         oc.value(QStringLiteral("session_cleanly_ended_on_new_tier")).toBool(false);
+    // ANTS-1957 — missing field defaults to false. Pre-1957 records lack it and
+    // carry epoch < 2, so they are excluded from the trust signal anyway (the
+    // epoch boundary, not this default, is what prevents old-semantics mixing).
+    r.outcome.overrideUndidDowngrade =
+        oc.value(QStringLiteral("override_undid_downgrade")).toBool(false);
     // Absent outcome → pending (a record with no measured outcome is in-flight,
     // hence pinned from eviction).
     r.outcome.pending = oc.value(QStringLiteral("pending")).toBool(true);
@@ -155,18 +162,40 @@ bool writeRecords(const QString &path, const QList<Record> &recs, qint64 capByte
     return writeLinesAtomic(path, lines);
 }
 
+namespace {
+
+// INV-11 correlation: a transcript /model event is auto-authored iff some auto
+// record matches it by tier AND |Δts| ≤ authorWindowMs. Shared by both override
+// detectors so they can never drift on what "the controller injected this" means.
+bool isAutoAuthored(const ModelEvent &e, const QList<AutoSwitch> &autoRecords,
+                    qint64 authorWindowMs) {
+    for (const AutoSwitch &a : autoRecords) {
+        if (a.toTier == e.tier && qAbs(e.tsMs - a.tsMs) <= authorWindowMs)
+            return true;
+    }
+    return false;
+}
+
+}  // namespace
+
 bool detectUserOverride(const QList<ModelEvent> &windowModelEvents,
                         const QList<AutoSwitch> &autoRecords,
                         qint64 authorWindowMs) {
     for (const ModelEvent &e : windowModelEvents) {
-        bool autoAuthored = false;
-        for (const AutoSwitch &a : autoRecords) {
-            if (a.toTier == e.tier && qAbs(e.tsMs - a.tsMs) <= authorWindowMs) {
-                autoAuthored = true;
-                break;
-            }
-        }
-        if (!autoAuthored) return true;   // a /model the controller didn't inject
+        if (!isAutoAuthored(e, autoRecords, authorWindowMs))
+            return true;   // a /model the controller didn't inject
+    }
+    return false;
+}
+
+bool detectCorrectiveOverride(const QList<ModelEvent> &windowModelEvents,
+                              const QList<AutoSwitch> &autoRecords,
+                              const QString &toTier,
+                              qint64 authorWindowMs) {
+    const int toRank = tierRank(toTier);
+    for (const ModelEvent &e : windowModelEvents) {
+        if (isAutoAuthored(e, autoRecords, authorWindowMs)) continue;
+        if (tierRank(e.tier) > toRank) return true;   // moved back up → undo
     }
     return false;
 }
@@ -273,6 +302,10 @@ OutcomeFillResult computeOutcome(
     }
     res.outcome.userOverrideWithin5 =
         detectUserOverride(userModelEvents, subsequentAutoSwitches);
+    // ANTS-1957 — narrow, direction-aware signal for regret. Only meaningful on
+    // a downgrade (an "upward" override undoes it); harmlessly false otherwise.
+    res.outcome.overrideUndidDowngrade = isDowngrade
+        && detectCorrectiveOverride(userModelEvents, subsequentAutoSwitches, toTier);
 
     // correction signal — first post-switch user turn ONLY, downgrades ONLY.
     if (isDowngrade) {
@@ -338,6 +371,7 @@ OutcomeFillResult computeOutcome(
     res.changed = (res.outcome.pending != inputBefore.pending)
                || (res.outcome.turnsOnToTier != inputBefore.turnsOnToTier)
                || (res.outcome.userOverrideWithin5 != inputBefore.userOverrideWithin5)
+               || (res.outcome.overrideUndidDowngrade != inputBefore.overrideUndidDowngrade)
                || (res.outcome.correctionSignalWithin5 != inputBefore.correctionSignalWithin5)
                || (res.outcome.underRouteSignalWithin5 != inputBefore.underRouteSignalWithin5)
                || (res.outcome.sessionCleanlyEndedOnNewTier
@@ -403,8 +437,14 @@ QJsonObject statsEnvelope(const QList<Record> &recs, const StatsConfig &cfg) {
         //   * under_route_count gates on its single bool (still standalone)
         //   * clean_end_count gates on the new positive signal
         if (isDowngrade && !r.outcome.pending) {
+            // ANTS-1957 — regret counts a CORRECTIVE (upward, undo) override, not
+            // any manual /model. A lateral / further-down / same-tier switch is
+            // not evidence the downgrade was wrong, so it must not inflate regret.
+            // (Clean-end credit below stays gated on the BROAD userOverrideWithin5
+            // — conservative on the crediting side: don't claim a clean downgrade
+            // if the user touched /model at all.)
             const bool hasNegativeSignal =
-                r.outcome.userOverrideWithin5
+                r.outcome.overrideUndidDowngrade
              || r.outcome.correctionSignalWithin5
              || r.outcome.underRouteSignalWithin5;
             const bool hasPositiveEvidence =

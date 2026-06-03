@@ -14,8 +14,9 @@ read-only `model_switch_stats` MCP verb can reach it):
 - **append + byte-cap eviction with pending-pinning** (`appendRecord`,
   `writeRecords`, `evictToCap`).
 - **JSON (de)serialization** of the record (field names match §2.5 verbatim).
-- **outcome detection** — `detectUserOverride`, `detectUnderRoute`,
-  `detectCorrection` (pure; the controller feeds live transcript data).
+- **outcome detection** — `detectUserOverride`, `detectCorrectiveOverride`,
+  `detectUnderRoute`, `detectCorrection` (pure; the controller feeds live
+  transcript data).
 
 Out of scope: the live controller that writes records and fills outcomes
 (actuator wiring, gated on spikes), and the stats aggregation surfaced by
@@ -33,6 +34,13 @@ Out of scope: the live controller that writes records and fills outcomes
 - **INV-12** — `under_route_signal_within_5_turns` is true iff, within 5 turns of
   a downgrade, a higher tier is re-recommended; a downgrade with zero following
   turns stays `Pending` and is never counted as not-under-routed.
+- **INV-13** (ANTS-1957) — `override_undid_downgrade` is true iff a non-auto-
+  authored in-window `/model X` moves to a tier strictly **above** the
+  downgrade's `to_tier` (the user moved back up, undoing it). A lateral,
+  same-tier, or further-down manual switch sets `user_override_within_5_turns`
+  (broad) but **not** `override_undid_downgrade`. Regret reads the narrow
+  signal; the broad one still drives the ANTS-1890 cool-down + clean-end
+  conservatism. `computeOutcome` only sets it on a downgrade.
 
 Soft signal (not a numbered invariant): the correction regex
 `\b(no|wrong|that's not|undo|revert|try again)\b` (case-insensitive, linear /

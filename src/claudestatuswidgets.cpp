@@ -1390,13 +1390,16 @@ void ClaudeStatusBarController::refreshModelStateChip()
         text += QStringLiteral(" · ") + thinkLabel;
     }
     // ANTS-1926 — pending-switch annotation. When the auto-switcher has
-    // queued a switch (blocked only by composer_not_empty), append a
-    // "(→ Haiku)" suffix so the user can see the intent at a glance.
+    // queued a switch (blocked only by composer_not_empty), append an
+    // "(auto → Haiku)" suffix so the user can see the intent at a glance.
+    // ANTS-1956 — the "auto" prefix reads as "Ants will switch automatically"
+    // rather than "Ants suggests you switch"; the bare arrow was being misread
+    // as a recommendation to approve.
     if (!m_autoSwitchPendingTier.isEmpty()) {
         const QString pendingTitle =
             m_autoSwitchPendingTier.left(1).toUpper() +
             m_autoSwitchPendingTier.mid(1);
-        text += QStringLiteral(" (→ ") + pendingTitle + QStringLiteral(")");
+        text += QStringLiteral(" (auto → ") + pendingTitle + QStringLiteral(")");
     }
     m_modelStateBtn->setText(text);
     const QString pendingTip = m_autoSwitchPendingTier.isEmpty()

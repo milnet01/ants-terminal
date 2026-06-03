@@ -33,7 +33,8 @@ L::Record rec(const QString &from, const QString &to, bool pending, int turns,
     r.trigger = QStringLiteral("auto");
     r.outcome.pending = pending;
     r.outcome.turnsOnToTier = turns;
-    r.outcome.userOverrideWithin5 = override_;
+    r.outcome.userOverrideWithin5    = override_;
+    r.outcome.overrideUndidDowngrade = override_;  // ANTS-1957: regret reads this
     r.outcome.underRouteSignalWithin5 = underRoute;
     return r;
 }
