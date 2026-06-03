@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **`spec_log` MCP write verb — append cold-eyes loop entries / flip Status / append INVs on `docs/specs/*.md`.** (ANTS-1963)
+  Lets Claude update a spec file's status and review-log through Ants MCP instead of expensive hand-edits.
+
+- **`feedback_log` MCP verb — write to a `*_Ants_MCP_Feedback.md` file (contributor append + maintainer tracking block).** (ANTS-1962)
+  Lets any CC session add feedback to the shared report files, and lets the maintainer session stamp a tracking block with roadmap IDs, without manually editing markdown.
+
+- **`feedback_query` MCP verb — read the un-triaged tail of a `*_Ants_MCP_Feedback.md` file.** (ANTS-1961)
+  Lets the Ants maintainer session pull just the new feedback from a cross-session report file instead of re-reading the whole thing every week.
+
 - **Auto-switcher task-shape signals round 2 — foreground-subprocess-wait (safe-downgrade) + post-clarification suppression …** (ANTS-1959)
   Make the model-switcher smarter about WHEN it's safe to drop to a cheaper model: it's safe while waiting on a long build/test, but risky right after you answer a design question (hard work usually follows). Two cheap signals that catch the most common real sessions.
 

@@ -2,9 +2,11 @@
 #include "buildcache.h"
 #include "coldeyesengine.h"
 #include "debtsweepengine.h"
+#include "feedbackfile.h"        // ANTS-1961 / ANTS-1962
 #include "fileoutline.h"
 #include "findsources.h"
 #include "readlog.h"
+#include "speclog.h"             // ANTS-1963
 #include "modelswitchledger.h"   // ANTS-1735 — model_switch_stats aggregation
 #include "modelnearmissledger.h" // ANTS-1894 — model_switch_stats near-miss arm
 #include "focusedtest.h"
@@ -44,6 +46,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QDate>
 #include <QSaveFile>
 #include <algorithm>
 #include <QHash>
@@ -6172,6 +6175,553 @@ QJsonDocument RemoteControl::cmdReadLog(const QJsonObject &req) {
     // default lives outside any project root, so no reframe — ANTS-1855
     // § 2.3).
     return QJsonDocument(ReadLog::filter(resolved, opts));
+}
+
+// ----- ANTS-1961 / ANTS-1962 — feedback-file MCP tools --------------
+//
+// Shared helpers: refusal envelope + target resolution (suffix guard +
+// PathValidation with allowOutsideRoot=true). Both verbs are
+// m_main-independent — an absolute `path` is used as-is; a relative
+// `path` resolves under the caller_cwd canonical (mirrors the
+// changelog_log resolution posture, NOT the focused-tab fallback).
+
+namespace {
+
+// Forward decl — isValidSpecId is defined in the spec-tools anonymous
+// namespace block further down (it predates these verbs). cmdSpecLog
+// reuses it for ANTS-NNNN / phase_* id routing parity with cmdSpecQuery.
+bool isValidSpecId(const QString &id);
+
+QJsonObject fbErr(const QString &code, const QString &message) {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["error"] = message;
+    o["code"]  = code;
+    return o;
+}
+
+// Canonical suffix-guard literal (mcp-feedback-files.md § "File location
+// & name"). Checked on the resolved/canonical basename.
+constexpr char kFeedbackSuffix[] = "_Ants_MCP_Feedback.md";
+
+// Resolve + validate the feedback-file `path` arg. On reject, fills
+// `err` and returns false. On success, `resolvedOut` is the absolute
+// path to read/write (which may not yet exist when `mustExist` is
+// false), and `existsOut` says whether it currently exists.
+bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
+                         QString &resolvedOut, bool &existsOut,
+                         QJsonObject &err) {
+    const QString rawPath = req.value(QStringLiteral("path")).toString();
+    if (rawPath.isEmpty()) {
+        err = fbErr(QStringLiteral("bad_args"),
+                    toolName + QStringLiteral(": \"path\" is required"));
+        return false;
+    }
+    // Root for the relative case: the caller_cwd canonical dir. Absolute
+    // paths bypass it (allowOutsideRoot=true lets the shared-root files,
+    // which live outside any project, be accepted). An empty rootCanonical
+    // is fine for an absolute path; PathValidation only anchors when
+    // allowOutsideRoot=false, which we never pass here.
+    const QString callerRaw =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    const QString rootCanonical =
+        QFileInfo(callerRaw).canonicalFilePath();
+
+    const auto check = PathValidation::validatePath(
+        rawPath, rootCanonical, toolName, QStringLiteral("path"),
+        /*allowOutsideRoot=*/true);
+    if (check.bad) { err = check.err; return false; }
+
+    // Determine the path to act on. validatePath leaves `resolved` empty
+    // for a non-existent path; reconstruct the would-be absolute path so
+    // the writer (feedback_log) can create it. For an absolute rawPath we
+    // use it directly; for a relative one we join the caller_cwd root.
+    QString candidate = check.resolved;
+    existsOut = !candidate.isEmpty();
+    if (candidate.isEmpty()) {
+        const QFileInfo rawFi(rawPath);
+        if (rawFi.isAbsolute()) {
+            candidate = QDir::cleanPath(rawPath);
+        } else if (!rootCanonical.isEmpty()) {
+            candidate = QDir::cleanPath(
+                rootCanonical + QLatin1Char('/') + rawPath);
+        } else {
+            // Relative path with no resolvable caller_cwd root.
+            err = fbErr(QStringLiteral("bad_path"),
+                        toolName + QStringLiteral(": relative \"path\" "
+                        "needs a resolvable caller_cwd"));
+            return false;
+        }
+    }
+
+    // Suffix guard on the resolved/canonical basename (a symlink or `..`
+    // that lands on a non-feedback file is rejected — validatePath has
+    // already canonicalised existing paths into `check.resolved`).
+    const QString base = QFileInfo(candidate).fileName();
+    if (!base.endsWith(QLatin1String(kFeedbackSuffix))) {
+        err = fbErr(QStringLiteral("not_feedback_file"),
+                    toolName + QStringLiteral(": \"path\" basename must "
+                    "end in ") + QLatin1String(kFeedbackSuffix));
+        return false;
+    }
+
+    resolvedOut = candidate;
+    return true;
+}
+
+}  // namespace
+
+// ANTS-1961 — feedback_query: return the un-triaged delta + mapped IDs.
+QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
+    QString resolved;
+    bool exists = false;
+    QJsonObject err;
+    if (!resolveFeedbackPath(req, QStringLiteral("feedback_query"),
+                             resolved, exists, err)) {
+        return QJsonDocument(err);
+    }
+    if (!exists) {
+        return QJsonDocument(fbErr(
+            QStringLiteral("not_found"),
+            QStringLiteral("feedback_query: \"%1\" does not exist")
+                .arg(resolved)));
+    }
+    QFile f(resolved);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return QJsonDocument(fbErr(
+            QStringLiteral("read_failed"),
+            QStringLiteral("feedback_query: cannot open \"%1\"")
+                .arg(resolved)));
+    }
+    const QString content = QString::fromUtf8(f.readAll());
+    f.close();
+
+    const FeedbackFile::ParseResult pr = FeedbackFile::parse(content);
+
+    // Byte cap on the emitted delta (default 512 KiB, 4 MiB ceiling —
+    // ANTS-1855 read-tool defaults). Keep the HEAD of the delta.
+    int maxBytes = req.value(QStringLiteral("max_bytes")).toInt(0);
+    if (maxBytes <= 0) maxBytes = ReadLog::kDefaultBytesCap;
+    if (maxBytes > ReadLog::kMaxBytesCeiling)
+        maxBytes = ReadLog::kMaxBytesCeiling;
+
+    QString delta = pr.delta;
+    bool truncated = false;
+    {
+        const QByteArray utf8 = delta.toUtf8();
+        if (utf8.size() > maxBytes) {
+            // Keep whole UTF-8 code points: truncate the QString and
+            // re-encode until it fits (cheap — only a few iterations).
+            int keep = delta.size();
+            while (keep > 0 &&
+                   delta.left(keep).toUtf8().size() > maxBytes) {
+                keep -= 64;
+            }
+            if (keep < 0) keep = 0;
+            delta = delta.left(keep);
+            truncated = true;
+        }
+    }
+
+    QJsonObject out;
+    out["ok"]                    = true;
+    out["path"]                  = resolved;
+    out["delta"]                 = delta;
+    out["delta_present"]         = pr.deltaPresent;
+    out["delta_line_count"]      = pr.deltaLineCount;
+    out["delta_start_line"]      = pr.deltaStartLine;
+    out["mapped_ids"]            = QJsonArray::fromStringList(pr.mappedIds);
+    out["maintainer_block_count"] = pr.maintainerBlockCount;
+    out["last_maintainer_line"]  = pr.lastMaintainerLine;
+    out["truncated"]             = truncated;
+    // The `etag` field is injected centrally by the dispatch site
+    // (ClaudeIntegration::applyEtagPattern) for tools listed in
+    // isEtagSupportedTool — it is the sha256 of this envelope, which
+    // changes iff the file content (and thus the delta) changes.
+    return QJsonDocument(out);
+}
+
+// ANTS-1962 — test seam for the atomic write in cmdFeedbackLog.
+static bool g_forceFeedbackWriteFail = false;
+void RemoteControl::setForceFeedbackWriteFailForTest(bool on) {
+    g_forceFeedbackWriteFail = on;
+}
+
+// ANTS-1962 — feedback_log: append a contributor or maintainer block.
+QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
+    QString resolved;
+    bool exists = false;
+    QJsonObject err;
+    if (!resolveFeedbackPath(req, QStringLiteral("feedback_log"),
+                             resolved, exists, err)) {
+        return QJsonDocument(err);
+    }
+
+    const QString op = req.value(QStringLiteral("op")).toString();
+    if (op != QStringLiteral("append_finding") &&
+        op != QStringLiteral("append_tracking")) {
+        return QJsonDocument(fbErr(
+            QStringLiteral("bad_mode"),
+            QStringLiteral("feedback_log: op must be \"append_finding\" "
+                           "or \"append_tracking\"")));
+    }
+
+    // date: default to today; an explicit value must match YYYY-MM-DD.
+    QString date = req.value(QStringLiteral("date")).toString();
+    if (date.isEmpty()) {
+        date = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
+    } else {
+        static const QRegularExpression dateRe(
+            QStringLiteral("^\\d{4}-\\d{2}-\\d{2}$"));
+        if (!dateRe.match(date).hasMatch()) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("feedback_log: \"date\" must be "
+                               "YYYY-MM-DD")));
+        }
+    }
+
+    bool created = false;
+    QString rendered;
+
+    if (op == QStringLiteral("append_finding")) {
+        const QJsonArray findingsArr =
+            req.value(QStringLiteral("findings")).toArray();
+        if (findingsArr.isEmpty()) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("feedback_log: append_finding requires a "
+                               "non-empty \"findings\" array")));
+        }
+        QVector<FeedbackFile::Finding> findings;
+        for (const QJsonValue &v : findingsArr) {
+            const QJsonObject fo = v.toObject();
+            FeedbackFile::Finding fnd;
+            fnd.title        = fo.value(QStringLiteral("title")).toString();
+            if (fnd.title.isEmpty()) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("bad_args"),
+                    QStringLiteral("feedback_log: every finding needs a "
+                                   "non-empty \"title\"")));
+            }
+            fnd.what         = fo.value(QStringLiteral("what")).toString();
+            fnd.repro        = fo.value(QStringLiteral("repro")).toString();
+            fnd.impact       = fo.value(QStringLiteral("impact")).toString();
+            fnd.suggestedFix =
+                fo.value(QStringLiteral("suggested_fix")).toString();
+            findings.append(fnd);
+        }
+        const QString sessionLabel =
+            req.value(QStringLiteral("session_label")).toString();
+        const QString headingLevel =
+            req.value(QStringLiteral("heading_level"))
+               .toString(QStringLiteral("h2"));
+        const bool h1 = (headingLevel == QStringLiteral("h1"));
+        const QString note = req.value(QStringLiteral("note")).toString();
+
+        if (!exists) {
+            // Create with a conforming skeleton; <Project> derived from
+            // the basename minus the suffix.
+            QString project = QFileInfo(resolved).fileName();
+            project.chop(static_cast<int>(
+                qstrlen(kFeedbackSuffix)));
+            rendered = FeedbackFile::skeleton(project);
+            created = true;
+        }
+        // Defer the on-disk content read to the append step below.
+        rendered += FeedbackFile::renderFindingBlock(
+            date, sessionLabel, h1, note, findings);
+    } else {  // append_tracking
+        if (!exists) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("not_found"),
+                QStringLiteral("feedback_log: append_tracking on an "
+                               "absent file (nothing to triage)")));
+        }
+        const QJsonArray rowsArr =
+            req.value(QStringLiteral("rows")).toArray();
+        if (rowsArr.isEmpty()) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("feedback_log: append_tracking requires a "
+                               "non-empty \"rows\" array")));
+        }
+        static const QSet<QString> kStatusSet = {
+            QString::fromUtf8("\xF0\x9F\x93\x8B"),  // 📋
+            QString::fromUtf8("\xF0\x9F\x9A\xA7"),  // 🚧
+            QString::fromUtf8("\xE2\x9C\x85"),      // ✅
+            QString::fromUtf8("\xF0\x9F\x92\xAD"),  // 💭
+            QString::fromUtf8("\xF0\x9F\x94\x84"),  // 🔄
+            QString::fromUtf8("\xE2\x9D\x93"),      // ❓
+        };
+        static const QRegularExpression idRe(
+            QStringLiteral("^ANTS-[0-9]+$"));
+        QVector<FeedbackFile::TrackingRow> rows;
+        for (const QJsonValue &v : rowsArr) {
+            const QJsonObject ro = v.toObject();
+            FeedbackFile::TrackingRow row;
+            row.item   = ro.value(QStringLiteral("item")).toString();
+            if (row.item.isEmpty()) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("bad_args"),
+                    QStringLiteral("feedback_log: every row needs a "
+                                   "non-empty \"item\"")));
+            }
+            row.status = ro.value(QStringLiteral("status")).toString();
+            if (!kStatusSet.contains(row.status)) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("bad_status"),
+                    QStringLiteral("feedback_log: row \"status\" must be "
+                                   "one of 📋 🚧 ✅ 💭 🔄 ❓")));
+            }
+            for (const QJsonValue &iv :
+                     ro.value(QStringLiteral("ids")).toArray()) {
+                const QString idv = iv.toString();
+                if (!idRe.match(idv).hasMatch()) {
+                    return QJsonDocument(fbErr(
+                        QStringLiteral("bad_args"),
+                        QStringLiteral("feedback_log: each id must match "
+                                       "ANTS-NNNN (got \"%1\")").arg(idv)));
+                }
+                row.ids.append(idv);
+            }
+            row.notes = ro.value(QStringLiteral("notes")).toString();
+            rows.append(row);
+        }
+        const QString note = req.value(QStringLiteral("note")).toString();
+        const bool sentinel =
+            req.value(QStringLiteral("sentinel")).toBool(true);
+        rendered = FeedbackFile::renderTrackingBlock(
+            date, note, rows, sentinel);
+    }
+
+    // Read existing content (when the file exists) and append-at-end,
+    // ensuring a blank-line separator before the new block.
+    QString existing;
+    if (exists) {
+        QFile rf(resolved);
+        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("read_failed"),
+                QStringLiteral("feedback_log: cannot open \"%1\"")
+                    .arg(resolved)));
+        }
+        existing = QString::fromUtf8(rf.readAll());
+        rf.close();
+    }
+
+    QString full = existing;
+    if (!full.isEmpty()) {
+        if (!full.endsWith(QLatin1Char('\n'))) full += QLatin1Char('\n');
+        // Guarantee a blank-line separator between the prior content and
+        // the appended block.
+        if (!full.endsWith(QStringLiteral("\n\n")))
+            full += QLatin1Char('\n');
+    }
+    full += rendered;
+
+    const QByteArray utf8 = full.toUtf8();
+    const QByteArray addedUtf8 = rendered.toUtf8();
+
+    QSaveFile sf(resolved);
+    if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        return QJsonDocument(fbErr(
+            QStringLiteral("write_failed"),
+            QStringLiteral("feedback_log: cannot open \"%1\" for writing")
+                .arg(resolved)));
+    }
+    bool committed = (sf.write(utf8) == utf8.size());
+    if (committed) {
+        if (g_forceFeedbackWriteFail) {
+            sf.cancelWriting();
+            committed = false;
+        } else {
+            committed = sf.commit();
+        }
+    }
+    if (!committed) {
+        return QJsonDocument(fbErr(
+            QStringLiteral("write_failed"),
+            QStringLiteral("feedback_log: atomic write of \"%1\" failed")
+                .arg(resolved)));
+    }
+
+    QJsonObject out;
+    out["ok"]             = true;
+    out["op"]             = op;
+    out["path"]           = resolved;
+    out["bytes_appended"] = static_cast<qint64>(addedUtf8.size());
+    out["date"]           = date;
+    out["created"]        = created;
+    return QJsonDocument(out);
+}
+
+// ----- ANTS-1963 — spec_log MCP tool --------------------------------
+
+static bool g_forceSpecWriteFail = false;
+void RemoteControl::setForceSpecWriteFailForTest(bool on) {
+    g_forceSpecWriteFail = on;
+}
+
+QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
+    auto slErr = [](const QString &code, const QString &message) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = message;
+        o["code"]  = code;
+        return QJsonDocument(o);
+    };
+
+    const QString id      = req.value(QStringLiteral("id")).toString();
+    const QString pathArg = req.value(QStringLiteral("path")).toString();
+    if (id.isEmpty() && pathArg.isEmpty()) {
+        return slErr(QStringLiteral("bad_id"),
+                     QStringLiteral("spec_log: pass \"id\" or \"path\""));
+    }
+    if (!id.isEmpty() && pathArg.isEmpty() && !isValidSpecId(id)) {
+        return slErr(QStringLiteral("bad_id"),
+                     QStringLiteral("spec_log: id must match ANTS-NNNN "
+                                    "or phase_<NN>_<topic>"));
+    }
+
+    // Root: caller_cwd canonical (m_main-independent, mirrors
+    // changelog_log). Empty → no_project.
+    const QString callerRaw =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    const QString rootCanonical =
+        QFileInfo(callerRaw).canonicalFilePath();
+    if (rootCanonical.isEmpty()) {
+        return slErr(QStringLiteral("no_project"),
+                     QStringLiteral("spec_log: project root unresolved"));
+    }
+
+    QString rel, full;
+    if (!pathArg.isEmpty()) {
+        // ANTS-1295 — route the path arg through PathValidation
+        // (allowOutsideRoot=false; specs live in-root). A malformed or
+        // root-escaping path → bad_path.
+        const auto check = PathValidation::validatePath(
+            pathArg, rootCanonical, QStringLiteral("spec_log"),
+            QStringLiteral("path"), /*allowOutsideRoot=*/false);
+        if (check.bad) return QJsonDocument(check.err);
+        if (!check.resolved.isEmpty()) {
+            full = check.resolved;
+        } else {
+            // Non-existent (validatePath leaves resolved empty); rebuild
+            // the in-root absolute path so the not_found check below
+            // fires with the right message.
+            full = QDir::cleanPath(
+                rootCanonical + QLatin1Char('/') + pathArg);
+        }
+        rel = pathArg;
+    } else {
+        const bool isPhase = id.startsWith(QStringLiteral("phase_"));
+        rel = (isPhase ? QStringLiteral("docs/phases/")
+                       : QStringLiteral("docs/specs/")) +
+              id + QStringLiteral(".md");
+        full = rootCanonical + QLatin1Char('/') + rel;
+    }
+
+    QFileInfo fi(full);
+    if (!fi.exists() || !fi.isFile()) {
+        return slErr(QStringLiteral("not_found"),
+                     QStringLiteral("spec_log: %1 does not exist")
+                         .arg(rel));
+    }
+
+    const QString op = req.value(QStringLiteral("op")).toString();
+    if (op != QStringLiteral("set_status") &&
+        op != QStringLiteral("append_loop") &&
+        op != QStringLiteral("append_inv")) {
+        return slErr(QStringLiteral("bad_mode"),
+                     QStringLiteral("spec_log: op must be \"set_status\", "
+                                    "\"append_loop\", or \"append_inv\""));
+    }
+
+    QFile f(full);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return slErr(QStringLiteral("read_failed"),
+                     QStringLiteral("spec_log: cannot open %1").arg(rel));
+    }
+    const QString content = QString::fromUtf8(f.readAll());
+    f.close();
+
+    SpecLog::EditResult res;
+    if (op == QStringLiteral("set_status")) {
+        const QString status =
+            req.value(QStringLiteral("status")).toString();
+        if (status.isEmpty()) {
+            return slErr(QStringLiteral("bad_args"),
+                         QStringLiteral("spec_log: set_status requires a "
+                                        "non-empty \"status\""));
+        }
+        res = SpecLog::setStatus(content, status);
+    } else if (op == QStringLiteral("append_loop")) {
+        const QString label =
+            req.value(QStringLiteral("loop_label")).toString();
+        const QString body = req.value(QStringLiteral("body")).toString();
+        if (label.isEmpty() || body.isEmpty()) {
+            return slErr(QStringLiteral("bad_args"),
+                         QStringLiteral("spec_log: append_loop requires "
+                                        "\"loop_label\" and \"body\""));
+        }
+        res = SpecLog::appendLoop(content, label, body);
+    } else {  // append_inv
+        const QString invId =
+            req.value(QStringLiteral("inv_id")).toString();
+        const QString body = req.value(QStringLiteral("body")).toString();
+        static const QRegularExpression invRe(
+            QStringLiteral("^INV-[0-9]+$"));
+        if (!invRe.match(invId).hasMatch()) {
+            return slErr(QStringLiteral("bad_args"),
+                         QStringLiteral("spec_log: \"inv_id\" must match "
+                                        "INV-N"));
+        }
+        if (body.isEmpty()) {
+            return slErr(QStringLiteral("bad_args"),
+                         QStringLiteral("spec_log: append_inv requires "
+                                        "\"body\""));
+        }
+        const QString test = req.value(QStringLiteral("test")).toString();
+        res = SpecLog::appendInv(content, invId, body, test);
+    }
+
+    if (!res.ok) {
+        // The pure layer carries only structural codes
+        // (unrecognised_format / bad_args), surfaced verbatim.
+        return slErr(res.code, res.error);
+    }
+
+    const QByteArray utf8 = res.content.toUtf8();
+    QSaveFile sf(full);
+    if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        return slErr(QStringLiteral("write_failed"),
+                     QStringLiteral("spec_log: cannot open %1 for writing")
+                         .arg(rel));
+    }
+    bool committed = (sf.write(utf8) == utf8.size());
+    if (committed) {
+        if (g_forceSpecWriteFail) {
+            sf.cancelWriting();
+            committed = false;
+        } else {
+            committed = sf.commit();
+        }
+    }
+    if (!committed) {
+        return slErr(QStringLiteral("write_failed"),
+                     QStringLiteral("spec_log: atomic write of %1 failed")
+                         .arg(rel));
+    }
+
+    QJsonObject out;
+    out["ok"]            = true;
+    out["op"]            = op;
+    if (!id.isEmpty()) out["id"] = id;
+    out["path"]          = rel;
+    out["line"]          = res.line;
+    out["bytes_written"] = static_cast<qint64>(utf8.size());
+    return QJsonDocument(out);
 }
 
 // ANTS-1250: git_state — single tool collapsing status / log / diff

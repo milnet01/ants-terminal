@@ -2960,6 +2960,168 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(rlTool);
 
+                // ANTS-1961 — feedback_query: read the un-triaged tail of
+                // a *_Ants_MCP_Feedback.md file instead of a full Read.
+                {
+                    QJsonObject t;
+                    t["name"] = "feedback_query";
+                    t["description"] = QStringLiteral(
+                        "Read only the UN-TRIAGED tail of a cross-session "
+                        "*_Ants_MCP_Feedback.md file — everything a "
+                        "contributor appended after the last maintainer "
+                        "tracking block — instead of Read-ing the whole "
+                        "file. Returns {ok, path, delta, delta_present, "
+                        "delta_line_count, delta_start_line, mapped_ids, "
+                        "maintainer_block_count, last_maintainer_line, "
+                        "truncated, etag}. `mapped_ids` are the ANTS-NNNN "
+                        "ids already cited in maintainer blocks. "
+                        "Byte-capped (max_bytes, default 512 KiB, 4 MiB "
+                        "ceiling) keeping the HEAD of the delta. Refusals: "
+                        "`bad_args` (missing path), `not_feedback_file` "
+                        "(basename not *_Ants_MCP_Feedback.md), `bad_path` "
+                        "(traversal), `not_found` (absent). caller_cwd "
+                        "required.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to pull just the new feedback from a shared "
+                        "*_Ants_MCP_Feedback.md report file instead of "
+                        "re-reading the whole thing each review.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject pathProp; pathProp["type"] = "string";
+                        pathProp["description"] = QStringLiteral(
+                            "Required. Path to the *_Ants_MCP_Feedback.md "
+                            "file. Absolute (the canonical case — files "
+                            "live at /mnt/Games/Scripts/Linux/) or "
+                            "caller_cwd-relative.");
+                    QJsonObject mbProp; mbProp["type"] = "integer";
+                        mbProp["minimum"] = 1;
+                        mbProp["description"] = QStringLiteral(
+                            "Cap on the emitted `delta` bytes (default "
+                            "512 KiB, server-clamped to 4 MiB). Keeps the "
+                            "HEAD; sets truncated:true. delta_line_count "
+                            "still reports the full count.");
+                    props["path"]       = pathProp;
+                    props["max_bytes"]  = mbProp;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("path"));
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema["required"] = req;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
+                // ANTS-1962 — feedback_log: append a contributor finding
+                // block or a maintainer tracking block, rendered from
+                // structured args (no hand-edited markdown).
+                {
+                    QJsonObject t;
+                    t["name"] = "feedback_log";
+                    t["description"] = QStringLiteral(
+                        "Append to a cross-session "
+                        "*_Ants_MCP_Feedback.md file — always at EOF, "
+                        "never inserting above a maintainer block. "
+                        "op:\"append_finding\" (contributor) renders a "
+                        "dated session heading + one ### sub-block per "
+                        "finding; op:\"append_tracking\" (maintainer) "
+                        "renders the 📋 watermark heading + a mapping "
+                        "table. Creates an absent file with a conforming "
+                        "skeleton on append_finding; append_tracking on an "
+                        "absent file refuses not_found. Atomic write. "
+                        "Returns {ok, op, path, bytes_appended, date, "
+                        "created}. Refusals: `bad_mode`, `bad_args`, "
+                        "`bad_status` (row status outside 📋🚧✅💭🔄❓), "
+                        "`not_feedback_file`, `bad_path`, `not_found`, "
+                        "`write_failed`. caller_cwd required.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to add feedback to a shared "
+                        "*_Ants_MCP_Feedback.md file (or stamp a "
+                        "maintainer tracking block) instead of "
+                        "hand-editing markdown.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject pathProp; pathProp["type"] = "string";
+                        pathProp["description"] = QStringLiteral(
+                            "Required. Path to the *_Ants_MCP_Feedback.md "
+                            "file (absolute or caller_cwd-relative).");
+                    QJsonObject opProp; opProp["type"] = "string";
+                        { QJsonArray e; e.append(QStringLiteral("append_finding"));
+                          e.append(QStringLiteral("append_tracking"));
+                          opProp["enum"] = e; }
+                        opProp["description"] = QStringLiteral(
+                            "Required. \"append_finding\" (contributor) "
+                            "or \"append_tracking\" (maintainer).");
+                    QJsonObject dateProp; dateProp["type"] = "string";
+                        dateProp["description"] = QStringLiteral(
+                            "Optional YYYY-MM-DD; defaults to today.");
+                    QJsonObject labelProp; labelProp["type"] = "string";
+                        labelProp["description"] = QStringLiteral(
+                            "Optional session label (append_finding "
+                            "heading suffix).");
+                    QJsonObject hlProp; hlProp["type"] = "string";
+                        { QJsonArray e; e.append(QStringLiteral("h1"));
+                          e.append(QStringLiteral("h2")); hlProp["enum"] = e; }
+                        hlProp["description"] = QStringLiteral(
+                            "Optional finding heading level, default h2.");
+                    QJsonObject noteProp; noteProp["type"] = "string";
+                        noteProp["description"] = QStringLiteral(
+                            "Optional prose under the heading (both ops).");
+                    QJsonObject findingsProp; findingsProp["type"] = "array";
+                        { QJsonObject it; it["type"] = "object";
+                          QJsonObject fp;
+                          QJsonObject s; s["type"] = "string";
+                          fp["title"] = s; fp["what"] = s; fp["repro"] = s;
+                          fp["impact"] = s; fp["suggested_fix"] = s;
+                          it["properties"] = fp;
+                          findingsProp["items"] = it; }
+                        findingsProp["description"] = QStringLiteral(
+                            "append_finding: ≥1 finding. Each: title "
+                            "(required) + optional what/repro/impact/"
+                            "suggested_fix.");
+                    QJsonObject rowsProp; rowsProp["type"] = "array";
+                        { QJsonObject it; it["type"] = "object";
+                          QJsonObject rp;
+                          QJsonObject s; s["type"] = "string";
+                          QJsonObject idsArr; idsArr["type"] = "array";
+                          QJsonObject idIt; idIt["type"] = "string";
+                          idsArr["items"] = idIt;
+                          rp["item"] = s; rp["ids"] = idsArr;
+                          rp["status"] = s; rp["notes"] = s;
+                          it["properties"] = rp;
+                          rowsProp["items"] = it; }
+                        rowsProp["description"] = QStringLiteral(
+                            "append_tracking: ≥1 row. Each: item "
+                            "(required), ids (ANTS-NNNN array, may be "
+                            "empty → n/a), status (📋🚧✅💭🔄❓), notes "
+                            "(optional).");
+                    QJsonObject sentinelProp; sentinelProp["type"] = "boolean";
+                        sentinelProp["description"] = QStringLiteral(
+                            "append_tracking: emit the trailing \"End of "
+                            "…\" breadcrumb (default true).");
+                    props["path"]          = pathProp;
+                    props["op"]            = opProp;
+                    props["date"]          = dateProp;
+                    props["session_label"] = labelProp;
+                    props["heading_level"] = hlProp;
+                    props["note"]          = noteProp;
+                    props["findings"]      = findingsProp;
+                    props["rows"]          = rowsProp;
+                    props["sentinel"]      = sentinelProp;
+                    props["caller_cwd"]    = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("path"));
+                    req.append(QStringLiteral("op"));
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema["required"] = req;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-1250: git_state — single tool, dispatches on
                 // `op` (status / log / diff). Collapsed from three
                 // separate tools to save ~240 permanent schema tokens
@@ -3488,6 +3650,90 @@ void ClaudeIntegration::onMcpConnection() {
                     req.append("caller_cwd");
                     schema["required"]            = req;
                     schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
+                // ANTS-1963 — spec_log: write the three recurring spec
+                // mutations (flip Status / append cold-eyes loop / append
+                // INV) instead of hand-editing markdown. Write sibling of
+                // spec_query; same id/path routing.
+                {
+                    QJsonObject t;
+                    t["name"] = "spec_log";
+                    t["description"] = QStringLiteral(
+                        "Edit a spec's structured surface without "
+                        "hand-editing markdown. op:\"set_status\" rewrites "
+                        "the **Status:** line; op:\"append_loop\" appends a "
+                        "cold-eyes loop-log bullet (creating the section "
+                        "if absent); op:\"append_inv\" appends an INV-N "
+                        "bullet at the end of the Invariants section "
+                        "(never renumbers). Target via `id` (ANTS-NNNN → "
+                        "docs/specs/<id>.md; phase_<NN>_<topic> → "
+                        "docs/phases/) or a project-relative `path`. "
+                        "Atomic write. Returns {ok, op, id?, path, line, "
+                        "bytes_written}. Refusals: `bad_mode`, `bad_id`, "
+                        "`bad_path`, `bad_args`, `no_project`, "
+                        "`not_found` (file absent), `unrecognised_format` "
+                        "(spec present but missing the section/line), "
+                        "`write_failed`. caller_cwd required.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to flip a spec's Status, log a cold-eyes "
+                        "loop, or add an INV — cheaper than an Edit "
+                        "round-trip on the markdown.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject opProp; opProp["type"] = "string";
+                        { QJsonArray e; e.append(QStringLiteral("set_status"));
+                          e.append(QStringLiteral("append_loop"));
+                          e.append(QStringLiteral("append_inv"));
+                          opProp["enum"] = e; }
+                        opProp["description"] = QStringLiteral(
+                            "Required. set_status | append_loop | "
+                            "append_inv.");
+                    QJsonObject idProp; idProp["type"] = "string";
+                        idProp["description"] = QStringLiteral(
+                            "Spec id (ANTS-NNNN or phase_<NN>_<topic>). "
+                            "Required unless `path` is set.");
+                    QJsonObject pathProp; pathProp["type"] = "string";
+                        pathProp["description"] = QStringLiteral(
+                            "Optional project-relative path to the spec "
+                            "file (no leading '/', no '..'). Overrides "
+                            "`id` routing.");
+                    QJsonObject statusProp; statusProp["type"] = "string";
+                        statusProp["description"] = QStringLiteral(
+                            "set_status: the text after \"**Status:** \" "
+                            "(e.g. \"accepted (2026-06-03)\").");
+                    QJsonObject labelProp; labelProp["type"] = "string";
+                        labelProp["description"] = QStringLiteral(
+                            "append_loop: the loop label "
+                            "(e.g. \"Loop 3 (2026-06-03)\").");
+                    QJsonObject bodyProp; bodyProp["type"] = "string";
+                        bodyProp["description"] = QStringLiteral(
+                            "append_loop / append_inv: the bullet body "
+                            "prose.");
+                    QJsonObject invProp; invProp["type"] = "string";
+                        invProp["description"] = QStringLiteral(
+                            "append_inv: the new INV id (^INV-[0-9]+$). "
+                            "Refuses bad_args if already present.");
+                    QJsonObject testProp; testProp["type"] = "string";
+                        testProp["description"] = QStringLiteral(
+                            "append_inv: optional *Test:* clause.");
+                    props["op"]         = opProp;
+                    props["id"]         = idProp;
+                    props["path"]       = pathProp;
+                    props["status"]     = statusProp;
+                    props["loop_label"] = labelProp;
+                    props["body"]       = bodyProp;
+                    props["inv_id"]     = invProp;
+                    props["test"]       = testProp;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("op"));
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema["required"] = req;
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
@@ -7043,10 +7289,17 @@ void ClaudeIntegration::onMcpConnection() {
                         return QStringLiteral("model");
                     if (name == QLatin1String("plan_template"))
                         return QStringLiteral("plan");
-                    // ANTS-1309 + ANTS-1308 — spec-aware tools.
+                    // ANTS-1309 + ANTS-1308 + ANTS-1963 — spec-aware
+                    // tools (spec_log is the write sibling of spec_query).
                     if (name == QLatin1String("spec_query") ||
-                        name == QLatin1String("invariant_check"))
+                        name == QLatin1String("invariant_check") ||
+                        name == QLatin1String("spec_log"))
                         return QStringLiteral("spec");
+                    // ANTS-1961 / ANTS-1962 — cross-session feedback-file
+                    // read + write verbs.
+                    if (name == QLatin1String("feedback_query") ||
+                        name == QLatin1String("feedback_log"))
+                        return QStringLiteral("feedback");
                     // ANTS-1299 — build_status cache.
                     if (name == QLatin1String("build_status"))
                         return QStringLiteral("build");
@@ -7833,6 +8086,14 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // tenancy; Required even for the debug-log default so the tool can't
     // be used as an unscoped file reader.
     if (toolName == QStringLiteral("read_log"))            return C::Required;
+    // ANTS-1961 / ANTS-1962 — feedback verbs resolve a relative `path`
+    // off caller_cwd and anchor tenancy; Required even though the
+    // canonical case is an absolute shared-root path.
+    if (toolName == QStringLiteral("feedback_query"))      return C::Required;
+    if (toolName == QStringLiteral("feedback_log"))        return C::Required;
+    // ANTS-1963 — spec_log resolves docs/specs|phases/<id>.md under the
+    // caller's project root; Required matches spec_query.
+    if (toolName == QStringLiteral("spec_log"))            return C::Required;
     // ANTS-1435 — session_memory: dispatcher refuses empty
     // caller_cwd upstream (Required). The handler still has a
     // body-level cwd_missing for the IPC path which bypasses the
@@ -8016,7 +8277,14 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
         // op-agnostic at the dispatcher (record responses also carry
         // an etag); the field is only semantically useful on op=read.
         || toolName == QStringLiteral("build_status")
-        || toolName == QStringLiteral("test_results");
+        || toolName == QStringLiteral("test_results")
+        // ANTS-1961 — feedback_query: the delta is stable between
+        // contributor appends, so a session re-querying the same file in
+        // one review short-circuits. The etag is the sha256 of the
+        // envelope (which carries the file-derived delta), so it changes
+        // iff the file content changes. (feedback_log / spec_log are
+        // writers — deliberately NOT etag-enabled.)
+        || toolName == QStringLiteral("feedback_query");
 }
 
 QString ClaudeIntegration::etagFor(const QString &payload) {

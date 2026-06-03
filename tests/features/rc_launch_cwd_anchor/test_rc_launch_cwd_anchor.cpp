@@ -153,12 +153,15 @@ void testWiring() {
     // with ANTS-1302's cmdFocusedTest (validates the build_dir arg),
     // then to 15 with ANTS-1831's cmdColdEyesBrief (the ad-hoc-lane
     // doc_paths entries now route through the chokepoint), then to 16
-    // with ANTS-1855's cmdReadLog (validates the `path` arg).
+    // with ANTS-1855's cmdReadLog (validates the `path` arg), then to 18
+    // with ANTS-1962's resolveFeedbackPath helper (feedback_query /
+    // feedback_log share it) + ANTS-1963's cmdSpecLog (validates the
+    // `path` arg).
     {
         const std::size_t count = ants_test::countOccurrences(
             rc, "PathValidation::validatePath(");
-        expect(count == 16,
-               (std::string("WI-3 expected 16 validatePath call-sites, "
+        expect(count == 18,
+               (std::string("WI-3 expected 18 validatePath call-sites, "
                             "found ")
                 + std::to_string(count)).c_str());
     }

@@ -378,6 +378,20 @@ public:
     // default, or a caller_cwd-relative path) via ReadLog::filter.
     QJsonDocument cmdReadLog(const QJsonObject &req);
 
+    // ANTS-1961 — feedback_query: read the un-triaged tail of a
+    // *_Ants_MCP_Feedback.md file (delegates to FeedbackFile::parse).
+    // ANTS-1962 — feedback_log: append a contributor finding block or a
+    // maintainer tracking block (delegates to FeedbackFile renderers).
+    // Both are m_main-independent (absolute path used as-is; relative
+    // path resolved off caller_cwd canonicalisation).
+    QJsonDocument cmdFeedbackQuery(const QJsonObject &req);
+    QJsonDocument cmdFeedbackLog(const QJsonObject &req);
+    // ANTS-1963 — spec_log: flip Status / append a cold-eyes loop entry /
+    // append an INV bullet in docs/specs|phases/<id>.md (delegates to the
+    // pure SpecLog transforms). m_main-independent (caller_cwd canonical
+    // + filesystem only, mirroring changelog_log).
+    QJsonDocument cmdSpecLog(const QJsonObject &req);
+
     // ANTS-1303: find_definition / find_caller — tree-wide regex
     // symbol scanner. Delegate to SymbolQuery; resolve the root via
     // resolveRootCanonical, validate `symbol` (→ bad_args). Public so
@@ -622,6 +636,13 @@ public:
     // tests/features/mcp_roadmap_log_atomicity/spec.md.
     static void setForceCounterCommitFailForTest(bool on);
     QJsonDocument cmdRoadmapLogAppendForTest(const QJsonObject &req);
+    // ANTS-1962 / ANTS-1963 — test-only QSaveFile commit-failure seams,
+    // mirroring setForceCounterCommitFailForTest. Force the atomic write
+    // in cmdFeedbackLog / cmdSpecLog to fail so the atomicity tests can
+    // assert the original file is left byte-for-byte untouched. See
+    // tests/features/mcp_feedback_log/spec.md + mcp_spec_log/spec.md.
+    static void setForceFeedbackWriteFailForTest(bool on);
+    static void setForceSpecWriteFailForTest(bool on);
     // ANTS-1717/1793 — drive the flip/annotate path (note append +
     // status flip) against a synthetic caller_cwd without a MainWindow.
     // Flip is m_main-independent. See

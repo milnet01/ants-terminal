@@ -4712,6 +4712,13 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("read_log",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdReadLog));
+    // ANTS-1961 / ANTS-1962 — cross-session feedback-file read + write.
+    m_claudeIntegration->registerToolProvider("feedback_query",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdFeedbackQuery));
+    m_claudeIntegration->registerToolProvider("feedback_log",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdFeedbackLog));
     m_claudeIntegration->registerToolProvider("git_state",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdGitState));
@@ -4743,6 +4750,10 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("spec_query",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdSpecQuery));
+    // ANTS-1963 — spec_log: write the three recurring spec mutations.
+    m_claudeIntegration->registerToolProvider("spec_log",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdSpecLog));
     m_claudeIntegration->registerToolProvider("invariant_check",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdInvariantCheck));

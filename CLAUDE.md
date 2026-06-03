@@ -136,7 +136,14 @@ incremental mode (ANTS-1500); `roadmap_query` recognises ants-v1 /
 github-task-list / pass-headings formats (ANTS-1530); `read_log` filters
 a log file (Ants debug log or a `caller_cwd` path) to matching lines via
 the pure `ReadLog::filter` helper, streaming drop-oldest byte cap +
-since_cursor incremental tailing (ANTS-1855); `model_switch_stats`
+since_cursor incremental tailing (ANTS-1855); `feedback_query` /
+`feedback_log` read/write the `*_Ants_MCP_Feedback.md` files via the pure
+`FeedbackFile` module (delta parse + block render; ANTS-1961/1962),
+suffix-guarded on `_Ants_MCP_Feedback.md`, append-only at EOF; `spec_log`
+writes a spec's Status line / cold-eyes loop log / `INV-N` via the pure
+`SpecLog` module (`op:"set_status"` / `"append_loop"` / `"append_inv"`,
+never renumbering; reuses `spec_query`'s id routing; ANTS-1963);
+`model_switch_stats`
 (ANTS-1735, extended by ANTS-1889, sharpened by ANTS-1891) — Required
 `caller_cwd`, ETag + `fields` opt-in, aggregates the model-switch
 ledger into avoided/regret ratios and pending-record counts (the trust
@@ -214,17 +221,20 @@ RetroDB) write MCP observations to `*_Ants_MCP_Feedback.md` files under
 [`docs/standards/mcp-feedback-files.md`](docs/standards/mcp-feedback-files.md).
 
 Reviewing feedback efficiently (don't re-read the whole file):
-- **`feedback_query`** (ANTS-1961, planned) — returns the un-triaged tail
-  (contributor blocks after the last maintainer tracking block) + already-
-  mapped `ANTS-NNNN` IDs; saves ~60k tokens vs. a full read.
-- **`feedback_log`** (ANTS-1962, planned) — write side; `op:"append_finding"`
-  for contributors, `op:"append_tracking"` for the maintainer to stamp
-  a mapping table with roadmap IDs.
+- **`feedback_query`** (ANTS-1961) — pass the feedback file's `path`;
+  returns the un-triaged tail (contributor blocks after the last maintainer
+  tracking block) + already-mapped `ANTS-NNNN` IDs; saves ~60k tokens vs. a
+  full read. Read-only, ETag-aware.
+- **`feedback_log`** (ANTS-1962) — write side; `op:"append_finding"` for
+  contributors, `op:"append_tracking"` for the maintainer to stamp a
+  mapping table with roadmap IDs. Append-only at EOF (creates the file with
+  a conforming skeleton on first `append_finding`). The `path` basename
+  must end in `_Ants_MCP_Feedback.md` (else `not_feedback_file`).
 
-Until those verbs ship: read only the tail manually (search for the last
-`## 📋 Ants Terminal roadmap tracking` heading; everything after it is
-un-triaged). Assign IDs via `roadmap_log op:append` in the cross-session
-section, then edit the feedback file to record them.
+Triage flow: `feedback_query` the tail → assign IDs via `roadmap_log
+op:append` → `feedback_log op:"append_tracking"` to stamp the mapping
+table (which advances the watermark, emptying the next `feedback_query`
+delta).
 
 ## Project standards
 

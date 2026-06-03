@@ -42,6 +42,14 @@ un-triaged contributor input.
 - Named `<Project>_Ants_MCP_Feedback.md` (e.g.
   `RetroArch_Ants_MCP_Feedback.md`). Project token in `CamelCase` or
   `Snake_Case`, no spaces.
+- **Suffix guard (canonical home).** Tooling that reads/writes these files
+  (`feedback_query` ANTS-1961, `feedback_log` ANTS-1962) guards on the
+  exact, case-sensitive basename suffix `_Ants_MCP_Feedback.md`: a `path`
+  arg whose resolved basename does not end in that literal is refused with
+  `code:"not_feedback_file"` (the suffix is checked on the *resolved /
+  canonical* basename, so a symlink or `..` landing on a non-feedback file
+  is rejected). The verbs cite this line as the single source for the
+  guard literal — do not restate it divergently.
 
 ## File skeleton
 

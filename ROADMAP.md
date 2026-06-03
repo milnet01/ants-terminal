@@ -9005,6 +9005,36 @@ indie-review finding.
   Source: user-report-2026-06-02.
   Shipped 2026-06-02. score() gains currentModelFromCommand + currentModelTsMs provenance fields (inline QDateTime parse, no new includes). reconcileCurrentTier pure helper in modelautoswitch anchors gate.current to the actuator record ONLY to suppress re-firing the same tier (repeat-only guard: actuated == recommendedTarget). Controller reordered floor/clampedTarget before current; advanceStability now sees the reconciled current. 9 new feature tests (INV-1..9). 1831/1831 green. ANTS-1916 regression confirmed safe (INV-3).
 
+- 📋 [ANTS-1968] **Auto-switcher: investigate whether `composer_not_empty` over-blocks safe downgrades during long ToolUse grinds.**
+  model_switch_stats (2026-06-03, this project) shows 47 near-misses in 24 h with composer_not_empty dominating at 87% (41/47), the rest ticks_target_stable_insufficient (26; gates can co-fire per ANTS-1947). composer_not_empty is the billing-safety gate (don't switch while input is pending), but if it blocks the bulk of evaluations during active grinding it may be suppressing the long-ToolUse safe-downgrade window ANTS-1959 added — the composer often holds a queued continuation or CC spinner text mid-grind. Investigate: (1) is the 87% legitimate caution or over-blocking? (2) should the gate treat a composer holding only a queued/continuation prompt during a demonstrable long-ToolUse grind as switch-safe? (3) instrument near-miss outcomes (did a blocked downgrade window later turn into a real Opus turn that could have been Haiku?). Pairs with ANTS-1959. No code change yet — measurement first.
+  **Layman:** Check if the safety rule that stops model-switching while you're typing is also blocking good chances to downgrade while Claude is busy working.
+  Kind: investigate.
+  Lanes: claudeintegration, modelautoswitch.
+  Source: in-session-2026-06-03 (model_switch_stats near_misses observation).
+
+### 🎨 Review Changes dialog UX (user request 2026-06-03)
+
+Navigation + scroll affordances for the Review Changes dialog, requested
+2026-06-03.
+
+- 📋 [ANTS-1965] **Review Changes dialog — make each file under the "Status" heading clickable to jump to that file within the dialog.**
+  **Layman:** Click a filename in the Status list to jump straight to it in the dialog.
+  Kind: enhancement.
+  Lanes: dialogs, mainwindow.
+  Source: user-request-2026-06-03.
+
+- 📋 [ANTS-1966] **Review Changes dialog — make each file under the "Diff" heading clickable to jump to that file within the dialog.**
+  **Layman:** Click a filename in the Diff list to jump straight to its diff in the dialog.
+  Kind: enhancement.
+  Lanes: dialogs, mainwindow.
+  Source: user-request-2026-06-03.
+
+- 📋 [ANTS-1967] **Review Changes dialog — show a "back to top" button once the user starts scrolling.**
+  **Layman:** A back-to-top button appears when you scroll down the Review Changes dialog.
+  Kind: enhancement.
+  Lanes: dialogs, mainwindow.
+  Source: user-request-2026-06-03.
+
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
 5-lane in-house audit of the 584-test suite across perf,
@@ -15187,19 +15217,28 @@ subsection.
   Source: vestige-feedback-2026-06-02/03 (CE3 idle-end idea, Sh4b regret-headline + ANTS-1947 doc nuance).
   Resolved (2026-06-03): (1) regret_rate_calibrating boolean added to envelope. (2) idle_end_of_session-only near-misses excluded from total_24h / dominant_blocker; exposed as idle_end_suppressed_24h. (3) Docstring note in remotecontrol.cpp. 1843/1843 green.
 
-- 📋 [ANTS-1961] **`feedback_query` MCP verb — read the un-triaged tail of a `*_Ants_MCP_Feedback.md` file.**
+- ✅ [ANTS-1961] **`feedback_query` MCP verb — read the un-triaged tail of a `*_Ants_MCP_Feedback.md` file.**
   Read verb that parses a *_Ants_MCP_Feedback.md file per docs/standards/mcp-feedback-files.md and returns {new_addenda, mapped_ids[]}: the un-triaged tail (everything after the last maintainer tracking block) plus the ANTS-NNNN IDs already mapped in maintainer blocks, so the caller distinguishes new findings from re-checks. Saves ~60k tokens/review (largest file ~2.5k lines; actionable content is the last few hundred). Parser contract is in the standard: anchor regex on the maintainer heading, fence-skip, #/## boundaries only, maintainer-block-scoped ID scan. Reuse standard MCP contracts: PathValidation (ANTS-1295), caller_cwd Required, size caps + ETag/fields where it composes (sibling to read_log ANTS-1855). Follow-on (b): SessionStart surfacing of pending-addenda counts. Source: user-request 2026-06-03.
   **Layman:** Lets the Ants maintainer session pull just the new feedback from a cross-session report file instead of re-reading the whole thing every week.
   Kind: implement.
   Lanes: remotecontrol, claudeintegration.
   Source: user-request-2026-06-03 (Vestige feedback-file ingestion).
+  Resolved (2026-06-03): feedback_query shipped — pure FeedbackFile::parse + handler, ETag-aware, suffix-guarded. 1872/1872 tests green.
 
-- 📋 [ANTS-1962] **`feedback_log` MCP verb — write to a `*_Ants_MCP_Feedback.md` file (contributor append + maintainer tracking block).**
+- ✅ [ANTS-1962] **`feedback_log` MCP verb — write to a `*_Ants_MCP_Feedback.md` file (contributor append + maintainer tracking block).**
   Write counterpart to feedback_query (ANTS-1961). Two ops: op:"append_finding" — contributor appends a dated session block + one or more finding sub-blocks (title, what, repro, impact, suggested fix); op:"append_tracking" — maintainer appends a ## 📋 Ants Terminal roadmap tracking update block with a mapping table (finding → ANTS-NNNN). Mirrors roadmap_log's design: allocates no IDs (maintainer passes them explicitly), enforces append-at-end (rejects if caller tries to insert above the last maintainer block), validates file path per PathValidation (ANTS-1295). Caller_cwd contract: Required. Format contract per docs/standards/mcp-feedback-files.md.
   **Layman:** Lets any CC session add feedback to the shared report files, and lets the maintainer session stamp a tracking block with roadmap IDs, without manually editing markdown.
   Kind: implement.
   Lanes: remotecontrol, claudeintegration.
   Source: user-request-2026-06-03.
+  Resolved (2026-06-03): feedback_log shipped — append_finding/append_tracking via FeedbackFile renderers, atomic QSaveFile, write-fail seam.
+
+- 📋 [ANTS-1964] **SessionStart surfacing of pending feedback-addenda counts (ANTS-1961 follow-on "b").**
+  Deferred from the ANTS-1961 feedback_query spec (§5). Run FeedbackFile::parse over each *_Ants_MCP_Feedback.md at the shared root and surface a per-file pending-addenda count (delta_present + delta_line_count) in the SessionStart hook context, so the Ants maintainer session knows at a glance which feedback files have un-triaged input without calling feedback_query per file. Depends on ANTS-1961 (the parser + verb). Source: in-session-2026-06-03.
+  **Layman:** On session start, show the maintainer how many un-triaged feedback items are waiting across the cross-session report files.
+  Kind: implement.
+  Lanes: remotecontrol, claudeintegration.
+  Source: in-session-2026-06-03 (ANTS-1961 §5 out-of-scope).
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
@@ -16028,6 +16067,14 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Lanes: modelautoswitch, modelnearmissledger, claudestatuswidgets.
   Source: in-session-2026-06-02 (ANTS-1945 investigation — ledger sole-blocker analysis).
   Resolved 2026-06-02. Guard added in maybeEmitNearMiss (claudestatuswidgets.cpp): early-return without emitting and without updating throttle state when blockedBy contains target_equals_current. Spec ANTS-1894 amended with INV-14 + INV-5 annotation + statsFull example rework. Regression test test_no_emit_target_equals_current.cpp (3 cases: sole-blocker, co-fire, throttle-not-poisoned). Pre-existing Inv5RecordPreservesEvaluationOrder failure fixed (test used target_equals_current in blocker set; replaced with dwell_time_insufficient). 1834/1834 ctest green.
+
+- ✅ [ANTS-1963] **`spec_log` MCP write verb — append cold-eyes loop entries / flip Status / append INVs on `docs/specs/*.md`.**
+  Write counterpart to spec_query (read-only today). Ops mirror roadmap_log/changelog_log: op:"append_loop" appends a "- **Loop N (DATE)** — ..." entry to the spec's cold-eyes loop log; op:"set_status" rewrites the Status line (spec draft → accepted → shipped X.Y.Z, and the "cold-eyes loops 1-N folded" form per specs.md §5.6); op:"append_inv" appends INV-N without renumbering (specs.md §3.5). Motivation: the ANTS-1961/1962 session spent ~30 Edit calls flipping Status + appending 4 cold-eyes loop entries across two specs — exactly the token sink roadmap_log/changelog_log removed for their files. PathValidation + caller_cwd Required + atomic QSaveFile. Source: in-session-2026-06-03.
+  **Layman:** Lets Claude update a spec file's status and review-log through Ants MCP instead of expensive hand-edits.
+  Kind: implement.
+  Lanes: remotecontrol, claudeintegration.
+  Source: in-session-2026-06-03 (hit while writing ANTS-1961/1962 specs).
+  Resolved (2026-06-03): spec_log shipped — set_status/append_loop/append_inv via pure SpecLog; PathValidation on path arg; bad_id added to taxonomy.
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 

@@ -33,13 +33,15 @@ against the table below.
 | Code | Meaning | Examples |
 |------|---------|----------|
 | `bad_args` | A required argument is missing or has the wrong shape. | `cmdRoadmapLog` without `headline`; numeric arg parsed as non-numeric. |
+| `bad_id` | An `id`-typed arg is malformed, or a required id/path locator is wholly absent. | `spec_query`/`spec_log` with an `id` that isn't `ANTS-NNNN` / `phase_<NN>_<topic>`, or with neither `id` nor `path` (ANTS-1309/1963). |
 | `bad_path` | A path argument fails NFC / control-char / canonicalisation / project-root anchor (PathValidation::validatePath, ANTS-1295). | `audit_run path:"../../etc"`; symlink-escape. |
+| `not_feedback_file` | A `path` arg is well-formed and in-bounds but its resolved basename is not a `*_Ants_MCP_Feedback.md` file (the `feedback_query` / `feedback_log` suffix guard, ANTS-1961/1962). Distinct from `bad_path` (which is a malformed/escaping path) — this path is fine, just the wrong kind of file. | `feedback_query path:"notes.md"`. |
 | `bad_cwd` | The caller's `caller_cwd` does not exist or isn't a directory. | `caller_cwd:"/no/such/path"`. |
 | `bad_mode` | A mode-enum argument doesn't match any allowed value. | `roadmap_query mode:"foo"`. |
 | `bad_mode_combo` | A mode + other-arg combo is conceptually exclusive. | `roadmap_query mode:"section_index"` + `section:"x"`. |
 | `bad_section` | A `section` slug isn't in the roadmap's heading index. | `roadmap_query section:"nonexistent"`. |
 | `bad_case` | A slug or id locator differs only in case from a real entry; envelope carries the canonical form. | `roadmap_log section:"Performance"` when the slug is `performance`. Returns `canonical_slug:"performance"`. Used by `roadmap_query`, `roadmap_log op:append`, `roadmap_log op:append_batch`, `roadmap_log op:create_section`, and `spec_query`. |
-| `bad_status` | A status-filter arg doesn't match the enum. | `roadmap_query status:"foo"`. |
+| `bad_status` | A status-typed arg — a query *filter* or a *write value* — doesn't match the enum. | `roadmap_query status:"foo"`; `feedback_log` tracking-row `status` outside the `{📋 🚧 ✅ 💭 🔄 ❓}` set (ANTS-1962). |
 | `bad_kind` | A `kind` enum arg doesn't match the recognised set (per roadmap-format.md § 3.5.3). | `roadmap_log kind:"weird"`. |
 | `bad_level` | The `level` arg under `roadmap_log op:create_section` is not 2 or 3. | `roadmap_log op:create_section level:5` (ANTS-1878). |
 | `bad_intro` | The `intro_body` under `roadmap_log op:create_section` contains a line matching `^#{1,6}\s` (would silently add a heading to the index). | `intro_body:"## stray"` (ANTS-1878). |

@@ -231,6 +231,10 @@ add_library(ants_core_lib STATIC
     src/fileoutline.cpp
     # ANTS-1855 — read_log pure filtering helper (Qt6::Core-only).
     src/readlog.cpp
+    # ANTS-1961 / ANTS-1962 — feedback-file parse + render helpers.
+    src/feedbackfile.cpp
+    # ANTS-1963 — spec_log pure markdown transforms (Qt6::Core-only).
+    src/speclog.cpp
     # ANTS-1735 — model-switch effectiveness ledger. In core (not claude) so the
     # read-only model_switch_stats MCP verb (mainwindow dispatch) can reach it.
     src/modelswitchledger.cpp
@@ -1039,6 +1043,10 @@ if(ANTS_TESTS)
                 tests/features/mcp_file_outline/test_mcp_file_outline.cpp
                 # ANTS-1855 — read_log filter verb.
                 tests/features/mcp_read_log/test_mcp_read_log.cpp
+                # ANTS-1961 / ANTS-1962 / ANTS-1963 — feedback + spec_log verbs.
+                tests/features/mcp_feedback_query/test_mcp_feedback_query.cpp
+                tests/features/mcp_feedback_log/test_mcp_feedback_log.cpp
+                tests/features/mcp_spec_log/test_mcp_spec_log.cpp
                 # ANTS-1390 ~global / ~claude-config caller_cwd sentinel
                 # for path tools (workspace_search, file_outline).
                 tests/features/mcp_global_config_sentinel/test_mcp_global_config_sentinel.cpp
