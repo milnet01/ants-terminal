@@ -15267,6 +15267,27 @@ subsection.
   Lanes: mcporientation.
   Source: in-session-2026-06-03.
 
+- 📋 [ANTS-1971] **Conditionally surface feedback_log / feedback_query in SessionStart orientation when a `*_Ants_MCP_Feedback.md` exists.**
+  The orientation cheat-sheet lists 11 tools but not feedback_log /\nfeedback_query, so a Vestige contributor used Edit on the feedback file\n(format-drift risk; the user had to point out the tool exists). Do NOT add\nthem to the always-on prelude — it already overflows its cap (ANTS-1970).\nInstead surface them CONDITIONALLY: when the project root has a\n*_Ants_MCP_Feedback.md, append a one-line \"feedback_log/feedback_query\navailable\" hint. Dovetails with ANTS-1964 (per-file pending-addenda scan at\nSessionStart already walks these files). Distinct audience: ANTS-1964 is\nmaintainer-side (triage queue); this is contributor-side (write path\ndiscoverability).
+  **Layman:** When a project has a cross-session feedback file, the startup hint should mention the two tools for reading/writing it — otherwise contributors fall back to hand-editing the file (which risks format drift).
+  Kind: enhancement.
+  Lanes: mcporientation, claudeintegration.
+  Source: vestige-feedback-2026-06-03 (Cl1 session).
+
+- 📋 [ANTS-1972] **Doc note: firings `near_misses.total_24h` excludes idle-end-suppressed; +idle_end_suppressed_24h reconciles to near_misses-mode total.**
+  Same-turn parallel reads: firings-mode near_misses.total_24h=18 with\nidle_end_suppressed_24h=3; near_misses-mode window_24h.total=21. 18+3=21 —\nthe firings slim block reports the NON-suppressed count, near_misses-mode\nincludes suppressed. Looks like an ANTS-1947-class same-moment regression\nbut is not. Add a one-line note to the model_switch_stats descriptor (distinct\nfrom the ANTS-1960 across-time-vs-same-moment note already added): firings\nnear_misses.total_24h + idle_end_suppressed_24h == near_misses-mode\nwindow_24h.total at the same instant.
+  **Layman:** Two of the switcher's counters look like they disagree (18 vs 21) but don't — one excludes idle-end-suppressed near-misses. A one-line doc note stops the next session re-filing it as a bug.
+  Kind: doc.
+  Lanes: modelnearmissledger, remotecontrol.
+  Source: vestige-feedback-2026-06-03 (Cl1 session).
+
+- 📋 [ANTS-1973] **Yield the composer_not_empty veto during a long-ToolUse foreground wait (the 67%-dominant near-miss blocker).**
+  composer_not_empty is the dominant near-miss blocker (Vestige: 14/21 = 67%).\nANTS-1908 already yields it when the composer is untouched >= 5 min, but that\nis far too long for an ~18 s build wait. ANTS-1959 yields focused_state_not_idle\nduring a long ToolUse but composer_not_empty STILL blocks (near-miss shows\nboth). Refinement: when toolUseElapsedMs >= kLongToolUseMs (foreground subprocess\nrunning, human-idle) AND composerStaleMs >= a SHORT threshold, also yield\ncomposer_not_empty — the staged text is queued/abandoned, not active typing.\nFeasible without full composer-content visibility (ANTS-1931): keystroke-timing\n(composerStaleMs) + toolUseElapsedMs are both already on the Gate. Pairs\nANTS-1908/1914/1959; partially unblocks the dominant near-miss.
+  **Layman:** During a long build/test wait the text box often holds stale queued text, not active typing — yet that blocks the cheaper-model switch 67% of the time. When a foreground command has been running a while and the box hasn't changed, treat the text as abandoned and allow the downgrade.
+  Kind: enhancement.
+  Lanes: modelautoswitch, claudestatuswidgets.
+  Source: vestige-feedback-2026-06-03 (Cl1 session).
+
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
 - ✅ [ANTS-1329] **Tasks dialog gets 3 px of vertical row
