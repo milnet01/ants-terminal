@@ -15288,6 +15288,14 @@ subsection.
   Lanes: modelautoswitch, claudestatuswidgets.
   Source: vestige-feedback-2026-06-03 (Cl1 session).
 
+- 📋 [ANTS-1974] **Settings: user-selectable default/home model tier — auto-switcher returns to it and only downgrades on clear evidence.**
+  User wants Opus as the baseline, downgrading only when it makes sense. Today\nthe recommender hardcodes Sonnet as the neutral band (score in [-2,2] -> Sonnet;\n>=2 -> Opus; <=-2 -> Haiku). Proposal: a `claude.auto_model_home_tier` config\nkey (default \"sonnet\" = current behaviour) + a Settings dropdown. Semantics:\nthe home tier is the neutral-band recommendation; downgrades BELOW home require\nclear mechanical evidence (the existing <=-2 / mechanical signals), upgrades\nABOVE home always allowed (Opus through, per clampToFloor). Must compose with\nthe existing floor (home >= floor). NOTE: this changes recommender scoring ->\nbump kSwitcherEpoch again (clean recalibration). Open design Q surfaced to user:\nwhether \"default model\" means this home-tier baseline (B) or merely the\nstarting model for a new session (A) — the two are materially different scope.\nSpec-first per the user's design-then-implement preference unless they say\nimplement now.
+  **Layman:** Let the user pick their home model (e.g. Opus) in Settings. The auto-switcher then treats that as the baseline — staying there for normal work and only stepping down to Sonnet/Haiku when the work is clearly mechanical/cheap.
+  Kind: feature.
+  Lanes: modelrecommender, modelautoswitch, config, settingsdialog.
+  Source: user-request-2026-06-03.
+  Decisions confirmed (user, 2026-06-03): (1) meaning = HOME/BASELINE tier (interpretation B), not just the new-session starting model — the auto-switcher returns to the chosen tier and only downgrades on clear evidence. (2) Approach = SPEC FIRST: write docs/specs/ANTS-1974.md, run /cold-eyes until clean, THEN implement. Proposed band design to anchor the spec: score()->tier becomes relative to homeTier (default sonnet preserves current behaviour): up(sc>=2)->min(home+1,opus); neutral->home; mild-down(sc<=-2, not mechanical)->home-1; mechanical flag->haiku (gate's clampToFloor then raises to the configured floor). Clamp recommender output to [haiku,opus]; home must be >= floor. score() gains a homeTier param (default Sonnet = no caller/test change). Changes recommender scoring -> bump kSwitcherEpoch (currently 2 after ANTS-1957) to 3 at implementation time. Settings: a \"Default Claude model\" dropdown (Opus/Sonnet/Haiku) writing claude.auto_model_home_tier. Deferred to a later session per user request to relaunch now.
+
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
 - ✅ [ANTS-1329] **Tasks dialog gets 3 px of vertical row
