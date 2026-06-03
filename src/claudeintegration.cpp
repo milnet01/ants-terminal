@@ -2339,7 +2339,14 @@ void ClaudeIntegration::onMcpConnection() {
                             "can sum to MORE than window_24h.total because a "
                             "single near-miss may be blocked by several gates "
                             "simultaneously (ANTS-1947: total counts events, "
-                            "by_blocked_by counts gate-hits).");
+                            "by_blocked_by counts gate-hits). ANTS-1972 — the "
+                            "firings-mode slim `near_misses.total_24h` EXCLUDES "
+                            "idle-end-suppressed near-misses while near_misses-"
+                            "mode `window_24h.total` INCLUDES them; at the same "
+                            "instant firings.total_24h + "
+                            "firings.idle_end_suppressed_24h == "
+                            "near_misses-mode window_24h.total (not a bug — the "
+                            "slim block reports actionable gaps only).");
                         props["mode"] = modeProp;
                     }
                     schema["properties"] = props;

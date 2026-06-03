@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **Yield the composer_not_empty veto during a long-ToolUse foreground wait (the 67%-dominant near-miss blocker).** (ANTS-1973)
+  During a long build/test wait the text box often holds stale queued text, not active typing — yet that blocks the cheaper-model switch 67% of the time. When a foreground command has been running a while and the box hasn't changed, treat the text as abandoned and allow the downgrade.
+
+- **Conditionally surface feedback_log / feedback_query in SessionStart orientation when a `*_Ants_MCP_Feedback.md` exists.** (ANTS-1971)
+  When a project has a cross-session feedback file, the startup hint should mention the two tools for reading/writing it — otherwise contributors fall back to hand-editing the file (which risks format drift).
+
 - **Regret signal over-counts: any non-auto-authored /model is scored as a user-override regret, even when it's an independe…** (ANTS-1957)
   The "regret rate" that decides whether to trust the auto-switcher counts every manual model switch you make after it acts as the switcher being wrong — even when you switched for your own reasons (testing, or picking a model for a specific task). So the feature looks worse than it is, especially during sessions where you're switching models a lot by hand.
 
@@ -97,6 +103,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **Direct `/model <tier>` (explicit arg, no dialog) doesn't resume work — ANTS-1969 only covers the menu/dialog path.** (ANTS-1975)
+  When you type `/model sonnet` (with the model name) Ants doesn't resume the task — it goes idle. The fix from before only handles the pop-up menu version of /model, not the direct one.
+
+- **Doc note: firings `near_misses.total_24h` excludes idle-end-suppressed; +idle_end_suppressed_24h reconciles to near_miss…** (ANTS-1972)
+  Two of the switcher's counters look like they disagree (18 vs 21) but don't — one excludes idle-end-suppressed near-misses. A one-line doc note stops the next session re-filing it as a bug.
+
 - **User-typed /model does not continue work after auto-confirm (ANTS-1958 revisit).** (ANTS-1969)
   When you manually type /model X and Ants auto-confirms the dialog, Claude Code goes idle rather than continuing work — you have to send a new message. When auto mode is on, a continuation prompt should fire just like after an auto-switch.
 
@@ -132,6 +144,9 @@ for security-relevant changes.
   Vestige reports that the format-detector for ROADMAP files is still returning 'unknown' on their project despite the previous fix being marked shipped. Either the fix isn't reaching their build, or it doesn't cover their specific roadmap shape. Needs a trace field + CI fixture.
 
 ### Fixed
+
+- **SessionStart orientation prelude exceeds its 1200-byte cap (test red).** (ANTS-1970)
+  The MCP cheat-sheet that prints when a Claude session starts grew past its size limit as new tools were added, so a test that guards the limit is failing. Either trim the cheat-sheet or raise the limit.
 
 - **`/model` slash command double-posts in the transcript (command + confirmation echoed twice from one invocation).** (ANTS-1958)
   When you type /model to switch models, the command and its "model set" confirmation sometimes show up twice from a single press. Harmless but messy — this de-duplicates it.

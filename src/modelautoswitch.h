@@ -174,6 +174,17 @@ Decision decide(const Gate &g);
 // without a live terminal.
 bool switchConfirmVisible(const QString &recentOutput);
 
+// ANTS-1975 — detect CC's no-dialog direct-switch banner ("Set model to …").
+// When the user types `/model <tier>` with an explicit tier argument CC switches
+// immediately without a "Switch model?" dialog; this banner is the only signal
+// that a switch happened. Pure + case-insensitive; stable English string.
+bool directModelSwitchVisible(const QString &recentOutput);
+
+// ANTS-1975 — for the direct-switch (no-dialog) path: resume iff auto mode on.
+// No activeTurn gate: a deliberate user /model command is the request; it is not
+// an Ants-initiated idle switch (ANTS-1958/1959 billing concern doesn't apply).
+bool shouldContinueAfterDirectSwitch(bool autoModeOn);
+
 // ANTS-1951 — gate for auto-confirming a "Switch model?" dialog that Ants did
 // NOT initiate (the user typed /model directly). Returns true only when the
 // dialog is visible, the feature is enabled, no Ants-initiated handshake is
@@ -248,6 +259,14 @@ constexpr qint64 kIdleEndOfSessionMs = 3 * 60 * 1'000;    // 3 min
 // been running for this long, the main loop is I/O-bound + human-idle: a
 // downgrade is safe even though focusedState != Idle.
 constexpr qint64 kLongToolUseMs = 10'000;                  // 10 s
+// ANTS-1973 — short composer-staleness threshold that applies ONLY during a
+// long foreground ToolUse wait (longToolUse). composer_not_empty is the
+// dominant near-miss blocker (~67%); the 5-min kComposerStaleVetoMs window is
+// far too long for an ~18 s build wait. When a command has been running
+// >= kLongToolUseMs and the composer has gone untouched this long, the staged
+// text is queued/abandoned, not active typing, so the veto yields. 5 s is long
+// enough to exclude mid-keystroke pauses but short relative to a build wait.
+constexpr qint64 kComposerStaleDuringToolUseMs = 5'000;    // 5 s
 // ANTS-1940 — regret-driven conservatism tuning.
 // kRegretConservatismPct: regret_rate above this (while still calibrating)
 // trips the conservatism multiplier. 40 % matches the roadmap's "guesses

@@ -397,6 +397,9 @@ private:
     bool   m_modelHandshakeInFlight = false;
     bool   m_unarmedSwitchConfirmed = false;
     bool   m_unarmedPollActive      = false;
+    // ANTS-1975 — latch: at most one continuation per direct-switch banner.
+    // Cleared on the 2-s tick once the banner is no longer in recent output.
+    bool   m_unarmedDirectSwitchContinuationSent = false;
 
     // ANTS-1894 — near-miss telemetry throttle. Keyed by the focused tab's
     // project root (== shellCwd()). m_nearMissLastSigByProject holds the

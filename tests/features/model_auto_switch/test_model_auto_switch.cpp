@@ -104,6 +104,57 @@ TEST(ModelAutoSwitch, Ants1908SentinelKeepsHardVeto) {
     EXPECT_TRUE(dec.blockedBy.contains(QStringLiteral("composer_not_empty")));
 }
 
+// ANTS-1973 — during a long foreground ToolUse wait the composer_not_empty
+// veto yields on a SHORT staleness (kComposerStaleDuringToolUseMs), well
+// before the 5-min kComposerStaleVetoMs window: the staged text is queued for
+// after the build, not active typing.
+TEST(ModelAutoSwitch, Ants1973ComposerYieldsDuringLongToolUse) {
+    Gate g = actingGate();                  // focusedState stays Idle: isolate
+    g.composerEmpty     = false;            // the composer gate from the
+    g.composerStaleMs   = ModelAutoSwitch::kComposerStaleDuringToolUseMs;
+    g.toolUseElapsedMs  = ModelAutoSwitch::kLongToolUseMs;   // long wait
+    const auto dec = ModelAutoSwitch::decide(g);
+    EXPECT_TRUE(dec.act) << "queued text during a long ToolUse should yield";
+    EXPECT_FALSE(dec.blockedBy.contains(QStringLiteral("composer_not_empty")));
+}
+
+// ANTS-1973 — the short threshold applies ONLY during a long ToolUse. The same
+// short staleness with no long-running command keeps the hard veto (the 5-min
+// window has not elapsed, so the text could still be active typing).
+TEST(ModelAutoSwitch, Ants1973ShortStaleWithoutToolUseStillBlocks) {
+    Gate g = actingGate();
+    g.composerEmpty     = false;
+    g.composerStaleMs   = ModelAutoSwitch::kComposerStaleDuringToolUseMs;
+    g.toolUseElapsedMs  = -1;               // no foreground command running
+    const auto dec = ModelAutoSwitch::decide(g);
+    EXPECT_FALSE(dec.act);
+    EXPECT_TRUE(dec.blockedBy.contains(QStringLiteral("composer_not_empty")));
+}
+
+// ANTS-1973 — a fresh keystroke (below the short threshold) keeps the veto even
+// during a long ToolUse: the user is actively typing while the build runs.
+TEST(ModelAutoSwitch, Ants1973FreshKeystrokeDuringToolUseStillBlocks) {
+    Gate g = actingGate();
+    g.composerEmpty     = false;
+    g.composerStaleMs   = ModelAutoSwitch::kComposerStaleDuringToolUseMs - 1;
+    g.toolUseElapsedMs  = ModelAutoSwitch::kLongToolUseMs;
+    const auto dec = ModelAutoSwitch::decide(g);
+    EXPECT_FALSE(dec.act);
+    EXPECT_TRUE(dec.blockedBy.contains(QStringLiteral("composer_not_empty")));
+}
+
+// ANTS-1973 — sentinel -1 (no keystroke telemetry) keeps the hard veto even
+// during a long ToolUse: staleDuringToolUse requires composerStaleMs >= 0.
+TEST(ModelAutoSwitch, Ants1973SentinelKeepsHardVetoDuringToolUse) {
+    Gate g = actingGate();
+    g.composerEmpty     = false;
+    g.composerStaleMs   = -1;
+    g.toolUseElapsedMs  = ModelAutoSwitch::kLongToolUseMs;
+    const auto dec = ModelAutoSwitch::decide(g);
+    EXPECT_FALSE(dec.act);
+    EXPECT_TRUE(dec.blockedBy.contains(QStringLiteral("composer_not_empty")));
+}
+
 // ANTS-1939 — focused_state_not_idle soft-veto. When the agent is busy
 // (state != Idle) but the human hasn't typed for ≥ the stale threshold, the
 // veto yields: an autonomous-loop window where a cheaper model saves the most.

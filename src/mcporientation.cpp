@@ -64,14 +64,30 @@ constexpr const char *kOrientationScriptBody =
     "  • git_state          → status + branch + ahead/behind in one call\n"
     "  • read_log           → filtered log tail (vs full Read)\n"
     "  • model_switch_stats → auto-switcher trust signal + near-miss breakdown\n"
-    "  • feedback_query     → un-triaged tail of a *_Ants_MCP_Feedback.md file\n"
-    "  • feedback_log       → append a finding / maintainer tracking block\n"
     "  • spec_log           → write a spec's Status / cold-eyes loop / INV entries\n"
     "\n"
     "Full catalog: load with ToolSearch query \"mcp__ants\" (or per-name\n"
     "with \"select:mcp__ants__<name>\"). Tool descriptors carry\n"
     "selection_hint lines describing when to reach for each.\n"
-    "EOF\n";
+    "EOF\n"
+    // ANTS-1971 — feedback_query / feedback_log are kept OUT of the
+    // always-on prelude (it must stay under the INV-10 1200-byte cap,
+    // ANTS-1970) and surfaced CONDITIONALLY: only when the project
+    // CC launched in keeps a cross-session *_Ants_MCP_Feedback.md
+    // file, point contributors at the read/write tools so they stop
+    // hand-editing it (format-drift risk). The glob is anchored to
+    // $CLAUDE_PROJECT_DIR (CC sets it to the project root) falling
+    // back to $PWD. Prints nothing — and so does not count against the
+    // INV-10 cap — when no such file is present (the test case).\n"
+    "if compgen -G \"${CLAUDE_PROJECT_DIR:-$PWD}/*_Ants_MCP_Feedback.md\""
+    " >/dev/null 2>&1; then\n"
+    "  echo\n"
+    "  echo \"This project keeps a *_Ants_MCP_Feedback.md — use"
+    " feedback_query (read the\"\n"
+    "  echo \"un-triaged tail) / feedback_log (append a finding or"
+    " tracking block)\"\n"
+    "  echo \"instead of hand-editing it.\"\n"
+    "fi\n";
 
 // Resolve `<home>/.config/ants-terminal/hooks/mcp-orientation.sh`.
 // Caller may pass an explicit home to bypass $HOME (test seam).

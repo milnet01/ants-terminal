@@ -7,10 +7,13 @@
 // it, and we have not already pressed ENTER for this dialog instance.
 
 #include <gtest/gtest.h>
+#include <QString>
 #include "modelautoswitch.h"
 
 using ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch;
 using ModelAutoSwitch::shouldContinueAfterUnarmedConfirm;
+using ModelAutoSwitch::directModelSwitchVisible;
+using ModelAutoSwitch::shouldContinueAfterDirectSwitch;
 
 // The happy path: dialog up, feature on, nobody else handling it, not yet
 // confirmed → press ENTER.
@@ -56,4 +59,33 @@ TEST(UnarmedConfirm, NoContinuationWhenAutoModeOff) {
 TEST(UnarmedConfirm, NoContinuationAtIdle) {
     EXPECT_FALSE(shouldContinueAfterUnarmedConfirm(true, false));
     EXPECT_FALSE(shouldContinueAfterUnarmedConfirm(false, false));
+}
+
+// ANTS-1975 — direct /model <tier> (no dialog) detection and continuation.
+
+// CC's banner "Set model to Sonnet 4.6…" triggers the detector.
+TEST(UnarmedConfirm, DirectSwitchBannerDetected) {
+    EXPECT_TRUE(directModelSwitchVisible(
+        QStringLiteral("Set model to Sonnet 4.6 and saved as your default for new sessions")));
+    EXPECT_TRUE(directModelSwitchVisible(
+        QStringLiteral("Set model to Opus 4.8 and saved as your default for new sessions")));
+    // Case-insensitive.
+    EXPECT_TRUE(directModelSwitchVisible(QStringLiteral("set model to haiku")));
+}
+
+// An unrelated output line must not match.
+TEST(UnarmedConfirm, DirectSwitchBannerNotFalsePositive) {
+    EXPECT_FALSE(directModelSwitchVisible(QStringLiteral("")));
+    EXPECT_FALSE(directModelSwitchVisible(QStringLiteral("Switch model?")));
+    EXPECT_FALSE(directModelSwitchVisible(QStringLiteral("Yes, switch to Sonnet")));
+}
+
+// Auto mode ON → continuation fires (no activeTurn gate on direct path).
+TEST(UnarmedConfirm, DirectSwitchContinuesWhenAutoModeOn) {
+    EXPECT_TRUE(shouldContinueAfterDirectSwitch(/*autoModeOn=*/true));
+}
+
+// Auto mode OFF → no continuation.
+TEST(UnarmedConfirm, DirectSwitchNoContinuationWhenAutoModeOff) {
+    EXPECT_FALSE(shouldContinueAfterDirectSwitch(false));
 }

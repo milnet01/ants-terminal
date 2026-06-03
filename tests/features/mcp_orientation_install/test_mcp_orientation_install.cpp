@@ -336,6 +336,59 @@ TEST(McpOrientation_Inv10, ScriptOutputByteCap) {
     QFile::remove(fakeSocket);  // best-effort cleanup
 }
 
+// ANTS-1971 — the feedback-tool hint is surfaced CONDITIONALLY: it
+// prints only when the project CC launched in keeps a
+// *_Ants_MCP_Feedback.md. Absent the file, the always-on prelude must
+// NOT mention feedback_query / feedback_log (kept out to honour the
+// INV-10 cap, ANTS-1970); present the file, the hint appears.
+TEST(McpOrientation_Ants1971, ConditionalFeedbackHint) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(MO::installAt(tmp.path()).ok);
+
+    const QString fakeSocket = tmp.path() + QStringLiteral("/ants-mcp.sock");
+    QProcess maker;
+    maker.start("python3", {"-c",
+        QStringLiteral("import socket,os,sys;"
+                       "s=socket.socket(socket.AF_UNIX);"
+                       "s.bind(sys.argv[1]);"
+                       "print('ok')").toUtf8(),
+        fakeSocket});
+    if (!maker.waitForStarted(1000) || !maker.waitForFinished(2000)) {
+        GTEST_SKIP() << "python3 unavailable for socket fixture";
+    }
+
+    // A project dir WITHOUT a feedback file → no hint.
+    QTemporaryDir noFeedback;
+    auto runWithProjectDir = [&](const QString &projectDir) -> QByteArray {
+        QProcess p;
+        auto env = QProcessEnvironment::systemEnvironment();
+        env.insert("ANTS_MCP_SOCKET", fakeSocket);
+        env.insert("CLAUDE_PROJECT_DIR", projectDir);
+        p.setProcessEnvironment(env);
+        p.start("bash", {scriptPathIn(tmp.path())});
+        EXPECT_TRUE(p.waitForStarted(2000));
+        EXPECT_TRUE(p.waitForFinished(5000));
+        EXPECT_EQ(p.exitCode(), 0);
+        return p.readAllStandardOutput();
+    };
+
+    const QByteArray without = runWithProjectDir(noFeedback.path());
+    EXPECT_FALSE(without.contains("feedback_query"))
+        << "no feedback file present — hint must stay silent";
+
+    // A project dir WITH a feedback file → hint present.
+    QTemporaryDir withFeedback;
+    ASSERT_TRUE(writeFileBytes(
+        withFeedback.path() + QStringLiteral("/Demo_Ants_MCP_Feedback.md"),
+        QByteArray("# placeholder\n")));
+    const QByteArray with = runWithProjectDir(withFeedback.path());
+    EXPECT_TRUE(with.contains("feedback_query"))
+        << "feedback file present — hint must point at feedback_query/log";
+    EXPECT_TRUE(with.contains("feedback_log"));
+
+    QFile::remove(fakeSocket);  // best-effort cleanup
+}
+
 // INV-11 — settings.json after merge is mode 0600.
 TEST(McpOrientation_Inv11, SettingsPermsOwnerOnly) {
     QTemporaryDir tmp;

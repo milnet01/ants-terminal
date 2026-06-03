@@ -115,18 +115,21 @@ Decision decide(const Gate &g) {
     // two gates cover complementary, non-overlapping cases.
     // -1 sentinel preserves legacy hard-veto behaviour for callers without
     // keystroke telemetry (bit-for-bit pre-1939 semantics).
+    // ANTS-1959 — long-ToolUse window: a Bash/tool call running for
+    // >= kLongToolUseMs means the main loop is I/O-bound and human-idle
+    // (a build/test wait). Computed once here and shared by the
+    // focused-state gate (ANTS-1959) and the composer gate (ANTS-1973).
+    // Sentinel -1 (no tool-use telemetry) preserves v1 behaviour.
+    const bool longToolUse = (g.toolUseElapsedMs >= 0) &&
+                             (g.toolUseElapsedMs >= kLongToolUseMs);
     if (g.focusedState != ClaudeState::Idle) {
         const qint64 threshold = (g.composerStaleThresholdMs >= 0)
             ? g.composerStaleThresholdMs
             : kComposerStaleVetoMs;
         const bool humanIdle = (g.composerStaleMs >= 0) &&
                                (g.composerStaleMs >= threshold);
-        // ANTS-1959 — long-ToolUse yield: if a Bash/tool call has been
-        // running for >= kLongToolUseMs the main loop is I/O-bound and
-        // human-idle (build/test wait). Safe to downgrade regardless of
-        // composer state. Sentinel -1 preserves v1 behaviour.
-        const bool longToolUse = (g.toolUseElapsedMs >= 0) &&
-                                 (g.toolUseElapsedMs >= kLongToolUseMs);
+        // Safe to downgrade regardless of composer state during a long
+        // ToolUse: the user is waiting on the command, not driving the agent.
         if (!humanIdle && !longToolUse)
             d.blockedBy << QStringLiteral("focused_state_not_idle");
     }
@@ -144,13 +147,25 @@ Decision decide(const Gate &g) {
     // kComposerStaleVetoMs ~ 5 min). Advanced users can lower it to
     // unblock slash-command queueing. Full detection of slash-commands
     // requires Claude Code to expose composer text via MCP.
+    // ANTS-1973 — yield additionally during a long foreground ToolUse
+    // wait. composer_not_empty is the dominant near-miss blocker (Vestige:
+    // 67%). The 5-min stale window above is far too long for an ~18 s
+    // build wait, so when a command has been running >= kLongToolUseMs AND
+    // the composer has not been touched for >= kComposerStaleDuringToolUseMs
+    // (a SHORT threshold), the staged text is queued/abandoned — not active
+    // typing — and the veto yields. Needs only composerStaleMs +
+    // toolUseElapsedMs, both already on the Gate (no composer-content
+    // visibility required; ANTS-1931). Sentinel -1 preserves v1 behaviour.
     if (!g.composerEmpty) {
         const qint64 threshold = (g.composerStaleThresholdMs >= 0)
             ? g.composerStaleThresholdMs
             : kComposerStaleVetoMs;
         const bool stale = (g.composerStaleMs >= 0) &&
                            (g.composerStaleMs >= threshold);
-        if (!stale) {
+        const bool staleDuringToolUse = longToolUse &&
+            (g.composerStaleMs >= 0) &&
+            (g.composerStaleMs >= kComposerStaleDuringToolUseMs);
+        if (!stale && !staleDuringToolUse) {
             d.blockedBy << QStringLiteral("composer_not_empty");
         }
     }
@@ -252,6 +267,25 @@ bool shouldContinueAfterUnarmedConfirm(bool autoModeOn, bool activeTurn) {
     // Drive the workflow forward only when the user opted into auto mode AND a
     // turn is still active to resume (idle ⇒ no continuation, ANTS-1959).
     return autoModeOn && activeTurn;
+}
+
+// ANTS-1975 — when the user types `/model <tier>` with an explicit arg CC
+// switches directly (no "Switch model?" dialog) and prints a one-liner.
+// Match "Set model to <anything>" — stable English, verified against CC.
+bool directModelSwitchVisible(const QString &recentOutput) {
+    return recentOutput.contains(
+        QStringLiteral("Set model to"), Qt::CaseInsensitive);
+}
+
+// ANTS-1975 — for the no-dialog direct-switch path: resume iff auto mode on.
+// Unlike the dialog path (ANTS-1969) we do NOT gate on activeTurn — the user
+// explicitly typed /model to change model, which IS the "request" for fresh
+// work (it is not an Ants-initiated switch at idle). The billing-safety concern
+// of ANTS-1959 applies to Ants-initiated idle switches; a deliberate user
+// command is a different context. If the session was at idle because context
+// compacted, this gets work going again — which is what the user expects.
+bool shouldContinueAfterDirectSwitch(bool autoModeOn) {
+    return autoModeOn;
 }
 
 }  // namespace ModelAutoSwitch

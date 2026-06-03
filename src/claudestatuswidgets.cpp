@@ -1783,7 +1783,16 @@ void ClaudeStatusBarController::maybeAutoConfirmUserModelSwitch() {
     if (!ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch(
             visible, enabled, m_modelHandshakeInFlight,
             m_unarmedSwitchConfirmed)) {
-        if (!visible) m_unarmedSwitchConfirmed = false;  // dialog gone — re-arm
+        if (!visible) {
+        m_unarmedSwitchConfirmed = false;  // dialog gone — re-arm
+        // ANTS-1975 — also clear the direct-switch latch once the banner
+        // is no longer in the recent output window.
+        if (m_unarmedDirectSwitchContinuationSent) {
+            const QString recent = focused->recentOutput(kSwitchConfirmScanLines);
+            if (!ModelAutoSwitch::directModelSwitchVisible(recent))
+                m_unarmedDirectSwitchContinuationSent = false;
+        }
+    }
         // ANTS-1955 — arm a burst so a dialog that renders shortly after this
         // tick is caught at kSwitchConfirmPollMs granularity.
         if (!visible && !m_unarmedSwitchConfirmed
@@ -1835,6 +1844,29 @@ void ClaudeStatusBarController::pollUnarmedSwitchConfirm(int attempt) {
         });
         // m_unarmedPollActive stays true — burst is continuing
     } else {
+        // ANTS-1975 — budget exhausted and no dialog ever appeared. Check
+        // whether CC switched directly (explicit `/model <tier>` — no dialog,
+        // just a banner). When the banner is visible and auto mode is on, send
+        // the continuation so the session resumes. Latch m_unarmedDirectSwitchContinuationSent
+        // so a single burst fires at most one continuation; cleared on the 2-s
+        // tick when the banner is no longer in recent output.
+        if (!m_unarmedDirectSwitchContinuationSent) {
+            const QString recent = focused->recentOutput(kSwitchConfirmScanLines);
+            if (ModelAutoSwitch::directModelSwitchVisible(recent)) {
+                const bool autoModeOn =
+                    Config().claudeAutoModel().value("switch_enabled").toBool();
+                if (ModelAutoSwitch::shouldContinueAfterDirectSwitch(autoModeOn)) {
+                    const QString cont = Config().claudeAutoModelContinuationPrompt();
+                    if (!cont.isEmpty()) {
+                        QPointer<TerminalWidget> g2(focused);
+                        QTimer::singleShot(kSwitchContinuationDelayMs, this, [g2, cont]() {
+                            if (g2) g2->sendToPty((cont + QStringLiteral("\r")).toUtf8());
+                        });
+                        m_unarmedDirectSwitchContinuationSent = true;
+                    }
+                }
+            }
+        }
         m_unarmedPollActive = false;  // budget exhausted
     }
 }

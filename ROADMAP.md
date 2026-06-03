@@ -15260,33 +15260,37 @@ subsection.
   Source: user-report-2026-06-03.
   Shipped 2026-06-03: sendUnarmedConfirm injects the continuation prompt after a user-typed /model confirm when auto mode is ON and a turn is active (Thinking/ToolUse) — mirroring performModelSwitchHandshake's ANTS-1959 billing-safety gate. Pure helper ModelAutoSwitch::shouldContinueAfterUnarmedConfirm(autoModeOn, activeTurn); 3 new truth-table tests + spec INV-8. Auto mode OFF keeps ANTS-1958 silence; idle keeps ANTS-1959 safety. 18/18 confirm tests green.
 
-- 📋 [ANTS-1970] **SessionStart orientation prelude exceeds its 1200-byte cap (test red).**
+- ✅ [ANTS-1970] **SessionStart orientation prelude exceeds its 1200-byte cap (test red).**
   McpOrientation_Inv10.ScriptOutputByteCap fails: the installed orientation\nscript prints 1312 bytes vs the 1200-byte cap asserted in\ntests/features/mcp_orientation_install/test_mcp_orientation_install.cpp:333.\nThe prelude grew as the cheat-sheet gained tools (session_orient,\nroadmap_query, workspace_search per ANTS-1897; later additions) without the\ncap or the text being re-trimmed. Pre-existing — not from the ANTS-1969 work\nthat surfaced it. Fix is a judgment call: (a) trim the prelude back under\n1200 (drop less-load-bearing lines), or (b) raise the cap in mcporientation\n+ the test if the larger cheat-sheet is intentional. Prefer (a) — the prelude\nis loaded into every session's context, so keeping it lean is the token-\nfrugal choice the cap was protecting.
   **Layman:** The MCP cheat-sheet that prints when a Claude session starts grew past its size limit as new tools were added, so a test that guards the limit is failing. Either trim the cheat-sheet or raise the limit.
   Kind: fix.
   Lanes: mcporientation.
   Source: in-session-2026-06-03.
+  Shipped 2026-06-04: removed feedback_query + feedback_log from always-on prelude (saves 152 bytes); prelude now 1160 bytes, INV-10 green.
 
-- 📋 [ANTS-1971] **Conditionally surface feedback_log / feedback_query in SessionStart orientation when a `*_Ants_MCP_Feedback.md` exists.**
+- ✅ [ANTS-1971] **Conditionally surface feedback_log / feedback_query in SessionStart orientation when a `*_Ants_MCP_Feedback.md` exists.**
   The orientation cheat-sheet lists 11 tools but not feedback_log /\nfeedback_query, so a Vestige contributor used Edit on the feedback file\n(format-drift risk; the user had to point out the tool exists). Do NOT add\nthem to the always-on prelude — it already overflows its cap (ANTS-1970).\nInstead surface them CONDITIONALLY: when the project root has a\n*_Ants_MCP_Feedback.md, append a one-line \"feedback_log/feedback_query\navailable\" hint. Dovetails with ANTS-1964 (per-file pending-addenda scan at\nSessionStart already walks these files). Distinct audience: ANTS-1964 is\nmaintainer-side (triage queue); this is contributor-side (write path\ndiscoverability).
   **Layman:** When a project has a cross-session feedback file, the startup hint should mention the two tools for reading/writing it — otherwise contributors fall back to hand-editing the file (which risks format drift).
   Kind: enhancement.
   Lanes: mcporientation, claudeintegration.
   Source: vestige-feedback-2026-06-03 (Cl1 session).
+  Shipped 2026-06-04: conditional bash compgen glob in orientation script; new test McpOrientation_Ants1971.ConditionalFeedbackHint green.
 
-- 📋 [ANTS-1972] **Doc note: firings `near_misses.total_24h` excludes idle-end-suppressed; +idle_end_suppressed_24h reconciles to near_misses-mode total.**
+- ✅ [ANTS-1972] **Doc note: firings `near_misses.total_24h` excludes idle-end-suppressed; +idle_end_suppressed_24h reconciles to near_misses-mode total.**
   Same-turn parallel reads: firings-mode near_misses.total_24h=18 with\nidle_end_suppressed_24h=3; near_misses-mode window_24h.total=21. 18+3=21 —\nthe firings slim block reports the NON-suppressed count, near_misses-mode\nincludes suppressed. Looks like an ANTS-1947-class same-moment regression\nbut is not. Add a one-line note to the model_switch_stats descriptor (distinct\nfrom the ANTS-1960 across-time-vs-same-moment note already added): firings\nnear_misses.total_24h + idle_end_suppressed_24h == near_misses-mode\nwindow_24h.total at the same instant.
   **Layman:** Two of the switcher's counters look like they disagree (18 vs 21) but don't — one excludes idle-end-suppressed near-misses. A one-line doc note stops the next session re-filing it as a bug.
   Kind: doc.
   Lanes: modelnearmissledger, remotecontrol.
   Source: vestige-feedback-2026-06-03 (Cl1 session).
+  Shipped 2026-06-04: one-line note added to model_switch_stats mode descriptor in claudeintegration.cpp.
 
-- 📋 [ANTS-1973] **Yield the composer_not_empty veto during a long-ToolUse foreground wait (the 67%-dominant near-miss blocker).**
+- ✅ [ANTS-1973] **Yield the composer_not_empty veto during a long-ToolUse foreground wait (the 67%-dominant near-miss blocker).**
   composer_not_empty is the dominant near-miss blocker (Vestige: 14/21 = 67%).\nANTS-1908 already yields it when the composer is untouched >= 5 min, but that\nis far too long for an ~18 s build wait. ANTS-1959 yields focused_state_not_idle\nduring a long ToolUse but composer_not_empty STILL blocks (near-miss shows\nboth). Refinement: when toolUseElapsedMs >= kLongToolUseMs (foreground subprocess\nrunning, human-idle) AND composerStaleMs >= a SHORT threshold, also yield\ncomposer_not_empty — the staged text is queued/abandoned, not active typing.\nFeasible without full composer-content visibility (ANTS-1931): keystroke-timing\n(composerStaleMs) + toolUseElapsedMs are both already on the Gate. Pairs\nANTS-1908/1914/1959; partially unblocks the dominant near-miss.
   **Layman:** During a long build/test wait the text box often holds stale queued text, not active typing — yet that blocks the cheaper-model switch 67% of the time. When a foreground command has been running a while and the box hasn't changed, treat the text as abandoned and allow the downgrade.
   Kind: enhancement.
   Lanes: modelautoswitch, claudestatuswidgets.
   Source: vestige-feedback-2026-06-03 (Cl1 session).
+  Shipped 2026-06-04: longToolUse hoisted; kComposerStaleDuringToolUseMs=5s added; 4 new gate tests all green.
 
 - 📋 [ANTS-1974] **Settings: user-selectable default/home model tier — auto-switcher returns to it and only downgrades on clear evidence.**
   User wants Opus as the baseline, downgrading only when it makes sense. Today\nthe recommender hardcodes Sonnet as the neutral band (score in [-2,2] -> Sonnet;\n>=2 -> Opus; <=-2 -> Haiku). Proposal: a `claude.auto_model_home_tier` config\nkey (default \"sonnet\" = current behaviour) + a Settings dropdown. Semantics:\nthe home tier is the neutral-band recommendation; downgrades BELOW home require\nclear mechanical evidence (the existing <=-2 / mechanical signals), upgrades\nABOVE home always allowed (Opus through, per clampToFloor). Must compose with\nthe existing floor (home >= floor). NOTE: this changes recommender scoring ->\nbump kSwitcherEpoch again (clean recalibration). Open design Q surfaced to user:\nwhether \"default model\" means this home-tier baseline (B) or merely the\nstarting model for a new session (A) — the two are materially different scope.\nSpec-first per the user's design-then-implement preference unless they say\nimplement now.
@@ -15295,6 +15299,41 @@ subsection.
   Lanes: modelrecommender, modelautoswitch, config, settingsdialog.
   Source: user-request-2026-06-03.
   Decisions confirmed (user, 2026-06-03): (1) meaning = HOME/BASELINE tier (interpretation B), not just the new-session starting model — the auto-switcher returns to the chosen tier and only downgrades on clear evidence. (2) Approach = SPEC FIRST: write docs/specs/ANTS-1974.md, run /cold-eyes until clean, THEN implement. Proposed band design to anchor the spec: score()->tier becomes relative to homeTier (default sonnet preserves current behaviour): up(sc>=2)->min(home+1,opus); neutral->home; mild-down(sc<=-2, not mechanical)->home-1; mechanical flag->haiku (gate's clampToFloor then raises to the configured floor). Clamp recommender output to [haiku,opus]; home must be >= floor. score() gains a homeTier param (default Sonnet = no caller/test change). Changes recommender scoring -> bump kSwitcherEpoch (currently 2 after ANTS-1957) to 3 at implementation time. Settings: a \"Default Claude model\" dropdown (Opus/Sonnet/Haiku) writing claude.auto_model_home_tier. Deferred to a later session per user request to relaunch now.
+
+- ✅ [ANTS-1975] **Direct `/model <tier>` (explicit arg, no dialog) doesn't resume work — ANTS-1969 only covers the menu/dialog path.**
+  Live user repro 2026-06-04: typed `/model sonnet` mid-bundle, session
+  went idle instead of continuing. Two compounding causes: (1) an explicit
+  `/model <tier>` switches DIRECTLY (CC prints "Set model to Sonnet 4.6",
+  no "Switch model?" dialog), so switchConfirmVisible() never matches and
+  sendUnarmedConfirm() — the ANTS-1969 continuation carrier — never runs;
+  (2) the user had interrupted first, so shellState==Idle and the ANTS-1959
+  billing-safety gate would suppress continuation even if the path fired.
+  Design tension: an explicit user `/model` keystroke IS the "request" that
+  ANTS-1959 fears is absent at idle, so it's arguably safe to resume on a
+  deliberate user-typed switch even at idle. Proposal: detect the dialogless
+  direct-switch (recentOutput matches CC's "Set model to <Tier>" banner) and,
+  when autoMode on, inject the continuation — gated so it fires once per
+  switch and never on the Ants-initiated handshake path. Fold the idle-vs-
+  billing decision into the ANTS-1974 spec (home-tier work touches the same
+  recommender/handshake surface). Reinforces the user's Opus-home preference.
+  **Layman:** When you type `/model sonnet` (with the model name) Ants doesn't resume the task — it goes idle. The fix from before only handles the pop-up menu version of /model, not the direct one.
+  Kind: ux.
+  Lanes: claudestatuswidgets, modelautoswitch.
+  Source: user-report-2026-06-04.
+  Shipped 2026-06-04: directModelSwitchVisible + shouldContinueAfterDirectSwitch pure helpers; pollUnarmedSwitchConfirm fires continuation at budget-exhaustion when banner visible + auto mode on; 5 new tests green.
+
+- 📋 [ANTS-1976] **Auto-switcher debug log — toggleable qDebug output for every gate evaluation and switch decision.**
+  User request 2026-06-04. Log per-tick gate state (enabled, focusedState,
+  composerEmpty, composerStaleMs, toolUseElapsedMs, target, blockedBy[]) +
+  any switch decision (act=true, tierArg, reason) via qDebug under an env
+  or config gate (e.g. ANTS_AUTOSWITCH_DEBUG=1 or
+  claude.auto_model_debug=true). Helps diagnose near-miss vs active-switch
+  without attaching a debugger. Gate off by default (no perf cost). Compose
+  with kSwitcherEpoch so the epoch marker also appears in the log stream.
+  **Layman:** Add a switch that lets you turn on verbose logging for the auto-model switcher, showing exactly why it did or didn't switch in each 2-second tick.
+  Kind: implement.
+  Lanes: modelautoswitch.
+  Source: user-request-2026-06-04.
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
