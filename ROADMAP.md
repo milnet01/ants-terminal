@@ -9108,6 +9108,13 @@ clips input text), and the auto-switcher interrupting active work.
   Source: user-request-2026-06-04.
   Resolved (2026-06-04): tool_info {catalog:true} returns every verb grouped by the [<kind>] category with its selection_hint, in one call. Spec docs/specs/ANTS-1985.md (cold-eyes loops 1–6). Tests: mcp_tool_info_verb INV-9..13 + mcp_orientation_install INV-14. Prelude "Full catalog:" line repointed (lands on next version bump). Full suite green (1899/1899).
 
+- 📋 [ANTS-1986] **Auto-model switcher records near-misses while the master gate is OFF — clarify intent or gate the evaluator.**
+  model_switch_stats shows auto_model_switch_enabled:false yet near_misses.total_24h:33 (all-time by_blocked_by: composer_not_empty 30, ticks_target_stable_insufficient 14, dwell_time_insufficient 11, focused_state_not_idle 4). So the per-tick evaluator runs and records near-misses even when the master gate is off. Either (a) it's intentional preview telemetry ("what the feature would do") — then the envelope should label OFF-state near-misses as preview so a reader doesn't think a disabled feature is acting; or (b) it's wasted per-tick work — then gate the evaluator on the master toggle. Decide and make the readout unambiguous. Distinct from ANTS-1979 (mid-task fire) and ANTS-1959 (idle-end safety).
+  **Layman:** With the auto model-switcher turned off, it still quietly evaluates ~33 times a day and logs "near-misses." Decide if that's a deliberate preview or wasted work, and make the readout say which.
+  Kind: investigate.
+  Lanes: claude-integration, mcp.
+  Source: in-session-2026-06-04.
+
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
 5-lane in-house audit of the 584-test suite across perf,
