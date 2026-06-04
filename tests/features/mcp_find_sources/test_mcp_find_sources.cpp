@@ -51,31 +51,32 @@ struct Sandbox {
     QString root;
     bool ok = false;
 
-    static Sandbox make() {
-        Sandbox s;
-        s.root = s.dir.path();
-        if (!QDir(s.root).mkpath(QStringLiteral("src"))) return s;
-        if (!QDir(s.root).mkpath(QStringLiteral("tests/features/foo"))) return s;
+    // QTemporaryDir is non-movable on the project's Qt 6.2 CI baseline
+    // (its move ctor only arrived in Qt 6.10), so Sandbox can't be
+    // returned by value portably — populate in place instead.
+    void build() {
+        root = dir.path();
+        if (!QDir(root).mkpath(QStringLiteral("src"))) return;
+        if (!QDir(root).mkpath(QStringLiteral("tests/features/foo"))) return;
         // src/auditrunner.cpp — filename + body mentions "audit_run".
-        s.write("src/auditrunner.cpp",
-                "void AuditRunner::audit_run() {}\n"
-                "void AuditRunner::audit_run_loop() {}\n");
+        write("src/auditrunner.cpp",
+              "void AuditRunner::audit_run() {}\n"
+              "void AuditRunner::audit_run_loop() {}\n");
         // src/auditrunner.h — header.
-        s.write("src/auditrunner.h",
-                "class AuditRunner { void audit_run(); };\n");
+        write("src/auditrunner.h",
+              "class AuditRunner { void audit_run(); };\n");
         // src/randomthing.cpp — unrelated.
-        s.write("src/randomthing.cpp", "int main() { return 0; }\n");
+        write("src/randomthing.cpp", "int main() { return 0; }\n");
         // src/testauditengine.cpp — content mentions audit_run.
-        s.write("src/testauditengine.cpp",
-                "// engine for test audit. audit_run called here.\n");
+        write("src/testauditengine.cpp",
+              "// engine for test audit. audit_run called here.\n");
         // tests/features/foo/test_foo.cpp — role:test.
-        s.write("tests/features/foo/test_foo.cpp",
-                "// audit_run-ish test fixture\n");
+        write("tests/features/foo/test_foo.cpp",
+              "// audit_run-ish test fixture\n");
         // moc-generated noise that must be skipped.
-        s.write("src/moc_widget.cpp",
-                "// audit_run pretend match (skip me)\n");
-        s.ok = true;
-        return s;
+        write("src/moc_widget.cpp",
+              "// audit_run pretend match (skip me)\n");
+        ok = true;
     }
     void write(const QString &rel, const QByteArray &body) {
         QFile f(root + QLatin1Char('/') + rel);
@@ -133,7 +134,8 @@ TEST(McpFindSources, VariantsForToken) {
 TEST(McpFindSources, FindSourcesGoldenPath) {
     expect_reset();
 
-    Sandbox s = Sandbox::make();
+    Sandbox s;
+    s.build();
     expect(s.ok, "sandbox set up");
 
     // Query for "audit run" against the synthetic project.
