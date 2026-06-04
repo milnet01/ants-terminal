@@ -31,7 +31,10 @@ SettingsDialog::SettingsDialog(Config *config, QWidget *parent)
     : QDialog(parent), m_config(config) {
     setWindowTitle("Settings");
     setMinimumSize(700, 550);
-    resize(800, 600);
+    // Taller default so the busiest tab (General) shows without an
+    // immediate scrollbar; the per-tab scroll areas (below) keep every
+    // tab readable at the 550 minimum and on short screens.
+    resize(800, 700);
 
     // ANTS-1242 — frameless + theme-aware TitleBar. m_config is
     // available so we can pull the persisted theme name directly
@@ -45,41 +48,59 @@ SettingsDialog::SettingsDialog(Config *config, QWidget *parent)
 
     m_tabs = new QTabWidget(this);
 
+    // Wrap every tab page in a scroll area so a tab with more rows than
+    // fit the current dialog height scrolls instead of compressing its
+    // input widgets below their natural height — which clips the text,
+    // because QFormLayout distributes the vertical deficit across every
+    // row when the page is shorter than the form's minimum. This keeps
+    // the form fully readable at any dialog size (ANTS-1980, dialogs.md
+    // D5). The
+    // Plugins tab keeps its own inner scroll area for the dynamically
+    // populated list; the outer wrap is inert there since that inner
+    // area already bounds the page height.
+    auto addScrollableTab = [this](QWidget *page, const QString &label) {
+        auto *scroll = new QScrollArea(this);
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setWidget(page);
+        m_tabs->addTab(scroll, label);
+    };
+
     auto *generalTab = new QWidget();
     setupGeneralTab(generalTab);
-    m_tabs->addTab(generalTab, "General");
+    addScrollableTab(generalTab, "General");
 
     auto *appearanceTab = new QWidget();
     setupAppearanceTab(appearanceTab);
-    m_tabs->addTab(appearanceTab, "Appearance");
+    addScrollableTab(appearanceTab, "Appearance");
 
     auto *terminalTab = new QWidget();
     setupTerminalTab(terminalTab);
-    m_tabs->addTab(terminalTab, "Terminal");
+    addScrollableTab(terminalTab, "Terminal");
 
     auto *aiTab = new QWidget();
     setupAiTab(aiTab);
-    m_tabs->addTab(aiTab, "AI Assistant");
+    addScrollableTab(aiTab, "AI Assistant");
 
     auto *highlightsTab = new QWidget();
     setupHighlightsTab(highlightsTab);
-    m_tabs->addTab(highlightsTab, "Highlights");
+    addScrollableTab(highlightsTab, "Highlights");
 
     auto *triggersTab = new QWidget();
     setupTriggersTab(triggersTab);
-    m_tabs->addTab(triggersTab, "Triggers");
+    addScrollableTab(triggersTab, "Triggers");
 
     auto *keybindingsTab = new QWidget();
     setupKeybindingsTab(keybindingsTab);
-    m_tabs->addTab(keybindingsTab, "Keybindings");
+    addScrollableTab(keybindingsTab, "Keybindings");
 
     auto *profilesTab = new QWidget();
     setupProfilesTab(profilesTab);
-    m_tabs->addTab(profilesTab, "Profiles");
+    addScrollableTab(profilesTab, "Profiles");
 
     auto *pluginsTab = new QWidget();
     setupPluginsTab(pluginsTab);
-    m_tabs->addTab(pluginsTab, "Plugins");
+    addScrollableTab(pluginsTab, "Plugins");
 
     mainLayout->addWidget(m_tabs, 1);
 

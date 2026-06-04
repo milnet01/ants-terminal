@@ -226,6 +226,12 @@ void Config::save() {
                 // between rename(2) returning and the journal
                 // commit.
                 fsyncParentDir(path);
+                // Record exactly what we wrote so MainWindow's config
+                // watcher can recognise this event as our own echo and
+                // skip the external-edit hot-reload (which would tear
+                // down an open Settings dialog on Apply / tab-switch).
+                // ANTS-1981.
+                m_lastWrittenBytes = json;
             }
         } else {
             file.close();

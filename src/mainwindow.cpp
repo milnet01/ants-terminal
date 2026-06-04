@@ -1127,6 +1127,34 @@ MainWindow::~MainWindow() {
 // neighbours. setupMenus() is the orchestrator; the helpers contain the
 // per-menu body verbatim (no behaviour change).
 
+namespace {
+// ANTS-1982 — keep a menu open after toggling a NON-exclusive checkable item, so the
+// user can flip several independent checkboxes (Session Logging, Visual
+// Bell, Background Blur…) in one visit instead of the menu dismissing on
+// the first click. Exclusive/radio group members (Themes, Opacity,
+// Scrollback) keep Qt's default "pick one and close" — the
+// actionGroup()->isExclusive() guard distinguishes a checkbox from a
+// radio. No Q_OBJECT needed: only the virtual eventFilter() is used.
+class StayOpenOnToggleFilter : public QObject {
+public:
+    using QObject::QObject;
+protected:
+    bool eventFilter(QObject *obj, QEvent *ev) override {
+        if (ev->type() == QEvent::MouseButtonRelease) {
+            if (auto *menu = qobject_cast<QMenu *>(obj)) {
+                QAction *a = menu->activeAction();
+                if (a && a->isEnabled() && a->isCheckable()
+                    && !(a->actionGroup() && a->actionGroup()->isExclusive())) {
+                    a->trigger();   // toggle checked state + fire triggered()
+                    return true;    // swallow the release so the menu stays open
+                }
+            }
+        }
+        return QObject::eventFilter(obj, ev);
+    }
+};
+}  // namespace
+
 void MainWindow::setupMenus() {
     setupFileMenu();
     setupEditMenu();
@@ -1135,6 +1163,13 @@ void MainWindow::setupMenus() {
     setupToolsMenu();
     setupSettingsMenu();
     setupHelpMenu();
+
+    // One stay-open filter installed on every menu + submenu under the
+    // bar. Independent checkboxes stay open on toggle; exclusive radio
+    // groups (Themes/Opacity/Scrollback) are exempted inside the filter.
+    auto *stayOpen = new StayOpenOnToggleFilter(this);
+    for (QMenu *m : m_menuBar->findChildren<QMenu *>())
+        m->installEventFilter(stayOpen);
 }
 
 void MainWindow::setupFileMenu() {
@@ -6644,6 +6679,25 @@ void MainWindow::onConfigFileChanged(const QString &path) {
     // Re-add the watch (QFileSystemWatcher drops the watch after some changes)
     if (!m_configWatcher->files().contains(path))
         m_configWatcher->addPath(path);
+
+    // Self-write short-circuit. The Settings dialog (and other in-app
+    // writers) mutate THIS same Config object and save() to disk, which
+    // trips this very watcher. Hot-reload + dialog teardown is only
+    // correct for a genuine EXTERNAL hand-edit. If the bytes on disk are
+    // identical to what we last wrote, this event is our own echo — skip
+    // the reload, the cached-dialog teardown, and the "Config reloaded"
+    // toast, so the open Settings dialog survives an Apply / tab-switch
+    // (ANTS-1981). A real external edit differs in bytes and falls through.
+    {
+        QFile cf(path);
+        if (cf.open(QIODevice::ReadOnly)) {
+            const QByteArray onDisk = cf.readAll();
+            if (!onDisk.isEmpty() && onDisk == m_config.lastWrittenBytes()) {
+                QTimer::singleShot(0, this, [this]() { m_inConfigReload = false; });
+                return;
+            }
+        }
+    }
 
     // Reload config from disk
     m_config = Config();

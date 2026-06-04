@@ -9035,6 +9035,61 @@ Navigation + scroll affordances for the Review Changes dialog, requested
   Lanes: dialogs, mainwindow.
   Source: user-request-2026-06-03.
 
+### 🐛 v0.7.94 ship-day findings (2026-06-04)
+
+Bugs surfaced while shipping v0.7.94: a 3-week release-pipeline outage (CI green
+but AppImage build broken), a Settings-dialog readability bug (form compression
+clips input text), and the auto-switcher interrupting active work.
+
+- ✅ [ANTS-1977] **Release pipeline broke silently for 3 weeks — CI (Ubuntu 24.04/Qt 6.4) ≠ release build (Ubuntu 22.04/Qt 6.2), so green CI never validated the AppImage build.**
+  v0.7.92/0.7.93 + all 0.7.93 RCs shipped with no AppImage asset (build failed to compile on Qt 6.2). Root cause: find_sources test returned a QTemporaryDir-bearing struct by value (move ctor only exists in Qt 6.10+). Fixed in 9ef057a. Deeper gap: ci.yml and release.yml use different Ubuntu/Qt, so CI passing does not mean the release artefact builds. Follow-up: align the Qt baseline or add a Qt-6.2 compile job to ci.yml.
+  **Layman:** For 3 weeks the download button gave nothing — the installer never built, and our test system didn't catch it because it used a newer Qt than the installer build.
+  Kind: fix.
+  Lanes: ci, packaging.
+  Source: in-session-2026-06-04.
+
+- 📋 [ANTS-1978] **cut-rc.sh build gate builds locally (Qt 6.11) and never checks the release CI — it tags releases that fail the AppImage build.**
+  The new-rc/promote build_and_test gate runs `cmake --build build` on the dev machine's Qt 6.11, which is far more lenient than the Qt 6.2 release runner. So a release can be tagged green locally yet fail release.yml. Gate cut-rc on the release-artefacts workflow result (or a Qt-baseline container build) before tagging.
+  **Layman:** Our release tool only checks the build on this PC, not on the build server that actually makes the installer — so it can ship a broken release.
+  Kind: fix.
+  Lanes: packaging.
+  Source: in-session-2026-06-04.
+
+- 📋 [ANTS-1979] **Auto-model switcher fires /model mid-task, interrupting an in-flight tool/command (observed 3× in one session while the user was away).**
+  During the v0.7.94 release work the switcher injected /model repeatedly while a foreground Bash command was running, cancelling it. It must never actuate a switch while a foreground command or tool call is in flight — only at a genuine turn boundary. Distinct from ANTS-1959 (idle/end-of-work downgrade safety); this is mid-execution interruption.
+  **Layman:** The model auto-switcher butted in while a command was running and cancelled it — it should wait until nothing is actively running.
+  Kind: fix.
+  Lanes: claude-integration.
+  Source: in-session-2026-06-04.
+
+- ✅ [ANTS-1980] **Settings dialog clipped input text when too short — QFormLayout compressed controls below their natural height; wrap each tab in a QScrollArea (D5).**
+  With more rows than fit the default height, the form distributed the vertical deficit across every input, clipping text to a thin band (looked like a colour fault, was geometric). Fix: each tab page wrapped in a QScrollArea (setWidgetResizable) so it scrolls instead of compressing; default height 600→700. Codified as dialogs.md D5.
+  **Layman:** Settings fields showed only a sliver of their text when the window was short; now the tab scrolls instead of squashing the boxes.
+  Kind: fix.
+  Lanes: ui, dialogs.
+  Source: user-report-2026-06-04.
+
+- ✅ [ANTS-1981] **Settings dialog closed on tab-switch and on Apply — config-file watcher tore down its own open dialog on every self-write.**
+  Persisting the last tab and Apply both write config.json, tripping MainWindow's QFileSystemWatcher, whose onConfigFileChanged reloads config + deletes the cached settings dialog (intended for EXTERNAL hand-edits). Fix: Config records the exact bytes of its last save(); onConfigFileChanged skips the reload+teardown+toast when the on-disk bytes match (self-write echo). External edits differ and still hot-reload.
+  **Layman:** Changing a tab or clicking Apply closed the Settings window because the app mistook its own save for an outside edit; now it tells them apart.
+  Kind: fix.
+  Lanes: ui, config.
+  Source: user-report-2026-06-04.
+
+- ✅ [ANTS-1982] **Checkable menu items dismissed the menu on click — install a stay-open filter so independent toggles can be flipped without reopening.**
+  A StayOpenOnToggleFilter consumes the mouse-release on a non-exclusive checkable QAction (toggles it, keeps the menu open) while leaving exclusive radio groups (Themes/Opacity/Scrollback) to close on pick. Installed across every menu/submenu under the bar in setupMenus().
+  **Layman:** Ticking a checkbox in a menu used to close the menu; now it stays open so you can tick several.
+  Kind: ux.
+  Lanes: ui.
+  Source: user-report-2026-06-04.
+
+- 📋 [ANTS-1983] **QCheckBox::stateChanged deprecated on Qt 6.9+ (settingsdialog.cpp) — migrate to checkStateChanged.**
+  Surfaced by local Qt 6.11 during the dialog work; harmless on the Qt 6.2 CI baseline (warning only). Migrate the connect to QCheckBox::checkStateChanged (signal arg type changed int→Qt::CheckState).
+  **Layman:** A minor 'this function is old' warning from the newer Qt on this PC; tidy it up.
+  Kind: doc-fix.
+  Lanes: ui.
+  Source: in-session-2026-06-04.
+
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
 5-lane in-house audit of the 584-test suite across perf,

@@ -10,7 +10,7 @@ Not part of the shareable `/start-app` standards set — it depends on
 this codebase's `DialogChrome` + `TitleBar` + `Config` + `Themes`
 architecture.
 
-Four invariants. A dialog that breaks any of them is a bug, not a
+Five invariants. A dialog that breaks any of them is a bug, not a
 style nit.
 
 ---
@@ -161,6 +161,57 @@ monitor or resized since the last open.
   position would drift off-screen when the terminal moves; re-centering
   each open keeps the dialog where the eye expects it.
 
+## D5 — Never compress input controls; scroll instead
+
+*(ANTS-1980 — SettingsDialog is the reference conformer.)*
+
+A dialog MUST NOT shrink its text boxes, buttons, drop-downs, or
+spin-boxes below the height their text needs. When a tab or form holds
+more content than the current dialog height can show, the content
+**scrolls** — it is never squeezed.
+
+**Why this is a correctness bug, not a cosmetic one.** A `QFormLayout`
+(or any box layout) given a viewport shorter than the sum of its rows'
+minimum heights distributes the vertical deficit across every row,
+shrinking each input below its natural height. The control's text is
+then clipped to a thin horizontal band — present, but unreadable.
+Labels and check-boxes survive (they hold a hard minimum); the editable
+controls (`QLineEdit`, `QComboBox`, `QSpinBox`, `QPushButton`) absorb
+the squeeze and clip. The symptom looks like a colour/contrast fault
+but is purely geometric — it disappears the moment the dialog is made
+tall enough.
+
+**The fix is structural, not a per-widget patch.** Do **not** paper
+over it with a per-control `min-height` — that only changes the failure
+mode (the bottom rows get cut off at the page edge instead of every row
+clipping). Stop the page from ever being shorter than its content:
+
+- **Wrap each scrollable surface in a `QScrollArea`**
+  (`setWidgetResizable(true)`, `setFrameShape(QFrame::NoFrame)`). A
+  multi-tab dialog wraps **each tab page**, so any one tab scrolls
+  independently. The page then always renders at its natural `sizeHint`
+  height and the scroll area adds a vertical scrollbar only when the
+  dialog is too short:
+
+  ```cpp
+  auto addScrollableTab = [this](QWidget *page, const QString &label) {
+      auto *scroll = new QScrollArea(this);
+      scroll->setWidgetResizable(true);
+      scroll->setFrameShape(QFrame::NoFrame);
+      scroll->setWidget(page);
+      m_tabs->addTab(scroll, label);
+  };
+  ```
+
+- Pick a **default size** (D2) tall enough that the busiest tab shows
+  without an immediate scrollbar in the common case. The scroll area is
+  the safety net at the `setMinimumSize` floor and on short screens, not
+  a substitute for a sane default.
+- This composes with D2's "inner scrollable regions belong in a scroll
+  host": D2 covers one long widget (a diff, a finding list); **D5**
+  covers the **whole form** never being compressed below its controls'
+  natural height.
+
 ---
 
 ## Checklist for a new dialog
@@ -170,7 +221,9 @@ monitor or resized since the last open.
    D4 (re-center on open), and — with the `sizeKey` + the startup
    `setConfig` registration — D3 (size persistence) in one call. (D1–D4)
 2. No `setFixedSize`; set `setMinimumSize` + a default size; wrap long
-   content in a scroll host so growing the dialog reveals more. (D2)
+   content in a scroll host so growing the dialog reveals more (D2). Wrap
+   each tab page / whole form in a `QScrollArea` so controls never
+   compress below their natural height — they scroll instead (D5).
 3. Nothing to wire by hand for D3/D4 once you pass `resizable=true` +
    a `sizeKey` — `install` owns save/restore (bare `QSize`, never
    `saveGeometry()`) and re-centering.

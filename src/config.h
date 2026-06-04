@@ -432,6 +432,14 @@ public:
 
     void save();
 
+    // The exact bytes save() last wrote to config.json. MainWindow's
+    // config-file watcher compares the on-disk bytes against these to
+    // tell its OWN writes (a Settings-dialog Apply, a persisted tab
+    // index, an in-app toggle) from a genuine external hand-edit — only
+    // the latter should trigger a hot-reload + open-dialog teardown.
+    // Empty until the first successful save() of the session.
+    const QByteArray &lastWrittenBytes() const { return m_lastWrittenBytes; }
+
     // True when the on-disk config.json existed at construction time but
     // failed to parse as a JSON object. In that mode save() becomes a
     // no-op so the next setter doesn't overwrite the user's (corrupt
@@ -468,6 +476,7 @@ private:
     bool storeIfChanged(const QString &key, const QJsonValue &value);
 
     QJsonObject m_data;
+    QByteArray m_lastWrittenBytes;  // bytes of the last successful save() — self-write detection
     bool m_loadFailed = false;
     // ANTS-1138 — see autoProfileRulesGeneration().
     quint64 m_autoProfileRulesGen = 0;
