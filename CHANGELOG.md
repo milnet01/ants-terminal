@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+## [0.7.94] — 2026-06-04
+
+### Theme
+
+Auto-switcher refinement + MCP feedback/spec tooling — chooseable home tier, smarter safe-downgrade signals (ANTS-1974 + ANTS-1970..1973 + ANTS-1961/1962/1963).
+
+### Added
+
 - **Settings: user-selectable default/home model tier — auto-switcher returns to it and only downgrades on clear evidence.** (ANTS-1974)
   Let the user pick their home model (e.g. Opus) in Settings. The auto-switcher then treats that as the baseline — staying there for normal work and only stepping down to Sonnet/Haiku when the work is clearly mechanical/cheap.
 

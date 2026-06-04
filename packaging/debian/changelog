@@ -1,3 +1,28 @@
+ants-terminal (0.7.94-1) unstable; urgency=medium
+
+  * Auto-switcher refinement: Settings → Claude → Home Model lets you
+    pick your baseline tier (Opus / Sonnet / Haiku). The switcher only
+    downgrades when work is clearly mechanical/cheap, keeping you on
+    Opus for normal reasoning tasks. (ANTS-1974)
+  * Smarter safe-downgrade signal: yield the composer_not_empty veto
+    during long foreground waits (build/test). When the input box holds
+    stale text that hasn't changed in 5+ minutes, treat it as abandoned
+    and allow the cheaper-model switch. Unblocks 67% of previously-held
+    downgrades during autonomous work. (ANTS-1973)
+  * Three new MCP tools for feedback/spec workflows: feedback_query
+    (read the un-triaged tail of *_Ants_MCP_Feedback.md files),
+    feedback_log (append findings or tracking blocks to them), and
+    spec_log (update spec file status + cold-eyes loop + INVs).
+    (ANTS-1961/1962/1963)
+  * Fixed: SessionStart orientation prelude exceeded its 1200-byte cap as
+    new tools were added; test now passes. (ANTS-1970)
+  * Fixed: User-typed /model X now triggers a continuation prompt after
+    auto-confirm, matching the auto-switch flow. (ANTS-1969)
+  * Fixed: Inline graphics (Sixel/Kitty/OSC) no longer drop a byte between
+    back-to-back chunks. (ANTS-1777)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 04 Jun 2026 14:52:42 +0200
+
 ants-terminal (0.7.93-1) unstable; urgency=medium
 
   * Auto-switcher visibility — the silent /model injection now announces

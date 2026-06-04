@@ -103,6 +103,20 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.94" date="2026-06-04">
+      <description>
+        <p>Auto-switcher refinement — chooseable home model tier lets you pick your baseline (Opus, Sonnet, Haiku), with smarter safe-downgrade signals that unlock cheaper work when the composer is idle during a long build/test wait. Plus three new MCP tools for feedback and spec file workflows across projects (ANTS-1974 + ANTS-1970..1973 + ANTS-1961/1962/1963).</p>
+        <ul>
+          <li><em>Added:</em> <code>Settings → Claude → Home Model</code> — pick your default tier (Opus / Sonnet / Haiku). The auto-switcher treats this as the baseline and only downgrades when the work is clearly mechanical/cheap. Lets you stay on Opus for normal work instead of drifting down.</li>
+          <li><em>Added:</em> Yield the composer not-empty veto during long foreground waits (e.g., a 5+ minute build). The text box often holds stale queued text, not active typing — but that blocks 67% of downgrades. Now when a build has been running a while and the box hasn't changed, treat the text as abandoned and allow the switch. (ANTS-1973)</li>
+          <li><em>Added:</em> <code>feedback_query</code> &amp; <code>feedback_log</code> MCP tools for cross-session reporting. When a project has a <code>*_Ants_MCP_Feedback.md</code> file, the startup hint mentions these tools so contributors can append feedback and maintainers can track findings without hand-editing markdown. (ANTS-1961/1962)</li>
+          <li><em>Added:</em> <code>spec_log</code> MCP write verb — append cold-eyes loop entries, flip spec Status, and attach INVs to <code>docs/specs/*.md</code> files through MCP instead of expensive hand-edits. (ANTS-1963)</li>
+          <li><em>Changed:</em> User-typed <code>/model X</code> now triggers a continuation prompt after auto-confirm, matching the auto-switch flow — you no longer go idle mid-task. (ANTS-1969)</li>
+          <li><em>Fixed:</em> SessionStart orientation prelude exceeded the 1200-byte cap as new tools were added; test now passes. (ANTS-1970)</li>
+          <li><em>Fixed:</em> Inline graphics: back-to-back Sixel/Kitty/OSC sequences no longer drop a byte between chunks. (ANTS-1777)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.93" date="2026-05-28">
       <description>
         <p>Auto-switcher visibility — the silent model auto-switch finally announces itself with status-bar toast, undo buttons, and near-miss telemetry. Trust signal sharpened with honest headline on small samples, global project aggregation, and MCP cheat-sheet at Claude Code session start (ANTS-1893 live feedback + ANTS-1894 near-miss telemetry + ANTS-1891 honest headline + ANTS-1897 MCP discoverability).</p>
