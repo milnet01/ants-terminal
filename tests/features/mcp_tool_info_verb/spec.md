@@ -27,3 +27,28 @@ codes the handler emits.
   as `ProcessGlobal`.
 - **INV-8.** Handler dispatched inline alongside
   `get_session_info`, not via `m_toolProviders`.
+
+## ANTS-1985 — catalog mode (INV-9..INV-14)
+
+See `docs/specs/ANTS-1985.md`. `tool_info {catalog:true}` returns every
+registered verb grouped by category with its `selection_hint`, in one
+call. INV-9..INV-13 are source-scrape tests here; INV-14 lives in
+`mcp_orientation_install` (the prelude template owner).
+
+- **INV-9.** The `tool_info` descriptor declares a boolean `catalog`
+  property, keeps `additionalProperties:false`, and no longer lists
+  `name` in `required`.
+- **INV-10.** The catalog branch emits the grouped envelope keys
+  (`catalog`, `tool_count`, `category_count`) via a `catalogMode` flag.
+- **INV-11.** Catalog mode with an empty `m_lastToolsList` emits
+  `tools_not_ready`; the catalog branch precedes the `missing_name`
+  guard.
+- **INV-12.** Category is derived from the `[<kind>]` description prefix
+  with an `other` fallback (absent / malformed / empty `[]`); grouping
+  is via a sorted `QMap` so categories and names emit ascending.
+- **INV-13.** Legacy branches (`missing_name`, `unknown_tool`,
+  single-tool slice) are intact and catalog mode is gated on the
+  explicit `catalog` arg, never on empty `name`.
+- **INV-14.** (in `mcp_orientation_install`) The prelude template's
+  "Full catalog:" line is repointed at `tool_info {catalog:true}` and
+  the rendered heredoc stays ≤ 1200 bytes.

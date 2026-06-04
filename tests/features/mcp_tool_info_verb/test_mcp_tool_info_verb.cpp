@@ -141,3 +141,124 @@ TEST(mcp_tool_info_verb, Inv8DispatchedInline) {
            "get_session_info (same toolHandled-conditional block)");
     EXPECT_EQ(0, expect_failures());
 }
+
+// ---- ANTS-1985 — catalog mode (INV-9..INV-13) -------------------
+// These continue the invariant sequence already owned by this test
+// home (ANTS-1399 INV-1..8); see docs/specs/ANTS-1985.md § 3.
+
+// Scope a substring to the tool_info descriptor registration block:
+// from `t["name"] = "tool_info";` to the next `tools.append(t);`.
+static std::string toolInfoDescriptorBlock(const std::string &ci) {
+    const auto start = ci.find("t[\"name\"] = \"tool_info\";");
+    if (start == std::string::npos) return std::string();
+    const auto end = ci.find("tools.append(t);", start);
+    if (end == std::string::npos) return ci.substr(start);
+    return ci.substr(start, end - start);
+}
+
+// Scope a substring to the inline tool_info handler region: from the
+// `else if (toolName == "tool_info")` branch to the next provider
+// dispatch (`else if (auto it = m_toolProviders.find`).
+static std::string toolInfoHandlerRegion(const std::string &ci) {
+    const auto pos = ci.find("else if (toolName == \"tool_info\")");
+    if (pos == std::string::npos) return std::string();
+    const auto end = ci.find("m_toolProviders.find(toolName)", pos);
+    if (end == std::string::npos) return ci.substr(pos);
+    return ci.substr(pos, end - pos);
+}
+
+// INV-9 — descriptor declares a boolean `catalog` property and no
+// longer lists `name` in `required`.
+TEST(mcp_tool_info_verb, Inv9CatalogPropertyDeclared) {
+    expect_reset();
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string block = toolInfoDescriptorBlock(ci);
+    ASSERT_FALSE(block.empty())
+        << "INV-9 precondition: tool_info descriptor block missing";
+    expect(contains(block, "props[\"catalog\"]"),
+           "INV-9: tool_info descriptor declares a `catalog` property");
+    expect(contains(block, "catalogProp[\"type\"] = \"boolean\""),
+           "INV-9: `catalog` property is typed boolean");
+    expect(contains(block, "schema[\"additionalProperties\"] = false"),
+           "INV-9: additionalProperties stays false");
+    expect(!contains(block, "req.append(QStringLiteral(\"name\"))"),
+           "INV-9: `name` is no longer appended to the tool_info "
+           "schema's required array");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// INV-10 — catalog branch returns the grouped envelope keys.
+TEST(mcp_tool_info_verb, Inv10CatalogEnvelope) {
+    expect_reset();
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string region = toolInfoHandlerRegion(ci);
+    ASSERT_FALSE(region.empty())
+        << "INV-10 precondition: tool_info handler region missing";
+    expect(contains(region, "catalogMode"),
+           "INV-10: handler reads a catalogMode flag");
+    expect(contains(region, "env[\"catalog\"]"),
+           "INV-10: catalog branch emits the `catalog` envelope key");
+    expect(contains(region, "env[\"tool_count\"]"),
+           "INV-10: catalog branch emits `tool_count`");
+    expect(contains(region, "env[\"category_count\"]"),
+           "INV-10: catalog branch emits `category_count`");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// INV-11 — catalog mode with an empty snapshot emits tools_not_ready.
+TEST(mcp_tool_info_verb, Inv11CatalogColdSnapshot) {
+    expect_reset();
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string region = toolInfoHandlerRegion(ci);
+    ASSERT_FALSE(region.empty());
+    // The catalog sub-block runs from `if (catalogMode)` to the
+    // `} else if (reqName.isEmpty())` that starts the legacy chain.
+    const auto cstart = region.find("if (catalogMode)");
+    const auto cend = region.find("} else if (reqName.isEmpty())");
+    ASSERT_NE(cstart, std::string::npos)
+        << "INV-11: catalogMode branch missing";
+    ASSERT_NE(cend, std::string::npos)
+        << "INV-11: legacy missing_name branch missing after catalog";
+    ASSERT_LT(cstart, cend)
+        << "INV-11: catalog branch must precede the missing_name guard";
+    const std::string catalogBlock = region.substr(cstart, cend - cstart);
+    expect(contains(catalogBlock, "tools_not_ready"),
+           "INV-11: empty snapshot in catalog mode emits "
+           "tools_not_ready");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// INV-12 — category derived from the [<kind>] prefix with an `other`
+// fallback; categories + names emitted in sorted order (QMap).
+TEST(mcp_tool_info_verb, Inv12CategoryDerivationSorted) {
+    expect_reset();
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string region = toolInfoHandlerRegion(ci);
+    ASSERT_FALSE(region.empty());
+    expect(contains(region, "categoryOf"),
+           "INV-12: a categoryOf helper parses the [<kind>] prefix");
+    expect(contains(region, "QStringLiteral(\"other\")"),
+           "INV-12: malformed/absent prefix falls back to `other`");
+    expect(contains(region, "QMap<QString, QMap<QString, QString>>"),
+           "INV-12: grouping via sorted QMap (categories + names "
+           "emit in ascending order)");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// INV-13 — legacy branches survive: missing_name + unknown_tool still
+// present, and the catalog branch is gated on the explicit flag (not
+// on empty name).
+TEST(mcp_tool_info_verb, Inv13LegacyBranchesIntact) {
+    expect_reset();
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string region = toolInfoHandlerRegion(ci);
+    ASSERT_FALSE(region.empty());
+    expect(contains(region, "missing_name"),
+           "INV-13: missing_name branch preserved");
+    expect(contains(region, "unknown_tool"),
+           "INV-13: unknown_tool branch preserved");
+    expect(contains(region, "argsObj.value(QStringLiteral(\"catalog\"))"),
+           "INV-13: catalog mode gated on the explicit `catalog` arg, "
+           "never on empty name");
+    EXPECT_EQ(0, expect_failures());
+}

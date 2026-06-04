@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Full MCP verb catalog in one call — `tool_info` with `catalog:true`.** (ANTS-1985)
+  The startup tool cheat-sheet only fits 12 of ~70 helpers and is full. A Claude session can now ask `tool_info` for the whole catalog — every helper grouped by category with a one-line "what it's for" — in a single cheap call, instead of looking each one up separately.
+
 ## [0.7.95] — 2026-06-04
 
 ### Theme

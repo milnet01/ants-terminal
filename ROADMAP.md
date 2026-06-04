@@ -9097,12 +9097,13 @@ clips input text), and the auto-switcher interrupting active work.
   Lanes: ui, terminal.
   Source: user-report-2026-06-04.
 
-- 📋 [ANTS-1985] **MCP discoverability: add a `catalog` op returning ALL verbs + one-line selection_hints in one call — the orientation prelude is maxed (1176/1200 B) and can't list more.**
+- ✅ [ANTS-1985] **MCP discoverability: add a `catalog` op returning ALL verbs + one-line selection_hints in one call — the orientation prelude is maxed (1176/1200 B) and can't list more.**
   The always-on SessionStart cheat-sheet lists only 12 of ~70 verbs and is at the INV-10 1200-byte cap (24 B headroom) — it cannot grow. The session-start deferred-tools list gives all ~70 NAMES, but descriptions only load per-tool via ToolSearch/tool_info, so proactive "what's my full toolkit" requires N probes. Add a catalog verb (or tool_info with no name) that returns every verb grouped by category with its selection_hint one-liner (~2 KB, on-demand, never in the prelude). Point the prelude's "Full catalog:" line at it. Keeps the always-on cost tiny while making the full surface self-describing in one cheap call.
   **Layman:** The startup tool cheat-sheet only fits 12 of ~70 helpers and is full. Add a single command that lists them all with a one-line 'what it's for', so any Claude session can see the whole toolkit at once.
   Kind: feature.
   Lanes: claude-integration, mcp.
   Source: user-request-2026-06-04.
+  Resolved (2026-06-04): tool_info {catalog:true} returns every verb grouped by the [<kind>] category with its selection_hint, in one call. Spec docs/specs/ANTS-1985.md (cold-eyes loops 1–6). Tests: mcp_tool_info_verb INV-9..13 + mcp_orientation_install INV-14. Prelude "Full catalog:" line repointed (lands on next version bump). Full suite green (1899/1899).
 
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 

@@ -66,9 +66,8 @@ constexpr const char *kOrientationScriptBody =
     "  • model_switch_stats → auto-switcher trust signal + near-miss breakdown\n"
     "  • spec_log           → write a spec's Status / cold-eyes loop / INV entries\n"
     "\n"
-    "Full catalog: load with ToolSearch query \"mcp__ants\" (or per-name\n"
-    "with \"select:mcp__ants__<name>\"). Tool descriptors carry\n"
-    "selection_hint lines describing when to reach for each.\n"
+    "Full catalog (every verb + one-line \"when to use\"): call tool_info\n"
+    "with {\"catalog\":true}. ToolSearch query \"mcp__ants\" loads schemas.\n"
     "EOF\n"
     // ANTS-1971 — feedback_query / feedback_log are kept OUT of the
     // always-on prelude (it must stay under the INV-10 1200-byte cap,

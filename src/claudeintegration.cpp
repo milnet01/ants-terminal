@@ -6939,26 +6939,45 @@ void ClaudeIntegration::onMcpConnection() {
                         "an `available` list of registered tool names. "
                         "Empty/missing name returns code=missing_name. "
                         "Cache cold (no prior tools/list) returns "
-                        "code=tools_not_ready. See "
-                        "docs/specs/ANTS-1399.md.");
+                        "code=tools_not_ready. ANTS-1985: pass "
+                        "catalog:true (no name) to get the full verb "
+                        "catalog — every registered tool grouped by "
+                        "category with its one-line selection_hint, in "
+                        "one call. See docs/specs/ANTS-1399.md + "
+                        "ANTS-1985.md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to fetch one tool's descriptor without "
                         "re-paying for the full tools/list snapshot "
-                        "(~80 B vs ~5 KiB). Surfaces selection_hint "
-                        "field (ANTS-1453).");
+                        "(~80 B vs ~5 KiB), or catalog:true for the "
+                        "whole toolkit grouped by category (ANTS-1985). "
+                        "Surfaces selection_hint field (ANTS-1453).");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject nameProp;
                     nameProp["type"] = "string";
                     nameProp["description"] = QStringLiteral(
                         "Registered tool name (e.g. "
-                        "\"verify_changes\", \"file_outline\").");
+                        "\"verify_changes\", \"file_outline\"). Omit "
+                        "when catalog:true.");
+                    // ANTS-1985 — catalog mode: return every verb
+                    // grouped by category instead of one descriptor.
+                    QJsonObject catalogProp;
+                    catalogProp["type"] = "boolean";
+                    catalogProp["description"] = QStringLiteral(
+                        "When true, ignore `name` and return the full "
+                        "verb catalog: {ok, catalog:{<category>:"
+                        "[{name, selection_hint}]}, tool_count, "
+                        "category_count}. One call replaces ~70 "
+                        "per-tool probes (ANTS-1985).");
                     QJsonObject props;
                     props["name"] = nameProp;
+                    props["catalog"] = catalogProp;
                     schema["properties"] = props;
-                    QJsonArray req;
-                    req.append(QStringLiteral("name"));
-                    schema["required"] = req;
+                    // ANTS-1985 — neither arg is unconditionally
+                    // required: name-mode needs `name`, catalog-mode
+                    // needs `catalog:true`. The handler enforces the
+                    // choice at runtime, so `required` is empty (was
+                    // `["name"]` pre-1985).
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
                     tools.append(t);
@@ -7805,7 +7824,72 @@ void ClaudeIntegration::onMcpConnection() {
                         QJsonObject env;
                         const QString reqName =
                             argsObj.value(QStringLiteral("name")).toString();
-                        if (reqName.isEmpty()) {
+                        // ANTS-1985 — catalog mode. Evaluated BEFORE the
+                        // reqName.isEmpty() guard: catalog calls supply no
+                        // `name`, so reaching missing_name first would
+                        // wrongly refuse every catalog request (spec § 2.4).
+                        const bool catalogMode =
+                            argsObj.value(QStringLiteral("catalog")).toBool();
+                        if (catalogMode) {
+                            if (m_lastToolsList.isEmpty()) {
+                                env["ok"]    = false;
+                                env["code"]  = QStringLiteral("tools_not_ready");
+                                env["error"] = QStringLiteral(
+                                    "tool_info: call tools/list first to "
+                                    "populate the descriptor cache");
+                            } else {
+                                // Group by the [<kind>] description prefix
+                                // (injected at tools/list, ANTS-1518). QMap
+                                // keys sort ascending, so both categories
+                                // and the names within each emit in stable
+                                // sorted order (INV-12). A missing or
+                                // malformed prefix ([ unclosed, or []) →
+                                // "other", keeping the parse total.
+                                auto categoryOf =
+                                    [](const QString &desc) -> QString {
+                                    if (desc.startsWith(QLatin1Char('['))) {
+                                        const int close =
+                                            desc.indexOf(QLatin1Char(']'));
+                                        if (close > 1)
+                                            return desc.mid(1, close - 1);
+                                    }
+                                    return QStringLiteral("other");
+                                };
+                                QMap<QString, QMap<QString, QString>> grouped;
+                                for (const auto &v :
+                                         std::as_const(m_lastToolsList)) {
+                                    const QJsonObject d = v.toObject();
+                                    const QString n = d.value(
+                                        QStringLiteral("name")).toString();
+                                    const QString cat = categoryOf(
+                                        d.value(QStringLiteral("description"))
+                                         .toString());
+                                    grouped[cat][n] = d.value(
+                                        QStringLiteral("selection_hint"))
+                                        .toString();
+                                }
+                                QJsonObject catalog;
+                                int toolCount = 0;
+                                for (auto c = grouped.constBegin();
+                                     c != grouped.constEnd(); ++c) {
+                                    QJsonArray arr;
+                                    for (auto t = c.value().constBegin();
+                                         t != c.value().constEnd(); ++t) {
+                                        QJsonObject e;
+                                        e[QStringLiteral("name")] = t.key();
+                                        e[QStringLiteral("selection_hint")] =
+                                            t.value();
+                                        arr.append(e);
+                                        ++toolCount;
+                                    }
+                                    catalog[c.key()] = arr;
+                                }
+                                env["ok"]             = true;
+                                env["catalog"]        = catalog;
+                                env["tool_count"]     = toolCount;
+                                env["category_count"] = catalog.size();
+                            }
+                        } else if (reqName.isEmpty()) {
                             env["ok"]    = false;
                             env["code"]  = QStringLiteral("missing_name");
                             env["error"] = QStringLiteral(

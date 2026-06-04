@@ -105,8 +105,13 @@ TEST(McpSelectionHint, ToolInfoPassesSelectionHint) {
     const auto pos = cc.find("else if (toolName == \"tool_info\")");
     ASSERT_NE(pos, std::string::npos)
         << "tool_info inline handler missing";
-    // The handler is short — take a generous window.
-    const std::string region = cc.substr(pos, 4000);
+    // Window the handler up to the next provider dispatch. ANTS-1985
+    // inserted the catalog branch ahead of the single-tool slice, so a
+    // fixed-size window no longer reaches the env["selection_hint"]
+    // assignment in the slice branch — bound by the handler's end.
+    auto end = cc.find("m_toolProviders.find(toolName)", pos);
+    if (end == std::string::npos) end = pos + 8000;
+    const std::string region = cc.substr(pos, end - pos);
 
     // Success envelope sets env["name"] / env["description"] /
     // env["inputSchema"]; ANTS-1453 adds env["selection_hint"]

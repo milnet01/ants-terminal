@@ -336,6 +336,22 @@ TEST(McpOrientation_Inv10, ScriptOutputByteCap) {
     QFile::remove(fakeSocket);  // best-effort cleanup
 }
 
+// ANTS-1985 INV-14 — the prelude's "Full catalog:" line is repointed
+// at `tool_info {catalog:true}`. (The ≤1200 B cap itself is INV-10
+// above; this locks the content of the repoint so the prelude actually
+// names the new verb.)
+TEST(McpOrientation_Inv14, FullCatalogNamesToolInfoCatalog) {
+    const QString tmpl = MO::orientationScriptTemplate();
+    const int pos = tmpl.indexOf(QStringLiteral("Full catalog"));
+    ASSERT_NE(pos, -1) << "INV-14: 'Full catalog' line missing";
+    // Take the rest of that line + the continuation line.
+    const QString tail = tmpl.mid(pos, 160);
+    EXPECT_TRUE(tail.contains(QStringLiteral("tool_info")))
+        << "INV-14: Full-catalog line must name tool_info";
+    EXPECT_TRUE(tail.contains(QStringLiteral("catalog")))
+        << "INV-14: Full-catalog line must name the catalog arg";
+}
+
 // ANTS-1971 — the feedback-tool hint is surfaced CONDITIONALLY: it
 // prints only when the project CC launched in keeps a
 // *_Ants_MCP_Feedback.md. Absent the file, the always-on prelude must
