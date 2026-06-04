@@ -15416,6 +15416,13 @@ subsection.
   Lanes: modelautoswitch.
   Source: user-request-2026-06-04.
 
+- 📋 [ANTS-1987] **roadmap_query misses emoji-prefixed bullets whose ID is a non-dash project-local token (`- 📋 [Cl9] **h**`) in GFM-format docs.**
+  Vestige feedback 2026-06-04. In a github-task-list doc, a bullet `- 📋 [Cl9] **headline**` has an emoji prefix, so it is NOT a `[ ]`/`[x]` checkbox line → parseBullets routes it to the native (ants-v1) branch. Two compounding gaps there: (1) the native branch only calls stripInlineEmoji and NEVER extractBoldId (only the GFM-checkbox branch does), so a bold-dotted ID like `**Cl9.**` on an emoji bullet is not picked up; (2) rxId is idTokenPattern() = `[A-Za-z][A-Za-z0-9_-]*-\d+`, which REQUIRES a `-<digits>` tail, so the bare bracket `[Cl9]` (no dash) never matches. Net: rec.id is empty → narrator bullet → filtered from roadmap_query (id/ids/section/section_index all miss it; op:flip can't close it). Repro: query Cl9/Cl10 → found:false; section status:active → count:0 despite both 📋 in the file. Fix options: (a) call extractBoldId in the native path too (handles `- 📋 **Cl9.**` directly, low risk); (b) for the bare `[Cl9]` form, emit a section hint when a slice has `^- <emoji>` lines that parsed to zero actionable bullets, rather than widening rxId to accept dash-less brackets (which would false-positive on arbitrary `[text]`). Prefer (a)+(b); avoid widening the ID token. Test: a fixture roadmap with an emoji+bracket-ID bullet asserts roadmap_query finds it.
+  **Layman:** In a project whose roadmap uses checkbox bullets, a couple of items written with an emoji + a short ID like [Cl9] become invisible to the roadmap search — planning queries report the slice as empty when it isn't.
+  Kind: fix.
+  Lanes: mcp, roadmap.
+  Source: vestige-feedback-2026-06-04.
+
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
 - ✅ [ANTS-1329] **Tasks dialog gets 3 px of vertical row
