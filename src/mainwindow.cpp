@@ -65,6 +65,8 @@ void sweepKwinScriptOrphansOnce();
 #include <algorithm>
 #include <QAbstractButton>
 #include <QApplication>
+#include <QCoreApplication>
+#include <QEvent>
 #include <QCloseEvent>
 #include <QDateTime>
 #include <QDesktopServices>
@@ -3202,6 +3204,17 @@ void MainWindow::applyTheme(const QString &name) {
     // previous setStyleSheet(this, ...) call was the comment's claim
     // to "Qt already propagates via the object tree", which is the
     // misconception the user's screenshots caught.
+    //
+    // ANTS-2024 — reap pending DeferredDelete events BEFORE the app-wide
+    // restyle. setStyleSheet walks Qt's global widget collection; a
+    // status-bar permission-prompt widget (claudestatuswidgets.cpp) that
+    // was deleteLater()'d but not yet reaped can be torn down mid-walk
+    // (e.g. by the theme QMenu's nested event loop), leaving a dangling
+    // pointer in the set Qt iterates → SIGSEGV (d_ptr==NULL deref). Reaping
+    // first makes the widget set quiescent so the snapshot Qt takes is
+    // clean. NOTE: candidate fix — verify with a GUI repro (open a Claude
+    // permission prompt, then change theme) before treating as closed.
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     qApp->setStyleSheet(themedstylesheet::buildAppStylesheet(theme));
 
     // ANTS-1147 — invalidate the branch-chip cache. updateStatusBar's
