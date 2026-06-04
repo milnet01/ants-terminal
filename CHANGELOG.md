@@ -28,6 +28,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Auto model-switcher: only react to a real "model switched" banner, not the bare phrase.** (ANTS-2020)
+  Detecting Claude Code's direct model-switch message now requires the model name to follow it, so build output or a log line that happens to say "set model to …" can't trigger an unwanted "please continue" prompt.
+
+- **Auto model-switcher: stop over-eagerly picking the strongest model on innocent words.** (ANTS-2010)
+  The planning-keyword detector matched whole-word stems only — words like "explanation" (contains "plan") or "especially" (contains "spec") no longer nudge the switcher toward Opus.
+
+- **Auto model-switcher: closed four robustness gaps in the switch actuator.** (ANTS-2009)
+  No longer presses Enter twice when confirming a model-switch dialog, no longer counts an unrelated newer Claude session's activity against an old switch (which skewed the "is the switcher helping?" stats), and now holds off switching while Claude is compacting its context — matching the behaviour of the manual model chip.
+
 - **Auto-model switcher: never actuate into a bare shell or during a permission prompt, and keep the never-downgrade-at-idle guard unconditional**
   The actuator now early-returns when the focused tab has no live Claude session (NotRunning) or has a pending PermissionRequest (awaitingInput) — the raw shell state did not reflect those overlays, so a stale-but-recent transcript could inject /model into a bare shell or a permission dialog. The ANTS-1959 never-downgrade-at-idle safety guard is decoupled from the configurable end-of-session ceiling: setting idle_ceiling_sec=0 now disables only the ceiling, not the safety guard. Found by the 2026-06-04 indie-review sweep (modelautoswitch / claudestateresolver lanes).
 

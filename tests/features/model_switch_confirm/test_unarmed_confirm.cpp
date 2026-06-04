@@ -80,6 +80,20 @@ TEST(UnarmedConfirm, DirectSwitchBannerNotFalsePositive) {
     EXPECT_FALSE(directModelSwitchVisible(QStringLiteral("Yes, switch to Sonnet")));
 }
 
+// ANTS-2020 — the bare phrase "Set model to" without a tier token must NOT
+// trip the detector: build output, a log line, or a transcript quoting the
+// phrase would otherwise fire an unwanted continuation under auto mode.
+TEST(UnarmedConfirm, DirectSwitchBarePhraseNotFalsePositive) {
+    // Prose / instruction quoting the phrase — no tier follows.
+    EXPECT_FALSE(directModelSwitchVisible(
+        QStringLiteral("Please set model to whatever you think is best.")));
+    // A log/build line that happens to contain the words.
+    EXPECT_FALSE(directModelSwitchVisible(
+        QStringLiteral("[debug] handler: set model to value from config")));
+    // The literal phrase alone (the pre-2020 false-positive surface).
+    EXPECT_FALSE(directModelSwitchVisible(QStringLiteral("Set model to")));
+}
+
 // Auto mode ON → continuation fires (no activeTurn gate on direct path).
 TEST(UnarmedConfirm, DirectSwitchContinuesWhenAutoModeOn) {
     EXPECT_TRUE(shouldContinueAfterDirectSwitch(/*autoModeOn=*/true));

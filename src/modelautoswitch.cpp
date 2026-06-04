@@ -270,11 +270,25 @@ bool shouldContinueAfterUnarmedConfirm(bool autoModeOn, bool activeTurn) {
 }
 
 // ANTS-1975 — when the user types `/model <tier>` with an explicit arg CC
-// switches directly (no "Switch model?" dialog) and prints a one-liner.
-// Match "Set model to <anything>" — stable English, verified against CC.
+// switches directly (no "Switch model?" dialog) and prints a one-liner
+// "Set model to <Tier> <ver> and saved as your default for new sessions".
+// ANTS-2020 — anchor the title phrase to a known tier token immediately
+// following it, the same title+token structure switchConfirmVisible uses. The
+// bare "Set model to" substring tripped on build output / a log line / a
+// transcript quoting the phrase, which (with auto-mode on) fired an unwanted
+// continuation via shouldContinueAfterDirectSwitch. A future tier name is a
+// false-negative (no spurious continuation — the safe direction), never a
+// false-positive. Tier set verified against the model_switch_confirm
+// feature-test banners (Sonnet 4.6 / Opus 4.8).
 bool directModelSwitchVisible(const QString &recentOutput) {
     return recentOutput.contains(
-        QStringLiteral("Set model to"), Qt::CaseInsensitive);
+               QStringLiteral("Set model to Sonnet"), Qt::CaseInsensitive)
+        || recentOutput.contains(
+               QStringLiteral("Set model to Opus"), Qt::CaseInsensitive)
+        || recentOutput.contains(
+               QStringLiteral("Set model to Haiku"), Qt::CaseInsensitive)
+        || recentOutput.contains(
+               QStringLiteral("Set model to Default"), Qt::CaseInsensitive);
 }
 
 // ANTS-1975 — for the no-dialog direct-switch path: resume iff auto mode on.

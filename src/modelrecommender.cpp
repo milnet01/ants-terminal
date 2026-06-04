@@ -24,10 +24,32 @@ const QStringList kPlanKeywords{
     QStringLiteral("refactor"),
 };
 
+// ANTS-2010 — word-boundary guard. A bare contains() matched each stem inside
+// unrelated words ("plan" in "explanation", "spec" in "especially"/"respect"/
+// "unspecified", "design" in "designated"), inflating the Opus plan-score on
+// prose that carried no planning intent. Anchor each stem at word boundaries
+// with the same idiom hasCommitIntent uses, allowing the regular -s/-ed/-ing
+// inflections (true signal: "reviewed the spec", "refactoring the parser")
+// while rejecting substrings of unrelated words. Lazy-built once per process;
+// linear, no nested quantifiers — no ReDoS surface.
+const QVector<QRegularExpression> &planKeywordPatterns() {
+    static const QVector<QRegularExpression> pats = [] {
+        QVector<QRegularExpression> out;
+        out.reserve(kPlanKeywords.size());
+        for (const QString &kw : kPlanKeywords) {
+            out.append(QRegularExpression(
+                QStringLiteral("(?:^|\\W)") + kw +
+                    QStringLiteral("(?:s|ed|ing)?(?:\\W|$)"),
+                QRegularExpression::CaseInsensitiveOption));
+        }
+        return out;
+    }();
+    return pats;
+}
+
 bool hasPlanKeyword(const QString &text) {
-    const QString lower = text.toLower();
-    for (const QString &kw : kPlanKeywords) {
-        if (lower.contains(kw)) return true;
+    for (const QRegularExpression &re : planKeywordPatterns()) {
+        if (re.match(text).hasMatch()) return true;
     }
     return false;
 }

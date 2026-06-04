@@ -1481,7 +1481,14 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     // when a PermissionRequest is pending (awaitingInput ⇒ the injection would
     // be typed into the permission prompt). The raw ShellState.state does not
     // reflect these overlays, so decide()'s Idle check alone is insufficient.
-    if (s.state == ClaudeState::NotRunning || s.awaitingInput) return;
+    // ANTS-2009 — also defer during Compacting: CC is rewriting its context
+    // window, the composer is unavailable, and an injected `/model …\r` is lost
+    // or mis-applied. The manual chip-click path already defers on Compacting
+    // (it is in the `generating` set); the auto path must match — decide()'s
+    // focused_state_not_idle soft-veto yields on a stale composer, so without
+    // this guard a long compaction with an untouched composer would fire.
+    if (s.state == ClaudeState::NotRunning || s.awaitingInput
+        || s.state == ClaudeState::Compacting) return;
 
     // §2.4 — keystroke-timing composerEmpty proxy.
     const bool composerEmpty =
@@ -1764,6 +1771,12 @@ void ClaudeStatusBarController::pollModelSwitchConfirm(
             g->recentOutput(kSwitchConfirmScanLines))) {
         g->sendToPty("\r");   // ENTER — confirms the pre-highlighted "Yes" row.
         m_modelHandshakeInFlight = false;   // ANTS-1951 — handshake resolved.
+        // ANTS-2009 — mark THIS dialog instance confirmed so the unarmed
+        // auto-confirm path (maybeAutoConfirmUserModelSwitch / the burst) does
+        // not press ENTER a second time in the window between this \r and CC
+        // clearing the "Switch model?" text from recentOutput. The latch
+        // re-arms (set false) on the next tick once the dialog is gone.
+        m_unarmedSwitchConfirmed = true;
         if (!cont.isEmpty()) {
             QPointer<TerminalWidget> g2(g);
             QTimer::singleShot(kSwitchContinuationDelayMs, this, [g2, cont]() {
@@ -2428,9 +2441,29 @@ void ClaudeStatusBarController::fillPendingLedgerOutcomes(
         ModelSwitchLedger::Record &r = recs[i];
         if (!r.outcome.pending) continue;
 
-        const QString transcriptPath =
+        QString transcriptPath =
             ClaudeIntegration::sessionPathForCwd(r.project);
         if (transcriptPath.isEmpty()) continue;
+
+        // ANTS-2009 — anchor to the record's OWN session. sessionPathForCwd
+        // returns the project's newest transcript by mtime; if a newer Claude
+        // session has since started in the same project, its turns belong to a
+        // different session and must not be attributed to this switch (it would
+        // corrupt the trust signal — e.g. a clean downgrade scored as a regret
+        // off an unrelated session's turns). CC names each transcript
+        // <sessionId>.jsonl (see ClaudeIntegration::isFocusedTabSession), so
+        // when the record carries a session id that differs from the newest
+        // transcript's stem, re-point to that session's own file. If it no
+        // longer exists on disk, leave the record pending rather than guess.
+        if (!r.sessionId.isEmpty()) {
+            const QFileInfo fi(transcriptPath);
+            if (fi.completeBaseName() != r.sessionId) {
+                const QString own = fi.absolutePath() + QLatin1Char('/')
+                    + r.sessionId + QStringLiteral(".jsonl");
+                if (!QFileInfo::exists(own)) continue;
+                transcriptPath = own;
+            }
+        }
 
         const QList<ModelSwitchLedger::TranscriptTurn> turns =
             parseTranscriptTurnsForLedger(transcriptPath);

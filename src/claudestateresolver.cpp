@@ -30,6 +30,12 @@ Display display(const Resolved &r) {
     if (r.base == ClaudeState::NotRunning) return Display::Hidden;
     if (r.planMode) return Display::Planning;
     if (r.auditing) return Display::Auditing;
+    // ANTS-2009 — deliberately NO `default:` here. With -Wall (-Wswitch) on,
+    // an exhaustive defaultless switch makes a newly-added ClaudeState a
+    // compile-time warning at THIS site — the strongest "can't silently fall
+    // through" guarantee available. A `default:` (even one calling
+    // Q_UNREACHABLE()) would suppress that warning and let a new state reach the
+    // trailing `return Display::Hidden` unnoticed. Leave it defaultless.
     switch (r.base) {
         case ClaudeState::Idle: return Display::Idle;
         case ClaudeState::Thinking: return Display::Thinking;
