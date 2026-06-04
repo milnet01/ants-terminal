@@ -885,6 +885,7 @@ if(ANTS_TESTS)
                 tests/features/review_changes_clickable/test_review_changes_clickable.cpp
                 tests/features/review_button_untracked/test_review_button_untracked.cpp
                 tests/features/review_changes_scroll_preserve/test_review_changes_scroll_preserve.cpp
+                tests/features/review_changes_nav/test_review_changes_nav.cpp
                 tests/features/github_status_bar/test_github_status_bar.cpp
                 tests/features/roadmap_status_bar_refresh/test_roadmap_status_bar_refresh.cpp
                 tests/features/ui_state_persistence/test_ui_state_persistence.cpp

@@ -9017,23 +9017,26 @@ indie-review finding.
 Navigation + scroll affordances for the Review Changes dialog, requested
 2026-06-03.
 
-- 📋 [ANTS-1965] **Review Changes dialog — make each file under the "Status" heading clickable to jump to that file within the dialog.**
+- ✅ [ANTS-1965] **Review Changes dialog — make each file under the "Status" heading clickable to jump to that file within the dialog.**
   **Layman:** Click a filename in the Status list to jump straight to it in the dialog.
   Kind: enhancement.
   Lanes: dialogs, mainwindow.
   Source: user-request-2026-06-03.
+  Resolved (2026-06-04): Status filenames link to their diff hunk. Viewer is now a QTextBrowser with setOpenLinks(false); fileAnchorId() (hex of UTF-8 path) keys a `<a name>` target at each `diff --git`/New-file hunk and an `<a href=#…>` link on the Status path; anchorClicked → scrollToAnchor. Links only emitted for paths with a real target (no dead links). Spec+test tests/features/review_changes_nav (INV-1..9), full suite 1900/1900.
 
-- 📋 [ANTS-1966] **Review Changes dialog — make each file under the "Diff" heading clickable to jump to that file within the dialog.**
+- ✅ [ANTS-1966] **Review Changes dialog — make each file under the "Diff" heading clickable to jump to that file within the dialog.**
   **Layman:** Click a filename in the Diff list to jump straight to its diff in the dialog.
   Kind: enhancement.
   Lanes: dialogs, mainwindow.
   Source: user-request-2026-06-03.
+  Resolved (2026-06-04): Diff `--stat` filenames are clickable, jumping to that file's patch via the same anchor mechanism as ANTS-1965. Column padding around the name preserved so `|` alignment is unchanged.
 
-- 📋 [ANTS-1967] **Review Changes dialog — show a "back to top" button once the user starts scrolling.**
+- ✅ [ANTS-1967] **Review Changes dialog — show a "back to top" button once the user starts scrolling.**
   **Layman:** A back-to-top button appears when you scroll down the Review Changes dialog.
   Kind: enhancement.
   Lanes: dialogs, mainwindow.
   Source: user-request-2026-06-03.
+  Resolved (2026-06-04): Back-to-top overlay button (objectName reviewBackToTopBtn) parented to the viewer's viewport, shown when the vertical scroll bar leaves 0 (valueChanged) and hidden at the top; click → setValue(0). Repositioned on rangeChanged. Mirrors the terminal scroll-to-bottom chip.
 
 ### 🐛 v0.7.94 ship-day findings (2026-06-04)
 

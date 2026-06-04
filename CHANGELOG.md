@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **Review Changes dialog — show a "back to top" button once the user starts scrolling.** (ANTS-1967)
+  A back-to-top button appears when you scroll down the Review Changes dialog.
+
+- **Review Changes dialog — make each file under the "Diff" heading clickable to jump to that file within the dialog.** (ANTS-1966)
+  Click a filename in the Diff list to jump straight to its diff in the dialog.
+
+- **Review Changes dialog — make each file under the "Status" heading clickable to jump to that file within the dialog.** (ANTS-1965)
+  Click a filename in the Status list to jump straight to it in the dialog.
+
 - **Full MCP verb catalog in one call — `tool_info` with `catalog:true`.** (ANTS-1985)
   The startup tool cheat-sheet only fits 12 of ~70 helpers and is full. A Claude session can now ask `tool_info` for the whole catalog — every helper grouped by category with a one-line "what it's for" — in a single cheap call, instead of looking each one up separately.
 
