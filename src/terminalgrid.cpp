@@ -236,9 +236,16 @@ void TerminalGrid::setMaxScrollback(int lines) {
     // memory bound the rest of the grid relies on (per-image/per-chunk
     // budgeting is undone if scrollback is unbounded). indie-review-2026-05-21.
     m_maxScrollback = std::clamp(lines, 1000, 1'000'000);
-    while (static_cast<int>(m_scrollback.size()) > m_maxScrollback)
+    // ANTS-1999 — pop both deques in lockstep so OSC 8 spans never misalign
+    // with their lines. The previous independent loops trimmed each to the
+    // same cap but could not re-align them once they had diverged.
+    while (static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
         m_scrollback.pop_front();
-    // Keep scrollback hyperlinks in sync
+        if (!m_scrollbackHyperlinks.empty())
+            m_scrollbackHyperlinks.pop_front();
+    }
+    // Defensive: a legacy on-disk desync may leave the span deque longer than
+    // the cap even after the lockstep trim above — bound it too.
     while (static_cast<int>(m_scrollbackHyperlinks.size()) > m_maxScrollback)
         m_scrollbackHyperlinks.pop_front();
 }

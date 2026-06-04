@@ -371,8 +371,15 @@ public:
     // Session restore: direct access for SessionManager (respects max scrollback)
     void pushScrollbackLine(TermLine &&line) {
         m_scrollback.push_back(std::move(line));
-        while (static_cast<int>(m_scrollback.size()) > m_maxScrollback)
+        // ANTS-1999 — keep m_scrollbackHyperlinks in lockstep. Restore carries
+        // no serialized OSC 8 span data, so push an empty entry; without it the
+        // two deques desync permanently and later spans map to the wrong rows.
+        m_scrollbackHyperlinks.emplace_back();
+        while (static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
             m_scrollback.pop_front();
+            if (!m_scrollbackHyperlinks.empty())
+                m_scrollbackHyperlinks.pop_front();
+        }
     }
     TermLine &screenLine(int row) { return m_screenLines[row]; }
     void setCursorPosition(int row, int col) { m_cursorRow = row; m_cursorCol = col; }

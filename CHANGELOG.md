@@ -28,6 +28,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Clickable links land on the right row after restoring a session** (ANTS-1999)
+  Restoring a saved session no longer desyncs OSC 8 hyperlink spans from their scrollback lines, so links stay attached to the correct row after a restore and after the scrollback limit shrinks.
+
 - **A stray byte after ESC no longer corrupts the next character** (ANTS-1998)
   The VT parser's ESC state now aborts cleanly on an out-of-range byte (DEL or a high codepoint) instead of getting stuck and mis-reading the following character.
 

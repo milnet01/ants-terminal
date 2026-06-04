@@ -813,6 +813,7 @@ if(ANTS_TESTS)
                 tests/features/vt_osc_esc_discard/test_vt_osc_esc_discard.cpp
                 tests/features/vt_string_rearm/test_vt_string_rearm.cpp
                 tests/features/vt_escape_recovery/test_vt_escape_recovery.cpp
+                tests/features/scrollback_hyperlink_restore_sync/test_scrollback_hyperlink_restore_sync.cpp
                 tests/features/vtparser_print_run_coalesce/test_print_run_coalesce.cpp
                 tests/features/combining_on_resize/test_combining.cpp
                 tests/features/osc8_insert_delete_lines/test_osc8_linerange.cpp
