@@ -224,3 +224,42 @@ jobs:
         run: |
           ./ants-terminal --version
           ./ants-terminal --help
+
+  # B1 (docs/standards/ci-build.md) — compile-guard on the RELEASE
+  # baseline. release.yml builds the AppImage on ubuntu-22.04 / Qt 6.2.x
+  # (qt6-base-dev unpinned from apt);
+  # the build-test job above runs on ubuntu-24.04 / newer Qt, so a
+  # baseline-only compile error (e.g. a Qt 6.10+ API leaking into a test)
+  # is invisible to it and only surfaces at release time. This job
+  # compiles everything the release build compiles, on the same image +
+  # Qt, so such an error fails the push instead of the release tag
+  # (ANTS-1977/1978). Keep the runner + Qt apt set in lockstep with
+  # release.yml's install step.
+  qt62-baseline:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Install Qt6 + build deps (release baseline)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            qt6-base-dev qt6-base-dev-tools \
+            libqt6opengl6-dev libqt6openglwidgets6 \
+            qt6-wayland qt6-wayland-dev \
+            liblua5.4-dev \
+            libgl-dev libglx-dev libegl-dev libglu1-mesa-dev \
+            libfontconfig1-dev libfreetype-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev
+
+      - name: Configure (Release, tests ON)
+        run: cmake -S . -B build-qt62 -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build everything (compile guard — no ctest)
+        # Compiles the app + every test TU on Qt 6.2; running the suite
+        # is the build-test job's responsibility. A baseline-only compile
+        # error (find_sources-class) fails here, not at the release tag.
+        run: cmake --build build-qt62 --parallel

@@ -140,6 +140,11 @@ void applyTheme(QDialog *dlg, TitleBar *bar, const QString &themeName) {
         dp.setColor(QPalette::Text, th.textPrimary);
         dp.setColor(QPalette::ButtonText, th.textPrimary);
         dp.setColor(QPalette::Button, th.bgSecondary);
+        // dialogs.md D6 — PlaceholderText is palette-driven (the QSS
+        // `color:` property does not reach it); without this it falls
+        // back to the OS default and renders unthemed (often dark-on-
+        // dark). Muted-but-readable foreground = textSecondary.
+        dp.setColor(QPalette::PlaceholderText, th.textSecondary);
         dlg->setPalette(dp);
         dlg->setAutoFillBackground(true);
     }

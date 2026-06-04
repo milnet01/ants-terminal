@@ -10,7 +10,7 @@ Not part of the shareable `/start-app` standards set — it depends on
 this codebase's `DialogChrome` + `TitleBar` + `Config` + `Themes`
 architecture.
 
-Five invariants. A dialog that breaks any of them is a bug, not a
+Six invariants. A dialog that breaks any of them is a bug, not a
 style nit.
 
 ---
@@ -211,6 +211,32 @@ clipping). Stop the page from ever being shorter than its content:
   host": D2 covers one long widget (a diff, a finding list); **D5**
   covers the **whole form** never being compressed below its controls'
   natural height.
+
+## D6 — Controls size to their font; never clip text
+
+A text control (`QLineEdit`, `QComboBox`, `QSpinBox`, `QPushButton`)
+MUST be tall enough to render its text plus its border and padding. A
+bordered, padded control is necessarily taller than bare label text —
+treat the font as the source of truth for height, not a pixel guess.
+
+- **Never** `setFixedHeight()` / `setMaximumHeight()` a text control to
+  a pixel value tuned for one font — it clips when the app font or the
+  display's (possibly fractional) scale grows. Let the control's
+  natural `sizeHint`, which already accounts for font metrics + the QSS
+  padding/border, drive its height.
+- If a minimum height is genuinely needed, set it in a **font-relative**
+  unit in the themed stylesheet (`min-height: 1.5em`), never a fixed
+  `px`, so it tracks the font and survives DPI changes. (No control sets
+  this today — they size via QSS padding + `sizeHint` alone; the `1.5em`
+  form is the prescription *if* a floor is ever required.)
+- **Complete the dialog palette.** `DialogChrome::applyTheme` sets
+  `Window` / `Base` / `Text` / `ButtonText` **and `PlaceholderText`** —
+  placeholder text is palette-driven and is NOT reachable through the
+  QSS `color:` property, so a missing `PlaceholderText` role falls back
+  to the OS-default (often dark-on-dark) and renders unthemed.
+- Pairs with D5: D5 stops the *layout* from compressing controls; D6
+  keeps each *control* sized to its own font. A control that looks like
+  a colour/contrast fault is usually one of these two geometric bugs.
 
 ---
 
