@@ -28,6 +28,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A stray byte after ESC no longer corrupts the next character** (ANTS-1998)
+  The VT parser's ESC state now aborts cleanly on an out-of-range byte (DEL or a high codepoint) instead of getting stuck and mis-reading the following character.
+
 - **Concurrent Ants instances no longer drop ledger records on a write race** (ANTS-1989)
   Model-switch / near-miss ledger appends and the audit false-positive + trend writes now hold a cooperative write lock across their read-modify-write, so two running Ants instances can't clobber each other's record.
 

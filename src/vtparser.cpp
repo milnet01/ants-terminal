@@ -331,6 +331,13 @@ void VtParser::processChar(uint32_t ch) {
             a.type = VtAction::Execute;
             a.controlChar = static_cast<char>(ch);
             m_callback(a);
+        } else {
+            // ANTS-1998 — catch-all for the bytes none of the branches above
+            // match: 0x7F (DEL) and decoded codepoints > 0x7E. Without this the
+            // parser stayed in Escape and mis-consumed the *next* byte as the
+            // ESC final. Aborting to Ground matches EscapeIntermediate's
+            // existing treatment of the same bytes (its trailing else).
+            transition(Ground);
         }
         break;
 
