@@ -16377,6 +16377,27 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: in-session-2026-06-03 (hit while writing ANTS-1961/1962 specs).
   Resolved (2026-06-03): spec_log shipped — set_status/append_loop/append_inv via pure SpecLog; PathValidation on path arg; bad_id added to taxonomy.
 
+- 📋 [ANTS-2021] **MCP project file-region / symbol-body read verb (ETag-304 + since-cursor).**
+  No MCP verb returns an arbitrary line range or a named function's body from a project file, so reading-to-edit falls back to native Read. A read_region verb (path + line range OR symbol name; composes with find_definition) with ETag-304 + since-cursor would NOT beat native Read on first-read bytes, but wins three ways: symbol-scoped reads avoid over-reading a whole file for one function; a matching ETag makes a re-read free; one path-validated surface. Frame value as under-read + free re-read, not raw savings on identical bytes.
+  **Layman:** Let a Claude session read an exact slice of a file through Ants (and re-read it for free when unchanged) instead of falling back to the built-in file reader.
+  Kind: feature.
+  Lanes: mcp, workspace.
+  Source: in-session-2026-06-04.
+
+- 📋 [ANTS-2022] **MCP multi-file batch-edit verb (N old→new edits across M files, atomic).**
+  Bundle/sweep work (ANTS-1988 mkpath->ensurePrivateDir across 5 sites, ANTS-2018 idiom sweep) costs one native Edit round-trip per site. An apply_edits verb taking [{path, old, new}] with a single atomic commit + per-edit skipped[] accounting (parity with roadmap_log flip_batch) collapses that to one call with the same path-validation/atomic-write guarantees as other Ants writes. Optional symbol-scoped replace robust against line drift.
+  **Layman:** Apply the same small change across several files in one Ants call, like the batch roadmap-flip already does for the roadmap.
+  Kind: feature.
+  Lanes: mcp, workspace.
+  Source: in-session-2026-06-04.
+
+- 📋 [ANTS-2023] **PreToolUse prefer-MCP advisory guardrail (the enforcement half of MCP discoverability).**
+  Discoverability (SessionStart cheat-sheet, ANTS-1985 catalog) is the carrot; there is no stick. A PreToolUse hook that pattern-matches Bash grep -r / find / cat <file> / a full-file Read where a cheaper MCP verb exists (workspace_search / file_outline / read_region) and emits an advisory nudge would make the cheapest option the default in practice. Advisory-only first (never blocks); could later escalate to a soft-deny for the clearest cases. Enforcement must live in the harness/hook layer.
+  **Layman:** A small automatic check that notices when a session reaches for an expensive shell command and reminds it there is a cheaper Ants tool.
+  Kind: feature.
+  Lanes: mcp, hooks.
+  Source: in-session-2026-06-04.
+
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
 - 📋 **Trust-model gaps in IPC sockets.** Two independent
