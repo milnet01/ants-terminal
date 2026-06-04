@@ -147,7 +147,7 @@ bool applyRepair(const Repair &r) {
 
 bool logRepair(const QString &cacheDir, const Repair &r) {
     if (cacheDir.isEmpty()) return false;
-    if (!QDir().mkpath(cacheDir)) return false;
+    if (!ensurePrivateDir(cacheDir)) return false;  // ANTS-1988 — 0700, no 0755 window
 
     const QString day = QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyy-MM-dd"));
     const QString path = cacheDir + QStringLiteral("/autofix-") + day + QStringLiteral(".jsonl");

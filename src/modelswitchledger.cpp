@@ -12,7 +12,8 @@
 #include <QSaveFile>
 #include <QStandardPaths>
 
-#include "secureio.h"   // setOwnerOnlyPerms
+#include "secureio.h"      // setOwnerOnlyPerms, ensurePrivateDir
+#include "configbackup.h"  // ConfigWriteLock — ANTS-1989
 
 namespace ModelSwitchLedger {
 
@@ -42,7 +43,10 @@ bool isPendingLine(const QByteArray &ln) {
 
 bool writeLinesAtomic(const QString &path, const QList<QByteArray> &lines) {
     const QFileInfo fi(path);
-    if (!QDir().mkpath(fi.absolutePath())) return false;
+    // ANTS-1988 — create the cache dir private (0700) with no world-readable
+    // mkpath-then-chmod window. The ledger's dir listing would otherwise leak
+    // its name + mtimes (switch cadence) to other local users.
+    if (!ensurePrivateDir(fi.absolutePath())) return false;
     QSaveFile sf(path);
     if (!sf.open(QIODevice::WriteOnly)) return false;
     for (const QByteArray &ln : lines) {
@@ -137,6 +141,13 @@ QList<QByteArray> evictToCap(QList<QByteArray> lines, qint64 capBytes) {
 }
 
 bool appendRecord(const QString &path, const Record &rec, qint64 capBytes) {
+    // ANTS-1989 — serialize the read-modify-write against a concurrent Ants
+    // instance. Without the lock, two processes both read the file, both append
+    // their record, and the last atomic rename silently drops the other's row.
+    // ConfigWriteLock polls flock(2) for up to 5 s; a timeout means a hung/stale
+    // holder (the RMW itself is microseconds), so we proceed best-effort rather
+    // than drop the record — a vanishingly rare race beats losing trust-signal data.
+    ConfigWriteLock lock(path);
     QList<QByteArray> lines = readRawLines(path);
     lines.append(serialize(rec));
     lines = evictToCap(lines, capBytes);
@@ -155,6 +166,9 @@ QList<Record> readRecords(const QString &path) {
 }
 
 bool writeRecords(const QString &path, const QList<Record> &recs, qint64 capBytes) {
+    // ANTS-1989 — same lock as appendRecord so a full rewrite (outcome backfill)
+    // can't interleave with a concurrent append's read-modify-write.
+    ConfigWriteLock lock(path);
     QList<QByteArray> lines;
     lines.reserve(recs.size());
     for (const Record &r : recs) lines.append(serialize(r));

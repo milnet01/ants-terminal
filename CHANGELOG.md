@@ -28,6 +28,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Concurrent Ants instances no longer drop ledger records on a write race** (ANTS-1989)
+  Model-switch / near-miss ledger appends and the audit false-positive + trend writes now hold a cooperative write lock across their read-modify-write, so two running Ants instances can't clobber each other's record.
+
 - **Auto model-switcher: only react to a real "model switched" banner, not the bare phrase.** (ANTS-2020)
   Detecting Claude Code's direct model-switch message now requires the model name to follow it, so build output or a log line that happens to say "set model to …" can't trigger an unwanted "please continue" prompt.
 
@@ -41,6 +44,9 @@ for security-relevant changes.
   The actuator now early-returns when the focused tab has no live Claude session (NotRunning) or has a pending PermissionRequest (awaitingInput) — the raw shell state did not reflect those overlays, so a stale-but-recent transcript could inject /model into a bare shell or a permission dialog. The ANTS-1959 never-downgrade-at-idle safety guard is decoupled from the configurable end-of-session ceiling: setting idle_ceiling_sec=0 now disables only the ceiling, not the safety guard. Found by the 2026-06-04 indie-review sweep (modelautoswitch / claudestateresolver lanes).
 
 ### Security
+
+- **Private cache dirs now created at 0700 with no world-readable window** (ANTS-1988)
+  The model-switch ledgers and audit caches (.audit_cache, SARIF cache) are now created via ensurePrivateDir (0700), so their listings and timestamps are never briefly enumerable by other local users.
 
 - **AI chat client: scrub server-supplied error bodies and cap the non-streaming fallback at 10 MiB**
   A 4xx response body can echo a submitted API key back; it now passes through SecretRedact::scrub like every other error surface (OWASP LLM06). The non-streaming JSON fallback read is now bounded by the same 10 MiB cap the streaming path enforces. Found by the 2026-06-04 indie-review sweep (llmclient lane).

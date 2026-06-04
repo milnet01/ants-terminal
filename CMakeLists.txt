@@ -1613,6 +1613,9 @@ if(ANTS_TESTS)
                 # ANTS-1735 — effectiveness ledger (modelswitchledger.cpp is in
                 # ants_core_lib, which test_core links — only the test TU here).
                 tests/features/model_switch_ledger/test_model_switch_ledger.cpp
+                # ANTS-1988/1989 — file-write safety bundle (private cache dirs
+                # at 0700 + ConfigWriteLock around ledger read-modify-write).
+                tests/features/ledger_write_safety/test_ledger_write_safety.cpp
                 # ANTS-1735 — model_switch_stats verb: behavioural aggregation +
                 # source-grep wiring contract (uses SRC_RC_HEADER / SRC_RC_CPP /
                 # SRC_MAINWINDOW_CPP / SRC_CLAUDE_INTEGRATION_CPP_PATH defs below).
@@ -1683,6 +1686,12 @@ if(ANTS_TESTS)
         SRC_AUDITFPLEDGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditfpledger.cpp"
         SRC_AUDITAUTOFIX_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditautofix.cpp"
         SRC_TESTAUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/testauditdialog.cpp"
+        # ANTS-1988/1989 — file-write safety bundle wiring greps.
+        SRC_MODELSWITCHLEDGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/modelswitchledger.cpp"
+        SRC_MODELNEARMISSLEDGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/modelnearmissledger.cpp"
+        SRC_AUDITCACHE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditcache.cpp"
+        SRC_AUDITRUNNER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditrunner.cpp"
+        SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_DEBUGLOG_PATH="${CMAKE_SOURCE_DIR}/src/debuglog.cpp"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
         SRC_RC_CPP="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"

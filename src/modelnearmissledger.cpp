@@ -13,7 +13,8 @@
 #include <QStandardPaths>
 
 #include "modelswitchledger.h"   // parseIso8601Ms reuse (INV per § 2.3 helpers)
-#include "secureio.h"            // setOwnerOnlyPerms
+#include "secureio.h"            // setOwnerOnlyPerms, ensurePrivateDir
+#include "configbackup.h"        // ConfigWriteLock — ANTS-1989
 
 namespace ModelNearMissLedger {
 
@@ -55,7 +56,8 @@ QList<QByteArray> readRawLines(const QString &path) {
 
 bool writeLinesAtomic(const QString &path, const QList<QByteArray> &lines) {
     const QFileInfo fi(path);
-    if (!QDir().mkpath(fi.absolutePath())) return false;
+    // ANTS-1988 — private (0700) cache dir, no world-readable mkpath window.
+    if (!ensurePrivateDir(fi.absolutePath())) return false;
     QSaveFile sf(path);
     if (!sf.open(QIODevice::WriteOnly)) return false;
     for (const QByteArray &ln : lines) {
@@ -136,6 +138,10 @@ QList<QByteArray> evictToCap(QList<QByteArray> lines, qint64 capBytes) {
 }
 
 bool appendRecord(const QString &path, const Record &rec, qint64 capBytes) {
+    // ANTS-1989 — same read-modify-write race as the firing ledger: two Ants
+    // instances both append and the last rename drops one near-miss record.
+    // Best-effort lock (see ModelSwitchLedger::appendRecord for the rationale).
+    ConfigWriteLock lock(path);
     QList<QByteArray> lines = readRawLines(path);
     lines.append(serialize(rec));
     lines = evictToCap(lines, capBytes);

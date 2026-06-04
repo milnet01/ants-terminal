@@ -9,6 +9,7 @@
 #include "dialogchrome.h"
 #include "featurecoverage.h"
 #include "secureio.h"
+#include "configbackup.h"  // ConfigWriteLock — ANTS-1989
 #include "toggleswitch.h"
 #include "tooldetectionengine.h"
 #include "config.h"
@@ -3560,7 +3561,10 @@ AuditDialog::TrendSnapshot AuditDialog::loadLastSnapshot() const {
 }
 
 void AuditDialog::appendSnapshot(const TrendSnapshot &s) {
-    QDir().mkpath(m_projectPath + "/.audit_cache");
+    ensurePrivateDir(m_projectPath + "/.audit_cache");   // ANTS-1988 — 0700
+    // ANTS-1989 — lock the trend.json read-modify-write against a concurrent
+    // Ants instance appending its own snapshot (last-writer-wins drops one run).
+    ConfigWriteLock lock(trendPath());
     QJsonArray arr;
     QFile f(trendPath());
     if (f.open(QIODevice::ReadOnly)) {
@@ -3610,7 +3614,7 @@ void AuditDialog::loadBaseline() {
 }
 
 void AuditDialog::saveBaseline() {
-    QDir().mkpath(m_projectPath + "/.audit_cache");
+    ensurePrivateDir(m_projectPath + "/.audit_cache");   // ANTS-1988 — 0700
     QJsonArray arr;
     for (const CheckResult &r : std::as_const(m_completedResults)) {
         // Per-finding fingerprints — stable across unrelated code changes,

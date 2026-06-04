@@ -3,6 +3,7 @@
 #include "auditfpledger.h"
 
 #include "secureio.h"
+#include "configbackup.h"  // ConfigWriteLock — ANTS-1989
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -100,14 +101,20 @@ bool appendEntry(const QString &projectPath, Entry e) {
         e.timestamp = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     if (!e.isValid()) return false;
 
+    const QString dir = projectPath + QStringLiteral("/.audit_cache");
+    if (!ensurePrivateDir(dir)) return false;   // ANTS-1988 — 0700 cache dir
+    const QString path = ledgerPath(projectPath);
+
+    // ANTS-1989 — hold the lock across the dedup-check AND the append, so a
+    // concurrent CC session can't pass the same dedup gate before we append and
+    // end up writing a duplicate row. The lock spans the read-modify-write that
+    // the dedup makes implicit.
+    ConfigWriteLock lock(path);
+
     // Dedup against what's already on disk — a learned FP only needs one row.
     if (fingerprintSet(loadEntries(projectPath)).contains(e.fingerprint))
         return true;
 
-    const QString dir = projectPath + QStringLiteral("/.audit_cache");
-    if (!QDir().mkpath(dir)) return false;
-
-    const QString path = ledgerPath(projectPath);
     QFile f(path);
     const bool fresh = !QFileInfo::exists(path) || QFileInfo(path).size() == 0;
     if (!f.open(QIODevice::WriteOnly | QIODevice::Append)) return false;

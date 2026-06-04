@@ -32,8 +32,10 @@ QString cacheDirImpl(const QString &canonProject) {
 bool ensureCacheDir(const QString &canonProject) {
     const QString d = cacheDirImpl(canonProject);
     if (d.isEmpty()) return false;
-    if (QFileInfo(d).isDir()) return true;
-    return QDir().mkpath(d);
+    // ANTS-1988 — ensurePrivateDir creates `.audit_cache` at 0700 with no
+    // world-readable window AND tightens a pre-existing 0755 dir (the old
+    // QFileInfo::isDir early-return left stale-permissive perms in place).
+    return ensurePrivateDir(d);
 }
 
 QString runGit(const QString &canonProject, const QStringList &args) {

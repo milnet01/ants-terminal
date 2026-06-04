@@ -1489,7 +1489,7 @@ RunResult runAudit(const RunRequest &req) {
                                                  iso.forFilename,
                                                  gitI.shortSha);
         if (!cacheSarifAbs.isEmpty()
-         && QDir().mkpath(AuditCache::cacheDir(canonProject))
+         && ensurePrivateDir(AuditCache::cacheDir(canonProject))  // ANTS-1988 — 0700
          && writeSarif(cacheSarifAbs, r.byTool, rawByTool, req.projectRoot)) {
             r.sarifPath = cacheSarifAbs;
             r.cachePath = cacheSarifAbs;
