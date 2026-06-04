@@ -148,6 +148,22 @@ ignore = ["S101", "S104"]
     expectList("bandit.prefersLint", got, {"B101", "B104"});
 }
 
+void testBanditPrefersLintReversedOrder() {
+    // ANTS-2005 — the regression case the old "keep the last match" logic
+    // got wrong: `[tool.ruff.lint]` appears BEFORE a later `[tool.ruff]`.
+    // The most-specific `.lint` section must still win regardless of file
+    // order, so its S101/S104 are emitted — not the legacy section's S500.
+    const QString toml = R"([tool.ruff.lint]
+ignore = ["S101", "S104"]
+
+[tool.ruff]
+line-length = 100
+ignore = ["S500"]
+)";
+    const QStringList got = AuditHygiene::parseBanditSkipCodes(toml);
+    expectList("bandit.prefersLintReversed", got, {"B101", "B104"});
+}
+
 void testBanditStopsAtNextSection() {
     // A per-file-ignores section after the main ignore block must NOT leak
     // its S-codes into the result. Only the `[tool.ruff.lint]` body's own
@@ -186,6 +202,7 @@ HYGIENE_TEST(BanditNoRuffSection)
 HYGIENE_TEST(BanditHappyPath)
 HYGIENE_TEST(BanditToolRuffFallback)
 HYGIENE_TEST(BanditPrefersLint)
+HYGIENE_TEST(BanditPrefersLintReversedOrder)
 HYGIENE_TEST(BanditStopsAtNextSection)
 HYGIENE_TEST(BanditExtendIgnore)
 

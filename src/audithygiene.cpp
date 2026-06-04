@@ -53,13 +53,29 @@ QStringList parseBanditSkipCodes(const QString &text) {
         R"(^\s*\[tool\.ruff(?:\.lint)?\]\s*$)",
         QRegularExpression::MultilineOption);
     QRegularExpressionMatchIterator sit = sectionRe.globalMatch(text);
-    int sectionStart = -1;
-    int sectionBodyStart = -1;
+    // ANTS-2005 — prefer the most-specific `[tool.ruff.lint]` section
+    // (ruff's modern home for `ignore`) REGARDLESS of file order. The old
+    // "keep the last match" logic silently discarded the lint-specific
+    // ignore list whenever `[tool.ruff.lint]` appeared *before* a later
+    // `[tool.ruff]` (INV-8). TOML forbids duplicate tables, so the first
+    // occurrence of each form is authoritative.
+    int sectionStart = -1, sectionBodyStart = -1;  // [tool.ruff] fallback
+    int lintStart = -1, lintBodyStart = -1;        // [tool.ruff.lint]
     while (sit.hasNext()) {
         const auto m = sit.next();
-        // Prefer the later/more-specific `[tool.ruff.lint]` if present.
-        sectionStart = m.capturedStart();
-        sectionBodyStart = m.capturedEnd();
+        if (m.captured(0).contains(QStringLiteral(".lint"))) {
+            if (lintStart < 0) {
+                lintStart = m.capturedStart();
+                lintBodyStart = m.capturedEnd();
+            }
+        } else if (sectionStart < 0) {
+            sectionStart = m.capturedStart();
+            sectionBodyStart = m.capturedEnd();
+        }
+    }
+    if (lintStart >= 0) {  // most-specific wins
+        sectionStart = lintStart;
+        sectionBodyStart = lintBodyStart;
     }
     if (sectionStart < 0) return {};
 
@@ -104,10 +120,15 @@ QStringList parseBanditSkipCodes(const QString &text) {
 
 namespace {
 
+// ANTS-2005 — project config files (requirements.txt, pyproject.toml,
+// CMakeLists.txt, …) are small by nature; cap the read so a pathological
+// multi-GB file dropped in the project root can't be slurped whole.
+constexpr qint64 kMaxConfigBytes = 1 << 20;  // 1 MiB
+
 QString slurpIfExists(const QString &absPath) {
     QFile f(absPath);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
-    return QString::fromUtf8(f.readAll());
+    return QString::fromUtf8(f.read(kMaxConfigBytes));
 }
 
 bool fileExists(const QString &absPath) {
@@ -129,9 +150,13 @@ QStringList detectProjectFrameworks(const QString &projectPath) {
     const bool hasManagePy   = fileExists(root.filePath("manage.py"));
 
     auto pyHas = [&](const QString &needle) {
+        // ANTS-2005 — the trailing class also accepts end-of-line so a bare
+        // dependency name with no version specifier on the final line (no
+        // trailing newline) still matches, e.g. a `requirements.txt` ending
+        // in `flask` with no EOL.
         const QRegularExpression re(
             QStringLiteral("(?im)^[\\s'\"]*") + QRegularExpression::escape(needle)
-                + QStringLiteral("[\\s\\[<>=!~]"));
+                + QStringLiteral("(?:[\\s\\[<>=!~]|$)"));
         return re.match(reqs).hasMatch() || re.match(pyproj).hasMatch();
     };
 

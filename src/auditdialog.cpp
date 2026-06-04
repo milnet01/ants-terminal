@@ -2642,7 +2642,9 @@ int AuditDialog::loadUserRules() {
 QString AuditDialog::semgrepExcludeFlags() const {
     QFile f(m_projectPath + "/.semgrep.yml");
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
-    const QString text = QString::fromUtf8(f.readAll());
+    // ANTS-2005 — cap the config read (1 MiB); a pathological file must not
+    // be slurped whole into memory.
+    const QString text = QString::fromUtf8(f.read(1 << 20));
     f.close();
 
     const QStringList rules = AuditHygiene::parseSemgrepExcludeRules(text);
@@ -2665,7 +2667,9 @@ QString AuditDialog::semgrepExcludeFlags() const {
 QString AuditDialog::banditSkipFlags() const {
     QFile f(m_projectPath + "/pyproject.toml");
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
-    const QString text = QString::fromUtf8(f.readAll());
+    // ANTS-2005 — cap the config read (1 MiB); a pathological file must not
+    // be slurped whole into memory.
+    const QString text = QString::fromUtf8(f.read(1 << 20));
     f.close();
     const QStringList bCodes = AuditHygiene::parseBanditSkipCodes(text);
     if (bCodes.isEmpty()) return {};

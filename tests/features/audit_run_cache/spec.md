@@ -27,6 +27,12 @@ Full spec: `docs/specs/ANTS-1555.md`.
   with 11 history entries + corresponding sarif files + a foreign
   `audit-foreign.sarif`. After reap, the foreign file survives;
   the dropped entry's file is gone.
+- **INV-4a** (ANTS-2004) — The reaper runs only *after* the new
+  manifest is durably committed (`QSaveFile::commit()` +
+  `fsyncParentDir`). A commit failure returns early with the old
+  files intact, so the manifest and filesystem never disagree.
+  Source-scrape: `sf.commit()` precedes the reaper loop in
+  `auditcache.cpp`. Remove failures are surfaced via `qWarning`.
 - **INV-6** — `recordRun` writes manifest with 0600 perms via
   `setOwnerOnlyPerms` + `QSaveFile`. Source-scrape:
   `auditcache.cpp` uses both helpers.

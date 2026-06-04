@@ -155,6 +155,23 @@ TEST(AuditRunCache, AuditCacheUsesAtomicWriteWithOwnerPerms) {
         << "auditcache must call QSaveFile::commit()";
 }
 
+TEST(AuditRunCache, ReaperRunsAfterManifestCommit) {
+    // ANTS-2004 — the retention reaper must delete dropped SARIF/HTML
+    // files only AFTER QSaveFile::commit() succeeds. Deleting first
+    // meant a commit failure left files gone but the old manifest still
+    // referencing them (permanent orphan refs). Enforce the ordering at
+    // the source level: commit() precedes the reaper loop.
+    const std::string src = slurp(SRC_AUDITCACHE_CPP_PATH);
+    ASSERT_FALSE(src.empty());
+
+    const auto commitPos = src.find("sf.commit()");
+    const auto reaperPos = src.find("Reaper (INV-4)");
+    ASSERT_NE(commitPos, std::string::npos) << "commit() call not found";
+    ASSERT_NE(reaperPos, std::string::npos) << "reaper block not found";
+    EXPECT_LT(commitPos, reaperPos)
+        << "ANTS-2004: reaper must run after the manifest is committed";
+}
+
 // ─────────────────────── In-process module exercise ──
 
 TEST(AuditRunCache, CacheDirPathDerivesFromCanonProject) {
