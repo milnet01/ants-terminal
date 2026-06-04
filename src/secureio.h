@@ -151,7 +151,8 @@ inline bool ensurePrivateDir(const QString &dir) {
     const QStringList parts = clean.split(QLatin1Char('/'), Qt::SkipEmptyParts);
     if (parts.isEmpty()) return false;
 
-    QString cur = absolute ? QString() : QString();
+    QString cur;  // built up component-by-component below; the leading '/'
+                  // for absolute paths is prepended in the first iteration
     for (const QString &part : parts) {
         cur = cur.isEmpty()
                   ? (absolute ? QLatin1Char('/') + part : part)

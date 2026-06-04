@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QElapsedTimer>
 #include <QFile>
+#include <limits>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QJsonArray>
@@ -178,12 +179,18 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
         // own UI — the typed-`/model`-in-composer case stays blocked on
         // Claude Code exposing composer state (tracked on the roadmap).
         const pid_t pid = focused->shellPid();
-        const ClaudeState st = (m_tracker && pid > 0)
-            ? m_tracker->shellState(pid).state : ClaudeState::NotRunning;
+        const ClaudeTabTracker::ShellState ss = (m_tracker && pid > 0)
+            ? m_tracker->shellState(pid) : ClaudeTabTracker::ShellState{};
+        const ClaudeState st = ss.state;
         const bool generating = (st == ClaudeState::Thinking ||
                                  st == ClaudeState::ToolUse ||
                                  st == ClaudeState::Compacting);
-        if (generating) {
+        // indie-review loop-2 2026-06-04 — also defer when a PermissionRequest
+        // is pending (awaitingInput): an injected `/model …\r` would answer the
+        // permission dialog instead of switching. Mirrors the auto-switch
+        // actuator's awaitingInput guard; the deferred switch fires when the
+        // shell next goes Idle with the prompt resolved.
+        if (generating || ss.awaitingInput) {
             m_deferredChipTier     = tier;
             m_deferredChipShellPid = pid;
             m_modelBtn->setToolTip(
@@ -1469,6 +1476,13 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
 
     if (!enabled) return;
 
+    // indie-review 2026-06-04 — never actuate when the focused tab has no live
+    // Claude session (NotRunning ⇒ a /model injection lands in a bare shell) or
+    // when a PermissionRequest is pending (awaitingInput ⇒ the injection would
+    // be typed into the permission prompt). The raw ShellState.state does not
+    // reflect these overlays, so decide()'s Idle check alone is insufficient.
+    if (s.state == ClaudeState::NotRunning || s.awaitingInput) return;
+
     // §2.4 — keystroke-timing composerEmpty proxy.
     const bool composerEmpty =
         focused->lastUserKeystrokeMs() < s.idleSinceMs;
@@ -1599,11 +1613,18 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     // populated when the shell is idle, so idle downgrades are suppressed.
     const int idleCeilingSec = autoCfg.value("idle_ceiling_sec").toInt(
         static_cast<int>(ModelAutoSwitch::kIdleEndOfSessionMs / 1000));
-    if (idleCeilingSec > 0) {
-        gate.idleCeilingMs = static_cast<qint64>(idleCeilingSec) * 1000;
-        if (s.state == ClaudeState::Idle && s.idleSinceMs > 0)
-            gate.idleElapsedMs = nowMs - s.idleSinceMs;
-    }
+    // ANTS-1959 never-downgrade-at-idle is a SAFETY INVARIANT, not a tunable:
+    // populate idleElapsedMs whenever the shell is idle so decide()'s
+    // downgrade_requires_active_work guard always holds. The end-of-session
+    // *ceiling* stays configurable — idle_ceiling_sec <= 0 disables only that
+    // gate (by pushing the ceiling out of reach), never the downgrade guard.
+    // (indie-review 2026-06-04 — previously a single `if (idleCeilingSec > 0)`
+    // gated both, so setting the knob to 0 silently lost the safety guard.)
+    if (s.state == ClaudeState::Idle && s.idleSinceMs > 0)
+        gate.idleElapsedMs = nowMs - s.idleSinceMs;
+    gate.idleCeilingMs = (idleCeilingSec > 0)
+        ? static_cast<qint64>(idleCeilingSec) * 1000
+        : std::numeric_limits<qint64>::max();
 
     // ANTS-1959 — long-ToolUse safe-downgrade window. Stamp when we first
     // see ToolUse; clear when the state leaves it.
@@ -1809,7 +1830,7 @@ void ClaudeStatusBarController::maybeAutoConfirmUserModelSwitch() {
         // ANTS-1955 — arm a burst so a dialog that renders shortly after this
         // tick is caught at kSwitchConfirmPollMs granularity.
         if (!visible && !m_unarmedSwitchConfirmed
-                && enabled && !m_modelHandshakeInFlight) {
+                && !m_modelHandshakeInFlight) {  // enabled guaranteed by early return above
             m_unarmedPollActive = true;
             QPointer<ClaudeStatusBarController> self(this);
             QTimer::singleShot(kSwitchConfirmPollMs, this, [self]() {
@@ -1918,9 +1939,16 @@ void ClaudeStatusBarController::sendUnarmedConfirm(TerminalWidget *term) {
 void ClaudeStatusBarController::maybeFireDeferredChipSwitch(pid_t shellPid) {
     if (m_deferredChipTier.isEmpty() || shellPid != m_deferredChipShellPid)
         return;
-    if (!m_tracker ||
-            m_tracker->shellState(shellPid).state != ClaudeState::Idle)
-        return;   // still generating — keep waiting for the turn to complete.
+    {
+        const ClaudeTabTracker::ShellState ss =
+            m_tracker ? m_tracker->shellState(shellPid)
+                      : ClaudeTabTracker::ShellState{};
+        // Keep waiting while non-Idle OR a permission prompt is pending
+        // (awaitingInput) — firing into the prompt would answer it instead of
+        // switching (indie-review loop-2 2026-06-04).
+        if (ss.state != ClaudeState::Idle || ss.awaitingInput)
+            return;
+    }
 
     // Resolve the terminal that owns this shell by PID, NOT by current focus:
     // the user may have moved to another tab while the turn finished, and the
@@ -2239,6 +2267,23 @@ void ClaudeStatusBarController::onUndoSwitchClicked()
                 3000);
         }
         return;
+    }
+
+    // indie-review loop-2 2026-06-04 — don't inject /model while the agent is
+    // mid-turn or a PermissionRequest is pending: the CR would answer the
+    // prompt / land mid-generation instead of switching. Block with a toast
+    // (undo is a 10 s affordance — the user can retry once the prompt clears).
+    {
+        const ClaudeTabTracker::ShellState ss =
+            m_tracker ? m_tracker->shellState(focused->shellPid())
+                      : ClaudeTabTracker::ShellState{};
+        if (ss.awaitingInput || ss.state == ClaudeState::Thinking ||
+                ss.state == ClaudeState::ToolUse ||
+                ss.state == ClaudeState::Compacting) {
+            emit statusMessageRequested(
+                tr("Undo unavailable — finish the current prompt first"), 3000);
+            return;
+        }
     }
 
     // Capture before clearing — the "Switched back to <X>" toast

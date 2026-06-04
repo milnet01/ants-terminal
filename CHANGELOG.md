@@ -26,6 +26,16 @@ for security-relevant changes.
 - **Full MCP verb catalog in one call — `tool_info` with `catalog:true`.** (ANTS-1985)
   The startup tool cheat-sheet only fits 12 of ~70 helpers and is full. A Claude session can now ask `tool_info` for the whole catalog — every helper grouped by category with a one-line "what it's for" — in a single cheap call, instead of looking each one up separately.
 
+### Fixed
+
+- **Auto-model switcher: never actuate into a bare shell or during a permission prompt, and keep the never-downgrade-at-idle guard unconditional**
+  The actuator now early-returns when the focused tab has no live Claude session (NotRunning) or has a pending PermissionRequest (awaitingInput) — the raw shell state did not reflect those overlays, so a stale-but-recent transcript could inject /model into a bare shell or a permission dialog. The ANTS-1959 never-downgrade-at-idle safety guard is decoupled from the configurable end-of-session ceiling: setting idle_ceiling_sec=0 now disables only the ceiling, not the safety guard. Found by the 2026-06-04 indie-review sweep (modelautoswitch / claudestateresolver lanes).
+
+### Security
+
+- **AI chat client: scrub server-supplied error bodies and cap the non-streaming fallback at 10 MiB**
+  A 4xx response body can echo a submitted API key back; it now passes through SecretRedact::scrub like every other error surface (OWASP LLM06). The non-streaming JSON fallback read is now bounded by the same 10 MiB cap the streaming path enforces. Found by the 2026-06-04 indie-review sweep (llmclient lane).
+
 ## [0.7.95] — 2026-06-04
 
 ### Theme

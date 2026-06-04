@@ -296,7 +296,7 @@ void LlmClient::onFinished() {
 
     if (hadError) {
         // Some APIs don't stream — try a non-streaming JSON response.
-        const QByteArray data = m_reply->readAll();
+        const QByteArray data = m_reply->read(kMaxBytes);  // honour the 10 MiB cap on the non-streaming fallback (indie-review 2026-06-04)
         if (!data.isEmpty()) {
             const QJsonDocument doc = QJsonDocument::fromJson(data);
             if (doc.isObject()) {
@@ -310,8 +310,11 @@ void LlmClient::onFinished() {
                         hadError = false;  // valid response despite HTTP error
                     }
                 } else if (obj.contains("error")) {
-                    result.error =
-                        obj.value("error").toObject().value("message").toString();
+                    // Scrub the server-supplied error like every other error
+                    // surface here — a 4xx body can echo a submitted key back
+                    // (OWASP LLM06). indie-review 2026-06-04.
+                    result.error = scrubErrorString(
+                        obj.value("error").toObject().value("message").toString());
                 }
             }
         }
