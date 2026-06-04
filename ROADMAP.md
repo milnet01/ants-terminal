@@ -9227,6 +9227,8 @@ new minor item:
   this — the loop-1 lane saw the auto path, not the user paths.
 - 📋 [ANTS-2019] **llmclient: `emitDeferredError`'s `QTimer::singleShot(0)` is not cancelled when `send()` is called again before the event loop runs — a rapid second `send()` can deliver a spurious `finished(error)` from the previous rejected endpoint (busy() reads false in that window).** Track the pending timer with a QTimer member / QPointer and stop it on re-send.
   Kind: bug. Lanes: llmclient. Source: indie-review-2026-06-04.
+- 📋 [ANTS-2020] **Auto-switcher robustness: `directModelSwitchVisible` (modelautoswitch.cpp:275) matches the bare phrase `"Set model to"` with no structural anchor — build output, a log line, or a transcript quoting the phrase can false-positive and trigger an unwanted continuation via `shouldContinueAfterDirectSwitch` when auto-mode is on.** Anchor it like `switchConfirmVisible` does (title + an option line), e.g. require `"Set model to Claude"`. (No effect while the master gate is OFF, but a robustness hole before any default-ON flip.) Session trust-signal context: 4 measured downgrades, regret_rate 50% (calibrating, n<10), under_route_count 2, dominant near-miss blocker composer_not_empty (33/24h).
+  Kind: bug. Lanes: modelautoswitch, claudestatuswidgets. Source: indie-review-2026-06-04.
 
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
