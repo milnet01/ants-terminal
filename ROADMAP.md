@@ -9090,6 +9090,13 @@ clips input text), and the auto-switcher interrupting active work.
   Lanes: ui.
   Source: in-session-2026-06-04.
 
+- ✅ [ANTS-1984] **Scroll-to-bottom floating chip ignored the terminal theme — hard-coded rgba colours; derive from the active palette instead.**
+  terminalwidget.cpp built the #scrollToBottomBtn stylesheet from fixed rgba() literals (40,40,60 / 200,200,220 / hover white), so the chip stayed blue-grey regardless of the selected theme. New styleScrollToBottomButton(bg,fg,accent,border) helper builds it from theme colours (lifted surface, themed border, accent hover); called from the ctor (grid defaults) and re-called on every applyThemeColors(). Keeps the ANTS-1326 padding/size resets.
+  **Layman:** The little down-arrow "jump to bottom" button didn't match your chosen theme — now it does, and follows theme changes.
+  Kind: fix.
+  Lanes: ui, terminal.
+  Source: user-report-2026-06-04.
+
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
 5-lane in-house audit of the 584-test suite across perf,

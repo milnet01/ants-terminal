@@ -745,6 +745,10 @@ private:
     // Scroll-to-bottom button
     QPushButton *m_scrollToBottomBtn = nullptr;
     void updateScrollToBottomButton();
+    // ANTS-1984 — theme the floating scroll-to-bottom chip from the active
+    // palette (it hard-coded its rgba colours before, ignoring the theme).
+    void styleScrollToBottomButton(const QColor &bg, const QColor &fg,
+                                   const QColor &accent, const QColor &border);
 
     // New output marker (line number when user scrolled up and new output arrived)
     int m_newOutputMarkerLine = -1;

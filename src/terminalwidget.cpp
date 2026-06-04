@@ -301,27 +301,12 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     m_scrollToBottomBtn->setFixedSize(32, 32);
     m_scrollToBottomBtn->setToolTip("Scroll to bottom");
     m_scrollToBottomBtn->hide();
-    // ANTS-1326: explicitly override padding + min-width that cascade
-    // from themedstylesheet's app-wide `QPushButton` rule
-    // (padding: 6px 14px; min-width: 60px;). Without these resets,
-    // Qt 6.7+ stylesheet renderer adds the padding to the content
-    // box \u2192 effective width becomes 32 + 28 + 2 (border) \u2248 62 px,
-    // and the chip clips against the widget's right edge (the
-    // setFixedSize geometry is honoured, but the stylesheet paint
-    // still extends past it). Visible symptom: only the left half of
-    // the chip renders, the rest disappears behind the scrollbar /
-    // off-widget. Scope rule via #scrollToBottomBtn ID so the reset
-    // can't leak to other QPushButtons.
-    m_scrollToBottomBtn->setStyleSheet(
-        "QPushButton#scrollToBottomBtn {"
-        " background: rgba(40,40,60,200); color: rgba(200,200,220,220);"
-        " border: 1px solid rgba(100,100,130,150);"
-        " border-radius: 16px; font-size: 14px;"
-        " padding: 0; min-width: 32px; max-width: 32px;"
-        " min-height: 32px; max-height: 32px; }"
-        "QPushButton#scrollToBottomBtn:hover {"
-        " background: rgba(60,60,90,220); color: white; }"
-    );
+    // Themed from the active palette by styleScrollToBottomButton (below).
+    // Seed it with the grid's current default colours so it is never
+    // unstyled before the first applyThemeColors(); the structural
+    // padding/size resets it applies are described there (ANTS-1326).
+    styleScrollToBottomButton(m_grid->defaultBg(), m_grid->defaultFg(),
+                              m_cursorColor, QColor());
     connect(m_scrollToBottomBtn, &QPushButton::clicked, this, [this]() {
         m_scrollOffset = 0;
         m_newOutputMarkerLine = -1;
@@ -610,12 +595,43 @@ void TerminalWidget::applyThemeColors(const QColor &fg, const QColor &bg,
               bg.name(), fg.name(), fg.darker(130).name()));
     }
 
+    // ANTS-1984 — re-theme the floating scroll-to-bottom chip on every
+    // theme change (it used to keep hard-coded rgba colours).
+    styleScrollToBottomButton(bg, fg, accentColor, border);
+
     QPalette pal = palette();
     pal.setColor(QPalette::Window, bg);
     pal.setColor(QPalette::Base, bg);
     setPalette(pal);
 
     update();
+}
+
+// ANTS-1984 — build the scroll-to-bottom chip's stylesheet from the active
+// theme colours (a lifted, semi-transparent surface over the terminal
+// content) rather than the old hard-coded rgba literals. The structural
+// padding/size resets (ANTS-1326) override the app-wide `QPushButton`
+// padding/min-width so the round 32px chip isn't clipped on the Qt 6.7+
+// stylesheet renderer; scoped via the #scrollToBottomBtn object name so
+// the reset can't leak to other buttons.
+void TerminalWidget::styleScrollToBottomButton(const QColor &bg, const QColor &fg,
+                                               const QColor &accent,
+                                               const QColor &border) {
+    if (!m_scrollToBottomBtn) return;
+    const QColor surface = bg.lightnessF() > 0.5 ? bg.darker(112) : bg.lighter(170);
+    const QColor brd = border.isValid() ? border : accent;
+    const QString surfaceRgba = QStringLiteral("rgba(%1,%2,%3,210)")
+        .arg(surface.red()).arg(surface.green()).arg(surface.blue());
+    m_scrollToBottomBtn->setStyleSheet(QStringLiteral(
+        "QPushButton#scrollToBottomBtn {"
+        " background: %1; color: %2;"
+        " border: 1px solid %3;"
+        " border-radius: 16px; font-size: 14px;"
+        " padding: 0; min-width: 32px; max-width: 32px;"
+        " min-height: 32px; max-height: 32px; }"
+        "QPushButton#scrollToBottomBtn:hover {"
+        " background: %4; color: %5; }")
+        .arg(surfaceRgba, fg.name(), brd.name(), accent.name(), bg.name()));
 }
 
 bool TerminalWidget::event(QEvent *event) {
