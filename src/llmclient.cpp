@@ -191,6 +191,7 @@ bool LlmClient::accumulateCapped(QString &acc, qint64 &accBytes,
 
 void LlmClient::send(const LlmRequest &req) {
     abort();
+    ++m_sendGeneration;   // ANTS-2019 — invalidate any pending deferred error
     m_sseLineBuffer.clear();
     m_text.clear();
     m_textBytes = 0;  // ANTS-1846 — reset the byte counter alongside m_text
@@ -243,7 +244,14 @@ void LlmClient::emitDeferredError(const QString &error) {
     LlmResult r;
     r.ok = false;
     r.error = error;
-    QTimer::singleShot(0, this, [this, r]() { emit finished(r); });
+    // ANTS-2019 — gate on the send generation captured now: if send() runs
+    // again before the event loop fires this, the callback no-ops instead of
+    // emitting a stale error for a request that has since been superseded.
+    const quint64 gen = m_sendGeneration;
+    QTimer::singleShot(0, this, [this, r, gen]() {
+        if (gen != m_sendGeneration) return;
+        emit finished(r);
+    });
 }
 
 void LlmClient::drain() {

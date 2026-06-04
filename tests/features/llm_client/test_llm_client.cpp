@@ -13,6 +13,8 @@
 #include <gtest/gtest.h>
 
 #include <QByteArray>
+#include <QCoreApplication>
+#include <QObject>
 #include <QString>
 
 // INV-2 — scheme allowlist.
@@ -157,6 +159,30 @@ TEST(LlmClient, INV5_SseContentDelta) {
     EXPECT_TRUE(LlmClient::sseContentDelta(
         QStringLiteral("data: {\"choices\":[]}")).isEmpty());
     EXPECT_TRUE(LlmClient::sseContentDelta(QStringLiteral("garbage")).isEmpty());
+}
+
+// ANTS-2019 — a rapid re-send cancels the prior deferred error. Two rejected
+// endpoints back-to-back must emit finished() exactly once (the latest), not
+// twice. Pre-fix both QTimer::singleShot(0) callbacks fired.
+TEST(LlmClient, Ants2019_ReSendCancelsStaleDeferredError) {
+    LlmClient client;
+    int finishedCount = 0;
+    QObject::connect(&client, &LlmClient::finished, &client,
+                     [&](const LlmResult &) { ++finishedCount; });
+
+    LlmRequest bad1;
+    bad1.endpoint = QStringLiteral("file:///etc/passwd");   // scheme rejected
+    LlmRequest bad2;
+    bad2.endpoint = QStringLiteral("gopher://host/x");      // scheme rejected
+    client.send(bad1);   // schedules deferred error #1
+    client.send(bad2);   // must cancel #1, schedule #2
+
+    // Drain the event loop so both singleShot(0) callbacks would run.
+    QCoreApplication::processEvents();
+    QCoreApplication::processEvents();
+
+    EXPECT_EQ(finishedCount, 1)
+        << "only the latest rejected send must emit finished()";
 }
 
 // INV-16 — the three LLM modules include no Qt Widgets header.

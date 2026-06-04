@@ -105,6 +105,11 @@ private:
 
     QNetworkAccessManager m_net;
     QNetworkReply *m_reply = nullptr;
+    // ANTS-2019 — bumped on every send(); a deferred-error callback captures
+    // the value at schedule time and no-ops if a newer send() superseded it,
+    // so a rapid re-send can't deliver a spurious finished(error) from the
+    // previously rejected endpoint.
+    quint64        m_sendGeneration = 0;
     QByteArray     m_sseLineBuffer;   // buffers incomplete SSE lines
     QString        m_text;            // accumulated assistant content
     qint64         m_textBytes = 0;   // running UTF-8 byte total of m_text (ANTS-1846)

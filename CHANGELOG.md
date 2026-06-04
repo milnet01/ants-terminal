@@ -28,6 +28,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **AI client no longer emits a stale error after a quick retry** (ANTS-2019)
+  Sending a new AI request right after a rejected one no longer fires a leftover error for the old request.
+
 - **Clickable links land on the right row after restoring a session** (ANTS-1999)
   Restoring a saved session no longer desyncs OSC 8 hyperlink spans from their scrollback lines, so links stay attached to the correct row after a restore and after the scrollback limit shrinks.
 
