@@ -14,6 +14,23 @@ for security-relevant changes.
 
 ### Added
 
+## [0.7.95] — 2026-06-04
+
+### Theme
+
+Settings-dialog & menu usability fixes — readable fields at any window size, no surprise dialog closes, and menus that stay open while you toggle checkboxes (ANTS-1980/1981/1982).
+
+### Fixed
+
+- **Settings dialog clipped its input text when the window was short.** (ANTS-1980)
+  The form squeezed its text boxes and drop-downs below the height their text needed, so fields showed only a thin sliver of each line. Each tab now scrolls instead of compressing, so every field stays fully readable at any size.
+
+- **Settings dialog closed itself when you switched tabs or clicked Apply.** (ANTS-1981)
+  The app mistook its own config save for an outside edit and tore down the open dialog. It now recognises its own writes and leaves the dialog alone; genuine external edits to config.json still hot-reload.
+
+- **Checkable menu items dismissed the menu on click.** (ANTS-1982)
+  You can now flip several checkboxes (Session Logging, Visual Bell, Background Blur, …) in one visit — the menu stays open. Exclusive choices like Themes and Opacity still close on pick.
+
 ## [0.7.94] — 2026-06-04
 
 ### Theme

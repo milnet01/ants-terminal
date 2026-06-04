@@ -1,3 +1,20 @@
+ants-terminal (0.7.95-1) unstable; urgency=medium
+
+  * Fixed: the Settings dialog clipped its input text when the window was
+    short — the form compressed its text boxes and drop-downs below the
+    height their text needed. Each tab now scrolls instead of squashing,
+    so every field stays fully readable at any size. (ANTS-1980)
+  * Fixed: the Settings dialog closed itself on a tab-switch or Apply —
+    the config-file watcher mistook the dialog's own save for an external
+    edit and tore the dialog down. It now recognises self-writes; genuine
+    external edits to config.json still hot-reload. (ANTS-1981)
+  * Fixed: checkable menu items dismissed the menu on click. Independent
+    checkboxes (Session Logging, Visual Bell, …) now keep the menu open so
+    several can be toggled in one visit; exclusive radio groups (Themes,
+    Opacity, Scrollback) still close on pick. (ANTS-1982)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 04 Jun 2026 16:35:00 +0200
+
 ants-terminal (0.7.94-1) unstable; urgency=medium
 
   * Auto-switcher refinement: Settings → Claude → Home Model lets you

@@ -103,6 +103,16 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.95" date="2026-06-04">
+      <description>
+        <p>Settings-dialog and menu usability fixes (ANTS-1980/1981/1982).</p>
+        <ul>
+          <li><em>Fixed:</em> The Settings dialog clipped its input text when the window was short — the form squeezed its text boxes and drop-downs below the height their text needed. Each tab now scrolls instead of compressing, so every field stays fully readable at any size.</li>
+          <li><em>Fixed:</em> The Settings dialog closed itself when switching tabs or clicking Apply — the app mistook its own config save for an outside edit and tore down the open dialog. It now recognises its own writes; genuine external edits still hot-reload.</li>
+          <li><em>Fixed:</em> Checkable menu items dismissed the menu on click. You can now flip several checkboxes (Session Logging, Visual Bell, …) in one visit; exclusive choices like Themes still close on pick.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.94" date="2026-06-04">
       <description>
         <p>Auto-switcher refinement — chooseable home model tier lets you pick your baseline (Opus, Sonnet, Haiku), with smarter safe-downgrade signals that unlock cheaper work when the composer is idle during a long build/test wait. Plus three new MCP tools for feedback and spec file workflows across projects (ANTS-1974 + ANTS-1970..1973 + ANTS-1961/1962/1963).</p>
