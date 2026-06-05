@@ -14923,6 +14923,7 @@ subsection.
   legacy bloat). Tests: `tests/features/roadmap_query_duplicate_ids/`
   INV-7 (behavioural predicate) + INV-8 (detector wiring + cap).
   1449/1449 ctest.
+  Still observable on RetroDB through v3.6.34 (4 sessions 2026-06-05). Root cause pinned: the ID normaliser strips the trailing `.<LETTER>` sub-pass suffix before de-duping, so (a) parent vs sub-pass (`41.5` vs `41.5.B`) and (b) an Active-section headline vs its Done-index `[x]` checkbox mirror each collapse to one base ID — producing the false PASS-47-6 / 41-5 / 41-6 / 41-13 set. Each `#### Pass` heading appears once on disk. Refinement: treat the `.<LETTER>` sub-pass suffix as part of the ID (`41.5` ≠ `41.5.B`) and don't count an Active headline + its Done-index checkbox as two occurrences.
 
 - ✅ [ANTS-1689] **`test_audit_synthesis_prompt` markdown
   `[SEVERITY]` fallback parser.** ANTS-1617 (pull 18) taught the
@@ -15596,6 +15597,48 @@ subsection.
   Kind: fix.
   Lanes: mcp, roadmap.
   Source: vestige-feedback-2026-06-04.
+
+- 📋 [ANTS-2030] **`roadmap_query include_body:true` is a no-op on `#### Pass N.M` heading roadmaps — body equals headline.**
+  The reader parses `#### Pass N.M` IDs/status/headlines (ANTS-1530), but `include_body:true` returns `body == headline` instead of the prose under the heading (the `- **Status**:`/`- **Finding**:`/`- **Decision**:`/`- **Items**:` bullets), so callers fall back to a raw Read to scope work. Fix: populate `body` from the byte range between a `#### Pass N.M …` heading and the next sibling heading, reusing the ~2000-char cap + `body_truncated`. RetroDB's highest-frequency reader gap — hit on every Pass-48 session.
+  **Layman:** When a project writes its to-do list as headings instead of bullets, asking Ants for the detail under each heading returns just the title — make it return the real text.
+  Kind: enhancement.
+  Lanes: roadmapquery, roadmap-format.
+  Source: cross-session-report-2026-06-05 (RetroDB sessions 3+4, re-confirmed through v3.6.34).
+
+- 📋 [ANTS-2031] **`roadmap_log` append/annotate/flip have no `#### Pass N.M` heading-roadmap support — emit a heading writer or a `format_mismatch` warning.**
+  RetroDB's roadmap.md uses `#### Pass N.M <Title>` headings + `- **Status**:` bullets + prose, not GFM `- **headline** (id)` bullets. The reader handles it (ANTS-1530) but `roadmap_log` op:append inserts a counter-allocated GFM bullet — structurally inconsistent — so contributors use Edit for both whole-pass appends and sub-bullet status flips (the unit that changes state is often a sub-bullet, not the `#### Pass` Status line). Need (a) heading-format append, (b) sub-bullet-level annotate/flip, or at minimum a `format_mismatch` warning so the caller knows to fall back to Edit.
+  **Layman:** Ants can read heading-style to-do lists but can't write to them — add that, or at least warn the caller to edit by hand.
+  Kind: enhancement.
+  Lanes: roadmapfoldin, roadmap-format.
+  Source: cross-session-report-2026-06-05 (RetroDB sessions 2/3/4).
+
+- 📋 [ANTS-2032] **`audit_run` should land SARIF to `.audit_cache/` before serialising the inline reply + return a partial envelope on per-tool budget blowout.**
+  One RetroDB call (ruff+bandit+semgrep+gitleaks, top_findings_count=60) returned `empty reply from Ants MCP` + a terminal relaunch; not reproducible and possibly a symptom of the crash, not an audit_run fault (filed LOW). Defensive hardening regardless of root cause: (1) write the SARIF artifact to `.audit_cache/` BEFORE building the inline reply, so a too-big reply still leaves an artifact for last_audit_summary; (2) return a partial envelope with whatever tools completed rather than all-or-nothing empty when one tool (e.g. full-tree semgrep at N=60) blows a response-size/wall-clock budget.
+  **Layman:** If a big code-scan run fails to send its results, make sure it still saves them to disk and returns whatever finished, instead of coming back empty.
+  Kind: fix.
+  Lanes: auditrunner.
+  Source: cross-session-report-2026-06-05 (RetroDB session 1, LOW/possibly-environmental).
+
+- 📋 [ANTS-2033] **`model_switch_stats` should surface *why* auto-switch is off (global default / per-project opt-out / never-enabled) when disabled.**
+  When `auto_model_switch_enabled:false` the headline reads "auto-switch OFF" but not the reason, so a caller can't tell whether to flip it on. Add a small reason field (config-default vs per-project opt-out vs never-enabled). Read-only stats enhancement, independent of the auto-switcher parking (the verb stays live). The deeper firing suggestions fold under the parked-switcher sibling.
+  **Layman:** When Ants says the auto-model-picker is off, also say why, so you know whether you can turn it on.
+  Kind: enhancement.
+  Lanes: modelswitchledger, claudeintegration.
+  Source: cross-session-report-2026-06-05 (RetroDB sessions 1+2).
+
+- 💭 [ANTS-2034] **Auto-switcher firing-design feedback (turn-boundary eval, regret task-signature, calibration counterfactual) — deferred under the parked switcher.**
+  RetroDB (heavy real-work project) reports: (1) `composer_not_empty` dominated near-misses (33/24h) — a half-typed *next* prompt doesn't mean the *current* turn needs a bigger model; evaluate the switch at turn boundaries (on submit/on idle) not continuously against composer state; (2) regret records should carry a coarse task signature (tool-mix / diff-size / file-count bucket) so a 50%-on-n=4 regret rate is diagnosable, not just visible; (3) a calibration mode that evaluates+logs the counterfactual without switching, to grow the sample safely. All blocked by the auto-switcher parking (keystroke injection is the only firing mechanism and is unsafe). Captured so the design input isn't lost; revisit when a real non-interactive model-switch API ships.
+  **Layman:** Useful ideas for the auto-model-picker, saved for when we can safely turn it back on.
+  Kind: enhancement.
+  Lanes: modelautoswitch.
+  Source: cross-session-report-2026-06-05 (RetroDB sessions 1+2).
+
+- 📋 [ANTS-2035] **`duplicate_ids[]` over-reports canonical IDs with `.LETTER` sub-pass suffixes + Active/Done-index mirrors (distinct from ANTS-1688's non-ID-token facet).**
+  ANTS-1688 (shipped) fixed the detector keying on non-ID tokens (anchors/nonces) by requiring the canonical `^[A-Za-z][A-Za-z0-9_-]*-\d+$` shape. RetroDB hits a *different*, still-open facet: its IDs ARE canonical (`PASS-41-5`, `PASS-47-6`) but the normaliser strips the trailing `.<LETTER>` sub-pass suffix before de-duping, so (a) parent vs sub-pass (`41.5` vs `41.5.B`) and (b) an Active-section headline vs its Done-index `[x]` checkbox mirror each collapse to one base ID. Confirmed across 4 sessions (v3.6.28→34): false set PASS-47-6 / 41-5 / 41-6 / 41-13; each `#### Pass` heading appears once on disk. Fix: keep the `.<LETTER>` sub-pass suffix as part of the ID (`41.5` ≠ `41.5.B`), and don't count an Active headline + its Done-index checkbox as two occurrences. See the ANTS-1688 annotation breadcrumb.
+  **Layman:** Ants wrongly flags a project's sub-numbered to-do items (like 41.5 vs 41.5.B) as duplicates — it should treat them as distinct.
+  Kind: fix.
+  Lanes: roadmapquery, roadmap-format.
+  Source: cross-session-report-2026-06-05 (RetroDB, 4 sessions through v3.6.34).
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
