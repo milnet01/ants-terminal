@@ -37,6 +37,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query no longer false-flags sub-pass headings as duplicate IDs** (ANTS-2035)
+  On `#### Pass N.M` heading roadmaps, a sub-pass like `Pass 41.5.B` used to collapse to the same synthesised ID (`PASS-41-5`) as its parent `Pass 41.5`, so the duplicate-ID detector reported a false collision. Sub-passes now carry the letter suffix in their ID (`PASS-41-5-B`) and stay distinct.
+
 - **Faster, correctly-cached false-positive ledger brief assembly** (ANTS-2014)
   The prior-false-positive brief no longer re-encodes its whole buffer on every entry (was quadratic); the ledger read-cache now refreshes when the file is appended to within the same second; and byte caps over 2 GB no longer overflow.
 

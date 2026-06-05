@@ -1213,6 +1213,8 @@ if(ANTS_TESTS)
                 tests/features/audit_run_compile_commands_validation/test_audit_run_compile_commands_validation.cpp
                 # ANTS-1561 parseBullets multi-line bold headline span.
                 tests/features/roadmap_parser_multiline_bold_headline/test_roadmap_parser_multiline_bold_headline.cpp
+                # ANTS-2035 pass-heading sub-pass ID distinctness.
+                tests/features/roadmap_parser_subpass_id/test_roadmap_parser_subpass_id.cpp
                 # ANTS-1567 MCP tool prefix-tag bucket coverage.
                 tests/features/mcp_tool_prefix_tags/test_mcp_tool_prefix_tags.cpp
                 # ANTS-1568 etag-tip memo appended to etag-supporting tools.

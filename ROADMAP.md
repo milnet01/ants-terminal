@@ -15633,12 +15633,13 @@ subsection.
   Lanes: modelautoswitch.
   Source: cross-session-report-2026-06-05 (RetroDB sessions 1+2).
 
-- 📋 [ANTS-2035] **`duplicate_ids[]` over-reports canonical IDs with `.LETTER` sub-pass suffixes + Active/Done-index mirrors (distinct from ANTS-1688's non-ID-token facet).**
+- ✅ [ANTS-2035] **`duplicate_ids[]` over-reports canonical IDs with `.LETTER` sub-pass suffixes + Active/Done-index mirrors (distinct from ANTS-1688's non-ID-token facet).**
   ANTS-1688 (shipped) fixed the detector keying on non-ID tokens (anchors/nonces) by requiring the canonical `^[A-Za-z][A-Za-z0-9_-]*-\d+$` shape. RetroDB hits a *different*, still-open facet: its IDs ARE canonical (`PASS-41-5`, `PASS-47-6`) but the normaliser strips the trailing `.<LETTER>` sub-pass suffix before de-duping, so (a) parent vs sub-pass (`41.5` vs `41.5.B`) and (b) an Active-section headline vs its Done-index `[x]` checkbox mirror each collapse to one base ID. Confirmed across 4 sessions (v3.6.28→34): false set PASS-47-6 / 41-5 / 41-6 / 41-13; each `#### Pass` heading appears once on disk. Fix: keep the `.<LETTER>` sub-pass suffix as part of the ID (`41.5` ≠ `41.5.B`), and don't count an Active headline + its Done-index checkbox as two occurrences. See the ANTS-1688 annotation breadcrumb.
   **Layman:** Ants wrongly flags a project's sub-numbered to-do items (like 41.5 vs 41.5.B) as duplicates — it should treat them as distinct.
   Kind: fix.
   Lanes: roadmapquery, roadmap-format.
   Source: cross-session-report-2026-06-05 (RetroDB, 4 sessions through v3.6.34).
+  Resolved (2026-06-05): parsePassHeadingBullets now captures an optional letter-led `.<SUB>` sub-pass suffix, synthesising distinct ids (PASS-41-5 vs PASS-41-5-B) so the duplicate-ID detector no longer false-flags a parent + its `.LETTER` sub-passes. The Active/Done-index checkbox-mirror facet is not reproducible: in pass-headings mode parseBullets parses only `#### Pass` headings (GFM `[x]` checkboxes get no canonical id), so the false set is fully explained by sub-pass collapse. Regression test: tests/features/roadmap_parser_subpass_id/ (INV-1..4). Numeric third level (`Pass 3.1.2`) left in the tail unchanged (surgical scope).
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 

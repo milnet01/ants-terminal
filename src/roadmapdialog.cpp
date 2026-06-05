@@ -726,8 +726,16 @@ QString detectRoadmapFormat(const QStringList &lines) {
 QVector<RoadmapDialog::BulletRecord>
 parsePassHeadingBullets(const QStringList &lines) {
     QVector<RoadmapDialog::BulletRecord> out;
+    // ANTS-2035 — capture an optional letter-led `.<SUB>` sub-pass
+    // suffix (`41.5.B`) so a parent and its sub-passes synthesise
+    // DISTINCT ids. Before this the `.B` fell into the headline tail
+    // and `Pass 41.5` / `Pass 41.5.B` both became `PASS-41-5`, which
+    // the duplicate-ID detector flagged as a false collision. The
+    // suffix is letter-led, so a purely numeric third level
+    // (`Pass 3.1.2`) is left in the tail as before (surgical scope).
     static const QRegularExpression rxHead(
-        QStringLiteral("^####\\s+Pass\\s+(\\d+)\\.(\\d+)\\s*"
+        QStringLiteral("^####\\s+Pass\\s+(\\d+)\\.(\\d+)"
+                       "(?:\\.([A-Za-z][A-Za-z0-9]*))?\\s*"
                        "(?:\\(([^)]*)\\))?\\s*(.*?)\\s*$"));
     static const QRegularExpression rxStatusLine(
         QStringLiteral("^\\s*[-*]\\s*\\*\\*Status\\*\\*\\s*:\\s*"
@@ -752,8 +760,9 @@ parsePassHeadingBullets(const QStringList &lines) {
         if (!m.hasMatch()) continue;
         const int major = m.captured(1).toInt();
         const int minor = m.captured(2).toInt();
-        const QString meta = m.captured(3).trimmed();   // "CRITICAL, S"
-        const QString tail = m.captured(4).trimmed();
+        const QString sub  = m.captured(3).trimmed();   // "B" (sub-pass)
+        const QString meta = m.captured(4).trimmed();   // "CRITICAL, S"
+        const QString tail = m.captured(5).trimmed();
         // Status lookahead. 50-line cap keeps the scan bounded on
         // sparse docs; a heading without a Status marker within the
         // window defaults to planned (📋).
@@ -774,7 +783,9 @@ parsePassHeadingBullets(const QStringList &lines) {
             }
         }
         RoadmapDialog::BulletRecord rec;
-        rec.id     = QStringLiteral("PASS-%1-%2").arg(major).arg(minor);
+        rec.id     = sub.isEmpty()
+            ? QStringLiteral("PASS-%1-%2").arg(major).arg(minor)
+            : QStringLiteral("PASS-%1-%2-%3").arg(major).arg(minor).arg(sub);
         rec.format = QStringLiteral("pass-headings");
         if (statusWord == QStringLiteral("done") ||
             statusWord == QStringLiteral("shipped") ||
