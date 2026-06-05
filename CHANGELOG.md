@@ -28,6 +28,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Fix a use-after-free crash in the MCP/IPC server under slow or concurrent requests** (ANTS-2026)
+  The per-connection idle timer could fire during a long request (e.g. a full audit) and free the connection mid-job, after which the server wrote to freed memory and could crash — more likely with two sessions driving MCP at once. The timer now stops once a request is received, and the response write is guarded against a disconnected peer.
+
 - **Audit-engine correctness batch** (ANTS-2003)
   Clean finding messages (strip file:line:col: prefix → tidier SARIF + line-grained dedup); a semgrep run that errored is no longer reported as a clean zero-finding; ROADMAP fold-in escapes markdown so a finding can't corrupt ROADMAP.md; secret-scanner findings classified as external tools (not bare grep); git-blame refuses out-of-tree paths; user-rule trust reuses the live session config.
 

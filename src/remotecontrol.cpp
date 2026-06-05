@@ -67,6 +67,7 @@
 
 #include <QCryptographicHash>
 #include <QScopeGuard>
+#include <QPointer>
 #include <QTimer>
 
 // safeToUnlinkLocalSocket lives in secureio.h as of ANTS-1132 (0.7.66)
@@ -1203,7 +1204,8 @@ void RemoteControl::onNewConnection() {
         // persistent-session protocol and good enough for the full
         // Kitty command set (which is also one-shot).
         socket->setProperty("_buf", QByteArray());
-        connect(socket, &QLocalSocket::readyRead, this, [this, socket]() {
+        connect(socket, &QLocalSocket::readyRead, this,
+                [this, socket, idleTimer]() {
             QByteArray buf = socket->property("_buf").toByteArray();
             buf += socket->readAll();
             // Bound the in-memory buffer for defence-in-depth against
@@ -1218,10 +1220,23 @@ void RemoteControl::onNewConnection() {
             int nlIdx = buf.indexOf('\n');
             if (nlIdx < 0) return;  // partial line, wait for more
 
+            // ANTS-2026 — a complete request is in hand: stop the slow-loris
+            // idle timer before dispatching. dispatch() can run a nested event
+            // loop (audit_run pumps QProcesses; any > 5 s verb), during which a
+            // still-armed timer would fire timeout -> socket->abort() ->
+            // disconnected -> deleteLater(), and that deleteLater is processed
+            // BY the nested loop — freeing this socket before the write below.
+            idleTimer->stop();
+
             const QByteArray line = buf.left(nlIdx);
             QJsonParseError err;
             QJsonDocument req = QJsonDocument::fromJson(line, &err);
             QJsonDocument resp;
+            // ANTS-2026 — defence in depth: the peer can still disconnect during
+            // a nested-loop dispatch, freeing the socket via the disconnected ->
+            // deleteLater chain. A QPointer lets the post-dispatch write bail
+            // instead of touching a dangling pointer.
+            QPointer<QLocalSocket> guard(socket);
             if (err.error != QJsonParseError::NoError || !req.isObject()) {
                 QJsonObject e;
                 e["ok"] = false;
@@ -1231,6 +1246,8 @@ void RemoteControl::onNewConnection() {
             } else {
                 resp = dispatch(req.object());
             }
+            if (!guard || socket->state() != QLocalSocket::ConnectedState)
+                return;
             socket->write(resp.toJson(QJsonDocument::Compact) + '\n');
             socket->flush();
             socket->disconnectFromServer();

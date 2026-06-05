@@ -9129,12 +9129,13 @@ clips input text), and the auto-switcher interrupting active work.
   Lanes: build, packaging.
   Source: in-session-2026-06-05.
 
-- 📋 [ANTS-2026] **RemoteControl IPC: the 5 s idle timer fires mid-dispatch during a nested-event-loop verb → socket freed under it → post-dispatch write is a UAF.**
+- ✅ [ANTS-2026] **RemoteControl IPC: the 5 s idle timer fires mid-dispatch during a nested-event-loop verb → socket freed under it → post-dispatch write is a UAF.**
   remotecontrol.cpp onNewConnection: idleTimer (5 s, slow-loris guard) is started per connection but NEVER stopped once a complete request line arrives. A verb whose dispatch() runs a nested QEventLoop (audit_run's process pump; also any >5 s verb) lets the timer fire mid-dispatch -> socket->abort() -> disconnected -> socket->deleteLater(). deleteLater() called inside the nested loop IS processed by that nested loop (Qt loop-level semantics), so the QLocalSocket is destroyed before dispatch() returns; the readyRead lambda then runs socket->write()/flush()/disconnectFromServer() on a freed pointer. The lambda captures `socket` as a raw pointer, so there is no guard. Matches the user's concurrent-session report (RetroDB + this session both driving MCP; a slow gitleaks audit_run on the pre-ANTS-2016 build walked build/ for ~68 s, far past the 5 s window). Fix: (1) idleTimer->stop() as soon as a complete line is parsed (its job is bounding time-to-first-complete-request, not dispatch time); (2) defence-in-depth — capture QPointer<QLocalSocket> and bail before the write if null, and gate the write on state()==ConnectedState. Distinct from ANTS-2025 (in-place relink) and ANTS-2024 (theme UAF). Needs a repro: a verb that sleeps >5 s in a nested loop while a client stays connected.
   **Layman:** When the terminal is busy on a long MCP request (like a full audit) and another session is also talking to it, a safety timer can throw away the connection mid-job, and the app then writes to freed memory and can crash. More likely with two Claude sessions at once.
   Kind: fix.
   Lanes: remotecontrol, mcp.
   Source: in-session-2026-06-05.
+  Resolved (2026-06-05): stop the idle (slow-loris) timer as soon as a complete request line is parsed — it bounds time-to-first-request, not dispatch time, so it can no longer fire during a nested-event-loop verb (audit_run) and abort()+deleteLater() the socket mid-dispatch. Defence-in-depth: capture a QPointer<QLocalSocket> and gate the post-dispatch write on (guard && state()==ConnectedState) so a peer disconnect during a nested loop can't drive a UAF either. All 21 RemoteControl tests pass.
 
 ### 🔍 Indie-review #7 + audit fold-in (2026-06-04)
 
