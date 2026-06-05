@@ -14,6 +14,7 @@
 #include <QJsonDocument>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRadioButton>
@@ -281,9 +282,24 @@ void TestAuditDialog::onAllReportsCollected(
     // Write each verbatim report under .audit_cache/test_audit_<token>/.
     const QString absDir = projectCwd() + QChar('/') + reportsRelDir();
     QDir().mkpath(absDir);
-    for (auto it = reportsById.constBegin(); it != reportsById.constEnd(); ++it)
-        writeReport(absDir + QChar('/') + it.key() + QStringLiteral(".md"),
-                    it.value());
+    // ANTS-1990 — a failed report write (disk full, permission) must not be
+    // discarded silently: the synthesis below reads these files back, so a lost
+    // write would corrupt the summary with no warning. Collect failures.
+    QStringList failedReports;
+    for (auto it = reportsById.constBegin(); it != reportsById.constEnd(); ++it) {
+        if (!writeReport(absDir + QChar('/') + it.key() + QStringLiteral(".md"),
+                         it.value()))
+            failedReports << it.key();
+    }
+    if (!failedReports.isEmpty()) {
+        QMessageBox::warning(
+            this, tr("Test Audit"),
+            tr("Could not write %1 of %2 report file(s) to %3:\n  %4\n"
+               "The synthesis below may be incomplete.")
+                .arg(failedReports.size())
+                .arg(reportsById.size())
+                .arg(reportsRelDir(), failedReports.join(QStringLiteral(", "))));
+    }
 
     TestAuditEngine::SynthRequest sreq;
     sreq.callerCwd      = projectCwd();

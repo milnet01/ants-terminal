@@ -10,6 +10,7 @@
 #include <QEvent>
 #include <QLabel>
 #include <QLayout>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QTabWidget>
@@ -52,7 +53,12 @@ ReviewDialogBase::ReviewDialogBase(QString projectCwd, QWidget *parent,
     m_contentLayout->setSpacing(6);
 
     m_statusLabel = new QLabel(this);
-    m_statusLabel->setStyleSheet("color: gray; font-size: 11px;");
+    // ANTS-2011 — D1: no hard-coded colour. A literal "gray" ignores the active
+    // theme and doesn't update on a theme change; use the muted PlaceholderText
+    // palette role (theme-derived, auto-updates) and keep only the size in the
+    // stylesheet.
+    m_statusLabel->setForegroundRole(QPalette::PlaceholderText);
+    m_statusLabel->setStyleSheet(QStringLiteral("font-size: 11px;"));
     m_statusLabel->setWordWrap(true);
     m_contentLayout->addWidget(m_statusLabel);
 
@@ -174,7 +180,14 @@ void ReviewDialogBase::setLanes(const QList<ReviewLane> &lanes) {
     m_lanes = lanes;
     m_reports = preserved;
     if (m_laneTabs) {
-        m_laneTabs->clear();
+        // ANTS-2011 — QTabWidget::clear() detaches the pages from the tab bar
+        // but leaves them parented to the widget, so every re-partition leaked
+        // the old QTextEdit pages. Delete them explicitly.
+        while (m_laneTabs->count() > 0) {
+            QWidget *page = m_laneTabs->widget(0);
+            m_laneTabs->removeTab(0);
+            delete page;
+        }
         for (const ReviewLane &lane : m_lanes) {
             auto *view = new QTextEdit(m_laneTabs);
             view->setReadOnly(true);
@@ -185,6 +198,9 @@ void ReviewDialogBase::setLanes(const QList<ReviewLane> &lanes) {
             m_laneTabs->addTab(view, lane.title.isEmpty() ? lane.id : lane.title);
         }
     }
+    // ANTS-2011 — a fresh partition is a new set of findings to fold in, so
+    // re-enable the button that insertFoldInBlock disables after a fold-in.
+    if (m_foldInBtn) m_foldInBtn->setEnabled(true);
 }
 
 void ReviewDialogBase::startDispatch() {
@@ -277,5 +293,23 @@ QList<int> ReviewDialogBase::allocateFoldInIds(int n) {
 
 bool ReviewDialogBase::insertFoldInBlock(const QString &heading,
                                          const QString &block) {
-    return RoadmapFoldIn::insertBlock(m_projectCwd, heading, block);
+    const bool ok = RoadmapFoldIn::insertBlock(m_projectCwd, heading, block);
+    // ANTS-1990 — a failed write (heading not found verbatim, disk full, lock
+    // contention) must not silently look like success. The four performFoldIn
+    // callsites previously discarded this bool, so the user pressed "Fold into
+    // ROADMAP" and nothing happened with no feedback. Surface it here, at the
+    // single choke point.
+    if (!ok) {
+        QMessageBox::warning(
+            this, tr("Fold into ROADMAP"),
+            tr("Could not write the fold-in block to ROADMAP.md.\n"
+               "Check that the release heading exists verbatim:\n  %1")
+                .arg(heading));
+    } else if (m_foldInBtn) {
+        // ANTS-2011 — disable after a successful fold-in so a double-click
+        // can't insert the same block twice (wasting roadmap IDs). Re-enabled
+        // when a fresh partition renders (see the lane-tab rebuild).
+        m_foldInBtn->setEnabled(false);
+    }
+    return ok;
 }

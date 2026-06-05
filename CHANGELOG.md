@@ -28,6 +28,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Review-dialog polish: no double fold-in, no per-repartition leak, themed status text** (ANTS-2011)
+  The "Fold into ROADMAP" button disables after a successful fold-in (a double-click no longer inserts the block twice); re-partitioning no longer leaks the old result panes; the status text follows the active theme instead of a hard-coded grey.
+
+- **Review dialogs surface fold-in / report write failures instead of failing silently** (ANTS-1990)
+  "Fold into ROADMAP" now shows a warning if the write fails (e.g. the release heading isn't found) instead of silently doing nothing; the test-audit dialog warns when a report file can't be written before it's read back for the summary.
+
 - **Audit auto-fix no longer deletes "unused" includes; edits are crash-durable** (ANTS-2006)
   cppcheck's unusedInclude is no longer auto-removed (its Qt false-positive rate could delete a needed header and break the build); auto-fix edits now fsync the directory so a crash can't lose a committed change.
 
