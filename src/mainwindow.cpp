@@ -4768,6 +4768,10 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("apply_edits",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdApplyEdits));
+    // ANTS-1637 — codebase_index: pre-computed project structural map.
+    m_claudeIntegration->registerToolProvider("codebase_index",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdCodebaseIndex));
     // ANTS-1961 / ANTS-1962 — cross-session feedback-file read + write.
     m_claudeIntegration->registerToolProvider("feedback_query",
         ClaudeIntegration::CallerCwdContract::Required,

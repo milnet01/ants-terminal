@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Project-wide codebase index — pre-computed structural map MCP serves to clients.** (ANTS-1637)
+  Today every Claude session starts from zero — it has to grep the project to figure out which file does what. We could build a small JSON index (where every class lives, what files belong to which feature) once and let every session read it instantly. Like a book's index page, kept fresh by watching for file changes.
+
 - **apply_edits MCP tool — apply N {path, old, new} edits across M project files in one atomic-per-file call** (ANTS-2022)
   Collapses a multi-site sweep's N native Edit round-trips into one call with per-edit skipped[] accounting (not_found / ambiguous / too_large / commit_failed) and applied[] per file. caller_cwd-Required; a path escaping the project root fails the whole call (bad_path, fail-closed); each touched file is written atomically (QSaveFile + fsyncParentDir).
 

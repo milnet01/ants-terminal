@@ -156,7 +156,15 @@ head-anchored incremental byte cap, caller_cwd-Required (ANTS-2021);
 one atomic-per-file call (pure `ApplyEdits::applyToContent` + `QSaveFile` +
 `fsyncParentDir`), per-edit `skipped[]` (not_found / ambiguous / too_large /
 commit_failed), fail-closed `bad_path` on root escape, caller_cwd-Required
-(ANTS-2022); `feedback_query` /
+(ANTS-2022); `codebase_index` serves a pre-computed project structural map
+(symbols-per-file + lane→files) so a session stops re-deriving shape with
+grep/`file_outline`/CLAUDE.md reads — one verb, selectors `symbol` /
+`lane` / `file_path` / none→summary (≥2 → `bad_args`; a miss is
+`ok:true,found:false`, never a code), lazy disk cache at
+`~/.cache/ants-terminal/codebase-index/<cwdHash>.json` (cold-built on
+absent/unparseable/version|root-mismatch, mtime-incremental refresh),
+reuses `FileOutline` + `SubsystemMap`, ETag-304 + `fields`, caller_cwd-Required
+(ANTS-1637); `feedback_query` /
 `feedback_log` read/write the `*_Ants_MCP_Feedback.md` files via the pure
 `FeedbackFile` module (delta parse + block render; ANTS-1961/1962),
 suffix-guarded on `_Ants_MCP_Feedback.md`, append-only at EOF; `spec_log`

@@ -18,6 +18,7 @@ bool isFieldProjectionTool(const QString &toolName) {
         || toolName == QStringLiteral("git_state")
         || toolName == QStringLiteral("read_log")            // ANTS-1855
         || toolName == QStringLiteral("read_region")         // ANTS-2021
+        || toolName == QStringLiteral("codebase_index")      // ANTS-1637
         || toolName == QStringLiteral("model_switch_stats"); // ANTS-1735
 }
 

@@ -1,0 +1,503 @@
+// ANTS-1637 — codebase_index pure helper. Qt6::Core-only, FS-reading, no
+// widgets / no subprocess (mirrors findsources.cpp). See docs/specs/ANTS-1637.md.
+
+#include "codebaseindex.h"
+
+#include "fileoutline.h"
+#include "subsystemmap.h"
+#include "sessionmemoryengine.h"
+
+#include <QDir>
+#include <QDirIterator>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QMap>
+#include <QRegularExpression>
+#include <QSaveFile>
+#include <QSet>
+#include <QStandardPaths>
+
+namespace CodebaseIndex {
+
+namespace {
+
+// Indexed-suffix set (§ 2.2): the walk admits only these.
+bool admittedSuffix(const QString &suffixLower) {
+    return suffixLower == QLatin1String("cpp") || suffixLower == QLatin1String("cc")
+        || suffixLower == QLatin1String("h")   || suffixLower == QLatin1String("hpp")
+        || suffixLower == QLatin1String("hh")  || suffixLower == QLatin1String("py");
+}
+
+QString roleFor(const QString &relPath, const QString &basename) {
+    const QString lower = basename.toLower();
+    if (lower.endsWith(QLatin1String(".h")) || lower.endsWith(QLatin1String(".hpp"))
+        || lower.endsWith(QLatin1String(".hh")))
+        return QStringLiteral("header");
+    if (relPath.startsWith(QLatin1String("tests/"))
+        || basename.startsWith(QLatin1String("test_")))
+        return QStringLiteral("test");
+    return QStringLiteral("impl");
+}
+
+// Lane for one file. (1) longest module-map lane name the basename starts with
+// (the live `subsystem op=files` src/<lane>* prefix rule); (2) else the
+// basename stem when it ends with a family word (groups testauditengine.{cpp,h}
+// — the ANTS-1636 gap); (3) else "".
+QString laneFor(const QString &basename, const QStringList &laneNames) {
+    QString best;
+    for (const QString &n : laneNames)
+        if (!n.isEmpty() && basename.startsWith(n) && n.size() > best.size())
+            best = n;
+    if (!best.isEmpty()) return best;
+
+    static const QRegularExpression rx(QStringLiteral(
+        "^[a-z0-9]+(?:engine|dialog|widget|cache|helper)\\.(?:cpp|cc|h|hpp|hh)$"));
+    if (rx.match(basename).hasMatch()) {
+        const int dot = basename.lastIndexOf(QLatin1Char('.'));
+        return dot > 0 ? basename.left(dot) : basename;
+    }
+    return QString();
+}
+
+// Lane names from the canonical map source (docs/subsystems.md|CLAUDE.md). Read
+// + parsed fresh (not the SubsystemMap static cache) so a refresh in the same
+// process sees an edited fixture.
+QStringList laneNamesFor(const QString &rootCanonical) {
+    const QString src = SubsystemMap::resolveSource(
+        rootCanonical + QStringLiteral("/CLAUDE.md"));
+    QFile f(src);
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    const QString content = QString::fromUtf8(f.readAll());
+    QStringList names;
+    for (const SubsystemMap::Lane &l : SubsystemMap::parse(content))
+        if (!l.name.isEmpty()) names << l.name;
+    return names;
+}
+
+// Deterministic candidate list: src/ (sorted) then tests/ (sorted), relative
+// paths, admitted suffixes only.
+QStringList walkSubtree(const QString &rootCanonical, const QString &sub) {
+    QStringList out;
+    const QString base = rootCanonical + QLatin1Char('/') + sub;
+    if (!QDir(base).exists()) return out;
+    QDirIterator it(base, QDir::Files | QDir::NoSymLinks,
+                    QDirIterator::Subdirectories);
+    const int prefix = rootCanonical.size() + 1;  // strip "<root>/"
+    while (it.hasNext()) {
+        it.next();
+        if (!admittedSuffix(it.fileInfo().suffix().toLower())) continue;
+        out << it.filePath().mid(prefix);
+    }
+    out.sort();
+    return out;
+}
+
+QStringList candidates(const QString &rootCanonical) {
+    return walkSubtree(rootCanonical, QStringLiteral("src"))
+         + walkSubtree(rootCanonical, QStringLiteral("tests"));
+}
+
+FileEntry outlineFile(const QString &rootCanonical, const QString &rel,
+                      const QStringList &laneNames) {
+    FileEntry fe;
+    fe.path = rel;
+    const QString abs = rootCanonical + QLatin1Char('/') + rel;
+    const QFileInfo fi(abs);
+    fe.mtimeMs = fi.lastModified().toMSecsSinceEpoch();
+    const QString base = fi.fileName();
+    fe.role = roleFor(rel, base);
+    fe.lane = laneFor(base, laneNames);
+
+    const QJsonObject ol = FileOutline::compute(
+        abs, FileOutline::Mode::Auto, /*includeDocComment=*/false,
+        /*maxSymbols=*/1000);
+    fe.language = ol.value(QStringLiteral("language")).toString();
+    fe.lines = ol.value(QStringLiteral("total_lines")).toInt();
+    const QJsonArray syms = ol.value(QStringLiteral("symbols")).toArray();
+    fe.symbols.reserve(syms.size());
+    for (const QJsonValue &v : syms) {
+        const QJsonObject o = v.toObject();
+        Symbol s;
+        s.name = o.value(QStringLiteral("name")).toString();
+        s.line = o.value(QStringLiteral("line")).toInt();
+        s.kind = o.value(QStringLiteral("kind")).toString();
+        fe.symbols << s;
+    }
+    return fe;
+}
+
+// Rough serialised-byte estimate for the incremental cache ceiling (INV-15).
+qint64 estimateEntryBytes(const FileEntry &fe) {
+    qint64 n = fe.path.size() + fe.language.size() + fe.role.size()
+             + fe.lane.size() + 80;
+    for (const Symbol &s : fe.symbols) n += s.name.size() + s.kind.size() + 40;
+    return n;
+}
+
+void rebuildLaneToFiles(Index &idx) {
+    idx.laneToFiles.clear();
+    for (const FileEntry &fe : idx.files)
+        if (!fe.lane.isEmpty()) idx.laneToFiles[fe.lane] << fe.path;
+    for (auto it = idx.laneToFiles.begin(); it != idx.laneToFiles.end(); ++it)
+        it.value().sort();
+}
+
+const FileEntry *findFile(const Index &idx, const QString &rel) {
+    for (const FileEntry &fe : idx.files)
+        if (fe.path == rel) return &fe;
+    return nullptr;
+}
+
+QJsonObject symbolJson(const Symbol &s) {
+    QJsonObject o;
+    o[QStringLiteral("name")] = s.name;
+    o[QStringLiteral("line")] = s.line;
+    o[QStringLiteral("kind")] = s.kind;
+    return o;
+}
+
+QJsonArray symbolsJson(const QVector<Symbol> &syms) {
+    QJsonArray a;
+    for (const Symbol &s : syms) a.append(symbolJson(s));
+    return a;
+}
+
+QJsonObject fileEntryJson(const FileEntry &fe, bool withLane) {
+    QJsonObject o;
+    o[QStringLiteral("path")]     = fe.path;
+    o[QStringLiteral("role")]     = fe.role;
+    o[QStringLiteral("language")] = fe.language;
+    o[QStringLiteral("lines")]    = fe.lines;
+    if (withLane) o[QStringLiteral("lane")] = fe.lane;
+    o[QStringLiteral("symbols")]  = symbolsJson(fe.symbols);
+    return o;
+}
+
+}  // namespace
+
+qint64 mapSourceMtimeMs(const QString &rootCanonical) {
+    const QString src = SubsystemMap::resolveSource(
+        rootCanonical + QStringLiteral("/CLAUDE.md"));
+    const QFileInfo fi(src);
+    return fi.exists() ? fi.lastModified().toMSecsSinceEpoch() : 0;
+}
+
+Index build(const QString &rootCanonical, qint64 generatedAtMs,
+            const Options &opts) {
+    Index idx;
+    idx.version          = kIndexVersion;
+    idx.rootCanonical    = rootCanonical;
+    idx.generatedAtMs    = generatedAtMs;
+    idx.mapSourceMtimeMs = mapSourceMtimeMs(rootCanonical);
+
+    const QStringList laneNames = laneNamesFor(rootCanonical);
+    const QStringList cands     = candidates(rootCanonical);
+
+    qint64 budget = 0;
+    for (const QString &rel : cands) {
+        if (idx.files.size() >= opts.maxIndexFiles) { idx.filesTruncated = true; break; }
+        FileEntry fe = outlineFile(rootCanonical, rel, laneNames);
+        const qint64 est = estimateEntryBytes(fe);
+        if (!idx.files.isEmpty() && budget + est > opts.maxCacheBytes) {
+            idx.filesTruncated = true; break;
+        }
+        budget += est;
+        idx.files << fe;
+    }
+    rebuildLaneToFiles(idx);
+    return idx;
+}
+
+StaleSet staleFiles(const Index &prev, const QString &rootCanonical,
+                    qint64 currentMapSourceMtimeMs) {
+    StaleSet ss;
+    ss.mapSourceChanged = currentMapSourceMtimeMs != prev.mapSourceMtimeMs;
+
+    QSet<QString> prevPaths;
+    QMap<QString, qint64> prevMtime;
+    for (const FileEntry &fe : prev.files) {
+        prevPaths.insert(fe.path);
+        prevMtime.insert(fe.path, fe.mtimeMs);
+    }
+
+    QSet<QString> curSet;
+    for (const QString &rel : candidates(rootCanonical)) {
+        curSet.insert(rel);
+        const qint64 m = QFileInfo(rootCanonical + QLatin1Char('/') + rel)
+                             .lastModified().toMSecsSinceEpoch();
+        if (!prevPaths.contains(rel)) ss.added << rel;
+        else if (prevMtime.value(rel) != m) ss.changed << rel;
+    }
+    for (const QString &p : prevPaths)
+        if (!curSet.contains(p)) ss.removed << p;
+    return ss;
+}
+
+Index refresh(const Index &prev, const QString &rootCanonical,
+              qint64 generatedAtMs, qint64 currentMapSourceMtimeMs,
+              const Options &opts, int *refreshedOut) {
+    const StaleSet ss = staleFiles(prev, rootCanonical, currentMapSourceMtimeMs);
+
+    QSet<QString> reoutline;
+    for (const QString &p : ss.changed) reoutline.insert(p);
+    for (const QString &p : ss.added)   reoutline.insert(p);
+
+    QMap<QString, FileEntry> byPath;
+    for (const FileEntry &fe : prev.files) byPath.insert(fe.path, fe);
+
+    const QStringList laneNames = laneNamesFor(rootCanonical);
+
+    Index idx;
+    idx.version          = kIndexVersion;
+    idx.rootCanonical    = rootCanonical;
+    idx.generatedAtMs    = generatedAtMs;
+    idx.mapSourceMtimeMs = currentMapSourceMtimeMs;
+
+    qint64 budget = 0;
+    for (const QString &rel : candidates(rootCanonical)) {
+        if (idx.files.size() >= opts.maxIndexFiles) { idx.filesTruncated = true; break; }
+        FileEntry fe;
+        if (reoutline.contains(rel) || !byPath.contains(rel)) {
+            fe = outlineFile(rootCanonical, rel, laneNames);
+        } else {
+            fe = byPath.value(rel);
+            if (ss.mapSourceChanged)  // re-derive lane only; keep symbols
+                fe.lane = laneFor(QFileInfo(rel).fileName(), laneNames);
+        }
+        const qint64 est = estimateEntryBytes(fe);
+        if (!idx.files.isEmpty() && budget + est > opts.maxCacheBytes) {
+            idx.filesTruncated = true; break;
+        }
+        budget += est;
+        idx.files << fe;
+    }
+    rebuildLaneToFiles(idx);
+    if (refreshedOut) *refreshedOut = ss.changed.size() + ss.added.size();
+    return idx;
+}
+
+QJsonObject query(const Index &idx, const QueryParams &params,
+                  int refreshedFiles, const QString &cachePath,
+                  const Options &opts) {
+    const int n = (!params.symbol.isEmpty() ? 1 : 0)
+                + (!params.lane.isEmpty()   ? 1 : 0)
+                + (!params.filePath.isEmpty() ? 1 : 0);
+    if (n >= 2) {
+        QJsonObject e;
+        e[QStringLiteral("ok")]    = false;
+        e[QStringLiteral("code")]  = QStringLiteral("bad_args");
+        e[QStringLiteral("error")] = QStringLiteral(
+            "codebase_index: at most one of {symbol, lane, file_path}");
+        return e;
+    }
+
+    QJsonObject env;
+    env[QStringLiteral("ok")]              = true;
+    env[QStringLiteral("generated_at_ms")] = idx.generatedAtMs;
+    env[QStringLiteral("file_count")]      = idx.files.size();
+    env[QStringLiteral("refreshed_files")] = refreshedFiles;
+    env[QStringLiteral("cache_path")]      = cachePath;
+    env[QStringLiteral("files_truncated")] = idx.filesTruncated;
+    bool symbolsTruncated = false;
+
+    if (n == 0) {
+        // Summary.
+        QMap<QString, int> laneCounts, langCounts, roleCounts;
+        for (const FileEntry &fe : idx.files) {
+            if (!fe.lane.isEmpty()) laneCounts[fe.lane]++;
+            langCounts[fe.language.isEmpty() ? QStringLiteral("unknown") : fe.language]++;
+            roleCounts[fe.role]++;
+        }
+        QJsonArray lanes;
+        for (auto it = laneCounts.cbegin(); it != laneCounts.cend(); ++it) {
+            QJsonObject l;
+            l[QStringLiteral("lane")]       = it.key();
+            l[QStringLiteral("file_count")] = it.value();
+            lanes.append(l);
+        }
+        QJsonObject langs, roles;
+        for (auto it = langCounts.cbegin(); it != langCounts.cend(); ++it)
+            langs[it.key()] = it.value();
+        for (auto it = roleCounts.cbegin(); it != roleCounts.cend(); ++it)
+            roles[it.key()] = it.value();
+        env[QStringLiteral("lane_count")] = laneCounts.size();
+        env[QStringLiteral("lanes")]      = lanes;
+        env[QStringLiteral("languages")]  = langs;
+        env[QStringLiteral("roles")]      = roles;
+    } else if (!params.symbol.isEmpty()) {
+        QJsonArray matches;
+        for (const FileEntry &fe : idx.files)
+            for (const Symbol &s : fe.symbols)
+                if (s.name == params.symbol) {
+                    QJsonObject m;
+                    m[QStringLiteral("path")] = fe.path;
+                    m[QStringLiteral("line")] = s.line;
+                    m[QStringLiteral("kind")] = s.kind;
+                    matches.append(m);
+                }
+        env[QStringLiteral("found")]   = !matches.isEmpty();
+        env[QStringLiteral("matches")] = matches;
+    } else if (!params.lane.isEmpty()) {
+        if (!idx.laneToFiles.contains(params.lane)) {
+            QJsonArray names;
+            for (auto it = idx.laneToFiles.cbegin(); it != idx.laneToFiles.cend(); ++it)
+                names.append(it.key());
+            env[QStringLiteral("found")] = false;
+            env[QStringLiteral("lane")]  = params.lane;
+            env[QStringLiteral("lanes")] = names;
+        } else {
+            env[QStringLiteral("found")] = true;
+            env[QStringLiteral("lane")]  = params.lane;
+            QJsonArray files;
+            int emitted = 0;
+            for (const QString &rel : idx.laneToFiles.value(params.lane)) {
+                const FileEntry *fe = findFile(idx, rel);
+                if (!fe) continue;
+                QJsonObject fo;
+                fo[QStringLiteral("path")]     = fe->path;
+                fo[QStringLiteral("role")]     = fe->role;
+                fo[QStringLiteral("language")] = fe->language;
+                fo[QStringLiteral("lines")]    = fe->lines;
+                QJsonArray syms;
+                for (const Symbol &s : fe->symbols) {
+                    if (emitted >= opts.maxQuerySymbols) { symbolsTruncated = true; break; }
+                    syms.append(symbolJson(s));
+                    ++emitted;
+                }
+                fo[QStringLiteral("symbols")] = syms;
+                files.append(fo);
+            }
+            env[QStringLiteral("files")] = files;
+        }
+    } else {  // file_path
+        const FileEntry *fe = findFile(idx, params.filePath);
+        env[QStringLiteral("found")] = fe != nullptr;
+        if (fe) env[QStringLiteral("entry")] = fileEntryJson(*fe, /*withLane=*/true);
+    }
+
+    env[QStringLiteral("symbols_truncated")] = symbolsTruncated;
+    return env;
+}
+
+QJsonObject toJson(const Index &idx) {
+    QJsonObject o;
+    o[QStringLiteral("version")]          = idx.version;
+    o[QStringLiteral("root_canonical")]   = idx.rootCanonical;
+    o[QStringLiteral("generated_at_ms")]  = idx.generatedAtMs;
+    o[QStringLiteral("map_source_mtime_ms")] = idx.mapSourceMtimeMs;
+    o[QStringLiteral("files_truncated")]  = idx.filesTruncated;
+    QJsonArray files;
+    for (const FileEntry &fe : idx.files) {
+        QJsonObject f;
+        f[QStringLiteral("path")]     = fe.path;
+        f[QStringLiteral("language")] = fe.language;
+        f[QStringLiteral("role")]     = fe.role;
+        f[QStringLiteral("lane")]     = fe.lane;
+        f[QStringLiteral("lines")]    = fe.lines;
+        f[QStringLiteral("mtime_ms")] = fe.mtimeMs;
+        f[QStringLiteral("symbols")]  = symbolsJson(fe.symbols);
+        files.append(f);
+    }
+    o[QStringLiteral("files")] = files;
+    return o;
+}
+
+Index fromJson(const QJsonObject &obj) {
+    Index idx;
+    idx.version          = obj.value(QStringLiteral("version")).toInt();
+    idx.rootCanonical    = obj.value(QStringLiteral("root_canonical")).toString();
+    idx.generatedAtMs    = static_cast<qint64>(
+        obj.value(QStringLiteral("generated_at_ms")).toDouble());
+    idx.mapSourceMtimeMs = static_cast<qint64>(
+        obj.value(QStringLiteral("map_source_mtime_ms")).toDouble());
+    idx.filesTruncated   = obj.value(QStringLiteral("files_truncated")).toBool();
+    for (const QJsonValue &v : obj.value(QStringLiteral("files")).toArray()) {
+        const QJsonObject f = v.toObject();
+        FileEntry fe;
+        fe.path     = f.value(QStringLiteral("path")).toString();
+        fe.language = f.value(QStringLiteral("language")).toString();
+        fe.role     = f.value(QStringLiteral("role")).toString();
+        fe.lane     = f.value(QStringLiteral("lane")).toString();
+        fe.lines    = f.value(QStringLiteral("lines")).toInt();
+        fe.mtimeMs  = static_cast<qint64>(f.value(QStringLiteral("mtime_ms")).toDouble());
+        for (const QJsonValue &sv : f.value(QStringLiteral("symbols")).toArray()) {
+            const QJsonObject so = sv.toObject();
+            Symbol s;
+            s.name = so.value(QStringLiteral("name")).toString();
+            s.line = so.value(QStringLiteral("line")).toInt();
+            s.kind = so.value(QStringLiteral("kind")).toString();
+            fe.symbols << s;
+        }
+        idx.files << fe;
+    }
+    rebuildLaneToFiles(idx);
+    return idx;
+}
+
+QString cachePathFor(const QString &rootCanonical) {
+    const QString base = QStandardPaths::writableLocation(
+        QStandardPaths::GenericCacheLocation);
+    return base + QStringLiteral("/ants-terminal/codebase-index/")
+         + SessionMemoryEngine::cwdHash(rootCanonical) + QStringLiteral(".json");
+}
+
+QJsonObject serve(const QString &rootCanonical, qint64 nowMs,
+                  const QueryParams &params, const Options &opts,
+                  const QString &cachePathOverride) {
+    const QString cachePath =
+        cachePathOverride.isEmpty() ? cachePathFor(rootCanonical) : cachePathOverride;
+    const qint64 curMapMtime = mapSourceMtimeMs(rootCanonical);
+
+    Index idx;
+    int refreshed = 0;
+    bool needWrite = false;
+
+    // Load + validate the cache (cold-build triggers: absent / unparseable /
+    // version mismatch / root mismatch — INV-13).
+    bool haveValid = false;
+    Index prev;
+    {
+        QFile f(cachePath);
+        if (f.open(QIODevice::ReadOnly)) {
+            QJsonParseError pe{};
+            const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &pe);
+            if (pe.error == QJsonParseError::NoError && doc.isObject()) {
+                Index loaded = fromJson(doc.object());
+                if (loaded.version == kIndexVersion
+                    && loaded.rootCanonical == rootCanonical) {
+                    prev = loaded;
+                    haveValid = true;
+                }
+            }
+        }
+    }
+
+    if (haveValid) {
+        const StaleSet ss = staleFiles(prev, rootCanonical, curMapMtime);
+        if (ss.any()) {
+            idx = refresh(prev, rootCanonical, nowMs, curMapMtime, opts, &refreshed);
+            needWrite = true;
+        } else {
+            idx = prev;  // fully warm — no write, generated_at_ms preserved
+        }
+    } else {
+        idx = build(rootCanonical, nowMs, opts);
+        refreshed = idx.files.size();
+        needWrite = true;
+    }
+
+    if (needWrite) {
+        QDir().mkpath(QFileInfo(cachePath).absolutePath());
+        QSaveFile sf(cachePath);
+        if (sf.open(QIODevice::WriteOnly)) {
+            sf.write(QJsonDocument(toJson(idx)).toJson(QJsonDocument::Compact));
+            sf.commit();
+        }
+    }
+
+    return query(idx, params, refreshed, cachePath, opts);
+}
+
+}  // namespace CodebaseIndex

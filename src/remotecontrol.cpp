@@ -8,6 +8,7 @@
 #include "readlog.h"
 #include "readregion.h"
 #include "applyedits.h"
+#include "codebaseindex.h"
 #include "speclog.h"             // ANTS-1963
 #include "modelswitchledger.h"   // ANTS-1735 — model_switch_stats aggregation
 #include "modelnearmissledger.h" // ANTS-1894 — model_switch_stats near-miss arm
@@ -6488,6 +6489,49 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
 }
 
 }  // namespace
+
+// ANTS-1637 — codebase_index: serve a pre-computed project structural map.
+// caller_cwd Required. A `file_path` selector routes through PathValidation
+// (bad_path on escape, incl. an in-root symlink resolving outside root). The
+// disk cache + lazy refresh live in CodebaseIndex::serve.
+QJsonDocument RemoteControl::cmdCodebaseIndex(const QJsonObject &req) {
+    const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
+    const QString sentinelRoot = ants::expandGlobalConfigSentinel(callerRaw);
+    const QString rootCanonical =
+        !sentinelRoot.isEmpty() ? sentinelRoot
+                                : resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("codebase_index: no focused project");
+        o["code"]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
+
+    CodebaseIndex::QueryParams params;
+    params.symbol = req.value(QStringLiteral("symbol")).toString();
+    params.lane   = req.value(QStringLiteral("lane")).toString();
+
+    const QString rawFilePath = req.value(QStringLiteral("file_path")).toString();
+    if (!rawFilePath.isEmpty()) {
+        const auto check = PathValidation::validatePath(
+            rawFilePath, rootCanonical,
+            QStringLiteral("codebase_index"), QStringLiteral("file_path"));
+        if (check.bad) return QJsonDocument(check.err);
+        // Project-relative form for the index lookup (empty .resolved = a
+        // not-yet-existing in-root path, still a valid soft-miss query).
+        QString rel = check.resolved.isEmpty() ? rawFilePath : check.resolved;
+        if (rel.startsWith(rootCanonical))
+            rel = rel.mid(rootCanonical.size()).startsWith(QLatin1Char('/'))
+                      ? rel.mid(rootCanonical.size() + 1)
+                      : rel.mid(rootCanonical.size());
+        params.filePath = rel;
+    }
+
+    return QJsonDocument(
+        CodebaseIndex::serve(rootCanonical, QDateTime::currentMSecsSinceEpoch(),
+                             params));
+}
 
 // ANTS-1961 — feedback_query: return the un-triaged delta + mapped IDs.
 QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {

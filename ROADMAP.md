@@ -5856,6 +5856,12 @@ already on the roadmap above.
   Lanes: fileoutline.
   Source: in-session-2026-06-05 (found while implementing ANTS-2021 read_region symbol mode).
 
+- 📋 [ANTS-2029] **`McpTestResults.WiringContract` fails: fixed 4500-char scrape window no longer reaches `test_results`' `etag_match`.**
+  Pre-existing failure (the committed build/test_claude fails it too — not introduced by ANTS-1637). tests/features/mcp_test_results/test_mcp_test_results.cpp:158 anchors on the `ANTS-1300 — test_results` comment and reads a fixed 4500-char window for INV-8b/c/d (`req.append("caller_cwd")` / `"detail"` / `etag_match`). The test_results schema block has since grown, so `etag_match` now sits at offset 5169 — outside the window — and INV-8b/c/d + INV-10 fail though the schema is intact. Fix: widen the window (e.g. 4500→8000) or anchor each property check on the tool's `inputSchema` builder rather than a byte budget. Lanes: testing, claudeintegration.
+  **Layman:** A test that checks the test_results tool's setup looks at too small a slice of the source file and now misses part of it — widen the window.
+  Kind: fix.
+  Source: in-session-2026-06-05 (found running test_claude during ANTS-1637).
+
 ### 🔍 Indie-review fold-in (2026-05-14) — follow-up sweep
 
 6-lane indie-review on 2026-05-14 immediately after ANTS-1294
@@ -14387,8 +14393,9 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-find-sources, subsystem, workspace-search, claudeintegration, remotecontrol.
   Source: user request 2026-05-19 (mid-session MCP-bundle work).
 
-- 📋 [ANTS-1637] **Project-wide codebase index — pre-computed structural map MCP serves to clients.**
+- ✅ [ANTS-1637] **Project-wide codebase index — pre-computed structural map MCP serves to clients.**
   User suggested 2026-05-19 (follow-on to ANTS-1636): "Can Ants MCP build a map and index of the codebase it is managing which should allow CC sessions to find what they need a lot faster." Today every Claude session re-derives the project shape from scratch by repeated `grep -r` / `file_outline` / CLAUDE.md reads. The Ants process already has the focused project's path, ROADMAP.md and CLAUDE.md parsed in memory, and the file tree on a tab-local mtime watcher — extending that to a per-project codebase index is incremental work compared to spinning up a separate indexer.
+  Resolved (2026-06-05): codebase_index landed — pure CodebaseIndex helper (src/codebaseindex.{h,cpp}, ants_core_lib: build/staleFiles/refresh/query/toJson/fromJson + serve orchestrator with lazy disk cache at ~/.cache/ants-terminal/codebase-index/<cwdHash>.json) + cmdCodebaseIndex handler + full MCP wiring (schema, callerCwdContractFor Required, isEtagSupportedTool, isFieldProjectionTool, registerToolProvider). Reuses FileOutline (symbols) + SubsystemMap (lane names) + SessionMemoryEngine::cwdHash (cache key). Feature test tests/features/mcp_codebase_index/ (15 tests, INV-1..16) green; full test_claude bundle 969/970 (the 1 failure, McpTestResults.WiringContract, is pre-existing + unrelated — see follow-up). Spec docs/specs/ANTS-1637.md accepted after 5 cold-eyes loops. Leaner than the bullet: one verb not two, no tests_for_symbol reverse map, no background daemon, no git-HEAD watcher, cache out of the repo.
 
   Proposed shape — `.ants_cache/codebase-index.json` per project, v1:
   ```

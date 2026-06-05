@@ -3095,6 +3095,54 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(aeTool);
 
+                // ANTS-1637 — codebase_index: serve a pre-computed project
+                // structural map (symbols-per-file, lane→files) so a session
+                // stops re-deriving the project shape with grep/file_outline.
+                QJsonObject ciTool;
+                ciTool["name"] = "codebase_index";
+                ciTool["description"] = QStringLiteral(
+                    "Pre-computed project structural map, cached + lazily "
+                    "refreshed. No selector → a summary "
+                    "(file_count / lanes / languages / roles). symbol=Foo::bar "
+                    "→ every {path,line,kind} defining it (pre-indexed "
+                    "find_definition, no re-grep). lane=<name> → that lane's "
+                    "files + their symbols. file_path=<rel> → one file's cached "
+                    "outline. At most one selector (≥2 → bad_args). A miss is "
+                    "ok:true,found:false (not an error). Symbol coverage = "
+                    "file_outline coverage. ETag-304: an unchanged query "
+                    "re-reads free. caller_cwd required.");
+                ciTool["selection_hint"] = QStringLiteral(
+                    "Call once at session start for the project's shape, or to "
+                    "locate a symbol/lane, instead of repeated grep / "
+                    "file_outline / CLAUDE.md reads.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    QJsonObject props;
+                    QJsonObject symProp; symProp["type"] = "string";
+                        symProp["description"] = QStringLiteral(
+                            "Exact, case-sensitive symbol name. Mutually "
+                            "exclusive with lane / file_path.");
+                    QJsonObject laneProp; laneProp["type"] = "string";
+                        laneProp["description"] = QStringLiteral(
+                            "Subsystem lane name. Mutually exclusive with "
+                            "symbol / file_path.");
+                    QJsonObject fpProp; fpProp["type"] = "string";
+                        fpProp["description"] = QStringLiteral(
+                            "Project file path (under caller_cwd). Mutually "
+                            "exclusive with symbol / lane.");
+                    props["symbol"]     = symProp;
+                    props["lane"]       = laneProp;
+                    props["file_path"]  = fpProp;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
+                    props["fields"]     = makeFieldsProp();      // ANTS-1720
+                    schema["properties"] = props;
+                    ciTool["inputSchema"] = schema;
+                }
+                tools.append(ciTool);
+
                 // ANTS-1961 — feedback_query: read the un-triaged tail of
                 // a *_Ants_MCP_Feedback.md file instead of a full Read.
                 {
@@ -7431,6 +7479,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-1636 — find_sources: project-scoped
                         // src/+tests/ topic walker.
                         name == QLatin1String("find_sources") ||
+                        // ANTS-1637 — codebase_index: project-scoped
+                        // structural-map reader.
+                        name == QLatin1String("codebase_index") ||
                         name == QLatin1String("project_layout") ||
                         name == QLatin1String("subsystem") ||
                         // ANTS-1569 — current_state is a project-scoped
@@ -8320,6 +8371,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-2022 — apply_edits writes project files anchored by caller_cwd +
     // PathValidation (roadmap_log/changelog_log posture, no RcGate); Required.
     if (toolName == QStringLiteral("apply_edits"))         return C::Required;
+    // ANTS-1637 — codebase_index is a project-scoped structural-map reader
+    // keyed on the resolved root; Required.
+    if (toolName == QStringLiteral("codebase_index"))      return C::Required;
     // ANTS-1961 / ANTS-1962 — feedback verbs resolve a relative `path`
     // off caller_cwd and anchor tenancy; Required even though the
     // canonical case is an absolute shared-root path.
@@ -8484,6 +8538,8 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
         // ANTS-2021 — read_region: a re-read of an unchanged slice 304s,
         // the core "free re-read" win.
         || toolName == QStringLiteral("read_region")
+        // ANTS-1637 — codebase_index: an unchanged warm query 304s.
+        || toolName == QStringLiteral("codebase_index")
         || toolName == QStringLiteral("last_audit_summary")
         || toolName == QStringLiteral("get_environment")
         || toolName == QStringLiteral("tab_list")

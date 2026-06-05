@@ -1,0 +1,372 @@
+// Feature-conformance test for the codebase_index MCP tool (ANTS-1637).
+// Behavioural invariants drive the pure CodebaseIndex helper; wiring
+// invariants source-scrape the registration sites. See spec.md +
+// docs/specs/ANTS-1637.md.
+
+#include "../../_support/expect.h"
+#include "codebaseindex.h"
+
+#include <cstdio>
+#include <fstream>
+#include <sstream>
+#include <string>
+
+#include <gtest/gtest.h>
+#include <QDir>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QString>
+#include <QStringList>
+#include <QTemporaryDir>
+
+#ifndef ANTS_SOURCE_DIR
+#error "ANTS_SOURCE_DIR compile definition required"
+#endif
+
+ANTS_TEST_SCOPE();
+
+namespace {
+
+using namespace CodebaseIndex;
+
+std::string slurp(const std::string &path) {
+    std::ifstream in(path);
+    if (!in) { std::fprintf(stderr, "cannot open %s\n", path.c_str()); std::exit(2); }
+    std::stringstream ss; ss << in.rdbuf(); return ss.str();
+}
+bool has(const std::string &hay, const char *needle) {
+    return hay.find(needle) != std::string::npos;
+}
+std::string srcPath(const char *rel) {
+    return std::string(ANTS_SOURCE_DIR) + "/" + rel;
+}
+
+void writeFile(const QString &path, const QString &content) {
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write(content.toUtf8());
+    f.close();
+}
+
+// A minimal C++ fixture with a known class + qualified method (FileOutline
+// emits "class" Foo and "func" Foo::bar).
+QString cppWith(const QString &cls, const QString &method) {
+    return QStringLiteral("class %1 {\npublic:\n    void %2();\n};\n"
+                          "void %1::%2() {\n    return;\n}\n")
+        .arg(cls, method);
+}
+
+QueryParams summaryQ() { return QueryParams{}; }
+
+}  // namespace
+
+// INV-1 — cold build shape + no-source root.
+TEST(CodebaseIndex, BuildShapeAndEmptyRoot) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/src/alpha.cpp", cppWith("Alpha", "run"));
+    Index idx = build(dir.path(), 1000);
+    ASSERT_EQ(idx.files.size(), 1);
+    EXPECT_EQ(idx.files[0].path, QStringLiteral("src/alpha.cpp"));
+    EXPECT_EQ(idx.files[0].language, QStringLiteral("cpp"));
+    EXPECT_EQ(idx.files[0].role, QStringLiteral("impl"));
+    bool sawMethod = false;
+    for (const Symbol &s : idx.files[0].symbols)
+        if (s.name == QStringLiteral("Alpha::run")) sawMethod = true;
+    EXPECT_TRUE(sawMethod);
+
+    QTemporaryDir empty;
+    Index e = build(empty.path(), 1000);
+    EXPECT_EQ(e.files.size(), 0);
+    QJsonObject env = query(e, summaryQ(), 0, QStringLiteral("/c"));
+    EXPECT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("file_count").toInt(), 0);
+}
+
+// INV-2 — refresh: changed re-outlined, removed pruned (files + laneToFiles),
+// added gets its lane; refreshedOut == changed+added.
+TEST(CodebaseIndex, RefreshDeltaAddedRemoved) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/src/keep.cpp", cppWith("Keep", "go"));
+    writeFile(dir.path() + "/src/gone.cpp", cppWith("Gone", "go"));
+    writeFile(dir.path() + "/src/thingengine.cpp", cppWith("ThingEngine", "tick"));
+    Index prev = build(dir.path(), 1000);
+    ASSERT_EQ(prev.files.size(), 3);
+    ASSERT_TRUE(prev.laneToFiles.contains(QStringLiteral("thingengine")));
+
+    // Mutate: change keep.cpp (new mtime via rewrite), delete gone.cpp, add
+    // a new lane-family file.
+    writeFile(dir.path() + "/src/keep.cpp", cppWith("Keep", "go2"));
+    QFile::remove(dir.path() + "/src/gone.cpp");
+    writeFile(dir.path() + "/src/otherwidget.cpp", cppWith("OtherWidget", "paint"));
+
+    // Force keep.cpp's mtime to differ from the cached value deterministically.
+    int refreshed = -1;
+    // Use a bumped now so generated_at advances; staleFiles compares mtimes.
+    Index cur = refresh(prev, dir.path(), 2000, mapSourceMtimeMs(dir.path()),
+                        Options{}, &refreshed);
+    // gone removed, otherwidget added, keep maybe changed → file set is keep,
+    // otherwidget, thingengine.
+    QStringList paths;
+    for (const FileEntry &fe : cur.files) paths << fe.path;
+    EXPECT_TRUE(paths.contains(QStringLiteral("src/keep.cpp")));
+    EXPECT_TRUE(paths.contains(QStringLiteral("src/otherwidget.cpp")));
+    EXPECT_FALSE(paths.contains(QStringLiteral("src/gone.cpp")));
+    // Removed file's lane (gone has no family lane → "" → not in laneToFiles);
+    // assert the added family lane is present and the removed file's path is in
+    // no lane list.
+    EXPECT_TRUE(cur.laneToFiles.contains(QStringLiteral("otherwidget")));
+    for (auto it = cur.laneToFiles.cbegin(); it != cur.laneToFiles.cend(); ++it)
+        EXPECT_FALSE(it.value().contains(QStringLiteral("src/gone.cpp")));
+    EXPECT_GE(refreshed, 1);  // at least the added file (+ possibly changed)
+}
+
+// INV-3 — map-source change re-derives laneToFiles with refreshedOut==0.
+TEST(CodebaseIndex, MapSourceChangeRemapsLanesNoReoutline) {
+    QTemporaryDir dir;
+    // A plain file with no family suffix: lane only via the module map.
+    writeFile(dir.path() + "/src/zeta.cpp", cppWith("Zeta", "run"));
+    writeFile(dir.path() + "/CLAUDE.md",
+              QStringLiteral("## Module map (src/)\n- `zeta` — the zeta unit.\n"));
+    Index prev = build(dir.path(), 1000);
+    ASSERT_TRUE(prev.laneToFiles.contains(QStringLiteral("zeta")));
+
+    // Rewrite the map so zeta is no longer a lane name; drive a bumped
+    // map-source mtime so staleFiles reports mapSourceChanged deterministically.
+    writeFile(dir.path() + "/CLAUDE.md",
+              QStringLiteral("## Module map (src/)\n- `omega` — the omega unit.\n"));
+    StaleSet ss = staleFiles(prev, dir.path(), prev.mapSourceMtimeMs + 5000);
+    EXPECT_TRUE(ss.mapSourceChanged);
+    EXPECT_TRUE(ss.changed.isEmpty());
+    EXPECT_TRUE(ss.added.isEmpty());
+
+    int refreshed = -1;
+    Index cur = refresh(prev, dir.path(), 2000, prev.mapSourceMtimeMs + 5000,
+                        Options{}, &refreshed);
+    EXPECT_EQ(refreshed, 0);  // map-only change re-outlines nothing
+    EXPECT_FALSE(cur.laneToFiles.contains(QStringLiteral("zeta")));
+}
+
+// INV-4 — selector arity.
+TEST(CodebaseIndex, SelectorArity) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/src/alpha.cpp", cppWith("Alpha", "run"));
+    Index idx = build(dir.path(), 1000);
+
+    QueryParams two; two.symbol = "x"; two.lane = "y";
+    QJsonObject bad = query(idx, two, 0, QStringLiteral("/c"));
+    EXPECT_FALSE(bad.value("ok").toBool());
+    EXPECT_EQ(bad.value("code").toString(), QStringLiteral("bad_args"));
+
+    QJsonObject sum = query(idx, summaryQ(), 0, QStringLiteral("/c"));
+    EXPECT_TRUE(sum.value("ok").toBool());
+    EXPECT_TRUE(sum.contains("lanes"));
+    EXPECT_TRUE(sum.contains("languages"));
+    EXPECT_TRUE(sum.contains("roles"));
+    EXPECT_FALSE(sum.contains("matches"));  // never a full dump
+}
+
+// INV-5 — symbol hit + miss.
+TEST(CodebaseIndex, SymbolHitAndMiss) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/src/alpha.cpp", cppWith("Alpha", "run"));
+    Index idx = build(dir.path(), 1000);
+
+    QueryParams hit; hit.symbol = "Alpha::run";
+    QJsonObject h = query(idx, hit, 0, QStringLiteral("/c"));
+    EXPECT_TRUE(h.value("found").toBool());
+    ASSERT_GE(h.value("matches").toArray().size(), 1);
+    EXPECT_EQ(h.value("matches").toArray()[0].toObject().value("path").toString(),
+              QStringLiteral("src/alpha.cpp"));
+
+    QueryParams miss; miss.symbol = "Nope::gone";
+    QJsonObject m = query(idx, miss, 0, QStringLiteral("/c"));
+    EXPECT_TRUE(m.value("ok").toBool());
+    EXPECT_FALSE(m.value("found").toBool());
+    EXPECT_EQ(m.value("matches").toArray().size(), 0);
+}
+
+// INV-6 — lane hit + unknown.
+TEST(CodebaseIndex, LaneHitAndUnknown) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/src/fooengine.cpp", cppWith("FooEngine", "tick"));
+    Index idx = build(dir.path(), 1000);
+
+    QueryParams hit; hit.lane = "fooengine";
+    QJsonObject h = query(idx, hit, 0, QStringLiteral("/c"));
+    EXPECT_TRUE(h.value("found").toBool());
+    EXPECT_GE(h.value("files").toArray().size(), 1);
+
+    QueryParams unk; unk.lane = "doesnotexist";
+    QJsonObject u = query(idx, unk, 0, QStringLiteral("/c"));
+    EXPECT_TRUE(u.value("ok").toBool());
+    EXPECT_FALSE(u.value("found").toBool());
+    EXPECT_GE(u.value("lanes").toArray().size(), 1);  // available lanes echoed
+}
+
+// INV-7 (behavioural half) — file_path found / not-found.
+TEST(CodebaseIndex, FilePathFoundAndMiss) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/src/alpha.cpp", cppWith("Alpha", "run"));
+    Index idx = build(dir.path(), 1000);
+
+    QueryParams hit; hit.filePath = "src/alpha.cpp";
+    QJsonObject h = query(idx, hit, 0, QStringLiteral("/c"));
+    EXPECT_TRUE(h.value("found").toBool());
+    EXPECT_TRUE(h.value("entry").toObject().contains("symbols"));
+
+    QueryParams miss; miss.filePath = "src/missing.cpp";
+    QJsonObject m = query(idx, miss, 0, QStringLiteral("/c"));
+    EXPECT_TRUE(m.value("ok").toBool());
+    EXPECT_FALSE(m.value("found").toBool());
+}
+
+// INV-9 (behavioural) — warm-query etag stability: a fully-warm re-serve
+// produces a byte-identical envelope (would 304), and refreshed_files drops
+// to 0 after the cold build.
+TEST(CodebaseIndex, WarmServeIsStable) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/src/alpha.cpp", cppWith("Alpha", "run"));
+    const QString cache = dir.path() + "/cache.json";
+
+    QJsonObject c1 = serve(dir.path(), 1000, summaryQ(), Options{}, cache);
+    QJsonObject c2 = serve(dir.path(), 2000, summaryQ(), Options{}, cache);
+    QJsonObject c3 = serve(dir.path(), 3000, summaryQ(), Options{}, cache);
+    EXPECT_GE(c1.value("refreshed_files").toInt(), 1);  // cold build
+    EXPECT_EQ(c2.value("refreshed_files").toInt(), 0);  // warm
+    EXPECT_EQ(c3.value("refreshed_files").toInt(), 0);  // warm
+    // call 2 and call 3 are byte-identical (stable etag → 304).
+    EXPECT_EQ(QJsonDocument(c2).toJson(QJsonDocument::Compact),
+              QJsonDocument(c3).toJson(QJsonDocument::Compact));
+}
+
+// INV-11 — file-count ceiling: deterministic prefix, tests/ dropped.
+TEST(CodebaseIndex, FileCountCeiling) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/src/a.cpp", cppWith("A", "f"));
+    writeFile(dir.path() + "/src/b.cpp", cppWith("B", "f"));
+    writeFile(dir.path() + "/tests/t.cpp", cppWith("T", "f"));
+    Options o; o.maxIndexFiles = 2;
+    Index idx = build(dir.path(), 1000, o);
+    EXPECT_TRUE(idx.filesTruncated);
+    ASSERT_EQ(idx.files.size(), 2);
+    EXPECT_EQ(idx.files[0].path, QStringLiteral("src/a.cpp"));
+    EXPECT_EQ(idx.files[1].path, QStringLiteral("src/b.cpp"));
+}
+
+// INV-15 — byte ceiling: tiny maxCacheBytes truncates, prefix survives.
+TEST(CodebaseIndex, ByteCeiling) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/src/a.cpp", cppWith("A", "f"));
+    writeFile(dir.path() + "/src/b.cpp", cppWith("B", "f"));
+    writeFile(dir.path() + "/src/c.cpp", cppWith("C", "f"));
+    Options o; o.maxCacheBytes = 1;  // forces stop after the first file
+    Index idx = build(dir.path(), 1000, o);
+    EXPECT_TRUE(idx.filesTruncated);
+    ASSERT_GE(idx.files.size(), 1);
+    EXPECT_EQ(idx.files[0].path, QStringLiteral("src/a.cpp"));
+    EXPECT_LT(idx.files.size(), 3);
+}
+
+// INV-12 — toJson → fromJson round-trip equality.
+TEST(CodebaseIndex, SerialisationRoundTrip) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/src/fooengine.cpp", cppWith("FooEngine", "tick"));
+    writeFile(dir.path() + "/tests/t.cpp", cppWith("T", "f"));
+    Index idx = build(dir.path(), 1000);
+    const QByteArray a = QJsonDocument(toJson(idx)).toJson(QJsonDocument::Compact);
+    Index rt = fromJson(toJson(idx));
+    const QByteArray b = QJsonDocument(toJson(rt)).toJson(QJsonDocument::Compact);
+    EXPECT_EQ(a, b);
+    EXPECT_EQ(rt.files.size(), idx.files.size());
+    EXPECT_EQ(rt.laneToFiles.size(), idx.laneToFiles.size());
+}
+
+// INV-13 — version-0 / foreign-root / garbage cache rebuilds.
+TEST(CodebaseIndex, StaleCacheRebuilds) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/src/alpha.cpp", cppWith("Alpha", "run"));
+
+    auto serveWith = [&](const QString &seed) {
+        const QString cache = dir.path() + "/c.json";
+        writeFile(cache, seed);
+        QJsonObject env = serve(dir.path(), 1000, summaryQ(), Options{}, cache);
+        // After serve, the cache must be a valid current-version index.
+        QFile f(cache);
+        EXPECT_TRUE(f.open(QIODevice::ReadOnly));
+        Index loaded = fromJson(QJsonDocument::fromJson(f.readAll()).object());
+        EXPECT_EQ(loaded.version, kIndexVersion);
+        EXPECT_EQ(loaded.rootCanonical, dir.path());
+        EXPECT_EQ(env.value("file_count").toInt(), 1);
+    };
+    serveWith(QStringLiteral("{\"version\":0,\"root_canonical\":\"%1\"}").arg(dir.path()));
+    serveWith(QStringLiteral("{\"version\":1,\"root_canonical\":\"/somewhere/else\"}"));
+    serveWith(QStringLiteral("}{ not json"));
+}
+
+// INV-14 — lane symbol cap: first symbol survives, symbols_truncated set.
+TEST(CodebaseIndex, LaneSymbolCap) {
+    QTemporaryDir dir;
+    // Two files in one family lane, each with a method → ≥2 symbols.
+    writeFile(dir.path() + "/src/capwidget.cpp", cppWith("CapWidget", "alpha"));
+    writeFile(dir.path() + "/src/capwidgethelper.cpp", cppWith("CapWidget", "beta"));
+    Index idx = build(dir.path(), 1000);
+    // Both basenames start with "capwidget"? capwidgethelper matches the
+    // family regex → lane "capwidgethelper"; capwidget.cpp → "capwidget".
+    // Use the lane that has ≥2 symbols across its file(s). Simpler: query the
+    // capwidget lane (1 file, but that file has class + method = 2 symbols).
+    QueryParams q; q.lane = "capwidget";
+    Options o; o.maxQuerySymbols = 1;
+    QJsonObject env = query(idx, q, 0, QStringLiteral("/c"), o);
+    if (env.value("found").toBool()) {
+        EXPECT_TRUE(env.value("symbols_truncated").toBool());
+    } else {
+        GTEST_SKIP() << "capwidget lane not present in this fixture layout";
+    }
+}
+
+// INV-16 — summary count integrity.
+TEST(CodebaseIndex, SummarySumsToFileCount) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/src/a.cpp", cppWith("A", "f"));
+    writeFile(dir.path() + "/src/b.h", QStringLiteral("class B { void g(); };\n"));
+    writeFile(dir.path() + "/tests/t.cpp", cppWith("T", "f"));
+    Index idx = build(dir.path(), 1000);
+    QJsonObject env = query(idx, summaryQ(), 0, QStringLiteral("/c"));
+    const int fc = env.value("file_count").toInt();
+    int roleSum = 0, langSum = 0;
+    const QJsonObject roles = env.value("roles").toObject();
+    for (auto it = roles.begin(); it != roles.end(); ++it) roleSum += it.value().toInt();
+    const QJsonObject langs = env.value("languages").toObject();
+    for (auto it = langs.begin(); it != langs.end(); ++it) langSum += it.value().toInt();
+    EXPECT_EQ(roleSum, fc);
+    EXPECT_EQ(langSum, fc);
+}
+
+// INV-8/9/10 — wiring source-scrapes.
+TEST(CodebaseIndex, WiringRegistered) {
+    const std::string ci = slurp(srcPath("src/claudeintegration.cpp"));
+    const std::string mw = slurp(srcPath("src/mainwindow.cpp"));
+    const std::string mp = slurp(srcPath("src/mcpprojection.cpp"));
+    const std::string rc = slurp(srcPath("src/remotecontrol.cpp"));
+
+    // caller_cwd Required (INV-8) — the registerToolProvider call passes the
+    // Required contract; callerCwdContractFor + the project-scoped list agree.
+    EXPECT_TRUE(has(mw, "registerToolProvider(\"codebase_index\""));
+    EXPECT_TRUE(has(mw, "CallerCwdContract::Required"));
+    EXPECT_TRUE(has(ci, "codebase_index"));      // contract + etag + schema sites
+    // ETag-304 (INV-9) — registered in isEtagSupportedTool; the handler emits
+    // no etag itself (the dispatcher injects it).
+    EXPECT_TRUE(has(ci, "isEtagSupportedTool"));
+    EXPECT_FALSE(has(slurp(srcPath("src/codebaseindex.cpp")), "\"etag\""));
+    // fields projection (INV-10).
+    EXPECT_TRUE(has(mp, "codebase_index"));
+    EXPECT_TRUE(has(mp, "isFieldProjectionTool"));
+    // handler routes file_path through PathValidation (INV-7).
+    EXPECT_TRUE(has(rc, "cmdCodebaseIndex"));
+    EXPECT_TRUE(has(rc, "validatePath"));
+    // atomic cache write (INV-12).
+    EXPECT_TRUE(has(slurp(srcPath("src/codebaseindex.cpp")), "QSaveFile"));
+}

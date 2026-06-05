@@ -384,6 +384,9 @@ public:
     // project files in one call, atomic per file (ApplyEdits::applyToContent
     // + QSaveFile), with per-edit skipped[] accounting.
     QJsonDocument cmdApplyEdits(const QJsonObject &req);
+    // ANTS-1637 — codebase_index: serve a pre-computed project structural map
+    // (symbol / lane / file_path / summary) via CodebaseIndex::serve.
+    QJsonDocument cmdCodebaseIndex(const QJsonObject &req);
 
     // ANTS-1961 — feedback_query: read the un-triaged tail of a
     // *_Ants_MCP_Feedback.md file (delegates to FeedbackFile::parse).

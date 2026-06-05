@@ -235,6 +235,8 @@ add_library(ants_core_lib STATIC
     src/readregion.cpp
     # ANTS-2022 — apply_edits pure in-memory edit helper (Qt6::Core-only).
     src/applyedits.cpp
+    # ANTS-1637 — codebase_index structural-map builder (Qt6::Core-only).
+    src/codebaseindex.cpp
     # ANTS-1961 / ANTS-1962 — feedback-file parse + render helpers.
     src/feedbackfile.cpp
     # ANTS-1963 — spec_log pure markdown transforms (Qt6::Core-only).
@@ -1054,6 +1056,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_read_region/test_mcp_read_region.cpp
                 # ANTS-2022 — apply_edits batch edit verb.
                 tests/features/mcp_apply_edits/test_mcp_apply_edits.cpp
+                # ANTS-1637 — codebase_index structural-map verb.
+                tests/features/mcp_codebase_index/test_mcp_codebase_index.cpp
                 # ANTS-1961 / ANTS-1962 / ANTS-1963 — feedback + spec_log verbs.
                 tests/features/mcp_feedback_query/test_mcp_feedback_query.cpp
                 tests/features/mcp_feedback_log/test_mcp_feedback_log.cpp
