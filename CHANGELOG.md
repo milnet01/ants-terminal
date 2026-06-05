@@ -37,6 +37,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query include_body now returns real prose on #### Pass heading roadmaps** (ANTS-2030)
+  On heading-style roadmaps (`#### Pass N.M`), asking for the detail under each heading used to return just the title. It now returns the actual text beneath the heading (the Status / Finding / Decision / Items lines), so a session no longer has to re-read the whole file to scope a pass.
+
 - **roadmap_query no longer false-flags sub-pass headings as duplicate IDs** (ANTS-2035)
   On `#### Pass N.M` heading roadmaps, a sub-pass like `Pass 41.5.B` used to collapse to the same synthesised ID (`PASS-41-5`) as its parent `Pass 41.5`, so the duplicate-ID detector reported a false collision. Sub-passes now carry the letter suffix in their ID (`PASS-41-5-B`) and stay distinct.
 

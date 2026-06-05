@@ -15598,12 +15598,13 @@ subsection.
   Lanes: mcp, roadmap.
   Source: vestige-feedback-2026-06-04.
 
-- 📋 [ANTS-2030] **`roadmap_query include_body:true` is a no-op on `#### Pass N.M` heading roadmaps — body equals headline.**
+- ✅ [ANTS-2030] **`roadmap_query include_body:true` is a no-op on `#### Pass N.M` heading roadmaps — body equals headline.**
   The reader parses `#### Pass N.M` IDs/status/headlines (ANTS-1530), but `include_body:true` returns `body == headline` instead of the prose under the heading (the `- **Status**:`/`- **Finding**:`/`- **Decision**:`/`- **Items**:` bullets), so callers fall back to a raw Read to scope work. Fix: populate `body` from the byte range between a `#### Pass N.M …` heading and the next sibling heading, reusing the ~2000-char cap + `body_truncated`. RetroDB's highest-frequency reader gap — hit on every Pass-48 session.
   **Layman:** When a project writes its to-do list as headings instead of bullets, asking Ants for the detail under each heading returns just the title — make it return the real text.
   Kind: enhancement.
   Lanes: roadmapquery, roadmap-format.
   Source: cross-session-report-2026-06-05 (RetroDB sessions 3+4, re-confirmed through v3.6.34).
+  Resolved (2026-06-05): parsePassHeadingBullets now collects the under-heading prose (Status/Finding/Decision/Items bullets, bounded by the next heading level ≤ 4, leading/trailing blanks trimmed) into rec.body instead of duplicating the headline. The 2 KiB cap + body_truncated stay at the rcSetBodyFields emit site (ANTS-1517) — no re-implementation. Bare heading falls back to body == headline so body is never empty. Regression test: tests/features/roadmap_parser_pass_body/ (INV-1..4).
 
 - 📋 [ANTS-2031] **`roadmap_log` append/annotate/flip have no `#### Pass N.M` heading-roadmap support — emit a heading writer or a `format_mismatch` warning.**
   RetroDB's roadmap.md uses `#### Pass N.M <Title>` headings + `- **Status**:` bullets + prose, not GFM `- **headline** (id)` bullets. The reader handles it (ANTS-1530) but `roadmap_log` op:append inserts a counter-allocated GFM bullet — structurally inconsistent — so contributors use Edit for both whole-pass appends and sub-bullet status flips (the unit that changes state is often a sub-bullet, not the `#### Pass` Status line). Need (a) heading-format append, (b) sub-bullet-level annotate/flip, or at minimum a `format_mismatch` warning so the caller knows to fall back to Edit.

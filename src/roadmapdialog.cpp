@@ -782,6 +782,30 @@ parsePassHeadingBullets(const QStringList &lines) {
                 break;
             }
         }
+        // ANTS-2030 — collect the under-heading prose (the
+        // `- **Status**:` / `- **Finding**:` / `- **Decision**:` /
+        // `- **Items**:` bullets) as the bullet body, bounded by the
+        // next heading level ≤ 4. Before this the body was set to the
+        // headline, so `roadmap_query include_body:true` was a no-op on
+        // pass-headings roadmaps (body == headline). The 2 KiB
+        // truncation + body_truncated flag is applied downstream at
+        // emit by rcSetBodyFields, so no cap is needed here.
+        QStringList bodyLines;
+        for (int j = i + 1; j < lines.size(); ++j) {
+            const QString &peek = lines[j];
+            if (peek.startsWith(QStringLiteral("#")) &&
+                !peek.startsWith(QStringLiteral("#####"))) {
+                break;
+            }
+            bodyLines.append(peek);
+        }
+        // Trim leading/trailing blank lines without disturbing interior
+        // blanks (a Status/Finding block may be paragraph-separated).
+        while (!bodyLines.isEmpty() && bodyLines.first().trimmed().isEmpty())
+            bodyLines.removeFirst();
+        while (!bodyLines.isEmpty() && bodyLines.last().trimmed().isEmpty())
+            bodyLines.removeLast();
+        const QString passBody = bodyLines.join(QChar('\n'));
         RoadmapDialog::BulletRecord rec;
         rec.id     = sub.isEmpty()
             ? QStringLiteral("PASS-%1-%2").arg(major).arg(minor)
@@ -814,7 +838,10 @@ parsePassHeadingBullets(const QStringList &lines) {
         }
         truncateEllipsis(headline, 120);  // ANTS-1811 — surrogate-safe
         rec.headline       = headline;
-        rec.body           = headline;
+        // ANTS-2030 — real under-heading prose; fall back to the
+        // headline only when the heading has no content beneath it
+        // (keeps body non-empty, matching the prior contract).
+        rec.body           = passBody.isEmpty() ? headline : passBody;
         rec.sectionHeading = currentSectionHeading;
         rec.sectionLevel   = currentSectionLevel;
         if (!currentSectionHeading.isEmpty()) {

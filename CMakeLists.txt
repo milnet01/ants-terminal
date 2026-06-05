@@ -1215,6 +1215,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_parser_multiline_bold_headline/test_roadmap_parser_multiline_bold_headline.cpp
                 # ANTS-2035 pass-heading sub-pass ID distinctness.
                 tests/features/roadmap_parser_subpass_id/test_roadmap_parser_subpass_id.cpp
+                # ANTS-2030 pass-heading bullet body = under-heading prose.
+                tests/features/roadmap_parser_pass_body/test_roadmap_parser_pass_body.cpp
                 # ANTS-1567 MCP tool prefix-tag bucket coverage.
                 tests/features/mcp_tool_prefix_tags/test_mcp_tool_prefix_tags.cpp
                 # ANTS-1568 etag-tip memo appended to etag-supporting tools.
