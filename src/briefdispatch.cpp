@@ -111,7 +111,10 @@ QString inlineBodies(const QString &projectPath, const QStringList &relPaths,
         // char becomes U+FFFD, harmless inside the data fence).
         if (const QByteArray u = body.toUtf8();
             perFileCapBytes > 0 && u.size() > perFileCapBytes) {
-            body = QString::fromUtf8(u.left(static_cast<int>(perFileCapBytes)));
+            // ANTS-2014 — qsizetype (64-bit), not int: a > 2 GB cap would
+            // overflow the int cast (left() then mis-clipped the body).
+            body = QString::fromUtf8(
+                u.left(static_cast<qsizetype>(perFileCapBytes)));
             body += QStringLiteral("\n[truncated at %1 bytes]")
                         .arg(perFileCapBytes);
         }
@@ -190,7 +193,8 @@ QString inlineRelevantSections(const QString &projectPath,
         // UTF-16 code units, not bytes.
         if (const QByteArray u = slice.toUtf8();
             perDocCapBytes > 0 && u.size() > perDocCapBytes) {
-            slice = QString::fromUtf8(u.left(static_cast<int>(perDocCapBytes)));
+            slice = QString::fromUtf8(  // ANTS-2014 — qsizetype, not int
+                u.left(static_cast<qsizetype>(perDocCapBytes)));
             slice += QStringLiteral("\n[truncated at %1 bytes]")
                          .arg(perDocCapBytes);
         }

@@ -9231,8 +9231,9 @@ under one guard). The deferrals below.
   Kind: bug. Lanes: roadmapdialog. Source: indie-review-2026-06-04.
 - 📋 [ANTS-2013] **antshelper: `QTextStream(stdout/stderr)` uses the system locale encoding, not UTF-8 — corrupts JSON output on a non-UTF-8 locale (INV-7); the `list` subcommand response omits the documented `{"ok":true,"data":{…}}` envelope wrapper and has no spec INV.**
   Kind: bug. Lanes: antshelper. Source: indie-review-2026-06-04.
-- 📋 [ANTS-2014] **falseposledger / briefdispatch perf: `formatForBrief` re-encodes the growing buffer via `toUtf8()` every iteration (O(N²)); the 1-second `mtime_s` cache key risks stale data on a same-second append; `briefdispatch` duplicates `slurpUtf8` + its static cache (ANTS-1727 extracted `fenceBody` but not the reader); `static_cast<int>(perFileCapBytes)` zeroes the body for caps > 2 GB.**
+- ✅ [ANTS-2014] **falseposledger / briefdispatch perf: `formatForBrief` re-encodes the growing buffer via `toUtf8()` every iteration (O(N²)); the 1-second `mtime_s` cache key risks stale data on a same-second append; `briefdispatch` duplicates `slurpUtf8` + its static cache (ANTS-1727 extracted `fenceBody` but not the reader); `static_cast<int>(perFileCapBytes)` zeroes the body for caps > 2 GB.**
   Kind: performance. Lanes: falseposledger, briefdispatch. Source: indie-review-2026-06-04.
+  Resolved (2026-06-05): (1) formatForBrief tracks the running UTF-8 byte size incrementally instead of re-encoding the whole growing buffer via toUtf8() each iteration (was O(N²) over entry count). (2) loadEntries cache keys on (mtime_s, mtime_ns, st_size), not second-granularity mtime alone, so a same-second append to the append-only ledger invalidates the cache. (4) inlineBodies/inlineRelevantSections clip with qsizetype, not static_cast<int>, so a >2 GB cap no longer overflows. Deferred minor (3): the duplicate slurpUtf8 + its static cache in briefdispatch vs falseposledger is a DRY cleanup (not a defect) — left for a focused reuse pass. 149 tests pass.
 
 #### 🤖 Ants MCP gaps (found while running this sweep)
 

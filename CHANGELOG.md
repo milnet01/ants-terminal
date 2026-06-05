@@ -28,6 +28,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Faster, correctly-cached false-positive ledger brief assembly** (ANTS-2014)
+  The prior-false-positive brief no longer re-encodes its whole buffer on every entry (was quadratic); the ledger read-cache now refreshes when the file is appended to within the same second; and byte caps over 2 GB no longer overflow.
+
 - **AI-review prompts: byte-accurate caps and fence-safe truncation** (ANTS-1991)
   Inlined doc/source bodies are now capped by actual byte size (a multi-byte document was previously allowed through at several times the budget); a truncated prompt closes any open code fence so the model can't read the rest as data; and a backtick in a filename can no longer break the fence header.
 
