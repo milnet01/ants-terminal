@@ -157,12 +157,13 @@ void testWiring() {
     // with ANTS-1962's resolveFeedbackPath helper (feedback_query /
     // feedback_log share it) + ANTS-1963's cmdSpecLog (validates the
     // `path` arg), then to 20 with ANTS-2021's cmdReadRegion + ANTS-2022's
-    // cmdApplyEdits (each validates its `path` arg).
+    // cmdApplyEdits (each validates its `path` arg), then to 21 with
+    // ANTS-1637's cmdCodebaseIndex (validates the `file_path` selector).
     {
         const std::size_t count = ants_test::countOccurrences(
             rc, "PathValidation::validatePath(");
-        expect(count == 20,
-               (std::string("WI-3 expected 20 validatePath call-sites, "
+        expect(count == 21,
+               (std::string("WI-3 expected 21 validatePath call-sites, "
                             "found ")
                 + std::to_string(count)).c_str());
     }

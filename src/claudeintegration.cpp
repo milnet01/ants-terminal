@@ -3119,7 +3119,7 @@ void ClaudeIntegration::onMcpConnection() {
                     "file_outline coverage. ETag-304: an unchanged query "
                     "re-reads free. caller_cwd required.");
                 ciTool["selection_hint"] = QStringLiteral(
-                    "Call once at session start for the project's shape, or to "
+                    "Use once at session start for the project's shape, or to "
                     "locate a symbol/lane, instead of repeated grep / "
                     "file_outline / CLAUDE.md reads.");
                 {
