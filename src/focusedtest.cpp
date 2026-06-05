@@ -61,6 +61,18 @@ bool isSourceLike(const QString &file) {
     return false;
 }
 
+// ANTS-2008 — a build-system change can alter how ANY target compiles or
+// links, so it must run the whole suite rather than the subset of the source
+// files that happened to change alongside it.
+bool isBuildSystemFile(const QString &file) {
+    const int slash = file.lastIndexOf(QLatin1Char('/'));
+    const QString name = (slash >= 0) ? file.mid(slash + 1) : file;
+    return name == QLatin1String("CMakeLists.txt")
+        || name == QLatin1String("CMakePresets.json")
+        || name.endsWith(QLatin1String(".cmake"))
+        || name.endsWith(QLatin1String(".cmake.in"));
+}
+
 }  // namespace
 
 CoverageMap loadCoverageMap(const QString &rootCanonical) {
@@ -77,7 +89,9 @@ CoverageMap loadCoverageMap(const QString &rootCanonical) {
         return cm;
     }
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        cm.error = QStringLiteral("bad_json");
+        // ANTS-2008 — the file exists but couldn't be opened (perms / I/O):
+        // distinct from malformed JSON.
+        cm.error = QStringLiteral("read_failed");
         return cm;
     }
     const QByteArray bytes = f.readAll();
@@ -95,20 +109,38 @@ CoverageMap loadCoverageMap(const QString &rootCanonical) {
         cm.error = QStringLiteral("bad_schema");
         return cm;
     }
+    // ANTS-2008 — validate every map pattern as a regex. An unvalidated typo
+    // (e.g. an unbalanced paren) flows straight into the ctest `-R` regex and
+    // turns that focused_test run into a hard ctest failure for every file
+    // pointing at the bad entry. Fail loudly to `bad_pattern` instead — the
+    // caller then falls back to the (escaped, always-valid) heuristic.
+    auto invalidPattern = [](const QString &p) {
+        return !QRegularExpression(p).isValid();
+    };
     const QJsonObject mapObj =
         root.value(QStringLiteral("map")).toObject();
     for (auto it = mapObj.constBegin(); it != mapObj.constEnd(); ++it) {
         QStringList pats;
         for (const QJsonValue &v : it.value().toArray()) {
             const QString s = v.toString();
-            if (!s.isEmpty()) pats.append(s);
+            if (s.isEmpty()) continue;
+            if (invalidPattern(s)) {
+                cm.error = QStringLiteral("bad_pattern");
+                return cm;
+            }
+            pats.append(s);
         }
         cm.entries.insert(it.key(), pats);
     }
     for (const QJsonValue &v :
          root.value(QStringLiteral("default")).toArray()) {
         const QString s = v.toString();
-        if (!s.isEmpty()) cm.defaultPatterns.append(s);
+        if (s.isEmpty()) continue;
+        if (invalidPattern(s)) {
+            cm.error = QStringLiteral("bad_pattern");
+            return cm;
+        }
+        cm.defaultPatterns.append(s);
     }
     for (const QJsonValue &v :
          root.value(QStringLiteral("ignore")).toArray()) {
@@ -145,6 +177,19 @@ Resolution resolve(const QStringList &changedFiles,
         r.selection = Selection::Full;
         r.reason = QStringLiteral("no changed files");
         return r;
+    }
+
+    // ANTS-2008 — a build-system change forces the full suite (it can affect
+    // any target). Checked before map/heuristic resolution so it can't be
+    // demoted to a subset by landing in ignoredFiles.
+    for (const QString &f : changedFiles) {
+        if (isBuildSystemFile(f)) {
+            r.selection = Selection::Full;
+            r.reason =
+                QStringLiteral("build-system change (%1) forces full suite")
+                    .arg(f);
+            return r;
+        }
     }
 
     if (!map.valid) {

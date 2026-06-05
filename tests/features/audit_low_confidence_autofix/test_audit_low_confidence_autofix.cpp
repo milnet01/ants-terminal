@@ -43,8 +43,12 @@ const char *kVer = "0.7.92";
 
 }  // namespace
 
-// INV-1 — unused #include round-trips: plan removes the include line.
-TEST(AuditAutofix, Inv1UnusedIncludeRoundTrip) {
+// INV-1 (ANTS-2006) — cppcheck `unusedInclude` is NOT auto-removed. cppcheck
+// has a well-known false-positive rate on Qt code (it doesn't model Qt's
+// transitive includes / moc needs), so deleting a "unused" header can break the
+// build — violating the behaviour-neutral contract. planRepair must decline it,
+// leaving the finding for manual review.
+TEST(AuditAutofix, Inv1UnusedIncludeNotAutoRemoved) {
     QTemporaryDir dir;
     const QString body =
         "#include <QString>\n#include <QDebug>\nint main(){}\n";
@@ -52,12 +56,7 @@ TEST(AuditAutofix, Inv1UnusedIncludeRoundTrip) {
     const Finding f = mk("cppcheck",
                          "x.cpp:2: style: Include file not used. [unusedInclude]", 2);
     const auto r = ants::autofix::planRepair(f, p, body, kVer);
-    ASSERT_TRUE(r.has_value());
-    EXPECT_EQ(r->rule.toStdString(), "autofix.unused_include");
-    EXPECT_TRUE(r->removeLine);
-    ASSERT_TRUE(ants::autofix::applyRepair(*r));
-    EXPECT_EQ(readFile(p).toStdString(),
-              "#include <QString>\nint main(){}\n");
+    EXPECT_FALSE(r.has_value());
 }
 
 // INV-1 — dead Q_UNUSED round-trips.

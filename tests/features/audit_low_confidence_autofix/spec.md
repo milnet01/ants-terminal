@@ -29,7 +29,6 @@ button; auto-fix never runs implicitly on a scan.
 
 | rule id | finding signal | line shape | repair |
 |---|---|---|---|
-| `autofix.unused_include` | checkId `cppcheck` + msg `unusedInclude` | `#include …` | remove line |
 | `autofix.dead_q_unused` | msg names `Q_UNUSED` | standalone `Q_UNUSED(...);` | remove line |
 | `autofix.stale_todo` | (line self-verifying) | `// … TODO/FIXME … remove after X.Y.Z` with X.Y.Z ≤ current | remove line |
 | `autofix.comment_space` | msg mentions `comment` | standalone `//word` | `// word` |
@@ -37,16 +36,22 @@ button; auto-fix never runs implicitly on a scan.
 Anything not provably one of these returns `nullopt` and is left for the
 human/Claude — never auto-edited.
 
+**Explicitly excluded (ANTS-2006):** cppcheck `unusedInclude` is NOT
+auto-removed. cppcheck has a well-known false-positive rate on Qt code (it
+doesn't model Qt's transitive includes / moc-generated needs), so deleting a
+"unused" header can break the build — violating the behaviour-neutral
+contract. These findings are surfaced for manual review only.
+
 ## Invariants
 
 - **INV-1 — each safe-list rule round-trips.** `planRepair` returns the
   expected `Repair`, and `applyRepair` produces the expected file content
   for every safe-list case.
 - **INV-2 — unsafe findings are never auto-fixed.** A future-version TODO,
-  a cppcheck-unusedInclude finding whose line is *not* an `#include`, a
-  `Q_UNUSED` finding on a non-`Q_UNUSED` line, a `//word` line whose
-  finding does not mention "comment", and an out-of-range line all return
-  `nullopt`.
+  any cppcheck-`unusedInclude` finding (ANTS-2006 — Qt false-positive risk,
+  never auto-removed), a `Q_UNUSED` finding on a non-`Q_UNUSED` line, a
+  `//word` line whose finding does not mention "comment", and an out-of-range
+  line all return `nullopt`.
 - **INV-3 — applyRepair refuses a stale plan.** If the target line no
   longer equals `Repair.original`, `applyRepair` returns false and leaves
   the file unchanged.

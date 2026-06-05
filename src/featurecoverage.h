@@ -75,7 +75,12 @@ struct ChangelogBullet {
 // has no `## ` header at all. Bullets whose body spans multiple lines
 // are represented by their first line only — the first line is typically
 // the human-facing summary and the continuation is prose detail.
-QList<ChangelogBullet> extractTopVersionBullets(const QString &changelogText);
+// ANTS-2007 — skipUnreleased=true anchors on the first RELEASED version,
+// skipping `## [Unreleased]`; used by the coverage check so in-progress
+// (unreleased, not-yet-specced) items aren't flagged as missing a test. The
+// default (false) returns the top section verbatim, Unreleased or not.
+QList<ChangelogBullet> extractTopVersionBullets(const QString &changelogText,
+                                                bool skipUnreleased = false);
 
 // Extract "significant" lowercase words from a sentence — tokenize on
 // non-alphanumeric (treating `_` and `-` as word-internal), lowercase,

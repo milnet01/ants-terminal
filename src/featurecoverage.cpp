@@ -140,7 +140,8 @@ QList<SpecToken> findDriftTokens(
 // Lane 2
 // ---------------------------------------------------------------------------
 
-QList<ChangelogBullet> extractTopVersionBullets(const QString &text) {
+QList<ChangelogBullet> extractTopVersionBullets(const QString &text,
+                                                bool skipUnreleased) {
     const QStringList lines = text.split('\n');
     int start = -1;
     int end = lines.size();
@@ -150,6 +151,14 @@ QList<ChangelogBullet> extractTopVersionBullets(const QString &text) {
         // starting with `## ` is treated as a version header.
         if (lines[i].startsWith("## ")) {
             if (start < 0) {
+                // ANTS-2007 — when asked, skip `## [Unreleased]`: its items are
+                // in-progress, not yet specced or released, so coverage-checking
+                // them flags a missing test for every WIP entry. Anchor on the
+                // first RELEASED version section instead.
+                if (skipUnreleased &&
+                    lines[i].contains(QStringLiteral("[Unreleased]"),
+                                      Qt::CaseInsensitive))
+                    continue;
                 start = i;
             } else {
                 end = i;
@@ -293,7 +302,10 @@ QString buildProjectSourceBlob(const QString &projectPath) {
         QSet<QString> s(AuditEngine::excludedDirNames().cbegin(),
                         AuditEngine::excludedDirNames().cend());
         s += {QStringLiteral("build"), QStringLiteral(".svn"),
-              QStringLiteral(".hg"), QStringLiteral(".ccls-cache")};
+              QStringLiteral(".hg"), QStringLiteral(".ccls-cache"),
+              // ANTS-2007 — review-artifact cache: a stale symbol lingering in
+              // a cached report would mask real spec-drift in the source.
+              QStringLiteral(".indie-review")};
         return s;
     }();
     QString sourceBlob;
@@ -308,6 +320,9 @@ QString buildProjectSourceBlob(const QString &projectPath) {
                 if (kSkipTopDirs.contains(fi.fileName())) continue;
                 // Also skip build-* variants (build-debug, build-ci, …).
                 if (fi.fileName().startsWith("build-")) continue;
+                // ANTS-2007 — don't follow directory symlinks: a cyclic link
+                // would recurse unboundedly and crash the walk.
+                if (fi.isSymLink()) continue;
                 walk(fi.filePath());
                 continue;
             }
@@ -318,6 +333,11 @@ QString buildProjectSourceBlob(const QString &projectPath) {
             // the blob would make every spec token match itself and
             // silently neuter the whole lane.
             if (name == "spec.md") continue;
+            // ANTS-2007 — the changelog/roadmap carry historical symbol names;
+            // a token deleted from src/ but still cited there would mask the
+            // drift it's meant to catch (the finding even says "no match in
+            // src/"). Exclude them from the source blob.
+            if (name == "ROADMAP.md" || name == "CHANGELOG.md") continue;
             bool match = false;
             for (const QString &pat : kExts) {
                 // pat is "*.ext"; compare suffix.
@@ -436,7 +456,8 @@ QString runChangelogCoverageCheck(const QString &projectPath) {
     // convention. Don't flood it with coverage warnings; silently skip.
     if (titles.isEmpty()) return {};
 
-    const QList<ChangelogBullet> bullets = extractTopVersionBullets(clogText);
+    const QList<ChangelogBullet> bullets =
+        extractTopVersionBullets(clogText, /*skipUnreleased=*/true);
 
     QString out;
     for (const ChangelogBullet &b : bullets) {

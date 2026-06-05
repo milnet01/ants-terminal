@@ -51,16 +51,13 @@ std::optional<Repair> planRepair(const Finding &f,
         return r;
     };
 
-    // 1. cppcheck `unusedInclude` -> remove the #include line. Trust the
-    //    tool's verdict, but only when the flagged line really is an
-    //    include directive (a moved finding must not delete code).
-    if (f.checkId.contains(QStringLiteral("cppcheck"), Qt::CaseInsensitive) &&
-        f.message.contains(QStringLiteral("unusedInclude"), Qt::CaseInsensitive)) {
-        static const QRegularExpression inc(QStringLiteral(R"(^\s*#\s*include\b)"));
-        if (inc.match(line).hasMatch())
-            return make(QStringLiteral("autofix.unused_include"), QString(), true);
-        return std::nullopt;
-    }
+    // 1. cppcheck `unusedInclude` — NOT auto-removed (ANTS-2006). cppcheck has
+    //    a well-known false-positive rate on Qt code (it doesn't model Qt's
+    //    transitive includes / moc-generated needs), so deleting a "unused"
+    //    header can break the build — violating the behaviour-neutral contract.
+    //    cppcheck also can't see whether the finding came from a --library=qt
+    //    run here, so there's no safe corroboration to gate on. Left for manual
+    //    review rather than dropped silently.
 
     // 2. dead Q_UNUSED — only a standalone `Q_UNUSED(...);` statement.
     if (f.message.contains(QStringLiteral("Q_UNUSED"), Qt::CaseInsensitive)) {
@@ -142,7 +139,13 @@ bool applyRepair(const Repair &r) {
     // (disk-full corruption guard). indie-review-2026-05-21.
     const QByteArray outBytes = out.toUtf8();
     if (sf.write(outBytes) != outBytes.size()) return false;
-    return sf.commit();
+    if (!sf.commit()) return false;
+    // ANTS-2006 — QSaveFile commits via rename(2), but the new directory entry
+    // isn't durable until the parent dir is fsync'd (the ANTS-1141 pattern,
+    // same as auditcache/auditrunner). A crash mid-commit could otherwise lose
+    // the edit while reporting success.
+    fsyncParentDir(r.file);
+    return true;
 }
 
 bool logRepair(const QString &cacheDir, const Repair &r) {

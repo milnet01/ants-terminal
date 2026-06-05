@@ -28,6 +28,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Audit auto-fix no longer deletes "unused" includes; edits are crash-durable** (ANTS-2006)
+  cppcheck's unusedInclude is no longer auto-removed (its Qt false-positive rate could delete a needed header and break the build); auto-fix edits now fsync the directory so a crash can't lose a committed change.
+
+- **focused_test: validate coverage-map patterns and run the full suite on build changes** (ANTS-2008)
+  A typo in tests/coverage-map.json now falls back to the heuristic instead of breaking every focused run; a CMakeLists.txt / *.cmake change forces the full test suite; a map open-failure reports read_failed rather than bad_json.
+
+- **Feature-coverage checks: fewer false warnings, no symlink-loop crash** (ANTS-2007)
+  Changelog coverage no longer flags in-progress [Unreleased] items as missing a test; spec-drift ignores stale symbols in ROADMAP/CHANGELOG/.indie-review; the source walk no longer follows directory symlinks (which could recurse forever).
+
 - **Fix a use-after-free crash in the MCP/IPC server under slow or concurrent requests** (ANTS-2026)
   The per-connection idle timer could fire during a long request (e.g. a full audit) and free the connection mid-job, after which the server wrote to freed memory and could crash — more likely with two sessions driving MCP at once. The timer now stops once a request is received, and the response write is guarded against a disconnected peer.
 

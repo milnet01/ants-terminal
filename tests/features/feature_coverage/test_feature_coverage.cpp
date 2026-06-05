@@ -174,6 +174,43 @@ void testChangelogSectionTagging() {
     }
 }
 
+void testChangelogSkipUnreleased() {
+    // ANTS-2007 — skipUnreleased anchors on the first RELEASED version so the
+    // coverage check doesn't flag in-progress (unreleased) items.
+    const QString md = R"(## [Unreleased]
+
+### Added
+
+- WIP bullet that should be skipped.
+
+## [0.2] - 2026-06-05
+
+### Added
+
+- Released bullet.
+)";
+    const QList<ChangelogBullet> def =
+        FeatureCoverage::extractTopVersionBullets(md);
+    CHECK(def.size() == 1, "changelog.skipUnreleased default size");
+    if (def.size() == 1)
+        CHECK(def[0].text == "WIP bullet that should be skipped.",
+              "changelog.skipUnreleased default text");
+
+    const QList<ChangelogBullet> rel =
+        FeatureCoverage::extractTopVersionBullets(md, /*skipUnreleased=*/true);
+    CHECK(rel.size() == 1, "changelog.skipUnreleased skipped size");
+    if (rel.size() == 1)
+        CHECK(rel[0].text == "Released bullet.",
+              "changelog.skipUnreleased skipped text");
+
+    // Unreleased-only changelog under skip → no bullets (nothing released).
+    const QString onlyUnreleased = "## [Unreleased]\n\n### Added\n\n- X.\n";
+    const QList<ChangelogBullet> none =
+        FeatureCoverage::extractTopVersionBullets(onlyUnreleased,
+                                                  /*skipUnreleased=*/true);
+    CHECK(none.isEmpty(), "changelog.skipUnreleased only-unreleased empty");
+}
+
 void testChangelogLeadingDashStripped() {
     const QString md = "## [0.1]\n\n### Added\n\n- Foo bar.\n";
     const QList<ChangelogBullet> b =
@@ -262,6 +299,7 @@ static int runMain() {
     testChangelogNoHeader();
     testChangelogTopSectionOnly();
     testChangelogSectionTagging();
+    testChangelogSkipUnreleased();
     testChangelogLeadingDashStripped();
     testChangelogLineNumbering();
 
