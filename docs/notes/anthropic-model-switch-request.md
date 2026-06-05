@@ -1,8 +1,8 @@
 # Feature request for Anthropic — programmatic model switch for a running Claude Code session
 
-**Status:** draft to submit (ANTS-1979 parked pending this). File at
-<https://github.com/anthropics/claude-code/issues> (related prior art:
-#24947, #53049) or via `/feedback` in the CLI.
+**Status:** FILED 2026-06-05 →
+<https://github.com/anthropics/claude-code/issues/65586> (ANTS-1979 parked
+pending this; related prior art: #24947, #53049).
 
 ## Summary
 
