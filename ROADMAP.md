@@ -5856,11 +5856,12 @@ already on the roadmap above.
   Lanes: fileoutline.
   Source: in-session-2026-06-05 (found while implementing ANTS-2021 read_region symbol mode).
 
-- 📋 [ANTS-2029] **`McpTestResults.WiringContract` fails: fixed 4500-char scrape window no longer reaches `test_results`' `etag_match`.**
+- ✅ [ANTS-2029] **`McpTestResults.WiringContract` fails: fixed 4500-char scrape window no longer reaches `test_results`' `etag_match`.**
   Pre-existing failure (the committed build/test_claude fails it too — not introduced by ANTS-1637). tests/features/mcp_test_results/test_mcp_test_results.cpp:158 anchors on the `ANTS-1300 — test_results` comment and reads a fixed 4500-char window for INV-8b/c/d (`req.append("caller_cwd")` / `"detail"` / `etag_match`). The test_results schema block has since grown, so `etag_match` now sits at offset 5169 — outside the window — and INV-8b/c/d + INV-10 fail though the schema is intact. Fix: widen the window (e.g. 4500→8000) or anchor each property check on the tool's `inputSchema` builder rather than a byte budget. Lanes: testing, claudeintegration.
   **Layman:** A test that checks the test_results tool's setup looks at too small a slice of the source file and now misses part of it — widen the window.
   Kind: fix.
   Source: in-session-2026-06-05 (found running test_claude during ANTS-1637).
+  Resolved (2026-06-05): INV-8b/c/d region now bounds to the test_results tool block (anchor → next `tools.append(`) instead of a fixed 4500-char window, and INV-10's kindForName window widened to 8000 (find-first keeps it false-match-safe). test_claude 970/970 green.
 
 ### 🔍 Indie-review fold-in (2026-05-14) — follow-up sweep
 

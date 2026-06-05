@@ -157,7 +157,14 @@ TEST(McpTestResults, WiringContract) {
     {
         const auto anchorPos = ciCpp.find("ANTS-1300 — test_results");
         ASSERT_NE(anchorPos, std::string::npos);
-        const std::string region = ciCpp.substr(anchorPos, 4500);
+        // Bound the region to the test_results tool block (anchor → next
+        // tools.append) rather than a fixed byte budget: the block grows as
+        // schema knobs are added (ANTS-2029), and generic props like
+        // "etag_match"/"detail" recur in every tool's schema, so a too-small
+        // window under-reaches while a too-large one matches the NEXT tool.
+        const auto blockEnd = ciCpp.find("tools.append(", anchorPos);
+        ASSERT_NE(blockEnd, std::string::npos);
+        const std::string region = ciCpp.substr(anchorPos, blockEnd - anchorPos);
         expect(contains(region, "req.append(\"caller_cwd\")"),
                "INV-8b",
                "test_results schema must mark \"caller_cwd\" as "
@@ -198,7 +205,9 @@ TEST(McpTestResults, WiringContract) {
     {
         const auto pos = ciCpp.find("auto kindForName");
         ASSERT_NE(pos, std::string::npos);
-        const std::string fn = ciCpp.substr(pos, 5000);
+        // Generous window: find() returns the FIRST "test_results" (the real
+        // kindForName branch), so a larger budget can't false-match (ANTS-2029).
+        const std::string fn = ciCpp.substr(pos, 8000);
         const auto branch = fn.find("\"test_results\"");
         ASSERT_NE(branch, std::string::npos)
             << "test_results must have an explicit branch in "
