@@ -4764,6 +4764,10 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("read_region",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdReadRegion));
+    // ANTS-2022 — apply_edits: atomic-per-file batch of {path, old, new} edits.
+    m_claudeIntegration->registerToolProvider("apply_edits",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdApplyEdits));
     // ANTS-1961 / ANTS-1962 — cross-session feedback-file read + write.
     m_claudeIntegration->registerToolProvider("feedback_query",
         ClaudeIntegration::CallerCwdContract::Required,

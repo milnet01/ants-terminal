@@ -3031,6 +3031,70 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(rrTool);
 
+                // ANTS-2022 — apply_edits: apply N {path, old, new} edits
+                // across M project files in one atomic-per-file call,
+                // instead of one native Edit round-trip per site.
+                QJsonObject aeTool;
+                aeTool["name"] = "apply_edits";
+                aeTool["description"] = QStringLiteral(
+                    "Apply a batch of {path, old, new} edits across one or "
+                    "more project files in ONE call — instead of a native "
+                    "Edit round-trip per site. Each edit replaces `old` with "
+                    "`new` in `path`; without replace_all, `old` must occur "
+                    "exactly once (else the edit is skipped: not_found for 0, "
+                    "ambiguous for >1). Atomic per file (QSaveFile); multiple "
+                    "edits to one file apply in array order. A path escaping "
+                    "the project root fails the whole call (bad_path); a "
+                    "missing file / absent-or-ambiguous old / >4 MiB file / "
+                    "failed commit is a per-edit skip. Returns applied[] (one "
+                    "per file) + skipped[] (one per edit) + counts. "
+                    "caller_cwd required.");
+                aeTool["selection_hint"] = QStringLiteral(
+                    "Use for a multi-site sweep (same change across N files) "
+                    "to collapse N native Edit calls into one atomic batch.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    QJsonObject props;
+                    QJsonObject editsProp; editsProp["type"] = "array";
+                        editsProp["description"] = QStringLiteral(
+                            "Non-empty list of edits. Each: {path, old, new, "
+                            "replace_all?}.");
+                    QJsonObject items; items["type"] = "object";
+                        items["additionalProperties"] = false;
+                        QJsonObject ip;
+                        QJsonObject pP; pP["type"] = "string";
+                            pP["description"] = QStringLiteral(
+                                "File path resolved under caller_cwd.");
+                        QJsonObject oP; oP["type"] = "string";
+                            oP["description"] = QStringLiteral(
+                                "Substring to replace (non-empty; must be "
+                                "unique unless replace_all).");
+                        QJsonObject nP; nP["type"] = "string";
+                            nP["description"] = QStringLiteral(
+                                "Replacement text (may be empty for a "
+                                "deletion).");
+                        QJsonObject rP; rP["type"] = "boolean";
+                            rP["description"] = QStringLiteral(
+                                "Replace every occurrence of `old` (default "
+                                "false → require a unique match).");
+                        ip["path"] = pP; ip["old"] = oP; ip["new"] = nP;
+                        ip["replace_all"] = rP;
+                        items["properties"] = ip;
+                        QJsonArray ir; ir.append("path"); ir.append("old"); ir.append("new");
+                        items["required"] = ir;
+                    editsProp["items"] = items;
+                    props["edits"]      = editsProp;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    QJsonArray required;
+                    required.append("edits");
+                    schema["required"] = required;
+                    aeTool["inputSchema"] = schema;
+                }
+                tools.append(aeTool);
+
                 // ANTS-1961 — feedback_query: read the un-triaged tail of
                 // a *_Ants_MCP_Feedback.md file instead of a full Read.
                 {
@@ -7361,6 +7425,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-2021 — read_region: caller_cwd-Required,
                         // path-validated slice reader (file_outline family).
                         name == QLatin1String("read_region") ||
+                        // ANTS-2022 — apply_edits: caller_cwd-Required,
+                        // path-validated batch file editor (workspace write).
+                        name == QLatin1String("apply_edits") ||
                         // ANTS-1636 — find_sources: project-scoped
                         // src/+tests/ topic walker.
                         name == QLatin1String("find_sources") ||
@@ -8250,6 +8317,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-2021 — read_region resolves a project-relative path + anchors
     // tenancy; Required.
     if (toolName == QStringLiteral("read_region"))         return C::Required;
+    // ANTS-2022 — apply_edits writes project files anchored by caller_cwd +
+    // PathValidation (roadmap_log/changelog_log posture, no RcGate); Required.
+    if (toolName == QStringLiteral("apply_edits"))         return C::Required;
     // ANTS-1961 / ANTS-1962 — feedback verbs resolve a relative `path`
     // off caller_cwd and anchor tenancy; Required even though the
     // canonical case is an absolute shared-root path.

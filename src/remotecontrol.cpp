@@ -7,6 +7,7 @@
 #include "findsources.h"
 #include "readlog.h"
 #include "readregion.h"
+#include "applyedits.h"
 #include "speclog.h"             // ANTS-1963
 #include "modelswitchledger.h"   // ANTS-1735 — model_switch_stats aggregation
 #include "modelnearmissledger.h" // ANTS-1894 — model_switch_stats near-miss arm
@@ -6243,6 +6244,155 @@ QJsonDocument RemoteControl::cmdReadRegion(const QJsonObject &req) {
         opts.endLine   = endV.isDouble() ? endV.toInt() : opts.startLine;
     }
     return QJsonDocument(ReadRegion::extract(check.resolved, opts));
+}
+
+// ANTS-2022 — apply_edits: apply N {path, old, new} edits across M project
+// files in one call, atomic per file. caller_cwd Required. Path-escape is a
+// fail-closed whole-call refusal (bad_path); a missing file / absent or
+// ambiguous `old` / oversized file / failed commit is a per-edit soft skip.
+QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
+    const QJsonValue editsV = req.value(QStringLiteral("edits"));
+    if (!editsV.isArray() || editsV.toArray().isEmpty()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("apply_edits: \"edits\" must be a non-empty array");
+        o["code"]  = QStringLiteral("bad_args");
+        return QJsonDocument(o);
+    }
+    const QJsonArray edits = editsV.toArray();
+
+    const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
+    const QString sentinelRoot = ants::expandGlobalConfigSentinel(callerRaw);
+    const QString rootCanonical =
+        !sentinelRoot.isEmpty() ? sentinelRoot
+                                : resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("apply_edits: no focused project");
+        o["code"]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
+
+    // Pass 1 — validate args + paths (fail-closed on escape) before writing.
+    struct E {
+        int index; QString rawPath; QString resolved;
+        QString oldStr; QString newStr; bool replaceAll;
+    };
+    QVector<E> es;
+    es.reserve(edits.size());
+    for (int i = 0; i < edits.size(); ++i) {
+        const QJsonObject e = edits.at(i).toObject();
+        const QString rawPath = e.value(QStringLiteral("path")).toString();
+        const bool hasOld = e.contains(QStringLiteral("old"));
+        const bool hasNew = e.contains(QStringLiteral("new"));
+        const QString oldStr = e.value(QStringLiteral("old")).toString();
+        if (rawPath.isEmpty() || !hasOld || oldStr.isEmpty() || !hasNew) {
+            QJsonObject o;
+            o["ok"]    = false;
+            o["error"] = QStringLiteral("apply_edits: edit %1 needs a non-empty "
+                                        "\"path\"/\"old\" and a \"new\"").arg(i);
+            o["code"]  = QStringLiteral("bad_args");
+            return QJsonDocument(o);
+        }
+        const auto check = PathValidation::validatePath(
+            rawPath, rootCanonical,
+            QStringLiteral("apply_edits"), QStringLiteral("path"));
+        if (check.bad) return QJsonDocument(check.err);  // fail-closed bad_path
+        es.push_back({i, rawPath, check.resolved, oldStr,
+                      e.value(QStringLiteral("new")).toString(),
+                      e.value(QStringLiteral("replace_all")).toBool(false)});
+    }
+
+    // Pass 2 — group existing files (first-seen order), skip missing, then
+    // apply each file's edits in array order and write atomically.
+    QJsonArray applied, skipped;
+    int editsApplied = 0, editsSkipped = 0, filesWritten = 0;
+    auto addSkip = [&](int index, const QString &path, const QString &reason) {
+        QJsonObject s; s["index"] = index; s["path"] = path; s["reason"] = reason;
+        skipped.append(s); ++editsSkipped;
+    };
+
+    QVector<QString> fileOrder;
+    QHash<QString, QVector<int>> byFile;  // resolved → indices into es
+    QHash<QString, QString> rawOf;        // resolved → first-seen rawPath
+    for (int k = 0; k < es.size(); ++k) {
+        if (es[k].resolved.isEmpty()) {   // in-root but file absent
+            addSkip(es[k].index, es[k].rawPath, QStringLiteral("not_found"));
+            continue;
+        }
+        if (!byFile.contains(es[k].resolved)) {
+            fileOrder.push_back(es[k].resolved);
+            rawOf[es[k].resolved] = es[k].rawPath;
+        }
+        byFile[es[k].resolved].push_back(k);
+    }
+
+    for (const QString &resolved : fileOrder) {
+        const QString rawPath = rawOf.value(resolved);
+        const QVector<int> &group = byFile[resolved];
+
+        if (QFileInfo(resolved).size() > kReadToolMaxBytesCeiling) {
+            for (int k : group) addSkip(es[k].index, rawPath, QStringLiteral("too_large"));
+            continue;
+        }
+        QFile in(resolved);
+        if (!in.open(QIODevice::ReadOnly)) {
+            for (int k : group) addSkip(es[k].index, rawPath, QStringLiteral("not_found"));
+            continue;
+        }
+        QString working = QString::fromUtf8(in.readAll());
+        in.close();
+
+        int fileReplacements = 0;
+        QVector<int> appliedIdx;
+        for (int k : group) {
+            const auto oc = ApplyEdits::applyToContent(
+                working, es[k].oldStr, es[k].newStr, es[k].replaceAll);
+            if (oc.applied) {
+                working = oc.newContents;
+                fileReplacements += oc.replacements;
+                appliedIdx.push_back(k);
+            } else {
+                addSkip(es[k].index, rawPath, oc.skipReason);
+            }
+        }
+        if (appliedIdx.isEmpty()) continue;  // nothing applied → don't touch
+
+        // Atomic write — the applyRepair idiom (QSaveFile write-full-or-fail
+        // + commit + fsyncParentDir). A whole-content substring replace, so
+        // a trailing newline is preserved without split/rejoin.
+        bool wrote = false;
+        {
+            QSaveFile sf(resolved);
+            if (sf.open(QIODevice::WriteOnly)) {
+                const QByteArray bytes = working.toUtf8();
+                if (sf.write(bytes) == bytes.size() && sf.commit()) {
+                    fsyncParentDir(resolved);
+                    wrote = true;
+                }
+            }
+        }
+        if (wrote) {
+            QJsonObject a; a["path"] = rawPath; a["replacements"] = fileReplacements;
+            applied.append(a);
+            ++filesWritten;
+            editsApplied += appliedIdx.size();
+        } else {
+            for (int k : appliedIdx)
+                addSkip(es[k].index, rawPath, QStringLiteral("commit_failed"));
+        }
+    }
+
+    QJsonObject env;
+    env["ok"]            = true;
+    env["applied"]       = applied;
+    env["skipped"]       = skipped;
+    env["files_written"] = filesWritten;
+    env["edits_total"]   = edits.size();
+    env["edits_applied"] = editsApplied;
+    env["edits_skipped"] = editsSkipped;
+    return QJsonDocument(env);
 }
 
 // ----- ANTS-1961 / ANTS-1962 — feedback-file MCP tools --------------

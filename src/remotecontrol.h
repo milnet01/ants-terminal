@@ -380,6 +380,10 @@ public:
     // ANTS-2021 — read_region: return a line range or a named symbol's
     // body from a caller_cwd-relative project file via ReadRegion::extract.
     QJsonDocument cmdReadRegion(const QJsonObject &req);
+    // ANTS-2022 — apply_edits: apply N {path, old, new} edits across M
+    // project files in one call, atomic per file (ApplyEdits::applyToContent
+    // + QSaveFile), with per-edit skipped[] accounting.
+    QJsonDocument cmdApplyEdits(const QJsonObject &req);
 
     // ANTS-1961 — feedback_query: read the un-triaged tail of a
     // *_Ants_MCP_Feedback.md file (delegates to FeedbackFile::parse).

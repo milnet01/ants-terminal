@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **apply_edits MCP tool — apply N {path, old, new} edits across M project files in one atomic-per-file call** (ANTS-2022)
+  Collapses a multi-site sweep's N native Edit round-trips into one call with per-edit skipped[] accounting (not_found / ambiguous / too_large / commit_failed) and applied[] per file. caller_cwd-Required; a path escaping the project root fails the whole call (bad_path, fail-closed); each touched file is written atomically (QSaveFile + fsyncParentDir).
+
 - **read_region MCP tool — read an exact line range or a named symbol's body from a project file** (ANTS-2021)
   A token-frugal read verb: returns just a slice (start_line/end_line, or a Class::method body via the file_outline scanner) instead of a whole-file Read, with an ETag-304 free re-read when the file is unchanged. caller_cwd-Required, path-validated, byte-capped (512 KiB default, 4 MiB ceiling), fields-projectable.
 

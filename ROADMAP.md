@@ -16433,12 +16433,13 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: in-session-2026-06-04.
   Resolved (2026-06-05): read_region landed — pure ReadRegion::extract helper (src/readregion.{h,cpp}, ants_core_lib) + cmdReadRegion handler + full MCP wiring (schema, isEtagSupportedTool, callerCwdContractFor Required, isFieldProjectionTool, registerToolProvider). Feature test tests/features/mcp_read_region/ (7 tests) green; full test_claude bundle 951/951 green. Spec docs/specs/ANTS-2021.md accepted after 5 cold-eyes loops. Symbol mode resolves class/Class::method forms (free-function gap tracked by ANTS-2028).
 
-- 📋 [ANTS-2022] **MCP multi-file batch-edit verb (N old→new edits across M files, atomic).**
+- ✅ [ANTS-2022] **MCP multi-file batch-edit verb (N old→new edits across M files, atomic).**
   Bundle/sweep work (ANTS-1988 mkpath->ensurePrivateDir across 5 sites, ANTS-2018 idiom sweep) costs one native Edit round-trip per site. An apply_edits verb taking [{path, old, new}] with a single atomic commit + per-edit skipped[] accounting (parity with roadmap_log flip_batch) collapses that to one call with the same path-validation/atomic-write guarantees as other Ants writes. Optional symbol-scoped replace robust against line drift.
   **Layman:** Apply the same small change across several files in one Ants call, like the batch roadmap-flip already does for the roadmap.
   Kind: feature.
   Lanes: mcp, workspace.
   Source: in-session-2026-06-04.
+  Resolved (2026-06-05): apply_edits landed — pure ApplyEdits::applyToContent helper (src/applyedits.{h,cpp}, ants_core_lib) + cmdApplyEdits handler (group-by-file, atomic QSaveFile + fsyncParentDir, per-edit skipped[], fail-closed bad_path) + MCP wiring (schema, callerCwdContractFor Required, registerToolProvider). Feature test tests/features/mcp_apply_edits/ (4 tests) green; full test_claude bundle 955/955 green. Spec docs/specs/ANTS-2022.md accepted after 5 cold-eyes loops. Impl simplification: whole-content substring replace preserves trailing newline without applyRepair's split/rejoin.
 
 - 📋 [ANTS-2023] **PreToolUse prefer-MCP advisory guardrail (the enforcement half of MCP discoverability).**
   Discoverability (SessionStart cheat-sheet, ANTS-1985 catalog) is the carrot; there is no stick. A PreToolUse hook that pattern-matches Bash grep -r / find / cat <file> / a full-file Read where a cheaper MCP verb exists (workspace_search / file_outline / read_region) and emits an advisory nudge would make the cheapest option the default in practice. Advisory-only first (never blocks); could later escalate to a soft-deny for the clearest cases. Enforcement must live in the harness/hook layer.
