@@ -31,6 +31,17 @@ main-exe-only iteration.
 Make ignores it, and the resulting cc1plus over-parallelism earlyoom-reaped
 binaries in 0.7.x.
 
+**Never relink `build/` while an instance is running (ANTS-2025).** The user
+launches `build/ants-terminal` (Plasma icon → `launch.sh`), and the linker
+rewrites that file in place, so a running instance later demand-pages a
+corrupted code page and SIGSEGVs. During a live session build to the isolated
+`build-fast/` tree (`cmake --build build-fast`, or `tools/build-and-stage.sh`
+which also atomically swaps the result into `build/`); `launch.sh` promotes a
+newer `build-fast/` binary into `build/` via an atomic `rename(2)` on the next
+launch — a running instance keeps its old inode. The binary must run from
+`build/` (it resolves assets + the MCP project root via `applicationDirPath`),
+so the file is swapped, not relocated.
+
 **Token-frugal invocations** (pipe to `tail` so a 10k-line log stays out
 of the assistant's context):
 
