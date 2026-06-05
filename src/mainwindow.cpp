@@ -4444,6 +4444,16 @@ void MainWindow::setupClaudeMcpProviders() {
             env["total_raw"]        = r.totalRaw;
             env["total_actionable"] = r.totalActionable;
             env["noise_rate_pct"]   = r.noiseRatePct;
+            // ANTS-2032 — explicit partiality signal: true when a tool
+            // timed out / crashed but the rest of the run still produced
+            // results (and the SARIF artifact below). `incomplete_tools`
+            // lists the offenders so the caller need not scan by_tool[].
+            env["partial"]          = r.partial;
+            if (!r.incompleteTools.isEmpty()) {
+                QJsonArray inc;
+                for (const QString &t : r.incompleteTools) inc.append(t);
+                env["incomplete_tools"] = inc;
+            }
             if (!r.sarifPath.isEmpty())
                 env["sarif_path"] = r.sarifPath;
             if (!r.htmlPath.isEmpty())

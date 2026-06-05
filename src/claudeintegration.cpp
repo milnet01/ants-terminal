@@ -5287,6 +5287,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "{iso_timestamp, commit, sarif} for the prior "
                         "sweep — anchor for ANTS-1504 since-last-run "
                         "mode. /tmp fallback when the root is read-only. "
+                        "ANTS-2032: the envelope carries `partial` (true "
+                        "when a tool timed out / crashed but the rest of "
+                        "the run still produced results + the SARIF "
+                        "artifact) and `incomplete_tools[]` naming the "
+                        "offenders, so a single tool blowing its cap never "
+                        "yields an all-or-nothing empty result. "
                         "See docs/specs/ANTS-1351.md + ANTS-1555.md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to run the static-analysis sweep without "

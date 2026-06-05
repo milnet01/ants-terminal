@@ -96,6 +96,18 @@ struct RunResult {
     QString                    scopeDemoted;
     QString                    scopeDemotedReason;
     bool                       noChanges = false;
+    // ANTS-2032 — explicit partiality signal. `partial` is true when a
+    // spawned tool did NOT finish cleanly (status != "ok": timed_out /
+    // crashed), e.g. one tool blew its per-tool cap or the aggregate cap
+    // killed a straggler. `incompleteTools` lists those tool names
+    // (sorted). The defensive guarantee the bug (ANTS-2032) asks for is
+    // already structural — the runner records every tool's status and
+    // returns whatever completed rather than aborting all-or-nothing, and
+    // the SARIF artifact is written before the caller serialises the
+    // reply — so this just makes the "this run is incomplete" signal a
+    // first-class envelope field instead of forcing a by_tool[] scan.
+    bool                       partial = false;
+    QStringList                incompleteTools;
 };
 
 // Aggregate cap = min(tools.count * capPerToolSeconds * 1.5, 240 s).
@@ -112,6 +124,12 @@ namespace internal {
 // for tests so they can replicate the cascade.
 qint64 measureEnvelopeBytes(const QJsonArray &samples,
                             const QHash<QString, ToolResult> &byTool);
+
+// ANTS-2032 — names of spawned tools whose status is not "ok"
+// (timed_out / crashed), sorted ascending. The run is "partial" iff this
+// is non-empty. Pure over the byTool map so the feature test can assert
+// the derivation without spawning a real tool.
+QStringList incompleteToolNames(const QHash<QString, ToolResult> &byTool);
 
 // Apply the bottom-up sample trim cascade: 10 → 5 → 3. Returns the
 // trimmed samples and sets samplesTruncated when any trim fired.

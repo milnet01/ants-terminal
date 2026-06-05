@@ -38,6 +38,11 @@ for security-relevant changes.
 - **Full MCP verb catalog in one call — `tool_info` with `catalog:true`.** (ANTS-1985)
   The startup tool cheat-sheet only fits 12 of ~70 helpers and is full. A Claude session can now ask `tool_info` for the whole catalog — every helper grouped by category with a one-line "what it's for" — in a single cheap call, instead of looking each one up separately.
 
+### Changed
+
+- **audit_run now flags partial runs explicitly** (ANTS-2032)
+  When a scan tool times out or crashes, audit_run already kept the results from the tools that finished (and still wrote the SARIF file to disk) — it never came back empty over one tool. The result now also says so directly with a `partial` flag and an `incomplete_tools` list, so you can see at a glance that a run was incomplete without digging through per-tool status.
+
 ### Fixed
 
 - **roadmap_log now refuses #### Pass heading roadmaps with a clear format_mismatch** (ANTS-2031)

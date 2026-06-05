@@ -1067,6 +1067,15 @@ qint64 measureEnvelopeBytes(const QJsonArray &samples,
     return QJsonDocument(env).toJson(QJsonDocument::Compact).size();
 }
 
+QStringList incompleteToolNames(const QHash<QString, ToolResult> &byTool) {
+    QStringList names;
+    for (auto it = byTool.constBegin(); it != byTool.constEnd(); ++it) {
+        if (it->status != QLatin1String("ok")) names.append(it.key());
+    }
+    names.sort();
+    return names;
+}
+
 void trimSamplesCascade(QHash<QString, ToolResult> &byTool,
                         bool &samplesTruncated) {
     auto totalSize = [&]() {
@@ -1521,6 +1530,15 @@ RunResult runAudit(const RunRequest &req) {
     r.noiseRatePct = (r.totalRaw == 0)
         ? 0
         : (100 - (100 * r.totalActionable / r.totalRaw));
+
+    // ── ANTS-2032 / explicit partiality. A tool that timed out or
+    // crashed leaves the rest of the run intact (it's recorded with its
+    // status and the others still complete); surface that as a top-level
+    // flag so a caller doesn't have to scan by_tool[].status to learn the
+    // run was incomplete. The SARIF artifact below is written regardless,
+    // so a partial run still leaves a recoverable artifact on disk.
+    r.incompleteTools = internal::incompleteToolNames(r.byTool);
+    r.partial         = !r.incompleteTools.isEmpty();
 
     // ── INV-13 / sample-trim cascade.
     internal::trimSamplesCascade(r.byTool, r.samplesTruncated);
