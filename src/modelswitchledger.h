@@ -212,6 +212,13 @@ struct StatsConfig {
     // trusted): the predicate is a strict `<`, NEVER `!=`. 0 = no epoch filter
     // (all-time / forensic path). Live dispatch sites set this to kSwitcherEpoch.
     int     minEpoch             = 0;
+    // ANTS-2033 — has the first-run opt-in nudge been shown/accepted
+    // (claude.auto_model_nudge_shown)? Lets the envelope distinguish, when
+    // the switch is OFF, "never enabled" (nudge not yet accepted) from
+    // "user disabled" (nudge shown, switch still off). Only consulted when
+    // switchEnabled is false. The switch is a single GLOBAL config key, so
+    // there is no per-project opt-out state to surface.
+    bool    nudgeShown           = false;
 };
 QJsonObject statsEnvelope(const QList<Record> &recs,
                           const StatsConfig &cfg = {});

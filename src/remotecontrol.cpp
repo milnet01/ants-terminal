@@ -8684,6 +8684,9 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
     sc.floorTier     = autoCfg.value(QStringLiteral("floor")).toString(QStringLiteral("haiku"));
     sc.minDwellSec   = autoCfg.value(QStringLiteral("min_dwell_sec")).toInt(90);
     sc.scope         = scope;
+    // ANTS-2033 — surface WHY the switch is off (never_enabled vs
+    // user_disabled) via the first-run opt-in latch.
+    sc.nudgeShown    = cfg.claudeAutoModelNudgeShown();
     // ANTS-1942 — set windowDays explicitly (shared constant) so the MCP
     // scorecard and the controller's caution dial can never silently diverge on
     // a struct-default change; ANTS-1941 — current-epoch records only.
@@ -8712,6 +8715,13 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
         env[QStringLiteral("floor_tier")] = sc.floorTier;
         env[QStringLiteral("min_dwell_sec")] = sc.minDwellSec;
         env[QStringLiteral("scope")] = sc.scope;   // overrides statsFull's
+        // ANTS-2033 — mirror the off-reason onto the near_misses envelope
+        // so both modes answer "why is it off?" consistently.
+        if (!sc.switchEnabled) {
+            env[QStringLiteral("auto_model_switch_off_reason")] =
+                sc.nudgeShown ? QStringLiteral("user_disabled")
+                              : QStringLiteral("never_enabled");
+        }
         return QJsonDocument(env);
     }
 

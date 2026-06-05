@@ -581,6 +581,27 @@ QJsonObject statsEnvelope(const QList<Record> &recs, const StatsConfig &cfg) {
     env[QStringLiteral("floor_tier")]                = cfg.floorTier;
     env[QStringLiteral("min_dwell_sec")]             = cfg.minDwellSec;
     env[QStringLiteral("scope")]                     = cfg.scope;
+    // ANTS-2033 — when the switch is OFF, say WHY so a caller can tell
+    // whether flipping it on is even an option. The switch is a single
+    // global config key (no per-project opt-out), so the two honest
+    // states are: "never_enabled" (the opt-in nudge hasn't been accepted
+    // yet) and "user_disabled" (nudge shown, switch left/turned off).
+    if (!cfg.switchEnabled) {
+        env[QStringLiteral("auto_model_switch_off_reason")] =
+            cfg.nudgeShown ? QStringLiteral("user_disabled")
+                           : QStringLiteral("never_enabled");
+        env[QStringLiteral("auto_model_switch_off_detail")] =
+            cfg.nudgeShown
+                ? QStringLiteral("auto-switch is disabled; re-enable via "
+                                 "Settings \xE2\x86\x92 \"Let Ants pick the "
+                                 "Claude model for me\" or set "
+                                 "claude.auto_model_switch true")
+                : QStringLiteral("auto-switch has never been enabled; the "
+                                 "first-run opt-in has not been accepted "
+                                 "\xE2\x80\x94 enable via Settings \xE2\x86\x92 "
+                                 "\"Let Ants pick the Claude model for me\" or "
+                                 "set claude.auto_model_switch true");
+    }
     env[QStringLiteral("headline")]                  = headline;
     return env;
 }

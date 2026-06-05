@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **model_switch_stats now says WHY auto-switch is off** (ANTS-2033)
+  When the auto-model-picker is off, model_switch_stats now also reports the reason — "never_enabled" (you haven't accepted the first-run opt-in) or "user_disabled" (you saw it and left it off) — plus a short plain-English detail, so you can tell whether turning it on is even an option.
+
 - **Project-wide codebase index — pre-computed structural map MCP serves to clients.** (ANTS-1637)
   Today every Claude session starts from zero — it has to grep the project to figure out which file does what. We could build a small JSON index (where every class lives, what files belong to which feature) once and let every session read it instantly. Like a book's index page, kept fresh by watching for file changes.
 

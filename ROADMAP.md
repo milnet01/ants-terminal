@@ -15627,12 +15627,13 @@ subsection.
   Lanes: auditrunner.
   Source: cross-session-report-2026-06-05 (RetroDB session 1, LOW/possibly-environmental).
 
-- 📋 [ANTS-2033] **`model_switch_stats` should surface *why* auto-switch is off (global default / per-project opt-out / never-enabled) when disabled.**
+- ✅ [ANTS-2033] **`model_switch_stats` should surface *why* auto-switch is off (global default / per-project opt-out / never-enabled) when disabled.**
   When `auto_model_switch_enabled:false` the headline reads "auto-switch OFF" but not the reason, so a caller can't tell whether to flip it on. Add a small reason field (config-default vs per-project opt-out vs never-enabled). Read-only stats enhancement, independent of the auto-switcher parking (the verb stays live). The deeper firing suggestions fold under the parked-switcher sibling.
   **Layman:** When Ants says the auto-model-picker is off, also say why, so you know whether you can turn it on.
   Kind: enhancement.
   Lanes: modelswitchledger, claudeintegration.
   Source: cross-session-report-2026-06-05 (RetroDB sessions 1+2).
+  Resolved (2026-06-05): when auto_model_switch_enabled is false, statsEnvelope now emits auto_model_switch_off_reason ("never_enabled" if the first-run opt-in nudge hasn't been accepted, else "user_disabled") + a human-readable auto_model_switch_off_detail. Wired the nudge latch (Config::claudeAutoModelNudgeShown → StatsConfig.nudgeShown) at the dispatch site; mirrored the reason onto the near_misses-mode envelope. The switch is a single GLOBAL config key, so there is no per-project opt-out state to surface — the bullet's three-way framing collapses to the two honest, derivable states (documented inline). Read-only; no ledger/config writes. Verb stays live independent of the parked auto-switcher. Tests: tests/features/model_switch_stats_v2/ ANTS2033 (3, behavioural over statsEnvelope). Descriptor updated for discoverability.
 
 - 💭 [ANTS-2034] **Auto-switcher firing-design feedback (turn-boundary eval, regret task-signature, calibration counterfactual) — deferred under the parked switcher.**
   RetroDB (heavy real-work project) reports: (1) `composer_not_empty` dominated near-misses (33/24h) — a half-typed *next* prompt doesn't mean the *current* turn needs a bigger model; evaluate the switch at turn boundaries (on submit/on idle) not continuously against composer state; (2) regret records should carry a coarse task signature (tool-mix / diff-size / file-count bucket) so a 50%-on-n=4 regret rate is diagnosable, not just visible; (3) a calibration mode that evaluates+logs the counterfactual without switching, to grow the sample safely. All blocked by the auto-switcher parking (keystroke injection is the only firing mechanism and is unsafe). Captured so the design input isn't lost; revisit when a real non-interactive model-switch API ships.

@@ -585,3 +585,35 @@ TEST(ModelSwitchStatsV2_INV13, QuietWindowSettlement)
         EXPECT_FALSE(fill.outcome.sessionCleanlyEndedOnNewTier);
     }
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-2033 — when the switch is OFF, surface WHY (never_enabled vs
+// user_disabled). The reason field is absent when the switch is ON.
+// ---------------------------------------------------------------------------
+TEST(ModelSwitchStatsV2_ANTS2033, OffReasonNeverEnabled) {
+    L::StatsConfig cfg;            // switchEnabled defaults false
+    cfg.nudgeShown = false;        // opt-in nudge not yet accepted
+    const QJsonObject env = L::statsEnvelope({}, cfg);
+    EXPECT_FALSE(env.value(QStringLiteral("auto_model_switch_enabled")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("auto_model_switch_off_reason")).toString(),
+              QStringLiteral("never_enabled"));
+    EXPECT_FALSE(env.value(QStringLiteral("auto_model_switch_off_detail"))
+                     .toString().isEmpty())
+        << "ANTS-2033: a human-readable detail accompanies the reason";
+}
+
+TEST(ModelSwitchStatsV2_ANTS2033, OffReasonUserDisabled) {
+    L::StatsConfig cfg;            // switchEnabled defaults false
+    cfg.nudgeShown = true;         // nudge shown, switch left off
+    const QJsonObject env = L::statsEnvelope({}, cfg);
+    EXPECT_EQ(env.value(QStringLiteral("auto_model_switch_off_reason")).toString(),
+              QStringLiteral("user_disabled"));
+}
+
+TEST(ModelSwitchStatsV2_ANTS2033, NoOffReasonWhenEnabled) {
+    const QJsonObject env = L::statsEnvelope({}, enabledCfg());
+    EXPECT_TRUE(env.value(QStringLiteral("auto_model_switch_enabled")).toBool());
+    EXPECT_FALSE(env.contains(QStringLiteral("auto_model_switch_off_reason")))
+        << "ANTS-2033: no off-reason when the switch is on";
+    EXPECT_FALSE(env.contains(QStringLiteral("auto_model_switch_off_detail")));
+}
