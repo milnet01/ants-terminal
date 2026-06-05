@@ -9160,6 +9160,35 @@ clips input text), and the auto-switcher interrupting active work.
   Source: in-session-2026-06-05.
   Resolved (2026-06-05): stop the idle (slow-loris) timer as soon as a complete request line is parsed — it bounds time-to-first-request, not dispatch time, so it can no longer fire during a nested-event-loop verb (audit_run) and abort()+deleteLater() the socket mid-dispatch. Defence-in-depth: capture a QPointer<QLocalSocket> and gate the post-dispatch write on (guard && state()==ConnectedState) so a peer disconnect during a nested loop can't drive a UAF either. All 21 RemoteControl tests pass.
 
+- ✅ [ANTS-2037] **CLAUDE.md: add a `tool_info {catalog:true}` discoverability pointer so every session learns the full MCP toolkit independent of the SessionStart hook.**
+  The SessionStart hook (ANTS-1897) is the only surface pointing sessions at the full verb catalog, and it can go stale (ANTS-2038) or be disabled. Add a one-line pointer in CLAUDE.md's MCP section — always loaded — so awareness of all 73 verbs survives a stale or absent hook. Points at `tool_info {catalog:true}` (ANTS-1985) plus the ToolSearch schema-load step.
+  **Layman:** Make sure every Claude session can find the list of all Ants helper tools even if the startup tip is missing or out of date, by writing the pointer into the always-loaded project notes.
+  Kind: doc.
+  Lanes: claudeintegration, mcptooling.
+  Source: user-request-2026-06-05.
+  Resolved (2026-06-05): added the "Discovering the full toolkit" pointer at the top of CLAUDE.md's "MCP tool authoring" section — points at tool_info {catalog:true} + the ToolSearch schema-load step. Docs-only, no rebuild. Verified the pointer is the always-loaded channel independent of the hook state.
+
+- 📋 [ANTS-2038] **Orientation hook goes stale within a version: prelude overwrite is gated on ANTS_VERSION only, so in-version template edits (e.g. ANTS-1985's catalog repoint) never reach the installed mcp-orientation.sh.**
+  INV-1/INV-12 (ANTS-1897) rewrite the installed hook only when the marker version differs from ANTS_VERSION. ANTS-1985 repointed the prelude's "Full catalog" line at `tool_info {catalog:true}`, but the edit shipped within 0.7.95, so the installed file still tells every session to use ToolSearch (names only, no selection_hints) until the 0.7.96 bump. Fix: also overwrite when the installed Ants-owned body (marker present) differs from the rendered template, keeping INV-2's user-owned (no-marker) guard. Spec-amending — needs a /cold-eyes pass on the INV-1/INV-12 changes. Immediate remediation: delete the installed hook to force regen, or wait for the next bump.
+  **Layman:** The startup tip file only refreshes when the app version number changes, so a wording fix made without a version bump never reaches sessions. Make it refresh whenever the official content changes, not just on a version bump.
+  Kind: fix.
+  Lanes: claudeintegration, mcptooling.
+  Source: in-session-2026-06-05.
+
+- 📋 [ANTS-2041] **`workspace_search` rejects the natural `query` arg with `bad_pattern` — accept `query` as an alias for `pattern`, or hint it in the refusal.**
+  Observed in-session: calling workspace_search with `query:"…"` returns {code:"bad_pattern", error:"missing or empty pattern"}. The documented arg is `pattern` (required), but `query` is the natural synonym a caller reaches for — especially beside the sibling read verbs roadmap_query / spec_query whose names imply a query-shaped arg. Low-severity ergonomic friction (the refusal names the missing field, so recovery is one retry). Fix: accept `query` as an alias for `pattern` (alias only — `pattern` stays the source of truth), or extend the bad_pattern refusal with hint:"pass the search string as `pattern`". Noticed during own Ants-MCP use.
+  **Layman:** When searching the code, the tool wants the search text in a box called 'pattern', but 'query' is the obvious name to try. Let it accept 'query' too, or tell the caller which box to use.
+  Kind: enhancement.
+  Lanes: workspacesearch, claudeintegration.
+  Source: in-session-2026-06-05.
+
+- 📋 [ANTS-2043] **roadmap_log op:append has no near-duplicate content detection — surface a non-blocking possible_duplicates[] so a caller doesn't file a second copy of an existing item.**
+  Ants detects duplicate IDs (roadmap_query duplicate_ids[] via rcComputeDuplicateIds — exact canonical-ID collisions) but NOT near-duplicate CONTENT. When filing new bullets a caller must grep ROADMAP by hand to avoid re-filing an existing item (done manually for ANTS-2037..2042 this session). Add an append-time soft check: on op:append / append_batch, score the new headline against existing bullet headlines using the already-present rcNormaliseHeadline + rcFnv1a64 (exact normalised match) plus a cheap token-overlap ratio for near matches, and return a non-blocking possible_duplicates:[{id, headline, score}] in the success envelope — still appends (advisory, not a refusal). Optional read-side companion: a roadmap_query similar="<headline>" probe to check before writing. Reuses existing machinery; no new parser. Noticed in-session while filing six items each preceded by a manual dup grep.
+  **Layman:** Ants can spot two to-do items sharing the same ID, but not two that just say nearly the same thing. Add a gentle 'this looks like an existing item' heads-up when adding a new one, so the list doesn't fill with near-copies.
+  Kind: enhancement.
+  Lanes: roadmapfoldin, roadmap-format.
+  Source: in-session-2026-06-05.
+
 ### 🔍 Indie-review #7 + audit fold-in (2026-06-04)
 
 Full-codebase sweep: 32 independent Sonnet reviewer lanes (one per
@@ -15652,6 +15681,27 @@ subsection.
   Source: cross-session-report-2026-06-05 (RetroDB, 4 sessions through v3.6.34).
   Resolved (2026-06-05): parsePassHeadingBullets now captures an optional letter-led `.<SUB>` sub-pass suffix, synthesising distinct ids (PASS-41-5 vs PASS-41-5-B) so the duplicate-ID detector no longer false-flags a parent + its `.LETTER` sub-passes. The Active/Done-index checkbox-mirror facet is not reproducible: in pass-headings mode parseBullets parses only `#### Pass` headings (GFM `[x]` checkboxes get no canonical id), so the false set is fully explained by sub-pass collapse. Regression test: tests/features/roadmap_parser_subpass_id/ (INV-1..4). Numeric third level (`Pass 3.1.2`) left in the tail unchanged (surgical scope).
 
+- 📋 [ANTS-2039] **pass-headings status classifier ignores the emoji-prefixed `✅ Done` form — `- **Status**: ✅ Done` reads as 📋 active in roadmap_query/session_orient.**
+  Confirmed in parsePassHeadingBullets (src/roadmapdialog.cpp:740): rxStatusLine captures ([A-Za-z0-9_-]+) immediately after `- **Status**:` + whitespace, so a leading status emoji (✅/📋/🚧/💭) — not a word char and not whitespace — fails the capture and statusWord defaults empty → planned (📋). Bare-keyword forms (`done (…)`, `shipped in …`, `blocked …`) classify fine. RetroDB session-5 repro: all of PASS-48-1..5 read 📋 despite `- **Status**: ✅ Done (v3.6.3x)` lines; rewriting `✅ Done (` → `done (` flipped all five to ✅ on re-query. Fix: skip a leading non-word run (or strip a leading ✅/📋/🚧/💭 then lowercase) before the keyword capture, or treat a leading ✅ as authoritative. Reader bug — distinct from the writer gap ANTS-2031 (file was already correct; parser misread it).
+  **Layman:** When a project marks a task done with a green-check emoji before the word 'Done', Ants misreads it as still-to-do. Teach the reader to skip the emoji and see the word.
+  Kind: fix.
+  Lanes: roadmapquery, roadmap-format.
+  Source: cross-session-report-2026-06-05 (RetroDB session 5).
+
+- 📋 [ANTS-2040] **`changelog_log` has no YAML-changelog writer: refuses `no_changelog` on `data/changelog.yaml` projects even though `project_layout` discovers them.**
+  cmdChangelogLog (src/remotecontrol.cpp:3341) calls findChangelogUnder, which matches only Keep-a-Changelog CHANGELOG.md; an empty result returns no_changelog. But project_layout already discovers data/changelog.yaml (ANTS-1507/1574), so the reader sees a changelog the writer can't touch — RetroDB fell back to Edit. Same reader/writer split as the roadmap gap ANTS-2031. Minimum-viable: when discovery finds a YAML changelog (data/changelog.{yaml,yml} / CHANGELOG.{yaml,yml}), return format_mismatch (not bare no_changelog) so the caller knows discovery found a changelog the writer can't yet append to. Stretch: append a `- version:/date:/tags:/body:` version-block in that schema. Entry shape per RetroDB: version/date/tags[{type,label}]/body (HTML list).
+  **Layman:** Some projects keep their changelog as a structured YAML file the app reads at runtime. Ants can find it but can't add entries — either let it write that format, or at least say 'I found a changelog I can't edit yet' instead of 'no changelog'.
+  Kind: enhancement.
+  Lanes: changelog, roadmap-format.
+  Source: cross-session-report-2026-06-05 (RetroDB session 5).
+
+- 📋 [ANTS-2042] **Codify a writer/reader format-parity authoring rule: a writer must refuse `format_mismatch` (not a generic absence code) when discovery recognises a format it can't produce.**
+  Recurring pattern across cross-session feedback: a discovery/reader verb recognises a target format the paired writer can't yet produce, and the writer returns a generic absence code that misleads the caller. Instances: ANTS-2031 (roadmap_log returned bullet_not_found on `#### Pass` headings → now format_mismatch) and ANTS-2040 (changelog_log returns no_changelog on data/changelog.yaml projects that project_layout discovers). Codify the rule in docs/standards/mcp-tools.md (authoring umbrella), citing the existing format_mismatch code in mcp-error-codes.md: when a reader/discovery recognises a format the writer can't handle, refuse with format_mismatch carrying the discovered format + an Edit-fallback hint — never a generic not-found. Prevents the whole class for future writer verbs (spec_log, the fold-ins).
+  **Layman:** Twice now, an Ants tool that writes files said 'I can't find that' when it really meant 'I found it but can't write this format yet'. Write down a rule so every future writing tool gives the clearer message.
+  Kind: doc.
+  Lanes: mcptooling, roadmap-format.
+  Source: in-session-2026-06-05 (pattern across ANTS-2031 + ANTS-2040).
+
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
 - ✅ [ANTS-1329] **Tasks dialog gets 3 px of vertical row
@@ -20793,6 +20843,7 @@ contributors don't duplicate research.
   Kind: feature.
   Lanes: claudeintegration, mcptooling.
   Source: in-session-2026-05-27 (ANTS-1897 spec § 4 follow-up)..
+  Note (2026-06-05): largely superseded by ANTS-1985 — `tool_info {catalog:true}` already returns every verb grouped by category with its selection_hint in one call, which covers this item's core ask. Remaining unique scope: per-tool `est_token_cost` cue and an optional `category` filter arg. Narrow this item to just those two extras, or close as done if they are not wanted.
 
 - 📋 [ANTS-1900] **Flatpak PTY env-var export — make ANTS_MCP_SOCKET reach Claude sessions inside flatpak-sandboxed Ants installs.**
   ANTS-1897 INV-14 explicitly scopes the `ANTS_MCP_SOCKET` env-var export to the non-flatpak shell-launch branch of `src/ptyhandler.cpp` (the `environ`-copy loop at L171). The flatpak branch uses `flatpak-spawn` with different env-pass semantics — needs separate plumbing (likely `--env=ANTS_MCP_SOCKET=…` on the flatpak-spawn argv). Without this, MCP discoverability silently degrades inside flatpak-sandboxed Ants installs even though the rest of MCP works.

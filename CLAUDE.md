@@ -105,6 +105,13 @@ Optional audit deps self-disable if absent. **Cppcheck gotcha:** pass
 
 ## MCP tool authoring
 
+**Discovering the full toolkit (ANTS-2037).** The SessionStart hook lists
+~12 high-frequency verbs; for all ~73 (grouped by category, each with a
+one-line *when to use*), call `tool_info {catalog:true}` (ANTS-1985) once,
+then `ToolSearch` `select:mcp__ants__<name>` to load a verb's schema before
+calling it. This pointer is the always-loaded fallback for when the hook
+prelude is stale (ANTS-2038) or disabled.
+
 When adding or modifying an MCP tool, follow
 [`docs/standards/mcp-tools.md`](docs/standards/mcp-tools.md) (the umbrella
 checklist). The load-bearing contracts, each with its spec:
