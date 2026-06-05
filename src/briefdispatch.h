@@ -54,4 +54,12 @@ QString inlineRelevantSections(const QString &projectPath,
                                qint64 perDocCapBytes = 32 * 1024,
                                QStringList *skippedOut = nullptr);
 
+// ANTS-1991 — after a prompt is truncated mid-stream, a 4-backtick fence opened
+// by fenceBody() may be left dangling, putting the downstream LLM into a
+// "fenced data" parse state that swallows any instructions after the cut. If
+// the text has an odd number of `````` fence-marker lines, append a closing
+// fence. Idempotent on balanced text. Used by the per-dialog assembleCappedPrompt
+// truncation paths.
+QString withClosedFence(const QString &truncated);
+
 }  // namespace BriefDispatch

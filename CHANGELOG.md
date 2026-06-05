@@ -28,6 +28,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **AI-review prompts: byte-accurate caps and fence-safe truncation** (ANTS-1991)
+  Inlined doc/source bodies are now capped by actual byte size (a multi-byte document was previously allowed through at several times the budget); a truncated prompt closes any open code fence so the model can't read the rest as data; and a backtick in a filename can no longer break the fence header.
+
 - **Review-dialog polish: no double fold-in, no per-repartition leak, themed status text** (ANTS-2011)
   The "Fold into ROADMAP" button disables after a successful fold-in (a double-click no longer inserts the block twice); re-partitioning no longer leaks the old result panes; the status text follows the active theme instead of a hard-coded grey.
 

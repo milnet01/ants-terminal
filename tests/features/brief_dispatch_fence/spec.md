@@ -26,6 +26,16 @@ already solved this inline; ANTS-1727 § 2.3 extracts the kernel into
 - `inlineRelevantSections(projectPath, relPaths, keywords, perDocCapBytes,
   skippedOut)` — emits only the `##`/`###` sections matching a keyword;
   falls back to the leading block (H1 + intro) when none match.
+- `withClosedFence(truncated)` (ANTS-1991) — appends a closing fence when
+  the text has an odd number of `````` fence-marker lines (a truncation left
+  one open); no-op on balanced text. The per-dialog `assembleCappedPrompt`
+  truncation paths call it before the truncation marker so a clipped prompt
+  never leaves the LLM in a "fenced data" state.
+
+The per-file / per-doc caps are measured in **bytes** (the UTF-8 encoding),
+not QChar count (ANTS-1991) — a multi-byte doc is clipped near the byte
+budget, not at ~3-4× it. `fenceBody` neutralises backticks in the
+relPath / label too, not just the body.
 
 ## Invariants under test (ANTS-1727)
 
@@ -41,6 +51,13 @@ already solved this inline; ANTS-1727 § 2.3 extracts the kernel into
   when it sits under `projectPath` (it is not silently skipped), and the
   emitted fence header carries the project-relative path, not the
   absolute one. An absolute path outside the root is still skipped.
+- **INV-1991a** — `withClosedFence` appends a closing fence on odd marker
+  count and is a no-op on balanced text.
+- **INV-1991b** — `fenceBody` neutralises a backtick in the relPath/label so
+  it can't open an inline span / fence in the header line.
+- **INV-1991c** — `inlineBodies` caps by UTF-8 byte length: a 600-byte
+  multi-byte doc is truncated under a 120-byte cap (not passed through
+  because its QChar count is below the number).
 
 ## Test notes
 

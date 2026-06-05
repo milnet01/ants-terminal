@@ -60,6 +60,47 @@ TEST(BriefDispatchFence, INV10_EmptyBody) {
     EXPECT_EQ(countSubstr(out, k4), 2);
 }
 
+// ANTS-1991 — withClosedFence appends a closing fence when one is left open
+// (odd marker count) and is a no-op on balanced text.
+TEST(BriefDispatchFence, Ants1991ClosesDanglingFence) {
+    // One opener, no closer (truncated mid-fence).
+    const QString open = QStringLiteral("=== file: x ===\n````\nint x;\n");
+    const QString closed = BriefDispatch::withClosedFence(open);
+    EXPECT_EQ(countSubstr(closed, k4), 2) << closed.toStdString();
+    EXPECT_TRUE(closed.endsWith(QStringLiteral("````\n")));
+
+    // Balanced text is unchanged.
+    const QString bal = QStringLiteral("````\nbody\n````\n");
+    EXPECT_EQ(BriefDispatch::withClosedFence(bal), bal);
+}
+
+// ANTS-1991 — a backtick in the relPath/label must not survive into the header
+// line above the fence (it could open an inline span / fence).
+TEST(BriefDispatchFence, Ants1991SanitisesBacktickInPath) {
+    const QString out = BriefDispatch::fenceBody(
+        QStringLiteral("a/`evil`.cpp"), QStringLiteral("body"));
+    // The header path is rendered with backticks neutralised to apostrophes.
+    EXPECT_TRUE(out.contains(QStringLiteral("=== file: a/'evil'.cpp")))
+        << out.toStdString();
+    EXPECT_FALSE(out.contains(QStringLiteral("`evil`")));
+    // Still exactly the two fence delimiters.
+    EXPECT_EQ(countSubstr(out, k4), 2);
+}
+
+// ANTS-1991 — inlineBodies caps by BYTES, not QChar count. A doc of N 3-byte
+// characters must be clipped near the byte cap, not allowed through at ~3×.
+TEST(BriefDispatchFence, Ants1991InlineBodiesByteCap) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    // 200 copies of a 3-byte UTF-8 char = 600 bytes but only 200 QChars.
+    const QString multibyte = QString(200, QChar(0x20AC));  // €, 3 bytes each
+    ASSERT_TRUE(writeFile(dir.path() + QStringLiteral("/m.txt"), multibyte));
+    const QString out = BriefDispatch::inlineBodies(
+        dir.path(), {QStringLiteral("m.txt")}, /*perFileCapBytes=*/120);
+    EXPECT_TRUE(out.contains(QStringLiteral("[truncated at 120 bytes]")))
+        << "a 600-byte doc must be truncated under a 120-byte cap";
+}
+
 // INV-11 — refactored assembleBriefForDispatch still fence-hardens a
 // source body containing a 4-backtick run.
 TEST(BriefDispatchFence, INV11_IndieReviewDispatchParity) {

@@ -248,10 +248,12 @@ QString TestAuditDialog::assembleCappedPrompt(
         "\n[brief truncated — test bodies clipped to fit the 200 KiB "
         "budget]\n");
     QByteArray utf = (fixed + dropMarker + bulk).toUtf8();
+    // ANTS-1991 — reserve the 6-byte fence-close withClosedFence may append.
     const int room =
-        static_cast<int>(kPromptCapBytes) - hardMarker.toUtf8().size();
+        static_cast<int>(kPromptCapBytes) - hardMarker.toUtf8().size() - 6;
     if (room > 0 && utf.size() > room) utf.truncate(room);
-    return QString::fromUtf8(utf) + hardMarker;
+    // ANTS-1991 — close a fence the clip may have left open before the marker.
+    return BriefDispatch::withClosedFence(QString::fromUtf8(utf)) + hardMarker;
 }
 
 LlmRequest TestAuditDialog::composeBrief(const ReviewLane &laneRef) {
