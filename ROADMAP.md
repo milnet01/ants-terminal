@@ -5863,6 +5863,12 @@ already on the roadmap above.
   Source: in-session-2026-06-05 (found running test_claude during ANTS-1637).
   Resolved (2026-06-05): INV-8b/c/d region now bounds to the test_results tool block (anchor → next `tools.append(`) instead of a fixed 4500-char window, and INV-10's kindForName window widened to 8000 (find-first keeps it false-match-safe). test_claude 970/970 green.
 
+- 📋 [ANTS-2036] **roadmap_query_section_index INV-7 counts a global `for (const auto &b : bullets)` idiom — brittle to unrelated helpers.**
+  Inv7SectionSlugOnEveryCacheFill scrapes remotecontrol.cpp for the literal `for (const auto &b : bullets)` and asserts exactly 4 occurrences (the cmdRoadmapQuery cache-fill loops). ANTS-2031 added an unrelated anon-namespace helper (rcBulletsArePassHeadings) that coincidentally used the same loop shape, bumping the count to 5 and failing the test; worked around by renaming the helper's loop var. Root fix: bound the count to cmdRoadmapQuery's function body (like the boundedBetween() helper other tests use) so an unrelated loop elsewhere in the TU can't perturb it.
+  **Layman:** A test that counts a common code pattern across the whole file breaks when unrelated code happens to use the same pattern; make it count only inside the function it means to check.
+  Kind: test.
+  Source: in-session-2026-06-05.
+
 ### 🔍 Indie-review fold-in (2026-05-14) — follow-up sweep
 
 6-lane indie-review on 2026-05-14 immediately after ANTS-1294
@@ -15606,12 +15612,13 @@ subsection.
   Source: cross-session-report-2026-06-05 (RetroDB sessions 3+4, re-confirmed through v3.6.34).
   Resolved (2026-06-05): parsePassHeadingBullets now collects the under-heading prose (Status/Finding/Decision/Items bullets, bounded by the next heading level ≤ 4, leading/trailing blanks trimmed) into rec.body instead of duplicating the headline. The 2 KiB cap + body_truncated stay at the rcSetBodyFields emit site (ANTS-1517) — no re-implementation. Bare heading falls back to body == headline so body is never empty. Regression test: tests/features/roadmap_parser_pass_body/ (INV-1..4).
 
-- 📋 [ANTS-2031] **`roadmap_log` append/annotate/flip have no `#### Pass N.M` heading-roadmap support — emit a heading writer or a `format_mismatch` warning.**
+- ✅ [ANTS-2031] **`roadmap_log` append/annotate/flip have no `#### Pass N.M` heading-roadmap support — emit a heading writer or a `format_mismatch` warning.**
   RetroDB's roadmap.md uses `#### Pass N.M <Title>` headings + `- **Status**:` bullets + prose, not GFM `- **headline** (id)` bullets. The reader handles it (ANTS-1530) but `roadmap_log` op:append inserts a counter-allocated GFM bullet — structurally inconsistent — so contributors use Edit for both whole-pass appends and sub-bullet status flips (the unit that changes state is often a sub-bullet, not the `#### Pass` Status line). Need (a) heading-format append, (b) sub-bullet-level annotate/flip, or at minimum a `format_mismatch` warning so the caller knows to fall back to Edit.
   **Layman:** Ants can read heading-style to-do lists but can't write to them — add that, or at least warn the caller to edit by hand.
   Kind: enhancement.
   Lanes: roadmapfoldin, roadmap-format.
   Source: cross-session-report-2026-06-05 (RetroDB sessions 2/3/4).
+  Resolved (2026-06-05): added a `format_mismatch` refusal (code in docs/standards/mcp-error-codes.md) across all five roadmap_log write paths — append, append_batch, create_section, flip, flip_batch (flip serves annotate). Shared rcBulletsArePassHeadings + rcPassHeadingsWriteRefusal helpers; the splice paths gate on preflightBullets after the unrecognised_format gate, and the flip path gates early (right after the file read) so its `- **Status**:` list items aren't mistaken for GFM bullets → misleading bullet_not_found. Envelope carries format:"pass-headings" + an Edit-fallback hint. Scope = the minimum-viable warning the bullet asked for; a real heading-format writer remains future work. Regression test: tests/features/mcp_roadmap_log_pass_format_mismatch/ (INV-1..5, behavioural). Full test_claude 983/983.
 
 - 📋 [ANTS-2032] **`audit_run` should land SARIF to `.audit_cache/` before serialising the inline reply + return a partial envelope on per-tool budget blowout.**
   One RetroDB call (ruff+bandit+semgrep+gitleaks, top_findings_count=60) returned `empty reply from Ants MCP` + a terminal relaunch; not reproducible and possibly a symptom of the crash, not an audit_run fault (filed LOW). Defensive hardening regardless of root cause: (1) write the SARIF artifact to `.audit_cache/` BEFORE building the inline reply, so a too-big reply still leaves an artifact for last_audit_summary; (2) return a partial envelope with whatever tools completed rather than all-or-nothing empty when one tool (e.g. full-tree semgrep at N=60) blows a response-size/wall-clock budget.

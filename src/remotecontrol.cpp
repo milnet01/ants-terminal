@@ -170,6 +170,44 @@ QJsonArray kUnrecognisedFormatExpected() {
     return a;
 }
 
+// ANTS-2031 — roadmap_log's writers only emit GFM / ants-v1 bullets.
+// A `#### Pass N.M` heading roadmap (ANTS-1530) parses fine on the
+// READ side, so the unrecognised_format gate (which fires on zero
+// parsed bullets) never trips — and an unguarded write would splice a
+// GFM/ants-v1 bullet into a heading file, corrupting its format.
+// parseBullets classifies the whole doc as one format, so a single
+// pass-headings record means the file is pass-headings.
+bool rcBulletsArePassHeadings(
+        const QVector<RoadmapDialog::BulletRecord> &parsed) {
+    for (const auto &rec : parsed) {
+        if (rec.format == QStringLiteral("pass-headings")) return true;
+    }
+    return false;
+}
+
+// ANTS-2031 — refusal envelope steering the caller to Edit. The
+// minimum-viable support the bullet asks for until a heading-format
+// writer exists. `op` names the refused verb for a precise message.
+QJsonDocument rcPassHeadingsWriteRefusal(const QString &path,
+                                         const QString &op) {
+    QJsonObject env;
+    env["ok"]     = false;
+    env["code"]   = QStringLiteral("format_mismatch");
+    env["error"]  = QStringLiteral(
+        "roadmap_log op:\"%1\": \"%2\" is a `#### Pass N.M` heading "
+        "roadmap; the writer only emits GFM / ants-v1 bullets and "
+        "can't splice these without corrupting the heading format")
+            .arg(op, path);
+    env["path"]   = path;
+    env["format"] = QStringLiteral("pass-headings");
+    env["hint"]   = QStringLiteral(
+        "Edit the file directly: append a `#### Pass N.M …` heading "
+        "with its `- **Status**:` bullets, or change the sub-bullet's "
+        "Status line in place. Heading-format writes aren't supported "
+        "by roadmap_log yet (ANTS-2031).");
+    return QJsonDocument(env);
+}
+
 // ANTS-1517 — per-bullet body truncation cap. 2 KiB strikes a
 // balance between "long enough to capture the rationale of a typical
 // roadmap bullet" and "short enough that 500 bullets × 2 KiB stays
@@ -3764,6 +3802,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         env["expected_format"] = kUnrecognisedFormatExpected();
         return QJsonDocument(env);
     }
+    // ANTS-2031 — refuse to splice a GFM/ants-v1 bullet into a
+    // `#### Pass N.M` heading roadmap (parses on read, but the writer
+    // can't emit headings yet); steer the caller to Edit.
+    if (rcBulletsArePassHeadings(preflightBullets)) {
+        return rcPassHeadingsWriteRefusal(roadmapPath,
+                                          QStringLiteral("append"));
+    }
 
     // ANTS-1424-INV-4 — locate the named section via RoadmapIndex.
     const auto index = RoadmapIndex::buildIndex(markdown);
@@ -4097,6 +4142,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     rf.close();
     const qint64 markdownBytes = markdown.toUtf8().size();
 
+    // ANTS-2031 — a `#### Pass N.M` heading roadmap parses on read but
+    // the GFM/ants-v1 locator can't address its headings (and would
+    // otherwise mistake the heading's `- **Status**:` list items for
+    // GFM bullets and refuse with a misleading bullet_not_found).
+    // Refuse early with the precise format_mismatch (op-aware, covers
+    // flip + annotate) so the caller falls back to Edit.
+    if (rcBulletsArePassHeadings(RoadmapDialog::parseBullets(markdown))) {
+        return rcPassHeadingsWriteRefusal(
+            roadmapPath,
+            req.value(QStringLiteral("op")).toString(QStringLiteral("flip")));
+    }
+
     // 6. Walk GFM bullets first. If none found AND the file is big
     //    enough to be a real roadmap, fall through to ANTS-1441's
     //    ants-v1 native walker before refusing.
@@ -4253,6 +4310,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             return QJsonDocument(out);
         }
         // Neither GFM nor ants-v1 — genuinely unrecognised.
+        // (Pass-headings is caught earlier; see the format_mismatch
+        // gate just after the file read — ANTS-2031.)
         // ANTS-1463 — refusal envelope gains shared hint +
         // expected_format fields for shape parity with the other
         // three unrecognised_format sites.
@@ -4582,11 +4641,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     bool isV1 = false;
     if (!isGfm && markdownBytes > kRoadmapMinParseableSize)
         isV1 = !walkAntsV1Bullets(lines).isEmpty();
-    if (!isGfm && !isV1)
+    if (!isGfm && !isV1) {
+        // ANTS-2031 — precise format_mismatch on a `#### Pass N.M`
+        // heading roadmap (parses on read; no batch-flip writer yet).
+        if (rcBulletsArePassHeadings(RoadmapDialog::parseBullets(markdown)))
+            return rcPassHeadingsWriteRefusal(
+                roadmapPath, QStringLiteral("flip_batch"));
         return rlErr(QStringLiteral("unrecognised_format"),
             QStringLiteral("roadmap_log: \"%1\" parsed zero bullets (neither "
                            "GFM-task-list nor ants-v1) — cannot flip_batch")
                 .arg(roadmapPath));
+    }
 
     auto headlineHash = [](const QString &h) {
         return rcFnv1a64(rcNormaliseHeadline(h));
@@ -5050,6 +5115,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
         env["expected_format"] = kUnrecognisedFormatExpected();
         return QJsonDocument(env);
     }
+    // ANTS-2031 — heading-format roadmaps have no create_section writer.
+    if (rcBulletsArePassHeadings(preflightBullets)) {
+        return rcPassHeadingsWriteRefusal(
+            roadmapPath, QStringLiteral("create_section"));
+    }
 
     // 4. Locate after_section.
     const auto index = RoadmapIndex::buildIndex(markdown);
@@ -5314,6 +5384,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         env["hint"]            = kUnrecognisedFormatHint();
         env["expected_format"] = kUnrecognisedFormatExpected();
         return QJsonDocument(env);
+    }
+    // ANTS-2031 — heading-format roadmaps have no append writer.
+    if (rcBulletsArePassHeadings(preflightBullets)) {
+        return rcPassHeadingsWriteRefusal(
+            roadmapPath, QStringLiteral("append_batch"));
     }
 
     // 5. Section lookup (parity with single-bullet path).

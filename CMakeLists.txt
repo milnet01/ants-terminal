@@ -1175,6 +1175,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_roadmap_log_verb/test_mcp_roadmap_log_verb.cpp
                 # ANTS-1433 roadmap_log two-stage commit rollback seam.
                 tests/features/mcp_roadmap_log_atomicity/test_mcp_roadmap_log_atomicity.cpp
+                # ANTS-2031 roadmap_log format_mismatch on pass-headings docs.
+                tests/features/mcp_roadmap_log_pass_format_mismatch/test_mcp_roadmap_log_pass_format_mismatch.cpp
                 # ANTS-1717/1793 roadmap_log note append (annotate + flip-note).
                 tests/features/roadmap_log_annotate/test_roadmap_log_annotate.cpp
                 # ANTS-1690 roadmap_log op:flip_batch (N bullets, one commit).

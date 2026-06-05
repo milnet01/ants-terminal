@@ -69,6 +69,7 @@ against the table below.
 | `file_changed` | Apply-time mismatch: source bytes drifted between scan and fix. | `debt_sweep_apply_fix` after the file was edited. |
 | `not_fixable` | The fix the caller asked for isn't a defined operation here. | `debt_sweep_apply_fix` with an op the engine doesn't implement. |
 | `unrecognised_format` | The file shape isn't one the parser handles. Envelope additionally carries `expected_format[]` and standardised `hint` (ANTS-1463). | `roadmap_query` against a file that isn't ants-v1 or GFM. |
+| `format_mismatch` | The file is a *recognised* format the verb can read but can't *write* (so `unrecognised_format`, which keys on zero parsed bullets, doesn't apply). Envelope carries `format` + an Edit-fallback `hint` (ANTS-2031). | `roadmap_log` append/flip/annotate against a `#### Pass N.M` heading roadmap — readable, but no heading-format writer yet. |
 | `already_running` | A long-running operation is in flight; refuse rather than queue. | `audit_run` while a prior call is still working. |
 | `tools_not_ready` | The detector / engine hasn't finished initialising. | early MCP call against `tool_info` before the registry is built. |
 | `reports_dir_unreadable` | `reports_dir` canonicalises but the resolved path doesn't exist, isn't a directory, or the calling user lacks read permission (ANTS-1455). | `test_audit_synthesis_prompt allow_outside_project:true reports_dir:"/no/such/dir"`. |

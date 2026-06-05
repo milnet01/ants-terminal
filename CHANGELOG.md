@@ -37,6 +37,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log now refuses #### Pass heading roadmaps with a clear format_mismatch** (ANTS-2031)
+  On heading-style roadmaps (`#### Pass N.M`), roadmap_log used to either splice a wrong-format bullet into the file or refuse with a misleading "not found" message. It now returns a clear format_mismatch refusal with a hint to edit the file directly, across every write operation (append, batch-append, create-section, flip, batch-flip, annotate). Normal roadmaps are unaffected.
+
 - **roadmap_query include_body now returns real prose on #### Pass heading roadmaps** (ANTS-2030)
   On heading-style roadmaps (`#### Pass N.M`), asking for the detail under each heading used to return just the title. It now returns the actual text beneath the heading (the Status / Finding / Decision / Items lines), so a session no longer has to re-read the whole file to scope a pass.
 
