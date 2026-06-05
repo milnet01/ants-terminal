@@ -231,6 +231,8 @@ add_library(ants_core_lib STATIC
     src/fileoutline.cpp
     # ANTS-1855 — read_log pure filtering helper (Qt6::Core-only).
     src/readlog.cpp
+    # ANTS-2021 — read_region pure slicing helper (Qt6::Core-only).
+    src/readregion.cpp
     # ANTS-1961 / ANTS-1962 — feedback-file parse + render helpers.
     src/feedbackfile.cpp
     # ANTS-1963 — spec_log pure markdown transforms (Qt6::Core-only).
@@ -1046,6 +1048,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_file_outline/test_mcp_file_outline.cpp
                 # ANTS-1855 — read_log filter verb.
                 tests/features/mcp_read_log/test_mcp_read_log.cpp
+                # ANTS-2021 — read_region slice verb.
+                tests/features/mcp_read_region/test_mcp_read_region.cpp
                 # ANTS-1961 / ANTS-1962 / ANTS-1963 — feedback + spec_log verbs.
                 tests/features/mcp_feedback_query/test_mcp_feedback_query.cpp
                 tests/features/mcp_feedback_log/test_mcp_feedback_log.cpp

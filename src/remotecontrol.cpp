@@ -6,6 +6,7 @@
 #include "fileoutline.h"
 #include "findsources.h"
 #include "readlog.h"
+#include "readregion.h"
 #include "speclog.h"             // ANTS-1963
 #include "modelswitchledger.h"   // ANTS-1735 — model_switch_stats aggregation
 #include "modelnearmissledger.h" // ANTS-1894 — model_switch_stats near-miss arm
@@ -6192,6 +6193,56 @@ QJsonDocument RemoteControl::cmdReadLog(const QJsonObject &req) {
     // default lives outside any project root, so no reframe — ANTS-1855
     // § 2.3).
     return QJsonDocument(ReadLog::filter(resolved, opts));
+}
+
+// ANTS-2021 — read_region: return a line range or a named symbol's body
+// from a caller_cwd-relative project file. caller_cwd Required; the path is
+// always supplied (no debug-log default). Selector validation + slicing
+// live in the pure ReadRegion::extract helper.
+QJsonDocument RemoteControl::cmdReadRegion(const QJsonObject &req) {
+    const QString rawPath = req.value(QStringLiteral("path")).toString();
+    if (rawPath.isEmpty()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("read_region: \"path\" is required");
+        o["code"]  = QStringLiteral("bad_args");
+        return QJsonDocument(o);
+    }
+    const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
+    const QString sentinelRoot = ants::expandGlobalConfigSentinel(callerRaw);
+    const QString rootCanonical =
+        !sentinelRoot.isEmpty() ? sentinelRoot
+                                : resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("read_region: no focused project");
+        o["code"]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
+    const auto check = PathValidation::validatePath(
+        rawPath, rootCanonical,
+        QStringLiteral("read_region"), QStringLiteral("path"));
+    if (check.bad) return QJsonDocument(check.err);
+    if (check.resolved.isEmpty()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("read_region: \"%1\" does not exist").arg(rawPath);
+        o["code"]  = QStringLiteral("not_found");
+        return QJsonDocument(o);
+    }
+
+    ReadRegion::Options opts;
+    opts.symbol   = req.value(QStringLiteral("symbol")).toString();
+    opts.maxBytes = req.value(QStringLiteral("max_bytes")).toInt(0);
+    const QJsonValue startV = req.value(QStringLiteral("start_line"));
+    const QJsonValue endV   = req.value(QStringLiteral("end_line"));
+    if (startV.isDouble()) {
+        opts.hasLine   = true;
+        opts.startLine = startV.toInt();
+        opts.endLine   = endV.isDouble() ? endV.toInt() : opts.startLine;
+    }
+    return QJsonDocument(ReadRegion::extract(check.resolved, opts));
 }
 
 // ----- ANTS-1961 / ANTS-1962 — feedback-file MCP tools --------------

@@ -4760,6 +4760,10 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("read_log",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdReadLog));
+    // ANTS-2021 — read_region: line-range / symbol-body slice of a project file.
+    m_claudeIntegration->registerToolProvider("read_region",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdReadRegion));
     // ANTS-1961 / ANTS-1962 — cross-session feedback-file read + write.
     m_claudeIntegration->registerToolProvider("feedback_query",
         ClaudeIntegration::CallerCwdContract::Required,

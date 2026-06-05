@@ -377,6 +377,9 @@ public:
     // ANTS-1855 — read_log: filter a log file (Ants debug log by
     // default, or a caller_cwd-relative path) via ReadLog::filter.
     QJsonDocument cmdReadLog(const QJsonObject &req);
+    // ANTS-2021 — read_region: return a line range or a named symbol's
+    // body from a caller_cwd-relative project file via ReadRegion::extract.
+    QJsonDocument cmdReadRegion(const QJsonObject &req);
 
     // ANTS-1961 — feedback_query: read the un-triaged tail of a
     // *_Ants_MCP_Feedback.md file (delegates to FeedbackFile::parse).

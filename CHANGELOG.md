@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **read_region MCP tool — read an exact line range or a named symbol's body from a project file** (ANTS-2021)
+  A token-frugal read verb: returns just a slice (start_line/end_line, or a Class::method body via the file_outline scanner) instead of a whole-file Read, with an ETag-304 free re-read when the file is unchanged. caller_cwd-Required, path-validated, byte-capped (512 KiB default, 4 MiB ceiling), fields-projectable.
+
 - **Review Changes dialog — show a "back to top" button once the user starts scrolling.** (ANTS-1967)
   A back-to-top button appears when you scroll down the Review Changes dialog.
 

@@ -59,6 +59,7 @@ against the table below.
 | Code | Meaning | Examples |
 |------|---------|----------|
 | `not_found` | Named resource doesn't exist. | `session_memory get` for a missing key. |
+| `symbol_not_found` | `read_region` symbol-mode: no outline symbol matches the requested `symbol` name (within the first 1000 outline symbols). Distinct from `not_found` (the *file* is missing) — the file is fine, the symbol isn't in it (ANTS-2021). | `read_region symbol:"noSuchFn"`. |
 | `no_window` | No focused tab when one was needed. | tab-scoped tool with empty `caller_cwd` + no focused tab. |
 | `no_project` | RcGate: no focused project. | All RcGate-guarded write tools when Ants has no project tab focused. |
 | `no_lanes` | A reviewer-dispatching tool's partition resolved empty (ANTS-1352). | `indie_review_dispatch` against a project with no `## Module map (src/)` in CLAUDE.md and no override. |

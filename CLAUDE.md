@@ -147,7 +147,12 @@ incremental mode (ANTS-1500); `roadmap_query` recognises ants-v1 /
 github-task-list / pass-headings formats (ANTS-1530); `read_log` filters
 a log file (Ants debug log or a `caller_cwd` path) to matching lines via
 the pure `ReadLog::filter` helper, streaming drop-oldest byte cap +
-since_cursor incremental tailing (ANTS-1855); `feedback_query` /
+since_cursor incremental tailing (ANTS-1855); `read_region` returns an
+exact line range or a named symbol's body (resolved via the flat
+`file_outline` scanner — class/`Class::method` forms) from a project file
+via the pure `ReadRegion::extract` helper, ETag-304 free re-read +
+head-anchored incremental byte cap, caller_cwd-Required (ANTS-2021);
+`feedback_query` /
 `feedback_log` read/write the `*_Ants_MCP_Feedback.md` files via the pure
 `FeedbackFile` module (delta parse + block render; ANTS-1961/1962),
 suffix-guarded on `_Ants_MCP_Feedback.md`, append-only at EOF; `spec_log`

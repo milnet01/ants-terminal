@@ -2967,6 +2967,70 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(rlTool);
 
+                // ANTS-2021 — read_region: return a line range or a named
+                // symbol's body from a project file (ETag-304 free re-read,
+                // symbol-scoped under-read) instead of a full native Read.
+                QJsonObject rrTool;
+                rrTool["name"] = "read_region";
+                rrTool["description"] = QStringLiteral(
+                    "Return an exact slice of a project file — a line range "
+                    "(start_line/end_line, 1-based inclusive) OR a named "
+                    "symbol's body (symbol) — instead of Read-ing the whole "
+                    "file. Exactly one selector. Symbol mode resolves via the "
+                    "flat file_outline (best for a function/method; a class "
+                    "stops at its first nested symbol — use line mode there) "
+                    "and can see only the first 1000 outline symbols. "
+                    "Byte-capped (max_bytes, default 512 KiB, 4 MiB ceiling), "
+                    "keeping the head. ETag-304: a matching etag_match "
+                    "re-read is free. caller_cwd required.");
+                rrTool["selection_hint"] = QStringLiteral(
+                    "Use after find_definition/file_outline to read just one "
+                    "function's body, or any line range, instead of a full "
+                    "Read — and to re-read it for free when unchanged.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    QJsonObject props;
+                    QJsonObject pathProp; pathProp["type"] = "string";
+                        pathProp["description"] = QStringLiteral(
+                            "Project file path resolved under caller_cwd.");
+                    QJsonObject startProp; startProp["type"] = "integer";
+                        startProp["minimum"] = 1;
+                        startProp["description"] = QStringLiteral(
+                            "Line-range mode: 1-based first line. Mutually "
+                            "exclusive with `symbol`.");
+                    QJsonObject endProp; endProp["type"] = "integer";
+                        endProp["minimum"] = 1;
+                        endProp["description"] = QStringLiteral(
+                            "Line-range mode: 1-based last line (inclusive); "
+                            "defaults to start_line. Clamps to EOF.");
+                    QJsonObject symProp; symProp["type"] = "string";
+                        symProp["description"] = QStringLiteral(
+                            "Symbol-body mode: return this symbol's body. "
+                            "Mutually exclusive with start_line/end_line.");
+                    QJsonObject mbProp; mbProp["type"] = "integer";
+                        mbProp["minimum"] = 1;
+                        mbProp["description"] = QStringLiteral(
+                            "Cap on the lines[] bytes (default 512 KiB, "
+                            "server-clamped to 4 MiB). Keeps the head; sets "
+                            "truncated (+ bytes_cap_clamped over ceiling).");
+                    props["path"]       = pathProp;
+                    props["start_line"] = startProp;
+                    props["end_line"]   = endProp;
+                    props["symbol"]     = symProp;
+                    props["max_bytes"]  = mbProp;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
+                    props["fields"]     = makeFieldsProp();      // ANTS-1720
+                    schema["properties"] = props;
+                    QJsonArray required;
+                    required.append("path");
+                    schema["required"] = required;
+                    rrTool["inputSchema"] = schema;
+                }
+                tools.append(rrTool);
+
                 // ANTS-1961 — feedback_query: read the un-triaged tail of
                 // a *_Ants_MCP_Feedback.md file instead of a full Read.
                 {
@@ -7294,6 +7358,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-1855 — read_log: caller_cwd-Required,
                         // path-validated file reader (file_outline family).
                         name == QLatin1String("read_log") ||
+                        // ANTS-2021 — read_region: caller_cwd-Required,
+                        // path-validated slice reader (file_outline family).
+                        name == QLatin1String("read_region") ||
                         // ANTS-1636 — find_sources: project-scoped
                         // src/+tests/ topic walker.
                         name == QLatin1String("find_sources") ||
@@ -8180,6 +8247,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // tenancy; Required even for the debug-log default so the tool can't
     // be used as an unscoped file reader.
     if (toolName == QStringLiteral("read_log"))            return C::Required;
+    // ANTS-2021 — read_region resolves a project-relative path + anchors
+    // tenancy; Required.
+    if (toolName == QStringLiteral("read_region"))         return C::Required;
     // ANTS-1961 / ANTS-1962 — feedback verbs resolve a relative `path`
     // off caller_cwd and anchor tenancy; Required even though the
     // canonical case is an absolute shared-root path.
@@ -8341,6 +8411,9 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
     return toolName == QStringLiteral("project_layout")
         || toolName == QStringLiteral("roadmap_query")
         || toolName == QStringLiteral("file_outline")
+        // ANTS-2021 — read_region: a re-read of an unchanged slice 304s,
+        // the core "free re-read" win.
+        || toolName == QStringLiteral("read_region")
         || toolName == QStringLiteral("last_audit_summary")
         || toolName == QStringLiteral("get_environment")
         || toolName == QStringLiteral("tab_list")

@@ -5850,6 +5850,12 @@ already on the roadmap above.
   Source: debt-sweep-2026-05-20 build-warning.
   Fixed 2026-05-29: removed unused argc/argv params from 8 test runMain() signatures. Build warning-clean on these functions.
 
+- 📋 [ANTS-2028] **`file_outline` free-function regex (`rxCppFunc`) never matches single-token-return free functions.**
+  `rxCppFunc` (`src/fileoutline.cpp:50`) is `^(static|inline|template[^>]*>)?\s*[\w:<>&*\s]++\s++(\w+)\s*\([^)]*\)\s*[{;]`. The possessive `[\w:<>&*\s]++` includes `\s`, so it consumes "returntype NAME" entirely (e.g. `int alpha`), leaving nothing for `\s++(\w+)` — which then fails with no backtrack. Net: a free function like `int alpha() {` is never captured; only class/struct/namespace (`rxCppType`) and qualified `Class::method` (`rxCppMember`) forms surface. This silently narrows file_outline coverage and `read_region` symbol mode (ANTS-2021) to members + aggregates. Fix: make the return-type class non-possessive or exclude the final identifier from it (e.g. `([\w:<>&*]+\s+)++` without trailing-\s overreach). Add a fileoutline behavioural fixture asserting a free function is captured. Lanes: fileoutline.
+  Kind: fix.
+  Lanes: fileoutline.
+  Source: in-session-2026-06-05 (found while implementing ANTS-2021 read_region symbol mode).
+
 ### 🔍 Indie-review fold-in (2026-05-14) — follow-up sweep
 
 6-lane indie-review on 2026-05-14 immediately after ANTS-1294
@@ -16419,12 +16425,13 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: in-session-2026-06-03 (hit while writing ANTS-1961/1962 specs).
   Resolved (2026-06-03): spec_log shipped — set_status/append_loop/append_inv via pure SpecLog; PathValidation on path arg; bad_id added to taxonomy.
 
-- 📋 [ANTS-2021] **MCP project file-region / symbol-body read verb (ETag-304 + since-cursor).**
+- ✅ [ANTS-2021] **MCP project file-region / symbol-body read verb (ETag-304 + since-cursor).**
   No MCP verb returns an arbitrary line range or a named function's body from a project file, so reading-to-edit falls back to native Read. A read_region verb (path + line range OR symbol name; composes with find_definition) with ETag-304 + since-cursor would NOT beat native Read on first-read bytes, but wins three ways: symbol-scoped reads avoid over-reading a whole file for one function; a matching ETag makes a re-read free; one path-validated surface. Frame value as under-read + free re-read, not raw savings on identical bytes.
   **Layman:** Let a Claude session read an exact slice of a file through Ants (and re-read it for free when unchanged) instead of falling back to the built-in file reader.
   Kind: feature.
   Lanes: mcp, workspace.
   Source: in-session-2026-06-04.
+  Resolved (2026-06-05): read_region landed — pure ReadRegion::extract helper (src/readregion.{h,cpp}, ants_core_lib) + cmdReadRegion handler + full MCP wiring (schema, isEtagSupportedTool, callerCwdContractFor Required, isFieldProjectionTool, registerToolProvider). Feature test tests/features/mcp_read_region/ (7 tests) green; full test_claude bundle 951/951 green. Spec docs/specs/ANTS-2021.md accepted after 5 cold-eyes loops. Symbol mode resolves class/Class::method forms (free-function gap tracked by ANTS-2028).
 
 - 📋 [ANTS-2022] **MCP multi-file batch-edit verb (N old→new edits across M files, atomic).**
   Bundle/sweep work (ANTS-1988 mkpath->ensurePrivateDir across 5 sites, ANTS-2018 idiom sweep) costs one native Edit round-trip per site. An apply_edits verb taking [{path, old, new}] with a single atomic commit + per-edit skipped[] accounting (parity with roadmap_log flip_batch) collapses that to one call with the same path-validation/atomic-write guarantees as other Ants writes. Optional symbol-scoped replace robust against line drift.
@@ -16439,6 +16446,12 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Kind: feature.
   Lanes: mcp, hooks.
   Source: in-session-2026-06-04.
+
+- 📋 [ANTS-2027] **`mcp-tools.md` § step 7 says read tools "emit an `etag` field" — stale vs the dispatcher-injects-etag code.**
+  The MCP-tool authoring checklist step 7 instructs a read tool to "emit an `etag` field", but the actual mechanism is dispatcher-side: `applyEtagPattern` calls `etagFor(responseText)` and injects `etag` for any tool in `isEtagSupportedTool`; handlers must NOT emit it (see the comment at `src/remotecontrol.cpp:6354-6357`). Correct the line to "the dispatcher injects `etag`; the handler must not emit it." Surfaced while writing ANTS-2021/2022 (read_region/apply_edits), whose specs follow the code, not the stale standard. Lanes: docs.
+  Kind: doc-fix.
+  Lanes: docs, mcp.
+  Source: cold-eyes-2026-06-05 (ANTS-2021 loop 2/3 INFO).
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
