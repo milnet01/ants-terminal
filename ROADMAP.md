@@ -5863,11 +5863,12 @@ already on the roadmap above.
   Source: in-session-2026-06-05 (found running test_claude during ANTS-1637).
   Resolved (2026-06-05): INV-8b/c/d region now bounds to the test_results tool block (anchor → next `tools.append(`) instead of a fixed 4500-char window, and INV-10's kindForName window widened to 8000 (find-first keeps it false-match-safe). test_claude 970/970 green.
 
-- 📋 [ANTS-2036] **roadmap_query_section_index INV-7 counts a global `for (const auto &b : bullets)` idiom — brittle to unrelated helpers.**
+- ✅ [ANTS-2036] **roadmap_query_section_index INV-7 counts a global `for (const auto &b : bullets)` idiom — brittle to unrelated helpers.**
   Inv7SectionSlugOnEveryCacheFill scrapes remotecontrol.cpp for the literal `for (const auto &b : bullets)` and asserts exactly 4 occurrences (the cmdRoadmapQuery cache-fill loops). ANTS-2031 added an unrelated anon-namespace helper (rcBulletsArePassHeadings) that coincidentally used the same loop shape, bumping the count to 5 and failing the test; worked around by renaming the helper's loop var. Root fix: bound the count to cmdRoadmapQuery's function body (like the boundedBetween() helper other tests use) so an unrelated loop elsewhere in the TU can't perturb it.
   **Layman:** A test that counts a common code pattern across the whole file breaks when unrelated code happens to use the same pattern; make it count only inside the function it means to check.
   Kind: test.
   Source: in-session-2026-06-05.
+  Resolved (2026-06-05): roadmap_query_section_index INV-7 now counts the `for (const auto &b : bullets)` idiom (and the section_slug emission) within a sliced cmdRoadmapQuery body via a new functionSlice() helper (signature → next `\nQJsonDocument RemoteControl::`), instead of globally across remotecontrol.cpp. An unrelated helper using the same idiom elsewhere in the TU can no longer perturb the count — removing the workaround (loop-var rename) ANTS-2031 needed. All 4 cache-fill loops live inside cmdRoadmapQuery [sig..next method), so the sliced count is exact. test_claude 988/988.
 
 ### 🔍 Indie-review fold-in (2026-05-14) — follow-up sweep
 

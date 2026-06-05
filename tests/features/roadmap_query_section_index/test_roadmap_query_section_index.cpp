@@ -35,6 +35,30 @@ bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
 }
 
+// ANTS-2036 — slice one RemoteControl::<fn> body out of remotecontrol.cpp
+// so a count-based invariant can't be perturbed by an identical idiom in
+// an unrelated function elsewhere in the TU (the global-count brittleness
+// that ANTS-2031's helper tripped). Bounds from the function's signature
+// to the next `\nQJsonDocument RemoteControl::` definition.
+std::string functionSlice(const std::string &cpp,
+                          const std::string &startSig) {
+    const auto s = cpp.find(startSig);
+    if (s == std::string::npos) return {};
+    const auto e =
+        cpp.find("\nQJsonDocument RemoteControl::", s + startSig.size());
+    return cpp.substr(s, e == std::string::npos ? std::string::npos : e - s);
+}
+
+int countOccurrences(const std::string &hay, const std::string &needle) {
+    int n = 0;
+    std::string::size_type pos = 0;
+    while ((pos = hay.find(needle, pos)) != std::string::npos) {
+        ++n;
+        pos += needle.size();
+    }
+    return n;
+}
+
 }  // namespace
 
 // INV-1 — default mode is unchanged; the `mode` arg is opt-in.
@@ -191,17 +215,20 @@ TEST(roadmap_query_section_index, SchemaModePropAdvertised) {
 TEST(roadmap_query_section_index, Inv7SectionSlugOnEveryCacheFill) {
     expect_reset();
     const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    // ANTS-2036 — count within cmdRoadmapQuery's body only. The pre-fix
+    // global count broke when ANTS-2031 added an unrelated helper using
+    // the same `for (const auto &b : bullets)` idiom elsewhere in the TU;
+    // bounding to the function makes the invariant robust to that.
+    const std::string fn = functionSlice(
+        cpp, "QJsonDocument RemoteControl::cmdRoadmapQuery(");
+    expect(!fn.empty(),
+           "INV-7: cmdRoadmapQuery body must be locatable");
     // Count the cache-fill loops (the canonical bullet-iteration
     // shape used by all four sites: bullet-mode pre-fill,
     // section_index lazy-fill, section-mode emission, and full-file
     // lazy-fill).
-    size_t loopCount = 0;
-    size_t pos = 0;
-    const std::string loopNeedle = "for (const auto &b : bullets)";
-    while ((pos = cpp.find(loopNeedle, pos)) != std::string::npos) {
-        ++loopCount;
-        pos += loopNeedle.size();
-    }
+    const int loopCount =
+        countOccurrences(fn, "for (const auto &b : bullets)");
     expect(loopCount == 4,
            "INV-7: cmdRoadmapQuery has exactly 4 cache-fill loops "
            "(bullet-mode pre-fill, section_index lazy-fill, section-"
@@ -212,13 +239,7 @@ TEST(roadmap_query_section_index, Inv7SectionSlugOnEveryCacheFill) {
     // either `b.sectionSlug` (full-file paths) or `sec->slug` (the
     // section-mode emission, ANTS-1287-INV-7). The exact RHS doesn't
     // matter; what matters is the field is populated.
-    size_t slugCount = 0;
-    pos = 0;
-    const std::string slugNeedle = "o[\"section_slug\"] =";
-    while ((pos = cpp.find(slugNeedle, pos)) != std::string::npos) {
-        ++slugCount;
-        pos += slugNeedle.size();
-    }
+    const int slugCount = countOccurrences(fn, "o[\"section_slug\"] =");
     expect(slugCount == loopCount,
            "INV-7: every cache-fill loop must emit section_slug "
            "(ANTS-1442). Missing it on any path makes the "
