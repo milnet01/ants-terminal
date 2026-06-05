@@ -44,6 +44,15 @@ struct Resolution {
     bool        noChanges = false;  // narrowed, but zero changed files
 };
 
+// ANTS-2015 — impure: the tracked source tree for a deterministic full-tree
+// sweep (`scope:"full"`). `git ls-files src/` respects .gitignore (build/ and
+// .audit_cache/ never appear) and is independent of diff state — so it works
+// on a clean `main` where `auto`'s clazy positional list is empty (→ scans
+// nothing). Restricted to src/ to mirror the GUI's `../src/*.cpp` clazy glob;
+// dir-default tools (ruff/bandit/semgrep/shellcheck) fall back to their own
+// full scan when this list has no file in their language.
+QStringList enumerateSourceFiles(const QString &canonProject);
+
 // Impure: run the git commands for `scope` and return the changed-file set.
 // `priorCommit` is the manifest's last_run.commit, used only by
 // since-last-run (empty / "nogit" → demotes with the matching reason).

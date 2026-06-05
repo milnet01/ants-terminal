@@ -5147,9 +5147,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "envelope adds scope_resolved / "
                         "changed_files_count / scope_anchor_commit (+ "
                         "no_changes when nothing changed). For a "
-                        "deterministic full sweep, pick "
-                        "since-tag:<earliest-tag> rather than "
-                        "\"auto\".");
+                        "deterministic full sweep use \"full\" "
+                        "(ANTS-2015): the whole tracked src/ tree, git-"
+                        "diff-independent, so clazy/clang-tidy get real "
+                        "source positionals instead of the empty list "
+                        "\"auto\" hands them on a clean tree. No tool is "
+                        "skipped under \"full\".");
                     QJsonObject capProp;
                     capProp["type"] = "integer";
                     capProp["description"] = QStringLiteral(

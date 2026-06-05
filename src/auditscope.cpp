@@ -231,4 +231,14 @@ Resolution resolveChangedFiles(const QString &canonProject,
     return res;
 }
 
+QStringList enumerateSourceFiles(const QString &canonProject) {
+    // Impure (shells git) — lives below resolveChangedFiles so the
+    // pure-helpers region stays git-free (audit_run_since_last_run INV-9).
+    // `git ls-files` returns one project-relative path per line with no
+    // leading whitespace, so the trimming runGit is correct here.
+    const QString out = runGit(canonProject, {QStringLiteral("ls-files"),
+                                              QStringLiteral("src/")});
+    return out.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+}
+
 }  // namespace AuditScope

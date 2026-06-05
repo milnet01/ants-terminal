@@ -28,6 +28,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **audit_run: gitleaks no longer walks build/ and .audit_cache/** (ANTS-2016)
+  A generated allowlist config prunes the build output and archived audit JSON from the gitleaks --no-git filesystem walk (68 s → ~3 s on this repo).
+
+- **audit_run: new scope:"full" for a deterministic whole-tree sweep** (ANTS-2015)
+  Unlike "auto" (which hands clazy/clang-tidy an empty positional list on a clean tree, so they scan nothing), "full" enumerates the tracked src/ tree and runs every tool against it — making a full-tree clazy sweep offloadable to MCP.
+
 - **AI client no longer emits a stale error after a quick retry** (ANTS-2019)
   Sending a new AI request right after a rejected one no longer fires a leftover error for the old request.
 

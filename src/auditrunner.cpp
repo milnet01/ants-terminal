@@ -239,7 +239,8 @@ bool isAuditCheckSafe(const QString &check) {
 QStringList toolArgv(const QString &tool, const QString &projectRoot,
                      const QJsonObject &projectConfig = {},
                      const QStringList &scopedPaths = {},
-                     const QStringList &scopedChecks = {}) {
+                     const QStringList &scopedChecks = {},
+                     const QString &gitleaksConfig = {}) {
     // ANTS-1464 — project-side override wins. ANTS-1456 cold-eyes
     // follow-up: every arg is validated through isAuditArgSafe()
     // before it reaches child argv. If ANY arg fails, the whole
@@ -339,13 +340,21 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
         else                        args += QStringLiteral(".");
         return args;
     }
-    if (tool == QLatin1String("gitleaks"))
-        return {QStringLiteral("detect"),
-                QStringLiteral("--no-banner"),
-                QStringLiteral("--no-git"),
-                QStringLiteral("--redact"),
-                QStringLiteral("--report-format"),
-                QStringLiteral("json")};
+    if (tool == QLatin1String("gitleaks")) {
+        QStringList args = {QStringLiteral("detect"),
+                            QStringLiteral("--no-banner"),
+                            QStringLiteral("--no-git"),
+                            QStringLiteral("--redact"),
+                            QStringLiteral("--report-format"),
+                            QStringLiteral("json")};
+        // ANTS-2016 — the allowlist config prunes build/ + .audit_cache/
+        // from the --no-git filesystem walk (those dirs are .gitignored, so
+        // gitleaks would otherwise scan multi-GB of build output + archived
+        // audit JSON). Empty path = config write failed → run unfiltered.
+        if (!gitleaksConfig.isEmpty())
+            args << QStringLiteral("--config") << gitleaksConfig;
+        return args;
+    }
     if (tool == QLatin1String("trivy"))
         return {QStringLiteral("fs"),
                 QStringLiteral("--scanners"),
@@ -420,6 +429,32 @@ QProcessEnvironment buildChildEnv() {
         }
     }
     return out;
+}
+
+// ANTS-2016 — write the throwaway gitleaks config that prunes the
+// build/.audit_cache dirs from the --no-git walk. `[extend] useDefault`
+// keeps the full default secret-rule pack; `[allowlist] paths` are regexes
+// gitleaks (≥ 8) checks against each path before reading it, so the walk
+// itself is pruned (verified 68 s → ~3 s on this repo). Returns the config
+// path, or {} on any write failure — the caller then runs gitleaks
+// unfiltered (slow, but never broken).
+QString writeGitleaksExcludeConfig(const QString &canonProject) {
+    static const char kToml[] =
+        "[extend]\n"
+        "useDefault = true\n"
+        "[allowlist]\n"
+        "paths = [\n"
+        "  '''(^|/)build(-[A-Za-z0-9._-]+)?/''',\n"
+        "  '''(^|/)\\.audit_cache/''',\n"
+        "]\n";
+    const QString dir = canonProject + QLatin1String("/.audit_cache");
+    if (!QDir().mkpath(dir)) return {};
+    // Lives under the allowlisted .audit_cache/ dir, so it never scans itself.
+    QSaveFile f(dir + QLatin1String("/.gitleaks-audit-run.toml"));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
+    if (f.write(kToml, static_cast<qint64>(sizeof(kToml) - 1)) < 0) return {};
+    if (!f.commit()) return {};
+    return f.fileName();
 }
 
 // ANTS-1351-INV-15 — sanity-check the since-tag string for argv injection.
@@ -1246,18 +1281,43 @@ RunResult runAudit(const RunRequest &req) {
     // `auto` / a demoted full scan) flows through `perToolPaths`.
     QHash<QString, QStringList> perToolPaths;
     {
-        const QString priorCommit =
-            AuditCache::loadManifest(canonProject)
-                .lastRun.value(QStringLiteral("commit")).toString();
-        const AuditScope::Resolution sr =
-            AuditScope::resolveChangedFiles(canonProject, req.scope, priorCommit);
-
         auto applyFullScan = [&](const QString &resolvedLabel) {
             r.scopeResolved = resolvedLabel;
             for (auto it = toolAbsPath.constBegin();
                  it != toolAbsPath.constEnd(); ++it)
                 perToolPaths[it.key()] = req.paths;
         };
+
+        // ── ANTS-2015 — `full`: deterministic whole-tree sweep, independent
+        // of git diff state. clazy/clang-tidy need explicit source positionals
+        // or they scan nothing, so `auto` (empty positionals) makes a full
+        // clazy run impossible on a clean tree. Hand the file-scoped tools the
+        // tracked src/ list; the repo-global scanners (gitleaks/trivy) and any
+        // tool whose language has no src/ file fall back to their own full scan
+        // via empty paths. No tool is skipped — full means full.
+        if (req.scope == QLatin1String("full")) {
+            r.scopeResolved = QStringLiteral("full");
+            const QStringList sources =
+                AuditScope::enumerateSourceFiles(canonProject);
+            r.changedFilesCount = static_cast<int>(sources.size());
+            for (auto it = toolAbsPath.constBegin();
+                 it != toolAbsPath.constEnd(); ++it) {
+                const QString tool = it.key();
+                if (!AuditScope::isFileScopedTool(tool)) {
+                    perToolPaths[tool] = req.paths;  // gitleaks/trivy: full repo
+                    continue;
+                }
+                QStringList safe;
+                for (const QString &p : AuditScope::filterForTool(sources, tool))
+                    if (isAuditArgSafe(p)) safe.append(p);
+                perToolPaths[tool] = safe.isEmpty() ? req.paths : safe;
+            }
+        } else {
+        const QString priorCommit =
+            AuditCache::loadManifest(canonProject)
+                .lastRun.value(QStringLiteral("commit")).toString();
+        const AuditScope::Resolution sr =
+            AuditScope::resolveChangedFiles(canonProject, req.scope, priorCommit);
 
         if (!sr.narrowed) {
             applyFullScan(req.scope.isEmpty() ? QStringLiteral("auto")
@@ -1307,6 +1367,7 @@ RunResult runAudit(const RunRequest &req) {
             }
             for (const QString &t : toDrop) toolAbsPath.remove(t);
         }
+        }
     }
 
     // ── ANTS-1446 — compile_commands.json include-path validation.
@@ -1333,6 +1394,14 @@ RunResult runAudit(const RunRequest &req) {
 
     // ── Build scrubbed env (INV-10).
     const QProcessEnvironment childEnv = buildChildEnv();
+
+    // ── ANTS-2016 — generate the gitleaks walk-exclusion config once per run
+    // (only when gitleaks is actually in the resolved set). Empty on failure →
+    // gitleaks runs unfiltered.
+    const QString gitleaksConfig =
+        toolAbsPath.contains(QStringLiteral("gitleaks"))
+            ? writeGitleaksExcludeConfig(canonProject)
+            : QString();
 
     // ── INV-1 / aggregate cap.
     const int perToolMs = req.capPerToolSeconds * 1000;
@@ -1420,7 +1489,8 @@ RunResult runAudit(const RunRequest &req) {
         ++pending;
         proc->start(it.value(),
                     toolArgv(tool, canonProject, projectConfig,
-                             perToolPaths.value(tool), req.checks));
+                             perToolPaths.value(tool), req.checks,
+                             gitleaksConfig));
     }
 
     // Aggregate cap.
