@@ -149,13 +149,13 @@ TEST(McpProjection, Inv10SchemaDeclaresFields) {
     EXPECT_TRUE(s.contains("auto makeFieldsProp"))
         << "the shared `fields` schema fragment must be defined once";
     // One call site per in-scope projection tool (ANTS-1855 added
-    // read_log → 8; ANTS-1735 added model_switch_stats → 9). The lambda
-    // definition reads `makeFieldsProp = [` so it is not counted by the
-    // call-form needle.
+    // read_log → 8; ANTS-1735 added model_switch_stats → 9; ANTS-2021
+    // added read_region → 10). The lambda definition reads
+    // `makeFieldsProp = [` so it is not counted by the call-form needle.
     int count = 0;
     int idx = 0;
     const QByteArray needle = "makeFieldsProp();";
     while ((idx = s.indexOf(needle, idx)) != -1) { ++count; idx += needle.size(); }
-    EXPECT_EQ(count, 9) << "expected 9 makeFieldsProp() call sites, got "
-                        << count;
+    EXPECT_EQ(count, 10) << "expected 10 makeFieldsProp() call sites, got "
+                         << count;
 }
