@@ -28,6 +28,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Audit-engine correctness batch** (ANTS-2003)
+  Clean finding messages (strip file:line:col: prefix → tidier SARIF + line-grained dedup); a semgrep run that errored is no longer reported as a clean zero-finding; ROADMAP fold-in escapes markdown so a finding can't corrupt ROADMAP.md; secret-scanner findings classified as external tools (not bare grep); git-blame refuses out-of-tree paths; user-rule trust reuses the live session config.
+
 - **audit_run: gitleaks no longer walks build/ and .audit_cache/** (ANTS-2016)
   A generated allowlist config prunes the build output and archived audit JSON from the gitleaks --no-git filesystem walk (68 s → ~3 s on this repo).
 

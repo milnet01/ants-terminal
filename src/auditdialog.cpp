@@ -2371,6 +2371,12 @@ QString AuditDialog::readSnippet(const QString &absPath, int line, int radius,
 void AuditDialog::enrichWithBlame(Finding &f) const {
     if (!m_blameEnabled) return;
     if (f.file.isEmpty() || f.line <= 0) return;
+    // ANTS-2003 — f.file is scanner-supplied. The `--` separator below already
+    // stops argv-injection, but refuse an absolute path or a `..` traversal so
+    // `git blame` can never be pointed outside the project tree.
+    if (QDir::isAbsolutePath(f.file) ||
+        f.file.split(QLatin1Char('/')).contains(QStringLiteral("..")))
+        return;
     const QString key = f.file + ":" + QString::number(f.line);
     auto it = m_blameCache.constFind(key);
     if (it != m_blameCache.constEnd()) {
@@ -2445,6 +2451,7 @@ int AuditDialog::computeConfidence(const Finding &f) {
         "cargo-clippy", "cargo-audit", "go vet", "govulncheck",
         "golangci-lint", "eslint", "npm audit", "gcc",
         "osv-scanner", "trufflehog", "hadolint", "checkov", "ast-grep",
+        "secrets",  // ANTS-2003 — gitleaks/secrets_scan family
     };
     if (kExternalTools.contains(f.source)) score += 10;
 
@@ -2550,7 +2557,11 @@ int AuditDialog::loadUserRules() {
     // invalidates trust so a silent post-trust modification is re-prompted.
     // Env-var `ANTS_AUDIT_TRUST_UNSAFE=1` remains an escape hatch for CI
     // that can't round-trip through the persisted store.
-    Config cfg;
+    // ANTS-2003 — reuse the live m_config so a rule-pack trusted mid-session
+    // (in-memory, not yet flushed to disk) is honoured. A fresh Config would
+    // re-read the on-disk store and wrongly deny the just-trusted pack.
+    Config fallbackCfg;
+    Config &cfg = m_config ? *m_config : fallbackCfg;
     const bool commandRulesTrusted =
         (qEnvironmentVariable("ANTS_AUDIT_TRUST_UNSAFE") == "1")
         || cfg.isAuditRulePackTrusted(m_projectPath, rulesBytes);

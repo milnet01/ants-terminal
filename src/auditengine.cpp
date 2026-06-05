@@ -145,6 +145,10 @@ QString sourceForCheck(const QString &checkId) {
         checkId == "changelog_test_coverage") return "feature-coverage";
     if (checkId.startsWith("git_"))      return "git";
     if (checkId == "compiler_warnings")  return "gcc";
+    // ANTS-2003 — the secret scanners are high-signal, not bare grep. Source
+    // "secrets" lands in computeConfidence's external-tool set (+10) and
+    // dodges the short-grep penalty.
+    if (checkId == "secrets_scan" || checkId == "gitleaks") return "secrets";
     if (checkId == "large_files" || checkId == "dup_files" ||
         checkId == "dangling_symlinks" || checkId == "binary_in_repo" ||
         checkId == "env_files" || checkId == "temp_files" ||
@@ -327,17 +331,27 @@ QList<Finding> parseFindings(const QString &body, const AuditCheck &check) {
         // The previous form ran all three patterns up front; only one
         // can match per line, so chaining the matches is a 2-3x cost
         // saving on the common file:line:col path.
+        // ANTS-2003 — strip the file:line:col: prefix from the stored
+        // message (group 3 is the message body). The raw prefix bloated the
+        // SARIF message text and made the dedup title column-sensitive, so
+        // two findings at the same line differing only by column were kept
+        // as separate entries. Keying dedup on the clean message makes it
+        // line-grained (computeFingerprint already stripLocation()s, so the
+        // learned-FP ledger is unaffected). Lines that match no pattern keep
+        // the full line as their message.
         if (auto m1 = reFileLineCol.match(line); m1.hasMatch()) {
             f.file = m1.captured(1);
             f.line = m1.captured(2).toInt();
+            f.message = m1.captured(3);
         } else if (auto m2 = reFileLine.match(line); m2.hasMatch()) {
             f.file = m2.captured(1);
             f.line = m2.captured(2).toInt();
+            f.message = m2.captured(3);
         } else if (auto m3 = reJustFile.match(line); m3.hasMatch()) {
             f.file = m3.captured(1);
         }
 
-        const QString title = line.left(80);
+        const QString title = f.message.left(80);
         f.dedupKey = computeDedup(f.file, f.line, check.id, title);
         out.append(f);
     }
@@ -858,6 +872,16 @@ std::optional<AuditSummary> summariseSemgrepJson(
     const QJsonArray results =
         doc.object().value(QStringLiteral("results")).toArray();
 
+    // ANTS-2003 — a semgrep run that errored (e.g. a bad --config, a parse
+    // failure on every file) emits a populated errors[] with an empty
+    // results[]. Reporting that as a clean zero-finding run is a false
+    // all-clear. Treat "errors present, no results" as a failed parse so the
+    // caller surfaces it instead of "0 findings". A run with BOTH errors and
+    // results is a partial success — keep the findings it did produce.
+    const QJsonArray errors =
+        doc.object().value(QStringLiteral("errors")).toArray();
+    if (results.isEmpty() && !errors.isEmpty()) return std::nullopt;
+
     AuditSummary s;
     s.sarifPath    = jsonPath;
     s.sourceFormat = QStringLiteral("semgrep-json");
@@ -995,6 +1019,26 @@ QString templateRoadmapFoldInBlock(const QList<Finding> &actionable,
         return first;
     };
 
+    // ANTS-2003 — finding text is interpolated into ROADMAP.md markdown. Escape
+    // the inline actives so a `**`/backtick/bracket in a message can't break the
+    // **bold** bullet or the [ANTS-NNNN] link (or inject a new list item).
+    auto mdInline = [](const QString &s) -> QString {
+        QString out;
+        out.reserve(s.size() + 8);
+        for (const QChar c : s) {
+            if (c == '\\' || c == '`' || c == '*' || c == '_' ||
+                c == '[' || c == ']')
+                out += QChar('\\');
+            out += c;
+        }
+        return out;
+    };
+    // A backtick cannot be backslash-escaped inside a `code span` — swap it for
+    // an apostrophe so the path/rule span stays closed.
+    auto mdCode = [](QString s) -> QString {
+        return s.replace(QChar('`'), QChar('\''));
+    };
+
     QString out;
     out.reserve(256 + actionable.size() * 200);
     out += QStringLiteral("### 🔍 Audit fold-in (");
@@ -1010,19 +1054,19 @@ QString templateRoadmapFoldInBlock(const QList<Finding> &actionable,
         out += QStringLiteral("- 📋 [ANTS-");
         out += QString::number(id);
         out += QStringLiteral("] **");
-        out += theme;
+        out += mdInline(theme);
         out += QStringLiteral(".**\n");
         if (!f.file.isEmpty() && f.line > 0) {
             out += QStringLiteral("  At `");
-            out += f.file;
+            out += mdCode(f.file);
             out += QChar(':');
             out += QString::number(f.line);
             out += QStringLiteral("` (rule `");
-            out += f.checkId;
+            out += mdCode(f.checkId);
             out += QStringLiteral("`).\n");
         } else if (!f.checkId.isEmpty()) {
             out += QStringLiteral("  Rule `");
-            out += f.checkId;
+            out += mdCode(f.checkId);
             out += QStringLiteral("`.\n");
         }
         out += QStringLiteral("  Kind: audit-fix.\n");
