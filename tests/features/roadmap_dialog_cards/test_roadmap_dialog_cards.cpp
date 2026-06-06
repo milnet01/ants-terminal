@@ -646,6 +646,13 @@ static int runMain(int argc, char **argv) {
         const std::string src = slurp(ROADMAPDIALOG_CPP);
         if (src.empty())
             return fail("StateLabel", "roadmapdialog.cpp not readable");
+        // ANTS-2012: collectCurrentBullets() caches its blocking git-log
+        // result with a TTL so rebuild() (per search keystroke) doesn't
+        // spawn `git log` each time — multi-second typing jank otherwise.
+        if (!contains(src, "kExternalSignalsTtlMs"))
+            return fail("Ants2012",
+                "collectCurrentBullets must cache external signals "
+                "(kExternalSignalsTtlMs TTL) to avoid per-keystroke git jank");
         // INV-19: kStatusLabels table + static_assert.
         if (!contains(src, "constexpr StatusLabel kStatusLabels[]"))
             return fail("StateLabel",

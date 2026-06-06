@@ -483,6 +483,12 @@ private:
     // first refresh.
     QHash<QString, qint64> m_lastTouchDates;
     qint64 m_lastTouchDatesMtime = -1;
+    // ANTS-2012 — collectCurrentBullets() shells out to `git log` (blocking).
+    // rebuild() runs per search keystroke, so cache the external signals with
+    // a short TTL to kill the per-keystroke git jank (mutable: filled from a
+    // const getter).
+    mutable QStringList m_externalSignalsCache;
+    mutable qint64 m_externalSignalsCacheMs = 0;
     // ANTS-1238 — selected card-density tier. Default Cozy preserves
     // pre-1238 byte-equal rendering (INV-1). Loaded from
     // Config::roadmapDensity() in the ctor; written back on every

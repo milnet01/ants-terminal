@@ -456,10 +456,25 @@ RoadmapDialog::Preset RoadmapDialog::presetMatching(unsigned filter,
 }
 
 QStringList RoadmapDialog::collectCurrentBullets() const {
+    // ANTS-2012 — readRecentCommitSubjects() shells out to a blocking `git
+    // log` (up to 1.5 s). rebuild() runs on every search keystroke, so an
+    // uncached call spawned git per keystroke — multi-second GUI jank while
+    // typing a filter. The external signals (CHANGELOG unreleased bullets +
+    // recent commit subjects) don't change during a typing burst, so cache
+    // them with a short TTL: a keystroke storm reuses one result, and newly
+    // landed commits still surface within a few seconds.
+    constexpr qint64 kExternalSignalsTtlMs = 5000;
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    if (m_externalSignalsCacheMs != 0
+        && nowMs - m_externalSignalsCacheMs < kExternalSignalsTtlMs)
+        return m_externalSignalsCache;
+
     QStringList out;
     if (!m_changelogPath.isEmpty()) out += readUnreleasedBullets(m_changelogPath);
     const QFileInfo fi(m_roadmapPath);
     out += readRecentCommitSubjects(fi.absolutePath());
+    m_externalSignalsCache = out;
+    m_externalSignalsCacheMs = nowMs;
     return out;
 }
 
