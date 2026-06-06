@@ -843,7 +843,9 @@ if(ANTS_TESTS)
                 # ANTS-1828/1829 — inline-image budget + iTerm2 base64 hardening.
                 tests/features/terminalgrid_image_budget_hardening/test_terminalgrid_image_budget_hardening.cpp
                 # ANTS-1841 — terminalwidget hot-path hygiene (source-scrape).
-                tests/features/terminalwidget_hotpath_perf/test_terminalwidget_hotpath_perf.cpp)
+                tests/features/terminalwidget_hotpath_perf/test_terminalwidget_hotpath_perf.cpp
+                # ANTS-2024 — theme-change DeferredDelete flush ordering guard.
+                tests/features/theme_change_deferred_delete_flush/test_theme_change_deferred_delete_flush.cpp)
     # scrollback_frozen_view test reads terminalwidget.cpp source via grep —
     # the path must be passed as a compile definition same as the standalone
     # had it. Apply target-wide so any future bundle source can reuse.
