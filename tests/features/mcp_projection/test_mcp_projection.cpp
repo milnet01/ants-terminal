@@ -100,11 +100,14 @@ TEST(McpProjection, Inv7EtagRetainedOnlyWhenListed) {
     EXPECT_EQ(with.value("etag").toString(), QStringLiteral("abc123"));
 }
 
-// INV-8 — allowlist is exactly the seven in-scope tools.
+// INV-8 — allowlist is exactly the eleven in-scope tools (original seven +
+// read_log/ANTS-1855, model_switch_stats/ANTS-1735, read_region/ANTS-2021,
+// codebase_index/ANTS-1637 — matches the makeFieldsProp() call-site count).
 TEST(McpProjection, Inv8AllowlistExact) {
     for (const char *t : {"roadmap_query", "project_layout", "file_outline",
                           "get_environment", "tab_list", "subsystem",
-                          "git_state"}) {
+                          "git_state", "read_log", "model_switch_stats",
+                          "read_region", "codebase_index"}) {
         EXPECT_TRUE(mcp::isFieldProjectionTool(QString::fromUtf8(t)))
             << t << " should be field-projectable";
     }

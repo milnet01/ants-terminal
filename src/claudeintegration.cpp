@@ -1616,12 +1616,13 @@ void ClaudeIntegration::onMcpConnection() {
                     return p;
                 };
 
-                // ANTS-1720 — `fields` projection input prop. Seven
-                // high-volume read tools (roadmap_query, project_layout,
-                // file_outline, get_environment, tab_list, subsystem,
-                // git_state) accept it; the response carries only the
-                // named top-level fields. Gated by
-                // mcp::isFieldProjectionTool at the dispatch site.
+                // ANTS-1720 — `fields` projection input prop. The 11
+                // high-volume read tools in mcp::isFieldProjectionTool
+                // (roadmap_query, project_layout, file_outline,
+                // get_environment, tab_list, subsystem, git_state, read_log,
+                // read_region, codebase_index, model_switch_stats) accept it;
+                // the response carries only the named top-level fields. Gated
+                // by that helper at the dispatch site.
                 auto makeFieldsProp = []{
                     QJsonObject p;
                     p["type"] = "array";

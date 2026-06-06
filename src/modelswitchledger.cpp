@@ -651,8 +651,10 @@ QJsonObject statsForScope(const QString &ledgerPath,
     return env;
 }
 
-// Back-compat thin wrapper — all-time forensic view (no epoch/recency filter
-// applied beyond the struct defaults).
+// Back-compat thin wrapper — no epoch filter (minEpoch=0; all behaviour
+// generations / forensic), but it DOES apply the default 30-day recency window
+// (StatsConfig::windowDays=kDefaultStatsWindowDays). Not an all-time view —
+// records older than 30 days are dropped (statsForScope, ANTS-1936).
 QJsonObject statsForProject(const QString &ledgerPath, const QString &projectRoot) {
     StatsConfig cfg;   // defaults: project scope, windowDays = 30, minEpoch = 0
     return statsForScope(ledgerPath, projectRoot, cfg);

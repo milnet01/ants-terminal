@@ -10,9 +10,12 @@ class QJsonArray;
 // mirrors the focusedtest / modelrecommender extraction pattern.
 namespace mcp {
 
-// Allowlist: the seven read tools that accept `fields=`. A subset of
-// ClaudeIntegration::isEtagSupportedTool (all seven are also etag-able),
-// chosen for payload size (see docs/specs/ANTS-1720 / ROADMAP).
+// Allowlist: the 11 read tools that accept `fields=` (grew past the original
+// 7 via ANTS-1855 read_log, ANTS-2021 read_region, ANTS-1637 codebase_index,
+// ANTS-1735 model_switch_stats). Mostly overlaps
+// ClaudeIntegration::isEtagSupportedTool, but `read_log` is projection-only
+// (NOT etag-able) — so this is no longer a strict subset of the etag set.
+// Chosen for payload size (see docs/specs/ANTS-1720 / ROADMAP).
 bool isFieldProjectionTool(const QString &toolName);
 
 // Return a compact JSON object carrying only the named top-level fields

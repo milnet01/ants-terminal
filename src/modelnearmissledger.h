@@ -33,7 +33,7 @@ struct Record {
     QString     project;                  // focused tab shellCwd()
     QString     currentTier;              // "haiku" | "sonnet" | "opus"
     QString     recommendedTier;          // clamped target alias
-    QStringList blockedBy;                // ordered subset of the 7 taxonomy tokens (INV-9)
+    QStringList blockedBy;                // ordered subset of the taxonomy tokens (INV-9; 9 since ANTS-1917/1959)
     bool        composerEmpty       = true;
     QString     focusedState;             // lowercase snake_case ClaudeState
     int         ticksTargetStable   = 0;

@@ -9,15 +9,19 @@ when the caller needs one top-level field. `roadmap_query` alone can run
 
 ## Solution
 
-A new optional `fields: ["f1","f2"]` array parameter on seven read tools
+A new optional `fields: ["f1","f2"]` array parameter on eleven read tools
 returns **only the named top-level fields**. The response *schema* is
 unchanged — absent fields are simply omitted. Callers that omit `fields`
 get the full payload (fully backwards-compatible).
 
-Tools in scope (all seven are also etag-supported, ANTS-1499):
+Tools in scope (the original seven are etag-supported, ANTS-1499; of the
+four later additions all are etag-supported except `read_log`, which is
+projection-only):
 
 `roadmap_query`, `project_layout`, `file_outline`, `get_environment`,
-`tab_list`, `subsystem`, `git_state`.
+`tab_list`, `subsystem`, `git_state`, `read_log` (ANTS-1855),
+`model_switch_stats` (ANTS-1735), `read_region` (ANTS-2021),
+`codebase_index` (ANTS-1637).
 
 ## Where it lives
 
@@ -54,12 +58,12 @@ short-circuits when state is unchanged.
   a `fields=["bullets","etag"]` response carries the same etag a full
   call would (this is what "etag computed on canonical body, not filtered
   body" means).
-- **INV-8 — allowlist is the seven in-scope tools only.**
-  `isFieldProjectionTool` returns true for exactly those seven and false
+- **INV-8 — allowlist is the eleven in-scope tools only.**
+  `isFieldProjectionTool` returns true for exactly those eleven and false
   otherwise (e.g. `get_scrollback`, `session_brief`).
 - **INV-9 — dispatch ordering.** In `claudeintegration.cpp` the
   `projectFields` call appears after `applyEtagPattern` and before the
   `wrapMcpData` call, and is guarded so the etag short-circuit
   (`{ok,unchanged,etag}`) is never narrowed.
-- **INV-10 — schema declares `fields`.** Each of the seven tools'
+- **INV-10 — schema declares `fields`.** Each of the eleven tools'
   `inputSchema.properties` carries a `fields` array-of-string property.
