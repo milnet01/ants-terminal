@@ -137,6 +137,12 @@ for security-relevant changes.
 
 ### Security
 
+- **Claude hook routing + MCP wrap hardening — a sibling-tab SessionStart during cold-start no longer mis-routes a later permission prompt to the wrong tab, and wrapMcpData now neutralises XML comment markers that could swallow its closing tag** (ANTS-1996)
+
+- **Remote-control hardening — spec_query path lookups now route through the canonical symlink-resolving validator (closes a project-internal symlink escape), note fields are capped before the scrubber’s backtracking regex (slow-regex DoS), and the --remote client verifies the server’s peer UID before sending its request** (ANTS-1995)
+
+- **Permission-prompt scanner hardened against spoofing — a structural gate now requires real Claude Code prompt shape (anchor + selection UI) before the terminal offers an “Add to allowlist” button, so incidental output containing “always allow” / “allow access to” can no longer manufacture an attacker-chosen allowlist rule** (ANTS-1993)
+
 - **Private cache dirs now created at 0700 with no world-readable window** (ANTS-1988)
   The model-switch ledgers and audit caches (.audit_cache, SARIF cache) are now created via ensurePrivateDir (0700), so their listings and timestamps are never briefly enumerable by other local users.
 

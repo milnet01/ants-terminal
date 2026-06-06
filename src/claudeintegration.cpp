@@ -1163,7 +1163,20 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
     }
 
     // The event passed the cold-start gate; commit to last-seen.
-    m_lastHookSessionId = incomingSessionId;
+    //
+    // ANTS-1996 — EXCEPT a cold-start SessionStart. SessionStart and
+    // PermissionRequest are the only two hooks allowed through the
+    // cold-start drop above (they are not state-mutating). During that
+    // window m_transcriptPath is empty, so isFocusedTabSession()
+    // optimistically returns true for ANY session_id — a sibling tab's
+    // SessionStart would otherwise overwrite m_lastHookSessionId, and a
+    // PermissionRequest arriving before the next poll resolves the
+    // transcript path routes via that poisoned field to the wrong tab.
+    // PermissionRequest still commits its own session_id here (it self-
+    // routes), so a real prompt's routing stays correct; we only refuse
+    // the un-confirmable sibling SessionStart write.
+    if (!(coldStart && hookName == QLatin1String("SessionStart")))
+        m_lastHookSessionId = incomingSessionId;
 
     if (hookName == "SessionStart") {
         if (!isFocused) return;
@@ -8368,6 +8381,17 @@ QString ClaudeIntegration::wrapMcpData(const QString &toolName,
         QRegularExpression::CaseInsensitiveOption);
     sanitised.replace(closeTagVariantRe,
                       QStringLiteral("<ants_mcp_data_escaped/>"));
+    // ANTS-1996 — neutralise XML/HTML comment markers. The close-tag
+    // scrub above is defeated by a comment desync: an unterminated
+    // `<!--` in the payload swallows the real `</ants_mcp_data>` from a
+    // consuming assistant that treats markup comments structurally, so
+    // the literal close tag is never seen and the wrap silently runs on
+    // into following content; a stray `-->` can re-open surrounding
+    // context the same way. Replace both markers with a visibly-modified
+    // but inert form (a space breaks the token) so a hostile payload
+    // can't smuggle structural ambiguity past the close-tag scrub.
+    sanitised.replace(QStringLiteral("<!--"), QStringLiteral("<!- -"));
+    sanitised.replace(QStringLiteral("-->"),  QStringLiteral("- ->"));
     // Indie-review-2026-05-14 lane-3 M1: defensive escaping of the
     // tool-name attribute. The current registry guarantees the name
     // matches `^[a-z][a-z0-9_]+$` so this is paranoia today, but the

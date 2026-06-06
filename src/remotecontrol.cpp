@@ -621,6 +621,14 @@ QJsonArray rcComputeDuplicateIds(const QJsonArray &bullets) {
 // that a typed argument was lost, collapses blank-line runs, and trims
 // trailing whitespace. Hoisted out of cmdRoadmapLogAppend's local
 // lambda (ANTS-1717) so the flip/annotate note path scrubs identically.
+// ANTS-1995 — cap on caller-supplied `note` length before it reaches
+// rcScrubLeakedToolXml's lazy [\s\S]*? backtracking regex. A note packed
+// with many unclosed <parameter …> openers makes the globalMatch O(n²),
+// a same-UID slow-regex DoS via roadmap_log op:flip_batch / annotate.
+// 4 KiB is far above any real annotation; bodies (op:append) keep their
+// own size handling and are not routed through this cap.
+constexpr int kRcMaxNoteChars = 4096;
+
 void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames) {
     if (text.isEmpty()) return;
     // Matched <parameter name="X">…</parameter> pairs. [\s\S] spans
@@ -4468,6 +4476,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     //     annotate). Scrubbed identically to op:"append"'s body.
     //     Required + non-empty under annotate; optional under flip.
     QString note = req.value(QStringLiteral("note")).toString();
+    // ANTS-1995 — reject an oversize note before the backtracking scrub.
+    if (note.size() > kRcMaxNoteChars) {
+        return rlErr(QStringLiteral("too_large"),
+            QStringLiteral("roadmap_log: note exceeds %1-char cap (got %2)")
+                .arg(kRcMaxNoteChars).arg(note.size()));
+    }
     QStringList noteScrubbedNames;
     rcScrubLeakedToolXml(note, noteScrubbedNames);
     if (annotateMode && note.isEmpty()) {
@@ -5094,6 +5108,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         const QJsonArray locRange = loc.value(QStringLiteral("line_range")).toArray();
         const bool noAnchor       = loc.value(QStringLiteral("no_anchor")).toBool(false);
         QString note              = loc.value(QStringLiteral("note")).toString();
+        // ANTS-1995 — reject an oversize note before the backtracking scrub.
+        if (note.size() > kRcMaxNoteChars) {
+            skip(li, QStringLiteral("too_large"),
+                 QStringLiteral("note exceeds %1-char cap (got %2)")
+                     .arg(kRcMaxNoteChars).arg(note.size()));
+            continue;
+        }
         QStringList noteScrubbed;
         if (!note.isEmpty()) rcScrubLeakedToolXml(note, noteScrubbed);
 
@@ -8070,6 +8091,29 @@ int RemoteControl::runClient(const QString &command,
             qUtf8Printable(socket.errorString()));
         return 1;
     }
+    // ANTS-1995 — verify the SERVER's peer UID before any payload leaves
+    // this process. The server already checks the client's UID via
+    // SO_PEERCRED (line ~1296), but the client never checked the server's:
+    // a process that wins the socket path ($ANTS_REMOTE_SOCKET override,
+    // or a predictable default in a shared dir) could accept the
+    // connection and harvest the request body (caller_cwd, file paths,
+    // notes) we are about to write. Mirror the server's fail-closed check
+    // and abort on any mismatch before write().
+    {
+        const qintptr fd = socket.socketDescriptor();
+        struct ucred cred{};
+        socklen_t len = sizeof(cred);
+        if (fd < 0 ||
+            ::getsockopt(static_cast<int>(fd), SOL_SOCKET, SO_PEERCRED,
+                         &cred, &len) != 0 ||
+            len != sizeof(cred) || cred.uid != ::getuid()) {
+            fprintf(stderr,
+                "ants-terminal --remote: server peer-credential check "
+                "failed — refusing to send request (suspect socket "
+                "hijack via ANTS_REMOTE_SOCKET)\n");
+            return 1;
+        }
+    }
     socket.write(payload);
     if (!socket.waitForBytesWritten(2000)) {
         fprintf(stderr, "ants-terminal --remote: write timeout\n");
@@ -9571,22 +9615,26 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
     bool isPhase = false;
     QString sourceTag;
     if (!pathArg.isEmpty()) {
-        QString cleaned = pathArg;
-        while (cleaned.startsWith(QStringLiteral("./"))) cleaned = cleaned.mid(2);
-        if (cleaned.startsWith(QLatin1Char('/'))) {
-            return QJsonDocument(sqErr(
-                QStringLiteral("bad_path"),
-                QStringLiteral("spec_query: path must be project-"
-                               "relative (no leading '/')")));
+        // ANTS-1995 — route the path arg through PathValidation (the
+        // canonical, symlink-resolving anchor check) exactly as the
+        // write twin spec_log already does. The previous manual
+        // leading-'/' + ".."-substring test never canonicalised, so a
+        // symlink inside the project (e.g. docs/specs/evil → /etc/passwd)
+        // passed the substring checks yet resolved OUTSIDE the project
+        // root — a read-side escape.
+        const auto check = PathValidation::validatePath(
+            pathArg, rootCanonical, QStringLiteral("spec_query"),
+            QStringLiteral("path"), /*allowOutsideRoot=*/false);
+        if (check.bad) return QJsonDocument(check.err);
+        if (!check.resolved.isEmpty()) {
+            full = check.resolved;
+        } else {
+            // Non-existent path: validatePath leaves resolved empty.
+            // Rebuild the in-root absolute path so the not_found check
+            // below fires with the right message.
+            full = QDir::cleanPath(rootCanonical + QLatin1Char('/') + pathArg);
         }
-        if (cleaned.contains(QStringLiteral(".."))) {
-            return QJsonDocument(sqErr(
-                QStringLiteral("bad_path"),
-                QStringLiteral("spec_query: path must not contain "
-                               "'..' traversal segments")));
-        }
-        rel  = cleaned;
-        full = rootCanonical + QLatin1Char('/') + rel;
+        rel = pathArg;
         sourceTag = QStringLiteral("path");
     } else {
         isPhase = id.startsWith(QStringLiteral("phase_"));

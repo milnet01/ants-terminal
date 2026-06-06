@@ -229,6 +229,8 @@ add_library(ants_core_lib STATIC
     src/remotecontrol.cpp
     src/remotecontrolgate.cpp
     src/fileoutline.cpp
+    # ANTS-1993 — Claude permission-prompt structural gate (Qt6::Core-only).
+    src/claudepromptdetect.cpp
     # ANTS-1855 — read_log pure filtering helper (Qt6::Core-only).
     src/readlog.cpp
     # ANTS-2021 — read_region pure slicing helper (Qt6::Core-only).
@@ -1000,6 +1002,10 @@ if(ANTS_TESTS)
                 tests/features/claude_tab_status_indicator/test_claude_tab_tracker.cpp
                 tests/features/claude_transcript_robustness/test_claude_transcript_robustness.cpp
                 tests/features/allowlist_add/test_allowlist_add.cpp
+                # ANTS-1993 — permission-prompt structural gate (anti-spoof).
+                tests/features/claude_permission_prompt_structure/test_claude_permission_prompt_structure.cpp
+                # ANTS-1996 — wrapMcpData neutralises XML comment markers.
+                tests/features/mcp_wrap_comment_escape/test_mcp_wrap_comment_escape.cpp
                 tests/features/allowlist_perms_postcommit/test_allowlist_perms_postcommit.cpp
                 tests/features/ssh_dash_host_rejected/test_ssh_dash.cpp
                 tests/features/ssh_extra_args_sanitize/test_ssh_extra_args.cpp

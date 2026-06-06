@@ -1,4 +1,5 @@
 #include "terminalwidget.h"
+#include "claudepromptdetect.h" // ANTS-1993 — permission-prompt structural gate
 #include "clipboardguard.h"  // ANTS-1014 — clipboard write funnel
 #include "debuglog.h"
 #include "regexharden.h"     // ANTS-1665 — harden user search / rule patterns
@@ -4622,15 +4623,32 @@ void TerminalWidget::checkForClaudePermissionPrompt() {
     //   a) "Tab to accept" (older/tool prompts)
     //   b) "Do you want to proceed?" (newer permission prompts)
     //   c) "y · yes / n · no" or "y/n" patterns
+    //
+    // ANTS-1993 — gate the whole scan on a structural check first. A
+    // genuine prompt is a multi-line widget (anchor + selection UI); a
+    // single hostile line containing one weak anchor ("always allow",
+    // "allow access to") must NOT manufacture a phantom allowlist button
+    // pre-filled with an attacker-chosen rule. When the structure is
+    // absent, footerLine stays -1 and the no-prompt debounce below
+    // retracts any stale rule, exactly as if no footer were on screen.
+    QStringList claudeRecentLines;
+    claudeRecentLines.reserve(12);
+    for (int i = std::max(0, totalLines - 12); i < totalLines; ++i)
+        claudeRecentLines << lineText(i);
+    const bool claudePromptStructure =
+        ClaudePromptDetect::isPermissionPromptStructure(claudeRecentLines);
+
     int footerLine = -1;
-    for (int i = totalLines - 1; i >= std::max(0, totalLines - 12); --i) {
-        QString text = lineText(i);
-        if (text.contains(QLatin1String("Tab to accept"))
-            || text.contains(QLatin1String("Do you want to proceed"))
-            || text.contains(QLatin1String("allow access to"))
-            || text.contains(QLatin1String("always allow"))) {
-            footerLine = i;
-            break;
+    if (claudePromptStructure) {
+        for (int i = totalLines - 1; i >= std::max(0, totalLines - 12); --i) {
+            QString text = lineText(i);
+            if (text.contains(QLatin1String("Tab to accept"))
+                || text.contains(QLatin1String("Do you want to proceed"))
+                || text.contains(QLatin1String("allow access to"))
+                || text.contains(QLatin1String("always allow"))) {
+                footerLine = i;
+                break;
+            }
         }
     }
     if (footerLine < 0) {
