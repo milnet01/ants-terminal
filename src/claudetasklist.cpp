@@ -1,4 +1,5 @@
 #include "claudetasklist.h"
+#include "claudecontent.h"   // ANTS-2002 — content-as-array text extraction
 
 #include <algorithm>
 
@@ -171,6 +172,15 @@ void ClaudeTaskListTracker::poll() {
     if (m_transcriptPath.isEmpty()) return;
     const QFileInfo fi(m_transcriptPath);
     if (!fi.exists()) return;
+    // ANTS-2002 — parity with ClaudeBgTaskTracker::poll(): the watch may have
+    // been lost (file absent at bind time, atomic-rename on save, or inotify
+    // exhaustion). Re-add it and reparse so a dropped watch can't strand the
+    // task list on stale state until the next mtime tick happens to differ.
+    if (!m_watcher.files().contains(m_transcriptPath)) {
+        m_watcher.addPath(m_transcriptPath);
+        rescan();
+        return;
+    }
     const qint64 mtimeMs = fi.lastModified().toMSecsSinceEpoch();
     if (mtimeMs == m_lastRescanMtimeMs) return;
     rescan();
@@ -395,7 +405,7 @@ QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
                 auto it = idxByToolUseId.find(tuId);
                 if (it == idxByToolUseId.end()) continue;
                 const QString body =
-                    c.value(QStringLiteral("content")).toString();
+                    ClaudeContent::toText(c.value(QStringLiteral("content")));
                 const QString id = extractIdFromResultBody(body);
                 if (!id.isEmpty()) out[it.value()].id = id;
             }

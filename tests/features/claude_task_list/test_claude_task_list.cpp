@@ -7,6 +7,7 @@
 
 #include "../../_support/expect.h"
 #include "claudetasklist.h"
+#include "claudecontent.h"   // ANTS-2002 — content-as-array helper
 
 #include <gtest/gtest.h>
 #include <QCoreApplication>
@@ -92,6 +93,16 @@ QString userToolResult(const QString &toolUseId,
                        const QString &resultBody) {
     return QStringLiteral(
         R"({"type":"user","isSidechain":false,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%1","content":"%2"}]}})")
+        .arg(toolUseId, resultBody);
+}
+
+// ANTS-2002: tool_result whose `content` is the ARRAY form
+// ([{type:text,text:...}]) the CC JSONL schema also permits. A bare
+// .toString() on this yielded "" and stranded id extraction.
+QString userToolResultArray(const QString &toolUseId,
+                            const QString &resultBody) {
+    return QStringLiteral(
+        R"({"type":"user","isSidechain":false,"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%1","content":[{"type":"text","text":"%2"}]}]}})")
         .arg(toolUseId, resultBody);
 }
 
@@ -192,6 +203,47 @@ void testInv3_taskCreatePairedResult() {
                "ANTS-1158-INV-3: subject preserved from input");
         expect(tasks[0].id == QStringLiteral("42"),
                "ANTS-1158-INV-3: ID extracted from paired tool_result body");
+    }
+}
+
+// ANTS-2002 — direct unit test of the shared content-as-array helper.
+void testAnts2002_contentToTextHelper() {
+    expect(ClaudeContent::toText(QJsonValue(QStringLiteral("hello")))
+               == QStringLiteral("hello"),
+           "ANTS-2002: toText returns string content verbatim");
+
+    QJsonObject t1; t1["type"] = "text"; t1["text"] = "line1";
+    QJsonObject nonText; nonText["type"] = "tool_use"; nonText["id"] = "toolu_x";
+    QJsonObject t2; t2["type"] = "text"; t2["text"] = "line2";
+    QJsonArray blocks; blocks.append(t1); blocks.append(nonText); blocks.append(t2);
+    expect(ClaudeContent::toText(QJsonValue(blocks))
+               == QStringLiteral("line1\nline2"),
+           "ANTS-2002: toText joins text blocks and skips non-text blocks");
+
+    expect(ClaudeContent::toText(QJsonValue(42)) == QString(),
+           "ANTS-2002: toText returns empty for a non-string/non-array value");
+}
+
+// ANTS-2002 — integration: a TaskCreate paired with an ARRAY-form
+// tool_result still extracts the task id (was empty before the fix).
+void testAnts2002_arrayContentToolResult() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-2002 setup"); return; }
+
+    const QString p = writeFixture(dir, "fix_arraycontent.jsonl", {
+        assistantToolUse(QStringLiteral("TaskCreate"),
+            R"({"subject":"Array content task","description":"d","activeForm":"a"})",
+            QStringLiteral("toolu_arr")),
+        userToolResultArray(QStringLiteral("toolu_arr"),
+            QStringLiteral("Task #99 created successfully: Array content task")),
+    });
+
+    const auto tasks = ClaudeTaskListTracker::parseTranscript(p);
+    expect(tasks.size() == 1,
+           "ANTS-2002: TaskCreate with array-form tool_result content still parses");
+    if (!tasks.isEmpty()) {
+        expect(tasks[0].id == QStringLiteral("99"),
+               "ANTS-2002: id extracted from array-form tool_result content");
     }
 }
 
@@ -1327,6 +1379,18 @@ TEST(ClaudeTaskList, Ants1341Inv5MultiTaskAbandoned) {
 TEST(ClaudeTaskList, Ants1840ExtractIdTolerantOfWordingDrift) {
     const int before = expect_failures();
     testAnts1840_extractIdTolerantOfWordingDrift();
+    if (expect_failures() > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants2002ContentToTextHelper) {
+    const int before = expect_failures();
+    testAnts2002_contentToTextHelper();
+    if (expect_failures() > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants2002ArrayContentToolResult) {
+    const int before = expect_failures();
+    testAnts2002_arrayContentToolResult();
     if (expect_failures() > before) FAIL();
 }
 

@@ -1,4 +1,5 @@
 #include "claudebgtasks.h"
+#include "claudecontent.h"   // ANTS-2002 — content-as-array text extraction
 
 #include <QDateTime>
 #include <QDir>
@@ -292,7 +293,7 @@ QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseTranscript(const QString &
                         // The tool_result text is "Command running in
                         // background with ID: <id>. Output is being
                         // written to: <path>". Extract the path.
-                        const QString resultText = c.value(QStringLiteral("content")).toString();
+                        const QString resultText = ClaudeContent::toText(c.value(QStringLiteral("content")));
                         const int marker = resultText.indexOf(QStringLiteral("written to: "));
                         if (marker >= 0) {
                             QString p = resultText.mid(marker + 12).trimmed();
@@ -330,7 +331,7 @@ QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseTranscript(const QString &
                         // that merely contains a longer id ("abc123") as a
                         // substring. Ids are escaped so regex metacharacters in
                         // an id are matched literally.
-                        const QString resultText = c.value(QStringLiteral("content")).toString();
+                        const QString resultText = ClaudeContent::toText(c.value(QStringLiteral("content")));
                         for (auto it = idxByBgId.begin(); it != idxByBgId.end(); ++it) {
                             // ANTS-1817 — cheap substring pre-filter before the
                             // word-boundary regex. Avoids compiling a fresh
