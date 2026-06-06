@@ -4,7 +4,7 @@
 // tree fixtures, plus a source-grep INV that the CMake option +
 // gated add_executable wiring is in place.
 //
-// Exit 0 = all 8 invariants hold.
+// Exit 0 = all 9 invariants hold.
 
 #include "antshelper.h"
 
@@ -177,6 +177,24 @@ static int runMain() {
             return fail("INV-7", "compact JSON output must not start with BOM");
     }
 
+    // INV-11: list returns the unified {ok, data:{subcommands}} envelope
+    // (reuses okObj — shape can't drift from drift-check's). ANTS-2013.
+    {
+        const QJsonObject resp = AntsHelper::listSubcommands();
+        if (!resp.value("ok").toBool())
+            return fail("INV-11", "list expected ok:true");
+        if (resp.contains(QStringLiteral("subcommands")))
+            return fail("INV-11",
+                        "subcommands must be nested under data, not top-level");
+        const QJsonObject data = resp.value("data").toObject();
+        const QJsonArray subs = data.value("subcommands").toArray();
+        bool hasDrift = false;
+        for (const QJsonValue &v : subs)
+            if (v.toString() == QStringLiteral("drift-check")) hasDrift = true;
+        if (!hasDrift)
+            return fail("INV-11", "data.subcommands must contain drift-check");
+    }
+
     // INV-1 / INV-8: CMake gates the helper binary correctly.
     const std::string cmake = slurp(SRC_CMAKELISTS);
     if (cmake.empty())
@@ -191,7 +209,7 @@ static int runMain() {
         return fail("INV-8",
                     "ants-helper target must be gated on the option");
 
-    std::puts("OK local_subagent_framework: 8/8 invariants");
+    std::puts("OK local_subagent_framework: 9/9 invariants");
     return 0;
 }
 

@@ -33,6 +33,18 @@ QString jsonToCompactString(const QJsonObject &obj) {
         QJsonDocument(obj).toJson(QJsonDocument::Compact));
 }
 
+QJsonObject listSubcommands() {
+    // Reuse okObj so the list response carries the same unified
+    // { "ok": true, "data": { ... } } envelope as drift-check —
+    // previously it hand-rolled { ok, subcommands } at top level,
+    // diverging from the documented shape (ANTS-2013, INV-11).
+    QJsonArray arr;
+    arr.append(QStringLiteral("drift-check"));
+    QJsonObject data;
+    data.insert(QStringLiteral("subcommands"), arr);
+    return okObj(data);
+}
+
 QJsonObject driftCheck(const QJsonObject & /*request*/,
                        const QString &repoRoot,
                        int *exitCodeOut) {

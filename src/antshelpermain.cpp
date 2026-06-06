@@ -18,7 +18,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QJsonArray>
+#include <QStringConverter>
 #include <QStringList>
 #include <QTextStream>
 
@@ -27,11 +27,18 @@
 namespace {
 
 void writeStderr(const QString &msg) {
-    QTextStream(stderr) << msg << '\n';
+    // INV-7: lock UTF-8 at the output boundary. Qt6 QTextStream already
+    // defaults to UTF-8 (Qt5 used the locale codec), but stating it makes
+    // the pipe contract explicit and regression-proof. ANTS-2013.
+    QTextStream ts(stderr);
+    ts.setEncoding(QStringConverter::Utf8);
+    ts << msg << '\n';
 }
 
 void writeStdout(const QString &msg) {
-    QTextStream(stdout) << msg << '\n';
+    QTextStream ts(stdout);
+    ts.setEncoding(QStringConverter::Utf8);   // INV-7 (ANTS-2013)
+    ts << msg << '\n';
 }
 
 QJsonObject parseRequest(const QString &raw, QString *errMsg) {
@@ -68,15 +75,6 @@ QString readStdin(bool *opened = nullptr) {
     if (opened) *opened = ok;
     if (!ok) return {};
     return QString::fromUtf8(f.readAll());
-}
-
-QJsonObject listSubcommands() {
-    QJsonObject obj;
-    QJsonArray arr;
-    arr.append(QStringLiteral("drift-check"));
-    obj.insert(QStringLiteral("ok"), true);
-    obj.insert(QStringLiteral("subcommands"), arr);
-    return obj;
 }
 
 void printHelp() {
@@ -172,7 +170,7 @@ int main(int argc, char **argv) {
     if (cmd == QStringLiteral("drift-check")) {
         response = AntsHelper::driftCheck(request, repoRoot, &exitCode);
     } else if (cmd == QStringLiteral("list")) {
-        response = listSubcommands();
+        response = AntsHelper::listSubcommands();
         exitCode = 0;
     } else {
         // Same unified-envelope discipline on the unknown-subcommand

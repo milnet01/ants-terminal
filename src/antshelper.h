@@ -59,4 +59,10 @@ QJsonObject driftCheck(const QJsonObject &request,
 // stdout. Helper for the dispatcher and tests.
 QString jsonToCompactString(const QJsonObject &obj);
 
+// list: enumerate the available subcommands. Returns the unified
+// envelope { "ok": true, "data": { "subcommands": [...] } } (INV-11) —
+// reuses the shared okObj wrapper so its shape can't drift from
+// drift-check's. ANTS-2013.
+QJsonObject listSubcommands();
+
 }  // namespace AntsHelper
