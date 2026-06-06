@@ -55,6 +55,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Fixed a crash when changing the colour theme while a Claude permission prompt (Allow/Deny) was on screen — the theme repaint could touch a just-dismissed prompt button and crash the whole app.** (ANTS-2024)
+
 - **Roadmap items written with a short bold-ID like `**Cl9.**` (instead of `[ANTS-1234]`) are now picked up by roadmap search instead of going invisible.** (ANTS-1987)
 
 - **The Claude session orientation cheat-sheet now refreshes whenever its content changes, not only on an Ants version bump.** (ANTS-2038)
