@@ -44,6 +44,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Settings auto-model checkbox now uses Qt's `toggled` signal, clearing a deprecation warning on newer Qt while still building on the Qt 6.2 release baseline.** (ANTS-1983)
+
 - **`changelog_log` now reports `format_mismatch` (not `no_changelog`) on projects whose changelog is a YAML file it can't yet write — so callers know the file was found, not missing.** (ANTS-2040)
 
 - **`workspace_search` now accepts `query` as an alias for `pattern`, and its refusal hints which field to use.** (ANTS-2041)

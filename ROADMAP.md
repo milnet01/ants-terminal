@@ -9107,12 +9107,13 @@ clips input text), and the auto-switcher interrupting active work.
   Lanes: ui.
   Source: user-report-2026-06-04.
 
-- 📋 [ANTS-1983] **QCheckBox::stateChanged deprecated on Qt 6.9+ (settingsdialog.cpp) — migrate to checkStateChanged.**
+- ✅ [ANTS-1983] **QCheckBox::stateChanged deprecated on Qt 6.9+ (settingsdialog.cpp) — migrate to checkStateChanged.**
   Surfaced by local Qt 6.11 during the dialog work; harmless on the Qt 6.2 CI baseline (warning only). Migrate the connect to QCheckBox::checkStateChanged (signal arg type changed int→Qt::CheckState).
   **Layman:** A minor 'this function is old' warning from the newer Qt on this PC; tidy it up.
   Kind: doc-fix.
   Lanes: ui.
   Source: in-session-2026-06-04.
+  Resolved (2026-06-06): switched the connect to QCheckBox::toggled(bool) rather than the bullet's prescribed checkStateChanged(Qt::CheckState) — checkStateChanged is Qt 6.7+ and would BREAK the Qt 6.2 release floor (find_package(Qt6 6.2 REQUIRED), CI builds on 6.2.x). toggled has existed since Qt 5, is not deprecated, and the handler ignores the payload (re-reads isChecked() via mirrorMaster), so it is behaviourally identical on this 2-state checkbox and silences the Qt 6.9+ stateChanged(int) deprecation without a QT_VERSION guard. settingsdialog.cpp:321. Verified: clean compile, no deprecation warning on local Qt 6.11.
 
 - ✅ [ANTS-1984] **Scroll-to-bottom floating chip ignored the terminal theme — hard-coded rgba colours; derive from the active palette instead.**
   terminalwidget.cpp built the #scrollToBottomBtn stylesheet from fixed rgba() literals (40,40,60 / 200,200,220 / hover white), so the chip stayed blue-grey regardless of the selected theme. New styleScrollToBottomButton(bg,fg,accent,border) helper builds it from theme colours (lifted surface, themed border, accent hover); called from the ctor (grid defaults) and re-called on every applyThemeColors(). Keeps the ANTS-1326 padding/size resets.

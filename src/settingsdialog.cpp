@@ -318,12 +318,15 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         if (m_claudeAutoModelChipPulse) m_claudeAutoModelChipPulse->setEnabled(on);
         if (m_claudeAutoModelUndo)      m_claudeAutoModelUndo->setEnabled(on);
     };
-    // Use the int-overload of stateChanged for Qt-6.4 compatibility
-    // (CI's Ubuntu 24.04 LTS Qt). checkStateChanged(Qt::CheckState)
-    // landed in Qt 6.7; the int overload is deprecated in Qt 6.9 but
-    // still present and accepted on every 6.x. ANTS-1893.
-    connect(m_claudeAutoModelSwitch, &QCheckBox::stateChanged,
-            this, [mirrorMaster](int) { mirrorMaster(); });
+    // ANTS-1983 — use toggled(bool), not stateChanged(int). The handler
+    // ignores the payload (it re-reads isChecked() via mirrorMaster), and
+    // this is a 2-state checkbox, so toggled is behaviourally identical.
+    // toggled has existed since Qt 5 and is not deprecated, so it builds
+    // on the Qt 6.2 release floor AND silences the Qt 6.9+ deprecation of
+    // stateChanged(int) — without the version guard that
+    // checkStateChanged(Qt::CheckState) (Qt 6.7+) would have required.
+    connect(m_claudeAutoModelSwitch, &QCheckBox::toggled,
+            this, [mirrorMaster](bool) { mirrorMaster(); });
     mirrorMaster();   // initial state
 
     // ANTS-1897 — MCP discoverability via SessionStart hook. On by
