@@ -102,6 +102,17 @@ TEST(McpSymbolQuery, LiveBehaviour) {
                              "    obj->doThing();\n"         // caller (->)
                              "}\n"));
 
+    // --- ANTS-1700: qualified call sites must not be defs -------------
+    writeFile(root, QStringLiteral("src/calls.cpp"),
+              QStringLiteral("#include \"widget.h\"\n"
+                             "QByteArray ns::slurpBody(const char *p) {\n"  // real qualified def
+                             "    return {};\n"
+                             "}\n"
+                             "void user() {\n"
+                             "    ns::slurpBody(\"x\");\n"        // qualified call — NOT a def
+                             "    auto y = ns::slurpBody(p);\n"   // qualified call in expr
+                             "}\n"));
+
     // --- Python ------------------------------------------------------
     writeFile(root, QStringLiteral("app.py"),
               QStringLiteral("def compute(x):\n"
@@ -239,6 +250,23 @@ TEST(McpSymbolQuery, LiveBehaviour) {
         root, QStringLiteral("compute"), def);
     expect(resolved.fileStemHint.isEmpty(),
            "ANTS-1950: resolving symbol carries no stem hint");
+
+    // ANTS-1700 — a namespace-qualified *call* site (`ns::sym(`) must not
+    // be mis-classified as a definition. The C++ def anchor now requires a
+    // return-type token before the (optionally qualified) name.
+    const auto sb = SymbolQuery::findDefinition(root, QStringLiteral("slurpBody"), def);
+    expect(sb.ok, "ANTS-1700: findDefinition(slurpBody) ok");
+    expect(hasDef(sb, QStringLiteral("src/calls.cpp"), QStringLiteral("definition")),
+           "ANTS-1700: real qualified def 'QByteArray ns::slurpBody(...)' found");
+    expect(sb.definitionsTotal == 1,
+           "ANTS-1700: qualified call sites not counted as definitions "
+           "(definitionsTotal must be exactly 1)");
+    bool noCallAsDef = true;
+    for (const auto &m : sb.definitions)
+        if (m.signature.contains(QStringLiteral("ns::slurpBody(\"x\")")) ||
+            m.signature.startsWith(QStringLiteral("auto y")))
+            noCallAsDef = false;
+    expect(noCallAsDef, "ANTS-1700: no call line reported as a definition");
 
     EXPECT_EQ(0, expect_failures());
 }

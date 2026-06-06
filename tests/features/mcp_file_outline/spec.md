@@ -23,10 +23,11 @@ in-tree `auditdialog.cpp` (INV-3 floor check).
 | 8 | `MainWindow::setupClaudeMcpProviders` calls `setFileOutlineProvider` with a lambda that delegates to `m_remoteControl->cmdFileOutline`. |
 | 9 | `FileOutline::compute` (called against the in-tree `src/auditdialog.cpp`) returns `≥ 8` symbols. Smoke-test of the regex set against a known file — flips red if the regex set ever regresses. |
 | 10 | Calling `FileOutline::compute` on a non-existent path returns `{ok:false, code:"not_found"}` and does not crash. |
+| 11 | (ANTS-2028) `FileOutline::compute` captures free functions with a single-token return type — `int alpha()`, `static QByteArray slurpBody(...)`, and the declaration `const std::string &makeName(int);` all surface — while the qualified member `Widget::method` still resolves via `rxCppMember`. Guards against `rxCppFunc` folding the return type and the name into one possessive class (which left nothing for the name capture, so free functions never matched). |
 
 ## Acceptance
 
-Exit 0 = all 10 invariants hold.
+Exit 0 = all 11 invariants hold.
 
 Wired as a source file in the `test_claude` bundle (uses the same
 compile defs as the existing MCP-related tests). The runtime

@@ -13,9 +13,12 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include <QDir>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
+#include <QTemporaryDir>
 
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -199,6 +202,56 @@ TEST(McpFileOutline, RuntimeFloor) {
         << "(actual=" << symbols.size() << "); regex set has regressed";
     // Sanity: language is "cpp" via the auto-pick path.
     EXPECT_EQ(out.value("language").toString().toStdString(), "cpp");
+}
+
+// INV-11 (ANTS-2028) — free functions with a single-token return type
+// must be captured. `rxCppFunc` previously folded the return type and
+// the name into one possessive `[\w:<>&*\s]++` class, leaving nothing
+// for the `\s++(\w+)` name capture, so a free function like
+// `int alpha()` never surfaced — only class/struct/namespace and
+// qualified `Class::method` forms did. This silently narrowed
+// file_outline + read_region symbol mode coverage.
+TEST(McpFileOutline, FreeFunctionCapture) {
+    expect_reset();
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + QStringLiteral("/free.cpp");
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+        f.write(
+            "int alpha() {\n"                                  // free func, 1-token return
+            "    return 0;\n"
+            "}\n"
+            "static QByteArray slurpBody(const char *p) {\n"   // static + ptr arg
+            "    return {};\n"
+            "}\n"
+            "const std::string &makeName(int n);\n"           // qualified return + ref, decl
+            "void Widget::method() {\n"                        // qualified member (rxCppMember)
+            "}\n");
+        f.close();
+    }
+    const QJsonObject out = FileOutline::compute(
+        path, FileOutline::Mode::Cpp, /*includeDocComment=*/false,
+        /*maxSymbols=*/100);
+    ASSERT_TRUE(out.value("ok").toBool());
+    const QJsonArray symbols = out.value("symbols").toArray();
+    auto hasName = [&](const char *n) {
+        for (const auto &v : symbols)
+            if (v.toObject().value("name").toString() == QLatin1String(n))
+                return true;
+        return false;
+    };
+    EXPECT_TRUE(hasName("alpha"))
+        << "ANTS-2028: free function 'int alpha()' not captured";
+    EXPECT_TRUE(hasName("slurpBody"))
+        << "ANTS-2028: free function 'static QByteArray slurpBody(...)' not captured";
+    EXPECT_TRUE(hasName("makeName"))
+        << "ANTS-2028: free-function declaration "
+           "'const std::string &makeName(int);' not captured";
+    // Regression guard: the qualified member still resolves via rxCppMember.
+    EXPECT_TRUE(hasName("Widget::method"))
+        << "ANTS-2028: qualified member 'Widget::method' regressed";
 }
 
 // INV-10 — non-existent path returns the not_found code without

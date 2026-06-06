@@ -72,7 +72,24 @@ Anchors buildAnchors(Lang lang, const QString &s) {
     };
     switch (lang) {
         case Lang::Cpp:
-            add(QStringLiteral("^[\\w:&*<>~ \\t]*\\b") + s + QStringLiteral("\\s*\\("));
+            // ANTS-1700 — a definition/declaration requires a return-type
+            // token before the (optionally qualified) name, so a
+            // namespace-qualified *call* site (`ns::sym(`) is no longer
+            // mis-reported as a definition. Each `[\w:<>~]+` token is
+            // followed by a real separator `[\s*&]+` (whitespace / `*` /
+            // `&`); one-or-more such tokens form the return type +
+            // specifiers, then an optional `(?:[\w:]+::)` class qualifier,
+            // then the name. A bare call (`sym(`) and a qualified call
+            // (`ns::sym(`) both lack the leading return-type token, so
+            // neither matches. The per-line byte cap (kMaxLineBytes)
+            // bounds backtracking.
+            add(QStringLiteral("^[ \\t]*(?:[\\w:<>~]+[\\s*&]+)+(?:[\\w:]+::)?") + s + QStringLiteral("\\s*\\("));
+            // Out-of-line constructor / destructor definitions carry no
+            // return type (`Foo::Foo(` / `Foo::~Foo(`); match them
+            // explicitly so a class query still resolves its ctor/dtor.
+            // (In-class ctor *declarations* — `Foo(` with no qualifier —
+            // are indistinguishable from a call and intentionally left out.)
+            add(QStringLiteral("^[ \\t]*") + s + QStringLiteral("::~?") + s + QStringLiteral("\\s*\\("));
             a.call = QRegularExpression(QStringLiteral("\\b") + s + QStringLiteral("\\s*\\("));
             a.cppKind = true;
             break;

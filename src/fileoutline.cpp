@@ -46,8 +46,18 @@ const QRegularExpression &rxCppType() {
 const QRegularExpression &rxCppFunc() {
     // Possessive `++` quantifiers bound backtracking on adversarial
     // input. The PCRE2 engine emits a single linear scan.
+    //
+    // ANTS-2028: the return type is one-or-more `[\w:<>]+` tokens, each
+    // followed by a real separator `[\s*&]+`. The earlier
+    // `[\w:<>&*\s]++\s++(\w+)` folded the return type AND the name into
+    // one possessive class, so for `int alpha()` it consumed "int alpha"
+    // and the trailing `\s++(\w+)` had nothing left (no backtrack) —
+    // free functions never matched. Splitting the return-type tokens
+    // from the name capture leaves `(\w+)` an identifier to grab. The
+    // inner classes are disjoint (word/colon/angle vs space/star/amp),
+    // so the scan stays linear (INV-8).
     static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(static|inline|template[^>]*>)?\s*[\w:<>&*\s]++\s++(\w+)\s*\([^)]*\)\s*[{;])"));
+        QRegularExpression r(QStringLiteral(R"(^(static|inline|template[^>]*>)?\s*(?:[\w:<>]+[\s*&]+)++(\w+)\s*\([^)]*\)\s*[{;])"));
         r.optimize();
         return r;
     }();

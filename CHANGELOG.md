@@ -55,6 +55,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`find_definition` no longer mis-reports namespace-qualified call sites (`ns::sym(`) as definitions — the C++ anchor now requires a return-type token before the name** (ANTS-1700)
+
+- **`file_outline` / `read_region` now capture free functions — `rxCppFunc` no longer folds the return type and the name into one possessive class, so `int alpha()` and friends surface instead of being silently dropped** (ANTS-2028)
+
 - **Fixed a crash when changing the colour theme while a Claude permission prompt (Allow/Deny) was on screen — the theme repaint could touch a just-dismissed prompt button and crash the whole app.** (ANTS-2024)
 
 - **Roadmap items written with a short bold-ID like `**Cl9.**` (instead of `[ANTS-1234]`) are now picked up by roadmap search instead of going invisible.** (ANTS-1987)

@@ -21,6 +21,12 @@ source tree spanning C++, Python, Lua, Shell):
    and `truncated` flips.
 8. `isValidSymbol` accepts identifiers and rejects empties, leading
    digits, regex metachars, and >128-char input.
+8a. (ANTS-1700) A namespace-qualified *call* site (`ns::sym(`) is not
+    mis-classified as a definition: the C++ def anchor requires a
+    return-type token before the (optionally qualified) name. The real
+    qualified definition `QByteArray ns::slurpBody(...)` is still found
+    (`definitionsTotal == 1`), and no call line appears in
+    `definitions`.
 
 **Wiring contract** (source-grep over the four wiring files):
 
