@@ -7031,14 +7031,27 @@ void ClaudeIntegration::onMcpConnection() {
                         "collapsed to a single line (ANTS-1868) so the "
                         "rendered bullet stays a well-formed Markdown "
                         "list item. New bullets insert at the TOP of "
-                        "their category (most-recent-first). Required: "
+                        "their category (most-recent-first). "
+                        "op:\"add_batch\" (ANTS-2044) — write N "
+                        "`entries[]` in one read + one atomic commit; "
+                        "each entry auto-detects add vs add_from_roadmap, "
+                        "applies in input order (byte-identical to the "
+                        "same N sequential calls), and per-entry failures "
+                        "land in `skipped[]:[{index, code, error}]` while "
+                        "the rest apply. Required: "
                         "caller_cwd (+ summary for add, or id for "
-                        "add_from_roadmap). Atomic via QSaveFile. "
+                        "add_from_roadmap, or entries[] for add_batch). "
+                        "Atomic via QSaveFile. "
                         "Refusals: not_unreleased (no `## [Unreleased]` "
                         "heading), bad_category, no_changelog, "
-                        "id_not_in_roadmap, missing_field, bad_op_combo. "
+                        "format_mismatch (YAML changelog), "
+                        "id_not_in_roadmap, missing_field, bad_args "
+                        "(empty entries[]), bad_op_combo. "
                         "Returns {ok, op, file, category, line, "
-                        "bytes_written, created_category, id?} or "
+                        "bytes_written, created_category, id?} — or for "
+                        "add_batch {ok, op, file, applied:[{index, id?, "
+                        "category, line}], applied_count, skipped, "
+                        "skipped_count, bytes_written} — or "
                         "{ok:false, error, code}.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to add a CHANGELOG.md entry under "
@@ -7058,11 +7071,18 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonArray clOpEnum;
                     clOpEnum.append("add");
                     clOpEnum.append("add_from_roadmap");
+                    clOpEnum.append("add_batch");
                     clOp["enum"] = clOpEnum;
                     clOp["description"] = QStringLiteral(
                         "Verb mode. Default \"add\" (summary + optional "
                         "body). \"add_from_roadmap\" reuses the cited "
-                        "ROADMAP bullet's headline + Layman prose.");
+                        "ROADMAP bullet's headline + Layman prose. "
+                        "\"add_batch\" (ANTS-2044) writes N `entries[]` "
+                        "in one read + one atomic commit — each entry "
+                        "auto-detects mode (a `summary` → add; an "
+                        "`id`-only entry → add_from_roadmap); per-entry "
+                        "failures land in `skipped[]` while the rest "
+                        "apply (parity with roadmap_log append_batch).");
 
                     QJsonObject clSummary;
                     clSummary["type"] = "string";
@@ -7111,6 +7131,30 @@ void ClaudeIntegration::onMcpConnection() {
                         "add_from_roadmap (the bullet to cite). "
                         "Case-sensitive.");
 
+                    // ANTS-2044 — entries[] for op:"add_batch". Each
+                    // item has the same shape as a single add /
+                    // add_from_roadmap call (summary|id, category|kind,
+                    // body?); mode is auto-detected per entry.
+                    QJsonObject clEntryItem;
+                    clEntryItem["type"] = "object";
+                    QJsonObject clEntryProps;
+                    clEntryProps["summary"]  = clSummary;
+                    clEntryProps["category"] = clCategory;
+                    clEntryProps["kind"]     = clKind;
+                    clEntryProps["body"]     = clBody;
+                    clEntryProps["id"]       = clId;
+                    clEntryItem["properties"] = clEntryProps;
+                    QJsonObject clEntries;
+                    clEntries["type"]  = "array";
+                    clEntries["items"] = clEntryItem;
+                    clEntries["description"] = QStringLiteral(
+                        "op:\"add_batch\" only — the entries to write in "
+                        "one atomic commit. Each: {summary + category|"
+                        "kind (+ id?, body?)} for an add, OR {id} alone "
+                        "to pull from ROADMAP (add_from_roadmap). Applied "
+                        "in input order; per-entry failures go to "
+                        "`skipped[]`.");
+
                     QJsonObject clProps;
                     clProps["caller_cwd"] = clCaller;
                     clProps["op"]         = clOp;
@@ -7119,6 +7163,7 @@ void ClaudeIntegration::onMcpConnection() {
                     clProps["kind"]       = clKind;
                     clProps["body"]       = clBody;
                     clProps["id"]         = clId;
+                    clProps["entries"]    = clEntries;
 
                     QJsonObject clSchema;
                     clSchema["type"] = "object";

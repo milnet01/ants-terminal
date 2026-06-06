@@ -608,6 +608,13 @@ public:
     // docs/specs/ANTS-1548.md.
     QJsonDocument cmdChangelogLog(const QJsonObject &req);
 
+    // ANTS-2044 — op:"add_batch": N entries, one read + one atomic
+    // QSaveFile commit (parity with roadmap_log op:append_batch). Each
+    // entry resolves by auto-detected mode — `summary` → add,
+    // `id`-only → add_from_roadmap; per-entry failures land in
+    // skipped[] while the rest apply. m_main-independent.
+    QJsonDocument cmdChangelogLogAddBatch(const QJsonObject &req);
+
     // ANTS-1346 test-only inspectors for the section-cache LRU.
     int sectionCacheSizeForTest() const {
         return m_roadmapSectionCache.size();

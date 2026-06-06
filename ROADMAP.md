@@ -9192,12 +9192,13 @@ clips input text), and the auto-switcher interrupting active work.
   Source: in-session-2026-06-05.
   Resolved (2026-06-05): rcComputePossibleDuplicates surfaces a non-blocking possible_duplicates[] on op:append/append_batch; test roadmap_log_possible_duplicates.
 
-- 📋 [ANTS-2044] **changelog_log has no batch op: closing a multi-item release needs one call per entry, unlike roadmap_log's append_batch.**
+- ✅ [ANTS-2044] **changelog_log has no batch op: closing a multi-item release needs one call per entry, unlike roadmap_log's append_batch.**
   Observed closing ANTS-2038..2043: 5 sequential changelog_log op:add calls (same file, can't parallelise — RcGate). roadmap_log already has op:append_batch (ANTS-1879). Add changelog_log op:add_batch taking entries[]:{summary|id, category|kind, body?} → single read + single atomic QSaveFile commit, per-entry skipped[] on validation failure (parity with append_batch). Reuses ChangelogLog::insertUnreleasedEntry per entry.
   **Layman:** Adding several changelog lines at once takes one call each; let the tool accept a batch like the roadmap tool already does.
   Kind: enhancement.
   Lanes: changelog, claudeintegration.
   Source: in-session-2026-06-05.
+  Resolved (2026-06-06): changelog_log op:add_batch writes N entries[] in one read + one atomic QSaveFile commit; each entry auto-detects add vs add_from_roadmap, applies in input order (byte-identical to N sequential calls), per-entry failures land in skipped[]. Reuses ChangelogLog::insertUnreleasedEntry. Test changelog_log_add_batch (INV-1..6).
 
 ### 🔍 Indie-review #7 + audit fold-in (2026-06-04)
 

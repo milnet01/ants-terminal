@@ -1189,6 +1189,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_possible_duplicates/test_roadmap_log_possible_duplicates.cpp
                 # ANTS-1548 changelog_log token-frugal CHANGELOG writer.
                 tests/features/changelog_log_writer/test_changelog_log_writer.cpp
+                # ANTS-2044 changelog_log op:add_batch (N entries, 1 commit).
+                tests/features/changelog_log_add_batch/test_changelog_log_add_batch.cpp
                 # ANTS-1426 parseBullets blank-line continuation.
                 tests/features/roadmap_parser_blank_line_continuation/test_roadmap_parser_blank_line_continuation.cpp
                 # ANTS-1427 MCP dispatch debug-log audit trail.

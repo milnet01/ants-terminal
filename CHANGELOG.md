@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **`changelog_log` now has a batch op (`add_batch`) — close a whole release in one call instead of one per entry, like the roadmap tool already does.** (ANTS-2044)
+
 - **`roadmap_log` now flags possible near-duplicate items when you add one — a non-blocking `possible_duplicates` heads-up, so the list doesn't fill with near-copies.** (ANTS-2043)
 
 - **model_switch_stats now says WHY auto-switch is off** (ANTS-2033)

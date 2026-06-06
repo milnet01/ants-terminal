@@ -3414,11 +3414,16 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     }
     const QString op =
         req.value(QStringLiteral("op")).toString(QStringLiteral("add"));
+    // ANTS-2044 — batch path: N entries, one read + one atomic commit.
+    if (op == QStringLiteral("add_batch")) {
+        return cmdChangelogLogAddBatch(req);
+    }
     if (op != QStringLiteral("add") &&
         op != QStringLiteral("add_from_roadmap")) {
         return clErr(QStringLiteral("bad_op_combo"),
             QStringLiteral("changelog_log: unknown op \"%1\" — expected "
-                           "\"add\" (default) or \"add_from_roadmap\"")
+                           "\"add\" (default), \"add_from_roadmap\", or "
+                           "\"add_batch\"")
                 .arg(op));
     }
 
@@ -3600,6 +3605,273 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         for (const QString &n : scrubbed) dropped.append(n);
         out["scrubbed_params"] = dropped;
     }
+    return QJsonDocument(out);
+}
+
+namespace {
+// ANTS-2044 — resolve one add_batch entry into (category, rendered
+// bullet, id). Mode is auto-detected: a `summary` makes it an `add`
+// (needs `category` or `kind`); an `id` with no `summary` makes it an
+// `add_from_roadmap` (pulls the cited bullet's headline + Layman from
+// `roadmapBullets`). This mirrors the single-op resolution in
+// cmdChangelogLog rather than refactoring it, so the established single
+// path stays byte-for-byte unchanged (the single path keys on the
+// explicit top-level `op`, a deliberately different contract from this
+// per-entry auto-detect). Rule-of-Three: two sites, so the small
+// duplication is left in place with this note rather than extracted.
+struct ClBatchEntryResult {
+    bool    ok = false;
+    QString code, error;       // per-entry refusal iff !ok
+    QString id, category, bullet;  // valid iff ok
+};
+
+ClBatchEntryResult resolveClBatchEntry(
+        const QJsonObject &e,
+        const QVector<RoadmapDialog::BulletRecord> &roadmapBullets,
+        bool roadmapPresent) {
+    ClBatchEntryResult r;
+    const QString summary0 = e.value(QStringLiteral("summary")).toString();
+    const QString id0      = e.value(QStringLiteral("id")).toString();
+    const QString reqCategory =
+        e.value(QStringLiteral("category")).toString();
+    QString body = e.value(QStringLiteral("body")).toString();
+    QString summary, category, id = id0;
+
+    if (!summary0.isEmpty()) {
+        summary = summary0;
+        if (!reqCategory.isEmpty()) {
+            category = reqCategory;
+        } else {
+            const QString kind = e.value(QStringLiteral("kind")).toString();
+            if (kind.isEmpty()) {
+                r.code  = QStringLiteral("missing_field");
+                r.error = QStringLiteral(
+                    "add entry needs `category` or `kind` (to derive it)");
+                return r;
+            }
+            category = ChangelogLog::kindToCategory(kind);
+        }
+    } else if (!id0.isEmpty()) {
+        if (!roadmapPresent) {
+            r.code  = QStringLiteral("no_roadmap");
+            r.error = QStringLiteral(
+                "entry cites id \"%1\" (add_from_roadmap) but no ROADMAP.md "
+                "is present").arg(id0);
+            return r;
+        }
+        const RoadmapDialog::BulletRecord *match = nullptr;
+        for (const auto &cand : roadmapBullets) {
+            if (cand.id == id0) { match = &cand; break; }
+        }
+        if (!match) {
+            r.code  = QStringLiteral("id_not_in_roadmap");
+            r.error = QStringLiteral(
+                "id \"%1\" not found in ROADMAP (case-sensitive)").arg(id0);
+            return r;
+        }
+        // Headline → one-line bold summary; Layman → body (parity with
+        // the single op:add_from_roadmap path, ANTS-1868 / ANTS-1933).
+        summary = rcHeadlineOneline(match->headline);
+        if (body.isEmpty()) {
+            static const QRegularExpression rxBoldLayman(
+                QStringLiteral("(?:\\*\\*)?Layman:(?:\\*\\*)?\\s*(.+)"),
+                QRegularExpression::CaseInsensitiveOption);
+            const auto lm = rxBoldLayman.match(match->body);
+            if (lm.hasMatch()) body = lm.captured(1).trimmed();
+        }
+        if (body.isEmpty()) body = match->layman;
+        category = !reqCategory.isEmpty()
+            ? reqCategory
+            : ChangelogLog::kindToCategory(match->kind);
+    } else {
+        r.code  = QStringLiteral("missing_field");
+        r.error = QStringLiteral(
+            "entry needs `summary` (add) or `id` (add_from_roadmap)");
+        return r;
+    }
+
+    // Pre-validate category so a bad explicit `category` reads as a clear
+    // per-entry skip rather than surfacing later as an insert refusal.
+    if (!ChangelogLog::isValidCategory(category)) {
+        r.code  = QStringLiteral("bad_category");
+        r.error = QStringLiteral(
+            "\"%1\" is not a Keep-a-Changelog category").arg(category);
+        return r;
+    }
+
+    QStringList scrubbed;  // parity with single op (drop leaked tool XML)
+    rcScrubLeakedToolXml(summary, scrubbed);
+    rcScrubLeakedToolXml(body, scrubbed);
+
+    r.ok       = true;
+    r.id       = id;
+    r.category = category;
+    r.bullet   = ChangelogLog::formatBullet(summary, body, id);
+    return r;
+}
+}  // namespace
+
+// ANTS-2044 — changelog_log op:"add_batch". N entries, one read + one
+// atomic QSaveFile commit (parity with roadmap_log op:append_batch,
+// ANTS-1879). Each entry is resolved by resolveClBatchEntry above;
+// per-entry failures land in skipped[] while valid entries still apply.
+// Entries insert in input order, so the result is byte-identical to the
+// same N sequential single-op calls. m_main-independent.
+QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
+    auto clErr = [](const QString &code, const QString &message) {
+        QJsonObject env;
+        env["ok"]    = false;
+        env["code"]  = code;
+        env["error"] = message;
+        return QJsonDocument(env);
+    };
+
+    const QString callerRaw =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    if (callerRaw.isEmpty()) {
+        return clErr(QStringLiteral("missing_field"),
+            QStringLiteral("changelog_log: caller_cwd is required"));
+    }
+    if (!req.value(QStringLiteral("entries")).isArray() ||
+        req.value(QStringLiteral("entries")).toArray().isEmpty()) {
+        return clErr(QStringLiteral("bad_args"),
+            QStringLiteral("changelog_log: op:\"add_batch\" needs a "
+                           "non-empty `entries` array"));
+    }
+    const QJsonArray entries =
+        req.value(QStringLiteral("entries")).toArray();
+
+    const QString callerCanonical =
+        QFileInfo(callerRaw).canonicalFilePath();
+    if (callerCanonical.isEmpty()) {
+        return clErr(QStringLiteral("no_changelog"),
+            QStringLiteral("changelog_log: caller_cwd \"%1\" does not "
+                           "canonicalise to an existing directory")
+                .arg(callerRaw));
+    }
+    // Resolve the changelog with the same Markdown/YAML split as the
+    // single op (ANTS-2040 format_mismatch reused verbatim).
+    const QString clPath = findChangelogUnder(callerCanonical);
+    if (clPath.isEmpty()) {
+        const QString yamlPath = findYamlChangelogUnder(callerCanonical);
+        if (!yamlPath.isEmpty()) {
+            QJsonObject env;
+            env["ok"]     = false;
+            env["code"]   = QStringLiteral("format_mismatch");
+            env["error"]  = QStringLiteral(
+                "changelog_log: \"%1\" is a YAML changelog; the writer "
+                "only appends to Keep-a-Changelog Markdown (CHANGELOG.md) "
+                "and can't emit this format yet")
+                    .arg(yamlPath);
+            env["path"]   = yamlPath;
+            env["format"] = QStringLiteral("yaml");
+            env["hint"]   = QStringLiteral(
+                "Edit the YAML changelog directly — append a "
+                "`- version:/date:/tags:/body:` block in its schema. "
+                "YAML-changelog writes aren't supported by changelog_log "
+                "yet (ANTS-2040).");
+            return QJsonDocument(env);
+        }
+        return clErr(QStringLiteral("no_changelog"),
+            QStringLiteral("changelog_log: no CHANGELOG.md under \"%1\"")
+                .arg(callerCanonical));
+    }
+
+    // Parse ROADMAP once, only if any entry is id-only (add_from_roadmap).
+    QVector<RoadmapDialog::BulletRecord> roadmapBullets;
+    bool roadmapPresent = false;
+    bool roadmapNeeded = false;
+    for (const QJsonValue &v : entries) {
+        const QJsonObject e = v.toObject();
+        if (e.value(QStringLiteral("summary")).toString().isEmpty() &&
+            !e.value(QStringLiteral("id")).toString().isEmpty()) {
+            roadmapNeeded = true;
+            break;
+        }
+    }
+    if (roadmapNeeded) {
+        const QString rmPath = findRoadmapUnder(callerCanonical);
+        if (!rmPath.isEmpty()) {
+            QFile rf(rmPath);
+            if (rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                roadmapBullets =
+                    RoadmapDialog::parseBullets(QString::fromUtf8(rf.readAll()));
+                rf.close();
+                roadmapPresent = true;
+            }
+        }
+    }
+
+    QFile cf(clPath);
+    if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return clErr(QStringLiteral("changelog_read_failed"),
+            QStringLiteral("changelog_log: could not read \"%1\"")
+                .arg(clPath));
+    }
+    QString markdown = QString::fromUtf8(cf.readAll());
+    cf.close();
+
+    QJsonArray applied;   // [{index, id?, category, line}]
+    QJsonArray skipped;   // [{index, code, error}]
+    for (int i = 0; i < entries.size(); ++i) {
+        const QJsonObject e = entries.at(i).toObject();
+        const ClBatchEntryResult er =
+            resolveClBatchEntry(e, roadmapBullets, roadmapPresent);
+        if (!er.ok) {
+            QJsonObject s;
+            s["index"] = i;
+            s["code"]  = er.code;
+            s["error"] = er.error;
+            skipped.append(s);
+            continue;
+        }
+        const auto res = ChangelogLog::insertUnreleasedEntry(
+            markdown, er.category, er.bullet);
+        if (!res.ok) {
+            QJsonObject s;
+            s["index"] = i;
+            s["code"]  = res.code;
+            s["error"] = res.error;
+            skipped.append(s);
+            continue;
+        }
+        markdown = res.markdown;  // accumulate; insert in input order
+        QJsonObject a;
+        a["index"]    = i;
+        if (!er.id.isEmpty()) a["id"] = er.id;
+        a["category"] = er.category;
+        a["line"]     = res.line;
+        applied.append(a);
+    }
+
+    qint64 bytesWritten = 0;
+    // Only touch the file when at least one entry applied — an all-skip
+    // batch leaves CHANGELOG.md untouched.
+    if (!applied.isEmpty()) {
+        QSaveFile cw(clPath);
+        if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            return clErr(QStringLiteral("changelog_write_failed"),
+                QStringLiteral("changelog_log: could not open \"%1\" for "
+                               "writing").arg(clPath));
+        }
+        const QByteArray utf8 = markdown.toUtf8();
+        if (cw.write(utf8) != utf8.size() || !cw.commit()) {
+            return clErr(QStringLiteral("changelog_write_failed"),
+                QStringLiteral("changelog_log: atomic write of \"%1\" failed")
+                    .arg(clPath));
+        }
+        bytesWritten = utf8.size();
+    }
+
+    QJsonObject out;
+    out["ok"]            = true;
+    out["op"]            = QStringLiteral("add_batch");
+    out["file"]          = clPath.section('/', -1);
+    out["applied"]       = applied;
+    out["applied_count"] = applied.size();
+    out["skipped"]       = skipped;
+    out["skipped_count"] = skipped.size();
+    out["bytes_written"] = bytesWritten;
     return QJsonDocument(out);
 }
 
