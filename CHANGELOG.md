@@ -53,6 +53,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Roadmap items written with a short bold-ID like `**Cl9.**` (instead of `[ANTS-1234]`) are now picked up by roadmap search instead of going invisible.** (ANTS-1987)
+
 - **The Claude session orientation cheat-sheet now refreshes whenever its content changes, not only on an Ants version bump.** (ANTS-2038)
 
 - **Pass-headings roadmaps: a `- **Status**: ✅ Done` line with a leading emoji now reads as done, not still-to-do.** (ANTS-2039)

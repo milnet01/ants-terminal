@@ -1016,10 +1016,30 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
             extractBoldId(head, &boldId);
             rowFormat = QStringLiteral("github-task-list");
         } else {
-            // Native path — unchanged from pre-1428.
+            // Native path.
             if (!stripInlineEmoji(head, status)) {
                 ++i;
                 continue;
+            }
+            // ANTS-1987 — extract a leading bold-ID token here too, not
+            // only on the GFM branch. A native emoji bullet whose ID is
+            // a bold-dotted token (`- 📋 **Cl9.**`) otherwise produced an
+            // empty id (rxId below only matches a bracketed `[PROJ-NNNN]`
+            // with a `-<digits>` tail), so the bullet fell out as a
+            // narrator and vanished from roadmap_query. Unlike the GFM
+            // branch (where the leading bold span is an ID-label by
+            // convention), in ants-v1 the bold span is normally the
+            // HEADLINE (`[ID] **headline**`), so adopt a bold token as
+            // the id ONLY when it is ID-SHAPED — a single whitespace-free
+            // token (`Cl9` / `Sh4` / `Ts20-DE1`). This keeps a bold-prose
+            // narrator bullet (`- 🚧 **In-progress thing.**`) id-less.
+            // extractBoldId is head-anchored, so the standard
+            // `[ID] **headline**` form (head starts with `[`) never fires.
+            QString boldCand;
+            if (extractBoldId(head, &boldCand)) {
+                static const QRegularExpression rxIdShaped(
+                    QStringLiteral("^[A-Za-z][A-Za-z0-9_.-]*$"));
+                if (rxIdShaped.match(boldCand).hasMatch()) boldId = boldCand;
             }
             rowFormat = QStringLiteral("ants-v1");
         }
