@@ -249,6 +249,14 @@ void runSourceChecks() {
            "I7-src/denylist-removed",
            QStringLiteral("the old dangerous[] denylist must be gone — "
                           "an allowlist replaces it"));
+
+    // ANTS-2001 — `warn` (Lua 5.4 base lib) writes to host stderr, escaping
+    // the sandbox. It must be overridden to route to ants.log, mirroring the
+    // `print` redirect.
+    expect(src.contains(QStringLiteral("lua_setglobal(m_state, \"warn\")")),
+           "ANTS-2001/warn-redirected-to-log",
+           QStringLiteral("warn must be overridden (lua_setglobal warn) so "
+                          "plugin warnings flow to ants.log, not host stderr"));
 }
 
 }  // namespace

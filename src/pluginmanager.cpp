@@ -523,6 +523,9 @@ bool PluginManager::fireEvent(PluginEvent event, const QString &data) {
 }
 
 void PluginManager::setRecentOutput(const QString &output) {
+    // ANTS-2001 — NB: no caller wires this yet, so ants.get_output() returns
+    // empty in shipping builds (PLUGINS.md documents the gap). Reserved
+    // producer for a future output-feed commit.
     // ANTS-1750 INV-6 — queued so m_recentOutput is mutated on the worker.
     for (auto *engine : healthyEngines())
         QMetaObject::invokeMethod(engine, "setRecentOutput", Qt::QueuedConnection,
@@ -530,6 +533,9 @@ void PluginManager::setRecentOutput(const QString &output) {
 }
 
 void PluginManager::setCwd(const QString &cwd) {
+    // ANTS-2001 — NB: no caller wires this yet, so ants.get_cwd() returns
+    // empty in shipping builds (PLUGINS.md documents the gap). Reserved
+    // producer for a future cwd-feed commit.
     // ANTS-1750 INV-6 — queued so m_cwd is mutated on the worker.
     for (auto *engine : healthyEngines())
         QMetaObject::invokeMethod(engine, "setCwd", Qt::QueuedConnection,

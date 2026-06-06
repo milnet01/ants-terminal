@@ -16,7 +16,8 @@ enum class PluginEvent {
     Output,       // Terminal received output data
     Line,         // Complete line received
     Prompt,       // OSC 133 prompt detected
-    KeyPress,     // Key pressed (before sending to PTY)
+    KeyPress,     // Key pressed (before sending to PTY) — NOT dispatched yet
+                  // (ANTS-1736 dormant; PLUGINS.md marks "keypress" †)
     TitleChanged, // Window title changed
     TabCreated,   // New tab created
     TabClosed,    // Tab closed
@@ -142,6 +143,7 @@ private:
     static int lua_ants_set_status(lua_State *L);
     static int lua_ants_on(lua_State *L);
     static int lua_ants_log(lua_State *L);
+    static int lua_ants_warn(lua_State *L);   // ANTS-2001 — warn → ants.log
     static int lua_ants_clipboard_write(lua_State *L);
     static int lua_ants_settings_get(lua_State *L);
     static int lua_ants_settings_set(lua_State *L);

@@ -366,6 +366,14 @@ void LuaEngine::sandboxEnvironment() {
     // uses so plugin print() flows into the structured log.
     lua_pushcfunction(m_state, lua_ants_log);
     lua_setglobal(m_state, "print");
+
+    // ANTS-2001 — the Lua 5.4 base-lib `warn` writes to the host process's
+    // stderr, escaping the sandbox (same information-disclosure shape the
+    // `print` redirect above closes; PLUGINS.md § Sandbox Boundaries promises
+    // plugin diagnostics go to ants.log). Override it to route to the
+    // structured log too.
+    lua_pushcfunction(m_state, lua_ants_warn);
+    lua_setglobal(m_state, "warn");
 }
 
 bool LuaEngine::loadScript(const QString &path) {
@@ -597,6 +605,31 @@ int LuaEngine::lua_ants_log(lua_State *L) {
     if (engine) {
         emit engine->logMessage(QString::fromUtf8(msg));
     }
+    return 0;
+}
+
+int LuaEngine::lua_ants_warn(lua_State *L) {
+    // Mirror of lua_ants_log for the base-lib `warn` (ANTS-2001). Lua 5.4
+    // `warn(msg1, ...)` takes one-or-more string args; a first arg starting
+    // with '@' is a control message ("@on"/"@off"), not output. Swallow
+    // control messages (warnings always log here, no on/off state) and
+    // concatenate the rest into one ants.log line — never the host stderr.
+    const int n = lua_gettop(L);
+    if (n >= 1) {
+        const char *first = lua_tostring(L, 1);
+        if (first && first[0] == '@')
+            return 0;  // control message — ignore
+    }
+    LuaEngine *engine = getEngine(L);
+    if (!engine) return 0;
+    QString msg;
+    for (int i = 1; i <= n; ++i) {
+        size_t len = 0;
+        const char *s = luaL_tolstring(L, i, &len);  // coerce + push
+        msg += QString::fromUtf8(s, static_cast<int>(len));
+        lua_pop(L, 1);  // pop the string luaL_tolstring pushed
+    }
+    emit engine->logMessage(msg);
     return 0;
 }
 

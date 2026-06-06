@@ -211,9 +211,12 @@ ants.notify("Build finished", "Exit 0 · 1m 14s")
 ### `ants.get_output(n)`
 
 Returns the last `n` lines of visible scrollback as a single newline-joined
-string. Default `n = 50`. Bounded by the buffer the host pushes via
-`LuaEngine::setRecentOutput()` — currently the visible scrollback
-window.
+string. Default `n = 50`.
+
+> **⚠ Not yet wired (as of 0.7.95):** the host does not currently push a
+> buffer — `PluginManager::setRecentOutput()` has no call site — so
+> `ants.get_output()` returns an **empty string** in this build. The API is
+> stable and reserved for a future wiring commit (ANTS-2001 / ANTS-1736).
 
 ```lua
 local recent = ants.get_output(200)
@@ -224,6 +227,11 @@ if recent:find("FAIL") then ... end
 
 Returns the terminal's **reported** current working directory (via OSC 7
 if the shell emits it, falling back to the process's CWD). May be empty.
+
+> **⚠ Not yet wired (as of 0.7.95):** the host does not currently push the
+> cwd — `PluginManager::setCwd()` has no call site — so `ants.get_cwd()`
+> returns an **empty string** in this build. Reserved for a future wiring
+> commit (ANTS-2001).
 
 ```lua
 local cwd = ants.get_cwd()
@@ -402,10 +410,10 @@ that wedges a handler for too long (e.g. a single pathological
 `string.gsub`) is automatically demoted to observe-only and stops
 receiving events, while the terminal stays responsive.
 
-`ants.get_output()` / `ants.get_cwd()` return a **best-effort recent
-snapshot** — because your handler runs off the UI thread, the values
-reflect the most recent state the terminal pushed across, which may lag
-the live screen by a tick.
+`ants.get_output()` / `ants.get_cwd()` are *designed* to return a best-effort
+recent snapshot pushed across from the UI thread. **Note (0.7.95):** the host
+does not currently push that state, so both return an empty string today —
+see the per-function notes above (ANTS-2001).
 
 ## Sandbox Boundaries
 
