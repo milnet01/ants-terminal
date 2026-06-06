@@ -79,6 +79,15 @@ test of the form `m_pendingWrite.isEmpty()` (or equivalent
 `empty()`/`!size()` check) so fresh writes are queued behind pending
 ones.
 
+**INV-8 — Every byte-dropping path emits `writeLost`.** When the queue
+is already full (a fresh write would exceed the cap) OR the EAGAIN
+remainder itself exceeds the cap, `Pty::write` drops those bytes — but
+it MUST emit `writeLost(n)` so the loss is observable, never silent.
+Source-grep: at least two `emit writeLost` sites in the `Pty::write`
+body. (ANTS-1349 added the first on the queue-full path; ANTS-1994(3)
+added the second on the EAGAIN-oversize path — previously a silent
+drop.)
+
 ## Scope
 
 ### In scope
@@ -92,10 +101,12 @@ ones.
   Qt event loop must run; non-trivial harness for a structural fix.
 - Per-write coalescing / Nagle-style batching. Distinct optimization;
   this fix preserves the call-per-write API surface.
-- Backpressure feedback to the caller (e.g. emitting `writeStalled`
-  signals when the queue fills). Future enhancement; this fix
-  preserves the silent-drop semantics on overflow but adds a debug
-  log line so the situation is observable.
+- Backpressure feedback to the caller *before* a drop (e.g. a
+  `writeStalled` signal as the queue approaches the cap). Future
+  enhancement. Note: as of ANTS-1349 / ANTS-1994(3) the overflow paths
+  are no longer silent — they `emit writeLost(n)` on the dropped byte
+  count (INV-8) in addition to the debug log line. A *pre*-drop stall
+  warning is the remaining out-of-scope item.
 
 ## Regression history
 

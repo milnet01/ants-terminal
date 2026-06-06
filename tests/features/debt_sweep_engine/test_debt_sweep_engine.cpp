@@ -23,7 +23,15 @@ void writeFile(const QString &dir, const QString &rel,
     const QString abs = QDir(dir).filePath(rel);
     QDir().mkpath(QFileInfo(abs).absolutePath());
     QFile f(abs);
-    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    // ANTS-1477 — ADD_FAILURE, not ASSERT_TRUE: this is a void helper
+    // called from N TESTs, and ASSERT_* only returns from the *helper*
+    // (the calling TEST keeps running on the unwritten file). ADD_FAILURE
+    // records a failure attributed to the current TEST so an open failure
+    // can't be silently swallowed; we then skip the write of garbage.
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        ADD_FAILURE() << "writeFile: cannot open " << qUtf8Printable(abs);
+        return;
+    }
     f.write(body);
 }
 

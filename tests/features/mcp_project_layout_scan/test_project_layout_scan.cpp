@@ -12,7 +12,6 @@
 #include <QString>
 #include <QTemporaryDir>
 #include <QTextStream>
-#include <QThread>
 
 namespace PLE = ProjectLayoutEngine;
 
@@ -130,11 +129,16 @@ TEST(ProjectLayoutEngine, IsStaleOnMtimeAdvance) {
     // Pretend a small time has passed since the scan.
     const qint64 nowMs = env.scannedAtMs + 5;
     EXPECT_FALSE(PLE::isStale(env, nowMs));
-    // QFileInfo::lastModified reports seconds-granularity on many
-    // filesystems; backdate the cache so a touch-now is detectable.
+    // ANTS-1471 — deterministic, no wall-clock sleep. isStale compares
+    // each probed path's live mtime against cached.scannedAtMs, so
+    // backdating scannedAtMs 2 s into the past makes the file's existing
+    // (seconds-granular, truncated-down) mtime strictly newer than the
+    // scan time — the staleness signal fires without waiting out the 1 s
+    // filesystem mtime granularity. The re-write expresses the "file
+    // changed after the scan" intent; the assertion no longer depends on
+    // it landing in a later mtime second (was a QThread::msleep(1100)
+    // flake on loaded CI runners).
     env.scannedAtMs = nowMs - 2000;
-    // Wait long enough that the post-touch mtime crosses scannedAtMs.
-    QThread::msleep(1100);
     writeFile(td.path() + "/ROADMAP.md", "# Roadmap (edited)\n");
     EXPECT_TRUE(PLE::isStale(env,
         QDateTime::currentMSecsSinceEpoch()));

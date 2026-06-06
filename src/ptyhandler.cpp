@@ -468,6 +468,11 @@ void Pty::write(const QByteArray &data) {
                          "(%lld); dropping",
                          (long long)remaining,
                          (long long)MAX_PENDING_WRITE_BYTES);
+                // ANTS-1994(3) — signal the drop, same as the
+                // pending-queue-full path above (ANTS-1349). Without
+                // this, an oversize write past the kernel PTY buffer
+                // vanished with no writeLost notification.
+                emit writeLost(remaining);
                 return;
             }
             m_pendingWrite = QByteArray(buf, remaining);

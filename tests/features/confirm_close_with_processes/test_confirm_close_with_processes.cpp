@@ -7,6 +7,7 @@
 // of the project uses for MainWindow-touching invariants.
 
 #include "../../_support/expect.h"
+#include "../../_support/srcgrep.h"
 
 #include <QCoreApplication>
 #include <QFile>
@@ -30,12 +31,16 @@ QString readFileOrFail(const char *macroPath) {
     return s;
 }
 
+// ANTS-1476 — delegate to the shared brace-counting, string/comment-aware
+// extractor. The old local version found the body end via indexOf("\n}"),
+// which truncates at the first column-0 `}` inside the function (a nested
+// block, a lambda, a raw-string), so a body containing one would silently
+// be cut short and the INV `.contains()` checks could miss real tokens.
+// slurpFunctionBody returns the matched `{...}` body (signature excluded);
+// every call site below searches body content, never the signature.
 QString extractFunctionBody(const QString &src, const QString &signature) {
-    const int start = src.indexOf(signature);
-    if (start < 0) return {};
-    const int pos = src.indexOf(QStringLiteral("\n}"), start);
-    if (pos < 0) return {};
-    return src.mid(start, pos - start + 2);
+    return QString::fromStdString(ants_test::slurpFunctionBody(
+        src.toStdString(), signature.toStdString()));
 }
 
 }  // namespace

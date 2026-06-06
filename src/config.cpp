@@ -299,10 +299,6 @@ void Config::setWindowGeometryBase64(const QString &base64) {
     save();
 }
 
-QString Config::roadmapDialogGeometry() const {
-    return m_data.value("roadmap_dialog_geometry").toString("");
-}
-
 // ANTS-1842 — per-dialog size map. Width/height only (position is never
 // persisted; the dialog re-centers per D4).
 QSize Config::dialogSize(const QString &key) const {
@@ -320,11 +316,6 @@ void Config::setDialogSize(const QString &key, const QSize &size) {
     wh.append(size.height());
     sizes[key] = wh;
     if (!storeIfChanged("dialog_sizes", sizes)) return;
-    save();
-}
-
-void Config::setRoadmapDialogGeometry(const QString &base64) {
-    if (!storeIfChanged("roadmap_dialog_geometry", base64)) return;
     save();
 }
 

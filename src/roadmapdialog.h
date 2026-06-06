@@ -23,9 +23,11 @@
 // with ReviewChangesDialog and ClaudeBgTasksDialog (capture vbar
 // before setHtml, restore with qMin clamp; was-at-bottom pin).
 //
-// Geometry: persists user resize via `Config::roadmapDialogGeometry`
-// (saveGeometry → base64 → restoreGeometry round-trip); default
-// 1200x800 on first open, minimum 720x480.
+// Geometry: persists the user's resize SIZE only (dialogs.md D3) via
+// DialogChrome's "RoadmapDialog" sizeKey; the dialog re-centers over
+// the parent on every open (D4) rather than restoring a window
+// position. Default 1200x800 on first open, minimum 720x480.
+// (ANTS-2012 migrated this off the legacy saveGeometry blob.)
 //
 // Renderer: the dialog's rebuild() chain uses `renderCardsHtml` (the
 // v2 card renderer) to compose signal-set discovery + parsing + HTML
@@ -143,7 +145,9 @@ public:
     // `roadmapPath` is the canonical absolute path to the file. The
     // owning project root for CHANGELOG / git lookups is the directory
     // containing `roadmapPath`. `cfg` (optional) is consulted for the
-    // dialog's persisted geometry (`Config::roadmapDialogGeometry`).
+    // dialog's persisted UI state (expanded items/sections, table
+    // sections, filters); the persisted SIZE is handled by
+    // DialogChrome via the "RoadmapDialog" sizeKey (ANTS-2012).
     RoadmapDialog(const QString &roadmapPath,
                   const QString &themeName,
                   QWidget *parent = nullptr,

@@ -120,8 +120,12 @@ TEST(ToolDetectionEngine, RepeatProbesAreFree) {
         (void)TDE::exists("sh");
     }
     const qint64 elapsedMs = t.elapsed();
-    EXPECT_LT(elapsedMs, 50)
-        << "1000 cache-hit probes should complete well under 50 ms; got "
+    // 200 ms ceiling, not 50 ms: 1000 cache hits are microseconds of real
+    // work, but a loaded CI runner / sanitiser build can stretch the
+    // wall-clock window well past 50 ms without any I/O actually
+    // happening, flaking the INV-1 (zero-I/O) proxy (ANTS-1613).
+    EXPECT_LT(elapsedMs, 200)
+        << "1000 cache-hit probes should complete well under 200 ms; got "
         << elapsedMs << " ms (INV-1)";
 }
 

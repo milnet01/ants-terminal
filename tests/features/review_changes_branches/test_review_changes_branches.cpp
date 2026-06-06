@@ -49,9 +49,15 @@ TEST(ReviewChangesBranches, Main) {
            "I1/probestate-branches-field");
     expect(contains(src, "QString crossUnpushed;"),
            "I1/probestate-crossUnpushed-field");
-    expect(contains(src, "int pending = 5;"),
-           "I1/probestate-pending-counter-is-five",
-           "expected `int pending = 5;`");
+    // ANTS-1601 — assert the field is initialised, not the exact count.
+    // `pending` is the number of baseline async probes; pinning it to the
+    // literal 5 makes the test break the moment a 6th probe is added even
+    // though the code is correct. The per-probe wirings are asserted by
+    // name below (for-each-ref / branches / crossUnpushed), so the count
+    // literal is the brittle, redundant part.
+    expect(contains(src, "int pending = "),
+           "I1/probestate-pending-counter-initialised",
+           "expected `int pending = <baseline probe count>;`");
 
     // I2 — runAsync calls for both new probes.
     expect(contains(src, "for-each-ref"),

@@ -26,10 +26,13 @@ existing parser / renderer (no parser change — pure presentation layer):
    shorthand to match a specific `[ANTS-NNNN]` bullet regardless of
    headline content. Debounced at ~120 ms.
 
-3. **Larger default size + persisted geometry.** Bump default from current
-   900×700 to 1200×800. Persist via `Config::roadmapDialogGeometry`
-   (saveGeometry / restoreGeometry round-trip — same shape as the
-   `windowGeometryBase64` pattern already in Config).
+3. **Larger default size + persisted size.** Bump default from current
+   900×700 to 1200×800. Persist the user's **size only** (not position)
+   via DialogChrome's `"RoadmapDialog"` sizeKey (dialogs.md D3); the
+   dialog re-centers over its parent on every open (D4). *(ANTS-2012
+   migrated this off the legacy `Config::roadmapDialogGeometry`
+   saveGeometry blob, which stored absolute window position and
+   violated D4.)*
 
 ## Invariants
 
@@ -59,8 +62,10 @@ existing parser / renderer (no parser change — pure presentation layer):
 - **INV-12** Dialog default size is at least 1100×720 (asserted
   numerically against the parsed `resize(W, H)` literal — not via
   string-match, so a future polish bump can't silently break the
-  test); geometry is persisted/restored via
-  `Config::roadmapDialogGeometry`.
+  test); size (not position) is persisted via DialogChrome's
+  `"RoadmapDialog"` sizeKey (dialogs.md D3), and the dialog does NOT
+  hand-roll `saveGeometry`/`restoreGeometry`/`roadmapDialogGeometry`
+  (those persist window position — a D4 violation). *(ANTS-2012)*
 - **INV-13** `sortFor(Preset::Custom)` returns `Document` — when the
   user diverges from any named preset via the checkbox row, the
   dialog inherits document order rather than silently re-sorting.

@@ -229,11 +229,19 @@ static int runMain() {
             return 1;
         }
     }
-    if (!contains(source, "roadmapDialogGeometry"))
-        return fail("INV-12", "roadmapDialogGeometry persistence missing");
-    if (!contains(source, "saveGeometry") ||
-        !contains(source, "restoreGeometry"))
-        return fail("INV-12", "saveGeometry/restoreGeometry round-trip missing");
+    // ANTS-2012 — size persistence is delegated to DialogChrome's
+    // "RoadmapDialog" sizeKey (dialogs.md D3, width/height only). The
+    // dialog MUST NOT hand-roll the legacy saveGeometry/restoreGeometry
+    // blob, which also stored window position and violated D4.
+    if (!contains(source, "QStringLiteral(\"RoadmapDialog\")"))
+        return fail("INV-12",
+                    "DialogChrome \"RoadmapDialog\" sizeKey missing (D3)");
+    if (contains(source, "saveGeometry") ||
+        contains(source, "restoreGeometry") ||
+        contains(source, "roadmapDialogGeometry"))
+        return fail("INV-12",
+                    "legacy geometry round-trip persists window position "
+                    "(D4 violation) — must use DialogChrome sizeKey");
 
     // INV-13 (debt-sweep finding 2.3): sortFor(Custom) is Document.
     // The Custom preset is the "user has diverged via checkboxes"

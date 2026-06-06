@@ -44,6 +44,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Roadmap dialog now remembers only its size, not its on-screen position** (ANTS-2012)
+  It re-centers over the main window every time it opens (so it can't drift off-screen after you move the terminal to another monitor), matching every other dialog. The size you pick is still remembered. One-time effect: the dialog opens at its default 1200×800 the first time after this update, then remembers your new size.
+
 - **Settings auto-model checkbox now uses Qt's `toggled` signal, clearing a deprecation warning on newer Qt while still building on the Qt 6.2 release baseline.** (ANTS-1983)
 
 - **`changelog_log` now reports `format_mismatch` (not `no_changelog`) on projects whose changelog is a YAML file it can't yet write — so callers know the file was found, not missing.** (ANTS-2040)
@@ -54,6 +57,9 @@ for security-relevant changes.
   When a scan tool times out or crashes, audit_run already kept the results from the tools that finished (and still wrote the SARIF file to disk) — it never came back empty over one tool. The result now also says so directly with a `partial` flag and an `incomplete_tools` list, so you can see at a glance that a run was incomplete without digging through per-tool status.
 
 ### Fixed
+
+- **Oversized terminal input that overflows the write buffer now reports the lost bytes instead of dropping them silently** (ANTS-1994)
+  When a very large paste or burst of input exceeds the kernel's pseudo-terminal buffer and the internal 4 MiB queue, the dropped bytes now raise the same "write lost" signal the queue-full path already used — so the loss is visible in diagnostics rather than disappearing without a trace.
 
 - **`roadmap_query` now indexes bracket-ID emoji bullets (`- 📋 [Cl9] **headline**`) — the parser adopts a head-anchored, ID-shaped, link-guarded leading bracket as the bullet's id, so short bare-bracket ids like `[Cl9]`/`[CE18]` are findable and flippable (not just the bold-dotted `**Cl9.**` form)** (ANTS-1987)
 

@@ -43,8 +43,11 @@ TEST(TokenUsageEngine, ResetClearsAndAdvancesSince) {
     t.recordCall("foo", 100, 1000);
     t.recordCall("bar", 50, 500);
     const qint64 sinceBefore = t.sinceUnixMs();
-    // Sleep briefly so the post-reset timestamp is observably later.
-    QThread::msleep(5);
+    // Sleep so the post-reset timestamp is observably later. 20 ms, not
+    // 5 ms: a 10 ms-tick kernel (CONFIG_HZ=100) can leave a 5 ms sleep
+    // landing within the same clock tick, so sinceUnixMs() wouldn't
+    // advance and EXPECT_GT below would flake (ANTS-1607).
+    QThread::msleep(20);
     t.reset();
     EXPECT_GT(t.sinceUnixMs(), sinceBefore);
     auto snap = t.buildReport(true);

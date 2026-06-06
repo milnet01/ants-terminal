@@ -33,7 +33,16 @@ QString writeSpec(const QString &projectRoot, const QString &name,
     QDir().mkpath(specsDir);
     const QString fullPath = specsDir + QChar('/') + name;
     QFile f(fullPath);
-    EXPECT_TRUE(f.open(QIODevice::WriteOnly));
+    // ANTS-1611 — ADD_FAILURE + early return, not EXPECT_TRUE: this is a
+    // setup helper returning QString, so gtest's ASSERT_* (which expands
+    // to `return;`) won't compile here, and a bare EXPECT_TRUE would let
+    // the helper keep writing to a closed QFile and hand back a path to
+    // an empty/missing spec. ADD_FAILURE marks the calling TEST failed
+    // with a clear cause; the empty return short-circuits the bad write.
+    if (!f.open(QIODevice::WriteOnly)) {
+        ADD_FAILURE() << "writeSpec: cannot open " << qUtf8Printable(fullPath);
+        return {};
+    }
     f.write(QByteArrayLiteral("# spec\n"));
     f.close();
     struct timespec ts[2];

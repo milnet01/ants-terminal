@@ -200,7 +200,7 @@ void testTrustFile() {
         VerifyTrust::FilePersistedTrustClient client(path);
         ASSERT_TRUE(client.addTrustedSha(
             QStringLiteral("abcd1234567890123456789012345678901234567"
-                           "8901234567890123456789012")));
+                           "89012345678901234567890")));  // 64 hex (ANTS-1614)
 
         expect(QFile::exists(path), "TF-2 final file present");
         expect(!QFile::exists(path + QStringLiteral(".tmp")),
@@ -224,7 +224,7 @@ void testTrustFile() {
         // overwrites the corrupt file.
         ASSERT_TRUE(client.addTrustedSha(
             QStringLiteral("deadbeefcafef00d12345678901234567890123456"
-                           "78901234567890123456789012")));
+                           "7890123456789012345678")));  // 64 hex (ANTS-1614)
 
         // Read back, confirm it parses now.
         QFile good(path);

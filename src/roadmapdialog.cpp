@@ -2361,8 +2361,8 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
       m_lastHtml(std::make_shared<QString>()),
       m_config(cfg) {
     setWindowTitle(tr("Roadmap — %1").arg(QFileInfo(roadmapPath).fileName()));
-    // ANTS-1100 spec: 1200x800 default; restoreGeometry kicks in below
-    // if the user has resized us before.
+    // ANTS-1100 spec: 1200x800 default; DialogChrome restores the
+    // user's persisted SIZE below (D3) if they have resized us before.
     resize(1200, 800);
     setMinimumSize(720, 480);
 
@@ -2372,7 +2372,17 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     // shared helper installs the bar, wires the close/min/max
     // signals, and gives back a content QWidget to use as the
     // parent for the rest of the ctor's layouts.
-    auto chrome = DialogChrome::install(this, m_themeName);
+    //
+    // ANTS-2012 — resizable=true opts into dialogs.md D2–D4 via the
+    // shared chrome: a QSizeGrip (D2), re-centering over the parent's
+    // current frame on every open (D4), and bare-QSize persistence
+    // under the "RoadmapDialog" key (D3, width/height only — position
+    // is never persisted). This replaced the hand-rolled
+    // save/restore-geometry round-trip, which violated D4 by restoring
+    // an absolute window position.
+    auto chrome = DialogChrome::install(this, m_themeName,
+                                        /*resizable=*/true,
+                                        QStringLiteral("RoadmapDialog"));
     m_titleBar = chrome.titleBar;
     QWidget *content = chrome.contentArea;
 
@@ -2774,21 +2784,9 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
                 applyPreset(order[index]);
             });
 
-    // Restore persisted geometry if Config has one — same shape as
-    // setWindowGeometryBase64 / saveGeometry round-trip. ANTS-1123
-    // indie-review LOW-1: clear the persisted blob if restoreGeometry
-    // returns false (corrupt / wrong-Qt-version saveformat) so a bad
-    // blob doesn't masquerade as valid forever — next open will fall
-    // back to the 1200x800 default and persist a clean blob on close.
-    if (m_config) {
-        const QString stored = m_config->roadmapDialogGeometry();
-        if (!stored.isEmpty()) {
-            const QByteArray bytes =
-                QByteArray::fromBase64(stored.toLatin1());
-            const bool restored = !bytes.isEmpty() && restoreGeometry(bytes);
-            if (!restored) m_config->setRoadmapDialogGeometry(QString());
-        }
-    }
+    // Size restore (D3) is owned by DialogChrome::install's
+    // "RoadmapDialog" sizeKey — see the ctor head. No hand-rolled
+    // geometry round-trip here (ANTS-2012).
 
     // ANTS-1150 — restore persisted UI state. Order matters
     // (cold-eyes CRITICAL #1):
@@ -2870,13 +2868,10 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
 RoadmapDialog::~RoadmapDialog() = default;
 
 void RoadmapDialog::closeEvent(QCloseEvent *event) {
-    // Persist geometry on close so the next open lands at the same
-    // size + position. Mirrors the audit-dialog convention discussed
-    // in the ANTS-1100 spec.
+    // Size is persisted by DialogChrome on close (D3, "RoadmapDialog"
+    // sizeKey); ANTS-2012 dropped the hand-rolled geometry blob, which
+    // also stored window position (D4 violation).
     if (m_config) {
-        const QByteArray bytes = saveGeometry();
-        m_config->setRoadmapDialogGeometry(
-            QString::fromLatin1(bytes.toBase64()));
         // ANTS-1154 — persist card / section / table state on close.
         m_config->setRoadmapExpandedItems(
             QStringList(m_expandedItems.begin(), m_expandedItems.end()));

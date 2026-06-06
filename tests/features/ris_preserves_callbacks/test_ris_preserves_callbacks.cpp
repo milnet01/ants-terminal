@@ -110,8 +110,13 @@ TEST(RisPreservesCallbacks, Main) {
 
     // Seed a few visible cells so we can confirm RIS cleared the grid.
     feed(grid, parser, "\x1b[1;1HABC");  // CUP 1,1 then "ABC"
-    CHECK_EQ(grid.cellAt(0, 0).codepoint, 'A', "pre-RIS cell(0,0)='A'");
-    CHECK_EQ(grid.cellAt(0, 1).codepoint, 'B', "pre-RIS cell(0,1)='B'");
+    // ANTS-1791 — cast the char literal to match codepoint's uint32_t
+    // so the macro's `_a != _e` comparison isn't unsigned-vs-signed
+    // (-Wsign-compare). The counter CHECK_EQ sites above are int-vs-int.
+    CHECK_EQ(grid.cellAt(0, 0).codepoint, static_cast<uint32_t>('A'),
+             "pre-RIS cell(0,0)='A'");
+    CHECK_EQ(grid.cellAt(0, 1).codepoint, static_cast<uint32_t>('B'),
+             "pre-RIS cell(0,1)='B'");
 
     // Install an HMAC key and arm the forgery callback.
     grid.setOsc133KeyForTest(QByteArray("test-key-abc"));

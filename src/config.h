@@ -29,11 +29,6 @@ public:
     QString windowGeometryBase64() const;
     void setWindowGeometryBase64(const QString &base64);
 
-    // Persisted RoadmapDialog geometry (ANTS-1100). Stored as
-    // base64-encoded saveGeometry() bytes.
-    QString roadmapDialogGeometry() const;
-    void setRoadmapDialogGeometry(const QString &base64);
-
     // ANTS-1842 — generic per-dialog persisted SIZE (D3). Keyed by the
     // DialogChrome sizeKey (a stable dialog id). Stores width/height only:
     // D3/D4 forbid persisting position (the dialog re-centers on open).

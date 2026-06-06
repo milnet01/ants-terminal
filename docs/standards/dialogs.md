@@ -97,14 +97,13 @@ The **size** the user picks MUST survive closing and reopening the
 dialog, and survive an app restart.
 
 - Persist a bare **`QSize`** (`size()`) to a per-dialog key in `Config`
-  (`~/.config/ants-terminal/config.json`, mode 0600) — e.g. a new
-  `auditDialogSize` key (no such key exists yet; add one per dialog).
-  The one geometry key that exists today, `roadmapDialogGeometry`
-  (`src/config.h`), is the D3/D4 counter-example — see Project
-  overrides — because it stores a base64 `saveGeometry()` blob
-  (position included), not a `QSize`. Do **NOT** use
-  `QWidget::saveGeometry()` here: it serialises the window *position* as
-  well as the size, which D4 explicitly forbids persisting.
+  (`~/.config/ants-terminal/config.json`, mode 0600). In practice every
+  dialog now persists size through the generic `dialog_sizes` map keyed
+  by its DialogChrome `sizeKey` (below) rather than a bespoke key. Do
+  **NOT** use `QWidget::saveGeometry()` here: it serialises the window
+  *position* as well as the size, which D4 explicitly forbids persisting
+  — `RoadmapDialog` used to (`roadmapDialogGeometry`) and was migrated
+  off it in ANTS-2012.
 - The write goes through a normal `Config` setter, which already
   acquires `ConfigWriteLock` (`src/configbackup.h`) and enforces mode
   0600 internally — do not hand-roll the file write or double-lock.
@@ -130,10 +129,9 @@ dialog, and survive an app restart.
 **Mechanism (ANTS-1842):** the bare-`QSize` persistence above is now
 provided by `DialogChrome::install(…, resizable=true, sizeKey)` via the
 generic `Config::dialogSize` / `setDialogSize` map — opt in with a key
-rather than hand-rolling save/restore. **Known non-conformer:**
-`roadmapDialogGeometry` still stores a base64 `saveGeometry()` blob
-(position included) instead of a bare `QSize`; its migration onto the
-`install` path is open follow-up.
+rather than hand-rolling save/restore. All dialogs now conform; the last
+non-conformer (`RoadmapDialog`, the legacy `roadmapDialogGeometry` blob)
+was migrated onto the `install` path in ANTS-2012.
 
 ## D4 — Always open centered on the terminal window
 
@@ -279,11 +277,9 @@ auto chrome = DialogChrome::install(this, themeName,
 `install(this, theme)` stays **D1-only** (unchanged). Opted-in today:
 SettingsDialog, the review-dialog family (cold-eyes / test-audit /
 independent-review, one shared `"ReviewDialog"` key), SshDialog, the About
-box, and the diff viewer.
+box, the diff viewer, and RoadmapDialog (`"RoadmapDialog"` key, migrated
+off the legacy `saveGeometry` blob in ANTS-2012).
 
-Remaining non-conformer (migration target, not an exemption):
-`RoadmapDialog` still persists geometry with `QWidget::saveGeometry()` /
-`restoreGeometry()` — which D3 forbids because it restores absolute
-*position*. It is NOT opted into the `install` path; migrating it to
-`resizable=true` + a `"RoadmapDialog"` key (dropping the base64 blob) is
-open follow-up.
+No remaining non-conformers: every `QDialog` either opts into the
+`install` resize/persist path or is intentionally D1-only (no
+user-resizable content).

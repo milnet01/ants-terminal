@@ -9245,6 +9245,7 @@ under one guard). The deferrals below.
 - 📋 [ANTS-1994] **ptyhandler: Flatpak exec path inherits the full parent environment instead of the sanitised `childEnvp` (ANTS-1135), leaking secrets-bearing env vars to the host shell.** Also: destructor sends SIGHUP without a liveness check (PID-reuse hazard when `onReadReady` left `m_childPid` set after an unreaped EOF); missing `writeLost` signal on the EAGAIN-oversize drop path.
   Kind: bug. Lanes: ptyhandler. Source: indie-review-2026-06-04.
   Investigated (2026-06-06), deferred — needs a Flatpak test env + an env-policy decision, not a surgical patch. Findings: the Flatpak branch (ptyhandler.cpp:354-375) calls execvp("flatpak-spawn", argv) so flatpak-spawn inherits Ants's full environ, then only ADDS TERM*/COLORTERM/etc via --env=. The non-Flatpak branch (execle, :384) uses the pre-fork childEnvp, but note childEnvp is ALSO ~the full parent environ (it copies environ minus the 5 TERM dup keys, then re-adds them) — so "sanitised" today means TERM-deduped, NOT secret-stripped. So the real fix isn't "use childEnvp on the flatpak path" verbatim; it's deciding what env crosses the sandbox→host boundary. The in-code comment at :343-346 claims "flatpak-spawn does NOT inherit the calling process's env" — this contradicts the finding and MUST be verified against flatpak-spawn's actual default (believed to forward the sandbox environ unless --clear-env is passed; if so the comment is wrong). A clean fix likely means --clear-env + an explicit forward-list, or a login shell to re-derive host PATH/HOME — both need testing inside an actual Flatpak build. Two smaller, separable sub-issues bundled here are tractable independently: (2) destructor SIGHUP at :28-29 has no liveness/reuse guard (kill a possibly-reused PID if onReadReady left m_childPid set after an unreaped EOF); (3) the EAGAIN/oversize write-drop path (:437-442) drops bytes without emitting a writeLost signal. Recommend splitting (2)+(3) into their own item from the Flatpak env-policy headline.
+  Progress (2026-06-06) — sub-issues (2) and (3) resolved; headline (1) Flatpak env-policy still OPEN (needs a Flatpak test env + a sandbox→host env-crossing decision, unchanged). (3) FIXED: the EAGAIN-oversize write-drop path (ptyhandler.cpp ~:465-472) returned without emitting writeLost, unlike the pending-queue-full path (:444, ANTS-1349) — bytes past the kernel PTY buffer + 4 MiB queue cap vanished with no notification. Added `emit writeLost(remaining)`. Locked by new INV-8 in pty_write_eagain_queue (≥2 emit-writeLost sites in Pty::write body); spec.md out-of-scope note corrected (overflow is no longer silent; only a *pre*-drop stall warning remains out of scope). test_core green. (2) INVESTIGATED — NOT a live hazard, no fix applied: the destructor's SIGHUP at :28-29 fires before any liveness check, but a PID-reuse hit requires the child to have been reaped-and-freed between onReadReady-EOF and ~Pty. Verified there is NO parent-wide reaper in the codebase (no SIGCHLD handler / waitpid(-1); main.cpp only SIG_IGNs SIGPIPE; the sigaction block at :248-264 runs in the forked CHILD). So an unreaped child left with m_childPid>0 is a zombie that HOLDS its PID until ~Pty reaps it — the PID cannot be reused, and SIGHUP to our own zombie is a harmless no-op. A kill(pid,0) guard would be cargo-cult (it returns 0 for a zombie too and can't detect reuse), so none was added per the no-over-engineering rule. Re-evaluate (2) only if a global SIGCHLD reaper is ever introduced.
 - ✅ [ANTS-1995] **remotecontrol: `spec_query` `path=` mode uses a manual `..` substring check and no canonical re-check against root — a symlink inside the project escapes it.** Route through `PathValidation::validatePath` as its write twin `spec_log` already does. Also: `rcScrubLeakedToolXml` runs a backtracking `[\s\S]*?` regex on uncapped `note` fields (`remotecontrol.cpp:4503`) → same-UID slow-regex DoS via `roadmap_log op:flip_batch` (cap notes at 4 KiB); IPC client omits the server's SO_PEERCRED check.
   Kind: bug. Lanes: remotecontrol. Source: indie-review-2026-06-04.
   Resolved (2026-06-06): all three sub-issues. (1) spec_query path= now routes through PathValidation::validatePath (canonical, symlink-resolving) exactly like its write twin spec_log — the old manual '..'-substring check let a project-internal symlink resolve outside root. (2) roadmap_log note fields (op:flip/annotate + flip_batch locators) capped at 4096 chars before rcScrubLeakedToolXml's lazy [\s\S]*? regex (kRcMaxNoteChars), closing the same-UID slow-regex DoS. (3) the --remote client now verifies the SERVER's SO_PEERCRED UID before write(), mirroring the server's check, so a hijacked $ANTS_REMOTE_SOCKET can't harvest the request body. WI-3 call-site count test updated 21→22.
@@ -9300,9 +9301,10 @@ under one guard). The deferrals below.
 - 📋 [ANTS-2011] **Review-dialog family polish.** `m_foldInBtn` is never disabled after a fold-in → a double-click inserts two identical blocks (wasted IDs); `testauditdialog` resume (`loadResume`/`unreviewedChunkIds`, ANTS-1722 §2.5) and `coldeyesdialog` `markFindingFixed` / loop-log (ANTS-1721 §2.4) are zombie — fully implemented but no button wires them, so every re-dispatch re-raises fixed findings; `QTextEdit` leak on re-partition (`QTabWidget::clear()` doesn't delete pages); status-label hardcoded `"color: gray"` violates dialogs.md D1.
   Kind: bug. Lanes: reviewdialogbase, testauditdialog, coldeyesdialog, indiereviewdialog. Source: indie-review-2026-06-04.
   Progress (2026-06-05): 3 of 4 sub-issues fixed — (a) m_foldInBtn is disabled after a successful fold-in (re-enabled on a fresh partition) so a double-click can't insert two identical blocks; (b) the QTextEdit lane pages are deleted before the tab rebuild (was a leak on every re-partition — QTabWidget::clear() leaves pages parented); (c) the status label drops its hard-coded "color: gray" for the theme-derived PlaceholderText role (dialogs.md D1). STILL OPEN: wiring the zombie resume / markFindingFixed / loop-log buttons (testauditdialog loadResume/unreviewedChunkIds ANTS-1722 §2.5; coldeyesdialog markFindingFixed + loop-log ANTS-1721 §2.4) — fully-implemented logic with no button, so re-dispatch re-raises fixed findings. That is feature-wiring, deferred to a focused pass.
-- 📋 [ANTS-2012] **roadmapdialog: `restoreGeometry` persists window position (violates dialogs.md D4 — migrate to `DialogChrome` sizeKey); `readRecentCommitSubjects` and `parseLastTouchDates` spawn blocking `git log` / `git blame` on every `rebuild()` (up to ~1.5–5 s GUI jank per search keystroke).** Cache or move async.
+- ✅ [ANTS-2012] **roadmapdialog: `restoreGeometry` persists window position (violates dialogs.md D4 — migrate to `DialogChrome` sizeKey); `readRecentCommitSubjects` and `parseLastTouchDates` spawn blocking `git log` / `git blame` on every `rebuild()` (up to ~1.5–5 s GUI jank per search keystroke).** Cache or move async.
   Kind: bug. Lanes: roadmapdialog. Source: indie-review-2026-06-04.
   Progress (2026-06-06) — git-jank part DONE; DialogChrome part remains. (b) FIXED: rebuild() runs on every search keystroke and called collectCurrentBullets() → readRecentCommitSubjects() (blocking `git log`, up to 1.5 s) uncached, so each keystroke spawned git. Added a 5 s TTL cache (m_externalSignalsCache/m_externalSignalsCacheMs) so a typing burst reuses one result while newly-landed commits still surface within seconds; source-grep lock added to roadmap_dialog_cards (kExternalSignalsTtlMs); test_dialogs roadmap suite 12/12 green. NOTE: the bullet's parseLastTouchDates sub-claim is STALE — that path is already mtime-cached via refreshLastTouchDatesIfStale() (only re-blames when ROADMAP mtime changes), so it does NOT run per keystroke. (a) STILL OPEN — DialogChrome D4 migration: roadmapdialog still hand-rolls saveGeometry/restoreGeometry persisting window POSITION (ctor ~:2762, closeEvent ~:2862) via Config::roadmapDialogGeometry, violating dialogs.md D4. Recipe: switch DialogChrome::install(this, m_themeName) → install(this, m_themeName, /*resizable=*/true, QStringLiteral("roadmap")) (D3 size-only + D4 re-center; DialogChrome::setConfig already wired at startup, 10 sibling dialogs precedent) and delete the manual geometry blocks. CONFLICT to reconcile in the same change: tests/features/roadmap_viewer_tabs INV-12 + its spec.md (§ lines 30-32, 63) currently HARDCODE-require saveGeometry/restoreGeometry/roadmapDialogGeometry — they contradict dialogs.md D4 and must be rewritten to assert the sizeKey/no-position-persist behavior. Config::roadmapDialogGeometry get/set become orphaned (leave or remove). Left part (a) open rather than rush a user-visible geometry-semantics change + multi-file spec/test rewrite.
+  Resolved (2026-06-06) — part (a) DONE, both halves now complete. RoadmapDialog migrated onto DialogChrome::install(this, themeName, resizable=true, "RoadmapDialog"): the hand-rolled saveGeometry/restoreGeometry blob (which persisted absolute window POSITION, violating dialogs.md D4) is deleted; size-only persistence (D3) + re-center-on-open (D4) + QSizeGrip (D2) now come from the shared chrome. Orphaned Config::roadmapDialogGeometry get/set + the config.h decls removed (sole caller was RoadmapDialog). One-time effect: a user's previously-persisted geometry resets to the 1200x800 default on first open after upgrade, then their new SIZE persists under the dialog_sizes map. roadmap_viewer_tabs INV-12 + spec.md rewritten to assert the sizeKey/no-position-persist behaviour (and the absence of the legacy round-trip) instead of hardcode-requiring it; dialogs.md updated to drop RoadmapDialog from the non-conformer list (now zero non-conformers). Full suite 1992/1992 green. NOTE: docs/specs/ANTS-1160.md and ANTS-1238.md still reference Config::roadmapDialogGeometry as live — they are separate unimplemented future specs; left untouched (out of lane for this fix).
 - ✅ [ANTS-2013] **antshelper: `QTextStream(stdout/stderr)` uses the system locale encoding, not UTF-8 — corrupts JSON output on a non-UTF-8 locale (INV-7); the `list` subcommand response omits the documented `{"ok":true,"data":{…}}` envelope wrapper and has no spec INV.**
   Kind: bug. Lanes: antshelper. Source: indie-review-2026-06-04.
   Resolved (2026-06-06): (1) list-envelope: listSubcommands() hand-rolled {ok, subcommands} at top level, diverging from the documented {ok, data:{...}} shape. Root-cause fix — moved it into the AntsHelper library (antshelper.{h,cpp}) so it reuses the shared okObj wrapper; the shape can no longer drift from drift-check's. antshelpermain.cpp now calls AntsHelper::listSubcommands() (local copy + now-orphaned QJsonArray include removed). New spec INV-11 in ANTS-1116.md + a feature-test block (local_subagent_framework now 9/9) asserting subcommands is nested under data, never top-level. (2) UTF-8/INV-7: writeStdout/writeStderr now set QStringConverter::Utf8 explicitly. Note: under Qt6 QTextStream already defaults to UTF-8 (only Qt5 used the locale codec), so this is defensive hardening that locks the INV-7 pipe contract at the output boundary, not a live bug fix — flagged honestly rather than overstated. test_core rebuilt, LocalSubagentFramework 9/9 green; antshelpermain.cpp (helper-CLI gated OFF) syntax-checked clean via g++ -fsyntax-only.
@@ -10617,11 +10619,12 @@ gets one CHANGELOG section + one drift cycle + one push.
 - ✅ [ANTS-1681] **Cppcheck `functionStatic` (auditdialog::toolExists, consolidateMypyStubHints).** Either mark static or split into free helpers. Lane: audit.
 - ✅ [ANTS-1682] **Cppcheck missing-include `aboutdialogs.cpp:4 "build_info.h"`.** False positive — file is generated at build time. Add `// cppcheck-suppress missingInclude` annotation. Lane: build.
 
-- 📋 [ANTS-1791] **Sign-compare warning in test_ris_preserves_callbacks.cpp CHECK_EQ.**
+- ✅ [ANTS-1791] **Sign-compare warning in test_ris_preserves_callbacks.cpp CHECK_EQ.**
   -Wsign-compare fires in tests/features/ris_preserves_callbacks/test_ris_preserves_callbacks.cpp — the CHECK_EQ macro (line 27) compares grid.cellAt(r,c).codepoint (uint32_t) against char literals, e.g. CHECK_EQ(grid.cellAt(0,0).codepoint, 'A', ...) at lines 113-114. Surfaced during the 2026-05-22 indie-review #5 deferred-fixes build. Fix: cast the expected char to uint32_t at the call sites (or make the macro signedness-aware with a static_cast on _e). Test-only; no runtime impact.
   Kind: test.
   Lanes: tests.
   Source: in-session-2026-05-22 build warning.
+  Resolved (2026-06-06): the two CHECK_EQ sites comparing grid.cellAt().codepoint (uint32_t, terminalgrid.h:50) against char literals 'A'/'B' (lines 113-114) now cast the expected to static_cast<uint32_t>(...), so the macro's `_a != _e` is unsigned-vs-unsigned, killing -Wsign-compare. The other CHECK_EQ sites are int-vs-int and untouched. Rebuilt test_vt TU: no sign-compare warning; RisPreservesCallbacks green. Test-only, no runtime/CHANGELOG impact. NOTE (separate, not fixed — out of lane): clangd flags a pre-existing unused <cstdio> include at line 11 of the same test; surfaced, not drive-by removed.
 
 ### 🔌 Skill improvements observed (for the /audit and /indie-review skill markdown)
 
@@ -10716,11 +10719,12 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
   - Dimension: flakiness
   - Severity: medium
   - Fix: Add a test-only `forceExpireOldestForTest()` or a setter `setNowMsOverrideForTest(qint64)` on ClaudeIntegration's idempotent-read cache; the test calls it instead of QTest::qWait.
-- 📋 [ANTS-1601] **review_changes_branches asserts `pending == 5` literal — switch to field-name asserts or `>=5` floor.**
+- ✅ [ANTS-1601] **review_changes_branches asserts `pending == 5` literal — switch to field-name asserts or `>=5` floor.**
   - File: tests/features/review_changes_branches/test_review_changes_branches.cpp:52
   - Dimension: accuracy
   - Severity: medium
   - Fix: Replace counter assertion with field-name assertions (one EXPECT per expected probe field), or use a `>= 5` floor with a comment naming the 5 baseline probes.
+  Resolved (2026-06-06): review_changes_branches I1 — the source-grep `int pending = 5;` exact-literal assertion now matches `int pending = ` (field-initialised), so adding a 6th baseline probe no longer breaks a correct build. The per-probe wirings (for-each-ref / branches / crossUnpushed) are already asserted by name below, so the count literal was the brittle, redundant part. ReviewChangesBranches green.
 - 📋 [ANTS-1602] **audit_path_traversal: replace manual /tmp tree cleanup with QTemporaryDir RAII + fix symlink-before-rmpath teardown order.**
   - File: tests/features/audit_path_traversal/test_audit_path_traversal.cpp:166
   - Dimension: isolation
@@ -10747,16 +10751,18 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
   - Severity: medium
   - Fix: Replace with explicit `EXPECT_GT(wrappedRecs.at(0).value("id"), sinceCursor)` or assert on the cursor delta directly.
   - Shipped 2026-05-20 (test-audit recurrence): replaced `std::max(0, 1)` with the precise, capacity-derived first-survivor id `250 - capacity + 1` (== 51 today), mirroring the pristine `id == 1` co-test below it. EXPECT_GT→EXPECT_EQ. Verified green.
-- 📋 [ANTS-1607] **token_usage_engine QThread::msleep(5) too short for 10ms-tick kernels — widen to 20ms or use test-only timestamp setter.**
+- ✅ [ANTS-1607] **token_usage_engine QThread::msleep(5) too short for 10ms-tick kernels — widen to 20ms or use test-only timestamp setter.**
   - File: tests/features/token_usage_engine/test_token_usage_engine.cpp:47
   - Dimension: flakiness
   - Severity: medium
   - Fix: Increase to 20 ms with a comment naming the kernel-tick floor, or restructure to advance the stored timestamp via a test-only setter.
-- 📋 [ANTS-1608] **mcp_project_layout_scan QThread::msleep(1100) crosses 1s mtime granularity unreliably on tmpfs — expose test-only isStale overload.**
+  Resolved (2026-06-06): token_usage_engine ResetClearsAndAdvancesSince — QThread::msleep widened 5→20ms with a comment naming the CONFIG_HZ=100 (10ms tick) floor; a 5ms sleep could land in the same tick, leaving sinceUnixMs() unchanged and flaking EXPECT_GT. TokenUsageEngine green.
+- ✅ [ANTS-1608] **mcp_project_layout_scan QThread::msleep(1100) crosses 1s mtime granularity unreliably on tmpfs — expose test-only isStale overload.**
   - File: tests/features/mcp_project_layout_scan/test_project_layout_scan.cpp:137
   - Dimension: flakiness
   - Severity: medium
   - Fix: Expose a test-only isStale(env, nowMs, overrideMtimes) overload that bypasses real filesystem stat; or widen the sleep to 2200 ms.
+  Resolved (2026-06-06) — DUPLICATE of ANTS-1471 (same QThread::msleep(1100) in mcp_project_layout_scan IsStaleOnMtimeAdvance). Fixed there by removing the sleep entirely: isStale() compares each probed path's live mtime to cached.scannedAtMs, and the test already backdates scannedAtMs by 2000ms, so the existing file mtime is deterministically newer — no wall-clock wait and no need for the test-only isStale seam this bullet proposed. Suite now 9ms, 20/20 green.
 - 📋 [ANTS-1609] **mcp_roadmap_branch_drift Inv4ReachabilityRuntime spawns real git with 5s timeouts — mock or GTEST_SKIP under CI.**
   - File: tests/features/mcp_roadmap_branch_drift/test_mcp_roadmap_branch_drift.cpp:255
   - Dimension: performance
@@ -10767,26 +10773,29 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
   - Dimension: coverage_gaps
   - Severity: low
   - Fix: Either populate with bad./good. fixtures if these pipeline functions warrant shell-level regression tests, or remove the empty directories. applyFilter and parseFindings are already covered by tests/features/audit_engine_extraction/ and audit_engine_stream_line_split/.
-- 📋 [ANTS-1611] **cold_eyes_partition_deterministic writeSpec() uses EXPECT_TRUE for setup — switch to ASSERT_TRUE or return optional path with GTEST_SKIP.**
+- ✅ [ANTS-1611] **cold_eyes_partition_deterministic writeSpec() uses EXPECT_TRUE for setup — switch to ASSERT_TRUE or return optional path with GTEST_SKIP.**
   - File: tests/features/cold_eyes_partition_deterministic/test_cold_eyes_partition_deterministic.cpp:36
   - Dimension: flakiness
   - Severity: medium
   - Fix: Replace EXPECT_TRUE with ASSERT_TRUE in the setup helper, or have writeSpec() return an optional path with a GTEST_SKIP on setup failure.
+  Resolved (2026-06-06): cold_eyes_partition_deterministic writeSpec() — EXPECT_TRUE(f.open) replaced with ADD_FAILURE() + early `return {}`. Note: ASSERT_TRUE (the bullet's first option) won't compile here — writeSpec returns QString and ASSERT_* expands to `return;`. ADD_FAILURE marks the calling TEST failed with a clear cause and the empty-path return short-circuits the bad write. PartitionDeterministic green.
 - 📋 [ANTS-1612] **insecure_http rule regex `http://[^l][^o][^c]` over-excludes (any l-initial host) — tighten to anchored negative lookahead.**
   - File: tests/features/insecure_http/good.cpp:6
   - Dimension: doc_strings
   - Severity: low
   - Fix: Tighten the regex to `http://(?!localhost\b)` (anchored negative lookahead) and update the good-side fixture to surface the known false-negative class.
-- 📋 [ANTS-1613] **tool_detection_engine TDE-7 50ms cache-probe threshold flaky on loaded runners — widen to 200ms or move to perf bucket.**
+- ✅ [ANTS-1613] **tool_detection_engine TDE-7 50ms cache-probe threshold flaky on loaded runners — widen to 200ms or move to perf bucket.**
   - File: tests/features/tool_detection_engine/test_tool_detection_engine.cpp:123
   - Dimension: flakiness
   - Severity: medium
   - Fix: Raise to 200 ms or move the test to a perf-labelled bucket.
-- 📋 [ANTS-1614] **verify_trust_gate TF-2/TF-3 use 66/68-char hex strings — trim to canonical 64-char SHA-256 length.**
+  Resolved (2026-06-06): tool_detection_engine RepeatProbesAreFree (TDE-7) — cache-hit wall-clock ceiling widened 50→200ms with a comment; 1000 cache hits are microseconds of real work but a loaded/sanitiser runner can stretch the window past 50ms with no I/O, flaking the zero-I/O proxy. ToolDetectionEngine green.
+- ✅ [ANTS-1614] **verify_trust_gate TF-2/TF-3 use 66/68-char hex strings — trim to canonical 64-char SHA-256 length.**
   - File: tests/features/verify_trust_gate/test_verify_trust_gate.cpp:201
   - Dimension: hardcoded_data
   - Severity: low
   - Fix: Trim the split string literals to total 64 chars each.
+  Resolved (2026-06-06): verify_trust_gate TF-2 (was 66) and TF-3 (was 68) split-literal hex SHAs trimmed to exactly 64 chars (canonical SHA-256 length); verified by count. TF-1 was already 64. VerifyTrustGate green.
 
 
 ### 🧪 Test Audit 2026-05-17
@@ -10813,21 +10822,24 @@ Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, du
   - Dimension: duplication
   - Severity: MED
   - Fix: Migrate every local brace-extractor to ants_test::slurpFunctionBody(); delete the duplicates.
-- 📋 [ANTS-1469] **A3b/A4b benign-fast assertions use bare hardcoded wall-clock thresholds (goodElapsed <= 200, elapsed <= 100) with no CI-slack pad — diverges from the documented kBudgetMs + kSlackMs pattern used elsewhere in the file..**
+- ✅ [ANTS-1469] **A3b/A4b benign-fast assertions use bare hardcoded wall-clock thresholds (goodElapsed <= 200, elapsed <= 100) with no CI-slack pad — diverges from the documented kBudgetMs + kSlackMs pattern used elsewhere in the file..**
   - File: tests/features/lua_pcall_nesting_timeout/test_lua_pcall_nesting_timeout.cpp:186
   - Dimension: flakiness
   - Severity: HIGH
   - Fix: Apply the same kSlackMs (e.g. 200 ms) pad used by the surrounding A1/A2 assertions, or skip the benign-fast bound on CI runners where wall-clock jitter dominates.
-- 📋 [ANTS-1470] **QTest::qWait(120) used to wait for a 100 ms TTL — 20 ms margin is thin under CI load..**
+  Resolved — verified already fixed in the 2026-05-18 follow-up pass but never flipped. lua_pcall_nesting_timeout A3c widened to ≤750ms (line 216) and A4b to ≤500ms (line 254), both stamped 'Widened from … (post-test-audit 2026-05-18)' with CI-slack rationale. Stale roadmap entry; closing.
+- ✅ [ANTS-1470] **QTest::qWait(120) used to wait for a 100 ms TTL — 20 ms margin is thin under CI load..**
   - File: tests/features/mcp_idempotent_read_cache/test_mcp_idempotent_read_cache.cpp:45
   - Dimension: flakiness
   - Severity: HIGH
   - Fix: Inject a clock into the cache (or accept that flake risk by widening to >= 250 ms wait).
-- 📋 [ANTS-1471] **QThread::msleep(1100) to advance filesystem mtime past 1 s granularity — racey on overloaded CI runners..**
+  Resolved — verified already fixed: mcp_idempotent_read_cache MissAfterTtl now QTest::qWait(350) (was 120), comment 'Widened from 120 ms (post-test-audit 2026-05-18)'. 250ms slack past the 100ms TTL. Stale roadmap entry; closing.
+- ✅ [ANTS-1471] **QThread::msleep(1100) to advance filesystem mtime past 1 s granularity — racey on overloaded CI runners..**
   - File: tests/features/mcp_project_layout_scan/test_mcp_project_layout_scan.cpp:137
   - Dimension: flakiness
   - Severity: HIGH
   - Fix: Mock the mtime check or assert on a stat-result struct injected at the seam.
+  Resolved (2026-06-06): test_project_layout_scan IsStaleOnMtimeAdvance — removed QThread::msleep(1100) (was racey + slow). isStale() compares each probed path's live mtime against cached.scannedAtMs, and the test already backdates scannedAtMs by 2000ms, so the file's existing seconds-granular mtime is strictly newer than the scan time — staleness fires deterministically with no wall-clock wait. Orphaned <QThread> include removed. Suite now 9ms (was >1.1s); 20/20 green. (NB: the bullet's filename was test_mcp_project_layout_scan.cpp; actual is test_project_layout_scan.cpp.)
 - 📋 [ANTS-1472] **INV-1/INV-2 anchor to QDateTime::currentSecsSinceEpoch() without a frozen clock; runGit 10 s hard timeout is too tight for slow CI runners..**
   - File: tests/features/roadmap_inprogress_age/test_roadmap_inprogress_age.cpp:87
   - Dimension: flakiness
@@ -10843,21 +10855,24 @@ Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, du
   - Dimension: accuracy
   - Severity: MED
   - Fix: Migrate to ants_test::slurpFunctionBody(); the brace-balanced extractor eliminates the window.
-- 📋 [ANTS-1475] **CHECK macro writes to stderr + increments a global int failures but no TEST asserts on it — tests can silently pass even when CHECK fires. Same pattern in review_changes_clickable..**
+- ✅ [ANTS-1475] **CHECK macro writes to stderr + increments a global int failures but no TEST asserts on it — tests can silently pass even when CHECK fires. Same pattern in review_changes_clickable..**
   - File: tests/features/review_changes_click/test_review_changes_click.cpp:0
   - Dimension: assertions
   - Severity: MED
   - Fix: Route CHECK through ADD_FAILURE_AT(__FILE__, __LINE__) << msg; drop the global counter.
-- 📋 [ANTS-1476] **Local extractFunctionBody uses indexOf("\n}") instead of brace-counting — truncates at first inner brace..**
+  Resolved — verified already fixed: review_changes_click CHECK macro now routes through ADD_FAILURE_AT(__FILE__, __LINE__) (line 54-56), comment 'Routes through gtest so that failures actually fail the TEST'. No silent-pass global counter. Stale roadmap entry; closing.
+- ✅ [ANTS-1476] **Local extractFunctionBody uses indexOf("\n}") instead of brace-counting — truncates at first inner brace..**
   - File: tests/features/confirm_close_with_processes/test_confirm_close_with_processes.cpp:0
   - Dimension: accuracy
   - Severity: MED
   - Fix: Use ants_test::slurpFunctionBody().
-- 📋 [ANTS-1477] **writeFile() uses ASSERT_TRUE in a non-TEST void helper — gtest terminates the helper but not the calling TEST(), so the file-open failure silently continues with the file unwritten..**
+  Resolved (2026-06-06): confirm_close_with_processes — local extractFunctionBody (indexOf('\n}') brace-naive, truncates at first column-0 inner brace) now delegates to ants_test::slurpFunctionBody (brace-counting, string/comment-aware) via a thin QString wrapper; added #include srcgrep.h. All call sites search body content (never the signature) so the signature-excluded result is equivalent. ConfirmCloseWithProcesses green.
+- ✅ [ANTS-1477] **writeFile() uses ASSERT_TRUE in a non-TEST void helper — gtest terminates the helper but not the calling TEST(), so the file-open failure silently continues with the file unwritten..**
   - File: tests/features/debt_sweep_engine/test_debt_sweep_engine.cpp:0
   - Dimension: assertions
   - Severity: MED
   - Fix: Return bool from writeFile and ASSERT_TRUE at the call site, or convert helper to a fixture/SetUp.
+  Resolved (2026-06-06): debt_sweep_engine writeFile — ASSERT_TRUE in a void helper only returned from the helper, leaving the calling TEST running on an unwritten file. Replaced with ADD_FAILURE() (attributed to the current TEST → it definitively fails with a clear message) + early return; zero call-site churn across the 15 callers. DebtSweepEngine green.
 - 📋 [ANTS-1478] **Multiple audit_fixtures bad.cpp files cover only a subset of the variants their regex matches — a regex tightening that drops a variant would go undetected. Examples: cmd_injection (3/7 exec variants), qnetworkreply_no_abort (sslErrors missing), memory_patterns (new T(nullptr)/new T(NULL) missing)..**
   - File: tests/audit_fixtures:0
   - Dimension: coverage_gaps

@@ -132,6 +132,24 @@ static int runMain() {
         }
     }
 
+    // INV-8 (ANTS-1349 + ANTS-1994(3)) — every byte-dropping path in
+    // Pty::write emits writeLost so the loss is observable, not silent.
+    // There are two drops: the pending-queue-full path and the
+    // EAGAIN-oversize-remainder path; both must signal.
+    if (!writeBody.empty()) {
+        size_t emits = 0;
+        for (size_t p = writeBody.find("emit writeLost");
+             p != std::string::npos;
+             p = writeBody.find("emit writeLost", p + 1)) {
+            ++emits;
+        }
+        if (emits < 2) {
+            fail("INV-8: Pty::write has fewer than 2 'emit writeLost' "
+                 "sites. Both the queue-full drop and the EAGAIN-oversize "
+                 "drop must signal data loss (ANTS-1349 / ANTS-1994).");
+        }
+    }
+
     if (failures > 0) {
         std::fprintf(stderr,
             "\n%d invariant(s) failed — see "
