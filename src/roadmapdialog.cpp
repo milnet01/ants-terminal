@@ -977,6 +977,7 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
         QString status;
         QString anchorValue;       // ANTS-1428 — caret anchor at line end
         QString boldId;            // multi-prefix bold-ID token, e.g. "Sh4"
+        QString bracketId;         // ANTS-1987 — head-anchored bare-bracket id, e.g. "Cl9"
         QString rowFormat;         // per-bullet format echo
 
         // ANTS-1428 / Tier 1 GFM branch. When the document is in
@@ -1042,6 +1043,26 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
                 if (rxIdShaped.match(boldCand).hasMatch()) boldId = boldCand;
             }
             rowFormat = QStringLiteral("ants-v1");
+        }
+
+        // ANTS-1987 (bracket-ID completion) — index the
+        // `- <emoji> [Cl9] **headline**` form Vestige actually authors
+        // (Cl9 / Cl10 / CE18). After the checkbox/emoji prefix is
+        // stripped, `head` begins with the bracket; the body-wide rxId
+        // only matches a dashed `[PROJ-NNNN]`, so a bare project-local id
+        // (`[Cl9]`) produced an empty id and the bullet fell out as a
+        // narrator — invisible to roadmap_query id/ids/section. Match a
+        // HEAD-ANCHORED bracket whose contents are ID-shaped (single
+        // whitespace-free token) and NOT a markdown link (`](`), so a
+        // mid-prose `[ref]` or a `[label](url)` link can never qualify.
+        // This is a positional signal — it does NOT widen the shared
+        // idTokenPattern (rxId still rejects dash-less brackets in body
+        // prose). Only fills in when no bold-ID was found.
+        if (boldId.isEmpty()) {
+            static const QRegularExpression rxLeadBracketId(
+                QStringLiteral("^\\[([A-Za-z][A-Za-z0-9_.-]*)\\](?!\\()"));
+            const auto lb = rxLeadBracketId.match(head);
+            if (lb.hasMatch()) bracketId = lb.captured(1);
         }
 
         BulletRecord rec;
@@ -1113,6 +1134,9 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
         } else if (!boldId.isEmpty()) {
             // ANTS-1428 — multi-prefix bold-ID preservation.
             rec.id = boldId;
+        } else if (!bracketId.isEmpty()) {
+            // ANTS-1987 — head-anchored bare-bracket id (`[Cl9]`).
+            rec.id = bracketId;
         }
         // ANTS-1438 — surface the bold-ID on the record so the
         // envelope can emit a dedicated `bold_id` field. Keeps the

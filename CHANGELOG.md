@@ -55,6 +55,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_query` now indexes bracket-ID emoji bullets (`- 📋 [Cl9] **headline**`) — the parser adopts a head-anchored, ID-shaped, link-guarded leading bracket as the bullet's id, so short bare-bracket ids like `[Cl9]`/`[CE18]` are findable and flippable (not just the bold-dotted `**Cl9.**` form)** (ANTS-1987)
+
 - **`find_definition` no longer mis-reports namespace-qualified call sites (`ns::sym(`) as definitions — the C++ anchor now requires a return-type token before the name** (ANTS-1700)
 
 - **`file_outline` / `read_region` now capture free functions — `rxCppFunc` no longer folds the return type and the name into one possessive class, so `int alpha()` and friends surface instead of being silently dropped** (ANTS-2028)

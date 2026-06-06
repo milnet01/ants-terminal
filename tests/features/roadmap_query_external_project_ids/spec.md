@@ -27,8 +27,14 @@ populates the field.
   projects.
 - **INV-4 / reject digit-leading.** `[42-bad-1]` does not match.
   `rec.id` stays empty (or falls back to `boldId` path).
-- **INV-5 / reject no-dash-before-digits.** `[FOO123]` does not
-  match — must have a `-` separator before the digit run.
+- **INV-5 / no-dash bracket id is adopted (superseded by ANTS-1987).**
+  `[FOO123]` is not matched by the body-wide `rxId` (no `-<digits>`
+  tail), but the ANTS-1987 head-anchored extractor adopts an ID-shaped
+  leading bracket right after the status emoji, so `rec.id == "FOO123"`.
+  The original "must stay empty" contract was reversed by user decision
+  2026-06-06 — the leading-bracket slot is the id slot by convention, and
+  real projects (Vestige: `[Cl9]`/`[CE18]`) author dash-less short ids
+  there. Mid-prose `[text]` is still ignored (head-anchored only).
 - **INV-6 / single-letter prefix permitted.** `[R-5]` matches and
   yields `rec.id == "R-5"`. The "4–6 letters" rule in § 3.5.1 is
   documentary, not enforced on the read path.

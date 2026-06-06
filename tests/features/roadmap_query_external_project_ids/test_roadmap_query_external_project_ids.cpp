@@ -68,15 +68,22 @@ TEST(roadmap_query_external_project_ids, Inv4RejectDigitLeading) {
         << rec.id.toStdString();
 }
 
-// INV-5 — no-dash-before-digits reject. [FOO123] has no `-` between
-// the prefix and digit run; the regex requires `-\d+]` at the end.
-TEST(roadmap_query_external_project_ids, Inv5RejectNoDashBeforeDigits) {
+// INV-5 — no-dash bracket id is ADOPTED (superseded by ANTS-1987).
+// `[FOO123]` has no `-\d+` tail so the body-wide rxId still rejects it,
+// but the ANTS-1987 head-anchored bracket extractor adopts an ID-shaped
+// leading bracket (right after the status emoji) so projects that author
+// short bare-bracket ids (`[Cl9]`, `[CE18]`, `[FOO123]`) are findable +
+// flippable. The original ANTS-1405 contract (this stays empty) was
+// reversed by user decision 2026-06-06 — the leading-bracket slot is the
+// id slot by convention, and Vestige proved real projects use dash-less
+// short ids there.
+TEST(roadmap_query_external_project_ids, Inv5NoDashBracketIdAdopted) {
     const QString md = QStringLiteral(
         "## Section\n"
-        "- 📋 [FOO123] **Should not parse as an ID.** body.\n");
+        "- 📋 [FOO123] **Bare-bracket id.** body.\n");
     const auto rec = parseOne(md);
-    EXPECT_TRUE(rec.id.isEmpty())
-        << "[FOO123] without a dash must not match; got id="
+    EXPECT_EQ(rec.id, QStringLiteral("FOO123"))
+        << "ANTS-1987: a head-anchored ID-shaped bracket is adopted; got id="
         << rec.id.toStdString();
 }
 

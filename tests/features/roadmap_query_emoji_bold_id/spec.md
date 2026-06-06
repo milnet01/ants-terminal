@@ -27,15 +27,27 @@ when it is ID-shaped** — a single whitespace-free token matching
 bullet such as `- 🚧 **In-progress thing.**` (internal spaces) stays
 id-less, so multi-word narrator bullets are not mis-read as IDs.
 
-The bracketed non-dash form (`[Cl9]`) is **deliberately not** adopted as
-an ID — widening `rxId` to accept dash-less brackets would false-positive
-on arbitrary `[text]` in bullet prose. Such a bullet stays a narrator
-bullet, and a section that contains only such bullets is already surfaced
-to a `section=` caller by the ANTS-1538 "default ID-filter dropped all N
-bullet(s) … narrator-prose line with no [PROJ-NNNN] id" warning
-(remotecontrol.cpp ~L2888): the 📋 narrator is kept by the active filter,
-counted in `preIdPruneCountSec`, then dropped by `shouldDropUnnumbered`,
-which triggers the warning.
+Fix (2026-06-06 completion): the bracketed non-dash form (`[Cl9]`) — the
+shape Vestige actually authors (`Cl9` / `Cl10` / `CE18`), reconfirmed
+across three sessions — **is** now adopted as the id. The earlier
+"deliberately not adopted" stance left this real, repeated data invisible
+and unflippable, so it was reversed by user decision 2026-06-06. The
+adoption is safe because it is a **positional** signal, not a widening of
+the shared `idTokenPattern`: a `[...]` is adopted only when it is
+
+- **head-anchored** — the very first token after the status emoji
+  (mid-prose `see [ref] here` never qualifies), and
+- **ID-shaped** — a single whitespace-free token
+  `^[A-Za-z][A-Za-z0-9_.-]*` (so `[see notes]` with a space is rejected),
+  and
+- **not a markdown link** — the `(?!\()` guard rejects `[label](url)`.
+
+The body-wide `rxId` is untouched (it still rejects dash-less brackets in
+bullet prose), so this does not false-positive on arbitrary `[text]`. The
+leading-bracket slot is the id slot by roadmap convention (`[ANTS-1234]`);
+the only residual false-positive is a deliberate tag like `- 📋 [WIP] …`,
+which is vanishingly rare in a roadmap and costs only a spurious id, never
+data loss.
 
 ## Invariants
 
@@ -50,10 +62,12 @@ bullet whose `id == "Cl9"` (it was empty before the fix).
 — `extractBoldId` does not fire (the head starts with `[`, not `**`), so
 the bracketed-id path is untouched (no regression).
 
-### INV-3 — the bracketed non-dash form stays a narrator bullet
+### INV-3 — the bare-bracket id form IS adopted (the actual Vestige shape)
 
-`- 📋 [Cb7] **Bracketed.**` yields an **empty** `id` — the ID token is
-not widened to accept dash-less brackets.
+`- 📋 [Cb7] **Bracketed.**` yields `id == "Cb7"`. Reverses the pre-2026-06-06
+contract (this used to stay a narrator bullet). The head-anchored,
+ID-shaped, link-guarded match is a positional signal that does NOT widen
+the body-wide `idTokenPattern`.
 
 ### INV-4 — a multi-word bold-prose bullet stays a narrator bullet
 
@@ -61,9 +75,20 @@ not widened to accept dash-less brackets.
 span with internal whitespace is not ID-shaped, so it is not adopted as
 an id (the headline stays the headline).
 
+### INV-5 — a leading markdown link is not adopted
+
+`- 📋 [docs](https://x) **H**` yields an **empty** `id` — the `(?!\()`
+link-guard keeps the extractor from eating a single-word link label.
+
+### INV-6 — faithful Vestige scenario (GFM-format doc)
+
+In a `github-task-list` doc (checkbox bullets dominate), bare-bracket
+emoji bullets `- 📋 [Cl9] **…**` / `[Cl10]` / `[CE18]` are all indexed by
+id — the emoji bullets route through the native path even in a GFM doc.
+
 ## Test plan
 
 Behavioural against `RoadmapDialog::parseBullets` over synthetic ants-v1
-fixtures (no real ROADMAP.md), mirroring the
-`roadmap_parser_pass_emoji_status` harness. INV-1 FAILS against pre-fix
-code (the bold-ID-first bullet read with an empty id).
+**and** github-task-list fixtures (no real ROADMAP.md). INV-1 + INV-3
+FAIL against pre-fix code (the bold-ID-first and bare-bracket bullets read
+with an empty id).
