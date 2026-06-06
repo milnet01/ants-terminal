@@ -2604,7 +2604,8 @@ void ClaudeIntegration::onMcpConnection() {
                     "include_hidden, timeout_sec, elapsed_ms}. Prefer "
                     "this over `Bash grep -r ...` — typically saves "
                     "250-4500 tokens per query and avoids round-trips "
-                    "for no-match cases. Args: pattern (required), "
+                    "for no-match cases. Args: pattern (required; "
+                    "alias `query` — ANTS-2041), "
                     "regex (false), lane (subdir under project root), "
                     "glob, max_results (default 50, cap 500), context "
                     "(default 0, server-clamped to [0,10] — when > 0, "
@@ -2793,7 +2794,17 @@ void ClaudeIntegration::onMcpConnection() {
                         "(no text to clip). Pairs with "
                         "`max_match_bytes` for ~10× wire reduction "
                         "on dense bundle sweeps (ANTS-1876).");
+                    // ANTS-2041 — `query` alias for `pattern`. Declared
+                    // so the schema advertises it; the handler reads it
+                    // only when `pattern` is absent. `pattern` stays the
+                    // canonical (required) arg.
+                    QJsonObject queryProp;  queryProp["type"] = "string";
+                    queryProp["description"] = QStringLiteral(
+                        "Alias for `pattern` — used only when `pattern` "
+                        "is absent/empty. Prefer `pattern` (the "
+                        "canonical, required arg).");
                     props["pattern"]     = patternProp;
+                    props["query"]       = queryProp;
                     props["regex"]       = regexProp;
                     props["lane"]        = laneProp;
                     props["glob"]        = globProp;
@@ -6511,7 +6522,15 @@ void ClaudeIntegration::onMcpConnection() {
                         "Required: caller_cwd, section, status "
                         "(planned/in-progress/shipped/considered), "
                         "headline, kind, source. Optional: body, "
-                        "layman, lanes[], id_hint. "
+                        "layman, lanes[], id_hint. ANTS-2043 — the "
+                        "success envelope carries a non-blocking "
+                        "`possible_duplicates:[{id, headline, score}]` "
+                        "advisory (score 100 = exact normalised-headline "
+                        "match, 60-99 = token overlap) when the new "
+                        "headline resembles an existing bullet; the "
+                        "bullet is still appended (append_batch attaches "
+                        "it per accepted bullet as "
+                        "`[{bullet_index, id, candidates[]}]`). "
                         "op:\"flip\" (ANTS-1428) — flips a bullet's "
                         "status; injects an Obsidian-style "
                         "`^prefix-NNNN` anchor on first touch as the "

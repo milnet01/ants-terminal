@@ -1,7 +1,9 @@
 // ANTS-1897 — MCP discoverability via SessionStart hook installer.
 //
 // Covers the 14 invariants in docs/specs/ANTS-1897.md.
-//   INV-1, 1b   idempotent rewrite / version-bump overwrite
+//   INV-1       content-parity rewrite: byte-identical → idempotent
+//               skip; in-version stale body or version bump → rewrite
+//               (ANTS-2038)
 //   INV-2, 2b   user-owned preserved / first-launch fresh write
 //   INV-3       settings.json merge idempotent (marker substring)
 //   INV-4       settings.json merge preserves unrelated entries
@@ -122,8 +124,40 @@ TEST(McpOrientation_Inv1, IdempotentRewrite) {
     const QByteArray after = readFileBytes(scriptPathIn(tmp.path()));
     QFileInfo fi2(scriptPathIn(tmp.path()));
     EXPECT_EQ(before, after);
-    // Marker version matched → no rewrite → mtime unchanged.
+    // Marker version matched AND body byte-identical → no rewrite →
+    // mtime unchanged.
     EXPECT_EQ(fi.lastModified(), fi2.lastModified());
+}
+
+// INV-1 (ANTS-2038) — a marker-present file at the SAME version but
+// with a stale body is rewritten to the canonical template. The prior
+// version-only gate (markerVersion == runningVersion → skip) would
+// have left it stale; content-parity rewrites on any byte difference.
+TEST(McpOrientation_Inv1, InVersionBodyRefresh) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    const QByteArray canonical = MO::orientationScriptTemplate()
+                                     .arg(QStringLiteral(ANTS_VERSION)).toUtf8();
+    // Seed a marker-PRESENT file at the running version but with a
+    // mutated body (an in-version prelude reword). Line 2 — the
+    // `# ants-orientation-version:` marker — is preserved verbatim, so
+    // the file classifies as Ants-managed, not user-owned (INV-2).
+    QByteArray stale = canonical;
+    stale.replace("session_orient", "STALE_PRELUDE_TOKEN");
+    ASSERT_NE(stale, canonical)
+        << "precondition: the mutation must change the body";
+    ASSERT_TRUE(stale.contains("# ants-orientation-version:"))
+        << "precondition: the marker line must survive the mutation";
+    ASSERT_TRUE(writeFileBytes(scriptPathIn(tmp.path()), stale));
+
+    auto r = MO::installAt(tmp.path());
+    ASSERT_TRUE(r.ok) << r.warning.toStdString();
+
+    const QByteArray after = readFileBytes(scriptPathIn(tmp.path()));
+    EXPECT_EQ(after, canonical)
+        << "ANTS-2038: a marker-present file with a stale body (same "
+           "version) must be rewritten to the canonical template";
 }
 
 // INV-2 — pre-existing file without marker line is preserved (Ants

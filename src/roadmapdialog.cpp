@@ -737,9 +737,16 @@ parsePassHeadingBullets(const QStringList &lines) {
         QStringLiteral("^####\\s+Pass\\s+(\\d+)\\.(\\d+)"
                        "(?:\\.([A-Za-z][A-Za-z0-9]*))?\\s*"
                        "(?:\\(([^)]*)\\))?\\s*(.*?)\\s*$"));
+    // ANTS-2039 — group 1 captures an optional leading status-emoji run
+    // (any non-word, non-space glyph: ✅/📋/🚧/💭). Before this, a
+    // leading emoji — not a word char and not whitespace — fell between
+    // `:\s*` and the keyword class and blocked the capture entirely, so
+    // `- **Status**: ✅ Done` left statusWord empty and defaulted to
+    // planned (📋). Group 2 is the keyword, now optional so a bare emoji
+    // (`- **Status**: ✅`) still matches and is mapped below.
     static const QRegularExpression rxStatusLine(
         QStringLiteral("^\\s*[-*]\\s*\\*\\*Status\\*\\*\\s*:\\s*"
-                       "([A-Za-z0-9_-]+)"),
+                       "([^\\sA-Za-z0-9_-]+)?\\s*([A-Za-z0-9_-]*)"),
         QRegularExpression::CaseInsensitiveOption);
     QString currentSectionHeading;
     QString currentSectionSlug;
@@ -778,8 +785,23 @@ parsePassHeadingBullets(const QStringList &lines) {
             }
             const QRegularExpressionMatch sm = rxStatusLine.match(peek);
             if (sm.hasMatch()) {
-                statusWord = sm.captured(1).trimmed().toLower();
-                break;
+                const QString emoji = sm.captured(1);
+                statusWord = sm.captured(2).trimmed().toLower();
+                // ANTS-2039 — a bare status emoji with no trailing
+                // keyword (`- **Status**: ✅`) is authoritative: map the
+                // glyph straight to its canonical keyword so the
+                // emoji→status branch below classifies it. Keyword wins
+                // when both are present (`✅ Done` → "done").
+                if (statusWord.isEmpty() && !emoji.isEmpty()) {
+                    if      (emoji == QString::fromUtf8("\xE2\x9C\x85"))     statusWord = QStringLiteral("done");        // ✅
+                    else if (emoji == QString::fromUtf8("\xF0\x9F\x9A\xA7")) statusWord = QStringLiteral("in-progress"); // 🚧
+                    else if (emoji == QString::fromUtf8("\xF0\x9F\x92\xAD")) statusWord = QStringLiteral("deferred");    // 💭
+                    else if (emoji == QString::fromUtf8("\xF0\x9F\x93\x8B")) statusWord = QStringLiteral("todo");        // 📋
+                }
+                // A content-free `- **Status**:` line (both groups
+                // empty) is not a classification — keep scanning for a
+                // real status marker within the window.
+                if (!statusWord.isEmpty()) break;
             }
         }
         // ANTS-2030 — collect the under-heading prose (the

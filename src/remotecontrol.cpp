@@ -139,6 +139,32 @@ QString findChangelogUnder(const QString &canonicalRoot) {
     return {};
 }
 
+// ANTS-2040 — YAML-changelog resolver. project_layout already
+// discovers these (ANTS-1574: RetroDB-style structured changelogs at
+// data/changelog.yaml, plus root-level CHANGELOG.{yaml,yml}), but the
+// Keep-a-Changelog writer (findChangelogUnder above) only matches
+// Markdown. When the Markdown probe misses, changelog_log uses this to
+// distinguish "no changelog at all" (no_changelog) from "found a YAML
+// changelog the writer can't append to yet" (format_mismatch).
+QString findYamlChangelogUnder(const QString &canonicalRoot) {
+    if (canonicalRoot.isEmpty()) return {};
+    // Mirrors the YAML subset of projectlayoutengine.cpp's
+    // kChangelogCandidates so reader/writer discovery stay in lockstep.
+    static const QStringList kYamlCandidates = {
+        QStringLiteral("CHANGELOG.yaml"),
+        QStringLiteral("CHANGELOG.yml"),
+        QStringLiteral("data/changelog.yaml"),
+        QStringLiteral("data/changelog.yml"),
+        QStringLiteral("data/CHANGELOG.yaml"),
+        QStringLiteral("data/CHANGELOG.yml"),
+    };
+    for (const QString &n : kYamlCandidates) {
+        const QString c = canonicalRoot + QLatin1Char('/') + n;
+        if (QFileInfo::exists(c)) return c;
+    }
+    return {};
+}
+
 // ANTS-1463 — canonical hint emitted on every unrecognised_format
 // refusal envelope across roadmap_query (bullets + section_index
 // modes) and roadmap_log (append + flip terminal branches). One
@@ -762,6 +788,72 @@ QString rcNormaliseHeadline(const QString &raw) {
         } else {
             break;
         }
+    }
+    return out;
+}
+
+// ANTS-2043 — soft near-duplicate CONTENT detector for op:append /
+// append_batch. Ants already flags exact duplicate IDs
+// (rcComputeDuplicateIds, canonical-ID collisions); this catches two
+// bullets that *say* nearly the same thing so a caller doesn't re-file
+// an existing item. Reuses the existing normalise + hash machinery: an
+// exact normalised-headline match scores 100; otherwise a token Jaccard
+// overlap (shared tokens / union of tokens) gates at 60 % with a
+// ≥2-shared-token floor so two short headlines sharing a stop-word pair
+// don't false-fire. Non-blocking — the verb still appends; the result
+// is an advisory list returned in the success envelope. Top 5 by score.
+QJsonArray rcComputePossibleDuplicates(
+        const QVector<RoadmapDialog::BulletRecord> &existing,
+        const QString &newHeadline) {
+    const QString normNew = rcNormaliseHeadline(newHeadline);
+    if (normNew.isEmpty()) return {};
+    const quint64 hashNew = rcFnv1a64(normNew);
+    const QStringList tokNewList =
+        normNew.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    const QSet<QString> tokNew(tokNewList.begin(), tokNewList.end());
+    if (tokNew.isEmpty()) return {};
+
+    struct Cand { QString id; QString headline; int score; };
+    QVector<Cand> cands;
+    for (const auto &rec : existing) {
+        if (rec.headline.isEmpty()) continue;
+        const QString normEx = rcNormaliseHeadline(rec.headline);
+        if (normEx.isEmpty()) continue;
+        int score = 0;
+        if (rcFnv1a64(normEx) == hashNew) {
+            score = 100;  // exact normalised match
+        } else {
+            const QStringList exList =
+                normEx.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+            const QSet<QString> tokEx(exList.begin(), exList.end());
+            int inter = 0;
+            for (const QString &t : tokNew) {
+                if (tokEx.contains(t)) ++inter;
+            }
+            const int uni = tokNew.size() + tokEx.size() - inter;
+            if (uni > 0 && inter >= 2) {
+                const double jac = static_cast<double>(inter) / uni;
+                if (jac >= 0.60) {
+                    score = static_cast<int>(jac * 100.0 + 0.5);
+                }
+            }
+        }
+        if (score > 0) cands.append({rec.id, rec.headline, score});
+    }
+    std::sort(cands.begin(), cands.end(),
+              [](const Cand &a, const Cand &b) { return a.score > b.score; });
+    QJsonArray out;
+    const int cap = std::min<int>(cands.size(), 5);
+    for (int i = 0; i < cap; ++i) {
+        // Collapse multi-line headlines + bound the echo (parity with
+        // headline_oneline; keeps the advisory payload small).
+        QString hl = rcHeadlineOneline(cands[i].headline);
+        if (hl.size() > 120) { hl.truncate(119); hl.append(QChar(0x2026)); }
+        QJsonObject o;
+        o["id"]       = cands[i].id;
+        o["headline"] = hl;
+        o["score"]    = cands[i].score;
+        out.append(o);
     }
     return out;
 }
@@ -3340,6 +3432,31 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     }
     const QString clPath = findChangelogUnder(callerCanonical);
     if (clPath.isEmpty()) {
+        // ANTS-2040 — distinguish "no changelog at all" from "found a
+        // YAML changelog the Keep-a-Changelog writer can't append to".
+        // project_layout discovers data/changelog.yaml &c (ANTS-1574),
+        // so a bare no_changelog would mislead a caller whose reader
+        // already saw the file. Refuse with format_mismatch + an Edit
+        // fallback so they don't chase a phantom-missing changelog.
+        const QString yamlPath = findYamlChangelogUnder(callerCanonical);
+        if (!yamlPath.isEmpty()) {
+            QJsonObject env;
+            env["ok"]     = false;
+            env["code"]   = QStringLiteral("format_mismatch");
+            env["error"]  = QStringLiteral(
+                "changelog_log: \"%1\" is a YAML changelog; the writer "
+                "only appends to Keep-a-Changelog Markdown (CHANGELOG.md) "
+                "and can't emit this format yet")
+                    .arg(yamlPath);
+            env["path"]   = yamlPath;
+            env["format"] = QStringLiteral("yaml");
+            env["hint"]   = QStringLiteral(
+                "Edit the YAML changelog directly — append a "
+                "`- version:/date:/tags:/body:` block in its schema. "
+                "YAML-changelog writes aren't supported by changelog_log "
+                "yet (ANTS-2040).");
+            return QJsonDocument(env);
+        }
         return clErr(QStringLiteral("no_changelog"),
             QStringLiteral("changelog_log: no CHANGELOG.md under \"%1\"")
                 .arg(callerCanonical));
@@ -3947,6 +4064,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     out["file"]          = QStringLiteral("ROADMAP.md");
     out["line"]          = insertAt + 1;  // 1-based for humans
     out["bytes_written"] = static_cast<qint64>(bullet.toUtf8().size());
+    // ANTS-2043 — non-blocking near-duplicate advisory. preflightBullets
+    // was parsed BEFORE the splice, so the just-appended bullet can't
+    // match itself. Surfaced only when there's at least one candidate.
+    const QJsonArray possibleDuplicates =
+        rcComputePossibleDuplicates(preflightBullets, headline);
+    if (!possibleDuplicates.isEmpty()) {
+        out["possible_duplicates"] = possibleDuplicates;
+    }
     // ANTS-1551 — if the defensive scrub stripped leaked tool-call
     // XML, surface the recognised sibling-parameter names so the
     // caller knows which typed arguments were lost in transit.
@@ -5611,6 +5736,24 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     QJsonArray ids;
     for (const Accepted &a : accepted) ids.append(a.idStr);
 
+    // ANTS-2043 — non-blocking near-duplicate advisory, per accepted
+    // bullet (checked against the pre-splice on-disk bullets, so a
+    // just-appended bullet can't match itself). Only bullets with at
+    // least one candidate appear; absent when the whole batch is clean.
+    QJsonArray possibleDuplicates;
+    for (const Accepted &a : accepted) {
+        const QString hl =
+            a.bulletReq.value(QStringLiteral("headline")).toString();
+        const QJsonArray cands =
+            rcComputePossibleDuplicates(preflightBullets, hl);
+        if (cands.isEmpty()) continue;
+        QJsonObject o;
+        o["bullet_index"] = a.bulletIndex;
+        o["id"]           = a.idStr;
+        o["candidates"]   = cands;
+        possibleDuplicates.append(o);
+    }
+
     QJsonObject out;
     out["ok"]            = true;
     out["op"]            = QStringLiteral("append_batch");
@@ -5621,6 +5764,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     out["skipped"]       = skipped;
     out["skipped_count"] = skipped.size();
     out["bytes_written"] = totalBytes;
+    if (!possibleDuplicates.isEmpty()) {
+        out["possible_duplicates"] = possibleDuplicates;
+    }
     if (!scrubbedRollup.isEmpty()) {
         QJsonArray names;
         for (const QString &n : scrubbedRollup) names.append(n);
@@ -5684,10 +5830,20 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     wall.start();
 
     // ANTS-1248-INV-1: empty/missing pattern → bad_pattern, no fork.
-    const QString pattern = req.value("pattern").toString();
+    // ANTS-2041 — accept `query` as an alias for `pattern` (the natural
+    // synonym a caller reaches for beside the sibling read verbs
+    // roadmap_query / spec_query). `pattern` stays the source of truth;
+    // `query` only fills in when `pattern` is absent/empty.
+    QString pattern = req.value("pattern").toString();
     if (pattern.isEmpty()) {
-        return QJsonDocument(wsErr("bad_pattern",
-            QStringLiteral("workspace-search: missing or empty \"pattern\"")));
+        pattern = req.value(QStringLiteral("query")).toString();
+    }
+    if (pattern.isEmpty()) {
+        QJsonObject e = wsErr("bad_pattern",
+            QStringLiteral("workspace-search: missing or empty \"pattern\""));
+        e["hint"] = QStringLiteral(
+            "pass the search string as `pattern` (alias: `query`).");
+        return QJsonDocument(e);
     }
 
     // Server resolves the project root from QCoreApplication::applicationDirPath()

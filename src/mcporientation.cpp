@@ -32,7 +32,9 @@ namespace {
 constexpr const char *kMarkerSubstring = "/hooks/mcp-orientation.sh";
 
 // INV-1 — marker prefix at the start of the second line of the script.
-// The version token that follows is parsed and compared.
+// The version token that follows is parsed only to detect marker
+// PRESENCE (Ants-managed vs user-owned); its value is not compared —
+// the ANTS-2038 rewrite gate is a full-body byte compare.
 constexpr const char *kScriptMarkerPrefix = "# ants-orientation-version:";
 
 // Script body template. INV-12 byte-equality target after
@@ -41,8 +43,9 @@ constexpr const char *kOrientationScriptBody =
     "#!/bin/bash\n"
     "# ants-orientation-version: %1\n"
     "# ants-terminal MCP orientation prelude (ANTS-1897).\n"
-    "# This file is managed by Ants Terminal — your edits will be\n"
-    "# overwritten on the next Ants version bump.\n"
+    "# This file is managed by Ants Terminal — edits to this managed\n"
+    "# body are overwritten on the next launch. To take ownership,\n"
+    "# delete the '# ants-orientation-version:' marker line above.\n"
     "# Disable: Settings → General → uncheck \"Show MCP cheat-sheet\n"
     "# at Claude session start\", OR delete this file and restart\n"
     "# Ants Terminal.\n"
@@ -357,22 +360,36 @@ Result installAt(const QString &homeDir) {
     bool scriptWritten = false;
     if (QFile::exists(r.scriptPath)) {
         if (markerVersion.isEmpty()) {
-            // INV-2 — user-owned. Log + skip script write.
+            // INV-2 — user-owned (no marker). Log + skip script write.
             r.warning = QStringLiteral(
                 "user-owned %1 — Ants will not overwrite. Delete it "
                 "to let Ants reinstall.").arg(r.scriptPath);
             qWarning().noquote() << "[mcp-orientation]" << (r.warning);
-        } else if (markerVersion == runningVersion) {
-            // Matches — idempotent skip.
         } else {
-            // Version bump — overwrite.
+            // ANTS-2038 — marker present → Ants-managed. Keep the body
+            // in lockstep with the rendered template: rewrite on ANY
+            // byte difference. This covers a version bump (the marker
+            // line itself changes) AND an in-version template edit — a
+            // prelude reword shipped without a version bump, which the
+            // prior version-only gate (markerVersion == runningVersion
+            // → skip) left stale on disk until the next bump (e.g.
+            // ANTS-1985's catalog repoint). A byte-identical body is
+            // the idempotent skip. INV-1 / INV-12.
             const QByteArray body = orientationScriptTemplate()
                                     .arg(runningVersion).toUtf8();
-            QString w;
-            if (writeScriptFile(r.scriptPath, body, &w)) {
-                scriptWritten = true;
-            } else {
-                r.warning = w;
+            QByteArray onDisk;
+            QFile rf(r.scriptPath);
+            if (rf.open(QIODevice::ReadOnly)) {
+                onDisk = rf.readAll();
+                rf.close();
+            }
+            if (onDisk != body) {
+                QString w;
+                if (writeScriptFile(r.scriptPath, body, &w)) {
+                    scriptWritten = true;
+                } else {
+                    r.warning = w;
+                }
             }
         }
     } else {

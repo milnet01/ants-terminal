@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_log` now flags possible near-duplicate items when you add one — a non-blocking `possible_duplicates` heads-up, so the list doesn't fill with near-copies.** (ANTS-2043)
+
 - **model_switch_stats now says WHY auto-switch is off** (ANTS-2033)
   When the auto-model-picker is off, model_switch_stats now also reports the reason — "never_enabled" (you haven't accepted the first-run opt-in) or "user_disabled" (you saw it and left it off) — plus a short plain-English detail, so you can tell whether turning it on is even an option.
 
@@ -40,10 +42,18 @@ for security-relevant changes.
 
 ### Changed
 
+- **`changelog_log` now reports `format_mismatch` (not `no_changelog`) on projects whose changelog is a YAML file it can't yet write — so callers know the file was found, not missing.** (ANTS-2040)
+
+- **`workspace_search` now accepts `query` as an alias for `pattern`, and its refusal hints which field to use.** (ANTS-2041)
+
 - **audit_run now flags partial runs explicitly** (ANTS-2032)
   When a scan tool times out or crashes, audit_run already kept the results from the tools that finished (and still wrote the SARIF file to disk) — it never came back empty over one tool. The result now also says so directly with a `partial` flag and an `incomplete_tools` list, so you can see at a glance that a run was incomplete without digging through per-tool status.
 
 ### Fixed
+
+- **The Claude session orientation cheat-sheet now refreshes whenever its content changes, not only on an Ants version bump.** (ANTS-2038)
+
+- **Pass-headings roadmaps: a `- **Status**: ✅ Done` line with a leading emoji now reads as done, not still-to-do.** (ANTS-2039)
 
 - **roadmap_log now refuses #### Pass heading roadmaps with a clear format_mismatch** (ANTS-2031)
   On heading-style roadmaps (`#### Pass N.M`), roadmap_log used to either splice a wrong-format bullet into the file or refuse with a misleading "not found" message. It now returns a clear format_mismatch refusal with a hint to edit the file directly, across every write operation (append, batch-append, create-section, flip, batch-flip, annotate). Normal roadmaps are unaffected.

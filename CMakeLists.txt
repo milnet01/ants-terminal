@@ -1185,6 +1185,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_roadmap_log_create_section/test_mcp_roadmap_log_create_section.cpp
                 # ANTS-1879 roadmap_log op:append_batch.
                 tests/features/mcp_roadmap_log_append_batch/test_mcp_roadmap_log_append_batch.cpp
+                # ANTS-2043 roadmap_log non-blocking near-duplicate advisory.
+                tests/features/roadmap_log_possible_duplicates/test_roadmap_log_possible_duplicates.cpp
                 # ANTS-1548 changelog_log token-frugal CHANGELOG writer.
                 tests/features/changelog_log_writer/test_changelog_log_writer.cpp
                 # ANTS-1426 parseBullets blank-line continuation.
@@ -1221,6 +1223,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_parser_subpass_id/test_roadmap_parser_subpass_id.cpp
                 # ANTS-2030 pass-heading bullet body = under-heading prose.
                 tests/features/roadmap_parser_pass_body/test_roadmap_parser_pass_body.cpp
+                # ANTS-2039 pass-heading emoji-prefixed status classification.
+                tests/features/roadmap_parser_pass_emoji_status/test_roadmap_parser_pass_emoji_status.cpp
                 # ANTS-1567 MCP tool prefix-tag bucket coverage.
                 tests/features/mcp_tool_prefix_tags/test_mcp_tool_prefix_tags.cpp
                 # ANTS-1568 etag-tip memo appended to etag-supporting tools.

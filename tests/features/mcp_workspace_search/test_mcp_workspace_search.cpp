@@ -151,7 +151,9 @@ TEST(McpWorkspaceSearch, WiringContract) {
     // two new props (respect_gitignore + include_hidden) with their
     // own description blurbs, pushing the schema past the original
     // 4 KiB anchor. Widened to 10000 again after ANTS-1565 added
-    // timeout_sec with its own description blurb.
+    // timeout_sec with its own description blurb. Widened to 16000
+    // after ANTS-2041 added the `query` alias prop (its own blurb
+    // pushed `required.append("pattern")` to ~14.6 KiB past the anchor).
     {
         // Anchor at the tools/list registration (literal "workspace_search"
         // with quotes), not the first incidental occurrence in a setter
@@ -160,7 +162,7 @@ TEST(McpWorkspaceSearch, WiringContract) {
         bool ok = false;
         if (reqPos != std::string::npos) {
             const size_t windowEnd = std::min(ciCpp.size(),
-                                              reqPos + 14000);
+                                              reqPos + 16000);
             const std::string window = ciCpp.substr(reqPos,
                                                     windowEnd - reqPos);
             ok = contains(window, "\"required\"") &&

@@ -259,6 +259,63 @@ TEST(changelog_log_writer, HandlerRefusals) {
     }
 }
 
+// ANTS-2040 — a project with a YAML changelog (and no CHANGELOG.md)
+// must refuse with format_mismatch (not no_changelog), carrying the
+// discovered path + an Edit fallback hint. project_layout already
+// discovers data/changelog.yaml, so a bare no_changelog would mislead
+// a caller whose reader saw the file.
+TEST(changelog_log_writer, Ants2040YamlChangelogFormatMismatch) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(QDir(tmp.path()).mkpath(QStringLiteral("data")));
+    const QString yamlPath =
+        QDir(tmp.path()).filePath(QStringLiteral("data/changelog.yaml"));
+    ASSERT_TRUE(writeFile(yamlPath,
+        QByteArray("- version: 1.0.0\n  date: 2026-01-01\n  body: x\n")));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("summary")]    = QStringLiteral("x.");
+    req[QStringLiteral("kind")]       = QStringLiteral("fix");
+    const auto resp = rc.cmdChangelogLog(req).object();
+
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("format_mismatch"))
+        << "ANTS-2040: a discovered YAML changelog must refuse with "
+           "format_mismatch, not no_changelog";
+    EXPECT_EQ(resp.value(QStringLiteral("format")).toString(),
+              QStringLiteral("yaml"));
+    EXPECT_EQ(resp.value(QStringLiteral("path")).toString(), yamlPath)
+        << "ANTS-2040: the refusal names the discovered YAML path";
+    EXPECT_FALSE(resp.value(QStringLiteral("hint")).toString().isEmpty())
+        << "ANTS-2040: the refusal carries an Edit-fallback hint";
+}
+
+// ANTS-2040 — when BOTH a CHANGELOG.md and a YAML changelog exist, the
+// Markdown writer still wins (no regression to the format_mismatch
+// path for projects that have a real Keep-a-Changelog file).
+TEST(changelog_log_writer, Ants2040MarkdownWinsOverYaml) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kChangelog)));
+    ASSERT_TRUE(QDir(tmp.path()).mkpath(QStringLiteral("data")));
+    ASSERT_TRUE(writeFile(
+        QDir(tmp.path()).filePath(QStringLiteral("data/changelog.yaml")),
+        QByteArray("- version: 1.0.0\n")));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("summary")]    = QStringLiteral("Did a thing.");
+    req[QStringLiteral("kind")]       = QStringLiteral("fix");
+    const auto resp = rc.cmdChangelogLog(req).object();
+
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << "ANTS-2040: a present CHANGELOG.md must still take the "
+           "Markdown write path even when a YAML changelog co-exists";
+}
+
 // INV-7 (ANTS-1868) — a wrapped multi-line ROADMAP headline is
 // collapsed to a single line before it becomes the bold CHANGELOG
 // summary, so the rendered bullet stays a well-formed Markdown list

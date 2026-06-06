@@ -95,6 +95,33 @@ place when it saves a Claude session real tokens or round-trips
    existing code before minting a new one; if you mint one, add it to
    that doc in the same change.
 
+   **6a. Writer/reader format parity (ANTS-2042).** When a
+   discovery/reader verb recognises a target format that the paired
+   *writer* can't yet produce, the writer MUST refuse with
+   `format_mismatch` — carrying the discovered `format`, the `path`
+   to the recognised file, and a format-appropriate Edit-fallback
+   `hint` (naming the discovered format's append shape, not a bare
+   "use Edit") — never a generic absence code (`no_*`, `*_not_found`). A generic absence code lies to the caller: their
+   reader already saw the file, so "not found" sends them chasing a
+   phantom-missing artifact instead of reaching for Edit. The rule
+   applies whenever reader and writer discovery can diverge —
+   `project_layout` discovering a `data/changelog.yaml` the
+   Keep-a-Changelog writer can't append to, or `roadmap_query` parsing
+   a `#### Pass N.M` heading roadmap the bullet writer can't splice.
+   Instances: ANTS-2031 (roadmap_log returns `format_mismatch` instead
+   of `bullet_not_found` on pass-headings), ANTS-2040 (changelog_log
+   returns `format_mismatch` instead of `no_changelog` on YAML
+   changelogs). The generic absence codes (`bullet_not_found`,
+   `no_changelog`) are **not** retired — they remain correct for the
+   genuinely-absent case (no roadmap bullet / no changelog of any
+   kind); `format_mismatch` is reserved for the *discovered-but-
+   unwritable-format* branch. The `format_mismatch` code is defined in
+   [mcp-error-codes.md](mcp-error-codes.md); reuse it rather than
+   minting a per-verb variant. (If the reader *also* can't parse the
+   file — zero recognised structure — that's `unrecognised_format`,
+   not `format_mismatch`; the latter is for a *recognised* format the
+   writer can't produce.)
+
    **File note for steps 7–8:** a tool's `inputSchema` lives in the
    `tools/list` builder in `src/claudeintegration.cpp` — a *different*
    file from the `registerToolProvider` call in step 1
