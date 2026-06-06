@@ -16590,6 +16590,12 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Lanes: docs, mcp.
   Source: cold-eyes-2026-06-05 (ANTS-2021 loop 2/3 INFO).
 
+- 📋 [ANTS-2045] **workspace_search: hint when a multi-word query is treated as one literal/regex pattern.**
+  workspace_search matches its `query` as a single literal/regex pattern, not as AND-combined terms. A natural-language query like "claudePermissionDetected always allow permission detection" silently returns zero matches (cost ~3 wasted calls this session before switching to single identifiers). Low-cost fix: when a multi-token query (contains whitespace) returns zero matches, add an advisory field (e.g. `hint: "query matched as one literal pattern; pass a single token or a regex"`) to the envelope. Pure response-shaping, no search-semantics change. Lanes: remotecontrol, mcp.
+  **Layman:** When you search for several words at once and get nothing back, the tool should tell you it searched for the exact phrase, not the words separately.
+  Kind: enhancement.
+  Source: in-session-2026-06-06.
+
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
 - 📋 **Trust-model gaps in IPC sockets.** Two independent
