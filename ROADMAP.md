@@ -15767,7 +15767,7 @@ asks (ANTS-1690/1691 — 1690 since shipped). Verification-only observations
 (ANTS-1987 ✅ confirmed, ANTS-1623/1580/1569/1646 ✅, ANTS-2039 workaround
 corroborated) are recorded in the feedback files, not re-roadmapped.
 
-- 📋 [ANTS-2046] **roadmap_query / RoadmapIndex: GFM task bullets with no authored ID + a trailing `**bold**` span get a fabricated id shared across all siblings, and the headline is taken from the trailing bold instead of the leading item text.**
+- ✅ [ANTS-2046] **roadmap_query / RoadmapIndex: GFM task bullets with no authored ID + a trailing `**bold**` span get a fabricated id shared across all siblings, and the headline is taken from the trailing bold instead of the leading item text.**
   Distinct from ANTS-1987 (that was *leading-bracket* IDs). Live repro on the
   Vestige ROADMAP.md:186–192 (Phase 9C Audio), seven plain GFM task bullets
   with no authored ID, each ending `— **deferred to Phase 10.**`. roadmap_query
@@ -15790,8 +15790,9 @@ corroborated) are recorded in the feedback files, not re-roadmapped.
   Kind: fix.
   Lanes: roadmapindex, mcp-roadmap-query.
   Source: cross-session-report-2026-06-10 (Vestige / 3D engine).
+  Resolved (2026-06-10): in RoadmapDialog::parseBullets (roadmapdialog.cpp) a bold span is now treated as the headline only when HEAD-ANCHORED; a trailing bold on a GFM task bullet falls through to the leading-item-text path (with `**` stripped), so the real title is kept and the per-headline content-hash id is unique per sibling. Regression: AdapterReadGfm.TrailingBoldDoesNotBecomeHeadline + HeadAnchoredBoldIdKeepsTrailingHeadline.
 
-- 📋 [ANTS-2047] **test_audit_partition: jest/vitest default test_globs omit `.tsx`/`.jsx`, so React/Preact/Solid component tests are silently excluded from the partition (ok:true, no warning).**
+- ✅ [ANTS-2047] **test_audit_partition: jest/vitest default test_globs omit `.tsx`/`.jsx`, so React/Preact/Solid component tests are silently excluded from the partition (ok:true, no warning).**
   Verified in code: testauditengine.cpp:~85-89 defines the "jest" framework with
   test_globs [**/*.spec.ts, **/*.test.ts] (mirror for *.js) — no .tsx/.jsx
   entry. MAME Curator's frontend (vitest) has 5 *.test.ts + 45 *.test.tsx + 4
@@ -15808,8 +15809,9 @@ corroborated) are recorded in the feedback files, not re-roadmapped.
   Kind: fix.
   Lanes: testauditengine, mcp-test-audit-partition.
   Source: cross-session-report-2026-06-10 (MAME Curator, /test-audit sweep).
+  Resolved (2026-06-10): testauditengine.cpp framework table now shares a kJsTsTestGlobs list including .jsx/.tsx for both runners, and a `vitest` probe (vitest.config.*) sits before `jest` so vitest projects are labelled correctly. Regression: TestAuditPolyglot.InvA6VitestTsxJsxGlobs (4 files matched, was 1).
 
-- 📋 [ANTS-2048] **roadmap_log pass-headings format detection doesn't classify `#### Pass N.M` + `- **Status**:` files as pass-headings (read as gfm), so flip_batch returns bullet_not_found instead of the ANTS-2031 format_mismatch guard.**
+- ✅ [ANTS-2048] **roadmap_log pass-headings format detection doesn't classify `#### Pass N.M` + `- **Status**:` files as pass-headings (read as gfm), so flip_batch returns bullet_not_found instead of the ANTS-2031 format_mismatch guard.**
   RetroDB (2026-06-10) ran roadmap_log(op:flip_batch, to_status:shipped,
   locators:[{id:"PASS-41-5"},{id:"PASS-41-12"},{id:"PASS-41-13"}]) against a
   `#### Pass N.M <Title>` + `- **Status**:` heading-format roadmap.md and got
@@ -15830,6 +15832,7 @@ corroborated) are recorded in the feedback files, not re-roadmapped.
   Kind: investigate.
   Lanes: roadmapindex, mcp-roadmap-log.
   Source: cross-session-report-2026-06-10 (RetroDB, Tier-2 close-out, v3.6.35).
+  Resolved (2026-06-10): two-part fix. (1) detectRoadmapFormat now checks the strong 2+2 pass-headings signal BEFORE the hasGfm fallback, so a stray `- [ ]` sub-task no longer flips a `#### Pass N.M` doc to github-task-list. (2) cmdRoadmapLogFlipBatch now checks rcBulletsArePassHeadings UNCONDITIONALLY before the isGfm branch (the old guard was gated behind !isGfm, which a stray checkbox defeated), mirroring the single-flip path. flip_batch now returns the precise format_mismatch, not bullet_not_found. Regression: McpRoadmapLogPassFormatMismatch.Inv6StrayCheckboxStillPassHeadings.
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 

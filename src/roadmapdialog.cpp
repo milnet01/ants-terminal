@@ -719,15 +719,24 @@ QString detectRoadmapFormat(const QStringList &lines) {
         }
         if (++seen >= 300) break;
     }
-    if (hasGfm)          return QStringLiteral("github-task-list");
-    // ANTS-1530 — pass-headings adapter. Triggered only when no
-    // ants-v1 emoji bullets are present (so we never override a
-    // native-format doc) and the document carries at least two
-    // Pass-N.M headings AND two `- **Status**: …` markers (the
-    // 2+2 threshold rules out an accidental fenced-code example).
+    // ANTS-1530 — pass-headings adapter. Triggered only when no ants-v1
+    // emoji bullets are present (so we never override a native-format doc)
+    // and the document carries at least two Pass-N.M headings AND two
+    // `- **Status**: …` markers (the 2+2 threshold rules out an accidental
+    // fenced-code example).
+    //
+    // ANTS-2048 — this MUST be checked before the `hasGfm` fallback. A
+    // pass-headings roadmap routinely contains a stray `- [ ]` sub-task
+    // checklist line, which flipped `hasGfm` true and returned
+    // github-task-list before this strong, far-more-specific 2+2 signal
+    // ever ran. roadmap_log flip_batch then misdetected the format as gfm
+    // and returned bullet_not_found instead of the helpful pass-headings
+    // format_mismatch (ANTS-2031). The 2+2 pass-headings signal is the
+    // authoritative shape; a lone checkbox does not override it.
     if (!hasAntsV1Emoji && passHeadings >= 2 && statusMarkers >= 2) {
         return QStringLiteral("pass-headings");
     }
+    if (hasGfm)          return QStringLiteral("github-task-list");
     return QStringLiteral("ants-v1");
 }
 
@@ -1179,10 +1188,27 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
             }
         }
         const auto boldMatch = rxBold.match(body);
+        // ANTS-2046 — a bold span only stands in as the headline when it is
+        // HEAD-ANCHORED (the bullet text *starts* with it). A GFM task item
+        // like `Ambient soundscapes (…) — **deferred to Phase 10.**` carries
+        // its real title as leading prose and a TRAILING bold deferral
+        // marker; grabbing that trailing bold collapsed every such sibling
+        // to the same "deferred…" headline — and, because the synthetic id
+        // is a content-hash of the headline, to the same fabricated id.
+        // Mirrors the head-anchored rule ANTS-1987 applied to bracket IDs.
+        // Native (ants-v1) bullets are `[ID] **headline**`, where the bold
+        // IS the headline, so the gate only constrains the GFM path.
+        bool boldIsHeadAnchored = false;
+        if (boldMatch.hasMatch()) {
+            boldIsHeadAnchored =
+                QStringView(body).left(boldMatch.capturedStart())
+                    .trimmed().isEmpty();
+        }
         if (!rec.headline.isEmpty()) {
             // INV-4 already set the headline from the em-dash split;
             // skip the bold-or-prose fallback for this row.
-        } else if (boldMatch.hasMatch()) {
+        } else if (boldMatch.hasMatch() &&
+                   (!gfmHere || boldIsHeadAnchored)) {
             QString h = boldMatch.captured(1).trimmed();
             // Strip a trailing `.` if the bold token is actually
             // a Bold-ID locator (e.g. `**Sh4.**`); the visible
@@ -1209,7 +1235,12 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
             // ANTS-1428 — GFM bullets often have no `**bold**`
             // formatting at all (Vestige's roadmap is mixed). Use
             // the first line of body, stripped of any trailing
-            // caret anchor, as the headline.
+            // caret anchor, as the headline. ANTS-2046 — this also
+            // catches the trailing-bold case routed here by the
+            // head-anchored gate above; strip the `**` emphasis
+            // markers so the headline reads as clean prose (the real
+            // item text + any trailing deferral note), not literal
+            // markdown, and stays unique per sibling.
             QString h = body;
             const int nl = h.indexOf(QLatin1Char('\n'));
             if (nl >= 0) h = h.left(nl);
@@ -1217,6 +1248,7 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
             static const QRegularExpression rxTrailAnchor(
                 QStringLiteral("\\s*\\^[a-z0-9-]+\\s*$"));
             h.replace(rxTrailAnchor, QString());
+            h.remove(QStringLiteral("**"));  // ANTS-2046 — de-markup
             h = h.trimmed();
             truncateEllipsis(h, 120);  // ANTS-1811 — surrogate-safe
             rec.headline = h;

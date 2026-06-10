@@ -76,17 +76,36 @@ struct FrameworkProbe {
 };
 
 const QVector<FrameworkProbe> &g_kFrameworks() {
+    // ANTS-2047 — JS/TS test globs shared by vitest + jest. The `x`
+    // extensions (.jsx/.tsx) are load-bearing: React/Preact/Solid suites
+    // are overwhelmingly `*.test.tsx`, and omitting them silently hid 83%
+    // of a real frontend suite (45 of 54 files) from the partition with no
+    // warning. Both runners share the same glob shape.
+    static const QStringList kJsTsTestGlobs = {
+        QStringLiteral("**/*.spec.js"),  QStringLiteral("**/*.test.js"),
+        QStringLiteral("**/*.spec.jsx"), QStringLiteral("**/*.test.jsx"),
+        QStringLiteral("**/*.spec.ts"),  QStringLiteral("**/*.test.ts"),
+        QStringLiteral("**/*.spec.tsx"), QStringLiteral("**/*.test.tsx"),
+    };
     static const QVector<FrameworkProbe> v = {
         {QStringLiteral("pytest"),
          {QStringLiteral("pyproject.toml"), QStringLiteral("pytest.ini"),
           QStringLiteral("setup.py"), QStringLiteral("tox.ini")},
          {QStringLiteral("tests/**/*.py"), QStringLiteral("test_*.py"),
           QStringLiteral("*_test.py")}},
+        // ANTS-2047 — probe vitest BEFORE jest: a vitest project also ships
+        // package.json (jest's signal), so without an earlier explicit
+        // `vitest.config.*` probe it was mislabelled `jest`. Both route to
+        // the same JS/TS globs, so detection accuracy is the only delta.
+        {QStringLiteral("vitest"),
+         {QStringLiteral("vitest.config.ts"),  QStringLiteral("vitest.config.js"),
+          QStringLiteral("vitest.config.mjs"), QStringLiteral("vitest.config.mts"),
+          QStringLiteral("vitest.config.cjs")},
+         kJsTsTestGlobs},
         {QStringLiteral("jest"),
          {QStringLiteral("package.json"), QStringLiteral("jest.config.js"),
           QStringLiteral("jest.config.ts")},
-         {QStringLiteral("**/*.spec.js"),  QStringLiteral("**/*.test.js"),
-          QStringLiteral("**/*.spec.ts"),  QStringLiteral("**/*.test.ts")}},
+         kJsTsTestGlobs},
         // ANTS-1624 — libcheck C-unit detection. Probe before ctest so a
         // project that ships both CMake (main build) and Makefile.test
         // (libcheck suite) gets routed to libcheck and its .c globs

@@ -64,6 +64,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Bulk "mark done" on `#### Pass N.M` roadmaps now gives the right "can't write this format yet" message.** (ANTS-2048)
+  On a heading-style roadmap that also contained a stray checklist `- [ ]` line, the bulk status-flip mis-read the file as a plain checklist and answered "not found" instead of the helpful "this heading format isn't writable yet — edit it directly" message. The format is now detected correctly regardless of stray checkboxes.
+
+- **Test-suite auditor now finds React-style `.tsx`/`.jsx` tests and recognises Vitest projects.** (ANTS-2047)
+  The auditor's file search for JavaScript/TypeScript projects skipped `.tsx`/`.jsx` files, so React/Preact/Solid component tests (often the bulk of a frontend suite) were silently ignored. It now includes those extensions and labels Vitest projects as Vitest rather than Jest.
+
+- **Roadmap reader no longer mangles to-do items that end in a bold note.** (ANTS-2046)
+  A checklist item like "Ambient soundscapes … — **deferred to Phase 10.**" used to be read with the trailing bold note as its title — so a whole group of such items collapsed into identical blank-looking rows that all shared one made-up ID. The reader now keeps the real item text as the title and gives each item its own ID.
+
 - **The built-in security audit now flags insecure `http://` links it previously missed.** (ANTS-1612)
   The "insecure HTTP" check used a brittle character trick that accidentally skipped any address whose host started with certain letters (for example logging- or login-style hosts). It now checks every plain-HTTP link and excludes localhost / example / schema URLs at the filtering stage instead, so real insecure links stop slipping through.
 

@@ -33,6 +33,24 @@ const char *kPassRoadmap =
     "#### Pass 1.2 (LOW, S) Second pass\n"
     "- **Status**: todo\n";
 
+// ANTS-2048 — a pass-headings roadmap that ALSO contains stray GFM
+// checkbox sub-tasks. RetroDB's real file had `- [ ]` sub-tasks under its
+// passes, which flipped the format sniffer to github-task-list and made
+// flip_batch return bullet_not_found instead of this format_mismatch. The
+// strong 2+2 pass-headings signal must win over a lone checkbox.
+const char *kPassRoadmapWithCheckbox =
+    "# Project Passes\n"
+    "\n"
+    "## Active\n"
+    "\n"
+    "#### Pass 41.5 (CRITICAL, S) First pass\n"
+    "- **Status**: in-progress\n"
+    "- [ ] a stray sub-task checklist item\n"
+    "\n"
+    "#### Pass 41.12 (LOW, S) Second pass\n"
+    "- **Status**: todo\n"
+    "- [x] another stray checkbox\n";
+
 // A normal ants-v1 roadmap (control). 📋 is U+1F4CB in UTF-8.
 const char *kV1Roadmap =
     "# Test Roadmap\n"
@@ -170,6 +188,32 @@ TEST(McpRoadmapLogPassFormatMismatch, Inv4FlipBatchRefuses) {
     fb[QStringLiteral("locators")] = locators;
     EXPECT_EQ(code(rc.cmdRoadmapLogFlipBatchForTest(fb).object()),
               QStringLiteral("format_mismatch"));
+}
+
+// INV-6 (ANTS-2048) — a pass-headings roadmap carrying stray `- [ ]`
+// checkbox sub-tasks is STILL detected as pass-headings (not gfm), so
+// flip_batch returns format_mismatch — not the bullet_not_found RetroDB
+// hit when a lone checkbox flipped the sniffer to github-task-list.
+TEST(McpRoadmapLogPassFormatMismatch, Inv6StrayCheckboxStillPassHeadings) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(seed(tmp.path(), kPassRoadmapWithCheckbox));
+    RemoteControl rc(nullptr);
+
+    QJsonObject fb = baseReq(tmp.path());
+    fb[QStringLiteral("to_status")] = QStringLiteral("shipped");
+    QJsonArray locators;
+    QJsonObject loc;
+    loc[QStringLiteral("id")] = QStringLiteral("PASS-41-5");
+    locators.append(loc);
+    fb[QStringLiteral("locators")] = locators;
+    const QJsonObject out = rc.cmdRoadmapLogFlipBatchForTest(fb).object();
+
+    EXPECT_EQ(code(out), QStringLiteral("format_mismatch"))
+        << "ANTS-2048: a stray `- [ ]` must not flip the sniffer to gfm "
+           "(would yield bullet_not_found instead of format_mismatch)";
+    EXPECT_EQ(out.value(QStringLiteral("format")).toString(),
+              QStringLiteral("pass-headings"));
 }
 
 // INV-5 — a normal ants-v1 roadmap still appends (no false refusal).

@@ -167,6 +167,61 @@ TEST(AdapterReadGfm, NativePathStillWorks) {
     EXPECT_TRUE(b.anchor.isEmpty());
 }
 
+// ANTS-2046 — a GFM task bullet with NO authored ID and a TRAILING
+// **bold** deferral marker must take its headline from the leading item
+// text, not the trailing bold. Regression for the Vestige Phase-9C audio
+// slice where seven siblings all collapsed to "deferred to Phase 10." and
+// were each handed the SAME fabricated content-hash id (a content-hash of
+// the wrong headline). Fixing the headline source restores both the real
+// titles and per-bullet unique ids.
+TEST(AdapterReadGfm, TrailingBoldDoesNotBecomeHeadline) {
+    const QString md = QStringLiteral(
+        "## Phase 9C Audio\n"
+        "- [ ] Ambient soundscapes (biome-based) — **deferred to Phase 10.**\n"
+        "- [ ] Music system (layered tracks) — **deferred to Phase 10.**\n"
+        "- [ ] Audio occlusion (raycast-based) — **deferred to Phase 10.**\n");
+    const auto bullets = RoadmapDialog::parseBullets(md);
+    ASSERT_EQ(bullets.size(), 3);
+    // Headline keeps the leading item text, not the trailing bold marker.
+    EXPECT_TRUE(bullets[0].headline.startsWith(QStringLiteral("Ambient soundscapes")))
+        << "got: " << bullets[0].headline.toUtf8().constData();
+    EXPECT_TRUE(bullets[1].headline.startsWith(QStringLiteral("Music system")))
+        << "got: " << bullets[1].headline.toUtf8().constData();
+    EXPECT_TRUE(bullets[2].headline.startsWith(QStringLiteral("Audio occlusion")))
+        << "got: " << bullets[2].headline.toUtf8().constData();
+    // No literal markdown asterisks leak into the headline.
+    for (const auto &b : bullets) {
+        EXPECT_FALSE(b.headline.contains(QStringLiteral("**")))
+            << "literal markdown leaked: " << b.headline.toUtf8().constData();
+    }
+    // Distinct headlines → distinct synthetic ids (Defect A was a single
+    // shared fabricated id across all siblings).
+    QSet<QString> ids;
+    for (const auto &b : bullets) {
+        EXPECT_TRUE(b.synthetic);
+        EXPECT_FALSE(ids.contains(b.id))
+            << "shared fabricated id across siblings: " << b.id.toUtf8().constData();
+        ids.insert(b.id);
+    }
+    EXPECT_EQ(ids.size(), 3);
+}
+
+// ANTS-2046 — the head-anchored bold-ID + trailing prose case (the GFM
+// convention: a leading bold is an ID label, the prose after it is the
+// headline) must be unaffected by the trailing-bold gate. Regression guard
+// so the fix doesn't over-correct the normal `- [ ] **Id.** headline` form.
+TEST(AdapterReadGfm, HeadAnchoredBoldIdKeepsTrailingHeadline) {
+    const QString md = QStringLiteral(
+        "## Section\n"
+        "- [ ] **Sh9.** The real headline after the bold ID\n");
+    const auto bullets = RoadmapDialog::parseBullets(md);
+    ASSERT_EQ(bullets.size(), 1);
+    EXPECT_EQ(bullets[0].id, QStringLiteral("Sh9"));
+    EXPECT_FALSE(bullets[0].synthetic);
+    EXPECT_EQ(bullets[0].headline,
+              QStringLiteral("The real headline after the bold ID"));
+}
+
 // Caret anchor extraction — the locator handle for Tier 2.
 TEST(AdapterReadGfm, CaretAnchorExtracted) {
     const QString md = QStringLiteral(

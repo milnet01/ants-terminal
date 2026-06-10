@@ -5048,16 +5048,23 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     QStringList lines = markdown.split(QChar('\n'));
 
     // 5. format detect (GFM first, then ants-v1 — mirrors single-flip).
+    // ANTS-2048 — pass-headings check FIRST, unconditionally, mirroring the
+    // single-flip path (cmdRoadmapLogFlip). A `#### Pass N.M` heading
+    // roadmap routinely carries stray `- [ ]` sub-tasks under its passes;
+    // those make walkGfmBullets non-empty, so the OLD code (which gated the
+    // pass-headings refusal behind `!isGfm`) let isGfm win and the batch
+    // silently walked the GFM path → per-locator bullet_not_found instead
+    // of the precise format_mismatch the caller needs. parseBullets
+    // classifies the whole doc, so the strong 2+2 pass-headings signal
+    // beats a lone checkbox (see detectRoadmapFormat).
+    if (rcBulletsArePassHeadings(RoadmapDialog::parseBullets(markdown)))
+        return rcPassHeadingsWriteRefusal(
+            roadmapPath, QStringLiteral("flip_batch"));
     const bool isGfm = !walkGfmBullets(lines).isEmpty();
     bool isV1 = false;
     if (!isGfm && markdownBytes > kRoadmapMinParseableSize)
         isV1 = !walkAntsV1Bullets(lines).isEmpty();
     if (!isGfm && !isV1) {
-        // ANTS-2031 — precise format_mismatch on a `#### Pass N.M`
-        // heading roadmap (parses on read; no batch-flip writer yet).
-        if (rcBulletsArePassHeadings(RoadmapDialog::parseBullets(markdown)))
-            return rcPassHeadingsWriteRefusal(
-                roadmapPath, QStringLiteral("flip_batch"));
         return rlErr(QStringLiteral("unrecognised_format"),
             QStringLiteral("roadmap_log: \"%1\" parsed zero bullets (neither "
                            "GFM-task-list nor ants-v1) — cannot flip_batch")

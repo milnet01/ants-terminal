@@ -105,6 +105,33 @@ TEST(TestAuditPolyglot, InvA1ScopedFrontendPicksJest) {
     EXPECT_EQ(1, r.totalFiles);
 }
 
+// ANTS-2047 — vitest.config.* labels the framework "vitest" (not "jest",
+// which also matches package.json), and the jest/vitest globs include
+// .tsx/.jsx so React-style component tests are counted. Pre-fix this
+// frontend reported total_files:1 (only the .test.ts), silently dropping
+// the .tsx/.jsx tests — the 83%-of-suite blind spot MAME Curator hit.
+TEST(TestAuditPolyglot, InvA6VitestTsxJsxGlobs) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    touch(tmp.path(), "frontend/package.json", QByteArrayLiteral("{}\n"));
+    touch(tmp.path(), "frontend/vitest.config.ts",
+          QByteArrayLiteral("export default {}\n"));
+    touch(tmp.path(), "frontend/src/a.test.ts",
+          QByteArrayLiteral("test('x', () => {});\n"));
+    touch(tmp.path(), "frontend/src/Button.test.tsx",
+          QByteArrayLiteral("test('btn', () => {});\n"));
+    touch(tmp.path(), "frontend/src/Card.test.tsx",
+          QByteArrayLiteral("test('card', () => {});\n"));
+    touch(tmp.path(), "frontend/src/util.spec.jsx",
+          QByteArrayLiteral("test('u', () => {});\n"));
+    const auto r = partitionAt(tmp.path(), QStringLiteral("path:frontend"));
+    EXPECT_TRUE(r.ok) << "code=" << r.code.toStdString();
+    EXPECT_EQ("vitest", r.framework.toStdString())
+        << "INV-A6: vitest.config.ts must label the framework vitest, not jest";
+    // 1 .test.ts + 2 .test.tsx + 1 .spec.jsx = 4 (pre-fix: 1).
+    EXPECT_EQ(4, r.totalFiles)
+        << "INV-A6: .tsx/.jsx test files must be included in the partition";
+}
+
 TEST(TestAuditPolyglot, InvA2ScopedSubdirNoSignalFallsBackToRoot) {
     QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
     touch(tmp.path(), "pyproject.toml");
