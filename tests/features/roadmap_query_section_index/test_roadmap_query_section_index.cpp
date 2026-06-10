@@ -129,13 +129,16 @@ TEST(roadmap_query_section_index, Inv7Ants1848StatusFiltersEmission) {
            "emission loop");
     // The guard must key on the *_id_only tally (activeWithId /
     // shippedWithId), not the emoji-only count, so the kept set matches
-    // the default bullets[] predicate.
+    // the default bullets[] predicate. ANTS-2052 routed the drop through
+    // a useRawPredicate ternary so the legacy fallback can switch to the
+    // raw emoji count; the default (id-only) arm is still the predicate
+    // ANTS-1848 specifies.
     expect(contains(cpp,
-               "filter == QLatin1String(\"active\")  && t.activeWithId  == 0"),
-           "ANTS-1848: active filter skips sections with activeWithId==0");
+               "useRawPredicate ? t.active  == 0 : t.activeWithId  == 0"),
+           "ANTS-1848/2052: active filter drops activeWithId==0 by default");
     expect(contains(cpp,
-               "filter == QLatin1String(\"shipped\") && t.shippedWithId == 0"),
-           "ANTS-1848: shipped filter skips sections with shippedWithId==0");
+               "useRawPredicate ? t.shipped == 0 : t.shippedWithId == 0"),
+           "ANTS-1848/2052: shipped filter drops shippedWithId==0 by default");
     // INV-4 must still hold for the default: the loop still walks the
     // full index so status:all emits every section.
     expect(contains(cpp, "INV-4 — emit EVERY indexed section"),
@@ -489,6 +492,50 @@ TEST(roadmap_query_section_index, DispatchForwardsIncludeBody) {
            "dispatch: lambda reads include_body from args");
     expect(contains(cpp, "req[\"include_body\"]"),
            "dispatch: lambda writes include_body into cmdRoadmapQuery req");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// INV-15 (ANTS-2052) — legacy-roadmap fallback for the lean status
+// filter. On a fully ID-less roadmap the ANTS-1848 id-only predicate
+// drops every section under status:active/shipped, so section_index
+// (and the session_orient bundle that embeds it) returned an empty
+// sections[] with no hint — reading as "no active work" on a non-empty
+// roadmap (RetroArch / Music Production cross-session reports). The
+// branch now falls back to the raw emoji predicate when the id-only
+// predicate keeps zero sections AND the raw count is > 0. Source-scrape
+// style, matching the sibling emission INVs (the emission lives in the
+// private cmdRoadmapQuery; functional coverage is at the rollupCounts
+// level in the INV-10/INV-11 tests above).
+TEST(roadmap_query_section_index, Inv15Ants2052LegacyFallback) {
+    expect_reset();
+    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string fn = functionSlice(
+        cpp, "QJsonDocument RemoteControl::cmdRoadmapQuery(");
+    expect(!fn.empty(),
+           "INV-15: cmdRoadmapQuery body must be locatable");
+    expect(contains(fn, "ANTS-2052"),
+           "INV-15: ANTS-2052 anchor present in the section_index branch");
+    // The fallback decision: zero id-only survivors AND a non-zero raw
+    // emoji total for the filter.
+    expect(contains(fn, "useRawPredicate = (idOnlySurvivors == 0 && rawTotal > 0)"),
+           "INV-15: fallback fires only when the id-only predicate keeps "
+           "nothing and the raw emoji count is non-zero");
+    // The raw totals are summed from the un-rolled `direct` map so rollup
+    // can't double-count parent+child.
+    expect(contains(fn, "rawActiveTotal  += it.value().active") &&
+               contains(fn, "rawShippedTotal += it.value().shipped"),
+           "INV-15: raw totals summed from the direct (un-rolled) map");
+    // The emission drop predicate switches on useRawPredicate so an
+    // id-less roadmap lists sections by their emoji count.
+    expect(contains(fn, "useRawPredicate ? t.active  == 0 : t.activeWithId  == 0") &&
+               contains(fn, "useRawPredicate ? t.shipped == 0 : t.shippedWithId == 0"),
+           "INV-15: drop predicate honours the raw fallback");
+    // When the fallback fires, the envelope flags it + exposes raw counts.
+    expect(contains(fn, "out[\"legacy_format\"]     = true;") &&
+               contains(fn, "out[\"raw_active_count\"]  = rawActiveTotal;") &&
+               contains(fn, "out[\"raw_shipped_count\"] = rawShippedTotal;"),
+           "INV-15: legacy_format + raw_active_count + raw_shipped_count "
+           "emitted on the fallback path");
     EXPECT_EQ(0, expect_failures());
 }
 

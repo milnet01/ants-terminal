@@ -64,6 +64,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log flip/flip_batch/append now recognise lowercase bracket ids in ants-v1 roadmaps** (ANTS-2051)
+  The write parser required an uppercase-led [A-Z...-NNNN] id, so it refused markerless ants-v1 roadmaps with lowercase ids like [mame-curator-1065] that roadmap_query reads fine. The bracket-id leading letter is now case-insensitive, matching the read path. (Fully id-less line_range/headline flip targeting remains tracked under ANTS-2051.)
+
+- **session_orient / roadmap_query section_index no longer read as an empty queue on a fully id-less roadmap** (ANTS-2052)
+  On a roadmap whose bullets carry no [PROJ-NNNN] ids, the status:active filter dropped every section and returned sections:[] (and session_orient's bundle looked empty). It now falls back to the raw emoji-status counts and flags the envelope with legacy_format:true + raw_active_count + raw_shipped_count.
+
 - **Bulk "mark done" on `#### Pass N.M` roadmaps now gives the right "can't write this format yet" message.** (ANTS-2048)
   On a heading-style roadmap that also contained a stray checklist `- [ ]` line, the bulk status-flip mis-read the file as a plain checklist and answered "not found" instead of the helpful "this heading format isn't writable yet — edit it directly" message. The format is now detected correctly regardless of stray checkboxes.
 

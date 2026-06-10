@@ -11,8 +11,14 @@ project's own roadmap.
 
 - **INV-1 / walker recognises ants-v1 bullet shape.**
   `walkAntsV1Bullets` accepts lines matching
-  `^- (✅|📋|🚧|💭) \[<PREFIX-NNNN>\] <headline>...` and skips
-  fenced code blocks.
+  `^- (✅|📋|🚧|💭) \[<prefix-NNNN>\] <headline>...` and skips
+  fenced code blocks. ANTS-2051 — the bracket-ID leading letter is
+  case-insensitive (`[A-Za-z][A-Za-z0-9_-]*-\d{1,8}`), mirroring the
+  read path's shared `idTokenPattern()`, so lowercase project prefixes
+  like `[mame-curator-1065]` are recognised and flippable. The prior
+  uppercase-only `[A-Z]…` form left markerless ants-v1 roadmaps that
+  `roadmap_query` reads fine effectively read-only to `roadmap_log`
+  (MAME Curator HIGH, cross-session report 2026-06-10).
 - **INV-2 / flip is GFM-first, ants-v1 fallback.** When
   `walkGfmBullets` returns ≥ 1 bullet, the GFM path runs (no
   behaviour change from ANTS-1428). When GFM returns zero AND

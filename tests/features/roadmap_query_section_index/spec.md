@@ -91,6 +91,24 @@ tripping a full bullet payload.
   `shouldEmitPaginationFields` opt-in as the bullets path.
   `legacy_format_sections[]` stays the full-roadmap hint (not per-page).
   Anchor: `ANTS-1729`.
+- **INV-15 / legacy-roadmap fallback for the lean status filter
+  (ANTS-2052).** On a fully ID-less roadmap (every actionable bullet
+  is a `- 📋 **…**` line with no `[PROJ-NNNN]` token), the ANTS-1848
+  id-only predicate would drop EVERY section under `status:"active"`
+  /`"shipped"`, so `section_index` returned `sections:[]` — and, because
+  a dropped section never reaches the per-section legacy check (INV-13),
+  with no legacy hint either. The flagship `session_orient` bundle (which
+  calls `section_index` with `status:"active"`) then read as "no active
+  work" on a non-empty roadmap. The branch now detects that exact
+  dead-end — the id-only predicate keeps **zero** sections **and** the raw
+  emoji count for the filter is `> 0` — and falls back to the raw
+  active/shipped emoji predicate so the sections list instead of
+  vanishing. When the fallback fires the envelope carries
+  `legacy_format: true` + `raw_active_count` + `raw_shipped_count`
+  (emoji-based totals computed from the un-rolled `direct` map so rollup
+  can't double-count). A well-tagged roadmap (≥1 id-bearing section)
+  keeps the exact ANTS-1848 path — `raw_*_count` stay absent.
+  Anchor: `ANTS-2052`.
 
 ## Test scope
 

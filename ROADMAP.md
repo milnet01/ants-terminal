@@ -15046,6 +15046,7 @@ subsection.
   Kind: enhance.
   Source: cross-session-report-2026-05-19 (RetroArch CC session
   bundle 71).
+  Recurring, corroborated again 2026-06-10 (RetroArch, 7+ sessions). Closing Bundle 78 required a hand-Edit of the "## 📊 Bundle progress" markdown table to append the Bundle-78 row (commit/theme/sites cells) because no verb appends a bundle row — the only remaining hand-edit in an otherwise verb-driven close-out (the bullet flips themselves now go through op:flip_batch + per-locator note, ANTS-1690). Still the only write-side ask not shipped.
 
 - ✅ [ANTS-1714] **`roadmap_query mode:"section_index"` ignores `status:"active"` + lacks a per-section legacy-format flag.**
   Two related section_index ergonomics gaps from the 2026-05-20 cross-session reports (3D_Engine Ts20-PA/IS/CV addenda + RetroArch Bundle 72 §3). (a) `status:"active"` is a no-op in `mode:"section_index"`: on a 456 KB / ~223-section ROADMAP every section is returned including fully-shipped ones with `active_count==0`, producing a ~54 KB envelope that trips the persisted-output truncation path — contradicting the tool doc's "< 5 KB on a 500-bullet roadmap" claim (the estimate is bullet-count-based but the cost is section-count-based). Fix: when `status:"active"` is passed, drop sections whose `active_count==0` from `sections[]`; OR add an explicit `nonempty_only:true` flag; and correct the doc estimate to ~250 bytes/section. Pagination (offset/limit) for section_index would also help. (b) For legacy/narrator-format roadmaps (no `[PROJ-NNNN]` ids), the per-section `active_count_id_only:0` reads as "section empty" even when the section has N active narrator bullets — the top-level `legacy_format_sections[]` (ANTS-1622) covers it but a per-section `legacy_format:true` flag mirroring that array would let a caller spot the discrepancy without grepping the section name against the top-level list.
@@ -15791,6 +15792,8 @@ corroborated) are recorded in the feedback files, not re-roadmapped.
   Lanes: roadmapindex, mcp-roadmap-query.
   Source: cross-session-report-2026-06-10 (Vestige / 3D engine).
   Resolved (2026-06-10): in RoadmapDialog::parseBullets (roadmapdialog.cpp) a bold span is now treated as the headline only when HEAD-ANCHORED; a trailing bold on a GFM task bullet falls through to the leading-item-text path (with `**` stripped), so the real title is kept and the per-headline content-hash id is unique per sibling. Regression: AdapterReadGfm.TrailingBoldDoesNotBecomeHeadline + HeadAnchoredBoldIdKeepsTrailingHeadline.
+  Localized 2026-06-10 (Vestige): the defect fires ONLY when an ID-less GFM task bullet has a trailing "— **bold**" span. Same-repo A/B oracle for the regression fixture: (BAD) Vestige ROADMAP.md Phase-9C Audio — 7 bullets each ending "— **deferred to Phase 10.**" all collapse to one shared synthetic id 35ra39wbn1 with headline "deferred to Phase 10."; (GOOD control) the Localization section — 4 ID-less bullets ending in plain prose — already correct: 4 distinct synthetic ids + leading-text headlines. So the plain-prose path is fine; the fix is narrowly the trailing-bold path: ignore a trailing bold span when extracting headline/id (use leading item text) and make synthesized ids per-bullet-unique there too.
+  Correction (2026-06-10, maintainer): verified against CURRENT source — the trailing-bold fix IS present and locked. roadmapdialog.cpp:1201-1211 adds the head-anchored gate (a trailing bold span is not head-anchored, so it never stands in as the headline), and 1234-1254 routes such GFM bullets to the leading-prose path with ** de-markup → unique-per-sibling headline → unique synthetic id. Regression test tests/features/mcp_adapter_github_tasklist/test_adapter_read.cpp:170-220 replays the exact Vestige Phase-9C trio and asserts distinct headlines + distinct synthetic ids. Vestige's 2026-06-10 repro (still seeing shared id 35ra39wbn1) was run against a STALE binary predating ec3e204 — it should retest after the user relaunches. No reopen; stays ✅. The earlier "reopening" note above is withdrawn.
 
 - ✅ [ANTS-2047] **test_audit_partition: jest/vitest default test_globs omit `.tsx`/`.jsx`, so React/Preact/Solid component tests are silently excluded from the partition (ok:true, no warning).**
   Verified in code: testauditengine.cpp:~85-89 defines the "jest" framework with
@@ -15833,6 +15836,66 @@ corroborated) are recorded in the feedback files, not re-roadmapped.
   Lanes: roadmapindex, mcp-roadmap-log.
   Source: cross-session-report-2026-06-10 (RetroDB, Tier-2 close-out, v3.6.35).
   Resolved (2026-06-10): two-part fix. (1) detectRoadmapFormat now checks the strong 2+2 pass-headings signal BEFORE the hasGfm fallback, so a stray `- [ ]` sub-task no longer flips a `#### Pass N.M` doc to github-task-list. (2) cmdRoadmapLogFlipBatch now checks rcBulletsArePassHeadings UNCONDITIONALLY before the isGfm branch (the old guard was gated behind !isGfm, which a stray checkbox defeated), mirroring the single-flip path. flip_batch now returns the precise format_mismatch, not bullet_not_found. Regression: McpRoadmapLogPassFormatMismatch.Inv6StrayCheckboxStillPassHeadings.
+  Localized 2026-06-10 (RetroDB) to the flip_batch code path. On the same build where op:flip_batch misdetects a "#### Pass N.M" heading roadmap as gfm and returns bullet_not_found, the SINGULAR op:flip (id:"PASS-47-6-A", to_status:shipped) returns the correct {code:"format_mismatch", format:"pass-headings"} envelope with a hint naming ANTS-2031. So singular flip's detection is sound; flip_batch is not sharing it (likely resolving locators before the rcBulletsArePassHeadings check, or running its own detection). Fix: make flip_batch reuse the singular path's pass-headings check and emit format_mismatch before per-locator resolution.
+
+- 📋 [ANTS-2051] **roadmap_log write parser (walkAntsV1Bullets) is stricter than the read parser — flip/flip_batch/append refuse markerless ants-v1 roadmaps that roadmap_query reads fine.**
+  MAME Curator (HIGH) + Album Builder both hit this 2026-06-10. roadmap_log's
+  mutating verbs (flip / flip_batch / append) detect format via
+  walkAntsV1Bullets (remotecontrol.cpp:1099), which requires — immediately
+  after the status emoji — a `[id]` bracket matching rxAntsV1IdBracket =
+  `\[([A-Z][A-Z0-9_-]*-\d{1,8})\]` (UPPERCASE leading letter). So: (a)
+  `- 📋 [mame-curator-1065] **…**` — lowercase project prefix → no match →
+  refuses with unrecognised_format ("parsed zero bullets, neither GFM nor
+  ants-v1"), even though session_orient reports format:ants-v1
+  (ants_v1_emoji_hit:true) and roadmap_query reads every bullet; (b)
+  `- 📋 **…**` fully id-less (Album Builder, 366-bullet roadmap) → no bracket
+  at all → skipped → same refusal. The READ path (RoadmapDialog::parseBullets)
+  is far more lenient: ANTS-1987 handles lowercase bracket ids (`[Cl9]`), and
+  id-less GFM bullets get synthetic ids. Net: any markerless ants-v1 roadmap
+  whose ids aren't `[A-Z…-NNNN]` is effectively read-only to roadmap_log — the
+  canonical close-the-item path falls back to hand-Edit. Fix: align the write
+  parser's bracket-id acceptance with the read path (accept lowercase project
+  prefixes via the rxId `-NNNN]` suffix anchor + ANTS-1987 bracket handling);
+  for fully id-less bullets, either synthesize ids like the read path or honour
+  the line_range / headline locators flip_batch already accepts. Secondary:
+  MAME noted the unrecognised_format hint's status emoji render mangled
+  (ð/ð§/â/ð­ = UTF-8 bytes decoded as Latin-1) — likely just terminal display
+  of the literal hint, but worth a glance for a non-UTF-8 codec in the hint
+  string.
+  **Layman:** When a project’s roadmap uses the emoji format but its item IDs aren’t the standard ALL-CAPS style (or there’s no ID at all), the “mark item done” tools say “I can’t read this file” — even though the roadmap viewer reads it perfectly. The reading and writing code disagree on what counts as a valid item, forcing a manual edit.
+  Kind: fix.
+  Lanes: mcp-roadmap-log, remotecontrol, roadmapindex.
+  Source: cross-session-reports-2026-06-10 (MAME Curator HIGH + Album Builder).
+  Corroborated 2026-06-10 by MAME Curator (HIGH) and Music Production, both blocked on real writes. MAME: op:flip_batch + op:flip on canonical "- 📋 [mame-curator-1065] **…**" bullets → unrecognised_format ("parsed zero bullets"), same session session_orient reported ants_v1_emoji_hit:true / format_marker_present:false and roadmap_query read every bullet; fell back to hand-Edit. Music (366-bullet markerless ants-v1): op:flip_batch with line_range locators → same unrecognised_format. Second tell from MAME: the refusal hint's status emoji render mangled (ð/ð§/â/ð­ = 📋🚧✅💭 UTF-8 bytes decoded as Latin-1) — points at a non-UTF-8 codec matching the status column in the write parser, so "- 📋 …" never matches a Latin-1 "- ð …" pattern. Fix both: (a) give the write parser the read path's emoji sniffer fallback when the marker is absent; (b) audit the status-column codec.
+  Progress (2026-06-10): Part 1 shipped — rxAntsV1IdBracket leading letter relaxed from [A-Z] to [A-Za-z] (remotecontrol.cpp), mirroring the read path's idTokenPattern(), so lowercase project prefixes like [mame-curator-1065] are now recognised by walkAntsV1Bullets and flippable via flip/flip_batch/append. This resolves MAME Curator's HIGH blocker (their ids are lowercase-but-present). Test: roadmap_log_flip_ants_v1 INV-1 updated + regression guard against the old uppercase-only form. The mangled-emoji "Latin-1 codec" tell was investigated and is NOT a parser bug — walkAntsV1Bullets matches the status column via QString::fromUtf8(kAdapterEmoji*) (correct UTF-8); only the refusal hint STRING renders mangled in some terminals (cosmetic). Part 2 still OPEN — fully id-less bullets (- 📋 **…** with no bracket, Music Production / Album Builder) need the walker to emit id-less bullets so line_range/headline locators can target them; this changes file-mutating flip targeting and should land behind the ANTS-2049/2050 behavioral E2E harness to verify flips don't mis-route, rather than blind on source-scrape tests alone.
+
+- ✅ [ANTS-2052] **session_orient + roadmap_query mode:section_index status:active collapse to empty on a fully id-less legacy roadmap (reads as “no active work”).**
+  RetroArch + Album Builder, both 2026-06-10. ANTS-1848 made
+  roadmap_query mode:section_index status:active drop sections whose
+  *_count_id_only is 0. On a fully id-less ants-v1 roadmap
+  (format_marker_present:false, every actionable bullet `- 📋 **…**` with no
+  [PROJ-NNNN]), EVERY section has active_count_id_only:0 while the raw
+  active_count > 0 — so section_index status:active returns sections:[]
+  entirely, and session_orient (which calls it with status:active) ships an
+  empty sections bundle alongside active_bullets.count:0. The active_bullets
+  warning ("default ID-filter dropped all N narrator bullets") is the only
+  signal the queue isn't actually empty. RetroArch: ~30 active bullets across
+  ~6 sections → sections:[]; Album Builder: 5 active 📋 items → count:0. Fix
+  options (any one closes it): (a) when section_index status:active would drop
+  ALL sections AND the raw active_count > 0 (the all-id-less signal), fall back
+  to the non-_id_only active_count and emit legacy_format:true; (b) add
+  raw_active_count to the session_orient / section_index envelope so the true
+  non-zero count is visible without a second call; (c) at minimum, session_orient
+  adds a hint when active_bullets dropped everything AND sections_index is empty
+  ("legacy-format roadmap — re-issue roadmap_query with status:all /
+  include_narrator_bullets:true"). Refinement of ANTS-1622 / ANTS-1848 — the
+  _id_only counts are correct, but the flagship orientation path keys on them.
+  **Layman:** On a roadmap that uses the emoji format but gives items no [PROJECT-1234] IDs, the one-call “what should I work on?” startup summary says there’s nothing active — even when there are lots of open items. A fresh session could wrongly conclude the queue is empty.
+  Kind: enhancement.
+  Lanes: mcp-session-orient, mcp-roadmap-query, remotecontrol.
+  Source: cross-session-reports-2026-06-10 (RetroArch Bundle 78 + Album Builder).
+  Corroborated 2026-06-10 by Music Production (5 active 📋 in test-audit section → active_bullets.count:0) and RetroArch (~30 active bullets across ~6 sections → session_orient sections_index:[] AND active_bullets.count:0; only the "default ID-filter dropped all 23 bullets" warning revealed the truth). RetroArch pinned it: section_index status:active (ANTS-1848) drops sections whose *_count_id_only is 0, so on a fully id-less roadmap every section is dropped and session_orient (which calls section_index with status:active) ships an empty bundle. Preferred fix (b): add raw_active_count to the section_index/session_orient envelope; plus (a) fall back to non-_id_only counts + legacy_format:true when ALL sections would drop but raw active_count>0.
+  Resolved (2026-06-10): section_index now detects the fully-id-less dead-end (id-only predicate keeps zero sections AND raw emoji count > 0) and falls back to the raw active/shipped predicate, emitting top-level legacy_format:true + raw_active_count + raw_shipped_count. session_orient embeds section_index verbatim so its bundle inherits the fix. Well-tagged roadmaps keep the exact ANTS-1848 path. remotecontrol.cpp; locked by roadmap_query_section_index INV-15 + spec.md. Full suite 1996/1996 green.
 
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 
@@ -16758,6 +16821,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   **Layman:** When you search for several words at once and get nothing back, the tool should tell you it searched for the exact phrase, not the words separately.
   Kind: enhancement.
   Source: in-session-2026-06-06.
+  Corroborated 2026-06-10 by two more sessions: Music Production (query "pip install whisperx hint sys.executable WhisperX not installed" → 0 matches; literal "pip install whisperx" → 13 matches in 13 ms) and RetroDB (query "About modal RetroDB version" → 0 matches; strings exist in templates/base.html). Both confirm the multi-token query is matched as one literal/regex pattern. Beyond the advisory hint already scoped here, both suggested an optional OR-fallback that ranks by significant-term overlap when the strict match is empty — worth weighing as a follow-up if the hint alone proves insufficient.
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 

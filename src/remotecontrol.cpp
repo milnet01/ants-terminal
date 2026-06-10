@@ -1093,8 +1093,16 @@ struct AntsV1Bullet {
 // Match the bracket-ID token that immediately follows the status
 // emoji + space. Anchored loosely; the walker checks the prefix
 // explicitly before invoking this.
+// ANTS-2051 — accept a lowercase / mixed-case leading letter so the
+// write parser recognises the same bracket ids the READ path does.
+// The read path's shared idTokenPattern() (roadmapdialog.cpp) is
+// `[A-Za-z][A-Za-z0-9_-]*-\d+`; the old `[A-Z]…` here rejected
+// lowercase project prefixes like `[mame-curator-1065]`, so flip /
+// flip_batch / append refused a markerless ants-v1 roadmap that
+// roadmap_query reads fine (MAME Curator HIGH, cross-session 2026-06-10).
+// Keep the {1,8} digit bound as a sanity ceiling.
 static const QRegularExpression rxAntsV1IdBracket(
-    QStringLiteral("\\[([A-Z][A-Z0-9_-]*-\\d{1,8})\\]"));
+    QStringLiteral("\\[([A-Za-z][A-Za-z0-9_-]*-\\d{1,8})\\]"));
 
 QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
     QVector<AntsV1Bullet> out;
@@ -2554,14 +2562,52 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             req.value(QStringLiteral("include_section_etags")).toBool(false);
         QString sectionEtagsMarkdown;   // lazy-loaded once per call
         bool sectionEtagsMarkdownLoaded = false;
+        // ANTS-2052 — legacy-roadmap fallback for the lean status filter.
+        // On a fully id-less roadmap every section's *_id_only tally is 0,
+        // so the ANTS-1848 predicate below would drop EVERY section and the
+        // flagship session_orient bundle reads as "no active work" even
+        // though the emoji counts are non-zero (RetroArch / Music Production
+        // cross-session reports, 2026-06-10). Worse, a section dropped by the
+        // filter never reaches the per-section legacy_format check further
+        // down, so the caller got sections:[] with no hint at all. Detect the
+        // exact dead-end — the id-only predicate keeps nothing AND the raw
+        // emoji count for the filter is > 0 — and fall back to the raw
+        // active/shipped predicate, flagging the envelope so the caller knows
+        // the surfaced counts are emoji-based, not id-based. raw totals come
+        // from `direct` (un-rolled) so they aren't double-counted by rollup.
+        int rawActiveTotal = 0, rawShippedTotal = 0;
+        for (auto it = direct.constBegin(); it != direct.constEnd(); ++it) {
+            rawActiveTotal  += it.value().active;
+            rawShippedTotal += it.value().shipped;
+        }
+        bool useRawPredicate = false;
+        if (filter == QLatin1String("active") ||
+            filter == QLatin1String("shipped")) {
+            int idOnlySurvivors = 0;
+            for (const auto &sec : std::as_const(m_roadmapIndex)) {
+                const auto t = rolled.value(sec.slug,
+                                            RoadmapIndex::SectionCounts{});
+                if ((filter == QLatin1String("active")  && t.activeWithId  > 0) ||
+                    (filter == QLatin1String("shipped") && t.shippedWithId > 0))
+                    ++idOnlySurvivors;
+            }
+            const int rawTotal = (filter == QLatin1String("active"))
+                                     ? rawActiveTotal : rawShippedTotal;
+            useRawPredicate = (idOnlySurvivors == 0 && rawTotal > 0);
+        }
         QJsonArray sections;
         QJsonArray legacyFormatSections;
         for (const auto &sec : std::as_const(m_roadmapIndex)) {
             const auto t = rolled.value(sec.slug,
                                         RoadmapIndex::SectionCounts{});
             // ANTS-1848 — status filter drops zero-id-count sections.
-            if ((filter == QLatin1String("active")  && t.activeWithId  == 0) ||
-                (filter == QLatin1String("shipped") && t.shippedWithId == 0)) {
+            // ANTS-2052 — under the legacy fallback, drop by the raw emoji
+            // count instead so an id-less roadmap still lists its sections.
+            const bool dropActive  = (filter == QLatin1String("active")) &&
+                (useRawPredicate ? t.active  == 0 : t.activeWithId  == 0);
+            const bool dropShipped = (filter == QLatin1String("shipped")) &&
+                (useRawPredicate ? t.shipped == 0 : t.shippedWithId == 0);
+            if (dropActive || dropShipped) {
                 continue;
             }
             QJsonObject obj;
@@ -2647,6 +2693,17 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 "against those slugs with include_narrator_bullets:true "
                 "to retrieve their content.")
                     .arg(legacyFormatSections.size());
+        }
+        // ANTS-2052 — when the lean id-only predicate would have hidden ALL
+        // active/shipped work on an id-less roadmap, we fell back to the raw
+        // emoji predicate above. Flag it at the top level and expose the true
+        // raw count so a fresh session_orient bundle no longer reads as an
+        // empty queue. raw_*_count is emoji-based; the per-section legacy hint
+        // already steers a bullets-mode follow-up to include_narrator_bullets.
+        if (useRawPredicate) {
+            out["legacy_format"]     = true;
+            out["raw_active_count"]  = rawActiveTotal;
+            out["raw_shipped_count"] = rawShippedTotal;
         }
         // ANTS-1646 — surface duplicate-ID collisions detected during
         // cache fill. Stays absent on a clean roadmap so the envelope
