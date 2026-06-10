@@ -15834,6 +15834,60 @@ corroborated) are recorded in the feedback files, not re-roadmapped.
   Source: cross-session-report-2026-06-10 (RetroDB, Tier-2 close-out, v3.6.35).
   Resolved (2026-06-10): two-part fix. (1) detectRoadmapFormat now checks the strong 2+2 pass-headings signal BEFORE the hasGfm fallback, so a stray `- [ ]` sub-task no longer flips a `#### Pass N.M` doc to github-task-list. (2) cmdRoadmapLogFlipBatch now checks rcBulletsArePassHeadings UNCONDITIONALLY before the isGfm branch (the old guard was gated behind !isGfm, which a stray checkbox defeated), mirroring the single-flip path. flip_batch now returns the precise format_mismatch, not bullet_not_found. Regression: McpRoadmapLogPassFormatMismatch.Inv6StrayCheckboxStillPassHeadings.
 
+### 🧪 End-to-end user-level test harness (user request 2026-06-10)
+
+A new testing initiative the user requested: give the agent a repeatable way to
+exercise Ants Terminal the way a human would — launch the real app, drive real
+input, open dialogs, run Claude Code inside it — and observe the results, then a
+suite of feature test cases to run through that harness. This complements (does
+not replace) the 1996 automated unit/feature tests, which never drive the live
+GUI/PTY end to end. Item 2 depends on item 1.
+
+- 📋 [ANTS-2049] **Build an end-to-end harness that lets the agent drive Ants Terminal as a user and observe the result.**
+  Spec-first (run through /cold-eyes before building per the project's spec
+  discipline). Define a repeatable process for: (1) launching a live or
+  offscreen Ants instance dedicated to testing (must NOT relink/disturb the
+  user's running build/ instance — see ANTS-2025; likely a build-fast/ binary
+  or a `--e2e` flag); (2) DRIVING real user input — keystrokes, mouse clicks,
+  window resize, dialog interaction, paste, and launching Claude Code in a
+  tab. Decide the injection mechanism: Wayland tools (wtype/ydotool), QTest
+  key/mouse events on a test build, or a dedicated control socket on top of
+  the existing RemoteControl surface; (3) OBSERVING outcomes via the Ants MCP
+  terminal-state verbs already built for this (get_text, get_scrollback,
+  tab_list, current_state, last_selection) plus screenshots (Spectacle on
+  this Plasma 6 box — see the plasma6-custom-shortcuts note). State the RAM +
+  runtime budget and an eviction/teardown policy (kill the test instance,
+  clean temp profiles). Surfaces to reach: PTY I/O + rendering, scrollback +
+  search, tabs, dialogs (roadmap v2 / audit / settings / about /
+  review-changes), status-bar widgets, themes + opacity, image paste, session
+  persistence, SSH bookmarks, Lua plugins, and the Claude Code integration
+  chrome. This is the foundation; the test-case suite (next item) runs on top
+  of it.
+  **Layman:** Right now I can run the automated unit tests, but I can’t “sit down and use” the actual terminal the way you would — type into it, click buttons, open the dialogs, resize the window, run Claude Code inside it — and then check it looks/behaves right. This sets up a repeatable way for me to do exactly that, so feature checks aren’t limited to code-level tests.
+  Kind: implement.
+  Lanes: testing-infrastructure, claudeintegration, remotecontrol.
+  Source: user-request-2026-06-10.
+
+- 📋 [ANTS-2050] **Author a user-level test-case suite covering every feature, to run through the E2E harness.**
+  Depends on the harness item above. Enumerate test cases (each: steps →
+  expected observable result, runnable through the harness) covering every
+  user-facing feature: terminal basics (typing, line-wrap, ANSI colours,
+  UTF-8/CJK double-width, combining chars, ligatures), scrollback + search +
+  back-to-bottom / prompt-jump, tabs (open / close / rename / reorder /
+  title-colour), splits + multiplexing, alt-screen apps (vim/htop), dialogs
+  (roadmap v2, audit, settings, about, review-changes — geometry D1–D4 +
+  content), status-bar widgets (git branch chip, repo-visibility badge,
+  update notifier, tasks chip, model chip + pulse/undo), themes + opacity,
+  image paste auto-save, session persistence (save/restore), SSH bookmarks +
+  ControlMaster, Lua plugin sandbox, and the full Claude Code integration
+  surface (hooks, MCP chrome, task list, spinner de-dup). Group by subsystem
+  so a partial run can target one lane. Keep the suite in-repo (e.g.
+  docs/qa/ or tests/e2e/) so it versions with the code.
+  **Layman:** Once I can drive the real app, write down a checklist of “do X, expect Y” cases for every feature so I can run through them and confirm nothing is broken before a release — like a human QA pass, but repeatable.
+  Kind: test.
+  Lanes: testing-infrastructure, qa.
+  Source: user-request-2026-06-10.
+
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
 - ✅ [ANTS-1329] **Tasks dialog gets 3 px of vertical row
