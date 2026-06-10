@@ -30,6 +30,8 @@
 #include <string>
 #include <gtest/gtest.h>
 
+#include "../../_support/srcgrep.h"
+
 #ifndef SRC_MAINWINDOW_CPP_PATH
 #error "SRC_MAINWINDOW_CPP_PATH compile definition required"
 #endif
@@ -61,17 +63,12 @@ void fail(const char *label, const char *why) {
     ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
 }
 
-// Extract a function body from a translation unit by signature
-// prefix. Returns substring from the first matching signature to
-// the next `\nvoid ` (heuristic — good enough for top-level free /
-// member functions in the project; the body never contains a
-// top-level void).
+// Extract a function body from a translation unit by signature prefix.
+// Delegates to the brace-matched, literal-aware ants_test::slurpFunctionBody
+// (ANTS-1595) — the old `\nvoid ` sentinel heuristic bled across function
+// boundaries whenever a body itself contained a top-level `void` token.
 std::string functionBody(const std::string &src, const std::string &sig) {
-    const auto start = src.find(sig);
-    if (start == std::string::npos) return {};
-    const auto next = src.find("\nvoid ", start + sig.size());
-    return src.substr(start, next == std::string::npos ? std::string::npos
-                                                       : next - start);
+    return ants_test::slurpFunctionBody(src, sig);
 }
 
 }  // namespace

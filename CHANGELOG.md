@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Performance benchmarks now run in their own test lane, with an optional speed-regression gate.** (ANTS-1596)
+  The throughput benchmark no longer runs during ordinary correctness test runs (a new `perf` preset runs just the benchmarks). Setting `ANTS_PERF_MIN_MBPS` makes a benchmark run fail if speed drops below that floor, so a future slowdown is caught automatically rather than silently. (ANTS-1479)
+
 - **`changelog_log` now has a batch op (`add_batch`) — close a whole release in one call instead of one per entry, like the roadmap tool already does.** (ANTS-2044)
 
 - **`roadmap_log` now flags possible near-duplicate items when you add one — a non-blocking `possible_duplicates` heads-up, so the list doesn't fill with near-copies.** (ANTS-2043)
@@ -44,6 +47,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Test-suite reliability hardening.** (ANTS-1589)
+  Test failures now point at the real assertion line instead of a shared helper; temp directories and subprocess/git calls in several tests are now time-bounded and auto-cleaned, so a wedged helper can't hang or leak; and a few tests dropped brittle source-scanning shortcuts. No app-visible behavior change. (ANTS-1594, ANTS-1595, ANTS-1598, ANTS-1602, ANTS-1605, ANTS-1609, ANTS-1610)
+
 - **Roadmap dialog now remembers only its size, not its on-screen position** (ANTS-2012)
   It re-centers over the main window every time it opens (so it can't drift off-screen after you move the terminal to another monitor), matching every other dialog. The size you pick is still remembered. One-time effect: the dialog opens at its default 1200×800 the first time after this update, then remembers your new size.
 
@@ -57,6 +63,9 @@ for security-relevant changes.
   When a scan tool times out or crashes, audit_run already kept the results from the tools that finished (and still wrote the SARIF file to disk) — it never came back empty over one tool. The result now also says so directly with a `partial` flag and an `incomplete_tools` list, so you can see at a glance that a run was incomplete without digging through per-tool status.
 
 ### Fixed
+
+- **The built-in security audit now flags insecure `http://` links it previously missed.** (ANTS-1612)
+  The "insecure HTTP" check used a brittle character trick that accidentally skipped any address whose host started with certain letters (for example logging- or login-style hosts). It now checks every plain-HTTP link and excludes localhost / example / schema URLs at the filtering stage instead, so real insecure links stop slipping through.
 
 - **Oversized terminal input that overflows the write buffer now reports the lost bytes instead of dropping them silently** (ANTS-1994)
   When a very large paste or burst of input exceeds the kernel's pseudo-terminal buffer and the internal 4 MiB queue, the dropped bytes now raise the same "write lost" signal the queue-full path already used — so the loss is visible in diagnostics rather than disappearing without a trace.

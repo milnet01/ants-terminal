@@ -53,9 +53,13 @@ std::size_t countOccurrences(const std::string &hay, const std::string &needle) 
     return count;
 }
 
-void fail(const char *label, const std::string &why) {
-    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
+// ANTS-1589 — report failures at the CALL site, not this helper's line.
+// `failAt` takes file/line params; the `fail(...)` macro below injects the
+// caller's __FILE__/__LINE__ so ctest output points at the real assertion.
+void failAt(const char *file, int line, const char *label, const std::string &why) {
+    ADD_FAILURE_AT(file, line) << "[" << label << "] " << why;
 }
+#define fail(label, why) failAt(__FILE__, __LINE__, (label), (why))
 
 // Extract the body of a function from the source by searching for the
 // signature, then returning everything from the opening `{` through

@@ -9,14 +9,15 @@
 
 #include <cstdio>
 
-static int failures = 0;
-
 #define EXPECT(cond, msg) \
     do { \
         if (!(cond)) { std::fprintf(stderr, "FAIL: %s\n", msg); ++failures; } \
     } while (0)
 
 TEST(SshControlMaster, Main) {
+    // Counter lives in the TEST body, not at file scope, so it can't leak
+    // state across a bundled run (ANTS-1605).
+    int failures = 0;
 
     // INV-1: default + explicit false produce zero Control* tokens.
     {

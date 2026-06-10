@@ -28,9 +28,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
-#include <QStandardPaths>
 #include <QString>
-#include <QUuid>
+#include <QTemporaryDir>
 
 #include <cstdio>
 #include <unistd.h>
@@ -74,10 +73,18 @@ void runBehavioralChecks() {
     //   │   └── link        → ../outside
     //   └── outside/
     //       └── sensitive.txt
-    const QString root =
-        QStandardPaths::writableLocation(QStandardPaths::TempLocation)
-        + QStringLiteral("/audit-traversal-")
-        + QUuid::createUuid().toString(QUuid::Id128);
+    QTemporaryDir tmpRoot(QDir::tempPath()
+                          + QStringLiteral("/audit-traversal-XXXXXX"));
+    if (!tmpRoot.isValid()) {
+        std::fprintf(stderr, "[FAIL] setup: could not create temp root\n");
+        expect(false, "setup-error", "");
+        return;
+    }
+    // RAII: tmpRoot's destructor recursively reclaims the tree at scope
+    // exit — including on the setup-error early returns below, which the
+    // old manual-rmdir teardown leaked. QDir::removeRecursively unlinks
+    // symlinks rather than following them (ANTS-1602).
+    const QString root = tmpRoot.path();
 
     const QString project = root + QStringLiteral("/project");
     const QString projectSrc = project + QStringLiteral("/src");
@@ -162,14 +169,12 @@ void runBehavioralChecks() {
     expect(empty.isEmpty(),
            "I4b/empty-input-returns-empty");
 
-    // Cleanup — test-harness courtesy.
-    QFile::remove(projectSrc + QStringLiteral("/good.cpp"));
-    QFile::remove(linkPath);
-    QFile::remove(outsideDir + QStringLiteral("/sensitive.txt"));
-    QDir().rmpath(projectSrc);
-    QDir().rmdir(outsideDir);
-    QDir().rmdir(project);
-    QDir().rmdir(root);
+    // Teardown: unlink the boundary-crossing symlink *before* tmpRoot's
+    // RAII recursive-remove runs, so the sweep never has a live cross-
+    // project link in the tree (defence-in-depth — removeRecursively
+    // already unlinks symlinks rather than following them). Everything
+    // else under `root` is reclaimed by tmpRoot's destructor at scope exit.
+    QFile::remove(QString::fromLocal8Bit(linkPath));
 }
 
 void runSourceChecks() {

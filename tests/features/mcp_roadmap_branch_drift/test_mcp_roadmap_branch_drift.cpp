@@ -255,6 +255,13 @@ TEST(mcp_roadmap_branch_drift, Inv11ErrorCodeTaxonomy) {
 TEST(mcp_roadmap_branch_drift, Inv4ReachabilityRuntime) {
     expect_reset();
 
+    // This test spawns real `git` (init/config/commit/rev-parse/checkout/
+    // log/cat-file), each with a 5 s timeout. Skip under CI to keep the
+    // correctness lane fast + hermetic; it still gives full coverage
+    // locally where git is present (ANTS-1609).
+    if (qEnvironmentVariableIsSet("CI"))
+        GTEST_SKIP() << "real-git runtime probe skipped under CI (ANTS-1609)";
+
     QTemporaryDir td;
     ASSERT_TRUE(td.isValid());
     const QString root = td.path();

@@ -18,6 +18,13 @@
 
 namespace {
 
+// Canonical default grid geometry — 24×80 is the size a tab opens at
+// (ANTS-1598). The resize() targets below stay raw literals on purpose:
+// they're the varied parameters under test (grow to 60, shrink to 30,
+// grow to 80×100), not "the default size".
+constexpr int kRows = 24;
+constexpr int kCols = 80;
+
 #undef EXPECT
 #define EXPECT(cond, ...) do {                                  \
     if (!(cond)) {                                              \
@@ -45,7 +52,7 @@ void enterAltScreen(VtParser &parser) {
 
 // ----- INV-1 — implicit (full-screen) primary region grows on resize.
 TEST(ScrollRegionGrowthOnResize, DefaultPrimaryGrows) {
-    TerminalGrid grid(24, 80);
+    TerminalGrid grid(kRows, kCols);
     EXPECT(grid.scrollTop() == 0 && grid.scrollBottom() == 23,
            "INV-1 setup: scrollTop=%d scrollBottom=%d, expected 0/23",
            grid.scrollTop(), grid.scrollBottom());
@@ -60,7 +67,7 @@ TEST(ScrollRegionGrowthOnResize, DefaultPrimaryGrows) {
 
 // ----- INV-2 — implicit (full-screen) primary region shrinks on resize.
 TEST(ScrollRegionGrowthOnResize, DefaultPrimaryShrinks) {
-    TerminalGrid grid(60, 80);
+    TerminalGrid grid(60, kCols);
     grid.resize(24, 80);
     EXPECT(grid.scrollTop() == 0,
            "INV-2: scrollTop=%d after shrink, expected 0", grid.scrollTop());
@@ -71,7 +78,7 @@ TEST(ScrollRegionGrowthOnResize, DefaultPrimaryShrinks) {
 
 // ----- INV-3 — explicit DECSTBM preserved on grow (NOT auto-widened).
 TEST(ScrollRegionGrowthOnResize, ExplicitPreservedOnGrow) {
-    TerminalGrid grid(24, 80);
+    TerminalGrid grid(kRows, kCols);
     VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
     setRegion(parser,4, 14);  // DECSTBM 5;15
     EXPECT(grid.scrollTop() == 4 && grid.scrollBottom() == 14,
@@ -89,7 +96,7 @@ TEST(ScrollRegionGrowthOnResize, ExplicitPreservedOnGrow) {
 
 // ----- INV-4 — explicit DECSTBM clamped on shrink below bottom.
 TEST(ScrollRegionGrowthOnResize, ExplicitClampedOnShrinkBelowBottom) {
-    TerminalGrid grid(60, 80);
+    TerminalGrid grid(60, kCols);
     VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
     setRegion(parser,4, 54);  // DECSTBM 5;55
     EXPECT(grid.scrollTop() == 4 && grid.scrollBottom() == 54,
@@ -110,7 +117,7 @@ TEST(ScrollRegionGrowthOnResize, ExplicitClampedOnShrinkBelowBottom) {
 // Inside alt mode, m_scrollTop/m_scrollBottom track the alt region
 // (defaults to full-screen). Resize must widen those, same as primary.
 TEST(ScrollRegionGrowthOnResize, AltDefaultGrows) {
-    TerminalGrid grid(24, 80);
+    TerminalGrid grid(kRows, kCols);
     VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
     enterAltScreen(parser);
     EXPECT(grid.altScreenActive(),
@@ -126,7 +133,7 @@ TEST(ScrollRegionGrowthOnResize, AltDefaultGrows) {
 
 // ----- INV-6 — alt explicit DECSTBM preserved on grow.
 TEST(ScrollRegionGrowthOnResize, AltExplicitPreservedOnGrow) {
-    TerminalGrid grid(24, 80);
+    TerminalGrid grid(kRows, kCols);
     VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
     enterAltScreen(parser);
     setRegion(parser,4, 14);
@@ -139,7 +146,7 @@ TEST(ScrollRegionGrowthOnResize, AltExplicitPreservedOnGrow) {
 
 // ----- INV-7 — sequential grow / shrink stays consistent.
 TEST(ScrollRegionGrowthOnResize, GrowShrinkSequence) {
-    TerminalGrid grid(24, 80);
+    TerminalGrid grid(kRows, kCols);
     grid.resize(60, 80);
     EXPECT(grid.scrollBottom() == 59,
            "INV-7 step 1 (grow 24→60): scrollBottom=%d, expected 59",

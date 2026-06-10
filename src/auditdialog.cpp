@@ -955,14 +955,20 @@ void AuditDialog::populateChecks() {
                                        "snprintf(", "QString::", "DBGLOG"},
                    "", {}, 30 });
 
-    // insecure_http — the 2026-04-16 triage showed the matched line in the
-    // one surviving finding was literally the scheme allowlist guard
-    // (`if (url.startsWith("http://") || ...)` — i.e. gating NEEDS to mention
-    // the string "http://" to be checking for it). Use dropIfContextContains
-    // to suppress when a startsWith scheme-gate appears in ±5 lines.
+    // insecure_http — match every `http://` and lean on the OutputFilter
+    // (dropIfContains: localhost / 127.0.0.1 / example.com / schema URLs)
+    // for the exclusions. The old `http://[^l][^o][^c]` positional-class
+    // hack tried to bake the localhost exclusion into the ERE itself, but it
+    // over-excluded any l-/o-/c-positioned host (`http://logging…`,
+    // `http://login…`) as a false negative — and a PCRE `(?!localhost)`
+    // lookahead is unavailable because the check runs under `grep -nE`
+    // (POSIX ERE). So localhost lives in dropIfContains, not the regex
+    // (ANTS-1612). dropIfContextContains still suppresses a scheme-gate
+    // `startsWith("http…")` within ±5 lines (the 2026-04-16 triage's one
+    // surviving finding was such a guard).
     addGrepCheck("insecure_http", "Insecure HTTP URLs",
                  "http:// in config / source (not schema / localhost)", "Security",
-                 "'http://[^l][^o][^c]'",
+                 "'http://'",
                  CheckType::Hotspot, Severity::Minor, true,
                  OutputFilter{
                    /*dropIfContains*/ {"localhost", "127.0.0.1", "0.0.0.0",

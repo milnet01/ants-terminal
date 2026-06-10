@@ -32,10 +32,14 @@ std::string sixel(const std::string &body) {
     return "\x1BPq" + body + "\x1B\\";
 }
 
-void fail(const char *label, const char *detail){
+// ANTS-1589 — report failures at the CALL site, not this helper's line.
+// `failAt` takes file/line params; the `fail(...)` macro below injects the
+// caller's __FILE__/__LINE__ so ctest output points at the real assertion.
+void failAt(const char *file, int line, const char *label, const char *detail){
     std::fprintf(stderr, "FAIL [%s]: %s\n", label, detail);
-    ADD_FAILURE() << label << ": " << detail;
+    ADD_FAILURE_AT(file, line) << label << ": " << detail;
 }
+#define fail(label, detail) failAt(__FILE__, __LINE__, (label), (detail))
 
 }  // namespace
 

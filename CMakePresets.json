@@ -70,6 +70,11 @@
             "configurePreset": "default",
             "output": {
                 "outputOnFailure": true
+            },
+            "filter": {
+                "exclude": {
+                    "label": "perf"
+                }
             }
         },
         {
@@ -77,6 +82,11 @@
             "configurePreset": "workstation",
             "output": {
                 "outputOnFailure": true
+            },
+            "filter": {
+                "exclude": {
+                    "label": "perf"
+                }
             }
         },
         {
@@ -96,6 +106,25 @@
             "configurePreset": "fast",
             "output": {
                 "outputOnFailure": true
+            },
+            "filter": {
+                "exclude": {
+                    "label": "perf"
+                }
+            }
+        },
+        {
+            "name": "perf",
+            "displayName": "Perf benchmarks only",
+            "description": "Runs only the `perf`-labelled benchmarks (e.g. vt_throughput) that the default/workstation/fast presets exclude from correctness runs. Pair with `ANTS_PERF_MIN_MBPS=<floor>` to gate on throughput regressions (ANTS-1479).",
+            "configurePreset": "default",
+            "output": {
+                "outputOnFailure": true
+            },
+            "filter": {
+                "include": {
+                    "label": "perf"
+                }
             }
         }
     ]

@@ -78,7 +78,7 @@ run_rule() {
 run_rule "unsafe_c_funcs"   '\b(strcpy|strcat|sprintf|vsprintf|gets|mktemp|tmpnam|scanf)\s*\('
 run_rule "secrets_scan"     '(api[_-]?key|password|secret[_-]?key|auth[_-]?token|credentials)[[:space:]]*[:=][[:space:]]*("[^"]{16,}"|[^[:space:]"#,]{16,})'
 run_rule "conflict_markers" '^(<{7}|\|{7}|={7}|>{7})(\s|$)'
-run_rule "insecure_http"    'http://[^l][^o][^c]'
+run_rule "insecure_http"    'http://'
 run_rule "cmd_injection"    '\b(system|popen|execlp|execvp|execl|execv|execle)\s*\('
 run_rule "todo_scan"        '(TODO|FIXME|HACK|XXX)(\(|:|\s)'
 run_rule "format_string"    '\b[fs]?n?printf\s*\([^"]*\b\w+\s*\)'

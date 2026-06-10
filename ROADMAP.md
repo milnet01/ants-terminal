@@ -10659,11 +10659,12 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
   - Dimension: duplication
   - Severity: medium
   - Fix: Migrate the inline extractors to ants_test::slurpFunctionBody() (or its QString twin if one is added). Add a QString overload to srcgrep.h for the Qt-typed test sites.
-- 📋 [ANTS-1589] **Convert `fail()` helper functions to call-site macros (status_bar_branch_chip, sync_output_snapshot, sixel_raster_header_prebudget).**
+- ✅ [ANTS-1589] **Convert `fail()` helper functions to call-site macros (status_bar_branch_chip, sync_output_snapshot, sixel_raster_header_prebudget).**
   - File: tests/features/status_bar_branch_chip/test_status_bar_branch_chip.cpp,sync_output_snapshot/test_sync_output_snapshot.cpp,sixel_raster_header_prebudget/test_sixel_raster_header_prebudget.cpp:0
   - Dimension: assertions
   - Severity: high
   - Fix: Convert `fail()` to a function-like preprocessor macro (or use ADD_FAILURE_AT at the call site directly). 30+ call sites between the 3 files; mechanical.
+  Resolved (2026-06-10): fail() renamed to failAt(file,line,...) + a `fail(...)` macro injecting caller __FILE__/__LINE__ — call sites unchanged, failures now point at the real assertion line. Applied to status_bar_branch_chip, sync_output_snapshot, sixel_raster_header_prebudget.
 - ✅ [ANTS-1590] **Apply XdgConfigHomeGuard save/restore in claude_tab_tracker + roadmap_density to stop env-var leak.**
   - File: tests/features/claude_tab_status_indicator/test_claude_tab_tracker.cpp,roadmap_density/test_roadmap_density.cpp:0
   - Dimension: isolation
@@ -10684,31 +10685,36 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
   - Dimension: accuracy
   - Severity: medium
   - Fix: Move classifyAuditScope() into the AuditEngine namespace (or a new ant_remote helper) so it can be called directly in the test.
-- 📋 [ANTS-1594] **Add internal timeout to flathub_manifest_transform popen() — currently can hang the test indefinitely.**
+  Deferred (2026-06-10, test-audit surgical bundle): `classifyAuditScope` + `ScopeClassification` are free symbols in the ~9k-line remotecontrol.cpp with no header declaration. Making mcp_last_audit_summary call production (not its replica) means either (a) declaring them in a header + linking remotecontrol's heavy closure into the test bundle, or (b) extracting them into a small standalone TU (e.g. src/auditscope.{h,cpp}) that both remotecontrol.cpp and the test link. Both are real refactors touching production + CMakeLists, not a surgical test edit — and (a) cuts against the project's established reference-reimplementation pattern (cf. audit_path_traversal's resolveProjectPathRef). Better as its own focused item with an audit-scope-classifier extraction; left open.
+- ✅ [ANTS-1594] **Add internal timeout to flathub_manifest_transform popen() — currently can hang the test indefinitely.**
   - File: tests/features/flathub_manifest_transform/test_flathub_manifest_transform.cpp:60
   - Dimension: flakiness
   - Severity: medium
   - Fix: Add an internal timeout via timeout(1) wrapper or an alarm() guard around popen().
-- 📋 [ANTS-1595] **github_status_bar functionBody() uses `\nvoid ` sentinel; bleeds across functions — migrate to slurpFunctionBody().**
+  Resolved (2026-06-10): both popen() call sites prefixed with `timeout 30` (coreutils) so a wedged transformer surfaces as a failure (124) instead of hanging the bundle.
+- ✅ [ANTS-1595] **github_status_bar functionBody() uses `\nvoid ` sentinel; bleeds across functions — migrate to slurpFunctionBody().**
   - File: tests/features/github_status_bar/test_github_status_bar.cpp:69
   - Dimension: accuracy
   - Severity: high
   - Fix: Migrate to ants_test::slurpFunctionBody() (proper brace-matching, literal-aware) from tests/_support/srcgrep.h.
-- 📋 [ANTS-1596] **Exclude `perf` label from default/workstation/fast CMake test presets (bench_vt_throughput leaks into correctness runs).**
+  Resolved (2026-06-10): functionBody() now delegates to ants_test::slurpFunctionBody (brace-matched, literal-aware) instead of the `\nvoid ` sentinel. 17/17 invariants still pass.
+- ✅ [ANTS-1596] **Exclude `perf` label from default/workstation/fast CMake test presets (bench_vt_throughput leaks into correctness runs).**
   - File: CMakePresets.json,CMakeLists.txt:677
   - Dimension: performance
   - Severity: low
   - Fix: Add `"filter": {"exclude": {"label": "perf"}}` to the default/workstation/fast preset entries; keep a separate perf preset that runs only the perf-labelled tests.
+  Resolved (2026-06-10): default/workstation/fast test presets now carry filter.exclude.label "perf"; new dedicated `perf` preset includes only perf-labelled tests. Verified: fast preset lists 0 vt_throughput, perf preset lists exactly vt_throughput.
 - 📋 [ANTS-1597] **Use SetUpTestSuite-shared source-file slurp in claude_pid_replacement / claude_task_list_session_isolation / mcp_tool_info_verb / terminal_for_caller_isolation (each re-reads 200KB+ per TEST).**
   - File: tests/features/claude_pid_replacement/test_claude_pid_replacement.cpp,claude_task_list_session_isolation/test_claude_task_list_session_isolation.cpp,mcp_tool_info_verb/test_mcp_tool_info_verb.cpp,terminal_for_caller_isolation/test_terminal_for_caller_isolation.cpp:0
   - Dimension: performance
   - Severity: medium
   - Fix: Use a gtest fixture (SetUpTestSuite) that reads the file once and stores it as a static string shared across all TEST_F cases in the suite.
-- 📋 [ANTS-1598] **Extract `kRows=24` / `kCols=80` constexpr in scroll_region_growth + scrollback_redraw (10+ raw-literal sites).**
+- ✅ [ANTS-1598] **Extract `kRows=24` / `kCols=80` constexpr in scroll_region_growth + scrollback_redraw (10+ raw-literal sites).**
   - File: tests/features/scroll_region_growth_on_resize/test_scroll_region_growth.cpp,scrollback_redraw/test_redraw.cpp:0
   - Dimension: hardcoded_data
   - Severity: medium
   - Fix: Extract `kRows = 24` / `kCols = 80` as constexpr at file scope, replace all raw literals.
+  Resolved (2026-06-10): scrollback_redraw already had kRows/kCols; added them to scroll_region_growth for the canonical 24×80 construction sites. Resize targets (60/30/80×100) left as literals on purpose — they are the varied parameters under test, and 80 means rows in resize(80,100).
 - 📋 [ANTS-1599] **Migrate ~10 fixed-byte substr() function-body windows to ants_test::slurpFunctionBody() — silently fail when body grows past magic threshold.**
   - File: tests/features (≈10 sites):0
   - Dimension: accuracy
@@ -10725,11 +10731,12 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
   - Severity: medium
   - Fix: Replace counter assertion with field-name assertions (one EXPECT per expected probe field), or use a `>= 5` floor with a comment naming the 5 baseline probes.
   Resolved (2026-06-06): review_changes_branches I1 — the source-grep `int pending = 5;` exact-literal assertion now matches `int pending = ` (field-initialised), so adding a 6th baseline probe no longer breaks a correct build. The per-probe wirings (for-each-ref / branches / crossUnpushed) are already asserted by name below, so the count literal was the brittle, redundant part. ReviewChangesBranches green.
-- 📋 [ANTS-1602] **audit_path_traversal: replace manual /tmp tree cleanup with QTemporaryDir RAII + fix symlink-before-rmpath teardown order.**
+- ✅ [ANTS-1602] **audit_path_traversal: replace manual /tmp tree cleanup with QTemporaryDir RAII + fix symlink-before-rmpath teardown order.**
   - File: tests/features/audit_path_traversal/test_audit_path_traversal.cpp:166
   - Dimension: isolation
   - Severity: medium
   - Fix: Use QTemporaryDir (RAII) for the root, as the other tests in this chunk already do. Fix the teardown order so the symlink unlink precedes rmpath.
+  Resolved (2026-06-10): root is now a QTemporaryDir (RAII) — also fixes the pre-existing temp-tree leak on the setup-error early returns. Symlink unlinked explicitly before scope-exit teardown. All assertions still pass.
 - ✅ [ANTS-1603] **Sweep tests/features for `new QWidget`/`new QMainWindow` patterns and migrate to unique_ptr for FAIL-safe cleanup.**
   - File: tests/features/a11y_chrome_names/test_a11y_chrome_names.cpp:122
   - Dimension: setup_teardown
@@ -10740,11 +10747,12 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
   - Dimension: coverage_gaps
   - Severity: medium
   - Fix: Add runtime-coverage stubs that drive the actual code-path (one EXPECT per test asserting a real call returns expected output); keep the source-grep checks as a defence-in-depth.
-- 📋 [ANTS-1605] **ssh_control_master file-scope `static int failures = 0` — migrate to ANTS_TEST_SCOPE / move counter into TEST body.**
+- ✅ [ANTS-1605] **ssh_control_master file-scope `static int failures = 0` — migrate to ANTS_TEST_SCOPE / move counter into TEST body.**
   - File: tests/features/ssh_control_master/test_ssh_control_master.cpp:12
   - Dimension: isolation
   - Severity: low
   - Fix: Migrate to ANTS_TEST_SCOPE() / expect_reset() pattern; or move the counter inside the TEST body.
+  Resolved (2026-06-10): moved the file-scope `static int failures` into the TEST body — no cross-run state leak.
 - ✅ [ANTS-1606] **mcp_trace_ring_buffer EXPECT_GT against `std::max(0,1)` is trivially true — assert against sinceCursor delta directly.**
   - File: tests/features/mcp_trace_ring_buffer/test_mcp_trace_ring_buffer.cpp:258
   - Dimension: assertions
@@ -10763,27 +10771,30 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
   - Severity: medium
   - Fix: Expose a test-only isStale(env, nowMs, overrideMtimes) overload that bypasses real filesystem stat; or widen the sleep to 2200 ms.
   Resolved (2026-06-06) — DUPLICATE of ANTS-1471 (same QThread::msleep(1100) in mcp_project_layout_scan IsStaleOnMtimeAdvance). Fixed there by removing the sleep entirely: isStale() compares each probed path's live mtime to cached.scannedAtMs, and the test already backdates scannedAtMs by 2000ms, so the existing file mtime is deterministically newer — no wall-clock wait and no need for the test-only isStale seam this bullet proposed. Suite now 9ms, 20/20 green.
-- 📋 [ANTS-1609] **mcp_roadmap_branch_drift Inv4ReachabilityRuntime spawns real git with 5s timeouts — mock or GTEST_SKIP under CI.**
+- ✅ [ANTS-1609] **mcp_roadmap_branch_drift Inv4ReachabilityRuntime spawns real git with 5s timeouts — mock or GTEST_SKIP under CI.**
   - File: tests/features/mcp_roadmap_branch_drift/test_mcp_roadmap_branch_drift.cpp:255
   - Dimension: performance
   - Severity: medium
   - Fix: Mock the git subprocess with a fake QProcess, or skip the runtime probe under CI environments (GTEST_SKIP if $CI is set).
-- 📋 [ANTS-1610] **Empty `tests/audit_fixtures/apply_filter/` and `parse_findings/` dirs — populate or remove (invisible to fixture-coverage cross-check).**
+  Resolved (2026-06-10): Inv4ReachabilityRuntime now GTEST_SKIPs when $CI is set (still full coverage locally). Verified SKIPPED under CI=1.
+- ✅ [ANTS-1610] **Empty `tests/audit_fixtures/apply_filter/` and `parse_findings/` dirs — populate or remove (invisible to fixture-coverage cross-check).**
   - File: tests/audit_fixtures:0
   - Dimension: coverage_gaps
   - Severity: low
   - Fix: Either populate with bad./good. fixtures if these pipeline functions warrant shell-level regression tests, or remove the empty directories. applyFilter and parseFindings are already covered by tests/features/audit_engine_extraction/ and audit_engine_stream_line_split/.
+  Resolved (2026-06-10): removed empty tests/audit_fixtures/{apply_filter,parse_findings}/ (not git-tracked, unreferenced; applyFilter/parseFindings already covered by audit_engine_extraction + audit_engine_stream_line_split).
 - ✅ [ANTS-1611] **cold_eyes_partition_deterministic writeSpec() uses EXPECT_TRUE for setup — switch to ASSERT_TRUE or return optional path with GTEST_SKIP.**
   - File: tests/features/cold_eyes_partition_deterministic/test_cold_eyes_partition_deterministic.cpp:36
   - Dimension: flakiness
   - Severity: medium
   - Fix: Replace EXPECT_TRUE with ASSERT_TRUE in the setup helper, or have writeSpec() return an optional path with a GTEST_SKIP on setup failure.
   Resolved (2026-06-06): cold_eyes_partition_deterministic writeSpec() — EXPECT_TRUE(f.open) replaced with ADD_FAILURE() + early `return {}`. Note: ASSERT_TRUE (the bullet's first option) won't compile here — writeSpec returns QString and ASSERT_* expands to `return;`. ADD_FAILURE marks the calling TEST failed with a clear cause and the empty-path return short-circuits the bad write. PartitionDeterministic green.
-- 📋 [ANTS-1612] **insecure_http rule regex `http://[^l][^o][^c]` over-excludes (any l-initial host) — tighten to anchored negative lookahead.**
+- ✅ [ANTS-1612] **insecure_http rule regex `http://[^l][^o][^c]` over-excludes (any l-initial host) — tighten to anchored negative lookahead.**
   - File: tests/features/insecure_http/good.cpp:6
   - Dimension: doc_strings
   - Severity: low
   - Fix: Tighten the regex to `http://(?!localhost\b)` (anchored negative lookahead) and update the good-side fixture to surface the known false-negative class.
+  Resolved (2026-06-10): the roadmap's suggested `(?!localhost)` lookahead is INFEASIBLE — both the production check (`grep -nE`) and the fixture harness (`grep -cE`) are POSIX ERE. Root-cause fix instead: dropped the over-excluding `http://[^l][^o][^c]` positional hack (it false-negatived any l-/o-/c-positioned host, e.g. http-scheme logging hosts) to a bare scheme match; localhost/127.0.0.1/schema exclusions already live in the OutputFilter dropIfContains. Updated good/bad fixtures + the harness's mirrored pattern. audit_self_test green.
 - ✅ [ANTS-1613] **tool_detection_engine TDE-7 50ms cache-probe threshold flaky on loaded runners — widen to 200ms or move to perf bucket.**
   - File: tests/features/tool_detection_engine/test_tool_detection_engine.cpp:123
   - Dimension: flakiness
@@ -10878,11 +10889,12 @@ Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, du
   - Dimension: coverage_gaps
   - Severity: MED
   - Fix: Add the missing variants to each bad.cpp with @expect markers; update audit_self_test.sh expected counts.
-- 📋 [ANTS-1479] **Benchmark has no regression gate — runs in CI but doesn't fail on throughput regressions..**
+- ✅ [ANTS-1479] **Benchmark has no regression gate — runs in CI but doesn't fail on throughput regressions..**
   - File: tests/perf/bench_vt_throughput.cpp:0
   - Dimension: performance
   - Severity: MED
   - Fix: Add a configurable lower-bound MB/s threshold (env-overridable) so ctest -L perf catches >25% regressions.
+  Resolved (2026-06-10): ANTS_PERF_MIN_MBPS env floor — any corpus below it makes bench exit non-zero; off by default so CI never flakes. New `perf` ctest preset is where an operator pins the floor. Verified: default exit 0, high floor exit 1.
 - 📋 [ANTS-1480] **~30 files use TEST(..., Main) which gives no behavioural signal at the ctest level — fixed once splitting cleanup lands..**
   - File: tests/features/*:0
   - Dimension: naming

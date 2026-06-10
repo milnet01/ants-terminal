@@ -20,9 +20,14 @@
 
 // Run a shell command, capture stdout. Returns exit status; appends
 // captured output to `out`.
+// Hard wall-clock cap on the transformer subprocess. `timeout(1)` from
+// coreutils kills a wedged script (returning 124) so a hang surfaces as a
+// test failure instead of stalling the whole bundle indefinitely (ANTS-1594).
+static constexpr const char *kTimeoutPrefix = "timeout 30 ";
+
 static int runCapture(const std::string &cmd, std::string &out) {
     std::array<char, 4096> buf{};
-    std::string full = cmd + " 2>/dev/null";
+    std::string full = kTimeoutPrefix + cmd + " 2>/dev/null";
     std::unique_ptr<FILE, int(*)(FILE *)> pipe(popen(full.c_str(), "r"), pclose);
     if (!pipe) return -1;
     while (std::fgets(buf.data(), buf.size(), pipe.get())) {
@@ -35,7 +40,7 @@ static int runCapture(const std::string &cmd, std::string &out) {
 // Same, but keep stderr too (for invalid-input test).
 static int runCaptureBoth(const std::string &cmd, std::string &out) {
     std::array<char, 4096> buf{};
-    std::string full = cmd + " 2>&1";
+    std::string full = kTimeoutPrefix + cmd + " 2>&1";
     std::unique_ptr<FILE, int(*)(FILE *)> pipe(popen(full.c_str(), "r"), pclose);
     if (!pipe) return -1;
     while (std::fgets(buf.data(), buf.size(), pipe.get())) {

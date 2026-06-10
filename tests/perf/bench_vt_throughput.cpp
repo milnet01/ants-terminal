@@ -27,9 +27,14 @@
 //   corpus,bytes,actions,wall_ms,MB_per_sec,actions_per_sec
 //   ascii_print,10485760,10485760,123.4,85.03,84973904.37
 //
-// Pass criteria (current): none. The benchmark exits 0 as long as it
-// completes without crashing; CI picks up the numbers from stdout. A
-// later commit will add a floor-based regression gate.
+// Pass criteria: by default the benchmark exits 0 as long as it
+// completes without crashing; CI picks up the numbers from stdout.
+// Set `ANTS_PERF_MIN_MBPS=<floor>` (a MB/s lower bound) to turn it into
+// a regression gate — any corpus whose throughput falls below the floor
+// makes the process exit non-zero. The floor is intentionally off by
+// default so the bench never flakes on slow/loaded CI runners; the
+// `perf` ctest preset is where an operator pins a floor (set it to
+// ~0.75× the established baseline to catch >25% regressions). ANTS-1479.
 
 #include "terminalgrid.h"
 #include "vtparser.h"
@@ -117,16 +122,19 @@ BenchResult runOne(const char *name, const std::string &payload, int rows, int c
     return {name, payload.size(), actionCount, wallMs};
 }
 
-void printCsvLine(const BenchResult &r) {
-    const double mbPerSec = (r.wallMs > 0.0)
+double mbPerSec(const BenchResult &r) {
+    return (r.wallMs > 0.0)
         ? (static_cast<double>(r.bytes) / 1'048'576.0) / (r.wallMs / 1000.0)
         : 0.0;
+}
+
+void printCsvLine(const BenchResult &r) {
     const double actionsPerSec = (r.wallMs > 0.0)
         ? static_cast<double>(r.actions) / (r.wallMs / 1000.0)
         : 0.0;
     std::printf("%s,%zu,%zu,%.2f,%.2f,%.2f\n",
                 r.corpus.c_str(), r.bytes, r.actions, r.wallMs,
-                mbPerSec, actionsPerSec);
+                mbPerSec(r), actionsPerSec);
 }
 
 }  // namespace
@@ -155,6 +163,15 @@ int main(int argc, char *argv[]) {
     constexpr int kRows = 40;
     constexpr int kCols = 160;
 
+    // Optional regression gate: a MB/s floor below which any corpus
+    // makes the run fail. Off (0.0) by default — see the file header.
+    double minMbps = 0.0;
+    if (const char *env = std::getenv("ANTS_PERF_MIN_MBPS")) {
+        char *end = nullptr;
+        double v = std::strtod(env, &end);
+        if (end != env && v > 0.0) minMbps = v;
+    }
+
     std::printf("corpus,bytes,actions,wall_ms,MB_per_sec,actions_per_sec\n");
 
     std::vector<std::pair<std::string, std::string>> corpora;
@@ -163,9 +180,17 @@ int main(int argc, char *argv[]) {
     corpora.emplace_back("ansi_sgr",       makeAnsiSgr(targetBytes));
     corpora.emplace_back("utf8_cjk",       makeUtf8Cjk(targetBytes));
 
+    int belowFloor = 0;
     for (const auto &[name, payload] : corpora) {
         BenchResult r = runOne(name.c_str(), payload, kRows, kCols);
         printCsvLine(r);
+        if (minMbps > 0.0 && mbPerSec(r) < minMbps) {
+            std::fprintf(stderr,
+                         "REGRESSION: corpus '%s' at %.2f MB/s is below the "
+                         "ANTS_PERF_MIN_MBPS floor of %.2f MB/s\n",
+                         r.corpus.c_str(), mbPerSec(r), minMbps);
+            ++belowFloor;
+        }
     }
-    return 0;
+    return belowFloor == 0 ? 0 : 1;
 }
