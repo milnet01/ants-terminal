@@ -933,8 +933,15 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
     static const QRegularExpression rxKind(
         QStringLiteral("^\\s*Kind:\\s*([^\\.\\n]+?)\\s*[\\.\\n]"),
         QRegularExpression::MultilineOption);
+    // ANTS-2058 — no `^` anchor. Bullets routinely write their metadata
+    // inline as one prose sentence (`Kind: refactor. Lanes: backend tests.
+    // Source: …`), so `Lanes:` lands mid-line, not at a line start. The
+    // old `^\\s*` anchor matched only line-leading `Lanes:` and returned
+    // lanes:[] for every inline bullet — while rxKind worked purely because
+    // `Kind:` happened to sit first. Match `Lanes:` anywhere; the non-greedy
+    // capture still stops at the first period/newline.
     static const QRegularExpression rxLanes(
-        QStringLiteral("^\\s*Lanes:\\s*(.+?)\\s*[\\.\\n]"),
+        QStringLiteral("Lanes:\\s*(.+?)\\s*[\\.\\n]"),
         QRegularExpression::MultilineOption);
     // ANTS-1154-INV-4: optional Layman: line — case-insensitive label,
     // takes the rest of the line up to a period or newline.

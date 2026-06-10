@@ -1189,6 +1189,10 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_annotate/test_roadmap_log_annotate.cpp
                 # ANTS-1690 roadmap_log op:flip_batch (N bullets, one commit).
                 tests/features/roadmap_log_flip_batch/test_roadmap_log_flip_batch.cpp
+                # ANTS-2059 roadmap_log flip/flip_batch on fully id-less ants-v1 bullets.
+                tests/features/roadmap_log_flip_idless_antsv1/test_roadmap_log_flip_idless_antsv1.cpp
+                # ANTS-2058 parseBullets inline `Kind: . Lanes: .` lanes extraction.
+                tests/features/roadmap_query_inline_lanes/test_roadmap_query_inline_lanes.cpp
                 # ANTS-1878 roadmap_log op:create_section.
                 tests/features/mcp_roadmap_log_create_section/test_mcp_roadmap_log_create_section.cpp
                 # ANTS-1879 roadmap_log op:append_batch.

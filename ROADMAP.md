@@ -15938,6 +15938,22 @@ corroborated) are recorded in the feedback files, not re-roadmapped.
   Source: cross-session-feedback-2026-06-10 RetroArch Bundle 79.
   Deferred (2026-06-10): remaining piece of the 2026-06-10 cross-session MCP bundle (2053-2056 shipped). This is a genuine feature — per-ref reachability sets + a new mis_branched drift class + against_refs discovery design — not a regression, so it gets its own focused pass rather than a rushed add-on. Minimal shape when picked up: optional against_refs[] (explicit refs; defer heuristic local/* auto-discovery), build one reachable set per ref via git log --format=%H <ref>, and emit cited SHAs reachable from HEAD but absent from a sibling ref under a new mis_branched[] array.
 
+- ✅ [ANTS-2058] **roadmap_query never populates `lanes` — the rxLanes prose extractor's `^` line-start anchor rejects inline `Kind: X. Lanes: Y.` bodies.**
+  MAME Curator (MEDIUM, 2026-06-10). roadmap_query returns lanes:[] on every bullet whose metadata is written inline as one prose sentence (Kind: refactor. Lanes: backend tests. Source: ...), even though it extracts kind:"refactor" from the SAME line. Root cause: rxLanes (roadmapdialog.cpp:936) is `^\s*Lanes:...` with MultilineOption; the `^` anchor only matches Lanes: at line start, so a mid-line Lanes: clause never matches. rxKind works only because Kind: happens to sit at the line start. The asymmetry (kind populated, lanes empty from the same sentence) defeats the same-kind+same-lanes bundling rule the field exists for. Fix: drop the `^` anchor from rxLanes so it matches inline; keep comma-split.
+  **Layman:** When a roadmap item writes its category and owners on one line, the tool reads the category but always returns an empty owners list. Fix the pattern so it reads both.
+  Kind: fix.
+  Lanes: mcp-roadmap-query, roadmapindex.
+  Source: cross-session-feedback-2026-06-10 MAME Curator MEDIUM.
+  Resolved (2026-06-10): dropped the `^` line-start anchor from rxLanes (roadmapdialog.cpp) so inline `Kind: X. Lanes: Y.` bodies parse lanes; comma-split unchanged. Regression test tests/features/roadmap_query_inline_lanes/ (3 INVs: inline, multi-lane split, line-leading still works). All green.
+
+- ✅ [ANTS-2059] **roadmap_log flip/flip_batch/annotate still refuse FULLY id-less ants-v1 bullets — walkAntsV1Bullets requires a `[` bracket (ANTS-2051 fixed only the lowercase-prefix half).**
+  RetroArch (HIGH) + Album Builder, both 2026-06-10. ANTS-2051 relaxed rxAntsV1IdBracket to accept lowercase prefixes, but the write-path walker (walkAntsV1Bullets, remotecontrol.cpp:1203) still skips a bullet unless the char after the status emoji + space is `[`. A bullet with no bracket at all is skipped, so the whole-file walk returns zero and flip/flip_batch/annotate refuse with unrecognised_format — while the READ path synthesises an id and roadmap_query reads it. ANTS-2051's own plan named this id-less half (honour headline/line_range locators) but it shipped only the bracket half. Both flip paths already resolve ants-v1 bullets by headline + line_range, so the fix is localised to walkAntsV1Bullets: parse the bullet with an empty id when no valid bracket follows the emoji. Append uses its own detector and is unaffected.
+  **Layman:** On roadmaps whose items use the emoji style but have no ID at all, the mark-done tools still say I cannot read this file even though the viewer reads it fine. Teach the write parser to accept ID-less items so you can flip them by headline.
+  Kind: fix.
+  Lanes: mcp-roadmap-log, remotecontrol.
+  Source: cross-session-feedback-2026-06-10 RetroArch HIGH + Album Builder.
+  Resolved (2026-06-10): walkAntsV1Bullets (remotecontrol.cpp) now treats the `[PROJ-NNNN]` bracket as OPTIONAL — a fully id-less `- emoji **Headline.**` bullet parses with an empty id, so flip/flip_batch/annotate resolve it by headline/line_range like the read path. Append path untouched (own detector). Regression test tests/features/roadmap_log_flip_idless_antsv1/ (flip-by-headline, flip_batch-by-line_range, mixed id-ful+id-less). Full test_claude bundle 1036/1036 green.
+
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 
 A new testing initiative the user requested: give the agent a repeatable way to

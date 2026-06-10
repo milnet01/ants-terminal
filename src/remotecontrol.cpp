@@ -1199,20 +1199,33 @@ QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
         const QString emoji = matchEmojiAt(ln, 2);
         if (emoji.isEmpty()) continue;
         const int afterEmoji = 2 + emoji.size();
-        // Expect a space then "[".
+        // Expect a space, then optionally a [PROJ-NNNN] id bracket.
         if (ln.size() <= afterEmoji + 1 ||
-            ln.at(afterEmoji) != QLatin1Char(' ') ||
-            ln.at(afterEmoji + 1) != QLatin1Char('[')) {
+            ln.at(afterEmoji) != QLatin1Char(' ')) {
             continue;
         }
-        const QRegularExpressionMatch m =
-            rxAntsV1IdBracket.match(ln, afterEmoji);
-        if (!m.hasMatch() || m.capturedStart(0) != afterEmoji + 1)
-            continue;
         AntsV1Bullet b;
         b.firstLine    = i;
         b.insideFenced = insideFence;
-        b.id           = m.captured(1);
+        // ANTS-2059 — the id bracket is OPTIONAL. A fully id-less bullet
+        // (`- 📋 **Headline.**`, no bracket at all) is still a real
+        // ants-v1 bullet: the READ path (parseBullets) synthesises an id
+        // for it and roadmap_query reads it, so the write path must parse
+        // it too — flip/flip_batch/annotate resolve ants-v1 bullets by
+        // headline + line_range, neither of which needs an id. When no
+        // valid bracket follows the emoji, leave b.id empty and take the
+        // whole post-emoji remainder as the headline. (ANTS-2051 relaxed
+        // only the bracket's leading-letter case but kept the bracket
+        // itself mandatory, leaving id-less roadmaps read-only to flip.)
+        int headStart = afterEmoji + 1;
+        if (ln.at(afterEmoji + 1) == QLatin1Char('[')) {
+            const QRegularExpressionMatch m =
+                rxAntsV1IdBracket.match(ln, afterEmoji);
+            if (m.hasMatch() && m.capturedStart(0) == afterEmoji + 1) {
+                b.id      = m.captured(1);
+                headStart = m.capturedEnd(0);
+            }
+        }
         if      (emoji == QString::fromUtf8(kAdapterEmojiDone))
             b.status = QStringLiteral("✅");
         else if (emoji == QString::fromUtf8(kAdapterEmojiPlanned))
@@ -1221,8 +1234,9 @@ QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
             b.status = QStringLiteral("🚧");
         else
             b.status = QStringLiteral("💭");
-        // Headline: post-`]` text, strip leading space + bold wrapper.
-        QString head = ln.mid(m.capturedEnd(0)).trimmed();
+        // Headline: post-id text (or post-emoji when id-less), strip
+        // leading space + bold wrapper.
+        QString head = ln.mid(headStart).trimmed();
         if (head.startsWith(QStringLiteral("**"))) {
             head.remove(0, 2);
             const int closeIdx = head.indexOf(QStringLiteral("**"));
