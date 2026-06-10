@@ -74,6 +74,13 @@ public:
         return m_verifyTrustClient.get();
     }
 
+    // ANTS-2049 — E2E mode gate. Set true only by MainWindow when the
+    // `--e2e` CLI flag was passed; the sole enabler of the inject verbs
+    // (inject-key / inject-click / resize-window / grab-image) in dispatch().
+    // Never set true from config/env — synthetic input is arbitrary control.
+    void setE2eMode(bool on) { m_e2eMode = on; }
+    bool e2eMode() const { return m_e2eMode; }
+
     // Client entry point — connects, sends one JSON request, reads
     // one JSON response, writes it to stdout. Called from main.cpp
     // when `--remote <cmd>` is passed. Returns process exit code
@@ -802,6 +809,7 @@ private:
 
     QLocalServer *m_server = nullptr;
     MainWindow *m_main;  // non-owning; MainWindow owns us via QObject parent
+    bool m_e2eMode = false;  // ANTS-2049 — inject-verb gate (see setE2eMode)
 
     // ANTS-1337 — verify_changes content-trust gate. nullptr by
     // default; MainWindow constructs the chrome-layer modal client

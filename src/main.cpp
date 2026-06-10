@@ -229,6 +229,14 @@ int main(int argc, char *argv[]) {
         "Create a new plugin skeleton in the user's plugin dir and exit.",
         "name");
     parser.addOption(newPluginOpt);
+    // ANTS-2049 — E2E test mode. Forces the remote-control socket open past
+    // the default-false config gate and enables the socket-only inject verbs
+    // (inject-key / inject-click / resize-window / grab-image). Intended for a
+    // throwaway test instance driven by tools/e2e/; never for normal use.
+    QCommandLineOption e2eOpt("e2e",
+        "Enable end-to-end test mode (forces remote-control on + enables "
+        "synthetic input-injection verbs). For the tools/e2e/ harness.");
+    parser.addOption(e2eOpt);
     // Remote-control client mode (0.8.0 Kitty-style rc_protocol). When
     // set, the binary connects to the running instance's Unix socket,
     // dispatches a single command, prints the JSON response to stdout,
@@ -374,6 +382,7 @@ int main(int argc, char *argv[]) {
         return RemoteControl::runClient(cmd, args, socketPath);
     }
     bool quakeMode = parser.isSet(quakeOpt);
+    const bool e2eMode = parser.isSet(e2eOpt);
 
     // Application icon (taskbar, window manager, dialogs)
     QIcon appIcon = QIcon::fromTheme("ants-terminal");
@@ -390,7 +399,7 @@ int main(int argc, char *argv[]) {
     font.setFixedPitch(true);
     app.setFont(font);
 
-    MainWindow window(quakeMode);
+    MainWindow window(quakeMode, e2eMode);
     window.show();
 
     // Debug-only graceful auto-quit. Env-gated, no production effect.

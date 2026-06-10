@@ -50,7 +50,8 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 
 public:
-    explicit MainWindow(bool quakeMode = false, QWidget *parent = nullptr);
+    explicit MainWindow(bool quakeMode = false, bool e2eMode = false,
+                        QWidget *parent = nullptr);
     ~MainWindow() override;
 
 protected:

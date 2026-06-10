@@ -241,7 +241,8 @@ QString sourceToString(ants::ResolvedRoot::Source s) {
 
 }  // namespace
 
-MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
+MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
+    : QMainWindow(parent) {
     sweepKwinScriptOrphansOnce();
 
     // Disable QMainWindow's built-in QWidgetAnimator. It exists to
@@ -1080,6 +1081,10 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // already owns the socket) is non-fatal: the log notes it and
     // the main window boots normally.
     m_remoteControl = new RemoteControl(this, this);
+    // ANTS-2049 — propagate the `--e2e` launch flag; this is the sole enabler
+    // of the inject verbs (false on every normal launch and on secondary
+    // File→New Window instances, which default e2eMode=false).
+    m_remoteControl->setE2eMode(e2eMode);
     // ANTS-1337 Phase 2 — install the verify-changes trust client.
     // Chrome-layer VerifyTrustModalClient shows a QMessageBox when
     // verify_changes hits a .ants/verify.json whose SHA isn't
@@ -1097,8 +1102,10 @@ MainWindow::MainWindow(bool quakeMode, QWidget *parent) : QMainWindow(parent) {
     // first-window listener (or its absence) is what actually governs
     // accessibility. Cache the first-seen value so the "requires
     // restart" comment is honest for multi-window sessions too.
+    // ANTS-2049 — `--e2e` forces the socket open past the default-false config
+    // gate so a throwaway test instance is reachable without touching config.
     static const bool remoteControlGate = m_config.remoteControlEnabled();
-    if (remoteControlGate) {
+    if (remoteControlGate || e2eMode) {
         m_remoteControl->start();
     }
 }
