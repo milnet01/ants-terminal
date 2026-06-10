@@ -375,3 +375,162 @@ TEST(McpRoadmapLogAppendBatch, SuccessEnvelopeShape) {
     EXPECT_GT(out["bytes_written"].toInt(), 0);
     EXPECT_EQ(out["file"].toString(), QStringLiteral("ROADMAP.md"));
 }
+
+// ───────────────────────────────────────────────────────────────────
+// ANTS-2054 — op:append / op:append_batch infer the project's own
+// counter prefix from the existing roadmap instead of hardcoding
+// "ANTS-". A project whose bullets are `mame-curator-NNNN` must get
+// `mame-curator-NNNN` back, never a mixed-in `ANTS-NNNN`.
+// ───────────────────────────────────────────────────────────────────
+
+QString mameCuratorRoadmap() {
+    return QStringLiteral(
+        "# Test Roadmap\n"
+        "\n"
+        "## Performance\n"
+        "\n"
+        "- 📋 [mame-curator-1065] **Pre-existing bullet.**\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n"
+        "\n"
+        "- 📋 [mame-curator-1066] **Second bullet.**\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n"
+        "\n");
+}
+
+TEST(McpRoadmapLogAppendBatch, Ants2054BatchInfersProjectPrefix) {
+    QTemporaryDir dir;
+    writeRoadmap(dir.path(), mameCuratorRoadmap());
+    writeCounter(dir.path(), 1072);
+    RemoteControl rc(nullptr);
+    QJsonArray bs;
+    bs.append(bullet("New one."));
+    bs.append(bullet("New two."));
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(
+        baseReq(dir.path(), bs)).object();
+    ASSERT_TRUE(out["ok"].toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    const QJsonArray ids = out["ids"].toArray();
+    ASSERT_EQ(ids.size(), 2);
+    EXPECT_EQ(ids[0].toString(), QStringLiteral("mame-curator-1073"));
+    EXPECT_EQ(ids[1].toString(), QStringLiteral("mame-curator-1074"));
+    // The rendered bullet text carries the project prefix, not ANTS.
+    const QString roadmap = readRoadmap(dir.path());
+    EXPECT_NE(roadmap.indexOf(QStringLiteral("[mame-curator-1073]")), -1);
+    EXPECT_EQ(roadmap.indexOf(QStringLiteral("[ANTS-1073]")), -1);
+}
+
+TEST(McpRoadmapLogAppendBatch, Ants2054SingleInfersProjectPrefix) {
+    QTemporaryDir dir;
+    writeRoadmap(dir.path(), mameCuratorRoadmap());
+    writeCounter(dir.path(), 1072);
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = dir.path();
+    req["op"]         = QStringLiteral("append");
+    req["section"]    = QStringLiteral("performance");
+    req["headline"]   = QStringLiteral("Single new bullet.");
+    req["kind"]       = QStringLiteral("implement");
+    req["source"]     = QStringLiteral("test");
+    req["status"]     = QStringLiteral("planned");
+    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(req).object();
+    ASSERT_TRUE(out["ok"].toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    EXPECT_EQ(out["id"].toString(), QStringLiteral("mame-curator-1073"));
+}
+
+// Back-compat — the canonical ANTS roadmap still renders ANTS- ids.
+TEST(McpRoadmapLogAppendBatch, Ants2054BackCompatAntsRoadmap) {
+    QTemporaryDir dir;
+    setupProject(dir, /*counter=*/9100);  // minimalRoadmap() has ANTS ids
+    RemoteControl rc(nullptr);
+    QJsonArray bs;
+    bs.append(bullet("Stay ants."));
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(
+        baseReq(dir.path(), bs)).object();
+    ASSERT_TRUE(out["ok"].toBool());
+    EXPECT_EQ(out["ids"].toArray()[0].toString(),
+              QStringLiteral("ANTS-9101"));
+}
+
+// ───────────────────────────────────────────────────────────────────
+// ANTS-2055 — op:append / op:append_batch into a parent `##` section
+// whose body is `###` subsections must refuse (section_has_subsections)
+// rather than orphan the bullet past the last child + closing `---`.
+// ───────────────────────────────────────────────────────────────────
+
+QString milestoneWithChildrenRoadmap() {
+    return QStringLiteral(
+        "# Test Roadmap\n"
+        "\n"
+        "## 1.3.0 Milestone\n"
+        "\n"
+        "### Alpha subsection\n"
+        "\n"
+        "- 📋 [ANTS-9001] **Child bullet.**\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n"
+        "\n"
+        "---\n"
+        "\n"
+        "## 1.4.0 Next\n"
+        "\n"
+        "- 📋 [ANTS-9002] **Leaf bullet.**\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n"
+        "\n");
+}
+
+TEST(McpRoadmapLogAppendBatch, Ants2055RefusesParentSectionWithChildren) {
+    QTemporaryDir dir;
+    writeRoadmap(dir.path(), milestoneWithChildrenRoadmap());
+    writeCounter(dir.path(), 9100);
+    RemoteControl rc(nullptr);
+    QJsonArray bs; bs.append(bullet("X."));
+    auto req = baseReq(dir.path(), bs);
+    req["section"] = QStringLiteral("1-3-0-milestone");  // has ### child
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    EXPECT_FALSE(out["ok"].toBool());
+    EXPECT_EQ(out["code"].toString(),
+              QStringLiteral("section_has_subsections"));
+    const QJsonArray kids = out["child_slugs"].toArray();
+    ASSERT_EQ(kids.size(), 1);
+    EXPECT_EQ(kids[0].toString(), QStringLiteral("alpha-subsection"));
+    EXPECT_EQ(readCounter(dir.path()), 9100)
+        << ".roadmap-counter must be untouched on refusal";
+}
+
+TEST(McpRoadmapLogAppendBatch, Ants2055SingleRefusesParentSection) {
+    QTemporaryDir dir;
+    writeRoadmap(dir.path(), milestoneWithChildrenRoadmap());
+    writeCounter(dir.path(), 9100);
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = dir.path();
+    req["op"]         = QStringLiteral("append");
+    req["section"]    = QStringLiteral("1-3-0-milestone");
+    req["headline"]   = QStringLiteral("Nope.");
+    req["kind"]       = QStringLiteral("implement");
+    req["source"]     = QStringLiteral("test");
+    req["status"]     = QStringLiteral("planned");
+    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(req).object();
+    EXPECT_FALSE(out["ok"].toBool());
+    EXPECT_EQ(out["code"].toString(),
+              QStringLiteral("section_has_subsections"));
+}
+
+// Leaf section (no children) still appends normally — no regression.
+TEST(McpRoadmapLogAppendBatch, Ants2055LeafSectionStillAppends) {
+    QTemporaryDir dir;
+    writeRoadmap(dir.path(), milestoneWithChildrenRoadmap());
+    writeCounter(dir.path(), 9100);
+    RemoteControl rc(nullptr);
+    QJsonArray bs; bs.append(bullet("Leaf append."));
+    auto req = baseReq(dir.path(), bs);
+    req["section"] = QStringLiteral("1-4-0-next");  // leaf
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    ASSERT_TRUE(out["ok"].toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    EXPECT_EQ(out["applied_count"].toInt(), 1);
+}

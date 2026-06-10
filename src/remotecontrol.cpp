@@ -373,6 +373,76 @@ QString rlDetectStablePrefixId(const QString &markdown) {
     return QString();
 }
 
+// ANTS-2054 — infer the dominant counter-style ID prefix from the
+// existing roadmap so op:append / op:append_batch render
+// `[<prefix>-NNNN]` matching the project (e.g. "mame-curator-1073")
+// instead of the hardcoded "ANTS-1073". Scans the first 50 parsed
+// bullets for ids of shape ^(<prefix>)-(<digits>)$ and returns the
+// most common prefix; empty when none found, in which case the caller
+// falls back to "ANTS" (back-compat for a fresh/id-less roadmap). The
+// prefix is the run before the FINAL `-digits`, so "mame-curator-1065"
+// → "mame-curator" and "ANTS-2057" → "ANTS".
+QString rlDetectCounterPrefix(const QString &markdown) {
+    static const QRegularExpression counterRe(
+        QStringLiteral("^([A-Za-z][A-Za-z0-9_-]*)-([0-9]{1,8})$"));
+    const auto bullets = RoadmapDialog::parseBullets(markdown);
+    constexpr int kSniffCap = 50;
+    const int upTo = std::min<int>(bullets.size(), kSniffCap);
+    QHash<QString, int> counts;
+    QString best;
+    int bestN = 0;
+    for (int i = 0; i < upTo; ++i) {
+        const QString id = bullets.at(i).id;
+        if (id.isEmpty()) continue;
+        const auto m = counterRe.match(id);
+        if (!m.hasMatch()) continue;
+        const int n = ++counts[m.captured(1)];
+        if (n > bestN) { bestN = n; best = m.captured(1); }
+    }
+    return best;
+}
+
+// ANTS-2055 — collect the child-subsection slugs of `sec`: any indexed
+// heading deeper than `sec` whose heading line falls inside sec's span.
+// op:append / op:append_batch splice at sec.lineEnd; for a `##`
+// milestone whose body is `###` subsections that lands the bullet past
+// the last `###` child AND past the milestone's closing `---`, in the
+// dead zone before the next `##` — where roadmap_query then mis-attributes
+// it to the last child slug. A non-empty result means "ambiguous target":
+// the caller must pick a leaf child slug (or create a new one). Empty →
+// `sec` is a leaf and the append proceeds.
+QStringList rcSectionChildSlugs(
+        const QVector<RoadmapIndex::Section> &index,
+        const RoadmapIndex::Section &sec) {
+    QStringList children;
+    for (const auto &c : index) {
+        if (c.level > sec.level &&
+            c.lineStart > sec.lineStart &&
+            c.lineStart < sec.lineEnd) {
+            children.append(c.slug);
+        }
+    }
+    return children;
+}
+
+// ANTS-2055 — shared refusal envelope for an append into a parent
+// section that has subsections. Lists the child slugs so the caller can
+// re-target a leaf (or op:create_section a new one).
+QJsonDocument rcSectionHasSubsectionsRefusal(const QString &slug,
+                                             const QStringList &children) {
+    QJsonObject env;
+    env["ok"]    = false;
+    env["code"]  = QStringLiteral("section_has_subsections");
+    env["error"] = QStringLiteral(
+        "roadmap_log: section \"%1\" has subsections — appending here "
+        "would drop the bullet past the last child heading. Re-target "
+        "one of its child slugs, or op:create_section a new one.")
+            .arg(slug);
+    env["section"]      = slug;
+    env["child_slugs"]  = QJsonArray::fromStringList(children);
+    return QJsonDocument(env);
+}
+
 // ANTS-1881 — project each bullet object to exactly the four-key set
 // {id, status, headline_oneline, section_slug} for
 // mode:"headline_only". Mutates in place. Rollup / narrator bullets
@@ -4300,6 +4370,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                            "\"%1\"").arg(verbatim));
     }
 
+    // ANTS-2055 — refuse an append into a parent section that has
+    // subsections; splicing at sec.lineEnd would orphan the bullet past
+    // the last child heading (where roadmap_query mis-attributes it).
+    {
+        const QStringList childSlugs = rcSectionChildSlugs(index, *sec);
+        if (!childSlugs.isEmpty()) {
+            return rcSectionHasSubsectionsRefusal(sec->slug, childSlugs);
+        }
+    }
+
     // Construct the bullet via the shared helper (ANTS-1879 INV-10 —
     // extracted so cmdRoadmapLogAppendBatch can format each bullet
     // through the same code path). ANTS-1905 — under stable_prefix
@@ -4309,9 +4389,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     if (useStablePrefix) {
         idStr = stableId;
     } else {
-        idStr = QStringLiteral("ANTS-%1").arg(newId, 4, 10,
-                                              QLatin1Char('0'));
-        if (newId > 9999) idStr = QStringLiteral("ANTS-%1").arg(newId);
+        // ANTS-2054 — render the project's own counter prefix sniffed
+        // from the roadmap, not a hardcoded "ANTS"; fall back to "ANTS"
+        // when there is nothing to sniff (fresh / id-less roadmap).
+        QString pfx = rlDetectCounterPrefix(markdown);
+        if (pfx.isEmpty()) pfx = QStringLiteral("ANTS");
+        idStr = QStringLiteral("%1-%2").arg(pfx).arg(newId, 4, 10,
+                                                     QLatin1Char('0'));
+        if (newId > 9999)
+            idStr = QStringLiteral("%1-%2").arg(pfx).arg(newId);
     }
     QStringList scrubbedNames;
     const QString bullet =
@@ -4824,6 +4910,37 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         }
     }
     const int matchedCount = matchIndices.size();
+    // ANTS-2053 — a roadmap_query synthetic id (content-hash, 10 lowercase
+    // base36 chars; emitted with synthetic:true for ID-less GFM bullets)
+    // is NOT a roadmap_log locator: the write path matches on boldId, which
+    // is empty for exactly those bullets. Rather than the generic
+    // bullet_not_found + unrelated nearest-neighbour suggestions, refuse
+    // with a targeted code that names the working `headline` / `anchor`
+    // fallback. We do NOT resolve the hash here: the write-path GFM walker
+    // and the read-path parser are separate code, so cross-parser hash
+    // parity isn't guaranteed — naming the fallback is the honest fix.
+    // Fires only on a zero-match locId (a real 10-char id would have
+    // matched a bullet), so it never shadows a legitimate locator.
+    if (matchedCount == 0 && !locId.isEmpty()) {
+        static const QRegularExpression kSyntheticIdShape(
+            QStringLiteral("^[0-9a-z]{10}$"));
+        if (kSyntheticIdShape.match(locId).hasMatch()) {
+            QJsonObject env;
+            env["ok"]      = false;
+            env["code"]    = QStringLiteral("synthetic_id_not_locatable");
+            env["error"]   = QStringLiteral(
+                "roadmap_log: \"%1\" looks like a roadmap_query synthetic "
+                "id (content-hash for an ID-less bullet); those are not "
+                "valid write locators. Re-target by `headline` (exact "
+                "text) or `anchor`.").arg(locId);
+            env["locator"] = locId;
+            env["hint"]    = QStringLiteral(
+                "Use the bullet's `headline` from the same roadmap_query "
+                "result as the locator; on a flip roadmap_log injects a "
+                "durable caret anchor you can reuse next time.");
+            return QJsonDocument(env);
+        }
+    }
     if (matchedCount == 0 || matchedCount > 1) {
         // Suggestions: for ambiguous, the actual matches (≤ 3); for
         // not-found, up to 3 nearest-neighbour bullets ranked by
@@ -5895,6 +6012,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                 .arg(section));
     }
 
+    // ANTS-2055 — same parent-section guard as the single-bullet path:
+    // refuse before any bullet is formatted so the whole batch
+    // short-circuits (parity with the bad_section / unrecognised_format
+    // short-circuits above).
+    {
+        const QStringList childSlugs = rcSectionChildSlugs(index, *sec);
+        if (!childSlugs.isEmpty()) {
+            return rcSectionHasSubsectionsRefusal(sec->slug, childSlugs);
+        }
+    }
+
     // 6. Per-bullet validation. Kinds + statuses enum-checked.
     static const QSet<QString> kValidKinds = {
         QStringLiteral("implement"),    QStringLiteral("fix"),
@@ -5925,6 +6053,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     };
     QList<Accepted> accepted;
     QJsonArray skipped;
+
+    // ANTS-2054 — infer the project's counter prefix once for all
+    // bullets (fall back to "ANTS" for a fresh / id-less roadmap).
+    QString counterPfx = rlDetectCounterPrefix(markdown);
+    if (counterPfx.isEmpty()) counterPfx = QStringLiteral("ANTS");
 
     qint64 nextId = counter + 1;
     bool firstAccepted = true;
@@ -5982,9 +6115,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         }
         firstAccepted = false;
 
-        QString idStr = QStringLiteral("ANTS-%1")
-                            .arg(nextId, 4, 10, QLatin1Char('0'));
-        if (nextId > 9999) idStr = QStringLiteral("ANTS-%1").arg(nextId);
+        QString idStr = QStringLiteral("%1-%2")
+                            .arg(counterPfx).arg(nextId, 4, 10,
+                                                 QLatin1Char('0'));
+        if (nextId > 9999)
+            idStr = QStringLiteral("%1-%2").arg(counterPfx).arg(nextId);
 
         Accepted a;
         a.bulletIndex = i;
@@ -8948,6 +9083,55 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
     // ANTS-1625 — always emit `pick_basis` so callers can tell whether
     // the picker preferred a broader file or just took the newest.
     if (!pickBasis.isEmpty()) env["pick_basis"] = pickBasis;
+
+    // ANTS-2056 — always-on staleness signal. The cached artifact's
+    // commit/branch provenance is read-time HEAD for every non-SARIF
+    // format (branch_source:"read_time" above), so a snapshot generated
+    // long ago reads as "HEAD's current findings". Compare the artifact
+    // mtime against the current HEAD commit's author-date: an artifact
+    // older than HEAD describes a PAST tree state, where already-fixed
+    // findings masquerade as live (the RetroArch two-branch fork case).
+    // Not gated behind `since_commit` — that gate is opt-in and can't
+    // evict a stale-but-recent cache. Best-effort: the flag is omitted
+    // (not guessed) when the HEAD date can't be read.
+    {
+        const QString headDateRaw = QString::fromUtf8(runGit(
+            rootCanonical,
+            {QStringLiteral("log"), QStringLiteral("-1"),
+             QStringLiteral("--format=%ct"),
+             QStringLiteral("HEAD")})).trimmed();
+        bool headDateOk = false;
+        const qint64 headDateMs =
+            headDateRaw.toLongLong(&headDateOk) * 1000;
+        if (headDateOk && headDateMs > 0) {
+            const bool stale = mtimeMs < headDateMs;
+            env["stale"] = stale;
+            if (stale) {
+                env["stale_reason"] = QStringLiteral(
+                    "cached audit artifact \"%1\" predates the current "
+                    "HEAD commit — findings may already be fixed; re-run "
+                    "audit_run for current results.")
+                        .arg(QFileInfo(reportPath).fileName());
+            }
+        }
+    }
+
+    // ANTS-2056 — pinned-snapshot hint. A filename like `*-bNN-fixes.*`
+    // or `*-pre-*` is a deliberately-pinned artifact, not a dated run,
+    // and routinely predates HEAD. Surface it so a caller doesn't read
+    // it as HEAD's current findings even when the mtime check can't run.
+    {
+        static const QRegularExpression kPinnedSnapshot(
+            QStringLiteral("-b[0-9]+-fixes|-pre-"),
+            QRegularExpression::CaseInsensitiveOption);
+        const QString fname = QFileInfo(reportPath).fileName();
+        if (kPinnedSnapshot.match(fname).hasMatch()) {
+            env["pinned_snapshot_hint"] = QStringLiteral(
+                "report \"%1\" looks like a pinned snapshot (not a dated "
+                "run); it may predate HEAD — re-run audit_run for current "
+                "findings.").arg(fname);
+        }
+    }
     return QJsonDocument(env);
 }
 

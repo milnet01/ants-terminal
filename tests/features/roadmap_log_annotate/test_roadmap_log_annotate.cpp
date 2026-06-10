@@ -172,6 +172,48 @@ TEST(roadmap_log_annotate, Inv3AnnotateRequiresNote) {
               QStringLiteral("missing_field"));
 }
 
+// ANTS-2053 — a roadmap_query synthetic id (10 lowercase base36 chars,
+// the content-hash emitted for an ID-less GFM bullet) is not a valid
+// roadmap_log locator. flip/annotate must refuse with the targeted
+// synthetic_id_not_locatable code naming the headline/anchor fallback,
+// not a generic bullet_not_found.
+TEST(roadmap_log_annotate, Ants2053SyntheticIdRefusedWithTargetedCode) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedGfm()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = req(tmp.path(), QStringLiteral("flip"));
+    r[QStringLiteral("id")]        = QStringLiteral("czf2ld2kjz");  // synthetic shape
+    r[QStringLiteral("to_status")] = QStringLiteral("shipped");
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(r).object();
+
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("synthetic_id_not_locatable"));
+    EXPECT_EQ(resp.value(QStringLiteral("locator")).toString(),
+              QStringLiteral("czf2ld2kjz"));
+    EXPECT_FALSE(resp.value(QStringLiteral("hint")).toString().isEmpty());
+}
+
+// A non-synthetic-shaped missing id still gets the generic
+// bullet_not_found — the targeted refusal must not over-fire.
+TEST(roadmap_log_annotate, Ants2053NonSyntheticMissStaysBulletNotFound) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedGfm()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = req(tmp.path(), QStringLiteral("flip"));
+    r[QStringLiteral("id")]        = QStringLiteral("ANTS-9999");  // real shape, absent
+    r[QStringLiteral("to_status")] = QStringLiteral("shipped");
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(r).object();
+
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bullet_not_found"));
+}
+
 // INV-4 — annotate + to_status refuses bad_op_combo.
 TEST(roadmap_log_annotate, Inv4AnnotateRejectsToStatus) {
     QTemporaryDir tmp;

@@ -64,6 +64,18 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query synthetic ids are not valid locators for roadmap_log flip/annotate.** (ANTS-2053)
+  When you look up a checklist item that has no ID, the tool makes up a temporary one, but you can't then use that temporary ID to mark the item done — it says "not found".
+
+- **last_audit_summary stamps a stale cached SARIF snapshot with read-time HEAD, so already-fixed findings read as current.** (ANTS-2056)
+  The "latest audit findings" tool can hand back an old saved scan but label it with today's code version, so a session thinks long-fixed bugs are still open and wastes effort re-fixing them.
+
+- **roadmap_log op:append to a ## section with ### children orphans the bullet past the milestone separator.** (ANTS-2055)
+  Adding an item to a big milestone heading that is split into sub-sections drops the item into a no-man's-land after the divider line, where it gets mis-filed under an unrelated sub-section.
+
+- **roadmap_log op:append hardcodes the ANTS- ID prefix instead of inferring the project's existing prefix.** (ANTS-2054)
+  When adding a new roadmap item to a project that names its items like mame-curator-1073, the tool wrongly stamps it ANTS-1073 with no warning, so later lookups of that item fail.
+
 - **roadmap_log flip/flip_batch/append now recognise lowercase bracket ids in ants-v1 roadmaps** (ANTS-2051)
   The write parser required an uppercase-led [A-Z...-NNNN] id, so it refused markerless ants-v1 roadmaps with lowercase ids like [mame-curator-1065] that roadmap_query reads fine. The bracket-id leading letter is now case-insensitive, matching the read path. (Fully id-less line_range/headline flip targeting remains tracked under ANTS-2051.)
 

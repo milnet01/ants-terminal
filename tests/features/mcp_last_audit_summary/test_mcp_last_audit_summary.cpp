@@ -859,3 +859,40 @@ TEST(Ants1625, SarifPathUnchanged) {
            "lambda — SARIF naming already sorts correctly lex-max";
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-2056 — cmdLastAuditSummary must surface an always-on staleness
+// signal (a cached snapshot stamped with read-time HEAD must not read as
+// "HEAD's current findings"): a `stale` flag from the artifact mtime vs
+// the HEAD commit date, plus a pinned-snapshot hint. Source-grep wiring
+// tripwires, matching this verb's handler-feature test idiom (the full
+// behavioural path needs a live window + git repo, as with pick_basis).
+TEST(Ants2056, StalenessSignalWiredInHandler) {
+    expect_reset();
+    const std::string rcc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const auto handlerStart = rcc.find("cmdLastAuditSummary(");
+    ASSERT_NE(handlerStart, std::string::npos);
+    expect(rcc.find("env[\"stale\"]") != std::string::npos,
+           "ANTS-2056",
+           "handler must emit env[\"stale\"]");
+    expect(rcc.find("--format=%ct") != std::string::npos,
+           "ANTS-2056",
+           "handler must read the HEAD commit date (%ct) for the "
+           "staleness comparison");
+    expect(rcc.find("env[\"pinned_snapshot_hint\"]") != std::string::npos,
+           "ANTS-2056",
+           "handler must emit env[\"pinned_snapshot_hint\"]");
+    expect(rcc.find("-b[0-9]+-fixes|-pre-") != std::string::npos,
+           "ANTS-2056",
+           "handler must carry the pinned-snapshot regex literal");
+    // The staleness signal must NOT be gated behind the opt-in
+    // `since_commit` block — it lives after pick_basis, near the final
+    // `return QJsonDocument(env)` of the handler.
+    const auto pickBasisEmit = rcc.find("env[\"pick_basis\"]", handlerStart);
+    const auto staleEmit      = rcc.find("env[\"stale\"]", handlerStart);
+    ASSERT_NE(pickBasisEmit, std::string::npos);
+    ASSERT_NE(staleEmit, std::string::npos);
+    EXPECT_LT(pickBasisEmit, staleEmit)
+        << "stale signal must be emitted after pick_basis (always-on tail), "
+           "not inside the since_commit short-circuit";
+    EXPECT_EQ(0, expect_failures());
+}
