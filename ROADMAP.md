@@ -15758,6 +15758,79 @@ subsection.
   Source: in-session-2026-06-05 (pattern across ANTS-2031 + ANTS-2040).
   Resolved (2026-06-05): codified §6a writer/reader format-parity rule in mcp-tools.md + mcp-error-codes.md.
 
+### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-06-10)
+
+Triaged from the *_Ants_MCP_Feedback.md tails on 2026-06-10. Vestige (3D
+engine), MAME Curator, and RetroDB carried new, distinct findings; Album
+Builder's tail was empty and RetroArch's was already-mapped recurring write-side
+asks (ANTS-1690/1691 — 1690 since shipped). Verification-only observations
+(ANTS-1987 ✅ confirmed, ANTS-1623/1580/1569/1646 ✅, ANTS-2039 workaround
+corroborated) are recorded in the feedback files, not re-roadmapped.
+
+- 📋 [ANTS-2046] **roadmap_query / RoadmapIndex: GFM task bullets with no authored ID + a trailing `**bold**` span get a fabricated id shared across all siblings, and the headline is taken from the trailing bold instead of the leading item text.**
+  Distinct from ANTS-1987 (that was *leading-bracket* IDs). Live repro on the
+  Vestige ROADMAP.md:186–192 (Phase 9C Audio), seven plain GFM task bullets
+  with no authored ID, each ending `— **deferred to Phase 10.**`. roadmap_query
+  section=… status:active (and session_orient active_bullets) returns all seven
+  as byte-identical {id:"35ra39wbn1", headline_oneline:"deferred to Phase 10."}.
+  Two defects: (A) 35ra39wbn1 is synthesized (0× in the file) and the SAME
+  synthesized id is handed to all seven siblings → non-addressable; id=/ids=
+  can't target one and op:flip is ambiguous / mis-routes. (B) headline is taken
+  from the trailing bold span, dropping the real item text ("Ambient
+  soundscapes…", "Music system…"), so every row collapses to "deferred to Phase
+  10." and a planning query can't tell what the open work is. Fix: (1) extract a
+  GFM task bullet's headline from its leading item text, treating a bold span as
+  ID/headline source only when head-anchored (mirror the ANTS-1987 leading-
+  bracket rule — confirm that fix didn't widen bold-grabbing to trailing spans);
+  (2) when synthesizing an id for an ID-less bullet make it unique per bullet
+  (hash of section-slug + line + leading text), never a constant shared across
+  siblings — a colliding id is worse than found:false because it silently mis-
+  routes flips.
+  **Layman:** A list of seven to-do items that all end in the same bold note (“— deferred to Phase 10.”) and have no ID get read as seven identical blank rows — the tool invents one fake ID and gives it to all of them, and uses the trailing bold note as the title instead of the real item text. Fix: take the title from the item’s leading text, and give ID-less items unique (or no) IDs, never one shared fake one.
+  Kind: fix.
+  Lanes: roadmapindex, mcp-roadmap-query.
+  Source: cross-session-report-2026-06-10 (Vestige / 3D engine).
+
+- 📋 [ANTS-2047] **test_audit_partition: jest/vitest default test_globs omit `.tsx`/`.jsx`, so React/Preact/Solid component tests are silently excluded from the partition (ok:true, no warning).**
+  Verified in code: testauditengine.cpp:~85-89 defines the "jest" framework with
+  test_globs [**/*.spec.ts, **/*.test.ts] (mirror for *.js) — no .tsx/.jsx
+  entry. MAME Curator's frontend (vitest) has 5 *.test.ts + 45 *.test.tsx + 4
+  *.spec.ts = 54 files; partition returned total_files:9, ok:true, no warning,
+  silently dropping the 45 *.test.tsx (83% of the suite) — the exact under-audit
+  the tool exists to prevent. Fix: default jest/vitest globs to
+  **/*.{spec,test}.{js,jsx,ts,tsx,mjs,cjs,mts,cts} (at minimum add tsx/jsx);
+  consider a skipped_unmatched_hint when test-shaped siblings with un-globbed
+  extensions sit next to matched files. Secondary: the framework is labelled
+  "jest" though the project uses vitest (vitest.config.ts present, no jest
+  config) — probe vitest.config.* so detection is accurate (the glob bug is the
+  same either way since they share glob shape).
+  **Layman:** When auditing a web project’s tests, the tool only looked for `.ts`/`.js` test files and missed every `.tsx`/`.jsx` one — 45 of 54 frontend tests (83%) were invisible, yet it cheerfully reported success. Fix: include the `x` extensions, and detect Vitest projects properly.
+  Kind: fix.
+  Lanes: testauditengine, mcp-test-audit-partition.
+  Source: cross-session-report-2026-06-10 (MAME Curator, /test-audit sweep).
+
+- 📋 [ANTS-2048] **roadmap_log pass-headings format detection doesn't classify `#### Pass N.M` + `- **Status**:` files as pass-headings (read as gfm), so flip_batch returns bullet_not_found instead of the ANTS-2031 format_mismatch guard.**
+  RetroDB (2026-06-10) ran roadmap_log(op:flip_batch, to_status:shipped,
+  locators:[{id:"PASS-41-5"},{id:"PASS-41-12"},{id:"PASS-41-13"}]) against a
+  `#### Pass N.M <Title>` + `- **Status**:` heading-format roadmap.md and got
+  {format:"gfm", flipped_count:0, skipped_count:3, skipped:[bullet_not_found
+  ×3]} — NOT the {format:"pass-headings", format_mismatch} the ANTS-2031 fix
+  emits. NOT a stale binary: the ANTS-2031 code is present
+  (remotecontrol.cpp rcBulletsArePassHeadings / rcPassHeadingsWriteRefusal,
+  format:"pass-headings") and build/ants-terminal mtime is 2026-06-10, newer
+  than the 2026-06-05 fix commit (4c22728). So the file is being detected as
+  gfm rather than pass-headings, meaning either the format detector doesn't
+  recognise this `#### Pass N.M` + `- **Status**:` shape (ANTS-2030 widened
+  pass-heading parsing but the detector may key on a narrower marker), or the
+  PASS-41-5 locator form doesn't resolve to the `#### Pass 41.5` heading.
+  Investigate against RetroDB's roadmap.md shape; if the detector needs a
+  broader pass-heading signal, that's the fix — distinct from ANTS-2039 (which
+  is about the *reader* not recognising the ✅ Done status keyword).
+  **Layman:** A project whose roadmap uses “#### Pass 41.5” headings tried to mark items done in bulk and got “not found” instead of the helpful “this file format isn’t writable yet” message — because the tool read its file as a plain checklist, not as the heading format. Worth checking why the format isn’t being recognised.
+  Kind: investigate.
+  Lanes: roadmapindex, mcp-roadmap-log.
+  Source: cross-session-report-2026-06-10 (RetroDB, Tier-2 close-out, v3.6.35).
+
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
 - ✅ [ANTS-1329] **Tasks dialog gets 3 px of vertical row
