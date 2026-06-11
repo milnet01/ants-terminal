@@ -24,6 +24,9 @@ public:
         connect(reply, &QNetworkReply::errorOccurred, [this](QNetworkReply::NetworkError) {  // @expect qnetworkreply_no_abort
             failure();
         });
+        connect(reply, &QNetworkReply::sslErrors, [this, reply](const QList<QSslError> &) {  // @expect qnetworkreply_no_abort
+            handle(reply);
+        });
     }
 
 private:

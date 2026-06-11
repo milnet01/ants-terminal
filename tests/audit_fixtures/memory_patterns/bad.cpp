@@ -19,3 +19,11 @@ void leaky_malloc() {
     void *b3  = realloc(b2, 256);         // @expect memory_patterns
     (void)buf; (void)b3;
 }
+
+// Single-pointer-arg ctor forms — the regex's optional (nullptr|NULL)
+// alternative must still flag these (ANTS-1478 coverage gap).
+void leaky_ptr_ctor() {
+    Widget *wn = new Widget(nullptr);     // @expect memory_patterns
+    Widget *wN = new Widget(NULL);        // @expect memory_patterns
+    (void)wn; (void)wN;
+}
