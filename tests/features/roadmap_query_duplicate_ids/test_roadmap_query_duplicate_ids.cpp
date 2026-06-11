@@ -3,6 +3,7 @@
 // matches sibling roadmap_query feature tests.
 
 #include "../../_support/expect.h"
+#include "../../_support/srcgrep.h"
 #include "roadmapindex.h"
 
 #include <gtest/gtest.h>
@@ -65,18 +66,15 @@ TEST(roadmap_query_duplicate_ids, Inv2RecomputeOnCacheFill) {
     expect_reset();
     const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
     // The recompute callsite signature is the helper invocation
-    // immediately under each `m_roadmapCacheBullets = arr;`
-    // assignment. Count both occurrences across the file.
-    const int callSites = count(cpp,
-        "m_roadmapCacheDuplicateIds =\n"
-        "                rcComputeDuplicateIds(m_roadmapCacheBullets);");
-    const int callSitesAlt = count(cpp,
-        "m_roadmapCacheDuplicateIds =\n"
-        "                    rcComputeDuplicateIds(m_roadmapCacheBullets);");
-    const int callSitesPlain = count(cpp,
-        "m_roadmapCacheDuplicateIds =\n"
-        "            rcComputeDuplicateIds(m_roadmapCacheBullets);");
-    const int total = callSites + callSitesAlt + callSitesPlain;
+    // immediately under each `m_roadmapCacheBullets = arr;` assignment.
+    // ANTS-2067 — normalise whitespace so the single needle matches at
+    // every indent depth, instead of enumerating three indent variants
+    // (which silently miss a fourth indentation).
+    const std::string squashed = ants_test::squashWhitespace(cpp);
+    const int total = static_cast<int>(ants_test::countOccurrences(
+        squashed,
+        "m_roadmapCacheDuplicateIds = "
+        "rcComputeDuplicateIds(m_roadmapCacheBullets);"));
     expect(total >= 3,
            ("INV-2: recompute call site expected at all three "
             "cache-fill paths; found " +

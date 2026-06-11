@@ -2,6 +2,7 @@
 // filter v2. Source-scrape style matching the sibling ANTS-1398 test.
 
 #include "../../_support/expect.h"
+#include "../../_support/srcgrep.h"
 
 #include <gtest/gtest.h>
 
@@ -99,15 +100,17 @@ TEST(roadmap_query_narrator_filter, Inv5DispatchForwards) {
 TEST(roadmap_query_narrator_filter, Inv6EchoOnlyWhenSet) {
     expect_reset();
     const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
-    // Two echo sites — both must guard on hasIncludeNarratorsArg.
-    expect(contains(cpp,
-                    "if (hasIncludeNarratorsArg) {\n            "
-                    "out[\"include_narrator_bullets\"]"),
-           "INV-6: section-mode echo guarded by "
+    // Two echo sites (section-mode + full-file) must both guard on
+    // hasIncludeNarratorsArg. ANTS-2067 — normalise whitespace so one
+    // needle matches both indent depths; assert the count is >= 2 rather
+    // than pinning each site's exact indentation.
+    const std::string squashed = ants_test::squashWhitespace(cpp);
+    const std::size_t guarded = ants_test::countOccurrences(
+        squashed,
+        "if (hasIncludeNarratorsArg) { "
+        "out[\"include_narrator_bullets\"]");
+    expect(guarded >= 2,
+           "INV-6: both narrator-echo sites must guard on "
            "hasIncludeNarratorsArg");
-    expect(contains(cpp,
-                    "if (hasIncludeNarratorsArg) {\n        "
-                    "out[\"include_narrator_bullets\"]"),
-           "INV-6: full-file echo guarded by hasIncludeNarratorsArg");
     EXPECT_EQ(0, expect_failures());
 }

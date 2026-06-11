@@ -109,9 +109,18 @@ TEST(DecstrSoftReset, PreservesResponseCallback) {
     h.feed("\x1b[6n");  // CPR — should fire the callback if alive
     ASSERT_FALSE(captured.empty())
         << "response callback dropped by DECSTR — CPR produced no output";
-    EXPECT_TRUE(captured.find("\x1b[1;1R") != std::string::npos ||
-                captured.find("\x1b[") != std::string::npos)
-        << "response captured but didn't look like CPR: '" << captured << "'";
+    // ANTS-2067 — require a CPR-shaped report (CSI … R), not merely a CSI
+    // introducer. The old `|| find("\x1b[")` fallback accepted ANY escape
+    // sequence, so it could not actually catch a dropped/garbled CPR. After
+    // a soft reset the cursor is homed, so the report is ESC[1;1R; accept a
+    // differing coordinate only if it still terminates in the CPR 'R'.
+    const bool exactHomeCpr = captured.find("\x1b[1;1R") != std::string::npos;
+    const bool cprShaped =
+        captured.rfind("\x1b[", 0) == 0 && !captured.empty() &&
+        captured.back() == 'R';
+    EXPECT_TRUE(exactHomeCpr || cprShaped)
+        << "response captured but didn't look like a CPR report: '"
+        << captured << "'";
 }
 
 // INV-8 — DECSTR does NOT clear scrollback.

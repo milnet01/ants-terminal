@@ -10505,11 +10505,12 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   - Dimension: flakiness
   - Severity: HIGH
   - Fix: Replace wall-clock bounds and fixed sleeps with VerifyEngine test-doubles, readiness polling (lua_threading:101), and write-count/mock-clock side-channels (config_reload_loop_safety:146 mtime idempotency, token_usage_engine:50). Keep semantic checks; drop timing-dependent assertions or gate them behind a clock abstraction.
-- 📋 [ANTS-2067] **Too-loose / whitespace-fragile source-grep assertions: whole-file contains("A")&&contains("B") without proximity; hardco ….**
+- ✅ [ANTS-2067] **Too-loose / whitespace-fragile source-grep assertions: whole-file contains("A")&&contains("B") without proximity; hardco ….**
   - File: tests/features/mcp_workflow_state/test_mcp_workflow_state.cpp:1
   - Dimension: accuracy
   - Severity: MEDIUM
   - Fix: Scope substring assertions to the relevant function body (slurpFunctionBody) and normalise/strip whitespace before matching, so a production-code reformat or an unrelated token elsewhere can neither falsely pass nor falsely fail. Includes decstr_soft_reset over-broad CSI OR-fallback, roadmap_query_duplicate_ids:70, narrator_filter:103, find_sources:224.
+  Resolved (2026-06-11): added ants_test::squashWhitespace to srcgrep.h and tightened the loose/whitespace-fragile source-grep assertions: roadmap_query_duplicate_ids (3 hardcoded indent variants -> 1 normalised count), roadmap_query_narrator_filter INV-6 (2 indent variants -> normalised count>=2), mcp_find_sources INV-11 Required branch (alignment-space-fragile -> normalised), mcp_workflow_state INV-6/INV-1 (whole-file contains(A)&&contains(B) -> proximity: scoped to the callerCwdContractFor row / cmdWorkflowState body), decstr_soft_reset (over-broad `|| find("\x1b[")` CSI fallback -> CPR-shaped check). Full suite 2012/2012 green.
 - ✅ [ANTS-2068] **Hardcoded magic counts / model-version literals require manual bumping and false-fail/pass over time.**
   - File: tests/features/rc_launch_cwd_anchor/test_rc_launch_cwd_anchor.cpp:168
   - Dimension: hardcoded_data

@@ -2,6 +2,7 @@
 // tests for FindSources::* plus source-grep wiring of the MCP tool.
 
 #include "../../_support/expect.h"
+#include "../../_support/srcgrep.h"
 
 #include "findsources.h"
 
@@ -220,8 +221,11 @@ TEST(McpFindSources, WiringContract) {
     expect(contains(ciCpp,
                "name == QLatin1String(\"find_sources\")"),
            "INV-11: kindForName workspace bucket membership");
-    expect(contains(ciCpp,
-               "if (toolName == QStringLiteral(\"find_sources\"))       return C::Required;"),
+    // ANTS-2067 — normalise whitespace: the source aligns `return` with
+    // spaces, so an exact-string match was fragile to a realignment.
+    expect(ants_test::squashWhitespace(ciCpp).find(
+               "if (toolName == QStringLiteral(\"find_sources\")) "
+               "return C::Required;") != std::string::npos,
            "INV-11: callerCwdContractFor Required branch");
 
     EXPECT_EQ(0, expect_failures());

@@ -119,4 +119,28 @@ inline std::size_t countOccurrences(const std::string &hay,
     return count;
 }
 
+// Collapse every run of whitespace (space, tab, newline, CR, FF, VT) to a
+// single space and drop leading/trailing whitespace. ANTS-2067 — match a
+// whitespace-normalised source against a whitespace-normalised needle so a
+// source-grep assertion stops being fragile to reindentation / wrapping
+// (the failure mode where a test had to enumerate three indent variants of
+// the same line, or a production-code reformat false-failed the grep).
+inline std::string squashWhitespace(const std::string &s) {
+    std::string out;
+    out.reserve(s.size());
+    bool inWs = false;
+    for (char c : s) {
+        const bool ws = (c == ' ' || c == '\t' || c == '\n' ||
+                         c == '\r' || c == '\f' || c == '\v');
+        if (ws) {
+            inWs = true;
+            continue;
+        }
+        if (inWs && !out.empty()) out.push_back(' ');
+        inWs = false;
+        out.push_back(c);
+    }
+    return out;
+}
+
 }  // namespace ants_test

@@ -4,12 +4,22 @@
 #include <gtest/gtest.h>
 #include <QFile>
 
+#include "../../_support/srcgrep.h"
+
+#include <string>
+
 // INV-6: CallerCwdContract::Required registered
 TEST(McpWorkflowState, Inv6CallerCwdRequired) {
     QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
     ASSERT_TRUE(f.open(QIODevice::ReadOnly));
-    const QByteArray txt = f.readAll();
-    EXPECT_TRUE(txt.contains("workflow_state") && txt.contains("Required"))
+    // ANTS-2067 — match the actual contract row (proximity), not the two
+    // tokens "workflow_state" and "Required" appearing anywhere in the
+    // (large) file. Whitespace-normalised to survive `return` realignment.
+    const std::string txt =
+        ants_test::squashWhitespace(f.readAll().toStdString());
+    EXPECT_NE(txt.find("if (toolName == QStringLiteral(\"workflow_state\")) "
+                       "return C::Required;"),
+              std::string::npos)
         << "CallerCwdContract::Required must be registered for workflow_state";
 }
 
@@ -17,8 +27,11 @@ TEST(McpWorkflowState, Inv6CallerCwdRequired) {
 TEST(McpWorkflowState, Inv1FoundFieldPresent) {
     QFile f(QString::fromUtf8(SRC_REMOTECONTROL_CPP_PATH));
     ASSERT_TRUE(f.open(QIODevice::ReadOnly));
-    const QByteArray txt = f.readAll();
-    EXPECT_TRUE(txt.contains("workflow_state") && txt.contains("\"found\""))
+    // ANTS-2067 — scope to the cmdWorkflowState body so an unrelated
+    // "found" elsewhere in remotecontrol.cpp can't satisfy this.
+    const std::string body = ants_test::slurpFunctionBody(
+        f.readAll().toStdString(), "RemoteControl::cmdWorkflowState");
+    EXPECT_NE(body.find("\"found\""), std::string::npos)
         << "found field missing in cmdWorkflowState";
 }
 
