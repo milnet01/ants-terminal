@@ -6328,6 +6328,18 @@ class; the deferrals below cover the rest.
   Kind: fix.
   Source: user-crash-report-2026-06-11 (coredump, SIGSEGV in QIODevice::write via ClaudeIntegration::onMcpConnection lambda) + in-session.
 
+- 📋 [ANTS-2102] **Regression-test + sweep the nested-loop socket use-after-free class across every QLocalSocket readyRead handler.**
+  ANTS-2101 (MCP) and ANTS-2026 (remotecontrol) both fixed the same nested-loop deleteLater use-after-free, neither shipped a regression test (the reentrancy is integration-level: needs a live QLocalServer + a client that disconnects mid-dispatch while a >5 s verb pumps a nested QProcess loop). (1) Add one shared feature-conformance test (reuse tests/features/qpointer_destroyed_safe scaffold) that drives a real socket round-trip, disconnects the peer during a stubbed nested-loop dispatch, and asserts no crash + clean bail. (2) Sweep all QLocalSocket/QTcpSocket readyRead handlers (grep `&QLocalSocket::readyRead`) for any that can reach audit_run / indie_review_* / cold_eyes_* / any QProcess-pumping verb without the idleTimer->stop()+QPointer-guard pair. Hook + MCP + remote-control are the known three; confirm hook path (onHookConnection) is either short-op-only or already guarded.
+  **Layman:** Add a safety test for the crash we just fixed, and check there are no other places in the code with the same hidden trap.
+  Kind: test.
+  Source: in-session-2026-06-11 (ANTS-2101 follow-up).
+
+- 🚧 [ANTS-2103] **audit_run crashes the GUI — its QProcess QEventLoop multiplexer runs on the main thread, reentrantly delivering MCP socket notifications (use-after-free). Move it to a worker thread per INV-9.**
+  Second crash after ANTS-2101. Stack: QAbstractSocketPrivate::canReadNotification -> QIODevice::channelReadyRead -> SIGSEGV (no frame of ours). Root cause is architectural, deeper than ANTS-2101's write-path guard: mainwindow.cpp:4489 runs AuditRunner::runAudit synchronously ON THE MAIN THREAD inside the MCP socket's readyRead handler ('v1 — caller blocks; v2 will route through m_auditPool worker'). runAudit spins a local QEventLoop (auditrunner.cpp:1422/1522) to multiplex the per-tool QProcesses; on the main thread that nested loop reentrantly delivers QLocalSocket read-notifications, freeing/corrupting a live MCP socket -> UAF in Qt's socket engine. The header (auditrunner.h:8-13) + spec ANTS-1351 INV-9 already specify worker-thread isolation; it was never implemented. Fix: wrap the runAudit call in a QThread::create worker (start()+wait(); wait() is a join that does NOT pump events), so the audit's QEventLoop runs off-thread and no foreign socket notification fires during the sweep. ANTS-2101's idle-timer-stop + QPointer write guard stay as defence-in-depth. Add #include <QThread> to mainwindow.cpp. NOTE: GUI still freezes during the sweep (main thread blocks on wait()); full INV-9 'GUI stays responsive' (async dispatch, response sent on worker completion) is a larger follow-up. Sibling offender: indie_review_dispatch (indiereviewdispatcher.cpp) spins the same main-thread QEventLoop over QNAM — same latent UAF, roadmapped separately.
+  **Layman:** Running an audit froze and crashed the terminal. The audit machinery was running on the same thread that handles the Claude connection, and that overlap corrupted the connection. Fix: run the audit on its own background thread, which the design always intended.
+  Kind: fix.
+  Source: user-crash-report-2026-06-11 (2nd coredump, SIGSEGV in QAbstractSocketPrivate::canReadNotification) + in-session.
+
 ### 🔌 Ants MCP — improvements from running /audit + /indie-review + /debt-sweep (2026-05-14)
 
 The full audit / indie-review / debt-sweep cycle on 2026-05-14

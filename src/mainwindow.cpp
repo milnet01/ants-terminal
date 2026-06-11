@@ -101,6 +101,7 @@ void sweepKwinScriptOrphansOnce();
 #include <QSplitter>
 #include <QUuid>
 #include <QTimer>
+#include <QThread>  // ANTS-2103 — run audit_run on a worker thread (off-main-loop)
 #include <QJsonArray>
 #include <QJsonValue>
 #include <QFileDialog>
@@ -4484,9 +4485,27 @@ void MainWindow::setupClaudeMcpProviders() {
                 QStringLiteral("checks")).toArray();
             for (const QJsonValue &v : checksArr)
                 req.checks.append(v.toString());
-            // Run synchronously (v1) — caller blocks. v2 will route
-            // through the dedicated m_auditPool worker (INV-9).
-            const AuditRunner::RunResult r = AuditRunner::runAudit(req);
+            // ANTS-2103 — run the audit on a worker thread so its internal
+            // QEventLoop (auditrunner.cpp), which multiplexes the per-tool
+            // QProcesses, lives OFF the main thread. Running it synchronously
+            // here spun that nested QEventLoop on the GUI/MCP thread, which
+            // reentrantly delivered QLocalSocket read-notifications and freed
+            // the live MCP socket mid-dispatch -> use-after-free SIGSEGV (the
+            // ANTS-2101 write-path guard was necessary but not sufficient; the
+            // deeper hazard is pumping the main event loop at all). This
+            // realises the INV-9 worker-thread isolation auditrunner.h already
+            // documents. QThread::wait() blocks this thread via a join — it
+            // does NOT pump events — so no foreign socket notification fires
+            // during the sweep. (The GUI still freezes for the sweep duration;
+            // a fully async dispatch is the larger INV-9 follow-up.)
+            AuditRunner::RunResult r;
+            {
+                QThread *worker = QThread::create(
+                    [&req, &r]() { r = AuditRunner::runAudit(req); });
+                worker->start();
+                worker->wait();
+                delete worker;
+            }
             // (in-flight slot released by inFlightGuard on scope exit)
             // Serialise envelope.
             QJsonObject env;
