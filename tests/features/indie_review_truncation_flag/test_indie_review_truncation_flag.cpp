@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+#include "../../_support/srcgrep.h"
+
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -20,13 +22,13 @@ std::string slurp(const char *path) {
     return ss.str();
 }
 
-// Scan a windowed substring around the named function so the envelope-
-// shape grep doesn't false-positive on the wrong cmd.
+// Brace-matched body of the named function so the envelope-shape grep
+// doesn't false-positive on the wrong cmd. ANTS-2064 — was a fixed-size
+// substr window; slurpFunctionBody tracks the real body as it grows.
+// (The legacy `bytes` arg is ignored, kept so call sites need no edit.)
 std::string fnWindow(const std::string &src, const std::string &needle,
-                     size_t bytes = 4096) {
-    const auto pos = src.find(needle);
-    if (pos == std::string::npos) return {};
-    return src.substr(pos, bytes);
+                     size_t /*bytes*/ = 4096) {
+    return ants_test::slurpFunctionBody(src, needle);
 }
 
 }  // namespace

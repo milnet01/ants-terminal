@@ -6,6 +6,7 @@
 // path being exercised by every other MCP test.
 
 #include "../../_support/expect.h"
+#include "../../_support/srcgrep.h"
 
 #include <gtest/gtest.h>
 
@@ -46,11 +47,10 @@ TEST(mcp_dispatch_debug_log, Inv1LambdaEntryWrapper) {
     ASSERT_NE(pos, std::string::npos)
         << "INV-1 precondition: registerToolProvider definition "
            "missing from claudeintegration.cpp";
-    // 2600-byte window covers the function body. Bumped from 1000
-    // after ANTS-1419 inserted the contract-drift assertion ahead
-    // of the wrapper lambda, then from 2000 after ANTS-1834 added the
-    // refuse-in-Release comment + `return;` to that same branch.
-    const std::string region = ci.substr(pos, 2600);
+    // ANTS-2064 — brace-matched body instead of a fixed window that had
+    // to be bumped twice (1000 → 2000 → 2600) as the body grew.
+    const std::string region = ants_test::slurpFunctionBody(
+        ci, "ClaudeIntegration::registerToolProvider(");
     expect(contains(region, "ANTS-1427"),
            "INV-1: ANTS-1427 anchor comment present at wrapper site");
     expect(contains(region, "ANTS_LOG(DebugLog::Claude,"),
@@ -73,8 +73,9 @@ TEST(mcp_dispatch_debug_log, Inv2RecordDispatchEnd) {
         "ClaudeIntegration::recordDispatch(");
     ASSERT_NE(pos, std::string::npos)
         << "INV-2 precondition: recordDispatch definition missing";
-    // 1500-byte window covers the (small) function body.
-    const std::string region = ci.substr(pos, 1500);
+    // ANTS-2064 — brace-matched body, not a fixed 1500-char window.
+    const std::string region = ants_test::slurpFunctionBody(
+        ci, "ClaudeIntegration::recordDispatch(");
     expect(contains(region, "ANTS-1427"),
            "INV-2: ANTS-1427 anchor comment present at recordDispatch");
     expect(contains(region, "ANTS_LOG(DebugLog::Claude,"),
@@ -102,7 +103,9 @@ TEST(mcp_dispatch_debug_log, Inv3MiddleCheckpointCmdTokenUsage) {
         "RemoteControl::cmdTokenUsage(const QJsonObject &req,");
     ASSERT_NE(pos, std::string::npos)
         << "INV-3 precondition: cmdTokenUsage definition missing";
-    const std::string region = rc.substr(pos, 1500);
+    // ANTS-2064 — brace-matched body, not a fixed 1500-char window.
+    const std::string region = ants_test::slurpFunctionBody(
+        rc, "RemoteControl::cmdTokenUsage(const QJsonObject &req,");
     expect(contains(region, "ANTS-1427"),
            "INV-3: ANTS-1427 anchor comment present at cmd-enter");
     expect(contains(region, "ANTS_LOG(DebugLog::Claude,"),

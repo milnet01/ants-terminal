@@ -97,7 +97,10 @@ TEST(ClaudeStatusbarExtraction, Main) {
             "`namespace claudestatus` — spec mandates top-level "
             "(matches ClaudeIntegration / ClaudeTabTracker / etc.)"); FAIL(); }
 
-    // INV-2a — 14 public-method signatures, byte-for-byte.
+    // INV-2a — every public-method signature in kPublicMethods[] must
+    // appear byte-for-byte. The loop below iterates the array, so the
+    // count is implicit (no hand-maintained "N signatures" literal to
+    // drift — ANTS-2068).
     static const char *kPublicMethods[] = {
         "void attach(ClaudeIntegration *integration, ClaudeTabTracker *tracker, ColoredTabBar *coloredTabBar, QTabWidget *tabWidget);",
         "void setPromptActive(bool active);",

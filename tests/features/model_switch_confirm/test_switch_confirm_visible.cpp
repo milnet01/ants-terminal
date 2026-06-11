@@ -11,6 +11,12 @@ namespace {
 
 using ModelAutoSwitch::switchConfirmVisible;
 
+// ANTS-2068 — the version suffixes ("4.6", "4.8", "4.5") in the fixtures
+// below are illustrative only and do NOT need bumping when Claude Code
+// ships new model versions: switchConfirmVisible / switchBannerVisible key
+// on the TIER name ("Sonnet"/"Opus"/"Haiku"/"Default") and the surrounding
+// banner phrasing, never the version number (see modelautoswitch.cpp).
+//
 // The real CC dialog (verified 2026-06-01), Sonnet variant.
 const char *kRealDialogSonnet =
     "Switch model?\n"

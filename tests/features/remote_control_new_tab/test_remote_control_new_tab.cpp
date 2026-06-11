@@ -8,6 +8,8 @@
 
 
 #include <gtest/gtest.h>
+
+#include "../../_support/srcgrep.h"
 #ifndef SRC_RC_CPP
 #error "SRC_RC_CPP compile definition required"
 #endif
@@ -56,10 +58,11 @@ static int runMain() {
     if (ntPos == std::string::npos) {
         fail("INV-2a: RemoteControl::cmdNewTab definition missing");
     } else {
-        // Window expanded to 3000 chars in 0.7.52 — cmdNewTab body
-        // grew by ~700 chars when filterControlChars was added on the
-        // command-bytes path (2026-04-27 indie-review HIGH).
-        std::string body = rc.substr(ntPos, 3000);
+        // ANTS-2064 — brace-matched body extraction tracks growth (the
+        // 0.7.52 +700-char filterControlChars addition once overran the
+        // old fixed 3000-char window).
+        std::string body = ants_test::slurpFunctionBody(
+            rc, "RemoteControl::cmdNewTab");
         if (body.find("\"cwd\"")     == std::string::npos ||
             body.find("\"command\"") == std::string::npos) {
             fail("INV-2b: cmdNewTab must read both \"cwd\" and \"command\" fields");
@@ -99,7 +102,8 @@ static int runMain() {
     if (ntImpl == std::string::npos) {
         fail("INV-5a: MainWindow::newTabForRemote definition missing from mainwindow.cpp");
     } else {
-        std::string body = mwc.substr(ntImpl, 3000);
+        std::string body = ants_test::slurpFunctionBody(
+            mwc, "MainWindow::newTabForRemote");
         std::regex singleShot200(R"(QTimer::singleShot\s*\(\s*200\s*,)");
         if (!std::regex_search(body, singleShot200)) {
             fail("INV-5b: newTabForRemote must use QTimer::singleShot(200, ...) "

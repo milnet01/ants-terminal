@@ -163,11 +163,16 @@ void testWiring() {
     // ".."-substring check was replaced by the canonical chokepoint to
     // close a symlink-escape).
     {
+        // ANTS-2068 — floor, not exact: the security invariant is "every
+        // path-typed arg routes through the chokepoint", so MORE call-sites
+        // are fine (a newly-validated arg shouldn't false-fail this test);
+        // FEWER means a guard was dropped. 22 is the count at the time of
+        // writing — relational, so it stops silently drifting on additions.
         const std::size_t count = ants_test::countOccurrences(
             rc, "PathValidation::validatePath(");
-        expect(count == 22,
-               (std::string("WI-3 expected 22 validatePath call-sites, "
-                            "found ")
+        expect(count >= 22,
+               (std::string("WI-3 expected >= 22 validatePath call-sites "
+                            "(a guard may have been dropped), found ")
                 + std::to_string(count)).c_str());
     }
 

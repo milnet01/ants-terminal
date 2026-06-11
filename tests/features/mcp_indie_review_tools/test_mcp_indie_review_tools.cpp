@@ -159,8 +159,12 @@ TEST(McpIndieReviewTools, AllSchemasUseAdditionalPropertiesFalse) {
         ++count;
         ++pos;
     }
-    EXPECT_EQ(count, 7)
-        << "expected 7 additionalProperties=false (5 original "
-           "indie_review_* tools + ANTS-1352 indie_review_dispatch "
-           "+ ANTS-1279 indie_review_orchestrate)";
+    // ANTS-2068 — floor, not exact: every indie_review_* tool schema must
+    // pin additionalProperties:false, so adding a tool shouldn't false-fail
+    // this; a drop below the known floor means one was loosened/removed.
+    EXPECT_GE(count, 7)
+        << "expected >= 7 additionalProperties=false in the indie_review "
+           "tool block (5 original indie_review_* tools + ANTS-1352 "
+           "indie_review_dispatch + ANTS-1279 indie_review_orchestrate); "
+           "fewer means a schema dropped its additionalProperties guard";
 }

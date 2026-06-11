@@ -2,6 +2,7 @@
 // Source-grep style against the four registration sites.
 
 #include "../../_support/expect.h"
+#include "../../_support/srcgrep.h"
 
 #include <gtest/gtest.h>
 
@@ -59,10 +60,9 @@ TEST(session_orient_bundle, Inv2SectionsIndexModeAndStatus) {
     if (pos == std::string::npos) {
         expect(false, "INV-2: cmdSessionOrient body not found");
     } else {
-        // Look within the cmdSessionOrient body (~2000 chars after the
-        // symbol). The upstream call wires both args.
-        const std::string body = cpp.substr(pos,
-            std::min<size_t>(3000, cpp.size() - pos));
+        // ANTS-2064 — brace-matched body. The upstream call wires both args.
+        const std::string body =
+            ants_test::slurpFunctionBody(cpp, "cmdSessionOrient");
         expect(contains(body, "section_index") &&
                contains(body, "\"active\""),
                "INV-2: upstream call uses mode:section_index + "
@@ -82,8 +82,8 @@ TEST(session_orient_bundle, Inv3EtagAllowlistMembership) {
     if (isEtagPos == std::string::npos) {
         expect(false, "INV-3: isEtagSupportedTool definition not found");
     } else {
-        const std::string body = ci.substr(isEtagPos,
-            std::min<size_t>(4000, ci.size() - isEtagPos));
+        const std::string body = ants_test::slurpFunctionBody(
+            ci, "bool ClaudeIntegration::isEtagSupportedTool");
         expect(contains(body, "\"session_orient\""),
                "INV-3: session_orient registered in isEtagSupportedTool");
     }
@@ -99,8 +99,8 @@ TEST(session_orient_bundle, Inv4CallerCwdRequired) {
     if (fnPos == std::string::npos) {
         expect(false, "INV-4: callerCwdContractFor definition not found");
     } else {
-        const std::string body = ci.substr(fnPos,
-            std::min<size_t>(8000, ci.size() - fnPos));
+        const std::string body = ants_test::slurpFunctionBody(
+            ci, "ClaudeIntegration::callerCwdContractFor");
         expect(contains(body, "\"session_orient\""),
                "INV-4: session_orient row present in callerCwdContractFor");
     }
@@ -128,8 +128,8 @@ TEST(session_orient_bundle, Inv6PartialUpstreamFailure) {
     } else {
         // Look within the cmdSessionOrient body for an
         // ok-aggregation pattern: `allOk &= ` or `if (!ok)` style.
-        const std::string body = cpp.substr(pos,
-            std::min<size_t>(4000, cpp.size() - pos));
+        const std::string body =
+            ants_test::slurpFunctionBody(cpp, "cmdSessionOrient");
         expect(contains(body, "allOk") || contains(body, "all_ok") ||
                contains(body, "ok && "),
                "INV-6: bundle top-level ok aggregates upstream ok values");
@@ -148,8 +148,8 @@ TEST(session_orient_bundle, Inv7TokenCostBucketRegistered) {
                "INV-7: session_orient referenced somewhere "
                "(tokenCostFor table or descriptor)");
     } else {
-        const std::string body = ci.substr(tcPos,
-            std::min<size_t>(6000, ci.size() - tcPos));
+        const std::string body =
+            ants_test::slurpFunctionBody(ci, "tokenCostFor");
         expect(contains(body, "\"session_orient\""),
                "INV-7: session_orient row in tokenCostFor table");
     }

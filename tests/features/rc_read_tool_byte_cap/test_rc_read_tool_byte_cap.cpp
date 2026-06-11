@@ -8,6 +8,7 @@
 // WI-1..WI-2 grep remotecontrol.cpp for the wiring.
 
 #include "../../_support/expect.h"
+#include "../../_support/srcgrep.h"
 #include "remotecontrol.h"
 
 #include <QJsonArray>
@@ -151,7 +152,9 @@ TEST(RcReadToolByteCap, HelperContract) {
         const std::string rc = slurp(SRC_RC_CPP);
         const auto p = rc.find("RemoteControl::cmdFileOutline");
         expect(p != std::string::npos, "WI-1", "cmdFileOutline not found");
-        const std::string body = rc.substr(p, 6000);
+        // ANTS-2064 — brace-matched body, not a fixed 6000-char window.
+        const std::string body =
+            ants_test::slurpFunctionBody(rc, "RemoteControl::cmdFileOutline");
         expect(body.find("capJsonArrayToBytes") != std::string::npos &&
                    body.find("symbols_dropped") != std::string::npos,
                "WI-1b",
@@ -164,9 +167,10 @@ TEST(RcReadToolByteCap, HelperContract) {
         const auto p = rc.find("RemoteControl::cmdWorkspaceSearch");
         expect(p != std::string::npos, "WI-2",
                "cmdWorkspaceSearch not found");
-        // Search the whole body (handler is long); just require both tokens
-        // appear after the handler start.
-        const std::string body = rc.substr(p);
+        // ANTS-2064 — scope to the brace-matched handler body instead of
+        // substr(p) (everything to EOF, which could match a later cmd).
+        const std::string body = ants_test::slurpFunctionBody(
+            rc, "RemoteControl::cmdWorkspaceSearch");
         expect(body.find("capJsonArrayToBytes") != std::string::npos &&
                    body.find("results_dropped") != std::string::npos,
                "WI-2b",

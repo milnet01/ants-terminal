@@ -10489,11 +10489,12 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   - Severity: HIGH
   - Fix: Change void writeFile()/writeRoadmap()/setup() helpers to return bool and ASSERT_TRUE(helper(...)) at the call site (or wrap with ASSERT_NO_FATAL_FAILURE), so an open/setup failure fails the test instead of silently continuing. Also affects audit_run_compile_commands_validation:38, audit_run_since_last_run:64.
   Resolved (2026-06-11): writeRoadmap/writeCounter/setup (roadmap_log_possible_duplicates) and writeFile (audit_run_compile_commands_validation, audit_run_since_last_run) now return bool with ASSERT_TRUE(helper(...)) at the call site, so a failed open fails the TEST instead of silently continuing on a half-built fixture.
-- 📋 [ANTS-2064] **Fixed-size substr(pos, N) source-scrape windows silently miss invariants as function bodies grow.**
+- ✅ [ANTS-2064] **Fixed-size substr(pos, N) source-scrape windows silently miss invariants as function bodies grow.**
   - File: tests/features/remote_control_new_tab/test_remote_control_new_tab.cpp:62
   - Dimension: accuracy
   - Severity: MEDIUM
   - Fix: Migrate the ~15 fixed-window substr() source-grep sites to ants_test::slurpFunctionBody (brace-matched body extraction, already in srcgrep.h) so coverage tracks the real function body. Includes rc_read_tool_byte_cap:163, session_orient_bundle:64, mcp_dispatch_debug_log, indie_review_truncation_flag.
+  Resolved (2026-06-11): migrated fixed-window substr() source-scrapes to ants_test::slurpFunctionBody (brace-matched) in remote_control_new_tab (cmdNewTab, newTabForRemote), rc_read_tool_byte_cap (cmdFileOutline, cmdWorkspaceSearch), session_orient_bundle (5 sites: cmdSessionOrient x2, isEtagSupportedTool, callerCwdContractFor, tokenCostFor), mcp_dispatch_debug_log (registerToolProvider, recordDispatch, cmdTokenUsage), and indie_review_truncation_flag (fnWindow helper now delegates). Coverage tracks real body growth; full suite 2012/2012 green.
 - 📋 [ANTS-2065] **Monolithic single-TEST bodies pack many invariants behind early-return/ASSERT — first failure hides all the rest.**
   - File: tests/features/github_status_bar/test_github_status_bar.cpp:76
   - Dimension: splitting
@@ -10509,11 +10510,12 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   - Dimension: accuracy
   - Severity: MEDIUM
   - Fix: Scope substring assertions to the relevant function body (slurpFunctionBody) and normalise/strip whitespace before matching, so a production-code reformat or an unrelated token elsewhere can neither falsely pass nor falsely fail. Includes decstr_soft_reset over-broad CSI OR-fallback, roadmap_query_duplicate_ids:70, narrator_filter:103, find_sources:224.
-- 📋 [ANTS-2068] **Hardcoded magic counts / model-version literals require manual bumping and false-fail/pass over time.**
+- ✅ [ANTS-2068] **Hardcoded magic counts / model-version literals require manual bumping and false-fail/pass over time.**
   - File: tests/features/rc_launch_cwd_anchor/test_rc_launch_cwd_anchor.cpp:168
   - Dimension: hardcoded_data
   - Severity: LOW
   - Fix: Replace exact call-site counts (validatePath ==22, schema tool count ==7, kPublicMethods comment ==16) and hardcoded CC model names ("Opus 4.8"/"Sonnet 4.6"/"Haiku 4.5") with derived/relational checks or a documented single source of truth so they don't silently drift.
+  Resolved (2026-06-11): exact call-site counts -> relational floors (rc_launch_cwd_anchor validatePath ==22 -> >=22; mcp_indie_review_tools additionalProperties ==7 -> >=7) so legitimate additions don't false-fail while a dropped guard still trips. Fixed stale 'kPublicMethods 14 signatures' comment (array has 16; now count-implicit). Documented that the model-version suffixes in model_switch_confirm fixtures are incidental (switchConfirmVisible keys on tier name, not version).
 - ✅ [ANTS-2069] **Dead test code, stale comment counts, and INV mislabels across feature tests.**
   - File: tests/features/mcp_current_state/test_mcp_current_state.cpp:57
   - Dimension: naming
