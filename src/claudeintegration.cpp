@@ -6544,7 +6544,16 @@ void ClaudeIntegration::onMcpConnection() {
                         "Required: caller_cwd, section, status "
                         "(planned/in-progress/shipped/considered), "
                         "headline, kind, source. Optional: body, "
-                        "layman, lanes[], id_hint. ANTS-2043 — the "
+                        "layman, lanes[], id_hint, id_prefix, dry_run. "
+                        "ID prefix (ANTS-2076): counter IDs render as "
+                        "[<PREFIX>-NNNN]; the prefix is sniffed from "
+                        "existing IDs, else derived from caller_cwd's "
+                        "leaf directory (uppercase first 4 chars, "
+                        "DOOM_Ants → DOOM) — pass `id_prefix` to pin it "
+                        "on a fresh roadmap. `dry_run:true` (ANTS-2077) "
+                        "previews the id + bullet without writing. "
+                        "Slugs / IDs are case-sensitive (off-case → "
+                        "bad_case with the canonical form). ANTS-2043 — the "
                         "success envelope carries a non-blocking "
                         "`possible_duplicates:[{id, headline, score}]` "
                         "advisory (score 100 = exact normalised-headline "
@@ -6985,6 +6994,35 @@ void ClaudeIntegration::onMcpConnection() {
                         "match ^[A-Za-z][A-Za-z0-9_-]+$. Not accepted "
                         "under the default counter strategy.");
 
+                    // ANTS-2076 — explicit counter-ID prefix override.
+                    QJsonObject idPrefixProp;
+                    idPrefixProp["type"]    = "string";
+                    idPrefixProp["pattern"] = "^[A-Za-z][A-Za-z0-9_-]{0,15}$";
+                    idPrefixProp["description"] = QStringLiteral(
+                        "Optional counter-ID prefix for op:\"append\" / "
+                        "\"append_batch\" (counter strategy). Overrides "
+                        "BOTH the prefix sniffed from existing IDs and "
+                        "the project-dir default. Use it on a fresh / "
+                        "id-less roadmap to pin the project's prefix "
+                        "(e.g. \"DOOM\" → DOOM-0001). When omitted, the "
+                        "prefix is sniffed from existing IDs, else "
+                        "derived from caller_cwd's leaf directory "
+                        "(uppercase first 4 chars). Ignored under "
+                        "id_strategy:\"stable_prefix\".");
+
+                    // ANTS-2077 — dry_run preview flag.
+                    QJsonObject dryRunProp;
+                    dryRunProp["type"] = "boolean";
+                    dryRunProp["description"] = QStringLiteral(
+                        "Optional. When true on op:\"append\" / "
+                        "\"append_batch\", return the would-be id(s), "
+                        "formatted bullet(s) and 1-based insertion "
+                        "line(s) WITHOUT writing ROADMAP.md or bumping "
+                        ".roadmap-counter — a free preview to verify "
+                        "prefix / format / section before committing. "
+                        "Envelope carries dry_run:true; append_batch "
+                        "reports applied_count:0 + would_apply_count.");
+
                     QJsonObject props;
                     props["caller_cwd"]    = callerProp;
                     props["op"]            = opProp;
@@ -7010,6 +7048,8 @@ void ClaudeIntegration::onMcpConnection() {
                     props["note"]          = noteProp;
                     props["id_strategy"]   = idStrategyProp;  // ANTS-1905
                     props["stable_id"]     = stableIdProp;    // ANTS-1905
+                    props["id_prefix"]     = idPrefixProp;    // ANTS-2076
+                    props["dry_run"]       = dryRunProp;      // ANTS-2077
                     schema["properties"]   = props;
 
                     // ANTS-1428 — only caller_cwd is unconditionally

@@ -1199,6 +1199,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_roadmap_log_append_batch/test_mcp_roadmap_log_append_batch.cpp
                 # ANTS-2043 roadmap_log non-blocking near-duplicate advisory.
                 tests/features/roadmap_log_possible_duplicates/test_roadmap_log_possible_duplicates.cpp
+                # ANTS-2076/2077 roadmap_log counter-prefix fallback + dry_run preview.
+                tests/features/roadmap_log_prefix_and_dry_run/test_roadmap_log_prefix_and_dry_run.cpp
                 # ANTS-1548 changelog_log token-frugal CHANGELOG writer.
                 tests/features/changelog_log_writer/test_changelog_log_writer.cpp
                 # ANTS-2044 changelog_log op:add_batch (N entries, 1 commit).

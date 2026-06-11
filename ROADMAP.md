@@ -16113,6 +16113,50 @@ server build id so clients can self-diagnose this.
   Kind: enhancement.
   Source: cross-session-2026-06-11 (Vestige, observation #15).
 
+- ✅ [ANTS-2076] **roadmap_log counter prefix: derive from project dir + accept explicit id_prefix on a fresh roadmap.**
+  DOOM finding #1 (BUG/HIGH) + #3 (doc nit). ANTS-2054 sniffs the counter prefix from existing IDs, but a fresh / id-less roadmap falls back to a hardcoded "ANTS", so a new DOOM_Ants project got ANTS-0001. Fix: resolution order explicit id_prefix arg > sniffed prefix > project-dir default (DOOM_Ants -> DOOM, reusing the op:flip leaf derivation). Applies to op:append + op:append_batch. Add an id_prefix arg (validated ^[A-Za-z][A-Za-z0-9_-]{0,15}$) and surface the default-prefix + case-sensitivity behaviour in the tool description.
+  **Layman:** When a brand-new project logs its first roadmap item, name the IDs after that project (DOOM-0001) instead of always ANTS-0001 — and let the helper set the prefix explicitly.
+  Kind: fix.
+  Source: cross-session-2026-06-11 (DOOM Ants).
+  Resolved (2026-06-11): op:append / append_batch now resolve the counter prefix as id_prefix > prefix sniffed from existing IDs > project-dir leaf default (DOOM_Ants -> DOOM); the hardcoded "ANTS" fallback is gone. New validated id_prefix arg overrides both. Tool description surfaces the default-prefix derivation + case-sensitivity (folds in DOOM #3). Tests: roadmap_log_prefix_and_dry_run INV-1/2/3/6.
+
+- ✅ [ANTS-2077] **roadmap_log op:append / append_batch dry_run preview — return the would-be ID + bullet without writing.**
+  DOOM idea B (HIGH saving). dry_run:true runs through ID allocation + bullet formatting + section/insertion-line resolution, then returns {ok, dry_run:true, id(s), bullet, line} WITHOUT touching ROADMAP.md or .roadmap-counter. Lets a caller verify prefix/format/section for free instead of write-then-correct.
+  **Layman:** Add a preview mode that shows what a new roadmap entry would look like without actually saving it.
+  Kind: enhancement.
+  Source: cross-session-2026-06-11 (DOOM Ants).
+  Resolved (2026-06-11): dry_run:true on op:append / append_batch returns the would-be id(s), formatted bullet(s) and insertion line(s) without writing ROADMAP.md or bumping .roadmap-counter. append_batch reports applied_count:0 + would_apply_count. Tests: roadmap_log_prefix_and_dry_run INV-4/5.
+
+- 📋 [ANTS-2078] **roadmap_log append_batch: per-bullet stable_id for custom-prefix bulk inserts.**
+  DOOM finding #2 (GAP/MEDIUM). append_batch bullets[] exposes only id_hint (counter). Add stable_id + id_strategy:"stable_prefix" per bullet, mirroring single op:append, so a whole roadmap can be scaffolded with project-prefixed string IDs in one call instead of N op:append calls.
+  **Layman:** Let the bulk add-many-items command use custom ID names, not just numbered ones.
+  Kind: enhancement.
+  Source: cross-session-2026-06-11 (DOOM Ants).
+
+- 💭 [ANTS-2079] **Trim load-bearing MCP tool description blobs; serve encyclopedic per-op detail via tool_info.**
+  DOOM idea A (HIGH saving). roadmap_log / roadmap_query inline schema descriptions are multi-KB and paid for whenever the tool loads. Keep a one-paragraph essentials summary inline; move the per-op encyclopedic detail behind tool_info {name:...} on demand. Needs a careful pass — these blobs encode load-bearing invariants and other sessions branch on the documented codes.
+  **Layman:** Shorten the long help text the assistant loads for each tool to save on usage.
+  Kind: optimize.
+  Source: cross-session-2026-06-11 (DOOM Ants).
+
+- 📋 [ANTS-2080] **roadmap_log write verbs: optional return:headline_only to echo compact post-state.**
+  DOOM idea C (MEDIUM saving). op:append / append_batch / flip* could accept return:"headline_only" and echo the resulting compact bullet list so the verify step folds into the write. Partly covered by dry_run (preview-before); this is confirm-after.
+  **Layman:** After saving a roadmap item, optionally show the updated list so you do not need a second lookup.
+  Kind: enhancement.
+  Source: cross-session-2026-06-11 (DOOM Ants).
+
+- 📋 [ANTS-2081] **roadmap_query / session_orient: surface a next_call_hint nudging etag reuse.**
+  DOOM idea D (MEDIUM saving). The verbs already return an etag for 304-style skips; thread it into a one-line next_call_hint:"pass etag_match=<etag>" so multi-query scaffolding loops actually use the short-circuit. Keep it cheap — emit only on bodies worth re-skipping.
+  **Layman:** Remind the assistant to skip re-downloading unchanged data, saving usage.
+  Kind: enhancement.
+  Source: cross-session-2026-06-11 (DOOM Ants).
+
+- 💭 [ANTS-2082] **roadmap_query: consider a leaner default mode for the bare what's-on-the-roadmap query.**
+  DOOM idea E (LOW saving). Default is mode:bullets + status:all (~12K tokens); headline_only answers the common question at ~10x less. Either flip the default when no body field is requested, or echo a use-mode:headline_only hint on large responses. Default flip is back-compat-sensitive — decide deliberately.
+  **Layman:** Make the default roadmap view smaller and cheaper, or hint at the smaller view.
+  Kind: optimize.
+  Source: cross-session-2026-06-11 (DOOM Ants).
+
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 
 A new testing initiative the user requested: give the agent a repeatable way to

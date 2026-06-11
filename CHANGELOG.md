@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log op:append / append_batch dry_run preview — return the would-be ID + bullet without writing.** (ANTS-2077)
+  Add a preview mode that shows what a new roadmap entry would look like without actually saving it.
+
 - **Performance benchmarks now run in their own test lane, with an optional speed-regression gate.** (ANTS-1596)
   The throughput benchmark no longer runs during ordinary correctness test runs (a new `perf` preset runs just the benchmarks). Setting `ANTS_PERF_MIN_MBPS` makes a benchmark run fail if speed drops below that floor, so a future slowdown is caught automatically rather than silently. (ANTS-1479)
 
@@ -63,6 +66,9 @@ for security-relevant changes.
   When a scan tool times out or crashes, audit_run already kept the results from the tools that finished (and still wrote the SARIF file to disk) — it never came back empty over one tool. The result now also says so directly with a `partial` flag and an `incomplete_tools` list, so you can see at a glance that a run was incomplete without digging through per-tool status.
 
 ### Fixed
+
+- **roadmap_log counter prefix: derive from project dir + accept explicit id_prefix on a fresh roadmap.** (ANTS-2076)
+  When a brand-new project logs its first roadmap item, name the IDs after that project (DOOM-0001) instead of always ANTS-0001 — and let the helper set the prefix explicitly.
 
 - **roadmap_query synthetic ids are not valid locators for roadmap_log flip/annotate.** (ANTS-2053)
   When you look up a checklist item that has no ID, the tool makes up a temporary one, but you can't then use that temporary ID to mark the item done — it says "not found".

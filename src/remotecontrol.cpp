@@ -402,6 +402,41 @@ QString rlDetectCounterPrefix(const QString &markdown) {
     return best;
 }
 
+// ANTS-2076 — id_prefix arg shape. Looser than op:flip's prefix_hint
+// (which is uppercase-only) so a caller can pin a lowercase or
+// mixed-case project prefix (e.g. "mame-curator", "DOOM").
+static const QRegularExpression kIdPrefixShape(
+    QStringLiteral("^[A-Za-z][A-Za-z0-9_-]{0,15}$"));
+
+// ANTS-2076 — project-default counter-ID prefix derived from the
+// caller's leaf directory (uppercase first 4 chars) — the same source
+// op:flip already uses for caret-anchor prefixes. Used as the
+// op:append / op:append_batch fallback when no explicit id_prefix is
+// given AND the roadmap has no existing counter IDs to sniff, so a
+// fresh project (DOOM_Ants → "DOOM") gets a project-shaped prefix
+// instead of the hardcoded "ANTS".
+QString rlLeafDirPrefix(const QString &callerCanonical) {
+    const QString leaf = QFileInfo(callerCanonical).fileName();
+    QString pfx = leaf.left(4).toUpper();
+    if (pfx.isEmpty()) pfx = QStringLiteral("ROOT");
+    return pfx;
+}
+
+// ANTS-2076 — resolve the counter-ID prefix for op:append /
+// append_batch. Precedence: explicit id_prefix (caller override, empty
+// when not given) > prefix sniffed from existing roadmap IDs
+// (rlDetectCounterPrefix, ANTS-2054) > project-dir default
+// (rlLeafDirPrefix). The id_prefix arg is expected pre-validated
+// against kIdPrefixShape by the caller.
+QString rlResolveCounterPrefix(const QString &idPrefixArg,
+                               const QString &markdown,
+                               const QString &callerCanonical) {
+    if (!idPrefixArg.isEmpty()) return idPrefixArg;
+    const QString sniffed = rlDetectCounterPrefix(markdown);
+    if (!sniffed.isEmpty()) return sniffed;
+    return rlLeafDirPrefix(callerCanonical);
+}
+
 // ANTS-2055 — collect the child-subsection slugs of `sec`: any indexed
 // heading deeper than `sec` whose heading line falls inside sec's span.
 // op:append / op:append_batch splice at sec.lineEnd; for a `##`
@@ -4163,6 +4198,22 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             QStringLiteral("roadmap_log: id_strategy must be "
                            "\"counter\" or \"stable_prefix\""));
     }
+
+    // ANTS-2076 — explicit counter-ID prefix override (counter strategy
+    // only; ignored under stable_prefix where stable_id carries the full
+    // id). Validated here; resolution precedence (id_prefix > sniffed >
+    // project-dir default) lives in rlResolveCounterPrefix.
+    const QString idPrefixArg =
+        req.value(QStringLiteral("id_prefix")).toString();
+    if (!idPrefixArg.isEmpty() &&
+        !kIdPrefixShape.match(idPrefixArg).hasMatch()) {
+        return rlErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: id_prefix \"%1\" does not match "
+                           "^[A-Za-z][A-Za-z0-9_-]{0,15}$").arg(idPrefixArg));
+    }
+    const bool dryRun =
+        req.value(QStringLiteral("dry_run")).toBool();
+
     static const QRegularExpression kStableIdShape(
         QStringLiteral("^[A-Za-z][A-Za-z0-9_-]+$"));
 
@@ -4403,11 +4454,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     if (useStablePrefix) {
         idStr = stableId;
     } else {
-        // ANTS-2054 — render the project's own counter prefix sniffed
-        // from the roadmap, not a hardcoded "ANTS"; fall back to "ANTS"
-        // when there is nothing to sniff (fresh / id-less roadmap).
-        QString pfx = rlDetectCounterPrefix(markdown);
-        if (pfx.isEmpty()) pfx = QStringLiteral("ANTS");
+        // ANTS-2054 / ANTS-2076 — render the project's own counter
+        // prefix. Precedence: explicit id_prefix > prefix sniffed from
+        // existing IDs > project-dir default (DOOM_Ants → "DOOM"). No
+        // longer falls back to a hardcoded "ANTS" for a fresh / id-less
+        // roadmap.
+        const QString pfx =
+            rlResolveCounterPrefix(idPrefixArg, markdown, callerCanonical);
         idStr = QStringLiteral("%1-%2").arg(pfx).arg(newId, 4, 10,
                                                      QLatin1Char('0'));
         if (newId > 9999)
@@ -4432,6 +4485,27 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         lines.insert(insertAt, bulletLines.at(i));
     }
     const QString updated = lines.join(QChar('\n'));
+
+    // ANTS-2077 — dry_run preview: return the would-be id, formatted
+    // bullet and 1-based insertion line WITHOUT writing ROADMAP.md or
+    // bumping .roadmap-counter. Lets a caller verify prefix / format /
+    // section for free instead of a write-then-correct round-trip.
+    if (dryRun) {
+        QJsonObject out;
+        out["ok"]      = true;
+        out["dry_run"] = true;
+        out["id"]      = idStr;
+        out["file"]    = QStringLiteral("ROADMAP.md");
+        out["line"]    = insertAt + 1;  // 1-based for humans
+        out["bullet"]  = bulletNoTrailNl;
+        out["bytes"]   = static_cast<qint64>(bullet.toUtf8().size());
+        const QJsonArray possibleDuplicates =
+            rcComputePossibleDuplicates(preflightBullets, headline);
+        if (!possibleDuplicates.isEmpty()) {
+            out["possible_duplicates"] = possibleDuplicates;
+        }
+        return QJsonDocument(out);
+    }
 
     // Write ROADMAP.md atomically via QSaveFile.
     QSaveFile rw(roadmapPath);
@@ -5922,6 +5996,20 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     const QJsonArray bullets =
         req.value(QStringLiteral("bullets")).toArray();
 
+    // ANTS-2076 — batch-wide explicit counter-ID prefix override
+    // (validated here; resolution precedence in rlResolveCounterPrefix).
+    // ANTS-2077 — dry_run preview flag.
+    const QString idPrefixArg =
+        req.value(QStringLiteral("id_prefix")).toString();
+    if (!idPrefixArg.isEmpty() &&
+        !kIdPrefixShape.match(idPrefixArg).hasMatch()) {
+        return rlErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: id_prefix \"%1\" does not match "
+                           "^[A-Za-z][A-Za-z0-9_-]{0,15}$").arg(idPrefixArg));
+    }
+    const bool dryRun =
+        req.value(QStringLiteral("dry_run")).toBool();
+
     // 2. Resolve ROADMAP.md.
     const QString callerCanonical =
         QFileInfo(callerRaw).canonicalFilePath();
@@ -6068,10 +6156,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     QList<Accepted> accepted;
     QJsonArray skipped;
 
-    // ANTS-2054 — infer the project's counter prefix once for all
-    // bullets (fall back to "ANTS" for a fresh / id-less roadmap).
-    QString counterPfx = rlDetectCounterPrefix(markdown);
-    if (counterPfx.isEmpty()) counterPfx = QStringLiteral("ANTS");
+    // ANTS-2054 / ANTS-2076 — resolve the project's counter prefix once
+    // for all bullets. Precedence: explicit id_prefix > prefix sniffed
+    // from existing IDs > project-dir default (no hardcoded "ANTS"
+    // fallback for a fresh / id-less roadmap).
+    const QString counterPfx =
+        rlResolveCounterPrefix(idPrefixArg, markdown, callerCanonical);
 
     qint64 nextId = counter + 1;
     bool firstAccepted = true;
@@ -6191,6 +6281,35 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     for (int i = toSplice.size() - 1; i >= 0; --i)
         docLines.insert(insertAt, toSplice.at(i));
     const QString updated = docLines.join(QChar('\n'));
+
+    // ANTS-2077 — dry_run preview: return the would-be ids, formatted
+    // bullets and 1-based insertion lines WITHOUT writing ROADMAP.md or
+    // bumping .roadmap-counter. applied_count stays 0 (nothing written);
+    // would_apply_count carries the count that a real call would apply.
+    if (dryRun) {
+        QJsonArray ids;
+        for (const Accepted &a : accepted) ids.append(a.idStr);
+        QJsonArray previewBullets;
+        for (const QString &blk : bulletBlocks) {
+            QString b = blk;
+            if (b.endsWith(QChar('\n'))) b.chop(1);
+            previewBullets.append(b);
+        }
+        QJsonObject out;
+        out["ok"]                = true;
+        out["op"]                = QStringLiteral("append_batch");
+        out["dry_run"]           = true;
+        out["file"]              = QStringLiteral("ROADMAP.md");
+        out["ids"]               = ids;
+        out["lines"]             = emittedLines;
+        out["bullets"]           = previewBullets;
+        out["applied_count"]     = 0;
+        out["would_apply_count"] = accepted.size();
+        out["skipped"]           = skipped;
+        out["skipped_count"]     = skipped.size();
+        out["bytes"]             = totalBytes;
+        return QJsonDocument(out);
+    }
 
     // 9. Atomic write — ROADMAP first, then counter (parity with append).
     QSaveFile rw(roadmapPath);
