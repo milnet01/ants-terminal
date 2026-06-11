@@ -1465,8 +1465,17 @@ RunResult runAudit(const RunRequest &req) {
                 Q_UNUSED(code);
                 const QByteArray out = proc->readAllStandardOutput();
                 const QByteArray err = proc->readAllStandardError();
+                // ANTS-2105 — cppcheck/clazy/clang-tidy write their findings to
+                // STDERR (only the JSON tools — ruff/bandit/semgrep/trivy/mypy/
+                // shellcheck — put results on STDOUT). The old code read STDOUT
+                // on a clean exit and fell back to STDERR ONLY when the tool
+                // crashed, so a cleanly-exiting cppcheck silently dropped every
+                // finding (the 1828-finding runs only happened because cppcheck
+                // segfaulted into the stderr path). Prefer stdout when it
+                // carries a payload, else fall back to stderr — for every exit
+                // status, not just "crashed".
                 QString raw = QString::fromUtf8(out);
-                if (status == QLatin1String("crashed") && !err.isEmpty()) {
+                if (raw.trimmed().isEmpty() && !err.isEmpty()) {
                     raw = QString::fromUtf8(err);
                 }
                 finish(tool, status, raw, ms);
