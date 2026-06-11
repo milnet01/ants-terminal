@@ -307,3 +307,51 @@ TEST(McpSymbolQuery, WiringContract) {
 
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-2087 — opt-in include_body: find_definition / find_caller attach
+// the symbol body inline via read_region's extractor. The body
+// extraction itself is covered by ReadRegion's own tests (ANTS-2021);
+// here we lock in the wiring + schema surface (cmdFind* has no public
+// test seam, so this mirrors the INV-9/10/11 source-scrape contract).
+TEST(McpSymbolQuery, Ants2087IncludeBodyWired) {
+    const std::string rcCpp =
+        ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string ciCpp =
+        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+
+    // Glue helper exists and reuses read_region's symbol-body extractor.
+    EXPECT_NE(rcCpp.find("sqAttachBody"), std::string::npos)
+        << "sqAttachBody helper missing";
+    EXPECT_NE(rcCpp.find("ReadRegion::extract"), std::string::npos)
+        << "sqAttachBody must reuse ReadRegion::extract, not re-slice";
+
+    // cmdFindDefinition reads include_body and calls the helper.
+    const auto defPos = rcCpp.find("RemoteControl::cmdFindDefinition");
+    ASSERT_NE(defPos, std::string::npos);
+    const auto defEnd = rcCpp.find("RemoteControl::cmdFindCaller", defPos);
+    ASSERT_NE(defEnd, std::string::npos);
+    const std::string defBody = rcCpp.substr(defPos, defEnd - defPos);
+    EXPECT_NE(defBody.find("include_body"), std::string::npos)
+        << "cmdFindDefinition must read include_body";
+    EXPECT_NE(defBody.find("sqAttachBody"), std::string::npos)
+        << "cmdFindDefinition must attach the body when requested";
+
+    // cmdFindCaller reads include_body for its definition echo.
+    const auto callPos = rcCpp.find("RemoteControl::cmdFindCaller");
+    ASSERT_NE(callPos, std::string::npos);
+    const std::string callBody = rcCpp.substr(callPos, 1800);
+    EXPECT_NE(callBody.find("include_body"), std::string::npos)
+        << "cmdFindCaller must read include_body";
+
+    // Schema declares include_body on BOTH descriptors.
+    int n = 0;
+    size_t i = 0;
+    const std::string needle = "props[\"include_body\"]";
+    while ((i = ciCpp.find(needle, i)) != std::string::npos) {
+        ++n;
+        i += needle.size();
+    }
+    EXPECT_GE(n, 2)
+        << "include_body must be declared on both find_definition + "
+           "find_caller schemas; found " << n;
+}

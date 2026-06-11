@@ -219,9 +219,12 @@ TEST(McpOutputSanitisationWiring, ControlPlaneExemptSetExact) {
         << "control-plane bypass missing token_usage entry";
 }
 
-// REG-5 — CLAUDE.md documents the ANTS-1294 wrap so future tool authors
-// discover it. The wrap now lives in the "## MCP tool authoring" section
-// (it moved out of "## Conventions" when CLAUDE.md was reorganised).
+// REG-5 — the ANTS-1294 wrap stays discoverable to future tool authors.
+// ANTS-2088 moved the per-contract detail (incl. the wrap) out of
+// CLAUDE.md's "## MCP tool authoring" section into
+// docs/standards/mcp-tools.md, leaving a pointer. The discoverability
+// contract is preserved by (a) CLAUDE.md's section naming the wrap +
+// pointing at mcp-tools.md, and (b) mcp-tools.md documenting ants_mcp_data.
 TEST(McpOutputSanitisationWiring, ConventionDocumentedInClaudeMd) {
     const std::string md = ants_test::slurpFile(ANTS_CLAUDE_MD_PATH);
     ASSERT_FALSE(md.empty());
@@ -233,6 +236,19 @@ TEST(McpOutputSanitisationWiring, ConventionDocumentedInClaudeMd) {
     if (secEnd == std::string::npos) secEnd = md.size();
     const std::string section = md.substr(secStart, secEnd - secStart);
 
-    EXPECT_NE(section.find("ants_mcp_data"), std::string::npos)
-        << "ANTS-1294 wrap not documented in CLAUDE.md '## MCP tool authoring'";
+    // The pointer must name the wrap and the doc that fully specifies it.
+    EXPECT_NE(section.find("response-wrap"), std::string::npos)
+        << "CLAUDE.md '## MCP tool authoring' no longer names the wrap "
+           "contract (ANTS-1294 / ANTS-2088 pointer)";
+    EXPECT_NE(section.find("docs/standards/mcp-tools.md"), std::string::npos)
+        << "CLAUDE.md '## MCP tool authoring' no longer points at "
+           "mcp-tools.md where the wrap is documented (ANTS-2088)";
+
+    // And the canonical home actually documents the wrap.
+    const std::string tools =
+        ants_test::slurpFile(ANTS_MCP_TOOLS_MD_PATH);
+    ASSERT_FALSE(tools.empty())
+        << "docs/standards/mcp-tools.md missing or unreadable";
+    EXPECT_NE(tools.find("ants_mcp_data"), std::string::npos)
+        << "ANTS-1294 wrap not documented in docs/standards/mcp-tools.md";
 }

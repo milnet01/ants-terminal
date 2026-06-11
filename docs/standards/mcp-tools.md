@@ -12,10 +12,53 @@ restated:
   refusal envelopes (ANTS-1353).
 - [mcp-caches.md](mcp-caches.md) — keying + relocation contract for any
   project-scoped cache (ANTS-1439).
+- [mcp-behavioural-notes.md](mcp-behavioural-notes.md) — per-verb
+  behavioural reference (not authoring rules; ANTS-2088).
 
 The per-feature details (exact line ranges, the wrap mechanics) live
 in `CLAUDE.md` § Conventions; this standard is the ordered procedure
 so a new tool doesn't miss a step.
+
+---
+
+## Load-bearing contracts (quick reference)
+
+The contracts a new tool composes with, each with its spec. The
+checklist below walks the full procedure; this is the at-a-glance map
+(relocated out of the always-loaded `CLAUDE.md` preamble by ANTS-2088).
+
+- **Response wrap (ANTS-1294).** `tools/call` replies are auto-wrapped
+  in `<ants_mcp_data tool="…">…</ants_mcp_data>` by
+  `ClaudeIntegration::wrapMcpData`. Register normally and the dispatch
+  site wraps; control-plane tools (`get_session_info`, `token_usage`,
+  `tool_info`) bypass.
+- **caller_cwd resolution (ANTS-1401).** Consume `caller_cwd` via
+  `ants::resolveCallerCwdRoot` (`src/resolvedroot.h`) — never
+  re-implement canonicalisation / tab-walks.
+- **CallerCwdContract (ANTS-1404).** Classify each tool at
+  `callerCwdContractFor` as Required / Optional / TabSpecific /
+  ProcessGlobal; `Required` refuses empty `caller_cwd` with
+  `code:"caller_cwd_required"`. Unclassified defaults to Optional.
+- **Path validation (ANTS-1295).** Any path-typed arg routes through
+  `PathValidation::validatePath` (`src/pathvalidation.h`) before any FS
+  op; reject `code:"bad_path"`. Use `check.argvForm` for argv,
+  `check.resolved` for the canonical path (empty if not-yet-existing).
+- **ETag 304 (ANTS-1499).** Read tools opt in via `isEtagSupportedTool`
+  + `makeEtagMatchProp()`; a matching `etag_match` short-circuits to
+  `{ok, unchanged, etag}`.
+- **`fields=` projection (ANTS-1720).** Opt in via
+  `isFieldProjectionTool` + `makeFieldsProp()`; narrows to named
+  top-level fields (a subset of the ETag set — list `"etag"` in `fields`
+  to keep 304).
+- **Refusal codes** follow [mcp-error-codes.md](mcp-error-codes.md);
+  **caches** follow [mcp-caches.md](mcp-caches.md) (a path-keyed cache
+  may go cold but must never *shadow*).
+- **State routing (ANTS-1336 / ANTS-1435).** `session_memory` /
+  `workflow_state` *writes* go through RcGate (focused-tab match);
+  *reads* anchor to `caller_cwd`. `wf.<skill>` keys purge at 72 h;
+  `session_memory` has no TTL. Storage
+  `~/.cache/ants-terminal/mcp-state/<sha256(cwd)>.json`. See ANTS-1435
+  §Limitations.
 
 ---
 

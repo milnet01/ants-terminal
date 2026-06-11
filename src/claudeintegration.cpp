@@ -4461,6 +4461,24 @@ void ClaudeIntegration::onMcpConnection() {
                             "total.");
                         props["max_results"] = p;
                     }
+                    {
+                        // ANTS-2087 — opt-in symbol body inline.
+                        QJsonObject p;
+                        p["type"]        = "boolean";
+                        p["default"]     = false;
+                        p["description"] = QStringLiteral(
+                            "When true, each definition carries its body "
+                            "inline (`body`, `body_start_line`, "
+                            "`body_end_line`, `body_truncated?`) via "
+                            "read_region's symbol-body extractor — answers "
+                            "\"where is Foo AND what does it do\" in one "
+                            "call instead of a follow-up read_region. Off "
+                            "by default (lean envelope). A def whose body "
+                            "the file outline can't resolve "
+                            "(declaration-only, overload ambiguity) is "
+                            "returned without a body (ANTS-2087).");
+                        props["include_body"] = p;
+                    }
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray req;
@@ -4525,6 +4543,23 @@ void ClaudeIntegration::onMcpConnection() {
                             "Cap on callers[] (default 200). "
                             "callers_count carries the pre-cap total.");
                         props["max_results"] = p;
+                    }
+                    {
+                        // ANTS-2087 — opt-in body of the called symbol's
+                        // definition (not the call sites).
+                        QJsonObject p;
+                        p["type"]        = "boolean";
+                        p["default"]     = false;
+                        p["description"] = QStringLiteral(
+                            "When true, the `definition` (the called "
+                            "symbol's own definition) carries its body "
+                            "inline (`body`, `body_start_line`, "
+                            "`body_end_line`, `body_truncated?`) via "
+                            "read_region's symbol-body extractor. The "
+                            "call sites in `callers[]` already carry "
+                            "context lines and are unaffected. Off by "
+                            "default (ANTS-2087).");
+                        props["include_body"] = p;
                     }
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
@@ -6911,8 +6946,24 @@ void ClaudeIntegration::onMcpConnection() {
                             "Optional explicit ID under op:\"append_batch\". "
                             "Honoured ONLY on the first bullet (later "
                             "bullets follow first_id+i to keep the "
-                            "allocation contiguous).");
+                            "allocation contiguous). Counter strategy only.");
                         bulletItemProps["id_hint"] = p;
+                    }
+                    {
+                        // ANTS-2078 — per-bullet stable id. Required on
+                        // every bullet when the batch-wide id_strategy is
+                        // "stable_prefix"; the counter is skipped and this
+                        // string is written verbatim.
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Full stable id string for THIS bullet when "
+                            "the top-level id_strategy=\"stable_prefix\" "
+                            "(e.g. \"Ts20-SP6\"). Must match "
+                            "^[A-Za-z][A-Za-z0-9_-]+$ and be unique within "
+                            "the batch. Ignored under the counter strategy "
+                            "(ANTS-2078).");
+                        bulletItemProps["stable_id"] = p;
                     }
                     bulletItem["properties"] = bulletItemProps;
                     QJsonObject bulletsProp;
@@ -6975,17 +7026,19 @@ void ClaudeIntegration::onMcpConnection() {
                         idStrategyProp["enum"] = e;
                     }
                     idStrategyProp["description"] = QStringLiteral(
-                        "Allocator strategy under op:\"append\". "
-                        "\"counter\" (default) bumps .roadmap-counter "
-                        "and renders an [ANTS-NNNN]-style id. "
-                        "\"stable_prefix\" requires `stable_id` and "
-                        "writes the bullet with that id verbatim — "
-                        "skip the counter for projects that use stable "
-                        "string IDs (Sh4, Ts20-FL1, MT8…) (ANTS-1905). "
-                        "When .roadmap-counter is missing and stable "
-                        "IDs are detected, the counter path's refusal "
-                        "envelope (`stable_prefix_unsupported`) points "
-                        "the caller at this strategy.");
+                        "Allocator strategy under op:\"append\" / "
+                        "\"append_batch\". \"counter\" (default) bumps "
+                        ".roadmap-counter and renders an [ANTS-NNNN]-style "
+                        "id. \"stable_prefix\" requires `stable_id` "
+                        "(op:\"append\") or a per-bullet `stable_id` on "
+                        "EVERY bullet (op:\"append_batch\", ANTS-2078) and "
+                        "writes each bullet with that id verbatim — skip "
+                        "the counter for projects that use stable string "
+                        "IDs (Sh4, Ts20-FL1, MT8…) (ANTS-1905). When "
+                        ".roadmap-counter is missing and stable IDs are "
+                        "detected, the counter path's refusal envelope "
+                        "(`stable_prefix_unsupported`) points the caller "
+                        "at this strategy.");
                     QJsonObject stableIdProp;
                     stableIdProp["type"] = "string";
                     stableIdProp["description"] = QStringLiteral(
@@ -7023,6 +7076,25 @@ void ClaudeIntegration::onMcpConnection() {
                         "Envelope carries dry_run:true; append_batch "
                         "reports applied_count:0 + would_apply_count.");
 
+                    // ANTS-2080 — confirm-after compact echo.
+                    QJsonObject returnProp;
+                    returnProp["type"] = "string";
+                    {
+                        QJsonArray e;
+                        e.append("default");
+                        e.append("headline_only");
+                        returnProp["enum"] = e;
+                    }
+                    returnProp["description"] = QStringLiteral(
+                        "Optional. \"headline_only\" on op:\"append\" / "
+                        "\"append_batch\" adds `post_bullets` to the "
+                        "success envelope — the just-written bullet(s) in "
+                        "the compact {id, status, headline_oneline} shape "
+                        "roadmap_query mode:\"headline_only\" emits — so a "
+                        "confirm-after read folds into the write (no "
+                        "follow-up roadmap_query). \"default\" (omitted) "
+                        "keeps the lean envelope (ANTS-2080).");
+
                     QJsonObject props;
                     props["caller_cwd"]    = callerProp;
                     props["op"]            = opProp;
@@ -7050,6 +7122,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["stable_id"]     = stableIdProp;    // ANTS-1905
                     props["id_prefix"]     = idPrefixProp;    // ANTS-2076
                     props["dry_run"]       = dryRunProp;      // ANTS-2077
+                    props["return"]        = returnProp;      // ANTS-2080
                     schema["properties"]   = props;
 
                     // ANTS-1428 — only caller_cwd is unconditionally
@@ -8305,6 +8378,14 @@ void ClaudeIntegration::onMcpConnection() {
                         responseText = mcp::projectFields(
                             responseText, fv.toArray());
                     }
+                }
+                // ANTS-2081 / ANTS-2086 — append etag-reuse + leaner-mode
+                // nudges to large read responses. After the etag/fields
+                // steps so the hint never perturbs the etag hash or a
+                // narrowed body (see maybeAppendReadHints gating).
+                if (toolHandled) {
+                    responseText = mcp::appendReadHints(
+                        toolName, argsObj, responseText, etagUnchanged);
                 }
 
                 if (toolHandled) {

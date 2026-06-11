@@ -163,3 +163,102 @@ TEST(McpProjection, Inv10SchemaDeclaresFields) {
     EXPECT_EQ(count, 11) << "expected 11 makeFieldsProp() call sites, got "
                          << count;
 }
+
+// ───────────────────────────────────────────────────────────────────
+// ANTS-2081 + ANTS-2086 — mcp::appendReadHints: etag-reuse + leaner-mode
+// nudges on large successful read responses.
+// ───────────────────────────────────────────────────────────────────
+
+namespace {
+QString bigBodyWithEtag() {
+    QString filler;
+    while (filler.size() < 5000) filler += QChar('x');
+    return QStringLiteral("{\"ok\":true,\"etag\":\"abc123\",\"pad\":\"")
+         + filler + QStringLiteral("\"}");
+}
+QString bigBodyNoEtag() {
+    QString filler;
+    while (filler.size() < 5000) filler += QChar('x');
+    return QStringLiteral("{\"ok\":true,\"pad\":\"")
+         + filler + QStringLiteral("\"}");
+}
+}  // namespace
+
+// Large roadmap_query body gets BOTH the etag-reuse + leaner-mode nudges.
+TEST(McpReadHints, Ants2081And2086RoadmapQueryLargeBody) {
+    const QJsonObject o = parse(mcp::appendReadHints(
+        QStringLiteral("roadmap_query"), QJsonObject{}, bigBodyWithEtag(),
+        /*etagUnchanged=*/false));
+    ASSERT_TRUE(o.contains("next_call_hint"));
+    EXPECT_NE(o.value("next_call_hint").toString().indexOf("abc123"), -1);
+    ASSERT_TRUE(o.contains("leaner_call_hint"));
+    EXPECT_NE(o.value("leaner_call_hint").toString().indexOf("headline_only"),
+              -1);
+}
+
+// Below the byte threshold → untouched, byte-for-byte.
+TEST(McpReadHints, Ants2086SmallBodyUntouched) {
+    const QString body =
+        QStringLiteral("{\"ok\":true,\"etag\":\"abc\"}");
+    EXPECT_EQ(mcp::appendReadHints(QStringLiteral("roadmap_query"),
+                                   QJsonObject{}, body, false),
+              body);
+}
+
+// A 304 (etagUnchanged) never gets nudges.
+TEST(McpReadHints, Ants2081NoHintsOn304) {
+    const QString body = bigBodyWithEtag();
+    EXPECT_EQ(mcp::appendReadHints(QStringLiteral("roadmap_query"),
+                                   QJsonObject{}, body, /*etagUnchanged=*/true),
+              body);
+}
+
+// A caller already narrowing with fields= is left alone.
+TEST(McpReadHints, Ants2081NoHintsWhenFieldsPresent) {
+    QJsonObject args;
+    args["fields"] = QJsonArray{QStringLiteral("etag")};
+    const QString body = bigBodyWithEtag();
+    EXPECT_EQ(mcp::appendReadHints(QStringLiteral("roadmap_query"),
+                                   args, body, false),
+              body);
+}
+
+// Refusals (ok:false) are never nudged.
+TEST(McpReadHints, Ants2086NoHintsOnRefusal) {
+    QString filler;
+    while (filler.size() < 5000) filler += QChar('x');
+    const QString body = QStringLiteral("{\"ok\":false,\"error\":\"")
+                       + filler + QStringLiteral("\"}");
+    EXPECT_EQ(mcp::appendReadHints(QStringLiteral("roadmap_query"),
+                                   QJsonObject{}, body, false),
+              body);
+}
+
+// A caller already threading etag_match doesn't get the reuse nudge.
+TEST(McpReadHints, Ants2081EtagMatchSuppressesReuseHint) {
+    QJsonObject args;
+    args["etag_match"] = QStringLiteral("old");
+    const QJsonObject o = parse(mcp::appendReadHints(
+        QStringLiteral("roadmap_query"), args, bigBodyWithEtag(), false));
+    EXPECT_FALSE(o.contains("next_call_hint"));
+}
+
+// workspace_search names its own cheaper knob.
+TEST(McpReadHints, Ants2086WorkspaceSearchLeanerHint) {
+    const QJsonObject o = parse(mcp::appendReadHints(
+        QStringLiteral("workspace_search"), QJsonObject{}, bigBodyNoEtag(),
+        false));
+    ASSERT_TRUE(o.contains("leaner_call_hint"));
+    EXPECT_NE(o.value("leaner_call_hint").toString().indexOf("max_match_bytes"),
+              -1);
+}
+
+// roadmap_query already in a lean mode → no leaner nudge (etag hint only).
+TEST(McpReadHints, Ants2086NoLeanerHintWhenAlreadyLean) {
+    QJsonObject args;
+    args["mode"] = QStringLiteral("headline_only");
+    const QJsonObject o = parse(mcp::appendReadHints(
+        QStringLiteral("roadmap_query"), args, bigBodyWithEtag(), false));
+    EXPECT_FALSE(o.contains("leaner_call_hint"));
+    EXPECT_TRUE(o.contains("next_call_hint"));
+}

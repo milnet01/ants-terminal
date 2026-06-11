@@ -14,6 +14,21 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log write verbs: optional return:headline_only to echo compact post-state.** (ANTS-2080)
+  After saving a roadmap item, optionally show the updated list so you do not need a second lookup.
+
+- **Generalised oversize advisory: large read responses carry a leaner_call_hint naming the cheaper mode.** (ANTS-2086)
+  When an answer is big, the tool suggests the smaller version you could have asked for.
+
+- **roadmap_query / session_orient: surface a next_call_hint nudging etag reuse.** (ANTS-2081)
+  Remind the assistant to skip re-downloading unchanged data, saving usage.
+
+- **find_definition / find_caller opt-in include_body collapses the find -> read_region two-step into one call.** (ANTS-2087)
+  When the assistant asks where a function lives, optionally show its code too — in the same answer.
+
+- **roadmap_log append_batch: per-bullet stable_id for custom-prefix bulk inserts.** (ANTS-2078)
+  Let the bulk add-many-items command use custom ID names, not just numbered ones.
+
 - **roadmap_log op:append / append_batch dry_run preview — return the would-be ID + bullet without writing.** (ANTS-2077)
   Add a preview mode that shows what a new roadmap entry would look like without actually saving it.
 
@@ -49,6 +64,9 @@ for security-relevant changes.
   The startup tool cheat-sheet only fits 12 of ~70 helpers and is full. A Claude session can now ask `tool_info` for the whole catalog — every helper grouped by category with a one-line "what it's for" — in a single cheap call, instead of looking each one up separately.
 
 ### Changed
+
+- **Move the CLAUDE.md MCP-authoring + behavioural-notes blob out of the always-loaded session preamble.** (ANTS-2088)
+  Stop loading a huge block of developer notes into every single session; fetch it only when needed.
 
 - **Test-suite reliability hardening.** (ANTS-1589)
   Test failures now point at the real assertion line instead of a shared helper; temp directories and subprocess/git calls in several tests are now time-bounded and auto-cleaned, so a wedged helper can't hang or leak; and a few tests dropped brittle source-scanning shortcuts. No app-visible behavior change. (ANTS-1594, ANTS-1595, ANTS-1598, ANTS-1602, ANTS-1605, ANTS-1609, ANTS-1610)

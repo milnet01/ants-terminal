@@ -525,6 +525,25 @@ QString rcHeadlineOneline(const QString &headline) {
     return s.trimmed();
 }
 
+// ANTS-2080 — confirm-after compact echo for roadmap_log write verbs.
+// When the caller passes return:"headline_only", the success envelope
+// carries `post_bullets`: the just-touched bullet(s) in the same compact
+// {id, status, headline_oneline} shape roadmap_query mode:headline_only
+// emits — folding the verify read into the write. `status` is the word
+// form (planned / in-progress / shipped / considered), not the emoji.
+bool rcReturnHeadlineOnly(const QJsonObject &req) {
+    return req.value(QStringLiteral("return")).toString() ==
+           QStringLiteral("headline_only");
+}
+QJsonObject rcCompactBullet(const QString &id, const QString &statusWord,
+                            const QString &headline) {
+    QJsonObject o;
+    o[QStringLiteral("id")]               = id;
+    o[QStringLiteral("status")]           = statusWord;
+    o[QStringLiteral("headline_oneline")] = rcHeadlineOneline(headline);
+    return o;
+}
+
 // ANTS-1743 — sanitise a single-line bullet field (headline / layman /
 // source) before splicing it into ROADMAP.md. rcHeadlineOneline folds
 // embedded \n/\r/\t + whitespace runs to single spaces so a stray
@@ -4598,6 +4617,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         warn["lost_parameters"] = names;
         out["warnings"] = QJsonArray{ warn };
     }
+    // ANTS-2080 — confirm-after compact echo of the appended bullet.
+    if (rcReturnHeadlineOnly(req)) {
+        out["post_bullets"] =
+            QJsonArray{ rcCompactBullet(idStr, status, headline) };
+    }
     return QJsonDocument(out);
 }
 
@@ -6010,6 +6034,25 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     const bool dryRun =
         req.value(QStringLiteral("dry_run")).toBool();
 
+    // ANTS-2078 — per-bullet stable-string IDs. Batch-wide id_strategy
+    // mirrors single op:append (ANTS-1905): "counter" (default) bumps
+    // .roadmap-counter; "stable_prefix" skips the counter entirely and
+    // takes each bullet's own `stable_id` (the full ID string). Lets a
+    // whole stable-ID roadmap be scaffolded in one call instead of N
+    // single op:append calls.
+    const QString idStrategy =
+        req.value(QStringLiteral("id_strategy")).toString();
+    if (!idStrategy.isEmpty() &&
+        idStrategy != QStringLiteral("counter") &&
+        idStrategy != QStringLiteral("stable_prefix"))
+        return rlErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: id_strategy must be "
+                           "\"counter\" or \"stable_prefix\""));
+    const bool useStablePrefix =
+        idStrategy == QStringLiteral("stable_prefix");
+    static const QRegularExpression kBatchStableIdShape(
+        QStringLiteral("^[A-Za-z][A-Za-z0-9_-]+$"));
+
     // 2. Resolve ROADMAP.md.
     const QString callerCanonical =
         QFileInfo(callerRaw).canonicalFilePath();
@@ -6028,9 +6071,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         callerCanonical + QLatin1Char('/') +
         QStringLiteral(".roadmap-counter");
 
-    // 3. Counter read (parity with append path).
+    // 3. Counter read (parity with append path). ANTS-2078 — the
+    // stable_prefix strategy skips the counter machinery entirely
+    // (a stable-ID project has no .roadmap-counter).
     qint64 counter = 0;
-    {
+    if (!useStablePrefix) {
         QFile cf(counterPath);
         if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
             if (!QFile::exists(counterPath))
@@ -6155,6 +6200,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     };
     QList<Accepted> accepted;
     QJsonArray skipped;
+    QSet<QString> seenStableIds;   // ANTS-2078 — intra-batch dup guard
 
     // ANTS-2054 / ANTS-2076 — resolve the project's counter prefix once
     // for all bullets. Precedence: explicit id_prefix > prefix sniffed
@@ -6205,25 +6251,53 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             continue;
         }
 
-        // INV-6 — id_hint only honoured on FIRST accepted bullet.
-        if (firstAccepted && b.contains(QStringLiteral("id_hint"))) {
-            const qint64 hint =
-                b.value(QStringLiteral("id_hint")).toInteger();
-            if (hint <= counter) {
-                skip(QStringLiteral("id_taken"),
-                     QStringLiteral("id_hint %1 is at or below current "
-                                    "counter %2").arg(hint).arg(counter));
+        QString idStr;
+        if (useStablePrefix) {
+            // ANTS-2078 — each bullet carries its own full ID string.
+            const QString sid =
+                b.value(QStringLiteral("stable_id")).toString();
+            if (sid.isEmpty()) {
+                skip(QStringLiteral("missing_field"),
+                     QStringLiteral("id_strategy=\"stable_prefix\" "
+                                    "requires `stable_id` (the full ID "
+                                    "string, e.g. \"Ts20-SP6\")"));
                 continue;
             }
-            nextId = hint;
+            if (!kBatchStableIdShape.match(sid).hasMatch()) {
+                skip(QStringLiteral("bad_args"),
+                     QStringLiteral("stable_id \"%1\" does not match the "
+                                    "stable-prefix shape "
+                                    "^[A-Za-z][A-Za-z0-9_-]+$").arg(sid));
+                continue;
+            }
+            if (seenStableIds.contains(sid)) {
+                skip(QStringLiteral("id_taken"),
+                     QStringLiteral("stable_id \"%1\" is duplicated "
+                                    "within this batch").arg(sid));
+                continue;
+            }
+            seenStableIds.insert(sid);
+            idStr = sid;
+        } else {
+            // INV-6 — id_hint only honoured on FIRST accepted bullet.
+            if (firstAccepted && b.contains(QStringLiteral("id_hint"))) {
+                const qint64 hint =
+                    b.value(QStringLiteral("id_hint")).toInteger();
+                if (hint <= counter) {
+                    skip(QStringLiteral("id_taken"),
+                         QStringLiteral("id_hint %1 is at or below current "
+                                        "counter %2").arg(hint).arg(counter));
+                    continue;
+                }
+                nextId = hint;
+            }
+            idStr = QStringLiteral("%1-%2")
+                        .arg(counterPfx).arg(nextId, 4, 10,
+                                             QLatin1Char('0'));
+            if (nextId > 9999)
+                idStr = QStringLiteral("%1-%2").arg(counterPfx).arg(nextId);
         }
         firstAccepted = false;
-
-        QString idStr = QStringLiteral("%1-%2")
-                            .arg(counterPfx).arg(nextId, 4, 10,
-                                                 QLatin1Char('0'));
-        if (nextId > 9999)
-            idStr = QStringLiteral("%1-%2").arg(counterPfx).arg(nextId);
 
         Accepted a;
         a.bulletIndex = i;
@@ -6330,6 +6404,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         if (restore.write(orig) == orig.size()) restore.commit();
     };
 
+    // ANTS-2078 — stable_prefix wrote no counter to bump.
+    if (!useStablePrefix) {
     const qint64 newCounter = nextId - 1;   // last allocated id
     QSaveFile cw(counterPath);
     if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -6356,6 +6432,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             QStringLiteral("roadmap_log: atomic write of "
                            ".roadmap-counter failed"));
     }
+    }   // ANTS-2078 — end !useStablePrefix counter write
 
     // 10. Success envelope.
     QJsonArray ids;
@@ -6403,6 +6480,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             "intended.");
         warn["lost_parameters"] = names;
         out["warnings"] = QJsonArray{ warn };
+    }
+    // ANTS-2080 — confirm-after compact echo of every applied bullet.
+    if (rcReturnHeadlineOnly(req)) {
+        QJsonArray postBullets;
+        for (const Accepted &a : accepted) {
+            postBullets.append(rcCompactBullet(
+                a.idStr,
+                a.bulletReq.value(QStringLiteral("status")).toString(),
+                a.bulletReq.value(QStringLiteral("headline")).toString()));
+        }
+        out["post_bullets"] = postBullets;
     }
     return QJsonDocument(out);
 }
@@ -10920,6 +11008,36 @@ QJsonObject defMatchToJson(const SymbolQuery::DefMatch &d) {
     return o;
 }
 
+// ANTS-2087 — opt-in symbol body. Reuses read_region's symbol-body
+// extractor (FileOutline-resolved range + head-anchored byte cap) so the
+// "where is Foo and what does it do" question is one call, not a
+// find_definition then read_region two-step. Silent no-op when the file's
+// outline can't resolve the symbol (declaration-only match, overload
+// ambiguity, generated file): the def is still returned, just without a
+// body. `d.file` is project-relative; the abs path is root + '/' + file,
+// trusted (it came from our own in-root scan), so no PathValidation here.
+void sqAttachBody(QJsonObject &defJson, const QString &root,
+                  const QString &symbol) {
+    const QString rel = defJson.value(QStringLiteral("file")).toString();
+    if (rel.isEmpty() || root.isEmpty()) return;
+    ReadRegion::Options o;
+    o.symbol = symbol;
+    const QJsonObject r =
+        ReadRegion::extract(root + QLatin1Char('/') + rel, o);
+    if (!r.value(QStringLiteral("ok")).toBool()) return;
+    if (r.value(QStringLiteral("symbol_ambiguous")).toBool()) return;
+    const QJsonArray lines = r.value(QStringLiteral("lines")).toArray();
+    if (lines.isEmpty()) return;
+    QStringList ls;
+    ls.reserve(lines.size());
+    for (const QJsonValue &v : lines) ls << v.toString();
+    defJson[QStringLiteral("body")]            = ls.join(QChar('\n'));
+    defJson[QStringLiteral("body_start_line")] = r.value(QStringLiteral("start_line"));
+    defJson[QStringLiteral("body_end_line")]   = r.value(QStringLiteral("end_line"));
+    if (r.value(QStringLiteral("truncated")).toBool())
+        defJson[QStringLiteral("body_truncated")] = true;
+}
+
 }  // namespace
 
 QJsonDocument RemoteControl::cmdFindDefinition(const QJsonObject &req) {
@@ -10935,9 +11053,14 @@ QJsonDocument RemoteControl::cmdFindDefinition(const QJsonObject &req) {
     const SymbolQuery::DefResult res =
         SymbolQuery::findDefinition(root, symbol, sqOptions(req));
 
+    const bool includeBody =
+        req.value(QStringLiteral("include_body")).toBool();
     QJsonArray defs;
-    for (const SymbolQuery::DefMatch &d : res.definitions)
-        defs.append(defMatchToJson(d));
+    for (const SymbolQuery::DefMatch &d : res.definitions) {
+        QJsonObject dj = defMatchToJson(d);
+        if (includeBody) sqAttachBody(dj, root, symbol);
+        defs.append(dj);
+    }
 
     QJsonObject out;
     out["ok"]                = true;
@@ -10989,8 +11112,14 @@ QJsonDocument RemoteControl::cmdFindCaller(const QJsonObject &req) {
     out["lang"]          = sqLangEcho(req);
     out["callers"]       = callers;
     out["callers_count"] = res.callersTotal;
-    if (res.definition.has_value())
-        out["definition"] = defMatchToJson(res.definition.value());
+    if (res.definition.has_value()) {
+        // ANTS-2087 — body of the called symbol's definition (not the
+        // call sites, which are already context lines).
+        QJsonObject dj = defMatchToJson(res.definition.value());
+        if (req.value(QStringLiteral("include_body")).toBool())
+            sqAttachBody(dj, root, symbol);
+        out["definition"] = dj;
+    }
     out["files_scanned"] = res.filesScanned;
     out["truncated"]     = res.truncated;
     out["walk_capped"]   = res.walkCapped;

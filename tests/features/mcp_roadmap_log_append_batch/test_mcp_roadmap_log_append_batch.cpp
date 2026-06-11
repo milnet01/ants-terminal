@@ -529,3 +529,145 @@ TEST(McpRoadmapLogAppendBatch, Ants2055LeafSectionStillAppends) {
         << QJsonDocument(out).toJson().toStdString();
     EXPECT_EQ(out["applied_count"].toInt(), 1);
 }
+
+// ───────────────────────────────────────────────────────────────────
+// ANTS-2078 — per-bullet stable_id for custom-prefix bulk inserts.
+// id_strategy:"stable_prefix" skips .roadmap-counter entirely; each
+// bullet carries its own full ID string written verbatim.
+// ───────────────────────────────────────────────────────────────────
+
+QJsonObject stableBullet(const char *headline, const char *stableId) {
+    QJsonObject b = bullet(headline);
+    b["stable_id"] = QString::fromLatin1(stableId);
+    return b;
+}
+
+TEST(McpRoadmapLogAppendBatch, Ants2078StablePrefixWritesIdsVerbatim) {
+    QTemporaryDir dir;
+    setupProject(dir, /*counter=*/9100);   // counter present but must be ignored
+    RemoteControl rc(nullptr);
+    QJsonArray bs;
+    bs.append(stableBullet("Alpha.", "Ts20-SP6"));
+    bs.append(stableBullet("Beta.",  "Ts20-SP7"));
+    auto req = baseReq(dir.path(), bs);
+    req["id_strategy"] = QStringLiteral("stable_prefix");
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    ASSERT_TRUE(out["ok"].toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    const QJsonArray ids = out["ids"].toArray();
+    ASSERT_EQ(ids.size(), 2);
+    EXPECT_EQ(ids[0].toString(), QStringLiteral("Ts20-SP6"));
+    EXPECT_EQ(ids[1].toString(), QStringLiteral("Ts20-SP7"));
+    const QString roadmap = readRoadmap(dir.path());
+    EXPECT_NE(roadmap.indexOf(QStringLiteral("[Ts20-SP6]")), -1);
+    EXPECT_NE(roadmap.indexOf(QStringLiteral("[Ts20-SP7]")), -1);
+    // Counter MUST be untouched under stable_prefix.
+    EXPECT_EQ(readCounter(dir.path()), 9100)
+        << ".roadmap-counter must not move under stable_prefix";
+}
+
+TEST(McpRoadmapLogAppendBatch, Ants2078StablePrefixMissingIdSkips) {
+    QTemporaryDir dir;
+    setupProject(dir, /*counter=*/9100);
+    RemoteControl rc(nullptr);
+    QJsonArray bs;
+    bs.append(stableBullet("Has id.", "Ts20-SP6"));
+    bs.append(bullet("No stable_id."));   // missing stable_id → skipped
+    auto req = baseReq(dir.path(), bs);
+    req["id_strategy"] = QStringLiteral("stable_prefix");
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    ASSERT_TRUE(out["ok"].toBool());
+    EXPECT_EQ(out["applied_count"].toInt(), 1);
+    ASSERT_EQ(out["skipped"].toArray().size(), 1);
+    EXPECT_EQ(out["skipped"].toArray()[0].toObject()["code"].toString(),
+              QStringLiteral("missing_field"));
+}
+
+TEST(McpRoadmapLogAppendBatch, Ants2078StablePrefixIntraBatchDupSkips) {
+    QTemporaryDir dir;
+    setupProject(dir, /*counter=*/9100);
+    RemoteControl rc(nullptr);
+    QJsonArray bs;
+    bs.append(stableBullet("First.",     "Ts20-SP6"));
+    bs.append(stableBullet("Duplicate.", "Ts20-SP6"));   // same id → id_taken
+    auto req = baseReq(dir.path(), bs);
+    req["id_strategy"] = QStringLiteral("stable_prefix");
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    ASSERT_TRUE(out["ok"].toBool());
+    EXPECT_EQ(out["applied_count"].toInt(), 1);
+    EXPECT_EQ(out["skipped"].toArray()[0].toObject()["code"].toString(),
+              QStringLiteral("id_taken"));
+}
+
+TEST(McpRoadmapLogAppendBatch, Ants2078BadIdStrategyRefuses) {
+    QTemporaryDir dir;
+    setupProject(dir);
+    RemoteControl rc(nullptr);
+    QJsonArray bs; bs.append(bullet("X."));
+    auto req = baseReq(dir.path(), bs);
+    req["id_strategy"] = QStringLiteral("nonsense");
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    EXPECT_FALSE(out["ok"].toBool());
+    EXPECT_EQ(out["code"].toString(), QStringLiteral("bad_args"));
+}
+
+// ───────────────────────────────────────────────────────────────────
+// ANTS-2080 — return:"headline_only" echoes the just-written bullets in
+// compact {id, status, headline_oneline} form (confirm-after).
+// ───────────────────────────────────────────────────────────────────
+
+TEST(McpRoadmapLogAppendBatch, Ants2080BatchReturnHeadlineOnly) {
+    QTemporaryDir dir;
+    setupProject(dir, /*counter=*/9100);
+    RemoteControl rc(nullptr);
+    QJsonArray bs;
+    bs.append(bullet("First echo."));
+    bs.append(bullet("Second echo.", "in-progress"));
+    auto req = baseReq(dir.path(), bs);
+    req["return"] = QStringLiteral("headline_only");
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    ASSERT_TRUE(out["ok"].toBool());
+    const QJsonArray pb = out["post_bullets"].toArray();
+    ASSERT_EQ(pb.size(), 2);
+    EXPECT_EQ(pb[0].toObject()["id"].toString(), QStringLiteral("ANTS-9101"));
+    EXPECT_EQ(pb[0].toObject()["status"].toString(), QStringLiteral("planned"));
+    EXPECT_EQ(pb[0].toObject()["headline_oneline"].toString(),
+              QStringLiteral("First echo."));
+    EXPECT_EQ(pb[1].toObject()["status"].toString(),
+              QStringLiteral("in-progress"));
+}
+
+TEST(McpRoadmapLogAppendBatch, Ants2080OmittedReturnNoPostBullets) {
+    QTemporaryDir dir;
+    setupProject(dir);
+    RemoteControl rc(nullptr);
+    QJsonArray bs; bs.append(bullet("Lean."));
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(
+        baseReq(dir.path(), bs)).object();
+    ASSERT_TRUE(out["ok"].toBool());
+    EXPECT_FALSE(out.contains("post_bullets"))
+        << "post_bullets must be absent when return is omitted";
+}
+
+TEST(McpRoadmapLogAppendBatch, Ants2080SingleAppendReturnHeadlineOnly) {
+    QTemporaryDir dir;
+    setupProject(dir, /*counter=*/9100);
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = dir.path();
+    req["op"]         = QStringLiteral("append");
+    req["section"]    = QStringLiteral("performance");
+    req["headline"]   = QStringLiteral("Single echo.");
+    req["kind"]       = QStringLiteral("implement");
+    req["source"]     = QStringLiteral("test");
+    req["status"]     = QStringLiteral("planned");
+    req["return"]     = QStringLiteral("headline_only");
+    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(req).object();
+    ASSERT_TRUE(out["ok"].toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    const QJsonArray pb = out["post_bullets"].toArray();
+    ASSERT_EQ(pb.size(), 1);
+    EXPECT_EQ(pb[0].toObject()["id"].toString(), QStringLiteral("ANTS-9101"));
+    EXPECT_EQ(pb[0].toObject()["headline_oneline"].toString(),
+              QStringLiteral("Single echo."));
+}

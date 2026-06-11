@@ -114,115 +114,16 @@ prelude is stale (ANTS-2038) or disabled.
 
 When adding or modifying an MCP tool, follow
 [`docs/standards/mcp-tools.md`](docs/standards/mcp-tools.md) (the umbrella
-checklist). The load-bearing contracts, each with its spec:
-
-- **Response wrap (ANTS-1294).** `tools/call` replies are auto-wrapped in
-  `<ants_mcp_data tool="…">…</ants_mcp_data>` by
-  `ClaudeIntegration::wrapMcpData`. Register normally and the dispatch
-  site wraps; control-plane tools (`get_session_info`, `token_usage`,
-  `tool_info`) bypass.
-- **caller_cwd resolution (ANTS-1401).** Consume `caller_cwd` via
-  `ants::resolveCallerCwdRoot` (`src/resolvedroot.h`) — never
-  re-implement canonicalisation / tab-walks.
-- **CallerCwdContract (ANTS-1404).** Classify each tool at
-  `callerCwdContractFor` as Required / Optional / TabSpecific /
-  ProcessGlobal; `Required` refuses empty `caller_cwd` with
-  `code:"caller_cwd_required"`. Unclassified defaults to Optional.
-- **Path validation (ANTS-1295).** Any path-typed arg routes through
-  `PathValidation::validatePath` (`src/pathvalidation.h`) before any FS
-  op; reject `code:"bad_path"`. Use `check.argvForm` for argv,
-  `check.resolved` for the canonical path (empty if not-yet-existing).
-- **ETag 304 (ANTS-1499).** Read tools opt in via `isEtagSupportedTool` +
-  `makeEtagMatchProp()`; a matching `etag_match` short-circuits to
-  `{ok, unchanged, etag}`.
-- **`fields=` projection (ANTS-1720).** Opt in via `isFieldProjectionTool`
-  + `makeFieldsProp()`; narrows to named top-level fields (a subset of the
-  ETag set — list `"etag"` in `fields` to keep 304).
-- **Refusal codes** follow
-  [`docs/standards/mcp-error-codes.md`](docs/standards/mcp-error-codes.md);
-  **caches** follow [`docs/standards/mcp-caches.md`](docs/standards/mcp-caches.md)
-  (a path-keyed cache may go cold but must never *shadow*).
-- **State routing (ANTS-1336 / ANTS-1435).** `session_memory` /
-  `workflow_state` *writes* go through RcGate (focused-tab match);
-  *reads* anchor to `caller_cwd`. `wf.<skill>` keys purge at 72 h;
-  `session_memory` has no TTL. Storage
-  `~/.cache/ants-terminal/mcp-state/<sha256(cwd)>.json`. See ANTS-1435
-  §Limitations.
-
-Behavioral notes (not authoring rules): `get_scrollback` since-cursor
-incremental mode (ANTS-1500); `roadmap_query` recognises ants-v1 /
-github-task-list / pass-headings formats (ANTS-1530); `read_log` filters
-a log file (Ants debug log or a `caller_cwd` path) to matching lines via
-the pure `ReadLog::filter` helper, streaming drop-oldest byte cap +
-since_cursor incremental tailing (ANTS-1855); `read_region` returns an
-exact line range or a named symbol's body (resolved via the flat
-`file_outline` scanner — class/`Class::method` forms) from a project file
-via the pure `ReadRegion::extract` helper, ETag-304 free re-read +
-head-anchored incremental byte cap, caller_cwd-Required (ANTS-2021);
-`apply_edits` applies N `{path, old, new}` edits across M project files in
-one atomic-per-file call (pure `ApplyEdits::applyToContent` + `QSaveFile` +
-`fsyncParentDir`), per-edit `skipped[]` (not_found / ambiguous / too_large /
-commit_failed), fail-closed `bad_path` on root escape, caller_cwd-Required
-(ANTS-2022); `codebase_index` serves a pre-computed project structural map
-(symbols-per-file + lane→files) so a session stops re-deriving shape with
-grep/`file_outline`/CLAUDE.md reads — one verb, selectors `symbol` /
-`lane` / `file_path` / none→summary (≥2 → `bad_args`; a miss is
-`ok:true,found:false`, never a code), lazy disk cache at
-`~/.cache/ants-terminal/codebase-index/<cwdHash>.json` (cold-built on
-absent/unparseable/version|root-mismatch, mtime-incremental refresh),
-reuses `FileOutline` + `SubsystemMap`, ETag-304 + `fields`, caller_cwd-Required
-(ANTS-1637); `feedback_query` /
-`feedback_log` read/write the `*_Ants_MCP_Feedback.md` files via the pure
-`FeedbackFile` module (delta parse + block render; ANTS-1961/1962),
-suffix-guarded on `_Ants_MCP_Feedback.md`, append-only at EOF; `spec_log`
-writes a spec's Status line / cold-eyes loop log / `INV-N` via the pure
-`SpecLog` module (`op:"set_status"` / `"append_loop"` / `"append_inv"`,
-never renumbering; reuses `spec_query`'s id routing; ANTS-1963);
-`model_switch_stats`
-(ANTS-1735, extended by ANTS-1889, sharpened by ANTS-1891) — Required
-`caller_cwd`, ETag + `fields` opt-in, aggregates the model-switch
-ledger into avoided/regret ratios and pending-record counts (the trust
-signal that gates §8 OQ-3 default-ON flip; never writes ledger/config).
-Envelope surfaces the live switcher config (`auto_model_switch_enabled`,
-`floor_tier`, `min_dwell_sec`) + `scope` echo so callers can tell
-"feature OFF" from "ON, no candidates yet" from "ON with measured
-outcomes"; accepts optional `scope:"project"` (default) or `"global"`
-arg to aggregate across all projects (ANTS-1889). ANTS-1891 —
-`regret_count` includes under-route harm; `measured_downgrades`
-excludes inconclusive 0-turn records (counted in new
-`inconclusive_count` instead); `clean_end_count` + `weighted_avoided`
-credit clean session-ends (no override / correction / under-route
-within ~10 min of session end) as ½ Opus turn avoided each so end-of-
-task downgrades — the dominant ledger shape — are no longer invisible;
-headline withholds the ratio until a configurable floor of measured
-downgrades is reached and reads "calibrating (N/F measured)" below
-the floor (ANTS-1909 renamed the pre-floor phrase from "insufficient
-data"). Envelope readers should check `measured_downgrades > 0` before
-treating `regret_rate` as meaningful (the new `near_misses` block —
-ANTS-1894 INV-12 — is independent and meaningful from the first
-record). ANTS-1894 — envelope additionally carries a slim
-`near_misses:{total_24h, dominant_blocker}` block; pass
-`mode:"near_misses"` for the full blocker breakdown. ANTS-1909 — the
-headline now also carries the `dwell=Ns` parenthetical and, when the
-24 h near-miss block is non-empty, appends "N near-misses in 24 h
-blocked by <dominant_blocker>" on both the no-switches and calibrating
-branches so the trust signal reads as "evaluating but blocked" rather
-than "feature did nothing". ANTS-1944 — `g.current` is actuator-anchored (repeat-suppression only): a
-pure `reconcileCurrentTier` helper in `modelautoswitch` overrides the stale
-transcript read with the actuator's last-injected tier, but ONLY when the
-clamped recommendation equals that tier (suppressing a re-fire, never
-reverting a user's manual `/model`). Provenance fields on `Result`
-(`currentModelFromCommand`, `currentModelTsMs`) let the helper distinguish
-a fresh command read (always wins) from an assistant-turn read that may be
-stale. ANTS-1941 — the trust signal now counts only
-current-epoch records: `StatsConfig::minEpoch` is set to
-`kSwitcherEpoch` at both dispatch sites so pre-fix contamination is
-filtered out by the epoch boundary, not the age window (the age window
-can't evict recent pre-fix records). Envelope adds `min_epoch` +
-`excluded_pre_epoch_count` when epoch-filtered; callers reading
-`regret_rate` from the live MCP verb now measure only the current
-switcher behaviour. `statsForProject` / `statsEnvelope` and any
-`minEpoch=0` caller remain unaffected (all-time forensic view).
+checklist; its *Load-bearing contracts* quick-reference lists each
+contract — response-wrap, caller_cwd, CallerCwdContract, path validation,
+ETag-304, `fields=`, refusal codes, state routing — with its ANTS-spec).
+Per-verb behavioural reference (the `get_scrollback` / `roadmap_query` /
+`read_region` / `codebase_index` / `apply_edits` / `model_switch_stats` …
+notes) lives in
+[`docs/standards/mcp-behavioural-notes.md`](docs/standards/mcp-behavioural-notes.md).
+Both were moved out of this preamble by ANTS-2088 — read on demand; the
+live verb catalogue + one-line *when to use* per verb is `tool_info
+{catalog:true}`.
 
 Config keys for the autonomous model switcher (ANTS-1735 §2.7) — single
 Settings toggle "Let Ants pick the Claude model for me" + two

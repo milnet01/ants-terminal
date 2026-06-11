@@ -11900,23 +11900,26 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Source: in-session-2026-06-11 (token-saving brainstorm).
 
-- 📋 [ANTS-2086] **Generalised oversize advisory: large read responses carry a leaner_call_hint naming the cheaper mode.**
+- ✅ [ANTS-2086] **Generalised oversize advisory: large read responses carry a leaner_call_hint naming the cheaper mode.**
   When any read response exceeds a byte threshold, append a one-line leaner_call_hint naming the cheaper mode available on THAT verb (headline_only / fields= / limit / max_match_bytes / mode:section_index). workspace_search only warns on hard truncation today; this is the proactive 'you could have spent ~10x less' nudge across read verbs. Cross-verb sibling of ANTS-2082; cheap (one short string, emitted only over the threshold).
   **Layman:** When an answer is big, the tool suggests the smaller version you could have asked for.
   Kind: enhancement.
   Source: in-session-2026-06-11 (token-saving brainstorm).
+  Resolved (2026-06-11): large read responses carry leaner_call_hint naming the cheaper mode (roadmap_query->headline_only/section_index, workspace_search->max_match_bytes, file_outline->filter, generic fields=). mcp::appendReadHints.
 
-- 📋 [ANTS-2087] **find_definition / find_caller opt-in include_body collapses the find -> read_region two-step into one call.**
+- ✅ [ANTS-2087] **find_definition / find_caller opt-in include_body collapses the find -> read_region two-step into one call.**
   Today find_definition returns file:line:signature, then a separate read_region call fetches the body. An opt-in include_body (reusing read_region's symbol-body extractor + its head-anchored byte cap) returns the body inline for the common 'where is Foo and what does it do' question — one call instead of two. Off by default to keep the lean default envelope.
   **Layman:** When the assistant asks where a function lives, optionally show its code too — in the same answer.
   Kind: enhancement.
   Source: in-session-2026-06-11 (token-saving brainstorm).
+  Resolved (2026-06-11): find_definition/find_caller opt-in include_body attaches body/body_start_line/body_end_line via ReadRegion::extract (sqAttachBody); off by default. Wiring+schema test in mcp_symbol_query.
 
-- 📋 [ANTS-2088] **Move the CLAUDE.md MCP-authoring + behavioural-notes blob out of the always-loaded session preamble.**
+- ✅ [ANTS-2088] **Move the CLAUDE.md MCP-authoring + behavioural-notes blob out of the always-loaded session preamble.**
   The largest always-loaded block in CLAUDE.md is now the 'MCP tool authoring' contract + the per-verb behavioural-notes paragraph — paid in tokens on EVERY session preamble. ANTS-1292 already moved the ~130-line subsystem catalogue to docs/subsystems.md behind the `subsystem` verb; do the same here — relocate the detail to docs/standards/mcp-tools.md (+ behavioural notes to a doc) and serve on demand via project_conventions / tool_info, leaving a one-line pointer. Biggest recurring per-session saving. Distinct from ANTS-2079 (which trims the tool SCHEMA description blobs).
   **Layman:** Stop loading a huge block of developer notes into every single session; fetch it only when needed.
   Kind: optimize.
   Source: in-session-2026-06-11 (token-saving brainstorm).
+  Resolved (2026-06-11): moved the MCP-authoring contracts to docs/standards/mcp-tools.md (new 'Load-bearing contracts' section) and the per-verb behavioural notes to docs/standards/mcp-behavioural-notes.md; CLAUDE.md keeps a one-line pointer + the toolkit-discovery paragraph. Preamble 367->268 lines (~27%).
 
 ### 🎨 At-a-glance build-version surface (user request 2026-05-14)
 
@@ -16163,11 +16166,12 @@ server build id so clients can self-diagnose this.
   Source: cross-session-2026-06-11 (DOOM Ants).
   Resolved (2026-06-11): dry_run:true on op:append / append_batch returns the would-be id(s), formatted bullet(s) and insertion line(s) without writing ROADMAP.md or bumping .roadmap-counter. append_batch reports applied_count:0 + would_apply_count. Tests: roadmap_log_prefix_and_dry_run INV-4/5.
 
-- 📋 [ANTS-2078] **roadmap_log append_batch: per-bullet stable_id for custom-prefix bulk inserts.**
+- ✅ [ANTS-2078] **roadmap_log append_batch: per-bullet stable_id for custom-prefix bulk inserts.**
   DOOM finding #2 (GAP/MEDIUM). append_batch bullets[] exposes only id_hint (counter). Add stable_id + id_strategy:"stable_prefix" per bullet, mirroring single op:append, so a whole roadmap can be scaffolded with project-prefixed string IDs in one call instead of N op:append calls.
   **Layman:** Let the bulk add-many-items command use custom ID names, not just numbered ones.
   Kind: enhancement.
   Source: cross-session-2026-06-11 (DOOM Ants).
+  Resolved (2026-06-11): append_batch accepts batch-wide id_strategy:"stable_prefix" + per-bullet stable_id (skips/leaves .roadmap-counter); intra-batch dup -> id_taken skip. Tests in mcp_roadmap_log_append_batch.
 
 - 💭 [ANTS-2079] **Trim load-bearing MCP tool description blobs; serve encyclopedic per-op detail via tool_info.**
   DOOM idea A (HIGH saving). roadmap_log / roadmap_query inline schema descriptions are multi-KB and paid for whenever the tool loads. Keep a one-paragraph essentials summary inline; move the per-op encyclopedic detail behind tool_info {name:...} on demand. Needs a careful pass — these blobs encode load-bearing invariants and other sessions branch on the documented codes.
@@ -16175,23 +16179,32 @@ server build id so clients can self-diagnose this.
   Kind: optimize.
   Source: cross-session-2026-06-11 (DOOM Ants).
 
-- 📋 [ANTS-2080] **roadmap_log write verbs: optional return:headline_only to echo compact post-state.**
+- ✅ [ANTS-2080] **roadmap_log write verbs: optional return:headline_only to echo compact post-state.**
   DOOM idea C (MEDIUM saving). op:append / append_batch / flip* could accept return:"headline_only" and echo the resulting compact bullet list so the verify step folds into the write. Partly covered by dry_run (preview-before); this is confirm-after.
   **Layman:** After saving a roadmap item, optionally show the updated list so you do not need a second lookup.
   Kind: enhancement.
   Source: cross-session-2026-06-11 (DOOM Ants).
+  Resolved (2026-06-11) for op:append + append_batch: return:"headline_only" echoes post_bullets [{id,status,headline_oneline}]. flip*/flip_batch coverage tracked as a follow-up (see new bullet). Tests in mcp_roadmap_log_append_batch.
 
-- 📋 [ANTS-2081] **roadmap_query / session_orient: surface a next_call_hint nudging etag reuse.**
+- ✅ [ANTS-2081] **roadmap_query / session_orient: surface a next_call_hint nudging etag reuse.**
   DOOM idea D (MEDIUM saving). The verbs already return an etag for 304-style skips; thread it into a one-line next_call_hint:"pass etag_match=<etag>" so multi-query scaffolding loops actually use the short-circuit. Keep it cheap — emit only on bodies worth re-skipping.
   **Layman:** Remind the assistant to skip re-downloading unchanged data, saving usage.
   Kind: enhancement.
   Source: cross-session-2026-06-11 (DOOM Ants).
+  Resolved (2026-06-11): large etag-bearing read responses carry next_call_hint nudging etag_match reuse (mcp::appendReadHints, dispatch layer). Generalised to all etag tools, gated >4KiB. Tests in mcp_projection (McpReadHints).
 
-- 💭 [ANTS-2082] **roadmap_query: consider a leaner default mode for the bare what's-on-the-roadmap query.**
+- ✅ [ANTS-2082] **roadmap_query: consider a leaner default mode for the bare what's-on-the-roadmap query.**
   DOOM idea E (LOW saving). Default is mode:bullets + status:all (~12K tokens); headline_only answers the common question at ~10x less. Either flip the default when no body field is requested, or echo a use-mode:headline_only hint on large responses. Default flip is back-compat-sensitive — decide deliberately.
   **Layman:** Make the default roadmap view smaller and cheaper, or hint at the smaller view.
   Kind: optimize.
   Source: cross-session-2026-06-11 (DOOM Ants).
+  Resolved (2026-06-11) by ANTS-2086: the back-compat-safe 'hint on large responses' option is delivered (roadmap_query bullets-mode bodies carry leaner_call_hint pointing at headline_only/section_index). The default-flip option was intentionally declined (breaks every caller's payload shape). See docs/journal/ANTS-2079-2085-mcp-token-design-notes.md.
+
+- 📋 [ANTS-2089] **roadmap_log return:"headline_only" confirm-after echo for op:flip / flip_batch.**
+  ANTS-2080 shipped return:"headline_only" for op:append / append_batch (echoes post_bullets [{id,status,headline_oneline}]). The flip path was deferred: it spans GFM + ants-v1 + flip_batch branches and stores status as an emoji (needs a reverse emoji->word map) and the headline isn't always in hand at the success site (ants-v1 has AntsV1Bullet.headline; the GFM path does not). Lower marginal value than append (flip already echoes id + from_status + to_status), so it was split out rather than bloating the append change. To implement: add an emoji->word reverse helper, reuse rcCompactBullet, and wire the ants-v1 flip, GFM flip, and flip_batch success envelopes; extend the `return` schema prose to name flip*.
+  **Layman:** After flipping a roadmap item's status, optionally show the updated item so you don't need a second lookup.
+  Kind: enhancement.
+  Source: in-session-2026-06-11 (ANTS-2080 follow-up).
 
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 

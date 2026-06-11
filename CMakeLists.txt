@@ -1373,6 +1373,7 @@ if(ANTS_TESTS)
         FIXTURE_PROVENANCE_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_provenance.sarif"
         SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         ANTS_CLAUDE_MD_PATH="${CMAKE_SOURCE_DIR}/CLAUDE.md"
+        ANTS_MCP_TOOLS_MD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-tools.md"
         CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
         SRC_CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt")
 
