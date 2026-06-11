@@ -37,6 +37,19 @@ namespace {
 
 
 
+// ANTS-1597 — read each large source file once and share across TESTs
+// rather than re-slurping per case.
+const std::string &widgetsSource() {
+    static const std::string s =
+        ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    return s;
+}
+const std::string &mainwindowSource() {
+    static const std::string s =
+        ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    return s;
+}
+
 // Return the substring of `src` from the first occurrence of
 // `sigPrefix` up to (but not including) the next top-level `^}` line
 // that closes the function. Falls back to a generous slice if the
@@ -194,43 +207,43 @@ void testInv6PollRescue(const std::string &widgets) {
 }  // namespace
 
 TEST(claude_task_list_session_isolation, Inv1RefreshWiring) {
-    const std::string widgets = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string &widgets = widgetsSource();
     const int before = expect_failures();
     testInv1RefreshWiring(widgets);
     if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_task_list_session_isolation, Inv2TimerCadence) {
-    const std::string mainwindow = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string &mainwindow = mainwindowSource();
     const int before = expect_failures();
     testInv2TimerCadence(mainwindow);
     if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_task_list_session_isolation, Inv3HideBranch) {
-    const std::string widgets = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string &widgets = widgetsSource();
     const int before = expect_failures();
     testInv3HideBranch(widgets);
     if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_task_list_session_isolation, Inv4TabSwitchReset) {
-    const std::string widgets = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
-    const std::string mainwindow = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string &widgets = widgetsSource();
+    const std::string &mainwindow = mainwindowSource();
     const int before = expect_failures();
     testInv4TabSwitchReset(widgets, mainwindow);
     if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_task_list_session_isolation, Inv5FeedbackConnect) {
-    const std::string widgets = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string &widgets = widgetsSource();
     const int before = expect_failures();
     testInv5FeedbackConnect(widgets);
     if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_task_list_session_isolation, Inv6PollRescue) {
-    const std::string widgets = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string &widgets = widgetsSource();
     const int before = expect_failures();
     testInv6PollRescue(widgets);
     if (expect_failures() > before) FAIL();

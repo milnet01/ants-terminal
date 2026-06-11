@@ -36,6 +36,14 @@ namespace {
 
 
 
+// ANTS-1597 — read the ~200 KB claudeintegration.cpp once and share it
+// across all TESTs instead of re-slurping it per case.
+const std::string &ciSource() {
+    static const std::string s =
+        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    return s;
+}
+
 // Return the substring of `src` from the first occurrence of `sigPrefix`
 // up to the matching `}` that closes the function body. Falls back to a
 // generous slice if the brace walk never returns to depth 0.
@@ -164,28 +172,28 @@ void testInv4ShellPidEarlyReturn(const std::string &claudeintegration) {
 }  // namespace
 
 TEST(claude_pid_replacement, Inv1ReplacementGate) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string &ci = ciSource();
     const int before = expect_failures();
     testInv1ReplacementGate(ci);
     if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_pid_replacement, Inv2RebindSequence) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string &ci = ciSource();
     const int before = expect_failures();
     testInv2RebindSequence(ci);
     if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_pid_replacement, Inv3NotFoundBranch) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string &ci = ciSource();
     const int before = expect_failures();
     testInv3NotFoundBranch(ci);
     if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_pid_replacement, Inv4ShellPidEarlyReturn) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string &ci = ciSource();
     const int before = expect_failures();
     testInv4ShellPidEarlyReturn(ci);
     if (expect_failures() > before) FAIL();
