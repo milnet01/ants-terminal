@@ -12,26 +12,18 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_DIFFVIEWER_CPP_PATH
 #error "SRC_DIFFVIEWER_CPP_PATH compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
 
 TEST(ReviewChangesNav, Main) {
     // The whole file is in scope — fileAnchorId() is a file-scope helper
     // outside diffviewer::show, and the back-to-top wiring + anchor
     // rendering all live inside the single show() function anyway.
-    const std::string src = slurp(SRC_DIFFVIEWER_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_DIFFVIEWER_CPP_PATH);
 
     int failures = 0;
     auto fail = [&](const char *msg) {

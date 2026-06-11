@@ -11,6 +11,7 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_TERMINALWIDGET_CPP_PATH
 #  error "SRC_TERMINALWIDGET_CPP_PATH compile definition required"
@@ -22,16 +23,6 @@ namespace {
 
 
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // Slice from "void TerminalWidget::<setter>(" up to the first
 // top-level closing brace.
@@ -69,7 +60,7 @@ bool contains(const std::string &h, const std::string &n) {
 
 TEST(StyledFontKerningOff, Main) {
     expect_reset();
-    const std::string src = slurp(SRC_TERMINALWIDGET_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_TERMINALWIDGET_CPP_PATH);
 
     {
         const std::string body = extractSetterBody(src, "setBoldFontFamily");

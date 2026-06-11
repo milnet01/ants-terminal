@@ -14,16 +14,10 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -52,7 +46,7 @@ std::string functionBody(const std::string &src, const std::string &openSig) {
 }  // namespace
 
 TEST(ScrollSnapshotIntent, Main) {
-    const std::string src = slurp(TERMINALWIDGET_CPP);
+    const std::string src = ants_test::slurpFile(TERMINALWIDGET_CPP);
     if (src.empty()) return fail("setup", "terminalwidget.cpp not readable");
 
     const std::string wheelBody =

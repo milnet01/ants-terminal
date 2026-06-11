@@ -11,6 +11,7 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -27,16 +28,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -50,10 +41,10 @@ int fail(const char *label, const char *why) {
 }  // namespace
 
 static int runMain() {
-    const std::string ciCpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string ciHdr = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
-    const std::string rcHdr = slurp(SRC_RC_HEADER);
-    const std::string mwCpp = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ciHdr = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
+    const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
+    const std::string mwCpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
 
     int failures = 0;
     auto inv = [&](int n, bool ok, const char *why) {

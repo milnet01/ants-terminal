@@ -4,6 +4,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -14,16 +15,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -35,7 +26,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // and enum constraints.
 TEST(mcp_roadmap_log_verb, Inv1SchemaDeclared) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const auto pos = ci.find("\"roadmap_log\"");
     ASSERT_NE(pos, std::string::npos)
         << "INV-1: roadmap_log name literal missing from "
@@ -71,7 +62,7 @@ TEST(mcp_roadmap_log_verb, Inv1SchemaDeclared) {
 // INV-2 — classified Required in callerCwdContractFor.
 TEST(mcp_roadmap_log_verb, Inv2ContractIsRequired) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const auto helperPos = ci.find(
         "callerCwdContractFor(const QString &toolName)");
     ASSERT_NE(helperPos, std::string::npos);
@@ -95,7 +86,7 @@ TEST(mcp_roadmap_log_verb, Inv2ContractIsRequired) {
 // INV-3 — cmdRoadmapLog reads counter + writes back.
 TEST(mcp_roadmap_log_verb, Inv3CounterAllocation) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "ANTS-1424-INV-3"),
            "INV-3 anchor comment present at counter-allocation site");
     expect(contains(cpp, ".roadmap-counter"),
@@ -109,7 +100,7 @@ TEST(mcp_roadmap_log_verb, Inv3CounterAllocation) {
 // INV-4 — insertion point via RoadmapIndex.
 TEST(mcp_roadmap_log_verb, Inv4SectionInsertionViaIndex) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "ANTS-1424-INV-4"),
            "INV-4 anchor comment present at section-insertion site");
     expect(contains(cpp, "RoadmapIndex::buildIndex") ||
@@ -121,7 +112,7 @@ TEST(mcp_roadmap_log_verb, Inv4SectionInsertionViaIndex) {
 // INV-5 — status → emoji map.
 TEST(mcp_roadmap_log_verb, Inv5StatusEmojiMap) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "ANTS-1424-INV-5"),
            "INV-5 anchor comment present at status-emoji-map site");
     // All four status words must be in the cmdRoadmapLog body
@@ -141,7 +132,7 @@ TEST(mcp_roadmap_log_verb, Inv5StatusEmojiMap) {
 // INV-6 — error paths return early.
 TEST(mcp_roadmap_log_verb, Inv6ErrorEarlyReturn) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "ANTS-1424-INV-6"),
            "INV-6 anchor comment present");
     // Error codes the spec mandates.
@@ -159,7 +150,7 @@ TEST(mcp_roadmap_log_verb, Inv6ErrorEarlyReturn) {
 // INV-7 — verb registered via registerToolProvider.
 TEST(mcp_roadmap_log_verb, Inv7RegisteredInMainwindow) {
     expect_reset();
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     expect(contains(mw, "registerToolProvider(\"roadmap_log\""),
            "INV-7: roadmap_log not registered as MCP tool in "
            "mainwindow.cpp");
@@ -169,7 +160,7 @@ TEST(mcp_roadmap_log_verb, Inv7RegisteredInMainwindow) {
 // INV-8 — success envelope carries the four response fields.
 TEST(mcp_roadmap_log_verb, Inv8SuccessEnvelopeFields) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "ANTS-1424-INV-8"),
            "INV-8 anchor comment present at success-envelope site");
     expect(contains(cpp, "\"bytes_written\""),

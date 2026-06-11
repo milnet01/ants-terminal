@@ -9,6 +9,7 @@
 
 #include <cstdio>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -34,13 +35,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -64,10 +58,10 @@ std::size_t lineCount(const std::string &text) {
 
 TEST(ThemedstylesheetExtraction, Main) {
 
-    const std::string mw     = slurp(SRC_MAINWINDOW_CPP_PATH);
-    const std::string mwH    = slurp(SRC_MAINWINDOW_H_PATH);
-    const std::string tssCpp = slurp(SRC_THEMEDSTYLESHEET_CPP_PATH);
-    const std::string tssH   = slurp(SRC_THEMEDSTYLESHEET_H_PATH);
+    const std::string mw     = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mwH    = ants_test::slurpFile(SRC_MAINWINDOW_H_PATH);
+    const std::string tssCpp = ants_test::slurpFile(SRC_THEMEDSTYLESHEET_CPP_PATH);
+    const std::string tssH   = ants_test::slurpFile(SRC_THEMEDSTYLESHEET_H_PATH);
 
     if (mw.empty())  { fail("setup", "mainwindow.cpp not readable"); return; }
     if (mwH.empty()) { fail("setup", "mainwindow.h not readable"); return; }

@@ -11,6 +11,7 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_AUDIT_CPP_PATH
 #  error "SRC_AUDIT_CPP_PATH compile definition required"
@@ -19,16 +20,6 @@
 #  error "SRC_AUDIT_H_PATH compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // Locate the body of a free function (e.g. "static QString computeDedup").
 // Brace counter skips char literals ('{', '}'), string literals ("..."),
@@ -88,10 +79,10 @@ TEST(AuditDedup96Bit, Main) {
     // ANTS-1119 v1 split: computeDedup moved to auditengine.cpp; the
     // dialog still owns isSuppressed. Slurp both and search the union
     // for the engine-side INVs, the dialog-side for the helper.
-    const std::string dialogCpp = slurp(SRC_AUDIT_CPP_PATH);
-    const std::string hdr       = slurp(SRC_AUDIT_H_PATH);
+    const std::string dialogCpp = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string hdr       = ants_test::slurpFile(SRC_AUDIT_H_PATH);
 #ifdef SRC_AUDIT_ENGINE_CPP_PATH
-    const std::string engineCpp = slurp(SRC_AUDIT_ENGINE_CPP_PATH);
+    const std::string engineCpp = ants_test::slurpFile(SRC_AUDIT_ENGINE_CPP_PATH);
 #else
     const std::string engineCpp;
 #endif

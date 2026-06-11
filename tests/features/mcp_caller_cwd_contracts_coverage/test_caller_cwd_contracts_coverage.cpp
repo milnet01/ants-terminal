@@ -5,6 +5,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -17,16 +18,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // Pull every registered tool name out of mainwindow.cpp by matching
 // `registerToolProvider("<name>"`. The lone registration in
@@ -65,8 +56,8 @@ std::set<std::string> classifiedToolNames(const std::string &ci) {
 TEST(mcp_caller_cwd_contracts_coverage,
      Inv1EveryRegisteredToolClassified) {
     expect_reset();
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     const auto registered = registeredToolNames(mw);
     const auto classified = classifiedToolNames(ci);
@@ -111,7 +102,7 @@ TEST(mcp_caller_cwd_contracts_coverage,
 TEST(mcp_caller_cwd_contracts_coverage,
      Inv2InlineDispatchedToolsStillClassified) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const auto classified = classifiedToolNames(ci);
 
     expect(classified.find("get_session_info") != classified.end(),

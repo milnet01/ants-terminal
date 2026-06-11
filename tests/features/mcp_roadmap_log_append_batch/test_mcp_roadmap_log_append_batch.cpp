@@ -3,6 +3,7 @@
 // docs/specs/ANTS-1879.md.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -20,12 +21,6 @@
 
 namespace {
 
-std::string slurp(const char *p) {
-    std::ifstream f(p);
-    if (!f) { std::fprintf(stderr, "cannot open %s\n", p); std::exit(2); }
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
 
 QString minimalRoadmap() {
     return QStringLiteral(
@@ -101,7 +96,7 @@ void setupProject(QTemporaryDir &dir, qint64 counter = 9100) {
 
 // INV-1 — dispatch wired.
 TEST(McpRoadmapLogAppendBatch, Inv1DispatchWired) {
-    const std::string src = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     EXPECT_NE(src.find("\"append_batch\""), std::string::npos);
     EXPECT_NE(src.find("cmdRoadmapLogAppendBatch("), std::string::npos);
 }
@@ -310,7 +305,7 @@ TEST(McpRoadmapLogAppendBatch, BadSectionShortCircuits) {
 
 // INV-10 — formatRoadmapBullet is shared between append and append_batch.
 TEST(McpRoadmapLogAppendBatch, Inv10FormatHelperShared) {
-    const std::string src = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // Definition + at least 2 call sites total.
     const auto defPos =
         src.find("QString RemoteControl::formatRoadmapBullet(");

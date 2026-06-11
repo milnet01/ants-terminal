@@ -20,6 +20,7 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_TERMINALWIDGET_CPP_PATH
 #error "SRC_TERMINALWIDGET_CPP_PATH compile definition required"
@@ -30,13 +31,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -85,8 +79,8 @@ std::string functionBody(const std::string &src, const std::string &sig) {
 }  // namespace
 
 TEST(SyncOutputSnapshot, Main) {
-    const std::string tw  = slurp(SRC_TERMINALWIDGET_CPP_PATH);
-    const std::string twH = slurp(SRC_TERMINALWIDGET_H_PATH);
+    const std::string tw  = ants_test::slurpFile(SRC_TERMINALWIDGET_CPP_PATH);
+    const std::string twH = ants_test::slurpFile(SRC_TERMINALWIDGET_H_PATH);
 
     if (tw.empty())  return fail("setup", "terminalwidget.cpp not readable");
     if (twH.empty()) return fail("setup", "terminalwidget.h not readable");

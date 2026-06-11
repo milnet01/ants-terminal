@@ -8,6 +8,7 @@
 // green.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -26,16 +27,6 @@ using claudestate::Resolved;
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 ClaudeTabTracker::ShellState makeShell(ClaudeState s,
                                        const QString &tool = QString(),
@@ -194,7 +185,7 @@ TEST(ClaudeStateResolver, Inv7NullSafe) {
 // The deleted scalars m_lastState / m_lastDetail / m_promptActive /
 // m_planMode / m_auditing must not appear in the apply() body.
 TEST(ClaudeStateResolver, Inv8ApplyUsesHelper) {
-    const std::string src = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     EXPECT_NE(src.find("claudestate::forFocused"), std::string::npos)
         << "INV-8: apply() must read via claudestate::forFocused";
     EXPECT_NE(src.find("claudestate::display("), std::string::npos)
@@ -213,7 +204,7 @@ TEST(ClaudeStateResolver, Inv8ApplyUsesHelper) {
 
 // INV-9 — tab-dot lambda also consumes the helper.
 TEST(ClaudeStateResolver, Inv9TabDotUsesHelper) {
-    const std::string src = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     EXPECT_NE(src.find("claudestate::fromShell"), std::string::npos)
         << "INV-9: tab-dot lambda must adapt via claudestate::fromShell";
     // The same display() call services both surfaces; finding it twice
@@ -225,7 +216,7 @@ TEST(ClaudeStateResolver, Inv9TabDotUsesHelper) {
 // apply() (so a tracker-driven state change re-paints the bar without
 // waiting for an integration signal).
 TEST(ClaudeStateResolver, Inv10ShellStateChangedTriggersApply) {
-    const std::string src = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
 
     // The connect line must reference shellStateChanged AND apply.
     // We don't lock the exact lambda body shape — any path that gets

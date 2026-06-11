@@ -10,6 +10,7 @@
 // JSONL-fixture plumbing.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -17,11 +18,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) { std::fprintf(stderr, "cannot open %s\n", path); std::exit(2); }
-    std::stringstream ss; ss << in.rdbuf(); return ss.str();
-}
 bool has(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
 }
@@ -31,8 +27,8 @@ bool has(const std::string &hay, const char *needle) {
 // The chip's QPushButton member lives on the controller; the refresh
 // method is declared public so the status-timer slot can find it.
 TEST(ModelStateChip, ControllerDeclaresWidgetAndRefresh) {
-    const std::string h   = slurp(SRC_CLAUDESTATUSWIDGETS_H_PATH);
-    const std::string cpp = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string h   = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_H_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
 
     EXPECT_TRUE(has(h, "m_modelStateBtn"))
         << "claudestatuswidgets.h must declare m_modelStateBtn (ANTS-1888)";
@@ -55,7 +51,7 @@ TEST(ModelStateChip, ControllerDeclaresWidgetAndRefresh) {
 // The 2 s status timer must call the chip's refresh; otherwise the chip
 // only updates on tab-switch.
 TEST(ModelStateChip, StatusTimerConnectsToRefresh) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
     EXPECT_TRUE(has(mw, "refreshModelStateChip"))
         << "mainwindow.cpp must reference refreshModelStateChip (ANTS-1888)";
     EXPECT_TRUE(has(mw, "ANTS-1888"))
@@ -66,7 +62,7 @@ TEST(ModelStateChip, StatusTimerConnectsToRefresh) {
 // next tick re-paints against the newly focused tab — the same pattern
 // the recommender chip uses.
 TEST(ModelStateChip, ResetForTabSwitchHidesChipAndClearsMtime) {
-    const std::string cpp = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     EXPECT_TRUE(has(cpp, "m_modelStateBtn->hide()"))
         << "resetForTabSwitch must hide m_modelStateBtn (ANTS-1888)";
     EXPECT_TRUE(has(cpp, "m_modelStatePath.clear()"))
@@ -79,7 +75,7 @@ TEST(ModelStateChip, ResetForTabSwitchHidesChipAndClearsMtime) {
 // Unknown, thinkingLevelLabel returns empty and the chip drops the " · …"
 // suffix. The render path checks isEmpty() before appending.
 TEST(ModelStateChip, RenderPathGuardsAgainstUnknownLabel) {
-    const std::string cpp = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     EXPECT_TRUE(has(cpp, "thinkLabel.isEmpty()"))
         << "refreshModelStateChip must guard the \" · \" suffix on "
            "an empty thinkLabel so \"Unknown\" never reaches the UI";

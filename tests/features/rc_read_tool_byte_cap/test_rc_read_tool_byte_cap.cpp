@@ -33,12 +33,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // Build an envelope {ok, truncated:false, <field>:[ N items ]}. Each item
 // is a small object so total size is predictable. Item 0 is oldest; the
@@ -149,7 +143,7 @@ TEST(RcReadToolByteCap, HelperContract) {
 
     // WI-1 — file_outline handler caps symbols[] with symbols_dropped.
     {
-        const std::string rc = slurp(SRC_RC_CPP);
+        const std::string rc = ants_test::slurpFile(SRC_RC_CPP);
         const auto p = rc.find("RemoteControl::cmdFileOutline");
         expect(p != std::string::npos, "WI-1", "cmdFileOutline not found");
         // ANTS-2064 — brace-matched body, not a fixed 6000-char window.
@@ -163,7 +157,7 @@ TEST(RcReadToolByteCap, HelperContract) {
 
     // WI-2 — workspace_search handler caps matches[] with results_dropped.
     {
-        const std::string rc = slurp(SRC_RC_CPP);
+        const std::string rc = ants_test::slurpFile(SRC_RC_CPP);
         const auto p = rc.find("RemoteControl::cmdWorkspaceSearch");
         expect(p != std::string::npos, "WI-2",
                "cmdWorkspaceSearch not found");

@@ -6,6 +6,7 @@
 #include "paginationengine.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -21,16 +22,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -157,7 +148,7 @@ TEST(roadmap_query_pagination, EmptyArrayNoTruncation) {
 // Source-scrape — INV-8 bad_args + dispatch + helper call sites.
 TEST(roadmap_query_pagination, Inv8BadArgsAnchors) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "ANTS-1436-INV-8"),
            "INV-8: bad_args anchor present in cmdRoadmapQuery");
     expect(contains(cpp, "offset must be a non-negative integer"),
@@ -173,7 +164,7 @@ TEST(roadmap_query_pagination, Inv8BadArgsAnchors) {
 // branch must route through the pagination helper.
 TEST(roadmap_query_pagination, Inv6SectionIndexPaginates) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(!contains(cpp, "section_index mode does not accept offset/limit"),
            "INV-6: the old section_index+offset/limit refusal is removed "
            "(ANTS-1729 enables pagination)");
@@ -188,7 +179,7 @@ TEST(roadmap_query_pagination, Inv6SectionIndexPaginates) {
 // section_index sections[] emission, ANTS-1729).
 TEST(roadmap_query_pagination, Inv11HelperCallSiteCount) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     size_t count = 0;
     size_t pos = 0;
     const std::string needle = "PaginationEngine::pageBullets(";
@@ -209,7 +200,7 @@ TEST(roadmap_query_pagination, Inv11HelperCallSiteCount) {
 // mainwindow.cpp lambda (not type-gated; handler does the check).
 TEST(roadmap_query_pagination, DispatchForwardsVerbatim) {
     expect_reset();
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     expect(contains(mw, "ANTS-1436 — forward offset/limit"),
            "dispatch: ANTS-1436 anchor present");
     expect(contains(mw, "if (args.contains(\"offset\"))"),
@@ -222,7 +213,7 @@ TEST(roadmap_query_pagination, DispatchForwardsVerbatim) {
 // Schema — offset/limit props advertised on roadmap_query tool.
 TEST(roadmap_query_pagination, SchemaPaginationPropsAdvertised) {
     expect_reset();
-    const std::string cpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(cpp, "ANTS-1436 — offset/limit"),
            "schema: ANTS-1436 anchor in claudeintegration");
     expect(contains(cpp, "props[\"offset\"] = offsetProp"),

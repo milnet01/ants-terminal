@@ -5,6 +5,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -15,16 +16,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -35,7 +26,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // INV-1 — req carries the include_section_headers flag.
 TEST(roadmap_query_filter_section_headers, Inv1FlagReadFromReq) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "include_section_headers"),
            "INV-1: cmdRoadmapQuery reads include_section_headers "
            "from req");
@@ -47,7 +38,7 @@ TEST(roadmap_query_filter_section_headers, Inv1FlagReadFromReq) {
 // INV-2 — rollup predicate tests id+headline emptiness.
 TEST(roadmap_query_filter_section_headers, Inv2RollupPredicate) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "ANTS-1398-INV-2"),
            "INV-2 anchor comment present");
     // The predicate's job: drop bullets where both id and
@@ -60,7 +51,7 @@ TEST(roadmap_query_filter_section_headers, Inv2RollupPredicate) {
 // INV-3a — full-file emission path filters rollups.
 TEST(roadmap_query_filter_section_headers, Inv3aFullFilePathFilters) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "ANTS-1398-INV-3a"),
            "INV-3a anchor comment present (full-file emission "
            "path applies the filter)");
@@ -70,7 +61,7 @@ TEST(roadmap_query_filter_section_headers, Inv3aFullFilePathFilters) {
 // INV-3b — section-mode emission path filters rollups.
 TEST(roadmap_query_filter_section_headers, Inv3bSectionPathFilters) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "ANTS-1398-INV-3b"),
            "INV-3b anchor comment present (section-mode emission "
            "path applies the filter)");
@@ -80,7 +71,7 @@ TEST(roadmap_query_filter_section_headers, Inv3bSectionPathFilters) {
 // INV-4 — schema property advertised on the roadmap_query tool.
 TEST(roadmap_query_filter_section_headers, Inv4SchemaPropertyAdded) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     // The roadmap_query descriptor must list the new opt-in
     // flag. Anchor on the roadmap_query name then grep nearby
     // for include_section_headers.
@@ -113,7 +104,7 @@ TEST(roadmap_query_filter_section_headers, Inv4SchemaPropertyAdded) {
 // INV-5 — opt-in echo emitted only when arg was set.
 TEST(roadmap_query_filter_section_headers, Inv5EchoOnlyWhenSet) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "ANTS-1398-INV-5"),
            "INV-5 anchor comment present (echo emitted "
            "conditionally to keep wire trim)");

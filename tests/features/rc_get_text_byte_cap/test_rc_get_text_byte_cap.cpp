@@ -17,6 +17,7 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_RC_HEADER
 #error "SRC_RC_HEADER compile definition required"
@@ -29,12 +30,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // Build a scrollback fixture: N lines of `length` ASCII chars each
 // (plus a trailing newline per line). Lines are numbered so trim
@@ -217,8 +212,8 @@ void testEngine() {
 // ---- Wiring tests (source-grep) -----------------------------------
 
 void testWiring() {
-    const std::string rc = slurp(SRC_RC_CPP);
-    const std::string hdr = slurp(SRC_RC_HEADER);
+    const std::string rc = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string hdr = ants_test::slurpFile(SRC_RC_HEADER);
 
     // Anchor on the cmdGetText body in remotecontrol.cpp.
     const size_t gtPos = rc.find("RemoteControl::cmdGetText");

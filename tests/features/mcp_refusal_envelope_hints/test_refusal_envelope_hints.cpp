@@ -7,6 +7,7 @@
 #include "remotecontrolgate.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QJsonObject>
 #include <QString>
@@ -20,16 +21,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -42,7 +33,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 TEST(mcp_refusal_envelope_hints,
      Inv1DispatcherEnvelopeHasCallerCwdInfoHint) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     // Anchor co-located with the caller_cwd_required envelope build.
     expect(contains(ci, "ANTS-1418"),
            "INV-1: ANTS-1418 anchor present in dispatcher refusal "
@@ -129,7 +120,7 @@ TEST(mcp_refusal_envelope_hints,
 TEST(mcp_refusal_envelope_hints,
      Inv5DispatcherCallerCwdRequiredHasExample) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(ci, "ANTS-1543"),
            "INV-5: ANTS-1543 anchor present (the original example-field "
            "introduction; reused for ANTS-1566 sweep)");
@@ -145,7 +136,7 @@ TEST(mcp_refusal_envelope_hints,
 TEST(mcp_refusal_envelope_hints,
      Inv6ProjectLayoutCwdBadHasExample) {
     expect_reset();
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // The cwd_bad block lives near the project_layout handler; check
     // that an ANTS-1566 anchor sits next to an example assignment.
     expect(contains(rc, "ANTS-1566"),
@@ -162,7 +153,7 @@ TEST(mcp_refusal_envelope_hints,
 TEST(mcp_refusal_envelope_hints,
      Inv7RoadmapLogCwdRefusalsHaveExample) {
     expect_reset();
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // Check the cmdRoadmapLog's rlErr lambda branches on the code and
     // attaches example for missing_field / no_roadmap.
     expect(contains(rc, "missing_field") &&
@@ -185,7 +176,7 @@ TEST(mcp_refusal_envelope_hints,
 TEST(mcp_refusal_envelope_hints,
      Inv8DispatcherFlagsEmptyArguments) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(ci, "ANTS-1853"),
            "INV-8: ANTS-1853 anchor present in the dispatcher gate");
     expect(contains(ci, "argumentsEmpty") &&
@@ -208,7 +199,7 @@ TEST(mcp_refusal_envelope_hints,
 // caller is warned BEFORE it builds an oversized append.
 TEST(mcp_refusal_envelope_hints, Inv9SizeAwareSteer) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(ci, "ANTS-1857") || contains(ci, "too large"),
            "INV-9: empty-args steer names the large-payload root cause");
     expect(contains(ci, "Edit tool"),

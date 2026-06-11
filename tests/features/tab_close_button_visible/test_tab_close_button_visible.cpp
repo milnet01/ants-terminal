@@ -14,6 +14,7 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_MAINWINDOW_CPP_PATH
 #  error "SRC_MAINWINDOW_CPP_PATH compile definition required"
@@ -33,16 +34,6 @@ namespace {
 
 
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &h, const std::string &n) {
     return h.find(n) != std::string::npos;
@@ -55,7 +46,7 @@ TEST(TabCloseButtonVisible, Main) {
     // ANTS-1147 — the close-button QSS rules moved into
     // themedstylesheet.cpp. Source path of the QSS body is now
     // there; mainwindow.cpp no longer carries the data-URI SVG.
-    const std::string src = slurp(SRC_THEMEDSTYLESHEET_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_THEMEDSTYLESHEET_CPP_PATH);
 
     // I1 — default-state rule has the data-URI image.
     expect(contains(src, "QTabBar::close-button {"),

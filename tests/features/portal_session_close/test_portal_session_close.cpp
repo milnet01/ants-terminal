@@ -12,6 +12,7 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_PORTAL_H_PATH
 #  error "SRC_PORTAL_H_PATH compile definition required"
@@ -26,16 +27,6 @@ namespace {
 
 
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &h, const std::string &n) {
     return h.find(n) != std::string::npos;
@@ -73,8 +64,8 @@ std::string extractDtor(const std::string &src) {
 
 TEST(PortalSessionClose, Main) {
     expect_reset();
-    const std::string hdr = slurp(SRC_PORTAL_H_PATH);
-    const std::string cpp = slurp(SRC_PORTAL_CPP_PATH);
+    const std::string hdr = ants_test::slurpFile(SRC_PORTAL_H_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_PORTAL_CPP_PATH);
 
     // I1 — header declares the destructor with override.
     expect(contains(hdr, "~GlobalShortcutsPortal() override;"),

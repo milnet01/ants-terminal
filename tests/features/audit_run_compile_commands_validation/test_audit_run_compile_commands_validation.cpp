@@ -2,6 +2,7 @@
 // compile_commands.json include-path validation in audit_run.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -18,13 +19,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -313,7 +307,7 @@ TEST(AuditRunCompileCommandsValidation, Inv12CommandStringFormParsed) {
 // ── INV-13 — runAudit wires the validator.
 
 TEST(AuditRunCompileCommandsValidation, Inv13RunAuditWiresValidator) {
-    const std::string src = slurp(SRC_AUDITRUNNER_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
     ASSERT_FALSE(src.empty());
 
     // validator is called before any spawn. Bound the region by the spawn
@@ -335,7 +329,7 @@ TEST(AuditRunCompileCommandsValidation, Inv13RunAuditWiresValidator) {
 // ── INV-14 — size caps in place.
 
 TEST(AuditRunCompileCommandsValidation, Inv14SizeCapsDeclared) {
-    const std::string src = slurp(SRC_AUDITRUNNER_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
     ASSERT_FALSE(src.empty());
     EXPECT_TRUE(contains(src, "kCompileCommandsMaxBytes"));
     EXPECT_TRUE(contains(src, "kCompileCommandsMaxEntries"));

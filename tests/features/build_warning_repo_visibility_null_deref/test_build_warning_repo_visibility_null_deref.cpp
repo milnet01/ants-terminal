@@ -5,6 +5,7 @@
 // lambda is present + correctly bracketed.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -14,18 +15,11 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 }  // namespace
 
 TEST(BuildWarningRepoVisibilityNullDeref, PragmaGuardPresent) {
-    const std::string src = slurp(SRC_MAINWINDOW_CPP);
+    const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
     ASSERT_FALSE(src.empty()) << "could not read " << SRC_MAINWINDOW_CPP;
 
     // INV-1 — the .remove(repoRoot) call must still be present.

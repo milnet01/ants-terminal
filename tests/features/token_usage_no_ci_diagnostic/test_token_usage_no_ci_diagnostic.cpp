@@ -17,6 +17,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -27,16 +28,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -48,7 +39,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // ClaudeIntegration* parameter (no default, no lambdaThisPtr).
 TEST(token_usage_no_ci_diagnostic, Inv1SimplifiedSignature) {
     expect_reset();
-    const std::string h = slurp(SRC_RC_HEADER);
+    const std::string h = ants_test::slurpFile(SRC_RC_HEADER);
     expect(contains(h,
         "QJsonDocument cmdTokenUsage(const QJsonObject &req,"),
            "INV-1: cmdTokenUsage signature line stable");
@@ -66,7 +57,7 @@ TEST(token_usage_no_ci_diagnostic, Inv1SimplifiedSignature) {
 // no `m_main_ptr` / `this_rc_ptr` / `ci_via_getter_null` fields.
 TEST(token_usage_no_ci_diagnostic, Inv2DiagnosticEnvelopesRetired) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // Find cmdTokenUsage body bounds.
     const auto start = cpp.find(
         "RemoteControl::cmdTokenUsage(const QJsonObject &req,");
@@ -89,7 +80,7 @@ TEST(token_usage_no_ci_diagnostic, Inv2DiagnosticEnvelopesRetired) {
 // only caller supplying explicitCi, the fallback is dead code.
 TEST(token_usage_no_ci_diagnostic, Inv3FallbackRetired) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     const auto start = cpp.find(
         "RemoteControl::cmdTokenUsage(const QJsonObject &req,");
     ASSERT_NE(start, std::string::npos)
@@ -109,7 +100,7 @@ TEST(token_usage_no_ci_diagnostic, Inv3FallbackRetired) {
 // unchanged from the pre-1422 shape.
 TEST(token_usage_no_ci_diagnostic, Inv4SuccessPathClean) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     const auto pos = cpp.find("env[\"ok\"] = true;");
     ASSERT_NE(pos, std::string::npos)
         << "INV-4 precondition: cmdTokenUsage success path "
@@ -126,7 +117,7 @@ TEST(token_usage_no_ci_diagnostic, Inv4SuccessPathClean) {
 // lambdaThisPtr forwarding (the diagnostic envelope is gone).
 TEST(token_usage_no_ci_diagnostic, Inv5LambdaPassesCiDirectly) {
     expect_reset();
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     const auto pos = mw.find(
         "registerToolProvider(\"token_usage\"");
     ASSERT_NE(pos, std::string::npos)

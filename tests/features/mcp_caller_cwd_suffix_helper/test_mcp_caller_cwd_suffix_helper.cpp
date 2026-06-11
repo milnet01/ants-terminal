@@ -2,6 +2,7 @@
 // See tests/features/mcp_caller_cwd_suffix_helper/spec.md.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -13,13 +14,6 @@
 
 namespace {
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 // Return the substring spanning `name`'s tool descriptor block —
 // from the line that sets `<name>Tool["name"]` (or equivalent
@@ -44,7 +38,7 @@ std::string descriptorBlock(const std::string &src,
 
 // INV-1 — callerCwdSuffix lambda lives near makeCallerCwdReadProp.
 TEST(McpCallerCwdSuffixHelper, LambdaDeclaredNearReadProp) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     const auto readPropPos = cc.find("makeCallerCwdReadProp");
     ASSERT_NE(readPropPos, std::string::npos)
@@ -62,7 +56,7 @@ TEST(McpCallerCwdSuffixHelper, LambdaDeclaredNearReadProp) {
 
 // INV-2 — lambda returns the canonical literal byte-for-byte.
 TEST(McpCallerCwdSuffixHelper, ReturnsCanonicalLiteral) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     const auto pos = cc.find("callerCwdSuffix");
     ASSERT_NE(pos, std::string::npos);
@@ -78,7 +72,7 @@ TEST(McpCallerCwdSuffixHelper, ReturnsCanonicalLiteral) {
 
 // INV-3a — get_last_command descriptor calls the helper.
 TEST(McpCallerCwdSuffixHelper, LastCommandUsesHelper) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     const std::string block = descriptorBlock(cc, "get_last_command");
     ASSERT_FALSE(block.empty())
@@ -91,7 +85,7 @@ TEST(McpCallerCwdSuffixHelper, LastCommandUsesHelper) {
 
 // INV-3b — get_git_status descriptor calls the helper.
 TEST(McpCallerCwdSuffixHelper, GitStatusUsesHelper) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     const std::string block = descriptorBlock(cc, "get_git_status");
     ASSERT_FALSE(block.empty())
@@ -104,7 +98,7 @@ TEST(McpCallerCwdSuffixHelper, GitStatusUsesHelper) {
 
 // INV-3c — get_environment descriptor calls the helper.
 TEST(McpCallerCwdSuffixHelper, EnvironmentUsesHelper) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     const std::string block = descriptorBlock(cc, "get_environment");
     ASSERT_FALSE(block.empty())
@@ -117,7 +111,7 @@ TEST(McpCallerCwdSuffixHelper, EnvironmentUsesHelper) {
 
 // INV-4a — get_scrollback keeps its long-form phrasing.
 TEST(McpCallerCwdSuffixHelper, ScrollbackKeepsLongForm) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     const std::string block = descriptorBlock(cc, "get_scrollback");
     ASSERT_FALSE(block.empty())
@@ -131,7 +125,7 @@ TEST(McpCallerCwdSuffixHelper, ScrollbackKeepsLongForm) {
 
 // INV-4b — get_text keeps its inline-arg-list form.
 TEST(McpCallerCwdSuffixHelper, GetTextKeepsInlineForm) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     const std::string block = descriptorBlock(cc, "get_text");
     ASSERT_FALSE(block.empty())

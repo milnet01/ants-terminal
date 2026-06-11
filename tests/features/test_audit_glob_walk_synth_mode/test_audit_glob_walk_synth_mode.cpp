@@ -2,6 +2,7 @@
 // opt-in + mode/pagination on the test_audit_* MCP trio.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include "testauditengine.h"
 
@@ -31,13 +32,6 @@ bool writeFile(const QString &path, const QString &body) {
     return true;
 }
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 // Build a Flask-shaped project fixture per RetroDB's report:
 //   app.py                  ← production code (must NOT be walked)
@@ -344,7 +338,7 @@ TEST(TestAuditSynth, G9FullModePaginates) {
 // ---------- G-13 — mcp-error-codes.md doc rows --------------------
 
 TEST(TestAuditDocs, G13ErrorCodesPresentInTaxonomy) {
-    const std::string doc = slurp(MCP_ERROR_CODES_DOC_PATH);
+    const std::string doc = ants_test::slurpFile(MCP_ERROR_CODES_DOC_PATH);
     ASSERT_FALSE(doc.empty());
     EXPECT_NE(doc.find("reports_dir_outside_root"), std::string::npos);
     EXPECT_NE(doc.find("reports_dir_unreadable"), std::string::npos);

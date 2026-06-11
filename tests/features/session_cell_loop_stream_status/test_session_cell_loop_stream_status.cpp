@@ -12,20 +12,11 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #ifndef SRC_SESSION_CPP_PATH
 #  error "SRC_SESSION_CPP_PATH compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 static std::string extractFnBody(const std::string &src, const char *qualName) {
     std::string pat = std::string("(?:QByteArray|bool|void|QString)\\s+") +
@@ -73,7 +64,7 @@ static std::string extractFnBody(const std::string &src, const char *qualName) {
 }
 
 static int runMain() {
-    const std::string cpp = slurp(SRC_SESSION_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_SESSION_CPP_PATH);
     int failures = 0;
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);

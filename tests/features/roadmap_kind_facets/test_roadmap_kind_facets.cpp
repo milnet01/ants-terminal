@@ -22,15 +22,9 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -73,7 +67,7 @@ static int runMain() {
 
     // INV-1: renderHtml signature gained the kindFilter parameter.
     {
-        const std::string hdr = slurp(ROADMAPDIALOG_H);
+        const std::string hdr = ants_test::slurpFile(ROADMAPDIALOG_H);
         if (hdr.empty()) return fail("INV-1", "roadmapdialog.h not readable");
         if (!contains(hdr, "kindFilter"))
             return fail("INV-1",
@@ -158,7 +152,7 @@ static int runMain() {
     // INV-6 + INV-7: the dialog adds a Kind-filter row with QLabel +
     // checkboxes; each checkbox carries a stable objectName.
     {
-        const std::string src = slurp(ROADMAPDIALOG_CPP);
+        const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty()) return fail("INV-6", "roadmapdialog.cpp not readable");
         if (!contains(src, "Kind:"))
             return fail("INV-6", "Kind: row label missing in dialog setup");

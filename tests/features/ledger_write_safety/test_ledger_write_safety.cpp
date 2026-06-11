@@ -7,6 +7,7 @@
 //   in-process here, plus re-assert the ledger wiring.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QFile>
 #include <QTemporaryDir>
@@ -51,12 +52,6 @@ int dirMode(const QString &path) {
     return st.st_mode & 0777;
 }
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 }  // namespace
 
@@ -129,13 +124,13 @@ TEST(LedgerWriteSafety, Inv3LockDoesNotBreakHappyPath) {
 
 // INV-4 / INV-5 — wiring greps over the cited source sites.
 TEST(LedgerWriteSafety, Inv4Inv5Wiring) {
-    const std::string msl = slurp(SRC_MODELSWITCHLEDGER_CPP_PATH);
-    const std::string nml = slurp(SRC_MODELNEARMISSLEDGER_CPP_PATH);
-    const std::string ac  = slurp(SRC_AUDITCACHE_CPP_PATH);
-    const std::string ar  = slurp(SRC_AUDITRUNNER_CPP_PATH);
-    const std::string af  = slurp(SRC_AUDITAUTOFIX_CPP_PATH);
-    const std::string fp  = slurp(SRC_AUDITFPLEDGER_CPP_PATH);
-    const std::string ad  = slurp(SRC_AUDITDIALOG_CPP_PATH);
+    const std::string msl = ants_test::slurpFile(SRC_MODELSWITCHLEDGER_CPP_PATH);
+    const std::string nml = ants_test::slurpFile(SRC_MODELNEARMISSLEDGER_CPP_PATH);
+    const std::string ac  = ants_test::slurpFile(SRC_AUDITCACHE_CPP_PATH);
+    const std::string ar  = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
+    const std::string af  = ants_test::slurpFile(SRC_AUDITAUTOFIX_CPP_PATH);
+    const std::string fp  = ants_test::slurpFile(SRC_AUDITFPLEDGER_CPP_PATH);
+    const std::string ad  = ants_test::slurpFile(SRC_AUDITDIALOG_CPP_PATH);
 
     // INV-4 — ensurePrivateDir wired; the bare mkpath idiom gone at each site.
     EXPECT_NE(msl.find("ensurePrivateDir(fi.absolutePath())"), std::string::npos);

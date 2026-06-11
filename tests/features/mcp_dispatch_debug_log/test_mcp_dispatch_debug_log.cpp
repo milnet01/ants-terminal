@@ -19,16 +19,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -41,7 +31,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // inherit the audit trail automatically.
 TEST(mcp_dispatch_debug_log, Inv1LambdaEntryWrapper) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const auto pos = ci.find(
         "ClaudeIntegration::registerToolProvider(");
     ASSERT_NE(pos, std::string::npos)
@@ -68,7 +58,7 @@ TEST(mcp_dispatch_debug_log, Inv1LambdaEntryWrapper) {
 // counts every dispatch exactly once across success + failure.
 TEST(mcp_dispatch_debug_log, Inv2RecordDispatchEnd) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const auto pos = ci.find(
         "ClaudeIntegration::recordDispatch(");
     ASSERT_NE(pos, std::string::npos)
@@ -98,7 +88,7 @@ TEST(mcp_dispatch_debug_log, Inv2RecordDispatchEnd) {
 // variable changes.
 TEST(mcp_dispatch_debug_log, Inv3MiddleCheckpointCmdTokenUsage) {
     expect_reset();
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     const auto pos = rc.find(
         "RemoteControl::cmdTokenUsage(const QJsonObject &req,");
     ASSERT_NE(pos, std::string::npos)

@@ -7,23 +7,15 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_MAIN_PATH
 #error "SRC_MAIN_PATH compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
 
 TEST(NoAnimStyle, Main) {
-    const std::string m = slurp(SRC_MAIN_PATH);
+    const std::string m = ants_test::slurpFile(SRC_MAIN_PATH);
     int failures = 0;
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);

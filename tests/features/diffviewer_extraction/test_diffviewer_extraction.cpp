@@ -19,6 +19,7 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #ifndef SRC_MAINWINDOW_CPP_PATH
 #error "SRC_MAINWINDOW_CPP_PATH compile definition required"
 #endif
@@ -31,13 +32,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -83,11 +77,11 @@ int meaningfulLoC(const std::string &body) {
 }  // namespace
 
 static int runMain() {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     if (mw.empty()) return fail("setup", "mainwindow.cpp not readable");
 
-    const std::string dvHeader = slurp(SRC_DIFFVIEWER_H_PATH);
-    const std::string dvImpl   = slurp(SRC_DIFFVIEWER_CPP_PATH);
+    const std::string dvHeader = ants_test::slurpFile(SRC_DIFFVIEWER_H_PATH);
+    const std::string dvImpl   = ants_test::slurpFile(SRC_DIFFVIEWER_CPP_PATH);
 
     // INV-1: exact signature in diffviewer.h. Locks parameter
     // order/types so a "minor cleanup" PR can't silently reorder.

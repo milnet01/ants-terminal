@@ -18,6 +18,7 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #ifndef SRC_SECUREIO_H_PATH
 #  error "SRC_SECUREIO_H_PATH compile definition required"
 #endif
@@ -40,16 +41,6 @@ namespace {
 
 
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &h, const std::string &n) {
     return h.find(n) != std::string::npos;
@@ -59,11 +50,11 @@ bool contains(const std::string &h, const std::string &n) {
 
 static int runMain() {
     expect_reset();
-    const std::string secureio  = slurp(SRC_SECUREIO_H_PATH);
-    const std::string backup    = slurp(SRC_CONFIGBACKUP_H_PATH);
-    const std::string config    = slurp(SRC_CONFIG_CPP_PATH);
-    const std::string allowlist = slurp(SRC_CLAUDEALLOWLIST_CPP_PATH);
-    const std::string settings  = slurp(SRC_SETTINGSDIALOG_CPP_PATH);
+    const std::string secureio  = ants_test::slurpFile(SRC_SECUREIO_H_PATH);
+    const std::string backup    = ants_test::slurpFile(SRC_CONFIGBACKUP_H_PATH);
+    const std::string config    = ants_test::slurpFile(SRC_CONFIG_CPP_PATH);
+    const std::string allowlist = ants_test::slurpFile(SRC_CLAUDEALLOWLIST_CPP_PATH);
+    const std::string settings  = ants_test::slurpFile(SRC_SETTINGSDIALOG_CPP_PATH);
 
     // I1 — secureio.h has perms helpers but NOT rotation / lock.
     expect(contains(secureio, "setOwnerOnlyPerms(QFileDevice &f)"),

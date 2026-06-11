@@ -16,6 +16,7 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_MAINWINDOW_CPP_PATH
 #  error "SRC_MAINWINDOW_CPP_PATH compile definition required"
@@ -30,23 +31,13 @@ namespace {
 
 
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 }  // namespace
 
 TEST(QPointerDestroyedSafe, Main) {
     expect_reset();
-    const std::string cpp = slurp(SRC_MAINWINDOW_CPP_PATH);
-    const std::string hdr = slurp(SRC_MAINWINDOW_H_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string hdr = ants_test::slurpFile(SRC_MAINWINDOW_H_PATH);
 
     // C-1 / I-5 — regression lock. No `&QObject::destroyed,` block
     // whose body reaches into `m_allTerminals.removeIf`. We don't

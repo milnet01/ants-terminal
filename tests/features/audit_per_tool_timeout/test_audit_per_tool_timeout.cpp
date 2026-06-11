@@ -12,6 +12,7 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_AUDIT_CPP_PATH
 #  error "SRC_AUDIT_CPP_PATH compile definition required"
@@ -20,16 +21,6 @@
 #  error "SRC_AUDIT_H_PATH compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // Locate the body of a free function (e.g. "void AuditDialog::runNextCheck").
 // Returns "" if not found.
@@ -56,15 +47,15 @@ TEST(AuditPerToolTimeout, Main) {
     // ANTS-1119 v1: AuditCheck struct moved to auditengine.h. Search
     // both headers / both sources for the per-check `timeoutMs` field
     // and the populateChecks bumps.
-    const std::string dialogCpp = slurp(SRC_AUDIT_CPP_PATH);
-    const std::string dialogHdr = slurp(SRC_AUDIT_H_PATH);
+    const std::string dialogCpp = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string dialogHdr = ants_test::slurpFile(SRC_AUDIT_H_PATH);
 #ifdef SRC_AUDIT_ENGINE_CPP_PATH
-    const std::string engineCpp = slurp(SRC_AUDIT_ENGINE_CPP_PATH);
+    const std::string engineCpp = ants_test::slurpFile(SRC_AUDIT_ENGINE_CPP_PATH);
 #else
     const std::string engineCpp;
 #endif
 #ifdef SRC_AUDIT_ENGINE_H_PATH
-    const std::string engineHdr = slurp(SRC_AUDIT_ENGINE_H_PATH);
+    const std::string engineHdr = ants_test::slurpFile(SRC_AUDIT_ENGINE_H_PATH);
 #else
     const std::string engineHdr;
 #endif

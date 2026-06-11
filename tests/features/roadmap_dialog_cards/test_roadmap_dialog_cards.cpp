@@ -20,16 +20,10 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -266,7 +260,7 @@ static int runMain(int argc, char **argv) {
     // INV-1 / INV-4 source-grep — anchor comments live next to the
     // load-bearing strings.
     {
-        const std::string src = slurp(ROADMAPDIALOG_CPP);
+        const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty())
             return fail("INV-1", "roadmapdialog.cpp not readable");
         if (!contains(src, "// ANTS-1154-INV-1"))
@@ -386,7 +380,7 @@ static int runMain(int argc, char **argv) {
     // to QPalette::Link), leaving the section titles unreadable on
     // dark themes.
     {
-        const std::string src = slurp(ROADMAPDIALOG_CPP);
+        const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty())
             return fail("LinkColor", "roadmapdialog.cpp not readable");
         if (!contains(src, ".rm-section-title{color:%2;"))
@@ -406,7 +400,7 @@ static int runMain(int argc, char **argv) {
     // LinkVisited as in the 0.7.83 ship state). We look for the
     // four load-bearing palette roles on the three widgets.
     {
-        const std::string src = slurp(ROADMAPDIALOG_CPP);
+        const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty())
             return fail("DialogPalette", "roadmapdialog.cpp not readable");
         // Dialog gets Window + Base from theme.
@@ -457,7 +451,7 @@ static int runMain(int argc, char **argv) {
                 "first body <p> missing rm-body-first class");
     }
     {
-        const std::string src = slurp(ROADMAPDIALOG_CPP);
+        const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty())
             return fail("BodyFrame", "roadmapdialog.cpp not readable");
         // ANTS-1238 parameterised the per-tier px values, so the
@@ -524,7 +518,7 @@ static int runMain(int argc, char **argv) {
                 "expected inline <span class=\"rm-date\"> for shipped card");
     }
     {
-        const std::string src = slurp(ROADMAPDIALOG_CPP);
+        const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty())
             return fail("IdInline", "roadmapdialog.cpp not readable");
         // ANTS-1238 — `.rm-id` font-size was parameterised; the cozy
@@ -643,7 +637,7 @@ static int runMain(int argc, char **argv) {
 
     // INV-19 + INV-22 + INV-23: source-grep guards.
     {
-        const std::string src = slurp(ROADMAPDIALOG_CPP);
+        const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty())
             return fail("StateLabel", "roadmapdialog.cpp not readable");
         // ANTS-2012: collectCurrentBullets() caches its blocking git-log
@@ -723,7 +717,7 @@ static int runMain(int argc, char **argv) {
         if (RD::isValidAnchorTarget(QString(201, QLatin1Char('a'))))
             return fail("AnchorTarget", "over-long target accepted");
         // Source guard: validation is actually wired into the handler.
-        const std::string src = slurp(ROADMAPDIALOG_CPP);
+        const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (!contains(src, "isValidAnchorTarget(target)"))
             return fail("AnchorTarget",
                 "handleAnchorClicked must call isValidAnchorTarget(target) "

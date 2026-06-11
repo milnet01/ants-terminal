@@ -7,6 +7,7 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_CONFIG_HEADER_PATH
 #error "SRC_CONFIG_HEADER_PATH compile definition required"
@@ -33,15 +34,6 @@
 #error "SRC_CMAKELISTS_PATH compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
 
 // Extract the body of a C++ function by scanning for its signature, then
 // counting balanced braces forward. We use this instead of a regex with
@@ -65,14 +57,14 @@ static std::string extractFunctionBody(const std::string &src, const std::string
 }
 
 TEST(CommandMarkGutter, Main) {
-    const std::string cfgHdr = slurp(SRC_CONFIG_HEADER_PATH);
-    const std::string cfgImp = slurp(SRC_CONFIG_IMPL_PATH);
-    const std::string twHdr  = slurp(SRC_TERMINALWIDGET_HEADER_PATH);
-    const std::string twImp  = slurp(SRC_TERMINALWIDGET_IMPL_PATH);
-    const std::string mw     = slurp(SRC_MAINWINDOW_PATH);
-    const std::string sdHdr  = slurp(SRC_SETTINGSDIALOG_HEADER_PATH);
-    const std::string sdImp  = slurp(SRC_SETTINGSDIALOG_IMPL_PATH);
-    const std::string cmake  = slurp(SRC_CMAKELISTS_PATH);
+    const std::string cfgHdr = ants_test::slurpFile(SRC_CONFIG_HEADER_PATH);
+    const std::string cfgImp = ants_test::slurpFile(SRC_CONFIG_IMPL_PATH);
+    const std::string twHdr  = ants_test::slurpFile(SRC_TERMINALWIDGET_HEADER_PATH);
+    const std::string twImp  = ants_test::slurpFile(SRC_TERMINALWIDGET_IMPL_PATH);
+    const std::string mw     = ants_test::slurpFile(SRC_MAINWINDOW_PATH);
+    const std::string sdHdr  = ants_test::slurpFile(SRC_SETTINGSDIALOG_HEADER_PATH);
+    const std::string sdImp  = ants_test::slurpFile(SRC_SETTINGSDIALOG_IMPL_PATH);
+    const std::string cmake  = ants_test::slurpFile(SRC_CMAKELISTS_PATH);
     int failures = 0;
 
     auto fail = [&](const char *msg) {

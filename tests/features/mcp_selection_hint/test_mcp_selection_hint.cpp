@@ -3,6 +3,7 @@
 // See tests/features/mcp_selection_hint/spec.md.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <regex>
@@ -16,13 +17,6 @@
 
 namespace {
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 // Capture every `<var>["name"] = "<tool>"` site inside the
 // tools/list region, paired with the next descriptor's start.
@@ -58,7 +52,7 @@ std::vector<Site> collectNameSites(const std::string &region) {
 // HINT-1 — every registered MCP tool has a selection_hint set in
 // the same descriptor block.
 TEST(McpSelectionHint, EveryToolDeclaresSelectionHint) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
 
     const auto regionStart = cc.find("else if (method == \"tools/list\")");
@@ -99,7 +93,7 @@ TEST(McpSelectionHint, EveryToolDeclaresSelectionHint) {
 
 // HINT-2 — tool_info success envelope passes selection_hint through.
 TEST(McpSelectionHint, ToolInfoPassesSelectionHint) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     // Locate the tool_info inline handler region.
     const auto pos = cc.find("else if (toolName == \"tool_info\")");
@@ -128,7 +122,7 @@ TEST(McpSelectionHint, ToolInfoPassesSelectionHint) {
 
 // HINT-3 — selection_hint strings stay under ~240 chars each.
 TEST(McpSelectionHint, HintsRespectSizeBudget) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
 
     const auto regionStart = cc.find("else if (method == \"tools/list\")");

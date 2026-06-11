@@ -12,20 +12,12 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_MAINWINDOW_CPP
 #error "SRC_MAINWINDOW_CPP compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
 
 // Extract the body enclosed by `{ ... }` starting at `openBracePos`
 // (which must point at the `{`). Tracks brace nesting, ignores braces
@@ -62,7 +54,7 @@ static std::string extractBracedBody(const std::string &src, size_t openBracePos
 }
 
 TEST(TabRenamePin, Main) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
 
     int failures = 0;
     auto fail = [&](const char *msg) {

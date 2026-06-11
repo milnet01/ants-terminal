@@ -9,6 +9,7 @@
 #include "aidialog.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -211,14 +212,9 @@ void testLengthCap() {
            "cap: stripped count includes truncation amount");
 }
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) { std::fprintf(stderr, "cannot open %s\n", path); std::exit(2); }
-    std::stringstream ss; ss << f.rdbuf(); return ss.str();
-}
 
 void testSourceInvariants() {
-    const std::string src = slurp(SRC_AI_CPP);
+    const std::string src = ants_test::slurpFile(SRC_AI_CPP);
 
     // The click handler calls extractAndSanitizeCommand.
     expect(src.find("extractAndSanitizeCommand(") != std::string::npos,

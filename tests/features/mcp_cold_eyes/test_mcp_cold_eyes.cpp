@@ -2,6 +2,7 @@
 // See tests/features/mcp_cold_eyes/spec.md.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -22,13 +23,6 @@
 
 namespace {
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 // Region: `// ANTS-1319` cold-eyes registration block end.
 size_t coldEyesBlockEnd(const std::string &ci, size_t start) {
@@ -39,7 +33,7 @@ size_t coldEyesBlockEnd(const std::string &ci, size_t start) {
 
 // REG-1
 TEST(McpColdEyes, FourToolNamesRegisteredWithAnchor) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     const auto pos = ci.find("// ANTS-1319");
     ASSERT_NE(pos, std::string::npos)
@@ -59,7 +53,7 @@ TEST(McpColdEyes, FourToolNamesRegisteredWithAnchor) {
 
 // REG-2
 TEST(McpColdEyes, SchemaRequiredArraysMatchInv10) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     const auto pos = ci.find("// ANTS-1319");
     ASSERT_NE(pos, std::string::npos);
@@ -123,7 +117,7 @@ TEST(McpColdEyes, SchemaRequiredArraysMatchInv10) {
 
 // REG-3
 TEST(McpColdEyes, CmdColdEyesExtractsAllArgs) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("req.value(QStringLiteral(\"scope\")).toString()"),
               std::string::npos)
@@ -144,7 +138,7 @@ TEST(McpColdEyes, CmdColdEyesExtractsAllArgs) {
 
 // REG-4
 TEST(McpColdEyes, BadScopeErrorCodePresent) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("\"bad_scope\""), std::string::npos)
         << "bad_scope error code not emitted on unknown scope arg";
@@ -152,7 +146,7 @@ TEST(McpColdEyes, BadScopeErrorCodePresent) {
 
 // REG-5
 TEST(McpColdEyes, EchoHygieneMatchesInv11) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     // ANTS-1319 cold-eyes section uses a shared helper `ceSanitiseEcho`
     // that internally applies `verbatim.truncate(64)` + `< 0x20` substitution.
@@ -173,7 +167,7 @@ TEST(McpColdEyes, EchoHygieneMatchesInv11) {
 
 // REG-6
 TEST(McpColdEyes, CacheMembersDeclaredInHeader) {
-    const std::string rh = slurp(SRC_REMOTECONTROL_H_PATH);
+    const std::string rh = ants_test::slurpFile(SRC_REMOTECONTROL_H_PATH);
     ASSERT_FALSE(rh.empty());
     EXPECT_NE(rh.find("m_coldEyesCache"), std::string::npos)
         << "m_coldEyesCache member missing from remotecontrol.h";
@@ -187,7 +181,7 @@ TEST(McpColdEyes, CacheMembersDeclaredInHeader) {
 
 // REG-7
 TEST(McpColdEyes, ProviderLambdasForwardArgs) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(mw.empty());
     // ANTS-1782 — these are pure RC-delegate shims registered via the
     // rcDelegate(&RemoteControl::cmd*) factory, which forwards `args`
@@ -213,7 +207,7 @@ TEST(McpColdEyes, ProviderLambdasForwardArgs) {
 // near-empty; surfacing both workarounds inline prevents the
 // "give up and skip the verb" pattern observed in cross-session reports.
 TEST(McpColdEyes, Ants1634SparsePartitionHintMentionsBriefAndOverride) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const auto pos = rc.find("sparse_partition_hint");
     ASSERT_NE(pos, std::string::npos)
@@ -234,7 +228,7 @@ TEST(McpColdEyes, Ants1634SparsePartitionHintMentionsBriefAndOverride) {
 
 // REG-8
 TEST(McpColdEyes, FoldInUsesRoadmapFoldInAllocateAndInsert) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     // Find the cmdColdEyesFoldIn body and assert both calls appear
     // within it.
@@ -260,7 +254,7 @@ TEST(McpColdEyes, FoldInUsesRoadmapFoldInAllocateAndInsert) {
 // orchestrator that depends on the field hits an `unknown_arg`-shape
 // refusal.
 TEST(McpColdEyes, Ants1634PriorLoopFixesSchemaDeclared) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     // Scope to the cold_eyes_brief block: starts at the name literal,
     // ends at the next `tools.append(t);`.
@@ -286,7 +280,7 @@ TEST(McpColdEyes, Ants1634PriorLoopFixesSchemaDeclared) {
 // only — the wiring's behavioural correctness is covered by the
 // engine tests under `cold_eyes_engine`.
 TEST(McpColdEyes, Ants1634PriorLoopFixesExtractedInHandler) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const auto pos = rc.find(
         "QJsonDocument RemoteControl::cmdColdEyesBrief");

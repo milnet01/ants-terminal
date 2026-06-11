@@ -5,6 +5,7 @@
 // correctly ordered. See tests/features/model_switch_deferred_chip/spec.md.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -16,13 +17,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) { std::fprintf(stderr, "cannot open %s\n", path); std::exit(2); }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // Brace-balanced body of a function starting at `marker`.
 std::string functionBody(const std::string &src, const std::string &marker) {
@@ -43,7 +37,7 @@ std::string functionBody(const std::string &src, const std::string &marker) {
 // INV-1 — the chip-click handler defers when the focused shell is generating,
 // recording the tier + shell pid and returning before the immediate sendToPty.
 TEST(DeferredChipSwitch, Inv1ClickDefersWhileGenerating) {
-    const std::string src = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     // The deferral branch must reference the generating states and the
     // deferral state, and it must precede the immediate /model send.
     const auto deferPos = src.find("m_deferredChipTier     = tier;");
@@ -64,7 +58,7 @@ TEST(DeferredChipSwitch, Inv1ClickDefersWhileGenerating) {
 
 // INV-2 — maybeFireDeferredChipSwitch is wired to shellStateChanged.
 TEST(DeferredChipSwitch, Inv2FireWiredToStateChange) {
-    const std::string src = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     // A connect to shellStateChanged whose lambda calls the fire helper.
     EXPECT_NE(src.find("maybeFireDeferredChipSwitch(shellPid);"),
               std::string::npos)
@@ -76,7 +70,7 @@ TEST(DeferredChipSwitch, Inv2FireWiredToStateChange) {
 // INV-3/INV-4/INV-5 — the fire helper gates on Idle, resolves the terminal by
 // pid, clears the deferral, and seeds the override cool-down.
 TEST(DeferredChipSwitch, Inv345FireHelperContract) {
-    const std::string src = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     const std::string body = functionBody(
         src, "void ClaudeStatusBarController::maybeFireDeferredChipSwitch");
     ASSERT_FALSE(body.empty()) << "maybeFireDeferredChipSwitch body not found";

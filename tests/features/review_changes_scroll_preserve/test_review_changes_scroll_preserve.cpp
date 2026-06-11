@@ -7,20 +7,12 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_DIFFVIEWER_CPP_PATH
 #error "SRC_DIFFVIEWER_CPP_PATH compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
 
 // Extract the body of diffviewer::show so each grep below can be
 // scoped to that function. ANTS-1145 (0.7.73): the dialog body
@@ -41,7 +33,7 @@ static std::string showDiffViewerBody(const std::string &src) {
 }
 
 TEST(ReviewChangesScrollPreserve, Main) {
-    const std::string mw = slurp(SRC_DIFFVIEWER_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_DIFFVIEWER_CPP_PATH);
     const std::string body = showDiffViewerBody(mw);
     if (body.empty()) {
         std::fprintf(stderr, "FAIL: cannot locate diffviewer::show\n");

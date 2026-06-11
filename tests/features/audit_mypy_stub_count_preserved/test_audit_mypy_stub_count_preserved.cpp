@@ -6,6 +6,7 @@
 #include "auditengine.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 
 #include <fstream>
@@ -14,13 +15,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 Finding makeStubFinding(const QString &pkg) {
     Finding f;
@@ -56,7 +50,7 @@ CheckResult makeMypyResult(int packageCount) {
 
 // INV-1 — header declares the flag, default-false.
 TEST(AuditMypyStubCountPreserved, Inv1FlagInHeader) {
-    const std::string hdr = slurp(SRC_AUDIT_ENGINE_H);
+    const std::string hdr = ants_test::slurpFile(SRC_AUDIT_ENGINE_H);
     ASSERT_FALSE(hdr.empty()) << "auditengine.h not readable";
     EXPECT_NE(hdr.find("findingCountAuthored"), std::string::npos)
         << "CheckResult.findingCountAuthored not declared in header";
@@ -111,7 +105,7 @@ TEST(AuditMypyStubCountPreserved, Inv4MultiPackageCollapse) {
 
 // INV-5 — dispatcher source-grep: post-cap line gates on the flag.
 TEST(AuditMypyStubCountPreserved, Inv5DispatcherGate) {
-    const std::string src = slurp(SRC_AUDIT_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
     ASSERT_FALSE(src.empty()) << "auditdialog.cpp not readable";
     // The full sequence is the consolidate → capFindings → gated
     // overwrite. We search for the gating predicate by name to keep the

@@ -22,6 +22,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -34,16 +35,6 @@ namespace {
 
 
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // Return the substring of `src` from the first occurrence of `sigPrefix`
 // up to the matching `}` that closes the function body. Falls back to a
@@ -173,28 +164,28 @@ void testInv4ShellPidEarlyReturn(const std::string &claudeintegration) {
 }  // namespace
 
 TEST(claude_pid_replacement, Inv1ReplacementGate) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const int before = expect_failures();
     testInv1ReplacementGate(ci);
     if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_pid_replacement, Inv2RebindSequence) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const int before = expect_failures();
     testInv2RebindSequence(ci);
     if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_pid_replacement, Inv3NotFoundBranch) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const int before = expect_failures();
     testInv3NotFoundBranch(ci);
     if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_pid_replacement, Inv4ShellPidEarlyReturn) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const int before = expect_failures();
     testInv4ShellPidEarlyReturn(ci);
     if (expect_failures() > before) FAIL();

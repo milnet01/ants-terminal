@@ -19,6 +19,7 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #ifndef SRC_CLAUDEALLOWLIST_CPP_PATH
 #  error "SRC_CLAUDEALLOWLIST_CPP_PATH compile definition required"
 #endif
@@ -32,16 +33,6 @@ namespace {
 
 
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &h, const std::string &n) {
     return h.find(n) != std::string::npos;
@@ -62,8 +53,8 @@ int countMatches(const std::string &h, const std::string &n) {
 
 static int runMain() {
     expect_reset();
-    const std::string allowlist = slurp(SRC_CLAUDEALLOWLIST_CPP_PATH);
-    const std::string settings  = slurp(SRC_SETTINGSDIALOG_CPP_PATH);
+    const std::string allowlist = ants_test::slurpFile(SRC_CLAUDEALLOWLIST_CPP_PATH);
+    const std::string settings  = ants_test::slurpFile(SRC_SETTINGSDIALOG_CPP_PATH);
 
     // I1 — claudeallowlist.cpp refuses on parse failure.
     expect(contains(allowlist, "rotateCorruptFileAside(m_settingsPath)"),

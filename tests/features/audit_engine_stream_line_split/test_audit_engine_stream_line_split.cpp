@@ -10,6 +10,7 @@
 #include "auditengine.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QElapsedTimer>
 
@@ -19,13 +20,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 }  // namespace
 
@@ -33,7 +27,7 @@ std::string slurp(const char *path) {
 // `raw.split('\n'`. We scan a window starting at the function signature
 // to keep the guard narrow.
 TEST(AuditEngineStreamLineSplit, Inv1NoUpFrontSplit) {
-    const std::string src = slurp(SRC_AUDIT_ENGINE_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_AUDIT_ENGINE_CPP_PATH);
     ASSERT_FALSE(src.empty()) << "auditengine.cpp not readable";
 
     const auto fnStart = src.find("applyFilter(const QString &raw");

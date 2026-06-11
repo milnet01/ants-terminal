@@ -15,6 +15,7 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #ifndef SRC_RC_HEADER
 #error "SRC_RC_HEADER compile definition required"
 #endif
@@ -30,13 +31,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -50,10 +44,10 @@ int fail(const char *label, const char *why) {
 }  // namespace
 
 static int runMain() {
-    const std::string rcHdr = slurp(SRC_RC_HEADER);
-    const std::string rcSrc = slurp(SRC_RC_CPP);
-    const std::string mwHdr = slurp(SRC_MAINWINDOW_H);
-    const std::string mwSrc = slurp(SRC_MAINWINDOW_CPP);
+    const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
+    const std::string rcSrc = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string mwHdr = ants_test::slurpFile(SRC_MAINWINDOW_H);
+    const std::string mwSrc = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
 
     if (rcHdr.empty()) return fail("INV-2", "remotecontrol.h not readable");
     if (rcSrc.empty()) return fail("INV-2", "remotecontrol.cpp not readable");

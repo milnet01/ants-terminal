@@ -4,6 +4,7 @@
 // exercised by test_switch_confirm_visible.cpp. See spec.md INV-5/INV-6.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -18,16 +19,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // The handshake + poll region: from performModelSwitchHandshake's definition
 // up to the next function (maybeFireDeferredChipSwitch). Excludes the prose
@@ -46,7 +37,7 @@ std::string handshakeRegion(const std::string &src) {
 // INV-5 — the confirm is output-driven: the region polls
 // switchConfirmVisible, and the confirm CR is sent only after that check.
 TEST(SwitchConfirmActuator, Inv5ConfirmIsOutputGated) {
-    const std::string region = handshakeRegion(slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH));
+    const std::string region = handshakeRegion(ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH));
     ASSERT_FALSE(region.empty()) << "handshake region not found";
 
     const auto guardPos = region.find("switchConfirmVisible");
@@ -62,7 +53,7 @@ TEST(SwitchConfirmActuator, Inv5ConfirmIsOutputGated) {
 
 // INV-5 — the blind 400 ms confirm timer is gone (no QTimer::singleShot(400).
 TEST(SwitchConfirmActuator, Inv5NoBlindConfirmTimer) {
-    const std::string region = handshakeRegion(slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH));
+    const std::string region = handshakeRegion(ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH));
     ASSERT_FALSE(region.empty());
     EXPECT_EQ(region.find("singleShot(400"), std::string::npos)
         << "INV-5: the blind 400 ms confirm timer must not return";
@@ -70,7 +61,7 @@ TEST(SwitchConfirmActuator, Inv5NoBlindConfirmTimer) {
 
 // INV-5 — budget exhaustion aborts with ESC, never a blind CR.
 TEST(SwitchConfirmActuator, Inv5AbortSendsEsc) {
-    const std::string region = handshakeRegion(slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH));
+    const std::string region = handshakeRegion(ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH));
     ASSERT_FALSE(region.empty());
     EXPECT_NE(region.find("\\x1b"), std::string::npos)
         << "INV-5: abort branch must send ESC to clear stranded /model";
@@ -78,7 +69,7 @@ TEST(SwitchConfirmActuator, Inv5AbortSendsEsc) {
 
 // INV-6 — the poll is bounded by kSwitchConfirmMaxPolls.
 TEST(SwitchConfirmActuator, Inv6BoundedPoll) {
-    const std::string region = handshakeRegion(slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH));
+    const std::string region = handshakeRegion(ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH));
     ASSERT_FALSE(region.empty());
     EXPECT_NE(region.find("kSwitchConfirmMaxPolls"), std::string::npos)
         << "INV-6: the poll must be bounded by kSwitchConfirmMaxPolls";
@@ -86,7 +77,7 @@ TEST(SwitchConfirmActuator, Inv6BoundedPoll) {
 
 // The detector is declared in modelautoswitch.h (pure, in ants_claude_lib).
 TEST(SwitchConfirmActuator, DetectorDeclared) {
-    const std::string hdr = slurp(SRC_MODELAUTOSWITCH_H_PATH);
+    const std::string hdr = ants_test::slurpFile(SRC_MODELAUTOSWITCH_H_PATH);
     EXPECT_NE(hdr.find("bool switchConfirmVisible("), std::string::npos)
         << "switchConfirmVisible must be declared in modelautoswitch.h";
 }

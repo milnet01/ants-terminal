@@ -17,6 +17,7 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_RC_HEADER
 #error "SRC_RC_HEADER compile definition required"
@@ -38,12 +39,6 @@ QByteArray ba(std::initializer_list<unsigned char> bytes) {
     return out;
 }
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // ---- Engine tests --------------------------------------------------
 
@@ -198,8 +193,8 @@ void testEngine() {
 // ---- Wiring tests (source-grep) -----------------------------------
 
 void testWiring() {
-    const std::string hdr = slurp(SRC_RC_HEADER);
-    const std::string cpp = slurp(SRC_RC_CPP);
+    const std::string hdr = ants_test::slurpFile(SRC_RC_HEADER);
+    const std::string cpp = ants_test::slurpFile(SRC_RC_CPP);
 
     // WI-1 — the new 0xC2-guarded block is present exactly once.
     // We match the literal token sequence the patch introduces:

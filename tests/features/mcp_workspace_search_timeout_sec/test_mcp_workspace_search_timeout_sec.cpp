@@ -6,6 +6,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -17,16 +18,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -37,7 +28,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // INV-1 — default budget constant raised from 2000 to 5000.
 TEST(mcp_workspace_search_timeout_sec, Inv1DefaultBudgetIs5s) {
     expect_reset();
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     std::regex defaultRe(
         R"(constexpr\s+int\s+kWorkspaceSearchHardKillMs\s*=\s*5000\b)");
     expect(std::regex_search(rc, defaultRe),
@@ -50,7 +41,7 @@ TEST(mcp_workspace_search_timeout_sec, Inv1DefaultBudgetIs5s) {
 // parses `timeout_sec` against them.
 TEST(mcp_workspace_search_timeout_sec, Inv2TimeoutSecClampConstants) {
     expect_reset();
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(rc, "kWorkspaceSearchMinBudgetMs"),
            "INV-2a: kWorkspaceSearchMinBudgetMs constant is missing");
     expect(contains(rc, "kWorkspaceSearchMaxBudgetMs"),
@@ -78,7 +69,7 @@ TEST(mcp_workspace_search_timeout_sec, Inv2TimeoutSecClampConstants) {
 // and references the effective budget (not the hard-coded 2 s string).
 TEST(mcp_workspace_search_timeout_sec, Inv3HardKillEnvelopeHasHint) {
     expect_reset();
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // The hint is appended on the hard-kill path. Two literals must
     // co-occur in the body — the hint key and the fallback advice.
     expect(contains(rc, "\"hint\""),
@@ -97,7 +88,7 @@ TEST(mcp_workspace_search_timeout_sec, Inv3HardKillEnvelopeHasHint) {
 // timeout_sec value.
 TEST(mcp_workspace_search_timeout_sec, Inv4ResponseEchoesTimeoutSec) {
     expect_reset();
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // ok:true path: out["timeout_sec"] = budgetSec;
     expect(contains(rc, "out[\"timeout_sec\"]"),
            "INV-4a: ok:true envelope does not set out[\"timeout_sec\"] "
@@ -113,7 +104,7 @@ TEST(mcp_workspace_search_timeout_sec, Inv4ResponseEchoesTimeoutSec) {
 // an integer with default 5, minimum 1, maximum 30.
 TEST(mcp_workspace_search_timeout_sec, Inv5SchemaDeclaresTimeoutSec) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const size_t wsAnchor = ci.find("\"workspace_search\"");
     ASSERT_NE(wsAnchor, std::string::npos)
         << "workspace_search registration not found in claudeintegration.cpp";
@@ -140,7 +131,7 @@ TEST(mcp_workspace_search_timeout_sec, Inv5SchemaDeclaresTimeoutSec) {
 // timeout_sec arg and the 5 s default.
 TEST(mcp_workspace_search_timeout_sec, Inv6DescriptionMentionsTimeoutSec) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const size_t wsAnchor = ci.find("\"workspace_search\"");
     ASSERT_NE(wsAnchor, std::string::npos);
     // Window widened from 8000 → 12000 in ANTS-1304 (context property

@@ -4,6 +4,7 @@
 // controller method and its mainwindow timer wire-site.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -18,16 +19,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 std::string between(const std::string &src, const std::string &begin,
                     const std::string &end) {
@@ -43,7 +34,7 @@ std::string between(const std::string &src, const std::string &begin,
 // fillPendingLedgerOutcomes exists and is throttled via m_lastPendingFillMs +
 // kPendingFillIntervalMs (the §2.5 cadence — 30 s).
 TEST(ModelAutoSwitchOutcomeFillin, ThrottleBail) {
-    const std::string src = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     const std::string body = between(
         src, "void ClaudeStatusBarController::fillPendingLedgerOutcomes()",
         "} // anonymous"  // sentinel — match end of file or any sentinel block
@@ -59,7 +50,7 @@ TEST(ModelAutoSwitchOutcomeFillin, ThrottleBail) {
 
 // The pure helper is the entry point — no inline reimplementation.
 TEST(ModelAutoSwitchOutcomeFillin, CallsComputeOutcome) {
-    const std::string src = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     EXPECT_NE(src.find("ModelSwitchLedger::computeOutcome("), std::string::npos)
         << "fill-in must delegate to ModelSwitchLedger::computeOutcome";
     EXPECT_NE(src.find("ModelSwitchLedger::writeRecords("), std::string::npos)
@@ -68,7 +59,7 @@ TEST(ModelAutoSwitchOutcomeFillin, CallsComputeOutcome) {
 
 // Read-only when nothing changed — must check `fill.changed` before writing.
 TEST(ModelAutoSwitchOutcomeFillin, WriteOnlyWhenChanged) {
-    const std::string src = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     // The body should reference `anyChanged` or `fill.changed` and gate
     // writeRecords on it — no unconditional writes per tick.
     // Method is the last definition in the file; slice from the function
@@ -93,7 +84,7 @@ TEST(ModelAutoSwitchOutcomeFillin, WriteOnlyWhenChanged) {
 // MainWindow wires the fill-in onto the 2 s status timer next to
 // refreshAutoModelSwitch (same connect block).
 TEST(ModelAutoSwitchOutcomeFillin, WiredOnStatusTimer) {
-    const std::string src = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     const auto wirePos = src.find("fillPendingLedgerOutcomes");
     ASSERT_NE(wirePos, std::string::npos)
         << "fillPendingLedgerOutcomes must be referenced in MainWindow";

@@ -4,6 +4,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -18,16 +19,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -38,7 +29,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // INV-1 — file-missing vs unreadable distinguished by code.
 TEST(roadmap_log_stable_prefix_hint, Inv1FileMissingVsUnreadable) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "counter_missing"),
            "INV-1: counter_missing code present");
     expect(contains(cpp, "stable_prefix_unsupported"),
@@ -53,7 +44,7 @@ TEST(roadmap_log_stable_prefix_hint, Inv1FileMissingVsUnreadable) {
 // INV-2 — sniffer helper present.
 TEST(roadmap_log_stable_prefix_hint, Inv2SnifferContract) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "rlDetectStablePrefixId"),
            "INV-2: rlDetectStablePrefixId helper present");
     EXPECT_EQ(0, expect_failures());
@@ -62,7 +53,7 @@ TEST(roadmap_log_stable_prefix_hint, Inv2SnifferContract) {
 // INV-3 — envelope shape.
 TEST(roadmap_log_stable_prefix_hint, Inv3StablePrefixEnvelope) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "detected_prefix_example"),
            "INV-3: detected_prefix_example field present");
     expect(contains(cpp, "follow_up") &&
@@ -74,7 +65,7 @@ TEST(roadmap_log_stable_prefix_hint, Inv3StablePrefixEnvelope) {
 // INV-4 — counter_missing hint includes the echo recipe.
 TEST(roadmap_log_stable_prefix_hint, Inv4CounterMissingHint) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "echo 0 >"),
            "INV-4: counter_missing hint cites the echo recipe");
     EXPECT_EQ(0, expect_failures());

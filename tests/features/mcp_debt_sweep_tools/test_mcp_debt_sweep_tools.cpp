@@ -4,6 +4,7 @@
 // names are registered in each layer.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -24,13 +25,6 @@
 
 namespace {
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 constexpr const char *kToolNames[4] = {
     "debt_sweep_scan",
@@ -49,7 +43,7 @@ constexpr const char *kCmdMethods[4] = {
 }  // namespace
 
 TEST(McpDebtSweepTools, Inv12aAllToolNamesInToolsList) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     for (const char *name : kToolNames) {
         const std::string nameQuoted = std::string("\"") + name + "\"";
@@ -59,7 +53,7 @@ TEST(McpDebtSweepTools, Inv12aAllToolNamesInToolsList) {
 }
 
 TEST(McpDebtSweepTools, Inv12bAllProvidersRegisteredInMainWindow) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(mw.empty());
     for (const char *name : kToolNames) {
         const std::string call =
@@ -71,7 +65,7 @@ TEST(McpDebtSweepTools, Inv12bAllProvidersRegisteredInMainWindow) {
 }
 
 TEST(McpDebtSweepTools, Inv12cAllCmdMethodsDeclaredInHeader) {
-    const std::string rch = slurp(SRC_REMOTECONTROL_H_PATH);
+    const std::string rch = ants_test::slurpFile(SRC_REMOTECONTROL_H_PATH);
     ASSERT_FALSE(rch.empty());
     for (const char *m : kCmdMethods) {
         EXPECT_NE(rch.find(m), std::string::npos)
@@ -80,7 +74,7 @@ TEST(McpDebtSweepTools, Inv12cAllCmdMethodsDeclaredInHeader) {
 }
 
 TEST(McpDebtSweepTools, Inv12dAllCmdMethodsDefinedInCpp) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     for (const char *m : kCmdMethods) {
         const std::string defn = std::string("RemoteControl::") + m;
@@ -91,7 +85,7 @@ TEST(McpDebtSweepTools, Inv12dAllCmdMethodsDefinedInCpp) {
 }
 
 TEST(McpDebtSweepTools, Inv12eAllSchemasUseAdditionalPropertiesFalse) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     // Region: from the first debt_sweep_* tool name to the close of
     // the last debt_sweep tool's block (its `tools.append(t);` call).

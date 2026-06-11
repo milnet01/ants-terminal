@@ -12,6 +12,7 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <QByteArray>
 #include <QFile>
 #include <QJsonArray>
@@ -39,11 +40,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const std::string &path) {
-    std::ifstream in(path);
-    if (!in) { std::fprintf(stderr, "cannot open %s\n", path.c_str()); std::exit(2); }
-    std::stringstream ss; ss << in.rdbuf(); return ss.str();
-}
 bool has(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
 }
@@ -79,12 +75,12 @@ const QStringList kFixture = {
 // W1/W2 — wiring across the five registration sites.
 TEST(McpReadLog, WiringContract) {
     expect_reset();
-    const std::string rcHdr = slurp(SRC_RC_HEADER);
-    const std::string rcCpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
-    const std::string ciCpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string mwCpp = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
+    const std::string rcCpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string mwCpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     const std::string projCpp =
-        slurp(std::string(ANTS_SOURCE_DIR) + "/src/mcpprojection.cpp");
+        ants_test::slurpFile(std::string(ANTS_SOURCE_DIR) + "/src/mcpprojection.cpp");
 
     expect(has(rcHdr, "cmdReadLog(const QJsonObject &req)"), "W1 decl",
            "remotecontrol.h missing cmdReadLog declaration");

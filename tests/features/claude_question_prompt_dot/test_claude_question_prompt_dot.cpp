@@ -11,6 +11,7 @@
 #include "claudetabtracker.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QFile>
 #include <QTemporaryDir>
@@ -25,13 +26,6 @@
 
 namespace {
 
-std::string slurp(const std::string &path) {
-    std::ifstream f(path);
-    if (!f) { ADD_FAILURE() << "cannot open " << path; return {}; }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // Substring from the first `begin` marker to the first `end` after it.
 std::string between(const std::string &src, const std::string &begin,
@@ -52,7 +46,7 @@ bool contains(const std::string &h, const std::string &n) {
 // INV-1..3 — scanner branch: footer anchor, permission exclusion, signals,
 // debounce.
 TEST(ClaudeQuestionPromptDot, ScannerDetectsSelectionFooter) {
-    const std::string tw = slurp(ANTS_SOURCE_DIR "/src/terminalwidget.cpp");
+    const std::string tw = ants_test::slurpFile(ANTS_SOURCE_DIR "/src/terminalwidget.cpp");
     const std::string scan = between(tw,
         "void TerminalWidget::checkForClaudePermissionPrompt()",
         "// Claude Code permission prompts have this structure");
@@ -73,7 +67,7 @@ TEST(ClaudeQuestionPromptDot, ScannerDetectsSelectionFooter) {
 
 // INV-4 — mainwindow handler lights dot + label, creates NO button.
 TEST(ClaudeQuestionPromptDot, MainwindowWiringNoButton) {
-    const std::string mw = slurp(ANTS_SOURCE_DIR "/src/mainwindow.cpp");
+    const std::string mw = ants_test::slurpFile(ANTS_SOURCE_DIR "/src/mainwindow.cpp");
 
     const std::string detected = between(mw,
         "&TerminalWidget::claudeQuestionDetected",
@@ -102,7 +96,7 @@ TEST(ClaudeQuestionPromptDot, MainwindowWiringNoButton) {
 // INV-6 — reliable hook-driven clear belt (toolFinished + sessionStopped),
 // mirroring the permission path, since the footer debounce can't complete.
 TEST(ClaudeQuestionPromptDot, HookClearBeltWired) {
-    const std::string mw = slurp(ANTS_SOURCE_DIR "/src/mainwindow.cpp");
+    const std::string mw = ants_test::slurpFile(ANTS_SOURCE_DIR "/src/mainwindow.cpp");
     const std::string belt = between(mw,
         "&TerminalWidget::claudeQuestionCleared",
         "void MainWindow::newTab()");
@@ -121,7 +115,7 @@ TEST(ClaudeQuestionPromptDot, HookClearBeltWired) {
 // INV-7 — clearClaudeQuestionPrompt resets the sticky flag and routes
 // through the shared cleared signal (no next-question desync).
 TEST(ClaudeQuestionPromptDot, ClearResetsStickyFlag) {
-    const std::string tw = slurp(ANTS_SOURCE_DIR "/src/terminalwidget.cpp");
+    const std::string tw = ants_test::slurpFile(ANTS_SOURCE_DIR "/src/terminalwidget.cpp");
     const std::string body = between(tw,
         "void TerminalWidget::clearClaudeQuestionPrompt()",
         "// --- Write command to PTY ---");
@@ -141,7 +135,7 @@ TEST(ClaudeQuestionPromptDot, ClearResetsStickyFlag) {
 // INV-8 — the detect timer is throttled (fires during continuous output),
 // not a trailing-edge debounce that a bare .start() resets every batch.
 TEST(ClaudeQuestionPromptDot, DetectTimerIsThrottled) {
-    const std::string tw = slurp(ANTS_SOURCE_DIR "/src/terminalwidget.cpp");
+    const std::string tw = ants_test::slurpFile(ANTS_SOURCE_DIR "/src/terminalwidget.cpp");
 
     EXPECT_TRUE(contains(tw, "if (!m_claudeDetectTimer.isActive())"))
         << "INV-8: timer is started only when idle (throttle), so the "

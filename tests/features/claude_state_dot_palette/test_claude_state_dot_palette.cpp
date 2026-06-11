@@ -26,6 +26,7 @@
 
 #include <cstdio>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -39,13 +40,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -90,14 +84,14 @@ double tContrast(const QColor &a, const QColor &b) {
 
 TEST(ClaudeStateDotPalette, Main) {
 
-    const std::string header = slurp(COLOREDTABBAR_H);
-    const std::string source = slurp(COLOREDTABBAR_CPP);
-    const std::string mwSource = slurp(MAINWINDOW_CPP);
-    const std::string trackerHeader = slurp(CLAUDETABTRACKER_H);
+    const std::string header = ants_test::slurpFile(COLOREDTABBAR_H);
+    const std::string source = ants_test::slurpFile(COLOREDTABBAR_CPP);
+    const std::string mwSource = ants_test::slurpFile(MAINWINDOW_CPP);
+    const std::string trackerHeader = ants_test::slurpFile(CLAUDETABTRACKER_H);
     // ANTS-1146 — applyClaudeStatusLabel + the tab-indicator provider
     // lambda both moved to claudestatuswidgets.cpp. INV-6/INV-8
     // re-point at the new TU.
-    const std::string cswSource = slurp(CLAUDESTATUSWIDGETS_CPP);
+    const std::string cswSource = ants_test::slurpFile(CLAUDESTATUSWIDGETS_CPP);
 
     if (header.empty()) { fail("INV-1", "coloredtabbar.h not readable"); FAIL(); }
     if (source.empty()) { fail("INV-1", "coloredtabbar.cpp not readable"); FAIL(); }

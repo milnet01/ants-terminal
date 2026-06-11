@@ -8,6 +8,7 @@
 // from silently regressing.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -19,20 +20,13 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 }  // namespace
 
 // INV-1 / INV-2 — the DeferredDelete flush precedes the app-wide restyle
 // inside MainWindow::applyTheme, and both anchors are present.
 TEST(theme_change_deferred_delete_flush, FlushPrecedesAppWideSetStyleSheet) {
-    const std::string src = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(src.empty()) << "could not read mainwindow.cpp";
 
     const auto fnStart = src.find("MainWindow::applyTheme");

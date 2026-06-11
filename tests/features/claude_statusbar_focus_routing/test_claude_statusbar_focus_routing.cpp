@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -15,16 +16,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // Substring of `src` from the first `begin` marker to the first `end`
 // marker after it (end exclusive). Empty if either marker is missing.
@@ -40,7 +31,7 @@ std::string between(const std::string &src, const std::string &begin,
 }  // namespace
 
 TEST(ClaudeStatusbarFocusRouting, PermissionPromptGatedOnRouting) {
-    const std::string src = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
 
     // ANTS-1850/1851 relocated the prompt-UI build out of the slot into the
     // showPermissionPrompt() helper (shared with the tab-switch rebuild).
@@ -85,7 +76,7 @@ TEST(ClaudeStatusbarFocusRouting, PermissionPromptGatedOnRouting) {
 }
 
 TEST(ClaudeStatusbarFocusRouting, ModelChipClickHidesAndRefocuses) {
-    const std::string src = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
 
     // The model-chip click lambda — from the stored-property read to the
     // ANTS-1888 comment that immediately follows the closing }); .

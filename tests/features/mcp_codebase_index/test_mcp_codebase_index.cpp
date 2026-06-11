@@ -12,6 +12,7 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
@@ -31,11 +32,6 @@ namespace {
 
 using namespace CodebaseIndex;
 
-std::string slurp(const std::string &path) {
-    std::ifstream in(path);
-    if (!in) { std::fprintf(stderr, "cannot open %s\n", path.c_str()); std::exit(2); }
-    std::stringstream ss; ss << in.rdbuf(); return ss.str();
-}
 bool has(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
 }
@@ -347,10 +343,10 @@ TEST(CodebaseIndex, SummarySumsToFileCount) {
 
 // INV-8/9/10 — wiring source-scrapes.
 TEST(CodebaseIndex, WiringRegistered) {
-    const std::string ci = slurp(srcPath("src/claudeintegration.cpp"));
-    const std::string mw = slurp(srcPath("src/mainwindow.cpp"));
-    const std::string mp = slurp(srcPath("src/mcpprojection.cpp"));
-    const std::string rc = slurp(srcPath("src/remotecontrol.cpp"));
+    const std::string ci = ants_test::slurpFile(srcPath("src/claudeintegration.cpp"));
+    const std::string mw = ants_test::slurpFile(srcPath("src/mainwindow.cpp"));
+    const std::string mp = ants_test::slurpFile(srcPath("src/mcpprojection.cpp"));
+    const std::string rc = ants_test::slurpFile(srcPath("src/remotecontrol.cpp"));
 
     // caller_cwd Required (INV-8) — the registerToolProvider call passes the
     // Required contract; callerCwdContractFor + the project-scoped list agree.
@@ -360,7 +356,7 @@ TEST(CodebaseIndex, WiringRegistered) {
     // ETag-304 (INV-9) — registered in isEtagSupportedTool; the handler emits
     // no etag itself (the dispatcher injects it).
     EXPECT_TRUE(has(ci, "isEtagSupportedTool"));
-    EXPECT_FALSE(has(slurp(srcPath("src/codebaseindex.cpp")), "\"etag\""));
+    EXPECT_FALSE(has(ants_test::slurpFile(srcPath("src/codebaseindex.cpp")), "\"etag\""));
     // fields projection (INV-10).
     EXPECT_TRUE(has(mp, "codebase_index"));
     EXPECT_TRUE(has(mp, "isFieldProjectionTool"));
@@ -368,5 +364,5 @@ TEST(CodebaseIndex, WiringRegistered) {
     EXPECT_TRUE(has(rc, "cmdCodebaseIndex"));
     EXPECT_TRUE(has(rc, "validatePath"));
     // atomic cache write (INV-12).
-    EXPECT_TRUE(has(slurp(srcPath("src/codebaseindex.cpp")), "QSaveFile"));
+    EXPECT_TRUE(has(ants_test::slurpFile(srcPath("src/codebaseindex.cpp")), "QSaveFile"));
 }

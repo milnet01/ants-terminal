@@ -11,6 +11,7 @@
 #include "auditengine.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 
 #include <cstdio>
@@ -21,13 +22,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -55,10 +49,10 @@ bool hasGuiInclude(const std::string &src) {
 
 TEST(AuditEngineExtraction, Main) {
 
-    const std::string engineHdr = slurp(SRC_AUDIT_ENGINE_H);
-    const std::string engineSrc = slurp(SRC_AUDIT_ENGINE_CPP);
-    const std::string dialogHdr = slurp(SRC_AUDIT_H);
-    const std::string dialogSrc = slurp(SRC_AUDIT_CPP);
+    const std::string engineHdr = ants_test::slurpFile(SRC_AUDIT_ENGINE_H);
+    const std::string engineSrc = ants_test::slurpFile(SRC_AUDIT_ENGINE_CPP);
+    const std::string dialogHdr = ants_test::slurpFile(SRC_AUDIT_H);
+    const std::string dialogSrc = ants_test::slurpFile(SRC_AUDIT_CPP);
 
     if (engineHdr.empty()) { fail("INV-1", "auditengine.h not readable"); FAIL(); return; }
     if (engineSrc.empty()) { fail("INV-2", "auditengine.cpp not readable"); FAIL(); return; }

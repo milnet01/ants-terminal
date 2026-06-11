@@ -18,6 +18,7 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_RC_HEADER
 #error "SRC_RC_HEADER compile definition required"
@@ -36,16 +37,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -269,10 +260,10 @@ TEST(McpSimilarCode, HardCapAndBadArgs) {
 TEST(McpSimilarCode, WiringContract) {
     expect_reset();
 
-    const std::string rcHdr = slurp(SRC_RC_HEADER);
-    const std::string rcCpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
-    const std::string mwCpp = slurp(SRC_MAINWINDOW_CPP_PATH);
-    const std::string ciCpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
+    const std::string rcCpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string mwCpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     expect(contains(rcHdr, "cmdSimilarCode"),
            "wiring: handler declared in remotecontrol.h");

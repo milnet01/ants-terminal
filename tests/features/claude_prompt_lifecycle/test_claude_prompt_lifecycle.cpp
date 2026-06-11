@@ -13,6 +13,7 @@
 #include "claudeintegration.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QFile>
 #include <QSignalSpy>
@@ -28,13 +29,6 @@
 
 namespace {
 
-std::string slurp(const std::string &path) {
-    std::ifstream f(path);
-    if (!f) { ADD_FAILURE() << "cannot open " << path; return {}; }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // Substring of `src` from the first `begin` marker to the first `end`
 // marker after it (end exclusive). Empty if either marker is missing.
@@ -64,7 +58,7 @@ bool write_file(const QString &path, const QByteArray &body) {
 // INV-1..3, INV-5 — GUI wiring locked by source-scrape.
 TEST(ClaudePromptLifecycle, PromptAnchorWiring) {
     const std::string widgets =
-        slurp(ANTS_SOURCE_DIR "/src/claudestatuswidgets.cpp");
+        ants_test::slurpFile(ANTS_SOURCE_DIR "/src/claudestatuswidgets.cpp");
     ASSERT_FALSE(widgets.empty());
 
     const std::string helper = between(
@@ -109,7 +103,7 @@ TEST(ClaudePromptLifecycle, PromptAnchorWiring) {
         << "INV-5: rebuild must re-enter showPermissionPrompt for the focused pid";
 
     // INV-5 — the tab-switch refresh actually invokes the rebuild.
-    const std::string mw = slurp(ANTS_SOURCE_DIR "/src/mainwindow.cpp");
+    const std::string mw = ants_test::slurpFile(ANTS_SOURCE_DIR "/src/mainwindow.cpp");
     ASSERT_FALSE(mw.empty());
     const std::string refresh = between(
         mw, "void MainWindow::refreshStatusBarForActiveTab",
@@ -126,7 +120,7 @@ TEST(ClaudePromptLifecycle, PromptAnchorWiring) {
 // INV-1..3/5 — driving it end-to-end needs live PTY-backed terminals).
 TEST(ClaudePromptLifecycle, BackgroundAnchorSurvivesSwitch) {
     const std::string widgets =
-        slurp(ANTS_SOURCE_DIR "/src/claudestatuswidgets.cpp");
+        ants_test::slurpFile(ANTS_SOURCE_DIR "/src/claudestatuswidgets.cpp");
     ASSERT_FALSE(widgets.empty());
 
     const std::string teardown = between(
@@ -154,7 +148,7 @@ TEST(ClaudePromptLifecycle, BackgroundAnchorSurvivesSwitch) {
         << "INV-6: focused / scroll-scan / resolved anchors must still delete";
 
     // Wired into the tab-switch teardown, fed the tab being switched TO.
-    const std::string mw = slurp(ANTS_SOURCE_DIR "/src/mainwindow.cpp");
+    const std::string mw = ants_test::slurpFile(ANTS_SOURCE_DIR "/src/mainwindow.cpp");
     ASSERT_FALSE(mw.empty());
     const std::string refresh = between(
         mw, "void MainWindow::refreshStatusBarForActiveTab",

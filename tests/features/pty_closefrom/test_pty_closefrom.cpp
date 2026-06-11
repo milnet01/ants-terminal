@@ -12,20 +12,11 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #ifndef SRC_PTY_PATH
 #  error "SRC_PTY_PATH compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // Locate the body of `if (m_childPid == 0) { ... }` (the post-fork
 // child branch). Returns empty string if not found.
@@ -51,7 +42,7 @@ static std::string extractChildBranch(const std::string &src) {
 }
 
 static int runMain() {
-    const std::string src = slurp(SRC_PTY_PATH);
+    const std::string src = ants_test::slurpFile(SRC_PTY_PATH);
     const std::string childBody = extractChildBranch(src);
     int failures = 0;
     auto fail = [&](const char *msg) {

@@ -2,6 +2,7 @@
 // helper + integration into the three reviewer brief-assembly paths.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include "coldeyesengine.h"
 #include "falseposledger.h"
@@ -41,13 +42,6 @@
 
 namespace {
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool writeLedger(const QString &projectDir, const QStringList &lines) {
     QFile f(projectDir + QStringLiteral("/.ants_review_falsepos.jsonl"));
@@ -286,7 +280,7 @@ TEST(FalseposLedger, G13JsonArrayShape) {
 // ---------- G-14/15/16/17 — engine wiring (source-grep) ------------
 
 TEST(FalseposLedger, G14IndieReviewAssembleBriefIncludesBlock) {
-    const std::string src = slurp(SRC_INDIE_REVIEW_ENGINE_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_INDIE_REVIEW_ENGINE_CPP_PATH);
     ASSERT_FALSE(src.empty());
     EXPECT_NE(src.find("ants::falsepos::loadEntries"), std::string::npos);
     EXPECT_NE(src.find("ants::falsepos::formatForBrief"), std::string::npos);
@@ -296,7 +290,7 @@ TEST(FalseposLedger, G14IndieReviewAssembleBriefIncludesBlock) {
 TEST(FalseposLedger, G15IndieReviewDispatchIncludesBlock) {
     // Same file holds both call-sites; presence of two filter calls
     // proves both wirings exist.
-    const std::string src = slurp(SRC_INDIE_REVIEW_ENGINE_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_INDIE_REVIEW_ENGINE_CPP_PATH);
     ASSERT_FALSE(src.empty());
     size_t pos = 0, count = 0;
     while ((pos = src.find("ants::falsepos::loadEntries", pos))
@@ -307,14 +301,14 @@ TEST(FalseposLedger, G15IndieReviewDispatchIncludesBlock) {
 }
 
 TEST(FalseposLedger, G16ColdEyesManifestBriefIncludesBlock) {
-    const std::string src = slurp(SRC_COLDEYESENGINE_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_COLDEYESENGINE_CPP_PATH);
     ASSERT_FALSE(src.empty());
     EXPECT_NE(src.find("ants::falsepos::loadEntries"), std::string::npos);
     EXPECT_NE(src.find("\"cold-eyes\""), std::string::npos);
 }
 
 TEST(FalseposLedger, G17TestAuditBriefPopulatesPriorFalsePositives) {
-    const std::string src = slurp(SRC_TESTAUDITENGINE_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_TESTAUDITENGINE_CPP_PATH);
     ASSERT_FALSE(src.empty());
     EXPECT_NE(src.find("priorFalsePositives"), std::string::npos);
     EXPECT_NE(src.find("ants::falsepos::formatForJsonArray"),
@@ -467,7 +461,7 @@ TEST(FalseposLedger, G27NestedObjectRequiredFieldDropped) {
 // ---------- G-1 — header surface (sentinel for source-grep) --------
 
 TEST(FalseposLedger, G1HeaderDeclaresApi) {
-    const std::string h = slurp(SRC_FALSEPOS_H_PATH);
+    const std::string h = ants_test::slurpFile(SRC_FALSEPOS_H_PATH);
     ASSERT_FALSE(h.empty());
     EXPECT_NE(h.find("struct LedgerEntry"), std::string::npos);
     EXPECT_NE(h.find("struct FormatOptions"), std::string::npos);

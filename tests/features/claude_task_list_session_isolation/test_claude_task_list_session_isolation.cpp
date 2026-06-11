@@ -23,6 +23,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -35,16 +36,6 @@ namespace {
 
 
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // Return the substring of `src` from the first occurrence of
 // `sigPrefix` up to (but not including) the next top-level `^}` line
@@ -203,43 +194,43 @@ void testInv6PollRescue(const std::string &widgets) {
 }  // namespace
 
 TEST(claude_task_list_session_isolation, Inv1RefreshWiring) {
-    const std::string widgets = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string widgets = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     const int before = expect_failures();
     testInv1RefreshWiring(widgets);
     if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_task_list_session_isolation, Inv2TimerCadence) {
-    const std::string mainwindow = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mainwindow = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     const int before = expect_failures();
     testInv2TimerCadence(mainwindow);
     if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_task_list_session_isolation, Inv3HideBranch) {
-    const std::string widgets = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string widgets = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     const int before = expect_failures();
     testInv3HideBranch(widgets);
     if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_task_list_session_isolation, Inv4TabSwitchReset) {
-    const std::string widgets = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
-    const std::string mainwindow = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string widgets = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string mainwindow = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     const int before = expect_failures();
     testInv4TabSwitchReset(widgets, mainwindow);
     if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_task_list_session_isolation, Inv5FeedbackConnect) {
-    const std::string widgets = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string widgets = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     const int before = expect_failures();
     testInv5FeedbackConnect(widgets);
     if (expect_failures() > before) FAIL();
 }
 
 TEST(claude_task_list_session_isolation, Inv6PollRescue) {
-    const std::string widgets = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string widgets = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     const int before = expect_failures();
     testInv6PollRescue(widgets);
     if (expect_failures() > before) FAIL();

@@ -5,6 +5,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -15,16 +16,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -35,7 +26,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // INV-1 — walker recognises ants-v1 shape + fence handling.
 TEST(roadmap_log_flip_ants_v1, Inv1WalkerAnchors) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "walkAntsV1Bullets"),
            "INV-1: walkAntsV1Bullets helper defined");
     expect(contains(cpp, "rxAntsV1IdBracket"),
@@ -59,7 +50,7 @@ TEST(roadmap_log_flip_ants_v1, Inv1WalkerAnchors) {
 // INV-2 — GFM first, ants-v1 fallback, unified refusal.
 TEST(roadmap_log_flip_ants_v1, Inv2FormatFallthroughOrder) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "ANTS-1441 — try ants-v1 native format"),
            "INV-2: fallthrough anchor present in cmdRoadmapLogFlip");
     expect(contains(cpp, "walkAntsV1Bullets(lines)"),
@@ -73,7 +64,7 @@ TEST(roadmap_log_flip_ants_v1, Inv2FormatFallthroughOrder) {
 // INV-3 — anchor locator refused on ants-v1.
 TEST(roadmap_log_flip_ants_v1, Inv3AnchorRejected) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // String spans a line break in source (`"is not " "supported..."`);
     // match the leading clause + the format-name suffix separately.
     expect(contains(cpp, "anchor locator is not"),
@@ -88,7 +79,7 @@ TEST(roadmap_log_flip_ants_v1, Inv3AnchorRejected) {
 // INV-4 / INV-5 — locator predicates.
 TEST(roadmap_log_flip_ants_v1, Inv4Inv5LocatorPredicates) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "v1bullets.at(i).id == locId"),
            "INV-4: id locator matches bracket-id directly");
     expect(contains(cpp, "rcFnv1a64(rcNormaliseHeadline(locHeadline))"),
@@ -101,7 +92,7 @@ TEST(roadmap_log_flip_ants_v1, Inv4Inv5LocatorPredicates) {
 // INV-6 — no anchor injection, no counter use; pure emoji swap.
 TEST(roadmap_log_flip_ants_v1, Inv6PureEmojiSwap) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "applyAntsV1Flip"),
            "INV-6: applier helper defined");
     expect(contains(cpp, "line.remove(2, oldEmoji.size())"),
@@ -126,7 +117,7 @@ TEST(roadmap_log_flip_ants_v1, Inv6PureEmojiSwap) {
 // INV-7 — fenced bullets refused.
 TEST(roadmap_log_flip_ants_v1, Inv7FencedRefusal) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // The refusal sits inside the ants-v1 branch.
     expect(contains(cpp, "v1target.insideFenced"),
            "INV-7: ants-v1 fenced-code check present");
@@ -140,7 +131,7 @@ TEST(roadmap_log_flip_ants_v1, Inv7FencedRefusal) {
 // INV-8 — success envelope carries format:"ants-v1".
 TEST(roadmap_log_flip_ants_v1, Inv8SuccessEnvelopeFormat) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "out[\"format\"]          = QStringLiteral(\"ants-v1\")"),
            "INV-8: success envelope echoes format:\"ants-v1\"");
     expect(contains(cpp, "out[\"anchor_injected\"] = false"),

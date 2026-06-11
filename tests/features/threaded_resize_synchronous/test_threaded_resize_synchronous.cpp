@@ -13,6 +13,7 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #ifndef SRC_TERMINALWIDGET_PATH
 #error "SRC_TERMINALWIDGET_PATH compile definition required"
 #endif
@@ -20,21 +21,12 @@
 #error "SRC_VTSTREAM_HEADER_PATH compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
 
 static int runMain() {
     int failures = 0;
 
-    const std::string widget = slurp(SRC_TERMINALWIDGET_PATH);
-    const std::string header = slurp(SRC_VTSTREAM_HEADER_PATH);
+    const std::string widget = ants_test::slurpFile(SRC_TERMINALWIDGET_PATH);
+    const std::string header = ants_test::slurpFile(SRC_VTSTREAM_HEADER_PATH);
 
     // (1) Every invokeMethod(..., "resize", ...) on m_vtStream must be
     //     BlockingQueuedConnection. We match the full call up to the

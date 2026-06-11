@@ -7,6 +7,7 @@
 //       Required caller_cwd contract, ETag opt-in).
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -39,11 +40,6 @@ L::Record rec(const QString &from, const QString &to, bool pending, int turns,
     return r;
 }
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) { std::fprintf(stderr, "cannot open %s\n", path); std::exit(2); }
-    std::stringstream ss; ss << in.rdbuf(); return ss.str();
-}
 bool has(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
 }
@@ -213,10 +209,10 @@ TEST(McpModelSwitchStats, ProjectScoped) {
 
 // Wiring contract — the MCP dispatch must be registered end to end.
 TEST(McpModelSwitchStats, WiringContract) {
-    const std::string rcHdr = slurp(SRC_RC_HEADER);
-    const std::string rcCpp = slurp(SRC_RC_CPP);
-    const std::string mwCpp = slurp(SRC_MAINWINDOW_CPP);
-    const std::string ciCpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
+    const std::string rcCpp = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string mwCpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
+    const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     EXPECT_TRUE(has(rcHdr, "cmdModelSwitchStats(const QJsonObject"))
         << "decl missing from remotecontrol.h";

@@ -11,6 +11,7 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #ifndef SRC_PTY_CPP_PATH
 #  error "SRC_PTY_CPP_PATH compile definition required"
 #endif
@@ -18,16 +19,6 @@
 #  error "SRC_PTY_H_PATH compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // Extract the body of the named function. Matches `void Pty::FUNC(...)
 // { ... }` with brace-matching. Returns "" if not found.
@@ -50,8 +41,8 @@ static std::string extractFnBody(const std::string &src, const char *qualName) {
 }
 
 static int runMain() {
-    const std::string cpp = slurp(SRC_PTY_CPP_PATH);
-    const std::string hdr = slurp(SRC_PTY_H_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_PTY_CPP_PATH);
+    const std::string hdr = ants_test::slurpFile(SRC_PTY_H_PATH);
     const std::string writeBody = extractFnBody(cpp, "Pty::write");
     int failures = 0;
     auto fail = [&](const char *msg) {

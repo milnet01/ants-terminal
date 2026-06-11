@@ -4,6 +4,7 @@
 // See spec.md and docs/specs/ANTS-1302.md.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include "focusedtest.h"
 
@@ -31,11 +32,6 @@ void writeFile(const QString &path, const QByteArray &body) {
     f.write(body);
 }
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) { std::fprintf(stderr, "cannot open %s\n", path); std::exit(2); }
-    std::stringstream ss; ss << in.rdbuf(); return ss.str();
-}
 
 bool has(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -189,10 +185,10 @@ TEST(McpFocusedTest, ShippedCoverageMapValid) {
 TEST(McpFocusedTest, WiringContract) {
 #if defined(SRC_RC_HEADER) && defined(SRC_REMOTECONTROL_CPP_PATH) && \
     defined(SRC_MAINWINDOW_CPP_PATH) && defined(SRC_CLAUDE_INTEGRATION_CPP_PATH)
-    const std::string rcHdr = slurp(SRC_RC_HEADER);
-    const std::string rcCpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
-    const std::string mwCpp = slurp(SRC_MAINWINDOW_CPP_PATH);
-    const std::string ci    = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
+    const std::string rcCpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string mwCpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string ci    = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     // INV-10
     EXPECT_TRUE(has(rcHdr, "cmdFocusedTest(const QJsonObject &req)"));

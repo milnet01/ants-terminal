@@ -7,6 +7,7 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_MAINWINDOW_PATH
 #error "SRC_MAINWINDOW_PATH compile definition required"
@@ -24,19 +25,10 @@
 #error "SRC_THEMEDSTYLESHEET_PATH compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
 
 TEST(MenubarHoverStylesheet, Main) {
-    const std::string mw = slurp(SRC_MAINWINDOW_PATH);
-    const std::string tss = slurp(SRC_THEMEDSTYLESHEET_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_PATH);
+    const std::string tss = ants_test::slurpFile(SRC_THEMEDSTYLESHEET_PATH);
     int failures = 0;
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);
@@ -175,7 +167,7 @@ TEST(MenubarHoverStylesheet, Main) {
     // overrides paintEvent and calls fillRect. Without these, INV-8's
     // construction-site checks above would pass on a no-op subclass
     // and the bug would re-emerge silently.
-    const std::string omb = slurp(SRC_OPAQUEMENUBAR_PATH);
+    const std::string omb = ants_test::slurpFile(SRC_OPAQUEMENUBAR_PATH);
     if (omb.find("paintEvent") == std::string::npos ||
         omb.find("fillRect") == std::string::npos) {
         fail("INV-8: src/opaquemenubar.h must override paintEvent and call "

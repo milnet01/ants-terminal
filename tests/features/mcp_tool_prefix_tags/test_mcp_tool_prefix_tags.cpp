@@ -7,6 +7,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -18,16 +19,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -77,7 +68,7 @@ std::set<std::string> collectRegisteredToolNames(const std::string &src) {
 TEST(mcp_tool_prefix_tags, Inv1SessionMemoryIsMcpState) {
     expect_reset();
     const std::string body =
-        extractKindForNameBody(slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH));
+        extractKindForNameBody(ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH));
     expect(!body.empty(),
            "INV-1 setup: kindForName lambda located in source");
     expect(contains(body, "\"session_memory\"") &&
@@ -94,7 +85,7 @@ TEST(mcp_tool_prefix_tags, Inv1SessionMemoryIsMcpState) {
 TEST(mcp_tool_prefix_tags, Inv2CallerCwdInfoIsMeta) {
     expect_reset();
     const std::string body =
-        extractKindForNameBody(slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH));
+        extractKindForNameBody(ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH));
     expect(!body.empty(),
            "INV-2 setup: kindForName lambda located in source");
     // The meta-bucket block must include caller_cwd_info.
@@ -120,9 +111,9 @@ TEST(mcp_tool_prefix_tags, Inv2CallerCwdInfoIsMeta) {
 TEST(mcp_tool_prefix_tags, Inv3EveryRegisteredToolHasBucket) {
     expect_reset();
     const std::string ci =
-        slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const std::string mw =
-        slurp(SRC_MAINWINDOW_PATH);
+        ants_test::slurpFile(SRC_MAINWINDOW_PATH);
     const std::string body = extractKindForNameBody(ci);
     expect(!body.empty(),
            "INV-3 setup: kindForName lambda located");

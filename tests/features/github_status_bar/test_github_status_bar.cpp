@@ -43,16 +43,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -72,9 +62,9 @@ std::string functionBody(const std::string &src, const std::string &sig) {
 
 }  // namespace
 
-TEST(GithubStatusBar, Main) {    const std::string h = slurp(SRC_MAINWINDOW_H_PATH);
-    const std::string s = slurp(SRC_MAINWINDOW_CPP_PATH);
-    const std::string yml = slurp(SRC_RELEASE_WORKFLOW_PATH);
+TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_MAINWINDOW_H_PATH);
+    const std::string s = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string yml = ants_test::slurpFile(SRC_RELEASE_WORKFLOW_PATH);
 
     // INV-1: visibility pill is a QLabel member; update notifier is
     // a QAction member after ANTS-1124 (0.7.62) — the update link

@@ -8,6 +8,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -42,16 +43,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -81,7 +72,7 @@ bool runGitOk(const QString &root, const QStringList &argv,
 // ============================================================
 TEST(mcp_roadmap_branch_drift, Inv1RequiredContract) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     // Contract row.
     expect(contains(ci,
         "if (toolName == QStringLiteral(\"roadmap_branch_drift\")) "
@@ -103,7 +94,7 @@ TEST(mcp_roadmap_branch_drift, Inv1RequiredContract) {
 // ============================================================
 TEST(mcp_roadmap_branch_drift, Inv2EtagAllowlisted) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     // Anchor on the function definition, not call sites or comments.
     const auto etagFnPos =
         ci.find("bool ClaudeIntegration::isEtagSupportedTool");
@@ -130,7 +121,7 @@ TEST(mcp_roadmap_branch_drift, Inv2EtagAllowlisted) {
 // ============================================================
 TEST(mcp_roadmap_branch_drift, Inv3RegexAnchored) {
     expect_reset();
-    const std::string rcc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(rcc, "// ANTS-1583 — anchored SHA detector"),
         "INV-3: regex literal must carry the ANTS-1583 anchor comment");
     expect(contains(rcc, "(?=[0-9a-f]*[a-f])"),
@@ -143,7 +134,7 @@ TEST(mcp_roadmap_branch_drift, Inv3RegexAnchored) {
 // ============================================================
 TEST(mcp_roadmap_branch_drift, Inv6MaxDriftClamp) {
     expect_reset();
-    const std::string rcc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // Anchor on the function definition specifically — the function
     // body is ~160 lines (~10 KiB), past the 6 KiB window. Use 12 KiB.
     const auto fnPos =
@@ -164,7 +155,7 @@ TEST(mcp_roadmap_branch_drift, Inv6MaxDriftClamp) {
 // ============================================================
 TEST(mcp_roadmap_branch_drift, Inv8NoBranchContains) {
     expect_reset();
-    const std::string rcc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // Anchor on the function definition. The "no --contains" guard is
     // about the executable code; comments referencing the anti-pattern
     // are intentional and don't violate the invariant. So we test the
@@ -192,7 +183,7 @@ TEST(mcp_roadmap_branch_drift, Inv8NoBranchContains) {
 // ============================================================
 TEST(mcp_roadmap_branch_drift, Inv9CountFieldsInteger) {
     expect_reset();
-    const std::string rcc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     const auto fnPos =
         rcc.find("RemoteControl::cmdRoadmapBranchDrift");
     ASSERT_NE(fnPos, std::string::npos);
@@ -214,7 +205,7 @@ TEST(mcp_roadmap_branch_drift, Inv9CountFieldsInteger) {
 // ============================================================
 TEST(mcp_roadmap_branch_drift, Inv10ReusesCollectGitSnapshot) {
     expect_reset();
-    const std::string rcc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     const auto fnPos = rcc.find("cmdRoadmapBranchDrift");
     ASSERT_NE(fnPos, std::string::npos);
     const std::string body = rcc.substr(fnPos, 6000);
@@ -229,7 +220,7 @@ TEST(mcp_roadmap_branch_drift, Inv10ReusesCollectGitSnapshot) {
 // ============================================================
 TEST(mcp_roadmap_branch_drift, Inv11ErrorCodeTaxonomy) {
     expect_reset();
-    const std::string doc = slurp(MCP_ERROR_CODES_DOC_PATH);
+    const std::string doc = ants_test::slurpFile(MCP_ERROR_CODES_DOC_PATH);
     expect(contains(doc, "no_git_state"),
         "INV-11: docs/standards/mcp-error-codes.md must list "
         "the no_git_state refusal code");
@@ -376,12 +367,12 @@ TEST(mcp_roadmap_branch_drift, Inv4ReachabilityRuntime) {
 // ============================================================
 TEST(mcp_roadmap_branch_drift, DispatchWiringRegistered) {
     expect_reset();
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     expect(contains(mw,
         "registerToolProvider(\"roadmap_branch_drift\""),
         "dispatch: mainwindow.cpp must registerToolProvider for "
         "roadmap_branch_drift");
-    const std::string rh = slurp(SRC_REMOTECONTROL_H_PATH);
+    const std::string rh = ants_test::slurpFile(SRC_REMOTECONTROL_H_PATH);
     expect(contains(rh, "cmdRoadmapBranchDrift"),
         "dispatch: remotecontrol.h must declare cmdRoadmapBranchDrift");
     EXPECT_EQ(0, expect_failures());

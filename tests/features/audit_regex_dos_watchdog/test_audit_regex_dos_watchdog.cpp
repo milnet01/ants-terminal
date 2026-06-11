@@ -12,6 +12,7 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_AUDIT_CPP_PATH
 #  error "SRC_AUDIT_CPP_PATH compile definition required"
@@ -20,16 +21,6 @@
 #  error "SRC_AUDIT_H_PATH compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // Brace counter skips '{' / '}' char literals + string + raw-string
 // literals so source-grep extraction works on functions that contain
@@ -88,14 +79,14 @@ TEST(AuditRegexDosWatchdog, Main) {
     // all three so the INVs see the helper definitions (regexharden.cpp), the
     // forwarders + applyFilter call (auditengine.cpp), and the dropIfMatches /
     // loadAllowlist entry points (auditdialog.cpp) together.
-    const std::string dialogCpp = slurp(SRC_AUDIT_CPP_PATH);
+    const std::string dialogCpp = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
 #ifdef SRC_AUDIT_ENGINE_CPP_PATH
-    const std::string engineCpp = slurp(SRC_AUDIT_ENGINE_CPP_PATH);
+    const std::string engineCpp = ants_test::slurpFile(SRC_AUDIT_ENGINE_CPP_PATH);
 #else
     const std::string engineCpp;
 #endif
 #ifdef SRC_REGEXHARDEN_CPP_PATH
-    const std::string regexhardenCpp = slurp(SRC_REGEXHARDEN_CPP_PATH);
+    const std::string regexhardenCpp = ants_test::slurpFile(SRC_REGEXHARDEN_CPP_PATH);
 #else
     const std::string regexhardenCpp;
 #endif

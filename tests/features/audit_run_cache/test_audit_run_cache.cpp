@@ -6,6 +6,7 @@
 // test stops at the `recordRun` boundary.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include "auditcache.h"
 
@@ -24,13 +25,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -66,7 +60,7 @@ bool touch(const QString &path) {
 // ─────────────────────── Source-scrape invariants ──
 
 TEST(AuditRunCache, EngineHeaderDeclaresCachePathAndPriorRun) {
-    const std::string hdr = slurp(SRC_AUDITRUNNER_H_PATH);
+    const std::string hdr = ants_test::slurpFile(SRC_AUDITRUNNER_H_PATH);
     ASSERT_FALSE(hdr.empty());
 
     // INV-2 — RunResult carries cachePath + priorRun.
@@ -79,7 +73,7 @@ TEST(AuditRunCache, EngineHeaderDeclaresCachePathAndPriorRun) {
 }
 
 TEST(AuditRunCache, AuditRunnerRoutesThroughAuditCache) {
-    const std::string src = slurp(SRC_AUDITRUNNER_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
     ASSERT_FALSE(src.empty());
 
     // INV-1 — auditrunner.cpp calls into AuditCache::sarifPathFor +
@@ -100,7 +94,7 @@ TEST(AuditRunCache, AuditRunnerRoutesThroughAuditCache) {
 }
 
 TEST(AuditRunCache, MainWindowEnvelopeSurfacesCachePathAndPriorRun) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(mw.empty());
 
     // Locate the audit_run provider lambda.
@@ -121,7 +115,7 @@ TEST(AuditRunCache, MainWindowEnvelopeSurfacesCachePathAndPriorRun) {
 }
 
 TEST(AuditRunCache, DescriptorMentionsAuditCacheRouting) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
 
     // Locate audit_run descriptor block.
@@ -144,7 +138,7 @@ TEST(AuditRunCache, DescriptorMentionsAuditCacheRouting) {
 }
 
 TEST(AuditRunCache, AuditCacheUsesAtomicWriteWithOwnerPerms) {
-    const std::string src = slurp(SRC_AUDITCACHE_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_AUDITCACHE_CPP_PATH);
     ASSERT_FALSE(src.empty());
 
     // INV-6 / INV-10 — QSaveFile + setOwnerOnlyPerms wrap the manifest write.
@@ -162,7 +156,7 @@ TEST(AuditRunCache, ReaperRunsAfterManifestCommit) {
     // meant a commit failure left files gone but the old manifest still
     // referencing them (permanent orphan refs). Enforce the ordering at
     // the source level: commit() precedes the reaper loop.
-    const std::string src = slurp(SRC_AUDITCACHE_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_AUDITCACHE_CPP_PATH);
     ASSERT_FALSE(src.empty());
 
     const auto commitPos = src.find("sf.commit()");

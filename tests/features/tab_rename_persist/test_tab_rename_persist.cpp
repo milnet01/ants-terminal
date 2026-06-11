@@ -30,10 +30,10 @@ namespace {
 
 QString slurp(const QString &path) {
     QFile f(path);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        std::fprintf(stderr, "cannot open %s\n", qUtf8Printable(path));
-        std::exit(2);
-    }
+    // ANTS-2060 — return empty (not std::exit, which would abort the whole
+    // shared gtest bundle); a missing source then fails just this test.
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return {};
     return QString::fromUtf8(f.readAll());
 }
 

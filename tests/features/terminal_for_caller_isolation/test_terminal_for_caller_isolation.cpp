@@ -11,6 +11,7 @@
 // drift from the helper.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -25,13 +26,6 @@
 
 namespace {
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 // Find the body for a function whose signature contains the given
 // marker; return the [open-brace, matching-close-brace) substring.
@@ -59,7 +53,7 @@ std::string functionBody(const std::string &src, const char *marker) {
 // canonicalisation + tab walk live in the helper now; the wrapper
 // just maps Source::EmptyFallback → focusedTerminal().
 TEST(TerminalForCallerIsolation, EmptyCallerCwdFallsBackToFocused) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const std::string body =
         functionBody(rc, "resolveCallerCwdRoot(const MainWindow *main,");
@@ -75,7 +69,7 @@ TEST(TerminalForCallerIsolation, EmptyCallerCwdFallsBackToFocused) {
 // The helper must produce Source::NoMatch (NOT silently fall through
 // to ExplicitMatch with focused-fallback).
 TEST(TerminalForCallerIsolation, NoMatchReturnsNullptr) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const std::string body =
         functionBody(rc, "resolveCallerCwdRoot(const MainWindow *main,");
@@ -90,7 +84,7 @@ TEST(TerminalForCallerIsolation, NoMatchReturnsNullptr) {
 // helper (only in the empty-callerCwd back-compat branch). The wrapper
 // has one too; both being capped at one is the structural defence.
 TEST(TerminalForCallerIsolation, FocusedFallbackIsOnlyForEmptyCaller) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const std::string helperBody =
         functionBody(rc, "resolveCallerCwdRoot(const MainWindow *main,");
@@ -110,7 +104,7 @@ TEST(TerminalForCallerIsolation, FocusedFallbackIsOnlyForEmptyCaller) {
            "callerCwd back-compat branch). Multiple call sites "
            "suggest the v1 cross-project leak has crept back.";
 
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(mw.empty());
     const std::string wrapperBody =
         functionBody(mw, "MainWindow::terminalForCaller");
@@ -133,7 +127,7 @@ TEST(TerminalForCallerIsolation, FocusedFallbackIsOnlyForEmptyCaller) {
 // nullptr (wrapper). Helper must NOT fall back to focused on an
 // invalid path.
 TEST(TerminalForCallerIsolation, UnresolvableCanonicalReturnsNullptr) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const std::string body =
         functionBody(rc, "resolveCallerCwdRoot(const MainWindow *main,");
@@ -151,7 +145,7 @@ TEST(TerminalForCallerIsolation, UnresolvableCanonicalReturnsNullptr) {
 // `tabIndex` to the highest-index match, changing the
 // `caller_cwd_info` envelope (ANTS-1400) under callers.
 TEST(TerminalForCallerIsolation, HelperWalksAscendingForLowestIndex) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const std::string body =
         functionBody(rc, "resolveCallerCwdRoot(const MainWindow *main,");
@@ -170,7 +164,7 @@ TEST(TerminalForCallerIsolation, HelperWalksAscendingForLowestIndex) {
 // and absence of `canonicalFilePath` (canonicalisation belongs in
 // the helper).
 TEST(TerminalForCallerIsolation, WrapperDelegatesToHelper) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(mw.empty());
     const std::string body =
         functionBody(mw, "MainWindow::terminalForCaller");

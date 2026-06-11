@@ -4,6 +4,7 @@
 #include "testauditengine.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QDir>
 #include <QFile>
@@ -27,16 +28,6 @@ void touch(const QString &dir, const QString &relPath,
     f.write(content);
 }
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -54,7 +45,7 @@ TestAuditEngine::PartitionResult partitionAt(const QString &root) {
 
 // INV-1 — probe-table entry exists.
 TEST(TestAuditLibcheckDetection, Inv1ProbeEntryExists) {
-    const std::string cpp = slurp(SRC_TESTAUDITENGINE_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_TESTAUDITENGINE_CPP_PATH);
     EXPECT_TRUE(contains(cpp, "\"libcheck\""))
         << "INV-1: libcheck name literal must appear in g_kFrameworks";
     EXPECT_TRUE(contains(cpp, "\"Makefile.test\""))
@@ -65,7 +56,7 @@ TEST(TestAuditLibcheckDetection, Inv1ProbeEntryExists) {
 
 // INV-2 — libcheck entry positioned before ctest in the probe table.
 TEST(TestAuditLibcheckDetection, Inv2LibcheckBeforeCtest) {
-    const std::string cpp = slurp(SRC_TESTAUDITENGINE_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_TESTAUDITENGINE_CPP_PATH);
     const auto libPos = cpp.find("\"libcheck\"");
     const auto ctestPos = cpp.find("\"ctest\"");
     ASSERT_NE(libPos, std::string::npos);

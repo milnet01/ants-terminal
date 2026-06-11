@@ -6,6 +6,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -23,16 +24,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -54,7 +45,7 @@ std::string between(const std::string &hay, const std::string &from,
 // INV-1 — the generated build_info.h header is included.
 TEST(mcp_build_identity, Inv1IncludesBuildInfo) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(ci, "#include \"build_info.h\""),
            "INV-1: claudeintegration.cpp must #include build_info.h");
     EXPECT_EQ(0, expect_failures());
@@ -64,7 +55,7 @@ TEST(mcp_build_identity, Inv1IncludesBuildInfo) {
 // identity fields, each from the matching ANTS_BUILD_* macro.
 TEST(mcp_build_identity, Inv2InitializeServerInfoStamped) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     // Scope to the initialize serverInfo construction so we are not
     // fooled by the get_session_info copy below.
     const std::string region =
@@ -90,7 +81,7 @@ TEST(mcp_build_identity, Inv2InitializeServerInfoStamped) {
 // server_build_* keys.
 TEST(mcp_build_identity, Inv3SessionInfoResurfacesIdentity) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const std::string region =
         between(ci, "toolName == \"get_session_info\"", "toolHandled = true;");
     ASSERT_FALSE(region.empty())
@@ -112,7 +103,7 @@ TEST(mcp_build_identity, Inv3SessionInfoResurfacesIdentity) {
 // stamp refreshes on every build.
 TEST(mcp_build_identity, Inv4CMakeWiresGeneratedHeader) {
     expect_reset();
-    const std::string cml = slurp(SRC_CMAKELISTS_PATH);
+    const std::string cml = ants_test::slurpFile(SRC_CMAKELISTS_PATH);
     const std::string region =
         between(cml, "add_library(ants_claude_lib", "add_library(ants_audit_lib");
     ASSERT_FALSE(region.empty())

@@ -23,16 +23,10 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -44,8 +38,8 @@ void fail(const char *label, const char *why) {
 
 }  // namespace
 
-TEST(DialogCloseFocusReturn, Main) {    const std::string source = slurp(MAINWINDOW_CPP);
-    const std::string focusHdr = slurp(DIALOGFOCUS_H);
+TEST(DialogCloseFocusReturn, Main) {    const std::string source = ants_test::slurpFile(MAINWINDOW_CPP);
+    const std::string focusHdr = ants_test::slurpFile(DIALOGFOCUS_H);
     if (source.empty()) return fail("INV-1", "mainwindow.cpp not readable");
     if (focusHdr.empty()) return fail("INV-2", "dialogfocus.h not readable");
 

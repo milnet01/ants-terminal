@@ -3,6 +3,7 @@
 // and verify all 5 tool names are registered in each layer.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -23,13 +24,6 @@
 
 namespace {
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 constexpr const char *kToolNames[6] = {
     "indie_review_partition",
@@ -52,7 +46,7 @@ constexpr const char *kCmdMethods[6] = {
 }  // namespace
 
 TEST(McpIndieReviewTools, Inv9AllToolNamesInToolsList) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     for (const char *name : kToolNames) {
         const std::string nameQuoted = std::string("\"") + name + "\"";
@@ -62,7 +56,7 @@ TEST(McpIndieReviewTools, Inv9AllToolNamesInToolsList) {
 }
 
 TEST(McpIndieReviewTools, AllProvidersRegisteredInMainWindow) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(mw.empty());
     for (const char *name : kToolNames) {
         const std::string call =
@@ -74,7 +68,7 @@ TEST(McpIndieReviewTools, AllProvidersRegisteredInMainWindow) {
 }
 
 TEST(McpIndieReviewTools, AllCmdMethodsDeclaredInHeader) {
-    const std::string rch = slurp(SRC_REMOTECONTROL_H_PATH);
+    const std::string rch = ants_test::slurpFile(SRC_REMOTECONTROL_H_PATH);
     ASSERT_FALSE(rch.empty());
     for (const char *m : kCmdMethods) {
         EXPECT_NE(rch.find(m), std::string::npos)
@@ -83,7 +77,7 @@ TEST(McpIndieReviewTools, AllCmdMethodsDeclaredInHeader) {
 }
 
 TEST(McpIndieReviewTools, AllCmdMethodsDefinedInCpp) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     for (const char *m : kCmdMethods) {
         const std::string defn = std::string("RemoteControl::") + m;
@@ -96,7 +90,7 @@ TEST(McpIndieReviewTools, AllCmdMethodsDefinedInCpp) {
 // ANTS-1279 — the orchestrate handler composes the dispatch manifest from
 // the existing engine functions and emits the report-collection contract.
 TEST(McpIndieReviewTools, Ants1279OrchestrateComposesManifest) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const auto p = rc.find("RemoteControl::cmdIndieReviewOrchestrate");
     ASSERT_NE(p, std::string::npos);
@@ -120,7 +114,7 @@ TEST(McpIndieReviewTools, Ants1279OrchestrateComposesManifest) {
 // ANTS-1288 — the partition handler emits suggested_merges, computed via
 // the engine helper (locks the wiring against accidental removal).
 TEST(McpIndieReviewTools, Ants1288PartitionEmitsSuggestedMerges) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const auto p = rc.find("RemoteControl::cmdIndieReviewPartition");
     ASSERT_NE(p, std::string::npos);
@@ -138,7 +132,7 @@ TEST(McpIndieReviewTools, AllSchemasUseAdditionalPropertiesFalse) {
     // block — start at indie_review_partition, end at the next non-indie
     // tool block (currently debt_sweep_scan, ANTS-1113). ANTS-1352 added
     // indie_review_dispatch within this region (sixth tool).
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     const auto block_start = ci.find("\"indie_review_partition\"");
     ASSERT_NE(block_start, std::string::npos);

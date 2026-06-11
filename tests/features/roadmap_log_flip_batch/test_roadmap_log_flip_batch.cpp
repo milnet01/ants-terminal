@@ -7,6 +7,7 @@
 #include "remotecontrol.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QByteArray>
 #include <QDir>
@@ -102,12 +103,6 @@ QJsonObject batchReq(const QString &root, const QString &toStatus,
     return o;
 }
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) { std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-              std::exit(2); }
-    std::stringstream ss; ss << f.rdbuf(); return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -308,8 +303,8 @@ TEST(roadmap_log_flip_batch, Inv7Dedup) {
 // INV (source) — dispatch routes flip_batch + schema advertises it.
 TEST(roadmap_log_flip_batch, SourceSurface) {
     expect_reset();
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     expect(contains(rc, "cmdRoadmapLogFlipBatch(req)"),
            "dispatch routes op:flip_batch to the handler");

@@ -20,6 +20,7 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #ifndef SRC_CONFIG_CPP_PATH
 #  error "SRC_CONFIG_CPP_PATH compile definition required"
 #endif
@@ -36,16 +37,6 @@ namespace {
 
 
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 int countOccurrences(const std::string &haystack, const std::string &needle) {
     if (needle.empty()) return 0;
@@ -59,7 +50,7 @@ int countOccurrences(const std::string &haystack, const std::string &needle) {
 }
 
 void checkConfigCpp() {
-    const std::string src = slurp(SRC_CONFIG_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_CONFIG_CPP_PATH);
 
     // I4 — pre-write fd chmod retained.
     expect(src.find("setOwnerOnlyPerms(file)") != std::string::npos,
@@ -88,7 +79,7 @@ void checkConfigCpp() {
 }
 
 void checkSessionManager() {
-    const std::string src = slurp(SRC_SESSIONMANAGER_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_SESSIONMANAGER_CPP_PATH);
 
     // I4 — both writers retain pre-write fd chmod.
     int fdCount = countOccurrences(src, "setOwnerOnlyPerms(file)");
@@ -121,7 +112,7 @@ void checkSessionManager() {
 }
 
 void checkSettingsDialog() {
-    const std::string src = slurp(SRC_SETTINGSDIALOG_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_SETTINGSDIALOG_CPP_PATH);
 
     // I4 — pre-write fd chmod at both QSaveFile sites.
     int fdCount = countOccurrences(src, "setOwnerOnlyPerms(settingsOut)");

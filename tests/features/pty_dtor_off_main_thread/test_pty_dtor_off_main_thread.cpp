@@ -22,6 +22,7 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_PTYHANDLER_CPP_PATH
 #  error "SRC_PTYHANDLER_CPP_PATH compile definition required"
@@ -33,16 +34,6 @@ namespace {
 
 
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &h, const std::string &n) {
     return h.find(n) != std::string::npos;
@@ -79,7 +70,7 @@ std::string extractDtor(const std::string &src) {
 
 TEST(PtyDtorOffMainThread, Main) {
     expect_reset();
-    const std::string src = slurp(SRC_PTYHANDLER_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_PTYHANDLER_CPP_PATH);
     const std::string dtor = extractDtor(src);
     expect(!dtor.empty(), "extract/dtor-body-found");
 

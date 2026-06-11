@@ -30,6 +30,7 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #ifndef SRC_CONFIG_CPP_PATH
 #  error "SRC_CONFIG_CPP_PATH compile definition required"
 #endif
@@ -46,16 +47,6 @@ namespace {
 
 
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // A throw-away path under /tmp. Tests run in parallel — embed pid so
 // concurrent ctest runs don't collide.
@@ -131,7 +122,7 @@ void runtimeTests() {
 
 void sourceGrepTests() {
     {
-        const std::string src = slurp(SRC_CONFIG_CPP_PATH);
+        const std::string src = ants_test::slurpFile(SRC_CONFIG_CPP_PATH);
         expect(src.find("ConfigWriteLock writeLock(path)") != std::string::npos,
                "I3/config-save-constructs-lock");
         // Lock construction must precede the actual write so the
@@ -148,7 +139,7 @@ void sourceGrepTests() {
     }
 
     {
-        const std::string src = slurp(SRC_CLAUDEALLOWLIST_CPP_PATH);
+        const std::string src = ants_test::slurpFile(SRC_CLAUDEALLOWLIST_CPP_PATH);
         expect(src.find("ConfigWriteLock writeLock(m_settingsPath)") !=
                    std::string::npos,
                "I4/allowlist-saveSettings-constructs-lock");
@@ -157,7 +148,7 @@ void sourceGrepTests() {
     }
 
     {
-        const std::string src = slurp(SRC_SETTINGSDIALOG_CPP_PATH);
+        const std::string src = ants_test::slurpFile(SRC_SETTINGSDIALOG_CPP_PATH);
         // Both installers (installClaudeHooks +
         // installClaudeGitContextHook) target the same settingsPath
         // variable, so the construction text matches both sites; we

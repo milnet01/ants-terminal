@@ -26,15 +26,9 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -196,7 +190,7 @@ static int runMain() {
     }
 
     // INV-1 / INV-8: CMake gates the helper binary correctly.
-    const std::string cmake = slurp(SRC_CMAKELISTS);
+    const std::string cmake = ants_test::slurpFile(SRC_CMAKELISTS);
     if (cmake.empty())
         return fail("INV-1", "CMakeLists.txt not readable");
     if (!contains(cmake, "option(ANTS_ENABLE_HELPER_CLI"))

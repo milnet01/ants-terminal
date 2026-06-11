@@ -45,15 +45,9 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -73,10 +67,10 @@ bool qcontains(const QString &hay, const char *needle) {
 static int runMain() {
     // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
-    const std::string header = slurp(ROADMAPDIALOG_H);
-    const std::string source = slurp(ROADMAPDIALOG_CPP);
-    const std::string mwHeader = slurp(MAINWINDOW_H);
-    const std::string mwSource = slurp(MAINWINDOW_CPP);
+    const std::string header = ants_test::slurpFile(ROADMAPDIALOG_H);
+    const std::string source = ants_test::slurpFile(ROADMAPDIALOG_CPP);
+    const std::string mwHeader = ants_test::slurpFile(MAINWINDOW_H);
+    const std::string mwSource = ants_test::slurpFile(MAINWINDOW_CPP);
 
     if (header.empty()) return fail("INV-1", "roadmapdialog.h not readable");
     if (source.empty()) return fail("INV-1", "roadmapdialog.cpp not readable");

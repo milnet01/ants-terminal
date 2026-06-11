@@ -14,13 +14,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 // Brace-matched body of the named function so the envelope-shape grep
 // doesn't false-positive on the wrong cmd. ANTS-2064 — was a fixed-size
@@ -35,7 +28,7 @@ std::string fnWindow(const std::string &src, const std::string &needle,
 
 // INV-1 — public constexpr in the engine header.
 TEST(IndieReviewTruncationFlag, Inv1KMaxScanBytesExposed) {
-    const std::string hdr = slurp(SRC_INDIE_REVIEW_ENGINE_H_PATH);
+    const std::string hdr = ants_test::slurpFile(SRC_INDIE_REVIEW_ENGINE_H_PATH);
     ASSERT_FALSE(hdr.empty()) << "indiereviewengine.h not readable";
     EXPECT_NE(hdr.find("constexpr int kMaxScanBytes = 64 * 1024"),
               std::string::npos)
@@ -45,7 +38,7 @@ TEST(IndieReviewTruncationFlag, Inv1KMaxScanBytesExposed) {
 // INV-2 — cmdIndieReviewCorroborate envelope carries truncation
 // surface.
 TEST(IndieReviewTruncationFlag, Inv2CorroborateEnvelope) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty()) << "remotecontrol.cpp not readable";
     const std::string body =
         fnWindow(rc, "RemoteControl::cmdIndieReviewCorroborate", 8192);
@@ -63,7 +56,7 @@ TEST(IndieReviewTruncationFlag, Inv2CorroborateEnvelope) {
 
 // INV-3 — cmdCrossDocDiff parity.
 TEST(IndieReviewTruncationFlag, Inv3CrossDocDiffEnvelope) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const std::string body =
         fnWindow(rc, "RemoteControl::cmdCrossDocDiff", 8192);
@@ -79,7 +72,7 @@ TEST(IndieReviewTruncationFlag, Inv3CrossDocDiffEnvelope) {
 // INV-4 — envelope emission is gated on !truncatedLanes.isEmpty(), so
 // the v1 happy-path shape is preserved.
 TEST(IndieReviewTruncationFlag, Inv4GatedEmission) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     // Two distinct gates — one per command. Both must hold.
     size_t hits = 0;

@@ -12,6 +12,7 @@
 // cold_eyes_fold_in_freeform test pattern (ANTS-1510).
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -19,13 +20,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -61,7 +55,7 @@ std::string descriptorBlock(const std::string &ci) {
 // INV-1 + INV-5 + INV-6 — handler shorts to narrative mode after the
 // gate, before actionable validation, and does NOT allocate IDs.
 TEST(ColdEyesFoldInNarrative, HandlerShortCircuitsOnNarrativeMode) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const std::string body = foldInBody(rc);
     ASSERT_FALSE(body.empty());
@@ -106,7 +100,7 @@ TEST(ColdEyesFoldInNarrative, HandlerShortCircuitsOnNarrativeMode) {
 // INV-3 — empty/whitespace narrative_md refuses with the dedicated
 // `narrative_md_required` code.
 TEST(ColdEyesFoldInNarrative, HandlerRefusesEmptyNarrativeMd) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const std::string body = foldInBody(rc);
     ASSERT_FALSE(body.empty());
@@ -119,7 +113,7 @@ TEST(ColdEyesFoldInNarrative, HandlerRefusesEmptyNarrativeMd) {
 // INV-4 — actionable[] refusal message names the narrative escape
 // hatch so callers discover it without re-reading the descriptor.
 TEST(ColdEyesFoldInNarrative, HandlerNamesEscapeHatchOnActionableMissing) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const std::string body = foldInBody(rc);
     ASSERT_FALSE(body.empty());
@@ -140,7 +134,7 @@ TEST(ColdEyesFoldInNarrative, HandlerNamesEscapeHatchOnActionableMissing) {
 // INV-8 — descriptor declares narrative_mode + narrative_md;
 // actionable is NOT in required; caller_cwd IS.
 TEST(ColdEyesFoldInNarrative, DescriptorSurfacesNarrativeProps) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     const std::string block = descriptorBlock(ci);
     ASSERT_FALSE(block.empty());

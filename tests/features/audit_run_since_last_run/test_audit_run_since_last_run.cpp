@@ -8,6 +8,7 @@
 #include "auditscope.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <QByteArray>
 #include <QDir>
 #include <QFile>
@@ -75,12 +76,6 @@ bool commitAll(const QString &dir, const QString &msg) {
                         QStringLiteral("-m"), msg});
 }
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 bool has(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
 }
@@ -231,7 +226,7 @@ TEST(AuditScopeSinceLastRun, Inv1ResolveDiffAndInv7NoChanges) {
 // ── INV-9 — pure/impure split (source-scrape) ─────────────────────────
 
 TEST(AuditScopeSinceLastRun, Inv9PureHelpersDoNotSpawnGit) {
-    const std::string src = slurp(SRC_AUDITSCOPE_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_AUDITSCOPE_CPP_PATH);
     ASSERT_FALSE(src.empty());
     // The pure helpers live between isFileScopedTool and resolveChangedFiles;
     // none of them may call git.
@@ -252,7 +247,7 @@ TEST(AuditScopeSinceLastRun, Inv9PureHelpersDoNotSpawnGit) {
 // ── INV-2/INV-5 — runAudit wires the resolver + path-safety drop ──────
 
 TEST(AuditScopeSinceLastRun, Inv2And5RunAuditWiring) {
-    const std::string src = slurp(SRC_AUDITRUNNER_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
     ASSERT_FALSE(src.empty());
     EXPECT_TRUE(has(src, "AuditScope::resolveChangedFiles"))
         << "runAudit must call the narrowing resolver";
@@ -268,7 +263,7 @@ TEST(AuditScopeSinceLastRun, Inv2And5RunAuditWiring) {
 // ── INV-8 — envelope surfaces the scope fields (source-scrape) ────────
 
 TEST(AuditScopeSinceLastRun, Inv8EnvelopeFields) {
-    const std::string src = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(src.empty());
     for (const char *key : {"scope_resolved", "changed_files_count",
                             "scope_anchor_commit", "scope_demoted",

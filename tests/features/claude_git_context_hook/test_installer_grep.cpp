@@ -8,6 +8,7 @@
 
 #include <cstdio>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <fstream>
 #include <regex>
 #include <sstream>
@@ -23,24 +24,13 @@
 #error "SRC_CONFIGPATHS_H compile definition required"
 #endif
 
-static std::string slurp(const char *path)
-{
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 TEST(ClaudeGitContextHook, Main) {
     int failures = 0;
 
-    const std::string sdH   = slurp(SRC_SETTINGSDIALOG_H);
-    const std::string sdCpp = slurp(SRC_SETTINGSDIALOG_CPP);
-    const std::string cpH   = slurp(SRC_CONFIGPATHS_H);
+    const std::string sdH   = ants_test::slurpFile(SRC_SETTINGSDIALOG_H);
+    const std::string sdCpp = ants_test::slurpFile(SRC_SETTINGSDIALOG_CPP);
+    const std::string cpH   = ants_test::slurpFile(SRC_CONFIGPATHS_H);
 
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);

@@ -14,16 +14,10 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -48,10 +42,10 @@ void fail(const char *label, const char *why) {
 }  // namespace
 
 TEST(VtbatchZeroCopy, Main) {
-    const std::string vtsHeader = slurp(VTSTREAM_H);
-    const std::string vtsSource = slurp(VTSTREAM_CPP);
-    const std::string twHeader = slurp(TERMINALWIDGET_H);
-    const std::string twSource = slurp(TERMINALWIDGET_CPP);
+    const std::string vtsHeader = ants_test::slurpFile(VTSTREAM_H);
+    const std::string vtsSource = ants_test::slurpFile(VTSTREAM_CPP);
+    const std::string twHeader = ants_test::slurpFile(TERMINALWIDGET_H);
+    const std::string twSource = ants_test::slurpFile(TERMINALWIDGET_CPP);
 
     if (vtsHeader.empty()) return fail("setup", "vtstream.h not readable");
     if (vtsSource.empty()) return fail("setup", "vtstream.cpp not readable");

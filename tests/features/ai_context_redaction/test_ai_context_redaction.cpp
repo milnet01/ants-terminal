@@ -9,6 +9,7 @@
 #include "secretredact.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <QString>
 
 #include <cstdio>
@@ -67,17 +68,6 @@ void expectSurvives(const QString &out, const QString &expectedFragment)
     }
 }
 
-std::string slurp(const char *path)
-{
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 } // namespace
 
@@ -324,7 +314,7 @@ TEST(AiContextRedaction, Main) {
 
     {
         g_currentCase = "sendRequest_wires_scrub";
-        const std::string src = slurp(SRC_AIDIALOG_CPP);
+        const std::string src = ants_test::slurpFile(SRC_AIDIALOG_CPP);
         const std::string marker = "AiDialog::sendRequest";
         const auto pos = src.find(marker);
         if (pos == std::string::npos) {
@@ -365,7 +355,7 @@ TEST(AiContextRedaction, Main) {
 
     {
         g_currentCase = "user_informed_on_redaction";
-        const std::string src = slurp(SRC_AIDIALOG_CPP);
+        const std::string src = ants_test::slurpFile(SRC_AIDIALOG_CPP);
         const auto pos = src.find("AiDialog::sendRequest");
         if (pos != std::string::npos) {
             const std::string body = src.substr(pos, 3500);

@@ -3,6 +3,7 @@
 // / stats verb are exercised by their own test bundles.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -17,16 +18,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 std::string between(const std::string &src, const std::string &begin,
                     const std::string &end) {
@@ -42,7 +33,7 @@ std::string between(const std::string &src, const std::string &begin,
 // INV-14 (a) — refreshAutoModelSwitch reads claudeAutoModel() and
 // returns immediately when switch_enabled is false (default-off).
 TEST(ModelAutoSwitchActuator, Inv14BailsWhenDisabled) {
-    const std::string src = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     const std::string body = between(
         src, "void ClaudeStatusBarController::refreshAutoModelSwitch()",
         "qint64 ClaudeStatusBarController::kMaxDwellSentinel");
@@ -66,7 +57,7 @@ TEST(ModelAutoSwitchActuator, Inv14BailsWhenDisabled) {
 // INV-14 (b) — refreshModelChip suppresses the Shape A chip when the
 // autonomous switcher is enabled.
 TEST(ModelAutoSwitchActuator, Inv14ChipSuppressedWhenEnabled) {
-    const std::string src = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     const std::string body = between(
         src, "void ClaudeStatusBarController::refreshModelChip()",
         "void ClaudeStatusBarController::refreshAutoModelSwitch");
@@ -88,7 +79,7 @@ TEST(ModelAutoSwitchActuator, Inv14ChipSuppressedWhenEnabled) {
 
 // INV-14 (c) — the 2 s status timer drives the actuator.
 TEST(ModelAutoSwitchActuator, Inv14WiredOnStatusTimer) {
-    const std::string src = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     // Look for the connect line tying m_statusTimer to
     // refreshAutoModelSwitch — same shape MainWindow uses for the
     // other status-timer slots.

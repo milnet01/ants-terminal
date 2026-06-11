@@ -19,15 +19,9 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -43,8 +37,8 @@ int fail(const char *label, const char *why) {
 static int runMain() {
     // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
-    const std::string rcSrc = slurp(SRC_RC_CPP);
-    const std::string rcHdr = slurp(SRC_RC_HEADER);
+    const std::string rcSrc = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
     if (rcSrc.empty()) return fail("INV-7", "remotecontrol.cpp not readable");
     if (rcHdr.empty()) return fail("INV-7", "remotecontrol.h not readable");
 

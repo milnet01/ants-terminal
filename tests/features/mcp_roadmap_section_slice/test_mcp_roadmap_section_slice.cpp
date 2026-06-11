@@ -2,6 +2,7 @@
 // See tests/features/mcp_roadmap_section_slice/spec.md.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -22,13 +23,6 @@
 
 namespace {
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 // Region: `// ANTS-1287` registration extension to the next
 // `tools.append(roadmapTool)` line. Matches the source layout
@@ -41,7 +35,7 @@ size_t roadmapToolBlockEnd(const std::string &ci, size_t start) {
 
 // REG-1
 TEST(McpRoadmapSectionSlice, SectionArgPresentInRegistration) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     const auto pos = ci.find("// ANTS-1287");
     ASSERT_NE(pos, std::string::npos)
@@ -55,7 +49,7 @@ TEST(McpRoadmapSectionSlice, SectionArgPresentInRegistration) {
 
 // REG-2
 TEST(McpRoadmapSectionSlice, SchemaSectionPropertyOptional) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     const auto pos = ci.find("// ANTS-1287");
     ASSERT_NE(pos, std::string::npos);
@@ -77,7 +71,7 @@ TEST(McpRoadmapSectionSlice, SchemaSectionPropertyOptional) {
 
 // REG-3
 TEST(McpRoadmapSectionSlice, CmdRoadmapQueryExtractsSection) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("req.value(QStringLiteral(\"section\")).toString()"),
               std::string::npos)
@@ -92,7 +86,7 @@ TEST(McpRoadmapSectionSlice, CmdRoadmapQueryExtractsSection) {
 
 // REG-4
 TEST(McpRoadmapSectionSlice, BadSectionErrorCodePresent) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("\"bad_section\""), std::string::npos)
         << "bad_section error code not emitted on unknown slug";
@@ -100,7 +94,7 @@ TEST(McpRoadmapSectionSlice, BadSectionErrorCodePresent) {
 
 // REG-5
 TEST(McpRoadmapSectionSlice, SectionEchoHygieneMatchesInv11) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const auto pos = rc.find("\"bad_section\"");
     ASSERT_NE(pos, std::string::npos);
@@ -121,7 +115,7 @@ TEST(McpRoadmapSectionSlice, SectionEchoHygieneMatchesInv11) {
 
 // REG-6
 TEST(McpRoadmapSectionSlice, CacheMembersDeclaredInHeader) {
-    const std::string rh = slurp(SRC_REMOTECONTROL_H_PATH);
+    const std::string rh = ants_test::slurpFile(SRC_REMOTECONTROL_H_PATH);
     ASSERT_FALSE(rh.empty());
     EXPECT_NE(rh.find("m_roadmapIndex"), std::string::npos)
         << "m_roadmapIndex member missing from remotecontrol.h";
@@ -135,7 +129,7 @@ TEST(McpRoadmapSectionSlice, CacheMembersDeclaredInHeader) {
 
 // REG-7
 TEST(McpRoadmapSectionSlice, ProviderLambdaForwardsSection) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(mw.empty());
     // The lambda extracts `args.value("section")` with an isString()
     // gate (parity with the status arg) and forwards via req["section"].

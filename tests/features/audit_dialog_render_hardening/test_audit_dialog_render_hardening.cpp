@@ -5,6 +5,7 @@
 // attribute carrying untrusted aiReasoning is double-quoted (ANTS-1830).
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -12,13 +13,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -28,7 +22,7 @@ bool contains(const std::string &hay, const char *needle) {
 
 // INV-1 (ANTS-1826) — cleartext-key refusal in the AI-triage POST.
 TEST(AuditDialogRenderHardening, AiTriageRefusesCleartextKey) {
-    const std::string src = slurp(SRC_AUDITDIALOG_PATH);
+    const std::string src = ants_test::slurpFile(SRC_AUDITDIALOG_PATH);
     ASSERT_FALSE(src.empty());
 
     // Reuses the shared LlmClient predicate rather than re-deriving the test.
@@ -44,7 +38,7 @@ TEST(AuditDialogRenderHardening, AiTriageRefusesCleartextKey) {
 
 // INV-2 (ANTS-1830) — verdict-badge title is double-quoted, not single-quoted.
 TEST(AuditDialogRenderHardening, VerdictBadgeTitleIsDoubleQuoted) {
-    const std::string src = slurp(SRC_AUDITDIALOG_PATH);
+    const std::string src = ants_test::slurpFile(SRC_AUDITDIALOG_PATH);
     ASSERT_FALSE(src.empty());
 
     // The pre-fix single-quoted form must be gone.

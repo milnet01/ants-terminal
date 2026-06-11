@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_SECUREIO_H_PATH
 #error "SRC_SECUREIO_H_PATH compile definition required"
@@ -54,12 +55,6 @@ namespace {
 
 namespace SME = SessionMemoryEngine;
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 int dirMode(const QString &path) {
     struct stat st{};
@@ -177,13 +172,13 @@ void testMutateLocked() {
 // ---- Wiring greps (INV-8) -----------------------------------------
 
 void testWiring() {
-    const std::string secio = slurp(SRC_SECUREIO_H_PATH);
-    const std::string sm    = slurp(SRC_SESSIONMANAGER_CPP_PATH);
-    const std::string sme   = slurp(SRC_SESSIONMEMORYENGINE_CPP_PATH);
-    const std::string fp    = slurp(SRC_AUDITFPLEDGER_CPP_PATH);
-    const std::string af    = slurp(SRC_AUDITAUTOFIX_CPP_PATH);
-    const std::string ta    = slurp(SRC_TESTAUDITDIALOG_CPP_PATH);
-    const std::string rc    = slurp(SRC_RC_CPP);
+    const std::string secio = ants_test::slurpFile(SRC_SECUREIO_H_PATH);
+    const std::string sm    = ants_test::slurpFile(SRC_SESSIONMANAGER_CPP_PATH);
+    const std::string sme   = ants_test::slurpFile(SRC_SESSIONMEMORYENGINE_CPP_PATH);
+    const std::string fp    = ants_test::slurpFile(SRC_AUDITFPLEDGER_CPP_PATH);
+    const std::string af    = ants_test::slurpFile(SRC_AUDITAUTOFIX_CPP_PATH);
+    const std::string ta    = ants_test::slurpFile(SRC_TESTAUDITDIALOG_CPP_PATH);
+    const std::string rc    = ants_test::slurpFile(SRC_RC_CPP);
 
     // ANTS-1821 — helper defined; sessionDir + saveStore use it; the
     // mkpath-then-chmod idiom is gone from sessionDir.

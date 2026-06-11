@@ -2,6 +2,7 @@
 // See tests/features/roadmap_section_cache_lru/spec.md.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -16,13 +17,6 @@
 
 namespace {
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -32,7 +26,7 @@ bool contains(const std::string &hay, const char *needle) {
 
 // INV-1: cap constant declared in remotecontrol.h.
 TEST(RoadmapSectionCacheLru, CapConstantDeclared) {
-    const std::string h = slurp(SRC_REMOTECONTROL_H_PATH);
+    const std::string h = ants_test::slurpFile(SRC_REMOTECONTROL_H_PATH);
     ASSERT_FALSE(h.empty());
     EXPECT_TRUE(contains(h,
         "static constexpr int    kRoadmapSectionCacheCap = 64"))
@@ -41,7 +35,7 @@ TEST(RoadmapSectionCacheLru, CapConstantDeclared) {
 
 // INV-2: LRU member is a QList<QString>.
 TEST(RoadmapSectionCacheLru, LruMemberDeclared) {
-    const std::string h = slurp(SRC_REMOTECONTROL_H_PATH);
+    const std::string h = ants_test::slurpFile(SRC_REMOTECONTROL_H_PATH);
     ASSERT_FALSE(h.empty());
     EXPECT_TRUE(contains(h, "QList<QString>"))
         << "QList<QString> not found in remotecontrol.h";
@@ -57,7 +51,7 @@ TEST(RoadmapSectionCacheLru, LruMemberDeclared) {
 // less meaningful (the original 200 covered three clears; we now
 // have four siblings sitting together).
 TEST(RoadmapSectionCacheLru, StaleWipeClearsAllThree) {
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(cpp.empty());
     const auto idxPos = cpp.find("m_roadmapIndex.clear();");
     ASSERT_NE(idxPos, std::string::npos)
@@ -78,7 +72,7 @@ TEST(RoadmapSectionCacheLru, StaleWipeClearsAllThree) {
 // between the contains() check and the MRU bump; window widened
 // to 500 chars to accommodate it.
 TEST(RoadmapSectionCacheLru, HitPathBumpsToMru) {
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(cpp.empty());
     const auto hitPos = cpp.find(
         "m_roadmapSectionCache.contains(sec->slug)");
@@ -95,7 +89,7 @@ TEST(RoadmapSectionCacheLru, HitPathBumpsToMru) {
 // Insert-path eviction: after the insert, push slug to MRU and
 // evict tail while over cap.
 TEST(RoadmapSectionCacheLru, InsertPathEvictsTail) {
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(cpp.empty());
     const auto insPos = cpp.find(
         "m_roadmapSectionCache.insert(sec->slug, sectionBullets)");

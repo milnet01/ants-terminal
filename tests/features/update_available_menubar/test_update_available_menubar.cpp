@@ -12,16 +12,10 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -34,8 +28,8 @@ void fail(const char *label, const char *why) {
 }  // namespace
 
 TEST(UpdateAvailableMenubar, Main) {
-    const std::string header = slurp(MAINWINDOW_H);
-    const std::string source = slurp(MAINWINDOW_CPP);
+    const std::string header = ants_test::slurpFile(MAINWINDOW_H);
+    const std::string source = ants_test::slurpFile(MAINWINDOW_CPP);
     if (header.empty()) return fail("setup", "mainwindow.h not readable");
     if (source.empty()) return fail("setup", "mainwindow.cpp not readable");
 

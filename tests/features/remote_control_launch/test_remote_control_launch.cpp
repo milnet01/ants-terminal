@@ -23,8 +23,11 @@ static int runMain() {
     const std::string mwc = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
     const std::string mc  = ants_test::slurpFile(SRC_MAIN_CPP);
     if (rc.empty() || mwc.empty() || mc.empty()) {
+        // ANTS-2060 — return failure (not std::exit, which would abort the
+        // whole shared gtest bundle); the caller's ASSERT_EQ(0, runMain())
+        // then fails just this test.
         std::fprintf(stderr, "cannot open source files\n");
-        std::exit(2);
+        return 1;
     }
 
     int failures = 0;

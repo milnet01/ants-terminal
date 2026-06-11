@@ -4,6 +4,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -14,16 +15,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -34,7 +25,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // INV-1 — finalisation loop sets version on every descriptor.
 TEST(mcp_tool_descriptor_version, Inv1FinalisationLoopPresent) {
     expect_reset();
-    const std::string cpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(cpp, "ANTS-1354"),
            "INV-1: ANTS-1354 anchor present in tools/list builder");
     expect(contains(cpp,
@@ -46,7 +37,7 @@ TEST(mcp_tool_descriptor_version, Inv1FinalisationLoopPresent) {
 // INV-2 — SemVer-of-tools policy documented at the call site.
 TEST(mcp_tool_descriptor_version, Inv2SemverPolicyDocumented) {
     expect_reset();
-    const std::string cpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(cpp, "SemVer-\n                // of-tools") ||
            contains(cpp, "SemVer-of-tools policy") ||
            contains(cpp, "SemVer-\n                // of tools"),
@@ -59,7 +50,7 @@ TEST(mcp_tool_descriptor_version, Inv2SemverPolicyDocumented) {
 // INV-3 — per-tool override is non-destructive.
 TEST(mcp_tool_descriptor_version, Inv3PerToolOverrideNonDestructive) {
     expect_reset();
-    const std::string cpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(cpp, "if (!t.contains(QStringLiteral(\"version\")))"),
            "INV-3: default-fill loop guards on the version field "
            "being absent, so a tool that explicitly set its own "

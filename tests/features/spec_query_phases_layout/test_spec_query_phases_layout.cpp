@@ -3,6 +3,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -17,16 +18,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -37,7 +28,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // INV-1 — id validator accepts ANTS-NNNN AND phase_*.
 TEST(spec_query_phases_layout, Inv1IdValidatorAcceptsBothShapes) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "isValidSpecId"),
            "INV-1: isValidSpecId helper present");
     expect(contains(cpp, "ANTS-"),
@@ -50,7 +41,7 @@ TEST(spec_query_phases_layout, Inv1IdValidatorAcceptsBothShapes) {
 // INV-2 — per-id-shape routing.
 TEST(spec_query_phases_layout, Inv2NoCrossDirFallback) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // The resolver dispatches: ANTS- prefix → docs/specs/;
     // phase_ prefix → docs/phases/. Source-grep for the routing.
     expect(contains(cpp, "docs/specs/"),
@@ -67,7 +58,7 @@ TEST(spec_query_phases_layout, Inv2NoCrossDirFallback) {
 // INV-3 — source field echoed.
 TEST(spec_query_phases_layout, Inv3SourceFieldEchoed) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "result[\"source\"]") ||
            contains(cpp, "result[QStringLiteral(\"source\")]"),
            "INV-3: response carries `source` field");
@@ -82,7 +73,7 @@ TEST(spec_query_phases_layout, Inv3SourceFieldEchoed) {
 // INV-4 — LayoutEnvelope phasesDir field + phases_dir JSON key.
 TEST(spec_query_phases_layout, Inv4LayoutEnvelopeCarriesPhasesDir) {
     expect_reset();
-    const std::string cpp = slurp(SRC_PROJECTLAYOUTENGINE_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_PROJECTLAYOUTENGINE_CPP_PATH);
     expect(contains(cpp, "phasesDir") || contains(cpp, "phases_dir"),
            "INV-4: phases_dir field referenced in projectlayoutengine.cpp");
     expect(contains(cpp, "docs/phases"),
@@ -99,7 +90,7 @@ TEST(spec_query_phases_layout, Inv4LayoutEnvelopeCarriesPhasesDir) {
 // bump satisfies it.
 TEST(spec_query_phases_layout, Inv5ProbeSetVersionBumped) {
     expect_reset();
-    const std::string h = slurp(SRC_PROJECTLAYOUTENGINE_H_PATH);
+    const std::string h = ants_test::slurpFile(SRC_PROJECTLAYOUTENGINE_H_PATH);
     const bool ge4 =
         contains(h, "kProbeSetVersion  = 4") ||
         contains(h, "kProbeSetVersion = 4") ||
@@ -115,7 +106,7 @@ TEST(spec_query_phases_layout, Inv5ProbeSetVersionBumped) {
 // INV-6 — cmdInvariantCheck scans both dirs, adds new fields.
 TEST(spec_query_phases_layout, Inv6InvariantCheckScansBothDirs) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "phases_scanned"),
            "INV-6: phases_scanned field emitted");
     expect(contains(cpp, "total_scanned"),
@@ -125,7 +116,7 @@ TEST(spec_query_phases_layout, Inv6InvariantCheckScansBothDirs) {
 
 TEST(spec_query_phases_layout, Inv6SpecsScannedRetainsSpecsOnlyCount) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // The specs_scanned field must continue to be assigned from the
     // specs-only file count (back-compat).
     expect(contains(cpp, "specs_scanned"),

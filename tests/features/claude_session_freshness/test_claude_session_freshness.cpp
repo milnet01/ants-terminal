@@ -14,6 +14,7 @@
 #include "claudeintegration.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -46,13 +47,6 @@ namespace {
 #define DIE_IF_FALSE(expr, label) \
     do { if (!(expr)) die(label); } while (0)
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) die(std::string("cannot open ") + path);
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool writeWithMtime(const QString &path,
                     const QByteArray &content,
@@ -341,7 +335,7 @@ void testEncodeProjectPath() {
 }
 
 void testWiring() {
-    const std::string cicpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cicpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     // Locate the body of activeSessionPath.
     const std::string sigPrefix =

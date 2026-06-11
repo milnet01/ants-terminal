@@ -10,6 +10,7 @@
 #include "claudeintegration.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QString>
 #include <QStringLiteral>
@@ -30,13 +31,6 @@
 
 namespace {
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 }  // namespace
 
@@ -153,7 +147,7 @@ TEST(McpOutputSanitisation, ToolNameInAttribute) {
 
 // REG-1 — helper declared static on ClaudeIntegration in the header.
 TEST(McpOutputSanitisationWiring, HelperDeclaredInHeader) {
-    const std::string h = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
+    const std::string h = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
     ASSERT_FALSE(h.empty());
     EXPECT_NE(h.find("static QString wrapMcpData("), std::string::npos)
         << "wrapMcpData static declaration missing from "
@@ -165,7 +159,7 @@ TEST(McpOutputSanitisationWiring, HelperDeclaredInHeader) {
 // at the helper site: the close tag of the wrap, and the
 // QString::replace target. The dispatch-site change adds none.
 TEST(McpOutputSanitisationWiring, HelperDefinitionContainsWrapTemplate) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
 
     // The helper's opening tag template (with the %1 placeholder).
@@ -186,7 +180,7 @@ TEST(McpOutputSanitisationWiring, HelperDefinitionContainsWrapTemplate) {
 // `// ANTS-1284 — record dispatch` comment so future refactors that
 // move the call elsewhere are flagged.
 TEST(McpOutputSanitisationWiring, DispatchSiteCallsHelper) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
 
     auto pos1284 = ci.find("// ANTS-1284 — record dispatch");
@@ -211,7 +205,7 @@ TEST(McpOutputSanitisationWiring, DispatchSiteCallsHelper) {
 // loudly if a future change adds or removes an exemption without
 // updating the test.
 TEST(McpOutputSanitisationWiring, ControlPlaneExemptSetExact) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
 
     auto pos = ci.find("isControlPlane");
@@ -229,7 +223,7 @@ TEST(McpOutputSanitisationWiring, ControlPlaneExemptSetExact) {
 // discover it. The wrap now lives in the "## MCP tool authoring" section
 // (it moved out of "## Conventions" when CLAUDE.md was reorganised).
 TEST(McpOutputSanitisationWiring, ConventionDocumentedInClaudeMd) {
-    const std::string md = slurp(ANTS_CLAUDE_MD_PATH);
+    const std::string md = ants_test::slurpFile(ANTS_CLAUDE_MD_PATH);
     ASSERT_FALSE(md.empty());
 
     auto secStart = md.find("## MCP tool authoring");

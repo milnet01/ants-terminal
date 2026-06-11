@@ -4,6 +4,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -21,16 +22,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -41,7 +32,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // INV-1 — max_match_bytes arg parsed, out-of-range → default 0.
 TEST(workspace_search_payload_knobs, Inv1MaxMatchBytesParse) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "\"max_match_bytes\""),
            "INV-1: max_match_bytes arg name present");
     expect(contains(cpp, "cmdWorkspaceSearch"),
@@ -52,7 +43,7 @@ TEST(workspace_search_payload_knobs, Inv1MaxMatchBytesParse) {
 // INV-2 — text clipped to exactly max_match_bytes when clipped.
 TEST(workspace_search_payload_knobs, Inv2TextClippedToBudgetExactByteCount) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // Anchor: named clip helper or inline clip site that uses the
     // 3-byte ellipsis (UTF-8 "…" = E2 80 A6).
     expect(contains(cpp, "rcClipMatchBytes") ||
@@ -70,7 +61,7 @@ TEST(workspace_search_payload_knobs, Inv2TextClippedToBudgetExactByteCount) {
 // INV-2b — context entries clipped too.
 TEST(workspace_search_payload_knobs, Inv2ContextEntriesClipped) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // Anchor: clip helper called on context_before / context_after
     // OR the helper operates over a generic field name.
     expect(contains(cpp, "rcClipMatchBytes") ||
@@ -82,7 +73,7 @@ TEST(workspace_search_payload_knobs, Inv2ContextEntriesClipped) {
 // INV-2c — short field emitted verbatim (no ellipsis appended).
 TEST(workspace_search_payload_knobs, Inv2ShortFieldEmittedVerbatim) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // Anchor: the clip path has a guard for the short-field case
     // (size <= max_match_bytes → no-op).
     expect(contains(cpp, "max_match_bytes") &&
@@ -97,7 +88,7 @@ TEST(workspace_search_payload_knobs, Inv2ShortFieldEmittedVerbatim) {
 // INV-3 — clip does NOT split UTF-8 code points.
 TEST(workspace_search_payload_knobs, Inv3ClipDoesNotSplitCodePoints) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // Anchor: the clip path uses Qt's QString::left (which operates
     // on QChar code-points, not bytes) OR explicitly checks UTF-8
     // continuation bytes (0x80-0xBF). Either way is safe.
@@ -110,7 +101,7 @@ TEST(workspace_search_payload_knobs, Inv3ClipDoesNotSplitCodePoints) {
 // INV-4 — dedup key unaffected by clip (clip runs after dedup).
 TEST(workspace_search_payload_knobs, Inv4DedupKeyUnaffectedByClip) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // The pipeline order (per §2.5) is:
     // 1. rg matches
     // 2. dedup (text.simplified())
@@ -144,7 +135,7 @@ TEST(workspace_search_payload_knobs, Inv4DedupKeyUnaffectedByClip) {
 // INV-5 — headline_only emits {file, line, headline}.
 TEST(workspace_search_payload_knobs, Inv5HeadlineOnlyKeySet) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "\"headline_only\""),
            "INV-5: headline_only arg name present");
     expect(contains(cpp, "\"headline\""),
@@ -155,7 +146,7 @@ TEST(workspace_search_payload_knobs, Inv5HeadlineOnlyKeySet) {
 // INV-5b — also_at never clipped (no text field to begin with).
 TEST(workspace_search_payload_knobs, Inv5AlsoAtNeverClipped) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // also_at entries are {file, line} only. The clip helper
     // should only touch fields named "text" or "headline".
     expect(contains(cpp, "max_match_bytes") &&
@@ -168,7 +159,7 @@ TEST(workspace_search_payload_knobs, Inv5AlsoAtNeverClipped) {
 // INV-6 — envelope echo only when feature activated.
 TEST(workspace_search_payload_knobs, Inv6EchoActivationGated) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // The echo path must guard on the activation condition
     // (max_match_bytes > 0; headline_only == true).
     expect(contains(cpp, "max_match_bytes") &&
@@ -186,7 +177,7 @@ TEST(workspace_search_payload_knobs, Inv6EchoActivationGated) {
 // INV-6b — error envelopes never carry the new fields.
 TEST(workspace_search_payload_knobs, Inv6NoEchoOnError) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // The echo lives in the ok:true emission path; error envelopes
     // (wsErr() / bad_pattern / rg_failed) return before the echo.
     expect(contains(cpp, "out[\"ok\"]         = true;") ||
@@ -198,7 +189,7 @@ TEST(workspace_search_payload_knobs, Inv6NoEchoOnError) {
 // INV-7 — tools/list schema enumerates both new args.
 TEST(workspace_search_payload_knobs, Inv7ToolsListEnumerates) {
     expect_reset();
-    const std::string cpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     // Anchor: props["max_match_bytes"] and props["headline_only"]
     // populated in the workspace_search descriptor block.
     expect(contains(cpp, "props[\"max_match_bytes\"]"),

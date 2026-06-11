@@ -8,6 +8,7 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_MAINWINDOW_PATH
 #error "SRC_MAINWINDOW_PATH compile definition required"
@@ -25,21 +26,12 @@
 #error "SRC_OPAQUESTATUSBAR_PATH compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
 
 TEST(TabbarStatusbarOpaque, Main) {
-    const std::string mw   = slurp(SRC_MAINWINDOW_PATH);
-    const std::string ctbC = slurp(SRC_COLOREDTABBAR_CPP_PATH);
-    const std::string ctbH = slurp(SRC_COLOREDTABBAR_H_PATH);
-    const std::string osb  = slurp(SRC_OPAQUESTATUSBAR_PATH);
+    const std::string mw   = ants_test::slurpFile(SRC_MAINWINDOW_PATH);
+    const std::string ctbC = ants_test::slurpFile(SRC_COLOREDTABBAR_CPP_PATH);
+    const std::string ctbH = ants_test::slurpFile(SRC_COLOREDTABBAR_H_PATH);
+    const std::string osb  = ants_test::slurpFile(SRC_OPAQUESTATUSBAR_PATH);
 
     int failures = 0;
     auto fail = [&](const char *msg) {

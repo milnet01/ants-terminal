@@ -5,6 +5,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -17,16 +18,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -58,7 +49,7 @@ std::vector<Registration> registrations(const std::string &mw) {
 // INV-1 — registerToolProvider takes a CallerCwdContract.
 TEST(mcp_call_site_contract, Inv1HeaderSignature) {
     expect_reset();
-    const std::string h = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
+    const std::string h = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
     expect(contains(h, "registerToolProvider(const QString &name,"),
            "INV-1: registerToolProvider header signature missing");
     expect(contains(h, "CallerCwdContract contract"),
@@ -74,7 +65,7 @@ TEST(mcp_call_site_contract, Inv1HeaderSignature) {
 // INV-2 — every call site passes a contract.
 TEST(mcp_call_site_contract, Inv2EveryCallSitePassesContract) {
     expect_reset();
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     const auto regs = registrations(mw);
     expect(!regs.empty(),
            "INV-2: registrations regex returned 0 hits — "
@@ -117,7 +108,7 @@ TEST(mcp_call_site_contract, Inv2EveryCallSitePassesContract) {
 // INV-3 — drift assertion present in the registrar body.
 TEST(mcp_call_site_contract, Inv3DriftAssertionPresent) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const auto pos = ci.find(
         "void ClaudeIntegration::registerToolProvider(");
     ASSERT_NE(pos, std::string::npos)
@@ -140,7 +131,7 @@ TEST(mcp_call_site_contract, Inv3DriftAssertionPresent) {
 // INV-4 — value type carries the contract.
 TEST(mcp_call_site_contract, Inv4MapValueTypeCarriesContract) {
     expect_reset();
-    const std::string h = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
+    const std::string h = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
     expect(contains(h, "RegisteredTool") ||
            contains(h, "std::pair<ToolHandler, CallerCwdContract>"),
            "INV-4: m_toolProviders value type must bundle the "
@@ -157,7 +148,7 @@ TEST(mcp_call_site_contract, Inv4MapValueTypeCarriesContract) {
 // INV-5 — dispatcher prefers the stored contract.
 TEST(mcp_call_site_contract, Inv5DispatcherUsesStoredContract) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     // The dispatcher's contract-check region. Locate by anchor.
     const auto pos = ci.find(
         "per-tool caller_cwd contract check");
@@ -187,7 +178,7 @@ TEST(mcp_call_site_contract, Inv5DispatcherUsesStoredContract) {
 // bypass the caller_cwd_required refusal at dispatch).
 TEST(mcp_call_site_contract, Inv6DriftRefusesInRelease) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const auto pos = ci.find(
         "void ClaudeIntegration::registerToolProvider(");
     ASSERT_NE(pos, std::string::npos)

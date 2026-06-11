@@ -4,6 +4,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -14,16 +15,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -45,7 +36,7 @@ size_t countOccurrences(const std::string &hay,
 // INV-1 — recordDispatch declared in claudeintegration.h.
 TEST(mcp_record_dispatch_unification, Inv1DeclarationPresent) {
     expect_reset();
-    const std::string h = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
+    const std::string h = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
     expect(contains(h, "recordDispatch"),
            "INV-1: recordDispatch declared in claudeintegration.h");
     expect(contains(h, "ANTS-1402"),
@@ -56,7 +47,7 @@ TEST(mcp_record_dispatch_unification, Inv1DeclarationPresent) {
 // INV-2 — body gates recordCall on result == "ok".
 TEST(mcp_record_dispatch_unification, Inv2BodyGatesRecordCall) {
     expect_reset();
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const auto pos = cc.find(
         "ClaudeIntegration::recordDispatch");
     ASSERT_NE(pos, std::string::npos)
@@ -78,7 +69,7 @@ TEST(mcp_record_dispatch_unification, Inv2BodyGatesRecordCall) {
 // no standalone m_tokenUsage.recordCall under toolHandled.
 TEST(mcp_record_dispatch_unification, Inv3SuccessBranchSingleHook) {
     expect_reset();
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(cc, "ANTS-1402-INV-3"),
            "INV-3 anchor comment present at dispatch success site");
     // Anchor the count to the toolHandled true-branch — locate
@@ -99,7 +90,7 @@ TEST(mcp_record_dispatch_unification, Inv3SuccessBranchSingleHook) {
 // "tool_not_found" literal.
 TEST(mcp_record_dispatch_unification, Inv4FailureBranchUsesHook) {
     expect_reset();
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(cc, "ANTS-1402-INV-4"),
            "INV-4 anchor comment present at dispatch failure site");
     const auto pos = cc.find("ANTS-1402-INV-4");
@@ -118,7 +109,7 @@ TEST(mcp_record_dispatch_unification, Inv4FailureBranchUsesHook) {
 // recordDispatch's body (one call site total in the cpp file).
 TEST(mcp_record_dispatch_unification, Inv5RecordCallSingleSiteInCpp) {
     expect_reset();
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const size_t n = countOccurrences(cc, "m_tokenUsage.recordCall(");
     expect(n == 1,
            ("INV-5: m_tokenUsage.recordCall( must appear exactly "

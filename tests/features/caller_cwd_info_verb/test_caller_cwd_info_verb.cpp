@@ -2,6 +2,7 @@
 // See tests/features/caller_cwd_info_verb/spec.md.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -16,19 +17,12 @@
 
 namespace {
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 }  // namespace
 
 // REG-1 — verb registered in mainwindow.cpp.
 TEST(CallerCwdInfoVerb, RegisteredAsMcpTool) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(mw.empty());
     EXPECT_NE(mw.find("registerToolProvider(\"caller_cwd_info\""),
               std::string::npos)
@@ -39,7 +33,7 @@ TEST(CallerCwdInfoVerb, RegisteredAsMcpTool) {
 // REG-2 — handler delegates to resolveCallerCwdRoot and emits
 // the four envelope fields.
 TEST(CallerCwdInfoVerb, HandlerDelegatesToHelper) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(mw.empty());
     const auto pos = mw.find("registerToolProvider(\"caller_cwd_info\"");
     ASSERT_NE(pos, std::string::npos);
@@ -65,7 +59,7 @@ TEST(CallerCwdInfoVerb, HandlerDelegatesToHelper) {
 // REG-3 — schema block lists the verb with caller_cwd and an
 // empty required array.
 TEST(CallerCwdInfoVerb, SchemaListed) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     const auto pos = cc.find("t[\"name\"] = \"caller_cwd_info\"");
     ASSERT_NE(pos, std::string::npos)
@@ -91,7 +85,7 @@ TEST(CallerCwdInfoVerb, SchemaListed) {
 // `t["name"] = "caller_cwd_info"` line (the first occurrence in
 // the file) doesn't shadow the classification check.
 TEST(CallerCwdInfoVerb, ClassifiedAsOptional) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     const auto helperPos = cc.find(
         "callerCwdContractFor(const QString &toolName)");
@@ -116,7 +110,7 @@ TEST(CallerCwdInfoVerb, ClassifiedAsOptional) {
 
 // REG-5 — sourceToString enumerates all four Source values.
 TEST(CallerCwdInfoVerb, SourceToStringCoversAllValues) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(mw.empty());
     const auto pos = mw.find("sourceToString(ants::ResolvedRoot::Source");
     ASSERT_NE(pos, std::string::npos)

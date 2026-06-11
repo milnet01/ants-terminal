@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <fstream>
 #include <regex>
 #include <sstream>
@@ -52,15 +53,6 @@
 #error "SRC_CLAUDESTATUSWIDGETS_CPP_PATH compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
 
 // Extract a function body from a translation unit by signature prefix.
 // Returns substring from the first matching signature to the next
@@ -77,15 +69,15 @@ static std::string functionBody(const std::string &src, const std::string &sig) 
 TEST(ClaudeBgTasksButton, Main) {
     int failures = 0;
 
-    const std::string bgcpp = slurp(SRC_BGTASKS_CPP_PATH);
-    const std::string bgh   = slurp(SRC_BGTASKS_H_PATH);
-    const std::string dlgcpp = slurp(SRC_BGDIALOG_CPP_PATH);
-    const std::string dlgh   = slurp(SRC_BGDIALOG_H_PATH);
-    const std::string mw     = slurp(SRC_MAINWINDOW_CPP_PATH);
-    const std::string cml    = slurp(SRC_CMAKELISTS_PATH);
-    const std::string cicpp  = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string cih    = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
-    const std::string csw    = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string bgcpp = ants_test::slurpFile(SRC_BGTASKS_CPP_PATH);
+    const std::string bgh   = ants_test::slurpFile(SRC_BGTASKS_H_PATH);
+    const std::string dlgcpp = ants_test::slurpFile(SRC_BGDIALOG_CPP_PATH);
+    const std::string dlgh   = ants_test::slurpFile(SRC_BGDIALOG_H_PATH);
+    const std::string mw     = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cml    = ants_test::slurpFile(SRC_CMAKELISTS_PATH);
+    const std::string cicpp  = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cih    = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
+    const std::string csw    = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
 
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);
@@ -438,7 +430,7 @@ TEST(ClaudeBgTasksButton, Main) {
         std::string hPath(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
         if (hPath.size() > 4)
             hPath = hPath.substr(0, hPath.size() - 4) + ".h";
-        const std::string cswh = slurp(hPath.c_str());
+        const std::string cswh = ants_test::slurpFile(hPath.c_str());
 
         std::regex bgTrackersHash(R"(QHash\s*<\s*pid_t\s*,\s*ClaudeBgTaskTracker)");
         if (!std::regex_search(cswh, bgTrackersHash)) {

@@ -3,6 +3,7 @@
 // tests/features/mcp_token_usage_tool/spec.md for the contract.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -23,13 +24,6 @@
 
 namespace {
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 // Region: `// ANTS-1284 …` to the next `// ANTS-NNNN` or the
 // `result["tools"] = tools;` line, whichever comes first. Same
@@ -46,7 +40,7 @@ size_t tokenUsageBlockEnd(const std::string &ci, size_t start) {
 
 // REG-1
 TEST(McpTokenUsageTool, ToolNameInToolsList) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     EXPECT_NE(ci.find("\"token_usage\""), std::string::npos)
         << "tool name token_usage missing from claudeintegration.cpp";
@@ -54,7 +48,7 @@ TEST(McpTokenUsageTool, ToolNameInToolsList) {
 
 // REG-2
 TEST(McpTokenUsageTool, ProviderRegisteredInMainWindow) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(mw.empty());
     EXPECT_NE(mw.find("registerToolProvider(\"token_usage\""),
               std::string::npos)
@@ -64,7 +58,7 @@ TEST(McpTokenUsageTool, ProviderRegisteredInMainWindow) {
 
 // REG-3
 TEST(McpTokenUsageTool, CmdMethodDeclaredInHeader) {
-    const std::string rch = slurp(SRC_REMOTECONTROL_H_PATH);
+    const std::string rch = ants_test::slurpFile(SRC_REMOTECONTROL_H_PATH);
     ASSERT_FALSE(rch.empty());
     EXPECT_NE(rch.find("cmdTokenUsage"), std::string::npos)
         << "cmdTokenUsage missing from remotecontrol.h";
@@ -72,7 +66,7 @@ TEST(McpTokenUsageTool, CmdMethodDeclaredInHeader) {
 
 // REG-4
 TEST(McpTokenUsageTool, CmdMethodDefinedInCpp) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("RemoteControl::cmdTokenUsage"), std::string::npos)
         << "RemoteControl::cmdTokenUsage definition missing from "
@@ -81,7 +75,7 @@ TEST(McpTokenUsageTool, CmdMethodDefinedInCpp) {
 
 // REG-5
 TEST(McpTokenUsageTool, SchemaSetsAdditionalPropertiesFalse) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     const auto block_start = ci.find("// ANTS-1284 — token_usage");
     ASSERT_NE(block_start, std::string::npos)
@@ -103,7 +97,7 @@ TEST(McpTokenUsageTool, SchemaSetsAdditionalPropertiesFalse) {
 
 // ANTS-1355 REG-V2-1 — response builder emits envelope total_wrap_bytes.
 TEST(McpTokenUsageTool, V2EnvelopeIncludesTotalWrapBytes) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("env[\"total_wrap_bytes\"]"), std::string::npos)
         << "cmdTokenUsage must surface total_wrap_bytes on the envelope";
@@ -111,7 +105,7 @@ TEST(McpTokenUsageTool, V2EnvelopeIncludesTotalWrapBytes) {
 
 // ANTS-1355 REG-V2-2 — per-tool entry emits wrap_bytes + duration fields.
 TEST(McpTokenUsageTool, V2PerCallEntryIncludesWrapAndLatency) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     for (const char *key : {
             "c[\"wrap_bytes\"]",
@@ -127,7 +121,7 @@ TEST(McpTokenUsageTool, V2PerCallEntryIncludesWrapAndLatency) {
 // ANTS-1355 REG-V2-3 — dispatch site computes wrapBytes + durUs and
 // passes both to recordCall (5-argument v2 signature).
 TEST(McpTokenUsageTool, V2DispatchSiteWiresFiveArgRecordCall) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     // Locate the `m_tokenUsage.recordCall(` invocation site.
     const auto recordCallPos = ci.find("m_tokenUsage.recordCall(");
@@ -147,7 +141,7 @@ TEST(McpTokenUsageTool, V2DispatchSiteWiresFiveArgRecordCall) {
 
 // ANTS-1355 REG-V2-4 — wrap delta is computed as outBytes - rawBytes.
 TEST(McpTokenUsageTool, V2WrapDeltaComputedAsOutMinusRaw) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     EXPECT_NE(ci.find("outBytes - rawBytes"), std::string::npos)
         << "wrap_bytes must be computed as outBytes - rawBytes per "
@@ -156,7 +150,7 @@ TEST(McpTokenUsageTool, V2WrapDeltaComputedAsOutMinusRaw) {
 
 // REG-6
 TEST(McpTokenUsageTool, SchemaListsOptionalArgsAndEmptyRequired) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     const auto block_start = ci.find("// ANTS-1284 — token_usage");
     ASSERT_NE(block_start, std::string::npos);

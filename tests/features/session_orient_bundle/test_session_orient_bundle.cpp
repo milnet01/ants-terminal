@@ -22,16 +22,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -42,7 +32,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // INV-1 — envelope carries the three composed-verb keys.
 TEST(session_orient_bundle, Inv1EnvelopeShape) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "cmdSessionOrient"),
            "INV-1: cmdSessionOrient symbol present");
     expect(contains(cpp, "\"current_state\"") &&
@@ -55,7 +45,7 @@ TEST(session_orient_bundle, Inv1EnvelopeShape) {
 // INV-2 — upstream roadmap_query uses mode:section_index + status:active.
 TEST(session_orient_bundle, Inv2SectionsIndexModeAndStatus) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     const auto pos = cpp.find("cmdSessionOrient");
     if (pos == std::string::npos) {
         expect(false, "INV-2: cmdSessionOrient body not found");
@@ -74,7 +64,7 @@ TEST(session_orient_bundle, Inv2SectionsIndexModeAndStatus) {
 // INV-3 — etag allowlist membership.
 TEST(session_orient_bundle, Inv3EtagAllowlistMembership) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     // Anchor on the function definition line, not the first mention
     // (which is a comment far above the actual body).
     const auto isEtagPos = ci.find(
@@ -93,7 +83,7 @@ TEST(session_orient_bundle, Inv3EtagAllowlistMembership) {
 // INV-4 — Required CallerCwdContract.
 TEST(session_orient_bundle, Inv4CallerCwdRequired) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const auto fnPos = ci.find(
         "ClaudeIntegration::callerCwdContractFor");
     if (fnPos == std::string::npos) {
@@ -110,7 +100,7 @@ TEST(session_orient_bundle, Inv4CallerCwdRequired) {
 // INV-5 — tools/list descriptor.
 TEST(session_orient_bundle, Inv5ToolsListDescribesBundle) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     // Descriptor block must reference the verb name AND its three
     // composed children for caller orientation.
     expect(contains(ci, "\"session_orient\""),
@@ -121,7 +111,7 @@ TEST(session_orient_bundle, Inv5ToolsListDescribesBundle) {
 // INV-6 — top-level ok reflects all-three success.
 TEST(session_orient_bundle, Inv6PartialUpstreamFailure) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     const auto pos = cpp.find("cmdSessionOrient");
     if (pos == std::string::npos) {
         expect(false, "INV-6: cmdSessionOrient body not found");
@@ -140,7 +130,7 @@ TEST(session_orient_bundle, Inv6PartialUpstreamFailure) {
 // INV-7 — tokenCostFor bucket.
 TEST(session_orient_bundle, Inv7TokenCostBucketRegistered) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const auto tcPos = ci.find("tokenCostFor");
     if (tcPos == std::string::npos) {
         // Fall back: look for the literal table pattern.

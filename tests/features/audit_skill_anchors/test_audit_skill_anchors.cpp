@@ -6,6 +6,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -16,16 +17,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -36,7 +27,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // INV-1 — spec file readable.
 TEST(audit_skill_anchors, Inv1SpecPresent) {
     expect_reset();
-    const std::string spec = slurp(SPEC_ANTS_1410_PATH);
+    const std::string spec = ants_test::slurpFile(SPEC_ANTS_1410_PATH);
     expect(spec.size() > 1000,
            "INV-1: ANTS-1410.md is non-trivial size");
     EXPECT_EQ(0, expect_failures());
@@ -45,7 +36,7 @@ TEST(audit_skill_anchors, Inv1SpecPresent) {
 // INV-2 — step 1.5 anchor.
 TEST(audit_skill_anchors, Inv2Step1_5Anchor) {
     expect_reset();
-    const std::string spec = slurp(SPEC_ANTS_1410_PATH);
+    const std::string spec = ants_test::slurpFile(SPEC_ANTS_1410_PATH);
     expect(contains(spec, "Enumerate project-local CI gates"),
            "INV-2: step 1.5 anchor present");
     expect(contains(spec, "step 1.5"),
@@ -56,7 +47,7 @@ TEST(audit_skill_anchors, Inv2Step1_5Anchor) {
 // INV-3 — all 7 spec INVs documented.
 TEST(audit_skill_anchors, Inv3SpecInvariantsDocumented) {
     expect_reset();
-    const std::string spec = slurp(SPEC_ANTS_1410_PATH);
+    const std::string spec = ants_test::slurpFile(SPEC_ANTS_1410_PATH);
     for (int n = 1; n <= 7; ++n) {
         const std::string needle =
             std::string("**INV-") + std::to_string(n) + " /";
@@ -70,7 +61,7 @@ TEST(audit_skill_anchors, Inv3SpecInvariantsDocumented) {
 // INV-4 — exclusion lists named.
 TEST(audit_skill_anchors, Inv4ExclusionListsPresent) {
     expect_reset();
-    const std::string spec = slurp(SPEC_ANTS_1410_PATH);
+    const std::string spec = ants_test::slurpFile(SPEC_ANTS_1410_PATH);
     // Binary-name exclusion table.
     expect(contains(spec, "ruff") && contains(spec, "bandit") &&
            contains(spec, "cppcheck") && contains(spec, "semgrep") &&
@@ -86,7 +77,7 @@ TEST(audit_skill_anchors, Inv4ExclusionListsPresent) {
 // INV-5 — pair-spec ref to ANTS-1351.
 TEST(audit_skill_anchors, Inv5PairsWithAnts1351) {
     expect_reset();
-    const std::string spec = slurp(SPEC_ANTS_1410_PATH);
+    const std::string spec = ants_test::slurpFile(SPEC_ANTS_1410_PATH);
     expect(contains(spec, "ANTS-1351"),
            "INV-5: cross-ref to ANTS-1351 present");
     expect(contains(spec, "stopgap"),

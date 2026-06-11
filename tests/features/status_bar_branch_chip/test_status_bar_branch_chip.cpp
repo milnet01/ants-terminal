@@ -15,16 +15,10 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -62,7 +56,7 @@ TEST(StatusBarBranchChip, Main) {
         return fail("INV-6", "MAIN should not be primary (case-sensitive)");
 
     // INV-7: mainwindow.cpp consults the helper.
-    const std::string source = slurp(MAINWINDOW_CPP);
+    const std::string source = ants_test::slurpFile(MAINWINDOW_CPP);
     if (source.empty()) return fail("setup", "mainwindow.cpp not readable");
     if (!contains(source, "branchchip::isPrimaryBranch"))
         return fail("INV-7",

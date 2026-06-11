@@ -7,6 +7,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -25,16 +26,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -50,7 +41,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // the whole response.
 TEST(McpToolsListSchema, EmptySchemaTypeDeclared) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     expect(contains(ci, "emptySchema[\"type\"] = \"object\""),
            "INV-3",
@@ -64,7 +55,7 @@ TEST(McpToolsListSchema, EmptySchemaTypeDeclared) {
 // One assertion per tool so the failure message names the offending tool.
 TEST(McpToolsListSchema, ZeroArgToolsHaveInputSchema) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     // Pattern: <toolVar>["inputSchema"] = <something>;
     // The pre-fix code had no such assignments for these tools. INV-2
@@ -115,7 +106,7 @@ TEST(McpToolsListSchema, ZeroArgToolsHaveInputSchema) {
 // and "tools.append(" calls — they must be equal.
 TEST(McpToolsListSchema, AllRegisteredToolsHaveInputSchema) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     // Locate the tools/list block.
     const std::string kStart = "\"tools/list\"";
@@ -177,7 +168,7 @@ TEST(McpToolsListSchema, AllRegisteredToolsHaveInputSchema) {
 // verbs via MainWindow::terminalForCaller().
 TEST(McpToolsListSchema, RegistryLambdasForwardCallerCwd) {
     expect_reset();
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
 
     // ANTS-1393 — roadmap_query lambda forwards caller_cwd into req.
     expect(contains(mw, "req[\"caller_cwd\"] = callerCwd"),

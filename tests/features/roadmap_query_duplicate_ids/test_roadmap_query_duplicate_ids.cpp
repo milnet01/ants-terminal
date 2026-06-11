@@ -20,16 +20,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -50,7 +40,7 @@ int count(const std::string &hay, const std::string &needle) {
 // INV-1 — helper exists and skips empty-id entries.
 TEST(roadmap_query_duplicate_ids, Inv1HelperComputesOccurrences) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "rcComputeDuplicateIds"),
            "INV-1: rcComputeDuplicateIds helper present");
     expect(contains(cpp, "occurrences"),
@@ -64,7 +54,7 @@ TEST(roadmap_query_duplicate_ids, Inv1HelperComputesOccurrences) {
 // assign m_roadmapCacheBullets; each must call the detector.
 TEST(roadmap_query_duplicate_ids, Inv2RecomputeOnCacheFill) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // The recompute callsite signature is the helper invocation
     // immediately under each `m_roadmapCacheBullets = arr;` assignment.
     // ANTS-2067 — normalise whitespace so the single needle matches at
@@ -86,7 +76,7 @@ TEST(roadmap_query_duplicate_ids, Inv2RecomputeOnCacheFill) {
 // other cache members.
 TEST(roadmap_query_duplicate_ids, Inv3CacheWipeClearsDescriptors) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "m_roadmapCacheDuplicateIds = QJsonArray();"),
            "INV-3: stale-cache wipe also clears the duplicate-id "
            "cache");
@@ -97,7 +87,7 @@ TEST(roadmap_query_duplicate_ids, Inv3CacheWipeClearsDescriptors) {
 // reachable from all three response-assembly paths.
 TEST(roadmap_query_duplicate_ids, Inv45EmissionGatedAndThreePaths) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // The emission idiom appears once per response shape (section_
     // index, section, full-file). Each writes the cached array under
     // the `duplicate_ids` key when non-empty.
@@ -148,7 +138,7 @@ TEST(roadmap_query_duplicate_ids, Inv7CanonicalIdPredicate) {
 // size budget.
 TEST(roadmap_query_duplicate_ids, Inv8DetectorFiltersAndCaps) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     expect(contains(cpp, "RoadmapIndex::isCanonicalId"),
            "INV-8: rcComputeDuplicateIds keys on the canonical-ID "
            "predicate so anchors/hashes don't masquerade as IDs");
@@ -161,7 +151,7 @@ TEST(roadmap_query_duplicate_ids, Inv8DetectorFiltersAndCaps) {
 // INV-6 — MCP descriptor advertises the field.
 TEST(roadmap_query_duplicate_ids, Inv6McpDescriptorMentionsField) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const auto pos = ci.find("\"roadmap_query\"");
     ASSERT_NE(pos, std::string::npos)
         << "INV-6 precondition: roadmap_query tool name missing "
@@ -188,7 +178,7 @@ TEST(roadmap_query_duplicate_ids, Inv6McpDescriptorMentionsField) {
 // lands — the same hand-edit drift `tools/check-roadmap.sh` guards.
 TEST(roadmap_query_duplicate_ids, LiveRoadmapNoDuplicateBullets) {
     expect_reset();
-    const std::string md = slurp(ROADMAP_MD_PATH);
+    const std::string md = ants_test::slurpFile(ROADMAP_MD_PATH);
     // Hand-rolled scanner mirroring rcComputeDuplicateIds' predicate
     // (line begins with bullet status emoji + bracketed ANTS-id).
     // ASCII status check + UTF-8 emoji presence is plenty for

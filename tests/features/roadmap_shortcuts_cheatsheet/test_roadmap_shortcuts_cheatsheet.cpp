@@ -29,16 +29,10 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -124,7 +118,7 @@ static int runMain() {
 
     // INV-2 source-grep: kRoadmapShortcuts table + static_assert.
     {
-        const std::string src = slurp(ROADMAPDIALOG_CPP);
+        const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty())
             return fail("Source-grep", "roadmapdialog.cpp not readable");
         if (!contains(src, "constexpr ShortcutRow kRoadmapShortcuts[]"))
@@ -171,7 +165,7 @@ static int runMain() {
 
     // INV-3 source-grep: header declares the override.
     {
-        const std::string srch = slurp(ROADMAPSHORTCUTSDIALOG_H);
+        const std::string srch = ants_test::slurpFile(ROADMAPSHORTCUTSDIALOG_H);
         if (srch.empty())
             return fail("Source-grep",
                 "roadmapshortcutsdialog.h not readable");
@@ -179,7 +173,7 @@ static int runMain() {
             return fail("INV-3",
                 "RoadmapShortcutsDialog::keyPressEvent override missing "
                 "— `?` on the cheatsheet itself must toggle it closed.");
-        const std::string srcc = slurp(ROADMAPSHORTCUTSDIALOG_CPP);
+        const std::string srcc = ants_test::slurpFile(ROADMAPSHORTCUTSDIALOG_CPP);
         if (srcc.empty())
             return fail("Source-grep",
                 "roadmapshortcutsdialog.cpp not readable");

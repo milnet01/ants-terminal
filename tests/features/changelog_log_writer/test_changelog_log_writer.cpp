@@ -8,6 +8,7 @@
 #include "remotecontrol.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QByteArray>
 #include <QDir>
@@ -70,11 +71,6 @@ QString rmPath(const QString &root) {
     return QDir(root).filePath(QStringLiteral("ROADMAP.md"));
 }
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) { std::fprintf(stderr, "setup-fail: %s\n", path); std::exit(2); }
-    std::stringstream ss; ss << f.rdbuf(); return ss.str();
-}
 bool contains(const std::string &h, const std::string &n) {
     return h.find(n) != std::string::npos;
 }
@@ -365,8 +361,8 @@ TEST(changelog_log_writer, Inv7AddFromRoadmapCollapsesMultiLineHeadline) {
 // INV-8 — contract + descriptor surface (source-scrape).
 TEST(changelog_log_writer, Inv8ContractAndDescriptor) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     expect(contains(ci,
         "if (toolName == QStringLiteral(\"changelog_log\"))      return C::Required;"),
         "INV-8: changelog_log classified Required in callerCwdContractFor");

@@ -8,6 +8,7 @@
 #include "remotecontrol.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QByteArray>
 #include <QDir>
@@ -95,16 +96,6 @@ QJsonObject req(const QString &root, const QString &op) {
     return o;
 }
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -333,8 +324,8 @@ TEST(roadmap_log_annotate, GfmAnnotateByHeadline) {
 // descriptor/schema surface (source-grep).
 TEST(roadmap_log_annotate, Inv1Inv8Inv9SourceSurface) {
     expect_reset();
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     expect(contains(rc, "int appendBodyNote("),
            "INV-1: shared appendBodyNote helper present");

@@ -2,6 +2,7 @@
 // See tests/features/mcp_session_memory/spec.md.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -22,13 +23,6 @@
 
 namespace {
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 // Region: `// ANTS-1283` session-memory registration block end.
 size_t sessionMemoryBlockEnd(const std::string &ci, size_t start) {
@@ -39,7 +33,7 @@ size_t sessionMemoryBlockEnd(const std::string &ci, size_t start) {
 
 // REG-1
 TEST(McpSessionMemory, ToolNameRegisteredWithAnchor) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     const auto pos = ci.find("// ANTS-1283");
     ASSERT_NE(pos, std::string::npos)
@@ -54,7 +48,7 @@ TEST(McpSessionMemory, ToolNameRegisteredWithAnchor) {
 
 // REG-2
 TEST(McpSessionMemory, SchemaRequiredArrayMatchesInv9) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     const auto pos = ci.find("// ANTS-1283");
     ASSERT_NE(pos, std::string::npos);
@@ -81,7 +75,7 @@ TEST(McpSessionMemory, SchemaRequiredArrayMatchesInv9) {
 // extracted; flipping the assertion is the regression-lock that the
 // cross-project tenancy bypass stays closed.
 TEST(McpSessionMemory, CmdExtractsAllArgs) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const auto pos = rc.find(
         "QJsonDocument RemoteControl::cmdSessionMemory");
@@ -126,7 +120,7 @@ TEST(McpSessionMemory, CmdExtractsAllArgs) {
 // RcGate::checkCallerCwd call (i.e. the gate is INSIDE an else
 // branch keyed off the read-op condition).
 TEST(McpSessionMemory, RcGateOnWriteOpsOnly) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const auto pos = rc.find(
         "QJsonDocument RemoteControl::cmdSessionMemory");
@@ -162,7 +156,7 @@ TEST(McpSessionMemory, RcGateOnWriteOpsOnly) {
 
 // REG-4
 TEST(McpSessionMemory, ErrorCodesComplete) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const auto pos = rc.find(
         "QJsonDocument RemoteControl::cmdSessionMemory");
@@ -186,7 +180,7 @@ TEST(McpSessionMemory, ErrorCodesComplete) {
 
 // REG-5
 TEST(McpSessionMemory, ProviderLambdaRegisteredInMainWindow) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(mw.empty());
     EXPECT_NE(mw.find("registerToolProvider(\"session_memory\""),
               std::string::npos)
@@ -201,7 +195,7 @@ TEST(McpSessionMemory, ProviderLambdaRegisteredInMainWindow) {
 
 // REG-6
 TEST(McpSessionMemory, HandlerDelegatesToEngine) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     const auto pos = rc.find(
         "QJsonDocument RemoteControl::cmdSessionMemory");

@@ -14,6 +14,7 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #ifndef SRC_SETTINGSDIALOG_CPP_PATH
 #  error "SRC_SETTINGSDIALOG_CPP_PATH compile definition required"
 #endif
@@ -27,16 +28,6 @@ namespace {
 
 
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &h, const std::string &n) {
     return h.find(n) != std::string::npos;
@@ -86,8 +77,8 @@ std::string extractFnBody(const std::string &src, const std::string &fnName) {
 
 static int runMain() {
     expect_reset();
-    const std::string cpp = slurp(SRC_SETTINGSDIALOG_CPP_PATH);
-    const std::string hdr = slurp(SRC_SETTINGSDIALOG_H_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_SETTINGSDIALOG_CPP_PATH);
+    const std::string hdr = ants_test::slurpFile(SRC_SETTINGSDIALOG_H_PATH);
 
     // I1+I2+I3 (declarations) — pending state declared in the
     // header.

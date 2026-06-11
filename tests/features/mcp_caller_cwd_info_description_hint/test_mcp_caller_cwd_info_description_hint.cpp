@@ -4,6 +4,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -14,16 +15,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -48,7 +39,7 @@ std::string callerCwdInfoBlock(const std::string &src) {
 TEST(mcp_caller_cwd_info_description_hint, Inv1HintInDescription) {
     expect_reset();
     const std::string block =
-        callerCwdInfoBlock(slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH));
+        callerCwdInfoBlock(ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH));
     expect(!block.empty(),
            "INV-1 setup: caller_cwd_info descriptor block located");
     expect(contains(block, "Use this FIRST when"),
@@ -68,7 +59,7 @@ TEST(mcp_caller_cwd_info_description_hint, Inv1HintInDescription) {
 TEST(mcp_caller_cwd_info_description_hint, Inv2SelectionHintPreserved) {
     expect_reset();
     const std::string block =
-        callerCwdInfoBlock(slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH));
+        callerCwdInfoBlock(ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH));
     expect(!block.empty(),
            "INV-2 setup: caller_cwd_info descriptor block located");
     expect(contains(block, "t[\"selection_hint\"] = QStringLiteral("),

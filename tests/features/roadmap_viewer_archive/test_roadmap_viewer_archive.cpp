@@ -26,15 +26,9 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -60,9 +54,9 @@ QString writeFile(const QString &dir, const QString &name,
 static int runMain() {
     // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
-    const std::string source = slurp(ROADMAPDIALOG_CPP);
-    const std::string header = slurp(ROADMAPDIALOG_H);
-    const std::string standard = slurp(ROADMAP_FORMAT_MD);
+    const std::string source = ants_test::slurpFile(ROADMAPDIALOG_CPP);
+    const std::string header = ants_test::slurpFile(ROADMAPDIALOG_H);
+    const std::string standard = ants_test::slurpFile(ROADMAP_FORMAT_MD);
     if (source.empty()) return fail("INV-1", "roadmapdialog.cpp not readable");
     if (header.empty()) return fail("INV-1", "roadmapdialog.h not readable");
     if (standard.empty())
@@ -357,7 +351,7 @@ static int runMain() {
         for (const QString &name : entries) {
             if (name == QStringLiteral("roadmapdialog.cpp") ||
                 name == QStringLiteral("roadmapdialog.h")) continue;
-            const std::string body = slurp(
+            const std::string body = ants_test::slurpFile(
                 (std::string(SRC_DIR) + "/" + name.toStdString()).c_str());
             if (contains(body, "archiveDirFor") ||
                 contains(body, "historyArchiveDir")) {
@@ -573,7 +567,7 @@ static int runMain() {
 
     // INV-14c source-grep both atomic-write paths.
     {
-        const std::string body = slurp(rotateScript.toUtf8().constData());
+        const std::string body = ants_test::slurpFile(rotateScript.toUtf8().constData());
         if (body.empty())
             return fail("INV-14c", "rotate-roadmap.sh not readable");
         // Two distinct mktemp-then-mv pairs: one for the archive, one

@@ -10467,16 +10467,18 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
 
 Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, assertions, accuracy, splitting, flakiness, hardcoded_data, naming · Raw: 371 · Actionable: 10
 
-- 📋 [ANTS-2060] **std::exit(2) in inline slurp() helpers hard-kills the gtest bundle process on source-file open failure.**
+- ✅ [ANTS-2060] **std::exit(2) in inline slurp() helpers hard-kills the gtest bundle process on source-file open failure.**
   - File: tests/features/ai_context_redaction/test_ai_context_redaction.cpp:76
   - Dimension: isolation
   - Severity: HIGH
   - Fix: Replace the ~50 inline slurp()/std::exit(2) helpers across source-grep feature tests with ants_test::slurpFile (srcgrep.h, returns empty on failure) + an ASSERT_FALSE(src.empty())/GTEST_SKIP at the call site, so a missing source file fails just that test instead of aborting all sibling tests in the shared bundle.
+  Resolved (2026-06-11): all source-file-open std::exit(2) paths eliminated. Migrated ~212 per-file `std::string slurp(...)` helpers (the std::exit-on-missing-file bundle-killers) to the shared ants_test::slurpFile (srcgrep.h; added a std::string overload so std::string-path callers migrate cleanly). The 4 remaining source-read exits (shell_command_wiring, tab_rename_persist, model_recommender slurpFile, remote_control_launch + remote_control_get_text empty-checks) now return empty/non-zero so a missing source fails just that test, not the whole shared gtest bundle. Remaining std::exit in the tree are NOT source-file-open: concurrent_writer_lock (intentional forked-child exit), a fixture string literal, and 4 temp-file-write/assert setup guards (out of this item's stated scope). Full suite 2012/2012 green.
 - 📋 [ANTS-2061] **Source-grep test helpers (slurp/contains/between/functionBody/writeFile/readFile) copy-pasted across dozens of feature t ….**
   - File: tests/features/roadmap_log_annotate/test_roadmap_log_annotate.cpp:98
   - Dimension: duplication
   - Severity: MEDIUM
   - Fix: Consolidate the duplicated helpers into tests/_support/ (extend srcgrep.h; add expect/roadmap/xdg helper headers) and include them, instead of re-declaring per file. Pairs with the std::exit migration above (same call sites).
+  Progress (2026-06-11): the dominant duplication — the per-file `slurp` helper (213 copies) — is consolidated to ants_test::slurpFile as part of ANTS-2060. srcgrep.h extended (std::string slurpFile overload + squashWhitespace) and tests/_support/xdg_guard.h added (ANTS-2062); expect.h already shared. Remaining: contains/has, writeFile/readFile, between, and the roadmap writeRoadmap/writeCounter helpers are still per-file. NOTE for the follow-up: a blind `contains(`->`ants_test::contains(` rename is UNSAFE — it collides with Qt's member `obj.contains(...)`; the free-function consolidation needs a guarded rename (only definitions + unqualified call sites), so it was deliberately deferred rather than mechanised here.
 - ✅ [ANTS-2062] **Env-var mutations (XDG_CONFIG_HOME/XDG_CACHE_HOME/TMPDIR/KDE_FULL_SESSION) and setTestModeEnabled(true) not restored — l ….**
   - File: tests/features/roadmap_density/test_roadmap_density.cpp:215
   - Dimension: isolation

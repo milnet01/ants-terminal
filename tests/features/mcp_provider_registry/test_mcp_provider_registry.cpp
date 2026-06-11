@@ -14,6 +14,7 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -29,16 +30,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 
 
@@ -58,7 +49,7 @@ TEST(McpProviderRegistry, Inv1NoStdFunctionProviderMembers) {
     // Spec INV-5: 0 std::function<...> m_*Provider members in
     // claudeintegration.h. Catches accidental re-introduction of
     // a per-tool member after the registry consolidation.
-    const std::string hdr = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
+    const std::string hdr = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
     std::regex memberRe(R"(std::function\s*<[^>]*>\s+m_\w+Provider\b)");
     const size_t n = countMatches(hdr, memberRe);
     expect(n == 0, "INV-1",
@@ -71,7 +62,7 @@ TEST(McpProviderRegistry, Inv1NoStdFunctionProviderMembers) {
 TEST(McpProviderRegistry, Inv2NoSetXProviderDecls) {
     expect_reset();
     // Setter decls are gone; registry replaces them.
-    const std::string hdr = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
+    const std::string hdr = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
     std::regex setterRe(R"(void\s+set[A-Z][A-Za-z]*Provider\b)");
     const size_t n = countMatches(hdr, setterRe);
     expect(n == 0, "INV-2",
@@ -83,7 +74,7 @@ TEST(McpProviderRegistry, Inv2NoSetXProviderDecls) {
 
 TEST(McpProviderRegistry, Inv3RegistrarAndTypeAlias) {
     expect_reset();
-    const std::string hdr = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
+    const std::string hdr = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
     expect(hdr.find("registerToolProvider(const QString &name") != std::string::npos,
            "INV-3a",
            "claudeintegration.h missing registerToolProvider declaration");
@@ -98,7 +89,7 @@ TEST(McpProviderRegistry, Inv3RegistrarAndTypeAlias) {
 
 TEST(McpProviderRegistry, Inv4ExplicitMapInclude) {
     expect_reset();
-    const std::string hdr = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
+    const std::string hdr = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
     std::regex mapRe(R"(#include\s*<map>)");
     expect(std::regex_search(hdr, mapRe),
            "INV-4",
@@ -108,7 +99,7 @@ TEST(McpProviderRegistry, Inv4ExplicitMapInclude) {
 
 TEST(McpProviderRegistry, Inv5DispatcherCollapsed) {
     expect_reset();
-    const std::string cpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     std::regex outwardRe(
         R"((?:else )?if\s*\(\s*toolName\s*==\s*"[^"]+"\s*&&\s*m_\w+Provider\s*\))");
     const size_t outward = countMatches(cpp, outwardRe);
@@ -129,7 +120,7 @@ TEST(McpProviderRegistry, Inv5DispatcherCollapsed) {
 
 TEST(McpProviderRegistry, Inv6RegistryReferencedFromDispatch) {
     expect_reset();
-    const std::string cpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     std::regex reg(R"(\bm_toolProviders\b)");
     const size_t n = countMatches(cpp, reg);
     expect(n >= 2, "INV-6",
@@ -147,7 +138,7 @@ TEST(McpProviderRegistry, Inv7AtLeastTwelveRegisterCalls) {
     // on future docstring mentions of the function name. ANTS-1253
     // landed with 12 calls; subsequent tools (ANTS-1254 +) add new
     // calls, so the floor is "at least 12".
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     std::regex callRe(R"(->registerToolProvider\(\")");
     const size_t n = countMatches(mw, callRe);
     expect(n >= 12, "INV-7",
@@ -163,8 +154,8 @@ TEST(McpProviderRegistry, Inv8SchemaMatchesRegistry) {
     // (`<toolVar>["name"] = "<name>"`) other than get_session_info
     // must have a matching registerToolProvider("<name>", …) call
     // in mainwindow.cpp.
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     // Custom raw-string delimiter ("rx") because the regex literal
     // itself contains `)"` which would close the default `R"(…)"` form.
     std::regex schemaRe(R"rx(\["name"\]\s*=\s*"([a-z_]+)")rx");
@@ -196,7 +187,7 @@ TEST(McpProviderRegistry, Inv9GetTextIsDoubleGate) {
     // lambda body in mainwindow.cpp gates BOTH tab and lines on
     // isDouble() so tab=0 and lines=0 are valid values distinct from
     // omission.
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     const size_t pos = mw.find("registerToolProvider(\"get_text\"");
     expect(pos != std::string::npos, "INV-9a",
            "mainwindow.cpp missing registerToolProvider(\"get_text\", …)");
@@ -218,7 +209,7 @@ TEST(McpProviderRegistry, Inv10SessionInfoCarveoutPreserved) {
     expect_reset();
     // get_session_info is the lone inline branch — it reads
     // ClaudeIntegration's own private state, so it has no provider.
-    const std::string cpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const size_t pos = cpp.find("toolName == \"get_session_info\"");
     expect(pos != std::string::npos, "INV-10a",
            "claudeintegration.cpp missing get_session_info inline branch");

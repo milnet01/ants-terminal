@@ -15,6 +15,7 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_TERMINALWIDGET_H_PATH
 #error "SRC_TERMINALWIDGET_H_PATH compile definition required"
@@ -23,19 +24,10 @@
 #error "SRC_TERMINALWIDGET_CPP_PATH compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
 
 TEST(TerminalPartialUpdateMode, Main) {
-    const std::string hdr = slurp(SRC_TERMINALWIDGET_H_PATH);
-    const std::string src = slurp(SRC_TERMINALWIDGET_CPP_PATH);
+    const std::string hdr = ants_test::slurpFile(SRC_TERMINALWIDGET_H_PATH);
+    const std::string src = ants_test::slurpFile(SRC_TERMINALWIDGET_CPP_PATH);
     int failures = 0;
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);

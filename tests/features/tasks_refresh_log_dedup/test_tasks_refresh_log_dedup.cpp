@@ -13,6 +13,7 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_CLAUDESTATUSWIDGETS_CPP_PATH
 #error "SRC_CLAUDESTATUSWIDGETS_CPP_PATH compile definition required"
@@ -20,16 +21,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -43,7 +34,7 @@ int fail(const char *label, const char *why) {
 }  // namespace
 
 static int runMain() {
-    const std::string src = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
 
     int failures = 0;
     auto inv = [&](int n, bool ok, const char *why) {

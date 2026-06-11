@@ -23,21 +23,12 @@
 #error "SRC_MAIN_CPP compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
 
 static int runMain() {
-    const std::string rc  = slurp(SRC_RC_CPP);
-    const std::string mwh = slurp(SRC_MAINWINDOW_H);
-    const std::string mwc = slurp(SRC_MAINWINDOW_CPP);
-    const std::string mc  = slurp(SRC_MAIN_CPP);
+    const std::string rc  = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string mwh = ants_test::slurpFile(SRC_MAINWINDOW_H);
+    const std::string mwc = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
+    const std::string mc  = ants_test::slurpFile(SRC_MAIN_CPP);
 
     int failures = 0;
     auto fail = [&](const char *msg) {

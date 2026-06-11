@@ -8,6 +8,7 @@
 #include "pathvalidation.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QDir>
 #include <QFile>
@@ -30,13 +31,6 @@
 
 namespace {
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 QString pathvalidationHeaderPath() {
     // The header lives next to remotecontrol.cpp.
@@ -281,7 +275,7 @@ TEST(McpPathAnchor, IsInsideProjectAnchors) {
 // WI-1: header exists and exposes the right names.
 TEST(McpPathAnchorWiring, HeaderExposesValidator) {
     const QString hp = pathvalidationHeaderPath();
-    const std::string h = slurp(hp.toUtf8().constData());
+    const std::string h = ants_test::slurpFile(hp.toUtf8().constData());
     ASSERT_FALSE(h.empty()) << "missing pathvalidation.h at "
                             << hp.toStdString();
     EXPECT_NE(h.find("namespace PathValidation"), std::string::npos);
@@ -294,7 +288,7 @@ TEST(McpPathAnchorWiring, HeaderExposesValidator) {
 // WI-2: the .cpp defines validatePath and holds the anchor logic.
 TEST(McpPathAnchorWiring, ImplDefinesValidator) {
     const QString cp = pathvalidationCppPath();
-    const std::string c = slurp(cp.toUtf8().constData());
+    const std::string c = ants_test::slurpFile(cp.toUtf8().constData());
     ASSERT_FALSE(c.empty()) << "missing pathvalidation.cpp at "
                             << cp.toStdString();
     // Definition lives inside `namespace PathValidation { ... }`, so
@@ -315,7 +309,7 @@ TEST(McpPathAnchorWiring, ImplDefinesValidator) {
 // and require that no `startsWith(rootCanonical` line is within 5
 // lines after a `canonicalFilePath()` assignment.
 TEST(McpPathAnchorWiring, RemoteControlNoInlineAnchor) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
 
     // Split into lines.
@@ -349,7 +343,7 @@ TEST(McpPathAnchorWiring, RemoteControlNoInlineAnchor) {
 
 // WI-4: count of PathValidation::validatePath( calls.
 TEST(McpPathAnchorWiring, EightValidatePathCallsites) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
     size_t count = 0;
     size_t pos = 0;
@@ -371,7 +365,7 @@ TEST(McpPathAnchorWiring, EightValidatePathCallsites) {
 // error codes, but the slice between the function header and the
 // next function definition must contain zero `bad_lane`s.
 TEST(McpPathAnchorWiring, WorkspaceSearchNoBadLane) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
 
     auto wsStart = rc.find("QJsonDocument RemoteControl::cmdWorkspaceSearch(");
@@ -391,7 +385,7 @@ TEST(McpPathAnchorWiring, WorkspaceSearchNoBadLane) {
 
 // WI-6: CMakeLists.txt lists pathvalidation.cpp in ants_core_lib.
 TEST(McpPathAnchorWiring, CMakeListsWiresPathValidation) {
-    const std::string ck = slurp(CMAKELISTS_PATH);
+    const std::string ck = ants_test::slurpFile(CMAKELISTS_PATH);
     ASSERT_FALSE(ck.empty());
     EXPECT_NE(ck.find("src/pathvalidation.cpp"), std::string::npos)
         << "ants_core_lib SOURCES list missing pathvalidation.cpp";

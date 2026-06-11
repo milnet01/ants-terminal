@@ -12,6 +12,7 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -24,16 +25,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -58,8 +49,8 @@ TEST(McpLastAuditSummarySinceCommit, WiringContract) {
     expect_reset();
 
     const std::string ciCpp =
-        slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string rcCpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string rcCpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     const std::string lasBody = lasSummaryBody(rcCpp);
 
     // Use a single large window so the schema-builder block and

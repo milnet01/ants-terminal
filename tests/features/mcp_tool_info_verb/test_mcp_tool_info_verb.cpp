@@ -4,6 +4,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -14,16 +15,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -35,7 +26,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // required name + additionalProperties:false.
 TEST(mcp_tool_info_verb, Inv1DescriptorDeclared) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(ci, "\"tool_info\""),
            "INV-1: tool_info name literal present in "
            "claudeintegration.cpp");
@@ -47,7 +38,7 @@ TEST(mcp_tool_info_verb, Inv1DescriptorDeclared) {
 // INV-2 — tools/list end stores tools into m_lastToolsList.
 TEST(mcp_tool_info_verb, Inv2SnapshotPopulatedOnToolsList) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(ci, "ANTS-1399-INV-2"),
            "INV-2 anchor comment present");
     expect(contains(ci, "m_lastToolsList = tools"),
@@ -59,7 +50,7 @@ TEST(mcp_tool_info_verb, Inv2SnapshotPopulatedOnToolsList) {
 // per-tool descriptor slice.
 TEST(mcp_tool_info_verb, Inv3HandlerEmitsDescriptorSlice) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(ci, "ANTS-1399-INV-3"),
            "INV-3 anchor comment present");
     EXPECT_EQ(0, expect_failures());
@@ -68,7 +59,7 @@ TEST(mcp_tool_info_verb, Inv3HandlerEmitsDescriptorSlice) {
 // INV-4 — unknown-name emits code:"unknown_tool" + available[].
 TEST(mcp_tool_info_verb, Inv4UnknownToolEnvelope) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(ci, "\"unknown_tool\""),
            "INV-4: unknown_tool code literal present");
     expect(contains(ci, "\"available\""),
@@ -80,7 +71,7 @@ TEST(mcp_tool_info_verb, Inv4UnknownToolEnvelope) {
 // INV-5 — missing-name emits code:"missing_name".
 TEST(mcp_tool_info_verb, Inv5MissingNameEnvelope) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(ci, "\"missing_name\""),
            "INV-5: missing_name code literal present");
     EXPECT_EQ(0, expect_failures());
@@ -89,7 +80,7 @@ TEST(mcp_tool_info_verb, Inv5MissingNameEnvelope) {
 // INV-6 — cold-snapshot emits code:"tools_not_ready".
 TEST(mcp_tool_info_verb, Inv6ColdSnapshotEnvelope) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(ci, "\"tools_not_ready\""),
            "INV-6: tools_not_ready code literal present");
     EXPECT_EQ(0, expect_failures());
@@ -98,7 +89,7 @@ TEST(mcp_tool_info_verb, Inv6ColdSnapshotEnvelope) {
 // INV-7 — classified ProcessGlobal in callerCwdContractFor.
 TEST(mcp_tool_info_verb, Inv7ContractIsProcessGlobal) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const auto helperPos = ci.find(
         "callerCwdContractFor(const QString &toolName)");
     ASSERT_NE(helperPos, std::string::npos)
@@ -125,7 +116,7 @@ TEST(mcp_tool_info_verb, Inv7ContractIsProcessGlobal) {
 // not via m_toolProviders.
 TEST(mcp_tool_info_verb, Inv8DispatchedInline) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     // Locate the get_session_info dispatch branch. tool_info
     // must be in the same `if/else if` chain — i.e. dispatched
     // before the m_toolProviders lookup.
@@ -171,7 +162,7 @@ static std::string toolInfoHandlerRegion(const std::string &ci) {
 // longer lists `name` in `required`.
 TEST(mcp_tool_info_verb, Inv9CatalogPropertyDeclared) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const std::string block = toolInfoDescriptorBlock(ci);
     ASSERT_FALSE(block.empty())
         << "INV-9 precondition: tool_info descriptor block missing";
@@ -190,7 +181,7 @@ TEST(mcp_tool_info_verb, Inv9CatalogPropertyDeclared) {
 // INV-10 — catalog branch returns the grouped envelope keys.
 TEST(mcp_tool_info_verb, Inv10CatalogEnvelope) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const std::string region = toolInfoHandlerRegion(ci);
     ASSERT_FALSE(region.empty())
         << "INV-10 precondition: tool_info handler region missing";
@@ -208,7 +199,7 @@ TEST(mcp_tool_info_verb, Inv10CatalogEnvelope) {
 // INV-11 — catalog mode with an empty snapshot emits tools_not_ready.
 TEST(mcp_tool_info_verb, Inv11CatalogColdSnapshot) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const std::string region = toolInfoHandlerRegion(ci);
     ASSERT_FALSE(region.empty());
     // The catalog sub-block runs from `if (catalogMode)` to the
@@ -232,7 +223,7 @@ TEST(mcp_tool_info_verb, Inv11CatalogColdSnapshot) {
 // fallback; categories + names emitted in sorted order (QMap).
 TEST(mcp_tool_info_verb, Inv12CategoryDerivationSorted) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const std::string region = toolInfoHandlerRegion(ci);
     ASSERT_FALSE(region.empty());
     expect(contains(region, "categoryOf"),
@@ -250,7 +241,7 @@ TEST(mcp_tool_info_verb, Inv12CategoryDerivationSorted) {
 // on empty name).
 TEST(mcp_tool_info_verb, Inv13LegacyBranchesIntact) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const std::string region = toolInfoHandlerRegion(ci);
     ASSERT_FALSE(region.empty());
     expect(contains(region, "missing_name"),

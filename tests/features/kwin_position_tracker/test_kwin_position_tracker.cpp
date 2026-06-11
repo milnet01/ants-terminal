@@ -25,16 +25,10 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -90,11 +84,11 @@ TEST(KwinPositionTracker, Main) {
     const std::string mainwinCpp = MAINWINDOW_CPP;
     const std::string cmakeLists = CMAKELISTS_TXT;
 
-    const std::string header = slurp(headerPath.c_str());
-    const std::string source = slurp(sourcePath.c_str());
-    const std::string mwH    = slurp(mainwinH.c_str());
-    const std::string mwCpp  = slurp(mainwinCpp.c_str());
-    const std::string cmake  = slurp(cmakeLists.c_str());
+    const std::string header = ants_test::slurpFile(headerPath.c_str());
+    const std::string source = ants_test::slurpFile(sourcePath.c_str());
+    const std::string mwH    = ants_test::slurpFile(mainwinH.c_str());
+    const std::string mwCpp  = ants_test::slurpFile(mainwinCpp.c_str());
+    const std::string cmake  = ants_test::slurpFile(cmakeLists.c_str());
     if (header.empty() || source.empty() || mwH.empty() ||
         mwCpp.empty() || cmake.empty())
         return fail("INV-1", "one of the source files not readable");
@@ -237,7 +231,7 @@ TEST(KwinPositionTracker, Main) {
                                          QStringLiteral("*.h")},
                              QDir::Files, QDir::NoSort);
         for (const QString &name : entries) {
-            const std::string body = slurp(
+            const std::string body = ants_test::slurpFile(
                 (std::string(SRC_DIR) + "/" + name.toStdString()).c_str());
             if (contains(body, "/tmp/kwin_pos_ants")) {
                 std::fprintf(stderr,

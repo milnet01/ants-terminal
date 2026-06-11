@@ -2,6 +2,7 @@
 // See tests/features/tool_detection_engine/spec.md.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include "tooldetectionengine.h"
 
@@ -29,13 +30,6 @@ struct PathScope {
     void set(const QByteArray &v) { qputenv("PATH", v); }
 };
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 }  // namespace
 
@@ -131,7 +125,7 @@ TEST(ToolDetectionEngine, RepeatProbesAreFree) {
 
 // TDE-8 — INV-8 source-grep: AuditDialog::toolExists delegates.
 TEST(ToolDetectionEngine, AuditDialogToolExistsDelegates) {
-    const std::string ad = slurp(SRC_AUDITDIALOG_PATH);
+    const std::string ad = ants_test::slurpFile(SRC_AUDITDIALOG_PATH);
     ASSERT_FALSE(ad.empty());
     const auto pos = ad.find("bool AuditDialog::toolExists(");
     ASSERT_NE(pos, std::string::npos)

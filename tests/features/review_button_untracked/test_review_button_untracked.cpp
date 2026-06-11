@@ -14,6 +14,7 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_MAINWINDOW_CPP_PATH
 #  error "SRC_MAINWINDOW_CPP_PATH compile definition required"
@@ -23,16 +24,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &h, const std::string &n) {
     return h.find(n) != std::string::npos;
@@ -81,7 +72,7 @@ TEST(ReviewButtonUntracked, Main) {
 
     // I5 — call site uses the helper and dropped the carve-out.
     {
-        const std::string src = slurp(SRC_MAINWINDOW_CPP_PATH);
+        const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
         expect(contains(src, "parseReviewPorcelain"),
                "I5/callsite-uses-helper");
         expect(!contains(src, "ln.startsWith(\"?? \")"),

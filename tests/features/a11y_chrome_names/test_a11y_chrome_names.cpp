@@ -28,6 +28,7 @@
 #include "titlebar.h"
 #include "commandpalette.h"
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 namespace {
 
@@ -45,12 +46,6 @@ void fail(const std::string &where, const std::string &why) {
     ++g_fails;
 }
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 int countSubstr(const std::string &hay, const char *needle) {
     int c = 0;
@@ -171,7 +166,7 @@ TEST(A11yChromeNames, Main) {
 
     // T8 — source-grep on titlebar.cpp.
     {
-        const std::string src = slurp(TITLEBAR_CPP_PATH);
+        const std::string src = ants_test::slurpFile(TITLEBAR_CPP_PATH);
         if (src.empty()) {
             fail("TITLEBAR_CPP_PATH", "could not read source");
         } else {
@@ -201,7 +196,7 @@ TEST(A11yChromeNames, Main) {
 
     // T9 — source-grep on commandpalette.cpp.
     {
-        const std::string src = slurp(COMMANDPALETTE_CPP_PATH);
+        const std::string src = ants_test::slurpFile(COMMANDPALETTE_CPP_PATH);
         if (src.empty()) {
             fail("COMMANDPALETTE_CPP_PATH", "could not read source");
         } else {

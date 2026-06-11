@@ -22,6 +22,7 @@
 #include <unistd.h>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_RC_CPP
 #error "SRC_RC_CPP compile definition required"
@@ -42,12 +43,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 // Quick check of dir mode bits. Returns -1 on failure, mode-bits
 // masked with 0777 on success.
@@ -131,8 +126,8 @@ void testEngine() {
 // ---- Wiring tests (source-grep) -----------------------------------
 
 void testWiring() {
-    const std::string rc = slurp(SRC_RC_CPP);
-    const std::string secio = slurp(SRC_SECUREIO_H_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string secio = ants_test::slurpFile(SRC_SECUREIO_H_PATH);
 
     // WI-1 — ensureSocketDir defined in secureio.h.
     {

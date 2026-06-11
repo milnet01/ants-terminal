@@ -7,6 +7,7 @@
 // Exit 0 = all invariants hold.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -21,13 +22,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool has(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -43,7 +37,7 @@ std::string from_marker(const std::string &s, const std::string &from) {
 
 // INV-1 — release.yml RC channel split (INV-8).
 TEST(ReleaseRcPipeline, Inv1ChannelSplit) {
-    const std::string yml = slurp(SRC_RELEASE_WORKFLOW_PATH);
+    const std::string yml = ants_test::slurpFile(SRC_RELEASE_WORKFLOW_PATH);
     ASSERT_FALSE(yml.empty()) << "release.yml not readable";
     EXPECT_TRUE(has(yml, "-rc[0-9]+$"))
         << "INV-8: release.yml must detect RC tags via -rc[0-9]+$";
@@ -63,7 +57,7 @@ TEST(ReleaseRcPipeline, Inv1ChannelSplit) {
 
 // INV-2 — release.yml prerelease backstop on auto-create (INV-5).
 TEST(ReleaseRcPipeline, Inv2PrereleaseBackstop) {
-    const std::string yml = slurp(SRC_RELEASE_WORKFLOW_PATH);
+    const std::string yml = ants_test::slurpFile(SRC_RELEASE_WORKFLOW_PATH);
     ASSERT_FALSE(yml.empty());
     EXPECT_TRUE(has(yml, "PRERELEASE_FLAG=\"--prerelease\""))
         << "INV-5: auto-create path must mark RC releases prerelease";
@@ -73,7 +67,7 @@ TEST(ReleaseRcPipeline, Inv2PrereleaseBackstop) {
 
 // INV-3 — cut-rc.sh prerelease mapping per subcommand (INV-5).
 TEST(ReleaseRcPipeline, Inv3CutRcPrereleaseMapping) {
-    const std::string sh = slurp(CUT_RC_SH_PATH);
+    const std::string sh = ants_test::slurpFile(CUT_RC_SH_PATH);
     ASSERT_FALSE(sh.empty()) << "cut-rc.sh not readable";
 
     // new-rc and respin create prereleases.
@@ -104,7 +98,7 @@ TEST(ReleaseRcPipeline, Inv3CutRcPrereleaseMapping) {
 
 // INV-4 — cut-rc.sh reads base from CMakeLists, never writes versions.
 TEST(ReleaseRcPipeline, Inv4BaseReadOnly) {
-    const std::string sh = slurp(CUT_RC_SH_PATH);
+    const std::string sh = ants_test::slurpFile(CUT_RC_SH_PATH);
     ASSERT_FALSE(sh.empty());
     EXPECT_TRUE(has(sh, "base_version()") &&
                 has(sh, "CMakeLists.txt"))
@@ -117,7 +111,7 @@ TEST(ReleaseRcPipeline, Inv4BaseReadOnly) {
 
 // INV-5 — one-RC-in-flight guard (§4.4).
 TEST(ReleaseRcPipeline, Inv5OneRcInFlightGuard) {
-    const std::string sh = slurp(CUT_RC_SH_PATH);
+    const std::string sh = ants_test::slurpFile(CUT_RC_SH_PATH);
     ASSERT_FALSE(sh.empty());
     EXPECT_TRUE(has(sh, "inflight_base"))
         << "§4.4: cut-rc.sh must track the in-flight RC base";
@@ -128,7 +122,7 @@ TEST(ReleaseRcPipeline, Inv5OneRcInFlightGuard) {
 
 // INV-6 — irreversible actions gated behind --push.
 TEST(ReleaseRcPipeline, Inv6PushGated) {
-    const std::string sh = slurp(CUT_RC_SH_PATH);
+    const std::string sh = ants_test::slurpFile(CUT_RC_SH_PATH);
     ASSERT_FALSE(sh.empty());
     EXPECT_TRUE(has(sh, "DO_PUSH") && has(sh, "--push"))
         << "INV-6: pushes/releases must be gated behind --push";

@@ -15,6 +15,7 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_MAINWINDOW_CPP_PATH
 #error "SRC_MAINWINDOW_CPP_PATH compile definition required"
@@ -25,16 +26,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) {
-        std::cerr << "FAIL: cannot read " << path << "\n";
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -50,8 +41,8 @@ void must(bool ok, const char *msg) {
 }  // namespace
 
 TEST(RoadmapStatusBarRefresh, Main) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
-    const std::string sb = slurp(DOCS_STATUS_BAR_STANDARD_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string sb = ants_test::slurpFile(DOCS_STATUS_BAR_STANDARD_PATH);
 
     // INV-1 — refreshRoadmapButton on m_statusTimer
     must(contains(mw,

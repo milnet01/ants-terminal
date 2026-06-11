@@ -10,6 +10,7 @@
 // SRC_REMOTECONTROL_CPP_PATH).
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -17,13 +18,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -32,8 +26,8 @@ bool contains(const std::string &hay, const char *needle) {
 }  // namespace
 
 TEST(ColdEyesFoldInFreeform, EngineDeclaresAndImplementsFreeformTemplate) {
-    const std::string hdr = slurp(SRC_COLDEYESENGINE_H_PATH);
-    const std::string src = slurp(SRC_COLDEYESENGINE_CPP_PATH);
+    const std::string hdr = ants_test::slurpFile(SRC_COLDEYESENGINE_H_PATH);
+    const std::string src = ants_test::slurpFile(SRC_COLDEYESENGINE_CPP_PATH);
     ASSERT_FALSE(hdr.empty());
     ASSERT_FALSE(src.empty());
 
@@ -60,7 +54,7 @@ TEST(ColdEyesFoldInFreeform, EngineDeclaresAndImplementsFreeformTemplate) {
 }
 
 TEST(ColdEyesFoldInFreeform, HandlerRecognisesIdAllocation) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
 
     // Locate the cmdColdEyesFoldIn function body.
@@ -93,7 +87,7 @@ TEST(ColdEyesFoldInFreeform, HandlerRecognisesIdAllocation) {
 }
 
 TEST(ColdEyesFoldInFreeform, DescriptorSurfacesParam) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
 
     // Locate the cold_eyes_fold_in descriptor block.

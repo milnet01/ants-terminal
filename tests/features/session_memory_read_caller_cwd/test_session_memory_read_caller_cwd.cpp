@@ -7,6 +7,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -17,16 +18,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -50,7 +41,7 @@ std::string bodyBetween(const std::string &cpp,
 // INV-1 — read branch present + anchored to caller_cwd directly.
 TEST(session_memory_read_caller_cwd, Inv1ReadBranchAnchorsToCallerCwd) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     const std::string body = bodyBetween(
         cpp,
         "QJsonDocument RemoteControl::cmdSessionMemory",
@@ -71,7 +62,7 @@ TEST(session_memory_read_caller_cwd, Inv1ReadBranchAnchorsToCallerCwd) {
 // branch inside the cmdSessionMemory body.
 TEST(session_memory_read_caller_cwd, Inv2WriteBranchKeepsRcGate) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     const std::string body = bodyBetween(
         cpp,
         "QJsonDocument RemoteControl::cmdSessionMemory",
@@ -93,7 +84,7 @@ TEST(session_memory_read_caller_cwd, Inv2WriteBranchKeepsRcGate) {
 // INV-3 / INV-4 / INV-4b — read-branch refusal codes.
 TEST(session_memory_read_caller_cwd, Inv3_4_4bReadRefusalCodes) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     const std::string body = bodyBetween(
         cpp,
         "QJsonDocument RemoteControl::cmdSessionMemory",
@@ -114,7 +105,7 @@ TEST(session_memory_read_caller_cwd, Inv3_4_4bReadRefusalCodes) {
 // INV-5 — project_layout follows the same canonicalise+isDir path.
 TEST(session_memory_read_caller_cwd, Inv5ProjectLayoutSamePattern) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     const std::string body = bodyBetween(
         cpp,
         "QJsonDocument RemoteControl::cmdProjectLayout",
@@ -136,7 +127,7 @@ TEST(session_memory_read_caller_cwd, Inv5ProjectLayoutSamePattern) {
 // registry.
 TEST(session_memory_read_caller_cwd, Inv6ContractRegistryEntry) {
     expect_reset();
-    const std::string cpp = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(cpp, "ANTS-1435 — session_memory"),
            "INV-6: session_memory anchor in callerCwdContractFor");
     expect(contains(cpp,
@@ -150,7 +141,7 @@ TEST(session_memory_read_caller_cwd, Inv6ContractRegistryEntry) {
 // is preserved.
 TEST(session_memory_read_caller_cwd, Inv7EnvelopeShapeParity) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     const std::string smBody = bodyBetween(
         cpp,
         "QJsonDocument RemoteControl::cmdSessionMemory",

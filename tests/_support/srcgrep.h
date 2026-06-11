@@ -18,12 +18,21 @@ namespace ants_test {
 
 // Read the entire file at `path`. Returns empty string on open failure
 // (callers can detect via `result.empty()`); errors don't print here so
-// the test harness controls the failure message.
+// the test harness controls the failure message. Crucially this NEVER
+// calls std::exit on a missing file (the anti-pattern ANTS-2060 removed:
+// a hard exit aborts the whole shared gtest bundle, killing every sibling
+// test); a missing source instead yields "" and fails just that one test.
 inline std::string slurpFile(const char *path) {
     std::ifstream f(path);
     std::stringstream ss;
     ss << f.rdbuf();
     return ss.str();
+}
+
+// std::string overload so call sites that pass a std::string path (the old
+// per-file `slurp(const std::string&)` helpers) migrate without a .c_str().
+inline std::string slurpFile(const std::string &path) {
+    return slurpFile(path.c_str());
 }
 
 // Return the body of the function whose signature starts with the

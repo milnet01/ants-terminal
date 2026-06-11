@@ -5,6 +5,7 @@
 #include "auditrunner.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -17,16 +18,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -78,12 +69,12 @@ TEST(AuditRunPartialEnvelope, Inv2PartialDerivation) {
 // INV-3 — the audit_run provider serialises the partial surface, and the
 // descriptor advertises it.
 TEST(AuditRunPartialEnvelope, Inv3EnvelopeSerialisesPartial) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     EXPECT_TRUE(contains(mw, "env[\"partial\"]"))
         << "INV-3: provider writes the partial flag";
     EXPECT_TRUE(contains(mw, "incomplete_tools"))
         << "INV-3: provider writes incomplete_tools[]";
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     EXPECT_TRUE(contains(ci, "incomplete_tools"))
         << "INV-3: audit_run descriptor advertises incomplete_tools";
 }
@@ -92,7 +83,7 @@ TEST(AuditRunPartialEnvelope, Inv3EnvelopeSerialisesPartial) {
 // serialises the reply only after runAudit returns), so a too-big/failed
 // reply still leaves a recoverable artifact. Source-order guarantee.
 TEST(AuditRunPartialEnvelope, Inv4SarifWrittenBeforeReturn) {
-    const std::string rn = slurp(SRC_AUDITRUNNER_CPP_PATH);
+    const std::string rn = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
     const auto writePos = rn.find("writeSarif(cacheSarifAbs");
     ASSERT_NE(writePos, std::string::npos)
         << "INV-4: writeSarif call present in runAudit";

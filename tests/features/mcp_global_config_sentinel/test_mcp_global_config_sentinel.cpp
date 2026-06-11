@@ -14,6 +14,7 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <QDir>
 #include <QString>
 
@@ -31,16 +32,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -52,12 +43,12 @@ TEST(McpGlobalConfigSentinel, WiringContract) {
     expect_reset();
 
     const std::string ciCpp =
-        slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string rcCpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string rcCpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
 
     const std::string rrHdrPath =
         std::string(ANTS_SOURCE_DIR) + "/src/resolvedroot.h";
-    const std::string rrHdr = slurp(rrHdrPath.c_str());
+    const std::string rrHdr = ants_test::slurpFile(rrHdrPath.c_str());
 
     // INV-1 — declaration in resolvedroot.h, namespace ants.
     expect(contains(rrHdr, "expandGlobalConfigSentinel"),

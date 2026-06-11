@@ -5,6 +5,7 @@
 #include "testauditengine.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QString>
 
@@ -17,16 +18,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -37,7 +28,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // INV-1 — partition is pure data, no QProcess.
 TEST(mcp_test_audit_trio, Inv1PartitionNoShell) {
     expect_reset();
-    const std::string cpp = slurp(SRC_TESTAUDITENGINE_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_TESTAUDITENGINE_CPP_PATH);
     expect(!contains(cpp, "QProcess"),
            "INV-1: testauditengine.cpp must not spawn QProcess");
     EXPECT_EQ(0, expect_failures());
@@ -46,7 +37,7 @@ TEST(mcp_test_audit_trio, Inv1PartitionNoShell) {
 // INV-3 — fold-in delegates to RoadmapFoldIn (single batched).
 TEST(mcp_test_audit_trio, Inv3FoldInBatchedDelegate) {
     expect_reset();
-    const std::string cpp = slurp(SRC_TESTAUDITENGINE_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_TESTAUDITENGINE_CPP_PATH);
     expect(contains(cpp, "RoadmapFoldIn::allocateIds(canon, n)"),
            "INV-3: single batched allocateIds(canon, n) call");
     expect(contains(cpp, "RoadmapFoldIn::insertBlock(canon"),
@@ -61,7 +52,7 @@ TEST(mcp_test_audit_trio, Inv3FoldInBatchedDelegate) {
 // INV-4 — partition_token via qHash (NOT SHA-256).
 TEST(mcp_test_audit_trio, Inv4TokenViaQHash) {
     expect_reset();
-    const std::string cpp = slurp(SRC_TESTAUDITENGINE_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_TESTAUDITENGINE_CPP_PATH);
     expect(contains(cpp, "qHash(callerCwd)"),
            "INV-4: token mixes qHash(callerCwd)");
     expect(contains(cpp, "qHash(scope)"),
@@ -75,7 +66,7 @@ TEST(mcp_test_audit_trio, Inv4TokenViaQHash) {
 // INV-5 — all four verbs Optional (none in Required branch).
 TEST(mcp_test_audit_trio, Inv5OptionalContract) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     // Locate the Required block (between "Required — refuse" and
     // "TabSpecific —" comments).
     const auto reqStart = ci.find("Required — refuse with caller_cwd_required");
@@ -113,7 +104,7 @@ TEST(mcp_test_audit_trio, Inv6KDimensions) {
 // INV-7 — pre-pass per-chunk cap 20.
 TEST(mcp_test_audit_trio, Inv7PrePassCap) {
     expect_reset();
-    const std::string cpp = slurp(SRC_TESTAUDITENGINE_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_TESTAUDITENGINE_CPP_PATH);
     expect(contains(cpp, "kPrePassPerChunkCap = 20"),
            "INV-7: cap = 20 per chunk");
     EXPECT_EQ(0, expect_failures());
@@ -122,7 +113,7 @@ TEST(mcp_test_audit_trio, Inv7PrePassCap) {
 // INV-8 — synth fences per-chunk reports.
 TEST(mcp_test_audit_trio, Inv8SynthFence) {
     expect_reset();
-    const std::string cpp = slurp(SRC_TESTAUDITENGINE_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_TESTAUDITENGINE_CPP_PATH);
     expect(contains(cpp, "<chunk_report file="),
            "INV-8: fence opening tag present in synth output");
     expect(contains(cpp, "</chunk_report>"),
@@ -135,7 +126,7 @@ TEST(mcp_test_audit_trio, Inv8SynthFence) {
 // INV-9 — chunk-size clamp constants.
 TEST(mcp_test_audit_trio, Inv9ChunkSizeClamp) {
     expect_reset();
-    const std::string cpp = slurp(SRC_TESTAUDITENGINE_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_TESTAUDITENGINE_CPP_PATH);
     expect(contains(cpp, "kChunkSizeMin = 4"),
            "INV-9: min = 4");
     expect(contains(cpp, "kChunkSizeMax = 30"),
@@ -146,7 +137,7 @@ TEST(mcp_test_audit_trio, Inv9ChunkSizeClamp) {
 // INV-10 — pagination fields in envelope.
 TEST(mcp_test_audit_trio, Inv10PaginationFields) {
     expect_reset();
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     expect(contains(mw, "env[\"offset\"]    = r.offset"),
            "INV-10: offset echoed in envelope");
     expect(contains(mw, "env[\"truncated\"] = r.truncated"),
@@ -159,7 +150,7 @@ TEST(mcp_test_audit_trio, Inv10PaginationFields) {
 // INV-13 — pre_pass_findings JSON shape carries no matched text.
 TEST(mcp_test_audit_trio, Inv13PrePassNoMatchedText) {
     expect_reset();
-    const std::string cpp = slurp(SRC_TESTAUDITENGINE_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_TESTAUDITENGINE_CPP_PATH);
     // Scan the prePassFile body for any "matched" / "text" /
     // "line_content" field assignment. The struct only sets file,
     // line, pattern_id, dimension.
@@ -185,7 +176,7 @@ TEST(mcp_test_audit_trio, Inv13PrePassNoMatchedText) {
 // INV-15 — mtime recheck rate-limit constant.
 TEST(mcp_test_audit_trio, Inv15RecheckRateLimit) {
     expect_reset();
-    const std::string cpp = slurp(SRC_TESTAUDITENGINE_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_TESTAUDITENGINE_CPP_PATH);
     expect(contains(cpp, "kMtimeRecheckRateLimitMs = 5'000"),
            "INV-15: 5 s recheck rate-limit constant");
     EXPECT_EQ(0, expect_failures());
@@ -197,7 +188,7 @@ TEST(mcp_test_audit_trio, Inv15RecheckRateLimit) {
 // the two-pass merge in testauditengine.cpp::synthesisPrompt.
 TEST(mcp_test_audit_trio, Ants1461FileIndexBasenameDedup) {
     expect_reset();
-    const std::string cpp = slurp(SRC_TESTAUDITENGINE_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_TESTAUDITENGINE_CPP_PATH);
     // The merge keeps the longest path per basename (the
     // directory-prefixed form is the canonical display key) and
     // sums counts under that key.
@@ -222,7 +213,7 @@ TEST(mcp_test_audit_trio, Ants1461FileIndexBasenameDedup) {
 // claudeintegration.cpp.
 TEST(mcp_test_audit_trio, Ants1461DimensionHintsClarified) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     // Locate the test_audit_partition descriptor region and
     // confirm the clarifier sentence is present.
     const auto pos = ci.find("t[\"name\"] = \"test_audit_partition\"");
@@ -245,7 +236,7 @@ TEST(mcp_test_audit_trio, Ants1461DimensionHintsClarified) {
 // Schema/dispatch — all four verbs registered.
 TEST(mcp_test_audit_trio, AllFourVerbsRegistered) {
     expect_reset();
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     expect(contains(mw, "registerToolProvider(\"test_audit_partition\""),
            "dispatch: test_audit_partition registered");
     expect(contains(mw, "registerToolProvider(\"test_audit_brief\""),
@@ -254,7 +245,7 @@ TEST(mcp_test_audit_trio, AllFourVerbsRegistered) {
            "dispatch: test_audit_synthesis_prompt registered");
     expect(contains(mw, "registerToolProvider(\"test_audit_fold_in\""),
            "dispatch: test_audit_fold_in registered");
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(ci, "t[\"name\"] = \"test_audit_partition\""),
            "schema: test_audit_partition descriptor");
     expect(contains(ci, "t[\"name\"] = \"test_audit_brief\""),
@@ -272,7 +263,7 @@ TEST(mcp_test_audit_trio, AllFourVerbsRegistered) {
 // provider lambda.
 TEST(mcp_test_audit_trio, Ants1635NarrativeModeSchemaAndHandler) {
     expect_reset();
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     // Scope to the test_audit_fold_in registration block.
     const auto pos = ci.find("t[\"name\"] = \"test_audit_fold_in\"");
     ASSERT_NE(pos, std::string::npos);
@@ -286,7 +277,7 @@ TEST(mcp_test_audit_trio, Ants1635NarrativeModeSchemaAndHandler) {
            "ANTS-1635: schema declares narrative_md prop");
 
     // The handler in mainwindow.cpp forwards both args.
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     const auto hpos = mw.find("registerToolProvider(\"test_audit_fold_in\"");
     ASSERT_NE(hpos, std::string::npos);
     // Scan to the closing of the registration call (next `});`).

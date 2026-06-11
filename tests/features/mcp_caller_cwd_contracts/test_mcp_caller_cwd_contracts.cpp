@@ -3,6 +3,7 @@
 // See tests/features/mcp_caller_cwd_contracts/spec.md.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -17,19 +18,12 @@
 
 namespace {
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 }  // namespace
 
 // CLS-1 — Required group classification.
 TEST(McpCallerCwdContracts, RequiredToolsClassified) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     // Locate the helper definition.
     const auto pos = cc.find("callerCwdContractFor(const QString &toolName)");
@@ -67,7 +61,7 @@ TEST(McpCallerCwdContracts, RequiredToolsClassified) {
 
 // CLS-2 — TabSpecific + ProcessGlobal groups present.
 TEST(McpCallerCwdContracts, OtherCategoriesPresent) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     const auto pos = cc.find("callerCwdContractFor(const QString &toolName)");
     ASSERT_NE(pos, std::string::npos);
@@ -86,7 +80,7 @@ TEST(McpCallerCwdContracts, OtherCategoriesPresent) {
 
 // DISP-1 — dispatch site calls callerCwdContractFor.
 TEST(McpCallerCwdContracts, DispatchSiteInvokesContractCheck) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     // Find the tools/call body.
     const auto pos = cc.find("else if (method == \"tools/call\")");
@@ -102,7 +96,7 @@ TEST(McpCallerCwdContracts, DispatchSiteInvokesContractCheck) {
 
 // DISP-2 — refusal envelope shape.
 TEST(McpCallerCwdContracts, RefusalEnvelopeShape) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     const auto pos = cc.find("else if (method == \"tools/call\")");
     ASSERT_NE(pos, std::string::npos);
@@ -118,7 +112,7 @@ TEST(McpCallerCwdContracts, RefusalEnvelopeShape) {
 
 // DISP-3 — cacheable gating on !toolHandled.
 TEST(McpCallerCwdContracts, RefusalBypassesCache) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     const auto pos = cc.find("else if (method == \"tools/call\")");
     ASSERT_NE(pos, std::string::npos);
@@ -139,7 +133,7 @@ TEST(McpCallerCwdContracts, RefusalBypassesCache) {
 // Pre-1454 the branch inherited the "ok" default and
 // token_usage.recordCall counted refusals as successes.
 TEST(McpCallerCwdContracts, RefusalSetsDispatchResult) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     const auto pos = cc.find("else if (method == \"tools/call\")");
     ASSERT_NE(pos, std::string::npos);
@@ -173,7 +167,7 @@ TEST(McpCallerCwdContracts, RefusalSetsDispatchResult) {
 
 // DISP-4 — provider-dispatch guard widened to !toolHandled.
 TEST(McpCallerCwdContracts, ProviderDispatchGuardedByToolHandled) {
-    const std::string cc = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     const auto pos = cc.find("else if (method == \"tools/call\")");
     ASSERT_NE(pos, std::string::npos);
@@ -195,7 +189,7 @@ TEST(McpCallerCwdContracts, ProviderDispatchGuardedByToolHandled) {
 
 // Header surface — CallerCwdContract enum + helper visible.
 TEST(McpCallerCwdContracts, HeaderSurface) {
-    const std::string h = slurp(SRC_CLAUDE_INTEGRATION_H_PATH);
+    const std::string h = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
     ASSERT_FALSE(h.empty());
     EXPECT_NE(h.find("enum class CallerCwdContract"), std::string::npos)
         << "ANTS-1404: CallerCwdContract enum missing from header";

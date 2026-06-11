@@ -13,20 +13,12 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_MAINWINDOW_PATH
 #error "SRC_MAINWINDOW_PATH compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
 
 // Balanced-brace scanner — see command_mark_gutter/test_command_mark_gutter.cpp
 // for the rationale. std::regex's backtracking executor blows the stack on
@@ -49,7 +41,7 @@ static std::string extractBlockAfter(const std::string &src, const std::string &
 }
 
 TEST(FocusRedirectMenuGuard, Main) {
-    const std::string mw = slurp(SRC_MAINWINDOW_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_PATH);
     int failures = 0;
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);

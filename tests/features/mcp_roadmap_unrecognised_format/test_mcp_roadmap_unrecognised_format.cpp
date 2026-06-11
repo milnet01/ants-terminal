@@ -5,6 +5,7 @@
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <fstream>
@@ -15,16 +16,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "setup-fail: cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -92,7 +83,7 @@ std::string boundedBetween(const std::string &cpp,
 // INV-1 — cmdRoadmapQuery gate.
 TEST(mcp_roadmap_unrecognised_format, Inv1QueryGate) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(cpp.empty()) << "INV-1: remotecontrol.cpp not readable";
 
     const std::string body = boundedBetween(
@@ -115,7 +106,7 @@ TEST(mcp_roadmap_unrecognised_format, Inv1QueryGate) {
 // INV-2 — threshold constant in the header.
 TEST(mcp_roadmap_unrecognised_format, Inv2Threshold) {
     expect_reset();
-    const std::string hdr = slurp(SRC_REMOTECONTROL_H_PATH);
+    const std::string hdr = ants_test::slurpFile(SRC_REMOTECONTROL_H_PATH);
     ASSERT_FALSE(hdr.empty()) << "INV-2: remotecontrol.h not readable";
 
     expect(contains(hdr, "kRoadmapMinParseableSize"),
@@ -133,7 +124,7 @@ TEST(mcp_roadmap_unrecognised_format, Inv2Threshold) {
 // INV-3 — cmdRoadmapLog gate + envelope shape parity.
 TEST(mcp_roadmap_unrecognised_format, Inv3LogGateAndShape) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(cpp.empty()) << "INV-3: remotecontrol.cpp not readable";
 
     // ANTS-1428 inserted cmdRoadmapLogFlip between cmdRoadmapLog
@@ -167,7 +158,7 @@ TEST(mcp_roadmap_unrecognised_format, Inv3LogGateAndShape) {
 // ##/### headings. Source-grep on the bounded bullets-mode slice.
 TEST(mcp_roadmap_unrecognised_format, Inv4HeaderInventoryFallback) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(cpp.empty())
         << "INV-4: remotecontrol.cpp not readable";
 
@@ -199,7 +190,7 @@ TEST(mcp_roadmap_unrecognised_format, Inv4HeaderInventoryFallback) {
 // 📋 emoji byte sequence) so a rewording drops the right tests.
 TEST(mcp_roadmap_unrecognised_format, Inv5ExpectedFormatField) {
     expect_reset();
-    const std::string cpp = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(cpp.empty())
         << "INV-5: remotecontrol.cpp not readable";
 

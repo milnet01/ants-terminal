@@ -5,6 +5,7 @@
 // (mainwindow.cpp), and the schema descriptor (claudeintegration.cpp).
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -12,13 +13,6 @@
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -27,7 +21,7 @@ bool contains(const std::string &hay, const char *needle) {
 }  // namespace
 
 TEST(AuditRunScopedCheck, EngineHeaderDeclaresPathsAndChecks) {
-    const std::string hdr = slurp(SRC_AUDITRUNNER_H_PATH);
+    const std::string hdr = ants_test::slurpFile(SRC_AUDITRUNNER_H_PATH);
     ASSERT_FALSE(hdr.empty());
 
     // INV-1 — RunRequest carries paths AND checks fields.
@@ -38,7 +32,7 @@ TEST(AuditRunScopedCheck, EngineHeaderDeclaresPathsAndChecks) {
 }
 
 TEST(AuditRunScopedCheck, EngineRegistersClangTidyAsKnownTool) {
-    const std::string src = slurp(SRC_AUDITRUNNER_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
     ASSERT_FALSE(src.empty());
 
     // INV-2 — kKnownTools() contains "clang-tidy".
@@ -61,7 +55,7 @@ TEST(AuditRunScopedCheck, EngineRegistersClangTidyAsKnownTool) {
 }
 
 TEST(AuditRunScopedCheck, CheckSanitiserPresent) {
-    const std::string src = slurp(SRC_AUDITRUNNER_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
     ASSERT_FALSE(src.empty());
 
     // INV-4 — isAuditCheckSafe with the documented regex.
@@ -72,7 +66,7 @@ TEST(AuditRunScopedCheck, CheckSanitiserPresent) {
 }
 
 TEST(AuditRunScopedCheck, RunAuditValidatesPathsAndChecks) {
-    const std::string src = slurp(SRC_AUDITRUNNER_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
     ASSERT_FALSE(src.empty());
 
     // INV-5 + INV-6 — runAudit walks req.paths + req.checks and refuses
@@ -92,7 +86,7 @@ TEST(AuditRunScopedCheck, RunAuditValidatesPathsAndChecks) {
 }
 
 TEST(AuditRunScopedCheck, ToolArgvBuildsScopedClangTidyInvocation) {
-    const std::string src = slurp(SRC_AUDITRUNNER_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
     ASSERT_FALSE(src.empty());
 
     // INV-7 — toolArgv accepts scopedPaths + scopedChecks; clang-tidy
@@ -109,7 +103,7 @@ TEST(AuditRunScopedCheck, ToolArgvBuildsScopedClangTidyInvocation) {
 }
 
 TEST(AuditRunScopedCheck, MainWindowProviderExtractsParams) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(mw.empty());
 
     // Locate the audit_run provider lambda.
@@ -127,7 +121,7 @@ TEST(AuditRunScopedCheck, MainWindowProviderExtractsParams) {
 }
 
 TEST(AuditRunScopedCheck, DescriptorDeclaresPropertiesAndClangTidy) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
 
     // Locate audit_run descriptor block.

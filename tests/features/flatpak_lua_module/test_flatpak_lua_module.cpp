@@ -14,22 +14,14 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #ifndef FLATPAK_MANIFEST_PATH
 #error "FLATPAK_MANIFEST_PATH compile definition required"
 #endif
 
-static std::string slurp(const char *path) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot open %s\n", path);
-        std::exit(2);
-    }
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
 
 static int runMain() {
-    const std::string src = slurp(FLATPAK_MANIFEST_PATH);
+    const std::string src = ants_test::slurpFile(FLATPAK_MANIFEST_PATH);
     int failures = 0;
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);

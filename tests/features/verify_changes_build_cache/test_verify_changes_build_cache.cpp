@@ -5,6 +5,7 @@
 #include "remotecontrol.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QByteArray>
 #include <QDir>
@@ -29,13 +30,6 @@ namespace {
 
 // ---- Helpers ----------------------------------------------------------
 
-std::string slurp(const char *p) {
-    std::ifstream in(p);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool runGit(const QString &dir, const QStringList &argv) {
     QProcess p;
@@ -441,7 +435,7 @@ TEST(VerifyChangesBuildCache, ForceAndCacheOnlyIncompatible) {
 // ---------------------------------------------------------------------------
 
 TEST(VerifyChangesBuildCache, CapConstantDeclared) {
-    const std::string h = slurp(SRC_REMOTECONTROL_H_PATH);
+    const std::string h = ants_test::slurpFile(SRC_REMOTECONTROL_H_PATH);
     ASSERT_FALSE(h.empty());
     EXPECT_NE(h.find("kVerifyCacheCap   = 8"), std::string::npos)
         << "kVerifyCacheCap = 8 declaration missing in remotecontrol.h";

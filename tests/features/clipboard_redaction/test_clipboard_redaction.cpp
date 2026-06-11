@@ -17,16 +17,10 @@
 #include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 namespace {
 
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
@@ -45,7 +39,7 @@ TEST(ClipboardRedaction, Main) {
     // declarations are present so a refactor doesn't rename the
     // surface from under us).
     {
-        const std::string hdr = slurp(CLIPBOARDGUARD_H);
+        const std::string hdr = ants_test::slurpFile(CLIPBOARDGUARD_H);
         if (hdr.empty()) return fail("INV-1", "clipboardguard.h not readable");
         if (!contains(hdr, "namespace clipboardguard"))
             return fail("INV-1", "namespace clipboardguard missing in header");
@@ -108,7 +102,7 @@ TEST(ClipboardRedaction, Main) {
 
     // INV-6: no raw clipboard writes survive in terminalwidget.cpp.
     {
-        const std::string src = slurp(TERMINALWIDGET_CPP);
+        const std::string src = ants_test::slurpFile(TERMINALWIDGET_CPP);
         if (src.empty()) return fail("INV-6", "terminalwidget.cpp not readable");
         if (contains(src, "QApplication::clipboard()->setText("))
             return fail("INV-6",
@@ -117,7 +111,7 @@ TEST(ClipboardRedaction, Main) {
 
     // INV-7: no raw clipboard writes survive in mainwindow.cpp.
     {
-        const std::string src = slurp(MAINWINDOW_CPP);
+        const std::string src = ants_test::slurpFile(MAINWINDOW_CPP);
         if (src.empty()) return fail("INV-7", "mainwindow.cpp not readable");
         if (contains(src, "QApplication::clipboard()->setText("))
             return fail("INV-7",
@@ -126,8 +120,8 @@ TEST(ClipboardRedaction, Main) {
 
     // INV-8: source classification at the two untrusted sites.
     {
-        const std::string tw = slurp(TERMINALWIDGET_CPP);
-        const std::string mw = slurp(MAINWINDOW_CPP);
+        const std::string tw = ants_test::slurpFile(TERMINALWIDGET_CPP);
+        const std::string mw = ants_test::slurpFile(MAINWINDOW_CPP);
         if (!contains(tw, "Source::UntrustedPty"))
             return fail("INV-8",
                 "OSC 52 callback in terminalwidget.cpp does not classify as UntrustedPty");

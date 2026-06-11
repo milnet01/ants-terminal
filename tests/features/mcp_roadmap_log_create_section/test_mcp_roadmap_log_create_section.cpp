@@ -3,6 +3,7 @@
 // docs/specs/ANTS-1878.md.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -20,12 +21,6 @@
 
 namespace {
 
-std::string slurp(const char *p) {
-    std::ifstream f(p);
-    if (!f) { std::fprintf(stderr, "cannot open %s\n", p); std::exit(2); }
-    std::stringstream ss; ss << f.rdbuf();
-    return ss.str();
-}
 
 // Minimal roadmap: one ## section + a placeholder bullet so the parser
 // recognises ants-v1 format and lineEnd is well-defined.
@@ -74,7 +69,7 @@ QJsonObject baseReq(const QString &dir) {
 
 // INV-1 — dispatch source-grep.
 TEST(McpRoadmapLogCreateSection, Inv1DispatchWiredInCmdRoadmapLog) {
-    const std::string src = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     EXPECT_NE(src.find("\"create_section\""), std::string::npos)
         << "cmdRoadmapLog must dispatch op:create_section";
     EXPECT_NE(src.find("cmdRoadmapLogCreateSection("), std::string::npos)
@@ -217,7 +212,7 @@ TEST(McpRoadmapLogCreateSection, Inv7HeadingInsertedAtSectionEnd) {
 
 // INV-8 — source-grep: handler uses QSaveFile::commit().
 TEST(McpRoadmapLogCreateSection, Inv8AtomicWriteViaQSaveFile) {
-    const std::string src = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string src = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     // Find the handler block and confirm QSaveFile … commit() pair appears.
     const auto handlerPos = src.find("cmdRoadmapLogCreateSection(");
     ASSERT_NE(handlerPos, std::string::npos);
