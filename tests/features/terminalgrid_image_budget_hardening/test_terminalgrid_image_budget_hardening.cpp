@@ -23,17 +23,9 @@ bool contains(const std::string &hay, const char *needle) {
 }
 
 // Extract the body of a function by brace-matching from its signature.
+// ANTS-1468 — delegate to the shared string/comment-aware extractor.
 std::string functionBody(const std::string &src, const char *signature) {
-    const auto sigPos = src.find(signature);
-    if (sigPos == std::string::npos) return {};
-    const auto open = src.find('{', sigPos);
-    if (open == std::string::npos) return {};
-    int depth = 0;
-    for (size_t i = open; i < src.size(); ++i) {
-        if (src[i] == '{') ++depth;
-        else if (src[i] == '}') { if (--depth == 0) return src.substr(open, i - open + 1); }
-    }
-    return {};
+    return ants_test::slurpFunctionBody(src, signature);
 }
 
 }  // namespace

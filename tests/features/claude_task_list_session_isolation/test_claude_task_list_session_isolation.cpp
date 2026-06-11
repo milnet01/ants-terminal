@@ -55,23 +55,15 @@ const std::string &mainwindowSource() {
 // that closes the function. Falls back to a generous slice if the
 // brace-balance walk never returns to depth 0 (defensive — should not
 // happen for well-formed C++).
+// ANTS-1468 — delegate to the shared string/comment-aware extractor;
+// prepend the signature so the returned span matches the original
+// (signature line through the matching closing brace).
 std::string functionBody(const std::string &src,
                          const std::string &sigPrefix) {
+    const std::string body = ants_test::slurpFunctionBody(src, sigPrefix);
+    if (body.empty()) return {};
     const auto start = src.find(sigPrefix);
-    if (start == std::string::npos) return {};
-    // Find first '{' after the signature and walk braces.
-    auto open = src.find('{', start);
-    if (open == std::string::npos) return src.substr(start, 4096);
-    int depth = 0;
-    size_t i = open;
-    for (; i < src.size(); ++i) {
-        if (src[i] == '{') ++depth;
-        else if (src[i] == '}') {
-            --depth;
-            if (depth == 0) { ++i; break; }
-        }
-    }
-    return src.substr(start, i - start);
+    return src.substr(start, src.find('{', start) - start) + body;
 }
 
 // True iff `needle` appears inside the body of the named function in

@@ -47,22 +47,15 @@ const std::string &ciSource() {
 // Return the substring of `src` from the first occurrence of `sigPrefix`
 // up to the matching `}` that closes the function body. Falls back to a
 // generous slice if the brace walk never returns to depth 0.
+// ANTS-1468 — delegate to the shared string/comment-aware extractor;
+// prepend the signature so the returned span matches the original
+// (signature line through the matching closing brace).
 std::string functionBody(const std::string &src,
                          const std::string &sigPrefix) {
+    const std::string body = ants_test::slurpFunctionBody(src, sigPrefix);
+    if (body.empty()) return {};
     const auto start = src.find(sigPrefix);
-    if (start == std::string::npos) return {};
-    auto open = src.find('{', start);
-    if (open == std::string::npos) return src.substr(start, 4096);
-    int depth = 0;
-    size_t i = open;
-    for (; i < src.size(); ++i) {
-        if (src[i] == '{') ++depth;
-        else if (src[i] == '}') {
-            --depth;
-            if (depth == 0) { ++i; break; }
-        }
-    }
-    return src.substr(start, i - start);
+    return src.substr(start, src.find('{', start) - start) + body;
 }
 
 bool bodyContains(const std::string &src,

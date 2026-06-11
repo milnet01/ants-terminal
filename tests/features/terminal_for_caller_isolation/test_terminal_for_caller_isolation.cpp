@@ -44,20 +44,9 @@ const std::string &mwSource() {
 // marker; return the [open-brace, matching-close-brace) substring.
 // Naive matching — works for our targets (no anon-namespace braces
 // inside the helper or the dispatcher).
+// ANTS-1468 — delegate to the shared string/comment-aware extractor.
 std::string functionBody(const std::string &src, const char *marker) {
-    const auto sig = src.find(marker);
-    if (sig == std::string::npos) return {};
-    const auto open = src.find('{', sig);
-    if (open == std::string::npos) return {};
-    int depth = 0;
-    for (size_t i = open; i < src.size(); ++i) {
-        if (src[i] == '{') ++depth;
-        else if (src[i] == '}') {
-            --depth;
-            if (depth == 0) return src.substr(open, i - open + 1);
-        }
-    }
-    return {};
+    return ants_test::slurpFunctionBody(src, marker);
 }
 
 }  // namespace

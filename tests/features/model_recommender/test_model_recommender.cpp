@@ -11,6 +11,7 @@
 #include <sstream>
 #include <string>
 #include "modelrecommender.h"
+#include "../../_support/srcgrep.h"
 
 #ifndef SRC_MODELRECOMMENDER_CPP_PATH
 #error "SRC_MODELRECOMMENDER_CPP_PATH compile definition required"
@@ -32,18 +33,9 @@ std::string slurpFile(const char *path) {
 
 // Slice the body of a brace-balanced function definition starting at the
 // marker through to its matching closing brace at column 1.
+// ANTS-1468 — delegate to the shared string/comment-aware extractor.
 std::string functionBody(const std::string &src, const std::string &marker) {
-    const auto headerStart = src.find(marker);
-    if (headerStart == std::string::npos) return {};
-    const auto openBrace = src.find('{', headerStart);
-    if (openBrace == std::string::npos) return {};
-    int depth = 1;
-    size_t i = openBrace + 1;
-    for (; i < src.size() && depth > 0; ++i) {
-        if (src[i] == '{') ++depth;
-        else if (src[i] == '}') --depth;
-    }
-    return src.substr(openBrace, i - openBrace);
+    return ants_test::slurpFunctionBody(src, marker);
 }
 }  // namespace
 

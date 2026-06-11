@@ -19,17 +19,9 @@ namespace {
 
 
 // Brace-balanced body of a function starting at `marker`.
+// ANTS-1468 — delegate to the shared string/comment-aware extractor.
 std::string functionBody(const std::string &src, const std::string &marker) {
-    const auto h = src.find(marker);
-    if (h == std::string::npos) return {};
-    const auto open = src.find('{', h);
-    if (open == std::string::npos) return {};
-    int depth = 1; size_t i = open + 1;
-    for (; i < src.size() && depth > 0; ++i) {
-        if (src[i] == '{') ++depth;
-        else if (src[i] == '}') --depth;
-    }
-    return src.substr(open, i - open);
+    return ants_test::slurpFunctionBody(src, marker);
 }
 
 }  // namespace

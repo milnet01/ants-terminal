@@ -60,20 +60,9 @@ void failAt(const char *file, int line, const char *label, const std::string &wh
 // the matching closing `}`. Heuristic — relies on balanced braces in
 // the body. Good enough for the project's top-level free / member
 // functions.
+// ANTS-1468 — delegate to the shared string/comment-aware extractor.
 std::string functionBody(const std::string &src, const std::string &sig) {
-    const auto sigPos = src.find(sig);
-    if (sigPos == std::string::npos) return {};
-    auto bracePos = src.find('{', sigPos + sig.size());
-    if (bracePos == std::string::npos) return {};
-    int depth = 1;
-    auto i = bracePos + 1;
-    while (i < src.size() && depth > 0) {
-        if (src[i] == '{') ++depth;
-        else if (src[i] == '}') --depth;
-        ++i;
-    }
-    if (depth != 0) return {};
-    return src.substr(bracePos, i - bracePos);
+    return ants_test::slurpFunctionBody(src, sig);
 }
 
 }  // namespace
