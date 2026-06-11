@@ -11882,6 +11882,42 @@ template / mutate this state atomically" → movable. If it's
   Kind: docs.
   Source: indie-review-2026-05-13.
 
+- 💭 [ANTS-2083] **Auto-304 repeat-call short-circuit: dispatcher remembers the last etag per (tool, args) and skips re-emitting an identical call.**
+  ETag-304 already exists but the CALLER must thread etag_match back; agents forget, especially after a /clear. Have the dispatcher remember the last etag it issued per (tool, normalised-args) within a session and auto-short-circuit an identical repeat call to {ok, unchanged, etag, repeat_of_call} WITHOUT re-emitting the body, provided the live state etag is unchanged. Saves the full re-emit on accidental duplicate reads (a common post-compaction pattern). Must honour docs/standards/mcp-caches.md keying — a cache may go cold but must never shadow.
+  **Layman:** If the assistant asks the exact same question twice, don't resend the whole answer — just say nothing changed.
+  Kind: optimize.
+  Source: in-session-2026-06-11 (token-saving brainstorm).
+
+- 💭 [ANTS-2084] **Cross-tool read multiplex verb (mcp_bundle): run N independent read calls in one request/response.**
+  The *_batch ops (append_batch, flip_batch, add_batch) only batch within ONE verb. A read-only bundle verb that runs N independent read calls (file_outline + read_region + roadmap_query ...) in one request -> one response amortises the per-call <ants_mcp_data> wrapper + round-trip framing, and lets the server dedupe overlapping file content (e.g. file_outline + read_region on the same file). Read-only allowlist; per-sub-call error isolation like append_batch's skipped[]. Pairs with session_orient / current_state which already hand-bundle a fixed set.
+  **Layman:** Let the assistant ask several cheap questions in a single round-trip instead of one at a time.
+  Kind: feature.
+  Source: in-session-2026-06-11 (token-saving brainstorm).
+
+- 📋 [ANTS-2085] **Session verbosity preference honoured by read verbs (set terse once, not per call).**
+  A session_memory-backed knob (e.g. verbosity:"terse") that read verbs read once and apply as the DEFAULT for headline_only / fields / include_body, set once per session instead of re-specified on every call. Generalises DOOM idea E (ANTS-2082, roadmap_query-specific) across the whole read surface. Default "normal" keeps full back-compat.
+  **Layman:** Tell the assistant once to keep answers short, instead of repeating that on every request.
+  Kind: enhancement.
+  Source: in-session-2026-06-11 (token-saving brainstorm).
+
+- 📋 [ANTS-2086] **Generalised oversize advisory: large read responses carry a leaner_call_hint naming the cheaper mode.**
+  When any read response exceeds a byte threshold, append a one-line leaner_call_hint naming the cheaper mode available on THAT verb (headline_only / fields= / limit / max_match_bytes / mode:section_index). workspace_search only warns on hard truncation today; this is the proactive 'you could have spent ~10x less' nudge across read verbs. Cross-verb sibling of ANTS-2082; cheap (one short string, emitted only over the threshold).
+  **Layman:** When an answer is big, the tool suggests the smaller version you could have asked for.
+  Kind: enhancement.
+  Source: in-session-2026-06-11 (token-saving brainstorm).
+
+- 📋 [ANTS-2087] **find_definition / find_caller opt-in include_body collapses the find -> read_region two-step into one call.**
+  Today find_definition returns file:line:signature, then a separate read_region call fetches the body. An opt-in include_body (reusing read_region's symbol-body extractor + its head-anchored byte cap) returns the body inline for the common 'where is Foo and what does it do' question — one call instead of two. Off by default to keep the lean default envelope.
+  **Layman:** When the assistant asks where a function lives, optionally show its code too — in the same answer.
+  Kind: enhancement.
+  Source: in-session-2026-06-11 (token-saving brainstorm).
+
+- 📋 [ANTS-2088] **Move the CLAUDE.md MCP-authoring + behavioural-notes blob out of the always-loaded session preamble.**
+  The largest always-loaded block in CLAUDE.md is now the 'MCP tool authoring' contract + the per-verb behavioural-notes paragraph — paid in tokens on EVERY session preamble. ANTS-1292 already moved the ~130-line subsystem catalogue to docs/subsystems.md behind the `subsystem` verb; do the same here — relocate the detail to docs/standards/mcp-tools.md (+ behavioural notes to a doc) and serve on demand via project_conventions / tool_info, leaving a one-line pointer. Biggest recurring per-session saving. Distinct from ANTS-2079 (which trims the tool SCHEMA description blobs).
+  **Layman:** Stop loading a huge block of developer notes into every single session; fetch it only when needed.
+  Kind: optimize.
+  Source: in-session-2026-06-11 (token-saving brainstorm).
+
 ### 🎨 At-a-glance build-version surface (user request 2026-05-14)
 
 - ✅ [ANTS-1323] **`v0.7.92 · 2026-05-14 08:48` build-badge on
