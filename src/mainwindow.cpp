@@ -5051,9 +5051,27 @@ void MainWindow::setupClaudeMcpProviders() {
                 m_claudeIntegration->verbInFlightRelease(
                     QStringLiteral("indie_review_dispatch"), canon);
             });
+            // ANTS-2104 — run the dispatch on a worker thread, exactly like
+            // audit_run (ANTS-2103). cmdIndieReviewDispatch -> dispatchLanes
+            // spins a local QNetworkAccessManager + QEventLoop (indiereview
+            // dispatcher.cpp:223-224); on the main thread that nested loop
+            // reentrantly delivers MCP QLocalSocket read-notifications during
+            // the multi-minute LLM sweep -> the same use-after-free SIGSEGV
+            // class as audit_run. The nam/loop are locals, so they construct
+            // on the worker; QThread::wait() is a join (no event pump), so no
+            // foreign socket notification fires during the dispatch.
+            QJsonDocument doc;
+            {
+                QThread *worker = QThread::create(
+                    [this, &args, &doc]() {
+                        doc = m_remoteControl->cmdIndieReviewDispatch(args);
+                    });
+                worker->start();
+                worker->wait();
+                delete worker;
+            }
             QString out = QString::fromUtf8(
-                m_remoteControl->cmdIndieReviewDispatch(args)
-                    .toJson(QJsonDocument::Compact));
+                doc.toJson(QJsonDocument::Compact));
             return out;
         });
 
