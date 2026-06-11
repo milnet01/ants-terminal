@@ -683,6 +683,10 @@ public:
     // caller_cwd without a MainWindow. m_main-independent (counter +
     // markdown only).
     QJsonDocument cmdRoadmapLogAppendBatchForTest(const QJsonObject &req);
+    // ANTS-1691 — drive the bundle_row path against a synthetic
+    // caller_cwd without a MainWindow. m_main-independent (filesystem
+    // only). See tests/features/roadmap_log_bundle_row/spec.md.
+    QJsonDocument cmdRoadmapLogBundleRowForTest(const QJsonObject &req);
 
 private slots:
     void onNewConnection();
@@ -710,6 +714,11 @@ private:
     // partial-apply contract (ok:true even when all-skipped); shared
     // bullet-formatting helper extracted from cmdRoadmapLogAppend.
     QJsonDocument cmdRoadmapLogAppendBatch(const QJsonObject &req);
+    // ANTS-1691 — bundle_row: append a row to the Markdown table under a
+    // named section (the "## 📊 Bundle progress" cross-session table),
+    // pipe/newline-escaping each cell; find-or-create the table. No
+    // counter touch; single atomic write.
+    QJsonDocument cmdRoadmapLogBundleRow(const QJsonObject &req);
     // ANTS-1879 INV-10 — shared bullet-formatting helper extracted from
     // cmdRoadmapLogAppend's :3293-3344 block so cmdRoadmapLogAppendBatch
     // can format each bullet through the same code path. scrubbedNames

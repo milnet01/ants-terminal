@@ -1205,6 +1205,10 @@ if(ANTS_TESTS)
                 tests/features/mcp_roadmap_log_create_section/test_mcp_roadmap_log_create_section.cpp
                 # ANTS-1879 roadmap_log op:append_batch.
                 tests/features/mcp_roadmap_log_append_batch/test_mcp_roadmap_log_append_batch.cpp
+                # ANTS-1691 roadmap_log op:bundle_row (Markdown bundle table).
+                tests/features/roadmap_log_bundle_row/test_roadmap_log_bundle_row.cpp
+                # ANTS-2097 theme switch defers restyle out of popup event loop.
+                tests/features/theme_switch_popup_defer/test_theme_switch_popup_defer.cpp
                 # ANTS-2043 roadmap_log non-blocking near-duplicate advisory.
                 tests/features/roadmap_log_possible_duplicates/test_roadmap_log_possible_duplicates.cpp
                 # ANTS-2076/2077 roadmap_log counter-prefix fallback + dry_run preview.

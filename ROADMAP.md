@@ -6301,6 +6301,12 @@ class; the deferrals below cover the rest.
   Kind: fix.
   Source: indie-review-2026-05-14.
 
+- 🚧 [ANTS-2097] **Theme switch crashes (SIGSEGV in QApplication::setStyleSheet) — restyle runs inside the Themes menu's nested event loop and walks a freed widget pointer.**
+  Selecting a theme from View→Themes fires QAction::triggered synchronously inside the QMenu's mouse-event/nested-loop context; applyTheme() then calls qApp->setStyleSheet() which walks Qt's global widget set and re-polishes each widget. As the menu tears down it reaps a deleteLater'd transient status-bar widget (ANTS-1893 toast/Undo button, or a Claude permission prompt) mid-walk, invalidating Qt's iterator → the polish loop dereferences a freed widget pointer. Coredump confirms: SIGSEGV at `testb $1,0x30(%rax)` with rax=0x31 (a garbage pointer), frame #1 QApplication::setStyleSheet, #2 MainWindow::applyTheme. Recurs (coredumps 2026-06-05, -06-06, -06-11). The ANTS-2024 DeferredDelete reap was insufficient — it's the menu's OWN nested loop, not a pending DeferredDelete, that does the teardown. Fix (mainwindow.cpp applyTheme): when QApplication::activePopupWidget() is non-null, defer the whole restyle via QTimer::singleShot(0) so it runs after the menu closes and the event stack unwinds, against a quiescent widget set; startup/programmatic callers stay synchronous. Awaiting user relaunch to confirm no crash.
+  Kind: fix.
+  Lanes: ui, theme, status-bar.
+  Source: user-report-2026-06-11 (crash on theme switch, coredump).
+
 ### 🔌 Ants MCP — improvements from running /audit + /indie-review + /debt-sweep (2026-05-14)
 
 The full audit / indie-review / debt-sweep cycle on 2026-05-14
@@ -8249,6 +8255,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: doc-fix.
   Source: in-session-2026-06-11 (running /test-audit).
   Resolved (2026-06-11) via doc-fix: the resume recipe now uses a `.` namespace separator (test_audit_partition_token.<scope_id>) which the session_memory ^[A-Za-z0-9._-]{1,64}$ charset accepts. Fixed in docs/standards/test-audit-resume.md (3 sites) + the test_audit_partition tool description (claudeintegration.cpp). Charset left unchanged (no INV-7 contract churn).
+
+- 📋 [ANTS-2096] **Paginated test_audit_partition (offset>0) strips pre-pass findings from the cached partition, so a later test_audit_brief returns empty pre_pass_findings for those chunks.**
+  testauditengine.cpp partition(): on a paginated call (offset>0), line ~1065 does r.prePassFindingsByChunk.clear() and then cachePartition(r) caches that emptied map. brief() reads r.prePassFindings = p->prePassFindingsByChunk.value(chunk->id) from that cache, so for any chunk on page 2+ it returns []. The clear conflates two concerns: omitting the bulky map from the ENVELOPE (correct, token-saving) vs retaining it in the CACHE for brief (needed). Fix: keep the full map in the cached PartitionResult and omit it only from the serialized envelope — the same decouple ANTS-2070 applied at the envelope layer in mainwindow.cpp (pre_pass_omitted/pre_pass_cached without clearing the cache). If partition reuses a stable token across pages, a page-2 call can also overwrite page-1's full cache; confirm token keying when fixing. Add a regression test: partition(offset=N) then brief(a page-N chunk) must still return its pre_pass findings.
+  **Layman:** If you ask for a big test audit one page at a time, the per-chunk hints go missing on the later pages.
+  Kind: fix.
+  Source: in-session-2026-06-11 (spotted while fixing ANTS-2070).
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 

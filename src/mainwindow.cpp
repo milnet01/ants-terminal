@@ -3189,6 +3189,30 @@ void MainWindow::applyTheme(const QString &name) {
     // loop without depending on m_inConfigReload latency.
     if (name == m_currentTheme && !m_currentTheme.isEmpty())
         return;
+
+    // ANTS-2097 — never run the app-wide restyle while a popup menu's
+    // nested event loop is live. `qApp->setStyleSheet()` walks Qt's
+    // global widget set and re-polishes every widget; the View→Themes
+    // QMenu is still the active popup when its QAction::triggered fires
+    // (this runs synchronously inside the menu's mouse-event handler,
+    // see the crash backtrace frames QAction::activate ← sendMouseEvent),
+    // and as that menu tears down it reaps a deleteLater'd transient
+    // status-bar widget (the ANTS-1893 toast / Undo button, or a Claude
+    // permission prompt) mid-walk — invalidating Qt's iterator and
+    // leaving a garbage widget pointer the polish loop dereferences
+    // (confirmed: SIGSEGV at `testb $1,0x30(%rax)` with rax=0x31, a
+    // freed pointer). The ANTS-2024 DeferredDelete reap below is not
+    // enough on its own because it's the menu's OWN nested loop, not a
+    // pending DeferredDelete, that does the teardown. Deferring to the
+    // next event-loop turn lets the menu fully close and the event stack
+    // unwind, so the restyle runs against a quiescent widget set.
+    // Startup / programmatic callers (no active popup) stay synchronous.
+    if (QApplication::activePopupWidget()) {
+        const QString deferred = name;
+        QTimer::singleShot(0, this, [this, deferred]() { applyTheme(deferred); });
+        return;
+    }
+
     m_currentTheme = name;
     m_config.setTheme(name);
     // ANTS-1242 — broadcast the new theme to the DialogChrome

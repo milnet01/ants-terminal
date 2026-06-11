@@ -59,6 +59,7 @@
 #include <QLocalSocket>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QCollator>
 #include <QSet>
 #include <QStandardPaths>
 #include <QTabWidget>
@@ -3560,11 +3561,18 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     if (op == QStringLiteral("append_batch")) {
         return cmdRoadmapLogAppendBatch(req);
     }
+    // ANTS-1691 — bundle_row. Appends a row to a Markdown table under a
+    // named section (the "## 📊 Bundle progress" cross-session table).
+    // m_main-independent (caller_cwd + filesystem only); no counter.
+    if (op == QStringLiteral("bundle_row")) {
+        return cmdRoadmapLogBundleRow(req);
+    }
     if (op != QStringLiteral("append")) {
         return rlErr(QStringLiteral("bad_op_combo"),
             QStringLiteral("roadmap_log: unknown op \"%1\" — expected "
                            "\"append\" (default), \"append_batch\", "
-                           "\"flip\", \"flip_batch\", \"annotate\", or "
+                           "\"flip\", \"flip_batch\", \"annotate\", "
+                           "\"bundle_row\", or "
                            "\"create_section\"").arg(op));
     }
 
@@ -6051,6 +6059,298 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
     out["file"]          = QStringLiteral("ROADMAP.md");
     out["line"]          = insertAt + 1;          // 1-based heading line
     out["bytes_written"] = bytesInserted;
+    return QJsonDocument(out);
+}
+
+// ANTS-1691 — test seam for the bundle_row path (m_main-independent).
+QJsonDocument RemoteControl::cmdRoadmapLogBundleRowForTest(
+        const QJsonObject &req) {
+    return cmdRoadmapLogBundleRow(req);
+}
+
+// ANTS-1691 — roadmap_log op:"bundle_row". Append a row to a Markdown
+// table held under a named section (the "## 📊 Bundle progress" table
+// some cross-session reporters maintain). Pipe/newline-escapes every
+// cell so a `|` inside a multi-KB cell can't corrupt the column count —
+// the corruption risk that made the hand-`Edit` fallback unsafe. Finds
+// the table inside the section, or creates one from `header`. No counter
+// touch; single read + single atomic QSaveFile commit. See
+// tests/features/roadmap_log_bundle_row/spec.md.
+QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
+    auto rlErr = [](const QString &code, const QString &message) {
+        QJsonObject env;
+        env["ok"]    = false;
+        env["code"]  = code;
+        env["error"] = message;
+        return QJsonDocument(env);
+    };
+
+    // Escape one cell for safe placement inside a GFM table: a literal
+    // `|` would otherwise open a new column, and a raw newline is illegal
+    // in a table cell. Backslash-escape pipes; fold newlines to <br>.
+    auto escapeCell = [](const QString &raw) {
+        QString s = raw;
+        s.replace(QStringLiteral("|"), QStringLiteral("\\|"));
+        s.replace(QStringLiteral("\r\n"), QStringLiteral("<br>"));
+        s.replace(QChar('\n'), QStringLiteral("<br>"));
+        s.replace(QChar('\r'), QStringLiteral("<br>"));
+        return s.trimmed();
+    };
+    // Render an escaped cell list as a GFM row: `| a | b | c |`.
+    auto renderRow = [&escapeCell](const QStringList &cells) {
+        QString row = QStringLiteral("|");
+        for (const QString &c : cells)
+            row += QChar(' ') + escapeCell(c) + QStringLiteral(" |");
+        return row;
+    };
+
+    // 1. Required fields.
+    const QString callerRaw =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    const QString section =
+        req.value(QStringLiteral("section")).toString();
+    if (callerRaw.isEmpty())
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: caller_cwd is required"));
+    if (section.isEmpty())
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: bundle_row section is required"));
+    if (!req.value(QStringLiteral("cells")).isArray())
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: bundle_row cells (array) is "
+                           "required"));
+    QStringList cells;
+    for (const QJsonValue &v :
+         req.value(QStringLiteral("cells")).toArray())
+        cells << v.toString();
+    if (cells.isEmpty())
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: bundle_row cells must be a "
+                           "non-empty array"));
+
+    QStringList header;
+    if (req.value(QStringLiteral("header")).isArray())
+        for (const QJsonValue &v :
+             req.value(QStringLiteral("header")).toArray())
+            header << v.toString();
+
+    const QString position =
+        req.value(QStringLiteral("position")).toString(
+            QStringLiteral("end"));
+    const int sortCol =
+        req.value(QStringLiteral("sort_col")).toInt(0);
+
+    // 2. Resolve ROADMAP.md (parity with create_section).
+    const QString callerCanonical =
+        QFileInfo(callerRaw).canonicalFilePath();
+    if (callerCanonical.isEmpty())
+        return rlErr(QStringLiteral("no_roadmap"),
+            QStringLiteral("roadmap_log: caller_cwd \"%1\" does not "
+                           "canonicalise to an existing directory")
+                .arg(callerRaw));
+    const QString roadmapPath = findRoadmapUnder(callerCanonical);
+    if (roadmapPath.isEmpty())
+        return rlErr(QStringLiteral("no_roadmap"),
+            QStringLiteral("roadmap_log: no ROADMAP.md under \"%1\"")
+                .arg(callerCanonical));
+
+    // 3. Read markdown.
+    QFile rf(roadmapPath);
+    if (!rf.open(QIODevice::ReadOnly | QIODevice::Text))
+        return rlErr(QStringLiteral("roadmap_read_failed"),
+            QStringLiteral("roadmap_log: could not read \"%1\"")
+                .arg(roadmapPath));
+    const QString markdown = QString::fromUtf8(rf.readAll());
+    rf.close();
+
+    // 4. Locate section (parity with create_section's bad_case echo).
+    const auto index = RoadmapIndex::buildIndex(markdown);
+    const RoadmapIndex::Section *sec =
+        RoadmapIndex::findBySlug(index, section);
+    if (!sec) {
+        const QString needCi = section.toLower();
+        for (const auto &s : index) {
+            if (s.slug.toLower() == needCi && s.slug != section) {
+                QJsonObject env;
+                env["ok"]             = false;
+                env["code"]           = QStringLiteral("bad_case");
+                env["error"]          = QStringLiteral(
+                    "roadmap_log: section slug case mismatch: \"%1\" — "
+                    "did you mean \"%2\"?").arg(section, s.slug);
+                env["canonical_slug"] = s.slug;
+                return QJsonDocument(env);
+            }
+        }
+        return rlErr(QStringLiteral("bad_section"),
+            QStringLiteral("roadmap_log: unknown section slug \"%1\"")
+                .arg(section));
+    }
+
+    // 5. Within the section's line range, find an existing GFM table:
+    //    a header row (starts with `|`) immediately followed by a
+    //    separator row (`|---|---|`). Track the data-row span.
+    QStringList lines = markdown.split(QChar('\n'));
+    static const QRegularExpression kTableSep(
+        QStringLiteral("^\\s*\\|?\\s*:?-{1,}:?\\s*(\\|\\s*:?-{1,}:?\\s*)*"
+                       "\\|?\\s*$"));
+    auto isTableRow = [](const QString &ln) {
+        return ln.trimmed().startsWith(QChar('|'));
+    };
+
+    int headerLine = -1;   // 0-indexed header row
+    int lastDataLine = -1; // 0-indexed last data row
+    int columns = 0;
+    // Count GFM columns in a row line (cells between the outer pipes).
+    auto rowColumns = [](const QString &ln) {
+        QString t = ln.trimmed();
+        if (t.startsWith(QChar('|'))) t.remove(0, 1);
+        if (t.endsWith(QChar('|'))) t.chop(1);
+        // Split on UNescaped pipes only.
+        int cols = 0, i = 0;
+        bool any = false;
+        QString cur;
+        while (i < t.size()) {
+            if (t[i] == QChar('\\') && i + 1 < t.size()) {
+                cur += t[i]; cur += t[i + 1]; i += 2; continue;
+            }
+            if (t[i] == QChar('|')) { cols++; any = true; cur.clear(); }
+            else cur += t[i];
+            ++i;
+        }
+        return any ? cols + 1 : (t.isEmpty() ? 0 : 1);
+    };
+
+    for (int i = sec->lineStart + 1;
+         i < sec->lineEnd && i < lines.size(); ++i) {
+        if (headerLine < 0) {
+            // Looking for a header line followed by a separator line.
+            if (isTableRow(lines.at(i)) && i + 1 < lines.size() &&
+                kTableSep.match(lines.at(i + 1)).hasMatch()) {
+                headerLine   = i;
+                columns      = rowColumns(lines.at(i));
+                lastDataLine = i + 1;   // separator; data rows follow
+            }
+            continue;
+        }
+        // In-table: extend the data span while rows keep matching.
+        if (isTableRow(lines.at(i))) lastDataLine = i;
+        else break;   // first non-table line ends the table
+    }
+
+    bool createdTable = false;
+    int rowIndex = 0;   // 1-based position among DATA rows after insert
+
+    if (headerLine < 0) {
+        // 6a. No table — create one from `header`, else refuse.
+        if (header.isEmpty())
+            return rlErr(QStringLiteral("no_table"),
+                QStringLiteral("roadmap_log: section \"%1\" has no "
+                               "Markdown table — pass `header` (column "
+                               "names) to create one").arg(section));
+        if (cells.size() != header.size())
+            return rlErr(QStringLiteral("column_mismatch"),
+                QStringLiteral("roadmap_log: cells (%1) must match header "
+                               "columns (%2)").arg(cells.size())
+                    .arg(header.size()));
+        QStringList block;
+        block << renderRow(header);
+        QString sep = QStringLiteral("|");
+        for (int c = 0; c < header.size(); ++c)
+            sep += QStringLiteral(" --- |");
+        block << sep;
+        block << renderRow(cells);
+        // Insert right after the heading + its blank line (or at the
+        // heading line's end). Skip a single blank line that follows.
+        int insertAt = sec->lineStart + 1;
+        if (insertAt < lines.size() &&
+            lines.at(insertAt).trimmed().isEmpty())
+            ++insertAt;
+        // Ensure a trailing blank line separates the new table.
+        block << QString();
+        for (int k = block.size() - 1; k >= 0; --k)
+            lines.insert(insertAt, block.at(k));
+        createdTable = true;
+        rowIndex     = 1;
+    } else {
+        // 6b. Table exists — validate column count, then insert.
+        if (cells.size() != columns)
+            return rlErr(QStringLiteral("column_mismatch"),
+                QStringLiteral("roadmap_log: cells (%1) must match the "
+                               "table's column count (%2)")
+                    .arg(cells.size()).arg(columns));
+        if (!header.isEmpty() && header.size() != columns)
+            return rlErr(QStringLiteral("column_mismatch"),
+                QStringLiteral("roadmap_log: header (%1) must match the "
+                               "existing table's column count (%2)")
+                    .arg(header.size()).arg(columns));
+
+        const QString newRow = renderRow(cells);
+        const int firstDataLine = headerLine + 2;  // skip header+sep
+
+        if (position == QStringLiteral("sorted") &&
+            sortCol >= 0 && sortCol < columns) {
+            // Numeric-aware ascending insert by the sort_col cell.
+            QCollator coll;
+            coll.setNumericMode(true);
+            coll.setCaseSensitivity(Qt::CaseInsensitive);
+            const QString key = escapeCell(cells.value(sortCol));
+            int insertAt = lastDataLine + 1;   // default: end
+            int seen = 0;
+            for (int i = firstDataLine; i <= lastDataLine; ++i) {
+                // Extract the sort_col cell of this existing data row.
+                QString t = lines.at(i).trimmed();
+                if (t.startsWith(QChar('|'))) t.remove(0, 1);
+                QStringList parts;
+                QString cur; int j = 0;
+                while (j < t.size()) {
+                    if (t[j] == QChar('\\') && j + 1 < t.size()) {
+                        cur += t[j]; cur += t[j + 1]; j += 2; continue;
+                    }
+                    if (t[j] == QChar('|')) { parts << cur.trimmed();
+                                              cur.clear(); }
+                    else cur += t[j];
+                    ++j;
+                }
+                const QString existing =
+                    parts.value(sortCol).trimmed();
+                if (coll.compare(key, existing) < 0) {
+                    insertAt = i; break;
+                }
+                ++seen;
+            }
+            lines.insert(insertAt, newRow);
+            rowIndex = seen + 1;
+        } else {
+            // Append after the last data row.
+            lines.insert(lastDataLine + 1, newRow);
+            rowIndex = (lastDataLine - firstDataLine + 1) + 1;
+        }
+    }
+
+    const QString updated = lines.join(QChar('\n'));
+
+    // 7. Atomic write.
+    QSaveFile rw(roadmapPath);
+    if (!rw.open(QIODevice::WriteOnly | QIODevice::Text))
+        return rlErr(QStringLiteral("roadmap_write_failed"),
+            QStringLiteral("roadmap_log: could not open \"%1\" for writing")
+                .arg(roadmapPath));
+    const QByteArray utf8 = updated.toUtf8();
+    if (rw.write(utf8) != utf8.size() || !rw.commit())
+        return rlErr(QStringLiteral("roadmap_write_failed"),
+            QStringLiteral("roadmap_log: atomic write of \"%1\" failed")
+                .arg(roadmapPath));
+
+    // 8. Success envelope.
+    const QString rowText = renderRow(cells);
+    QJsonObject out;
+    out["ok"]            = true;
+    out["file"]          = QStringLiteral("ROADMAP.md");
+    out["section"]       = section;
+    out["row_index"]     = rowIndex;
+    out["columns"]       = createdTable ? header.size() : columns;
+    out["created_table"] = createdTable;
+    out["bytes_written"] = static_cast<int>(rowText.toUtf8().size() + 1);
     return QJsonDocument(out);
 }
 
