@@ -310,6 +310,7 @@ public:
         QString id;          // <PREFIX>-NNNN; empty if no `[<PREFIX>-NNNN]` token (ANTS-1405)
         QString status;      // "✅" | "🚧" | "📋" | "💭"
         QString headline;    // first **bold** chunk after the emoji (≤ 120 chars)
+        QString headlineFull; // ANTS-2075 — untruncated headline for locator use
         QString kind;        // value from `Kind:` line; "" if absent
         QStringList lanes;   // values from `Lanes:` line; [] if absent
         // ANTS-1154 v2 card-renderer extensions. Additive — older

@@ -16142,7 +16142,7 @@ regression. The user must relaunch the Ants Terminal instance to pick up the
 post-2026-06-10 MCP server. The actionable engineering response is surfacing a
 server build id so clients can self-diagnose this.
 
-- 📋 [ANTS-2073] **Surface the MCP server build/version id to clients so stale-binary deploy-gaps are self-diagnosable.**
+- ✅ [ANTS-2073] **Surface the MCP server build/version id to clients so stale-binary deploy-gaps are self-diagnosable.**
   Three independent CC sessions (MAME Curator, Album Builder, RetroArch)
   re-reported ANTS-2058 / ANTS-2059 as "still failing" when the fixes are
   in source and covered by green regression tests — the running MCP server
@@ -16157,8 +16157,9 @@ server build id so clients can self-diagnose this.
   **Layman:** Show which version of the Ants assistant-helper is running, so other tools can tell "already fixed, you're on an old copy" from "not fixed yet."
   Kind: enhancement.
   Source: cross-session-2026-06-11 (MAME Curator, Album Builder, RetroArch).
+  Resolved (2026-06-11): server_build block (version + git SHA + build date/time/type) added to session_orient and tool_info {catalog:true}; build_info.h wired into ants_core_lib (mirrors ANTS-1952's ants_claude_lib wiring). 3 new INVs in mcp_build_identity.
 
-- 📋 [ANTS-2074] **git_state op:diff should default to the working-tree diff when range is omitted.**
+- ✅ [ANTS-2074] **git_state op:diff should default to the working-tree diff when range is omitted.**
   Album Builder: git_state {op:"diff", caller_cwd} with no range refuses
   with code:"bad_range" ("range required for op:diff"). But the single most
   common diff — unstaged working-tree changes that bare `git diff` shows —
@@ -16170,8 +16171,9 @@ server build id so clients can self-diagnose this.
   **Layman:** Make the "show my changes" command work with no extra arguments, like plain git diff.
   Kind: enhancement.
   Source: cross-session-2026-06-11 (Album Builder).
+  Resolved (2026-06-11): git_state op:diff defaults to the working-tree diff (unstaged vs index, like bare `git diff`) when range is omitted; envelope echoes worktree:true. bad_range still fires for an invalid explicit range. INV + schema updated.
 
-- 📋 [ANTS-2075] **synthetic_id_not_locatable refusal recommends a headline locator that roadmap_query returns truncated.**
+- ✅ [ANTS-2075] **synthetic_id_not_locatable refusal recommends a headline locator that roadmap_query returns truncated.**
   Vestige obs #15 (LOW). The ANTS-2053 synthetic_id_not_locatable refusal
   correctly tells the caller to re-target by headline (exact text), but
   roadmap_query returns headline / headline_oneline TRUNCATED with an
@@ -16187,6 +16189,7 @@ server build id so clients can self-diagnose this.
   **Layman:** When the tool says "use the exact title to find this item", make sure it actually hands back the full title, not a cut-off one.
   Kind: enhancement.
   Source: cross-session-2026-06-11 (Vestige, observation #15).
+  Resolved (2026-06-11): roadmap_query emits headline_full when the parser caps a headline at 120 chars; new assignHeadline() helper in roadmapdialog retains the untruncated text at every parse site; synthetic_id refusal hint now points at headline_full / line_range. Behavioral + source INVs.
 
 - ✅ [ANTS-2076] **roadmap_log counter prefix: derive from project dir + accept explicit id_prefix on a fresh roadmap.**
   DOOM finding #1 (BUG/HIGH) + #3 (doc nit). ANTS-2054 sniffs the counter prefix from existing IDs, but a fresh / id-less roadmap falls back to a hardcoded "ANTS", so a new DOOM_Ants project got ANTS-0001. Fix: resolution order explicit id_prefix arg > sniffed prefix > project-dir default (DOOM_Ants -> DOOM, reusing the op:flip leaf derivation). Applies to op:append + op:append_batch. Add an id_prefix arg (validated ^[A-Za-z][A-Za-z0-9_-]{0,15}$) and surface the default-prefix + case-sensitivity behaviour in the tool description.
@@ -16236,11 +16239,12 @@ server build id so clients can self-diagnose this.
   Source: cross-session-2026-06-11 (DOOM Ants).
   Resolved (2026-06-11) by ANTS-2086: the back-compat-safe 'hint on large responses' option is delivered (roadmap_query bullets-mode bodies carry leaner_call_hint pointing at headline_only/section_index). The default-flip option was intentionally declined (breaks every caller's payload shape). See docs/journal/ANTS-2079-2085-mcp-token-design-notes.md.
 
-- 📋 [ANTS-2089] **roadmap_log return:"headline_only" confirm-after echo for op:flip / flip_batch.**
+- ✅ [ANTS-2089] **roadmap_log return:"headline_only" confirm-after echo for op:flip / flip_batch.**
   ANTS-2080 shipped return:"headline_only" for op:append / append_batch (echoes post_bullets [{id,status,headline_oneline}]). The flip path was deferred: it spans GFM + ants-v1 + flip_batch branches and stores status as an emoji (needs a reverse emoji->word map) and the headline isn't always in hand at the success site (ants-v1 has AntsV1Bullet.headline; the GFM path does not). Lower marginal value than append (flip already echoes id + from_status + to_status), so it was split out rather than bloating the append change. To implement: add an emoji->word reverse helper, reuse rcCompactBullet, and wire the ants-v1 flip, GFM flip, and flip_batch success envelopes; extend the `return` schema prose to name flip*.
   **Layman:** After flipping a roadmap item's status, optionally show the updated item so you don't need a second lookup.
   Kind: enhancement.
   Source: in-session-2026-06-11 (ANTS-2080 follow-up).
+  Resolved (2026-06-11): return:headline_only now echoes post_bullets for op:flip and op:flip_batch via a new rcStatusWord() emoji->word reverse map (ants-v1 + GFM + batch paths). Schema `return` prose extended. 2 INVs.
 
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 

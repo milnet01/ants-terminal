@@ -609,6 +609,18 @@ static void truncateEllipsis(QString &s, int maxChars) {
     s.append(QStringLiteral("…"));
 }
 
+// ANTS-2075 — store both the untruncated headline (for locator use:
+// roadmap_log's headline locator hashes the FULL disk headline, so a
+// caller handed only the 120-char display cap can't re-target a long
+// narrator bullet) and the display-capped headline. Single source of
+// truth for the truncate-then-assign pattern repeated at every headline
+// site in the parser.
+static void assignHeadline(RoadmapDialog::BulletRecord &rec, QString h) {
+    rec.headlineFull = h;
+    truncateEllipsis(h, 120);  // ANTS-1811 — surrogate-safe
+    rec.headline = h;
+}
+
 QString splitOnEmDash(const QString &head) {
     static const QString sep1 = QString::fromUtf8(" \xE2\x80\x94 ");  // " — "
     int idx = head.indexOf(sep1);
@@ -882,8 +894,7 @@ parsePassHeadingBullets(const QStringList &lines) {
         if (!meta.isEmpty()) {
             headline = QStringLiteral("(%1) %2").arg(meta, tail).trimmed();
         }
-        truncateEllipsis(headline, 120);  // ANTS-1811 — surrogate-safe
-        rec.headline       = headline;
+        assignHeadline(rec, headline);  // ANTS-2075 / ANTS-1811
         // ANTS-2030 — real under-heading prose; fall back to the
         // headline only when the heading has no content beneath it
         // (keeps body non-empty, matching the prior contract).
@@ -1190,8 +1201,7 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
                     QStringLiteral("\\s*\\^[a-z0-9-]+\\s*$"));
                 h.replace(rxTrailAnchor, QString());
                 h = h.trimmed();
-                truncateEllipsis(h, 120);  // ANTS-1811 — surrogate-safe
-                rec.headline = h;
+                assignHeadline(rec, h);  // ANTS-2075 / ANTS-1811
             }
         }
         const auto boldMatch = rxBold.match(body);
@@ -1236,8 +1246,7 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
                     if (nl >= 0) h = h.left(nl).trimmed();
                 }
             }
-            truncateEllipsis(h, 120);  // ANTS-1811 — surrogate-safe
-            rec.headline = h;
+            assignHeadline(rec, h);  // ANTS-2075 / ANTS-1811
         } else if (gfmHere) {
             // ANTS-1428 — GFM bullets often have no `**bold**`
             // formatting at all (Vestige's roadmap is mixed). Use
@@ -1257,8 +1266,7 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
             h.replace(rxTrailAnchor, QString());
             h.remove(QStringLiteral("**"));  // ANTS-2046 — de-markup
             h = h.trimmed();
-            truncateEllipsis(h, 120);  // ANTS-1811 — surrogate-safe
-            rec.headline = h;
+            assignHeadline(rec, h);  // ANTS-2075 / ANTS-1811
         }
         // ANTS-1428 — synthetic ID when GFM bullet has no bold-ID
         // and no `[ANTS-NNNN]` legacy token. Stable across line

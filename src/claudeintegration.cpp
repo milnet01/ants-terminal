@@ -1847,7 +1847,11 @@ void ClaudeIntegration::onMcpConnection() {
                     "(ANTS-1521) is `headline` with newlines + "
                     "whitespace runs collapsed to a single space — safe "
                     "to concatenate into a summary without post-"
-                    "processing. Optional `include_body:true` "
+                    "processing. When the parser capped a long headline at "
+                    "120 chars, the bullet also carries `headline_full` "
+                    "(ANTS-2075) — the untruncated text, usable as a "
+                    "roadmap_log headline locator. Optional "
+                    "`include_body:true` "
                     "(ANTS-1517) adds a `body` field (truncated to "
                     "~2000 chars, `body_truncated:true` set on "
                     "truncation) — saves the 3-5 follow-up Reads a "
@@ -3358,7 +3362,8 @@ void ClaudeIntegration::onMcpConnection() {
                     "`git diff`. Required: op (\"status\" / \"log\" / "
                     "\"diff\"). Op-specific: n (log only, default 10, "
                     "cap 100), path (log/diff filter), range (diff "
-                    "only, e.g. HEAD~5..HEAD), body (log only, "
+                    "only, e.g. HEAD~5..HEAD; omit for the working-tree "
+                    "diff — ANTS-2074), body (log only, "
                     "include commit body). Saves ~14-300 tokens per "
                     "call vs Bash. op=\"status\" envelope (ANTS-1522): "
                     "`files[]` now includes untracked paths with "
@@ -3391,7 +3396,10 @@ void ClaudeIntegration::onMcpConnection() {
                         QStringLiteral("log/diff: filter to repo-relative path");
                     QJsonObject rangeProp;  rangeProp["type"] = "string";
                                             rangeProp["description"] =
-                        QStringLiteral("diff: e.g. HEAD~5..HEAD");
+                        QStringLiteral("diff: e.g. HEAD~5..HEAD. Omit for "
+                                       "the working-tree diff (unstaged "
+                                       "changes, like bare `git diff`) — "
+                                       "ANTS-2074.");
                     QJsonObject bodyProp;   bodyProp["type"]  = "boolean";
                                             bodyProp["default"] = false;
                                             bodyProp["description"] =
@@ -3689,7 +3697,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "status:\"active\" (active roadmap sections) + "
                         "active_bullets (top-20 active item headlines, "
                         "mode:headline_only — resolve the next work "
-                        "bundle without a follow-up call) "
+                        "bundle without a follow-up call) + server_build "
+                        "(ANTS-2073 — the running server's version + git "
+                        "SHA + build date, so a client self-diagnoses a "
+                        "stale-binary deploy gap) "
                         "into one envelope under a single ETag. Use as "
                         "the first read on a fresh /clear session — "
                         "saves four MCP round-trips and four ETag "
@@ -7087,13 +7098,14 @@ void ClaudeIntegration::onMcpConnection() {
                     }
                     returnProp["description"] = QStringLiteral(
                         "Optional. \"headline_only\" on op:\"append\" / "
-                        "\"append_batch\" adds `post_bullets` to the "
-                        "success envelope — the just-written bullet(s) in "
-                        "the compact {id, status, headline_oneline} shape "
-                        "roadmap_query mode:\"headline_only\" emits — so a "
-                        "confirm-after read folds into the write (no "
-                        "follow-up roadmap_query). \"default\" (omitted) "
-                        "keeps the lean envelope (ANTS-2080).");
+                        "\"append_batch\" / \"flip\" / \"flip_batch\" adds "
+                        "`post_bullets` to the success envelope — the "
+                        "just-touched bullet(s) in the compact {id, status, "
+                        "headline_oneline} shape roadmap_query "
+                        "mode:\"headline_only\" emits — so a confirm-after "
+                        "read folds into the write (no follow-up "
+                        "roadmap_query). \"default\" (omitted) keeps the "
+                        "lean envelope (ANTS-2080 append; ANTS-2089 flip).");
 
                     QJsonObject props;
                     props["caller_cwd"]    = callerProp;
@@ -8288,6 +8300,19 @@ void ClaudeIntegration::onMcpConnection() {
                                 env["catalog"]        = catalog;
                                 env["tool_count"]     = toolCount;
                                 env["category_count"] = catalog.size();
+                                // ANTS-2073 — stamp the running server's
+                                // build identity on the catalog (the
+                                // documented once-per-session discovery
+                                // call) so a client can self-diagnose a
+                                // stale-binary deploy gap without a
+                                // separate get_session_info round-trip.
+                                QJsonObject sb;
+                                sb["version"]      = QStringLiteral(ANTS_VERSION);
+                                sb["build_commit"] = QStringLiteral(ANTS_BUILD_COMMIT);
+                                sb["build_date"]   = QStringLiteral(ANTS_BUILD_DATE);
+                                sb["build_time"]   = QStringLiteral(ANTS_BUILD_TIME);
+                                sb["build_type"]   = QStringLiteral(ANTS_BUILD_TYPE);
+                                env["server_build"] = sb;
                             }
                         } else if (reqName.isEmpty()) {
                             env["ok"]    = false;

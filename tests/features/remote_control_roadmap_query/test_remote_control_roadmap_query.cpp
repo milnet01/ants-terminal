@@ -130,6 +130,42 @@ static int runMain() {
         }
     }
 
+    // INV-10 (ANTS-2075): a headline longer than the 120-char display cap
+    // is truncated in `headline` but retained verbatim in `headlineFull`,
+    // so a roadmap_log headline locator (which hashes the FULL headline)
+    // is recoverable. Short headlines leave headlineFull == headline.
+    {
+        const QString longText =
+            QStringLiteral("This is a deliberately very long narrator-style "
+                           "headline that comfortably exceeds the one hundred "
+                           "and twenty character display cap so the parser "
+                           "must truncate it.");
+        const QString doc = QStringLiteral(
+            "## Section L\n\n- 📋 [ANTS-9001] **%1** body.\n").arg(longText);
+        const auto bullets = RoadmapDialog::parseBullets(doc);
+        if (bullets.size() != 1)
+            return fail("INV-10", "expected exactly one long-headline bullet");
+        const auto &b = bullets[0];
+        if (b.headline.size() > 121)
+            return fail("INV-10", "headline not truncated to the 120-char cap");
+        if (!b.headline.endsWith(QStringLiteral("…")))
+            return fail("INV-10", "truncated headline must end with an ellipsis");
+        if (b.headlineFull != longText)
+            return fail("INV-10",
+                        "headlineFull must retain the untruncated headline");
+        if (b.headlineFull == b.headline)
+            return fail("INV-10",
+                        "headlineFull must differ from the truncated headline");
+
+        // Short headline: headlineFull mirrors headline (no spurious echo).
+        const QString shortDoc = QStringLiteral(
+            "## Section S\n\n- 📋 [ANTS-9002] **Short headline.** body.\n");
+        const auto sb = RoadmapDialog::parseBullets(shortDoc);
+        if (sb.size() != 1 || sb[0].headlineFull != sb[0].headline)
+            return fail("INV-10",
+                        "short headline must leave headlineFull == headline");
+    }
+
     // INV-7: dispatch registers `roadmap-query`.
     if (!contains(rcSrc, "QLatin1String(\"roadmap-query\")"))
         return fail("INV-7", "dispatch missing roadmap-query branch");
@@ -159,7 +195,13 @@ static int runMain() {
             return fail("INV-9", f);
     }
 
-    std::puts("OK remote_control_roadmap_query: 9/9 invariants");
+    // INV-10 (ANTS-2075) source surface: roadmap_query emits headline_full
+    // via the rcMaybeEmitHeadlineFull helper on the bullets[] path.
+    if (!contains(rcSrc, "rcMaybeEmitHeadlineFull"))
+        return fail("INV-10",
+                    "roadmap_query does not emit headline_full (ANTS-2075)");
+
+    std::puts("OK remote_control_roadmap_query: 10/10 invariants");
     return 0;
 }
 

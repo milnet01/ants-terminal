@@ -314,5 +314,11 @@ TEST(roadmap_log_flip_batch, SourceSurface) {
            "schema op enum advertises flip_batch");
     expect(contains(ci, "props[\"locators\"]"),
            "schema registers the locators property");
+    // ANTS-2089 — return:"headline_only" echoes post_bullets, built in
+    // the same firstLine order as `flipped`, from the live bullet headline
+    // captured during the apply loop.
+    expect(contains(rc, "headlineByFirstLine") &&
+               contains(rc, "out[\"post_bullets\"] = postBullets"),
+           "ANTS-2089: flip_batch echoes post_bullets under headline_only");
     EXPECT_EQ(0, expect_failures());
 }

@@ -1,4 +1,5 @@
 #include "remotecontrol.h"
+#include "build_info.h"          // ANTS-2073 — server build identity for session_orient
 #include "buildcache.h"
 #include "coldeyesengine.h"
 #include "debtsweepengine.h"
@@ -525,6 +526,19 @@ QString rcHeadlineOneline(const QString &headline) {
     return s.trimmed();
 }
 
+// ANTS-2075 — when the parser capped the headline at 120 chars (long
+// narrator bullets), also emit the untruncated `headline_full` so a
+// roadmap_log headline locator — which hashes the FULL disk headline —
+// is usable from the same roadmap_query result without a second read.
+// Omitted when no truncation occurred, keeping the common-case payload
+// lean.
+void rcMaybeEmitHeadlineFull(QJsonObject &o,
+                             const RoadmapDialog::BulletRecord &b) {
+    if (!b.headlineFull.isEmpty() && b.headlineFull != b.headline) {
+        o[QStringLiteral("headline_full")] = b.headlineFull;
+    }
+}
+
 // ANTS-2080 — confirm-after compact echo for roadmap_log write verbs.
 // When the caller passes return:"headline_only", the success envelope
 // carries `post_bullets`: the just-touched bullet(s) in the same compact
@@ -542,6 +556,19 @@ QJsonObject rcCompactBullet(const QString &id, const QString &statusWord,
     o[QStringLiteral("status")]           = statusWord;
     o[QStringLiteral("headline_oneline")] = rcHeadlineOneline(headline);
     return o;
+}
+
+// ANTS-2089 — reverse a status emoji to its canonical word form for the
+// post_bullets compact echo. The flip path stores status as an emoji
+// (✅ 🚧 💭 📋); rcCompactBullet wants the word (the inverse of the
+// word→emoji map op:flip applies). Already-word / unknown input passes
+// through unchanged.
+QString rcStatusWord(const QString &emoji) {
+    if (emoji == QString::fromUtf8("\xE2\x9C\x85"))     return QStringLiteral("shipped");     // ✅
+    if (emoji == QString::fromUtf8("\xF0\x9F\x9A\xA7")) return QStringLiteral("in-progress"); // 🚧
+    if (emoji == QString::fromUtf8("\xF0\x9F\x92\xAD")) return QStringLiteral("considered");  // 💭
+    if (emoji == QString::fromUtf8("\xF0\x9F\x93\x8B")) return QStringLiteral("planned");      // 📋
+    return emoji;
 }
 
 // ANTS-1743 — sanitise a single-line bullet field (headline / layman /
@@ -2512,6 +2539,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 o["headline"] = b.headline;
                 // ANTS-1521 — single-line headline companion.
                 o["headline_oneline"] = rcHeadlineOneline(b.headline);
+                rcMaybeEmitHeadlineFull(o, b);  // ANTS-2075
                 // ANTS-1517 — body (truncated). Always cached; the
                 // strip pass at emission removes when include_body
                 // is false.
@@ -2575,6 +2603,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                     o["headline"] = b.headline;
                     // ANTS-1521 — single-line headline companion.
                     o["headline_oneline"] = rcHeadlineOneline(b.headline);
+                    rcMaybeEmitHeadlineFull(o, b);  // ANTS-2075
                     // ANTS-1517 — body (truncated).
                     rcSetBodyFields(o, b.body);
                     o["kind"] = b.kind;
@@ -2945,6 +2974,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 o["headline"] = b.headline;
                 // ANTS-1521 — single-line headline companion.
                 o["headline_oneline"] = rcHeadlineOneline(b.headline);
+                rcMaybeEmitHeadlineFull(o, b);  // ANTS-2075
                 // ANTS-1517 — body (truncated).
                 rcSetBodyFields(o, b.body);
                 o["kind"] = b.kind;
@@ -3155,6 +3185,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 o["headline"] = b.headline;
                 // ANTS-1521 — single-line headline companion.
                 o["headline_oneline"] = rcHeadlineOneline(b.headline);
+                rcMaybeEmitHeadlineFull(o, b);  // ANTS-2075
                 // ANTS-1517 — body (truncated).
                 rcSetBodyFields(o, b.body);
                 o["kind"] = b.kind;
@@ -4973,6 +5004,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 for (const QString &n : noteScrubbedNames) dropped.append(n);
                 out["note_scrubbed_params"] = dropped;
             }
+            // ANTS-2089 — confirm-after compact echo (ants-v1 flip).
+            if (rcReturnHeadlineOnly(req)) {
+                out["post_bullets"] = QJsonArray{ rcCompactBullet(
+                    v1target.id,
+                    rcStatusWord(out.value(QStringLiteral("to_status"))
+                                     .toString()),
+                    v1target.headline) };
+            }
             return QJsonDocument(out);
         }
         // Neither GFM nor ants-v1 — genuinely unrecognised.
@@ -5048,8 +5087,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             env["locator"] = locId;
             env["hint"]    = QStringLiteral(
                 "Use the bullet's `headline` from the same roadmap_query "
-                "result as the locator; on a flip roadmap_log injects a "
-                "durable caret anchor you can reuse next time.");
+                "result as the locator — or `headline_full` when the "
+                "headline was truncated (ANTS-2075) — or a `line_range`. "
+                "On a flip roadmap_log injects a durable caret anchor you "
+                "can reuse next time.");
             return QJsonDocument(env);
         }
     }
@@ -5248,6 +5289,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         QJsonArray dropped;
         for (const QString &n : noteScrubbedNames) dropped.append(n);
         out["note_scrubbed_params"] = dropped;
+    }
+    // ANTS-2089 — confirm-after compact echo (GFM flip).
+    if (rcReturnHeadlineOnly(req)) {
+        out["post_bullets"] = QJsonArray{ rcCompactBullet(
+            target.boldId,
+            rcStatusWord(out.value(QStringLiteral("to_status")).toString()),
+            target.headline) };
     }
     return QJsonDocument(out);
 }
@@ -5592,21 +5640,26 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     std::sort(applyOrder.begin(), applyOrder.end(),
         [](const Target &a, const Target &b){ return a.firstLine > b.firstLine; });
     QHash<int, QJsonObject> resultByFirstLine;
+    QHash<int, QString> headlineByFirstLine;  // ANTS-2089 — post_bullets echo
     for (const Target &t : applyOrder) {
         // Locate the live bullet at t.firstLine and apply.
+        QString hlText;  // ANTS-2089 — for the post_bullets compact echo
         if (isGfm) {
             const QVector<GfmBullet> live = walkGfmBullets(lines);
             const auto it = std::find_if(live.begin(), live.end(),
                 [&t](const GfmBullet &b){ return b.firstLine == t.firstLine; });
             if (it == live.end()) continue;  // should not happen
+            hlText = it->headline;
             applyGfmFlip(lines, *it, targetEmoji, t.anchorToInject);
         } else {
             const QVector<AntsV1Bullet> live = walkAntsV1Bullets(lines);
             const auto it = std::find_if(live.begin(), live.end(),
                 [&t](const AntsV1Bullet &b){ return b.firstLine == t.firstLine; });
             if (it == live.end()) continue;
+            hlText = it->headline;
             applyAntsV1Flip(lines, *it, targetEmoji);
         }
+        headlineByFirstLine.insert(t.firstLine, hlText);
         int noteLine = -1;
         if (!t.note.isEmpty())
             noteLine = appendBodyNote(lines, t.headlineLine, t.note);
@@ -5665,9 +5718,21 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     QList<int> orderedFirstLines = claimedFirstLines.values();
     std::sort(orderedFirstLines.begin(), orderedFirstLines.end());
     QJsonArray flipped;
-    for (const int fl : orderedFirstLines)
-        if (resultByFirstLine.contains(fl))
-            flipped.append(resultByFirstLine.value(fl));
+    // ANTS-2089 — confirm-after compact echo, built in the same
+    // firstLine-ascending order as `flipped`.
+    const bool echoHeadline = rcReturnHeadlineOnly(req);
+    QJsonArray postBullets;
+    for (const int fl : orderedFirstLines) {
+        if (!resultByFirstLine.contains(fl)) continue;
+        const QJsonObject r = resultByFirstLine.value(fl);
+        flipped.append(r);
+        if (echoHeadline) {
+            postBullets.append(rcCompactBullet(
+                r.value(QStringLiteral("id")).toString(),
+                rcStatusWord(targetEmoji),
+                headlineByFirstLine.value(fl)));
+        }
+    }
 
     QJsonObject out;
     out["ok"]            = true;
@@ -5683,6 +5748,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     out["bytes_written"] = static_cast<qint64>(utf8.size());
     if (newCounter >= 0 && newCounter != counterStart)
         out["counter"] = newCounter;
+    if (echoHeadline) out["post_bullets"] = postBullets;
     return QJsonDocument(out);
 }
 
@@ -8362,12 +8428,12 @@ QJsonObject runDiffOp(MainWindow *main, const QJsonObject &req) {
             QStringLiteral("git_state: project root does not exist"));
     }
     const QString range = req.value("range").toString();
-    if (range.isEmpty()) {
-        return gitErr("bad_range",
-            QStringLiteral("git_state: \"range\" required for op:diff"));
-    }
+    // ANTS-2074: range omitted → default to the working-tree diff (unstaged
+    // changes vs the index), matching bare `git diff`. This is the single most
+    // common "what have I changed so far" call, so it should need no args.
+    const bool worktreeDiff = range.isEmpty();
     // ANTS-1250-INV-4: strict regex; first char excludes `-`.
-    if (!isValidRange(range)) {
+    if (!worktreeDiff && !isValidRange(range)) {
         return gitErr("bad_range",
             QStringLiteral("git_state: \"range\" failed validation"));
     }
@@ -8379,9 +8445,9 @@ QJsonObject runDiffOp(MainWindow *main, const QJsonObject &req) {
     QStringList argv;
     argv << QStringLiteral("diff")
          << QStringLiteral("--no-color")
-         << QStringLiteral("--numstat")
-         << range
-         << QStringLiteral("--");
+         << QStringLiteral("--numstat");
+    if (!worktreeDiff) argv << range;
+    argv << QStringLiteral("--");
     if (!pc.argvForm.isEmpty()) argv << pc.argvForm;
 
     GitWrap::Result g = GitWrap::run(rootCanonical, argv);
@@ -8458,7 +8524,13 @@ QJsonObject runDiffOp(MainWindow *main, const QJsonObject &req) {
     QJsonObject out;
     out["ok"]     = true;
     out["op"]     = QStringLiteral("diff");
-    out["range"]  = range;
+    // ANTS-2074: echo the explicit range when given; otherwise flag the
+    // working-tree default so the caller knows which diff it received.
+    if (worktreeDiff) {
+        out["worktree"] = true;
+    } else {
+        out["range"] = range;
+    }
     out["files"]  = files;
     out["totals"] = totals;
     return out;
@@ -9891,6 +9963,23 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
         rqReq[QStringLiteral("limit")]      = 20;
         const QJsonObject rq = cmdRoadmapQuery(rqReq).object();
         result[QStringLiteral("active_bullets")] = rq;
+    }
+
+    // --- server_build (ANTS-2073) ---
+    // The running MCP server's build identity, so a client can compare it
+    // against a fix's ship date and self-diagnose "fix shipped, I'm on an
+    // old build" vs "fix didn't cover my case" — the recurring false
+    // re-report class three sessions hit (MAME Curator / Album Builder /
+    // RetroArch). Mirrors the `initialize` serverInfo stamp (ANTS-1952);
+    // surfaced here because session_orient is the documented first read.
+    {
+        QJsonObject sb;
+        sb[QStringLiteral("version")]      = QStringLiteral(ANTS_VERSION);
+        sb[QStringLiteral("build_commit")] = QStringLiteral(ANTS_BUILD_COMMIT);
+        sb[QStringLiteral("build_date")]   = QStringLiteral(ANTS_BUILD_DATE);
+        sb[QStringLiteral("build_time")]   = QStringLiteral(ANTS_BUILD_TIME);
+        sb[QStringLiteral("build_type")]   = QStringLiteral(ANTS_BUILD_TYPE);
+        result[QStringLiteral("server_build")] = sb;
     }
 
     result[QStringLiteral("ok")] = allOk;

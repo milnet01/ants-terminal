@@ -1,4 +1,4 @@
-# mcp_build_identity — ANTS-1952
+# mcp_build_identity — ANTS-1952 / ANTS-2073
 
 Surface the MCP server's build identity (git SHA + build time) so a
 caller can detect a ship-vs-live binary gap. A SemVer string alone
@@ -34,3 +34,24 @@ Source-scrape regression locks the wiring so a future refactor of
 - **INV-4.** `CMakeLists.txt` wires `ants_claude_lib` to the generated
   header dir and depends on `ants_build_info`, so the include resolves
   and the stamp refreshes on every build.
+
+## ANTS-2073 — first-read surfaces
+
+Three CC sessions (MAME Curator / Album Builder / RetroArch) re-reported
+already-fixed bugs because their running server predated the rebuild and
+they had no cheap way to tell. The identity from INV-2/INV-3 lives on
+`initialize` + `get_session_info`, but the documented first read of a
+fresh session is `session_orient`, and tool discovery goes through
+`tool_info {catalog:true}` — neither carried the stamp. This feature adds
+a `server_build` block to both.
+
+- **INV-5.** `remotecontrol.cpp` `#include`s `build_info.h`, and
+  `cmdSessionOrient` adds a `server_build` object carrying `version` +
+  `build_commit` / `build_date` / `build_time` / `build_type` from the
+  `ANTS_BUILD_*` macros.
+- **INV-6.** The `tool_info` catalog branch (`catalogMode`) stamps the
+  same `server_build` block, so the once-per-session discovery call
+  reveals the running binary's identity.
+- **INV-7.** `CMakeLists.txt` wires `ants_core_lib` (where
+  `remotecontrol.cpp` lives) to the generated header dir and depends on
+  `ants_build_info`.

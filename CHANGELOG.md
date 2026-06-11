@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log flip / flip_batch gained the return:headline_only confirm-after echo.** (ANTS-2089)
+  After changing a roadmap item's status, optionally show the updated item so you do not need a separate lookup (already available when adding items).
+
+- **roadmap_query now returns the full item title (headline_full) when the short title was cut off.** (ANTS-2075)
+  So when a tool says "find this item by its exact title", the full title is actually in the same answer — no second lookup needed.
+
+- **session_orient + tool_info now report the running server's build identity (version, git SHA, build date).** (ANTS-2073)
+  So another tool can tell "already fixed — you're running an old copy" apart from "not fixed yet", instead of re-reporting bugs that are already done.
+
 - **roadmap_log write verbs: optional return:headline_only to echo compact post-state.** (ANTS-2080)
   After saving a roadmap item, optionally show the updated list so you do not need a second lookup.
 
@@ -64,6 +73,9 @@ for security-relevant changes.
   The startup tool cheat-sheet only fits 12 of ~70 helpers and is full. A Claude session can now ask `tool_info` for the whole catalog — every helper grouped by category with a one-line "what it's for" — in a single cheap call, instead of looking each one up separately.
 
 ### Changed
+
+- **git_state diff now works with no arguments — shows your current unsaved changes, like plain `git diff`.** (ANTS-2074)
+  Previously it refused unless you supplied an explicit commit range; the most common "what have I changed so far" call needed no range at all.
 
 - **Move the CLAUDE.md MCP-authoring + behavioural-notes blob out of the always-loaded session preamble.** (ANTS-2088)
   Stop loading a huge block of developer notes into every single session; fetch it only when needed.

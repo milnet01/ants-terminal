@@ -194,6 +194,14 @@ TEST(McpGitState, WiringContract) {
            "INV-11b",
            "remotecontrol.cpp does not surface bad_range error code");
 
+    // ANTS-2074 — op:diff with no `range` defaults to the working-tree
+    // diff (bare `git diff`) instead of refusing with bad_range. The
+    // worktreeDiff flag gates whether `range` is appended to argv.
+    expect(contains(rcCpp, "worktreeDiff"),
+           "ANTS-2074",
+           "runDiffOp does not implement the working-tree default "
+           "(worktreeDiff) for an omitted range");
+
     // INV-12 — gitwrap uses 5 s + 200 ms two-tier kill timer
     // (kHardKillMs / kKillGraceMs) and calls terminate() + kill().
     expect(contains(gwCpp, "kHardKillMs"),

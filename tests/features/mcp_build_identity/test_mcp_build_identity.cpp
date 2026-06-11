@@ -21,6 +21,9 @@ ANTS_TEST_SCOPE();
 #ifndef SRC_CMAKELISTS_PATH
 #error "SRC_CMAKELISTS_PATH compile definition required"
 #endif
+#ifndef SRC_REMOTECONTROL_CPP_PATH
+#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#endif
 
 namespace {
 
@@ -113,5 +116,48 @@ TEST(mcp_build_identity, Inv4CMakeWiresGeneratedHeader) {
            "INV-4: ants_claude_lib gets the build/generated include dir");
     expect(contains(region, "add_dependencies(ants_claude_lib ants_build_info)"),
            "INV-4: ants_claude_lib depends on ants_build_info");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// INV-5 (ANTS-2073) — remotecontrol.cpp includes build_info.h and
+// cmdSessionOrient stamps a server_build block from the macros.
+TEST(mcp_build_identity, Inv5SessionOrientStampsServerBuild) {
+    expect_reset();
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(rc, "#include \"build_info.h\""),
+           "INV-5: remotecontrol.cpp must #include build_info.h");
+    const std::string region =
+        between(rc, "RemoteControl::cmdSessionOrient", "spec-aware MCP tools");
+    ASSERT_FALSE(region.empty())
+        << "INV-5 precondition: cmdSessionOrient body not found";
+    expect(contains(region, "server_build") &&
+               contains(region, "ANTS_BUILD_COMMIT") &&
+               contains(region, "ANTS_VERSION"),
+           "INV-5: session_orient adds server_build from ANTS_BUILD_* + version");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// INV-6 (ANTS-2073) — the tool_info catalog branch stamps server_build.
+TEST(mcp_build_identity, Inv6ToolInfoCatalogStampsServerBuild) {
+    expect_reset();
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string region =
+        between(ci, "env[\"category_count\"]", "reqName.isEmpty()");
+    ASSERT_FALSE(region.empty())
+        << "INV-6 precondition: tool_info catalog branch not found";
+    expect(contains(region, "server_build") &&
+               contains(region, "ANTS_BUILD_COMMIT"),
+           "INV-6: tool_info catalog stamps server_build from ANTS_BUILD_*");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// INV-7 (ANTS-2073) — CMake wires ants_core_lib (remotecontrol.cpp's lib)
+// to the generated header + ants_build_info dependency.
+TEST(mcp_build_identity, Inv7CMakeWiresCoreLib) {
+    expect_reset();
+    const std::string cml = ants_test::slurpFile(SRC_CMAKELISTS_PATH);
+    expect(contains(cml, "target_include_directories(ants_core_lib") &&
+               contains(cml, "add_dependencies(ants_core_lib ants_build_info)"),
+           "INV-7: ants_core_lib gets generated dir + ants_build_info dep");
     EXPECT_EQ(0, expect_failures());
 }

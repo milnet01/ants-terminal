@@ -140,3 +140,19 @@ TEST(roadmap_log_flip_ants_v1, Inv8SuccessEnvelopeFormat) {
            "INV-8: id field carries the bracket-id");
     EXPECT_EQ(0, expect_failures());
 }
+
+// INV-9 (ANTS-2089) — return:"headline_only" echoes a post_bullets
+// compact bullet on the flip success path, with the status emoji
+// reversed to its word form.
+TEST(roadmap_log_flip_ants_v1, Inv9HeadlineOnlyEcho) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "rcStatusWord"),
+           "INV-9: emoji->word helper rcStatusWord defined");
+    expect(contains(cpp, "rcReturnHeadlineOnly(req)") &&
+               contains(cpp, "out[\"post_bullets\"]") &&
+               contains(cpp, "v1target.headline"),
+           "INV-9: ants-v1 flip echoes post_bullets from v1target.headline "
+           "under return:headline_only");
+    EXPECT_EQ(0, expect_failures());
+}

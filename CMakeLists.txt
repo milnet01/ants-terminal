@@ -312,6 +312,14 @@ target_link_libraries(ants_core_lib
     PRIVATE ants_warnings)
 target_include_directories(ants_core_lib PUBLIC src)
 set_target_properties(ants_core_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# ANTS-2073: remotecontrol.cpp #includes the configure-time-generated
+# build_info.h so session_orient can surface the running server's build
+# identity (git SHA + build date) — clients self-diagnose a stale-binary
+# deploy gap. Same wiring as ants_claude_lib (ANTS-1952); regenerated on
+# every build by ants_build_info.
+target_include_directories(ants_core_lib
+    PRIVATE "${CMAKE_BINARY_DIR}/generated")
+add_dependencies(ants_core_lib ants_build_info)
 
 add_library(ants_vt_lib STATIC
     src/vtparser.cpp
