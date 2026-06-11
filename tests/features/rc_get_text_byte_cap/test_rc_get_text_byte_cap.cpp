@@ -77,7 +77,7 @@ void testEngine() {
         expect(r.truncated, "GT-2 cap tripped");
         expect(r.bytesDropped > 0, "GT-2 bytesDropped > 0");
         expect(r.linesDropped > 0, "GT-2 linesDropped > 0");
-        expect(r.text.size() <= maxBytes + 64 /* sentinel slack */,
+        expect(r.text.toUtf8().size() <= maxBytes + 64 /* sentinel slack */,
                "GT-2 returned text bounded by cap (+ small sentinel)");
         expect(r.text.startsWith("<truncated "),
                "GT-2 sentinel prefix present");

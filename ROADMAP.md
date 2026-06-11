@@ -8236,6 +8236,18 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: user-report-2026-05-29.
   Resolved 2026-06-01: by_trigger:{auto,manual:{upgrades,downgrades}} added to statsEnvelope(). Note corrected: manual switches are not logged today so manual bucket is structurally 0; the split makes that guarantee explicit on the wire. New test ModelSwitchStatsV2_ANTS1934.ByTriggerSplit covers the 4-record mixed-trigger scenario.
 
+- 📋 [ANTS-2070] **test_audit_partition full envelope overflows the tool-result token cap when pre_pass_findings_by_chunk is inlined.**
+  On a 416-file / 35-chunk suite, calling test_audit_partition with no `limit` returned a ~150 KB single-line envelope that exceeded the MCP tool-result token cap, forcing a fallback to limit/offset paging + reading the saved overflow file. The bulk is `pre_pass_findings_by_chunk` (547 findings inlined, capped at 20/chunk). Fix options: (a) omit pre_pass_findings_by_chunk from the default envelope and serve it per-chunk via test_audit_brief; (b) auto-paginate when the envelope would exceed the soft cap (emit truncated/next_offset like roadmap_query does); (c) add `fields=` projection so callers can request the chunk inventory without pre-pass bodies. Today the verb only truncates the chunks[] array, not the pre-pass map.
+  **Layman:** Asking Ants to plan a big test audit returned too much data at once and errored; it should send it in smaller pieces by default.
+  Kind: fix.
+  Source: in-session-2026-06-11 (running /test-audit on 416-file suite).
+
+- 📋 [ANTS-2071] **session_memory rejects ':' in keys, but test_audit_partition's own resume recipe recommends a key containing ':'.**
+  test_audit_partition's docstring documents the resume recipe `session_memory(op:"set", key:"test_audit_partition_token:<scope_id>", ...)`, but session_memory validates keys against ^[A-Za-z0-9._-]{1,64}$ which rejects the ':' separator (returns code:bad_key). The documented recipe is therefore invalid as written. Fix: either relax the session_memory key charset to permit ':' (namespacing is a common pattern), or correct the partition docstring to use a '_'/'.' separator (e.g. test_audit_partition_token_<scope_id>). Pick one and make them consistent.
+  **Layman:** Ants's own instructions tell you to save a value under a name it then refuses to accept.
+  Kind: doc-fix.
+  Source: in-session-2026-06-11 (running /test-audit).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
@@ -10450,6 +10462,62 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Lane = terminalwidget, not diffviewerdialog.
 
 ## 0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)
+
+### 🧪 Test Audit 2026-06-11
+
+Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, assertions, accuracy, splitting, flakiness, hardcoded_data, naming · Raw: 371 · Actionable: 10
+
+- 📋 [ANTS-2060] **std::exit(2) in inline slurp() helpers hard-kills the gtest bundle process on source-file open failure.**
+  - File: tests/features/ai_context_redaction/test_ai_context_redaction.cpp:76
+  - Dimension: isolation
+  - Severity: HIGH
+  - Fix: Replace the ~50 inline slurp()/std::exit(2) helpers across source-grep feature tests with ants_test::slurpFile (srcgrep.h, returns empty on failure) + an ASSERT_FALSE(src.empty())/GTEST_SKIP at the call site, so a missing source file fails just that test instead of aborting all sibling tests in the shared bundle.
+- 📋 [ANTS-2061] **Source-grep test helpers (slurp/contains/between/functionBody/writeFile/readFile) copy-pasted across dozens of feature t ….**
+  - File: tests/features/roadmap_log_annotate/test_roadmap_log_annotate.cpp:98
+  - Dimension: duplication
+  - Severity: MEDIUM
+  - Fix: Consolidate the duplicated helpers into tests/_support/ (extend srcgrep.h; add expect/roadmap/xdg helper headers) and include them, instead of re-declaring per file. Pairs with the std::exit migration above (same call sites).
+- 📋 [ANTS-2062] **Env-var mutations (XDG_CONFIG_HOME/XDG_CACHE_HOME/TMPDIR/KDE_FULL_SESSION) and setTestModeEnabled(true) not restored — l ….**
+  - File: tests/features/roadmap_density/test_roadmap_density.cpp:215
+  - Dimension: isolation
+  - Severity: HIGH
+  - Fix: Add a shared RAII guard (tests/_support/xdg_guard.h, generalising the existing copy-pasted XdgConfigHomeGuard) that saves+restores env vars and QStandardPaths test mode, and migrate the ~8 leaking files (audit_command_rule_trust:28, kwin_position_tracker:75/246, ledger_file_shape, dialog_chrome_affordances:48, roadmap_density:215, remote_control_opt_in:195).
+- 📋 [ANTS-2063] **gtest ASSERT_* used inside void helper functions only aborts the helper, leaving the TEST to run on a half-built fixture.**
+  - File: tests/features/roadmap_log_possible_duplicates/test_roadmap_log_possible_duplicates.cpp:41
+  - Dimension: assertions
+  - Severity: HIGH
+  - Fix: Change void writeFile()/writeRoadmap()/setup() helpers to return bool and ASSERT_TRUE(helper(...)) at the call site (or wrap with ASSERT_NO_FATAL_FAILURE), so an open/setup failure fails the test instead of silently continuing. Also affects audit_run_compile_commands_validation:38, audit_run_since_last_run:64.
+- 📋 [ANTS-2064] **Fixed-size substr(pos, N) source-scrape windows silently miss invariants as function bodies grow.**
+  - File: tests/features/remote_control_new_tab/test_remote_control_new_tab.cpp:62
+  - Dimension: accuracy
+  - Severity: MEDIUM
+  - Fix: Migrate the ~15 fixed-window substr() source-grep sites to ants_test::slurpFunctionBody (brace-matched body extraction, already in srcgrep.h) so coverage tracks the real function body. Includes rc_read_tool_byte_cap:163, session_orient_bundle:64, mcp_dispatch_debug_log, indie_review_truncation_flag.
+- 📋 [ANTS-2065] **Monolithic single-TEST bodies pack many invariants behind early-return/ASSERT — first failure hides all the rest.**
+  - File: tests/features/github_status_bar/test_github_status_bar.cpp:76
+  - Dimension: splitting
+  - Severity: MEDIUM
+  - Fix: Split per-invariant (one TEST per INV group) or replace early return fail()/ASSERT_NE with non-aborting EXPECT/expect() so all invariants evaluate each run. ~20 files (mcp_build_status:62, mcp_workspace_search WiringContract, help_about_menu:63, verify_trust_gate:339, etc.).
+- 📋 [ANTS-2066] **Wall-clock / real-sleep flakiness: real `sleep 1` subprocess + EXPECT_LT(durationSec,3.0), 200ms warm-spin, msleep+mtime ….**
+  - File: tests/features/mcp_verify_changes_timeout_headroom/test_mcp_verify_changes_timeout_headroom.cpp:65
+  - Dimension: flakiness
+  - Severity: HIGH
+  - Fix: Replace wall-clock bounds and fixed sleeps with VerifyEngine test-doubles, readiness polling (lua_threading:101), and write-count/mock-clock side-channels (config_reload_loop_safety:146 mtime idempotency, token_usage_engine:50). Keep semantic checks; drop timing-dependent assertions or gate them behind a clock abstraction.
+- 📋 [ANTS-2067] **Too-loose / whitespace-fragile source-grep assertions: whole-file contains("A")&&contains("B") without proximity; hardco ….**
+  - File: tests/features/mcp_workflow_state/test_mcp_workflow_state.cpp:1
+  - Dimension: accuracy
+  - Severity: MEDIUM
+  - Fix: Scope substring assertions to the relevant function body (slurpFunctionBody) and normalise/strip whitespace before matching, so a production-code reformat or an unrelated token elsewhere can neither falsely pass nor falsely fail. Includes decstr_soft_reset over-broad CSI OR-fallback, roadmap_query_duplicate_ids:70, narrator_filter:103, find_sources:224.
+- 📋 [ANTS-2068] **Hardcoded magic counts / model-version literals require manual bumping and false-fail/pass over time.**
+  - File: tests/features/rc_launch_cwd_anchor/test_rc_launch_cwd_anchor.cpp:168
+  - Dimension: hardcoded_data
+  - Severity: LOW
+  - Fix: Replace exact call-site counts (validatePath ==22, schema tool count ==7, kPublicMethods comment ==16) and hardcoded CC model names ("Opus 4.8"/"Sonnet 4.6"/"Haiku 4.5") with derived/relational checks or a documented single source of truth so they don't silently drift.
+- 📋 [ANTS-2069] **Dead test code, stale comment counts, and INV mislabels across feature tests.**
+  - File: tests/features/mcp_current_state/test_mcp_current_state.cpp:57
+  - Dimension: naming
+  - Severity: LOW
+  - Fix: Remove unused regex/vars/dead helpers (FakeTracker::inject, mcp_feedback_log kCheck, unused QCoreApplication include), fix duplicated/mislabelled INV-N comments and stale count comments, and rename test_mode_arm.cpp to match its directory. Includes the audit_fixtures inline-@expect-marker convention nits (conflict_markers, memory_patterns).
+
 
 ### 📝 Cold-eyes 2026-05-21
 

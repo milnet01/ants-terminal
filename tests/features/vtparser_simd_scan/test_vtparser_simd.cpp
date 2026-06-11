@@ -54,7 +54,9 @@ bool actionsEqual(const VtAction &a, const VtAction &b) {
         && a.params == b.params
         && a.colonSep == b.colonSep
         && a.intermediate == b.intermediate
-        && a.oscString == b.oscString;
+        && a.oscString == b.oscString
+        && a.truncated == b.truncated
+        && a.paramsTruncated == b.paramsTruncated;
 }
 
 const char *actionTypeName(VtAction::Type t) {

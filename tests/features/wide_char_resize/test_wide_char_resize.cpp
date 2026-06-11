@@ -89,6 +89,10 @@ Orphans scanScrollbackForOrphans(const TerminalGrid &grid) {
 // the dangerous boundary. Pre-fix would orphan the cell-18 lead on
 // line 0 and the cell-19 cont on line 1.
 TEST(WideCharResize, TwentyCellRowResizeTo19) {
+    // wcwidth() (used by TerminalGrid::handlePrint) only reports CJK as
+    // width-2 under a UTF-8 locale; pin it so the wide-char premise below
+    // holds regardless of the inherited CI environment.
+    std::setlocale(LC_CTYPE, "");
     Harness h(24, 20);
     // 10 × U+4F60 ("you") = 10 wide chars = 20 cells.
     // U+4F60 in UTF-8: 0xE4 0xBD 0xA0 (3 bytes per char).
@@ -131,6 +135,7 @@ TEST(WideCharResize, TwentyCellRowResizeTo19) {
 // chars + an orphan lead on line 0 (cells 0..8), and orphan cont +
 // nothing else on line 1 (cell 0 is cont, no lead).
 TEST(WideCharResize, TenCellRowResizeTo9) {
+    std::setlocale(LC_CTYPE, "");
     Harness h(24, 10);
     std::string cjk;
     for (int i = 0; i < 5; ++i) cjk += "\xe4\xbd\xa0";  // 5 × U+4F60
