@@ -3,7 +3,6 @@
 // docs/specs/ANTS-1878.md.
 
 #include <gtest/gtest.h>
-#include <QCoreApplication>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>

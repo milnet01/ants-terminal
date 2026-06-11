@@ -14,6 +14,8 @@
 #include "config.h"
 #include "roadmapdialog.h"
 
+#include "../../_support/xdg_guard.h"
+
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
@@ -212,9 +214,12 @@ static int runMain() {
     QTemporaryDir tempCfg;
     if (!tempCfg.isValid())
         return fail("INV-3", "could not create QTemporaryDir for Config");
-    qputenv("XDG_CONFIG_HOME", tempCfg.path().toUtf8());
+    // ANTS-2062 — guard restores XDG_CONFIG_HOME + test mode on scope exit
+    // so neither leaks into sibling tests in this gtest bundle.
+    ants_test::XdgGuard xdg;
+    xdg.setEnv("XDG_CONFIG_HOME", tempCfg.path().toUtf8());
     // Reset Qt's cached config location.
-    QStandardPaths::setTestModeEnabled(false);
+    xdg.setTestMode(false);
     {
         Config cfg;
         // Default before any write should be "cozy".

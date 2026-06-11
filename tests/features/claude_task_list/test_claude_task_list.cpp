@@ -10,7 +10,6 @@
 #include "claudecontent.h"   // ANTS-2002 — content-as-array helper
 
 #include <gtest/gtest.h>
-#include <QCoreApplication>
 #include <QFile>
 #include <QSignalSpy>
 #include <QString>

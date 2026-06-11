@@ -2,7 +2,6 @@
 // See tests/features/model_recommender/spec.md.
 
 #include <gtest/gtest.h>
-#include <QCoreApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>

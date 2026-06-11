@@ -12,7 +12,6 @@
 
 #include <gtest/gtest.h>
 
-#include <QCoreApplication>
 
 #include <cstdio>
 #include <fstream>

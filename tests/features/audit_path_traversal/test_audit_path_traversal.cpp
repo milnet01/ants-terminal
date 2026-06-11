@@ -23,7 +23,6 @@
 
 #include "../../_support/expect.h"
 
-#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>

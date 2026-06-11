@@ -54,7 +54,6 @@ std::string extractFunctionBody(const std::string &src,
     if (pos == std::string::npos) return {};
     // Find the next "^QJsonDocument RemoteControl::cmd" header AFTER
     // this one. Use it as the right-bound.
-    static const std::regex nextHeader(R"(\nQJsonDocument RemoteControl::cmd)");
     auto end = src.find("\nQJsonDocument RemoteControl::cmd", pos + declarationStart.size());
     if (end == std::string::npos) end = src.size();
     return src.substr(pos, end - pos);

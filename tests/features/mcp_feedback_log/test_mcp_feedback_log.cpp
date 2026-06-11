@@ -19,7 +19,6 @@
 namespace {
 
 const char *kClip = "\xF0\x9F\x93\x8B";  // 📋
-const char *kCheck = "\xE2\x9C\x85";     // ✅
 
 QByteArray readAll(const QString &path) {
     QFile f(path);
@@ -260,7 +259,6 @@ TEST(McpFeedbackLog, Refusals) {
       r["rows"] = rows;
       EXPECT_EQ(rc.cmdFeedbackLog(r).object().value("code").toString(),
                 "not_found"); }
-    (void)kCheck;
 }
 
 // T8 — atomicity: forced write failure leaves the original untouched.

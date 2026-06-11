@@ -22,7 +22,6 @@
 //
 // Exit 0 = all assertions hold.
 
-#include <QCoreApplication>
 
 #include <cstdio>
 #include <fstream>

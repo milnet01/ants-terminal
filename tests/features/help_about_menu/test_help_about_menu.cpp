@@ -45,7 +45,6 @@
 
 #include "../../_support/expect.h"
 
-#include <QCoreApplication>
 #include <QFile>
 #include <QString>
 

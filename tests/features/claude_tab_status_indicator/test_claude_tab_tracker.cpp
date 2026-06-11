@@ -39,7 +39,6 @@
 #include <gtest/gtest.h>
 #include "claudetabtracker.h"
 
-#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>

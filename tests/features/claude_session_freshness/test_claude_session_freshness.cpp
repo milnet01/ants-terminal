@@ -14,7 +14,6 @@
 #include "claudeintegration.h"
 
 #include <gtest/gtest.h>
-#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>

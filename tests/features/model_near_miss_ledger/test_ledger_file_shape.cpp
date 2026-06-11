@@ -8,6 +8,8 @@
 #include <QTemporaryDir>
 #include "modelnearmissledger.h"
 
+#include "../../_support/xdg_guard.h"
+
 namespace NM = ModelNearMissLedger;
 
 namespace {
@@ -32,9 +34,11 @@ NM::Record makeRecord(const QString &proj = QStringLiteral("/p")) {
 TEST(ModelNearMissLedger, Inv7DefaultPathUnderXdgCache) {
     QTemporaryDir cacheDir;
     ASSERT_TRUE(cacheDir.isValid());
-    qputenv("XDG_CACHE_HOME", cacheDir.path().toUtf8());
+    // ANTS-2062 — guard restores XDG_CACHE_HOME + test mode on scope exit.
+    ants_test::XdgGuard xdg;
+    xdg.setEnv("XDG_CACHE_HOME", cacheDir.path().toUtf8());
     // QStandardPaths caches; reset so the env var takes effect.
-    QStandardPaths::setTestModeEnabled(false);
+    xdg.setTestMode(false);
 
     const QString path = NM::defaultLedgerPath();
     EXPECT_TRUE(path.endsWith(QStringLiteral("/ants-terminal/model-switch-nearmiss.jsonl")));

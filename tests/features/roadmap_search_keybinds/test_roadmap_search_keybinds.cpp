@@ -10,7 +10,6 @@
 #include "roadmapdialog.h"
 
 #include <QApplication>
-#include <QCoreApplication>
 #include <QFile>
 #include <QKeyEvent>
 #include <QLineEdit>

@@ -9,7 +9,6 @@
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"
 
-#include <QCoreApplication>
 #include <QFile>
 #include <QString>
 

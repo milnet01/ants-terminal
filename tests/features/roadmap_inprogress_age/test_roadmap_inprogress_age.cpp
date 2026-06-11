@@ -12,7 +12,6 @@
 
 #include "roadmapdialog.h"
 
-#include <QCoreApplication>
 #include <QDateTime>
 #include <QFile>
 #include <QFileInfo>

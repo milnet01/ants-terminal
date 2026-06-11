@@ -7,7 +7,6 @@
 #include <gtest/gtest.h>
 
 #include <QByteArray>
-#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>

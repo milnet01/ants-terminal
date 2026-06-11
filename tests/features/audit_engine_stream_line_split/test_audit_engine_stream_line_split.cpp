@@ -11,7 +11,6 @@
 
 #include <gtest/gtest.h>
 
-#include <QCoreApplication>
 #include <QElapsedTimer>
 
 #include <fstream>

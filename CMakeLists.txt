@@ -1680,7 +1680,7 @@ if(ANTS_TESTS)
                 tests/features/model_near_miss_ledger/test_stats_slim_dominant.cpp
                 tests/features/model_near_miss_ledger/test_stats_full_windows.cpp
                 tests/features/model_near_miss_ledger/test_json_roundtrip.cpp
-                tests/features/mcp_model_switch_stats_near_misses/test_mode_arm.cpp
+                tests/features/mcp_model_switch_stats_near_misses/test_mcp_model_switch_stats_near_misses.cpp
                 # ANTS-1897 — MCP discoverability SessionStart hook installer.
                 # mcporientation.cpp lives in ants_claude_lib; test_core only
                 # links ants_core_lib so the TU is compiled directly here

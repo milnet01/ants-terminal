@@ -57,13 +57,16 @@ bool initRepo(const QString &dir) {
     return true;
 }
 
-void writeFile(const QString &dir, const QString &rel, const QString &body) {
+// ANTS-2063 — bool return so a failed open fails the TEST at the call
+// site, not silently inside the helper.
+bool writeFile(const QString &dir, const QString &rel, const QString &body) {
     const QString abs = dir + QLatin1Char('/') + rel;
     QDir().mkpath(QFileInfo(abs).absolutePath());
     QFile f(abs);
-    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    if (!f.open(QIODevice::WriteOnly)) return false;
     f.write(body.toUtf8());
     f.close();
+    return true;
 }
 
 bool commitAll(const QString &dir, const QString &msg) {
@@ -160,7 +163,7 @@ TEST(AuditScopeSinceLastRun, Inv6DemotionNoGitAndNoPrior) {
     QTemporaryDir repo;
     ASSERT_TRUE(repo.isValid());
     ASSERT_TRUE(initRepo(repo.path()));
-    writeFile(repo.path(), QStringLiteral("a.cpp"), QStringLiteral("int x;\n"));
+    ASSERT_TRUE(writeFile(repo.path(), QStringLiteral("a.cpp"), QStringLiteral("int x;\n")));
     ASSERT_TRUE(commitAll(repo.path(), QStringLiteral("init")));
 
     // empty prior commit → no_prior_run.
@@ -192,7 +195,7 @@ TEST(AuditScopeSinceLastRun, Inv1ResolveDiffAndInv7NoChanges) {
     QTemporaryDir repo;
     ASSERT_TRUE(repo.isValid());
     ASSERT_TRUE(initRepo(repo.path()));
-    writeFile(repo.path(), QStringLiteral("a.cpp"), QStringLiteral("int x;\n"));
+    ASSERT_TRUE(writeFile(repo.path(), QStringLiteral("a.cpp"), QStringLiteral("int x;\n")));
     ASSERT_TRUE(commitAll(repo.path(), QStringLiteral("A")));
     const QString anchor = gitOut(repo.path(),
         {QStringLiteral("rev-parse"), QStringLiteral("--short"),
@@ -209,10 +212,10 @@ TEST(AuditScopeSinceLastRun, Inv1ResolveDiffAndInv7NoChanges) {
     EXPECT_EQ(clean.anchorCommit, anchor);
 
     // Commit a second change + leave an uncommitted edit + an untracked file.
-    writeFile(repo.path(), QStringLiteral("b.cpp"), QStringLiteral("int y;\n"));
+    ASSERT_TRUE(writeFile(repo.path(), QStringLiteral("b.cpp"), QStringLiteral("int y;\n")));
     ASSERT_TRUE(commitAll(repo.path(), QStringLiteral("B")));
-    writeFile(repo.path(), QStringLiteral("a.cpp"), QStringLiteral("int x=1;\n"));
-    writeFile(repo.path(), QStringLiteral("c.py"), QStringLiteral("z=1\n"));
+    ASSERT_TRUE(writeFile(repo.path(), QStringLiteral("a.cpp"), QStringLiteral("int x=1;\n")));
+    ASSERT_TRUE(writeFile(repo.path(), QStringLiteral("c.py"), QStringLiteral("z=1\n")));
 
     auto r = AuditScope::resolveChangedFiles(repo.path(),
         QStringLiteral("since-last-run"), anchor);

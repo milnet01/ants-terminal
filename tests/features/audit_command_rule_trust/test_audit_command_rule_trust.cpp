@@ -6,9 +6,9 @@
 // Exit 0 = all invariants hold. Non-zero = regression.
 
 #include "../../_support/expect.h"
+#include "../../_support/xdg_guard.h"
 #include "config.h"
 
-#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QStandardPaths>
@@ -23,9 +23,13 @@ namespace {
 
 
 // Sandbox XDG_CONFIG_HOME inside tmp so Config writes never touch the
-// real user config. Matches the pattern used by config_parse_failure_guard.
-void setConfigSandbox(const QTemporaryDir &tmp) {
-    qputenv("XDG_CONFIG_HOME", tmp.path().toLocal8Bit());
+// real user config. Returns a guard (ANTS-2062) that restores the prior
+// XDG_CONFIG_HOME when the caller's scope exits — so the sandbox doesn't
+// leak into sibling tests in this gtest bundle.
+[[nodiscard]] ants_test::XdgGuard setConfigSandbox(const QTemporaryDir &tmp) {
+    ants_test::XdgGuard g;
+    g.setEnv("XDG_CONFIG_HOME", tmp.path().toLocal8Bit());
+    return g;
 }
 
 QString makeProject(const QTemporaryDir &tmp, const char *slug,
@@ -43,7 +47,7 @@ QString makeProject(const QTemporaryDir &tmp, const char *slug,
 void testRoundTripAndHashInvalidation() {
     QTemporaryDir tmp;
     if (!tmp.isValid()) { expect(false, "roundTrip: tmp"); return; }
-    setConfigSandbox(tmp);
+    auto xdgGuard = setConfigSandbox(tmp);
 
     const QByteArray v1 = R"({"rules":[{"id":"r1","command":"echo a"}]})";
     const QByteArray v2 = R"({"rules":[{"id":"r1","command":"echo b"}]})";
@@ -83,7 +87,7 @@ void testRoundTripAndHashInvalidation() {
 void testCrossProjectIsolation() {
     QTemporaryDir tmp;
     if (!tmp.isValid()) { expect(false, "crossProject: tmp"); return; }
-    setConfigSandbox(tmp);
+    auto xdgGuard = setConfigSandbox(tmp);
 
     // Byte-identical rule packs so the test can't pass by hash coincidence.
     const QByteArray bytes = R"({"rules":[{"id":"x","command":"whoami"}]})";
@@ -103,7 +107,7 @@ void testCrossProjectIsolation() {
 void testPathCanonicalization() {
     QTemporaryDir tmp;
     if (!tmp.isValid()) { expect(false, "canonical: tmp"); return; }
-    setConfigSandbox(tmp);
+    auto xdgGuard = setConfigSandbox(tmp);
 
     const QByteArray bytes = R"({"rules":[{"id":"q","command":"id"}]})";
     const QString proj = makeProject(tmp, "realproj", bytes);

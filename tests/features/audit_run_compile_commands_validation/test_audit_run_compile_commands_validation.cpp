@@ -30,13 +30,16 @@ bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
 }
 
-void writeFile(const QString &dir, const QString &rel,
+// ANTS-2063 — bool return: a void helper's ASSERT_TRUE only aborts the
+// helper, leaving the TEST to run on a fixture that was never written.
+bool writeFile(const QString &dir, const QString &rel,
                const QByteArray &body) {
     const QString abs = QDir(dir).filePath(rel);
     QDir().mkpath(QFileInfo(abs).absolutePath());
     QFile f(abs);
-    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
     f.write(body);
+    return true;
 }
 
 }  // namespace
@@ -246,7 +249,7 @@ TEST(AuditRunCompileCommandsValidation, Inv10CleanJsonAccepted) {
                 "\"-c\",\"" + cwd.toUtf8() + "/src/foo.cpp\""
             "]"
         "}]";
-    writeFile(cwd, "build/compile_commands.json", json);
+    ASSERT_TRUE(writeFile(cwd, "build/compile_commands.json", json));
 
     QString reason;
     EXPECT_TRUE(AuditRunner::internal::validateCompileCommands(
@@ -272,7 +275,7 @@ TEST(AuditRunCompileCommandsValidation, Inv11HostileIncludeRefused) {
                 "\"-c\",\"src/x.cpp\""
             "]"
         "}]";
-    writeFile(tmp.path(), "build/compile_commands.json", json);
+    ASSERT_TRUE(writeFile(tmp.path(), "build/compile_commands.json", json));
 
     QString reason;
     EXPECT_FALSE(AuditRunner::internal::validateCompileCommands(
@@ -297,7 +300,7 @@ TEST(AuditRunCompileCommandsValidation, Inv12CommandStringFormParsed) {
             "\"file\":\"" + cwd.toUtf8() + "/src/foo.cpp\","
             "\"command\":\"/usr/bin/c++ -include /etc/shadow -c foo.cpp\""
         "}]";
-    writeFile(cwd, "build/compile_commands.json", json);
+    ASSERT_TRUE(writeFile(cwd, "build/compile_commands.json", json));
 
     QString reason;
     EXPECT_FALSE(AuditRunner::internal::validateCompileCommands(

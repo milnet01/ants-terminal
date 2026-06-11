@@ -38,17 +38,22 @@ QString roadmapWith() {
         "\n");
 }
 
-void writeRoadmap(const QString &dir, const QString &content) {
+// ANTS-2063 — return bool (not void) so a failed open fails the TEST at
+// the call site; a void helper's ASSERT_TRUE only aborts the helper and
+// leaves the TEST running on a half-built fixture.
+bool writeRoadmap(const QString &dir, const QString &content) {
     QFile f(dir + QStringLiteral("/ROADMAP.md"));
-    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
     f.write(content.toUtf8());
     f.close();
+    return true;
 }
-void writeCounter(const QString &dir, qint64 value) {
+bool writeCounter(const QString &dir, qint64 value) {
     QFile f(dir + QStringLiteral("/.roadmap-counter"));
-    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
     f.write((QString::number(value) + QChar('\n')).toUtf8());
     f.close();
+    return true;
 }
 qint64 readCounter(const QString &dir) {
     QFile f(dir + QStringLiteral("/.roadmap-counter"));
@@ -73,17 +78,17 @@ QJsonObject appendReq(const QString &dir, const QString &headline) {
     return r;
 }
 
-void setup(QTemporaryDir &dir) {
-    ASSERT_TRUE(dir.isValid());
-    writeRoadmap(dir.path(), roadmapWith());
-    writeCounter(dir.path(), 9100);
+bool setup(QTemporaryDir &dir) {
+    return dir.isValid()
+        && writeRoadmap(dir.path(), roadmapWith())
+        && writeCounter(dir.path(), 9100);
 }
 
 }  // namespace
 
 // INV-1 — exact normalised match scores 100 and still appends.
 TEST(roadmap_log_possible_duplicates, Inv1ExactMatchScore100) {
-    QTemporaryDir dir; setup(dir);
+    QTemporaryDir dir; ASSERT_TRUE(setup(dir));
     RemoteControl rc(nullptr);
     const QJsonObject out = rc.cmdRoadmapLogAppendForTest(
         appendReq(dir.path(),
@@ -102,7 +107,7 @@ TEST(roadmap_log_possible_duplicates, Inv1ExactMatchScore100) {
 
 // INV-2 — a near match (Jaccard ≥ 0.6) is surfaced with a sub-100 score.
 TEST(roadmap_log_possible_duplicates, Inv2NearMatchSurfaced) {
-    QTemporaryDir dir; setup(dir);
+    QTemporaryDir dir; ASSERT_TRUE(setup(dir));
     RemoteControl rc(nullptr);
     // Differs only by "in"/"during" + drops trailing punctuation; shares
     // 8 of 10 union tokens → Jaccard 0.8.
@@ -124,7 +129,7 @@ TEST(roadmap_log_possible_duplicates, Inv2NearMatchSurfaced) {
 
 // INV-3 — a clean headline omits the field entirely.
 TEST(roadmap_log_possible_duplicates, Inv3CleanHeadlineNoField) {
-    QTemporaryDir dir; setup(dir);
+    QTemporaryDir dir; ASSERT_TRUE(setup(dir));
     RemoteControl rc(nullptr);
     const QJsonObject out = rc.cmdRoadmapLogAppendForTest(
         appendReq(dir.path(),
@@ -139,7 +144,7 @@ TEST(roadmap_log_possible_duplicates, Inv3CleanHeadlineNoField) {
 // INV-4 — the advisory never blocks: the bullet is written + counter
 // advances even on an exact-duplicate headline.
 TEST(roadmap_log_possible_duplicates, Inv4AdvisoryNeverBlocks) {
-    QTemporaryDir dir; setup(dir);
+    QTemporaryDir dir; ASSERT_TRUE(setup(dir));
     RemoteControl rc(nullptr);
     const QJsonObject out = rc.cmdRoadmapLogAppendForTest(
         appendReq(dir.path(),
@@ -155,7 +160,7 @@ TEST(roadmap_log_possible_duplicates, Inv4AdvisoryNeverBlocks) {
 
 // INV-5 — append_batch attaches the advisory per accepted bullet.
 TEST(roadmap_log_possible_duplicates, Inv5BatchPerBulletAdvisory) {
-    QTemporaryDir dir; setup(dir);
+    QTemporaryDir dir; ASSERT_TRUE(setup(dir));
     RemoteControl rc(nullptr);
     auto bullet = [](const QString &hl) {
         QJsonObject b;

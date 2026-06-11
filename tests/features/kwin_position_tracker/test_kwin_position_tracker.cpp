@@ -8,6 +8,8 @@
 
 #include "kwinpositiontracker.h"
 
+#include "../../_support/xdg_guard.h"
+
 #include <QApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -62,6 +64,14 @@ QStringList tempEntriesByGlob(const QString &glob) {
 }  // namespace
 
 TEST(KwinPositionTracker, Main) {
+    // ANTS-2062 — guard the env vars this TEST mutates (TMPDIR set below;
+    // KDE_FULL_SESSION / XDG_CURRENT_DESKTOP unset+set further down) so
+    // none leak into sibling tests in this gtest bundle. (PATH already has
+    // its own balanced save/restore around the no-kwin probe.)
+    ants_test::XdgGuard xdg;
+    xdg.guardEnv("KDE_FULL_SESSION");
+    xdg.guardEnv("XDG_CURRENT_DESKTOP");
+
     // ANTS-1434: isolate the kwin_pos_ants_* temp-file scans (INV-4b /
     // INV-5c) from cross-test contamination under full-parallel `ctest
     // -L features`. Point TMPDIR at a private dir so both the tracker's
@@ -72,7 +82,7 @@ TEST(KwinPositionTracker, Main) {
     QTemporaryDir tmpIsolation;
     ASSERT_TRUE(tmpIsolation.isValid())
         << "could not create a private TMPDIR for isolation";
-    qputenv("TMPDIR", tmpIsolation.path().toUtf8());
+    xdg.setEnv("TMPDIR", tmpIsolation.path().toUtf8());
 
     const std::string headerPath = KWINPOS_H;
     const std::string sourcePath = KWINPOS_CPP;

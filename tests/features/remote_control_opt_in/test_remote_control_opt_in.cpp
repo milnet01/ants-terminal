@@ -18,6 +18,7 @@
 // Exit 0 = all assertions hold. Non-zero = regression.
 
 #include "../../_support/expect.h"
+#include "../../_support/xdg_guard.h"
 #include "config.h"
 #include "remotecontrol.h"
 
@@ -192,7 +193,10 @@ void testGateBehavioral() {
     // QStandardPaths::setTestModeEnabled — it routes to a Qt-test-
     // specific path that ignores XDG and has collided with real user
     // configs in practice (see config_parse_failure_guard/test).
-    qputenv("XDG_CONFIG_HOME", tmp.path().toLocal8Bit());
+    // ANTS-2062 — RAII guard restores XDG_CONFIG_HOME on scope exit, even
+    // if an expect() short-circuits, so it never leaks to bundle siblings.
+    ants_test::XdgGuard xdg;
+    xdg.setEnv("XDG_CONFIG_HOME", tmp.path().toLocal8Bit());
 
     // 1. Default: fresh Config → flag is false.
     {
@@ -230,8 +234,6 @@ void testGateBehavioral() {
         expect(cfg2.remoteControlEnabled() == false,
                "gate-behavioral: setRemoteControlEnabled(false) round-trips across instances");
     }
-
-    qunsetenv("XDG_CONFIG_HOME");
 }
 
 }  // namespace

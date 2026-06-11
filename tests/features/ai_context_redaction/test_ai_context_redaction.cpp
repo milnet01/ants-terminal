@@ -9,7 +9,6 @@
 #include "secretredact.h"
 
 #include <gtest/gtest.h>
-#include <QCoreApplication>
 #include <QString>
 
 #include <cstdio>

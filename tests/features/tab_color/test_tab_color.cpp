@@ -14,6 +14,8 @@
 #include "coloredtabbar.h"
 #include "config.h"
 
+#include "../../_support/xdg_guard.h"
+
 #include <QApplication>
 #include <QColor>
 #include <QFile>
@@ -218,7 +220,11 @@ TEST(TabColor, Main) {
     // Redirect Config's QStandardPaths reads/writes to ~/.qttest/ so
     // the real user config is never touched. Must be called BEFORE any
     // Config instance is constructed (Config's ctor calls load()).
-    QStandardPaths::setTestModeEnabled(true);
+    // ANTS-2062 — guard restores test mode on scope exit so it doesn't
+    // leak into sibling tests in this gtest bundle (the leak broke
+    // UiStatePersistence's first-launch-defaults invariants).
+    ants_test::XdgGuard xdg;
+    xdg.setTestMode(true);
     int failures = 0;
     failures += runRoundTrip();
     failures += runReorderSurvives();

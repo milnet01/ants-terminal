@@ -12,7 +12,8 @@
 #include <QShowEvent>
 #include <QSize>
 #include <QSizeGrip>
-#include <QStandardPaths>
+
+#include "../../_support/xdg_guard.h"
 
 namespace {
 
@@ -45,7 +46,8 @@ TEST(DialogChromeAffordances, INV2_DefaultHasNoGrip) {
 
 // INV-3 — closing a resizable+keyed dialog persists its size (D3 save).
 TEST(DialogChromeAffordances, INV3_CloseSavesSize) {
-    QStandardPaths::setTestModeEnabled(true);  // isolate config.json
+    ants_test::XdgGuard xdg;
+    xdg.setTestMode(true);  // isolate config.json; restored on scope exit
     Config cfg;
     ConfigGuard cg(&cfg);
 
@@ -62,7 +64,8 @@ TEST(DialogChromeAffordances, INV3_CloseSavesSize) {
 
 // INV-4 — a keyed dialog restores its saved size on first show (D3 restore).
 TEST(DialogChromeAffordances, INV4_ShowRestoresSize) {
-    QStandardPaths::setTestModeEnabled(true);
+    ants_test::XdgGuard xdg;
+    xdg.setTestMode(true);  // restored on scope exit
     Config cfg;
     cfg.setDialogSize(QStringLiteral("RestoreMe"), QSize(720, 510));
     ConfigGuard cg(&cfg);
@@ -79,7 +82,8 @@ TEST(DialogChromeAffordances, INV4_ShowRestoresSize) {
 
 // INV-5 — Config size map round-trips a QSize; missing key → invalid.
 TEST(DialogChromeAffordances, INV5_ConfigSizeRoundTrip) {
-    QStandardPaths::setTestModeEnabled(true);
+    ants_test::XdgGuard xdg;
+    xdg.setTestMode(true);  // restored on scope exit
     Config cfg;
     EXPECT_FALSE(cfg.dialogSize(QStringLiteral("none")).isValid());
     cfg.setDialogSize(QStringLiteral("d"), QSize(1024, 768));

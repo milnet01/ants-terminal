@@ -27,7 +27,6 @@
 #include "../../_support/expect.h"
 #include "config.h"
 
-#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>

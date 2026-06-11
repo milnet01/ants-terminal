@@ -25,27 +25,6 @@ constexpr int kRoleStatus          = Qt::UserRole + 2;
 constexpr int kRoleSubject         = Qt::UserRole + 3;
 constexpr int kRoleDescriptionFull = Qt::UserRole + 4;
 
-// Minimal tracker stand-in: drives the dialog by injecting a static
-// task list through the tasksChanged() signal. We don't drive the
-// JSONL parse path here — that's covered by claude_task_list/.
-class FakeTracker : public ClaudeTaskListTracker {
-public:
-    using ClaudeTaskListTracker::ClaudeTaskListTracker;
-    void inject(QList<ClaudeTask> tasks) {
-        m_injected = std::move(tasks);
-        emit tasksChanged();
-    }
-    // Override the tracker's task-list getter so the dialog sees our
-    // injected set instead of the (empty) parser state. ClaudeTaskList
-    // exposes tasks() as a const-ref to a private member — to inject
-    // we have to set it via the same path the parser uses. The
-    // production tracker doesn't expose a setter, so this test pokes
-    // through the parseTranscript path: we drop a JSONL file with
-    // TodoWrite events matching our injected set and setTranscriptPath.
-private:
-    QList<ClaudeTask> m_injected;
-};
-
 // Write JSONL TodoWrite events that yield our desired task list when
 // the production parser walks them. One TodoWrite snapshot replaces
 // the whole list, so we emit a single event with N todos.

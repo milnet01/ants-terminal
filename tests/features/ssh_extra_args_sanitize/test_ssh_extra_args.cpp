@@ -12,7 +12,6 @@
 #include "sshdialog.h"
 
 #include <gtest/gtest.h>
-#include <QCoreApplication>
 
 ANTS_TEST_SCOPE();
 

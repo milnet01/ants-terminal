@@ -15,7 +15,6 @@
 #include "terminalgrid.h"
 
 #include <QByteArray>
-#include <QCoreApplication>
 #include <QDataStream>
 #include <QFile>
 #include <QString>

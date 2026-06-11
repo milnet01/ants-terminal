@@ -1,8 +1,9 @@
 // Fixture for memory_patterns rule — raw C/C++ allocation tokens. Each
-// @expect marker is a site that's not paired with smart-ptr / Qt parent-child
+// flagged site is one that's not paired with smart-ptr / Qt parent-child
 // ownership (those are filtered by dropIfContains in the audit dialog, not in
 // the regex, so the grep still counts them here). Comments intentionally
-// avoid the literal tokens so they don't inflate the match count.
+// avoid the literal tokens (and the literal "@expect <id>" form, except on
+// the inline markers below) so they don't inflate the match count.
 #include <cstdlib>
 
 struct Widget { int x; };

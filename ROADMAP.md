@@ -10477,16 +10477,18 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   - Dimension: duplication
   - Severity: MEDIUM
   - Fix: Consolidate the duplicated helpers into tests/_support/ (extend srcgrep.h; add expect/roadmap/xdg helper headers) and include them, instead of re-declaring per file. Pairs with the std::exit migration above (same call sites).
-- 📋 [ANTS-2062] **Env-var mutations (XDG_CONFIG_HOME/XDG_CACHE_HOME/TMPDIR/KDE_FULL_SESSION) and setTestModeEnabled(true) not restored — l ….**
+- ✅ [ANTS-2062] **Env-var mutations (XDG_CONFIG_HOME/XDG_CACHE_HOME/TMPDIR/KDE_FULL_SESSION) and setTestModeEnabled(true) not restored — l ….**
   - File: tests/features/roadmap_density/test_roadmap_density.cpp:215
   - Dimension: isolation
   - Severity: HIGH
   - Fix: Add a shared RAII guard (tests/_support/xdg_guard.h, generalising the existing copy-pasted XdgConfigHomeGuard) that saves+restores env vars and QStandardPaths test mode, and migrate the ~8 leaking files (audit_command_rule_trust:28, kwin_position_tracker:75/246, ledger_file_shape, dialog_chrome_affordances:48, roadmap_density:215, remote_control_opt_in:195).
-- 📋 [ANTS-2063] **gtest ASSERT_* used inside void helper functions only aborts the helper, leaving the TEST to run on a half-built fixture.**
+  Resolved (2026-06-11): added tests/_support/xdg_guard.h (RAII save/restore of QStandardPaths test mode + env vars, move-only). Migrated dialog_chrome_affordances, tab_color, audit_command_rule_trust, remote_control_opt_in, roadmap_density, kwin_position_tracker, ledger_file_shape. Fixed a real pre-existing order-dependent failure: tab_color + dialog_chrome leaked setTestModeEnabled(true), polluting UiStatePersistence first-launch-defaults in the test_chrome bundle. Full suite 2012/2012 green.
+- ✅ [ANTS-2063] **gtest ASSERT_* used inside void helper functions only aborts the helper, leaving the TEST to run on a half-built fixture.**
   - File: tests/features/roadmap_log_possible_duplicates/test_roadmap_log_possible_duplicates.cpp:41
   - Dimension: assertions
   - Severity: HIGH
   - Fix: Change void writeFile()/writeRoadmap()/setup() helpers to return bool and ASSERT_TRUE(helper(...)) at the call site (or wrap with ASSERT_NO_FATAL_FAILURE), so an open/setup failure fails the test instead of silently continuing. Also affects audit_run_compile_commands_validation:38, audit_run_since_last_run:64.
+  Resolved (2026-06-11): writeRoadmap/writeCounter/setup (roadmap_log_possible_duplicates) and writeFile (audit_run_compile_commands_validation, audit_run_since_last_run) now return bool with ASSERT_TRUE(helper(...)) at the call site, so a failed open fails the TEST instead of silently continuing on a half-built fixture.
 - 📋 [ANTS-2064] **Fixed-size substr(pos, N) source-scrape windows silently miss invariants as function bodies grow.**
   - File: tests/features/remote_control_new_tab/test_remote_control_new_tab.cpp:62
   - Dimension: accuracy
@@ -10512,11 +10514,12 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   - Dimension: hardcoded_data
   - Severity: LOW
   - Fix: Replace exact call-site counts (validatePath ==22, schema tool count ==7, kPublicMethods comment ==16) and hardcoded CC model names ("Opus 4.8"/"Sonnet 4.6"/"Haiku 4.5") with derived/relational checks or a documented single source of truth so they don't silently drift.
-- 📋 [ANTS-2069] **Dead test code, stale comment counts, and INV mislabels across feature tests.**
+- ✅ [ANTS-2069] **Dead test code, stale comment counts, and INV mislabels across feature tests.**
   - File: tests/features/mcp_current_state/test_mcp_current_state.cpp:57
   - Dimension: naming
   - Severity: LOW
   - Fix: Remove unused regex/vars/dead helpers (FakeTracker::inject, mcp_feedback_log kCheck, unused QCoreApplication include), fix duplicated/mislabelled INV-N comments and stale count comments, and rename test_mode_arm.cpp to match its directory. Includes the audit_fixtures inline-@expect-marker convention nits (conflict_markers, memory_patterns).
+  Resolved (2026-06-11): removed dead std::regex nextHeader (mcp_current_state), dead FakeTracker class (task_list_dialog_context_menu), dead kCheck (mcp_feedback_log), 24 unused QCoreApplication includes; renamed test_mode_arm.cpp -> test_mcp_model_switch_stats_near_misses.cpp (+ CMakeLists); moved conflict_markers/bad.cpp @expect markers inline and de-confused memory_patterns prose. audit_self_test green.
 
 
 ### 📝 Cold-eyes 2026-05-21
