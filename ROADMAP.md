@@ -6367,6 +6367,78 @@ class; the deferrals below cover the rest.
   Kind: chore.
   Source: user-crash-report-2026-06-11 (cc1plus SIGBUS during reviewdialogbase.cpp compile).
 
+- 📋 [ANTS-2108] **Indie-review 2026-06-11: cleartext Bearer API-key egress on the review-dialog family (auditdialog batch path + coldeyesdialog) — add isPlaintextRemote refusal to LlmClient::send.**
+  auditdialog.cpp:5742/5747 requestAiTriageBatch and the v2 review dialogs (coldeyesdialog via ReviewDialogBase->LlmClient::send) gate only on scheme + SSRF host-block, never on cleartext http to a public remote. The single-finding path (auditdialog.cpp:5467, ANTS-1826) and aidialog.cpp:236 already guard via LlmClient::isPlaintextRemote; the v2 refactor didn't carry it. Fix once in LlmClient::send so all egress is covered. Detail: .indie-review/reports-2026-06-11/{auditdialog,coldeyesdialog}.md.
+  **Layman:** Some of the AI-review buttons could send your API key over an unencrypted connection. Block that in one shared place.
+  Kind: security.
+  Source: indie-review-2026-06-11 (auditdialog H1, coldeyesdialog H1 — cross-cutting).
+
+- 📋 [ANTS-2109] **Indie-review 2026-06-11: llmclient SSRF/credential gaps — URL userinfo (user:pass@host) egresses unscrubbed + SSRF blocklist is blind to DNS hostnames.**
+  H1: send() POSTs QUrl(req.endpoint) verbatim (llmclient.cpp:222) so Basic-auth userinfo travels out and skips the host-keyed SSRF/scheme/cleartext gates. H2: SSRF guard (llmclient.cpp:100) checks IP literals only — http://attacker.tld resolving to 169.254.169.254 is allowed (redirects are hard-refused, so the rebinding window is a single A-record). IP-literal blocklist itself is complete/correct. Detail: .indie-review/reports-2026-06-11/llmclient.md.
+  **Layman:** The AI-endpoint connection could leak embedded credentials and could be pointed at internal addresses via a hostname instead of a raw IP.
+  Kind: security.
+  Source: indie-review-2026-06-11 (llmclient H1+H2).
+
+- 📋 [ANTS-2110] **Indie-review 2026-06-11: ~TerminalWidget ignores the VtStream worker wait(2000) timeout — late batchReady/finished to a half-destroyed widget (UAF, same class as ANTS-2101/2103).**
+  terminalwidget.cpp:415-418: the destructor calls wait(2000) but falls through on timeout; a slow/stuck VtStream worker can then deliver batchReady/finished to a half-destroyed widget, and ~QThread aborts on a still-running parented thread. Detail: .indie-review/reports-2026-06-11/terminalwidget.md.
+  **Layman:** When a terminal tab closes while its background text-processor is stuck, it can crash. Same family as the crashes already fixed.
+  Kind: fix.
+  Source: indie-review-2026-06-11 (terminalwidget H1).
+
+- 📋 [ANTS-2111] **Indie-review 2026-06-11: reviewdialogbase installs an untracked LlmClient that cancelAll() can't abort — UAF on close mid-review; deleting the duplicate runner fixes it.**
+  reviewdialogbase.cpp:91-100 installs its own untracked runner so the dispatcher's m_activeClients stays empty and cancelAll() never aborts it; with WA_DeleteOnClose, ~LlmClient::abort() can re-enter onJobFinished on a half-destroyed dialog (defused only accidentally by m_cancelled). The runner duplicates the dispatcher's default tracked runner — delete it to fix H1+H2. M1: dispatchOne synthesis callbacks capture this with no lifetime guard. Detail: .indie-review/reports-2026-06-11/reviewdialogbase.md.
+  **Layman:** Closing an AI-review dialog mid-run can crash because its network job isn't tracked for cancellation.
+  Kind: fix.
+  Source: indie-review-2026-06-11 (reviewdialogbase H1+H2).
+
+- 📋 [ANTS-2112] **Indie-review 2026-06-11: mcpprojection projectFields strips refusal envelopes to {} — a fields=-narrowed read hitting a rate-limit/validation refusal returns empty, so the model never sees the error or retry_after_ms.**
+  projectFields (mcpprojection.cpp:42-61) has no protected-key floor and the dispatcher runs it on refusal envelopes with no ok-guard (claudeintegration.cpp:8491-8498). Sibling compactEnvelope protects ok/code/error at every level; projectFields (ANTS-1720) never got the floor, though appendReadHints already bails on !ok. Add an ok/code/error/retry_after_ms floor. Detail: .indie-review/reports-2026-06-11/mcpprojection.md.
+  **Layman:** When an MCP tool refuses (e.g. rate-limited) and the caller asked for specific fields, the error gets silently blanked out.
+  Kind: fix.
+  Source: indie-review-2026-06-11 (mcpprojection H1).
+
+- 📋 [ANTS-2113] **Indie-review 2026-06-11: featurecoverage spec-code drift detection is false-clean — existence check searches the whole tree (incl tests/) and uses unbounded substring match.**
+  H1: lane emits 'no match in src/' but searches the whole project tree (tests/ not excluded) so a symbol deleted from src/ but still in its own test resolves as 'exists' — drift masked. H2: existsInSource uses plain blob.contains(token) with no word boundary (min len 4) so short drifted tokens (parse/grid/theme) match unrelated identifiers. Fix: search src/ only + identifier-boundary match. Detail: .indie-review/reports-2026-06-11/featurecoverage.md.
+  **Layman:** The tool that flags when docs and code drift apart can miss real drift, reporting all-clear when it shouldn't.
+  Kind: fix.
+  Source: indie-review-2026-06-11 (featurecoverage H1+H2).
+
+- 📋 [ANTS-2114] **Indie-review 2026-06-11: testauditdialog resume feature is a zombie — loadResume/persistResumeState spec-claimed but zero production caller (dialog is WA_DeleteOnClose, never resumes).**
+  mainwindow.cpp:1556 constructs the dialog WA_DeleteOnClose and never resumes; persistResumeState() writes state nothing reads, m_persistedToken is a dead write so the staleness guard is decorative. Wire it or delete it. Detail: .indie-review/reports-2026-06-11/testauditdialog.md.
+  **Layman:** A 'resume where you left off' feature in the test-audit dialog is wired up but nothing ever calls it — dead code, either finish it or remove it.
+  Kind: fix.
+  Source: indie-review-2026-06-11 (testauditdialog H1+H2).
+
+- 📋 [ANTS-2115] **Indie-review 2026-06-11: claudetasklist abandonment clock advances on sidechain events BEFORE the sidechain filter — a long subagent silently erases a live parent in_progress task.**
+  claudetasklist.cpp:241-248: latestEventMs updates from sidechain events before the isSidechain continue; the comment only justifies the compact case. Move the update below the isSidechain guard. Verify against ANTS-1341 spec. Detail: .indie-review/reports-2026-06-11/claudetasklist.md.
+  **Layman:** A running sub-task can wrongly make the task-list think your main task was abandoned and clear it.
+  Kind: fix.
+  Source: indie-review-2026-06-11 (claudetasklist H1).
+
+- 📋 [ANTS-2116] **Indie-review 2026-06-11: claudestatuswidgets re-parses config.json 5-7x every 2s tick (each Config() ctor does open+readAll+JSON parse, no cache) whenever Claude is active.**
+  refreshModelChip's Config cfg; sits above its own mtime short-circuit; homeTierFromConfig() re-parses on every call from three hot paths. Cache the parsed Config with an mtime guard. Detail: .indie-review/reports-2026-06-11/claudestatuswidgets.md.
+  **Layman:** The status bar reads and re-parses your settings file several times every two seconds — wasteful disk churn; cache it.
+  Kind: perf.
+  Source: indie-review-2026-06-11 (claudestatuswidgets H1).
+
+- 📋 [ANTS-2117] **Indie-review 2026-06-11: luaengine ants.settings.get (BlockingQueuedConnection) deadlocks teardown thread->wait() — a plugin calling it from its Unload handler stalls 2s then spuriously zombie-detaches a healthy plugin.**
+  pluginmanager.cpp:113 (settings.get BlockingQueuedConnection to GUI) vs :164-166 (GUI parked in wait()): the worker blocks on a GUI thread that never services it. Either drop the blocking read during teardown or service it before wait(). Detail: .indie-review/reports-2026-06-11/luaengine.md.
+  **Layman:** A plugin that reads a setting while shutting down can hang itself and get wrongly killed as a zombie.
+  Kind: fix.
+  Source: indie-review-2026-06-11 (luaengine H1).
+
+- 📋 [ANTS-2118] **Indie-review 2026-06-11: refine ANTS-2105 — extract a shared mergeToolChannels() so the GUI dialog and headless runner feed identical bytes when a tool writes to BOTH stdout and stderr.**
+  GUI (auditdialog.cpp:4690-4693) appends stderr to stdout; the runner post-ANTS-2105 uses stdout-else-stderr (correct for cppcheck where stdout is empty, but divergent for a both-channel tool). Extract one mergeToolChannels() into auditengine and call from both for ANTS-1119 parity. Also: countSuppressed never populated for semgrep/clang-tidy/cppcheck (SARIF parity), and parseFindings doesn't strip trailing CR (CRLF dedup-key drift). Detail: .indie-review/reports-2026-06-11/{auditengine,auditdialog}.md.
+  **Layman:** The audit GUI and the command-line audit can still disagree on results for tools that print to both output streams; share one merge helper.
+  Kind: audit-fix.
+  Source: indie-review-2026-06-11 (auditengine H1 — refines ANTS-2105).
+
+- 📋 [ANTS-2119] **Indie-review 2026-06-11: MEDIUM/LOW tail (24 findings across 20 lanes) — hardening + correctness smells, consolidated; expand per-lane before fixing.**
+  Full per-lane detail in .indie-review/reports-2026-06-11/<lane>.md. MEDIUMs by lane: terminalgrid (m_scrollbackPushed not bumped on reflow/pushScrollbackLine; Kitty APC non-strict base64). terminalwidget (trigger matches whole batch not per-line + only on trailing newline; OSC 8 homograph warn only when label is a hostname). auditdialog (/tmp triage report setAutoRemove(false) secret leak; synchronous git blame on GUI thread). auditcache (retention reaper no keep-set guard on sub-second same-commit double-run; orphan SARIF on index write-fail). ptyhandler (onReadReady missing m_masterFd<0 guard; envp kEnvpCap-8 magic reserve needs static_assert; writeLost signal has zero consumers). auditautofix (header advertises unused_include never emitted; versionLE <= deletes 'remove after vX' TODO one version early). auditfpledger (stripLocation regex over-strips word:NUM:/C:\ paths -> fingerprint collision; file path-form relative-vs-absolute drift). falseposledger (INV-12 spec/code preamble drift). focusedtest (non-source changed file dropped to ignoredFiles masquerading as glob-ignore). briefdispatch (withClosedFence misses a bisected OPENING fence; slurpUtf8 static cache unbounded). indiereviewdispatcher (redactAndTruncate UTF-16-count vs byte-budget; lane name interpolated into output path w/o single-component check). remotecontrol (5-min GUI freeze even after the join fix -> wants fully-async; raw:true filter-bypass not in the ANTS-1176 audit log). antshelper (driftCheck discards script stderr; missing_repo_root exit-code vs INV-8). claudeintegration (discoverProjects uncapped readAll OOM; toolStarted/sessionStarted zombie signals). modelrecommender (commit_intent override never sets isMechanical; /model override leaves stale currentModelTsMs). modelautoswitch (upgrade-at-idle returns act=true — single-point billing-safety reliance; composerStaleThreshold reused as human-idle). modelswitchledger (ConfigWriteLock.acquired() unchecked -> dropped row on 5s timeout; no fsyncParentDir). modelnearmissledger + claudebgtasks + claudetasklist (JSONL-helper duplication, rule-of-three -> shared Jsonl helper; claudebgtasks exitCode dead field). roadmapdialog (parseBullets uncached on every debounced render up to 64MiB). claudestateresolver (INV-3/4 header doc describes a gate that doesn't exist). modelnearmissledger/modelswitchledger evictToCap O(N^2).
+  **Layman:** A batch of smaller, lower-risk cleanups the review found across the codebase — tracked here so none are lost.
+  Kind: review-fix.
+  Source: indie-review-2026-06-11 (medium/low consolidation).
+
 ### 🔌 Ants MCP — improvements from running /audit + /indie-review + /debt-sweep (2026-05-14)
 
 The full audit / indie-review / debt-sweep cycle on 2026-05-14
