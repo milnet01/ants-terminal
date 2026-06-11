@@ -15,6 +15,7 @@
 #include <QHash>
 #include <QJsonDocument>
 #include <QJsonArray>
+#include <QPointer>  // ANTS-2101 — guard MCP socket across nested-loop dispatch
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QProcessEnvironment>
@@ -1502,7 +1503,7 @@ void ClaudeIntegration::onMcpConnection() {
         // Try to parse on each readyRead; process once valid JSON is received.
         socket->setProperty("_buf", QByteArray());
         socket->setProperty("_handled", false);
-        connect(socket, &QLocalSocket::readyRead, this, [this, socket]() {
+        connect(socket, &QLocalSocket::readyRead, this, [this, socket, idleTimer]() {
             if (socket->property("_handled").toBool()) return;
             QByteArray buf = socket->property("_buf").toByteArray();
             buf += socket->readAll();
@@ -1514,6 +1515,21 @@ void ClaudeIntegration::onMcpConnection() {
             QJsonDocument doc = QJsonDocument::fromJson(buf);
             if (!doc.isObject()) return; // wait for more data
             socket->setProperty("_handled", true);
+
+            // ANTS-2101 — a complete request is in hand: stop the 5 s
+            // slow-loris idle timer BEFORE dispatching. A tool dispatch
+            // (audit_run et al.) can run a nested event loop that pumps
+            // QProcesses; a still-armed timer would fire timeout ->
+            // socket->abort() -> disconnected -> deleteLater(), and that
+            // deleteLater is processed BY the nested loop — freeing this
+            // socket before the write at the tail. Mirrors the
+            // remotecontrol.cpp ANTS-2026 fix for the identical pattern.
+            idleTimer->stop();
+            // Defence in depth: the peer can still disconnect mid-dispatch,
+            // freeing the socket via the same disconnected -> deleteLater
+            // chain. A QPointer lets the post-dispatch write bail instead of
+            // touching a dangling pointer.
+            QPointer<QLocalSocket> guard(socket);
 
             QJsonObject request = doc.object();
             QString method = request.value("method").toString();
@@ -8582,6 +8598,14 @@ void ClaudeIntegration::onMcpConnection() {
                 error["code"] = -32601;
                 error["message"] = QString("Method not found: %1").arg(method);
             }
+
+            // ANTS-2101 — the dispatch above may have run a nested event
+            // loop (audit_run pumps QProcesses), during which the peer's
+            // disconnect freed this socket via disconnected -> deleteLater.
+            // Bail before touching a dangling pointer (covers both the
+            // notification-disconnect and the response write below).
+            if (!guard || socket->state() != QLocalSocket::ConnectedState)
+                return;
 
             // Notifications (no id) must NOT receive a response per JSON-RPC 2.0.
             if (reqId.isUndefined() || reqId.isNull()) {

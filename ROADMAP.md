@@ -6322,6 +6322,12 @@ class; the deferrals below cover the rest.
   Kind: fix.
   Source: user-report-2026-06-11 (screenshot) + in-session.
 
+- 🚧 [ANTS-2101] **MCP onMcpConnection use-after-free crash — idle-timer/peer-disconnect frees the socket during a nested-loop dispatch (audit_run), then the handler writes to it (SIGSEGV).**
+  Coredump stack: QIODevice::write <- ClaudeIntegration::onMcpConnection()::lambda#2 <- QAbstractSocketPrivate::emitReadyRead. Root cause identical to ANTS-2026 (remotecontrol.cpp) but unfixed on the MCP socket path: the readyRead handler dispatches a tool (audit_run) whose server-side runner pumps a nested event loop via QProcesses. During that loop the 5 s slow-loris idle timer fires socket->abort() (or the peer disconnects), emitting disconnected -> deleteLater, and the nested loop processes that deleteLater — freeing the QLocalSocket before the handler's trailing socket->write(resp)/flush at the tail. Dangling-pointer write -> SIGSEGV. Fix mirrors remotecontrol.cpp ANTS-2026: (1) idleTimer->stop() the moment a complete JSON request is parsed (before dispatch); capture idleTimer in the lambda; (2) QPointer<QLocalSocket> guard before the dispatch and a `if (!guard || socket->state()!=Connected) return;` bail before the notification-disconnect and the response write. Add #include <QPointer>. Follow-up roadmap candidate: audit every QLocalSocket readyRead handler that can reach a >5 s nested-loop verb for the same pattern.
+  **Layman:** The terminal crashed while a long background scan (audit) was running over the Claude link. The code that replies to Claude could have its connection cleaned up mid-scan and then tried to use it anyway, which crashes. The Kitty side already had this fix; the Claude/MCP side was missed.
+  Kind: fix.
+  Source: user-crash-report-2026-06-11 (coredump, SIGSEGV in QIODevice::write via ClaudeIntegration::onMcpConnection lambda) + in-session.
+
 ### 🔌 Ants MCP — improvements from running /audit + /indie-review + /debt-sweep (2026-05-14)
 
 The full audit / indie-review / debt-sweep cycle on 2026-05-14
