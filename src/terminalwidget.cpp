@@ -1126,7 +1126,21 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
                 tline.setPosition(QPointF(0, 0));
             }
             m_paintLayout.endLayout();
-            m_paintLayout.draw(&p, QPointF(px_x, px_y));
+            // ANTS-2100 — anchor every run to the shared cell baseline.
+            // draw() positions the line by its TOP at px_y, so the text
+            // baseline lands at px_y + tline.ascent(). When a run shapes
+            // in a font whose line ascent differs from the regular face
+            // (synthesised bold/italic falling back to another family, or
+            // Qt's per-line glyph ascent), that word sits on a different
+            // baseline than its neighbours — the "first word lower than
+            // the rest" artifact. A cell grid requires one baseline per
+            // row, so offset the draw by (m_fontAscent − line ascent):
+            // baseline becomes px_y + m_fontAscent for every run. No-op
+            // for runs in the regular font (the common case).
+            qreal baselineOff = tline.isValid()
+                ? (static_cast<qreal>(m_fontAscent) - tline.ascent())
+                : 0;
+            m_paintLayout.draw(&p, QPointF(px_x, px_y + baselineOff));
         }
     }
 
