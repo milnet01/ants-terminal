@@ -4,6 +4,7 @@
 // INV labels qualified ANTS-1159-INV-N. See spec.md.
 
 #include "../../_support/expect.h"
+#include "../../_support/srcgrep.h"
 
 #include <fstream>
 #include <sstream>
@@ -33,20 +34,14 @@ bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
 }
 
-// Brace-balanced extraction (same shape as ui_state_persistence).
+// ANTS-1468 — delegate to the shared string/comment-aware extractor;
+// prepend the signature so the returned span matches the original
+// (signature line through the matching closing brace).
 std::string extractBody(const std::string &source, const std::string &sig) {
-    auto sigPos = source.find(sig);
-    if (sigPos == std::string::npos) return {};
-    auto open = source.find('{', sigPos);
-    if (open == std::string::npos) return {};
-    int depth = 1;
-    auto pos = open + 1;
-    while (pos < source.size() && depth > 0) {
-        if (source[pos] == '{') ++depth;
-        else if (source[pos] == '}') --depth;
-        ++pos;
-    }
-    return source.substr(sigPos, pos - sigPos);
+    const std::string body = ants_test::slurpFunctionBody(source, sig);
+    if (body.empty()) return {};
+    const auto sigPos = source.find(sig);
+    return source.substr(sigPos, source.find('{', sigPos) - sigPos) + body;
 }
 
 TEST(CrashSafeSessionPersist, Inv1_timerMemberDeclaredAndInitialised) {

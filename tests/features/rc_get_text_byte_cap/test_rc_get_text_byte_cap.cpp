@@ -220,7 +220,9 @@ void testWiring() {
     expect(gtPos != std::string::npos,
            "wiring anchor: cmdGetText definition present");
     if (gtPos == std::string::npos) return;
-    const std::string body = rc.substr(gtPos, 3000);
+    // ANTS-1474 — brace-balanced body, not a fixed 3 KiB window.
+    const std::string body =
+        ants_test::slurpFunctionBody(rc, "RemoteControl::cmdGetText");
 
     // WI-1 — cmdGetText body references "max_bytes" exactly once
     // (the optional new request field).

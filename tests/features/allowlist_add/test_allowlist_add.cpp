@@ -20,6 +20,7 @@
 // Exit 0 = all assertions hold. Non-zero = regression.
 
 #include "claudeallowlist.h"
+#include "../../_support/srcgrep.h"
 
 #include <gtest/gtest.h>
 #include <QApplication>
@@ -280,21 +281,10 @@ int checkDialogActivation() {
 // Returns empty QString if the function isn't found or braces don't
 // balance. Caller is responsible for matching the canonical signature
 // passed in.
+// ANTS-1468 — delegate to the shared string/comment-aware extractor.
 QString extractFunctionBody(const QString &src, const QString &signature) {
-    const int start = src.indexOf(signature);
-    if (start < 0) return QString();
-    int braceStart = src.indexOf(QChar('{'), start);
-    if (braceStart < 0) return QString();
-    int depth = 1;
-    int i = braceStart + 1;
-    while (i < src.size() && depth > 0) {
-        QChar c = src.at(i);
-        if (c == QChar('{')) ++depth;
-        else if (c == QChar('}')) --depth;
-        ++i;
-    }
-    if (depth != 0) return QString();
-    return src.mid(braceStart, i - braceStart);
+    return QString::fromStdString(ants_test::slurpFunctionBody(
+        src.toStdString(), signature.toStdString()));
 }
 
 // Read src/mainwindow.cpp. Path baked in by CMake as SRC_MAINWINDOW_PATH.

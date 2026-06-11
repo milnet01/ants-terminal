@@ -96,11 +96,12 @@ TEST(mcp_roadmap_branch_drift, Inv2EtagAllowlisted) {
     expect_reset();
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     // Anchor on the function definition, not call sites or comments.
-    const auto etagFnPos =
-        ci.find("bool ClaudeIntegration::isEtagSupportedTool");
-    ASSERT_NE(etagFnPos, std::string::npos)
+    // Brace-balanced extraction (ANTS-1474) so a growing allowlist body
+    // can't outgrow a fixed byte-window.
+    const std::string region = ants_test::slurpFunctionBody(
+        ci, "bool ClaudeIntegration::isEtagSupportedTool");
+    ASSERT_FALSE(region.empty())
         << "INV-2: isEtagSupportedTool definition not found";
-    const std::string region = ci.substr(etagFnPos, 1500);
     expect(contains(region, "\"roadmap_branch_drift\""),
         "INV-2: roadmap_branch_drift must be in isEtagSupportedTool "
         "allowlist");
@@ -135,12 +136,13 @@ TEST(mcp_roadmap_branch_drift, Inv3RegexAnchored) {
 TEST(mcp_roadmap_branch_drift, Inv6MaxDriftClamp) {
     expect_reset();
     const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
-    // Anchor on the function definition specifically — the function
-    // body is ~160 lines (~10 KiB), past the 6 KiB window. Use 12 KiB.
-    const auto fnPos =
-        rcc.find("RemoteControl::cmdRoadmapBranchDrift");
-    ASSERT_NE(fnPos, std::string::npos);
-    const std::string body = rcc.substr(fnPos, 12000);
+    // Anchor on the function definition; the brace-balanced extractor
+    // (ANTS-1474) captures the whole ~160-line body regardless of size,
+    // so there's no magic byte-window to outgrow.
+    const std::string body = ants_test::slurpFunctionBody(
+        rcc, "RemoteControl::cmdRoadmapBranchDrift");
+    ASSERT_FALSE(body.empty())
+        << "cmdRoadmapBranchDrift body not extractable";
     expect(contains(body, "maxDrift < 1"),
         "INV-6: lower-bound clamp missing");
     expect(contains(body, "maxDrift > 100"),
@@ -162,10 +164,10 @@ TEST(mcp_roadmap_branch_drift, Inv8NoBranchContains) {
     // positive shape instead: `git log --format=%H` is the one-call
     // reachability approach, plus a `--format=%H` literal that
     // unambiguously names the batched form.
-    const auto fnPos =
-        rcc.find("RemoteControl::cmdRoadmapBranchDrift");
-    ASSERT_NE(fnPos, std::string::npos);
-    const std::string body = rcc.substr(fnPos, 12000);
+    const std::string body = ants_test::slurpFunctionBody(
+        rcc, "RemoteControl::cmdRoadmapBranchDrift");
+    ASSERT_FALSE(body.empty())
+        << "cmdRoadmapBranchDrift body not extractable";
     expect(contains(body, "QStringLiteral(\"log\")"),
         "INV-8: handler must use `git log --format=%H` for reachability");
     expect(contains(body, "QStringLiteral(\"--format=%H\")"),
@@ -184,10 +186,10 @@ TEST(mcp_roadmap_branch_drift, Inv8NoBranchContains) {
 TEST(mcp_roadmap_branch_drift, Inv9CountFieldsInteger) {
     expect_reset();
     const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
-    const auto fnPos =
-        rcc.find("RemoteControl::cmdRoadmapBranchDrift");
-    ASSERT_NE(fnPos, std::string::npos);
-    const std::string body = rcc.substr(fnPos, 12000);
+    const std::string body = ants_test::slurpFunctionBody(
+        rcc, "RemoteControl::cmdRoadmapBranchDrift");
+    ASSERT_FALSE(body.empty())
+        << "cmdRoadmapBranchDrift body not extractable";
     expect(contains(body, "scannedBullets") &&
                contains(body, "env[\"scanned_bullets\"]"),
         "INV-9: scanned_bullets must be assigned from an int variable");

@@ -35,11 +35,11 @@ TEST(AuditRunScopedCheck, EngineRegistersClangTidyAsKnownTool) {
     const std::string src = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
     ASSERT_FALSE(src.empty());
 
-    // INV-2 — kKnownTools() contains "clang-tidy".
-    const auto kt = src.find("kKnownTools()");
-    ASSERT_NE(kt, std::string::npos);
-    // Body window: 600 chars after the function signature.
-    const std::string region = src.substr(kt, 800);
+    // INV-2 — kKnownTools() contains "clang-tidy". ANTS-1474 — brace-
+    // balanced body extraction instead of a fixed byte-window.
+    const std::string region =
+        ants_test::slurpFunctionBody(src, "kKnownTools()");
+    ASSERT_FALSE(region.empty());
     EXPECT_TRUE(contains(region, "\"clang-tidy\""))
         << "kKnownTools must include \"clang-tidy\"";
 
@@ -91,6 +91,10 @@ TEST(AuditRunScopedCheck, ToolArgvBuildsScopedClangTidyInvocation) {
 
     // INV-7 — toolArgv accepts scopedPaths + scopedChecks; clang-tidy
     // branch renders --checks=-*,...
+    // NB: toolArgv's signature carries `= {}` default-argument braces, so
+    // slurpFunctionBody() would latch onto the first `{}` default and return
+    // an empty body. A fixed byte-window is the correct tool here (ANTS-1474
+    // does not apply to brace-default signatures).
     const auto fn = src.find("QStringList toolArgv(");
     ASSERT_NE(fn, std::string::npos);
     const std::string region = src.substr(fn, 4000);

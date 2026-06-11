@@ -40,20 +40,9 @@
 // a non-greedy `[\s\S]*?^\}` because std::regex's backtracking executor
 // blows the stack on a 4500-line source file — 100+k recursion depth
 // into _M_dfs. The scanner runs in linear time and constant stack.
+// ANTS-1468 — delegate to the shared string/comment-aware extractor.
 static std::string extractFunctionBody(const std::string &src, const std::string &signatureNeedle) {
-    auto sigPos = src.find(signatureNeedle);
-    if (sigPos == std::string::npos) return {};
-    auto bracePos = src.find('{', sigPos);
-    if (bracePos == std::string::npos) return {};
-    int depth = 1;
-    size_t i = bracePos + 1;
-    for (; i < src.size() && depth > 0; ++i) {
-        char c = src[i];
-        if (c == '{') ++depth;
-        else if (c == '}') --depth;
-    }
-    if (depth != 0) return {};
-    return src.substr(bracePos, i - bracePos);
+    return ants_test::slurpFunctionBody(src, signatureNeedle);
 }
 
 TEST(CommandMarkGutter, Main) {

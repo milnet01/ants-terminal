@@ -24,6 +24,7 @@
 
 #include "terminalgrid.h"
 #include "vtparser.h"
+#include "../../_support/srcgrep.h"
 
 #include <QFile>
 #include <QRegularExpression>
@@ -74,20 +75,10 @@ QString readSource(const QString &path) {
     return QString::fromUtf8(f.readAll());
 }
 
+// ANTS-1468 — delegate to the shared string/comment-aware extractor.
 QString extractFunctionBody(const QString &src, const QString &signature) {
-    const int start = src.indexOf(signature);
-    if (start < 0) return QString();
-    const int braceStart = src.indexOf(QChar('{'), start);
-    if (braceStart < 0) return QString();
-    int depth = 1;
-    int i = braceStart + 1;
-    while (i < src.size() && depth > 0) {
-        QChar c = src.at(i);
-        if (c == QChar('{')) ++depth;
-        else if (c == QChar('}')) --depth;
-        ++i;
-    }
-    return src.mid(braceStart, i - braceStart);
+    return QString::fromStdString(ants_test::slurpFunctionBody(
+        src.toStdString(), signature.toStdString()));
 }
 
 }  // namespace
