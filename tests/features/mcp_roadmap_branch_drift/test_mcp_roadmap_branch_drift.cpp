@@ -110,7 +110,9 @@ TEST(mcp_roadmap_branch_drift, Inv2EtagAllowlisted) {
     const auto descPos = ci.find("t[\"name\"] = \"roadmap_branch_drift\"");
     ASSERT_NE(descPos, std::string::npos)
         << "INV-2: roadmap_branch_drift descriptor block not found";
-    const std::string desc = ci.substr(descPos, 4000);
+    // 6000-byte window (was 4000): ANTS-2057 grew the description + added
+    // the against_refs schema property ahead of the etag_match wiring.
+    const std::string desc = ci.substr(descPos, 6000);
     expect(contains(desc, "makeEtagMatchProp()"),
         "INV-2: descriptor must wire makeEtagMatchProp()");
     EXPECT_EQ(0, expect_failures());
@@ -228,6 +230,100 @@ TEST(mcp_roadmap_branch_drift, Inv11ErrorCodeTaxonomy) {
         "the no_git_state refusal code");
     expect(contains(doc, "ANTS-1583"),
         "INV-11: taxonomy entry should reference ANTS-1583");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ============================================================
+// INV-12 (ANTS-2057) — against_refs / mis_branched cross-branch surface
+// ============================================================
+TEST(mcp_roadmap_branch_drift, Inv12MisBranchedSurface) {
+    expect_reset();
+    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string body = ants_test::slurpFunctionBody(
+        rcc, "RemoteControl::cmdRoadmapBranchDrift");
+    ASSERT_FALSE(body.empty())
+        << "cmdRoadmapBranchDrift body not extractable";
+    expect(contains(body, "against_refs"),
+        "INV-12: handler reads the against_refs[] arg");
+    expect(contains(body, "env[\"mis_branched\"]") &&
+               contains(body, "missing_from"),
+        "INV-12: handler emits mis_branched[] with missing_from");
+    expect(contains(body, "env[\"checked_refs\"]") &&
+               contains(body, "unknown_refs"),
+        "INV-12: handler reports checked_refs + unknown_refs");
+    // A mis-branched candidate must be reachable from HEAD (else it's
+    // plain drift) — the guard `if (!isReachable(sha)) continue;` inside
+    // the against_refs block enforces this.
+    expect(contains(body, "isReachable(sha)"),
+        "INV-12: mis_branched candidates are gated on HEAD-reachability");
+    // Schema declares the property.
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const auto descPos = ci.find("t[\"name\"] = \"roadmap_branch_drift\"");
+    ASSERT_NE(descPos, std::string::npos);
+    const std::string desc = ci.substr(descPos, 6000);
+    expect(contains(desc, "props[\"against_refs\"]"),
+        "INV-12: schema declares the against_refs property");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ============================================================
+// INV-13 (ANTS-2057) — Runtime cross-branch reachability. A commit on
+// HEAD but absent from a sibling ref is the mis_branched condition.
+// ============================================================
+TEST(mcp_roadmap_branch_drift, Inv13MisBranchedRuntime) {
+    expect_reset();
+    if (qEnvironmentVariableIsSet("CI"))
+        GTEST_SKIP() << "real-git runtime probe skipped under CI (ANTS-1609)";
+
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    const QString root = td.path();
+    if (!runGitOk(root, {QStringLiteral("init"),
+                         QStringLiteral("--initial-branch=main"),
+                         QStringLiteral("-q")})) {
+        GTEST_SKIP() << "git init failed — likely no git in PATH";
+    }
+    runGitOk(root, {QStringLiteral("config"), QStringLiteral("user.email"),
+                    QStringLiteral("test@example.invalid")});
+    runGitOk(root, {QStringLiteral("config"), QStringLiteral("user.name"),
+                    QStringLiteral("Ants Test")});
+
+    QString shaA, shaB, shaC;
+    auto emptyCommit = [&](const QString &msg, QString *out) {
+        ASSERT_TRUE(runGitOk(root, {QStringLiteral("commit"),
+                                    QStringLiteral("--allow-empty"),
+                                    QStringLiteral("-q"),
+                                    QStringLiteral("-m"), msg}));
+        ASSERT_TRUE(runGitOk(root, {QStringLiteral("rev-parse"),
+                                    QStringLiteral("HEAD")}, out));
+    };
+    emptyCommit("A", &shaA);
+    emptyCommit("B", &shaB);
+    // Sibling 'release' branch forks at B — so C (added next on main) is
+    // reachable from HEAD=main but NOT from release: the mis_branched case.
+    ASSERT_TRUE(runGitOk(root, {QStringLiteral("branch"),
+                                QStringLiteral("release")}));
+    emptyCommit("C", &shaC);
+    ASSERT_EQ(40, shaC.size());
+
+    auto reachableFrom = [&](const QString &ref) -> QStringList {
+        QString raw;
+        runGitOk(root, {QStringLiteral("log"), QStringLiteral("--format=%H"),
+                        ref, QStringLiteral("--max-count=200000")}, &raw);
+        return raw.split(QChar('\n'));
+    };
+    const QStringList head    = reachableFrom(QStringLiteral("HEAD"));
+    const QStringList release = reachableFrom(QStringLiteral("release"));
+
+    // C is on HEAD but missing from release → mis_branched.
+    EXPECT_TRUE(head.contains(shaC))
+        << "INV-13: C must be reachable from HEAD";
+    EXPECT_FALSE(release.contains(shaC))
+        << "INV-13: C must be ABSENT from the release sibling (mis_branched)";
+    // B is on both → NOT mis_branched (the contrast that proves the
+    // classifier isn't just flagging everything).
+    EXPECT_TRUE(head.contains(shaB) && release.contains(shaB))
+        << "INV-13: B is shared and must not be flagged";
     EXPECT_EQ(0, expect_failures());
 }
 

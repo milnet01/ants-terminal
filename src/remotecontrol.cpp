@@ -14232,6 +14232,95 @@ QJsonDocument RemoteControl::cmdRoadmapBranchDrift(const QJsonObject &req) {
         if (driftTruncated) break;
     }
 
+    // ANTS-2057 — optional cross-branch reachability. The HEAD-only scan
+    // above is blind to a fix that landed on the WRONG long-lived branch:
+    // a SHA reachable from HEAD (so never flagged as drift) but ABSENT from
+    // a sibling source/fix branch. When the caller passes against_refs[],
+    // build one reachable set per named ref and flag those SHAs under a
+    // distinct `mis_branched[]` class (RetroArch Bundle 79). Absent
+    // against_refs → the envelope is byte-identical to the pre-2057 shape.
+    const QJsonArray againstRefsIn =
+        req.value(QStringLiteral("against_refs")).toArray();
+    QJsonArray misBranched;
+    QJsonArray unknownRefs;
+    QStringList checkedRefs;
+    bool misBranchedTruncated = false;
+    if (!againstRefsIn.isEmpty()) {
+        struct RefSet {
+            QSet<QString> full;
+            QMultiHash<QString, QString> byPrefix;  // 7-hex prefix → full
+        };
+        QHash<QString, RefSet> refSets;
+        int refCount = 0;
+        for (const QJsonValue &rv : againstRefsIn) {
+            if (!rv.isString()) continue;
+            const QString ref = rv.toString().trimmed();
+            // Reject empty / leading-`-` (argv flag-injection guard, mirrors
+            // git_state's isValidRange posture) — runGit is argv-based so a
+            // shell can't intervene, but a leading `-` would be read as a flag.
+            if (ref.isEmpty() || ref.startsWith(QChar('-'))) {
+                if (!ref.isEmpty()) unknownRefs.append(ref);
+                continue;
+            }
+            if (ref == currentBranch) continue;  // same as HEAD — no contrast
+            if (refSets.contains(ref)) continue; // de-dup
+            if (++refCount > 10) break;           // bound the fork count
+            const QByteArray rRaw = runGit(rootCanonical,
+                {QStringLiteral("log"), QStringLiteral("--format=%H"),
+                 ref, QStringLiteral("--max-count=200000")});
+            if (rRaw.trimmed().isEmpty()) { unknownRefs.append(ref); continue; }
+            RefSet rs;
+            const QList<QByteArray> rl = rRaw.split('\n');
+            for (const QByteArray &line : rl) {
+                if (line.size() < 40) continue;
+                const QString full = QString::fromUtf8(line.left(40));
+                rs.full.insert(full);
+                rs.byPrefix.insert(full.left(7), full);
+            }
+            refSets.insert(ref, rs);
+            checkedRefs.append(ref);
+        }
+        auto reachableInSet = [](const RefSet &rs, const QString &sha) -> bool {
+            if (sha.size() == 40) return rs.full.contains(sha);
+            const QList<QString> cands = rs.byPrefix.values(sha.left(7));
+            for (const QString &c : cands) if (c.startsWith(sha)) return true;
+            return false;
+        };
+        for (const auto &bul : bullets) {
+            if (bul.status != QStringLiteral("✅") || bul.id.isEmpty())
+                continue;
+            const QString joined = bul.headline + QChar('\n') + bul.body;
+            QStringList shas;
+            QRegularExpressionMatchIterator mi =
+                rxCommitSha().globalMatch(joined);
+            while (mi.hasNext()) {
+                const QString sha = mi.next().captured(1);
+                if (!shas.contains(sha)) shas.append(sha);
+            }
+            for (const QString &sha : shas) {
+                // Only SHAs ON HEAD are candidates — an unreachable-from-HEAD
+                // SHA is already reported under `drift`, not mis-branched.
+                if (!isReachable(sha)) continue;
+                QJsonArray missingFrom;
+                for (const QString &ref : checkedRefs)
+                    if (!reachableInSet(refSets.value(ref), sha))
+                        missingFrom.append(ref);
+                if (missingFrom.isEmpty()) continue;
+                QJsonObject o;
+                o["bullet_id"]    = bul.id;
+                o["cited_sha"]    = sha;
+                o["headline"]     = bul.headline;
+                o["missing_from"] = missingFrom;
+                misBranched.append(o);
+                if (misBranched.size() >= maxDrift) {
+                    misBranchedTruncated = true;
+                    break;
+                }
+            }
+            if (misBranchedTruncated) break;
+        }
+    }
+
     QJsonObject env;
     env["ok"]               = true;
     env["current_branch"]   = currentBranch;
@@ -14243,6 +14332,17 @@ QJsonDocument RemoteControl::cmdRoadmapBranchDrift(const QJsonObject &req) {
     env["path"]             = QFileInfo(roadmapPath).absoluteFilePath();
     if (driftTruncated)    env["drift_truncated"]    = true;
     if (truncatedHistory)  env["truncated_history"]  = true;
+    // ANTS-2057 — only present when against_refs[] was supplied, so the
+    // default envelope shape is untouched for existing callers.
+    if (!againstRefsIn.isEmpty()) {
+        QJsonArray checked;
+        for (const QString &r : checkedRefs) checked.append(r);
+        env["checked_refs"]        = checked;
+        env["mis_branched"]        = misBranched;
+        env["mis_branched_count"]  = misBranched.size();
+        if (misBranchedTruncated) env["mis_branched_truncated"] = true;
+        if (!unknownRefs.isEmpty()) env["unknown_refs"] = unknownRefs;
+    }
     return QJsonDocument(env);
 }
 

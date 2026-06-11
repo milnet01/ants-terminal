@@ -2225,7 +2225,16 @@ void ClaudeIntegration::onMcpConnection() {
                         "scanned_bullets, with_sha, drift_count, "
                         "drift:[{bullet_id, cited_sha, reason, "
                         "headline}], path, drift_truncated?, "
-                        "truncated_history?}. SHA detector uses an "
+                        "truncated_history?}. ANTS-2057 — pass "
+                        "against_refs:[\"branch\", ...] to also catch a fix "
+                        "that landed on the WRONG long-lived branch: a SHA "
+                        "reachable from HEAD but ABSENT from a named sibling "
+                        "ref is reported under mis_branched:[{bullet_id, "
+                        "cited_sha, headline, missing_from:[refs]}] (plus "
+                        "checked_refs, mis_branched_count, unknown_refs?, "
+                        "mis_branched_truncated?). Omit against_refs for the "
+                        "HEAD-only scan (envelope unchanged). SHA detector "
+                        "uses an "
                         "anchored regex (commit-prefix or trailing-"
                         "punct context required) plus alpha-required "
                         "lookahead — keeps the false-positive rate "
@@ -2249,6 +2258,24 @@ void ClaudeIntegration::onMcpConnection() {
                         "When the scan hits the cap, "
                         "`drift_truncated:true` flags the envelope.");
                     props["max_drift"]  = maxDriftProp;
+                    // ANTS-2057 — optional sibling refs for the cross-branch
+                    // (mis_branched) reachability pass.
+                    QJsonObject againstRefsProp;
+                    againstRefsProp["type"] = "array";
+                    {
+                        QJsonObject items; items["type"] = "string";
+                        againstRefsProp["items"] = items;
+                    }
+                    againstRefsProp["description"] = QStringLiteral(
+                        "Optional (ANTS-2057). Sibling long-lived refs to "
+                        "check cited SHAs against in addition to HEAD. A SHA "
+                        "reachable from HEAD but absent from a named ref is "
+                        "reported under mis_branched[] with missing_from — "
+                        "catches a fix committed to the wrong branch. Refs "
+                        "starting with `-`, equal to the current branch, or "
+                        "that don't resolve land in unknown_refs. Capped at "
+                        "10 refs.");
+                    props["against_refs"] = againstRefsProp;
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();
                     schema["properties"] = props;

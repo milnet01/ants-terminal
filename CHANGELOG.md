@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_branch_drift can now catch a fix committed to the wrong branch (pass against_refs).** (ANTS-2057)
+  The drift check previously only compared against the current branch, so a fix that landed on the wrong long-lived branch slipped past. Name sibling branches and it flags any "shipped" item whose commit is on your branch but missing from one of them.
+
 - **Read tools gained an opt-in `compact:true` that strips blank/empty fields from the answer.** (ANTS-2091)
   When you ask for it, the tool drops fields that are off, blank, or empty — they cost tokens but tell the assistant nothing — while always keeping the few fields it relies on (ok / error / found / etag).
 
