@@ -16056,6 +16056,63 @@ corroborated) are recorded in the feedback files, not re-roadmapped.
   Source: cross-session-feedback-2026-06-10 RetroArch HIGH + Album Builder.
   Resolved (2026-06-10): walkAntsV1Bullets (remotecontrol.cpp) now treats the `[PROJ-NNNN]` bracket as OPTIONAL — a fully id-less `- emoji **Headline.**` bullet parses with an empty id, so flip/flip_batch/annotate resolve it by headline/line_range like the read path. Append path untouched (own detector). Regression test tests/features/roadmap_log_flip_idless_antsv1/ (flip-by-headline, flip_batch-by-line_range, mixed id-ful+id-less). Full test_claude bundle 1036/1036 green.
 
+### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-06-11)
+
+Triage of the 2026-06-11 contributor blocks in the *_Ants_MCP_Feedback.md files
+(Vestige, MAME Curator, Album Builder, RetroArch; RetroDB had no new delta).
+Dominant theme: the ANTS-2058 / ANTS-2059 legacy-roadmap fixes are correct in
+source + covered by green regression tests, but three sessions hit them still
+failing on the *running* MCP server — a stale deployed binary, not a source
+regression. The user must relaunch the Ants Terminal instance to pick up the
+post-2026-06-10 MCP server. The actionable engineering response is surfacing a
+server build id so clients can self-diagnose this.
+
+- 📋 [ANTS-2073] **Surface the MCP server build/version id to clients so stale-binary deploy-gaps are self-diagnosable.**
+  Three independent CC sessions (MAME Curator, Album Builder, RetroArch)
+  re-reported ANTS-2058 / ANTS-2059 as "still failing" when the fixes are
+  in source and covered by green regression tests — the running MCP server
+  predates the rebuild. Each session had to GUESS whether it was a stale
+  binary or an uncovered case, and re-filed reproductions of already-fixed
+  bugs. Surface a build id (git short-SHA + build date, e.g. from
+  build_info.h / ANTS_VERSION) on session_orient and/or tool_info so a
+  client can compare against the fix's ship date and self-diagnose
+  "fix shipped, I'm on an old build" vs "fix didn't cover my case". High
+  leverage: kills a recurring class of false re-reports. NB: the immediate
+  operational fix is for the user to relaunch the Ants Terminal instance.
+  **Layman:** Show which version of the Ants assistant-helper is running, so other tools can tell "already fixed, you're on an old copy" from "not fixed yet."
+  Kind: enhancement.
+  Source: cross-session-2026-06-11 (MAME Curator, Album Builder, RetroArch).
+
+- 📋 [ANTS-2074] **git_state op:diff should default to the working-tree diff when range is omitted.**
+  Album Builder: git_state {op:"diff", caller_cwd} with no range refuses
+  with code:"bad_range" ("range required for op:diff"). But the single most
+  common diff — unstaged working-tree changes that bare `git diff` shows —
+  needs no range, so every "what have I changed so far" call falls back to
+  Bash git diff. Fix: when range is omitted, default op:diff to the
+  working-tree diff (vs index, or vs HEAD) to match bare `git diff`
+  semantics; keep range for the explicit A..B case. Makes git_state a
+  drop-in for the most frequent diff use.
+  **Layman:** Make the "show my changes" command work with no extra arguments, like plain git diff.
+  Kind: enhancement.
+  Source: cross-session-2026-06-11 (Album Builder).
+
+- 📋 [ANTS-2075] **synthetic_id_not_locatable refusal recommends a headline locator that roadmap_query returns truncated.**
+  Vestige obs #15 (LOW). The ANTS-2053 synthetic_id_not_locatable refusal
+  correctly tells the caller to re-target by headline (exact text), but
+  roadmap_query returns headline / headline_oneline TRUNCATED with an
+  ellipsis for long narrator bullets, so the very locator the refusal
+  recommends is not usable from the same response — the caller must go
+  read ROADMAP.md to recover the full first line. Fix (one of): (a) when
+  headline is truncated, also emit an untruncated headline_full (or a
+  ready-to-use locator_headline) on the bullet; or (b) have the
+  synthetic_id_not_locatable refusal additionally return the bullet's
+  current line and/or pre-inject + return a caret anchor, so the fallback
+  is self-contained without a second read. Vestige sidestepped via
+  line_range locators.
+  **Layman:** When the tool says "use the exact title to find this item", make sure it actually hands back the full title, not a cut-off one.
+  Kind: enhancement.
+  Source: cross-session-2026-06-11 (Vestige, observation #15).
+
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 
 A new testing initiative the user requested: give the agent a repeatable way to
