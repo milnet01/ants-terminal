@@ -82,6 +82,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Ants MCP read replies are now lean by default — empty/dead-weight fields are dropped from field-projection read verbs without a per-call `compact:true` (new `claude.mcp_terse_responses` config key + Settings toggle "Keep Ants MCP replies lean by default", on by default). A call can pass `compact:false` to get the full, untrimmed reply when it needs to distinguish an empty value from a missing one** (ANTS-2085)
+
 - **git_state diff now works with no arguments — shows your current unsaved changes, like plain `git diff`.** (ANTS-2074)
   Previously it refused unless you supplied an explicit commit range; the most common "what have I changed so far" call needed no range at all.
 

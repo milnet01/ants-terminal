@@ -556,6 +556,20 @@ bool Config::claudeMcpOrientationNudgeShown() const {
     return m_data.value("claude.mcp_orientation_nudge_shown").toBool(false);
 }
 
+// ANTS-2085 — terse-by-default for Ants MCP read responses. Default TRUE:
+// token-saving is on out of the box (user preference 2026-06-11). When on,
+// the dispatcher compacts every field-projection read response (drops
+// dead-weight null/false/""/[]/{} fields) without the caller passing
+// compact:true; a per-call compact:false still wins.
+bool Config::claudeMcpTerseResponses() const {
+    return m_data.value("claude.mcp_terse_responses").toBool(true);
+}
+
+void Config::setClaudeMcpTerseResponses(bool enabled) {
+    if (!storeIfChanged("claude.mcp_terse_responses", enabled)) return;
+    save();
+}
+
 void Config::setClaudeMcpOrientationNudgeShown(bool shown) {
     if (!storeIfChanged("claude.mcp_orientation_nudge_shown", shown)) return;
     save();

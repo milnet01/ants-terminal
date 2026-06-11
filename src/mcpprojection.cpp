@@ -1,5 +1,7 @@
 #include "mcpprojection.h"
 
+#include <atomic>
+
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -7,6 +9,21 @@
 #include <QJsonValue>
 
 namespace mcp {
+
+// ANTS-2085 — see header. Read on every dispatch, written from the GUI
+// thread (config load / Settings Apply); atomic so the cross-thread
+// publish is a plain relaxed flag flip, no lock.
+namespace {
+std::atomic<bool> g_terseDefault{false};
+}  // namespace
+
+void setTerseDefault(bool terse) {
+    g_terseDefault.store(terse, std::memory_order_relaxed);
+}
+
+bool terseDefault() {
+    return g_terseDefault.load(std::memory_order_relaxed);
+}
 
 bool isFieldProjectionTool(const QString &toolName) {
     return toolName == QStringLiteral("roadmap_query")

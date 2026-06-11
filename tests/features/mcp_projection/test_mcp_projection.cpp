@@ -357,12 +357,35 @@ TEST(McpCompact, Ants2091DispatchAndSchemaWiring) {
     const int comp = s.indexOf("mcp::compactEnvelope(");
     ASSERT_GT(comp, 0) << "compactEnvelope dispatch call site not found";
     EXPECT_LT(proj, comp) << "compaction must run after fields= projection";
-    EXPECT_TRUE(s.contains("argsObj.value(QStringLiteral(\"compact\")).toBool()"))
-        << "compaction must be gated on the compact arg";
+    EXPECT_TRUE(s.contains("argsObj.value(QStringLiteral(\"compact\"))"))
+        << "compaction must read the compact arg";
+    // ANTS-2085 — when the compact arg is absent the dispatcher falls back
+    // to the session/user terse default.
+    EXPECT_TRUE(s.contains("mcp::terseDefault()"))
+        << "compaction must fall back to mcp::terseDefault() when compact "
+           "is absent";
     // 11 compact schema props, one per in-scope projection tool.
     int count = 0, idx = 0;
     const QByteArray needle = "makeCompactProp();";
     while ((idx = s.indexOf(needle, idx)) != -1) { ++count; idx += needle.size(); }
     EXPECT_EQ(count, 11) << "expected 11 makeCompactProp() call sites, got "
                          << count;
+}
+
+// ───────────────────────────────────────────────────────────────────
+// ANTS-2085 — terse-by-default flag. setTerseDefault/terseDefault is the
+// process-global the dispatcher reads when a call omits `compact`. The
+// behaviour (compactEnvelope applied on the fallback) is covered by the
+// McpCompact transform tests above + the dispatch-wiring grep; here we
+// pin the getter/setter contract and the default.
+// ───────────────────────────────────────────────────────────────────
+TEST(McpTerseDefault, Ants2085GetterSetterRoundTrips) {
+    // Module default is false (conservative for direct library/test use;
+    // the application turns it on via the claude.mcp_terse_responses config
+    // key, default true).
+    EXPECT_FALSE(mcp::terseDefault());
+    mcp::setTerseDefault(true);
+    EXPECT_TRUE(mcp::terseDefault());
+    mcp::setTerseDefault(false);
+    EXPECT_FALSE(mcp::terseDefault());   // restore module default for siblings
 }

@@ -96,6 +96,8 @@ private:
     QCheckBox *m_claudeAutoModelUndo      = nullptr;
     // ANTS-1897 — master toggle for the MCP discoverability hook.
     QCheckBox *m_claudeMcpOrientation = nullptr;
+    // ANTS-2085 — terse-by-default for Ants MCP read replies (default on).
+    QCheckBox *m_claudeMcpTerse = nullptr;
     void installClaudeHooks();
     void refreshClaudeHooksStatus();
     void installClaudeGitContextHook();

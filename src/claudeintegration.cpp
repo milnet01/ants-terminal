@@ -8488,10 +8488,22 @@ void ClaudeIntegration::onMcpConnection() {
                 // — skipped on a 304, which is already minimal. Protected
                 // keys (ok/code/error/etag/found/unchanged) survive at
                 // every level (see mcp::compactEnvelope).
+                // ANTS-2085 — resolve `compact` from the per-call arg when
+                // present (true OR false both win), else fall back to the
+                // session/user terse default (mcp::terseDefault(), driven by
+                // the claude.mcp_terse_responses config key — on by default so
+                // token-saving needs no per-call flag). Absent ⟺ default makes
+                // the fallback lossless; a caller needing empty-vs-absent
+                // passes compact:false.
                 if (toolHandled && !etagUnchanged &&
-                    mcp::isFieldProjectionTool(toolName) &&
-                    argsObj.value(QStringLiteral("compact")).toBool()) {
-                    responseText = mcp::compactEnvelope(responseText);
+                    mcp::isFieldProjectionTool(toolName)) {
+                    const QJsonValue compactArg =
+                        argsObj.value(QStringLiteral("compact"));
+                    const bool wantCompact = compactArg.isBool()
+                        ? compactArg.toBool()
+                        : mcp::terseDefault();
+                    if (wantCompact)
+                        responseText = mcp::compactEnvelope(responseText);
                 }
                 // ANTS-2081 / ANTS-2086 — append etag-reuse + leaner-mode
                 // nudges to large read responses. After the etag/fields

@@ -6,6 +6,7 @@
 #include "dialogchrome.h"
 #include "globalshortcutsportal.h"
 #include "mcporientation.h"  // ANTS-1897 — apply toggle immediately on Apply.
+#include "mcpprojection.h"   // ANTS-2085 — mcp::setTerseDefault on Apply.
 #include "secureio.h"
 #include "themes.h"
 
@@ -344,6 +345,21 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         "default. Untick to remove the hook entry on the next launch.");
     layout->addRow(m_claudeMcpOrientation);
 
+    // ANTS-2085 — terse-by-default for Ants MCP read replies. On by
+    // default (token-saving out of the box). Drops dead-weight empty
+    // fields the model never reads from list/read responses, so a Claude
+    // session needn't pass `compact:true` on every call.
+    m_claudeMcpTerse = new QCheckBox(
+        "Keep Ants MCP replies lean by default", tab);
+    m_claudeMcpTerse->setToolTip(
+        "When on, Ants trims empty fields out of its MCP read replies "
+        "(roadmap_query, file_outline, read_region, …) so Claude Code "
+        "sessions spend fewer tokens — without having to ask for it each "
+        "call. On by default. A tool call can still pass compact:false to "
+        "get the full, untrimmed reply when it needs to tell an empty "
+        "value apart from a missing one.");
+    layout->addRow(m_claudeMcpTerse);
+
     // Restore Defaults — resets ONLY the General-tab controls to
     // their schema defaults. Doesn't touch m_config until the user
     // clicks Apply or OK; Cancel rolls everything back as usual.
@@ -373,6 +389,7 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         if (m_claudeAutoModelChipPulse) m_claudeAutoModelChipPulse->setChecked(true);
         if (m_claudeAutoModelUndo)      m_claudeAutoModelUndo->setChecked(true);
         if (m_claudeMcpOrientation) m_claudeMcpOrientation->setChecked(true);
+        if (m_claudeMcpTerse) m_claudeMcpTerse->setChecked(true);
     });
     layout->addRow(QString(), generalDefaultsBtn);
 }
@@ -1009,6 +1026,8 @@ void SettingsDialog::loadSettings() {
         m_claudeAutoModelUndo->setChecked(m_config->claudeAutoModelUndoEnabled());
     if (m_claudeMcpOrientation)
         m_claudeMcpOrientation->setChecked(m_config->claudeMcpOrientationEnabled());
+    if (m_claudeMcpTerse)
+        m_claudeMcpTerse->setChecked(m_config->claudeMcpTerseResponses());
 
     int fmtIdx = m_tabTitleFormat->findData(m_config->tabTitleFormat());
     if (fmtIdx >= 0) m_tabTitleFormat->setCurrentIndex(fmtIdx);
@@ -1143,6 +1162,15 @@ void SettingsDialog::applySettings() {
             if (nowEnabled) ants::mcp_orientation::install();
             else ants::mcp_orientation::uninstall();
         }
+    }
+
+    // ANTS-2085 — persist + apply the terse-by-default toggle live, so the
+    // dispatcher honours it without a relaunch (a self-write echo
+    // short-circuits onConfigFileChanged, so push it directly).
+    if (m_claudeMcpTerse) {
+        const bool terse = m_claudeMcpTerse->isChecked();
+        m_config->setClaudeMcpTerseResponses(terse);
+        mcp::setTerseDefault(terse);
     }
 
     // Appearance

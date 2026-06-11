@@ -132,6 +132,13 @@ public:
     bool claudeMcpOrientationNudgeShown() const;
     void setClaudeMcpOrientationNudgeShown(bool shown);
 
+    // ANTS-2085 — terse-by-default for Ants MCP read responses. Default
+    // true: token-saving on out of the box. Drives mcp::setTerseDefault()
+    // so the dispatcher compacts field-projection read responses without a
+    // per-call compact:true (an explicit per-call compact:false still wins).
+    bool claudeMcpTerseResponses() const;
+    void setClaudeMcpTerseResponses(bool enabled);
+
     // ANTS-1154 v2 card-renderer state. Each set stores the IDs /
     // slugs the user has manually toggled to "expanded" or
     // "table-view". Restored on dialog open; updated on close.

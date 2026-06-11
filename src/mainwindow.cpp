@@ -29,6 +29,7 @@
 #include "claudeintegration.h"
 #include "claudestatuswidgets.h"
 #include "claudetabtracker.h"
+#include "mcpprojection.h"   // ANTS-2085 — mcp::setTerseDefault
 #include "mcporientation.h"  // ANTS-1897 — SessionStart hook installer.
 #include "themedstylesheet.h"
 #include "claudeprojects.h"
@@ -3963,6 +3964,11 @@ static bool resolveInflightCallerCwd(const QString &callerCwd,
 // state, then starts the hook server. Split out from
 // setupClaudeIntegration because it isn't status-bar chrome.
 void MainWindow::setupClaudeMcpProviders() {
+    // ANTS-2085 — publish the terse-by-default preference to the MCP
+    // dispatcher before any provider can serve. Default true (token-saving
+    // on out of the box); the Settings Apply path and onConfigFileChanged
+    // (external edits) re-publish it.
+    mcp::setTerseDefault(m_config.claudeMcpTerseResponses());
     // ANTS-1322: reap stale MCP sockets from previously-crashed
     // ants-terminal instances. Without this they accumulate in
     // /tmp/ants-terminal-mcp-<PID> indefinitely; the mcp-bridge
@@ -6788,6 +6794,11 @@ void MainWindow::onConfigFileChanged(const QString &path) {
 
     // Reload config from disk
     m_config = Config();
+
+    // ANTS-2085 — re-publish the terse-by-default preference after an
+    // external config edit (the Settings dialog's own Apply re-publishes
+    // directly, since a self-write echo short-circuits above).
+    mcp::setTerseDefault(m_config.claudeMcpTerseResponses());
 
     // The cached Settings dialog was constructed with `&m_config` and
     // populated its widgets from the then-current values. `m_config`'s

@@ -62,4 +62,20 @@ QString appendReadHints(const QString &toolName, const QJsonObject &args,
 //     from absent (e.g. git_state's null binary-file markers) omits it.
 QString compactEnvelope(const QString &responseText);
 
+// ANTS-2085 — session/user "terse" default for read responses. When true,
+// the dispatcher applies compactEnvelope() to a field-projection read
+// response even when the caller did NOT pass compact:true — so a user can
+// set "keep Ants MCP replies lean" ONCE (the Settings toggle / the
+// claude.mcp_terse_responses config key) instead of repeating compact:true
+// on every call (generalises ANTS-2082 across the whole read surface).
+// Precedence: an explicit per-call compact (true OR false) always wins;
+// this only fills the default when the arg is absent. Safe because
+// compactEnvelope is absent-⟺-default by design (see its contract above),
+// so a session opting into terse IS the one opt-in the empty-vs-absent
+// hazard needs. Process-global + atomic: read on every dispatch, written
+// from MainWindow (config load + external reload) and the Settings Apply.
+// Cache-free — no per-call config I/O. Default false (full back-compat).
+void setTerseDefault(bool terse);
+bool terseDefault();
+
 }  // namespace mcp
