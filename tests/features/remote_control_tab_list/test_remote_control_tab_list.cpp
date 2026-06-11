@@ -95,6 +95,13 @@ static int runMain() {
         return fail("INV-5",
                     "tabsAsJson must compare against ClaudeState::NotRunning");
 
+    // INV-8 (ANTS-1865): tabsAsJson also emits the per-tab Claude glyph
+    // state so the dot/prompt state is programmatically verifiable.
+    if (!contains(mwSrc, "\"claude_state\""))
+        return fail("INV-8", "tabsAsJson must emit claude_state");
+    if (!contains(mwSrc, "\"awaiting_input\""))
+        return fail("INV-8", "tabsAsJson must emit awaiting_input");
+
     // INV-6: response envelope includes both ok:true and tabs.
     if (!contains(rcSrc, "out[\"tabs\"] = m_main->tabsAsJson()"))
         return fail("INV-6",
@@ -110,7 +117,7 @@ static int runMain() {
         return fail("INV-7",
                     "tabListForRemote must remain (additive, not replacing)");
 
-    std::puts("OK remote_control_tab_list: 7/7 invariants");
+    std::puts("OK remote_control_tab_list: 8/8 invariants");
     return 0;
 }
 

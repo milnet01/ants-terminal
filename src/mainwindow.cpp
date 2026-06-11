@@ -3134,8 +3134,33 @@ QJsonArray MainWindow::tabsAsJson() const {
         t["shell_pid"] = qint64(shellPid);
         bool claudeRunning = false;
         if (m_claudeTabTracker && shellPid > 0) {
-            const auto state = m_claudeTabTracker->shellState(shellPid).state;
-            claudeRunning = (state != ClaudeState::NotRunning);
+            // ANTS-1865 — surface the per-tab Claude glyph state so dot /
+            // prompt-state behaviour is programmatically verifiable instead
+            // of needing the user to eyeball the tab strip. `claude_state`
+            // is the transcript-derived base state; `awaiting_input` /
+            // `plan_mode` / `auditing` are the overlays that (together with
+            // the base) determine the resolved dot, so a caller can compute
+            // the expected glyph without the resolver.
+            const auto ss = m_claudeTabTracker->shellState(shellPid);
+            claudeRunning = (ss.state != ClaudeState::NotRunning);
+            // Local snake_case mapping (no default → a new enum value trips
+            // -Wswitch here, mirroring claudeStateName in claudestatuswidgets).
+            QString stateName;
+            switch (ss.state) {
+                case ClaudeState::NotRunning: stateName = QStringLiteral("not_running"); break;
+                case ClaudeState::Idle:       stateName = QStringLiteral("idle");        break;
+                case ClaudeState::Thinking:   stateName = QStringLiteral("thinking");    break;
+                case ClaudeState::ToolUse:    stateName = QStringLiteral("tool_use");    break;
+                case ClaudeState::Compacting: stateName = QStringLiteral("compacting");  break;
+            }
+            if (stateName.isEmpty()) stateName = QStringLiteral("idle");
+            t["claude_state"] = stateName;
+            t["awaiting_input"] = ss.awaitingInput;
+            // Lean envelope: emit the boolean/string overlays only when set.
+            if (ss.planMode) t["plan_mode"] = true;
+            if (ss.auditing) t["auditing"] = true;
+            if (ss.state == ClaudeState::ToolUse && !ss.tool.isEmpty())
+                t["tool"] = ss.tool;
         }
         t["claude_running"] = claudeRunning;
         QString color;

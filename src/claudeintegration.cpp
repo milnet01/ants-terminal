@@ -2446,7 +2446,15 @@ void ClaudeIntegration::onMcpConnection() {
                 tabListTool["description"] = QStringLiteral(
                     "List all open terminal tabs in this Ants instance. "
                     "Each tab: {index, title, cwd, shell_pid, "
-                    "claude_running, color}. Envelope: {ok:true, tabs:[…]}.");
+                    "claude_running, color}. When a tab runs a tracked "
+                    "Claude session it also carries (ANTS-1865) "
+                    "`claude_state` (not_running|idle|thinking|tool_use|"
+                    "compacting), `awaiting_input` (bool — permission prompt "
+                    "active), and the lean overlays `plan_mode` / `auditing` "
+                    "(emitted only when true) + `tool` (the active tool name "
+                    "when tool_use) — so a session can verify the per-tab "
+                    "Claude dot/prompt state programmatically instead of "
+                    "eyeballing the tab strip. Envelope: {ok:true, tabs:[…]}.");
                 tabListTool["selection_hint"] = QStringLiteral(
                     "Use when multiple Ants tabs may exist and you "
                     "need to pick the right one (e.g. cross-tab "

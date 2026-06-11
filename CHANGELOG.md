@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **`tab_list` exposes per-tab Claude glyph state — `claude_state`, `awaiting_input`, and `plan_mode`/`auditing`/`tool` overlays — so a session can verify the per-tab dot/prompt state programmatically instead of eyeballing the tab strip** (ANTS-1865)
+
 - **roadmap_branch_drift can now catch a fix committed to the wrong branch (pass against_refs).** (ANTS-2057)
   The drift check previously only compared against the current branch, so a fix that landed on the wrong long-lived branch slipped past. Name sibling branches and it flags any "shipped" item whose commit is on your branch but missing from one of them.
 

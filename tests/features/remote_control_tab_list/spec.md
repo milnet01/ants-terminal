@@ -32,3 +32,9 @@ script across multiple sessions. See `docs/specs/ANTS-1117.md`.
   callers can switch verbs without re-coding the wrapper).
 - **INV-7** The narrower `tabListForRemote` (used by `ls`) is
   unchanged — `tab-list` is additive, not replacing.
+- **INV-8** (ANTS-1865) For a tab running a tracked Claude session,
+  `tabsAsJson` also emits `claude_state` (the snake_case base state)
+  and `awaiting_input` (the permission-prompt overlay) — sourced from
+  the same `ClaudeTabTracker::shellState(pid)` snapshot as
+  `claude_running`, so the per-tab dot/prompt state is verifiable
+  without a parallel detector.

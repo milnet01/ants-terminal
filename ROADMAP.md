@@ -8950,7 +8950,7 @@ indie-review finding.
   Source: user-request-2026-05-25 (screenshot: opaque green/red diff highlights on a translucent terminal).
   Resolved 2026-05-29: cell bg fillRects now use CompositionMode_Source (same as the base fill) when alpha < 255, so coloured cells replace the destination alpha rather than compounding it via SourceOver. Selected/searchMatch cells (alpha=255) unchanged — Source == SourceOver when src.a=1. Two flush sites fixed (mid-row and end-of-row trailing flush) in terminalwidget.cpp.
 
-- 📋 [ANTS-1865] **Expose the per-tab Claude state dot (idle/thinking/tooluse/awaiting-input) via MCP so dot/prompt-state behavior is programmatically verifiable.**
+- ✅ [ANTS-1865] **Expose the per-tab Claude state dot (idle/thinking/tooluse/awaiting-input) via MCP so dot/prompt-state behavior is programmatically verifiable.**
   tab_list exposes {claude_running, color} but `color` is the tab's
   assigned color, not the ClaudeTabTracker glyph state. There is no MCP
   way to read shellState(pid) — idle/thinking/tooluse/awaitingInput +
@@ -8964,6 +8964,7 @@ indie-review finding.
   Kind: enhancement.
   Lanes: claudetabtracker, remotecontrol, observability.
   Source: in-session-2026-05-25 (couldn't self-verify the ANTS-1862 dot fix — no MCP surface for the dot state).
+  Resolved (2026-06-11): tab_list now surfaces per-tab claude_state (not_running|idle|thinking|tool_use|compacting) + awaiting_input, plus lean overlays plan_mode/auditing/tool, sourced from the same ClaudeTabTracker::shellState(pid) snapshot as claude_running. Dot/prompt-state fixes are now self-verifiable via MCP. tabsAsJson (mainwindow.cpp) + tab_list description (claudeintegration.cpp); INV-8 added to the remote_control_tab_list feature test (8/8 green). Resolved-dot-COLOR left out (display-resolver scope); state fields let the caller derive it.
 
 - ✅ [ANTS-1913] **Drop unused `<csignal>` include from `claudestatuswidgets.cpp`.**
   **Layman:** clangd flags `csignal` as included but unused at line 24. Trivial single-line removal; doesn't affect anything at runtime.
