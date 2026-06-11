@@ -45,4 +45,21 @@ QString projectFields(const QString &responseText, const QJsonArray &fields);
 QString appendReadHints(const QString &toolName, const QJsonObject &args,
                         const QString &responseText, bool etagUnchanged);
 
+// ANTS-2091 — compact-envelope transform. Recursively drops dead-weight
+// fields the model never reads (JSON null, false, empty string, empty
+// array, empty object) from a read response, opt-in via `compact:true`.
+// Contract:
+//   - responseText not a JSON object  -> returned unchanged.
+//   - protected keys (ok, code, error, etag, found, unchanged) are kept
+//     at EVERY nesting level regardless of value — they are the fields
+//     callers branch on (a dropped `ok:false` / `found:false` would
+//     invert meaning).
+//   - recurses into nested objects and array elements, so per-bullet /
+//     per-match empties (lanes:[], kind:"") are pruned too.
+//   - absent ⟺ default: a caller reading a dropped field as its
+//     zero-value sees no behaviour change. The opt-in is the safety
+//     valve — a caller that needs to distinguish "" / [] / null / false
+//     from absent (e.g. git_state's null binary-file markers) omits it.
+QString compactEnvelope(const QString &responseText);
+
 }  // namespace mcp

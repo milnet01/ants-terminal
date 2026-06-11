@@ -117,4 +117,80 @@ QString appendReadHints(const QString &tool, const QJsonObject &args,
         QJsonDocument(env).toJson(QJsonDocument::Compact));
 }
 
+namespace {
+
+// ANTS-2091 — keys kept at every level regardless of value. These are the
+// fields callers branch on; a dropped `ok:false` / `found:false` would
+// silently invert the result's meaning.
+bool isProtectedCompactKey(const QString &key) {
+    return key == QStringLiteral("ok")
+        || key == QStringLiteral("code")
+        || key == QStringLiteral("error")
+        || key == QStringLiteral("etag")
+        || key == QStringLiteral("found")
+        || key == QStringLiteral("unchanged");
+}
+
+// A value is "dead weight" when it equals its zero/default form: null,
+// false, "", [], {}. Numbers (including 0) are kept — a 0 count is often
+// load-bearing (flipped_count:0, files:0) and cheap.
+bool isCompactDroppable(const QJsonValue &v) {
+    switch (v.type()) {
+    case QJsonValue::Null:   return true;
+    case QJsonValue::Bool:   return v.toBool() == false;
+    case QJsonValue::String: return v.toString().isEmpty();
+    case QJsonValue::Array:  return v.toArray().isEmpty();
+    case QJsonValue::Object: return v.toObject().isEmpty();
+    default:                 return false;  // Double / Undefined
+    }
+}
+
+QJsonValue compactValue(const QJsonValue &v);
+
+QJsonObject compactObject(const QJsonObject &in) {
+    QJsonObject out;
+    for (auto it = in.begin(); it != in.end(); ++it) {
+        const QString key = it.key();
+        if (isProtectedCompactKey(key)) {
+            out.insert(key, it.value());  // verbatim, never recursed/pruned
+            continue;
+        }
+        const QJsonValue cv = compactValue(it.value());
+        // Re-test after recursion: an object/array that became empty by
+        // pruning its children is itself dead weight.
+        if (!isCompactDroppable(cv)) out.insert(key, cv);
+    }
+    return out;
+}
+
+QJsonValue compactValue(const QJsonValue &v) {
+    if (v.isObject()) return compactObject(v.toObject());
+    if (v.isArray()) {
+        QJsonArray out;
+        const QJsonArray in = v.toArray();
+        for (const QJsonValue &e : in) {
+            // Recurse into element objects; scalars pass through (array
+            // membership is itself meaningful — don't drop a `false`
+            // element from a list of booleans).
+            out.append(e.isObject() ? QJsonValue(compactObject(e.toObject()))
+                                    : e);
+        }
+        return out;
+    }
+    return v;
+}
+
+}  // namespace
+
+QString compactEnvelope(const QString &responseText) {
+    QJsonParseError err{};
+    const QJsonDocument doc =
+        QJsonDocument::fromJson(responseText.toUtf8(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject())
+        return responseText;
+    return QString::fromUtf8(
+        QJsonDocument(compactObject(doc.object()))
+            .toJson(QJsonDocument::Compact));
+}
+
 }  // namespace mcp

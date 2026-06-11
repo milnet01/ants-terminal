@@ -1643,6 +1643,28 @@ void ClaudeIntegration::onMcpConnection() {
                     return p;
                 };
 
+                // ANTS-2091 — `compact` opt-in flag, added alongside
+                // `fields` on the same read tools. When true, the response
+                // is stripped of dead-weight fields (null / false / "" /
+                // [] / {}) the model never reads; protected keys (ok, code,
+                // error, etag, found, unchanged) always survive.
+                auto makeCompactProp = []{
+                    QJsonObject p;
+                    p["type"] = "boolean";
+                    p["default"] = false;
+                    p["description"] = QStringLiteral(
+                        "Optional (ANTS-2091). When true, drop dead-weight "
+                        "fields (null / false / empty string / empty array "
+                        "/ empty object) the model never reads — recursively, "
+                        "including per-element empties. Protected keys (ok, "
+                        "code, error, etag, found, unchanged) always survive. "
+                        "Absent ⟺ default, so a reader that treats a dropped "
+                        "field as its zero-value sees no change; omit it when "
+                        "you must distinguish empty from absent. Composes "
+                        "with fields= and etag_match.");
+                    return p;
+                };
+
                 QJsonObject scrollbackTool;
                 scrollbackTool["name"] = "get_scrollback";
                 scrollbackTool["description"] = QStringLiteral(
@@ -1821,6 +1843,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     props["fields"] = makeFieldsProp();          // ANTS-1720
+                    props["compact"] = makeCompactProp();        // ANTS-2091
                     schema["properties"] = props;
                     envTool["inputSchema"] = schema;
                 }
@@ -2132,6 +2155,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     props["fields"] = makeFieldsProp();          // ANTS-1720
+                    props["compact"] = makeCompactProp();        // ANTS-2091
                     // ANTS-1907 — per-section ETag short-circuit (section=
                     // mode) + opt-in per-section etag emission
                     // (section_index mode). Independent of the dispatch-
@@ -2340,6 +2364,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();
                     props["fields"]     = makeFieldsProp();
+                    props["compact"]    = makeCompactProp();     // ANTS-2091
                     {
                         QJsonObject scopeProp;
                         scopeProp["type"]        = QStringLiteral("string");
@@ -2409,6 +2434,7 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject props;
                     props["etag_match"] = makeEtagMatchProp();
                     props["fields"] = makeFieldsProp();          // ANTS-1720
+                    props["compact"] = makeCompactProp();        // ANTS-2091
                     schema["properties"] = props;
                     tabListTool["inputSchema"] = schema;
                 }
@@ -2924,6 +2950,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["caller_cwd"]           = makeCallerCwdReadProp();
                     props["etag_match"]           = makeEtagMatchProp();   // ANTS-1499
                     props["fields"]               = makeFieldsProp();      // ANTS-1720
+                    props["compact"]              = makeCompactProp();     // ANTS-2091
                     schema["properties"] = props;
                     QJsonArray required;
                     required.append("path");
@@ -3006,6 +3033,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["since_cursor"] = curProp;
                     props["caller_cwd"]   = makeCallerCwdReadProp();
                     props["fields"]       = makeFieldsProp();   // ANTS-1720
+                    props["compact"]      = makeCompactProp();   // ANTS-2091
                     schema["properties"] = props;
                     rlTool["inputSchema"] = schema;
                 }
@@ -3067,6 +3095,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     props["fields"]     = makeFieldsProp();      // ANTS-1720
+                    props["compact"]    = makeCompactProp();     // ANTS-2091
                     schema["properties"] = props;
                     QJsonArray required;
                     required.append("path");
@@ -3182,6 +3211,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     props["fields"]     = makeFieldsProp();      // ANTS-1720
+                    props["compact"]    = makeCompactProp();     // ANTS-2091
                     schema["properties"] = props;
                     ciTool["inputSchema"] = schema;
                 }
@@ -3413,6 +3443,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     props["fields"] = makeFieldsProp();          // ANTS-1720
+                    props["compact"] = makeCompactProp();        // ANTS-2091
                     schema["properties"] = props;
                     QJsonArray required;
                     required.append("op");
@@ -3467,6 +3498,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     props["fields"] = makeFieldsProp();          // ANTS-1720
+                    props["compact"] = makeCompactProp();        // ANTS-2091
                     schema["properties"] = props;
                     QJsonArray required;
                     required.append("op");
@@ -7436,6 +7468,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["caller_cwd"]   = callerProp;
                     props["etag_match"]   = makeEtagMatchProp();   // ANTS-1499
                     props["fields"]       = makeFieldsProp();      // ANTS-1720
+                    props["compact"]      = makeCompactProp();     // ANTS-2091
                     schema["properties"]  = props;
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
@@ -8403,6 +8436,18 @@ void ClaudeIntegration::onMcpConnection() {
                         responseText = mcp::projectFields(
                             responseText, fv.toArray());
                     }
+                }
+                // ANTS-2091 — opt-in `compact:true` drops dead-weight
+                // fields (null / false / "" / [] / {}) the model never
+                // reads. After fields= (compacts the narrowed body too)
+                // and before the etag-unchanged short-circuit is irrelevant
+                // — skipped on a 304, which is already minimal. Protected
+                // keys (ok/code/error/etag/found/unchanged) survive at
+                // every level (see mcp::compactEnvelope).
+                if (toolHandled && !etagUnchanged &&
+                    mcp::isFieldProjectionTool(toolName) &&
+                    argsObj.value(QStringLiteral("compact")).toBool()) {
+                    responseText = mcp::compactEnvelope(responseText);
                 }
                 // ANTS-2081 / ANTS-2086 — append etag-reuse + leaner-mode
                 // nudges to large read responses. After the etag/fields

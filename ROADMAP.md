@@ -11927,11 +11927,12 @@ template / mutate this state atomically" → movable. If it's
   Kind: optimize.
   Source: in-session-2026-06-11 (token-saving research: context-engineering + MCP-optimization corpus).
 
-- 📋 [ANTS-2091] **Compact envelope transform: elide null / empty / false-default fields from MCP read responses.**
+- ✅ [ANTS-2091] **Compact envelope transform: elide null / empty / false-default fields from MCP read responses.**
   Many envelopes ship dead weight (truncated:false, walk_capped:false, empty arrays, scope echoes) the model never reads. A dispatch-layer compact transform (sibling of mcp::appendReadHints / mcp::projectFields) drops null/empty/false-default fields — opt-in via compact:true or a session default (pairs with ANTS-2085 verbosity). Distinct from fields= (caller must name keys); this is automatic dead-weight removal. Must keep fields callers branch on (ok, code, etag).
   **Layman:** Stop sending fields that are blank or off — the model never needs them and they cost tokens every call.
   Kind: optimize.
   Source: in-session-2026-06-11 (token-saving research: context-engineering + MCP-optimization corpus).
+  Resolved (2026-06-11): opt-in compact:true on the 11 field-projection read tools drops dead-weight fields (null / false / "" / [] / {}) recursively — including per-element empties (lanes:[], kind:"") — via mcp::compactEnvelope. Protected branch-on keys (ok, code, error, etag, found, unchanged) survive at every level; numeric 0 kept (load-bearing counts); scalar-array elements preserved. Runs after fields= projection. Deferred the session-default knob (ANTS-2085 verbosity pairing) — opt-in is the safety valve since a caller may need to distinguish empty from absent (e.g. git_state null binary-file markers). 8 new behavioral + wiring tests.
 
 - 📋 [ANTS-2092] **Deduplicate repeated tool-schema fragments in tools/list via $defs/$ref (MCP SEP-1576).**
   The ~73 tool schemas repeat the caller_cwd / etag_match / fields / path / allow_outside_project property definitions verbatim. Hoist the common fragments into top-level $defs and reference via $ref so the tools/list payload carries each fragment once. Per MCP SEP-1576 (schema-redundancy reduction). Complements ANTS-2079 (which trims description PROSE) — this dedupes the structural schema. Impact lands whenever schemas actually load (ToolSearch miss / tool_info catalog).

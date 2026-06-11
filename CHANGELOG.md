@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Read tools gained an opt-in `compact:true` that strips blank/empty fields from the answer.** (ANTS-2091)
+  When you ask for it, the tool drops fields that are off, blank, or empty — they cost tokens but tell the assistant nothing — while always keeping the few fields it relies on (ok / error / found / etag).
+
 - **roadmap_log flip / flip_batch gained the return:headline_only confirm-after echo.** (ANTS-2089)
   After changing a roadmap item's status, optionally show the updated item so you do not need a separate lookup (already available when adding items).
 

@@ -262,3 +262,107 @@ TEST(McpReadHints, Ants2086NoLeanerHintWhenAlreadyLean) {
     EXPECT_FALSE(o.contains("leaner_call_hint"));
     EXPECT_TRUE(o.contains("next_call_hint"));
 }
+
+// ───────────────────────────────────────────────────────────────────
+// ANTS-2091 — mcp::compactEnvelope: drop dead-weight fields, keep the
+// protected branch-on keys, recurse.
+// ───────────────────────────────────────────────────────────────────
+
+// Dead-weight scalars/collections are dropped; live values are kept.
+TEST(McpCompact, Ants2091DropsDeadWeightKeepsLive) {
+    const QString body = QStringLiteral(
+        "{\"ok\":true,\"truncated\":false,\"walk_capped\":false,"
+        "\"scope\":\"\",\"skipped\":[],\"meta\":{},\"nullish\":null,"
+        "\"count\":3,\"matches\":[1,2]}");
+    const QJsonObject o = parse(mcp::compactEnvelope(body));
+    EXPECT_TRUE(o.value("ok").toBool());
+    EXPECT_EQ(o.value("count").toInt(), 3);
+    EXPECT_EQ(o.value("matches").toArray().size(), 2);
+    // All the dead weight is gone.
+    for (const char *k : {"truncated", "walk_capped", "scope", "skipped",
+                          "meta", "nullish"})
+        EXPECT_FALSE(o.contains(k)) << k << " should be dropped";
+}
+
+// A numeric 0 is load-bearing and kept (flipped_count:0 etc.).
+TEST(McpCompact, Ants2091KeepsZero) {
+    const QJsonObject o =
+        parse(mcp::compactEnvelope(QStringLiteral("{\"flipped_count\":0}")));
+    ASSERT_TRUE(o.contains("flipped_count"));
+    EXPECT_EQ(o.value("flipped_count").toInt(), 0);
+}
+
+// Protected keys survive at the top level even when false / empty.
+TEST(McpCompact, Ants2091ProtectsBranchKeys) {
+    const QString body = QStringLiteral(
+        "{\"ok\":false,\"found\":false,\"unchanged\":false,"
+        "\"code\":\"bad_args\",\"error\":\"\",\"etag\":\"\"}");
+    const QJsonObject o = parse(mcp::compactEnvelope(body));
+    ASSERT_TRUE(o.contains("ok"));
+    EXPECT_FALSE(o.value("ok").toBool());
+    ASSERT_TRUE(o.contains("found"));
+    EXPECT_FALSE(o.value("found").toBool());
+    EXPECT_TRUE(o.contains("unchanged"));
+    EXPECT_EQ(o.value("code").toString(), QStringLiteral("bad_args"));
+    // error/etag are protected even though empty (verbatim).
+    EXPECT_TRUE(o.contains("error"));
+    EXPECT_TRUE(o.contains("etag"));
+}
+
+// Recurses into nested objects AND array elements; a child emptied by
+// pruning is itself dropped.
+TEST(McpCompact, Ants2091RecursesAndPrunesEmptiedChildren) {
+    const QString body = QStringLiteral(
+        "{\"ok\":true,"
+        "\"bullets\":[{\"id\":\"A-1\",\"kind\":\"\",\"lanes\":[]},"
+        "             {\"id\":\"A-2\",\"kind\":\"fix\",\"lanes\":[]}],"
+        "\"deep\":{\"a\":false,\"b\":\"\"}}");
+    const QJsonObject o = parse(mcp::compactEnvelope(body));
+    // deep became empty after pruning → dropped entirely.
+    EXPECT_FALSE(o.contains("deep"));
+    const QJsonArray b = o.value("bullets").toArray();
+    ASSERT_EQ(b.size(), 2);
+    const QJsonObject b0 = b.at(0).toObject();
+    EXPECT_EQ(b0.value("id").toString(), QStringLiteral("A-1"));
+    EXPECT_FALSE(b0.contains("kind"));   // "" dropped
+    EXPECT_FALSE(b0.contains("lanes"));  // [] dropped
+    const QJsonObject b1 = b.at(1).toObject();
+    EXPECT_EQ(b1.value("kind").toString(), QStringLiteral("fix"));
+}
+
+// A scalar array (e.g. a list of booleans) is preserved element-for-element
+// — array membership is meaningful, so a `false` element is NOT dropped.
+TEST(McpCompact, Ants2091KeepsScalarArrayElements) {
+    const QJsonObject o = parse(mcp::compactEnvelope(
+        QStringLiteral("{\"flags\":[true,false,true]}")));
+    ASSERT_TRUE(o.contains("flags"));
+    EXPECT_EQ(o.value("flags").toArray().size(), 3);
+}
+
+// Non-object body passes through unchanged.
+TEST(McpCompact, Ants2091NonObjectPassthrough) {
+    const QString raw = QStringLiteral("not json");
+    EXPECT_EQ(mcp::compactEnvelope(raw), raw);
+    const QString arr = QStringLiteral("[1,2,3]");
+    EXPECT_EQ(mcp::compactEnvelope(arr), arr);
+}
+
+// Dispatch wiring: compactEnvelope runs after fields= projection, gated on
+// the allowlist + the compact arg, and each in-scope tool declares the prop.
+TEST(McpCompact, Ants2091DispatchAndSchemaWiring) {
+    QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QByteArray s = f.readAll();
+    const int proj = s.indexOf("mcp::projectFields(");
+    const int comp = s.indexOf("mcp::compactEnvelope(");
+    ASSERT_GT(comp, 0) << "compactEnvelope dispatch call site not found";
+    EXPECT_LT(proj, comp) << "compaction must run after fields= projection";
+    EXPECT_TRUE(s.contains("argsObj.value(QStringLiteral(\"compact\")).toBool()"))
+        << "compaction must be gated on the compact arg";
+    // 11 compact schema props, one per in-scope projection tool.
+    int count = 0, idx = 0;
+    const QByteArray needle = "makeCompactProp();";
+    while ((idx = s.indexOf(needle, idx)) != -1) { ++count; idx += needle.size(); }
+    EXPECT_EQ(count, 11) << "expected 11 makeCompactProp() call sites, got "
+                         << count;
+}
