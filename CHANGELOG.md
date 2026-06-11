@@ -107,6 +107,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Tab close (×) button is now actually visible** (ANTS-2098)
+  The little × for closing a tab had been invisible: it was drawn with an image embedded inline in the theme's stylesheet text, and Qt6 silently refuses to load that kind of image (and that broken rule also hid the fallback ×, so nothing showed at all). Each tab now gets a real close button we draw ourselves — it tints to match the theme, turns red on hover, and always shows. The old test only checked the stylesheet text existed, so it never noticed the button was blank; the new test renders a tab and confirms the × actually appears.
+
 - **`mcp-tools.md` step 7 corrected: the dispatcher injects the `etag` field; read-tool handlers must not emit it** (ANTS-2027)
 
 - **Test-audit resume recipe uses a `.` namespace separator (`test_audit_partition_token.<scope_id>`) accepted by the `session_memory` key charset — the documented `:` form was rejected with `bad_key`** (ANTS-2071)

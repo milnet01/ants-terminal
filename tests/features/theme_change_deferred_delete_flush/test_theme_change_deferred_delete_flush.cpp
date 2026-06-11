@@ -42,7 +42,13 @@ TEST(theme_change_deferred_delete_flush, FlushPrecedesAppWideSetStyleSheet) {
 
     const auto flushPos = body.find(
         "sendPostedEvents(nullptr, QEvent::DeferredDelete)");
-    const auto restylePos = body.find("qApp->setStyleSheet(");
+    // Anchor on the real call's argument (buildAppStylesheet), NOT a bare
+    // "qApp->setStyleSheet(" — ANTS-2097 added an explanatory comment that
+    // mentions `qApp->setStyleSheet()` near the top of applyTheme, and a
+    // bare substring match would latch onto that comment (ahead of the
+    // flush) and false-fail this ordering check.
+    const auto restylePos = body.find(
+        "qApp->setStyleSheet(themedstylesheet::buildAppStylesheet");
 
     // INV-2 — both anchors present (so INV-1 isn't trivially satisfied by
     // two absent substrings).

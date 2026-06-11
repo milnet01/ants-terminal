@@ -1,12 +1,48 @@
 #include "coloredtabbar.h"
 
+#include <QApplication>
+#include <QIcon>
 #include <QPaintEvent>
 #include <QPainter>
 #include <QPen>
+#include <QPixmap>
+#include <QStyle>
+#include <QToolButton>
 
 #include <cmath>
 
 namespace {
+
+// Object name tagging our custom close buttons so installCloseButton can
+// tell its own button (re-tint path) from Qt's built-in one / nothing.
+constexpr QLatin1String kCloseBtnName("antsTabClose");
+
+// Build a two-line × close glyph as a QIcon with a Normal (resting) and
+// Active (hover) tint. Rendered at the widget's device-pixel-ratio so the
+// strokes stay crisp on HiDPI. The glyph is a 16-logical-px box with a
+// ~3px inset; setIconSize(12) on the button trims the visual to ~10px.
+QIcon makeCloseIcon(const QColor &normal, const QColor &hover) {
+    const qreal dpr = qApp ? qApp->devicePixelRatio() : 1.0;
+    auto draw = [dpr](const QColor &c) {
+        QPixmap pm(QSize(16, 16) * dpr);
+        pm.setDevicePixelRatio(dpr);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        QPen pen(c, 1.6);
+        pen.setCapStyle(Qt::RoundCap);
+        p.setPen(pen);
+        // Logical coords (QPainter scales by the pixmap's dpr).
+        p.drawLine(4, 4, 12, 12);
+        p.drawLine(12, 4, 4, 12);
+        return pm;
+    };
+    QIcon ic;
+    ic.addPixmap(draw(normal), QIcon::Normal);
+    ic.addPixmap(draw(hover), QIcon::Active);
+    return ic;
+}
+
 // WCAG 2.x relative luminance + contrast ratio. Drives the light-theme
 // contrast adaptation of the Claude state dots (ANTS-1847): the fixed
 // dark-tuned palette washes out on near-white tab backgrounds, so the
@@ -145,6 +181,71 @@ QColor ColoredTabBar::tabColor(int index) const {
     const QVariant v = tabData(index);
     if (!v.isValid()) return QColor();
     return v.value<QColor>();
+}
+
+void ColoredTabBar::setCloseGlyphColors(const QColor &normal,
+                                        const QColor &hover,
+                                        const QColor &hoverBg) {
+    m_closeNormal = normal;
+    m_closeHover = hover;
+    m_closeHoverBg = hoverBg;
+    for (int i = 0; i < count(); ++i) installCloseButton(i);
+}
+
+void ColoredTabBar::tabInserted(int index) {
+    QTabBar::tabInserted(index);
+    installCloseButton(index);
+}
+
+void ColoredTabBar::installCloseButton(int index) {
+    if (index < 0 || index >= count()) return;
+    const auto side = static_cast<QTabBar::ButtonPosition>(style()->styleHint(
+        QStyle::SH_TabBar_CloseButtonPosition, nullptr, this));
+
+    // Reuse our button if it's already there (theme re-tint path); only
+    // construct one when Qt's built-in close button (or nothing) sits in
+    // the slot. setTabButton() takes ownership and deletes the displaced
+    // widget, so we never leak Qt's CloseButton.
+    auto *btn = qobject_cast<QToolButton *>(tabButton(index, side));
+    if (!btn || btn->objectName() != kCloseBtnName) {
+        btn = new QToolButton(this);
+        btn->setObjectName(kCloseBtnName);
+        btn->setAutoRaise(true);
+        btn->setCursor(Qt::ArrowCursor);
+        btn->setFocusPolicy(Qt::NoFocus);
+        btn->setFixedSize(16, 16);
+        btn->setIconSize(QSize(12, 12));
+        // a11y: Qt's built-in close button carried a translated "Close
+        // Tab" accessible name (see a11y_chrome_names spec); preserve it
+        // for AT-SPI / Orca now that we own the widget.
+        btn->setAccessibleName(tr("Close Tab"));
+        btn->setToolTip(tr("Close Tab"));
+        connect(btn, &QToolButton::clicked, this, [this, btn]() {
+            // Resolve the button's CURRENT tab at click time — tab moves
+            // and closes reshuffle indices, and Qt keeps the button paired
+            // with its tab, so a captured index would go stale.
+            const auto s = static_cast<QTabBar::ButtonPosition>(
+                style()->styleHint(QStyle::SH_TabBar_CloseButtonPosition,
+                                   nullptr, this));
+            for (int i = 0; i < count(); ++i)
+                if (tabButton(i, s) == btn) {
+                    emit tabCloseRequested(i);
+                    return;
+                }
+        });
+        setTabButton(index, side, btn);
+    }
+
+    // Tint only once colours have been supplied (applyTheme runs at
+    // startup, so a tab added before the first theme apply is briefly
+    // icon-less, then picked up by setCloseGlyphColors).
+    if (m_closeNormal.isValid()) {
+        btn->setIcon(makeCloseIcon(m_closeNormal, m_closeHover));
+        btn->setStyleSheet(QStringLiteral(
+            "QToolButton { border: none; background: transparent; padding: 0; }"
+            "QToolButton:hover { background: %1; border-radius: 3px; }")
+            .arg(m_closeHoverBg.name()));
+    }
 }
 
 void ColoredTabBar::paintEvent(QPaintEvent *event) {

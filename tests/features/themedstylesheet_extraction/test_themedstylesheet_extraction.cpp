@@ -88,20 +88,20 @@ TEST(ThemedstylesheetExtraction, Main) {
     // (QProgressBar::chunk excluded — non-distinctive vs claudestatuswidgets.cpp.)
     if (tssCpp.empty())
         { fail("INV-2", "src/themedstylesheet.cpp not present — extraction not done"); return; }
+    // NB: the QTabBar::close-button data-URI SVG markers were removed in
+    // ANTS-2098 — that QSS rule never rendered (Qt6 QSS can't load a
+    // `data:` image) and was deleted; the close glyph is now a themed
+    // QToolButton drawn by ColoredTabBar, not a stylesheet image.
     static const char *kQssMarkers[] = {
         "QMainWindow {",
         "QMenuBar::item:hover",
         "QMenuBar::item:selected",
         "QTabBar::tab:selected",
-        "QTabBar::close-button {",
         "QPushButton:hover:enabled",
         "QDialog {",
         "QListWidget#commandPaletteList",
         "QScrollBar:vertical",
         "QToolTip {",
-        "data:image/svg+xml;utf8",
-        "viewBox='0 0 10 10'",
-        "stroke-linecap='round'",
         "border-radius: 3px",
         "font-weight: 600",
     };
@@ -193,8 +193,9 @@ TEST(ThemedstylesheetExtraction, Main) {
             { fail("INV-8", "buildAppStylesheet missing QMainWindow rule"); return; }
         if (!containsQ(app, "QPushButton:hover:enabled"))
             { fail("INV-8", "buildAppStylesheet missing QPushButton:hover:enabled rule"); return; }
-        if (!containsQ(app, "data:image/svg+xml;utf8"))
-            { fail("INV-8", "buildAppStylesheet missing tab-close SVG data URI"); return; }
+        // (No tab-close data-URI assertion — that QSS rule was removed in
+        // ANTS-2098; it never rendered, the close glyph is a themed
+        // QToolButton drawn by ColoredTabBar now.)
     }
     {
         const QString chip4 =

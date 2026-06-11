@@ -122,14 +122,37 @@ public:
         m_indicatorProvider = std::move(provider);
     }
 
+    // Theme the per-tab close (×) glyph. We draw it ourselves on a real
+    // QToolButton installed via setTabButton() rather than relying on a
+    // QSS `QTabBar::close-button { image: ... }` rule, because Qt6's QSS
+    // engine renders neither a `data:` URI (its loader is QPixmap(path),
+    // which has no data-scheme support) NOR a setIcon() on Qt's private
+    // CloseButton — both verified to draw nothing (2026-06-11, see
+    // INVESTIGATION_tab_close_x.md). `normal` tints the resting glyph,
+    // `hover` the moused-over glyph (QIcon::Active mode), `hoverBg` the
+    // round-rect that lights up behind it on hover (the will-click cue).
+    // Re-tints every existing tab; tabs added later pick the colours up
+    // through tabInserted(). Call from MainWindow::applyTheme.
+    void setCloseGlyphColors(const QColor &normal, const QColor &hover,
+                             const QColor &hoverBg);
+
 protected:
     void paintEvent(QPaintEvent *event) override;
+    // Install our themed close button on each newly-added tab.
+    void tabInserted(int index) override;
 
 private:
     static constexpr int kTabDataColorRole = 0x100;  // QTabBar reserves low ints
 
+    // Create (or re-tint, if already ours) the custom close button for
+    // the tab at `index`. No-op for an out-of-range index.
+    void installCloseButton(int index);
+
     IndicatorProvider m_indicatorProvider;
     QColor m_bg;  // opaque fill, see setBackgroundFill comment
+    QColor m_closeNormal;   // resting × glyph colour (theme textSecondary)
+    QColor m_closeHover;    // moused-over × glyph colour (theme textPrimary)
+    QColor m_closeHoverBg;  // hover background (theme ansi-red), will-click cue
 };
 
 // Trivial QTabWidget subclass whose sole purpose is to install a

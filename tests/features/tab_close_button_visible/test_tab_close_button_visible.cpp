@@ -1,139 +1,128 @@
-// Feature-conformance test for spec.md —
+// Feature-conformance test for spec.md (ANTS-2098).
 //
-// Source-grep test. The QTabBar::close-button stylesheet must
-// carry an explicit data-URI SVG `image: url(...)` rule for both
-// default and hover states, with the URL-encoded `%23` color
-// pre-encoding spliced into the arg list (not the format string).
+// RUNTIME RENDER test — the predecessor (ANTS-1147 / 0.7.32) was a
+// source-grep test that only checked the close-button QSS *text* existed.
+// It stayed green for the entire life of a dead feature: Qt6's stylesheet
+// engine cannot load `image: url("data:...")` (its loader is QPixmap(path),
+// which has no data-scheme support), so the data-URI × rendered nothing on
+// every theme. A grep test cannot catch "renders nothing". This test
+// instead instantiates a ColoredTabBar offscreen, renders it, and asserts
+// the × glyph produces visible pixels — plus the close-button wiring.
+//
+// Runs in the test_chrome GUI bundle, whose bundle_main_gui.cpp sets
+// QT_QPA_PLATFORM=offscreen and constructs the QApplication.
 
-#include "../../_support/expect.h"
+#include "coloredtabbar.h"
+
+#include <QColor>
+#include <QImage>
+#include <QStyle>
+#include <QTabBar>
+#include <QToolButton>
+#include <Qt>
 
 #include <cstdio>
-#include <cstdlib>
-#include <fstream>
-#include <regex>
-#include <sstream>
 #include <string>
 #include <gtest/gtest.h>
+
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#  error "SRC_MAINWINDOW_CPP_PATH compile definition required"
-#endif
-
-// ANTS-1147 — the QTabBar::close-button stylesheet rules
-// (default + hover, with the data-URI SVG and the %23 arg
-// splices) moved into themedstylesheet::buildAppStylesheet.
-// All assertions in this test now read the new TU.
+// Regression guard (I4) reads the QSS source to forbid the dead data-URI
+// rule from creeping back in.
 #ifndef SRC_THEMEDSTYLESHEET_CPP_PATH
 #  error "SRC_THEMEDSTYLESHEET_CPP_PATH compile definition required"
 #endif
 
-ANTS_TEST_SCOPE();
-
 namespace {
 
-
-
-
-bool contains(const std::string &h, const std::string &n) {
-    return h.find(n) != std::string::npos;
+// Count near-white pixels — the × glyph is rendered pure white in this
+// test, against a dark tab-bar fill, so a white-pixel count isolates it.
+int whitePixels(const QImage &img) {
+    int n = 0;
+    for (int y = 0; y < img.height(); ++y)
+        for (int x = 0; x < img.width(); ++x) {
+            const QRgb c = img.pixel(x, y);
+            if (qRed(c) > 200 && qGreen(c) > 200 && qBlue(c) > 200) ++n;
+        }
+    return n;
 }
+
+QImage renderBar(ColoredTabBar &bar) {
+    QImage img(bar.size(), QImage::Format_ARGB32);
+    img.fill(Qt::black);
+    bar.render(&img);
+    return img;
+}
+
+#define CHECK(cond, msg)                                                       \
+    do {                                                                       \
+        if (!(cond)) {                                                         \
+            std::fprintf(stderr, "FAIL [%s]: %s (line %d)\n", __FUNCTION__,    \
+                         msg, __LINE__);                                        \
+            ++failures;                                                        \
+        }                                                                      \
+    } while (0)
 
 }  // namespace
 
 TEST(TabCloseButtonVisible, Main) {
-    expect_reset();
-    // ANTS-1147 — the close-button QSS rules moved into
-    // themedstylesheet.cpp. Source path of the QSS body is now
-    // there; mainwindow.cpp no longer carries the data-URI SVG.
-    const std::string src = ants_test::slurpFile(SRC_THEMEDSTYLESHEET_CPP_PATH);
+    int failures = 0;
 
-    // I1 — default-state rule has the data-URI image.
-    expect(contains(src, "QTabBar::close-button {"),
-           "I1/close-button-default-rule-present");
-    {
-        std::regex defaultRule(
-            R"(QTabBar::close-button \{[^\}]*image:\s*url\(\\\"data:image/svg\+xml)");
-        expect(std::regex_search(src, defaultRule),
-               "I1/default-rule-has-data-uri-image");
-    }
-    // SVG body must draw two lines for the × — guards against an
-    // empty-rect or single-line regression. ANTS-1321: SVG strokes
-    // now use %9 (URL-encoded textSecondary) NOT %6 (CSS-context
-    // textSecondary). The pre-1321 shape reused %6 in both contexts
-    // which produced invalid CSS `color: %23RRGGBB;` rules.
-    expect(contains(src,
-               "<line x1='2' y1='2' x2='8' y2='8' stroke='%9'"),
-           "I1/default-svg-line1-textSecondary-stroke");
-    expect(contains(src,
-               "<line x1='8' y1='2' x2='2' y2='8' stroke='%9'"),
-           "I1/default-svg-line2-textSecondary-stroke");
+    ColoredTabBar bar;
+    bar.setTabsClosable(true);
+    bar.setBackgroundFill(QColor("#101010"));  // dark fill for white-on-dark
+    bar.addTab("Tab one");
+    bar.addTab("Tab two");
+    bar.resize(360, 40);
 
-    // I2 — hover rule exists with its own image and ansi-red bg.
-    expect(contains(src, "QTabBar::close-button:hover {"),
-           "I2/close-button-hover-rule-present");
-    {
-        std::regex hoverRule(
-            R"(QTabBar::close-button:hover \{[^\}]*image:\s*url\(\\\"data:image/svg\+xml)");
-        expect(std::regex_search(src, hoverRule),
-               "I2/hover-rule-has-data-uri-image");
-    }
-    // ANTS-1321: hover stroke moved from %3 (CSS textPrimary) to %8
-    // (URL-encoded textPrimary, SVG-only) to fix the parse-bug where
-    // %3 ended up serving both contexts.
-    expect(contains(src,
-               "<line x1='2' y1='2' x2='8' y2='8' stroke='%8'"),
-           "I2/hover-svg-line1-textPrimary-stroke");
-    expect(contains(src, "background-color: %7;"),
-           "I2/hover-keeps-ansi-red-bg");
+    const auto side = static_cast<QTabBar::ButtonPosition>(bar.style()->styleHint(
+        QStyle::SH_TabBar_CloseButtonPosition, nullptr, &bar));
 
-    // I-regression-1321: explicitly forbid the old buggy shape. If
-    // an SVG stroke reuses %3 or %6, the URL-encoded `%23` would be
-    // spliced into the CSS-context arg position too, breaking every
-    // `color: %3;` / `color: %6;` rule. "Could not parse application
-    // stylesheet" was the user-visible signal pre-1321.
-    {
-        std::regex svgUsesCssTextPrimary(
-            R"(stroke=\\?'%3\\?')");
-        expect(!std::regex_search(src, svgUsesCssTextPrimary),
-               "I-regression-1321/svg-must-not-use-css-percent-3");
-        std::regex svgUsesCssTextSecondary(
-            R"(stroke=\\?'%6\\?')");
-        expect(!std::regex_search(src, svgUsesCssTextSecondary),
-               "I-regression-1321/svg-must-not-use-css-percent-6");
+    // I1 — every tab carries OUR themed close button, not Qt's built-in
+    // (non-themable) CloseButton.
+    for (int i = 0; i < bar.count(); ++i) {
+        auto *btn = qobject_cast<QToolButton *>(bar.tabButton(i, side));
+        CHECK(btn != nullptr, "tab has a QToolButton close button");
+        CHECK(btn && btn->objectName() == QLatin1String("antsTabClose"),
+              "close button is ours (objectName antsTabClose)");
+        CHECK(btn && !btn->accessibleName().isEmpty(),
+              "close button keeps an accessible name for AT-SPI/Orca");
     }
 
-    // I3 — URL-encoded `%23` injected via the arg list, not the
-    // format string. Two `QStringLiteral("%23") + ` splices: one
-    // for textPrimary (used by hover %3 stroke), one for
-    // textSecondary (used by default %6 stroke).
-    {
-        std::regex argSplice(
-            R"(QStringLiteral\("%23"\)\s*\+\s*theme\.textPrimary\.name\(\)\.mid\(1\))");
-        expect(std::regex_search(src, argSplice),
-               "I3/textPrimary-arg-splice-with-encoded-hash");
-    }
-    {
-        std::regex argSplice(
-            R"(QStringLiteral\("%23"\)\s*\+\s*theme\.textSecondary\.name\(\)\.mid\(1\))");
-        expect(std::regex_search(src, argSplice),
-               "I3/textSecondary-arg-splice-with-encoded-hash");
+    // I2 — the × actually RENDERS. Diff method: render once with the glyph
+    // coloured to MATCH the dark fill (invisible) and once white; the
+    // delta in white pixels is the glyph alone (tab text/borders cancel).
+    bar.setCloseGlyphColors(QColor("#101010"), QColor("#101010"),
+                            QColor("#e74856"));
+    const int hidden = whitePixels(renderBar(bar));
+    bar.setCloseGlyphColors(QColor("#ffffff"), QColor("#ffffff"),
+                            QColor("#e74856"));
+    const int shown = whitePixels(renderBar(bar));
+    CHECK(shown > hidden,
+          "white × glyph adds visible pixels when tinted (it renders)");
+
+    // I3 — clicking the button requests closing ITS tab, resolved at the
+    // live index (tab moves/closes reshuffle indices).
+    int requested = -1;
+    QObject::connect(&bar, &QTabBar::tabCloseRequested, &bar,
+                     [&](int idx) { requested = idx; });
+    if (auto *btn = qobject_cast<QToolButton *>(bar.tabButton(1, side))) {
+        btn->click();
+        CHECK(requested == 1,
+              "click emits tabCloseRequested for the button's own tab");
     }
 
-    // I4 — image rules in BOTH state rules. Count the `image: url(`
-    // occurrences inside the close-button block; expect ≥ 2.
-    int imageCount = 0;
-    size_t pos = 0;
-    while ((pos = src.find("image: url(\\\"data:image/svg+xml", pos))
-           != std::string::npos) {
-        ++imageCount;
-        pos += 30;
-    }
-    expect(imageCount >= 2,
-           "I4/two-image-rules-default-and-hover",
-           "got " + std::to_string(imageCount));
+    // I4 (regression) — the dead data-URI close-button rule must NOT
+    // return. Qt6 QSS can't load a `data:` image (ANTS-2098); reintroducing
+    // it silently re-breaks the glyph that this test now guards at runtime.
+    const std::string ss = ants_test::slurpFile(SRC_THEMEDSTYLESHEET_CPP_PATH);
+    CHECK(ss.find("data:image/svg+xml") == std::string::npos,
+          "no data-URI image rule reintroduced in themedstylesheet.cpp");
 
-    ASSERT_EQ(0, expect_finish());
-    std::fprintf(stderr, "\nall invariants hold\n");
-    return;
+    if (failures == 0) {
+        std::printf("tab_close_button_visible: glyph renders + wiring ok\n");
+        return;
+    }
+    std::fprintf(stderr, "tab_close_button_visible: %d failure(s)\n", failures);
+    FAIL();
 }

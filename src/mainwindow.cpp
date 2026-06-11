@@ -3331,6 +3331,13 @@ void MainWindow::applyTheme(const QString &name) {
     // tab and across the entire status bar. User report 2026-04-25.
     if (m_coloredTabBar) {
         m_coloredTabBar->setBackgroundFill(theme.bgSecondary);
+        // Tab close (×) glyph: resting textSecondary, hover textPrimary,
+        // hover background ansi-red (will-click cue). Drawn on a real
+        // QToolButton per tab — Qt6 QSS can't render the data-URI SVG the
+        // close-button rule used to carry (ANTS-2098).
+        m_coloredTabBar->setCloseGlyphColors(theme.textSecondary,
+                                             theme.textPrimary,
+                                             theme.ansi[1]);
         m_coloredTabBar->update();
     }
     if (m_statusBar) {
