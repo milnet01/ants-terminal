@@ -10527,6 +10527,23 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   Resolved (2026-06-11): removed dead std::regex nextHeader (mcp_current_state), dead FakeTracker class (task_list_dialog_context_menu), dead kCheck (mcp_feedback_log), 24 unused QCoreApplication includes; renamed test_mode_arm.cpp -> test_mcp_model_switch_stats_near_misses.cpp (+ CMakeLists); moved conflict_markers/bad.cpp @expect markers inline and de-confused memory_patterns prose. audit_self_test green.
 
 
+- 📋 [ANTS-2072] **Dead <fstream>/<sstream>/<cstdio> includes linger in slurpFile-migrated test files.**
+  Many feature tests migrated their file-read to ants_test::slurpFile
+  (srcgrep.h) but kept the now-unused <fstream>/<sstream>/<cstdio>
+  includes. clangd flags them as unused-includes. Confirmed in (at least)
+  command_mark_gutter, mcp_roadmap_branch_drift, audit_run_scoped_check,
+  rc_get_text_byte_cap, mcp_tool_info_verb, model_switch_deferred_chip,
+  sync_output_snapshot, terminalgrid_image_budget_hardening,
+  terminal_for_caller_isolation, claude_pid_replacement,
+  claude_task_list_session_isolation. Sweep: drop the dead includes where
+  the file no longer constructs an ifstream/stringstream itself (NB: files
+  with a local readFile/slurpFile still need them — see ANTS-1466). Left as
+  a separate sweep rather than a drive-by to keep the brace-walker/substr
+  migration diffs focused. Pairs with the helper-dedup in ANTS-2061.
+  **Layman:** Tidy up leftover unused header lines in test files so the warnings stop.
+  Kind: chore.
+  Source: in-session-2026-06-11.
+
 ### 📝 Cold-eyes 2026-05-21
 
 Docs reviewed: PLUGINS.md, README.md, CONTRIBUTING.md, CHANGELOG.md, SECURITY.md, docs/specs/ANTS-1120.md, ANTS-1160.md, ANTS-1318.md, docs/decisions/ADR-0002 + ADR-0003, docs/standards/* (all). Loops to clean: 8. Findings fixed: ~20 across the run.
@@ -10725,16 +10742,18 @@ gets one CHANGELOG section + one drift cycle + one push.
 
 Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, duplication, isolation, determinism, accuracy, security, verbosity, naming, coverage_gaps, splitting, fixtures, assertions, hardcoded_data, setup_teardown, parametrisation, error_handling, doc_strings · Raw: 251 · Actionable: 28
 
-- 📋 [ANTS-1587] **Migrate ~98 test files away from `slurp() + std::exit(2)` to ants_test::slurpFile() + ASSERT_FALSE.**
+- ✅ [ANTS-1587] **Migrate ~98 test files away from `slurp() + std::exit(2)` to ants_test::slurpFile() + ASSERT_FALSE.**
   - File: tests/features (≈98 sites):0
   - Dimension: error_handling
   - Severity: high
   - Fix: Migrate every per-file `static std::string slurp(const char *path)` to ants_test::slurpFile(); call sites wrap the result in ASSERT_FALSE(src.empty()) << "cannot open " << path; delete the per-file definitions. Pattern is mechanical; can be done in a fold-in PR per ~10-file batch.
+  Resolved (2026-06-11): duplicate of ANTS-1465 (slurp + std::exit migration). Verified done — see ANTS-1465 closure.
 - 📋 [ANTS-1588] **Consolidate brace-matching function-body extractors into ants_test::slurpFunctionBody() + QString twin.**
   - File: tests/_support/srcgrep.h:0
   - Dimension: duplication
   - Severity: medium
   - Fix: Migrate the inline extractors to ants_test::slurpFunctionBody() (or its QString twin if one is added). Add a QString overload to srcgrep.h for the Qt-typed test sites.
+  Progress (2026-06-11): the brace-balanced function-body extractor consolidation is the same work tracked under ANTS-1468 — 14 local brace-walkers now delegate to ants_test::slurpFunctionBody (string/comment-aware). See ANTS-1468 for the migrated set, the out-of-scope delimiter-scanners, the ~14-file residue, and the `= {}` default-arg-signature limitation. No QString twin added — the QString call-sites (allowlist_add, scrollback_frozen_view, review_changes_clickable, confirm_close_with_processes) wrap via QString::fromStdString(slurpFunctionBody(...)), which is sufficient.
 - ✅ [ANTS-1589] **Convert `fail()` helper functions to call-site macros (status_bar_branch_chip, sync_output_snapshot, sixel_raster_header_prebudget).**
   - File: tests/features/status_bar_branch_chip/test_status_bar_branch_chip.cpp,sync_output_snapshot/test_sync_output_snapshot.cpp,sixel_raster_header_prebudget/test_sixel_raster_header_prebudget.cpp:0
   - Dimension: assertions
@@ -10780,22 +10799,24 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
   - Severity: low
   - Fix: Add `"filter": {"exclude": {"label": "perf"}}` to the default/workstation/fast preset entries; keep a separate perf preset that runs only the perf-labelled tests.
   Resolved (2026-06-10): default/workstation/fast test presets now carry filter.exclude.label "perf"; new dedicated `perf` preset includes only perf-labelled tests. Verified: fast preset lists 0 vt_throughput, perf preset lists exactly vt_throughput.
-- 📋 [ANTS-1597] **Use SetUpTestSuite-shared source-file slurp in claude_pid_replacement / claude_task_list_session_isolation / mcp_tool_info_verb / terminal_for_caller_isolation (each re-reads 200KB+ per TEST).**
+- ✅ [ANTS-1597] **Use SetUpTestSuite-shared source-file slurp in claude_pid_replacement / claude_task_list_session_isolation / mcp_tool_info_verb / terminal_for_caller_isolation (each re-reads 200KB+ per TEST).**
   - File: tests/features/claude_pid_replacement/test_claude_pid_replacement.cpp,claude_task_list_session_isolation/test_claude_task_list_session_isolation.cpp,mcp_tool_info_verb/test_mcp_tool_info_verb.cpp,terminal_for_caller_isolation/test_terminal_for_caller_isolation.cpp:0
   - Dimension: performance
   - Severity: medium
   - Fix: Use a gtest fixture (SetUpTestSuite) that reads the file once and stores it as a static string shared across all TEST_F cases in the suite.
+  Resolved (2026-06-11): mcp_tool_info_verb (13x), claude_pid_replacement (4x), claude_task_list_session_isolation, terminal_for_caller_isolation now read each large source file once via a function-local `static const std::string` accessor shared by reference across all TESTs, instead of re-slurping per case. Simpler than the spec's SetUpTestSuite suggestion (no TEST->TEST_F churn). All 29 tests pass.
 - ✅ [ANTS-1598] **Extract `kRows=24` / `kCols=80` constexpr in scroll_region_growth + scrollback_redraw (10+ raw-literal sites).**
   - File: tests/features/scroll_region_growth_on_resize/test_scroll_region_growth.cpp,scrollback_redraw/test_redraw.cpp:0
   - Dimension: hardcoded_data
   - Severity: medium
   - Fix: Extract `kRows = 24` / `kCols = 80` as constexpr at file scope, replace all raw literals.
   Resolved (2026-06-10): scrollback_redraw already had kRows/kCols; added them to scroll_region_growth for the canonical 24×80 construction sites. Resize targets (60/30/80×100) left as literals on purpose — they are the varied parameters under test, and 80 means rows in resize(80,100).
-- 📋 [ANTS-1599] **Migrate ~10 fixed-byte substr() function-body windows to ants_test::slurpFunctionBody() — silently fail when body grows past magic threshold.**
+- ✅ [ANTS-1599] **Migrate ~10 fixed-byte substr() function-body windows to ants_test::slurpFunctionBody() — silently fail when body grows past magic threshold.**
   - File: tests/features (≈10 sites):0
   - Dimension: accuracy
   - Severity: medium
   - Fix: Migrate all magic-window substr() usages to ants_test::slurpFunctionBody() (brace-balanced extraction).
+  Resolved (2026-06-11): duplicate of ANTS-1474 (fixed-byte substr function-body windows). Verified done — see ANTS-1474 closure.
 - ✅ [ANTS-1600] **Add clock-injection / forceExpire test hook to idempotent-read cache so TTL tests are deterministic.**
   - File: tests/features/mcp_idempotent_read_cache/test_mcp_idempotent_read_cache.cpp:40
   - Dimension: flakiness
@@ -10889,16 +10910,18 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
 
 Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, duplication, isolation, determinism, accuracy, security, verbosity, naming, coverage_gaps, splitting, fixtures, assertions, hardcoded_data, setup_teardown, parametrisation, error_handling, doc_strings · Raw: 341 · Actionable: 19
 
-- 📋 [ANTS-1465] **~91 test files inline a local slurp() that calls std::exit(2) on file-open failure — kills the entire gtest process instead of reporting a per-test failure..**
+- ✅ [ANTS-1465] **~91 test files inline a local slurp() that calls std::exit(2) on file-open failure — kills the entire gtest process instead of reporting a per-test failure..**
   - File: tests/features/*:0
   - Dimension: error_handling
   - Severity: HIGH
   - Fix: Migrate to ants_test::slurpFile() from tests/_support/srcgrep.h + ASSERT_FALSE(content.empty()) at each call site. Per-file mechanical replacement.
+  Resolved (2026-06-11): source-file-open slurp + std::exit eliminated. 0 `static std::string slurp` defs remain; 224 files use ants_test::slurpFile. Residual std::exit sites are in non-source-open helpers (writeFile/die/must) and legitimate fork-child exits, not source slurps. Closed by ANTS-2060 + this session's verification.
 - 📋 [ANTS-1466] **~30 test files inline a near-identical local slurp() helper despite ants_test::slurpFile() existing in tests/_support/srcgrep.h..**
   - File: tests/features/*:0
   - Dimension: duplication
   - Severity: MED
   - Fix: Extract: include srcgrep.h, replace local slurp() with ants_test::slurpFile(); delete the duplicates. Batch in lane order so review diffs stay coherent.
+  Progress (2026-06-11): the per-file `slurp()` duplication is gone (0 `static std::string slurp` defs; closed under ANTS-1465). But near-identical local file-readers under OTHER names remain and are NOT yet consolidated: e.g. a global `slurpFile` in model_recommender, `readFile` in crash_safe_session_persist / config_reload_loop_safety / ui_state_persistence, etc. These should include srcgrep.h and call ants_test::slurpFile instead. Folds into the broader helper-dedup tracked by ANTS-2061 (contains/writeFile/readFile/between). Kept open.
 - 📋 [ANTS-1467] **~30 files use TEST(..., Main) bundling that funnels N invariants through runMain() with early-return on first failure — masks downstream invariants..**
   - File: tests/features/*:0
   - Dimension: splitting
@@ -10909,6 +10932,7 @@ Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, du
   - Dimension: duplication
   - Severity: MED
   - Fix: Migrate every local brace-extractor to ants_test::slurpFunctionBody(); delete the duplicates.
+  Progress (2026-06-11): 14 local brace-walkers migrated to ants_test::slurpFunctionBody — 7 extractFunctionBody/extractBody (crash_safe_session_persist, config_reload_loop_safety, ui_state_persistence, command_mark_gutter, allowlist_add, scrollback_frozen_view, review_changes_clickable) + 7 functionBody-named (model_switch_deferred_chip, sync_output_snapshot, terminalgrid_image_budget_hardening, model_recommender, terminal_for_caller_isolation, claude_pid_replacement, claude_task_list_session_isolation). github_status_bar already delegated. NOT migrated (different pattern, not brace-walkers): claude_bg_tasks_button + scroll_snapshot_intent (delimiter-scanners); the 5 mcp_* RemoteControl cmd-family delimiter-scans; settings_dialog_config_reload (column-0 "\n}" scan). Residue remains: ~14 more files still inline ad-hoc brace-depth walks under other forms (styled_font_kerning_off, focus_redirect_menu_guard, plugin_manifest_safety, portal_session_close, audit_regex_dos_watchdog, tab_rename_pin, mcp_tool_prefix_tags, paste_dialog_custom, settings_restore_defaults, pty_dtor_off_main_thread, settings_profile_cancel_rollback, et al). LIMITATION discovered: slurpFunctionBody cannot extract a function whose signature carries `= {}` default-argument braces (it latches onto the first `{}` default) — keep a fixed window for those (cf. toolArgv in audit_run_scoped_check).
 - ✅ [ANTS-1469] **A3b/A4b benign-fast assertions use bare hardcoded wall-clock thresholds (goodElapsed <= 200, elapsed <= 100) with no CI-slack pad — diverges from the documented kBudgetMs + kSlackMs pattern used elsewhere in the file..**
   - File: tests/features/lua_pcall_nesting_timeout/test_lua_pcall_nesting_timeout.cpp:186
   - Dimension: flakiness
@@ -10937,11 +10961,12 @@ Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, du
   - Dimension: isolation
   - Severity: MED
   - Fix: Wrap env-mutation in a Sandbox struct whose dtor restores the original value; or use the existing env-guard helper if one exists in _support.
-- 📋 [ANTS-1474] **Several files use fixed-byte-window substr(pos, N) (sizes 800/2000/4000/12000) for source-region searches — silently truncate as source grows..**
+- ✅ [ANTS-1474] **Several files use fixed-byte-window substr(pos, N) (sizes 800/2000/4000/12000) for source-region searches — silently truncate as source grows..**
   - File: tests/features/*:0
   - Dimension: accuracy
   - Severity: MED
   - Fix: Migrate to ants_test::slurpFunctionBody(); the brace-balanced extractor eliminates the window.
+  Resolved (2026-06-11): all genuine fixed-byte function-body windows migrated to ants_test::slurpFunctionBody (mcp_roadmap_branch_drift isEtagSupportedTool + cmdRoadmapBranchDrift x3, rc_get_text_byte_cap cmdGetText, audit_run_scoped_check kKnownTools). The remaining substr windows are intentional multi-branch/landmark probes (mcp_tool_info_verb later-else-if, branch_drift descriptor block, mcp_extra_tools registration-lambda) — not function-body searches; toolArgv keeps its window because its `= {}` default-arg braces defeat brace extraction.
 - ✅ [ANTS-1475] **CHECK macro writes to stderr + increments a global int failures but no TEST asserts on it — tests can silently pass even when CHECK fires. Same pattern in review_changes_clickable..**
   - File: tests/features/review_changes_click/test_review_changes_click.cpp:0
   - Dimension: assertions
@@ -10960,11 +10985,12 @@ Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, du
   - Severity: MED
   - Fix: Return bool from writeFile and ASSERT_TRUE at the call site, or convert helper to a fixture/SetUp.
   Resolved (2026-06-06): debt_sweep_engine writeFile — ASSERT_TRUE in a void helper only returned from the helper, leaving the calling TEST running on an unwritten file. Replaced with ADD_FAILURE() (attributed to the current TEST → it definitively fails with a clear message) + early return; zero call-site churn across the 15 callers. DebtSweepEngine green.
-- 📋 [ANTS-1478] **Multiple audit_fixtures bad.cpp files cover only a subset of the variants their regex matches — a regex tightening that drops a variant would go undetected. Examples: cmd_injection (3/7 exec variants), qnetworkreply_no_abort (sslErrors missing), memory_patterns (new T(nullptr)/new T(NULL) missing)..**
+- ✅ [ANTS-1478] **Multiple audit_fixtures bad.cpp files cover only a subset of the variants their regex matches — a regex tightening that drops a variant would go undetected. Examples: cmd_injection (3/7 exec variants), qnetworkreply_no_abort (sslErrors missing), memory_patterns (new T(nullptr)/new T(NULL) missing)..**
   - File: tests/audit_fixtures:0
   - Dimension: coverage_gaps
   - Severity: MED
   - Fix: Add the missing variants to each bad.cpp with @expect markers; update audit_self_test.sh expected counts.
+  Resolved (2026-06-11): added missing rule variants to bad.cpp fixtures — cmd_injection execlp/execvp/execv/execle (now 7/7), memory_patterns new T(nullptr)/new T(NULL), qnetworkreply_no_abort sslErrors. audit_self_test.sh: 55 pass, 0 fail, 0 false positives in good.*.
 - ✅ [ANTS-1479] **Benchmark has no regression gate — runs in CI but doesn't fail on throughput regressions..**
   - File: tests/perf/bench_vt_throughput.cpp:0
   - Dimension: performance
