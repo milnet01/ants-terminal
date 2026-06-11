@@ -8236,17 +8236,19 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: user-report-2026-05-29.
   Resolved 2026-06-01: by_trigger:{auto,manual:{upgrades,downgrades}} added to statsEnvelope(). Note corrected: manual switches are not logged today so manual bucket is structurally 0; the split makes that guarantee explicit on the wire. New test ModelSwitchStatsV2_ANTS1934.ByTriggerSplit covers the 4-record mixed-trigger scenario.
 
-- 📋 [ANTS-2070] **test_audit_partition full envelope overflows the tool-result token cap when pre_pass_findings_by_chunk is inlined.**
+- ✅ [ANTS-2070] **test_audit_partition full envelope overflows the tool-result token cap when pre_pass_findings_by_chunk is inlined.**
   On a 416-file / 35-chunk suite, calling test_audit_partition with no `limit` returned a ~150 KB single-line envelope that exceeded the MCP tool-result token cap, forcing a fallback to limit/offset paging + reading the saved overflow file. The bulk is `pre_pass_findings_by_chunk` (547 findings inlined, capped at 20/chunk). Fix options: (a) omit pre_pass_findings_by_chunk from the default envelope and serve it per-chunk via test_audit_brief; (b) auto-paginate when the envelope would exceed the soft cap (emit truncated/next_offset like roadmap_query does); (c) add `fields=` projection so callers can request the chunk inventory without pre-pass bodies. Today the verb only truncates the chunks[] array, not the pre-pass map.
   **Layman:** Asking Ants to plan a big test audit returned too much data at once and errored; it should send it in smaller pieces by default.
   Kind: fix.
   Source: in-session-2026-06-11 (running /test-audit on 416-file suite).
+  Resolved (2026-06-11): test_audit_partition now omits the inlined pre_pass_findings_by_chunk map from the envelope when it would exceed ~24 KiB, setting pre_pass_omitted:true + pre_pass_omitted_bytes + pre_pass_cached:true. The full map stays in the partition cache for test_audit_brief; pre_pass_chunk_ids[] guides per-chunk fetch. Envelope-only change — brief() data path untouched. 46 audit tests green.
 
-- 📋 [ANTS-2071] **session_memory rejects ':' in keys, but test_audit_partition's own resume recipe recommends a key containing ':'.**
+- ✅ [ANTS-2071] **session_memory rejects ':' in keys, but test_audit_partition's own resume recipe recommends a key containing ':'.**
   test_audit_partition's docstring documents the resume recipe `session_memory(op:"set", key:"test_audit_partition_token:<scope_id>", ...)`, but session_memory validates keys against ^[A-Za-z0-9._-]{1,64}$ which rejects the ':' separator (returns code:bad_key). The documented recipe is therefore invalid as written. Fix: either relax the session_memory key charset to permit ':' (namespacing is a common pattern), or correct the partition docstring to use a '_'/'.' separator (e.g. test_audit_partition_token_<scope_id>). Pick one and make them consistent.
   **Layman:** Ants's own instructions tell you to save a value under a name it then refuses to accept.
   Kind: doc-fix.
   Source: in-session-2026-06-11 (running /test-audit).
+  Resolved (2026-06-11) via doc-fix: the resume recipe now uses a `.` namespace separator (test_audit_partition_token.<scope_id>) which the session_memory ^[A-Za-z0-9._-]{1,64}$ charset accepts. Fixed in docs/standards/test-audit-resume.md (3 sites) + the test_audit_partition tool description (claudeintegration.cpp). Charset left unchanged (no INV-7 contract churn).
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
@@ -17163,11 +17165,12 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Lanes: mcp, hooks.
   Source: in-session-2026-06-04.
 
-- 📋 [ANTS-2027] **`mcp-tools.md` § step 7 says read tools "emit an `etag` field" — stale vs the dispatcher-injects-etag code.**
+- ✅ [ANTS-2027] **`mcp-tools.md` § step 7 says read tools "emit an `etag` field" — stale vs the dispatcher-injects-etag code.**
   The MCP-tool authoring checklist step 7 instructs a read tool to "emit an `etag` field", but the actual mechanism is dispatcher-side: `applyEtagPattern` calls `etagFor(responseText)` and injects `etag` for any tool in `isEtagSupportedTool`; handlers must NOT emit it (see the comment at `src/remotecontrol.cpp:6354-6357`). Correct the line to "the dispatcher injects `etag`; the handler must not emit it." Surfaced while writing ANTS-2021/2022 (read_region/apply_edits), whose specs follow the code, not the stale standard. Lanes: docs.
   Kind: doc-fix.
   Lanes: docs, mcp.
   Source: cold-eyes-2026-06-05 (ANTS-2021 loop 2/3 INFO).
+  Resolved (2026-06-11): mcp-tools.md step 7 corrected — the dispatcher injects `etag` via applyEtagPattern→etagFor(responseText); the handler must NOT emit it. No longer says "emit an `etag` field".
 
 - 📋 [ANTS-2045] **workspace_search: hint when a multi-word query is treated as one literal/regex pattern.**
   workspace_search matches its `query` as a single literal/regex pattern, not as AND-combined terms. A natural-language query like "claudePermissionDetected always allow permission detection" silently returns zero matches (cost ~3 wasted calls this session before switching to single identifiers). Low-cost fix: when a multi-token query (contains whitespace) returns zero matches, add an advisory field (e.g. `hint: "query matched as one literal pattern; pass a single token or a regex"`) to the envelope. Pure response-shaping, no search-semantics change. Lanes: remotecontrol, mcp.

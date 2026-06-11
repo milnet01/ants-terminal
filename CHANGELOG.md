@@ -103,6 +103,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`mcp-tools.md` step 7 corrected: the dispatcher injects the `etag` field; read-tool handlers must not emit it** (ANTS-2027)
+
+- **Test-audit resume recipe uses a `.` namespace separator (`test_audit_partition_token.<scope_id>`) accepted by the `session_memory` key charset — the documented `:` form was rejected with `bad_key`** (ANTS-2071)
+
+- **`test_audit_partition` omits the inlined pre-pass findings map from the envelope when it would exceed ~24 KiB (large suites overflowed the MCP tool-result token cap); sets `pre_pass_omitted`/`pre_pass_cached` so callers fetch per-chunk via `test_audit_brief`** (ANTS-2070)
+
 - **roadmap_log counter prefix: derive from project dir + accept explicit id_prefix on a fresh roadmap.** (ANTS-2076)
   When a brand-new project logs its first roadmap item, name the IDs after that project (DOOM-0001) instead of always ANTS-0001 — and let the helper set the prefix explicitly.
 

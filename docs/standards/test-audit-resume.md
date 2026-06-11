@@ -43,7 +43,7 @@ that a partition re-run is the common path"**:
 ```text
 session_memory(
   op:"set",
-  key:"test_audit_partition_token:<scope_id>",
+  key:"test_audit_partition_token.<scope_id>",
   value:{
     token: "<the token from test_audit_partition response>",
     scope: "<the scope arg you passed>",
@@ -53,7 +53,7 @@ session_memory(
 )
 ```
 
-The key naming convention `test_audit_partition_token:<scope_id>`
+The key naming convention `test_audit_partition_token.<scope_id>`
 lets a single project have multiple audits in flight (per scope —
 e.g. `tests/api` vs `tests/integration`). Use a short
 human-readable `scope_id` you can recall in a follow-up session.
@@ -63,7 +63,7 @@ human-readable `scope_id` you can recall in a follow-up session.
 1. Read the saved entry:
 
    ```jsonc
-   session_memory(op:"get", key:"test_audit_partition_token:<scope_id>")
+   session_memory(op:"get", key:"test_audit_partition_token.<scope_id>")
    ```
 
 2. Try `test_audit_brief` with the returned token. If it succeeds,

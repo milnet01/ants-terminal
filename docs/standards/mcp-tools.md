@@ -174,9 +174,10 @@ place when it saves a Claude session real tokens or round-trips
 7. **Opt into ETag for read tools (optional, recommended).** A
    read-mostly tool should support the "304 Not Modified" pattern
    (ANTS-1499): add it to `isEtagSupportedTool` and add a
-   `makeEtagMatchProp()` line to its schema, and emit an `etag` field.
-   The dispatch short-circuits a matching `etag_match` to
-   `{ok:true, unchanged:true, etag:"<same>"}`.
+   `makeEtagMatchProp()` line to its schema. The dispatcher injects the
+   `etag` field (`applyEtagPattern` → `etagFor(responseText)`); the
+   handler must **not** emit it. The dispatch short-circuits a matching
+   `etag_match` to `{ok:true, unchanged:true, etag:"<same>"}`.
 
 8. **Opt into `fields=` projection for high-volume reads (optional).**
    A tool with a large payload should support response narrowing

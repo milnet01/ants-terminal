@@ -4555,7 +4555,21 @@ void MainWindow::setupClaudeMcpProviders() {
                  it != r.prePassFindingsByChunk.constEnd(); ++it) {
                 prePass[it.key()] = it.value();
             }
-            env["pre_pass_findings_by_chunk"] = prePass;
+            // ANTS-2070 — the inlined pre-pass map is the envelope's bulk
+            // (each chunk caps at 20 findings, but a 35-chunk suite still
+            // overflowed the MCP tool-result token cap with 547 findings).
+            // When the map would be large, omit it from the wire and flag
+            // pre_pass_cached so the caller fetches per-chunk via
+            // test_audit_brief — the full map stays in the partition cache
+            // for that lookup, and pre_pass_chunk_ids below still advertises
+            // which chunks carry findings.
+            const QByteArray prePassJson =
+                QJsonDocument(prePass).toJson(QJsonDocument::Compact);
+            constexpr int kPrePassInlineCapBytes = 24 * 1024;
+            const bool prePassOmittedBySize =
+                prePassJson.size() > kPrePassInlineCapBytes;
+            if (!prePassOmittedBySize)
+                env["pre_pass_findings_by_chunk"] = prePass;
             // ANTS-1489 — echo the chunk-ID keyset at envelope level so
             // callers can decide which per-chunk briefs are worth
             // fetching without descending into the nested map.
@@ -4569,7 +4583,13 @@ void MainWindow::setupClaudeMcpProviders() {
             for (const auto &v : prePassChunkIds) idsSorted.append(v.toString());
             std::sort(idsSorted.begin(), idsSorted.end());
             env["pre_pass_chunk_ids"] = QJsonArray::fromStringList(idsSorted);
-            env["pre_pass_cached"] = r.prePassCached;
+            env["pre_pass_cached"] = r.prePassCached || prePassOmittedBySize;
+            if (prePassOmittedBySize) {
+                // ANTS-2070 — tell the caller why the map is absent and how
+                // big it was, so it knows to fetch per-chunk via brief.
+                env["pre_pass_omitted"] = true;
+                env["pre_pass_omitted_bytes"] = prePassJson.size();
+            }
             env["partition_token"] = r.partitionToken;
             env["offset"]    = r.offset;
             env["limit"]     = r.limit;
