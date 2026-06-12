@@ -103,6 +103,11 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.97" date="2026-06-12">
+      <description>
+        <p>Patron RC preview — opens the 0.7.97 preview channel. No user-facing changes yet beyond 0.7.96; fixes land here during the freeze window before the stable release.</p>
+      </description>
+    </release>
     <release version="0.7.96" date="2026-06-12">
       <description>
         <p>Ants-MCP token-frugality expansion with roadmap/read-verb enhancements, a sweep of teardown and use-after-free crash fixes, audit-engine correctness hardening, auto-model-switcher robustness, and indie-review security gates.</p>

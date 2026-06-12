@@ -1,3 +1,11 @@
+ants-terminal (0.7.97-1) unstable; urgency=medium
+
+  * Patron RC preview — opens the 0.7.97 preview channel. No changes yet
+    beyond 0.7.96; fixes land here during the freeze window before the
+    stable release.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 12 Jun 2026 00:00:00 +0200
+
 ants-terminal (0.7.96-1) unstable; urgency=medium
 
   * Added: MCP token-efficiency tools — read_region (line-range / symbol-body
