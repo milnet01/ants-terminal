@@ -91,8 +91,10 @@ ReviewDialogBase::ReviewDialogBase(QString projectCwd, QWidget *parent,
     m_runner = [this](const LlmJob &job,
                       std::function<void(const LlmResult &)> done) {
         auto *client = new LlmClient(this);
+        m_activeClients.append(client);   // ANTS-2111 — track for dtor abort
         connect(client, &LlmClient::finished, this,
-                [client, done](const LlmResult &r) {
+                [this, client, done](const LlmResult &r) {
+                    m_activeClients.removeAll(client);
                     done(r);
                     client->deleteLater();
                 });
@@ -104,9 +106,27 @@ ReviewDialogBase::ReviewDialogBase(QString projectCwd, QWidget *parent,
 }
 
 ReviewDialogBase::~ReviewDialogBase() {
-    // Detach the dispatcher first: cancelAll may emit allFinished, and by
-    // the time the base dtor runs the derived vtable is gone — routing it
-    // to the pure-virtual onAllReportsCollected would abort.
+    // ANTS-2111 — abort our own in-flight clients FIRST. They are parented to
+    // this dialog but never registered with the dispatcher, so cancelAll()
+    // below can't reach them; left alone, ~QDialog's child teardown calls
+    // ~LlmClient → m_reply->abort(), which can emit finished() synchronously
+    // and re-enter onJobFinished / a dispatchOne callback on a half-destroyed
+    // dialog. Disconnect each from this before abort() (which itself nulls
+    // m_reply to suppress finished — see LlmDispatcher ANTS-1755) so no late
+    // completion lambda fires, then drop the handles.
+    const auto clients = m_activeClients;
+    m_activeClients.clear();
+    for (const QPointer<LlmClient> &c : clients) {
+        if (c) {
+            disconnect(c, nullptr, this, nullptr);
+            c->abort();
+            c->deleteLater();
+        }
+    }
+
+    // Detach the dispatcher: cancelAll may emit allFinished, and by the time
+    // the base dtor runs the derived vtable is gone — routing it to the
+    // pure-virtual onAllReportsCollected would abort.
     if (m_dispatcher) {
         disconnect(m_dispatcher, nullptr, this, nullptr);
         m_dispatcher->cancelAll();

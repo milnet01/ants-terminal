@@ -94,6 +94,18 @@ void PluginManager::teardownEngine(const QString &name, LuaEngine *engine,
         return;
     }
     if (engine) {
+        // ANTS-2117 — sever the BlockingQueuedConnection settings.get edge
+        // BEFORE posting Unload. Unload is documented as "save state" and may
+        // call ants.settings.get, whose blocking-queued emit parks the worker
+        // until the GUI thread services it — but the GUI thread is about to
+        // park in thread->wait() below and won't spin its event loop, so the
+        // two deadlock until the 2s timeout spuriously zombifies a healthy
+        // plugin. With the edge severed first (this runs on the GUI thread
+        // before Unload is even queued), a late settings.get finds no
+        // connected slot, returns immediately, and Lua sees nil.
+        QObject::disconnect(engine, &LuaEngine::settingsGetRequested,
+                            this, nullptr);
+
         // FIFO on the worker: run the Unload handler, then shutdown
         // (lua_close on the worker — INV-12), then quit the worker's own
         // event loop from inside it so the two posted calls are guaranteed

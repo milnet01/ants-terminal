@@ -6379,17 +6379,19 @@ class; the deferrals below cover the rest.
   Kind: security.
   Source: indie-review-2026-06-11 (llmclient H1+H2).
 
-- 📋 [ANTS-2110] **Indie-review 2026-06-11: ~TerminalWidget ignores the VtStream worker wait(2000) timeout — late batchReady/finished to a half-destroyed widget (UAF, same class as ANTS-2101/2103).**
+- ✅ [ANTS-2110] **Indie-review 2026-06-11: ~TerminalWidget ignores the VtStream worker wait(2000) timeout — late batchReady/finished to a half-destroyed widget (UAF, same class as ANTS-2101/2103).**
   terminalwidget.cpp:415-418: the destructor calls wait(2000) but falls through on timeout; a slow/stuck VtStream worker can then deliver batchReady/finished to a half-destroyed widget, and ~QThread aborts on a still-running parented thread. Detail: .indie-review/reports-2026-06-11/terminalwidget.md.
   **Layman:** When a terminal tab closes while its background text-processor is stuck, it can crash. Same family as the crashes already fixed.
   Kind: fix.
   Source: indie-review-2026-06-11 (terminalwidget H1).
+  Resolved (2026-06-12): ~TerminalWidget disconnects the GUI-side VtStream signals before quit() so a late batchReady/finished is dropped, and on wait(2000) timeout logs a qWarning + terminate()s the worker as a last resort instead of falling through into a still-running-thread ~QThread abort.
 
-- 📋 [ANTS-2111] **Indie-review 2026-06-11: reviewdialogbase installs an untracked LlmClient that cancelAll() can't abort — UAF on close mid-review; deleting the duplicate runner fixes it.**
+- ✅ [ANTS-2111] **Indie-review 2026-06-11: reviewdialogbase installs an untracked LlmClient that cancelAll() can't abort — UAF on close mid-review; deleting the duplicate runner fixes it.**
   reviewdialogbase.cpp:91-100 installs its own untracked runner so the dispatcher's m_activeClients stays empty and cancelAll() never aborts it; with WA_DeleteOnClose, ~LlmClient::abort() can re-enter onJobFinished on a half-destroyed dialog (defused only accidentally by m_cancelled). The runner duplicates the dispatcher's default tracked runner — delete it to fix H1+H2. M1: dispatchOne synthesis callbacks capture this with no lifetime guard. Detail: .indie-review/reports-2026-06-11/reviewdialogbase.md.
   **Layman:** Closing an AI-review dialog mid-run can crash because its network job isn't tracked for cancellation.
   Kind: fix.
   Source: indie-review-2026-06-11 (reviewdialogbase H1+H2).
+  Resolved (2026-06-12): dialog tracks its own LlmClients in m_activeClients (runner append + completion remove); ~ReviewDialogBase disconnects + aborts them before m_dispatcher->cancelAll(), closing the close-mid-review UAF on both the batch and dispatchOne paths. Regression: review_dialog_base INV-19 (source-scrape: order of own-client abort vs cancelAll).
 
 - 📋 [ANTS-2112] **Indie-review 2026-06-11: mcpprojection projectFields strips refusal envelopes to {} — a fields=-narrowed read hitting a rate-limit/validation refusal returns empty, so the model never sees the error or retry_after_ms.**
   projectFields (mcpprojection.cpp:42-61) has no protected-key floor and the dispatcher runs it on refusal envelopes with no ok-guard (claudeintegration.cpp:8491-8498). Sibling compactEnvelope protects ok/code/error at every level; projectFields (ANTS-1720) never got the floor, though appendReadHints already bails on !ok. Add an ok/code/error/retry_after_ms floor. Detail: .indie-review/reports-2026-06-11/mcpprojection.md.
@@ -6421,11 +6423,12 @@ class; the deferrals below cover the rest.
   Kind: perf.
   Source: indie-review-2026-06-11 (claudestatuswidgets H1).
 
-- 📋 [ANTS-2117] **Indie-review 2026-06-11: luaengine ants.settings.get (BlockingQueuedConnection) deadlocks teardown thread->wait() — a plugin calling it from its Unload handler stalls 2s then spuriously zombie-detaches a healthy plugin.**
+- ✅ [ANTS-2117] **Indie-review 2026-06-11: luaengine ants.settings.get (BlockingQueuedConnection) deadlocks teardown thread->wait() — a plugin calling it from its Unload handler stalls 2s then spuriously zombie-detaches a healthy plugin.**
   pluginmanager.cpp:113 (settings.get BlockingQueuedConnection to GUI) vs :164-166 (GUI parked in wait()): the worker blocks on a GUI thread that never services it. Either drop the blocking read during teardown or service it before wait(). Detail: .indie-review/reports-2026-06-11/luaengine.md.
   **Layman:** A plugin that reads a setting while shutting down can hang itself and get wrongly killed as a zombie.
   Kind: fix.
   Source: indie-review-2026-06-11 (luaengine H1).
+  Resolved (2026-06-12): teardownEngine severs the settingsGetRequested BlockingQueuedConnection edge before posting Unload, so a settings.get from an Unload handler finds no slot and returns nil immediately instead of deadlocking the GUI thread parked in thread->wait() and being spuriously zombified.
 
 - 📋 [ANTS-2118] **Indie-review 2026-06-11: refine ANTS-2105 — extract a shared mergeToolChannels() so the GUI dialog and headless runner feed identical bytes when a tool writes to BOTH stdout and stderr.**
   GUI (auditdialog.cpp:4690-4693) appends stderr to stdout; the runner post-ANTS-2105 uses stdout-else-stderr (correct for cppcheck where stdout is empty, but divergent for a both-channel tool). Extract one mergeToolChannels() into auditengine and call from both for ANTS-1119 parity. Also: countSuppressed never populated for semgrep/clang-tidy/cppcheck (SARIF parity), and parseFindings doesn't strip trailing CR (CRLF dedup-key drift). Detail: .indie-review/reports-2026-06-11/{auditengine,auditdialog}.md.

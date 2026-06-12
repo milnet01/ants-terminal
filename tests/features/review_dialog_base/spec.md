@@ -17,6 +17,12 @@ subclasses fill four hooks and use the base services.
 - **INV-15** — `dispatchOne` runs a single follow-up job and invokes its
   callback without firing `onAllReportsCollected` (so a synthesis job does
   not re-enter the batch-complete path).
+- **INV-19** (ANTS-2111) — the dialog tracks the `LlmClient`s its runner
+  spawns and aborts them in `~ReviewDialogBase` *before* `m_dispatcher->
+  cancelAll()`, so closing the window mid-review cannot deliver a
+  synchronous `finished()` (from `~LlmClient`'s reply abort) into a
+  half-destroyed dialog. Source-scrape: the teardown race is GUI-/network-
+  bound and not reproducible offscreen without a live reply.
 
 ## Test notes
 

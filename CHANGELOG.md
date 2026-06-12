@@ -107,6 +107,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A plugin that reads a setting while shutting down can no longer hang itself and get wrongly killed** (ANTS-2117)
+  The blocking settings.get path is now severed before a plugin's Unload handler runs, so a plugin saving state on shutdown returns immediately (nil) instead of deadlocking the 2-second teardown wait and being spuriously detached as a zombie.
+
+- **Closing a terminal tab while its background text-processor is stuck no longer risks a teardown crash** (ANTS-2110)
+  When a tab closes, late results from the parse worker are now dropped instead of delivered to the half-gone tab, and a worker that refuses to stop within 2 seconds is forced down with a logged warning rather than crashing on exit.
+
+- **Closing an AI-review dialog mid-run no longer risks a crash** (ANTS-2111)
+  The review dialogs (cold-eyes, test-audit, indie-review) now keep track of the network jobs they start and stop them cleanly when you close the window mid-review, instead of relying on accidental ordering that could re-enter a half-destroyed dialog.
+
 - **Tab close (×) button is now actually visible** (ANTS-2098)
   The little × for closing a tab had been invisible: it was drawn with an image embedded inline in the theme's stylesheet text, and Qt6 silently refuses to load that kind of image (and that broken rule also hid the fallback ×, so nothing showed at all). Each tab now gets a real close button we draw ourselves — it tints to match the theme, turns red on hover, and always shows. The old test only checked the stylesheet text existed, so it never noticed the button was blank; the new test renders a tab and confirms the × actually appears.
 

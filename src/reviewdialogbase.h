@@ -19,6 +19,7 @@
 #include <QDialog>
 #include <QHash>
 #include <QList>
+#include <QPointer>
 #include <QString>
 #include <QStringList>
 
@@ -99,6 +100,12 @@ private:
 
     LlmDispatcher           *m_dispatcher = nullptr;
     LlmDispatcher::JobRunner m_runner;        // shared by batch + dispatchOne
+    // ANTS-2111 — clients spawned by m_runner are parented to this dialog but
+    // bypass the dispatcher's m_activeClients, so cancelAll() can't abort them.
+    // Track them here and abort in ~ReviewDialogBase before cancelAll so a
+    // synchronous finished() from QNetworkReply::abort() can't re-enter a
+    // half-destroyed dialog (the close-mid-review UAF).
+    QList<QPointer<LlmClient>> m_activeClients;
     QList<ReviewLane>        m_lanes;
     QHash<QString, QString>  m_reports;       // accumulated, keyed by lane id
     QString                  m_lastFoldInError;

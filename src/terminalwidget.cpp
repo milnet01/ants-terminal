@@ -413,8 +413,24 @@ TerminalWidget::~TerminalWidget() {
     // its dtor runs on the worker thread as the loop exits — which in
     // turn runs ~Pty with the SIGHUP/SIGTERM/SIGKILL child-reap ladder.
     if (m_parseThread) {
+        // ANTS-2110 — drop the GUI-side connections first so a batchReady /
+        // finished already queued (or emitted during shutdown) is discarded
+        // rather than delivered to onVtBatch / onPtyFinished on a
+        // half-destructed widget. This is the cheap correctness win
+        // regardless of the wait outcome (same UAF class as ANTS-2101/2103).
+        if (m_vtStream)
+            disconnect(m_vtStream, nullptr, this, nullptr);
         m_parseThread->quit();
-        m_parseThread->wait(2000);
+        if (!m_parseThread->wait(2000)) {
+            // Worker exceeded the deadline — stuck in a PTY read, a long
+            // processAction, or a slow ~Pty child-reap ladder. Don't fall
+            // through silently: ~QThread aborts on a still-running thread,
+            // so force it down as a last resort after logging (dimension #10).
+            qWarning("TerminalWidget: VtStream worker did not stop within 2s; "
+                     "terminating to avoid a teardown crash");
+            m_parseThread->terminate();
+            m_parseThread->wait();
+        }
     }
 
     if (m_logFile)

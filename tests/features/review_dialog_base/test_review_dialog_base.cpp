@@ -165,3 +165,34 @@ TEST(ReviewDialogBase, INV18_ChangeEventRechecksDispatch) {
     EXPECT_TRUE(body.contains(QStringLiteral("ActivationChange")));
     EXPECT_TRUE(body.contains(QStringLiteral("updateDispatchEnabled()")));
 }
+
+// INV-19 (ANTS-2111) — the runner tracks its spawned LlmClients and the
+// destructor aborts them BEFORE m_dispatcher->cancelAll(), closing the
+// close-mid-review UAF. Source-scrape: the race needs a live QNetworkReply
+// in flight, which is not reproducible offscreen without real network I/O.
+TEST(ReviewDialogBase, INV19_DtorAbortsOwnClientsBeforeCancelAll) {
+    QFile f(QStringLiteral(SRC_REVIEWDIALOGBASE_CPP_PATH));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QString src = QString::fromUtf8(f.readAll());
+
+    // The runner must register each new client for teardown.
+    const int rs = src.indexOf(QStringLiteral("m_runner = ["));
+    ASSERT_GE(rs, 0) << "runner lambda missing";
+    const int re = src.indexOf(QStringLiteral("m_dispatcher->setRunner"), rs);
+    ASSERT_GT(re, rs);
+    EXPECT_TRUE(src.mid(rs, re - rs)
+                    .contains(QStringLiteral("m_activeClients.append(client)")))
+        << "runner must track spawned clients for dtor abort";
+
+    // The destructor must abort tracked clients before cancelAll. Anchor on
+    // the actual call statements (c->abort() / m_dispatcher->cancelAll()) so
+    // explanatory comments mentioning abort/cancelAll don't skew the order.
+    const int ds = src.indexOf(QStringLiteral("ReviewDialogBase::~ReviewDialogBase("));
+    ASSERT_GE(ds, 0) << "destructor missing";
+    const int abortPos = src.indexOf(QStringLiteral("c->abort();"), ds);
+    const int cancelPos = src.indexOf(QStringLiteral("m_dispatcher->cancelAll();"), ds);
+    ASSERT_GE(abortPos, 0) << "destructor must abort its own clients";
+    ASSERT_GE(cancelPos, 0) << "destructor must still cancelAll the dispatcher";
+    EXPECT_LT(abortPos, cancelPos)
+        << "own-client abort must precede dispatcher cancelAll";
+}
