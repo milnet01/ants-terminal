@@ -4683,14 +4683,10 @@ void AuditDialog::onCheckFinished(int exitCode, QProcess::ExitStatus exitStatus)
         return;
     }
 
-    // Success path: stdout is the findings stream; stderr is folded
-    // in only when stdout is empty (some tools emit findings on
-    // stderr) or appended when stdout has content (warnings the user
-    // should still see).
-    if (!errOutput.isEmpty() && output.isEmpty())
-        output = errOutput;
-    else if (!errOutput.isEmpty())
-        output += "\n" + errOutput;
+    // Success path: fold stdout + stderr into one findings stream via the
+    // shared engine helper so the headless runner (auditrunner.cpp) feeds
+    // byte-identical input — ANTS-2118 closed the channel-merge divergence.
+    output = AuditEngine::mergeToolChannels(output, errOutput);
 
     handleCheckOutput(output);
 }

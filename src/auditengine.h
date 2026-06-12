@@ -152,6 +152,20 @@ FilterResult applyFilter(const QString &raw,
 // already static; signature is unchanged.
 QList<Finding> parseFindings(const QString &body, const AuditCheck &check);
 
+// ANTS-2118 — single source of truth for folding a tool's stdout + stderr
+// into the one `raw` string that applyFilter/parseFindings consume. stdout
+// is the findings stream; stderr is used alone when stdout is blank (cppcheck
+// / clazy / clang-tidy emit findings on stderr) and APPENDED when stdout also
+// has content (a tool that splits findings across both channels, e.g.
+// clang-tidy under a wrapper). The GUI dialog (auditdialog.cpp) and the
+// headless runner (auditrunner.cpp) used to disagree here — the runner dropped
+// stderr whenever stdout was non-blank — so a both-channels tool produced a
+// different finding set in CI than in the dialog. That is exactly the
+// ANTS-1123 silent-divergence class the engine extraction (ANTS-1119) was
+// meant to close, migrated up into the un-extracted merge step. Both callers
+// now route through this helper for byte-identical input.
+QString mergeToolChannels(const QString &stdoutStr, const QString &stderrStr);
+
 // Pure-function counterpart of `AuditDialog::capFindings`. Was
 // already static; signature is unchanged.
 void capFindings(CheckResult &r, int cap);

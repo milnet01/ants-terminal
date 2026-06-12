@@ -238,18 +238,23 @@ QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
         if (!doc.isObject()) continue;
         const QJsonObject ev = doc.object();
 
-        // ANTS-1341: advance `latestEventMs` BEFORE any filter dispatch.
-        // Sidechain-skipped events and `isCompactSummary`-skipped events
-        // still contribute to "wall-clock progress" — a long `/compact`
-        // pause should not artificially suppress the abandonment
-        // threshold and prevent stuck tasks from being dropped.
-        const qint64 evMs =
-            parseIsoMs(ev.value(QStringLiteral("timestamp")).toString());
-        if (evMs > latestEventMs) latestEventMs = evMs;
-
         // Sidechain filter — subagent's own TodoWrite/TaskCreate/etc.
         // never count toward the parent's plan.
         if (ev.value(QStringLiteral("isSidechain")).toBool()) continue;
+
+        // ANTS-1341 / ANTS-2115: advance `latestEventMs` AFTER the sidechain
+        // filter but BEFORE the compact-summary skip. Sidechain events are a
+        // subagent actively doing the parent's work — they are NOT parent
+        // wall-clock progress, so letting them drive the abandonment clock
+        // would treat a long-running subagent as if the parent task had gone
+        // stale and silently drop a live `in_progress` task (ANTS-2115). A
+        // `/compact` pause, by contrast, IS a genuine wall-clock gap in the
+        // parent's own stream, so the compact-summary event (skipped below)
+        // still counts — a task stuck before a compact must remain eligible
+        // for the abandonment threshold.
+        const qint64 evMs =
+            parseIsoMs(ev.value(QStringLiteral("timestamp")).toString());
+        if (evMs > latestEventMs) latestEventMs = evMs;
 
         // ANTS-1327 (2026-05-14, user-request): `isCompactSummary`
         // is NO LONGER a state-reset checkpoint. Previously (ANTS-1224,

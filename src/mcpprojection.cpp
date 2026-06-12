@@ -56,6 +56,23 @@ QString projectFields(const QString &responseText, const QJsonArray &fields) {
         if (!name.isEmpty() && src.contains(name))
             out.insert(name, src.value(name));
     }
+    // ANTS-2112 — never blank a refusal. A fields=-narrowed read that hits a
+    // rate-limit / validation refusal carries its error in ok/code/error/
+    // retry_after_ms — none of which the caller's fields= would name — so the
+    // projection above yields `{}` and the model never sees the error or the
+    // retry hint. When the envelope is a refusal (ok present and false), carry
+    // the refusal floor verbatim regardless of fields=. Mirrors
+    // compactEnvelope's protected-key floor (isProtectedCompactKey); the
+    // sibling appendReadHints already bails on !ok. Successful (ok:true) reads
+    // are untouched — a narrowed success stays exactly as requested.
+    if (src.contains(QStringLiteral("ok")) &&
+        !src.value(QStringLiteral("ok")).toBool()) {
+        for (const QString &key : {QStringLiteral("ok"), QStringLiteral("code"),
+                                   QStringLiteral("error"),
+                                   QStringLiteral("retry_after_ms")}) {
+            if (src.contains(key)) out.insert(key, src.value(key));
+        }
+    }
     return QString::fromUtf8(
         QJsonDocument(out).toJson(QJsonDocument::Compact));
 }

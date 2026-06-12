@@ -100,6 +100,34 @@ TEST(McpProjection, Inv7EtagRetainedOnlyWhenListed) {
     EXPECT_EQ(with.value("etag").toString(), QStringLiteral("abc123"));
 }
 
+// ANTS-2112 — a refusal envelope is never blanked by fields=. A narrowed
+// read that hits a rate-limit / validation refusal carries its error in
+// ok/code/error/retry_after_ms, none of which the caller's fields= names; the
+// projection must still surface that floor so the model sees the error +
+// retry hint instead of an empty {}.
+TEST(McpProjection, Ants2112RefusalFloorSurvivesNarrowing) {
+    const QString refusal = QStringLiteral(
+        "{\"ok\":false,\"code\":\"rate_limited\","
+        "\"error\":\"slow down\",\"retry_after_ms\":5000}");
+    // Caller asked for an unrelated field that a refusal never carries.
+    const QJsonObject o = parse(mcp::projectFields(refusal, fields({"bullets"})));
+    EXPECT_FALSE(o.value("ok").toBool());
+    EXPECT_EQ(o.value("code").toString(), QStringLiteral("rate_limited"));
+    EXPECT_EQ(o.value("error").toString(), QStringLiteral("slow down"));
+    EXPECT_EQ(o.value("retry_after_ms").toInt(), 5000);
+    EXPECT_FALSE(o.contains("bullets"));
+}
+
+// ANTS-2112 — the floor is refusal-only: a successful (ok:true) narrowed read
+// is untouched, so listing one field still returns exactly that field (no
+// surprise `ok` injection).
+TEST(McpProjection, Ants2112SuccessNarrowingUnchanged) {
+    const QJsonObject o = parse(mcp::projectFields(kBody, fields({"bullets"})));
+    EXPECT_EQ(o.size(), 1);
+    EXPECT_FALSE(o.contains("ok"));
+    EXPECT_TRUE(o.contains("bullets"));
+}
+
 // INV-8 — allowlist is exactly the eleven in-scope tools (original seven +
 // read_log/ANTS-1855, model_switch_stats/ANTS-1735, read_region/ANTS-2021,
 // codebase_index/ANTS-1637 — matches the makeFieldsProp() call-site count).

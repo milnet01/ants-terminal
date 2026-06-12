@@ -421,7 +421,17 @@ QString runSpecDriftCheck(const QString &projectPath) {
         const QList<SpecToken> drift = findDriftTokens(specText, resolves);
         const QString relPath = projectDir.relativeFilePath(specPath);
         for (const SpecToken &d : drift) {
-            out += QString("%1:%2: spec references `%3` but no match in src/\n")
+            // ANTS-2113 H1 — the search is whole-tree (buildProjectSourceBlob
+            // walks the project, not just src/) so the test corpus can resolve
+            // a spec's own gtest case names; the old "no match in src/" message
+            // lied about that scope. Empirically, excluding tests/ to make the
+            // "src/" claim true floods the lane with false drift on every
+            // spec-cited test-case name, so whole-tree is the correct design —
+            // the message is what gets fixed. (ANTS-2113 H2, identifier-
+            // boundary matching, deferred: it surfaces imprecise-but-harmless
+            // spec wording, not real drift — see ROADMAP.)
+            out += QString("%1:%2: spec references `%3` but no match in "
+                           "project sources\n")
                        .arg(relPath).arg(d.line).arg(d.token);
         }
     }

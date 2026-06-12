@@ -48,11 +48,38 @@
 // re-pointing contract.
 
 namespace {
+// ANTS-2116 — process-local cached Config, reloaded only when config.json
+// changes on disk. Each Config() ctor does open + readAll + JSON parse; the
+// 2 s status-bar tick calls refreshModelChip / refreshModelStateChip /
+// refreshAutoModelSwitch, and each of those (plus every homeTierFromConfig()
+// call) used to construct a fresh Config — 5-7 full parses per tick whenever
+// Claude is active. Cache the parsed object and re-read only when the file's
+// mtime OR size changes (Settings Apply rewrites config.json via QSaveFile, so
+// either moves; size is a cheap tiebreaker for a same-millisecond rewrite).
+// GUI-thread only — all three refreshers run on the status-bar timer.
+const Config &cachedConfig() {
+    static Config cfg;  // loaded once here at first-call static init…
+    static qint64 cachedMtimeMs =
+        QFileInfo(Config::configPath()).lastModified().toMSecsSinceEpoch();
+    static qint64 cachedSize = QFileInfo(Config::configPath()).size();
+    // …and the statics above are seeded to match that load, so the first call
+    // returns `cfg` without a redundant reload.
+    const QFileInfo fi(Config::configPath());
+    const qint64 mtimeMs = fi.lastModified().toMSecsSinceEpoch();
+    const qint64 size = fi.size();
+    if (mtimeMs != cachedMtimeMs || size != cachedSize) {
+        cfg = Config();
+        cachedMtimeMs = mtimeMs;
+        cachedSize = size;
+    }
+    return cfg;
+}
+
 // ANTS-1974 — the recommender's home/baseline tier, read from config and mapped
 // to a ModelRecommender::Tier. Config already clamps home up to the floor and
 // normalises unrecognised strings to "sonnet" (see Config::claudeAutoModel).
 ModelRecommender::Tier homeTierFromConfig() {
-    const QString home = Config().claudeAutoModel()
+    const QString home = cachedConfig().claudeAutoModel()
         .value(QStringLiteral("home_tier")).toString(QStringLiteral("sonnet"));
     if (home == QLatin1String("opus"))  return ModelRecommender::Tier::Opus;
     if (home == QLatin1String("haiku")) return ModelRecommender::Tier::Haiku;
@@ -1269,7 +1296,7 @@ void ClaudeStatusBarController::refreshModelChip()
     // the model"; showing a clickable → Opus chip during the 90 s dwell
     // reintroduces the manual-decision surface that pushed the user to
     // autonomy in the first place.
-    Config cfg;
+    const Config &cfg = cachedConfig();  // ANTS-2116 — mtime-guarded reuse
     if (cfg.claudeAutoModel().value("switch_enabled").toBool()) {
         m_modelBtn->hide();
         return;
@@ -1446,7 +1473,7 @@ void ClaudeStatusBarController::refreshModelStateChip()
 // injects `/model <tier>\n` plus appends a ledger record.
 void ClaudeStatusBarController::refreshAutoModelSwitch()
 {
-    Config cfg;
+    const Config &cfg = cachedConfig();  // ANTS-2116 — mtime-guarded reuse
     const QJsonObject autoCfg = cfg.claudeAutoModel();
     const bool enabled = autoCfg.value("switch_enabled").toBool();
 

@@ -1467,17 +1467,13 @@ RunResult runAudit(const RunRequest &req) {
                 const QByteArray err = proc->readAllStandardError();
                 // ANTS-2105 — cppcheck/clazy/clang-tidy write their findings to
                 // STDERR (only the JSON tools — ruff/bandit/semgrep/trivy/mypy/
-                // shellcheck — put results on STDOUT). The old code read STDOUT
-                // on a clean exit and fell back to STDERR ONLY when the tool
-                // crashed, so a cleanly-exiting cppcheck silently dropped every
-                // finding (the 1828-finding runs only happened because cppcheck
-                // segfaulted into the stderr path). Prefer stdout when it
-                // carries a payload, else fall back to stderr — for every exit
-                // status, not just "crashed".
-                QString raw = QString::fromUtf8(out);
-                if (raw.trimmed().isEmpty() && !err.isEmpty()) {
-                    raw = QString::fromUtf8(err);
-                }
+                // shellcheck — put results on STDOUT). ANTS-2118 — fold both
+                // channels via the shared engine helper so this headless path
+                // and the GUI dialog (auditdialog.cpp) feed byte-identical input
+                // to parseFindings; the prior stdout-else-stderr form silently
+                // dropped stderr for a tool that wrote findings to BOTH.
+                const QString raw = AuditEngine::mergeToolChannels(
+                    QString::fromUtf8(out), QString::fromUtf8(err));
                 finish(tool, status, raw, ms);
             });
         QProcess::connect(proc.get(), &QProcess::errorOccurred,

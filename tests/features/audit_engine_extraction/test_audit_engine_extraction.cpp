@@ -178,3 +178,27 @@ TEST(AuditEngineExtraction, Main) {
     }
 
 }
+
+// ANTS-2118 — the GUI dialog and the headless runner must fold a tool's
+// stdout+stderr into byte-identical input via this one helper. Locks the
+// stdout-preferred, append-both-when-both-present semantics that the runner
+// (stdout-else-stderr) used to violate, dropping stderr for a both-channels
+// tool.
+TEST(AuditEngineMergeChannels, Ants2118Parity) {
+    using AuditEngine::mergeToolChannels;
+    // stdout carries findings, stderr empty → stdout verbatim.
+    EXPECT_EQ(mergeToolChannels(QStringLiteral("a:1: x"), QString()),
+              QStringLiteral("a:1: x"));
+    // stdout blank (cppcheck/clazy/clang-tidy emit on stderr) → stderr.
+    EXPECT_EQ(mergeToolChannels(QString(), QStringLiteral("b:2: y")),
+              QStringLiteral("b:2: y"));
+    // whitespace-only stdout still falls back to the stderr findings stream.
+    EXPECT_EQ(mergeToolChannels(QStringLiteral("  \n "), QStringLiteral("b:2: y")),
+              QStringLiteral("b:2: y"));
+    // BOTH channels populated → append (the divergence the runner regressed):
+    // stderr findings must NOT be dropped just because stdout has content.
+    EXPECT_EQ(mergeToolChannels(QStringLiteral("a:1: x"), QStringLiteral("b:2: y")),
+              QStringLiteral("a:1: x\nb:2: y"));
+    // both empty → empty.
+    EXPECT_TRUE(mergeToolChannels(QString(), QString()).isEmpty());
+}

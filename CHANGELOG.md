@@ -12,6 +12,23 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Audit GUI and command-line audit now agree on tools that print to both output streams** (ANTS-2118)
+  A shared mergeToolChannels() helper folds a tool's stdout+stderr identically for the dialog and the headless runner; the runner previously dropped stderr findings when stdout also had content.
+
+- **Status bar stops re-parsing config.json several times every 2 seconds** (ANTS-2116)
+  The model-chip / auto-switch refreshers now reuse a cached settings read (refreshed only when the file changes on disk) instead of re-opening and re-parsing config.json 5-7 times per tick.
+
+- **Task tracker no longer drops a live task while a subagent runs long** (ANTS-2115)
+  Sub-agent (sidechain) activity no longer advances the parent's abandonment clock, so a long-running subagent can't make the task list treat your in-progress task as abandoned.
+
+- **Spec-vs-code drift audit no longer mislabels its search scope** (ANTS-2113)
+  The drift lane searches the whole project tree (so a spec can reference its own test-case names); its message now says "no match in project sources" instead of the inaccurate "no match in src/".
+
+- **MCP `fields=` reads no longer blank a refusal envelope** (ANTS-2112)
+  A narrowed read that hits a rate-limit or validation refusal now still surfaces ok/code/error/retry_after_ms instead of an empty {}, so the caller sees the error and retry hint.
+
 ### Security
 
 - **Block credential-bearing AI endpoint URLs and stop overstating SSRF protection** (ANTS-2109)

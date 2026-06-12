@@ -127,6 +127,14 @@ bool bulletMatchesAnyTitle(const QString &bulletText,
 // `spec.md` files (would self-match every spec token), and any file not
 // matching the extension list. Returns the empty string if projectPath
 // doesn't exist or contains no matching files.
+//
+// ANTS-2113 — the walk is deliberately whole-tree (NOT src/-only): a feature
+// spec.md legitimately cites its own gtest case names, which live only in
+// tests/, plus package names / manifest keys that live at the repo root.
+// Excluding tests/ to make the drift lane's old "no match in src/" message
+// literally true was tried and floods the lane with false drift on every
+// spec-cited test-case name (verified ANTS-2113), so the message — not the
+// scope — was the bug.
 QString buildProjectSourceBlob(const QString &projectPath);
 
 // Does `token` appear anywhere in `blob`? Substring containment first;
@@ -134,7 +142,9 @@ QString buildProjectSourceBlob(const QString &projectPath);
 // resolve to the trailing identifier alone when the compound form
 // isn't present in the blob). The `.` fallback only applies when the
 // tail is identifier-shaped (≥4 alpha chars) — prevents matching file
-// extensions like `*.cpp` → `cpp`.
+// extensions like `*.cpp` → `cpp`. (ANTS-2113 H2 weighed identifier-boundary
+// matching here but deferred it — on this repo it surfaces imprecise spec
+// wording, not real drift; see ROADMAP.)
 bool existsInSource(const QString &blob, const QString &token);
 
 // Public accessor for the existing internal `kSpecStopwords` set

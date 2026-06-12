@@ -175,6 +175,19 @@ QString computeDedup(const QString &file, int line,
 
 // (anon namespace already closed above, before sourceForCheck.)
 
+QString mergeToolChannels(const QString &stdoutStr, const QString &stderrStr) {
+    // See header for the parity rationale (ANTS-2118). The stdout-empty test
+    // is trimmed-aware so a tool that flushes a trailing newline (or pure
+    // whitespace) on stdout still falls back to the stderr findings stream —
+    // blank lines never reach parseFindings either way, so this only sharpens
+    // the empty/non-empty decision without changing any finding set.
+    if (stdoutStr.trimmed().isEmpty())
+        return stderrStr;
+    if (!stderrStr.isEmpty())
+        return stdoutStr + QStringLiteral("\n") + stderrStr;
+    return stdoutStr;
+}
+
 FilterResult applyFilter(const QString &raw,
                          const OutputFilter &f,
                          const QString &projectPath) {
@@ -216,8 +229,16 @@ FilterResult applyFilter(const QString &raw,
     while (pos <= totalLen) {
         int nl = raw.indexOf(QLatin1Char('\n'), pos);
         if (nl < 0) nl = totalLen;
-        const QString line = raw.mid(pos, nl - pos);
+        QString line = raw.mid(pos, nl - pos);
         pos = nl + 1;
+        // ANTS-2118 — strip a trailing CR so CRLF output (a Windows-built
+        // checker, or output piped through a CRLF-normalising layer) yields
+        // the same kept lines as LF output. The downstream parseFindings
+        // already per-line `.trimmed()`s, so the dedup key is CRLF-safe there;
+        // this normalises applyFilter's OWN emitted body, which the dialog
+        // shows verbatim and the SARIF exporter embeds as contextRegion. Cheap
+        // and a no-op on LF input.
+        if (line.endsWith(QLatin1Char('\r'))) line.chop(1);
         // ANTS-1123 indie-review M2: empty lines are dropped silently
         // — most checker outputs separate findings with blank lines and
         // those carry no signal for the dedup/SARIF pipeline downstream.

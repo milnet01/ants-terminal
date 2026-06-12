@@ -6395,17 +6395,19 @@ class; the deferrals below cover the rest.
   Source: indie-review-2026-06-11 (reviewdialogbase H1+H2).
   Resolved (2026-06-12): dialog tracks its own LlmClients in m_activeClients (runner append + completion remove); ~ReviewDialogBase disconnects + aborts them before m_dispatcher->cancelAll(), closing the close-mid-review UAF on both the batch and dispatchOne paths. Regression: review_dialog_base INV-19 (source-scrape: order of own-client abort vs cancelAll).
 
-- 📋 [ANTS-2112] **Indie-review 2026-06-11: mcpprojection projectFields strips refusal envelopes to {} — a fields=-narrowed read hitting a rate-limit/validation refusal returns empty, so the model never sees the error or retry_after_ms.**
+- ✅ [ANTS-2112] **Indie-review 2026-06-11: mcpprojection projectFields strips refusal envelopes to {} — a fields=-narrowed read hitting a rate-limit/validation refusal returns empty, so the model never sees the error or retry_after_ms.**
   projectFields (mcpprojection.cpp:42-61) has no protected-key floor and the dispatcher runs it on refusal envelopes with no ok-guard (claudeintegration.cpp:8491-8498). Sibling compactEnvelope protects ok/code/error at every level; projectFields (ANTS-1720) never got the floor, though appendReadHints already bails on !ok. Add an ok/code/error/retry_after_ms floor. Detail: .indie-review/reports-2026-06-11/mcpprojection.md.
   **Layman:** When an MCP tool refuses (e.g. rate-limited) and the caller asked for specific fields, the error gets silently blanked out.
   Kind: fix.
   Source: indie-review-2026-06-11 (mcpprojection H1).
+  Resolved (2026-06-12): projectFields now carries the refusal floor (ok/code/error/retry_after_ms) verbatim when ok==false, so a fields=-narrowed read that hits a rate-limit/validation refusal is no longer blanked to {}. Successful narrowed reads untouched. Regression: tests/features/mcp_projection Ants2112RefusalFloorSurvivesNarrowing + Ants2112SuccessNarrowingUnchanged.
 
-- 📋 [ANTS-2113] **Indie-review 2026-06-11: featurecoverage spec-code drift detection is false-clean — existence check searches the whole tree (incl tests/) and uses unbounded substring match.**
+- ✅ [ANTS-2113] **Indie-review 2026-06-11: featurecoverage spec-code drift detection is false-clean — existence check searches the whole tree (incl tests/) and uses unbounded substring match.**
   H1: lane emits 'no match in src/' but searches the whole project tree (tests/ not excluded) so a symbol deleted from src/ but still in its own test resolves as 'exists' — drift masked. H2: existsInSource uses plain blob.contains(token) with no word boundary (min len 4) so short drifted tokens (parse/grid/theme) match unrelated identifiers. Fix: search src/ only + identifier-boundary match. Detail: .indie-review/reports-2026-06-11/featurecoverage.md.
   **Layman:** The tool that flags when docs and code drift apart can miss real drift, reporting all-clear when it shouldn't.
   Kind: fix.
   Source: indie-review-2026-06-11 (featurecoverage H1+H2).
+  Resolved (2026-06-12): H1 fixed as a message-honesty change. The drift search is intentionally WHOLE-TREE (a feature spec.md legitimately cites its own gtest case names + root package/manifest tokens). Empirically verified: excluding tests/ to make the old 'no match in src/' claim literally true floods the lane with ~50 false drift findings on spec-cited test-case names, so the message — not the scope — was the bug; message now reads 'no match in project sources'. H2 (identifier-boundary matching) deferred to ANTS-2122: on this repo it surfaces imprecise spec wording, not real drift.
 
 - 📋 [ANTS-2114] **Indie-review 2026-06-11: testauditdialog resume feature is a zombie — loadResume/persistResumeState spec-claimed but zero production caller (dialog is WA_DeleteOnClose, never resumes).**
   mainwindow.cpp:1556 constructs the dialog WA_DeleteOnClose and never resumes; persistResumeState() writes state nothing reads, m_persistedToken is a dead write so the staleness guard is decorative. Wire it or delete it. Detail: .indie-review/reports-2026-06-11/testauditdialog.md.
@@ -6413,17 +6415,19 @@ class; the deferrals below cover the rest.
   Kind: fix.
   Source: indie-review-2026-06-11 (testauditdialog H1+H2).
 
-- 📋 [ANTS-2115] **Indie-review 2026-06-11: claudetasklist abandonment clock advances on sidechain events BEFORE the sidechain filter — a long subagent silently erases a live parent in_progress task.**
+- ✅ [ANTS-2115] **Indie-review 2026-06-11: claudetasklist abandonment clock advances on sidechain events BEFORE the sidechain filter — a long subagent silently erases a live parent in_progress task.**
   claudetasklist.cpp:241-248: latestEventMs updates from sidechain events before the isSidechain continue; the comment only justifies the compact case. Move the update below the isSidechain guard. Verify against ANTS-1341 spec. Detail: .indie-review/reports-2026-06-11/claudetasklist.md.
   **Layman:** A running sub-task can wrongly make the task-list think your main task was abandoned and clear it.
   Kind: fix.
   Source: indie-review-2026-06-11 (claudetasklist H1).
+  Resolved (2026-06-12): the abandonment clock (latestEventMs) now advances AFTER the isSidechain filter and still BEFORE the compact-summary skip. A long-running subagent (sidechain) no longer drives the parent's staleness clock and silently drops a live in_progress task; a /compact pause still counts toward wall-clock per the original ANTS-1341 intent.
 
-- 📋 [ANTS-2116] **Indie-review 2026-06-11: claudestatuswidgets re-parses config.json 5-7x every 2s tick (each Config() ctor does open+readAll+JSON parse, no cache) whenever Claude is active.**
+- ✅ [ANTS-2116] **Indie-review 2026-06-11: claudestatuswidgets re-parses config.json 5-7x every 2s tick (each Config() ctor does open+readAll+JSON parse, no cache) whenever Claude is active.**
   refreshModelChip's Config cfg; sits above its own mtime short-circuit; homeTierFromConfig() re-parses on every call from three hot paths. Cache the parsed Config with an mtime guard. Detail: .indie-review/reports-2026-06-11/claudestatuswidgets.md.
   **Layman:** The status bar reads and re-parses your settings file several times every two seconds — wasteful disk churn; cache it.
   Kind: perf.
   Source: indie-review-2026-06-11 (claudestatuswidgets H1).
+  Resolved (2026-06-12): the three 2s-tick status-bar refreshers + homeTierFromConfig() now read an mtime+size-guarded cached Config (cachedConfig()) instead of constructing a fresh Config (open+readAll+JSON parse) 5-7x per tick. Config::configPath() promoted to public so the cache can stat the file.
 
 - ✅ [ANTS-2117] **Indie-review 2026-06-11: luaengine ants.settings.get (BlockingQueuedConnection) deadlocks teardown thread->wait() — a plugin calling it from its Unload handler stalls 2s then spuriously zombie-detaches a healthy plugin.**
   pluginmanager.cpp:113 (settings.get BlockingQueuedConnection to GUI) vs :164-166 (GUI parked in wait()): the worker blocks on a GUI thread that never services it. Either drop the blocking read during teardown or service it before wait(). Detail: .indie-review/reports-2026-06-11/luaengine.md.
@@ -6432,11 +6436,12 @@ class; the deferrals below cover the rest.
   Source: indie-review-2026-06-11 (luaengine H1).
   Resolved (2026-06-12): teardownEngine severs the settingsGetRequested BlockingQueuedConnection edge before posting Unload, so a settings.get from an Unload handler finds no slot and returns nil immediately instead of deadlocking the GUI thread parked in thread->wait() and being spuriously zombified.
 
-- 📋 [ANTS-2118] **Indie-review 2026-06-11: refine ANTS-2105 — extract a shared mergeToolChannels() so the GUI dialog and headless runner feed identical bytes when a tool writes to BOTH stdout and stderr.**
+- ✅ [ANTS-2118] **Indie-review 2026-06-11: refine ANTS-2105 — extract a shared mergeToolChannels() so the GUI dialog and headless runner feed identical bytes when a tool writes to BOTH stdout and stderr.**
   GUI (auditdialog.cpp:4690-4693) appends stderr to stdout; the runner post-ANTS-2105 uses stdout-else-stderr (correct for cppcheck where stdout is empty, but divergent for a both-channel tool). Extract one mergeToolChannels() into auditengine and call from both for ANTS-1119 parity. Also: countSuppressed never populated for semgrep/clang-tidy/cppcheck (SARIF parity), and parseFindings doesn't strip trailing CR (CRLF dedup-key drift). Detail: .indie-review/reports-2026-06-11/{auditengine,auditdialog}.md.
   **Layman:** The audit GUI and the command-line audit can still disagree on results for tools that print to both output streams; share one merge helper.
   Kind: audit-fix.
   Source: indie-review-2026-06-11 (auditengine H1 — refines ANTS-2105).
+  Resolved (2026-06-12): extracted AuditEngine::mergeToolChannels() — GUI dialog (auditdialog.cpp) + headless runner (auditrunner.cpp) now fold stdout/stderr identically (stdout-preferred, append-both-when-both-present), closing the both-channels divergence where the runner dropped stderr. Also CRLF-normalise applyFilter's emitted body (parseFindings already trims). Regression: AuditEngineMergeChannels.Ants2118Parity. Deferred sub-item: semgrep/cppcheck/clang-tidy countSuppressed SARIF parity — ANTS-2123.
 
 - 📋 [ANTS-2119] **Indie-review 2026-06-11: MEDIUM/LOW tail (24 findings across 20 lanes) — hardening + correctness smells, consolidated; expand per-lane before fixing.**
   Full per-lane detail in .indie-review/reports-2026-06-11/<lane>.md. MEDIUMs by lane: terminalgrid (m_scrollbackPushed not bumped on reflow/pushScrollbackLine; Kitty APC non-strict base64). terminalwidget (trigger matches whole batch not per-line + only on trailing newline; OSC 8 homograph warn only when label is a hostname). auditdialog (/tmp triage report setAutoRemove(false) secret leak; synchronous git blame on GUI thread). auditcache (retention reaper no keep-set guard on sub-second same-commit double-run; orphan SARIF on index write-fail). ptyhandler (onReadReady missing m_masterFd<0 guard; envp kEnvpCap-8 magic reserve needs static_assert; writeLost signal has zero consumers). auditautofix (header advertises unused_include never emitted; versionLE <= deletes 'remove after vX' TODO one version early). auditfpledger (stripLocation regex over-strips word:NUM:/C:\ paths -> fingerprint collision; file path-form relative-vs-absolute drift). falseposledger (INV-12 spec/code preamble drift). focusedtest (non-source changed file dropped to ignoredFiles masquerading as glob-ignore). briefdispatch (withClosedFence misses a bisected OPENING fence; slurpUtf8 static cache unbounded). indiereviewdispatcher (redactAndTruncate UTF-16-count vs byte-budget; lane name interpolated into output path w/o single-component check). remotecontrol (5-min GUI freeze even after the join fix -> wants fully-async; raw:true filter-bypass not in the ANTS-1176 audit log). antshelper (driftCheck discards script stderr; missing_repo_root exit-code vs INV-8). claudeintegration (discoverProjects uncapped readAll OOM; toolStarted/sessionStarted zombie signals). modelrecommender (commit_intent override never sets isMechanical; /model override leaves stale currentModelTsMs). modelautoswitch (upgrade-at-idle returns act=true — single-point billing-safety reliance; composerStaleThreshold reused as human-idle). modelswitchledger (ConfigWriteLock.acquired() unchecked -> dropped row on 5s timeout; no fsyncParentDir). modelnearmissledger + claudebgtasks + claudetasklist (JSONL-helper duplication, rule-of-three -> shared Jsonl helper; claudebgtasks exitCode dead field). roadmapdialog (parseBullets uncached on every debounced render up to 64MiB). claudestateresolver (INV-3/4 header doc describes a gate that doesn't exist). modelnearmissledger/modelswitchledger evictToCap O(N^2).
@@ -6455,6 +6460,20 @@ class; the deferrals below cover the rest.
   **Layman:** The audit window's AI-review buttons talk to the AI server through their own connection, which is missing some of the safety checks the main AI client has — it could be pointed at an internal address or follow a sneaky redirect.
   Kind: security.
   Source: in-session-2026-06-12 (discovered fixing ANTS-2108/2109).
+
+- 📋 [ANTS-2122] **featurecoverage drift lane: identifier-boundary existence match (deferred from ANTS-2113 H2).**
+  existsInSource() uses plain substring containment, so a short drifted token (`parse`) is masked by being a substring of an unrelated surviving identifier (`parseRequest`). The reviewer's fix is an identifier-boundary match. DEFERRED after empirical verification (ANTS-2113, 2026-06-12): on the current repo a whole-tree boundary matcher surfaces 14 findings, ~11 of which are imprecise-but-harmless spec wording where the real symbol exists under a longer name (`isCatastrophic`->`isCatastrophicRegex`, `m_currentTerminal`->a longer member, `SessionManager::saveAll`->`saveAll` renamed), NOT real drift. Adding ~11 low-value audit findings cuts against the active audit-FP-reduction effort. Re-do this WITH a spec-wording cleanup pass (fix the cited specs to the exact current identifiers) so the boundary matcher ships with a clean lane, or design a softer matcher that accepts a camelCase-aligned prefix. Whole-tree scope is correct (see ANTS-2113) — do not pair this with a tests/ exclusion.
+  **Layman:** Make the spec-vs-code drift checker stricter about whole-word matches — but only after tidying loosely-worded specs, or it just adds noise.
+  Kind: audit-fix.
+  Lanes: featurecoverage.
+  Source: indie-review-2026-06-11 (featurecoverage H2) — deferred 2026-06-12.
+
+- 📋 [ANTS-2123] **auditengine: populate countSuppressed for semgrep/cppcheck/clang-tidy (SARIF parity, ANTS-2118 M1).**
+  summariseSarif counts SARIF suppressions[] into s.countSuppressed (ANTS-1254 INV-3) but summariseSemgrepJson / summariseClangTidyText / summariseCppcheckXml leave it at 0, so last_audit_summary reports `suppressed:0` for a semgrep run with N nosemgrep-ignored findings — contradicting the SARIF path for the same logical run. At minimum read semgrep `extra.is_ignored` (auditengine.cpp summariseSemgrepJson) and bump s.countSuppressed; document the clang-tidy(NOLINT)/cppcheck(inconclusive) gap in the header if left at 0. Needs its own test locking the suppression-count contract.
+  **Layman:** The audit summary always reports 0 'suppressed' findings for non-SARIF tools even when some were suppressed; make the count honest.
+  Kind: audit-fix.
+  Lanes: auditengine.
+  Source: indie-review-2026-06-11 (auditengine M1) — deferred 2026-06-12.
 
 ### 🔌 Ants MCP — improvements from running /audit + /indie-review + /debt-sweep (2026-05-14)
 

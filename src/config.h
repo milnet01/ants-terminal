@@ -13,6 +13,12 @@ class Config {
 public:
     Config();
 
+    // Absolute path to config.json (~/.config/ants-terminal/config.json).
+    // Public so callers can stat the file for change-detection without
+    // re-parsing it — e.g. the ANTS-2116 mtime-guarded Config cache in the
+    // status-bar refreshers. Side effect: ensures the parent dir exists.
+    static QString configPath();
+
     QString theme() const;
     void setTheme(const QString &name);
 
@@ -468,7 +474,6 @@ private:
     // arms today; placeholder so a future rename has a canonical
     // home rather than ad-hoc per-getter compatibility shims.
     void migrate(int from, int to);
-    static QString configPath();
 
     // Idempotent setter helper. Compares `value` against m_data[key] and
     // assigns + returns true only when they differ; returns false (leaving
