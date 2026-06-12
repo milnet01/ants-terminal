@@ -20,8 +20,6 @@
 #include <QStringLiteral>
 #include <QTemporaryDir>
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 ANTS_TEST_SCOPE();
@@ -35,6 +33,22 @@ const char *kChangelog =
     "- **Existing added entry.** (ANTS-0001)\n\n"
     "### Fixed\n\n"
     "- **Existing fix.** (ANTS-0002)\n\n"
+    "## [0.1.0] - 2026-01-01\n\n"
+    "- old.\n";
+
+// ANTS-2125 — a CHANGELOG whose `## [Unreleased]` section interleaves
+// non-heading prose (a `---` rule + a flush-left paragraph) between the
+// `### Added` block and the later `### Fixed` heading — the stray-footer
+// shape DOOM Ants hit. The `---` sits on line 9 (1-based).
+const char *kMalformedChangelog =
+    "# Changelog\n\n"            // 1, 2
+    "## [Unreleased]\n\n"        // 3, 4
+    "### Added\n\n"              // 5, 6
+    "- **Existing added entry.** (ANTS-0001)\n\n"  // 7, 8
+    "---\n"                      // 9  <- first interleaved prose line
+    "This project is licensed under the GPL.\n\n"  // 10, 11
+    "### Fixed\n\n"             // 12, 13
+    "- **Existing fix.** (ANTS-0002)\n\n"          // 14, 15
     "## [0.1.0] - 2026-01-01\n\n"
     "- old.\n";
 
@@ -356,6 +370,95 @@ TEST(changelog_log_writer, Inv7AddFromRoadmapCollapsesMultiLineHeadline) {
     const std::string boldSpan = md.substr(bulletPos, closeStar - bulletPos);
     EXPECT_EQ(boldSpan.find('\n'), std::string::npos)
         << "wrapped headline leaked a newline into the bold summary";
+}
+
+// ANTS-2125 — the pure helper flags a malformed Unreleased section
+// (non-heading prose between `### ` category blocks) without altering
+// the insert, and leaves a clean section unflagged.
+TEST(changelog_log_writer, Ants2125MalformedSectionAdvisoryHelper) {
+    const auto bad = ChangelogLog::insertUnreleasedEntry(
+        QString::fromUtf8(kMalformedChangelog), QStringLiteral("Added"),
+        QStringLiteral("- **New one.** (ANTS-9)"));
+    ASSERT_TRUE(bad.ok) << bad.error.toStdString();
+    EXPECT_TRUE(bad.malformed_section)
+        << "interleaved `---`/footer prose must be flagged";
+    EXPECT_EQ(bad.malformed_line, 9)
+        << "first offending line is the `---` rule";
+    // The insert still landed (non-blocking advisory).
+    EXPECT_TRUE(contains(bad.markdown.toStdString(), "New one."));
+
+    const auto clean = ChangelogLog::insertUnreleasedEntry(
+        QString::fromUtf8(kChangelog), QStringLiteral("Added"),
+        QStringLiteral("- **New one.** (ANTS-9)"));
+    ASSERT_TRUE(clean.ok) << clean.error.toStdString();
+    EXPECT_FALSE(clean.malformed_section)
+        << "a well-formed section must not be flagged";
+    EXPECT_EQ(clean.malformed_line, -1);
+}
+
+// ANTS-2125 — the handler surfaces the advisory string on a successful
+// write into a malformed section, and omits it for a clean one.
+TEST(changelog_log_writer, Ants2125MalformedSectionAdvisoryHandler) {
+    auto runAdd = [](const char *changelog) -> QJsonObject {
+        QTemporaryDir tmp;
+        EXPECT_TRUE(tmp.isValid());
+        writeFile(clPath(tmp.path()), QByteArray(changelog));
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = tmp.path();
+        req[QStringLiteral("op")]         = QStringLiteral("add");
+        req[QStringLiteral("summary")]    = QStringLiteral("Fresh entry.");
+        req[QStringLiteral("kind")]       = QStringLiteral("feature");
+        return rc.cmdChangelogLog(req).object();
+    };
+
+    const QJsonObject badResp = runAdd(kMalformedChangelog);
+    ASSERT_TRUE(badResp.value(QStringLiteral("ok")).toBool())
+        << "advisory is non-blocking — the write still succeeds";
+    EXPECT_FALSE(badResp.value(QStringLiteral("advisory")).toString().isEmpty())
+        << "a malformed Unreleased section must surface an advisory";
+
+    const QJsonObject cleanResp = runAdd(kChangelog);
+    ASSERT_TRUE(cleanResp.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(cleanResp.contains(QStringLiteral("advisory")))
+        << "a clean section must not carry an advisory";
+}
+
+// ANTS-2127 — op:add_from_roadmap must reuse the UNTRUNCATED headline
+// (BulletRecord.headlineFull), not the 120-char display cap, so a long
+// roadmap headline does not leak a `…` ellipsis into the rendered
+// CHANGELOG bold summary.
+TEST(changelog_log_writer, Ants2127LongHeadlineNotTruncated) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kChangelog)));
+    // A headline well over the 120-char display cap (ANTS-1811).
+    const QByteArray rm =
+        "# Roadmap\n\n"
+        "## Work\n\n"
+        "- \xE2\x9C\x85 [ANTS-0150] **changelog_log surfaces a malformed "
+        "section advisory when the active Unreleased section interleaves "
+        "non-heading prose between its category blocks and would compound "
+        "it.**\n"
+        "  **Layman:** plain words for users.\n"
+        "  Kind: enhancement.\n";
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), rm));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("add_from_roadmap");
+    req[QStringLiteral("id")]         = QStringLiteral("ANTS-0150");
+    const QJsonObject resp = rc.cmdChangelogLog(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    const std::string md = readFileStd(clPath(tmp.path()));
+    // The full sentence (its tail) survives; no ellipsis leaked.
+    EXPECT_TRUE(contains(md, "would compound it.** (ANTS-0150)"))
+        << "untruncated headline must render in full; got:\n" << md;
+    EXPECT_FALSE(contains(md, "\xE2\x80\xA6"))  // U+2026 horizontal ellipsis
+        << "the 120-char display cap leaked a `…` into the CHANGELOG";
 }
 
 // INV-8 — contract + descriptor surface (source-scrape).

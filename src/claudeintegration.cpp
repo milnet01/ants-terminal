@@ -7291,7 +7291,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "add_batch {ok, op, file, applied:[{index, id?, "
                         "category, line}], applied_count, skipped, "
                         "skipped_count, bytes_written} — or "
-                        "{ok:false, error, code}.");
+                        "{ok:false, error, code}. A non-blocking "
+                        "`advisory` string (ANTS-2125) accompanies a "
+                        "successful write when the `## [Unreleased]` "
+                        "section already interleaves non-heading prose "
+                        "(a stray footer/separator) between its `### ` "
+                        "category blocks — the entry still inserts in "
+                        "canonical order, but the section layout is "
+                        "malformed.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to add a CHANGELOG.md entry under "
                         "[Unreleased] instead of hand-editing it. "

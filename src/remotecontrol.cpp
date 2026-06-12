@@ -3772,7 +3772,13 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         // ANTS-1521). A wrapped ROADMAP headline cannot otherwise
         // leak a hard newline into the rendered CHANGELOG bullet's
         // bold summary.
-        summary = rcHeadlineOneline(match->headline);
+        // ANTS-2127 — use the UNTRUNCATED headline (headlineFull, ANTS-2075):
+        // match->headline is capped at 120 chars with a `…` ellipsis for the
+        // Roadmap dialog (ANTS-1811), which would otherwise leak mid-word
+        // into the rendered CHANGELOG bold summary.
+        summary = rcHeadlineOneline(
+            match->headlineFull.isEmpty() ? match->headline
+                                          : match->headlineFull);
         // Reuse the authored user-facing prose: the bullet's Layman
         // line is CHANGELOG-voice already. An explicit `body` arg
         // overrides it. (We deliberately do NOT splat the full bullet
@@ -3843,6 +3849,19 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     out["bytes_written"]    = static_cast<qint64>(utf8.size());
     out["created_category"] = res.created_category;
     if (!id.isEmpty()) out["id"] = id;
+    // ANTS-2125 — non-blocking advisory: the entry was inserted in
+    // canonical order, but the Unreleased section already interleaves
+    // non-heading prose between its `### ` category blocks, so the layout
+    // is malformed. Surface it (parity with roadmap_log possible_duplicates)
+    // so the caller can tidy the section before the insert compounds it.
+    if (res.malformed_section) {
+        out["advisory"] = QStringLiteral(
+            "changelog_log: `## [Unreleased]` interleaves non-heading "
+            "prose between its `### ` category blocks (first at line %1) "
+            "— the entry was inserted in canonical order, but the section "
+            "layout is malformed; consider tidying it.")
+                .arg(res.malformed_line);
+    }
     if (!scrubbed.isEmpty()) {
         QJsonArray dropped;
         for (const QString &n : scrubbed) dropped.append(n);
@@ -3914,7 +3933,10 @@ ClBatchEntryResult resolveClBatchEntry(
         }
         // Headline → one-line bold summary; Layman → body (parity with
         // the single op:add_from_roadmap path, ANTS-1868 / ANTS-1933).
-        summary = rcHeadlineOneline(match->headline);
+        // ANTS-2127 — untruncated headline (see cmdChangelogLog).
+        summary = rcHeadlineOneline(
+            match->headlineFull.isEmpty() ? match->headline
+                                          : match->headlineFull);
         if (body.isEmpty()) {
             static const QRegularExpression rxBoldLayman(
                 QStringLiteral("(?:\\*\\*)?Layman:(?:\\*\\*)?\\s*(.+)"),
@@ -4056,6 +4078,11 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
 
     QJsonArray applied;   // [{index, id?, category, line}]
     QJsonArray skipped;   // [{index, code, error}]
+    // ANTS-2125 — capture the malformed-section advisory from the first
+    // applied insert; it sees the original (pre-batch) section, so its
+    // verdict reflects the body the caller is about to compound.
+    bool malformedSection = false;
+    int  malformedLine = -1;
     for (int i = 0; i < entries.size(); ++i) {
         const QJsonObject e = entries.at(i).toObject();
         const ClBatchEntryResult er =
@@ -4077,6 +4104,10 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
             s["error"] = res.error;
             skipped.append(s);
             continue;
+        }
+        if (!malformedSection && res.malformed_section) {
+            malformedSection = true;
+            malformedLine = res.malformed_line;
         }
         markdown = res.markdown;  // accumulate; insert in input order
         QJsonObject a;
@@ -4115,6 +4146,14 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     out["skipped"]       = skipped;
     out["skipped_count"] = skipped.size();
     out["bytes_written"] = bytesWritten;
+    if (malformedSection) {
+        out["advisory"] = QStringLiteral(
+            "changelog_log: `## [Unreleased]` interleaves non-heading "
+            "prose between its `### ` category blocks (first at line %1) "
+            "— entries were inserted in canonical order, but the section "
+            "layout is malformed; consider tidying it.")
+                .arg(malformedLine);
+    }
     return QJsonDocument(out);
 }
 

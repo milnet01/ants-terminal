@@ -35,6 +35,15 @@ struct InsertResult {
     QString error;      // human-readable message iff !ok
     int     line = -1;  // 1-based line the bullet was inserted at (iff ok)
     bool    created_category = false;  // a new ### heading was added
+    // ANTS-2125 — non-blocking advisory: the Unreleased section already
+    // interleaves non-heading prose (a stray footer/separator/paragraph)
+    // between its `### <category>` blocks, so the insert — though placed
+    // in canonical order — lands in a malformed section. `malformed_line`
+    // is the 1-based line of the first offending prose line (iff
+    // malformed_section). Detected on the pre-insert body; insertion
+    // behaviour is unaffected.
+    bool    malformed_section = false;
+    int     malformed_line = -1;
 };
 
 // Insert `bulletBlock` (from formatBullet) at the TOP of `category`'s

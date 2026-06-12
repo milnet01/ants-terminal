@@ -14,10 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **`changelog_log` warns when the Unreleased section is malformed** (ANTS-2125)
+  When Ants adds a changelog entry to a messy section, warn the user it's messy instead of silently making it messier.
+
 - **Test-suite Audit dialog now resumes a mid-audit run** (ANTS-2114)
   Reopening the Test Audit dialog and re-running it now skips chunks already reviewed in the prior session (their reports are kept on disk), so only the unreviewed remainder is re-sent to the AI — saving tokens and time. A changed test tree is detected and re-audited cleanly.
 
 ### Fixed
+
+- **`changelog_log` no longer truncates long roadmap titles with a `…`** (ANTS-2127)
+  When adding a changelog entry from a roadmap item with a long title, Ants now uses the full title instead of a cut-off version ending in `…`.
 
 - **Audit GUI and command-line audit now agree on tools that print to both output streams** (ANTS-2118)
   A shared mergeToolChannels() helper folds a tool's stdout+stderr identically for the dialog and the headless runner; the runner previously dropped stderr findings when stdout also had content.

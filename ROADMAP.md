@@ -16442,12 +16442,13 @@ server build id so clients can self-diagnose this.
   Source: in-session-2026-06-11 (ANTS-2080 follow-up).
   Resolved (2026-06-11): return:headline_only now echoes post_bullets for op:flip and op:flip_batch via a new rcStatusWord() emoji->word reverse map (ants-v1 + GFM + batch paths). Schema `return` prose extended. 2 INVs.
 
-- 📋 [ANTS-2125] **changelog_log: surface a `malformed_section` advisory when the active section interleaves non-heading prose between `###` category blocks.**
+- ✅ [ANTS-2125] **changelog_log: surface a `malformed_section` advisory when the active section interleaves non-heading prose between `###` category blocks.**
   DOOM Ants finding (LOW), 2026-06-12. While landing items with changelog_log op:"add_from_roadmap", the target CHANGELOG.md had a stray footer (`---` + a GPL-attribution paragraph) sitting INSIDE the `## [Unreleased]` section, between the `### Added` block and the later `### Changed` / `### Fixed` headings. The verb correctly inserted entries in canonical category order, but because the non-category prose was embedded mid-section the rendered result was disjointed (Added, then footer, then Changed/Fixed below). Not a correctness bug — the malformed layout pre-existed — but a guardrail opportunity: when the active section contains non-heading prose interleaved between `###` category blocks, emit a one-line non-blocking `advisory` (like roadmap_log's `possible_duplicates`) so the caller knows the section is malformed before the insert compounds it. Saves a manual CHANGELOG restructure after the fact.
   **Layman:** When Ants adds a changelog entry to a messy section, warn the user it's messy instead of silently making it messier.
   Kind: enhancement.
   Lanes: mcp, changelog.
   Source: cross-session-2026-06-12 (DOOM Ants).
+  Resolved (2026-06-12): changelog_log now emits a non-blocking `advisory` string on a successful write when the `## [Unreleased]` section interleaves non-heading prose (a `---` rule / stray footer / flush-left paragraph) between its `### ` category blocks. Detection lives in the pure ChangelogLog::insertUnreleasedEntry helper (new InsertResult.malformed_section + malformed_line, computed on the pre-insert body; scanning starts only after the first `### ` heading so a legitimate Unreleased preamble isn't flagged; a `---` thematic break is distinguished from a `- ` list item by requiring a space after the marker). Surfaced on both the single-op and add_batch envelopes, mirroring roadmap_log's possible_duplicates. Descriptor documents `advisory`. Tests: changelog_log_writer INV-9 (helper malformed-vs-clean + handler advisory present-vs-absent).
 
 - 📋 [ANTS-2126] **roadmap_log heading-format WRITER (append/create + sub-bullet flip) — the real writer ANTS-2031 punted, not just the shipped format_mismatch warning.**
   RetroDB re-confirm, 2026-06-12 (v3.7.0, Pass 43.1 session). ANTS-2031 shipped only the `format_mismatch` REFUSAL across the five write paths — a real `#### Pass N.M` heading-format writer was explicitly left as future work. This session needed TWO write ops the writer still can't do, both done by hand: (1) status flip of a sub-bullet todo→done (the classic ANTS-2031 case), and (2) appending a brand-new `#### Pass 43.5` section with body. Point: when a real heading-format writer is scoped, it must cover append/create AND sub-bullet-level flip/annotate — not just status mutation — or a re-scope-and-carve-follow-on pass (a common pattern on this roadmap) still falls back to hand-Edit for half the work. Fallback ergonomics remain good (the envelope hint tells the caller to hand-edit immediately), so this is an enhancement, not a blocker. Follow-on to [[ANTS-2031]].
@@ -16455,6 +16456,13 @@ server build id so clients can self-diagnose this.
   Kind: enhancement.
   Lanes: roadmapfoldin, roadmap-format.
   Source: cross-session-2026-06-12 (RetroDB).
+
+- ✅ [ANTS-2127] **changelog_log op:add_from_roadmap reused the 120-char-capped headline, leaking a `…` ellipsis into the CHANGELOG bold summary.**
+  Hit live this session: changelog_log op:add_from_roadmap (and the add_batch per-entry path) built the bold CHANGELOG summary from `match->headline`, which RoadmapDialog::parseBullets caps at 120 chars with a `…` ellipsis (ANTS-1811 display cap). ANTS-2075 added `BulletRecord.headlineFull` (untruncated) for exactly this reuse case, but the changelog path was never switched over, so citing ANTS-2125 (a >120-char headline) rendered `- **... between `###…** (ANTS-2125)` — truncated mid-word. Fix: both add_from_roadmap sites in cmdChangelogLog + resolveClBatchEntry now read match->headlineFull (falling back to headline when empty) before rcHeadlineOneline. Regression test: changelog_log_writer INV-10 (a >120-char roadmap headline yields no `…` in the rendered bullet).
+  **Layman:** Fixed Ants pasting a cut-off `…` title into the changelog when a roadmap item's title was long.
+  Kind: fix.
+  Lanes: mcp, changelog, roadmapfoldin.
+  Source: in-session-2026-06-12 (ANTS-2125 fold-in).
 
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 

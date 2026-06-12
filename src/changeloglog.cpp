@@ -46,6 +46,44 @@ bool isValidCategory(const QString &category) {
     return canonicalCategories().contains(category);
 }
 
+namespace {
+// ANTS-2125 — scan the Unreleased section [sectionStart, sectionEnd) for
+// non-heading prose wedged between `###` category blocks. Returns the
+// 1-based line of the first offending line, or -1 if the section is
+// clean. Scanning starts only once the first `### ` category heading is
+// seen, so a legitimate description paragraph directly under
+// `## [Unreleased]` (before any category) is NOT flagged — only prose
+// interleaved between or after category blocks (the stray-footer shape
+// that motivated ANTS-2125) trips it. Within the category region the
+// only legal non-heading content is list items and their indented
+// continuations; anything else (a `---` rule, a flush-left paragraph) is
+// the malformation we warn about.
+int firstInterleavedProseLine(const QStringList &lines,
+                              int sectionStart, int sectionEnd) {
+    bool sawCategory = false;
+    for (int i = sectionStart; i < sectionEnd && i < lines.size(); ++i) {
+        const QString &raw = lines.at(i);
+        const QString t = raw.trimmed();
+        if (t.isEmpty()) continue;                  // blank spacer
+        if (t.startsWith(QLatin1Char('#'))) {       // any heading line
+            if (t.startsWith(QStringLiteral("### "))) sawCategory = true;
+            continue;
+        }
+        if (!sawCategory) continue;                 // pre-category preamble
+        // A list item is a `-`/`*`/`+` marker followed by a space; a bare
+        // run like `---`/`***` is a thematic break (the stray-footer
+        // separator), NOT a bullet, so it must still trip the advisory.
+        if (t.size() >= 2 && t.at(1) == QLatin1Char(' ') &&
+            (t.at(0) == QLatin1Char('-') || t.at(0) == QLatin1Char('*') ||
+             t.at(0) == QLatin1Char('+'))) continue;
+        if (raw.startsWith(QLatin1Char(' ')) ||     // indented continuation
+            raw.startsWith(QLatin1Char('\t'))) continue;
+        return i + 1;                               // 1-based, for humans
+    }
+    return -1;
+}
+}  // namespace
+
 QString formatBullet(const QString &summary, const QString &body,
                      const QString &id) {
     QString head = summary.trimmed();
@@ -105,6 +143,16 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
             sectionEnd = i;
             break;
         }
+    }
+
+    // ANTS-2125 — flag a pre-existing malformed section (non-heading
+    // prose between category blocks) on the original body, before the
+    // insert. Non-blocking: insertion proceeds regardless.
+    const int proseLine =
+        firstInterleavedProseLine(lines, unrel + 1, sectionEnd);
+    if (proseLine > 0) {
+        r.malformed_section = true;
+        r.malformed_line = proseLine;
     }
 
     // 3. Find the `### <category>` heading within the section, and

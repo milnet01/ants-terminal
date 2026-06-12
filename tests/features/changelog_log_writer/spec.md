@@ -74,8 +74,40 @@ bullet's bold summary.
 registered with the Required contract; the descriptor names the tool
 and its ops.
 
+### INV-9 — malformed-section advisory (ANTS-2125)
+
+When the `## [Unreleased]` section already interleaves non-heading prose
+(a `---` rule, a stray footer/separator, a flush-left paragraph) between
+its `### <category>` blocks, the insert still lands in canonical order
+but the result carries a non-blocking advisory:
+
+- `insertUnreleasedEntry` sets `malformed_section = true` and
+  `malformed_line` to the 1-based first offending line (detected on the
+  pre-insert body); a clean section leaves `malformed_section = false`
+  and `malformed_line = -1`.
+- `cmdChangelogLog` / the `add_batch` envelope carries an `advisory`
+  string on a successful write into a malformed section, omitted for a
+  clean one.
+
+Scanning starts only once the first `### ` category heading is seen, so
+a legitimate description paragraph directly under `## [Unreleased]`
+(before any category) is not flagged. Mirrors roadmap_log's
+`possible_duplicates` advisory shape.
+
+### INV-10 — add_from_roadmap reuses the untruncated headline (ANTS-2127)
+
+`op:"add_from_roadmap"` builds the bold summary from the bullet's
+untruncated headline (`BulletRecord.headlineFull`, ANTS-2075), not the
+120-char display cap (`headline`, ANTS-1811). A roadmap headline longer
+than 120 chars renders in full in the CHANGELOG with no `…` ellipsis
+leaked into the bold span. Applies to both the single op and the
+`add_batch` per-entry path.
+
 ## Test plan
 
 INV-1..5 are exercised behaviourally on the pure `ChangelogLog` helpers.
 INV-6/7 drive `cmdChangelogLog` against a seeded temp project
-(CHANGELOG.md + ROADMAP.md). INV-8 is source-scrape.
+(CHANGELOG.md + ROADMAP.md). INV-8 is source-scrape. INV-9 drives both
+the pure helper (malformed vs clean) and the handler (advisory present
+vs absent). INV-10 drives `add_from_roadmap` with a >120-char headline
+and asserts no ellipsis leaks into the rendered bullet.
