@@ -18,6 +18,15 @@ bool contains(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
 }
 
+int countOccurrences(const std::string &hay, const char *needle) {
+    int n = 0;
+    const std::string pat(needle);
+    for (size_t pos = hay.find(pat); pos != std::string::npos;
+         pos = hay.find(pat, pos + pat.size()))
+        ++n;
+    return n;
+}
+
 }  // namespace
 
 // INV-1 (ANTS-1826) — cleartext-key refusal in the AI-triage POST.
@@ -34,6 +43,20 @@ TEST(AuditDialogRenderHardening, AiTriageRefusesCleartextKey) {
     // The user-facing refusal message is present.
     EXPECT_TRUE(contains(src, "refusing to send the API key over cleartext"))
         << "a clear refusal message must be surfaced";
+}
+
+// INV-3 (ANTS-2108) — BOTH raw-QNAM AI-triage paths guard cleartext. The
+// single-finding path (requestAiTriage, ANTS-1826) and the batch path
+// (requestAiTriageBatch) each use their own QNetworkAccessManager rather than
+// LlmClient::send, so the chokepoint guard in LlmClient does not cover them —
+// each must gate independently. Pre-2108 only the single path was guarded.
+TEST(AuditDialogRenderHardening, BothAiTriagePathsGuardCleartext) {
+    const std::string src = ants_test::slurpFile(SRC_AUDITDIALOG_PATH);
+    ASSERT_FALSE(src.empty());
+
+    EXPECT_GE(countOccurrences(src, "!apiKey.isEmpty() && LlmClient::isPlaintextRemote"), 2)
+        << "both the single-finding and batch AI-triage POSTs must gate the "
+           "cleartext-key refusal (each uses a raw QNetworkAccessManager)";
 }
 
 // INV-2 (ANTS-1830) — verdict-badge title is double-quoted, not single-quoted.

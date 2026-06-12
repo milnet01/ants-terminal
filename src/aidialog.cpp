@@ -118,7 +118,6 @@ void AiDialog::resetTransient() {
     if (m_input)        m_input->clear();
     if (m_statusLabel)  m_statusLabel->clear();
     if (m_client)       m_client->abort();
-    m_httpWarned = false;
 }
 
 void AiDialog::setConfig(const QString &endpoint, const QString &apiKey,
@@ -230,12 +229,16 @@ void AiDialog::sendRequest(const QString &userMessage) {
                           .arg(totalRedacted == 1 ? "" : "s"));
     }
 
-    // Warn once per session if the user has configured an API key against a
-    // plaintext HTTP endpoint — the Bearer token would travel in cleartext.
-    // Localhost is permitted silently (Ollama/LM Studio default to http://127.0.0.1).
-    if (!m_apiKey.isEmpty() && LlmClient::isPlaintextRemote(m_endpoint) && !m_httpWarned) {
-        m_httpWarned = true;
-        appendMessage("System", "Warning: endpoint uses plaintext HTTP — API key will be sent unencrypted. Prefer https:// for remote providers.");
+    // ANTS-2108 — refuse (not just warn) when an API key would travel in
+    // cleartext to a remote host. LlmClient::send() enforces this as a
+    // backstop, but short-circuit here so the user gets one clear message
+    // instead of a generic refusal echoed back through onLlmFinished.
+    // Localhost is exempt (Ollama/LM Studio default to http://127.0.0.1).
+    if (!m_apiKey.isEmpty() && LlmClient::isPlaintextRemote(m_endpoint)) {
+        appendMessage("System", "Refused: endpoint is plaintext HTTP to a remote host — "
+                                "the API key would travel unencrypted. Use https:// "
+                                "(localhost is exempt).");
+        return;
     }
 
     // Prompts are already scrubbed above (UX-coupled notice), so the

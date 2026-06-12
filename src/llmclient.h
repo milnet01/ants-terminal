@@ -65,15 +65,22 @@ public:
     // surfaces the "Bearer travels in cleartext" warning).
     static bool isPlaintextRemote(const QString &endpoint);
 
-    // ANTS-1746 — SSRF guard. True iff the endpoint's host is an IP
-    // literal in a private (RFC-1918 / CGNAT), link-local (169.254/16 +
-    // fe80::/10 — the cloud-metadata range 169.254.169.254 lives here),
-    // unique-local (fc00::/7), or 0.0.0.0/8 block. Loopback (127/8, ::1,
-    // "localhost") is allowed so a local dev LLM server still works.
-    // DNS hostnames are NOT resolved here (would block + invite
-    // rebinding races) and pass through — this catches the direct
-    // IP-literal SSRF shapes a malicious/imported ai_endpoint would use
-    // to reach cloud metadata or internal services with the Bearer token.
+    // ANTS-1746 — SSRF guard, IP-LITERAL SHAPES ONLY. True iff the
+    // endpoint's host is an IP literal in a private (RFC-1918 / CGNAT),
+    // link-local (169.254/16 + fe80::/10 — the cloud-metadata range
+    // 169.254.169.254 lives here), unique-local (fc00::/7), or 0.0.0.0/8
+    // block. Loopback (127/8, ::1, "localhost") is allowed so a local dev
+    // LLM server still works.
+    //
+    // ANTS-2109 H2 — scope honesty: a DNS *hostname* is NOT resolved here
+    // and passes through, so http://internal.example.tld pointing at
+    // 169.254.169.254 is NOT caught. We do not resolve because a sync lookup
+    // would block the UI thread and an async one still leaves a DNS-rebinding
+    // window (the resolved IP can differ from the IP Qt connects to). The
+    // residual exposure is bounded: redirects are hard-refused (send() sets
+    // ManualRedirectPolicy) so there is a single connection, and ai_endpoint
+    // is the user's own 0600 config. Treat this as IP-literal defence — not a
+    // guarantee against a hostile hostname.
     static bool isEndpointHostBlocked(const QString &endpoint);
 
     // Parse one SSE "data:{…}" line → choices[0].delta.content. Empty for

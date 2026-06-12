@@ -12,6 +12,14 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Security
+
+- **Block credential-bearing AI endpoint URLs and stop overstating SSRF protection** (ANTS-2109)
+  LlmClient now refuses an AI endpoint whose URL embeds credentials (user:pass@host) — they would otherwise be sent unencrypted as a Basic-auth header. The SSRF guard's documentation was corrected to state it blocks raw IP addresses only (a hostname pointing at an internal address is not caught), so the guarantee is no longer overstated.
+
+- **Refuse cleartext-HTTP Bearer egress across the whole AI-review family** (ANTS-2108)
+  Sending an API key to a remote AI endpoint over unencrypted http is now refused at the LlmClient chokepoint (covering the cold-eyes / review dialogs) and on the audit dialog's batch-triage path, which has its own network code. The single-finding path already refused; the chat dialog's soft warning is now a hard refusal too. Localhost stays exempt for local LLM servers.
+
 ## [0.7.97] — unreleased (Patron RC preview)
 
 **Theme:** Rolling Patron preview of the next release. Fixes and features land

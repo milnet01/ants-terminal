@@ -205,6 +205,21 @@ void LlmClient::send(const LlmRequest &req) {
                            "permitted (got '%1').").arg(scheme));
         return;
     }
+    // ANTS-2109 H1 — refuse an endpoint that embeds URL userinfo
+    // (https://user:pass@host). Qt would derive an `Authorization: Basic`
+    // header from it and POST those credentials verbatim — unscrubbed, in
+    // addition to the Bearer key, to a value the user may have imported
+    // rather than typed. The host-keyed scheme/SSRF gates above all run on
+    // QUrl::host() (which strips userinfo), so this channel is otherwise
+    // invisible. Refuse rather than silently strip so the surprising config
+    // surfaces. Scheme-agnostic — https leaks the creds too.
+    if (!QUrl(req.endpoint).userInfo().isEmpty()) {
+        emitDeferredError(
+            QStringLiteral("AI endpoint rejected — the URL embeds credentials "
+                           "(user:pass@host) that would be sent unscrubbed. "
+                           "Remove the userinfo and use the API-key field."));
+        return;
+    }
     if (isEndpointHostBlocked(req.endpoint)) {
         // ANTS-1746 — refuse SSRF-shaped endpoints (cloud-metadata
         // 169.254.169.254, RFC-1918, link-local, ULA). Loopback +
@@ -214,6 +229,20 @@ void LlmClient::send(const LlmRequest &req) {
                            "link-local, or cloud-metadata address (SSRF "
                            "guard). Use a public endpoint or a localhost "
                            "server."));
+        return;
+    }
+    // ANTS-2108 — single-chokepoint backstop: never ship the Bearer key in
+    // cleartext to a remote host. The aidialog warning and the auditdialog
+    // single-finding refusal (ANTS-1826) pre-check isPlaintextRemote, but the
+    // auditdialog batch path and the v2 review dialogs (coldeyesdialog →
+    // ReviewDialogBase) reach send() without it. Gate on a non-empty key
+    // (matching those call sites); loopback/localhost stay exempt via
+    // isPlaintextRemote so a local dev LLM server still works keyed.
+    if (!req.apiKey.isEmpty() && isPlaintextRemote(req.endpoint)) {
+        emitDeferredError(
+            QStringLiteral("AI endpoint rejected — refusing to send the API "
+                           "key over cleartext http to a remote host. Use "
+                           "https (localhost is exempt)."));
         return;
     }
 

@@ -185,6 +185,65 @@ TEST(LlmClient, Ants2019_ReSendCancelsStaleDeferredError) {
         << "only the latest rejected send must emit finished()";
 }
 
+// ANTS-2108 — send() is the single egress chokepoint, so the cleartext-remote
+// Bearer guard lives here as a backstop: the auditdialog batch path and the v2
+// review dialogs (coldeyesdialog → ReviewDialogBase → send) never pre-checked
+// isPlaintextRemote, so a key could ship in cleartext. send() now refuses
+// before touching the network (gated on a non-empty key, matching the
+// aidialog/auditdialog single-path guards; localhost stays exempt).
+TEST(LlmClient, Ants2108_SendRefusesCleartextRemoteBearer) {
+    LlmClient client;
+    LlmResult captured;
+    int n = 0;
+    QObject::connect(&client, &LlmClient::finished, &client,
+                     [&](const LlmResult &r) { captured = r; ++n; });
+
+    LlmRequest req;
+    req.endpoint = QStringLiteral("http://example.com/v1/chat/completions");
+    req.apiKey = QStringLiteral("sk-secret");
+    client.send(req);
+
+    QCoreApplication::processEvents();
+    QCoreApplication::processEvents();
+
+    EXPECT_EQ(n, 1);
+    EXPECT_FALSE(captured.ok);
+    EXPECT_TRUE(captured.error.contains(QStringLiteral("cleartext"), Qt::CaseInsensitive))
+        << captured.error.toStdString();
+    EXPECT_FALSE(client.busy()) << "refusal must not open a network reply";
+}
+
+// ANTS-2109 H1 — embedded URL userinfo (user:pass@host) would travel out as a
+// Basic-auth header derived from the URL, unscrubbed and in addition to the
+// Bearer key. send() refuses it before posting, scheme-agnostic (https leaks
+// the creds too).
+TEST(LlmClient, Ants2109_SendRefusesUrlUserinfo) {
+    for (const QString &ep : {
+             QStringLiteral("https://user:secret@api.openai.com/v1/chat/completions"),
+             QStringLiteral("http://user:secret@example.com/v1"),
+         }) {
+        LlmClient client;
+        LlmResult captured;
+        int n = 0;
+        QObject::connect(&client, &LlmClient::finished, &client,
+                         [&](const LlmResult &r) { captured = r; ++n; });
+
+        LlmRequest req;
+        req.endpoint = ep;
+        req.apiKey = QStringLiteral("sk-secret");
+        client.send(req);
+
+        QCoreApplication::processEvents();
+        QCoreApplication::processEvents();
+
+        EXPECT_EQ(n, 1) << ep.toStdString();
+        EXPECT_FALSE(captured.ok) << ep.toStdString();
+        EXPECT_TRUE(captured.error.contains(QStringLiteral("credential"), Qt::CaseInsensitive))
+            << captured.error.toStdString();
+        EXPECT_FALSE(client.busy()) << ep.toStdString();
+    }
+}
+
 // INV-16 — the three LLM modules include no Qt Widgets header.
 // (llmdispatcher entries added with that module in ANTS-1727 step 3.)
 TEST(LlmClient, INV16_WidgetFree) {

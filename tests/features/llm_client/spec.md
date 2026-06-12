@@ -30,6 +30,23 @@ without a live network.
 - **INV-5** — `sseContentDelta` returns content for a
   `data:{…delta.content…}` line and empty for `[DONE]` / non-content / non-
   data lines.
+- **INV-6** (ANTS-2108) — `send()` is the single egress chokepoint and
+  backstops the cleartext-Bearer guard: with a non-empty `apiKey` and an
+  `isPlaintextRemote` endpoint it refuses via `emitDeferredError` (emitting
+  `finished(ok=false)` whose error names "cleartext") and never opens a
+  network reply. Covers the auditdialog batch path + the v2 review dialogs
+  (coldeyesdialog → ReviewDialogBase) that never pre-checked
+  `isPlaintextRemote`. Loopback/localhost stay exempt.
+- **INV-7** (ANTS-2109 H1) — `send()` refuses an endpoint whose URL embeds
+  userinfo (`user:pass@host`), scheme-agnostic, before posting — those
+  credentials would otherwise egress as an `Authorization: Basic` header,
+  unscrubbed and invisible to the host-keyed scheme/SSRF gates. The refusal
+  error names "credentials".
+- **INV-2c** (ANTS-2109 H2) — `isEndpointHostBlocked` is documented as
+  IP-literal-only: a DNS hostname is NOT resolved and passes through. The
+  guarantee is not overstated (no claim of hostname SSRF protection); the
+  residual exposure is bounded by hard-refused redirects + the 0600
+  user-owned `ai_endpoint` trust model.
 - **INV-16** — `llmclient` / `llmdispatcher` / `briefdispatch` headers +
   sources include no Qt Widgets header (widget-free discipline; the lib
   links Qt6::Widgets PUBLIC so this is not enforced by the lib boundary).

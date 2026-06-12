@@ -5740,6 +5740,18 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
         endpointUrl.setPath((p.endsWith('/') ? p : p + "/") + "v1/chat/completions");
     }
     if (endpointUrl.scheme() != "https" && endpointUrl.scheme() != "http") return;
+    // ANTS-2108 — the batch path uses a raw QNetworkAccessManager (not
+    // LlmClient::send), so it needs the same cleartext-Bearer refusal the
+    // single-finding path (requestAiTriage, ANTS-1826) already has. Without
+    // it the API key would ship in cleartext to a remote host. Loopback is
+    // exempt so a local dev LLM server still works keyed.
+    if (!apiKey.isEmpty() && LlmClient::isPlaintextRemote(endpointUrl.toString())) {
+        if (m_statusLabel)
+            m_statusLabel->setFullText(
+                "AI triage: refusing to send the API key over cleartext http "
+                "to a remote host — use https (localhost is exempt)");
+        return;
+    }
 
     QNetworkRequest req(endpointUrl);
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");

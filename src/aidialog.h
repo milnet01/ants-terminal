@@ -76,7 +76,6 @@ private:
     QString m_model;
     int m_contextLines = 50;
     QString m_lastResponse;   // Last complete AI response (for insert)
-    bool m_httpWarned = false;  // Show plaintext-HTTP warning once per dialog instance
 
 public:
     ~AiDialog() override;

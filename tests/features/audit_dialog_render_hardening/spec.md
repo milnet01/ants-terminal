@@ -4,9 +4,12 @@ Two indie-review #6 findings in the AuditDialog AI-triage / results-render path.
 
 ## Surface
 
-- `AuditDialog::triageWithAi` (the AI-triage POST) composes an OpenAI-style
-  `chat/completions` request and attaches the configured API key as an
-  `Authorization: Bearer …` header.
+- `AuditDialog::requestAiTriage` (single-finding) and
+  `AuditDialog::requestAiTriageBatch` (batch) each compose an OpenAI-style
+  `chat/completions` request and attach the configured API key as an
+  `Authorization: Bearer …` header. Both use their own
+  `QNetworkAccessManager` — not `LlmClient::send` — so each must carry the
+  egress guards independently.
 - `AuditDialog::renderResults` builds the in-app `QTextBrowser` HTML, including a
   per-finding "verdict badge" whose `title` attribute carries the
   AI-supplied `aiReasoning` text.
@@ -18,6 +21,11 @@ Two indie-review #6 findings in the AuditDialog AI-triage / results-render path.
   plaintext `http` to a non-loopback host, the request is refused before any
   network send. The check reuses `LlmClient::isPlaintextRemote` (localhost /
   loopback is exempt so a local dev LLM server still works).
+- **INV-3** (ANTS-2108) The guard from INV-1 is present on **both** AI-triage
+  POST paths — single-finding and batch. Because neither path routes through
+  `LlmClient::send`, the chokepoint backstop added there does not cover them;
+  each gates `!apiKey.isEmpty() && LlmClient::isPlaintextRemote(...)`
+  independently. (Pre-2108 only the single-finding path was guarded.)
 - **INV-2** (ANTS-1830) The verdict-badge `title` attribute that interpolates
   the untrusted `aiReasoning` is **double-quoted**, not single-quoted.
   `QString::toHtmlEscaped()` escapes `"` but not `'`, so a single-quoted

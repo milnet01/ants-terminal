@@ -6367,17 +6367,19 @@ class; the deferrals below cover the rest.
   Kind: chore.
   Source: user-crash-report-2026-06-11 (cc1plus SIGBUS during reviewdialogbase.cpp compile).
 
-- 📋 [ANTS-2108] **Indie-review 2026-06-11: cleartext Bearer API-key egress on the review-dialog family (auditdialog batch path + coldeyesdialog) — add isPlaintextRemote refusal to LlmClient::send.**
+- ✅ [ANTS-2108] **Indie-review 2026-06-11: cleartext Bearer API-key egress on the review-dialog family (auditdialog batch path + coldeyesdialog) — add isPlaintextRemote refusal to LlmClient::send.**
   auditdialog.cpp:5742/5747 requestAiTriageBatch and the v2 review dialogs (coldeyesdialog via ReviewDialogBase->LlmClient::send) gate only on scheme + SSRF host-block, never on cleartext http to a public remote. The single-finding path (auditdialog.cpp:5467, ANTS-1826) and aidialog.cpp:236 already guard via LlmClient::isPlaintextRemote; the v2 refactor didn't carry it. Fix once in LlmClient::send so all egress is covered. Detail: .indie-review/reports-2026-06-11/{auditdialog,coldeyesdialog}.md.
   **Layman:** Some of the AI-review buttons could send your API key over an unencrypted connection. Block that in one shared place.
   Kind: security.
   Source: indie-review-2026-06-11 (auditdialog H1, coldeyesdialog H1 — cross-cutting).
+  Resolved (2026-06-12): cleartext-Bearer egress closed at two points — (1) backstop refusal in LlmClient::send (covers coldeyesdialog → ReviewDialogBase, which does route through send), gated on a non-empty key with loopback exempt; (2) a direct guard on the auditdialog BATCH path (requestAiTriageBatch), which — contrary to the item's 'fix once in send' note — uses its own QNetworkAccessManager and is NOT reached by send. aidialog's soft warning upgraded to a hard refusal for consistency (m_httpWarned latch removed). Tests: LlmClient.Ants2108_SendRefusesCleartextRemoteBearer + AuditDialogRenderHardening.BothAiTriagePathsGuardCleartext (count-based, both paths). Follow-up gap logged for the raw-QNAM paths' missing SSRF/redirect/userinfo guards.
 
-- 📋 [ANTS-2109] **Indie-review 2026-06-11: llmclient SSRF/credential gaps — URL userinfo (user:pass@host) egresses unscrubbed + SSRF blocklist is blind to DNS hostnames.**
+- ✅ [ANTS-2109] **Indie-review 2026-06-11: llmclient SSRF/credential gaps — URL userinfo (user:pass@host) egresses unscrubbed + SSRF blocklist is blind to DNS hostnames.**
   H1: send() POSTs QUrl(req.endpoint) verbatim (llmclient.cpp:222) so Basic-auth userinfo travels out and skips the host-keyed SSRF/scheme/cleartext gates. H2: SSRF guard (llmclient.cpp:100) checks IP literals only — http://attacker.tld resolving to 169.254.169.254 is allowed (redirects are hard-refused, so the rebinding window is a single A-record). IP-literal blocklist itself is complete/correct. Detail: .indie-review/reports-2026-06-11/llmclient.md.
   **Layman:** The AI-endpoint connection could leak embedded credentials and could be pointed at internal addresses via a hostname instead of a raw IP.
   Kind: security.
   Source: indie-review-2026-06-11 (llmclient H1+H2).
+  Resolved (2026-06-12): H1 (userinfo egress) — LlmClient::send now refuses any endpoint whose URL embeds user:pass@host (scheme-agnostic), before posting; test LlmClient.Ants2109_SendRefusesUrlUserinfo. H2 (DNS-host SSRF blindness) — resolved via option (b) from the review report: the isEndpointHostBlocked contract in llmclient.h is corrected to state IP-LITERAL shapes only, no longer overstating hostname protection. Did NOT add DNS resolution: a sync lookup blocks the UI and an async one still leaves a rebinding window (resolved IP ≠ connect IP), disproportionate for a user-owned 0600 ai_endpoint with redirects already hard-refused (Simplicity First). Reopen if the threat model changes (e.g. plugin/imported ai_endpoint).
 
 - ✅ [ANTS-2110] **Indie-review 2026-06-11: ~TerminalWidget ignores the VtStream worker wait(2000) timeout — late batchReady/finished to a half-destroyed widget (UAF, same class as ANTS-2101/2103).**
   terminalwidget.cpp:415-418: the destructor calls wait(2000) but falls through on timeout; a slow/stuck VtStream worker can then deliver batchReady/finished to a half-destroyed widget, and ~QThread aborts on a still-running parented thread. Detail: .indie-review/reports-2026-06-11/terminalwidget.md.
@@ -6447,6 +6449,12 @@ class; the deferrals below cover the rest.
   **Layman:** The automated test run had been failing on the build server for days; two unrelated test problems, both now fixed.
   Kind: fix.
   Source: in-session-2026-06-12 (red-CI diagnosis during 0.7.96 release).
+
+- 📋 [ANTS-2121] **auditdialog AI-triage raw-QNAM paths lack the full LlmClient egress hardening (SSRF host-block + redirect refusal + userinfo strip).**
+  Both AuditDialog AI-triage POSTs — requestAiTriage (single, auditdialog.cpp:~5475) and requestAiTriageBatch (~5760) — build a raw QNetworkRequest on their own QNetworkAccessManager instead of going through LlmClient::send. After ANTS-2108 both now carry the cleartext-Bearer refusal, but they still lack three guards that LlmClient::send has: (1) isEndpointHostBlocked SSRF check (ANTS-1746) — an IP-literal metadata/RFC-1918 ai_endpoint is blocked for the chat/AiDialog path but NOT for audit triage; (2) ManualRedirectPolicy redirect refusal (ANTS-1798) — a 3xx into a metadata host would be followed; (3) the new URL-userinfo refusal (ANTS-2109 H1). Right fix (rule 3, reuse): route both audit-triage POSTs through LlmClient (it would need an opt-out of stream:true / a non-streaming json_object mode + temperature), or factor the four-gate validation into one shared helper both call. Mirror, don't duplicate. Detail: .indie-review/reports-2026-06-11/{auditdialog,llmclient}.md.
+  **Layman:** The audit window's AI-review buttons talk to the AI server through their own connection, which is missing some of the safety checks the main AI client has — it could be pointed at an internal address or follow a sneaky redirect.
+  Kind: security.
+  Source: in-session-2026-06-12 (discovered fixing ANTS-2108/2109).
 
 ### 🔌 Ants MCP — improvements from running /audit + /indie-review + /debt-sweep (2026-05-14)
 
