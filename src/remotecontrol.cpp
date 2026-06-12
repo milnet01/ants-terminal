@@ -60,6 +60,7 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QCollator>
+#include <QLocale>
 #include <QSet>
 #include <QStandardPaths>
 #include <QTabWidget>
@@ -6290,7 +6291,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
         if (position == QStringLiteral("sorted") &&
             sortCol >= 0 && sortCol < columns) {
             // Numeric-aware ascending insert by the sort_col cell.
-            QCollator coll;
+            // Pin an explicit locale: a default QCollator follows the
+            // system locale, which under C/POSIX (LANG unset on CI runners)
+            // silently degrades to a codepoint compare that ignores
+            // setNumericMode — filing "40" before "9". An explicit locale
+            // keeps ICU's numeric collation regardless of $LANG.
+            QCollator coll(QLocale(QLocale::English, QLocale::UnitedStates));
             coll.setNumericMode(true);
             coll.setCaseSensitivity(Qt::CaseInsensitive);
             const QString key = escapeCell(cells.value(sortCol));

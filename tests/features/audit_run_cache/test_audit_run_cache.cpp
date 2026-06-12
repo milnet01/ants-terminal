@@ -100,9 +100,14 @@ TEST(AuditRunCache, MainWindowEnvelopeSurfacesCachePathAndPriorRun) {
     // Locate the audit_run provider lambda.
     const auto reg = mw.find("registerToolProvider(\"audit_run\"");
     ASSERT_NE(reg, std::string::npos);
-    // Window widened 6500 → 7200 for ANTS-2032's partial/incomplete_tools
-    // envelope block, which lands before the cache_path/prior_run lines.
-    const std::string region = mw.substr(reg, 7200);
+    // Slice from the audit_run anchor to the NEXT provider registration
+    // rather than a fixed byte window: a magic window keeps falling short as
+    // the lambda grows (6500 → 7200 for ANTS-2032's partial/incomplete_tools
+    // block, then ANTS-2103's worker-thread wrapper pushed prior_run past
+    // 7200). The whole-lambda slice can't go stale on the next edit.
+    const auto regEnd = mw.find("registerToolProvider(", reg + 1);
+    const std::string region =
+        mw.substr(reg, regEnd == std::string::npos ? std::string::npos : regEnd - reg);
 
     EXPECT_TRUE(contains(region, "\"cache_path\""))
         << "audit_run envelope must emit cache_path";
