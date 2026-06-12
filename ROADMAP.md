@@ -16074,6 +16074,7 @@ subsection.
   Lanes: roadmapfoldin, roadmap-format.
   Source: cross-session-report-2026-06-05 (RetroDB sessions 2/3/4).
   Resolved (2026-06-05): added a `format_mismatch` refusal (code in docs/standards/mcp-error-codes.md) across all five roadmap_log write paths — append, append_batch, create_section, flip, flip_batch (flip serves annotate). Shared rcBulletsArePassHeadings + rcPassHeadingsWriteRefusal helpers; the splice paths gate on preflightBullets after the unrecognised_format gate, and the flip path gates early (right after the file read) so its `- **Status**:` list items aren't mistaken for GFM bullets → misleading bullet_not_found. Envelope carries format:"pass-headings" + an Edit-fallback hint. Scope = the minimum-viable warning the bullet asked for; a real heading-format writer remains future work. Regression test: tests/features/mcp_roadmap_log_pass_format_mismatch/ (INV-1..5, behavioural). Full test_claude 983/983.
+  Follow-on (2026-06-12): RetroDB re-confirmed on v3.7.0 that only the format_mismatch warning shipped here; the real heading-format writer (append/create + sub-bullet flip) is now tracked as ANTS-2126.
 
 - ✅ [ANTS-2032] **`audit_run` should land SARIF to `.audit_cache/` before serialising the inline reply + return a partial envelope on per-tool budget blowout.**
   One RetroDB call (ruff+bandit+semgrep+gitleaks, top_findings_count=60) returned `empty reply from Ants MCP` + a terminal relaunch; not reproducible and possibly a symptom of the crash, not an audit_run fault (filed LOW). Defensive hardening regardless of root cause: (1) write the SARIF artifact to `.audit_cache/` BEFORE building the inline reply, so a too-big reply still leaves an artifact for last_audit_summary; (2) return a partial envelope with whatever tools completed rather than all-or-nothing empty when one tool (e.g. full-tree semgrep at N=60) blows a response-size/wall-clock budget.
@@ -16440,6 +16441,20 @@ server build id so clients can self-diagnose this.
   Kind: enhancement.
   Source: in-session-2026-06-11 (ANTS-2080 follow-up).
   Resolved (2026-06-11): return:headline_only now echoes post_bullets for op:flip and op:flip_batch via a new rcStatusWord() emoji->word reverse map (ants-v1 + GFM + batch paths). Schema `return` prose extended. 2 INVs.
+
+- 📋 [ANTS-2125] **changelog_log: surface a `malformed_section` advisory when the active section interleaves non-heading prose between `###` category blocks.**
+  DOOM Ants finding (LOW), 2026-06-12. While landing items with changelog_log op:"add_from_roadmap", the target CHANGELOG.md had a stray footer (`---` + a GPL-attribution paragraph) sitting INSIDE the `## [Unreleased]` section, between the `### Added` block and the later `### Changed` / `### Fixed` headings. The verb correctly inserted entries in canonical category order, but because the non-category prose was embedded mid-section the rendered result was disjointed (Added, then footer, then Changed/Fixed below). Not a correctness bug — the malformed layout pre-existed — but a guardrail opportunity: when the active section contains non-heading prose interleaved between `###` category blocks, emit a one-line non-blocking `advisory` (like roadmap_log's `possible_duplicates`) so the caller knows the section is malformed before the insert compounds it. Saves a manual CHANGELOG restructure after the fact.
+  **Layman:** When Ants adds a changelog entry to a messy section, warn the user it's messy instead of silently making it messier.
+  Kind: enhancement.
+  Lanes: mcp, changelog.
+  Source: cross-session-2026-06-12 (DOOM Ants).
+
+- 📋 [ANTS-2126] **roadmap_log heading-format WRITER (append/create + sub-bullet flip) — the real writer ANTS-2031 punted, not just the shipped format_mismatch warning.**
+  RetroDB re-confirm, 2026-06-12 (v3.7.0, Pass 43.1 session). ANTS-2031 shipped only the `format_mismatch` REFUSAL across the five write paths — a real `#### Pass N.M` heading-format writer was explicitly left as future work. This session needed TWO write ops the writer still can't do, both done by hand: (1) status flip of a sub-bullet todo→done (the classic ANTS-2031 case), and (2) appending a brand-new `#### Pass 43.5` section with body. Point: when a real heading-format writer is scoped, it must cover append/create AND sub-bullet-level flip/annotate — not just status mutation — or a re-scope-and-carve-follow-on pass (a common pattern on this roadmap) still falls back to hand-Edit for half the work. Fallback ergonomics remain good (the envelope hint tells the caller to hand-edit immediately), so this is an enhancement, not a blocker. Follow-on to [[ANTS-2031]].
+  **Layman:** Ants can now warn when a heading-style to-do list can't be written to; this is the bigger follow-up where it actually writes to them — covering both adding new items and ticking off sub-items.
+  Kind: enhancement.
+  Lanes: roadmapfoldin, roadmap-format.
+  Source: cross-session-2026-06-12 (RetroDB).
 
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 
