@@ -103,6 +103,22 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.96" date="2026-06-12">
+      <description>
+        <p>Ants-MCP token-frugality expansion with roadmap/read-verb enhancements, a sweep of teardown and use-after-free crash fixes, audit-engine correctness hardening, auto-model-switcher robustness, and indie-review security gates.</p>
+        <ul>
+          <li><em>Added:</em> MCP tools for cross-session token efficiency: <code>read_region</code> (line-range / symbol-body reads vs. whole-file), <code>apply_edits</code> (multi-file atomic edits in one call), <code>codebase_index</code> (pre-computed structural map), and <code>find_definition / find_caller</code> with optional <code>include_body</code> to collapse the find → read two-step. <code>roadmap_log</code> gains <code>flip_batch</code>, <code>append_batch</code>, and <code>dry_run</code> preview. <code>changelog_log</code> adds batch-close. Read tools support opt-in <code>compact:true</code> to drop empty/dead-weight fields. (ANTS-2021/2022/1637/2087/2080/2077/2044/2091)</li>
+          <li><em>Added:</em> MCP observability — <code>session_orient</code> / <code>tool_info</code> report build identity (version, git SHA, date), <code>roadmap_query</code> returns full headlines when truncated, and <code>next_call_hint</code> nudges etag reuse. <code>model_switch_stats</code> clarifies why auto-switch is off (never_enabled / user_disabled). <code>tool_info catalog:true</code> returns the full ~70-verb catalogue in one call. (ANTS-2073/2075/2081/2033/1985)</li>
+          <li><em>Fixed:</em> Teardown crashes — plugin settings.get no longer hangs on shutdown; tab close while text-processor is stuck no longer crashes; AI-review dialogs clean up network jobs on close. Tab close (×) button now visible in all themes with correct hover tinting. (ANTS-2117/2110/2111/2098)</li>
+          <li><em>Fixed:</em> Use-after-free crash in MCP/IPC server under concurrent requests; permission-prompt theme repaint no longer crashes; concurrent Ants instances no longer drop ledger records on write race. (ANTS-2026/2024/1989)</li>
+          <li><em>Fixed:</em> Audit-engine correctness batch: clean finding messages, semgrep error handling, ROADMAP fold-in markdown escape, secret-scanner tool classification, gitleaks build-dir pruning (68 → 3 s), <code>audit_run scope:"full"</code> for deterministic whole-tree sweeps. (ANTS-2003/2016/2015)</li>
+          <li><em>Fixed:</em> Auto-model-switcher: require real "model switched" banner (not bare phrase), stop over-matching planning keywords, four robustness gaps in switch actuator, never actuate into bare shell or permission prompts. (ANTS-2020/2010/2009)</li>
+          <li><em>Security:</em> Claude hook routing + MCP wrap hardening; remote-control symlink-escape + slow-regex DoS + UID verification; permission-prompt spoofing gate; private cache dirs created at 0700; AI client error scrubbing + 10 MiB cap. (ANTS-1996/1995/1993/1988)</li>
+          <li><em>Changed:</em> Ants MCP replies lean by default — empty fields stripped via new <code>claude.mcp_terse_responses</code> config (on by default); <code>git_state</code> works with no arguments; CLAUDE.md MCP notes moved out of session preamble. (ANTS-2085/2074/2088)</li>
+          <li><em>Changed:</em> Review Changes dialog clickable filenames jump to file within dialog; back-to-top button appears on scroll. Roadmap dialog remembers size only, re-centers every open. Test-suite reliability hardening across 10 test lanes. (ANTS-1967/1966/2012/1589)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.95" date="2026-06-04">
       <description>
         <p>Settings-dialog and menu usability fixes (ANTS-1980/1981/1982).</p>

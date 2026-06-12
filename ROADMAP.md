@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.95 (2026-06-04). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.96 (2026-06-12). See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -6441,6 +6441,12 @@ class; the deferrals below cover the rest.
   **Layman:** A batch of smaller, lower-risk cleanups the review found across the codebase — tracked here so none are lost.
   Kind: review-fix.
   Source: indie-review-2026-06-11 (medium/low consolidation).
+
+- ✅ [ANTS-2120] **Red CI since ANTS-2100 — locale-dependent roadmap_log_bundle_row sort + stale audit_run_cache scrape window.**
+  Two deterministic CI failures (build-test + build-asan), red on every push back to ANTS-2100, neither caused by the teardown bundle. (1) PRODUCTION BUG: cmdRoadmapLogBundleRow's "sorted" insert default-constructed QCollator, which follows QLocale::system — under a C/POSIX locale (LANG unset on CI runners) it silently ignores setNumericMode and compares by codepoint, filing bundle "40" before "9". Passed locally only because the dev box has a UTF-8 locale; CI runs C.UTF-8 (UTF-8 encoding, POSIX collation) so numeric mode still failed. Fix: pin QCollator to an explicit QLocale(English, UnitedStates) so ICU numeric collation holds regardless of $LANG (remotecontrol.cpp). (2) STALE TEST: AuditRunCache.MainWindowEnvelopeSurfacesCachePathAndPriorRun scrapes a fixed 7200-char window after the audit_run anchor; ANTS-2103's worker-thread wrapper pushed the cache_path/prior_run lines to delta ~7800. Production code correct; fix slices the whole provider lambda (to the next registerToolProvider) instead of a magic byte count. Verified: full suite 2064/2064 green under LC_ALL=C.UTF-8 (CI parity).
+  **Layman:** The automated test run had been failing on the build server for days; two unrelated test problems, both now fixed.
+  Kind: fix.
+  Source: in-session-2026-06-12 (red-CI diagnosis during 0.7.96 release).
 
 ### 🔌 Ants MCP — improvements from running /audit + /indie-review + /debt-sweep (2026-05-14)
 

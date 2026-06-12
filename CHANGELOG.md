@@ -12,6 +12,12 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.96] — 2026-06-12
+
+**Theme:** Ants-MCP token-frugality and roadmap / read-verb expansion, a
+sweep of teardown / use-after-free crash fixes, and indie-review security
+hardening.
+
 ### Added
 
 - **`tab_list` exposes per-tab Claude glyph state — `claude_state`, `awaiting_input`, and `plan_mode`/`auditing`/`tool` overlays — so a session can verify the per-tab dot/prompt state programmatically instead of eyeballing the tab strip** (ANTS-1865)
@@ -106,6 +112,9 @@ for security-relevant changes.
   When a scan tool times out or crashes, audit_run already kept the results from the tools that finished (and still wrote the SARIF file to disk) — it never came back empty over one tool. The result now also says so directly with a `partial` flag and an `incomplete_tools` list, so you can see at a glance that a run was incomplete without digging through per-tool status.
 
 ### Fixed
+
+- **`roadmap_log_bundle_row` "sorted" inserts now order numerically under every locale** (ANTS-2120)
+  The sorted insert used a collator that follows the system locale; under a C/POSIX locale (as on the build server) it silently fell back to character-by-character ordering and filed bundle "40" before "9". It now pins a fixed locale so numbers always sort as numbers. (Also un-breaks the build server's automated test run, red since early June.)
 
 - **A plugin that reads a setting while shutting down can no longer hang itself and get wrongly killed** (ANTS-2117)
   The blocking settings.get path is now severed before a plugin's Unload handler runs, so a plugin saving state on shutdown returns immediately (nil) instead of deadlocking the 2-second teardown wait and being spuriously detached as a zombie.

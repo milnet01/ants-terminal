@@ -1,3 +1,46 @@
+ants-terminal (0.7.96-1) unstable; urgency=medium
+
+  * Added: MCP token-efficiency tools — read_region (line-range / symbol-body
+    reads), apply_edits (multi-file atomic edits), codebase_index
+    (pre-computed structural map), find_definition/find_caller with
+    include_body. roadmap_log gains flip_batch / append_batch / dry_run
+    preview; changelog_log adds batch-close. Read tools support compact:true
+    to drop empty fields. (ANTS-2021/2022/1637/2087/2080/2077/2044/2091)
+  * Added: MCP observability — session_orient / tool_info report build
+    identity (version, SHA, date); roadmap_query returns full headlines when
+    truncated; next_call_hint nudges etag reuse; model_switch_stats clarifies
+    why auto-switch is off; tool_info catalog:true returns full ~70-verb
+    catalogue in one call. (ANTS-2073/2075/2081/2033/1985)
+  * Fixed: Teardown crashes — plugin settings.get no longer hangs on
+    shutdown; tab close while text-processor stuck no longer crashes;
+    AI-review dialogs clean up network jobs on close; tab close (×) button
+    now visible in all themes. (ANTS-2117/2110/2111/2098)
+  * Fixed: Use-after-free crash in MCP/IPC server under concurrent requests;
+    permission-prompt theme repaint no longer crashes; concurrent Ants
+    instances no longer drop ledger records on write race. (ANTS-2026/2024/1989)
+  * Fixed: Audit-engine correctness — clean finding messages, semgrep error
+    handling, ROADMAP fold-in markdown escape, secret-scanner tool
+    classification, gitleaks build-dir pruning (68→3s), audit_run
+    scope:"full" for deterministic whole-tree sweeps. (ANTS-2003/2016/2015)
+  * Fixed: Auto-model-switcher robustness — require real "model switched"
+    banner; stop over-matching planning keywords; fix four switch actuator
+    gaps; never actuate into bare shell or permission prompts.
+    (ANTS-2020/2010/2009)
+  * Security: Claude hook routing + MCP wrap hardening; remote-control
+    symlink-escape + slow-regex DoS + UID verification; permission-prompt
+    spoofing gate; private cache dirs at 0700; AI client error scrubbing +
+    10 MiB cap. (ANTS-1996/1995/1993/1988)
+  * Changed: Ants MCP replies lean by default — empty fields stripped via
+    claude.mcp_terse_responses config (on by default); git_state works with
+    no arguments; CLAUDE.md MCP notes moved out of session preamble.
+    (ANTS-2085/2074/2088)
+  * Changed: Review Changes dialog — clickable filenames jump to file;
+    back-to-top button on scroll. Roadmap dialog remembers size only,
+    re-centers every open. Test-suite reliability hardening.
+    (ANTS-1967/1966/2012/1589)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 12 Jun 2026 00:00:00 +0200
+
 ants-terminal (0.7.95-1) unstable; urgency=medium
 
   * Fixed: the Settings dialog clipped its input text when the window was
