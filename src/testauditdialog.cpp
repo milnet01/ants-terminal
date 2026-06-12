@@ -176,14 +176,48 @@ QList<ReviewLane> TestAuditDialog::derivePartition() {
 }
 
 void TestAuditDialog::prepareDispatch() {
-    // ANTS-1843 — re-derive the partition once up-front. runPartition()
-    // refreshes m_token + m_chunks (repopulating the in-process engine
-    // cache after a restart) AND rebuilds the lane set via setLanes(), so
-    // the base startDispatch loop enqueues lanes that match the live token.
-    // This pre-empts briefFor()'s own stale_partition recovery, which kept
-    // firing mid-loop and could diverge the token/lanes from enqueued jobs.
-    // briefFor() retains that recovery for direct callers (INV-6).
-    runPartition();
+    // ANTS-1843 — re-derive the partition once up-front so m_token + m_chunks
+    // (and the lane set) are a single consistent snapshot before the base
+    // dispatch loop enqueues jobs; this pre-empts briefFor()'s own
+    // stale_partition recovery, which kept firing mid-loop and could diverge
+    // the token/lanes from enqueued jobs. briefFor() retains that recovery for
+    // direct callers (INV-6).
+    // ANTS-2114 — resume (ANTS-1580): re-read the persisted progress here, at
+    // the start of the dispatch path (the configured session-mem dir is set
+    // after construction, and resuming is meaningful at re-dispatch time, not
+    // at open). loadResume() is now a live production caller — the H1 zombie.
+    loadResume();
+    runEnginePartition();   // refresh m_token + m_chunks (no lane rebuild yet)
+
+    // When the persisted collection belongs to THIS partition (token match —
+    // the H2 staleness gate, previously decorative), enqueue only the chunks
+    // not yet reviewed, so a reopened mid-audit dialog doesn't re-spend AI
+    // tokens on chunks whose verbatim reports already sit on disk under the
+    // same token dir. The engine synthesis still reads every report file in
+    // reportsRelDir() (old + new), so the summary stays complete. A changed
+    // test tree re-hashes to a new token → the stale collection is ignored.
+    const bool resuming =
+        m_persistedToken == m_token && !m_persistedCollected.isEmpty();
+    const QStringList wanted = resuming ? unreviewedChunkIds() : QStringList();
+    QList<ReviewLane> lanes;
+    lanes.reserve(m_chunks.size());
+    for (const TestAuditEngine::Chunk &c : m_chunks)
+        if (!resuming || wanted.contains(c.id))
+            lanes << ReviewLane{ c.id, c.id, c.paths.join(QChar('\n')) };
+    // A resume that would skip EVERY chunk (the prior run finished) leaves
+    // nothing to dispatch — fall back to a full re-audit rather than stranding
+    // the dialog with an empty job set.
+    if (lanes.isEmpty())
+        for (const TestAuditEngine::Chunk &c : m_chunks)
+            lanes << ReviewLane{ c.id, c.id, c.paths.join(QChar('\n')) };
+    setLanes(lanes);
+
+    if (resuming && statusLabel())
+        statusLabel()->setText(
+            statusLabel()->text()
+            + tr(" · resuming: %1 of %2 chunk(s) already reviewed")
+                  .arg(m_persistedCollected.size())
+                  .arg(m_chunks.size()));
 }
 
 TestAuditEngine::BriefResult TestAuditDialog::briefFor(const QString &chunkId) {
@@ -360,12 +394,23 @@ void TestAuditDialog::performFoldIn() {
 
 void TestAuditDialog::persistResumeState() {
     if (m_token.isEmpty()) return;
+    // ANTS-2114 — the collected set is the union of chunks reviewed this run
+    // (m_collectedReports) with any carried over from a resumed session of the
+    // SAME partition (m_persistedCollected, token-gated). Without the union a
+    // resumed run would persist only its own (unreviewed-half) chunk ids, so a
+    // second resume would re-audit the first batch. The token gate keeps a
+    // changed tree (new token) from inheriting a stale superset.
+    QSet<QString> collected(m_collectedReports.keyBegin(),
+                            m_collectedReports.keyEnd());
+    if (m_persistedToken == m_token)
+        collected.unite(m_persistedCollected);
+
     QJsonObject o;
     o[QStringLiteral("partition_token")] = m_token;
     o[QStringLiteral("dimensions")] =
         QJsonArray::fromStringList(m_dimensionsActive);
-    o[QStringLiteral("collected_chunk_ids")] =
-        QJsonArray::fromStringList(m_collectedReports.keys());
+    o[QStringLiteral("collected_chunk_ids")] = QJsonArray::fromStringList(
+        QStringList(collected.cbegin(), collected.cend()));
     SessionMemoryEngine::execute(projectCwd(), SessionMemoryEngine::Op::Set,
                                  QStringLiteral("test_audit_resume"), o,
                                  m_sessionMemBaseDir);

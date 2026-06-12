@@ -9,9 +9,12 @@
 // dispatches each chunk to the configured LLM endpoint in parallel,
 // writes the verbatim reports under .audit_cache/test_audit_<token>/,
 // runs one synthesis follow-up, and folds findings into ROADMAP.md — all
-// without spending Claude orchestration tokens. A partition_token via
-// SessionMemoryEngine supports closing and resuming the dialog mid-audit
-// (ANTS-1580).
+// without spending Claude orchestration tokens. A partition_token persisted
+// via SessionMemoryEngine lets a reopened dialog resume a mid-audit run: on
+// the next Dispatch, chunks already reviewed under the same token are skipped
+// (their verbatim reports still sit on disk), so only the unreviewed remainder
+// is re-sent to the LLM (ANTS-1580, wired ANTS-2114). A changed test tree
+// re-hashes to a new token and the stale collection is ignored.
 
 #pragma once
 

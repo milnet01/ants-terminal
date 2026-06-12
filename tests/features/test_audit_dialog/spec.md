@@ -32,6 +32,20 @@ smoke assertion.
   returns only the chunks not already collected.
 - **INV-8** — constructing the dialog with an unset/invalid `ai_endpoint`
   leaves dispatch disabled; the dialog constructs without crashing.
+- **INV-9** (ANTS-1843) — `prepareDispatch()` re-derives the partition
+  once up-front, so a stale in-process token is refreshed to the
+  deterministic file-set token before the dispatch loop enqueues jobs.
+- **INV-10** (ANTS-2114) — `prepareDispatch()` is the live caller that
+  wires resume into the dispatch path: with a persisted collection whose
+  `partition_token` matches the freshly-derived token, it re-reads progress
+  (no explicit `loadResume()`), enqueues only `unreviewedChunkIds()`, and
+  surfaces a "resuming: N of M" status hint.
+- **INV-11** (ANTS-2114) — the persisted `partition_token` GATES the
+  collected set: a collection stamped with a different token (a changed
+  test tree) is ignored, so the run is a full re-audit rather than a
+  partial resume against phantom chunk ids. `persistResumeState()` likewise
+  unions the prior collection only on a token match, so a second resume of
+  an unchanged tree never re-audits the first batch.
 
 Note: the spec names the cache-miss code `stale_token`; the engine
 actually returns `stale_partition` — the dialog (and this test) use the

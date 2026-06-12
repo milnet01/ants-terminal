@@ -12,6 +12,11 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **Test-suite Audit dialog now resumes a mid-audit run** (ANTS-2114)
+  Reopening the Test Audit dialog and re-running it now skips chunks already reviewed in the prior session (their reports are kept on disk), so only the unreviewed remainder is re-sent to the AI — saving tokens and time. A changed test tree is detected and re-audited cleanly.
+
 ### Fixed
 
 - **Audit GUI and command-line audit now agree on tools that print to both output streams** (ANTS-2118)

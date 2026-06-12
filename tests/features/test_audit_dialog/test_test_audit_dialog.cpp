@@ -18,6 +18,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QSet>
+#include <QLabel>
 #include <QString>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -32,6 +33,7 @@ public:
     using TestAuditDialog::onAllReportsCollected;
     using TestAuditDialog::performFoldIn;
     using TestAuditDialog::prepareDispatch;
+    using ReviewDialogBase::statusLabel;   // ANTS-2114 — observe resume hint
 };
 
 bool writeFile(const QString &path, const QString &body) {
@@ -290,4 +292,60 @@ TEST(TestAuditDialog, INV8_DispatchDisabledSmoke) {
     Dlg dlg(tmp.path(), nullptr, nullptr);
     dlg.setSessionMemBaseDir(mem.path());
     SUCCEED();
+}
+
+// Seed session_memory with `collected` already reviewed under `token`.
+static void seedResume(const QString &cwd, const QString &memDir,
+                       const QString &token, const QStringList &collected) {
+    QJsonObject o;
+    o["partition_token"]     = token;
+    o["dimensions"]          = QJsonArray();
+    o["collected_chunk_ids"] = QJsonArray::fromStringList(collected);
+    const auto set = SessionMemoryEngine::execute(
+        cwd, SessionMemoryEngine::Op::Set,
+        QStringLiteral("test_audit_resume"), o, memDir);
+    ASSERT_TRUE(set.ok) << set.code.toStdString();
+}
+
+// ANTS-2114 (H1) — prepareDispatch() is the live production caller that wires
+// resume into the dispatch path: with a token-matched persisted collection it
+// re-reads progress (no explicit loadResume()) and surfaces a resume hint,
+// proving the previously-zombie read-back now runs.
+TEST(TestAuditDialog, INV10_PrepareDispatchResumesOnTokenMatch) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    QTemporaryDir mem; ASSERT_TRUE(mem.isValid());
+    buildSuite(tmp.path());
+
+    Dlg dlg(tmp.path(), nullptr, nullptr);
+    dlg.setSessionMemBaseDir(mem.path());
+    ASSERT_FALSE(dlg.chunks().isEmpty());
+    ASSERT_NE(dlg.statusLabel(), nullptr);
+    seedResume(tmp.path(), mem.path(), dlg.partitionToken(),
+               {dlg.chunks().first().id});
+
+    dlg.prepareDispatch();   // no explicit loadResume() — the wiring must
+    EXPECT_TRUE(dlg.statusLabel()->text().contains(QStringLiteral("resuming")))
+        << "token-matched resume must surface a hint via prepareDispatch; got: "
+        << dlg.statusLabel()->text().toStdString();
+}
+
+// ANTS-2114 (H2) — the persisted token GATES the collected set: a collection
+// stamped with a different token (a changed test tree) is ignored, so the run
+// is a full re-audit, not a partial resume against phantom chunk ids.
+TEST(TestAuditDialog, INV11_StaleTokenIgnoresPersistedCollection) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    QTemporaryDir mem; ASSERT_TRUE(mem.isValid());
+    buildSuite(tmp.path());
+
+    Dlg dlg(tmp.path(), nullptr, nullptr);
+    dlg.setSessionMemBaseDir(mem.path());
+    ASSERT_FALSE(dlg.chunks().isEmpty());
+    ASSERT_NE(dlg.statusLabel(), nullptr);
+    seedResume(tmp.path(), mem.path(), QStringLiteral("stale-token-from-old-tree"),
+               {dlg.chunks().first().id});
+
+    dlg.prepareDispatch();
+    EXPECT_FALSE(dlg.statusLabel()->text().contains(QStringLiteral("resuming")))
+        << "a token mismatch must NOT resume; got: "
+        << dlg.statusLabel()->text().toStdString();
 }
