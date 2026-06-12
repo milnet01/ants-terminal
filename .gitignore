@@ -130,3 +130,6 @@ RoadMap_Design/
 
 # Indie-review sidecar reports (transient, regenerated per sweep)
 .indie-review/
+
+# Investigation scratch (untracked working notes)
+INVESTIGATION_tab_close_x.md
