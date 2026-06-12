@@ -6476,6 +6476,12 @@ class; the deferrals below cover the rest.
   Lanes: auditengine.
   Source: indie-review-2026-06-11 (auditengine M1) — deferred 2026-06-12.
 
+- 📋 [ANTS-2124] **Drop dead <fstream>/<sstream> includes in test_audit_engine_extraction.cpp.**
+  tests/features/audit_engine_extraction/test_audit_engine_extraction.cpp includes <fstream> (line 18) and <sstream> (line 20) but uses neither (verified by grep). clangd flags both as unused-includes. Pre-existing (not introduced by the ANTS-2118 merge-test addition); left in place rather than drive-by-removed. Trivial: delete the two lines next time the file is touched.
+  **Layman:** Two unused #include lines in an audit-engine test file; harmless but flagged by the linter.
+  Kind: chore.
+  Source: in-session-2026-06-12 (clangd unused-includes, surfaced while adding the ANTS-2118 merge test).
+
 ### 🔌 Ants MCP — improvements from running /audit + /indie-review + /debt-sweep (2026-05-14)
 
 The full audit / indie-review / debt-sweep cycle on 2026-05-14
