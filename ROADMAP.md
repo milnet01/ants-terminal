@@ -17486,6 +17486,13 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Lanes: mcp, devexp.
   Source: user-request-2026-06-15.
 
+- 📋 [ANTS-2139] **docs_index MCP verb — a documentation map/index, sibling to codebase_index (ANTS-1637), so sessions find the right doc in one call.**
+  User request 2026-06-15. codebase_index (ANTS-1637, shipped) maps SOURCE (files->symbols->lanes) but does not index documentation content. Doc discovery today is fragmented: spec_query covers only docs/specs/, project_layout only locates dirs (and standards_files is buggy, ANTS-2138), subsystem is the lane catalogue. So 'where is the contract/standard/decision for X?' costs multiple greps/Reads — the exact token cost codebase_index removed, but for docs.\n\nProposed: a docs_index verb modeled on codebase_index's architecture (pure helper src/docsindex.{h,cpp} in ants_core_lib + cmdDocsIndex handler + full MCP wiring + lazy disk cache ~/.cache/ants-terminal/docs-index/<cwdHash>.json, reusing SessionMemoryEngine::cwdHash). Index the docs/ tree (specs, standards, decisions, journal) + top-level docs (README, CLAUDE.md, CHANGELOG, ROADMAP) by: heading outline per doc, topic/keyword -> doc, spec<->ANTS-NNNN<->status linkage, and the [[cross-reference]] / relative-link graph. query modes: by topic / by ANTS-id / by doc-path / list-all (mirror codebase_index query shape). \n\nComplements (does NOT duplicate) spec_query — spec_query stays the deep per-spec reader; docs_index is the cross-doc discovery layer over ALL doc types. Reuse: needs a markdown heading scanner (check whether FileOutline has/【can grow a markdown mode; else a small heading+link parser). RAM: in-memory index is just headings+paths+links (small); cache lives out of the repo like codebase_index. Spec-gated: write docs/specs/ANTS-NNNN.md -> /cold-eyes loop until clean -> implement, with a mcp_docs_index feature test (fixture docs/ tree asserts heading/topic/xref extraction). Consider folding the ANTS-2138 standards_files enumeration into this if it lands first."
+  **Layman:** Like the codebase map but for the docs — so Claude can instantly find which doc covers a topic instead of grepping the whole docs folder.
+  Kind: feature.
+  Lanes: mcp, docs-index, claudeintegration.
+  Source: user-request-2026-06-15.
+
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
 - 📋 **Trust-model gaps in IPC sockets.** Two independent
