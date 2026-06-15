@@ -1059,10 +1059,13 @@ PartitionResult partition(const PartitionRequest &req) {
                 filtered.insert(c.id, r.prePassFindingsByChunk.value(c.id));
         }
         r.prePassFindingsByChunk = filtered;
-        // Page 2+ → omit pre_pass_findings_by_chunk via cached marker.
+        // ANTS-2096 — page 2+ omits the inline pre_pass map from the
+        // ENVELOPE (the serializer honours prePassCached), but the map
+        // MUST stay on the cached PartitionResult so test_audit_brief can
+        // serve each chunk's findings. The old code cleared it here, which
+        // emptied the cache too → brief returned [] for every page-2+ chunk.
         if (off > 0) {
             r.prePassCached = true;
-            r.prePassFindingsByChunk.clear();
         }
     }
     // Cache partition for brief/synth lookup.

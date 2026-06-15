@@ -4649,7 +4649,11 @@ void MainWindow::setupClaudeMcpProviders() {
             constexpr int kPrePassInlineCapBytes = 24 * 1024;
             const bool prePassOmittedBySize =
                 prePassJson.size() > kPrePassInlineCapBytes;
-            if (!prePassOmittedBySize)
+            // ANTS-2096 — a paginated (page 2+) result keeps its pre-pass
+            // map in the partition cache for test_audit_brief, but must NOT
+            // inline it here: prePassCached signals "fetch per-chunk via
+            // brief", so omit the wire map when cached, not only on size.
+            if (!prePassOmittedBySize && !r.prePassCached)
                 env["pre_pass_findings_by_chunk"] = prePass;
             // ANTS-1489 — echo the chunk-ID keyset at envelope level so
             // callers can decide which per-chunk briefs are worth
