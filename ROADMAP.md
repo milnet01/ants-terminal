@@ -16465,6 +16465,7 @@ server build id so clients can self-diagnose this.
   **Layman:** Shorten the long help text the assistant loads for each tool to save on usage.
   Kind: optimize.
   Source: cross-session-2026-06-11 (DOOM Ants).
+  Re-confirmed 2026-06-15 (DOOM Ants): loading roadmap_log + spec_log schemas via ToolSearch still returns a multi-KB payload (roadmap_log's per-op prose alone is several KB) — DOOM names this the single biggest remaining per-session token sink for the write verbs. No regression; just a priority signal that trimming inline schema blobs (serve detail via tool_info) is still worth doing.
 
 - ✅ [ANTS-2080] **roadmap_log write verbs: optional return:headline_only to echo compact post-state.**
   DOOM idea C (MEDIUM saving). op:append / append_batch / flip* could accept return:"headline_only" and echo the resulting compact bullet list so the verify step folds into the write. Partly covered by dry_run (preview-before); this is confirm-after.
@@ -16543,6 +16544,13 @@ server build id so clients can self-diagnose this.
   Lanes: mcp, audit, falsepos.
   Source: cross-session-2026-06-12 (DOOM); carve-from-ANTS-2106.
   Resolved (2026-06-15): `audit_falsepos_log` shipped. New pure `ants::falsepos::appendEntry` (src/falseposledger.{h,cpp}) does the validated atomic O_APPEND (trim to read caps → bound-check <3.5 KiB → "\n"+compact-json+"\n", mode 0644 on create, refuse non-regular path); `cmdAuditFalseposLog` (src/remotecontrol.cpp) resolves the root directly from caller_cwd (m_main-independent), defaults timestamp/logged_by, wraps the envelope. Wired: registerToolProvider + CallerCwdContract::Required + schema descriptor + kindForName "audit" bucket. Feature test tests/features/audit_falsepos_log/ (11 cases, INV-1..12 + no_project) green; full ctest 2097/2097. Spec docs/specs/ANTS-2129.md (cold-eyes loops 1-6). Standard + /audit skill step-10.5 updated to prefer the verb. Two pre-existing source-scrape test windows (mcp_roadmap_log_verb 32K→40K, mcp_build_status 5K→7K) widened — kindForName/roadmap_log schema had outgrown them.
+
+- 📋 [ANTS-2138] **project_layout / session_orient report standards_files:[] even when a canonical docs/standards/ resolves — enumerate the dir.**
+  DOOM finding 2026-06-15 (BUG/LOW); reproduces in ants-terminal itself (session_orient this session returned standards_dir:\"docs/standards\" but standards_files:[] while docs/standards/ holds 20+ .md). Root cause: projectlayoutengine.cpp — scanStandardsFallback() (which populates env.standardsFiles via name-glob) runs ONLY `if (env.standardsDir.isEmpty())` (line ~431, an ANTS-1574 design choice). When the canonical kStandardsCandidates scanDir resolves standardsDir (line ~421-424) it sets the DIR but never enumerates files inside it, so standardsFiles stays []. Decision (per DOOM's ask): standards_files SHOULD reflect reality. Fix: when standardsDir resolves, enumerate `*.md` under it (QDir::entryList, sorted) into env.standardsFiles — in ADDITION to the name-glob fallback for the no-canonical-dir case. Cheap (one dir listing; trivial RAM). Add a regression test (a fixture with docs/standards/*.md asserts non-empty standards_files + standards_dir set). Update the field doc in projectlayoutengine.h:103-108 to say it enumerates the resolved dir, not just name-glob hits."
+  **Layman:** Ants says a project has no coding-standard docs when it actually has a whole folder of them; list the folder's files.
+  Kind: fix.
+  Lanes: mcp, session_orient, project_layout.
+  Source: cross-session-2026-06-15 (DOOM Ants).
 
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 
