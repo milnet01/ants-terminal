@@ -6490,12 +6490,13 @@ class; the deferrals below cover the rest.
   Lanes: claude, test, ci.
   Source: in-session-2026-06-15 (red-CI diagnosis).
 
-- 📋 [ANTS-2134] **tools/ci-parity.sh — reproduce CI test conditions locally to catch locale/timing flakes before push.**
+- ✅ [ANTS-2134] **tools/ci-parity.sh — reproduce CI test conditions locally to catch locale/timing flakes before push.**
   Two CI-only failures in a row (ANTS-2120 locale, ANTS-2130 timing) passed locally because the dev box differs from the runner. Proven outcome-affecting deltas: (1) locale — CI runs C.UTF-8 (POSIX collation), dev box runs a UTF-8 locale (Unicode collation); (2) load/parallelism — CI is a throttled 4-vCPU runner under queue load, dev box has more cores idle, so timing races only fire on CI. No parity tooling exists today (verified: no LC_ALL override in any preset/script). Ship tools/ci-parity.sh: sets LC_ALL=C.UTF-8, optional --stress (stress-ng background load), optional --repeat N / ctest --repeat until-fail to surface flakes. Document the one-liner (LC_ALL=C.UTF-8 ctest --test-dir build) in CLAUDE.md under Build & test. Optional follow-on: a ci-parity CMake preset. CI runner is ubuntu-24.04 (build-test/asan) + ubuntu-22.04 (qt62-baseline, compile-only)."
   **Layman:** A one-command way to run the tests the way the build server does, so failures show up on my machine first.
   Kind: test.
   Lanes: test, ci, devexp.
   Source: in-session-2026-06-15 (CI-parity survey).
+  Resolved (2026-06-15): tools/ci-parity.sh ships — runs the suite under LC_ALL=C.UTF-8 in an isolated build-ci-parity/ tree (keeps build/ warm, no running-instance relink), with --repeat N (ctest until-fail) for flake-flushing and --stress (stress-ng load). CLAUDE.md Build & test section documents it + the LC_ALL=C.UTF-8 one-liner.
 
 ### 🔌 Ants MCP — improvements from running /audit + /indie-review + /debt-sweep (2026-05-14)
 
@@ -8446,11 +8447,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-06-11 (running /test-audit).
   Resolved (2026-06-11) via doc-fix: the resume recipe now uses a `.` namespace separator (test_audit_partition_token.<scope_id>) which the session_memory ^[A-Za-z0-9._-]{1,64}$ charset accepts. Fixed in docs/standards/test-audit-resume.md (3 sites) + the test_audit_partition tool description (claudeintegration.cpp). Charset left unchanged (no INV-7 contract churn).
 
-- 📋 [ANTS-2096] **Paginated test_audit_partition (offset>0) strips pre-pass findings from the cached partition, so a later test_audit_brief returns empty pre_pass_findings for those chunks.**
+- ✅ [ANTS-2096] **Paginated test_audit_partition (offset>0) strips pre-pass findings from the cached partition, so a later test_audit_brief returns empty pre_pass_findings for those chunks.**
   testauditengine.cpp partition(): on a paginated call (offset>0), line ~1065 does r.prePassFindingsByChunk.clear() and then cachePartition(r) caches that emptied map. brief() reads r.prePassFindings = p->prePassFindingsByChunk.value(chunk->id) from that cache, so for any chunk on page 2+ it returns []. The clear conflates two concerns: omitting the bulky map from the ENVELOPE (correct, token-saving) vs retaining it in the CACHE for brief (needed). Fix: keep the full map in the cached PartitionResult and omit it only from the serialized envelope — the same decouple ANTS-2070 applied at the envelope layer in mainwindow.cpp (pre_pass_omitted/pre_pass_cached without clearing the cache). If partition reuses a stable token across pages, a page-2 call can also overwrite page-1's full cache; confirm token keying when fixing. Add a regression test: partition(offset=N) then brief(a page-N chunk) must still return its pre_pass findings.
   **Layman:** If you ask for a big test audit one page at a time, the per-chunk hints go missing on the later pages.
   Kind: fix.
   Source: in-session-2026-06-11 (spotted while fixing ANTS-2070).
+  Resolved (2026-06-15): partition() no longer clears prePassFindingsByChunk on page 2+ (the cached PartitionResult keeps the page's findings for brief); mainwindow envelope now omits the inline map when prePassCached, preserving ANTS-2070 token-saving. Regression test tests/features/test_audit_pagination_prepass (behavioural: 8-file pytest fixture, partition offset=1 -> brief c-002 returns non-empty pre_pass_findings). Failed pre-fix, green post; full test_claude bundle 1100/1100.
 
 - 📋 [ANTS-2135] **Large-body MCP write drops — op:append/append_batch with a big body intermittently arrives as {} (caller_cwd_required); diagnose + mitigate.**
   A large op:append body sometimes reaches the server with the entire parameter payload missing (arguments_empty:true -> caller_cwd_required), forcing a retry or an Edit-tool fallback. The current refusal text and prior notes assume an upstream serialization/stdio drop (Claude Code client side, not Ants), but that has never been confirmed with a trace. (1) DIAGNOSE: instrument the MCP transport (mcp_trace ring buffer) to capture the raw inbound frame size + truncation point on a reproduced drop; determine whether the bytes arrive truncated at the socket (Ants-side framing/read-buffer bound) or never arrive (upstream). Note a concrete byte threshold if one exists. (2) MITIGATE (if any Ants-side cause or even if upstream): add resilience for large writes — e.g. a staged-body protocol (write body to a scratch file via one small call, then op:append referencing it), or chunked/length-prefixed framing with a server-side reassembly + explicit too_large refusal instead of a silent {}. Goal: a large append either succeeds or fails loudly with an actionable code, never silently empties. NOTE: the 3 empty calls in this session's triage were the operator sending empty params, not this bug — but the bug is real and documented in the verb's own error text."
@@ -17461,6 +17463,13 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Kind: enhancement.
   Source: in-session-2026-06-06.
   Corroborated 2026-06-10 by two more sessions: Music Production (query "pip install whisperx hint sys.executable WhisperX not installed" → 0 matches; literal "pip install whisperx" → 13 matches in 13 ms) and RetroDB (query "About modal RetroDB version" → 0 matches; strings exist in templates/base.html). Both confirm the multi-token query is matched as one literal/regex pattern. Beyond the advisory hint already scoped here, both suggested an optional OR-fallback that ranks by significant-term overlap when the strict match is empty — worth weighing as a follow-up if the hint alone proves insufficient.
+
+- 📋 [ANTS-2136] **Add dry_run modes to the relevant Ants MCP write verbs for safe testing — generalise the roadmap_log op:append precedent (ANTS-2077).**
+  roadmap_log op:append/append_batch already supports dry_run:true (ANTS-2077): it returns the would-be id + formatted bullet + insertion line WITHOUT writing the file or bumping .roadmap-counter. Extend the same preview contract to the other mutating verbs so a session can validate args/format/target before committing: changelog_log (add / add_from_roadmap / add_batch), feedback_log (append_finding / append_tracking), spec_log, audit_falsepos_log, and roadmap_log's remaining ops (flip / flip_batch / annotate / create_section). Contract per verb: dry_run:true performs all validation + computes the would-be result (category/line/bytes, located bullet, would-be anchor, etc.), sets dry_run:true on the envelope, and writes nothing. Value: testable writes (CI / feature tests can assert the preview), safer orchestration, and a way to confirm a locator resolves before a destructive flip. Audit which verbs are genuinely worth it (Rule of Three) vs read-only verbs that need nothing."
+  **Layman:** Let Claude preview what a write would do — without actually changing the file — so writes can be tested safely.
+  Kind: enhancement.
+  Lanes: mcp, devexp.
+  Source: user-request-2026-06-15.
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
