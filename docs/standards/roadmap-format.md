@@ -539,6 +539,21 @@ because it
 keeps `.roadmap-counter` unambiguous; multi-prefix repos need
 one counter per prefix.
 
+#### 3.10.5 Heading-format roadmaps (`#### Pass N.M`)
+
+Some projects (RetroDB-style) track work as `#### Pass N.M
+<title>` level-4 headings with a `- **Status**: <word>` sub-bullet
+instead of `- **headline** [ID]` bullets. The reader classifies
+these as `pass-headings` and synthesises a `PASS-<major>-<minor>
+[-<sub>]` id per heading (**ANTS-1530**). Since **ANTS-2126**
+`roadmap_log` also **writes** this format: `op:"append"` (needs a
+`pass` arg, e.g. `"43.5"`), `op:"append_batch"`, `op:"flip"` /
+`op:"flip_batch"` (locate by the synthesised `PASS-N-M` id or
+`headline`), and `op:"annotate"`. Pass ids are derived from the
+heading, never from `.roadmap-counter` (the counter is left
+untouched). `op:"create_section"` is not yet supported and still
+refuses `format_mismatch`.
+
 ### 3.11 ROADMAP anti-patterns
 
 - ❌ Status emoji other than ✅ 🚧 📋 💭. Tools won't recognise

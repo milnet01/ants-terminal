@@ -35,6 +35,7 @@
 #include "roadmapfoldin.h"
 #include "roadmapindex.h"
 #include "changeloglog.h"
+#include "passheadingwrite.h"
 #include "subsystemmap.h"
 #include "terminalwidget.h"
 #include "testrescache.h"
@@ -2183,6 +2184,437 @@ QJsonDocument RemoteControl::cmdTabList() {
     return QJsonDocument(out);
 }
 
+// ANTS-1932 — to_status synonym resolver. Maps the natural English words
+// a caller reaches for first (done/wip/todo/maybe …) onto the canonical
+// roadmap_log status. Extracted (ANTS-2126) so the GFM flip path and the
+// pass-headings flip path share one map instead of duplicating it.
+static QString rlCanonicalToStatus(const QString &toStatus) {
+    const QString lo = toStatus.toLower();
+    if (lo == QLatin1String("done")     || lo == QLatin1String("complete") ||
+        lo == QLatin1String("completed"))
+        return QStringLiteral("shipped");
+    if (lo == QLatin1String("wip")      || lo == QLatin1String("in_progress"))
+        return QStringLiteral("in-progress");
+    if (lo == QLatin1String("todo")     || lo == QLatin1String("open"))
+        return QStringLiteral("planned");
+    if (lo == QLatin1String("maybe")    || lo == QLatin1String("idea"))
+        return QStringLiteral("considered");
+    return toStatus;
+}
+
+// ============================ ANTS-2126 ============================
+// Pass-headings (`#### Pass N.M`) write handlers. The GFM/ants-v1 write
+// paths route here (instead of returning the ANTS-2031 format_mismatch
+// refusal) when the target roadmap is pass-headings. File-static free
+// functions: each is pure given (req, roadmapPath, markdown) — invoked
+// from inside the member handlers at the format-detection gate, so they
+// need no test seam of their own (the existing *ForTest seams reach them
+// through the gate). The splice/flip primitives live in
+// passheadingwrite.{h,cpp}. See docs/specs/ANTS-2126.md.
+
+// Atomic ROADMAP.md write (QSaveFile). No counter side-effect (INV-10).
+static bool rcAtomicWriteRoadmap(const QString &path, const QString &content) {
+    QSaveFile rw(path);
+    if (!rw.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    const QByteArray utf8 = content.toUtf8();
+    return rw.write(utf8) == utf8.size() && rw.commit();
+}
+
+// Validate + render one pass bullet (shared by single + batch append).
+struct PassAppendItem {
+    bool    ok = false;
+    QString code;     // refusal code iff !ok
+    QString error;    // message iff !ok
+    QString block;    // rendered `#### Pass …` block iff ok
+    QString synthId;  // reader-synthesised id iff ok
+};
+static PassAppendItem rcRenderPassBullet(const QJsonObject &b) {
+    PassAppendItem it;
+    const QString status   = b.value(QStringLiteral("status")).toString();
+    const QString headline = b.value(QStringLiteral("headline")).toString();
+    const QString pass     = b.value(QStringLiteral("pass")).toString();
+    QString body           = b.value(QStringLiteral("body")).toString();
+    // INV-3 — status / pass / headline are required; bad_args is the
+    // documented missing/ill-shaped-arg code (ANTS-2128 keeps the GFM
+    // append path's undocumented missing_field out of this new site).
+    if (status.isEmpty()) {
+        it.code = QStringLiteral("bad_args");
+        it.error = QStringLiteral("status is required"); return it;
+    }
+    const QString keyword = PassHeadingWrite::passStatusKeyword(status);
+    if (keyword.isEmpty()) {
+        it.code = QStringLiteral("bad_status");
+        it.error = QStringLiteral("unknown status \"%1\" — expected "
+            "planned / in-progress / shipped / considered").arg(status);
+        return it;
+    }
+    if (pass.isEmpty()) {
+        it.code = QStringLiteral("bad_args");
+        it.error = QStringLiteral("pass is required on a pass-headings "
+            "roadmap (e.g. \"43.5\" or \"43.5.B\")"); return it;
+    }
+    if (!PassHeadingWrite::isValidPassDesignator(pass)) {
+        it.code = QStringLiteral("bad_args");
+        it.error = QStringLiteral("pass \"%1\" is malformed — expected "
+            "^\\d+\\.\\d+(?:\\.[A-Za-z][A-Za-z0-9]*)?$").arg(pass);
+        return it;
+    }
+    if (headline.trimmed().isEmpty()) {
+        it.code = QStringLiteral("bad_args");
+        it.error = QStringLiteral("headline is required"); return it;
+    }
+    QStringList scrubbed;
+    rcScrubLeakedToolXml(body, scrubbed);
+    it.block   = PassHeadingWrite::formatPassBlock(pass, headline, keyword, body);
+    it.synthId = PassHeadingWrite::passIdFromDesignator(pass);
+    it.ok = true;
+    return it;
+}
+
+// Locate `section` in a pass-headings roadmap; emit the GFM-parity
+// bad_case (case-sensitive slug) / bad_section refusal when absent.
+// Returns nullptr + fills *refusal on miss; the section pointer on hit.
+static const RoadmapIndex::Section *rcPassFindSection(
+        const QVector<RoadmapIndex::Section> &index,
+        const QString &section, QJsonDocument *refusal) {
+    const auto *sec = RoadmapIndex::findBySlug(index, section);
+    if (sec) return sec;
+    // Sanitise the echoed slug (≤ 64 B + control-char filter), same
+    // hygiene as the GFM cmdRoadmapLogAppend bad_section path — never
+    // reflect arbitrary caller bytes through the response.
+    QString verbatim = section;
+    if (verbatim.size() > 64) verbatim.truncate(64);
+    for (int i = 0; i < verbatim.size(); ++i) {
+        if (verbatim.at(i).unicode() < 0x20) verbatim[i] = QChar('?');
+    }
+    const QString sectionCi = section.toLower();
+    for (const auto &s : index) {
+        if (s.slug.toLower() == sectionCi && s.slug != section) {
+            QJsonObject e;
+            e["ok"]             = false;
+            e["code"]           = QStringLiteral("bad_case");
+            e["error"]          = QStringLiteral("roadmap_log: section "
+                "slug case mismatch: \"%1\" — did you mean \"%2\"?")
+                    .arg(verbatim, s.slug);
+            e["canonical_slug"] = s.slug;
+            e["format"]         = QStringLiteral("pass-headings");
+            *refusal = QJsonDocument(e);
+            return nullptr;
+        }
+    }
+    QJsonObject e;
+    e["ok"]     = false;
+    e["code"]   = QStringLiteral("bad_section");
+    e["error"]  = QStringLiteral("roadmap_log: unknown section slug "
+        "\"%1\"").arg(verbatim);
+    e["format"] = QStringLiteral("pass-headings");
+    *refusal = QJsonDocument(e);
+    return nullptr;
+}
+
+// Splice `block` (already rendered, no surrounding blanks) at the end of
+// the section body, managing one leading/trailing blank line for layout.
+// Returns the updated body; *headingIdx0 ← 0-based line of the first
+// rendered `####` heading.
+static QString rcSplicePassBlock(const QString &markdown,
+                                 const RoadmapIndex::Section &sec,
+                                 const QString &block, int *headingIdx0) {
+    QStringList lines = markdown.split(QChar('\n'));
+    const int insertAt = sec.lineEnd;  // 0-indexed, exclusive
+    QStringList toInsert;
+    bool leadingBlank = false;
+    if (insertAt > 0 && insertAt <= lines.size() &&
+        !lines.value(insertAt - 1).trimmed().isEmpty()) {
+        toInsert << QString();
+        leadingBlank = true;
+    }
+    toInsert += block.split(QChar('\n'));
+    if (insertAt < lines.size() &&
+        !lines.value(insertAt).trimmed().isEmpty()) {
+        toInsert << QString();
+    }
+    for (int k = toInsert.size() - 1; k >= 0; --k)
+        lines.insert(insertAt, toInsert.at(k));
+    if (headingIdx0) *headingIdx0 = insertAt + (leadingBlank ? 1 : 0);
+    return lines.join(QChar('\n'));
+}
+
+static QJsonDocument cmdRoadmapLogPassAppend(
+        const QJsonObject &req, const QString &roadmapPath,
+        const QString &markdown) {
+    auto err = [](const QString &code, const QString &message) {
+        QJsonObject e;
+        e["ok"]     = false;
+        e["code"]   = code;
+        e["error"]  = QStringLiteral("roadmap_log op:\"append\": %1").arg(message);
+        e["format"] = QStringLiteral("pass-headings");
+        return QJsonDocument(e);
+    };
+    const QString section = req.value(QStringLiteral("section")).toString();
+    const PassAppendItem it = rcRenderPassBullet(req);
+    if (!it.ok) return err(it.code, it.error);
+
+    const auto index = RoadmapIndex::buildIndex(markdown);
+    QJsonDocument refusal;
+    const auto *sec = rcPassFindSection(index, section, &refusal);
+    if (!sec) return refusal;
+
+    int headingIdx0 = 0;
+    const QString updated =
+        rcSplicePassBlock(markdown, *sec, it.block, &headingIdx0);
+
+    if (req.value(QStringLiteral("dry_run")).toBool()) {
+        QJsonObject out;
+        out["ok"]      = true;
+        out["dry_run"] = true;
+        out["id"]      = it.synthId;
+        out["file"]    = QStringLiteral("ROADMAP.md");
+        out["line"]    = headingIdx0 + 1;
+        out["bullet"]  = it.block;
+        out["bytes"]   = static_cast<qint64>(it.block.toUtf8().size());
+        out["format"]  = QStringLiteral("pass-headings");
+        return QJsonDocument(out);
+    }
+    if (!rcAtomicWriteRoadmap(roadmapPath, updated))
+        return err(QStringLiteral("roadmap_write_failed"),
+            QStringLiteral("atomic write of \"%1\" failed").arg(roadmapPath));
+
+    QJsonObject out;
+    out["ok"]            = true;
+    out["id"]            = it.synthId;
+    out["file"]          = QStringLiteral("ROADMAP.md");
+    out["line"]          = headingIdx0 + 1;
+    out["format"]        = QStringLiteral("pass-headings");
+    out["bytes_written"] = static_cast<qint64>(it.block.toUtf8().size());
+    return QJsonDocument(out);
+}
+
+static QJsonDocument cmdRoadmapLogPassAppendBatch(
+        const QJsonObject &req, const QString &roadmapPath,
+        const QString &markdown) {
+    const QString section = req.value(QStringLiteral("section")).toString();
+    const QJsonArray bullets = req.value(QStringLiteral("bullets")).toArray();
+
+    const auto index = RoadmapIndex::buildIndex(markdown);
+    QJsonDocument refusal;
+    const auto *sec = rcPassFindSection(index, section, &refusal);
+    if (!sec) return refusal;
+
+    QJsonArray applied, skipped;
+    QStringList renderedBlocks;
+    for (int i = 0; i < bullets.size(); ++i) {
+        const PassAppendItem it = rcRenderPassBullet(bullets.at(i).toObject());
+        if (!it.ok) {
+            QJsonObject s;
+            s["bullet_index"] = i;
+            s["code"]         = it.code;
+            s["error"]        = it.error;
+            skipped.append(s);
+            continue;
+        }
+        renderedBlocks << it.block;
+        QJsonObject a;
+        a["bullet_index"] = i;
+        a["id"]           = it.synthId;
+        applied.append(a);
+    }
+
+    auto envelope = [&](qint64 bytesWritten) {
+        QJsonObject out;
+        out["ok"]            = true;
+        out["op"]            = QStringLiteral("append_batch");
+        out["format"]        = QStringLiteral("pass-headings");
+        out["file"]          = QStringLiteral("ROADMAP.md");
+        out["applied"]       = applied;
+        out["applied_count"] = applied.size();
+        out["skipped"]       = skipped;
+        out["skipped_count"] = skipped.size();
+        if (bytesWritten >= 0) out["bytes_written"] = bytesWritten;
+        return QJsonDocument(out);
+    };
+
+    // INV-14 — an all-invalid batch leaves the file untouched.
+    if (renderedBlocks.isEmpty()) return envelope(-1);
+
+    const QString combined = renderedBlocks.join(QStringLiteral("\n\n"));
+    int headingIdx0 = 0;
+    const QString updated =
+        rcSplicePassBlock(markdown, *sec, combined, &headingIdx0);
+
+    if (req.value(QStringLiteral("dry_run")).toBool()) {
+        QJsonObject out = envelope(-1).object();
+        out["dry_run"] = true;
+        return QJsonDocument(out);
+    }
+    if (!rcAtomicWriteRoadmap(roadmapPath, updated)) {
+        QJsonObject e;
+        e["ok"]     = false;
+        e["code"]   = QStringLiteral("roadmap_write_failed");
+        e["error"]  = QStringLiteral("roadmap_log op:\"append_batch\": "
+            "atomic write of \"%1\" failed").arg(roadmapPath);
+        e["format"] = QStringLiteral("pass-headings");
+        return QJsonDocument(e);
+    }
+    return envelope(static_cast<qint64>(combined.toUtf8().size()));
+}
+
+// Serves op:"flip" AND op:"annotate" (the member gate routes both here,
+// reading op from req — mirrors cmdRoadmapLogFlip).
+static QJsonDocument cmdRoadmapLogPassFlip(
+        const QJsonObject &req, const QString &roadmapPath,
+        const QString &markdown) {
+    const bool annotateMode =
+        req.value(QStringLiteral("op")).toString() ==
+            QStringLiteral("annotate");
+    auto err = [&](const QString &code, const QString &message) {
+        QJsonObject e;
+        e["ok"]     = false;
+        e["code"]   = code;
+        e["error"]  = QStringLiteral("roadmap_log op:\"%1\": %2")
+            .arg(annotateMode ? QStringLiteral("annotate")
+                              : QStringLiteral("flip"), message);
+        e["format"] = QStringLiteral("pass-headings");
+        return QJsonDocument(e);
+    };
+    const QString locId = req.value(QStringLiteral("id")).toString();
+    const QString locHeadline =
+        req.value(QStringLiteral("headline")).toString();
+    // INV-3 — a locator is required; a pass is addressed by its
+    // synthesised `PASS-N-M` id or its heading tail.
+    if (locId.isEmpty() && locHeadline.isEmpty())
+        return err(QStringLiteral("bad_args"),
+            QStringLiteral("needs a locator — `id` (PASS-N-M) or `headline`"));
+
+    PassHeadingWrite::WriteResult r;
+    QString toKeyword;
+    if (annotateMode) {
+        QString note = req.value(QStringLiteral("note")).toString();
+        QStringList scrubbed;
+        rcScrubLeakedToolXml(note, scrubbed);
+        // INV-8 — empty note → bad_args (deliberately the documented code,
+        // diverging from the GFM annotate guard's missing_field; ANTS-2128).
+        if (note.isEmpty())
+            return err(QStringLiteral("bad_args"),
+                QStringLiteral("a non-empty `note` is required"));
+        r = PassHeadingWrite::annotatePass(markdown, locId, locHeadline, note);
+    } else {
+        const QString toStatus =
+            req.value(QStringLiteral("to_status")).toString();
+        if (toStatus.isEmpty())
+            return err(QStringLiteral("bad_args"),
+                QStringLiteral("to_status is required"));
+        toKeyword = PassHeadingWrite::passStatusKeyword(
+            rlCanonicalToStatus(toStatus));
+        if (toKeyword.isEmpty())
+            return err(QStringLiteral("bad_status"),
+                QStringLiteral("unknown to_status \"%1\"").arg(toStatus));
+        r = PassHeadingWrite::flipPassStatus(markdown, locId, locHeadline,
+                                             toKeyword);
+    }
+    if (!r.ok)
+        return err(r.code, QStringLiteral("no pass matched the locator"));
+
+    if (!rcAtomicWriteRoadmap(roadmapPath, r.markdown))
+        return err(QStringLiteral("roadmap_write_failed"),
+            QStringLiteral("atomic write of \"%1\" failed").arg(roadmapPath));
+
+    QJsonObject out;
+    out["ok"]            = true;
+    out["op"]            = annotateMode ? QStringLiteral("annotate")
+                                        : QStringLiteral("flip");
+    out["id"]            = r.matchedId;
+    out["file"]          = QStringLiteral("ROADMAP.md");
+    out["line"]          = r.headingLine + 1;
+    out["format"]        = QStringLiteral("pass-headings");
+    out["bytes_written"] = static_cast<qint64>(r.markdown.toUtf8().size());
+    if (annotateMode) {
+        out["note_appended"] = true;
+        out["note_line"]     = r.changedLine + 1;
+    } else {
+        out["to_status"] = toKeyword;
+    }
+    return QJsonDocument(out);
+}
+
+static QJsonDocument cmdRoadmapLogPassFlipBatch(
+        const QJsonObject &req, const QString &roadmapPath,
+        const QString &markdown) {
+    const QString canon =
+        rlCanonicalToStatus(req.value(QStringLiteral("to_status")).toString());
+    const QString keyword = PassHeadingWrite::passStatusKeyword(canon);
+    // to_status is validated canonical at the gate, so keyword is non-empty.
+    const QJsonArray locators = req.value(QStringLiteral("locators")).toArray();
+
+    QString md = markdown;
+    QJsonArray flipped, skipped;
+    for (int i = 0; i < locators.size(); ++i) {
+        const QJsonObject loc = locators.at(i).toObject();
+        const QString locId = loc.value(QStringLiteral("id")).toString();
+        const QString locHeadline =
+            loc.value(QStringLiteral("headline")).toString();
+        if (locId.isEmpty() && locHeadline.isEmpty()) {
+            QJsonObject s;
+            s["locator_index"] = i;
+            s["code"]          = QStringLiteral("missing_field");
+            s["error"]         = QStringLiteral("locator needs one of "
+                "id / headline");
+            skipped.append(s);
+            continue;
+        }
+        PassHeadingWrite::WriteResult r =
+            PassHeadingWrite::flipPassStatus(md, locId, locHeadline, keyword);
+        if (!r.ok) {
+            QJsonObject s;
+            s["locator_index"] = i;
+            s["code"]          = r.code;
+            s["error"]         = QStringLiteral("locator matched no pass");
+            skipped.append(s);
+            continue;
+        }
+        md = r.markdown;
+        QString note = loc.value(QStringLiteral("note")).toString();
+        if (!note.isEmpty()) {
+            QStringList sc;
+            rcScrubLeakedToolXml(note, sc);
+            PassHeadingWrite::WriteResult an =
+                PassHeadingWrite::annotatePass(md, locId, locHeadline, note);
+            if (an.ok) md = an.markdown;
+        }
+        QJsonObject f;
+        f["locator_index"] = i;
+        f["id"]            = r.matchedId;
+        flipped.append(f);
+    }
+
+    auto envelope = [&](qint64 bytesWritten) {
+        QJsonObject out;
+        out["ok"]            = true;
+        out["op"]            = QStringLiteral("flip_batch");
+        out["format"]        = QStringLiteral("pass-headings");
+        out["file"]          = QStringLiteral("ROADMAP.md");
+        out["flipped"]       = flipped;
+        out["flipped_count"] = flipped.size();
+        out["skipped"]       = skipped;
+        out["skipped_count"] = skipped.size();
+        if (bytesWritten >= 0) out["bytes_written"] = bytesWritten;
+        return QJsonDocument(out);
+    };
+
+    // INV-14 — nothing applied → file untouched.
+    if (flipped.isEmpty()) return envelope(-1);
+    if (!rcAtomicWriteRoadmap(roadmapPath, md)) {
+        QJsonObject e;
+        e["ok"]     = false;
+        e["code"]   = QStringLiteral("roadmap_write_failed");
+        e["error"]  = QStringLiteral("roadmap_log op:\"flip_batch\": "
+            "atomic write of \"%1\" failed").arg(roadmapPath);
+        e["format"] = QStringLiteral("pass-headings");
+        return QJsonDocument(e);
+    }
+    return envelope(static_cast<qint64>(md.toUtf8().size()));
+}
+// ========================== end ANTS-2126 ==========================
+
 // ANTS-1117 v1: roadmap-query — parse the active tab's ROADMAP.md
 // (cached on mtime; INV-10 rate-limit) into a structured bullet
 // stream for Claude. Returns the unified `{ok, error, code}` shape
@@ -4205,6 +4637,28 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: section is required"));
     }
+
+    // ANTS-2126 — pass-headings roadmaps route to the heading-format
+    // writer here, BEFORE the GFM status/kind/source validation +
+    // counter allocation below: pass append ignores kind/source,
+    // validates status/pass itself (INV-3 bad_args), and never touches
+    // .roadmap-counter (INV-10). One extra read+parse on the GFM path is
+    // the cost of detecting before the counter machinery; appends are a
+    // low-frequency op so the absolute cost is negligible.
+    {
+        const QString cc = QFileInfo(callerRaw).canonicalFilePath();
+        const QString rp = cc.isEmpty() ? QString() : findRoadmapUnder(cc);
+        if (!rp.isEmpty()) {
+            QFile pf(rp);
+            if (pf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                const QString md = QString::fromUtf8(pf.readAll());
+                pf.close();
+                if (rcBulletsArePassHeadings(RoadmapDialog::parseBullets(md)))
+                    return cmdRoadmapLogPassAppend(req, rp, md);
+            }
+        }
+    }
+
     if (status.isEmpty()) {
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: status is required"));
@@ -4489,13 +4943,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         env["expected_format"] = kUnrecognisedFormatExpected();
         return QJsonDocument(env);
     }
-    // ANTS-2031 — refuse to splice a GFM/ants-v1 bullet into a
-    // `#### Pass N.M` heading roadmap (parses on read, but the writer
-    // can't emit headings yet); steer the caller to Edit.
-    if (rcBulletsArePassHeadings(preflightBullets)) {
-        return rcPassHeadingsWriteRefusal(roadmapPath,
-                                          QStringLiteral("append"));
-    }
+    // ANTS-2126 — a pass-headings roadmap was already routed to
+    // cmdRoadmapLogPassAppend by the early gate above (before counter
+    // allocation), so by here the roadmap is GFM / ants-v1.
 
     // ANTS-1424-INV-4 — locate the named section via RoadmapIndex.
     const auto index = RoadmapIndex::buildIndex(markdown);
@@ -4745,6 +5195,27 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: caller_cwd is required"));
     }
+
+    // ANTS-2126 — pass-headings roadmaps route to the heading-format
+    // flip/annotate writer BEFORE the GFM to_status/note/locator guards
+    // below, so the pass path owns its own validation (INV-3 bad_args for
+    // a missing to_status / locator, INV-8 bad_args for an empty annotate
+    // note — deliberately the documented code, where the GFM guard at the
+    // note-empty check still emits missing_field; ANTS-2128 converges it).
+    {
+        const QString cc = QFileInfo(callerRaw).canonicalFilePath();
+        const QString rp = cc.isEmpty() ? QString() : findRoadmapUnder(cc);
+        if (!rp.isEmpty()) {
+            QFile pf(rp);
+            if (pf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                const QString md = QString::fromUtf8(pf.readAll());
+                pf.close();
+                if (rcBulletsArePassHeadings(RoadmapDialog::parseBullets(md)))
+                    return cmdRoadmapLogPassFlip(req, rp, md);
+            }
+        }
+    }
+
     const QString toStatus =
         req.value(QStringLiteral("to_status")).toString();
     // to_status accepts either the word form or the emoji directly.
@@ -4769,23 +5240,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         // natural English words a caller reaches for on the first try, mapping
         // them to the canonical form before the check below. The canonical
         // names + emojis remain the documented API; synonyms are accept-only.
-        const QString toStatusResolved = [&]() -> QString {
-            const QString lo = toStatus.toLower();
-            if (lo == QLatin1String("done")      ||
-                    lo == QLatin1String("complete")  ||
-                    lo == QLatin1String("completed"))
-                return QStringLiteral("shipped");
-            if (lo == QLatin1String("wip") ||
-                    lo == QLatin1String("in_progress"))
-                return QStringLiteral("in-progress");
-            if (lo == QLatin1String("todo") ||
-                    lo == QLatin1String("open"))
-                return QStringLiteral("planned");
-            if (lo == QLatin1String("maybe") ||
-                    lo == QLatin1String("idea"))
-                return QStringLiteral("considered");
-            return toStatus;
-        }();
+        // ANTS-2126 — extracted to rlCanonicalToStatus (shared with the
+        // pass-headings flip path).
+        const QString toStatusResolved = rlCanonicalToStatus(toStatus);
         if      (toStatusResolved == QStringLiteral("planned")     ||
                  toStatusResolved == QStringLiteral("📋")) targetEmoji = QStringLiteral("📋");
         else if (toStatusResolved == QStringLiteral("in-progress") ||
@@ -4887,17 +5344,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     rf.close();
     const qint64 markdownBytes = markdown.toUtf8().size();
 
-    // ANTS-2031 — a `#### Pass N.M` heading roadmap parses on read but
-    // the GFM/ants-v1 locator can't address its headings (and would
-    // otherwise mistake the heading's `- **Status**:` list items for
-    // GFM bullets and refuse with a misleading bullet_not_found).
-    // Refuse early with the precise format_mismatch (op-aware, covers
-    // flip + annotate) so the caller falls back to Edit.
-    if (rcBulletsArePassHeadings(RoadmapDialog::parseBullets(markdown))) {
-        return rcPassHeadingsWriteRefusal(
-            roadmapPath,
-            req.value(QStringLiteral("op")).toString(QStringLiteral("flip")));
-    }
+    // ANTS-2126 — a pass-headings roadmap was already routed to
+    // cmdRoadmapLogPassFlip by the early gate above (before the GFM
+    // to_status/note guards), so by here the roadmap is GFM / ants-v1.
 
     // 6. Walk GFM bullets first. If none found AND the file is big
     //    enough to be a real roadmap, fall through to ANTS-1441's
@@ -5439,9 +5888,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     // of the precise format_mismatch the caller needs. parseBullets
     // classifies the whole doc, so the strong 2+2 pass-headings signal
     // beats a lone checkbox (see detectRoadmapFormat).
+    // ANTS-2126 — route to the pass-headings flip_batch writer (replaces
+    // the ANTS-2031 format_mismatch refusal). The pre-gate validation
+    // (to_status canonical + non-empty locators) matches what it needs.
     if (rcBulletsArePassHeadings(RoadmapDialog::parseBullets(markdown)))
-        return rcPassHeadingsWriteRefusal(
-            roadmapPath, QStringLiteral("flip_batch"));
+        return cmdRoadmapLogPassFlipBatch(req, roadmapPath, markdown);
     const bool isGfm = !walkGfmBullets(lines).isEmpty();
     bool isV1 = false;
     if (!isGfm && markdownBytes > kRoadmapMinParseableSize)
@@ -6431,6 +6882,24 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     const QJsonArray bullets =
         req.value(QStringLiteral("bullets")).toArray();
 
+    // ANTS-2126 — pass-headings roadmaps route to the heading-format
+    // batch writer here, BEFORE the counter read below (a pass roadmap
+    // legitimately has no .roadmap-counter; INV-10). Mirrors the single
+    // op:append early route.
+    {
+        const QString cc = QFileInfo(callerRaw).canonicalFilePath();
+        const QString rp = cc.isEmpty() ? QString() : findRoadmapUnder(cc);
+        if (!rp.isEmpty()) {
+            QFile pf(rp);
+            if (pf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                const QString md = QString::fromUtf8(pf.readAll());
+                pf.close();
+                if (rcBulletsArePassHeadings(RoadmapDialog::parseBullets(md)))
+                    return cmdRoadmapLogPassAppendBatch(req, rp, md);
+            }
+        }
+    }
+
     // ANTS-2076 — batch-wide explicit counter-ID prefix override
     // (validated here; resolution precedence in rlResolveCounterPrefix).
     // ANTS-2077 — dry_run preview flag.
@@ -6542,11 +7011,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         env["expected_format"] = kUnrecognisedFormatExpected();
         return QJsonDocument(env);
     }
-    // ANTS-2031 — heading-format roadmaps have no append writer.
-    if (rcBulletsArePassHeadings(preflightBullets)) {
-        return rcPassHeadingsWriteRefusal(
-            roadmapPath, QStringLiteral("append_batch"));
-    }
+    // ANTS-2126 — a pass-headings roadmap was already routed to
+    // cmdRoadmapLogPassAppendBatch by the early gate above (before the
+    // counter read), so by here the roadmap is GFM / ants-v1.
 
     // 5. Section lookup (parity with single-bullet path).
     const auto index = RoadmapIndex::buildIndex(markdown);

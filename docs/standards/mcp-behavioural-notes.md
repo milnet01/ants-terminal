@@ -67,6 +67,14 @@ never perturb the hash) and are skipped on 304s, refusals (`ok:false`),
   `INV-N` via the pure `SpecLog` module (`op:"set_status"` /
   `"append_loop"` / `"append_inv"`), never renumbering; reuses
   `spec_query`'s id routing (ANTS-1963).
+- **`roadmap_log` on pass-headings (`#### Pass N.M`) roadmaps** —
+  append/append_batch/flip/flip_batch/annotate now WRITE the heading
+  format via the pure `PassHeadingWrite` module (ANTS-2126), routed
+  before the GFM counter/field guards. `op:"append"` needs a `pass` arg
+  (`"43.5"`/`"43.5.B"`); status required, kind/source ignored,
+  `.roadmap-counter` untouched. Flip/annotate locate by the synthesised
+  `PASS-N-M` id or `headline`; a missing required arg is `bad_args`. Only
+  `op:"create_section"` still refuses `format_mismatch`.
 
 ## `model_switch_stats`
 

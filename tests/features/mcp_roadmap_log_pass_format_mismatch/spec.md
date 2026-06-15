@@ -13,31 +13,31 @@ the caller knows to fall back to Edit.
 
 ## Invariants
 
-### INV-1 — append refuses with format_mismatch
+> **ANTS-2126 narrowing.** A real pass-headings writer replaced the
+> refusal for `append` / `append_batch` / `flip` / `flip_batch` /
+> `annotate` (those write now — see `mcp_roadmap_log_pass_writer`). Only
+> `create_section` keeps refusing. The original INV-1 (append), INV-3
+> (flip/annotate) and INV-4 (flip_batch) were removed, and INV-2 was
+> narrowed from "append_batch + create_section" to create_section only.
 
-`cmdRoadmapLogAppend` on a pass-headings roadmap returns
-`{ok:false, code:"format_mismatch"}` with a `hint` steering the caller
-to Edit and `format:"pass-headings"`. It does NOT mutate the file.
+### INV-2 — create_section refuses with format_mismatch
 
-### INV-2 — append_batch / create_section refuse identically
-
-Both splice paths return `code:"format_mismatch"` on a pass-headings
-roadmap.
-
-### INV-3 — flip / annotate refuse with format_mismatch
-
-`cmdRoadmapLogFlip` (which serves both `flip` and `annotate`) returns
-`code:"format_mismatch"` on a pass-headings roadmap instead of the
-misleading `unrecognised_format` / `bullet_not_found`.
-
-### INV-4 — flip_batch refuses with format_mismatch
-
-`cmdRoadmapLogFlipBatch` returns `code:"format_mismatch"`.
+`cmdRoadmapLogCreateSection` on a pass-headings roadmap returns
+`{ok:false, code:"format_mismatch", format:"pass-headings"}` — section
+creation on the heading format is out of scope for ANTS-2126.
 
 ### INV-5 — ants-v1 roadmaps are unaffected
 
 The gate keys on the parsed-bullet format, so a normal ants-v1 roadmap
 still appends successfully (no false refusal).
+
+### INV-6 (ANTS-2048) — stray `- [ ]` does not flip detection to gfm
+
+A pass-headings roadmap carrying stray `- [ ]` checkbox sub-tasks is
+still classified `pass-headings`. Under the ANTS-2126 writer that shows
+as `flip_batch` routing to the pass writer and flipping `PASS-41-5`
+(`format:"pass-headings"`, `flipped_count:1`); a mis-detection to
+github-task-list would instead skip it as `bullet_not_found`.
 
 ## Test plan
 

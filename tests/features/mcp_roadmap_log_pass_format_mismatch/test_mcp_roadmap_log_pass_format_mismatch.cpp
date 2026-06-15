@@ -95,105 +95,35 @@ QString code(const QJsonObject &o) {
 
 }  // namespace
 
-// INV-1 — append refuses with format_mismatch and does not mutate.
-TEST(McpRoadmapLogPassFormatMismatch, Inv1AppendRefuses) {
-    QTemporaryDir tmp;
-    ASSERT_TRUE(tmp.isValid());
-    ASSERT_TRUE(seed(tmp.path(), kPassRoadmap));
-    const QByteArray before = readFile(roadmapPath(tmp.path()));
-
-    RemoteControl rc(nullptr);
-    QJsonObject req = baseReq(tmp.path());
-    req[QStringLiteral("section")]  = QStringLiteral("active");
-    req[QStringLiteral("status")]   = QStringLiteral("planned");
-    req[QStringLiteral("headline")] = QStringLiteral("New item.");
-    req[QStringLiteral("kind")]     = QStringLiteral("test");
-    req[QStringLiteral("source")]   = QStringLiteral("ants-2031");
-    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(req).object();
-
-    EXPECT_FALSE(out.value(QStringLiteral("ok")).toBool());
-    EXPECT_EQ(code(out), QStringLiteral("format_mismatch"));
-    EXPECT_EQ(out.value(QStringLiteral("format")).toString(),
-              QStringLiteral("pass-headings"));
-    EXPECT_FALSE(out.value(QStringLiteral("hint")).toString().isEmpty())
-        << "INV-1: refusal carries an Edit-fallback hint";
-
-    EXPECT_EQ(readFile(roadmapPath(tmp.path())), before)
-        << "INV-1: file left unmutated";
-}
-
-// INV-2 — append_batch + create_section refuse identically.
-TEST(McpRoadmapLogPassFormatMismatch, Inv2BatchAndCreateSectionRefuse) {
+// INV-2 — create_section still refuses format_mismatch on a pass-headings
+// roadmap. ANTS-2126 § 6: append / append_batch / flip / flip_batch /
+// annotate now WRITE (covered by mcp_roadmap_log_pass_writer); only
+// create_section keeps refusing (out of scope), so the old INV-1/3/4 and
+// the append_batch half of this INV-2 were removed.
+TEST(McpRoadmapLogPassFormatMismatch, Inv2CreateSectionRefuses) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
     ASSERT_TRUE(seed(tmp.path(), kPassRoadmap));
     RemoteControl rc(nullptr);
-
-    QJsonObject batch = baseReq(tmp.path());
-    batch[QStringLiteral("section")] = QStringLiteral("active");
-    QJsonArray bullets;
-    QJsonObject b;
-    b[QStringLiteral("status")]   = QStringLiteral("planned");
-    b[QStringLiteral("headline")] = QStringLiteral("Batch item.");
-    b[QStringLiteral("kind")]     = QStringLiteral("test");
-    b[QStringLiteral("source")]   = QStringLiteral("ants-2031");
-    bullets.append(b);
-    batch[QStringLiteral("bullets")] = bullets;
-    EXPECT_EQ(code(rc.cmdRoadmapLogAppendBatchForTest(batch).object()),
-              QStringLiteral("format_mismatch"));
 
     QJsonObject cs = baseReq(tmp.path());
     cs[QStringLiteral("after_section")] = QStringLiteral("active");
     cs[QStringLiteral("level")]         = 3;
     cs[QStringLiteral("title")]         = QStringLiteral("New Section");
-    EXPECT_EQ(code(rc.cmdRoadmapLogCreateSectionForTest(cs).object()),
-              QStringLiteral("format_mismatch"));
-}
-
-// INV-3 — flip + annotate refuse with format_mismatch.
-TEST(McpRoadmapLogPassFormatMismatch, Inv3FlipAndAnnotateRefuse) {
-    QTemporaryDir tmp;
-    ASSERT_TRUE(tmp.isValid());
-    ASSERT_TRUE(seed(tmp.path(), kPassRoadmap));
-    RemoteControl rc(nullptr);
-
-    QJsonObject flip = baseReq(tmp.path());
-    flip[QStringLiteral("op")]        = QStringLiteral("flip");
-    flip[QStringLiteral("id")]        = QStringLiteral("PASS-1-1");
-    flip[QStringLiteral("to_status")] = QStringLiteral("shipped");
-    EXPECT_EQ(code(rc.cmdRoadmapLogFlipForTest(flip).object()),
-              QStringLiteral("format_mismatch"));
-
-    QJsonObject ann = baseReq(tmp.path());
-    ann[QStringLiteral("op")]   = QStringLiteral("annotate");
-    ann[QStringLiteral("id")]   = QStringLiteral("PASS-1-1");
-    ann[QStringLiteral("note")] = QStringLiteral("a note.");
-    EXPECT_EQ(code(rc.cmdRoadmapLogFlipForTest(ann).object()),
-              QStringLiteral("format_mismatch"));
-}
-
-// INV-4 — flip_batch refuses with format_mismatch.
-TEST(McpRoadmapLogPassFormatMismatch, Inv4FlipBatchRefuses) {
-    QTemporaryDir tmp;
-    ASSERT_TRUE(tmp.isValid());
-    ASSERT_TRUE(seed(tmp.path(), kPassRoadmap));
-    RemoteControl rc(nullptr);
-
-    QJsonObject fb = baseReq(tmp.path());
-    fb[QStringLiteral("to_status")] = QStringLiteral("shipped");
-    QJsonArray locators;
-    QJsonObject loc;
-    loc[QStringLiteral("id")] = QStringLiteral("PASS-1-1");
-    locators.append(loc);
-    fb[QStringLiteral("locators")] = locators;
-    EXPECT_EQ(code(rc.cmdRoadmapLogFlipBatchForTest(fb).object()),
-              QStringLiteral("format_mismatch"));
+    const QJsonObject out = rc.cmdRoadmapLogCreateSectionForTest(cs).object();
+    EXPECT_EQ(code(out), QStringLiteral("format_mismatch"));
+    EXPECT_EQ(out.value(QStringLiteral("format")).toString(),
+              QStringLiteral("pass-headings"));
 }
 
 // INV-6 (ANTS-2048) — a pass-headings roadmap carrying stray `- [ ]`
-// checkbox sub-tasks is STILL detected as pass-headings (not gfm), so
-// flip_batch returns format_mismatch — not the bullet_not_found RetroDB
-// hit when a lone checkbox flipped the sniffer to github-task-list.
+// checkbox sub-tasks is STILL detected as pass-headings (not gfm). Under
+// ANTS-2126 flip_batch now WRITES on pass-headings, so the proof shifts:
+// correct detection routes to the pass writer and flips PASS-41-5
+// (format:"pass-headings", flipped_count 1). Had the lone checkbox
+// flipped the sniffer to github-task-list, the GFM flip_batch would
+// instead skip PASS-41-5 as bullet_not_found (format:"gfm",
+// flipped_count 0) — the RetroDB hit this guards against.
 TEST(McpRoadmapLogPassFormatMismatch, Inv6StrayCheckboxStillPassHeadings) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
@@ -209,11 +139,14 @@ TEST(McpRoadmapLogPassFormatMismatch, Inv6StrayCheckboxStillPassHeadings) {
     fb[QStringLiteral("locators")] = locators;
     const QJsonObject out = rc.cmdRoadmapLogFlipBatchForTest(fb).object();
 
-    EXPECT_EQ(code(out), QStringLiteral("format_mismatch"))
-        << "ANTS-2048: a stray `- [ ]` must not flip the sniffer to gfm "
-           "(would yield bullet_not_found instead of format_mismatch)";
     EXPECT_EQ(out.value(QStringLiteral("format")).toString(),
-              QStringLiteral("pass-headings"));
+              QStringLiteral("pass-headings"))
+        << "ANTS-2048: a stray `- [ ]` must not flip the sniffer to gfm";
+    EXPECT_EQ(out.value(QStringLiteral("flipped_count")).toInt(), 1)
+        << "PASS-41-5 located + flipped via the pass-headings writer";
+    EXPECT_TRUE(readFile(roadmapPath(tmp.path()))
+                    .contains("- **Status**: done"))
+        << "Pass 41.5's Status line rewritten in place";
 }
 
 // INV-5 — a normal ants-v1 roadmap still appends (no false refusal).

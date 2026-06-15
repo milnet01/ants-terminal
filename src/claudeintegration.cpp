@@ -6721,6 +6721,19 @@ void ClaudeIntegration::onMcpConnection() {
                         "{ok, id?, file, line, bytes_written, "
                         "note_appended?, note_line?, ...op-specific} "
                         "or {ok:false, error, code}. "
+                        "PASS-HEADINGS (ANTS-2126): on a `#### Pass N.M` "
+                        "heading roadmap (RetroDB-style; reader synthesises "
+                        "`PASS-N-M[-SUB]` ids), append/append_batch/flip/"
+                        "flip_batch/annotate now WRITE instead of refusing "
+                        "format_mismatch (only create_section still "
+                        "refuses). op:\"append\" needs a `pass` arg "
+                        "(e.g. \"43.5\" or \"43.5.B\", validated "
+                        "^\\d+\\.\\d+(?:\\.[A-Za-z][A-Za-z0-9]*)?$); status "
+                        "is required, kind/source/lanes/layman are ignored, "
+                        "and .roadmap-counter is never touched. Flip/annotate "
+                        "locate by the `PASS-N-M` id (from roadmap_query) or "
+                        "`headline`; a missing required arg is `bad_args`. A "
+                        "stray `pass` on a GFM/ants-v1 roadmap is ignored. "
                         "SIZE NOTE (ANTS-1853): keep op:\"append\" "
                         "calls small. Large multi-paragraph `body` "
                         "payloads (many embedded newlines/quotes) are "
@@ -7179,6 +7192,20 @@ void ClaudeIntegration::onMcpConnection() {
                         "Envelope carries dry_run:true; append_batch "
                         "reports applied_count:0 + would_apply_count.");
 
+                    // ANTS-2126 — pass designator for op:"append" on a
+                    // `#### Pass N.M` heading roadmap.
+                    QJsonObject passProp;
+                    passProp["type"] = "string";
+                    passProp["description"] = QStringLiteral(
+                        "Pass designator for op:\"append\" on a pass-headings "
+                        "(`#### Pass N.M`) roadmap (ANTS-2126), e.g. \"43.5\" "
+                        "or \"43.5.B\"; validated "
+                        "^\\d+\\.\\d+(?:\\.[A-Za-z][A-Za-z0-9]*)?$. REQUIRED "
+                        "when the target is a pass-headings roadmap; ignored "
+                        "on GFM / ants-v1 roadmaps. Flip/annotate locate a "
+                        "pass by its synthesised `PASS-N-M` id (via the `id` "
+                        "locator) or `headline`, not via `pass`.");
+
                     // ANTS-2080 — confirm-after compact echo.
                     QJsonObject returnProp;
                     returnProp["type"] = "string";
@@ -7227,6 +7254,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["id_prefix"]     = idPrefixProp;    // ANTS-2076
                     props["dry_run"]       = dryRunProp;      // ANTS-2077
                     props["return"]        = returnProp;      // ANTS-2080
+                    props["pass"]          = passProp;        // ANTS-2126
                     schema["properties"]   = props;
 
                     // ANTS-1428 — only caller_cwd is unconditionally

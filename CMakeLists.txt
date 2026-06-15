@@ -294,6 +294,9 @@ add_library(ants_core_lib STATIC
     src/llmdispatcher.cpp
     src/roadmapindex.cpp
     src/changeloglog.cpp
+    # ANTS-2126 — pass-headings (`#### Pass N.M`) roadmap_log writer
+    # primitives (render / flip / annotate), mirror of changeloglog.cpp.
+    src/passheadingwrite.cpp
     src/roadmapfoldin.cpp
     # ANTS-1665 — regex-safety helpers (catastrophic-shape detector +
     # LIMIT_MATCH hardener) shared by auditengine and terminalwidget.
@@ -1193,6 +1196,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_roadmap_log_atomicity/test_mcp_roadmap_log_atomicity.cpp
                 # ANTS-2031 roadmap_log format_mismatch on pass-headings docs.
                 tests/features/mcp_roadmap_log_pass_format_mismatch/test_mcp_roadmap_log_pass_format_mismatch.cpp
+                # ANTS-2126 roadmap_log pass-headings WRITER (append/flip/annotate).
+                tests/features/mcp_roadmap_log_pass_writer/test_mcp_roadmap_log_pass_writer.cpp
                 # ANTS-1717/1793 roadmap_log note append (annotate + flip-note).
                 tests/features/roadmap_log_annotate/test_roadmap_log_annotate.cpp
                 # ANTS-1690 roadmap_log op:flip_batch (N bullets, one commit).

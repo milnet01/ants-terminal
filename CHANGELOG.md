@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log heading-format WRITER (append/create + sub-bullet flip) — the real writer ANTS-2031 punted, not just the shipped format_mismatch warning.** (ANTS-2126)
+  Ants can now warn when a heading-style to-do list can't be written to; this is the bigger follow-up where it actually writes to them — covering both adding new items and ticking off sub-items.
+
 - **`changelog_log` warns when the Unreleased section is malformed** (ANTS-2125)
   When Ants adds a changelog entry to a messy section, warn the user it's messy instead of silently making it messier.
 
