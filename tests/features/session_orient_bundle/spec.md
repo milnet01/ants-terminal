@@ -14,6 +14,7 @@ ETag-eligible verbs into one envelope.
 | 5   | `Inv5ToolsListDescribesBundle`    | tools/list descriptor block exists for `session_orient`. |
 | 6   | `Inv6PartialUpstreamFailure`      | bundle's `ok` reflects all-three success/failure. |
 | 7   | `Inv7TokenCostBucketRegistered`   | `tokenCostFor` table carries an entry for `session_orient`. |
+| 8   | `Inv8CodebaseIndexRefreshTrimmed` | bundle invokes `cmdCodebaseIndex` under a `codebase_index` key (eager refresh at session start) AND strips volatile `generated_at_ms`/`refreshed_files` to keep the ETag stable (ANTS-2140). |
 
 ## Pre-fix verification
 

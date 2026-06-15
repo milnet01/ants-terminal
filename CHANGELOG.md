@@ -26,7 +26,15 @@ for security-relevant changes.
 - **Test-suite Audit dialog now resumes a mid-audit run** (ANTS-2114)
   Reopening the Test Audit dialog and re-running it now skips chunks already reviewed in the prior session (their reports are kept on disk), so only the unreviewed remainder is re-sent to the AI — saving tokens and time. A changed test tree is detected and re-audited cleanly.
 
+### Changed
+
+- **session_orient now rebuilds the codebase map at session start, and the startup cheat-sheet points sessions at the indexed-search tools** (ANTS-2140)
+  The first orientation call a Claude session makes now also refreshes Ants' codebase map (so it's fresh without anyone remembering a separate step), and the startup prelude advertises the codebase_index verb with a 'query before grep' nudge. Result: faster, cheaper code navigation down the line.
+
 ### Fixed
+
+- **project_layout / session_orient now list a project's standards docs instead of reporting none** (ANTS-2138)
+  When a project has a canonical docs/standards/ folder, Ants reported it had no standards docs (standards_files was empty) even though the folder was full. It now lists the folder's .md files. The name-glob fallback (for projects with no standards folder) is unchanged.
 
 - **roadmap_log op:append emits an undocumented `missing_field` code for absent required fields — converge with the taxonomy's `bad_args`.** (ANTS-2128)
   Make the roadmap helper's error names match its own documented list.

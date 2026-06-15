@@ -145,3 +145,28 @@ TEST(session_orient_bundle, Inv7TokenCostBucketRegistered) {
     }
     EXPECT_EQ(0, expect_failures());
 }
+
+// INV-8 (ANTS-2140) — the bundle eagerly refreshes the codebase index
+// and embeds a TRIMMED summary: it invokes cmdCodebaseIndex under a
+// `codebase_index` key, and strips the per-call-volatile fields so the
+// session_orient dispatch-layer ETag stays stable across calls.
+TEST(session_orient_bundle, Inv8CodebaseIndexRefreshTrimmed) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const auto pos = cpp.find("cmdSessionOrient");
+    if (pos == std::string::npos) {
+        expect(false, "INV-8: cmdSessionOrient body not found");
+    } else {
+        const std::string body =
+            ants_test::slurpFunctionBody(cpp, "cmdSessionOrient");
+        expect(contains(body, "cmdCodebaseIndex") &&
+               contains(body, "\"codebase_index\""),
+               "INV-8: bundle invokes cmdCodebaseIndex under a "
+               "codebase_index key (eager refresh at session start)");
+        expect(contains(body, "generated_at_ms") &&
+               contains(body, "refreshed_files"),
+               "INV-8: volatile fields stripped from the embedded "
+               "summary (ETag stability)");
+    }
+    EXPECT_EQ(0, expect_failures());
+}

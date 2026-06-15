@@ -10855,6 +10855,28 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
         result[QStringLiteral("server_build")] = sb;
     }
 
+    // --- codebase_index (ANTS-2140 / ANTS-1637) ---
+    // Make the codebase map ride the blessed first call: invoking
+    // cmdCodebaseIndex drives CodebaseIndex::serve() (load -> refresh ->
+    // write-back), so the index is eagerly refreshed at session start
+    // without the session having to remember a separate call. We embed a
+    // TRIMMED summary: the per-call-volatile generated_at_ms /
+    // refreshed_files (and any etag) would change every call and break
+    // session_orient's dispatch-layer ETag (304) stability, so they are
+    // stripped -- the structural summary (file_count / lane_count /
+    // lanes / languages / roles / cache_path) is stable while the tree
+    // is unchanged. Does NOT contribute to allOk: a project without a
+    // src/ tree must not fail orient (parity with active_bullets).
+    {
+        QJsonObject ciReq;
+        ciReq[QStringLiteral("caller_cwd")] = rootCanonical;
+        QJsonObject ci = cmdCodebaseIndex(ciReq).object();
+        ci.remove(QStringLiteral("generated_at_ms"));
+        ci.remove(QStringLiteral("refreshed_files"));
+        ci.remove(QStringLiteral("etag"));
+        result[QStringLiteral("codebase_index")] = ci;
+    }
+
     result[QStringLiteral("ok")] = allOk;
     // ETag injected at the dispatch layer (isEtagSupportedTool).
     return QJsonDocument(result);

@@ -121,6 +121,13 @@ then `ToolSearch` `select:mcp__ants__<name>` to load a verb's schema before
 calling it. This pointer is the always-loaded fallback for when the hook
 prelude is stale (ANTS-2038) or disabled.
 
+**Session bootstrap refreshes the codebase map (ANTS-2140).**
+`session_orient` (the documented first call) embeds + eagerly
+refreshes `codebase_index` (ANTS-1637), so the codebase map is
+rebuilt at session start. Query it via `codebase_index` /
+`find_definition` / `find_sources` / `workspace_search` rather than
+`grep` (cheaper, and it's the index the first call just refreshed).
+
 When adding or modifying an MCP tool, follow
 [`docs/standards/mcp-tools.md`](docs/standards/mcp-tools.md) (the umbrella
 checklist; its *Load-bearing contracts* quick-reference lists each
