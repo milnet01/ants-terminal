@@ -356,8 +356,10 @@ TEST(ProjectLayoutEngine, ProbedPathsIncludeWidenedForkCandidates) {
         QStringLiteral("docs/private/specs")));
 }
 
-// ANTS-1574 INV-E — when docs/standards/ exists, the fallback is
-// suppressed (canonical dir wins; standards_files[] stays empty).
+// ANTS-1574 INV-E / ANTS-2138 — when docs/standards/ exists, the
+// name-glob fallback is suppressed (it must not promote a docs/*.md
+// from OUTSIDE the canonical dir), but standards_files now enumerates
+// the *.md INSIDE the canonical dir so the field reflects reality.
 TEST(ProjectLayoutEngine, StandardsNameGlobFallbackSkippedWhenDirPresent) {
     QTemporaryDir td;
     ASSERT_TRUE(td.isValid());
@@ -369,6 +371,39 @@ TEST(ProjectLayoutEngine, StandardsNameGlobFallbackSkippedWhenDirPresent) {
 
     const auto env = PLE::scanLayout(td.path());
     EXPECT_EQ(env.standardsDir, QString("docs/standards"));
-    EXPECT_TRUE(env.standardsFiles.isEmpty())
-        << "canonical docs/standards/ wins; fallback must not fire";
+    // ANTS-2138 — the canonical dir's own *.md is enumerated...
+    EXPECT_TRUE(env.standardsFiles.contains(
+        QString("docs/standards/coding.md")))
+        << "canonical standards dir *.md must populate standards_files";
+    // ...but the name-glob fallback must NOT promote docs/*.md from
+    // outside the canonical dir.
+    EXPECT_FALSE(env.standardsFiles.contains(
+        QString("docs/EXTRA_DESIGN_GUIDE.md")))
+        << "fallback must not fire when a canonical dir resolved";
+}
+
+// ANTS-2138 — a populated canonical docs/standards/ dir enumerates ALL
+// its *.md into standards_files, sorted, with no name-regex/min-lines
+// filter (every file in a dedicated standards dir IS a standard). The
+// bug this regression-locks: standards_dir resolved but standards_files
+// stayed [] because enumeration only ran in the no-canonical-dir branch.
+TEST(ProjectLayoutEngine, StandardsDirEnumeratesMarkdownFiles) {
+    QTemporaryDir td;
+    ASSERT_TRUE(td.isValid());
+    QDir(td.path()).mkpath(QStringLiteral("docs/standards"));
+    writeFile(td.path() + "/docs/standards/coding.md",  "# Coding\n");
+    writeFile(td.path() + "/docs/standards/testing.md", "# Testing\n");
+    writeFile(td.path() + "/docs/standards/commits.md", "# Commits\n");
+    // A non-markdown file must be ignored.
+    writeFile(td.path() + "/docs/standards/notes.txt", "ignore me\n");
+
+    const auto env = PLE::scanLayout(td.path());
+    EXPECT_EQ(env.standardsDir, QString("docs/standards"));
+    const QStringList expected = {
+        QStringLiteral("docs/standards/coding.md"),
+        QStringLiteral("docs/standards/commits.md"),
+        QStringLiteral("docs/standards/testing.md"),
+    };
+    EXPECT_EQ(env.standardsFiles, expected)
+        << "standards_files must enumerate the resolved dir's *.md, sorted";
 }

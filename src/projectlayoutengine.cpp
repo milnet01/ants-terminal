@@ -363,6 +363,23 @@ void scanStandardsFallback(const QString &cwd, QStringList &out,
     }
 }
 
+// ANTS-2138 — enumerate *.md directly inside a resolved canonical
+// standards/ dir, sorted by name, into `out`. Unlike scanStandardsFallback
+// (the no-canonical-dir name-glob) every *.md in a dedicated standards dir
+// is a standard, so there's no name-regex / min-lines filter. Populates
+// standardsFiles only; the dir itself is already in discovered[] (scanDir).
+void scanStandardsDir(const QString &cwd, const QString &standardsRel,
+                      QStringList &out) {
+    QDir d(cwd + QLatin1Char('/') + standardsRel);
+    if (!d.exists()) return;
+    const auto entries =
+        d.entryList(QStringList{QStringLiteral("*.md")},
+                    QDir::Files | QDir::NoDotAndDotDot,
+                    QDir::Name);
+    for (const QString &e : entries)
+        out.append(standardsRel + QLatin1Char('/') + e);
+}
+
 void scanAppStream(const QString &cwd, QString &out,
                    QStringList &probed, QStringList &discovered) {
     // ANTS-1493 — probe at repo root + the common packaging dirs.
@@ -423,12 +440,14 @@ LayoutEnvelope scanLayout(const QString &absoluteCwd) {
         scanDir(absoluteCwd, cand, env.standardsDir, env.probedPaths,
                 env.discovered);
     }
-    // ANTS-1574 — only fall back to name-glob when no canonical
-    // standards/ dir resolved. Projects that ship both
-    // docs/standards/ AND name-glob hits keep `standards_dir` as the
-    // primary signal; the name-glob is the "no canonical dir at all"
-    // safety net.
-    if (env.standardsDir.isEmpty()) {
+    // ANTS-2138 — when a canonical standards/ dir resolved, enumerate its
+    // *.md into standards_files so the field reflects reality. The
+    // ANTS-1574 name-glob fallback is the "no canonical dir at all" safety
+    // net, not a substitute: a project shipping docs/standards/ keeps
+    // standards_dir as the primary signal AND now lists the dir's *.md.
+    if (!env.standardsDir.isEmpty()) {
+        scanStandardsDir(absoluteCwd, env.standardsDir, env.standardsFiles);
+    } else {
         scanStandardsFallback(absoluteCwd, env.standardsFiles,
                               env.probedPaths, env.discovered);
     }

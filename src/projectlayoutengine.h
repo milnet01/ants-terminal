@@ -39,7 +39,8 @@ constexpr int kFormatSniffBytes = 4096;
 //   v3 = ANTS-1632 format-sniffer recognises "mixed" (GFM task-list + ants-v1 emoji bullets in the same file) and `bullet_count_estimate` counts the union — invalidates pre-1632 caches that returned `format:"unknown"` + `bullet_count_estimate:0` on the same on-disk file
 //   v4 = ANTS-1880 widened to docs/{,private/,internal/,fork/}phases (phasesDir field) — per-phase design docs (Vestige and similar projects keep phase_<NN>_<topic>_design.md outside docs/specs/)
 //   v5 = ANTS-1903 — body-scan fallback resolves the false-unknown case (a long preamble + first-bullet beyond the 4 KB sniff budget); invalidates pre-1903 caches that returned format:"unknown" + bullet_count_estimate:0 on a clearly-structured file
-constexpr int kProbeSetVersion  = 5;
+//   v6 = ANTS-2138 — standardsFiles now enumerates the *.md INSIDE a resolved canonical standards/ dir (previously populated only by the no-canonical-dir name-glob fallback, so a project with docs/standards/ reported standards_files:[]); invalidates pre-2138 caches that stored the empty list
+constexpr int kProbeSetVersion  = 6;
 
 // ANTS-1903 — per-branch trace of the format sniffer's decision.
 // Surfaces which branches scored a hit vs miss on each pass so a
@@ -98,13 +99,17 @@ struct LayoutEnvelope {
     // succeeded and here's what I found" without inspecting every
     // nested field. Entries are project-relative paths.
     QStringList    discovered;
-    // ANTS-1574 — when docs/standards/ is absent, top-level docs/*.md
-    // files whose names match STANDARD|DESIGN|STYLE|GUIDE (case-
-    // insensitive, >= 100 lines) populate this list. standards_dir
-    // intentionally stays empty in that case — its contract is "the
-    // directory that holds standards", not "a single standards file".
-    // The fallback files are also folded into `discovered[]` so
-    // callers that scan that list pick them up uniformly.
+    // Project-relative paths of standards documents. Two mutually
+    // exclusive sources (canonical dir wins):
+    //  - ANTS-2138 — when a canonical standards/ dir resolves
+    //    (`standardsDir` non-empty), every *.md directly inside it is
+    //    enumerated here (sorted, no name/min-lines filter — every file
+    //    in a dedicated standards dir IS a standard). These are NOT
+    //    re-added to `discovered[]` (the dir itself already is).
+    //  - ANTS-1574 — when docs/standards/ is ABSENT, top-level docs/*.md
+    //    files whose names match STANDARD|DESIGN|STYLE|GUIDE (case-
+    //    insensitive, >= 100 lines) populate this list as a fallback;
+    //    those fallback hits ARE folded into `discovered[]` too.
     QStringList    standardsFiles;
     // ANTS-1620 — schema version of the probe set that produced
     // `probedPaths[]`. `isStale` returns true when this is less
