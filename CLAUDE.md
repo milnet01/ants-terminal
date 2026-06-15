@@ -82,6 +82,15 @@ should make it unnecessary; reach for it after kernel / Qt-major updates.
 Optional audit deps self-disable if absent. **Cppcheck gotcha:** pass
 `--library=qt` or it misparses `emit` as a type.
 
+### CI parity: `tools/ci-parity.sh` (ANTS-2134)
+
+CI is red where local is green when the runner's environment differs:
+`C.UTF-8` POSIX collation (ANTS-2120) and a loaded 4-vCPU host that
+exposes timing races (ANTS-2130). `tools/ci-parity.sh` builds + runs the
+suite under `LC_ALL=C.UTF-8` in an isolated `build-ci-parity/` tree;
+`--repeat N` (ctest `until-fail`) flushes flakes, `--stress` adds CPU
+load. Quick check: `LC_ALL=C.UTF-8 ctest --test-dir build`.
+
 ## Test harnesses
 
 - **`audit_rule_fixtures`** — `tests/audit_self_test.sh` matches rule
