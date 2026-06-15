@@ -228,6 +228,29 @@ void dumpChildProcDiag(const char *tag, pid_t self, pid_t child) {
     }
 }
 
+// The kernel sets /proc/<pid>/comm during execve (begin_new_exec) BEFORE it
+// fills arg_start/arg_end for /proc/<pid>/cmdline (create_elf_tables). A child
+// preempted in that window — common on a loaded CI runner — reads back an
+// empty cmdline, which findClaudeChildPid's isClaudePid correctly rejects (a
+// process mid-exec is not yet "running claude"; production polls every 2 s and
+// self-heals on the next tick). A one-shot test must wait for the child's argv
+// to land before asserting detection, else it races the kernel. Bounded poll,
+// ~1.5 s cap; returns false if argv never lands (the caller's assert then
+// fails loudly rather than hanging). This is why inv9 settles before probing.
+bool waitForCmdlineReady(pid_t pid) {
+    if (pid <= 0) return false;
+    for (int i = 0; i < 150; ++i) {
+        QFile f(QString("/proc/%1/cmdline").arg(pid));
+        if (f.open(QIODevice::ReadOnly)) {
+            QByteArray raw = f.readAll();
+            f.close();
+            if (!raw.replace('\0', "").trimmed().isEmpty()) return true;
+        }
+        QThread::msleep(10);
+    }
+    return false;
+}
+
 int inv7FindClaudeChildPidDetectsChild() {
     // ANTS-1845: after the early-out refactor of findClaudeChildPid, a
     // direct `claude`-named child of the shell must still be detected via
@@ -263,6 +286,9 @@ int inv7FindClaudeChildPidDetectsChild() {
     }
     const pid_t child = static_cast<pid_t>(proc.processId());
 
+    // Wait out the mid-execve window so /proc/<child>/cmdline is populated
+    // before we probe — see waitForCmdlineReady().
+    waitForCmdlineReady(child);
     const pid_t found = ClaudeIntegration::findClaudeChildPid(::getpid());
 
     const bool ok = (found == child);
@@ -328,6 +354,10 @@ int inv8FindClaudeChildFromWorkerThread() {
     for (int i = 0; i < 300 && launcher.child.load() == 0; ++i)
         QThread::msleep(10);
     const pid_t child = launcher.child.load();
+
+    // Wait out the mid-execve window so /proc/<child>/cmdline is populated
+    // before we probe — see waitForCmdlineReady().
+    if (child > 0) waitForCmdlineReady(child);
 
     pid_t found = -1;
     if (child > 0) found = ClaudeIntegration::findClaudeChildPid(::getpid());

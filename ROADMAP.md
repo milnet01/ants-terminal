@@ -6483,6 +6483,13 @@ class; the deferrals below cover the rest.
   Kind: chore.
   Source: in-session-2026-06-12 (clangd unused-includes, surfaced while adding the ANTS-2118 merge test).
 
+- ✅ [ANTS-2130] **ClaudeTranscriptRobustness inv7/inv8 raced the kernel's mid-execve window — empty /proc/cmdline failed detection on loaded CI.**
+  Red CI on ANTS-2126 + ANTS-2129 pushes (both unrelated to those changes). findClaudeChildPid's isClaudePid matches /proc/<pid>/cmdline; the kernel sets /proc/<pid>/comm during execve BEFORE arg_start/arg_end, so a child preempted in that window reads an empty cmdline and is correctly rejected. inv7/inv8 probed during that window on the loaded runner (CI diag: comm=claude, cmdline=[], child in children list, ppid ok); inv9 already settled and passed. Fix is test-side (production self-heals on the 2s poll): new waitForCmdlineReady() bounded poll (~1.5s) before probing in inv7/inv8. inv9 left untouched.
+  **Layman:** An automated test was failing on the build server because it checked too early; fixed by waiting a moment.
+  Kind: test.
+  Lanes: claude, test, ci.
+  Source: in-session-2026-06-15 (red-CI diagnosis).
+
 ### 🔌 Ants MCP — improvements from running /audit + /indie-review + /debt-sweep (2026-05-14)
 
 The full audit / indie-review / debt-sweep cycle on 2026-05-14
