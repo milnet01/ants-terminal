@@ -6490,6 +6490,13 @@ class; the deferrals below cover the rest.
   Lanes: claude, test, ci.
   Source: in-session-2026-06-15 (red-CI diagnosis).
 
+- 📋 [ANTS-2134] **tools/ci-parity.sh — reproduce CI test conditions locally to catch locale/timing flakes before push.**
+  Two CI-only failures in a row (ANTS-2120 locale, ANTS-2130 timing) passed locally because the dev box differs from the runner. Proven outcome-affecting deltas: (1) locale — CI runs C.UTF-8 (POSIX collation), dev box runs a UTF-8 locale (Unicode collation); (2) load/parallelism — CI is a throttled 4-vCPU runner under queue load, dev box has more cores idle, so timing races only fire on CI. No parity tooling exists today (verified: no LC_ALL override in any preset/script). Ship tools/ci-parity.sh: sets LC_ALL=C.UTF-8, optional --stress (stress-ng background load), optional --repeat N / ctest --repeat until-fail to surface flakes. Document the one-liner (LC_ALL=C.UTF-8 ctest --test-dir build) in CLAUDE.md under Build & test. Optional follow-on: a ci-parity CMake preset. CI runner is ubuntu-24.04 (build-test/asan) + ubuntu-22.04 (qt62-baseline, compile-only)."
+  **Layman:** A one-command way to run the tests the way the build server does, so failures show up on my machine first.
+  Kind: test.
+  Lanes: test, ci, devexp.
+  Source: in-session-2026-06-15 (CI-parity survey).
+
 ### 🔌 Ants MCP — improvements from running /audit + /indie-review + /debt-sweep (2026-05-14)
 
 The full audit / indie-review / debt-sweep cycle on 2026-05-14
@@ -8445,6 +8452,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-06-11 (spotted while fixing ANTS-2070).
 
+- 📋 [ANTS-2135] **Large-body MCP write drops — op:append/append_batch with a big body intermittently arrives as {} (caller_cwd_required); diagnose + mitigate.**
+  A large op:append body sometimes reaches the server with the entire parameter payload missing (arguments_empty:true -> caller_cwd_required), forcing a retry or an Edit-tool fallback. The current refusal text and prior notes assume an upstream serialization/stdio drop (Claude Code client side, not Ants), but that has never been confirmed with a trace. (1) DIAGNOSE: instrument the MCP transport (mcp_trace ring buffer) to capture the raw inbound frame size + truncation point on a reproduced drop; determine whether the bytes arrive truncated at the socket (Ants-side framing/read-buffer bound) or never arrive (upstream). Note a concrete byte threshold if one exists. (2) MITIGATE (if any Ants-side cause or even if upstream): add resilience for large writes — e.g. a staged-body protocol (write body to a scratch file via one small call, then op:append referencing it), or chunked/length-prefixed framing with a server-side reassembly + explicit too_large refusal instead of a silent {}. Goal: a large append either succeeds or fails loudly with an actionable code, never silently empties. NOTE: the 3 empty calls in this session's triage were the operator sending empty params, not this bug — but the bug is real and documented in the verb's own error text."
+  **Layman:** Sometimes a big roadmap/changelog write silently loses its content; find out why and make it reliable.
+  Kind: investigate.
+  Lanes: mcp, ipc.
+  Source: user-request-2026-06-15.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
@@ -9243,6 +9257,27 @@ indie-review finding.
   Kind: investigate.
   Lanes: claudeintegration, modelautoswitch.
   Source: in-session-2026-06-03 (model_switch_stats near_misses observation).
+
+- 📋 [ANTS-2131] **Structurally end the nested-loop socket UAF class — run every QEventLoop-pumping MCP verb off the main thread.**
+  ANTS-2101/2103/2104 fixed the nested-loop deleteLater use-after-free one verb at a time (audit_run, indie_review_dispatch) by moving each to a worker thread; ANTS-2102 adds the regression test + sweep. The durable fix is structural: any MCP verb that spins a local QEventLoop (cold_eyes_*, test_audit_*, verify_changes, debt_sweep_* if it grows >5s) must dispatch on a worker, never on the socket's main thread, so no readyRead handler can ever reentrantly process the peer's disconnect+deleteLater. Mirror the ANTS-2103/2104 QThread template; pair with ANTS-2102 (test) and ANTS-2102's handler sweep. Goal: zero main-thread QEventLoops during MCP dispatch.
+  **Layman:** Move the slow background jobs off the main thread so a whole class of rare crashes becomes impossible by design.
+  Kind: refactor.
+  Lanes: mcp, threading.
+  Source: in-session-2026-06-15 (threading survey).
+
+- 📋 [ANTS-2132] **INV-9: async MCP dispatch so audit_run / indie_review_dispatch stop freezing the GUI for the sweep duration.**
+  ANTS-2103/2104 moved these verbs to a worker but still block the GUI thread on QThread::wait() for the whole run (5-600s: repo size / LLM latency) — mainwindow.cpp:4506, 5074. Convert from blocking join to fire-and-forget worker + completion callback that queues the MCP response when the worker finishes, so the UI keeps painting. Larger change (response-path plumbing); the wait()-join is a deliberate interim per the ANTS-2103/2104 commit notes.
+  **Layman:** While a long scan runs, the window currently freezes; make it stay responsive.
+  Kind: perf.
+  Lanes: mcp, threading, ux.
+  Source: in-session-2026-06-15 (threading survey).
+
+- 📋 [ANTS-2133] **Verb in-flight stale-slot reaper: 270s recovery after a worker SIGKILL is too slow — add proactive liveness check.**
+  claudeintegration.cpp verbInFlightTryAcquire reaps entries older than kVerbInFlightReapMs (270s). If a worker is SIGKILLed mid-verb the slot stays held until that window elapses, blocking the same (verb, projectRoot) pair. Add a cheap worker-liveness probe (/proc/<pid> existence, or a stored QThread* isRunning check) on tryAcquire so a dead worker's slot frees in seconds. Low-priority hardening; current reaper already bounds the worst case.
+  **Layman:** If a background job dies unexpectedly, free its lock faster instead of waiting ~4.5 minutes.
+  Kind: enhancement.
+  Lanes: mcp, threading.
+  Source: in-session-2026-06-15 (threading survey).
 
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
