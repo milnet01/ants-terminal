@@ -52,10 +52,10 @@ jobs:
       CCACHE_COMPRESS: "1"
     steps:
       - name: Check out source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
 
       - name: Install Qt6 + build + packaging deps (cached)
-        uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05  # v1.6.0
+        uses: awalsh128/cache-apt-pkgs-action@681749ae568c81c2037cb9185e38b709b261bd2f  # v1.6.1
         with:
           packages: >-
             build-essential cmake ninja-build pkg-config ccache
@@ -66,6 +66,11 @@ jobs:
           version: 1.0
 
       - name: Restore ccache (release)
+        # v5.0.5 is the latest actions/cache (checked 2026-06-15). Its bundled
+        # restore/save sub-actions still ship a Node-20 runtime, so a Node-20
+        # deprecation warning fires here until upstream cuts a Node-24 release;
+        # GitHub force-runs these on Node 24 from 2026-06-16, so it self-heals.
+        # Bump when actions/cache > v5.0.5 ships.
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
         with:
           path: ${{ github.workspace }}/.ccache
@@ -169,10 +174,10 @@ jobs:
       CCACHE_COMPRESS: "1"
     steps:
       - name: Check out source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
 
       - name: Install Qt6 + build deps (cached)
-        uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05  # v1.6.0
+        uses: awalsh128/cache-apt-pkgs-action@681749ae568c81c2037cb9185e38b709b261bd2f  # v1.6.1
         with:
           packages: >-
             build-essential cmake ninja-build pkg-config ccache
@@ -182,6 +187,7 @@ jobs:
           version: 1.0
 
       - name: Restore ccache (asan)
+        # See "Restore ccache (release)" above re: v5.0.5 Node-20 warning.
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
         with:
           path: ${{ github.workspace }}/.ccache
@@ -240,7 +246,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
 
       - name: Install Qt6 + build deps (release baseline)
         run: |

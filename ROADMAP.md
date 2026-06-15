@@ -6498,6 +6498,13 @@ class; the deferrals below cover the rest.
   Source: in-session-2026-06-15 (CI-parity survey).
   Resolved (2026-06-15): tools/ci-parity.sh ships — runs the suite under LC_ALL=C.UTF-8 in an isolated build-ci-parity/ tree (keeps build/ warm, no running-instance relink), with --repeat N (ctest until-fail) for flake-flushing and --stress (stress-ng load). CLAUDE.md Build & test section documents it + the LC_ALL=C.UTF-8 one-liner.
 
+- ✅ [ANTS-2137] **Bump CI actions to latest + document the actions/cache Node-20 deprecation.**
+  CI surfaced a Node-20 deprecation annotation (GitHub force-runs Node-20 JS actions on Node 24 from 2026-06-16). Sweep: actions/checkout v6.0.2->v6.0.3 (4 sites, ci.yml + release.yml), awalsh128/cache-apt-pkgs-action v1.6.0->v1.6.1 (2 sites) — both SHA-pinned with version comments, patch-only so no caller/`with:` changes. actions/cache is already at the latest (v5.0.5); its bundled restore/save still ship a Node-20 runtime, so the warning originates upstream — documented inline at both cache usages (bump when actions/cache > v5.0.5 ships; GitHub's 2026-06-16 force-to-Node-24 self-heals it meanwhile). ubuntu-22.04 on qt62-baseline + release.yml left as-is: a deliberate Qt 6.2.x / AppImage glibc floor (the rule's documented exception; ANTS-1977/1978). YAML validated, full CI green expected on push."
+  **Layman:** Updated the build-server helpers to their newest versions so a warning doesn't turn into a failure.
+  Kind: chore.
+  Lanes: ci.
+  Source: in-session-2026-06-15 (CI Node-20 deprecation warning).
+
 ### 🔌 Ants MCP — improvements from running /audit + /indie-review + /debt-sweep (2026-05-14)
 
 The full audit / indie-review / debt-sweep cycle on 2026-05-14
