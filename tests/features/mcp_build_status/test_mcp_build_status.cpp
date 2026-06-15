@@ -171,7 +171,10 @@ TEST(McpBuildStatus, WiringContract) {
     {
         const auto pos = ciCpp.find("auto kindForName");
         ASSERT_NE(pos, std::string::npos);
-        const std::string fn = ciCpp.substr(pos, 5000);
+        // 7 KiB window — kindForName grows as verbs are bucketed above the
+        // build_status branch (ANTS-2129 added the audit_falsepos_log entry
+        // to the audit family, pushing build_status past the old 5 KiB).
+        const std::string fn = ciCpp.substr(pos, 7000);
         const auto branch = fn.find("\"build_status\"");
         ASSERT_NE(branch, std::string::npos)
             << "build_status must have an explicit branch in "

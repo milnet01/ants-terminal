@@ -1081,6 +1081,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_feedback_query/test_mcp_feedback_query.cpp
                 tests/features/mcp_feedback_log/test_mcp_feedback_log.cpp
                 tests/features/mcp_spec_log/test_mcp_spec_log.cpp
+                # ANTS-2129 — audit_falsepos_log write verb.
+                tests/features/audit_falsepos_log/test_audit_falsepos_log.cpp
                 # ANTS-1390 ~global / ~claude-config caller_cwd sentinel
                 # for path tools (workspace_search, file_outline).
                 tests/features/mcp_global_config_sentinel/test_mcp_global_config_sentinel.cpp

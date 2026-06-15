@@ -408,6 +408,12 @@ public:
     // pure SpecLog transforms). m_main-independent (caller_cwd canonical
     // + filesystem only, mirroring changelog_log).
     QJsonDocument cmdSpecLog(const QJsonObject &req);
+    // ANTS-2129 — audit_falsepos_log: append a confirmed false positive to
+    // <root>/.ants_review_falsepos.jsonl (delegates to the pure
+    // ants::falsepos::appendEntry, which does the atomic O_APPEND). Resolves
+    // the root via resolveCallerCwdRoot (m_main-dependent for the tab
+    // fallback, like the other root-resolving verbs).
+    QJsonDocument cmdAuditFalseposLog(const QJsonObject &req);
 
     // ANTS-1303: find_definition / find_caller — tree-wide regex
     // symbol scanner. Delegate to SymbolQuery; resolve the root via

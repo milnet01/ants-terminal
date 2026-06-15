@@ -3430,6 +3430,88 @@ void ClaudeIntegration::onMcpConnection() {
                     tools.append(t);
                 }
 
+                // ANTS-2129 — audit_falsepos_log: append a confirmed
+                // false positive to the prose review ledger
+                // .ants_review_falsepos.jsonl (write side of ANTS-1457).
+                {
+                    QJsonObject t;
+                    t["name"] = "audit_falsepos_log";
+                    t["description"] = QStringLiteral(
+                        "Append one confirmed false-positive record to "
+                        "<project>/.ants_review_falsepos.jsonl — the prose "
+                        "ledger the /cold-eyes, /indie-review, /test-audit "
+                        "(and /audit step-10.5) sweeps read so a re-run "
+                        "doesn't re-litigate a dismissed finding. Atomic "
+                        "O_APPEND (safe under concurrent CC sessions — do "
+                        "NOT hand-write with the Write tool). Trims claim/"
+                        "rationale to the read caps and refuses a record "
+                        "over 3.5 KiB. Creates an absent ledger (mode 0644). "
+                        "Returns {ok, path, bytes_appended, created, "
+                        "timestamp, review_kind}. Refusals: `bad_args` "
+                        "(empty claim/rationale, non-canonical review_kind, "
+                        "bad timestamp, or over-size record), `no_project` "
+                        "(caller_cwd unresolved), `write_failed` (I/O error "
+                        "or non-regular ledger path). caller_cwd required.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use after a sweep fold-in classifies a finding "
+                        "FALSE_POSITIVE (user-confirmed) to record it once, "
+                        "instead of the hand-rolled jq+printf recipe.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject rkProp; rkProp["type"] = "string";
+                        { QJsonArray e;
+                          e.append(QStringLiteral("audit"));
+                          e.append(QStringLiteral("cold-eyes"));
+                          e.append(QStringLiteral("indie-review"));
+                          e.append(QStringLiteral("test-audit"));
+                          rkProp["enum"] = e; }
+                        rkProp["description"] = QStringLiteral(
+                            "Required. Which sweep dismissed it.");
+                    QJsonObject claimProp; claimProp["type"] = "string";
+                        claimProp["description"] = QStringLiteral(
+                            "Required. One-line summary of the dismissed "
+                            "claim (trimmed to 280 units).");
+                    QJsonObject ratProp; ratProp["type"] = "string";
+                        ratProp["description"] = QStringLiteral(
+                            "Required. Why it's a false positive — cite the "
+                            "file/line/system that makes it safe (trimmed to "
+                            "1024 units). No secrets; flows into the brief.");
+                    QJsonObject tsProp; tsProp["type"] = "string";
+                        tsProp["description"] = QStringLiteral(
+                            "Optional YYYY-MM-DD; defaults to today.");
+                    QJsonObject laneProp; laneProp["type"] = "string";
+                        laneProp["description"] = QStringLiteral(
+                            "Optional lane/partition the finding belongs to "
+                            "(empty = all lanes).");
+                    QJsonObject topicProp; topicProp["type"] = "string";
+                        topicProp["description"] = QStringLiteral(
+                            "Optional short grouping tag "
+                            "(e.g. rate-limit, unused-import).");
+                    QJsonObject lbProp; lbProp["type"] = "string";
+                        lbProp["description"] = QStringLiteral(
+                            "Optional audit-trail tag "
+                            "(user-confirmed / cc-session / external); "
+                            "defaults to cc-session.");
+                    props["review_kind"] = rkProp;
+                    props["claim"]       = claimProp;
+                    props["rationale"]   = ratProp;
+                    props["timestamp"]   = tsProp;
+                    props["lane"]        = laneProp;
+                    props["topic"]       = topicProp;
+                    props["logged_by"]   = lbProp;
+                    props["caller_cwd"]  = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("review_kind"));
+                    req.append(QStringLiteral("claim"));
+                    req.append(QStringLiteral("rationale"));
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema["required"] = req;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-1250: git_state — single tool, dispatches on
                 // `op` (status / log / diff). Collapsed from three
                 // separate tools to save ~240 permanent schema tokens
@@ -7811,7 +7893,10 @@ void ClaudeIntegration::onMcpConnection() {
                     if (name == QLatin1String("cross_doc_diff"))
                         return QStringLiteral("cold-eyes");
                     if (name == QLatin1String("audit_run") ||
-                        name == QLatin1String("last_audit_summary"))
+                        name == QLatin1String("last_audit_summary") ||
+                        // ANTS-2129 — audit_falsepos_log: write side of the
+                        // false-positive ledger, audit-family.
+                        name == QLatin1String("audit_falsepos_log"))
                         return QStringLiteral("audit");
                     if (name == QLatin1String("verify_changes"))
                         return QStringLiteral("verify");
@@ -8795,6 +8880,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // canonical case is an absolute shared-root path.
     if (toolName == QStringLiteral("feedback_query"))      return C::Required;
     if (toolName == QStringLiteral("feedback_log"))        return C::Required;
+    // ANTS-2129 — audit_falsepos_log resolves <root>/.ants_review_falsepos.jsonl
+    // off caller_cwd; Required (matches the other root-resolving write verbs).
+    if (toolName == QStringLiteral("audit_falsepos_log")) return C::Required;
     // ANTS-1963 — spec_log resolves docs/specs|phases/<id>.md under the
     // caller's project root; Required matches spec_query.
     if (toolName == QStringLiteral("spec_log"))            return C::Required;

@@ -308,5 +308,120 @@ QJsonArray formatForJsonArray(const QList<LedgerEntry> &entries,
     return arr;
 }
 
+// ANTS-2129 — write side. See docs/specs/ANTS-2129.md.
+AppendResult appendEntry(const QString &projectPath, const LedgerEntry &in) {
+    // On-disk record must stay under the Linux atomic-write(2) bound so the
+    // O_APPEND of one record below this size is torn-write-free.
+    constexpr int kMaxRecordBytes = 3584;  // 3.5 KiB
+
+    AppendResult r;
+    if (projectPath.isEmpty()) {
+        r.code = QStringLiteral("bad_args");
+        r.message = QStringLiteral("appendEntry: empty projectPath");
+        return r;
+    }
+
+    LedgerEntry e = in;
+
+    // review_kind: required + canonical. SEPARATE from isValid() (which does
+    // not check review_kind). Absent and empty take this same path → bad_args.
+    if (e.reviewKind.isEmpty()
+        || !canonicalReviewKinds().contains(e.reviewKind)) {
+        r.code = QStringLiteral("bad_args");
+        r.message = QStringLiteral(
+            "review_kind must be one of audit / cold-eyes / "
+            "indie-review / test-audit");
+        return r;
+    }
+    // claim/rationale non-empty + timestamp valid (one guard, both absent
+    // and malformed).
+    if (!e.isValid()) {
+        r.code = QStringLiteral("bad_args");
+        r.message = QStringLiteral(
+            "claim and rationale must be non-empty and timestamp must be "
+            "a valid YYYY-MM-DD date");
+        return r;
+    }
+
+    // Writers MUST trim to the read caps before append (standard § Atomic
+    // append). Reuse the read-side surrogate-aware truncator.
+    e.claim     = surrogateAwareTruncate(e.claim, kClaimCap);
+    e.rationale = surrogateAwareTruncate(e.rationale, kRationaleCap);
+
+    // Compact JSON: one physical line, all control chars escaped in every
+    // string field. Keys snake_case (the keys parseLine reads).
+    QJsonObject o;
+    o[QStringLiteral("review_kind")] = e.reviewKind;
+    if (!e.lane.isEmpty())  o[QStringLiteral("lane")]  = e.lane;
+    o[QStringLiteral("claim")]     = e.claim;
+    o[QStringLiteral("rationale")] = e.rationale;
+    if (!e.topic.isEmpty()) o[QStringLiteral("topic")] = e.topic;
+    o[QStringLiteral("timestamp")] = e.timestamp;
+    if (!e.loggedBy.isEmpty())
+        o[QStringLiteral("logged_by")] = e.loggedBy;
+
+    const QByteArray json =
+        QJsonDocument(o).toJson(QJsonDocument::Compact);
+    QByteArray record;
+    record.reserve(json.size() + 2);
+    record.append('\n');   // self-healing leading newline (standard recipe)
+    record.append(json);
+    record.append('\n');   // trailing newline (file ends in \n)
+
+    if (record.size() >= kMaxRecordBytes) {
+        r.code = QStringLiteral("bad_args");
+        r.message = QStringLiteral(
+            "record exceeds 3.5 KiB after trim — shorten rationale");
+        return r;
+    }
+
+    const QString path =
+        projectPath + QStringLiteral("/.ants_review_falsepos.jsonl");
+
+    // Pre-write file-type guard: never append through a symlink / into a
+    // non-regular file (lstat, S_ISREG — same posture as the read side).
+    // The lstat→open window is an accepted TOCTOU under the same-UID trust
+    // model (ADR-0004).
+    struct stat st {};
+    const bool exists =
+        (::lstat(path.toUtf8().constData(), &st) == 0);
+    if (exists && !S_ISREG(st.st_mode)) {
+        r.code = QStringLiteral("write_failed");
+        r.message = QStringLiteral(
+            "ledger path exists and is not a regular file");
+        return r;
+    }
+    r.created = !exists;
+
+    // True O_APPEND of the complete record — NOT a read-modify-write.
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Append)) {
+        r.code = QStringLiteral("write_failed");
+        r.message =
+            QStringLiteral("cannot open %1 for append").arg(path);
+        return r;
+    }
+    const qint64 n = f.write(record);
+    const bool flushed = f.flush();
+    f.close();
+    if (n != record.size() || !flushed) {
+        r.code = QStringLiteral("write_failed");
+        r.message = QStringLiteral("short write to %1").arg(path);
+        return r;
+    }
+
+    if (r.created) {
+        // Mode 0644 deterministically (umask-independent), create-only —
+        // review metadata, not a secret. Existing files keep their perms.
+        f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                         | QFileDevice::ReadGroup | QFileDevice::ReadOther);
+    }
+
+    r.ok = true;
+    r.bytesAppended = record.size();
+    r.timestamp = e.timestamp;
+    return r;
+}
+
 }  // namespace falsepos
 }  // namespace ants

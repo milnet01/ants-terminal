@@ -4897,6 +4897,10 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("feedback_log",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdFeedbackLog));
+    // ANTS-2129 — audit_falsepos_log: write side of the false-positive ledger.
+    m_claudeIntegration->registerToolProvider("audit_falsepos_log",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdAuditFalseposLog));
     m_claudeIntegration->registerToolProvider("git_state",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdGitState));

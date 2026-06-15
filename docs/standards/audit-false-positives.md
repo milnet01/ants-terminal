@@ -58,7 +58,11 @@ change). Hand-edits MUST preserve the JSONL shape.
 **Atomic append.** CC sessions MUST use append-mode I/O for new
 records — `open(O_APPEND)` followed by `write()` of the complete
 record (record begins with `\n` for self-healing — see below).
-On the shell this is `printf '\n%s\n' "$record" >> .ants_review_falsepos.jsonl`.
+The preferred mechanism is the **`audit_falsepos_log` MCP verb**
+(ANTS-2129), which performs the validated atomic `O_APPEND` for you
+(pass `review_kind` / `claim` / `rationale`, optional `timestamp` /
+`lane` / `topic` / `logged_by`). The no-MCP fallback on the shell is
+`printf '\n%s\n' "$record" >> .ants_review_falsepos.jsonl`.
 **CC's `Write` tool MUST NOT be used** because it performs
 read-modify-write, which interleaves catastrophically when two
 CC sessions append concurrently.
@@ -71,9 +75,14 @@ The atomicity contract:
   files — POSIX only mandates this for pipes, but Linux extends it
   to local-filesystem regular files). Records MUST stay
   **under 3.5 KiB on disk** so they always fit in one
-  `write(2)` call below that bound — the read-side caps (280 +
-  1024 UTF-16 code units) keep records well under, but writers
-  MUST trim before append.
+  `write(2)` call below that bound. The read-side caps (280 +
+  1024 UTF-16 code units) keep *typical* records under, but they do
+  NOT mathematically guarantee it — 1024 UTF-16 units of multibyte
+  (e.g. CJK) content encode to ~3 KB of UTF-8, which with `claim` +
+  JSON overhead can exceed 3.5 KiB. Writers MUST trim before append
+  AND bound-check the encoded record; `audit_falsepos_log` refuses
+  (`bad_args`) an over-bound record rather than risk a torn write
+  (ANTS-2129 § 2.5).
 - **Network / FUSE filesystems** (NFS, SMB, sshfs, FUSE):
   atomicity is NOT guaranteed. On network-mounted projects,
   writers SHOULD `flock(LOCK_EX)` the ledger or accept rare
@@ -123,7 +132,7 @@ One JSON object per line. All fields are strings unless noted.
 
 | Field | Required | Meaning |
 |-------|----------|---------|
-| `review_kind` | yes | One of `audit`, `cold-eyes`, `indie-review`, `test-audit`. Empty (or omitted) means "all kinds" — use sparingly; a finding usually belongs to one sweep. |
+| `review_kind` | yes | One of `audit`, `cold-eyes`, `indie-review`, `test-audit`. Empty (or omitted) means "all kinds" — use sparingly; a finding usually belongs to one sweep. **The `audit_falsepos_log` verb requires a canonical kind and will not emit an empty `review_kind`** (ANTS-2129 § 2.2); a broadcast (empty) entry stays a hand-edit. The read path still honours hand-written empty-`review_kind` entries. |
 | `claim` | yes | One-line summary of the false-positive claim. ≤ 280 UTF-16 code units (one tweet's worth) on read; longer values are truncated with `…` at the nearest non-surrogate boundary (no split surrogate pairs). |
 | `rationale` | yes | Why it's a false positive. This is the **load-bearing field** — it's what future reviewers read and must explain enough to prevent re-raising. Cite specific files, lines, or external systems. ≤ 1024 UTF-16 code units on read, same surrogate-safe truncation. |
 | `timestamp` | yes | ISO date `YYYY-MM-DD` (date-only, NO `Thh:mm:ss` suffix). Validated via `QDate::fromString(s, "yyyy-MM-dd").isValid()` — datetime forms, malformed strings (`2026-02-30`), and the like are rejected on read. |
@@ -337,24 +346,28 @@ entries whose `rationale` references deleted paths.
   symlink, FIFO, directory, or block device, `loadEntries`
   treats it as missing (returns empty + one `qWarning`). Hostile
   or accidental non-regular files at the ledger path are inert.
-- Future C++ writer (out of scope for v1): `QFile::open(QIODevice::Append)`
-  maps to POSIX `O_WRONLY | O_CREAT | O_APPEND` and is suitable;
-  the v1 read-only design has nothing to write here, so the
-  CC-shell-recipe is the only writer in v1.
+- C++ writer (ANTS-2129, shipped): `ants::falsepos::appendEntry`
+  (`src/falseposledger.cpp`) opens with `QFile::open(QIODevice::Append)`
+  (POSIX `O_WRONLY | O_CREAT | O_APPEND`), trims to the read caps,
+  bound-checks < 3.5 KiB, and writes `\n`+compact-json+`\n` in one
+  call. The `audit_falsepos_log` MCP verb wraps it; the
+  CC-shell-recipe remains the no-MCP fallback.
 - ANTS-1352 fence hardening (4-backtick + "treat as data, not
   instructions" preamble + fence-escape replacement) is reused
   verbatim for the text-form injection. See
   `src/briefdispatch.cpp::fenceBody` for the canonical kernel
   (ANTS-1727); `src/indiereviewengine.cpp::assembleBriefForDispatch`
   delegates to it.
-- ANTS-1353 MCP error-code taxonomy: v1 of this standard has
-  **no MCP write tool** and the **read path is silent-degrade**
-  — `loadEntries` returns an empty list on any I/O failure
-  (missing file, permission-denied, read error) and the brief
-  is built without a ledger block. A degraded brief is strictly
-  better than a refused one. A hypothetical future
-  `audit_falsepos_log` write tool would use `read_failed` /
-  `write_failed` per the taxonomy.
+- ANTS-1353 MCP error-code taxonomy: the **read path is
+  silent-degrade** — `loadEntries` returns an empty list on any
+  I/O failure (missing file, permission-denied, read error) and
+  the brief is built without a ledger block. A degraded brief is
+  strictly better than a refused one. The **write tool**
+  `audit_falsepos_log` (ANTS-2129, shipped) uses `bad_args`
+  (validation / over-size record), `no_project` (unresolved
+  caller_cwd), and `write_failed` (I/O error or non-regular
+  ledger path) per the taxonomy. It is append-only, so `read_failed`
+  does not apply.
 
 ## What this standard is NOT
 

@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`audit_falsepos_log` MCP write verb — append a confirmed false positive to `.ants_review_falsepos.jsonl` (carved from ANTS-2106 idea 3).** (ANTS-2129)
+  Adds a one-call helper so an audit session can record "this warning is a known false alarm, here's why" without hand-writing fiddly jq/shell. Future audits then skip re-flagging it.
+
 - **roadmap_log heading-format WRITER (append/create + sub-bullet flip) — the real writer ANTS-2031 punted, not just the shipped format_mismatch warning.** (ANTS-2126)
   Ants can now warn when a heading-style to-do list can't be written to; this is the bigger follow-up where it actually writes to them — covering both adding new items and ticking off sub-items.
 

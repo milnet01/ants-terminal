@@ -70,5 +70,32 @@ QString formatForBrief(const QList<LedgerEntry> &entries,
 QJsonArray formatForJsonArray(const QList<LedgerEntry> &entries,
                               const FormatOptions &opts = {});
 
+// ANTS-2129 — write side. Result of an appendEntry call.
+struct AppendResult {
+    bool    ok = false;
+    QString code;          // "" on success; else "bad_args" / "write_failed"
+    QString message;       // human-readable detail (refusal envelope `error`)
+    qint64  bytesAppended = 0;   // on-disk bytes of the record ("\n"+json+"\n")
+    bool    created = false;     // file did not exist before this call
+    QString timestamp;           // effective (possibly defaulted) date
+};
+
+// Append one false-positive record to
+// <projectPath>/.ants_review_falsepos.jsonl, per the
+// docs/standards/audit-false-positives.md atomic-append contract.
+//
+// Validates: claim/rationale non-empty + timestamp valid (via
+// LedgerEntry::isValid) AND review_kind canonical (a SEPARATE
+// canonicalReviewKinds() check — isValid does NOT cover review_kind).
+// Trims claim/rationale to the read caps (280 / 1024 UTF-16 units),
+// then bound-checks the encoded record < 3.5 KiB. Writes via true
+// O_APPEND (QIODevice::Append) of "\n"+compact-json+"\n" — never a
+// read-modify-write. Creates an absent file (mode 0644). Refuses
+// appending through a non-regular file (symlink/dir/FIFO).
+// Never throws. `e.timestamp` empty ⇒ caller should default to today
+// before calling (the handler does); appendEntry validates whatever
+// it receives.
+AppendResult appendEntry(const QString &projectPath, const LedgerEntry &e);
+
 }  // namespace falsepos
 }  // namespace ants

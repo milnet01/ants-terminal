@@ -23,6 +23,7 @@
 #include "paginationengine.h"
 #include "pathvalidation.h"
 #include "plantemplateengine.h"
+#include "falseposledger.h"
 #include "projectlayoutengine.h"
 #include "remotecontrolgate.h"
 #include "resolvedroot.h"
@@ -9348,6 +9349,66 @@ QJsonObject runDiffOp(MainWindow *main, const QJsonObject &req) {
     return out;
 }
 }  // namespace
+
+// ANTS-2129 — audit_falsepos_log: append a confirmed false positive to
+// <root>/.ants_review_falsepos.jsonl via the atomic O_APPEND in
+// ants::falsepos::appendEntry. See docs/specs/ANTS-2129.md.
+QJsonDocument RemoteControl::cmdAuditFalseposLog(const QJsonObject &req) {
+    auto afErr = [](const QString &code, const QString &message) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = message;
+        o["code"]  = code;
+        return QJsonDocument(o);
+    };
+
+    // Resolve the root directly from caller_cwd (m_main-independent, like the
+    // sibling write verbs roadmap_log / feedback_log / spec_log). For a
+    // present caller_cwd this is the same canonical path
+    // resolveCallerCwdRoot would return (its Case-2/3 both yield
+    // QFileInfo(callerCwd).canonicalFilePath()), and the Required contract
+    // guarantees caller_cwd is present.
+    const QString callerRaw =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    const QString root = QFileInfo(callerRaw).canonicalFilePath();
+    if (root.isEmpty()) {
+        return afErr(QStringLiteral("no_project"),
+            QStringLiteral("audit_falsepos_log: caller_cwd does not resolve "
+                           "to an existing project directory"));
+    }
+
+    ants::falsepos::LedgerEntry e;
+    e.reviewKind = req.value(QStringLiteral("review_kind")).toString();
+    e.lane       = req.value(QStringLiteral("lane")).toString();
+    e.claim      = req.value(QStringLiteral("claim")).toString();
+    e.rationale  = req.value(QStringLiteral("rationale")).toString();
+    e.topic      = req.value(QStringLiteral("topic")).toString();
+    e.loggedBy   = req.value(QStringLiteral("logged_by")).toString();
+    // timestamp defaults to today; appendEntry validates a present value.
+    e.timestamp  = req.value(QStringLiteral("timestamp")).toString();
+    if (e.timestamp.isEmpty())
+        e.timestamp = QDate::currentDate()
+                          .toString(QStringLiteral("yyyy-MM-dd"));
+    if (e.loggedBy.isEmpty())
+        e.loggedBy = QStringLiteral("cc-session");
+
+    const ants::falsepos::AppendResult r =
+        ants::falsepos::appendEntry(root, e);
+    if (!r.ok) {
+        return afErr(r.code,
+            QStringLiteral("audit_falsepos_log: ") + r.message);
+    }
+
+    QJsonObject out;
+    out["ok"]             = true;
+    out["path"]           =
+        root + QStringLiteral("/.ants_review_falsepos.jsonl");
+    out["bytes_appended"] = r.bytesAppended;
+    out["created"]        = r.created;
+    out["timestamp"]      = r.timestamp;
+    out["review_kind"]    = e.reviewKind;
+    return QJsonDocument(out);
+}
 
 QJsonDocument RemoteControl::cmdGitState(const QJsonObject &req) {
     // ANTS-1250-INV-1: dispatch on op ∈ {status, log, diff}.
