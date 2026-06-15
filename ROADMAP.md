@@ -16465,13 +16465,14 @@ server build id so clients can self-diagnose this.
   Lanes: mcp, changelog, roadmapfoldin.
   Source: in-session-2026-06-12 (ANTS-2125 fold-in).
 
-- 📋 [ANTS-2128] **roadmap_log op:append emits an undocumented `missing_field` code for absent required fields — converge with the taxonomy's `bad_args`.**
+- ✅ [ANTS-2128] **roadmap_log op:append emits an undocumented `missing_field` code for absent required fields — converge with the taxonomy's `bad_args`.**
   Surfaced by the ANTS-2126 cold-eyes loop. cmdRoadmapLogAppend refuses absent required fields (caller_cwd/section/status/kind/source) with code `missing_field` (remotecontrol.cpp:4201-4221), but `missing_field` is not in docs/standards/mcp-error-codes.md — the taxonomy documents `bad_args` ("a required argument is missing or has the wrong shape", line 35) for exactly this case. Either (a) add a `missing_field` row to mcp-error-codes.md and reconcile callers, or (b) migrate the append path to `bad_args` (preferred — fewer codes, matches the documented gloss). ANTS-2126's new pass-headings append deliberately uses the documented `bad_args` rather than propagate `missing_field` to a second site. Low-risk doc/code-fix; touch the append + append_batch field guards together.
   **Layman:** Make the roadmap helper's error names match its own documented list.
   Kind: doc-fix.
   Lanes: mcp, roadmap-format.
   Source: in-session-2026-06-12 (ANTS-2126 cold-eyes loop 2).
   Scope also covers the op:annotate empty-note guard (remotecontrol.cpp:4821), which likewise emits the undocumented `missing_field`. Converge all roadmap_log required-arg guards (append/append_batch field guards + annotate note) onto `bad_args` (or document `missing_field`) in one pass. ANTS-2126's new pass path already uses the documented `bad_args` for these cases.
+  Resolved (2026-06-15): documented `missing_field` in docs/standards/mcp-error-codes.md as the absent-arg specialisation of `bad_args` (same § 1 family), rather than migrating ~50 call sites. Rationale: `missing_field` is pervasive (41 uses in remotecontrol.cpp alone, spanning roadmap_log / changelog_log / feedback_log / spec_log + claudeintegration/testauditengine), so option (b) (migrate the append path to bad_args) would either make roadmap_log inconsistent with every other write verb, or require a ~50-site + ~10-test-file contract sweep — and the absent-vs-malformed distinction is genuinely useful signal. The `bad_args` row now cross-references when to prefer each. ANTS-2126's pass-headings path keeps bad_args where one guard spans absent-and-malformed (noted in the taxonomy). No code or test change; suite stays 2086/2086.
 
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 

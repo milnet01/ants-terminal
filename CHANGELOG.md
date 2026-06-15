@@ -25,6 +25,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log op:append emits an undocumented `missing_field` code for absent required fields — converge with the taxonomy's `bad_args`.** (ANTS-2128)
+  Make the roadmap helper's error names match its own documented list.
+
 - **`changelog_log` no longer truncates long roadmap titles with a `…`** (ANTS-2127)
   When adding a changelog entry from a roadmap item with a long title, Ants now uses the full title instead of a cut-off version ending in `…`.
 
