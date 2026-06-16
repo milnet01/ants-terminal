@@ -8468,6 +8468,15 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: mcp, ipc.
   Source: user-request-2026-06-15.
 
+- 📋 [ANTS-2142] **roadmap_log op:append/flip intermittently arrives with an empty/dropped payload (caller_cwd_required) — root-cause the serialisation drop.**
+  Observed repeatedly across sessions (see memory feedback_mcp_large_append_drops): an op:append / op:flip call sometimes reaches the MCP dispatcher with an empty arguments object, surfacing as code=caller_cwd_required even though caller_cwd was supplied. Correlates with larger `body`/`note` payloads but has also been seen on ordinary calls. Current workaround is retry, or fall back to Edit for very large bodies — neither is acceptable long-term; Ants MCP should have zero such drops.
+  
+  Investigate: (1) is the truncation happening on the CC client serialisation side, the stdio/transport boundary, or Ants' own JSON parse? (2) capture a reproducer with mcp_trace around a failing call; (3) check for a size threshold or a specific character (newline/UTF-8 boundary) that triggers it; (4) if it is a transport framing bug, add length-prefance/validation so a partial frame is rejected with a distinct code (e.g. truncated_payload) rather than the misleading caller_cwd_required; (5) consider a server-side received-bytes vs declared-length assertion. Definition of done: a stress test that hammers op:append with escalating body sizes shows zero drops, and any genuine truncation returns an actionable distinct code.
+  **Layman:** Sometimes when Ants tries to write a roadmap entry, the request shows up empty and gets rejected, so the write silently fails. Find out why and fix it so roadmap writes never drop.
+  Kind: investigate.
+  Source: in-session-2026-06-16.
+  Prior root-cause (ANTS-1853, ✅ 2026-05-25): with the CC debug log on, a refused large append showed the arguments reaching the Ants dispatcher as exactly {} (2 bytes) while sibling op:flip calls in the same burst carried full payloads — i.e. the drop is UPSTREAM in Claude-Code / model tool-call argument serialisation of large bodies, NOT an Ants parse or transport bug. Ants already (a) correctly refuses the empty call, (b) tags it arguments_empty:true (the distinct code this item asked for already exists), and (c) emits a "resend the entire call verbatim" steer. So this item is NOT "Ants is corrupting payloads." Re-scope to: (1) confirm the ANTS-1853 conclusion still holds on the current CC build via a fresh mcp_trace capture; (2) decide whether Ants can mitigate an upstream drop at all — e.g. accept a chunked/multi-part append protocol, or a server-side "stash body, reference by handle" path so a huge body never rides in one tool-call frame. If (1) reconfirms it is purely upstream and (2) finds no safe Ants-side mitigation, close as wontfix-upstream with a CC bug-report reference rather than leaving it open. Definition of done updated accordingly.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
