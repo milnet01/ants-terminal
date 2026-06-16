@@ -394,6 +394,9 @@ public:
     // ANTS-1637 — codebase_index: serve a pre-computed project structural map
     // (symbol / lane / file_path / summary) via CodebaseIndex::serve.
     QJsonDocument cmdCodebaseIndex(const QJsonObject &req);
+    // ANTS-2139 — docs_index: serve a pre-computed project documentation map
+    // (summary / topic / doc_path / id) via DocsIndex::serve.
+    QJsonDocument cmdDocsIndex(const QJsonObject &req);
 
     // ANTS-1961 — feedback_query: read the un-triaged tail of a
     // *_Ants_MCP_Feedback.md file (delegates to FeedbackFile::parse).

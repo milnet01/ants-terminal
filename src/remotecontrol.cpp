@@ -10,6 +10,7 @@
 #include "readregion.h"
 #include "applyedits.h"
 #include "codebaseindex.h"
+#include "docsindex.h"
 #include "speclog.h"             // ANTS-1963
 #include "modelswitchledger.h"   // ANTS-1735 — model_switch_stats aggregation
 #include "modelnearmissledger.h" // ANTS-1894 — model_switch_stats near-miss arm
@@ -8354,6 +8355,49 @@ QJsonDocument RemoteControl::cmdCodebaseIndex(const QJsonObject &req) {
     return QJsonDocument(
         CodebaseIndex::serve(rootCanonical, QDateTime::currentMSecsSinceEpoch(),
                              params));
+}
+
+// ANTS-2139 — docs_index: serve a pre-computed project documentation map.
+// caller_cwd Required. A `doc_path` selector routes through PathValidation
+// (bad_path on escape, incl. an in-root symlink resolving outside root). The
+// disk cache + lazy refresh live in DocsIndex::serve.
+QJsonDocument RemoteControl::cmdDocsIndex(const QJsonObject &req) {
+    const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
+    const QString sentinelRoot = ants::expandGlobalConfigSentinel(callerRaw);
+    const QString rootCanonical =
+        !sentinelRoot.isEmpty() ? sentinelRoot
+                                : resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("docs_index: no focused project");
+        o["code"]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
+
+    DocsIndex::QueryParams params;
+    params.topic = req.value(QStringLiteral("topic")).toString();
+    params.id    = req.value(QStringLiteral("id")).toString();
+
+    const QString rawDocPath = req.value(QStringLiteral("doc_path")).toString();
+    if (!rawDocPath.isEmpty()) {
+        const auto check = PathValidation::validatePath(
+            rawDocPath, rootCanonical,
+            QStringLiteral("docs_index"), QStringLiteral("doc_path"));
+        if (check.bad) return QJsonDocument(check.err);
+        // Project-relative form for the index lookup (empty .resolved = a
+        // not-yet-existing in-root path, still a valid soft-miss query).
+        QString rel = check.resolved.isEmpty() ? rawDocPath : check.resolved;
+        if (rel.startsWith(rootCanonical))
+            rel = rel.mid(rootCanonical.size()).startsWith(QLatin1Char('/'))
+                      ? rel.mid(rootCanonical.size() + 1)
+                      : rel.mid(rootCanonical.size());
+        params.docPath = rel;
+    }
+
+    return QJsonDocument(
+        DocsIndex::serve(rootCanonical, QDateTime::currentMSecsSinceEpoch(),
+                         params));
 }
 
 // ANTS-1961 — feedback_query: return the un-triaged delta + mapped IDs.

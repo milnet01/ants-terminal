@@ -51,6 +51,21 @@ never perturb the hash) and are skipped on 304s, refusals (`ok:false`),
   absent / unparseable / version|root-mismatch, mtime-incremental
   refresh); reuses `FileOutline` + `SubsystemMap`; ETag-304 + `fields`;
   caller_cwd-Required (ANTS-1637).
+- **`docs_index`** — the documentation-map sibling of `codebase_index`:
+  serves a pre-computed, **project-agnostic** map of every doc so a
+  session finds the right doc in one call instead of grep / `Read` across
+  an unfamiliar layout. Walks `<root>/*.md` (non-recursive) +
+  `<root>/docs/**/*.md` (recursive); per doc captures the heading outline,
+  first-H1 title, best-effort `**Status:**`, and the outbound relative-`.md`
+  link graph. Selectors `topic` (title×3 / path×2 / heading×1 scored) /
+  `doc_path` (one doc's outline + `linked_from` reverse edges) / `id`
+  (filename stem) / none→summary (≥2 → `bad_args`; a miss is
+  `ok:true,found:false`). Indexes headings/title/path, **not** full body
+  prose. Lazy disk cache at `~/.cache/ants-terminal/docs-index/<cwdHash>.json`
+  (cold-built on absent / unparseable / version|root-mismatch,
+  mtime-incremental refresh); ETag-304 + `fields`; caller_cwd-Required.
+  Complements `spec_query` (the deep per-spec reader) — `docs_index` is the
+  shallow cross-doc discovery layer over all doc types (ANTS-2139).
 
 ## Write / edit verbs
 

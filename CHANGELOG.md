@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **docs_index MCP verb — a documentation map/index, sibling to codebase_index (ANTS-1637), so sessions find the right doc in one call.** (ANTS-2139)
+  Like the codebase map but for the docs — so Claude can instantly find which doc covers a topic instead of grepping the whole docs folder.
+
 - **`audit_falsepos_log` MCP write verb — append a confirmed false positive to `.ants_review_falsepos.jsonl` (carved from ANTS-2106 idea 3).** (ANTS-2129)
   Adds a one-call helper so an audit session can record "this warning is a known false alarm, here's why" without hand-writing fiddly jq/shell. Future audits then skip re-flagging it.
 

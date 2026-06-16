@@ -128,14 +128,15 @@ TEST(McpProjection, Ants2112SuccessNarrowingUnchanged) {
     EXPECT_TRUE(o.contains("bullets"));
 }
 
-// INV-8 — allowlist is exactly the eleven in-scope tools (original seven +
+// INV-8 — allowlist is exactly the twelve in-scope tools (original seven +
 // read_log/ANTS-1855, model_switch_stats/ANTS-1735, read_region/ANTS-2021,
-// codebase_index/ANTS-1637 — matches the makeFieldsProp() call-site count).
+// codebase_index/ANTS-1637, docs_index/ANTS-2139 — matches the
+// makeFieldsProp() call-site count).
 TEST(McpProjection, Inv8AllowlistExact) {
     for (const char *t : {"roadmap_query", "project_layout", "file_outline",
                           "get_environment", "tab_list", "subsystem",
                           "git_state", "read_log", "model_switch_stats",
-                          "read_region", "codebase_index"}) {
+                          "read_region", "codebase_index", "docs_index"}) {
         EXPECT_TRUE(mcp::isFieldProjectionTool(QString::fromUtf8(t)))
             << t << " should be field-projectable";
     }
@@ -181,14 +182,14 @@ TEST(McpProjection, Inv10SchemaDeclaresFields) {
         << "the shared `fields` schema fragment must be defined once";
     // One call site per in-scope projection tool (ANTS-1855 added
     // read_log → 8; ANTS-1735 added model_switch_stats → 9; ANTS-2021
-    // added read_region → 10; ANTS-1637 added codebase_index → 11). The
-    // lambda definition reads `makeFieldsProp = [` so it is not counted
-    // by the call-form needle.
+    // added read_region → 10; ANTS-1637 added codebase_index → 11;
+    // ANTS-2139 added docs_index → 12). The lambda definition reads
+    // `makeFieldsProp = [` so it is not counted by the call-form needle.
     int count = 0;
     int idx = 0;
     const QByteArray needle = "makeFieldsProp();";
     while ((idx = s.indexOf(needle, idx)) != -1) { ++count; idx += needle.size(); }
-    EXPECT_EQ(count, 11) << "expected 11 makeFieldsProp() call sites, got "
+    EXPECT_EQ(count, 12) << "expected 12 makeFieldsProp() call sites, got "
                          << count;
 }
 

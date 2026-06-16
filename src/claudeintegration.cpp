@@ -3268,6 +3268,60 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(ciTool);
 
+                // ANTS-2139 — docs_index: serve a pre-computed project
+                // documentation map (heading outline + title + status +
+                // relative-link graph) so a session finds the right doc in
+                // one call instead of grep/Read across an unfamiliar layout.
+                QJsonObject diTool;
+                diTool["name"] = "docs_index";
+                diTool["description"] = QStringLiteral(
+                    "Pre-computed project documentation map, cached + lazily "
+                    "refreshed. Project-agnostic (any layout, not just Ants). "
+                    "No selector → a summary (per-doc {path,id,title,status,"
+                    "heading_count} + dir rollup). topic=<words> → docs scored "
+                    "over title/path/headings, ranked, with evidence. "
+                    "doc_path=<rel> → one doc's heading outline + outbound "
+                    "links + linked_from reverse edges. id=<stem> → every doc "
+                    "whose filename stem matches. At most one selector (≥2 → "
+                    "bad_args). A miss is ok:true,found:false (not an error). "
+                    "Indexes headings/title/path, not full body prose. "
+                    "ETag-304: an unchanged query re-reads free. caller_cwd "
+                    "required.");
+                diTool["selection_hint"] = QStringLiteral(
+                    "Use once to find which doc covers a topic, or to read a "
+                    "doc's outline, instead of repeated grep / Read. The "
+                    "SOURCE-map sibling is codebase_index; spec_query stays "
+                    "the deep per-spec reader.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    QJsonObject props;
+                    QJsonObject topicProp; topicProp["type"] = "string";
+                        topicProp["description"] = QStringLiteral(
+                            "Whitespace-separated keywords; scored over "
+                            "title/path/headings. Mutually exclusive with "
+                            "doc_path / id.");
+                    QJsonObject dpProp; dpProp["type"] = "string";
+                        dpProp["description"] = QStringLiteral(
+                            "Project doc path (under caller_cwd) for one doc's "
+                            "outline. Mutually exclusive with topic / id.");
+                    QJsonObject idProp; idProp["type"] = "string";
+                        idProp["description"] = QStringLiteral(
+                            "Exact, case-sensitive filename stem (e.g. "
+                            "\"ANTS-1637\"). Mutually exclusive with topic / "
+                            "doc_path.");
+                    props["topic"]      = topicProp;
+                    props["doc_path"]   = dpProp;
+                    props["id"]         = idProp;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
+                    props["fields"]     = makeFieldsProp();      // ANTS-1720
+                    schema["properties"] = props;
+                    diTool["inputSchema"] = schema;
+                }
+                tools.append(diTool);
+
                 // ANTS-1961 — feedback_query: read the un-triaged tail of
                 // a *_Ants_MCP_Feedback.md file instead of a full Read.
                 {
@@ -7793,6 +7847,9 @@ void ClaudeIntegration::onMcpConnection() {
                         {QStringLiteral("last_selection"),    {200,  2000}},
                         // Topic-to-files discovery (ANTS-1636).
                         {QStringLiteral("find_sources"),      {600,  3500}},
+                        // Documentation map (ANTS-2139): summary is the
+                        // ~80 B/doc light list; topic/doc_path bodies smaller.
+                        {QStringLiteral("docs_index"),        {800,  6000}},
                         // Repo / docs.
                         {QStringLiteral("roadmap_query"),     {1700, 12000}},
                         {QStringLiteral("roadmap_log"),       {200,  600}},
@@ -7924,6 +7981,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-1637 — codebase_index: project-scoped
                         // structural-map reader.
                         name == QLatin1String("codebase_index") ||
+                        // ANTS-2139 — docs_index: project-scoped
+                        // documentation-map reader.
+                        name == QLatin1String("docs_index") ||
                         name == QLatin1String("project_layout") ||
                         name == QLatin1String("subsystem") ||
                         // ANTS-1569 — current_state is a project-scoped
@@ -8880,6 +8940,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-1637 — codebase_index is a project-scoped structural-map reader
     // keyed on the resolved root; Required.
     if (toolName == QStringLiteral("codebase_index"))      return C::Required;
+    // ANTS-2139 — docs_index is a project-scoped documentation-map reader
+    // keyed on the resolved root; Required (sibling of codebase_index).
+    if (toolName == QStringLiteral("docs_index"))          return C::Required;
     // ANTS-1961 / ANTS-1962 — feedback verbs resolve a relative `path`
     // off caller_cwd and anchor tenancy; Required even though the
     // canonical case is an absolute shared-root path.
@@ -9049,6 +9112,8 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
         || toolName == QStringLiteral("read_region")
         // ANTS-1637 — codebase_index: an unchanged warm query 304s.
         || toolName == QStringLiteral("codebase_index")
+        // ANTS-2139 — docs_index: an unchanged warm query 304s.
+        || toolName == QStringLiteral("docs_index")
         || toolName == QStringLiteral("last_audit_summary")
         || toolName == QStringLiteral("get_environment")
         || toolName == QStringLiteral("tab_list")

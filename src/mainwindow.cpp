@@ -4894,6 +4894,10 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("codebase_index",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdCodebaseIndex));
+    // ANTS-2139 — docs_index: pre-computed project documentation map.
+    m_claudeIntegration->registerToolProvider("docs_index",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdDocsIndex));
     // ANTS-1961 / ANTS-1962 — cross-session feedback-file read + write.
     m_claudeIntegration->registerToolProvider("feedback_query",
         ClaudeIntegration::CallerCwdContract::Required,
