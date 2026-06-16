@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **mcp_trace records `raw_bytes` (raw inbound frame size) so a large-body write drop is diagnosable — small raw_bytes with arg_bytes:2 confirms the payload was dropped upstream (in Claude Code), not by Ants** (ANTS-2135)
+
 - **PreToolUse prefer-MCP advisory guardrail (the enforcement half of MCP discoverability).** (ANTS-2023)
   A small automatic check that notices when a session reaches for an expensive shell command and reminds it there is a cheaper Ants tool.
 

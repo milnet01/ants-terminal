@@ -94,7 +94,7 @@ against the table below.
 
 | Code | Meaning | Diagnostic path |
 |------|---------|-----------------|
-| `caller_cwd_required` | Dispatcher refused: tool is `CallerCwdContract::Required` and `caller_cwd` was empty. | Envelope carries `hint` naming `caller_cwd_info`. |
+| `caller_cwd_required` | Dispatcher refused: tool is `CallerCwdContract::Required` and `caller_cwd` was empty. | Envelope carries `hint` naming `caller_cwd_info`. **ANTS-1853/2135:** when the *whole* `arguments` object arrived empty (not just `caller_cwd`), the envelope also sets `arguments_empty:true` + size-aware steer text — the call's entire payload was dropped *upstream* in Claude-Code serialisation (the data never reached Ants; not an Ants bug), so resend the whole call / shrink the body / use Edit. The `mcp_trace` `raw_bytes` field confirms it: a small `raw_bytes` with `arg_bytes:2` = body never arrived (upstream); a large `raw_bytes` with `arg_bytes:2` would instead point at an Ants-side parse loss. |
 | `tab_or_cwd_required` | Dispatcher refused: tool is `CallerCwdContract::TabSpecific` and no usable routing key was supplied — `caller_cwd` empty AND no integer `tab` (for the two tab-routing tools `get_text` / `recent_errors`). Closes the focused-tab fallback leak (ANTS-1415 Phase 3b). | Envelope carries `hint` naming `caller_cwd_info` + `tab_list`. e.g. `get_text` with neither `tab` nor `caller_cwd`. |
 | `cwd_missing` | RcGate refused: tool needs `caller_cwd` and the caller didn't supply one. | Envelope carries `hint` naming `caller_cwd_info`. |
 | `cwd_bad` | RcGate refused: `caller_cwd` doesn't canonicalise. | No hint — the caller has a `caller_cwd`, it just doesn't resolve. |

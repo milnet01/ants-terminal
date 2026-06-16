@@ -318,6 +318,60 @@ TEST(McpTraceRingBuffer, FailurePathRespBytesZero) {
               QStringLiteral("tool_not_found"));
 }
 
+// ANTS-2135 — raw_bytes (the inbound JSON-RPC frame size) is emitted and
+// round-trips. It is DISTINCT from arg_bytes (the post-parse `arguments`
+// object): wiring it into the ring is what makes a large-body drop diagnosable
+// from mcp_trace alone.
+TEST(McpTraceRingBuffer, RawBytesFieldRoundTrips) {
+    ClaudeIntegration ci;
+    // A healthy call: a ~4 KB inbound frame carrying a ~3.9 KB arguments body.
+    ci.recordMcpTraceForTest(QStringLiteral("roadmap_log"), simpleArgs(),
+                             /*argBytes*/3900, /*respBytes*/64,
+                             /*durationUs*/100, /*cacheHit*/false,
+                             QStringLiteral("ok"), /*rawBytes*/4096);
+    const QJsonObject out = ci.queryMcpTraceForTest(0, 10);
+    const QJsonObject r = out.value(QStringLiteral("records"))
+                              .toArray().at(0).toObject();
+    ASSERT_TRUE(r.contains(QStringLiteral("raw_bytes")));
+    EXPECT_EQ(r.value(QStringLiteral("raw_bytes")).toInt(), 4096);
+    EXPECT_EQ(r.value(QStringLiteral("arg_bytes")).toInt(), 3900);
+}
+
+// ANTS-2135 — the upstream-drop signature is observable: a refused call whose
+// arguments arrived as `{}` records arg_bytes==2 with a SMALL raw_bytes (the
+// whole body never reached Ants ⇒ upstream serialisation, not an Ants-side
+// loss, which would instead show a LARGE raw_bytes alongside arg_bytes==2).
+TEST(McpTraceRingBuffer, RawBytesExposesUpstreamDropSignature) {
+    ClaudeIntegration ci;
+    // The {}-arrived case: tiny frame, 2-byte args, caller_cwd_required.
+    ci.recordMcpTraceForTest(QStringLiteral("roadmap_log"), QJsonObject{},
+                             /*argBytes*/2, /*respBytes*/0,
+                             /*durationUs*/30, /*cacheHit*/false,
+                             QStringLiteral("caller_cwd_required"),
+                             /*rawBytes*/180);
+    const QJsonObject out = ci.queryMcpTraceForTest(0, 10);
+    const QJsonObject r = out.value(QStringLiteral("records"))
+                              .toArray().at(0).toObject();
+    EXPECT_EQ(r.value(QStringLiteral("arg_bytes")).toInt(), 2);
+    // raw_bytes is the small envelope only (no body) — the upstream-drop tell.
+    EXPECT_EQ(r.value(QStringLiteral("raw_bytes")).toInt(), 180);
+    EXPECT_LT(r.value(QStringLiteral("raw_bytes")).toInt(), 1024);
+    EXPECT_EQ(r.value(QStringLiteral("result")).toString(),
+              QStringLiteral("caller_cwd_required"));
+}
+
+// ANTS-2135 — non-socket callers (the test seam's default, and any future
+// caller without a frame) record raw_bytes == -1 (the "not captured"
+// sentinel), never a misleading 0 that would read as a zero-byte frame.
+TEST(McpTraceRingBuffer, RawBytesDefaultsToNotCaptured) {
+    ClaudeIntegration ci;
+    recordOk(ci, QStringLiteral("get_cwd"), simpleArgs());  // no rawBytes arg
+    const QJsonObject out = ci.queryMcpTraceForTest(0, 10);
+    const QJsonObject r = out.value(QStringLiteral("records"))
+                              .toArray().at(0).toObject();
+    EXPECT_EQ(r.value(QStringLiteral("raw_bytes")).toInt(), -1);
+}
+
 // INV-6 — nested objects report `object<N>` without recursing into
 // inner keys; no inner-value leak.
 TEST(McpTraceRingBuffer, NestedArgsShapeOnly) {

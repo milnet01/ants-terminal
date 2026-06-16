@@ -1371,6 +1371,7 @@ QJsonObject ClaudeIntegration::recordToJson(const McpTraceRecord &r) {
     o["tool"]        = r.tool;
     o["arg_keys"]    = r.argKeys;
     o["arg_bytes"]   = r.argBytes;
+    o["raw_bytes"]   = r.rawBytes;   // ANTS-2135 — raw inbound frame size
     o["args_sha16"]  = r.argsSha16;
     o["resp_bytes"]  = r.respBytes;
     o["duration_us"] = r.durationUs;
@@ -1381,8 +1382,8 @@ QJsonObject ClaudeIntegration::recordToJson(const McpTraceRecord &r) {
 
 void ClaudeIntegration::recordMcpTrace(
     const QString &toolName, const QJsonObject &args,
-    qint64 argBytes, qint64 respBytes, qint64 durationUs,
-    bool cacheHit, const QString &result) {
+    qint64 argBytes, qint64 rawBytes, qint64 respBytes,
+    qint64 durationUs, bool cacheHit, const QString &result) {
     // INV-5: mcp_trace never records itself.
     if (toolName == QLatin1String("mcp_trace")) return;
     McpTraceRecord rec;
@@ -1391,6 +1392,7 @@ void ClaudeIntegration::recordMcpTrace(
     rec.tool       = toolName;
     rec.argKeys    = argShapeOf(args);
     rec.argBytes   = argBytes;
+    rec.rawBytes   = rawBytes;   // ANTS-2135
     rec.argsSha16  = argsSha16Of(args);
     rec.respBytes  = respBytes;
     rec.durationUs = durationUs;
@@ -1410,7 +1412,7 @@ void ClaudeIntegration::recordMcpTrace(
 // counters under-reported failed-call cost.
 void ClaudeIntegration::recordDispatch(
     const QString &toolName, const QJsonObject &argsObj,
-    qint64 argBytes, qint64 outBytes, qint64 wrapBytes,
+    qint64 argBytes, qint64 rawBytes, qint64 outBytes, qint64 wrapBytes,
     qint64 durUs, bool cachedHit, const QString &result) {
     // ANTS-1432 — recordCall now fires on every dispatch. The engine
     // routes the byte counts into success- or failed-* accumulators
@@ -1421,7 +1423,7 @@ void ClaudeIntegration::recordDispatch(
     const bool succeeded = (result == QLatin1String("ok"));
     m_tokenUsage.recordCall(toolName, argBytes, outBytes,
                             wrapBytes, durUs, succeeded);
-    recordMcpTrace(toolName, argsObj, argBytes, outBytes,
+    recordMcpTrace(toolName, argsObj, argBytes, rawBytes, outBytes,
                    durUs, cachedHit, result);
     // ANTS-1427 — per-dispatch audit trail. Gated on
     // DebugLog::Claude so production is a single bit-test.
@@ -8889,7 +8891,8 @@ void ClaudeIntegration::onMcpConnection() {
                     // refusals. recordDispatch derives `succeeded =
                     // (result == "ok")` so failed-call accounting in
                     // token_usage stays honest.
-                    recordDispatch(toolName, argsObj, argBytes, outBytes,
+                    recordDispatch(toolName, argsObj, argBytes,
+                                   /*rawBytes=*/buf.size(), outBytes,
                                    wrapBytes, durUs, cachedHit,
                                    dispatchResult);
                     haveResult = true;
@@ -8908,6 +8911,7 @@ void ClaudeIntegration::onMcpConnection() {
                         .toJson(QJsonDocument::Compact).size();
                     const qint64 durUs = mcpTraceTimer.nsecsElapsed() / 1000;
                     recordDispatch(toolName, argsObj, argBytes,
+                                   /*rawBytes=*/buf.size(),
                                    /*outBytes=*/0,
                                    /*wrapBytes=*/0,
                                    durUs,

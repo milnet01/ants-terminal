@@ -382,8 +382,11 @@ public:
     void recordMcpTraceForTest(
         const QString &toolName, const QJsonObject &args,
         qint64 argBytes, qint64 respBytes, qint64 durationUs,
-        bool cacheHit, const QString &result) {
-        recordMcpTrace(toolName, args, argBytes, respBytes,
+        bool cacheHit, const QString &result, qint64 rawBytes = -1) {
+        // rawBytes trails with a default so the ANTS-1360 tests that
+        // predate ANTS-2135 compile unchanged; the ANTS-2135 test passes
+        // it explicitly to exercise the raw-frame-size field.
+        recordMcpTrace(toolName, args, argBytes, rawBytes, respBytes,
                        durationUs, cacheHit, result);
     }
     QJsonObject queryMcpTraceForTest(quint64 since, int limit) const {
@@ -607,6 +610,13 @@ private:
         QString     tool;
         QJsonObject argKeys;
         qint64      argBytes    = 0;
+        // ANTS-2135 — raw inbound JSON-RPC frame size (`buf.size()` at the
+        // socket), distinct from argBytes (the post-parse `arguments` object).
+        // A large-body drop shows a SMALL rawBytes (the body never arrived ⇒
+        // upstream serialisation, not Ants); a large rawBytes with argBytes==2
+        // would instead point at an Ants-side parse loss. -1 = not captured
+        // (the test seam / non-socket callers).
+        qint64      rawBytes    = -1;
         QString     argsSha16;
         qint64      respBytes   = 0;
         qint64      durationUs  = 0;
@@ -619,8 +629,8 @@ private:
 
     void recordMcpTrace(
         const QString &toolName, const QJsonObject &args,
-        qint64 argBytes, qint64 respBytes, qint64 durationUs,
-        bool cacheHit, const QString &result);
+        qint64 argBytes, qint64 rawBytes, qint64 respBytes,
+        qint64 durationUs, bool cacheHit, const QString &result);
 
     // ANTS-1402 — single dispatch-observation hook. Both
     // m_tokenUsage.recordCall and recordMcpTrace see byte-
@@ -631,8 +641,9 @@ private:
     // pre-1402 wiring.
     void recordDispatch(
         const QString &toolName, const QJsonObject &argsObj,
-        qint64 argBytes, qint64 outBytes, qint64 wrapBytes,
-        qint64 durUs, bool cachedHit, const QString &result);
+        qint64 argBytes, qint64 rawBytes, qint64 outBytes,
+        qint64 wrapBytes, qint64 durUs, bool cachedHit,
+        const QString &result);
     static QJsonObject argShapeOf(const QJsonObject &args);
     static QString argsSha16Of(const QJsonObject &args);
     static QJsonObject recordToJson(const McpTraceRecord &r);

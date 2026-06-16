@@ -34,6 +34,13 @@ Spec: `docs/specs/ANTS-1360.md`.
   `duration_us`. (FailurePathRespBytesZero)
 - **args_sha16 determinism** — same args hash equal across
   records. (ArgsSha16IsDeterministic)
+- **raw_bytes (ANTS-2135)** — the raw inbound JSON-RPC frame size
+  is emitted and round-trips, distinct from `arg_bytes`
+  (RawBytesFieldRoundTrips); the upstream-drop signature
+  (`arg_bytes:2` + small `raw_bytes`) is observable
+  (RawBytesExposesUpstreamDropSignature); non-socket callers record
+  the `-1` "not captured" sentinel, never a misleading `0`
+  (RawBytesDefaultsToNotCaptured).
 - **Single-record shape** — fields populated as spec'd.
   (SingleRecordPreservesShape)
 - **Empty ring** — query returns empty list + zero ring_size.
