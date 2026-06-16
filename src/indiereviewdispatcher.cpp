@@ -6,10 +6,14 @@
 // reply pops the next-in-queue and starts it; the loop quits when
 // the queue and the in-flight set are both empty.
 //
-// Threading: the MCP socket thread enters dispatchLanes; the local
-// QEventLoop runs on THAT thread. The main UI event loop is
-// undisturbed during the 5-minute (worst-case) sweep. Matches the
-// AuditRunner precedent.
+// Threading (ANTS-2104): MCP QLocalSockets live on the MAIN thread,
+// so a synchronous call here would spin the local QEventLoop ON the
+// main thread — reentrantly delivering socket read-notifications and
+// freeing a live MCP socket mid-sweep (the ANTS-2103 use-after-free
+// class). The caller (mainwindow.cpp cmdIndieReviewDispatch) therefore
+// runs dispatchLanes inside a QThread::create worker: the nam/loop are
+// locals so they construct on the worker, and QThread::wait() joins
+// without pumping events. Mirrors the AuditRunner/audit_run precedent.
 
 #include "indiereviewdispatcher.h"
 

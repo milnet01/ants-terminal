@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Regression lock for the nested-loop socket use-after-free crash class — a source-grep feature test asserts the MCP and remote-control `readyRead` handlers keep their `idleTimer->stop()` + `QPointer` guards and that `audit_run` / `indie_review_dispatch` stay on a worker thread.** (ANTS-2102)
+  Stops any future edit from silently re-opening the crash that froze and SIGSEGV'd the terminal during an audit (ANTS-2103) or in-app review (ANTS-2104).
+
 - **mcp_trace records `raw_bytes` (raw inbound frame size) so a large-body write drop is diagnosable — small raw_bytes with arg_bytes:2 confirms the payload was dropped upstream (in Claude Code), not by Ants** (ANTS-2135)
 
 - **PreToolUse prefer-MCP advisory guardrail (the enforcement half of MCP discoverability).** (ANTS-2023)
@@ -46,6 +49,12 @@ for security-relevant changes.
   The first orientation call a Claude session makes now also refreshes Ants' codebase map (so it's fresh without anyone remembering a separate step), and the startup prelude advertises the codebase_index verb with a 'query before grep' nudge. Result: faster, cheaper code navigation down the line.
 
 ### Fixed
+
+- **audit_run silently drops cppcheck/clazy findings on clean exit — reads stdout but those tools emit to stderr; only the crash path read stderr.** (ANTS-2105)
+  The MCP audit tool was throwing away all the C++ checker results unless the checker happened to crash. So a clean run reported "0 problems" even when there were dozens. Fix: read the checker's error stream where it actually writes its findings.
+
+- **indie_review_dispatch spins a main-thread QEventLoop over QNAM — same use-after-free crash class as ANTS-2103; move it to a worker thread too.** (ANTS-2104)
+  The same kind of crash we just fixed for the audit also lurks in the in-app code-review dispatcher. It isn't on the path the /indie-review command uses, so it hasn't bitten yet, but it should get the same background-thread fix.
 
 - **project_layout / session_orient now list a project's standards docs instead of reporting none** (ANTS-2138)
   When a project has a canonical docs/standards/ folder, Ants reported it had no standards docs (standards_files was empty) even though the folder was full. It now lists the folder's .md files. The name-glob fallback (for projects with no standards folder) is unchanged.
