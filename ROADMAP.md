@@ -12203,12 +12203,13 @@ template / mutate this state atomically" → movable. If it's
   Kind: feature.
   Source: in-session-2026-06-11 (code-execution / code-mode pattern, Anthropic-documented ~98.7% reduction).
 
-- 🚧 [ANTS-2094] **Proactive server-side result offload: spill large MCP read bodies to a scratch file, return head + pointer (observation masking).**
+- ✅ [ANTS-2094] **Proactive server-side result offload: spill large MCP read bodies to a scratch file, return head + pointer (observation masking).**
   Observation-masking pattern: a large tool result becomes ~15 tokens (a reference pointer) instead of thousands. Over a byte threshold, read verbs optionally write the full body to ~/.cache/ants-terminal/mcp-spill/<hash>.json and return {head, line_count, bytes, path} so the agent re-reads via read_region only when it needs the tail. Distinct from the CC client's >25k emergency spill — this is proactive, server-controlled, and returns a usable head + summary. Opt-in (offload:true) or session default; follow the mcp-caches.md keying contract.
   **Layman:** When an answer is huge, save it to a file and hand back a short preview + the path — Claude only reads the rest if it needs to.
   Kind: enhancement.
   Source: in-session-2026-06-11 (observation-masking / context-offload research).
   Spec docs/specs/ANTS-2094.md accepted 2026-06-16 after 5 cold-eyes loops (0 HIGH/CRITICAL from loop 3 on; both final reviewers affirmed implementable). OQ-1 resolved: ship default OFF (opt-in) for v1, flip ON in a fast-follow once read_spill is field-proven. Implementing: src/mcpspill.{h,cpp}, offload at the dispatch choke point, read_spill verb (remotecontrol/mainwindow/claudeintegration), mcp::isOffloadEligible, 3 config keys, feature test tests/features/mcp_result_offload/.
+  Implemented + merged to main (b2a9d08), full suite green (2141/2141; 11 new conformance cases INV-1..12). src/mcpspill.{h,cpp} + read_spill verb + dispatch-site offload + mcpprojection::isOffloadEligible + 3 config keys. Ships OFF-by-default (opt-in) per OQ-1. Release-time follow-ups (NOT done here): (1) CHANGELOG entry at /bump; (2) fast-follow to flip claude.mcp_offload_large_results default ON once read_spill round-tripping is field-proven; (3) optional Settings-UI toggle for the config keys.
 
 - 💭 [ANTS-2095] **task_priors plan replay — cache a completed skill/workflow's tool-call sequence and surface it on a similar task.**
   'Plan reuse' (reported 41-80% agentic cost cut): after a skill/workflow completes, store its tool-call sequence + retrieval pattern keyed by a task signature; on a similar task, surface the prior plan so the agent skips rediscovery. task_priors already bundles task-start context (conventions + recent changes) — extend it to also serve a matching prior plan. Needs a task-signature scheme + a bounded on-disk plan store (RAM/disk cap + eviction policy per the consider-RAM-in-feature-design rule).
