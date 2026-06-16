@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # tests/features/hook_pack/test_hooks.sh — ANTS-1252 conformance harness,
-# extended with ANTS-2141 grep/find soft-warn + throttle + counter coverage.
+# extended with ANTS-2141 grep/find soft-warn + throttle + counter coverage and
+# ANTS-2023 cat/head/tail/bat read-dump soft-warn coverage.
 # See spec.md for the assertion list.
 #
 # Exits 0 on full pass. On failure, prints `[FAIL] ...` lines to
@@ -231,6 +232,108 @@ if [ "$have_jq" -eq 1 ]; then
     rm -rf "$A_HOME" "$T_HOME" "$C_HOME" "$F_HOME" "$O_HOME" "$OUTSIDE2"
 else
     skip "ANTS-2141 soft-warn behaviour (jq not available)"
+fi
+
+# ---------- ANTS-2023: cat/head/tail/bat read-dump soft-warn ----------
+if [ "$have_jq" -eq 1 ]; then
+    R_HOME="$(mktemp -d -t ants-read.XXXXXX)"
+    rveto() {
+        printf '%s' "$1" | ANTS_GREP_NUDGE_THROTTLE_SEC=0 HOME="$R_HOME" \
+            bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null
+    }
+    # INV-1: warn-class produces a no-decision additionalContext.
+    rwarn() {
+        local out; out="$(rveto "$2")"
+        if [ -n "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext // empty')" ] \
+           && [ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput|has("permissionDecision")')" = "false" ] \
+           && [ -z "$(printf '%s' "$out" | jq -r '.decision // empty')" ]; then
+            pass "ANTS-2023 warn: $1"
+        else
+            fail "ANTS-2023 warn expected for $1, got: ${out:-<empty>}"
+        fi
+    }
+    rempty() {
+        local out; out="$(rveto "$2")"
+        [ -z "$out" ] && pass "ANTS-2023 no-warn: $1" \
+            || fail "ANTS-2023 expected empty for $1, got: $out"
+    }
+
+    rwarn "cat src code file"  '{"tool_input":{"command":"cat src/terminalgrid.cpp"}}'
+    rwarn "cat include header" '{"tool_input":{"command":"cat include/foo.h"}}'
+    rwarn "head -N attached"   '{"tool_input":{"command":"head -50 vtparser.cpp"}}'
+    rwarn "tail tests file"    '{"tool_input":{"command":"tail -100 tests/test_x.cpp"}}'
+    rwarn "bat lua"            '{"tool_input":{"command":"bat src/foo.lua"}}'
+
+    # INV-4: EXEMPT + non-eligible classes all produce empty stdout.
+    rempty "exempt build-"     '{"tool_input":{"command":"cat build-fast/moc_x.cpp"}}'
+    rempty "exempt /etc"       '{"tool_input":{"command":"cat /etc/hosts"}}'
+    rempty "exempt .log"       '{"tool_input":{"command":"cat src/app.log"}}'
+    rempty "exempt --help"     '{"tool_input":{"command":"head --help"}}'
+    rempty "exempt bypass"     '{"tool_input":{"command":"cat src/foo.cpp # ants-bypass"}}'
+    rempty "non-elig markdown" '{"tool_input":{"command":"cat README.md"}}'
+    rempty "non-elig .txt"     '{"tool_input":{"command":"cat notes.txt"}}'
+    rempty "non-elig redirect" '{"tool_input":{"command":"cat foo.cpp > bar.cpp"}}'
+    rempty "non-elig heredoc"  '{"tool_input":{"command":"cat << EOF"}}'
+    rempty "non-elig piped"    '{"tool_input":{"command":"cat src/foo.cpp | grep bar"}}'
+    rempty "non-elig sep-arg"  '{"tool_input":{"command":"head -n 50 src/foo.cpp"}}'
+
+    # INV-3: read-warn additionalContext field ≤ 400 bytes (field value).
+    rctx="$(rveto '{"tool_input":{"command":"cat src/foo.cpp"}}' \
+        | jq -j '.hookSpecificOutput.additionalContext' | LC_ALL=C wc -c)"
+    if [ "$rctx" -gt 0 ] && [ "$rctx" -le 400 ]; then
+        pass "ANTS-2023 INV-3 additionalContext=${rctx}B ≤400"
+    else
+        fail "ANTS-2023 INV-3 additionalContext=${rctx}B (must be 1..400)"
+    fi
+
+    # INV-5: ants_is_source_read pure predicate + disjoint from is_source_search.
+    if (
+        . "$HOOKS_DIR/_common.sh"
+        r() { if ants_is_source_read "$1"; then echo m; else echo n; fi; }
+        e=0
+        [ "$(r 'cat src/terminalgrid.cpp')" = m ] || e=1
+        [ "$(r 'head -50 vtparser.cpp')" = m ] || e=1
+        [ "$(r 'bat src/foo.lua')" = m ] || e=1
+        [ "$(r 'cat README.md')" = n ] || e=1
+        [ "$(r 'cat src/foo.cpp | grep bar')" = n ] || e=1
+        [ "$(r 'cat foo.cpp > bar.cpp')" = n ] || e=1
+        [ "$(r 'cat build-fast/x.cpp')" = n ] || e=1
+        [ "$(r 'cat src/foo.cpp # ants-bypass')" = n ] || e=1
+        # Disjointness: no command classified by BOTH predicates.
+        both() { ants_is_source_read "$1" && ants_is_source_search "$1"; }
+        for c in 'cat src/foo.cpp' 'grep -rn foo src/' 'git grep x' 'find src -name x' 'rg foo'; do
+            if both "$c"; then e=1; fi
+        done
+        exit $e
+    ); then
+        pass "ANTS-2023 INV-5 ants_is_source_read predicate + disjointness"
+    else
+        fail "ANTS-2023 INV-5 predicate/disjointness mismatch"
+    fi
+
+    # INV-6: shared per-PPID throttle — a grep warn suppresses an immediate read
+    # warn; after the window the read warns. Counter logs all 3 (true/false/true).
+    S_HOME="$(mktemp -d -t ants-read-thr.XXXXXX)"
+    sthr() {
+        printf '%s' "$1" | ANTS_GREP_NUDGE_THROTTLE_SEC=2 ANTS_GREP_NUDGE_KEY=rdtest \
+            HOME="$S_HOME" bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null
+    }
+    s1="$(sthr '{"tool_input":{"command":"grep -rn a src/"}}')"      # grep → warn
+    s2="$(sthr '{"tool_input":{"command":"cat src/foo.cpp"}}')"      # read → suppressed
+    touch -d "5 seconds ago" "$S_HOME"/.cache/ants-terminal/grep-nudge/*.stamp 2>/dev/null
+    s3="$(sthr '{"tool_input":{"command":"cat src/bar.cpp"}}')"      # read → warn
+    scf="$S_HOME/.cache/ants-terminal/grep-nudge/count.jsonl"
+    sn="$(wc -l <"$scf" 2>/dev/null || echo 0)"
+    if [ -n "$s1" ] && [ -z "$s2" ] && [ -n "$s3" ] && [ "$sn" -eq 3 ] \
+       && [ "$(grep -c '"warned":false' "$scf")" -eq 1 ]; then
+        pass "ANTS-2023 INV-6 shared throttle (grep→read) + counter 3 lines"
+    else
+        fail "ANTS-2023 INV-6 throttle (s1=${s1:+set} s2=${s2:+set} s3=${s3:+set} n=$sn)"
+    fi
+
+    rm -rf "$R_HOME" "$S_HOME"
+else
+    skip "ANTS-2023 read-dump soft-warn (jq not available)"
 fi
 
 # ---------- INV-7: jq -r in source, no raw-regex on JSON ----------

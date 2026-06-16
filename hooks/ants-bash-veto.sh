@@ -50,6 +50,23 @@ if ants_is_source_search "$cmd"; then
     exit 0
 fi
 
+# ANTS-2023 — soft-warn a source read-dump (cat/head/tail/bat over a code file).
+# Same non-blocking shape + shared throttle/counter as the grep/find nudge above;
+# only the advice text + the tally-bucket fallback differ. Fail-open. See
+# docs/specs/ANTS-2023.md §2.1-§2.3.
+if ants_is_source_read "$cmd"; then
+    nudge_tool="${ANTS_NUDGE_TOOL:-cat}"
+    if ants_grep_nudge_throttled; then
+        ants_grep_nudge_record "$nudge_tool" false   # counted, nudge suppressed
+        exit 0
+    fi
+    ants_grep_nudge_record "$nudge_tool" true
+    ctx='Ants tip: that dumped a whole source file. Prefer mcp__ants__file_outline (symbols/structure) or mcp__ants__read_region (a line range) — far fewer tokens than cat-ing the entire file back. Append `# ants-bypass` to silence.'
+    jq -nc --arg c "$ctx" \
+        '{hookSpecificOutput:{hookEventName:"PreToolUse", additionalContext:$c}}'
+    exit 0
+fi
+
 # Block branches — precise, low false-positive routing kept as hard vetoes.
 reason=""
 case "$cmd" in

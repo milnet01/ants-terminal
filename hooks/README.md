@@ -36,6 +36,18 @@ command still runs** — nothing is blocked. It is **not** warned when:
 - carrying `--help`/`--version`,
 - or carrying the `# ants-bypass` override (below).
 
+**Soft-warn (ANTS-2023, non-blocking).** A *source read-dump* — `cat`/`head`/
+`tail`/`bat` of a **code file** (a path under `src`/`tests`/`include`, or one
+ending `.cpp`/`.cc`/`.cxx`/`.c`/`.h`/`.hpp`/`.hh`/`.lua`) — gets a PreToolUse
+reminder to prefer `mcp__ants__file_outline` (symbols/structure) or
+`mcp__ants__read_region` (a line range) instead of streaming the whole file back.
+**The command still runs.** It is **not** warned when piped (`cat x | grep` —
+that's processing), redirected/heredoc (`> bar`, `<< EOF` — writing/feeding),
+over a non-source location or `.log`, for markdown/config/text (`cat README.md` —
+out of scope; `ROADMAP.md` has its own routing), or carrying `--help` /
+`# ants-bypass`. It shares the same anti-nag throttle as the search nudge below
+(at most one prefer-MCP reminder per window, search *or* read).
+
 **Block (precise vetoes).** `git status` / `git log --oneline` /
 `git diff --stat` → `get_git_status`; `cat ROADMAP.md | grep` → `roadmap_query`.
 These emit `{"decision":"block","reason":"…"}` (reason ≤ 200 B).

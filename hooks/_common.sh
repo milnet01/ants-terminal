@@ -133,6 +133,81 @@ ants_is_source_search() {
     return 1
 }
 
+# ANTS-2023-INV-5 — pure-ish predicate: return 0 = a code-file read-dump worth
+# nudging toward file_outline/read_region, 1 = not. MUST `return`, never `exit`
+# (in-process testable, like ants_is_source_search). On a match it sets
+# ANTS_NUDGE_TOOL (the §2.3 tally bucket) to the matched leading token. Operates
+# on the jq-decoded command string, never raw JSON (ANTS-1252 INV-7). The two
+# predicates' leading-token sets ({cat,head,tail,bat} vs the search tools) are
+# disjoint, so no command matches both. See docs/specs/ANTS-2023.md §2.2.
+ants_is_source_read() {
+    local cmd="$1"
+    ANTS_NUDGE_TOOL=""
+    # Bypass override (ANTS-1252 INV-12): scan the WHOLE command.
+    case "$cmd" in *"# ants-bypass"*) return 1 ;; esac
+
+    # A redirect / heredoc / PIPE anywhere means this is not a pure read-dump
+    # (writing, feeding input, or processing — not dumping a file to be read).
+    # Scanned $cmd-wide — only ever narrows to no-warn (ANTS-2023 §2.2). Unlike
+    # the grep class (where a leading grep with a trailing pipe still warns), a
+    # piped cat is a processing pipeline, so any '|' disqualifies.
+    case "$cmd" in *">"*|*"<<"*|*"|"*) return 1 ;; esac
+
+    # Strip leading VAR=val / cd … && prefixes (no pipe survives the check above).
+    local pre="${cmd%%|*}"
+    pre="${pre#"${pre%%[![:space:]]*}"}"                 # ltrim
+    # Strip leading VAR=val assignments (repeat).
+    while [[ "$pre" =~ ^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+ ]]; do
+        pre="${pre#*[[:space:]]}"
+        pre="${pre#"${pre%%[![:space:]]*}"}"
+    done
+    # Strip a single leading "cd ... &&".
+    if [[ "$pre" =~ ^cd[[:space:]] ]] && [[ "$pre" == *"&&"* ]]; then
+        pre="${pre#*&&}"
+        pre="${pre#"${pre%%[![:space:]]*}"}"
+    fi
+
+    # EXEMPT (substring tests on pre): help/version flags.
+    case " $pre " in
+        *" --help"*|*" --version"*|*" -h "*|*" -V "*) return 1 ;;
+    esac
+    # EXEMPT: non-source-root path substrings + .log (mirrors ants_is_source_search).
+    case "$pre" in
+        */tmp*|*/var*|*/etc*|*/usr*|*/proc*|*/sys*|*build/*|*build-*|*.git/*|*node_modules*|*.log*)
+            return 1 ;;
+    esac
+
+    # Split pre into words WITHOUT glob expansion (read -a splits on IFS only;
+    # `for tok in $pre` would expand a literal *.cpp). Element 0 is the command.
+    local parts
+    read -r -a parts <<<"$pre"
+    case "${parts[0]:-}" in
+        cat|head|tail|bat) : ;;
+        *) return 1 ;;
+    esac
+
+    # The first operand not beginning with '-' must be a code source file:
+    # under src/|tests/|include/ (with or without ./) OR a code extension.
+    # New logic vs ants_is_source_search (which only reads first/second). A
+    # separated option-argument (e.g. `-n 50`) is mis-read as the operand — an
+    # accepted blind spot (ANTS-2023 §2.2 (d)).
+    local i op=""
+    for ((i = 1; i < ${#parts[@]}; i++)); do
+        case "${parts[i]}" in
+            -*) continue ;;          # skip flags
+            *) op="${parts[i]}"; break ;;
+        esac
+    done
+    [ -z "$op" ] && return 1
+    op="${op#./}"
+    case "$op" in
+        src/*|tests/*|include/*|*.cpp|*.cc|*.cxx|*.c|*.h|*.hpp|*.hh|*.lua)
+            ANTS_NUDGE_TOOL="${parts[0]}"
+            return 0 ;;
+    esac
+    return 1
+}
+
 # ANTS-2141-INV-8 — best-effort tally append + cap (≤500 lines, kept-last-250).
 # Never fails the caller. <warned> is the literal "true"/"false". See §2.4.
 ants_grep_nudge_record() {

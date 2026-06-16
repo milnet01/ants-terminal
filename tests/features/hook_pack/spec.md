@@ -81,6 +81,28 @@ These run only when `jq` is present (skipped with a `[skip]` line otherwise).
 - **Outside project (INV-11).** Run from a non-ants dir, no `count.jsonl` /
   stamp is created.
 
+## ANTS-2023 — cat/head/tail/bat read-dump soft-warn (appended; 1-13 + ANTS-2141 unchanged)
+
+Source spec: [docs/specs/ANTS-2023.md](../../../docs/specs/ANTS-2023.md).
+These run only when `jq` is present (skipped with a `[skip]` line otherwise).
+
+- **Warn class (INV-1/3).** `cat src/…`, `cat include/…`, `head -50 …cpp`,
+  `tail -100 tests/…cpp`, and `bat src/…lua` each emit a PreToolUse
+  `additionalContext` envelope with **no** `permissionDecision` and **no**
+  top-level `decision`; the field is ≤ 400 B (measured 225 B).
+- **No-warn class (INV-4).** Empty stdout for EXEMPT (`build-fast/…`, `/etc/…`,
+  `.log`-suffix, `--help`, `# ants-bypass`) and non-eligible (markdown
+  `README.md`, `notes.txt`, redirect `> bar`, heredoc `<< EOF`, piped
+  `… | grep`, separated option-arg `head -n 50 …` — blind spot d).
+- **Predicate + disjointness (INV-5).** `_common.sh::ants_is_source_read` is
+  sourced and table-tested in-process (it `return`s, never `exit`s); a
+  cross-check asserts no command is classified by **both**
+  `ants_is_source_read` and `ants_is_source_search`.
+- **Shared throttle (INV-6).** Reusing ANTS-2141's per-`$PPID` throttle: a `grep`
+  warn immediately followed by a `cat src/…` emits empty (suppressed by the
+  shared window); after the window the read warns. `count.jsonl` holds exactly 3
+  lines (one `warned:false`), proving the read branch records on both paths.
+
 ### Not covered (deliberately)
 
 - **INV-6** (sentinel-key fence) — partially exercised by the

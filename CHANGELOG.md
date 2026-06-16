@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **PreToolUse prefer-MCP advisory guardrail (the enforcement half of MCP discoverability).** (ANTS-2023)
+  A small automatic check that notices when a session reaches for an expensive shell command and reminds it there is a cheaper Ants tool.
+
 - **PreToolUse soft-warn hook routes raw grep/find over project source to the MCP index verbs (workspace_search / find_definition).** (ANTS-2141)
   When the assistant runs a plain text-search over the project, gently remind it to use Ants' faster, cheaper indexed search instead.
 
