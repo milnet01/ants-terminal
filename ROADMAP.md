@@ -21979,6 +21979,12 @@ contributors don't duplicate research.
   Lanes: tests.
   Source: in-session-2026-05-21 (surfaced during ANTS-1727 build).
 
+- 📋 [ANTS-2143] **Dedupe redundant find-primary globs in ants_is_source_search (shellcheck SC2221/SC2222).**
+  hooks/_common.sh:126 (the find mutating/exec-primary EXEMPT case in ants_is_source_search, ANTS-2141) lists overlapping globs: *" -exec"* makes *" -execdir"* redundant, *" -ok"* makes *" -okdir"* redundant, and *" -fprint"* makes *" -fprintf"* redundant — shellcheck SC2221 (pattern always overrides a later one) + SC2222 (pattern never matches). Benign: every branch does the same `return 1`, so behaviour is unaffected — but the linter flags it on every run. Fix: drop the redundant -execdir/-okdir/-fprintf patterns (keep -exec/-ok/-fprint/-fls/-delete), or restructure so each glob is disjoint. Pre-existing in shipped ANTS-2141 code; not introduced by ANTS-2023 (shellcheck warning count was 12 before and after that change). Lanes: hooks. Verify the resulting predicate table still matches docs/specs/ANTS-2141.md §2.2 after the dedupe.
+  **Layman:** A couple of redundant patterns in a hook script's text-matching make shellcheck complain; harmless, but worth tidying so the linter stays clean.
+  Kind: chore.
+  Source: in-session-2026-06-16 (surfaced by shellcheck during ANTS-2023).
+
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.
