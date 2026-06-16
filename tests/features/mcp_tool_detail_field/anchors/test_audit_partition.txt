@@ -1,0 +1,10 @@
+# ANTS-2079 INV-3 anchor tokens for test_audit_partition. See
+# roadmap_query.txt for the capture method + test contract. NB: these
+# are descriptor-prose tokens. (The only MCP input arg named `detail`
+# belongs to test_results, an out-of-scope tool, not to this one.)
+partition_token
+pre_pass_dimensions
+dimensions_active
+pre_pass_chunk_ids
+pre_pass_omitted
+additional_frameworks

@@ -1,0 +1,14 @@
+# ANTS-2079 INV-3 anchor tokens for roadmap_log. See
+# roadmap_query.txt for the capture method + test contract.
+append_batch
+flip_batch
+annotate
+create_section
+bullet_not_found
+bullet_ambiguous
+anchor_unsafe_context
+bad_op_combo
+missing_field
+unrecognised_format
+possible_duplicates
+arguments_empty

@@ -196,6 +196,25 @@ place when it saves a Claude session real tokens or round-trips
     one-line `description` per property. Document `caller_cwd` as
     Required/Optional matching step 2.
 
+11. **Keep the wire `description` short; move encyclopedic prose to
+    `detail` (ANTS-2079).** Every tool's `description` ships in
+    `tools/list` and is paid for once per session (plus per deferred
+    schema load). When a `description` would exceed ~800 B of wire
+    content, author a sibling `t["detail"] = QStringLiteral(...)` next to
+    it: keep in `description` only the load-bearing contract surface
+    (one *what + when* sentence, the op/selector set, the documented
+    refusal `code`s, the `caller_cwd` contract word + required args), and
+    move per-op/per-arg prose, `ANTS-NNNN` provenance, advisory notes,
+    and full envelope listings into `detail`. The tools/list handler
+    strips `detail` from the wire and appends a `tool_info {name:"…"}`
+    pointer; `tool_info` serves `detail` on demand. Together
+    `description` + `detail` MUST be a superset of the original — no
+    documented code/op/arg dropped. Do NOT begin the short `description`
+    with `[` (the runtime `[<kind>]` prefix loop adds it), and do NOT
+    write the literal `props["` inside a descriptor comment (the
+    `mcp_dispatch_forward_completeness` scraper mis-counts it as a schema
+    prop).
+
 ## Tests (required)
 
 Mirror the registration-presence + schema-validity asserts the existing

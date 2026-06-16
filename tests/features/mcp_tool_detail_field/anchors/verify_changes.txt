@@ -1,0 +1,11 @@
+# ANTS-2079 INV-3 anchor tokens for verify_changes. See
+# roadmap_query.txt for the capture method + test contract.
+tool_timed_out
+timed_out_gate
+per_gate_timeout_sec
+cache_only
+force_refresh
+wall_clock_ms
+pre_gate_ms
+gate_ms
+cache_hit

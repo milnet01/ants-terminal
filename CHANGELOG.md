@@ -31,6 +31,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Trim load-bearing MCP tool description blobs; serve encyclopedic per-op detail via tool_info.** (ANTS-2079)
+  Shorten the long help text the assistant loads for each tool to save on usage.
+
 - **session_orient now rebuilds the codebase map at session start, and the startup cheat-sheet points sessions at the indexed-search tools** (ANTS-2140)
   The first orientation call a Claude session makes now also refreshes Ants' codebase map (so it's fresh without anyone remembering a separate step), and the startup prelude advertises the codebase_index verb with a 'query before grep' nudge. Result: faster, cheaper code navigation down the line.
 

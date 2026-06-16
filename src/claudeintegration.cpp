@@ -1880,6 +1880,18 @@ void ClaudeIntegration::onMcpConnection() {
                 // the partial-query saving so Claude prefers section
                 // slices when only one block is needed.
                 roadmapTool["description"] = QStringLiteral(
+                    "Query ROADMAP.md as structured bullets {id, status, "
+                    "headline, headline_oneline, kind, lanes}. Filters: "
+                    "status (all|active|shipped), section=<slug>, id / "
+                    "ids[] (single/bundle fetch by [PROJ-NNNN]). mode: "
+                    "bullets (default) | section_index (slug discovery) | "
+                    "headline_only (~10x smaller). Opt-in: include_body, "
+                    "compact, fields, etag_match. Refusals: bad_case, "
+                    "bad_section, bad_mode_combo. caller_cwd Required.");
+                // ANTS-2079 — full per-op reference lives in `detail`,
+                // stripped from the tools/list wire and served on demand
+                // by tool_info {name:"roadmap_query"}.
+                roadmapTool["detail"] = QStringLiteral(
                     "Query the active tab's ROADMAP.md as structured "
                     "bullets. Each bullet: {id, status, headline, "
                     "headline_oneline, kind, lanes}. `headline_oneline` "
@@ -2311,6 +2323,18 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "model_switch_stats";
                     t["description"] = QStringLiteral(
+                        "Read-only effectiveness scorecard for the "
+                        "autonomous model switcher (ANTS-1735): Opus turns "
+                        "avoided vs regret/under-route rate — the trust "
+                        "signal that auto-switching is helping. "
+                        "mode: firings (default) | near_misses (per-blocker "
+                        "breakdown). scope: project (default) | global. "
+                        "Opt-in: etag_match, fields, compact. "
+                        "caller_cwd Required.");
+                    // ANTS-2079 — full envelope + headline + blocker
+                    // reference in `detail` (stripped from the tools/list
+                    // wire; served by tool_info {name:"model_switch_stats"}).
+                    t["detail"] = QStringLiteral(
                         "Read-only scorecard for the autonomous model switcher "
                         "(ANTS-1735), scoped to the caller's project by default. "
                         "Aggregates the effectiveness ledger into Opus turns "
@@ -2698,6 +2722,20 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject wsTool;
                 wsTool["name"] = "workspace_search";
                 wsTool["description"] = QStringLiteral(
+                    "Search the project for code matching a literal string "
+                    "or regex — prefer over `Bash grep -r` (saves "
+                    "250-4500 tokens/query). Returns {ok, matches:[{file, "
+                    "line, text, also_at?, context_*?}], truncated, dedup, "
+                    "...}. Args: pattern (required; alias query), regex, "
+                    "lane, glob, max_results (cap 500), context [0,10], "
+                    "case, respect_gitignore, include_hidden, dedup, "
+                    "timeout_sec [1,30], max_match_bytes, headline_only. "
+                    "caller_cwd anchors the project root (or '~global' for "
+                    "~/.claude/). Hard-kill returns rg_failed with a hint.");
+                // ANTS-2079 — full per-arg reference in `detail` (stripped
+                // from the tools/list wire; served by tool_info
+                // {name:"workspace_search"}).
+                wsTool["detail"] = QStringLiteral(
                     "Search the project for code matching a literal "
                     "string or regex. Returns {ok, matches:[{file, "
                     "line, text, also_at?:[{file,line}…], "
@@ -5452,6 +5490,21 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "verify_changes";
                     t["description"] = QStringLiteral(
+                        "Run the project's build / test / lint gates and "
+                        "return pass/fail with log tails. Reads "
+                        ".ants/verify.json (or auto-detects CMakePresets/"
+                        "package.json/Cargo.toml/pyproject.toml). Args: "
+                        "gates (subset of build|tests|lint), lines, "
+                        "timeout_sec [10,1800], force_refresh, cache_only "
+                        "(read-only, bypasses the cwd gate). Results cached "
+                        "5 min keyed on git state; responses carry "
+                        "cache_hit. Two-tier timeouts (tool-side per-gate "
+                        "vs transport ~60s); for builds >60s fall back to "
+                        "Bash cmake/make. Required: caller_cwd.");
+                    // ANTS-2079 — full timeout / phase-timing reference in
+                    // `detail` (stripped from the tools/list wire; served
+                    // by tool_info {name:"verify_changes"}).
+                    t["detail"] = QStringLiteral(
                         "Run the project's build / test / lint gates "
                         "and return pass/fail with log tails. Replaces "
                         "the verification-before-completion skill's "
@@ -5717,6 +5770,24 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "test_audit_partition";
                     t["description"] = QStringLiteral(
+                        "Phase 1 of the test_audit trio: detect the test "
+                        "framework, walk test files, pack into chunks "
+                        "(size 12, [4,30]), run a pre-pass regex scan, "
+                        "return paginated chunks + partition_token. "
+                        "dimensions: auto (default) | csv:<d1,d2>. scope: "
+                        "auto | path:<sub> | files:<csv>. Seed the subagent "
+                        "with envelope-level dimensions_active[] "
+                        "(pre_pass_dimensions[] is a prioritisation hint, "
+                        "not a coverage allow-list). Required: caller_cwd. "
+                        "Pairs with test_audit_brief.");
+                    // ANTS-2079 — full pagination / resume / polyglot
+                    // reference in `detail` (stripped from the tools/list
+                    // wire; served by tool_info
+                    // {name:"test_audit_partition"}). NB: the only MCP
+                    // input arg also named `detail` belongs to test_results
+                    // (out of scope) — a different JSON object that never
+                    // aliases this tool-descriptor field.
+                    t["detail"] = QStringLiteral(
                         "Phase 1 of the test_audit trio. Detect "
                         "test framework, walk test files, pack into "
                         "chunks (size 12 default, [4,30]), run "
@@ -6810,6 +6881,23 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "roadmap_log";
                     t["description"] = QStringLiteral(
+                        "Append or flip/annotate ROADMAP.md bullets (GFM or "
+                        "Ants-v1 emoji format, auto-detected). ops: append "
+                        "(default) | append_batch | flip | flip_batch | "
+                        "annotate | create_section. append needs caller_cwd, "
+                        "section, status, headline, kind, source; flip needs "
+                        "to_status + one of (id|anchor|headline). dry_run:"
+                        "true previews. Refusals: bullet_not_found, "
+                        "bullet_ambiguous, anchor_unsafe_context, "
+                        "bad_op_combo, bad_case, missing_field, "
+                        "unrecognised_format. SIZE NOTE: keep append bodies "
+                        "small — large payloads can drop in transit "
+                        "(ANTS-1853); use Edit for long prose. "
+                        "caller_cwd Required.");
+                    // ANTS-2079 — full per-op reference in `detail`
+                    // (stripped from the tools/list wire; served by
+                    // tool_info {name:"roadmap_log"}).
+                    t["detail"] = QStringLiteral(
                         "Append a new bullet to ROADMAP.md, or flip "
                         "the status of an existing bullet on either "
                         "a GFM-task-list or Ants-v1 emoji-status "
@@ -7418,6 +7506,21 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "changelog_log";
                     t["description"] = QStringLiteral(
+                        "Append a Keep-a-Changelog entry under ## "
+                        "[Unreleased] in CHANGELOG.md without re-emitting "
+                        "the file. ops: add (default) | add_from_roadmap "
+                        "(cite a ROADMAP id; reuses its headline + Layman "
+                        "line) | add_batch (entries[], one atomic commit). "
+                        "Category from `category` or derived from `kind`. "
+                        "Required: caller_cwd (+ summary for add, id for "
+                        "add_from_roadmap, entries[] for add_batch). "
+                        "Refusals: not_unreleased, bad_category, "
+                        "no_changelog, format_mismatch, id_not_in_roadmap, "
+                        "missing_field, bad_args, bad_op_combo.");
+                    // ANTS-2079 — full per-op reference in `detail`
+                    // (stripped from the tools/list wire; served by
+                    // tool_info {name:"changelog_log"}).
+                    t["detail"] = QStringLiteral(
                         "Append a Keep-a-Changelog entry under the "
                         "`## [Unreleased]` section of CHANGELOG.md "
                         "without re-emitting the file. Mode picked by "
@@ -8153,6 +8256,29 @@ void ClaudeIntegration::onMcpConnection() {
                 // tool_info(name) for the full schema.
                 m_lastToolsList = tools;
 
+                // ANTS-2079 — strip per-op `detail` from the wire payload;
+                // the snapshot above retains it so tool_info can serve it on
+                // demand. QJsonArray is copy-on-write: mutating `tools` here
+                // detaches it, leaving m_lastToolsList intact. A one-line
+                // pointer is appended to `description` so a session reading
+                // tools/list knows where the full prose lives. Runs before
+                // both the lite branch and the full-shape send so neither
+                // wire shape carries `detail`.
+                for (int i = 0; i < tools.size(); ++i) {
+                    QJsonObject t = tools.at(i).toObject();
+                    if (t.contains(QStringLiteral("detail"))) {
+                        t.remove(QStringLiteral("detail"));
+                        t[QStringLiteral("description")] =
+                            t.value(QStringLiteral("description")).toString()
+                            + QStringLiteral(
+                                  " Full per-op detail via tool_info "
+                                  "{name:\"%1\"}.")
+                                  .arg(t.value(QStringLiteral("name"))
+                                           .toString());
+                        tools.replace(i, t);
+                    }
+                }
+
                 // ANTS-1502 — two-tier discovery. When the caller
                 // requests `_meta.shape == "lite"`, return a compact
                 // shape `[{name, summary, kind}]` per tool (~80 chars
@@ -8630,6 +8756,16 @@ void ClaudeIntegration::onMcpConnection() {
                                 // it in tools/list per HINT-1).
                                 env["selection_hint"] =
                                     match.value(QStringLiteral("selection_hint"));
+                                // ANTS-2079 — surface the per-op detail
+                                // trimmed from the wire payload. Conditional
+                                // (NOT mirroring selection_hint's
+                                // unconditional set): present only for tools
+                                // that authored one; an unconditional set
+                                // would emit detail:null for the ~66 tools
+                                // that didn't and break INV-2.
+                                if (match.contains(QStringLiteral("detail")))
+                                    env["detail"] =
+                                        match.value(QStringLiteral("detail"));
                             }
                         }
                         responseText = QString::fromUtf8(

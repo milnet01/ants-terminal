@@ -1,0 +1,9 @@
+# ANTS-2079 INV-3 anchor tokens for workspace_search. See
+# roadmap_query.txt for the capture method + test contract.
+rg_failed
+headline_only
+max_match_bytes
+respect_gitignore
+dedup_collapsed
+also_at
+include_hidden

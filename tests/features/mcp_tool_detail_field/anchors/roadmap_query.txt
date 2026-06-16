@@ -1,0 +1,18 @@
+# ANTS-2079 INV-3 anchor tokens for roadmap_query.
+# Refusal codes + selector/mode names + load-bearing envelope fields
+# documented in the PRE-TRIM description. Captured mechanically from
+# `git show HEAD:src/claudeintegration.cpp` at the splitting commit and
+# verified present in the tool's source block. The test asserts every
+# token below appears in the union of the tool's post-trim
+# `description` + `detail` literals — i.e. nothing was silently dropped.
+# One token per line; blank lines and `#` comments ignored.
+bad_case
+bad_section
+bad_mode_combo
+section_index
+headline_only
+duplicate_ids
+legacy_format
+include_narrator_bullets
+headline_full
+section_shape

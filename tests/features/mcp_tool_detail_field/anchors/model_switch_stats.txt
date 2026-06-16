@@ -1,0 +1,13 @@
+# ANTS-2079 INV-3 anchor tokens for model_switch_stats. See
+# roadmap_query.txt for the capture method + test contract.
+near_misses
+firings
+regret_count
+opus_turns_avoided
+regret_rate
+composer_not_empty
+dwell_time_insufficient
+override_cooldown_active
+target_equals_current
+ticks_target_stable_insufficient
+auto_model_switch_off_reason

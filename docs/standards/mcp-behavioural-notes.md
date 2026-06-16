@@ -28,6 +28,21 @@ Both are presentation-only (added after the etag is computed, so they
 never perturb the hash) and are skipped on 304s, refusals (`ok:false`),
 `fields=`-narrowed calls, and bodies under the threshold.
 
+## Trimmed descriptions + `tool_info` `detail` (ANTS-2079)
+
+The seven largest tool descriptions (`roadmap_query`,
+`model_switch_stats`, `roadmap_log`, `test_audit_partition`,
+`changelog_log`, `workspace_search`, `verify_changes`) ship only a short
+essentials `description` on the wire — load-bearing contract surface (op
+set, refusal codes, `caller_cwd`, required args) plus a runtime-appended
+`Full per-op detail via tool_info {name:"…"}` pointer. The encyclopedic
+per-op prose lives in a `detail` field that is **stripped from
+`tools/list`** and returned only by `tool_info {name:"<tool>"}` (alongside
+`description`, `inputSchema`, `selection_hint`). So when a session needs a
+trimmed verb's full per-op/per-arg reference, make one `tool_info` call —
+the same call ANTS-1399 already prescribes before invoking a verb. Tools
+that did not author a `detail` simply omit the key from `tool_info`.
+
 ## Read / incremental verbs
 
 - **`get_scrollback`** — since-cursor incremental mode (ANTS-1500).

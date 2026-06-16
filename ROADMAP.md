@@ -16469,12 +16469,13 @@ server build id so clients can self-diagnose this.
   Source: cross-session-2026-06-11 (DOOM Ants).
   Resolved (2026-06-11): append_batch accepts batch-wide id_strategy:"stable_prefix" + per-bullet stable_id (skips/leaves .roadmap-counter); intra-batch dup -> id_taken skip. Tests in mcp_roadmap_log_append_batch.
 
-- 💭 [ANTS-2079] **Trim load-bearing MCP tool description blobs; serve encyclopedic per-op detail via tool_info.**
+- ✅ [ANTS-2079] **Trim load-bearing MCP tool description blobs; serve encyclopedic per-op detail via tool_info.**
   DOOM idea A (HIGH saving). roadmap_log / roadmap_query inline schema descriptions are multi-KB and paid for whenever the tool loads. Keep a one-paragraph essentials summary inline; move the per-op encyclopedic detail behind tool_info {name:...} on demand. Needs a careful pass — these blobs encode load-bearing invariants and other sessions branch on the documented codes.
   **Layman:** Shorten the long help text the assistant loads for each tool to save on usage.
   Kind: optimize.
   Source: cross-session-2026-06-11 (DOOM Ants).
   Re-confirmed 2026-06-15 (DOOM Ants): loading roadmap_log + spec_log schemas via ToolSearch still returns a multi-KB payload (roadmap_log's per-op prose alone is several KB) — DOOM names this the single biggest remaining per-session token sink for the write verbs. No regression; just a priority signal that trimming inline schema blobs (serve detail via tool_info) is still worth doing.
+  Resolved (2026-06-16): split the 7 largest tool descriptions (roadmap_query, model_switch_stats, roadmap_log, test_audit_partition, changelog_log, workspace_search, verify_changes) into a short essentials `description` + a `detail` sibling stripped from tools/list and served by tool_info. Wire descriptions now 536–707 B (was ~1872–4561 B). New feature test tests/features/mcp_tool_detail_field/ (INV-1..7 + anchor fixtures); all 2127 tests green. Docs: mcp-tools.md rule 11, mcp-behavioural-notes.md, spec §9 implementation notes.
 
 - ✅ [ANTS-2080] **roadmap_log write verbs: optional return:headline_only to echo compact post-state.**
   DOOM idea C (MEDIUM saving). op:append / append_batch / flip* could accept return:"headline_only" and echo the resulting compact bullet list so the verify step folds into the write. Partly covered by dry_run (preview-before); this is confirm-after.

@@ -1192,6 +1192,9 @@ if(ANTS_TESTS)
                 tests/features/test_audit_polyglot_and_strip/test_polyglot_and_strip.cpp
                 # ANTS-1399 tool_info(name) MCP verb.
                 tests/features/mcp_tool_info_verb/test_mcp_tool_info_verb.cpp
+                # ANTS-2079 description/detail split — trim wire blobs,
+                # serve per-op detail via tool_info.
+                tests/features/mcp_tool_detail_field/test_mcp_tool_detail_field.cpp
                 # ANTS-1952 build-identity stamp in serverInfo / get_session_info.
                 tests/features/mcp_build_identity/test_mcp_build_identity.cpp
                 # ANTS-1402 dispatch-observer unification.
@@ -1331,6 +1334,7 @@ if(ANTS_TESTS)
         SRC_CLAUDEALLOWLIST_PATH="${CMAKE_SOURCE_DIR}/src/claudeallowlist.cpp"
         SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
         SRC_CLAUDE_INTEGRATION_H_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.h"
+        ANTS_MCP_DETAIL_ANCHORS_DIR="${CMAKE_SOURCE_DIR}/tests/features/mcp_tool_detail_field/anchors"
         CLAUDETABTRACKER_H="${CMAKE_SOURCE_DIR}/src/claudetabtracker.h"
         COLOREDTABBAR_H="${CMAKE_SOURCE_DIR}/src/coloredtabbar.h"
         COLOREDTABBAR_CPP="${CMAKE_SOURCE_DIR}/src/coloredtabbar.cpp"

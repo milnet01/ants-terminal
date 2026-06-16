@@ -1,0 +1,12 @@
+# ANTS-2079 INV-3 anchor tokens for changelog_log. See
+# roadmap_query.txt for the capture method + test contract.
+add_from_roadmap
+add_batch
+not_unreleased
+bad_category
+no_changelog
+format_mismatch
+id_not_in_roadmap
+missing_field
+bad_args
+bad_op_combo
