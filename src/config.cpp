@@ -570,6 +570,21 @@ void Config::setClaudeMcpTerseResponses(bool enabled) {
     save();
 }
 
+// ANTS-2094 — result-offload config (config-file-only; no setters / UI in
+// v1). Default OFF (opt-in) — see config.h. The raw values here are clamped
+// by mcp::setOffloadConfig before they go live.
+bool Config::claudeMcpOffloadLargeResults() const {
+    return m_data.value("claude.mcp_offload_large_results").toBool(false);
+}
+
+int Config::claudeMcpOffloadThresholdBytes() const {
+    return m_data.value("claude.mcp_offload_threshold_bytes").toInt(16384);
+}
+
+int Config::claudeMcpOffloadHeadBytes() const {
+    return m_data.value("claude.mcp_offload_head_bytes").toInt(2048);
+}
+
 void Config::setClaudeMcpOrientationNudgeShown(bool shown) {
     if (!storeIfChanged("claude.mcp_orientation_nudge_shown", shown)) return;
     save();

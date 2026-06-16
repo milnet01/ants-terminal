@@ -30,6 +30,7 @@
 #include "claudestatuswidgets.h"
 #include "claudetabtracker.h"
 #include "mcpprojection.h"   // ANTS-2085 — mcp::setTerseDefault
+#include "mcpspill.h"        // ANTS-2094 — mcp::setOffloadConfig / spillSweep
 #include "mcporientation.h"  // ANTS-1897 — SessionStart hook installer.
 #include "themedstylesheet.h"
 #include "claudeprojects.h"
@@ -4001,6 +4002,12 @@ void MainWindow::setupClaudeMcpProviders() {
     // on out of the box); the Settings Apply path and onConfigFileChanged
     // (external edits) re-publish it.
     mcp::setTerseDefault(m_config.claudeMcpTerseResponses());
+    // ANTS-2094 — publish the result-offload config (default OFF) and run a
+    // one-shot session-start sweep of stale (>24 h) spill files.
+    mcp::setOffloadConfig(m_config.claudeMcpOffloadLargeResults(),
+                          m_config.claudeMcpOffloadThresholdBytes(),
+                          m_config.claudeMcpOffloadHeadBytes());
+    mcp::spillSweep();
     // ANTS-1322: reap stale MCP sockets from previously-crashed
     // ants-terminal instances. Without this they accumulate in
     // /tmp/ants-terminal-mcp-<PID> indefinitely; the mcp-bridge
@@ -4886,6 +4893,12 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("read_region",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdReadRegion));
+    // ANTS-2094 — read_spill: re-read an offloaded result by its handle.
+    // caller_cwd Optional — the spill store is global/content-addressed,
+    // not project-scoped.
+    m_claudeIntegration->registerToolProvider("read_spill",
+        ClaudeIntegration::CallerCwdContract::Optional,
+        rcDelegate(&RemoteControl::cmdReadSpill));
     // ANTS-2022 — apply_edits: atomic-per-file batch of {path, old, new} edits.
     m_claudeIntegration->registerToolProvider("apply_edits",
         ClaudeIntegration::CallerCwdContract::Required,
@@ -6879,6 +6892,10 @@ void MainWindow::onConfigFileChanged(const QString &path) {
     // external config edit (the Settings dialog's own Apply re-publishes
     // directly, since a self-write echo short-circuits above).
     mcp::setTerseDefault(m_config.claudeMcpTerseResponses());
+    // ANTS-2094 — re-publish result-offload config after an external edit.
+    mcp::setOffloadConfig(m_config.claudeMcpOffloadLargeResults(),
+                          m_config.claudeMcpOffloadThresholdBytes(),
+                          m_config.claudeMcpOffloadHeadBytes());
 
     // The cached Settings dialog was constructed with `&m_config` and
     // populated its widgets from the then-current values. `m_config`'s

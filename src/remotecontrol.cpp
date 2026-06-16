@@ -8,6 +8,7 @@
 #include "findsources.h"
 #include "readlog.h"
 #include "readregion.h"
+#include "mcpspill.h"        // ANTS-2094 — read_spill
 #include "applyedits.h"
 #include "codebaseindex.h"
 #include "docsindex.h"
@@ -8069,6 +8070,55 @@ QJsonDocument RemoteControl::cmdReadRegion(const QJsonObject &req) {
         opts.endLine   = endV.isDouble() ? endV.toInt() : opts.startLine;
     }
     return QJsonDocument(ReadRegion::extract(check.resolved, opts));
+}
+
+// ANTS-2094 — read_spill: re-read a body spilled by the offload path, by its
+// content-addressed handle, byte-paged. The spill store is global (under
+// ~/.cache, not project-scoped), so this verb takes no project root and
+// resolves ONLY under the spill dir keyed by the validated handle — it adds
+// no filesystem reach beyond that dir.
+QJsonDocument RemoteControl::cmdReadSpill(const QJsonObject &req) {
+    const QString handle = req.value(QStringLiteral("handle")).toString();
+    static const QRegularExpression handleRe(QStringLiteral("^[0-9a-f]{64}$"));
+    if (!handleRe.match(handle).hasMatch()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral(
+            "read_spill: \"handle\" must be a 64-char lowercase sha256");
+        o["code"]  = QStringLiteral("bad_args");
+        return QJsonDocument(o);
+    }
+    const QJsonValue offV = req.value(QStringLiteral("offset"));
+    const QJsonValue mbV  = req.value(QStringLiteral("max_bytes"));
+    const qint64 offset   = offV.isDouble() ? static_cast<qint64>(offV.toDouble()) : 0;
+    const qint64 maxBytes = mbV.isDouble()  ? static_cast<qint64>(mbV.toDouble())  : 0;
+    if (offset < 0 || (mbV.isDouble() && maxBytes < 0)) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("read_spill: \"offset\"/\"max_bytes\" must be >= 0");
+        o["code"]  = QStringLiteral("bad_args");
+        return QJsonDocument(o);
+    }
+
+    const mcp::SpillSlice s = mcp::readSpill(handle, offset, maxBytes);
+    if (!s.ok) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = (s.code == QStringLiteral("not_found"))
+            ? QStringLiteral("read_spill: handle not found (never spilled, or "
+                             "evicted — re-issue the original call)")
+            : QStringLiteral("read_spill: %1").arg(s.code);
+        o["code"]  = s.code;
+        return QJsonDocument(o);
+    }
+    QJsonObject o;
+    o["ok"]          = true;
+    o["content"]     = s.content;
+    o["offset"]      = s.offset;
+    o["bytes"]       = s.bytes;
+    o["total_bytes"] = s.totalBytes;
+    o["truncated"]   = s.truncated;
+    return QJsonDocument(o);
 }
 
 // ANTS-2022 — apply_edits: apply N {path, old, new} edits across M project

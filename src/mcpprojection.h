@@ -19,6 +19,15 @@ namespace mcp {
 // Chosen for payload size (see docs/specs/ANTS-1720 / ROADMAP).
 bool isFieldProjectionTool(const QString &toolName);
 
+// ANTS-2094 — the read verbs whose bodies are large enough to be worth
+// spilling to a content-addressed cache file + returning a head+pointer
+// envelope (observation masking). Deliberately a SEPARATE set from
+// isFieldProjectionTool: it adds the large-body verbs that take no
+// `fields=` (get_scrollback / get_text / workspace_search / find_sources).
+// Write, control-plane, refusal and 304 responses are never offloaded
+// (gated by the dispatch site, not here). See docs/specs/ANTS-2094.md.
+bool isOffloadEligible(const QString &toolName);
+
 // Return a compact JSON object carrying only the named top-level fields
 // of `responseText`. Contract:
 //   - `fields` empty                    -> responseText returned unchanged.

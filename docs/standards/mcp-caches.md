@@ -51,6 +51,7 @@ are project-scoped.
 | `roadmap_query` parse cache | ANTS-1117 | In-process | `(path, mtime)` + 100 ms TTL | **Cold.** Keyed on the absolute path + mtime; a moved file is a new key. |
 | `cold_eyes` partition cache | ANTS-1319 | In-process | `(path, scope, stamp)` + 5 s TTL | **Cold.** In-process; path-keyed. |
 | `audit_run` `.audit_cache/` | ANTS-1555 | Disk: `<root>/.audit_cache/` | Lives *inside* the project tree | **Moves with the tree.** Relocating the directory carries the cache with it; paths inside are relative to the moved root. No external stale key. |
+| `mcp-spill` | ANTS-2094 | Disk: `~/.cache/ants-terminal/mcp-spill/<sha256(body)>.json` | `sha256(response body)` — **content-addressed, NOT project-scoped** (one global store) | **Cold/Orphan, never Shadow.** Keyed on body content, not a path, so a relocation is irrelevant; two projects with byte-identical output legitimately share one file. Disposable: oldest-mtime eviction (cap 64 files / 64 MiB) + a 24 h session-start sweep (`mcp::spillSweep`). GC-sweep candidate. |
 
 Net of the audit: every entry above is **Cold** or **Orphan** — none
 **Shadow**. The two defensive gaps that remain are cosmetic, not

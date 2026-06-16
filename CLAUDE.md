@@ -165,6 +165,21 @@ config-file-only tuning keys:
   independently of the master gate; stands down while an Ants-initiated
   handshake owns the dialog; sends only ENTER (no continuation prompt).
 
+Config keys for result offload (ANTS-2094, observation masking) — when a
+large read result is spilled to a content-addressed cache file and a
+`{offloaded:true, handle, head, …}` envelope returned instead; re-read the
+full body via the `read_spill` verb. Config-file-only:
+
+- `claude.mcp_offload_large_results` (bool, default **false**) — session
+  default for the per-call `offload` arg (per-call wins). OFF for v1
+  because it changes the response contract; flips ON in a fast-follow once
+  `read_spill` is field-proven.
+- `claude.mcp_offload_threshold_bytes` (int, default 16384, clamp
+  `[4096, 1048576]`) — minimum final body size to offload.
+- `claude.mcp_offload_head_bytes` (int, default 2048, clamp `[256, 16384]`)
+  — preview head size; offload only fires when the body also exceeds this
+  (spilling something that fits in the head saves nothing).
+
 ## Cross-session MCP feedback
 
 Other CC sessions (Vestige, MAME Curator, Album Builder, RetroArch,

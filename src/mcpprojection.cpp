@@ -40,6 +40,20 @@ bool isFieldProjectionTool(const QString &toolName) {
         || toolName == QStringLiteral("model_switch_stats"); // ANTS-1735
 }
 
+// ANTS-2094 — offload-eligible read verbs (see header). A separate set from
+// isFieldProjectionTool: adds the large-body verbs that take no `fields=`.
+bool isOffloadEligible(const QString &toolName) {
+    return toolName == QStringLiteral("get_scrollback")
+        || toolName == QStringLiteral("get_text")
+        || toolName == QStringLiteral("read_log")
+        || toolName == QStringLiteral("read_region")
+        || toolName == QStringLiteral("workspace_search")
+        || toolName == QStringLiteral("codebase_index")
+        || toolName == QStringLiteral("docs_index")
+        || toolName == QStringLiteral("find_sources")
+        || toolName == QStringLiteral("roadmap_query");
+}
+
 QString projectFields(const QString &responseText, const QJsonArray &fields) {
     if (fields.isEmpty()) return responseText;
 

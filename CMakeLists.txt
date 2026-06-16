@@ -288,6 +288,9 @@ add_library(ants_core_lib STATIC
     src/focusedtest.cpp
     # ANTS-1720 — `fields=` MCP response projection (pure helper).
     src/mcpprojection.cpp
+    # ANTS-2094 — proactive result offload: spill large read bodies to a
+    # content-addressed cache file + serve a head+pointer envelope.
+    src/mcpspill.cpp
     # ANTS-1727 — shared dispatch-brief composer (fence-hardening +
     # section slicing) + LLM client / bounded dispatcher for the
     # review-dialog family (widget-free; Qt6::Network already linked).
@@ -1725,6 +1728,10 @@ if(ANTS_TESTS)
                 tests/features/model_state_chip/test_model_state_chip.cpp
                 # ANTS-1720 — MCP fields= response projection.
                 tests/features/mcp_projection/test_mcp_projection.cpp
+                # ANTS-2094 — proactive result offload (observation masking).
+                # mcpspill.cpp is in ants_core_lib (linked); the wiring INVs
+                # source-scrape claudeintegration / mainwindow / remotecontrol.
+                tests/features/mcp_result_offload/test_mcp_result_offload.cpp
                 # ANTS-1727 — ai_review_concurrency config clamp (INV-14).
                 tests/features/config_ai_review_concurrency/test_config_ai_review_concurrency.cpp
                 # ANTS-1764 — tab_title_format fixed-enum getter/setter validation.
@@ -1752,6 +1759,8 @@ if(ANTS_TESTS)
         SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeallowlist.cpp"
         # ANTS-1720 — dispatch-ordering scrape for the fields= projection.
         SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
+        # ANTS-2094 — result-offload fail-open source-scrape (INV-11).
+        SRC_MCPSPILL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mcpspill.cpp"
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
         SRC_SECUREIO_H_PATH="${CMAKE_SOURCE_DIR}/src/secureio.h"
         SRC_CONFIGBACKUP_H_PATH="${CMAKE_SOURCE_DIR}/src/configbackup.h"

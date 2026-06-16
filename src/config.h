@@ -145,6 +145,16 @@ public:
     bool claudeMcpTerseResponses() const;
     void setClaudeMcpTerseResponses(bool enabled);
 
+    // ANTS-2094 — proactive result offload (observation masking).
+    // Config-file-only (no Settings UI in v1). Default OFF: offload changes
+    // the response contract (a head+pointer instead of the body), so it is
+    // opt-in until read_spill round-tripping is field-proven, then flipped
+    // ON in a fast-follow. Threshold clamps to [4096, 1048576], head to
+    // [256, 16384] in mcp::setOffloadConfig. See docs/specs/ANTS-2094.md.
+    bool claudeMcpOffloadLargeResults() const;
+    int  claudeMcpOffloadThresholdBytes() const;
+    int  claudeMcpOffloadHeadBytes() const;
+
     // ANTS-1154 v2 card-renderer state. Each set stores the IDs /
     // slugs the user has manually toggled to "expanded" or
     // "table-view". Restored on dialog open; updated on close.

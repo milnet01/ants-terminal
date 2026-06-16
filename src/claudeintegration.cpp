@@ -4,6 +4,7 @@
 #include "configpaths.h"
 #include "debuglog.h"
 #include "mcpprojection.h"
+#include "mcpspill.h"          // ANTS-2094 — result offload
 #include "secureio.h"
 
 #include <QCryptographicHash>
@@ -3194,6 +3195,60 @@ void ClaudeIntegration::onMcpConnection() {
                     rrTool["inputSchema"] = schema;
                 }
                 tools.append(rrTool);
+
+                // ANTS-2094 — read_spill: re-read a body the offload path
+                // spilled to a content-addressed cache file, by its handle,
+                // byte-paged. Pairs with the offload envelope's `hint`.
+                QJsonObject rsTool;
+                rsTool["name"] = "read_spill";
+                rsTool["description"] = QStringLiteral(
+                    "Re-read a large result that was offloaded (observation "
+                    "masking) — when a read verb returned {offloaded:true, "
+                    "handle, head, ...} instead of the full body, fetch the "
+                    "full body here by `handle`, byte-paged. Args: handle "
+                    "(required, the 64-hex sha256 from the envelope), optional "
+                    "offset (0-based byte offset, default 0) and max_bytes "
+                    "(default 512 KiB, 4 MiB ceiling). Page by advancing to the "
+                    "RETURNED offset+bytes (a UTF-8 char-boundary cut can "
+                    "shorten a slice). Returns {content, offset, bytes, "
+                    "total_bytes, truncated}. Refusals: bad_args (handle not a "
+                    "bare lowercase 64-hex, or negative offset/max_bytes), "
+                    "not_found (never spilled or evicted — re-issue the "
+                    "original call). The spill store is global/content-"
+                    "addressed, so caller_cwd is optional.");
+                rsTool["selection_hint"] = QStringLiteral(
+                    "Use only after a read verb returned an offloaded:true "
+                    "envelope, to fetch the rest of the body via its handle.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    QJsonObject props;
+                    QJsonObject hP; hP["type"] = "string";
+                        hP["description"] = QStringLiteral(
+                            "Content-addressed handle from the offload "
+                            "envelope: a bare lowercase 64-char sha256.");
+                    QJsonObject oP; oP["type"] = "integer";
+                        oP["minimum"] = 0;
+                        oP["description"] = QStringLiteral(
+                            "0-based byte offset into the body (default 0). "
+                            "Page by the RETURNED offset+bytes.");
+                    QJsonObject mbP; mbP["type"] = "integer";
+                        mbP["minimum"] = 1;
+                        mbP["description"] = QStringLiteral(
+                            "Cap on the returned slice in bytes (default "
+                            "512 KiB, server-clamped to 4 MiB).");
+                    props["handle"]     = hP;
+                    props["offset"]     = oP;
+                    props["max_bytes"]  = mbP;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    QJsonArray required;
+                    required.append("handle");
+                    schema["required"] = required;
+                    rsTool["inputSchema"] = schema;
+                }
+                tools.append(rsTool);
 
                 // ANTS-2022 — apply_edits: apply N {path, old, new} edits
                 // across M project files in one atomic-per-file call,
@@ -8077,6 +8132,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-2021 — read_region: caller_cwd-Required,
                         // path-validated slice reader (file_outline family).
                         name == QLatin1String("read_region") ||
+                        // ANTS-2094 — read_spill: re-read an offloaded result
+                        // by content-addressed handle (global cache reader).
+                        name == QLatin1String("read_spill") ||
                         // ANTS-2022 — apply_edits: caller_cwd-Required,
                         // path-validated batch file editor (workspace write).
                         name == QLatin1String("apply_edits") ||
@@ -8853,6 +8911,24 @@ void ClaudeIntegration::onMcpConnection() {
                         toolName, argsObj, responseText, etagUnchanged);
                 }
 
+                // ANTS-2094 — proactive result offload (observation masking).
+                // After every token-trim transform (fields/compact/hints) and
+                // before the wrap: spill an over-threshold body to a
+                // content-addressed cache file and replace it with a small
+                // head+pointer envelope. Opt-in (per-call offload:true or the
+                // session default). The head guard (bodyBytes > head size)
+                // keeps offload a net saving; fail-open returns the body
+                // unchanged on any write failure. See docs/specs/ANTS-2094.md.
+                if (toolHandled && !etagUnchanged &&
+                    mcp::isOffloadEligible(toolName) &&
+                    mcp::offloadRequested(argsObj)) {
+                    const qint64 bodyBytes = responseText.toUtf8().size();
+                    if (bodyBytes >= mcp::offloadThresholdBytes() &&
+                        bodyBytes >  mcp::offloadHeadBytes()) {
+                        responseText = mcp::offloadBody(toolName, responseText);
+                    }
+                }
+
                 if (toolHandled) {
                     // ANTS-1294 — frame user-supplied content as data,
                     // not instructions. Control-plane tools (server-
@@ -9074,6 +9150,10 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-2021 — read_region resolves a project-relative path + anchors
     // tenancy; Required.
     if (toolName == QStringLiteral("read_region"))         return C::Required;
+    // ANTS-2094 — read_spill resolves a GLOBAL content-addressed handle
+    // under ~/.cache (not project-scoped), so caller_cwd is neither an
+    // anchor nor required; Optional accepts the absent case.
+    if (toolName == QStringLiteral("read_spill"))          return C::Optional;
     // ANTS-2022 — apply_edits writes project files anchored by caller_cwd +
     // PathValidation (roadmap_log/changelog_log posture, no RcGate); Required.
     if (toolName == QStringLiteral("apply_edits"))         return C::Required;

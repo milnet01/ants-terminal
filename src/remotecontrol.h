@@ -391,6 +391,11 @@ public:
     // project files in one call, atomic per file (ApplyEdits::applyToContent
     // + QSaveFile), with per-edit skipped[] accounting.
     QJsonDocument cmdApplyEdits(const QJsonObject &req);
+    // ANTS-2094 — read_spill: re-read a result spilled by the offload path,
+    // by its content-addressed handle, byte-paged. Not project-scoped
+    // (global content-addressed cache), so caller_cwd is Optional. Resolves
+    // ONLY under the spill dir via mcp::readSpill.
+    QJsonDocument cmdReadSpill(const QJsonObject &req);
     // ANTS-1637 — codebase_index: serve a pre-computed project structural map
     // (symbol / lane / file_path / summary) via CodebaseIndex::serve.
     QJsonDocument cmdCodebaseIndex(const QJsonObject &req);
