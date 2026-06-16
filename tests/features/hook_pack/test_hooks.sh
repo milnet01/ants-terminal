@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# tests/features/hook_pack/test_hooks.sh — ANTS-1252 conformance harness.
-# See spec.md for the 12 assertions.
+# tests/features/hook_pack/test_hooks.sh — ANTS-1252 conformance harness,
+# extended with ANTS-2141 grep/find soft-warn + throttle + counter coverage.
+# See spec.md for the assertion list.
 #
 # Exits 0 on full pass. On failure, prints `[FAIL] ...` lines to
 # stderr and exits with the count of failed assertions.
@@ -77,7 +78,9 @@ if [ "$have_jq" -eq 1 ]; then
             fail "INV-4 $label reason=${n} (must be 1..200)"
         fi
     }
-    check_reason_size grep-src '{"tool_input":{"command":"grep -r foo src/"}}'
+    # ANTS-2141: grep/find-over-source is now a soft-warn, NOT a block — its
+    # block assertion moved to the warn-class section below. git/roadmap stay
+    # block-class.
     check_reason_size git-status '{"tool_input":{"command":"git status"}}'
     check_reason_size cat-roadmap '{"tool_input":{"command":"cat ROADMAP.md | grep foo"}}'
 
@@ -97,6 +100,137 @@ if [ "$have_jq" -eq 1 ]; then
     fi
 else
     skip "INV-4 + bash-veto behaviour (jq not available)"
+fi
+
+# ---------- ANTS-2141: grep/find soft-warn + throttle + counter ----------
+if [ "$have_jq" -eq 1 ]; then
+    A_HOME="$(mktemp -d -t ants-nudge.XXXXXX)"
+    # nudge-veto: throttle disabled (always emit if eligible), isolated HOME.
+    nveto() {
+        printf '%s' "$1" | ANTS_GREP_NUDGE_THROTTLE_SEC=0 HOME="$A_HOME" \
+            bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null
+    }
+    # INV-1/INV-5/INV-12: warn-class produces a no-decision additionalContext.
+    assert_warn() {
+        local label="$1" out
+        out="$(nveto "$2")"
+        if [ -n "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext // empty')" ] \
+           && [ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput|has("permissionDecision")')" = "false" ] \
+           && [ -z "$(printf '%s' "$out" | jq -r '.decision // empty')" ]; then
+            pass "ANTS-2141 warn: $label"
+        else
+            fail "ANTS-2141 warn expected for $label, got: ${out:-<empty>}"
+        fi
+    }
+    assert_empty() {
+        local out; out="$(nveto "$2")"
+        [ -z "$out" ] && pass "ANTS-2141 no-warn: $1" \
+            || fail "ANTS-2141 expected empty for $1, got: $out"
+    }
+
+    assert_warn "grep -rn src/"        '{"tool_input":{"command":"grep -rn foo src/"}}'
+    assert_warn "grep -rn pathless"    '{"tool_input":{"command":"grep -rn foo"}}'
+    assert_warn "rg"                    '{"tool_input":{"command":"rg foo"}}'
+    assert_warn "git grep"             '{"tool_input":{"command":"git grep TerminalGrid"}}'
+    assert_warn "find src -name"       '{"tool_input":{"command":"find src -name x"}}'
+    assert_warn "grep src/ | head"     '{"tool_input":{"command":"grep -rn x src/ | head"}}'
+
+    assert_empty "piped grep"          '{"tool_input":{"command":"cmake b 2>&1 | grep error"}}'
+    assert_empty "single-file grep"    '{"tool_input":{"command":"grep foo file.txt"}}'
+    assert_empty "exempt /var/log"     '{"tool_input":{"command":"grep -r x /var/log"}}'
+    assert_empty "exempt .log suffix"  '{"tool_input":{"command":"grep -rn x app.log"}}'
+    assert_empty "non-elig find build" '{"tool_input":{"command":"find build -name x"}}'
+    assert_empty "non-elig find -delete" '{"tool_input":{"command":"find . -name x -delete"}}'
+    assert_empty "exempt --help"       '{"tool_input":{"command":"grep --help"}}'
+    assert_empty "exempt bypass"       '{"tool_input":{"command":"grep -rn foo src/ # ants-bypass"}}'
+
+    # INV-3: additionalContext field ≤ 400 bytes (field value, not envelope).
+    ctx_bytes="$(nveto '{"tool_input":{"command":"grep -rn foo src/"}}' \
+        | jq -j '.hookSpecificOutput.additionalContext' | LC_ALL=C wc -c)"
+    if [ "$ctx_bytes" -gt 0 ] && [ "$ctx_bytes" -le 400 ]; then
+        pass "ANTS-2141 INV-3 additionalContext=${ctx_bytes}B ≤400"
+    else
+        fail "ANTS-2141 INV-3 additionalContext=${ctx_bytes}B (must be 1..400)"
+    fi
+
+    # INV-6: ants_is_source_search pure predicate (in-process, return-not-exit).
+    if (
+        . "$HOOKS_DIR/_common.sh"
+        p() { if ants_is_source_search "$1"; then echo m; else echo n; fi; }
+        e=0
+        [ "$(p 'grep -rn foo src/')" = m ] || e=1
+        [ "$(p 'rg foo')" = m ] || e=1
+        [ "$(p 'git grep x')" = m ] || e=1
+        [ "$(p 'find src -name x')" = m ] || e=1
+        [ "$(p 'grep foo file')" = n ] || e=1
+        [ "$(p 'cmake | grep x')" = n ] || e=1
+        [ "$(p 'find build -name x')" = n ] || e=1
+        [ "$(p 'grep -rn foo src/ # ants-bypass')" = n ] || e=1
+        exit $e
+    ); then
+        pass "ANTS-2141 INV-6 ants_is_source_search predicate table"
+    else
+        fail "ANTS-2141 INV-6 predicate table mismatch"
+    fi
+
+    # INV-7: throttle — fire→warn, immediate→suppressed, post-window→warn again.
+    T_HOME="$(mktemp -d -t ants-nudge-thr.XXXXXX)"
+    # Fix the throttle key explicitly — $(…) command substitution would give
+    # each call a fresh subshell $PPID, defeating the throttle in-test.
+    thr() {
+        printf '%s' "$1" | ANTS_GREP_NUDGE_THROTTLE_SEC=2 ANTS_GREP_NUDGE_KEY=thrtest \
+            HOME="$T_HOME" bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null
+    }
+    o1="$(thr '{"tool_input":{"command":"grep -rn a src/"}}')"
+    o2="$(thr '{"tool_input":{"command":"grep -rn b src/"}}')"
+    touch -d "5 seconds ago" "$T_HOME"/.cache/ants-terminal/grep-nudge/*.stamp 2>/dev/null
+    o3="$(thr '{"tool_input":{"command":"grep -rn c src/"}}')"
+    if [ -n "$o1" ] && [ -z "$o2" ] && [ -n "$o3" ]; then
+        pass "ANTS-2141 INV-7 throttle suppress+expiry"
+    else
+        fail "ANTS-2141 INV-7 throttle (o1=${o1:+set} o2=${o2:+set} o3=${o3:+set})"
+    fi
+
+    # INV-8: counter records every eligible match (incl. suppressed warned:false).
+    cf="$T_HOME/.cache/ants-terminal/grep-nudge/count.jsonl"
+    n8="$(wc -l <"$cf" 2>/dev/null || echo 0)"
+    if [ "$n8" -eq 3 ] && grep -q '"warned":false' "$cf"; then
+        pass "ANTS-2141 INV-8 counter logs all 3 (warned:false present)"
+    else
+        fail "ANTS-2141 INV-8 counter n=$n8 (expect 3, warned:false present)"
+    fi
+    # INV-8 cap: seed 600 → after one append, exactly 251.
+    C_HOME="$(mktemp -d -t ants-nudge-cap.XXXXXX)"
+    cdir="$C_HOME/.cache/ants-terminal/grep-nudge"; mkdir -p "$cdir"
+    for i in $(seq 1 600); do echo "{\"s\":$i}"; done >"$cdir/count.jsonl"
+    printf '%s' '{"tool_input":{"command":"grep -rn z src/"}}' \
+        | ANTS_GREP_NUDGE_THROTTLE_SEC=0 HOME="$C_HOME" bash "$HOOKS_DIR/ants-bash-veto.sh" >/dev/null 2>&1
+    capn="$(wc -l <"$cdir/count.jsonl")"
+    [ "$capn" -eq 251 ] && pass "ANTS-2141 INV-8 cap 600→251" \
+        || fail "ANTS-2141 INV-8 cap got $capn (expect 251)"
+
+    # INV-9: fail-open — unwritable cache (regular file blocks mkdir) still warns.
+    F_HOME="$(mktemp -d -t ants-nudge-fo.XXXXXX)"
+    mkdir -p "$F_HOME/.cache/ants-terminal"; : >"$F_HOME/.cache/ants-terminal/grep-nudge"
+    fo="$(printf '%s' '{"tool_input":{"command":"grep -rn q src/"}}' \
+        | HOME="$F_HOME" bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null)"
+    [ -n "$fo" ] && pass "ANTS-2141 INV-9 fail-open warns on unwritable cache" \
+        || fail "ANTS-2141 INV-9 fail-open did not warn"
+
+    # INV-11: outside an ants project, no stamp/counter is written.
+    O_HOME="$(mktemp -d -t ants-nudge-out.XXXXXX)"
+    OUTSIDE2="$(mktemp -d -t ants-out.XXXXXX)"
+    ( cd "$OUTSIDE2" && printf '%s' '{"tool_input":{"command":"grep -rn foo src/"}}' \
+        | HOME="$O_HOME" bash "$HOOKS_DIR/ants-bash-veto.sh" >/dev/null 2>&1 )
+    if [ ! -d "$O_HOME/.cache/ants-terminal/grep-nudge" ]; then
+        pass "ANTS-2141 INV-11 no bookkeeping outside project"
+    else
+        fail "ANTS-2141 INV-11 cache dir created outside project"
+    fi
+
+    rm -rf "$A_HOME" "$T_HOME" "$C_HOME" "$F_HOME" "$O_HOME" "$OUTSIDE2"
+else
+    skip "ANTS-2141 soft-warn behaviour (jq not available)"
 fi
 
 # ---------- INV-7: jq -r in source, no raw-regex on JSON ----------
@@ -135,7 +269,6 @@ done
 if [ "$have_jq" -eq 1 ]; then
     leak=0
     for payload in \
-        '{"tool_input":{"command":"grep -r foo src/"}}' \
         '{"tool_input":{"command":"git status"}}' \
         '{"tool_input":{"command":"cat ROADMAP.md | grep foo"}}'; do
         reason="$(printf '%s' "$payload" | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null \

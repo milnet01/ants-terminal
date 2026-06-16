@@ -29,11 +29,11 @@ passes, non-zero (with FAIL lines on stderr) otherwise.
    that *enables* the bypass) — INV-12's concern is leakage into
    the model's input, i.e. the reason string. The override
    mechanism is documented in `hooks/README.md` only.
-7. **Bash-veto behavioral hits.** Three positive cases that MUST
-   produce a `decision:"block"` JSON envelope: `grep -r foo src/`,
-   `git status`, `cat ROADMAP.md | grep`. One negative: `ls -la`
-   produces no `decision:block` envelope (asserted as exactly
-   empty stdout in the current implementation).
+7. **Bash-veto block hits.** Two positive cases that MUST produce a
+   `decision:"block"` JSON envelope: `git status`, `cat ROADMAP.md | grep`.
+   One negative: `ls -la` produces no envelope (empty stdout). (ANTS-2141
+   moved `grep -r … src/` out of the block class into the soft-warn class —
+   see the ANTS-2141 section below.)
 8. **Bash-veto bypass.** A trailing `# ants-bypass` on the proposed
    command suppresses the veto (empty stdout).
 9. **Read-roadmap veto.** Block fires for full-file reads of the
@@ -54,6 +54,32 @@ passes, non-zero (with FAIL lines on stderr) otherwise.
     target that `lstat`s as a symlink exits non-zero with a
     descriptive message — verified inside the install-hooks
     round-trip block.
+
+## ANTS-2141 — grep/find soft-warn (appended; existing 1-13 unchanged)
+
+Source spec: [docs/specs/ANTS-2141.md](../../../docs/specs/ANTS-2141.md).
+These run only when `jq` is present (skipped with a `[skip]` line otherwise).
+
+- **Warn class (INV-1/3/5/12).** `grep -rn … src/`, pathless `grep -rn`, `rg`,
+  `git grep`, `find src -name`, and `grep -rn x src/ | head` each emit a
+  PreToolUse `additionalContext` envelope with **no** `permissionDecision` and
+  **no** top-level `decision`; the field is ≤ 400 B (measured 237 B).
+- **No-warn class (INV-4/5).** Empty stdout for: piped grep
+  (`cmake … | grep`), single-file `grep foo file.txt`, exempt `/var/log` /
+  `app.log` / `--help` / `# ants-bypass`, and non-eligible `find build -name x`
+  / `find . -name x -delete`.
+- **Predicate (INV-6).** `_common.sh::ants_is_source_search` is sourced and
+  table-tested in-process (it `return`s, never `exit`s).
+- **Throttle (INV-7).** With `ANTS_GREP_NUDGE_THROTTLE_SEC=2` + a fixed
+  `ANTS_GREP_NUDGE_KEY`: first fire warns, an immediate second is suppressed
+  (empty), and a fire after the window (`touch -d` backdate) warns again.
+- **Counter (INV-8).** Every eligible match appends one `count.jsonl` line
+  (incl. `warned:false` for the suppressed fire); seeding 600 lines then firing
+  truncates to exactly 251.
+- **Fail-open (INV-9).** With the cache path forced unwritable (a regular file
+  where the dir should be), the hook still emits the warn and exits 0.
+- **Outside project (INV-11).** Run from a non-ants dir, no `count.jsonl` /
+  stamp is created.
 
 ### Not covered (deliberately)
 

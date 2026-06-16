@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **PreToolUse soft-warn hook routes raw grep/find over project source to the MCP index verbs (workspace_search / find_definition).** (ANTS-2141)
+  When the assistant runs a plain text-search over the project, gently remind it to use Ants' faster, cheaper indexed search instead.
+
 - **docs_index MCP verb — a documentation map/index, sibling to codebase_index (ANTS-1637), so sessions find the right doc in one call.** (ANTS-2139)
   Like the codebase map but for the docs — so Claude can instantly find which doc covers a topic instead of grepping the whole docs folder.
 
