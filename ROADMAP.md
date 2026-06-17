@@ -8492,6 +8492,24 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-06-17.
   Resolved (2026-06-17). DIAGNOSE: confirmed root cause — workspace_search was registered with the synchronous rcDelegate (main/socket thread) at mainwindow.cpp:4911, and cmdWorkspaceSearch blocks on rg.waitForFinished(budgetMs) (remotecontrol.cpp:7622). While the main thread sits in that wait, the QLocalSocket notifier can't fire, so a concurrent verb's request never gets serviced within the client's transport deadline → the -32000 timeout that forced the grep fallback. Matches the bullet's contention hypothesis (ANTS-2103/2104/2131 already established several verbs block the main thread). MITIGATE (option b, off-thread — the structural fix matching ANTS-2131): moved workspace_search to rcDelegateWorker so the rg wait runs on a joined worker and the socket thread stays free. Safe because the MCP registration is CallerCwdContract::Required, so the off-thread path never reaches the m_main->currentTerminal() main-thread-only fallback (only hit when caller_cwd is empty); the --remote CLI dispatch path stays synchronous. Regression lock: extended tests/features/mcp_verb_offthread_guard with INV-4 (source-grep). Verified fail-before (INV-4 failed against the unflipped rcDelegate) → green after. workspace_search functional suites (payload_knobs, timeout_sec — 19 tests) still pass. Sibling read verbs (find_definition/find_sources/file_outline/read_region) do in-process scans, not QProcess waits, so they're not in this starvation class — left on rcDelegate (surgical).
 
+- 📋 [ANTS-2146] **find_definition mis-classifies a bare call-site as kind:"declaration".**
+  find_definition for cmdWorkspaceSearch returned three hits: the real
+  definition (remotecontrol.cpp:7422), the header declaration
+  (remotecontrol.h:377), and `return cmdWorkspaceSearch(req);`
+  (remotecontrol.cpp:1623) — the last tagged kind:"declaration". That line
+  is a call expression inside dispatch(), not a declaration. The C++
+  heuristic likely keys on " identifier(...)" ending in ';' without a
+  preceding return-type token; a leading `return ` (or any call in
+  statement position) should disqualify the declaration classification.
+  Low priority — the real definition still ranks first; only the `kind`
+  label on the spurious extra hit is wrong. Fix: tighten the decl regex to
+  require a type/qualifier prefix (not `return`/`=`/`(`) before the
+  identifier, or drop call-position matches entirely.
+  **Layman:** The "where is X defined?" tool sometimes lists a place where the function is *called* and labels it a declaration — harmless but mildly misleading.
+  Kind: investigate.
+  Lanes: mcp.
+  Source: in-session-2026-06-17 (noticed during ANTS-2144).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
