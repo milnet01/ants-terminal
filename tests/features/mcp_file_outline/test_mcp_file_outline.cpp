@@ -219,6 +219,9 @@ TEST(McpFileOutline, FreeFunctionCapture) {
             "}\n"
             "const std::string &makeName(int n);\n"           // qualified return + ref, decl
             "void Widget::method() {\n"                        // qualified member (rxCppMember)
+            "}\n"
+            "int beta() {\n"                                  // real free func — must surface
+            "    return gamma(7);\n"                          // ANTS-2147: call in return position — NOT a symbol
             "}\n");
         f.close();
     }
@@ -243,6 +246,13 @@ TEST(McpFileOutline, FreeFunctionCapture) {
     // Regression guard: the qualified member still resolves via rxCppMember.
     EXPECT_TRUE(hasName("Widget::method"))
         << "ANTS-2028: qualified member 'Widget::method' regressed";
+    // ANTS-2147 — a statement-position call (`return gamma(7);`) must not be
+    // emitted as a function symbol; the real enclosing `beta` still surfaces.
+    EXPECT_TRUE(hasName("beta"))
+        << "ANTS-2147: free function 'int beta()' not captured";
+    EXPECT_FALSE(hasName("gamma"))
+        << "ANTS-2147: return-position call 'return gamma(7);' "
+           "mis-detected as a function symbol";
 }
 
 // INV-10 — non-existent path returns the not_found code without

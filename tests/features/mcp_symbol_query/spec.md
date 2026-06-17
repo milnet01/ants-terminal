@@ -27,6 +27,12 @@ source tree spanning C++, Python, Lua, Shell):
     qualified definition `QByteArray ns::slurpBody(...)` is still found
     (`definitionsTotal == 1`), and no call line appears in
     `definitions`.
+8b. (ANTS-2146) A bare call in statement position (`return slurpBody(p);`)
+    is not mis-tagged as a `declaration`: the C++ def anchor rejects an
+    expression-introducing reserved keyword (`return`/`co_return`/
+    `co_await`/`co_yield`/`throw`/`else`) as the leading return-type token.
+    `definitionsTotal` stays 1 and no emitted signature begins with
+    `return `.
 
 **Wiring contract** (source-grep over the four wiring files):
 

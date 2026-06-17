@@ -56,8 +56,16 @@ const QRegularExpression &rxCppFunc() {
     // from the name capture leaves `(\w+)` an identifier to grab. The
     // inner classes are disjoint (word/colon/angle vs space/star/amp),
     // so the scan stays linear (INV-8).
+    //
+    // ANTS-2147: a statement-position call (`return foo(...)`,
+    // `throw foo(...)`, `else foo(...)` …) has a leading keyword + space
+    // that the return-type group `(?:[\w:<>]+[\s*&]+)++` would otherwise
+    // absorb, emitting the call site as a spurious function symbol. The
+    // negative lookahead rejects an expression-introducing reserved
+    // keyword as the first token — a keyword is never a return type, so
+    // no real definition is lost. Mirrors the symbolquery.cpp guard.
     static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(static|inline|template[^>]*>)?\s*(?:[\w:<>]+[\s*&]+)++(\w+)\s*\([^)]*\)\s*[{;])"));
+        QRegularExpression r(QStringLiteral(R"(^(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else)\b)(?:[\w:<>]+[\s*&]+)++(\w+)\s*\([^)]*\)\s*[{;])"));
         r.optimize();
         return r;
     }();

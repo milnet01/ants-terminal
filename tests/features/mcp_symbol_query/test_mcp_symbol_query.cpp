@@ -102,6 +102,9 @@ TEST(McpSymbolQuery, LiveBehaviour) {
                              "void user() {\n"
                              "    ns::slurpBody(\"x\");\n"        // qualified call — NOT a def
                              "    auto y = ns::slurpBody(p);\n"   // qualified call in expr
+                             "}\n"
+                             "QByteArray retCaller(const char *p) {\n"
+                             "    return slurpBody(p);\n"         // ANTS-2146: return-position call — NOT a def
                              "}\n"));
 
     // --- Python ------------------------------------------------------
@@ -258,6 +261,17 @@ TEST(McpSymbolQuery, LiveBehaviour) {
             m.signature.startsWith(QStringLiteral("auto y")))
             noCallAsDef = false;
     expect(noCallAsDef, "ANTS-1700: no call line reported as a definition");
+
+    // ANTS-2146 — a bare call in statement position (`return slurpBody(p);`)
+    // must not be absorbed as a return-type token and mis-tagged as a
+    // `declaration`. definitionsTotal stays 1 (INV above) and no emitted
+    // signature begins with the `return ` keyword.
+    bool noReturnCallAsDef = true;
+    for (const auto &m : sb.definitions)
+        if (m.signature.startsWith(QStringLiteral("return ")))
+            noReturnCallAsDef = false;
+    expect(noReturnCallAsDef,
+           "ANTS-2146: return-position call not reported as a definition");
 
     EXPECT_EQ(0, expect_failures());
 }

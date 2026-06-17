@@ -83,7 +83,14 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             // (`ns::sym(`) both lack the leading return-type token, so
             // neither matches. The per-line byte cap (kMaxLineBytes)
             // bounds backtracking.
-            add(QStringLiteral("^[ \\t]*(?:[\\w:<>~]+[\\s*&]+)+(?:[\\w:]+::)?") + s + QStringLiteral("\\s*\\("));
+            // ANTS-2146 — a statement-position call (`return sym(`,
+            // `throw sym(`, `else sym(` …) DOES have a leading word token
+            // (the keyword) + a space, which the return-type group would
+            // otherwise absorb, mis-tagging the call as a `declaration`.
+            // Reject when the first token is an expression-introducing
+            // reserved keyword: a keyword is never a return type, so the
+            // negative lookahead has zero false negatives.
+            add(QStringLiteral("^[ \\t]*(?!(?:return|co_return|co_await|co_yield|throw|else)\\b)(?:[\\w:<>~]+[\\s*&]+)+(?:[\\w:]+::)?") + s + QStringLiteral("\\s*\\("));
             // Out-of-line constructor / destructor definitions carry no
             // return type (`Foo::Foo(` / `Foo::~Foo(`); match them
             // explicitly so a class query still resolves its ctor/dtor.
