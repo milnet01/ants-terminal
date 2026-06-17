@@ -4111,6 +4111,33 @@ void MainWindow::setupClaudeMcpProviders() {
         };
     };
 
+    // ANTS-2131 — off-main-thread RC-delegate factory. Same shim shape as
+    // rcDelegate, but runs the cmd*() call on a short-lived worker thread and
+    // joins it (QThread::wait() — a join, NOT an event pump) before returning.
+    // Verbs that block on QProcess::waitForFinished (verify_changes, the
+    // git/packaging-shelling debt_sweep_* verbs) otherwise freeze the GUI/MCP
+    // thread for the duration of the child process. waitForFinished does not
+    // pump the main loop's socket notifiers, so this is GUI-responsiveness —
+    // not the use-after-free fix that worker-isolation buys the QEventLoop
+    // verbs (audit_run/indie_review_dispatch, ANTS-2103/2104) — but it
+    // structurally closes the "any MCP verb that blocks the main thread"
+    // class. The cmd result (QJsonDocument) is a main-thread local captured by
+    // reference; the QProcess + its buffers construct and live on the worker.
+    auto rcDelegateWorker =
+        [this](QJsonDocument (RemoteControl::*fn)(const QJsonObject &))
+            -> ClaudeIntegration::ToolHandler {
+        return [this, fn](const QJsonObject &args) -> QString {
+            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+            QJsonDocument doc;
+            QThread *worker = QThread::create(
+                [this, fn, &args, &doc]() { doc = (m_remoteControl->*fn)(args); });
+            worker->start();
+            worker->wait();
+            delete worker;
+            return QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
+        };
+    };
+
     // ANTS-1301 — recent_errors. Scans the focused terminal's recent
     // scrollback for structured errors (compiler/lint/lua/test/python).
     // TabSpecific like get_text/get_scrollback; delegates to
@@ -5100,24 +5127,31 @@ void MainWindow::setupClaudeMcpProviders() {
             return out;
         });
 
-    // ANTS-1113 — debt_sweep_* (4 tools).
+    // ANTS-1113 — debt_sweep_* (4 tools). ANTS-2131 — on a worker thread:
+    // _scan shells out to git and _apply_fix to a packaging script
+    // (debtsweepengine.cpp waitForFinished); _defer/_triage_prompt are fast
+    // and in-process but wrapped too, so the whole family is uniform (and
+    // future-safe if either grows a shell-out). Worker overhead is a
+    // sub-millisecond thread spawn — negligible on these non-hot verbs.
     m_claudeIntegration->registerToolProvider("debt_sweep_scan",
         ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdDebtSweepScan));
+        rcDelegateWorker(&RemoteControl::cmdDebtSweepScan));
     m_claudeIntegration->registerToolProvider("debt_sweep_apply_fix",
         ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdDebtSweepApplyFix));
+        rcDelegateWorker(&RemoteControl::cmdDebtSweepApplyFix));
     m_claudeIntegration->registerToolProvider("debt_sweep_defer",
         ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdDebtSweepDefer));
+        rcDelegateWorker(&RemoteControl::cmdDebtSweepDefer));
     m_claudeIntegration->registerToolProvider("debt_sweep_triage_prompt",
         ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdDebtSweepTriagePrompt));
+        rcDelegateWorker(&RemoteControl::cmdDebtSweepTriagePrompt));
 
-    // ANTS-1289 — verify_changes.
+    // ANTS-1289 — verify_changes. ANTS-2131 — on a worker thread: it shells
+    // out to per-gate build/test commands (verifyengine.cpp waitForFinished),
+    // which would otherwise freeze the GUI for the gate timeout.
     m_claudeIntegration->registerToolProvider("verify_changes",
         ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdVerifyChanges));
+        rcDelegateWorker(&RemoteControl::cmdVerifyChanges));
 
     // ANTS-1290 — plan_template.
     m_claudeIntegration->registerToolProvider("plan_template",

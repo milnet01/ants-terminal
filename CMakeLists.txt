@@ -1024,6 +1024,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_wrap_comment_escape/test_mcp_wrap_comment_escape.cpp
                 # ANTS-2102 — nested-loop socket use-after-free guard lock.
                 tests/features/socket_readyread_uaf_guard/test_socket_readyread_uaf_guard.cpp
+                # ANTS-2131 — blocking MCP verbs dispatch off the main thread.
+                tests/features/mcp_verb_offthread_guard/test_mcp_verb_offthread_guard.cpp
                 tests/features/allowlist_perms_postcommit/test_allowlist_perms_postcommit.cpp
                 tests/features/ssh_dash_host_rejected/test_ssh_dash.cpp
                 tests/features/ssh_extra_args_sanitize/test_ssh_extra_args.cpp
