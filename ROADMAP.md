@@ -10838,6 +10838,34 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   Kind: chore.
   Source: in-session-2026-06-11.
 
+- ✅ [ANTS-2151] **`mcp_result_offload` test leaks `QStandardPaths::setTestModeEnabled(true)` — pollutes `ConfigAiReviewConcurrency.INV14` later in the `test_core` bundle.**
+  `tests/features/mcp_result_offload/test_mcp_result_offload.cpp:43` calls
+  `QStandardPaths::setTestModeEnabled(true)` and never restores it. Test
+  mode is a PROCESS-GLOBAL flag that redirects standard paths to a
+  deterministic per-user test dir and IGNORES `XDG_CONFIG_HOME` overrides.
+  So when `ConfigAiReviewConcurrency.INV14_DefaultAndClamp`
+  (`tests/features/config_ai_review_concurrency/…:37`) runs later in the
+  same `test_core` bundle, its `XdgConfigHomeGuard` fresh-temp-dir isolation
+  is silently bypassed: `Config` resolves to the test-mode path where a
+  `config.json` with `ai_review_concurrency:4` persists across runs (that
+  test writes 4 at line 48), so the default-read expects 2 but gets 4.
+  
+  Verified pre-existing (reproduces on pristine HEAD with changes stashed)
+  and order-dependent: `--gtest_filter='McpResultOffload.*:ConfigAiReviewConcurrency.*'`
+  fails; either test alone passes. Full `test_core` is otherwise
+  328/329 green.
+  
+  Fix options: (a) the leaker restores `setTestModeEnabled(false)` (or its
+  prior value) at teardown — cleanest, the leak is the bug; (b) audit the
+  whole suite for other `setTestModeEnabled(true)` callers without a matching
+  restore. Prefer (a) + a RAII guard helper so future test-mode users can't
+  re-introduce the leak.
+  Lanes: tests, config, qstandardpaths.
+  **Layman:** One test flips a global Qt path-mode switch and never flips it back, so a later config test reads a stale settings file and fails — only when the whole bundle runs in order, not in isolation.
+  Kind: fix.
+  Source: in-session-2026-06-17 (found running full test_core during ANTS-1976).
+  Resolved (2026-06-17): mcp_result_offload's fixture now captures QStandardPaths::isTestModeEnabled() in SetUp and restores it in TearDown, so test mode no longer leaks past the bundle. Full test_core is 329/329 green (was 328/329 with ConfigAiReviewConcurrency.INV14 failing in full-bundle order). Found + fixed same session while running test_core for ANTS-1976.
+
 ### 📝 Cold-eyes 2026-05-21
 
 Docs reviewed: PLUGINS.md, README.md, CONTRIBUTING.md, CHANGELOG.md, SECURITY.md, docs/specs/ANTS-1120.md, ANTS-1160.md, ANTS-1318.md, docs/decisions/ADR-0002 + ADR-0003, docs/standards/* (all). Loops to clean: 8. Findings fixed: ~20 across the run.
@@ -16145,7 +16173,7 @@ subsection.
   Source: user-report-2026-06-04.
   Shipped 2026-06-04: directModelSwitchVisible + shouldContinueAfterDirectSwitch pure helpers; pollUnarmedSwitchConfirm fires continuation at budget-exhaustion when banner visible + auto mode on; 5 new tests green.
 
-- 📋 [ANTS-1976] **Auto-switcher debug log — toggleable qDebug output for every gate evaluation and switch decision.**
+- ✅ [ANTS-1976] **Auto-switcher debug log — toggleable qDebug output for every gate evaluation and switch decision.**
   User request 2026-06-04. Log per-tick gate state (enabled, focusedState,
   composerEmpty, composerStaleMs, toolUseElapsedMs, target, blockedBy[]) +
   any switch decision (act=true, tierArg, reason) via qDebug under an env
@@ -16157,6 +16185,7 @@ subsection.
   Kind: implement.
   Lanes: modelautoswitch.
   Source: user-request-2026-06-04.
+  Resolved (2026-06-17): shipped in commit 1d5514e. New DebugLog `autoswitch` category (ANTS_DEBUG=autoswitch) + config key claude.auto_model_debug force-enable a per-tick trace logged after decide() — state, composerEmpty, composerStaleMs, toolUseMs, current/target tier, act, tier, blockedBy[], reason, kSwitcherEpoch. Zero cost when off (single bit-test). Tests: DebuglogPerms.AutoSwitchCategoryRoundTrips + ConfigSurfacingDefaults.DebugSurfacesAndDefaultsFalse.
 
 - ✅ [ANTS-1987] **roadmap_query misses emoji-prefixed bullets whose ID is a non-dash project-local token (`- 📋 [Cl9] **h**`) in GFM-format docs.**
   Vestige feedback 2026-06-04. In a github-task-list doc, a bullet `- 📋 [Cl9] **headline**` has an emoji prefix, so it is NOT a `[ ]`/`[x]` checkbox line → parseBullets routes it to the native (ants-v1) branch. Two compounding gaps there: (1) the native branch only calls stripInlineEmoji and NEVER extractBoldId (only the GFM-checkbox branch does), so a bold-dotted ID like `**Cl9.**` on an emoji bullet is not picked up; (2) rxId is idTokenPattern() = `[A-Za-z][A-Za-z0-9_-]*-\d+`, which REQUIRES a `-<digits>` tail, so the bare bracket `[Cl9]` (no dash) never matches. Net: rec.id is empty → narrator bullet → filtered from roadmap_query (id/ids/section/section_index all miss it; op:flip can't close it). Repro: query Cl9/Cl10 → found:false; section status:active → count:0 despite both 📋 in the file. Fix options: (a) call extractBoldId in the native path too (handles `- 📋 **Cl9.**` directly, low risk); (b) for the bare `[Cl9]` form, emit a section hint when a slice has `^- <emoji>` lines that parsed to zero actionable bullets, rather than widening rxId to accept dash-less brackets (which would false-positive on arbitrary `[text]`). Prefer (a)+(b); avoid widening the ID token. Test: a fixture roadmap with an emoji+bracket-ID bullet asserts roadmap_query finds it.

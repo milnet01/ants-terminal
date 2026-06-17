@@ -40,13 +40,23 @@ QString readSource(const char *path) {
 class McpResultOffload : public ::testing::Test {
 protected:
     void SetUp() override {
+        // ANTS-2151 — test mode is a PROCESS-GLOBAL flag that redirects
+        // standard paths and ignores XDG_CONFIG_HOME. Capture the prior
+        // state so TearDown can restore it; leaving it enabled silently
+        // bypasses the XdgConfigHomeGuard isolation in sibling tests
+        // (e.g. ConfigAiReviewConcurrency.INV14 reads a stale config.json
+        // from the deterministic test-mode path and fails only in
+        // full-bundle order).
+        m_priorTestMode = QStandardPaths::isTestModeEnabled();
         QStandardPaths::setTestModeEnabled(true);
         QDir(spillDir()).removeRecursively();
         mcp::setOffloadConfig(true, 16384, 2048);   // enabled, defaults
     }
     void TearDown() override {
         QDir(spillDir()).removeRecursively();
+        QStandardPaths::setTestModeEnabled(m_priorTestMode);
     }
+    bool m_priorTestMode = false;
 };
 
 }  // namespace
