@@ -15775,7 +15775,7 @@ subsection.
   ctest 1600/1600 green. Spec at docs/specs/ANTS-1883.md folded 2
   cold-eyes loops.
 
-- 📋 [ANTS-1884] ****Investigate CI-trigger gap: pushes between SHA 94d2243 and 6ddac5c (2026-05-26) don't trigger workflows.****
+- ✅ [ANTS-1884] ****Investigate CI-trigger gap: pushes between SHA 94d2243 and 6ddac5c (2026-05-26) don't trigger workflows.****
   Pushes between `94d2243` (ANTS-1876, last successful CI run) and
   `6ddac5c` (cleanup commit, 2026-05-26) did not trigger CI on any
   of the intervening feat commits (3b3030d ANTS-1882, b591db5
@@ -15805,6 +15805,7 @@ subsection.
   Kind: investigate.
   Lanes: ci, workflow, github-actions.
   Source: in-session-2026-05-26.
+  Resolved (2026-06-17): not a CI bug — expected GitHub push→run semantics. Forensics: after 94d2243 ran (2026-05-26 10:35 UTC), the next ci.yml run was e0fcf30 (12:49 UTC). The 13 commits in between (94d2243..e0fcf30: the ANTS-1882/1880/1877/1883 feat commits, their docs flips, AND the synthetic probes 4e350d8 empty-commit / 6f39928 .cipoke / 6ddac5c) were all pushed as ONE batch. GitHub creates exactly one workflow run per push event, keyed to the TIP commit — never one-per-commit — so only e0fcf30 got a run, building a tree containing all 13 commits' changes. Proof: `git merge-base --is-ancestor 6ddac5c e0fcf30` = YES, and `gh run list` shows no gap SHA ever headed a run. So the intervening commits' code WAS exercised by CI (under e0fcf30's run); they just never received an individual green check. Ruled out: paths-ignore (src/ changed), the efc99d2 v5→v6 action bump (e0fcf30 ran fine on the new actions), and an Actions outage (continuous green runs all day 2026-05-26). Already self-correcting: the current cadence (push after each logical commit per the user's push-regularly preference) makes every pushed tip its own logical commit, so each gets its own check — recent run history confirms one run per push. No code change; preventive note: to gate an individual commit, make it the push tip (push standalone, not batched).
 
 - ✅ [ANTS-1903] **`project_layout` roadmap-format sniffer still returns `unknown` on Vestige despite the ANTS-1632 ship claim — re-investigate.**
   Vestige's 2026-05-28 Ts20-SP4+SP6 session re-tested project_layout(caller_cwd:<vestige>, force_rescan:true) against a 484 KB mixed-format ROADMAP.md (hundreds of `- [x]`/`- [ ]` GFM bullets + 📋/✅ emoji-status sections) and got back roadmap.format:"unknown", bullet_count_estimate:0, format_marker_present:false. probe_set_version:4 is present (so the probe-bump shipped to this binary) but the format-sniffer is not producing a non-unknown answer. Either the sniffer logic isn't reaching this code path, or the heuristic rejects every branch on Vestige's specific shape. Investigation: (a) re-run the ANTS-1632 fixture tests against the actual Vestige ROADMAP.md content (or a synthetic copy) to confirm INV-10a/INV-10b still hold; (b) add a sniffer_branches_tried trace field to the project_layout response so the next failure surfaces which branches matched vs rejected; (c) consider adding the Vestige ROADMAP shape as a CI regression fixture. Trust-eroding because the prior ship-status table is now stale.
