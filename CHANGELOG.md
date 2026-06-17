@@ -45,6 +45,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **The `cold_eyes_*` / `indie_review_*` / `test_audit_*` MCP tools now label themselves a "parallel API" in their tools/list descriptions — clarifying that the `/cold-eyes`, `/indie-review`, and `/test-audit` skills orchestrate those steps themselves and don't call the tools.** (ANTS-1581)
+  Stops a Claude reading the deferred-tool list from reaching for the MCP review verbs mid-skill (three sister sessions hit this). Added once via the existing description-mutation loop, not per-tool.
+
 - **verify_changes and the debt_sweep_* MCP verbs now run on a background thread, so the window no longer freezes while they shell out to git/build/test commands** (ANTS-2131)
   Mirrors the background-thread treatment audit_run and the in-app review already got. The two verbs that pump an event loop were moved earlier (ANTS-2103/2104, the crash fix); this moves the ones that just block on a child process, purely so the UI stays responsive. A regression test pins every blocking MCP verb to a background thread.
 

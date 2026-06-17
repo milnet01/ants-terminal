@@ -8296,6 +8296,37 @@ void ClaudeIntegration::onMcpConnection() {
                                 "underlying file hasn't changed "
                                 "(ANTS-1499 \"304 Not Modified\" pattern).");
                         }
+                        // ANTS-1581 — the cold_eyes_ / indie_review_ /
+                        // test_audit_ verb families are a *parallel* API:
+                        // the matching /cold-eyes, /indie-review,
+                        // /test-audit slash-command skills orchestrate
+                        // these steps themselves via subagent fan-out and
+                        // do NOT call these tools. The naming parity
+                        // otherwise reads as "the canonical path", so three
+                        // sister sessions reached for them mid-skill. Flag
+                        // them as the non-CC programmatic API. Idempotent
+                        // sentinel: skip if "Parallel API:" already present.
+                        if (!desc.contains(QStringLiteral("Parallel API:"))) {
+                            QString skill;
+                            if (name.startsWith(QLatin1String("cold_eyes_")))
+                                skill = QStringLiteral("/cold-eyes");
+                            else if (name.startsWith(
+                                         QLatin1String("indie_review_")))
+                                skill = QStringLiteral("/indie-review");
+                            else if (name.startsWith(
+                                         QLatin1String("test_audit_")))
+                                skill = QStringLiteral("/test-audit");
+                            if (!skill.isEmpty()) {
+                                desc += QStringLiteral(
+                                    " Parallel API: the %1 slash-command "
+                                    "skill orchestrates this step itself "
+                                    "(subagent fan-out) and does not call "
+                                    "this tool — reach for it only when "
+                                    "building your own review pipeline "
+                                    "outside that skill (ANTS-1581).")
+                                    .arg(skill);
+                            }
+                        }
                         t[QStringLiteral("description")] = desc;
                     }
                     // ANTS-1520 — keep the JSON-schema `required[]`

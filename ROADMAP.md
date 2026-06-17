@@ -14516,12 +14516,46 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-test-audit, mcp-state, sessionmemoryengine.
   Source: cross-session-report-2026-05-18 (MAME Curator evening fold-in).
 
-- 📋 [ANTS-1581] **Wire `/audit`, `/cold-eyes`, `/indie-review`, `/test-audit` skills to call the matching `mcp__ants__*` tool quartets.**
+- ✅ [ANTS-1581] **Wire `/audit`, `/cold-eyes`, `/indie-review`, `/test-audit` skills to call the matching `mcp__ants__*` tool quartets.**
   MAME Curator + Music_Production + RetroDB all flagged it: the four review skills at `~/.claude/skills/{audit,cold-eyes,indie-review,test-audit}/SKILL.md` orchestrate entirely via `Agent` subagents + inline `Bash`/`Read`, never calling the matching `mcp__ants__{cold_eyes,indie_review,test_audit}_{brief,partition,synthesis_prompt,fold_in}` tools that exist on the MCP. Naming parity implies the MCP tools are canonical but the reality is they're a parallel API for non-CC callers. Two-stage fix: (a) **skill-side** — update each SKILL.md to call the MCP partition for step "chunking", the MCP synthesis_prompt for step "synthesis brief", the MCP fold_in for step "ROADMAP write" — centralises chunk_size defaults, audit-allowlist discovery, and ROADMAP fold-in formatting across all four skills. (b) **MCP-side discoverability fallback** — until (a) lands, add a one-line note to each `*_brief`/`*_partition`/`*_fold_in`/`*_synthesis_prompt` tool's description: "Not invoked by the matching slash-command skill — for non-CC consumers building their own pipelines." Sets expectation when a Claude reads the deferred-tool list. Also: decide whether `mcp__ants__roadmap_log` is the canonical fold-in write path, and if so, update `~/.claude/skills/_shared/roadmap-fold-in.md` to call it.
   **Layman:** The four code-review skills (audit / cold-eyes / indie-review / test-audit) currently do their work by spawning sub-agents and editing files directly — none of them call the matching Ants MCP tools that look purpose-built for them. Update each skill to use the MCP tools where they fit; that centralises chunk sizes, allowlist discovery, and roadmap formatting across all four.
   Kind: refactor.
   Lanes: mcp-discoverability, skills-integration, roadmapfoldin.
   Source: cross-session-reports-2026-05-18 (MAME #1 + Music_Production #1 + RetroDB).
+  Resolved (2026-06-17): shipped part (b) as the terminal fix, and made
+  a deliberate architectural call to NOT ship (a) as written.
+
+  (b) Discoverability — the cold_eyes_/indie_review_/test_audit_ verb
+  families now self-describe as a *parallel* API. Appended a one-line
+  "Parallel API: the <skill> slash-command skill orchestrates this step
+  itself ... reach for it only when building your own pipeline" note to
+  each tool's tools/list `description`, via the existing ANTS-1518
+  description-mutation loop in claudeintegration.cpp (single source, prefix
+  match on the three families, idempotent on a "Parallel API:" sentinel) —
+  not 13 inline string edits. Directly answers the three sister-session
+  reports (MAME/Music_Production/RetroDB) that saw the tools mid-skill and
+  didn't know whether to call them.
+
+  (a) Rejected as written: the four review skills live in ~/.claude/skills/
+  (GLOBAL — every project), but mcp__ants__* only exists when the Ants MCP
+  is connected. Rewiring the skills to call those tools would REGRESS them
+  in every non-Ants project (tools absent). The roadmap's own analysis is
+  the tell — "they're a parallel API for non-CC callers" — so parity-naming
+  was the bug, not a missing wire. A conditional "use MCP if present" wire
+  is over-engineering (§2/§9) for a marginal centralisation gain on skills
+  whose subagent path is already spec'd + tested.
+
+  roadmap_log fold-in path: ~/.claude/skills/_shared/roadmap-fold-in.md
+  stays generic/portable (filesystem-probe + 8-ecosystem version detect +
+  grep-dedup + diff-preview) — coupling it to mcp__ants__roadmap_log breaks
+  it off-Ants. Within Ants sessions roadmap_log remains the cheap write
+  path (session habit), not the global contract.
+
+  Verified: ants-terminal + full suite rebuilt to build-fast; 28
+  tools/list-validation tests (mcp_cold_eyes / mcp_tools_list_schema /
+  mcp_indie_review_tools / mcp_test_audit_trio / mcp_extra_tools /
+  tool_info) all green — appended text doesn't break schema, catalog, or
+  the lite-shape branch.
 
 - 💭 [ANTS-1582] **Investigate consolidating `cold_eyes_*` / `indie_review_*` / `test_audit_*` MCP surfaces into a single `review_*` quartet with `kind:` discriminator.**
   MAME Curator + Music_Production both flagged the three near-parallel review-tool surfaces — each with `_brief` / `_partition` / `_synthesis_prompt` / `_fold_in` / (some) `_cross_doc_diff` / `_corroborate` quartets. Today: 15 MCP tools across three families. Proposal: collapse into one `mcp__ants__review_{brief,partition,synthesis_prompt,fold_in,cross_doc_diff,corroborate}` sextet plus a `kind: "cold_eyes" | "indie" | "test_audit"` discriminator on every call. Compresses surface 3× and removes the "which family matches my task?" guess. Marked `considered` not `planned` because (a) needs a spec-first design pass — internal engines differ in subtle ways (cold_eyes partitions docs, indie_review partitions subsystems, test_audit partitions test files); (b) timing-wise, ANTS-1411..1414 are mid-flight inside the existing family namespace — convergence after those land, not during; (c) backwards-compat: the existing 15 names would need a one-release deprecation shim. Composes with ANTS-1414 (cross_doc_diff refactor — natural starting point) and ANTS-1581 (skill wiring — would update skills to call `review_*` from day one).
