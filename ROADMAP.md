@@ -16609,6 +16609,22 @@ server build id so clients can self-diagnose this.
   Source: cross-session-2026-06-15 (DOOM Ants).
   Resolved (2026-06-15): scanLayout now enumerates *.md inside a resolved canonical standards/ dir into standards_files (new ants::ProjectLayoutEngine helper scanStandardsDir — sorted QDir::entryList, no name/min-lines filter; populates standards_files only, dir already in discovered[]). The ANTS-1574 name-glob fallback still runs only in the no-canonical-dir branch (else-arm). kProbeSetVersion bumped 5→6 so pre-fix caches that stored standards_files:[] for canonical-dir projects invalidate. Header field doc updated (projectlayoutengine.h). Regression test StandardsDirEnumeratesMarkdownFiles + reworked INV-E (StandardsNameGlobFallbackSkippedWhenDirPresent now asserts canonical *.md present AND name-glob suppressed) in tests/features/mcp_project_layout_scan/. Confirmed RED before fix; full ctest 2100/2100 green.
 
+- 📋 [ANTS-2148] **codebase_index returns an empty map (file_count:0, ok:true) for a C-only project — admittedSuffix excludes `.c`.**
+  DOOM Ants (a C project, 65 `.c` files under linuxdoom-1.10/) reported session_orient's embedded codebase_index came back empty — file_count:0, lane_count:0, lanes:[], languages:{} — with ok:true, so nothing signalled the emptiness; the empty map is indistinguishable from "small project," and a session relying on codebase_index / find_definition / workspace_search for orientation silently gets nothing. Cache path cfd6b5c9a4766d4a.json.
+  VERIFIED root cause: codebaseindex.cpp admittedSuffix() (line 27) admits only cpp/cc/h/hpp/hh/py — NOT `.c` (nor .cxx/.lua/.sh). Note a three-way suffix-set divergence: admittedSuffix is narrowest; FileOutline::pickModeByExt (fileoutline.cpp:99) adds cxx/md/json but STILL lacks `.c`; SymbolQuery::langForExt (symbolquery.cpp) is widest (c/cxx/hxx/pyi/lua/sh/bash). So even if codebase_index admitted `.c`, FileOutline would emit no symbols for it.
+  Fix: (a) add `.c` to admittedSuffix AND map `.c`→Mode::Cpp in pickModeByExt (C and C++ share enough syntax that the existing C++ regexes work); ideally align the three suffix sets so a `.c`/`.cxx` project is covered end-to-end (count -> outline -> symbol query). (b) Surface a soft signal — e.g. codebase_index.empty:true or a note — when file_count==0 but the tree walk found source-like paths, so a consuming session falls back to grep instead of trusting an empty map. Add a feature-test fixture with a `.c` file asserting non-empty file_count + a symbol.
+  **Layman:** The project code-map comes back completely empty for a C project — and stays silent about it — because the indexer only looks at .cpp/.py-style files, not .c.
+  Kind: fix.
+  Lanes: mcp, codebaseindex, fileoutline.
+  Source: cross-session-2026-06-17 (DOOM Ants, alloca/format/include session).
+
+- 📋 [ANTS-2149] **codebase_index uses `file_path` while file_outline uses `path` for the same arg — accept an alias to remove the cross-verb trip.**
+  DOOM Ants (LOW / ergonomics): file_outline takes `path`; codebase_index takes `file_path` for the same "project file path" concept. Using the two back-to-back on the same file, copying `file_path` from a codebase_index call into file_outline was refused with {code:"bad_path", error:"file_outline: missing or empty \"path\""} — one wasted call + refusal round-trip. Self-correcting (clear message), hence LOW. Fix: accept `file_path` as an alias for `path` on file_outline (and/or `path` as an alias for `file_path` on codebase_index), mirroring how workspace_search already accepts `query` as an alias for `pattern`. Keep the canonical name in the schema; just widen the accepted keys. If divergence is deemed intentional, close as wont-fix — the refusal is self-correcting.
+  **Layman:** Two sibling "look at this file" tools name the file argument differently, so copying it straight from one call to the next fails the first time.
+  Kind: enhancement.
+  Lanes: mcp, codebaseindex, fileoutline.
+  Source: cross-session-2026-06-16 (DOOM Ants, renderer session).
+
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 
 A new testing initiative the user requested: give the agent a repeatable way to
