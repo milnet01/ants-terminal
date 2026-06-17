@@ -16086,12 +16086,13 @@ subsection.
   Source: user-request-2026-06-03.
   Resolved (2026-06-03): feedback_log shipped — append_finding/append_tracking via FeedbackFile renderers, atomic QSaveFile, write-fail seam.
 
-- 📋 [ANTS-1964] **SessionStart surfacing of pending feedback-addenda counts (ANTS-1961 follow-on "b").**
+- ✅ [ANTS-1964] **SessionStart surfacing of pending feedback-addenda counts (ANTS-1961 follow-on "b").**
   Deferred from the ANTS-1961 feedback_query spec (§5). Run FeedbackFile::parse over each *_Ants_MCP_Feedback.md at the shared root and surface a per-file pending-addenda count (delta_present + delta_line_count) in the SessionStart hook context, so the Ants maintainer session knows at a glance which feedback files have un-triaged input without calling feedback_query per file. Depends on ANTS-1961 (the parser + verb). Source: in-session-2026-06-03.
   **Layman:** On session start, show the maintainer how many un-triaged feedback items are waiting across the cross-session report files.
   Kind: implement.
   Lanes: remotecontrol, claudeintegration.
   Source: in-session-2026-06-03 (ANTS-1961 §5 out-of-scope).
+  Resolved (2026-06-17): surfaced via session_orient (the documented first read) rather than the pure-shell SessionStart hooks — they can't reach the C++ FeedbackFile::parse, and a bash reimplementation of the fence-aware parser would risk drift. cmdSessionOrient now emits a feedback_pending block {shared_root, files_scanned, files_with_pending, total_pending_lines, files:[{file, delta_line_count}]}, reusing FeedbackFile::parse over each *_Ants_MCP_Feedback.md at the project-root parent. Maintainer-only gate: present only when the root ships docs/standards/mcp-feedback-files.md (sister projects sharing the parent dir omit the block → stable ETag). Surfaces only delta_present files; does not contribute to allOk; 4 MiB per-file scan ceiling. Test: session_orient_bundle INV-9 (source-grep, parity with the bundle's other INVs). 23 adjacent tests green.
 
 - ✅ [ANTS-1969] **User-typed /model does not continue work after auto-confirm (ANTS-1958 revisit).**
   ANTS-1958 deliberately omits the continuation prompt for user-typed /model

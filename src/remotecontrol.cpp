@@ -11196,6 +11196,64 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
         result[QStringLiteral("codebase_index")] = ci;
     }
 
+    // --- feedback_pending (ANTS-1964, ANTS-1961 follow-on "b") ---
+    // Surface the un-triaged-addenda backlog across the cross-session
+    // *_Ants_MCP_Feedback.md files at the shared root, so the maintainer
+    // session sees at a glance which files have new contributor input
+    // without one feedback_query round-trip per file. Reuses the canonical
+    // FeedbackFile::parse (no bash reimplementation of the fence-aware
+    // parser); the pure-shell SessionStart hooks can't reach it, and
+    // session_orient is the documented first read (parity with
+    // server_build / codebase_index above).
+    //
+    // Maintainer-only gate: this is meaningful solely for the Ants repo
+    // (it owns the ANTS-NNNN triage). Detect it by the format-standard doc
+    // it ships — only the Ants project has docs/standards/mcp-feedback-files.md.
+    // Sister projects whose root shares the same parent dir thus omit the
+    // block entirely (unchanged response → stable ETag for them). Does NOT
+    // contribute to allOk: an absent corpus must not fail orient.
+    if (QFileInfo::exists(rootCanonical
+            + QLatin1String("/docs/standards/mcp-feedback-files.md"))) {
+        const QString sharedRoot = QFileInfo(rootCanonical).absolutePath();
+        QDir dir(sharedRoot);
+        // Deterministic order → ETag stability across calls.
+        const QStringList names = dir.entryList(
+            {QStringLiteral("*_Ants_MCP_Feedback.md")},
+            QDir::Files | QDir::Readable, QDir::Name);
+
+        QJsonArray pendingFiles;
+        int filesScanned = 0;
+        int totalPendingLines = 0;
+        // Bound the transient working set (largest corpus file ~150 KB
+        // today); skip a pathologically large file rather than read it.
+        constexpr qint64 kFeedbackScanCeiling = 4 * 1024 * 1024;
+        for (const QString &name : names) {
+            const QString full = dir.absoluteFilePath(name);
+            QFileInfo fi(full);
+            if (fi.size() > kFeedbackScanCeiling) continue;
+            QFile f(full);
+            if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+            const QString content = QString::fromUtf8(f.readAll());
+            f.close();
+            ++filesScanned;
+            const FeedbackFile::ParseResult pr = FeedbackFile::parse(content);
+            if (!pr.deltaPresent) continue;  // fully-triaged → not surfaced
+            QJsonObject entry;
+            entry[QStringLiteral("file")]             = name;
+            entry[QStringLiteral("delta_line_count")] = pr.deltaLineCount;
+            pendingFiles.append(entry);
+            totalPendingLines += pr.deltaLineCount;
+        }
+
+        QJsonObject fp;
+        fp[QStringLiteral("shared_root")]        = sharedRoot;
+        fp[QStringLiteral("files_scanned")]      = filesScanned;
+        fp[QStringLiteral("files_with_pending")] = pendingFiles.size();
+        fp[QStringLiteral("total_pending_lines")] = totalPendingLines;
+        fp[QStringLiteral("files")]              = pendingFiles;
+        result[QStringLiteral("feedback_pending")] = fp;
+    }
+
     result[QStringLiteral("ok")] = allOk;
     // ETag injected at the dispatch layer (isEtagSupportedTool).
     return QJsonDocument(result);

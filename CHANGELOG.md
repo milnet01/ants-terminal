@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`session_orient` now surfaces a `feedback_pending` block — the un-triaged-addenda backlog across the cross-session `*_Ants_MCP_Feedback.md` files.** (ANTS-1964)
+  At session start the Ants maintainer session sees, at a glance, which feedback files have new contributor input (and how many lines) without one feedback_query round-trip per file. Reuses the canonical FeedbackFile::parse; shown only in the Ants project, only for files with pending input.
+
 - **Regression lock for the nested-loop socket use-after-free crash class — a source-grep feature test asserts the MCP and remote-control `readyRead` handlers keep their `idleTimer->stop()` + `QPointer` guards and that `audit_run` / `indie_review_dispatch` stay on a worker thread.** (ANTS-2102)
   Stops any future edit from silently re-opening the crash that froze and SIGSEGV'd the terminal during an audit (ANTS-2103) or in-app review (ANTS-2104).
 

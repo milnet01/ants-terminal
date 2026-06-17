@@ -170,3 +170,29 @@ TEST(session_orient_bundle, Inv8CodebaseIndexRefreshTrimmed) {
     }
     EXPECT_EQ(0, expect_failures());
 }
+
+// INV-9 (ANTS-1964) — the bundle surfaces the cross-session feedback
+// backlog under a `feedback_pending` key, reusing the canonical
+// FeedbackFile::parse (no bash reimplementation), gated to the
+// maintainer project by the format-standard doc it ships, and surfacing
+// only files whose delta is present (un-triaged input).
+TEST(session_orient_bundle, Inv9FeedbackPendingScan) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const auto pos = cpp.find("cmdSessionOrient");
+    if (pos == std::string::npos) {
+        expect(false, "INV-9: cmdSessionOrient body not found");
+    } else {
+        const std::string body =
+            ants_test::slurpFunctionBody(cpp, "cmdSessionOrient");
+        expect(contains(body, "\"feedback_pending\""),
+               "INV-9: bundle emits a feedback_pending envelope key");
+        expect(contains(body, "FeedbackFile::parse"),
+               "INV-9: reuses the canonical parser (no bash reimpl)");
+        expect(contains(body, "mcp-feedback-files.md"),
+               "INV-9: maintainer-only gate via the format-standard doc");
+        expect(contains(body, "deltaPresent"),
+               "INV-9: surfaces only files with an un-triaged delta");
+    }
+    EXPECT_EQ(0, expect_failures());
+}

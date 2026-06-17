@@ -193,6 +193,12 @@ RetroDB) write MCP observations to `*_Ants_MCP_Feedback.md` files under
 `/mnt/Games/Scripts/Linux/`. Format spec:
 [`docs/standards/mcp-feedback-files.md`](docs/standards/mcp-feedback-files.md).
 
+At session start, `session_orient` surfaces a `feedback_pending` block
+(ANTS-1964) — a per-file count of un-triaged contributor addenda across the
+shared-root files, so you see which need triage without one `feedback_query`
+per file. Only the Ants maintainer project gets it (gated on shipping
+`docs/standards/mcp-feedback-files.md`); only files with pending input list.
+
 Reviewing feedback efficiently (don't re-read the whole file):
 - **`feedback_query`** (ANTS-1961) — pass the feedback file's `path`;
   returns the un-triaged tail (contributor blocks after the last maintainer
