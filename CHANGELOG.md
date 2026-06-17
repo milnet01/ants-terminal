@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **workspace_search now hints when a multi-word query was matched as one phrase** (ANTS-2045)
+  If you search several words at once and get nothing back, the result now tells you it searched for the exact phrase (not the words separately) and how to broaden it.
+
 - **`audit_run` `since-last-run` now returns a precise findings delta + a whole-tree carry-forward SARIF** (ANTS-1870)
   A fast re-audit now tells you exactly which warnings appeared, disappeared, or carried over: the envelope carries `delta:{added, removed, added_count, removed_count, carried_forward_count}` (or an honest `delta_unavailable_reason`), and the saved SARIF + a new findings sidecar cover the whole project, not just the files you touched.
 
@@ -61,6 +64,9 @@ for security-relevant changes.
   The first orientation call a Claude session makes now also refreshes Ants' codebase map (so it's fresh without anyone remembering a separate step), and the startup prelude advertises the codebase_index verb with a 'query before grep' nudge. Result: faster, cheaper code navigation down the line.
 
 ### Fixed
+
+- **session_orient no longer reads as "no active work" on an ID-less roadmap** (ANTS-2052)
+  On a roadmap whose items have no [PROJECT-1234] IDs, the start-up "what should I work on?" summary used to show an empty queue even with many open items; it now recovers and lists them.
 
 - **Task List dialog rows now have even spacing — long rows no longer reserve a spurious blank line.** (ANTS-1641)
 

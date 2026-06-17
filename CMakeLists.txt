@@ -1296,6 +1296,10 @@ if(ANTS_TESTS)
                 tests/features/audit_run_since_last_run/test_audit_run_since_last_run.cpp
                 # ANTS-1870 audit_run since-last-run findings delta.
                 tests/features/audit_run_delta/test_audit_run_delta.cpp
+                # ANTS-2045 workspace_search multi-word phrase hint.
+                tests/features/workspace_search_phrase_hint/test_workspace_search_phrase_hint.cpp
+                # ANTS-2052 session_orient active_bullets legacy fallback.
+                tests/features/session_orient_legacy_active/test_session_orient_legacy_active.cpp
                 # ANTS-1642 schema-vs-lambda dispatch-forward completeness.
                 tests/features/mcp_dispatch_forward_completeness/test_mcp_dispatch_forward_completeness.cpp
                 # ANTS-1569 current_state MCP aggregator.

@@ -8028,6 +8028,21 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         out["dedup"]            = true;
         out["dedup_collapsed"]  = dedupCollapsed;
     }
+    // ANTS-2045 — a multi-word query is matched as ONE literal/regex
+    // pattern, not as AND-combined terms, so a natural-language query like
+    // "About modal RetroDB version" silently returns zero matches even when
+    // each word exists. When a whitespace-bearing query hits zero matches,
+    // surface an advisory hint (pure response-shaping; search semantics
+    // unchanged). Reproduced across four CC sessions.
+    if (matches.isEmpty() && pattern.trimmed().contains(QChar(' '))) {
+        out["hint"] = isRegex
+            ? QStringLiteral("query matched as one regex pattern (its spaces "
+                "are literal); for a phrase search pass a single token, or "
+                "AND terms with .*")
+            : QStringLiteral("query matched as one literal phrase, not as "
+                "separate words; pass a single token, or set regex:true and "
+                "join terms with .* to AND them");
+    }
     // ANTS-1452-INV-4: echo effective filter values so callers can tell
     // a filter-induced 0-match result from a genuinely clean tree.
     out["respect_gitignore"] = respect_gitignore;
@@ -11133,6 +11148,11 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
     // Per ANTS-1437 INV-7 as amended by ANTS-1848, status:"active"
     // is meaningful for section_index mode — drops sections whose
     // active_count_id_only:0 (the lean planning slice).
+    // ANTS-2052 — on a fully id-less legacy roadmap every section's
+    // active_count_id_only is 0, so section_index emits legacy_format +
+    // raw_active_count (the true non-zero count). Capture it so the
+    // active_bullets block below can recover the headlines.
+    int legacyRawActive = 0;
     {
         QJsonObject rqReq;
         rqReq[QStringLiteral("caller_cwd")] = rootCanonical;
@@ -11140,6 +11160,8 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
         rqReq[QStringLiteral("status")]     = QStringLiteral("active");
         const QJsonObject rq = cmdRoadmapQuery(rqReq).object();
         if (!rq.value(QStringLiteral("ok")).toBool(false)) allOk = false;
+        if (rq.value(QStringLiteral("legacy_format")).toBool(false))
+            legacyRawActive = rq.value(QStringLiteral("raw_active_count")).toInt(0);
         result[QStringLiteral("sections_index")] = rq;
     }
 
@@ -11153,7 +11175,24 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
         rqReq[QStringLiteral("mode")]       = QStringLiteral("headline_only");
         rqReq[QStringLiteral("status")]     = QStringLiteral("active");
         rqReq[QStringLiteral("limit")]      = 20;
-        const QJsonObject rq = cmdRoadmapQuery(rqReq).object();
+        QJsonObject rq = cmdRoadmapQuery(rqReq).object();
+        // ANTS-2052 — on a fully id-less legacy roadmap the default
+        // [PROJ-NNNN] id filter drops every active bullet, so the flagship
+        // bundle reads as "no active work" even though raw_active_count > 0.
+        // When that happens, re-issue including narrator bullets so the
+        // session actually sees the open items, and flag the recovery.
+        if (rq.value(QStringLiteral("count")).toInt(0) == 0
+                && legacyRawActive > 0) {
+            rqReq[QStringLiteral("include_narrator_bullets")] = true;
+            rq = cmdRoadmapQuery(rqReq).object();
+            rq[QStringLiteral("legacy_format_fallback")] = true;
+            rq[QStringLiteral("raw_active_count")]       = legacyRawActive;
+            rq[QStringLiteral("legacy_format_hint")] = QStringLiteral(
+                "id-less legacy roadmap: the [PROJ-NNNN] id filter dropped "
+                "all %1 active bullets, so this list was re-issued with "
+                "include_narrator_bullets:true — the queue is NOT empty.")
+                .arg(legacyRawActive);
+        }
         result[QStringLiteral("active_bullets")] = rq;
     }
 

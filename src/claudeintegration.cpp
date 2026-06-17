@@ -2734,7 +2734,11 @@ void ClaudeIntegration::onMcpConnection() {
                     "case, respect_gitignore, include_hidden, dedup, "
                     "timeout_sec [1,30], max_match_bytes, headline_only. "
                     "caller_cwd anchors the project root (or '~global' for "
-                    "~/.claude/). Hard-kill returns rg_failed with a hint.");
+                    "~/.claude/). The query is ONE literal/regex pattern, not "
+                    "AND-combined words — a multi-word query that hits 0 "
+                    "matches returns an advisory `hint` (pass a single token, "
+                    "or regex:true with .* between terms). Hard-kill returns "
+                    "rg_failed with a hint.");
                 // ANTS-2079 — full per-arg reference in `detail` (stripped
                 // from the tools/list wire; served by tool_info
                 // {name:"workspace_search"}).
