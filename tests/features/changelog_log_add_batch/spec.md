@@ -63,6 +63,17 @@ changelog refuses `format_mismatch` (ANTS-2040); a project with no
 changelog of any kind refuses `no_changelog`. These are batch-level
 refusals (no `skipped[]`).
 
+### INV-7 — (ANTS-2136) dry_run previews without writing
+
+`dry_run:true` resolves the would-be insert and returns it WITHOUT
+touching CHANGELOG.md, for both the single op and `add_batch`. The
+envelope carries `dry_run:true`, the resolved `category`, `line`, a
+`bytes` field (would-be file size, replacing `bytes_written`), and — for
+the single op — the rendered `bullet`; `add_batch` echoes the same
+`applied[]`/`skipped[]`/`applied_count`/`skipped_count` it would commit.
+After a dry_run the file is byte-identical to its pre-call content.
+Parity with `roadmap_log` dry_run (flip / append / create_section).
+
 ## Test plan
 
 Behavioural against `cmdChangelogLog` (op:add_batch; m_main-independent)

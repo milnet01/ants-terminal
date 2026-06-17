@@ -4115,6 +4115,9 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     }
     const QString op =
         req.value(QStringLiteral("op")).toString(QStringLiteral("add"));
+    // ANTS-2136 — dry_run preview: compute the would-be insert without
+    // touching CHANGELOG.md (parity with roadmap_log dry_run).
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
     // ANTS-2044 — batch path: N entries, one read + one atomic commit.
     if (op == QStringLiteral("add_batch")) {
         return cmdChangelogLogAddBatch(req);
@@ -4283,6 +4286,38 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         clMarkdown, category, bullet);
     if (!res.ok) {
         return clErr(res.code, res.error);
+    }
+
+    // ANTS-2136 — dry_run: return the resolved insert preview without
+    // writing CHANGELOG.md. `bytes` is the would-be file size; `bullet`
+    // is the rendered entry so the caller can eyeball category routing
+    // and prose before committing.
+    if (dryRun) {
+        QJsonObject out;
+        out["ok"]               = true;
+        out["op"]               = op;
+        out["dry_run"]          = true;
+        out["file"]             = clPath.section('/', -1);
+        out["category"]         = category;
+        out["line"]             = res.line;
+        out["bytes"]            = static_cast<qint64>(res.markdown.toUtf8().size());
+        out["created_category"] = res.created_category;
+        out["bullet"]           = bullet;
+        if (!id.isEmpty()) out["id"] = id;
+        if (res.malformed_section) {
+            out["advisory"] = QStringLiteral(
+                "changelog_log: `## [Unreleased]` interleaves non-heading "
+                "prose between its `### ` category blocks (first at line %1) "
+                "— the entry would be inserted in canonical order, but the "
+                "section layout is malformed; consider tidying it.")
+                    .arg(res.malformed_line);
+        }
+        if (!scrubbed.isEmpty()) {
+            QJsonArray dropped;
+            for (const QString &n : scrubbed) dropped.append(n);
+            out["scrubbed_params"] = dropped;
+        }
+        return QJsonDocument(out);
     }
 
     QSaveFile cw(clPath);
@@ -4463,6 +4498,8 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     }
     const QJsonArray entries =
         req.value(QStringLiteral("entries")).toArray();
+    // ANTS-2136 — dry_run preview, parity with the single op.
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
 
     const QString callerCanonical =
         QFileInfo(callerRaw).canonicalFilePath();
@@ -4577,6 +4614,32 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     }
 
     qint64 bytesWritten = 0;
+    // ANTS-2136 — dry_run: skip the commit, report what WOULD apply.
+    // `bytes` reflects the accumulated markdown size (0 when nothing
+    // applied, parity with the write path's bytesWritten).
+    if (dryRun) {
+        QJsonObject out;
+        out["ok"]              = true;
+        out["op"]              = QStringLiteral("add_batch");
+        out["dry_run"]         = true;
+        out["file"]            = clPath.section('/', -1);
+        out["applied"]         = applied;
+        out["applied_count"]   = applied.size();
+        out["skipped"]         = skipped;
+        out["skipped_count"]   = skipped.size();
+        out["bytes"]           = applied.isEmpty()
+            ? static_cast<qint64>(0)
+            : static_cast<qint64>(markdown.toUtf8().size());
+        if (malformedSection) {
+            out["advisory"] = QStringLiteral(
+                "changelog_log: `## [Unreleased]` interleaves non-heading "
+                "prose between its `### ` category blocks (first at line %1) "
+                "— entries would be inserted in canonical order, but the "
+                "section layout is malformed; consider tidying it.")
+                    .arg(malformedLine);
+        }
+        return QJsonDocument(out);
+    }
     // Only touch the file when at least one entry applied — an all-skip
     // batch leaves CHANGELOG.md untouched.
     if (!applied.isEmpty()) {
@@ -9015,6 +9078,25 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
     }
 
     const QByteArray utf8 = res.content.toUtf8();
+
+    // ANTS-2136 — dry_run: spec_log is section-routed (set_status rewrites
+    // the Status line in place; append_loop / append_inv splice at a
+    // computed section end, synthesising a heading when absent), so the
+    // landing `line` and resulting size aren't knowable in advance.
+    // Preview them without writing the spec (parity with roadmap_log /
+    // changelog_log dry_run).
+    if (req.value(QStringLiteral("dry_run")).toBool()) {
+        QJsonObject out;
+        out["ok"]      = true;
+        out["op"]      = op;
+        out["dry_run"] = true;
+        if (!id.isEmpty()) out["id"] = id;
+        out["path"]    = rel;
+        out["line"]    = res.line;
+        out["bytes"]   = static_cast<qint64>(utf8.size());
+        return QJsonDocument(out);
+    }
+
     QSaveFile sf(full);
     if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
         return slErr(QStringLiteral("write_failed"),

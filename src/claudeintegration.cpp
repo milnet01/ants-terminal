@@ -4225,7 +4225,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "docs/specs/<id>.md; phase_<NN>_<topic> → "
                         "docs/phases/) or a project-relative `path`. "
                         "Atomic write. Returns {ok, op, id?, path, line, "
-                        "bytes_written}. Refusals: `bad_mode`, `bad_id`, "
+                        "bytes_written}; dry_run:true previews line/`bytes` "
+                        "without writing. Refusals: `bad_mode`, `bad_id`, "
                         "`bad_path`, `bad_args`, `no_project`, "
                         "`not_found` (file absent), `unrecognised_format` "
                         "(spec present but missing the section/line), "
@@ -4273,6 +4274,13 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject testProp; testProp["type"] = "string";
                         testProp["description"] = QStringLiteral(
                             "append_inv: optional *Test:* clause.");
+                    QJsonObject dryRunProp; dryRunProp["type"] = "boolean";
+                        dryRunProp["description"] = QStringLiteral(
+                            "Optional (ANTS-2136). When true, return the "
+                            "resolved landing `line` and `bytes` (would-be "
+                            "file size) WITHOUT writing the spec — a free "
+                            "pre-flight for the section-routed insert "
+                            "(envelope carries dry_run:true).");
                     props["op"]         = opProp;
                     props["id"]         = idProp;
                     props["path"]       = pathProp;
@@ -4281,6 +4289,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["body"]       = bodyProp;
                     props["inv_id"]     = invProp;
                     props["test"]       = testProp;
+                    props["dry_run"]    = dryRunProp;
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray req;
@@ -7581,6 +7590,7 @@ void ClaudeIntegration::onMcpConnection() {
                         "Category from `category` or derived from `kind`. "
                         "Required: caller_cwd (+ summary for add, id for "
                         "add_from_roadmap, entries[] for add_batch). "
+                        "dry_run:true previews without writing. "
                         "Refusals: not_unreleased, bad_category, "
                         "no_changelog, format_mismatch, id_not_in_roadmap, "
                         "missing_field, bad_args, bad_op_combo.");
@@ -7637,7 +7647,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "(a stray footer/separator) between its `### ` "
                         "category blocks — the entry still inserts in "
                         "canonical order, but the section layout is "
-                        "malformed.");
+                        "malformed. "
+                        "dry_run:true (ANTS-2136) previews the resolved "
+                        "insert (category routing, line, `bytes`, rendered "
+                        "`bullet`; add_batch echoes applied/skipped) "
+                        "without writing — envelope carries dry_run:true "
+                        "and `bytes` replaces `bytes_written`.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to add a CHANGELOG.md entry under "
                         "[Unreleased] instead of hand-editing it. "
@@ -7740,6 +7755,21 @@ void ClaudeIntegration::onMcpConnection() {
                         "in input order; per-entry failures go to "
                         "`skipped[]`.");
 
+                    // ANTS-2136 — dry_run preview (parity with
+                    // roadmap_log): resolve the would-be insert (id,
+                    // category routing, rendered bullet, line) without
+                    // writing CHANGELOG.md.
+                    QJsonObject clDryRun;
+                    clDryRun["type"] = "boolean";
+                    clDryRun["description"] = QStringLiteral(
+                        "Optional. When true, return the resolved insert "
+                        "preview — `category`, `line`, `bytes`, and the "
+                        "rendered `bullet` (add_batch: `applied`/`skipped` "
+                        "with `bytes`) — WITHOUT writing CHANGELOG.md or "
+                        "creating a category heading. A free pre-flight to "
+                        "verify category routing and prose before "
+                        "committing (envelope carries dry_run:true).");
+
                     QJsonObject clProps;
                     clProps["caller_cwd"] = clCaller;
                     clProps["op"]         = clOp;
@@ -7749,6 +7779,7 @@ void ClaudeIntegration::onMcpConnection() {
                     clProps["body"]       = clBody;
                     clProps["id"]         = clId;
                     clProps["entries"]    = clEntries;
+                    clProps["dry_run"]    = clDryRun;
 
                     QJsonObject clSchema;
                     clSchema["type"] = "object";

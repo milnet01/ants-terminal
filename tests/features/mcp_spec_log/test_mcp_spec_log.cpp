@@ -236,3 +236,47 @@ TEST(McpSpecLog, AtomicWriteFailure) {
     EXPECT_EQ(env.value("code").toString(), "write_failed");
     EXPECT_EQ(readAll(p), before) << "spec must be byte-identical";
 }
+
+// T11 (ANTS-2136) — dry_run previews the landing line + bytes without
+// writing the spec, for each of the three section-routed ops.
+TEST(McpSpecLog, HandlerDryRunWritesNothing) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = seedSpec(dir, "ANTS-9999", QString::fromUtf8(kSpec));
+    const QByteArray before = readAll(p);
+
+    RemoteControl rc(nullptr);
+    auto base = [&]() {
+        QJsonObject r; r["caller_cwd"] = dir.path(); r["id"] = "ANTS-9999";
+        r["dry_run"] = true; return r;
+    };
+
+    // set_status dry_run.
+    { QJsonObject r = base(); r["op"] = "set_status";
+      r["status"] = "accepted (2026-06-17)";
+      const QJsonObject env = rc.cmdSpecLog(r).object();
+      ASSERT_TRUE(env.value("ok").toBool())
+          << env.value("error").toString().toStdString();
+      EXPECT_TRUE(env.value("dry_run").toBool());
+      EXPECT_GT(env.value("line").toInt(), 0);
+      EXPECT_GT(env.value("bytes").toInt(), 0);
+      EXPECT_FALSE(env.contains("bytes_written")); }
+
+    // append_inv dry_run.
+    { QJsonObject r = base(); r["op"] = "append_inv";
+      r["inv_id"] = "INV-3"; r["body"] = "third invariant";
+      const QJsonObject env = rc.cmdSpecLog(r).object();
+      ASSERT_TRUE(env.value("ok").toBool())
+          << env.value("error").toString().toStdString();
+      EXPECT_TRUE(env.value("dry_run").toBool()); }
+
+    // append_loop dry_run.
+    { QJsonObject r = base(); r["op"] = "append_loop";
+      r["loop_label"] = "Loop 2 (2026-06-17)"; r["body"] = "second pass.";
+      const QJsonObject env = rc.cmdSpecLog(r).object();
+      ASSERT_TRUE(env.value("ok").toBool())
+          << env.value("error").toString().toStdString();
+      EXPECT_TRUE(env.value("dry_run").toBool()); }
+
+    // None of the three previews touched the spec.
+    EXPECT_EQ(readAll(p), before) << "dry_run must not write the spec";
+}

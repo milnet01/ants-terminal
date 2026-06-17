@@ -300,3 +300,67 @@ TEST(changelog_log_add_batch, Inv6TopLevelRefusals) {
                   QStringLiteral("yaml"));
     }
 }
+
+// ANTS-2136 — dry_run previews the insert without touching CHANGELOG.md,
+// for both the single op and add_batch. The file must be byte-identical
+// to the pre-call content after a dry_run.
+TEST(changelog_log_add_batch, Inv7DryRunWritesNothing) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kChangelog)));
+    const std::string before = readFileStd(clPath(tmp.path()));
+
+    RemoteControl rc(nullptr);
+
+    // Single op:add dry_run — preview fields present, no write.
+    {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = tmp.path();
+        req[QStringLiteral("op")]         = QStringLiteral("add");
+        req[QStringLiteral("summary")]    = QStringLiteral("Previewed only.");
+        req[QStringLiteral("kind")]       = QStringLiteral("fix");
+        req[QStringLiteral("id")]         = QStringLiteral("ANTS-9001");
+        req[QStringLiteral("dry_run")]    = true;
+        const auto resp = rc.cmdChangelogLog(req).object();
+
+        EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+            << resp.value(QStringLiteral("error")).toString().toStdString();
+        EXPECT_TRUE(resp.value(QStringLiteral("dry_run")).toBool());
+        EXPECT_EQ(resp.value(QStringLiteral("category")).toString(),
+                  QStringLiteral("Fixed"));
+        EXPECT_TRUE(resp.contains(QStringLiteral("bytes")));
+        EXPECT_FALSE(resp.contains(QStringLiteral("bytes_written")));
+        EXPECT_TRUE(contains(
+            resp.value(QStringLiteral("bullet")).toString().toStdString(),
+            "- **Previewed only.** (ANTS-9001)"));
+        EXPECT_EQ(readFileStd(clPath(tmp.path())), before)
+            << "single-op dry_run must not write CHANGELOG.md";
+    }
+
+    // add_batch dry_run — applied[] echoed, no write.
+    {
+        QJsonArray entries;
+        entries.append(addEntry(QStringLiteral("Batch preview A."),
+                                QStringLiteral("feature"),
+                                QStringLiteral("ANTS-9002")));
+        entries.append(addEntry(QStringLiteral("Batch preview B."),
+                                QStringLiteral("fix"),
+                                QStringLiteral("ANTS-9003")));
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = tmp.path();
+        req[QStringLiteral("op")]         = QStringLiteral("add_batch");
+        req[QStringLiteral("entries")]    = entries;
+        req[QStringLiteral("dry_run")]    = true;
+        const auto resp = rc.cmdChangelogLog(req).object();
+
+        EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+            << resp.value(QStringLiteral("error")).toString().toStdString();
+        EXPECT_TRUE(resp.value(QStringLiteral("dry_run")).toBool());
+        EXPECT_EQ(resp.value(QStringLiteral("applied_count")).toInt(), 2);
+        EXPECT_EQ(resp.value(QStringLiteral("skipped_count")).toInt(), 0);
+        EXPECT_TRUE(resp.contains(QStringLiteral("bytes")));
+        EXPECT_FALSE(resp.contains(QStringLiteral("bytes_written")));
+        EXPECT_EQ(readFileStd(clPath(tmp.path())), before)
+            << "add_batch dry_run must not write CHANGELOG.md";
+    }
+}
