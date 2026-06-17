@@ -122,8 +122,12 @@ ants_is_source_search() {
                 *" -name "*|*" -iname "*|*" -path "*|*" -ipath "*) : ;;
                 *) return 1 ;;
             esac
+            # Mutating/exec primary → not a search we route (spec §2.2). The
+            # shorter globs subsume the longer ones (" -execdir"/" -okdir"/
+            # " -fprintf" each begin with " -exec"/" -ok"/" -fprint"), so listing
+            # both would be shellcheck SC2221/SC2222 dead patterns (ANTS-2143).
             case " $pre " in
-                *" -delete"*|*" -exec"*|*" -execdir"*|*" -ok"*|*" -okdir"*|*" -fprint"*|*" -fprintf"*|*" -fls"*)
+                *" -delete"*|*" -exec"*|*" -ok"*|*" -fprint"*|*" -fls"*)
                     return 1 ;;
             esac
             ANTS_NUDGE_TOOL=find
