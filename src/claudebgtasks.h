@@ -102,4 +102,7 @@ private:
     QFileSystemWatcher m_watcher;
     QList<ClaudeBackgroundTask> m_tasks;
     qint64 m_lastRescanMtimeMs = 0;
+    // ANTS-1458 phase 2 — mirror ClaudeTaskListTracker: size is a second
+    // change-signal so poll() re-parses on a same-mtime append.
+    qint64 m_lastRescanSizeBytes = 0;
 };

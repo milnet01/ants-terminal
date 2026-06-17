@@ -56,6 +56,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Tasks chip + Task List dialog no longer lag noticeably behind a burst of new tasks.** (ANTS-1458)
+  When Claude Code logged several tasks in quick succession, the
+  bottom-bar task count and the Task List could take much longer than
+  the usual ~2-second refresh to catch up — a new task sometimes only
+  appeared when something else was written later. The refresh now
+  notices a change by file size as well as timestamp, and samples that
+  check before reading, so a task added while the file is being read is
+  picked up on the very next tick instead of being stranded. Same fix
+  applied to the background-tasks tracker.
+
 - **workspace_search no longer times out under concurrent MCP load — its ripgrep search now runs off the socket thread.** (ANTS-2144)
   The project-wide code search blocked the server's main thread while ripgrep ran, so a second tool call arriving at the same time could be starved and give up with a transport timeout — sending the session back to slower raw grep. The search now runs on a background worker, keeping the connection responsive so concurrent calls are answered instead of timing out.
 

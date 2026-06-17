@@ -79,11 +79,12 @@ void ClaudeTaskListTracker::setTranscriptPath(const QString &path) {
     if (!m_transcriptPath.isEmpty())
         m_watcher.removePath(m_transcriptPath);
     m_transcriptPath = path;
-    // Reset the poll() mtime shortcircuit — if the user rebinds the
-    // same project shortly after a clear (tab-switch round trip) and
-    // the file mtime hasn't ticked, poll() would otherwise skip the
+    // Reset the poll() change-signal shortcircuit — if the user rebinds
+    // the same project shortly after a clear (tab-switch round trip) and
+    // the file mtime/size hasn't ticked, poll() would otherwise skip the
     // legitimate rescan.
-    m_lastRescanMtimeMs = 0;
+    m_lastRescanMtimeMs   = 0;
+    m_lastRescanSizeBytes = 0;
     if (!m_transcriptPath.isEmpty() && QFileInfo::exists(m_transcriptPath))
         m_watcher.addPath(m_transcriptPath);
     rescan();
@@ -130,6 +131,28 @@ int ClaudeTaskListTracker::completedCount() const {
 }
 
 void ClaudeTaskListTracker::rescan() {
+    // ANTS-1458 phase 2 — sample the change-signal (mtime + size) BEFORE
+    // the parse, not after. parseTranscript() reads to the file's current
+    // EOF; if Claude appends during that read window (common in a
+    // TaskCreate burst — it writes every ~100 ms), recording the signal
+    // afterward would capture the post-append mtime/size while the parse
+    // missed those bytes. poll()'s equality short-circuit would then
+    // strand the new task until an unrelated later write advanced the
+    // signal again — the user-reported >2 s lag. Sampling the pre-read
+    // baseline means any write landing during/after the read leaves a
+    // strictly newer on-disk signal, so the next poll() re-parses (at
+    // worst one redundant rescan).
+    qint64 mtimeMs = 0, sizeBytes = 0;
+    bool haveSignal = false;
+    if (!m_transcriptPath.isEmpty()) {
+        const QFileInfo fi(m_transcriptPath);
+        if (fi.exists()) {
+            mtimeMs   = fi.lastModified().toMSecsSinceEpoch();
+            sizeBytes = fi.size();
+            haveSignal = true;
+        }
+    }
+
     QList<ClaudeTask> next;
     if (!m_transcriptPath.isEmpty())
         next = parseTranscript(m_transcriptPath);
@@ -159,12 +182,12 @@ void ClaudeTaskListTracker::rescan() {
     m_tasks = std::move(next);
     if (!same) emit tasksChanged();
 
-    // Track the rescanned file's mtime so poll() can short-circuit
-    // when nothing has changed between ticks.
-    if (!m_transcriptPath.isEmpty()) {
-        const QFileInfo fi(m_transcriptPath);
-        if (fi.exists())
-            m_lastRescanMtimeMs = fi.lastModified().toMSecsSinceEpoch();
+    // Store the pre-read baseline so poll() can short-circuit when
+    // nothing has changed between ticks (ANTS-1458 phase 2 — both fields
+    // sampled above, before the parse).
+    if (haveSignal) {
+        m_lastRescanMtimeMs   = mtimeMs;
+        m_lastRescanSizeBytes = sizeBytes;
     }
 }
 
@@ -181,8 +204,13 @@ void ClaudeTaskListTracker::poll() {
         rescan();
         return;
     }
-    const qint64 mtimeMs = fi.lastModified().toMSecsSinceEpoch();
-    if (mtimeMs == m_lastRescanMtimeMs) return;
+    // ANTS-1458 phase 2 — re-parse when EITHER signal moved. mtime alone
+    // misses a same-millisecond append (coarse-granularity filesystem, or
+    // a burst landing inside one mtime tick); size catches it.
+    const qint64 mtimeMs   = fi.lastModified().toMSecsSinceEpoch();
+    const qint64 sizeBytes = fi.size();
+    if (mtimeMs == m_lastRescanMtimeMs && sizeBytes == m_lastRescanSizeBytes)
+        return;
     rescan();
 }
 

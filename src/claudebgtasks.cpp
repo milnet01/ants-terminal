@@ -39,9 +39,10 @@ void ClaudeBgTaskTracker::setTranscriptPath(const QString &path) {
     if (!m_transcriptPath.isEmpty())
         m_watcher.removePath(m_transcriptPath);
     m_transcriptPath = path;
-    // Mirror claudetasklist: reset poll() mtime shortcircuit so a
-    // path re-bind always reparses.
-    m_lastRescanMtimeMs = 0;
+    // Mirror claudetasklist: reset poll() change-signal shortcircuit so
+    // a path re-bind always reparses.
+    m_lastRescanMtimeMs   = 0;
+    m_lastRescanSizeBytes = 0;
     if (!m_transcriptPath.isEmpty() && QFileInfo::exists(m_transcriptPath))
         m_watcher.addPath(m_transcriptPath);
     rescan();
@@ -107,6 +108,21 @@ void ClaudeBgTaskTracker::sweepLiveness() {
 }
 
 void ClaudeBgTaskTracker::rescan() {
+    // ANTS-1458 phase 2 — sample the change-signal (mtime + size) BEFORE
+    // the parse read, so an append landing during the read leaves a newer
+    // on-disk signal and the next poll() re-parses rather than stranding
+    // it (mirror of ClaudeTaskListTracker::rescan).
+    qint64 mtimeMs = 0, sizeBytes = 0;
+    bool haveSignal = false;
+    if (!m_transcriptPath.isEmpty()) {
+        const QFileInfo fi(m_transcriptPath);
+        if (fi.exists()) {
+            mtimeMs   = fi.lastModified().toMSecsSinceEpoch();
+            sizeBytes = fi.size();
+            haveSignal = true;
+        }
+    }
+
     QList<ClaudeBackgroundTask> next;
     if (!m_transcriptPath.isEmpty())
         next = parseTranscript(m_transcriptPath);
@@ -134,12 +150,11 @@ void ClaudeBgTaskTracker::rescan() {
     m_tasks = std::move(next);
     if (!same) emit tasksChanged();
 
-    // Track rescanned file's mtime so poll() can short-circuit when
-    // nothing has changed between ticks.
-    if (!m_transcriptPath.isEmpty()) {
-        const QFileInfo fi(m_transcriptPath);
-        if (fi.exists())
-            m_lastRescanMtimeMs = fi.lastModified().toMSecsSinceEpoch();
+    // Store the pre-read baseline so poll() can short-circuit when
+    // nothing has changed between ticks (ANTS-1458 phase 2).
+    if (haveSignal) {
+        m_lastRescanMtimeMs   = mtimeMs;
+        m_lastRescanSizeBytes = sizeBytes;
     }
 }
 
@@ -153,8 +168,12 @@ void ClaudeBgTaskTracker::poll() {
         rescan();
         return;
     }
-    const qint64 mtimeMs = fi.lastModified().toMSecsSinceEpoch();
-    if (mtimeMs == m_lastRescanMtimeMs) return;
+    // ANTS-1458 phase 2 — re-parse when EITHER signal moved (mtime alone
+    // misses a same-millisecond append; size catches it).
+    const qint64 mtimeMs   = fi.lastModified().toMSecsSinceEpoch();
+    const qint64 sizeBytes = fi.size();
+    if (mtimeMs == m_lastRescanMtimeMs && sizeBytes == m_lastRescanSizeBytes)
+        return;
     rescan();
 }
 

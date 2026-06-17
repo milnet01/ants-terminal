@@ -10,7 +10,9 @@
 #include "claudecontent.h"   // ANTS-2002 — content-as-array helper
 
 #include <gtest/gtest.h>
+#include <QDateTime>
 #include <QFile>
+#include <QFileInfo>
 #include <QSignalSpy>
 #include <QString>
 #include <QTemporaryDir>
@@ -1180,6 +1182,71 @@ void testAnts1341Inv5_multiTaskAbandoned() {
            "got " + std::to_string(tasks.size()));
 }
 
+// ANTS-1458 phase 2 — poll() must re-parse when the transcript SIZE
+// changes even if its mtime is unchanged. Reproduces the lost-update
+// race: an append whose bytes the prior rescan's read missed (or that
+// landed within one mtime tick) must not be stranded by poll()'s
+// equality short-circuit. We pin the file's mtime back to the value the
+// tracker recorded, so the ONLY moved signal is size; pre-fix
+// (mtime-only predicate) poll() skipped and the second task never
+// surfaced — the conspicuous >2 s lag from the user report.
+void testAnts1458Phase2_pollSizeReparse() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) { expect(false, "ANTS-1458-phase2 setup"); return; }
+
+    // v1: a single pending task.
+    const QString p = writeFixture(dir, QStringLiteral("burst.jsonl"), {
+        assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[{"content":"A","status":"pending","activeForm":"A"}]})"),
+    });
+
+    ClaudeTaskListTracker tracker;
+    tracker.setTranscriptPath(p);
+    expect(tracker.totalCount() == 1,
+           "ANTS-1458-phase2: initial rescan sees the one task",
+           "got " + std::to_string(tracker.totalCount()));
+    const qint64 baselineMtime = tracker.lastRescanMtimeMs();
+
+    // v2: rewrite with TWO tasks (strictly larger file), then pin the
+    // file's mtime back to the recorded baseline so size is the only
+    // signal that moved.
+    {
+        QFile f(p);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            expect(false, "ANTS-1458-phase2: reopen for rewrite");
+            return;
+        }
+        f.write(assistantToolUse(QStringLiteral("TodoWrite"),
+            R"({"todos":[)"
+            R"({"content":"A","status":"pending","activeForm":"A"},)"
+            R"({"content":"B","status":"pending","activeForm":"B"})"
+            R"(]})").toUtf8());
+        f.write("\n");
+        f.flush();
+        f.setFileTime(QDateTime::fromMSecsSinceEpoch(baselineMtime),
+                      QFileDevice::FileModificationTime);
+        f.close();
+    }
+
+    // Precondition: mtime really is pinned to the baseline (so mtime is
+    // NOT a change-signal), and the file is genuinely larger. If the
+    // filesystem refused the pin the test isn't exercising the size path,
+    // so surface it rather than passing silently.
+    const QFileInfo fi(p);
+    const qint64 pinnedMtime = fi.lastModified().toMSecsSinceEpoch();
+    expect(pinnedMtime == baselineMtime,
+           "ANTS-1458-phase2 precondition: mtime pinned to baseline so "
+           "only size moved",
+           "baseline=" + std::to_string(baselineMtime) +
+           " pinned=" + std::to_string(pinnedMtime));
+
+    tracker.poll();
+    expect(tracker.totalCount() == 2,
+           "ANTS-1458-phase2: poll() re-parses on a size change even when "
+           "mtime is unchanged (pre-fix mtime-only predicate skipped it)",
+           "got " + std::to_string(tracker.totalCount()));
+}
+
 }  // namespace
 
 
@@ -1300,6 +1367,12 @@ TEST(ClaudeTaskList, Ants1327Inv2MultipleCheckpointsAllNoop) {
 TEST(ClaudeTaskList, Ants1327Inv3SidechainCompactStillFiltered) {
     const int before = expect_failures();
     testAnts1327Inv3_sidechainCompactStillFiltered();
+    if (expect_failures() > before) FAIL();
+}
+
+TEST(ClaudeTaskList, Ants1458Phase2PollSizeReparse) {
+    const int before = expect_failures();
+    testAnts1458Phase2_pollSizeReparse();
     if (expect_failures() > before) FAIL();
 }
 

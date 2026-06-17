@@ -12500,7 +12500,7 @@ template / mutate this state atomically" → movable. If it's
   Source: cross-session-report-2026-05-17 (RetroArch CC instance
   on `/mnt/Games/Scripts/Linux/RetroArch`).
 
-- 🚧 [ANTS-1458] **Tasks chip + Task List dialog refresh
+- ✅ [ANTS-1458] **Tasks chip + Task List dialog refresh
   latency.** User-observed 2026-05-17 20:36 (screenshot in
   `/home/ants/Pictures/ClaudePaste/paste_20260517_204727_235_*.png`):
   multiple `TaskCreate` events appended to the active Claude
@@ -12542,6 +12542,18 @@ template / mutate this state atomically" → movable. If it's
   a tick. Worth instrumenting before guessing.
   Kind: implement.
   Source: user-report-2026-05-17-20-36.
+  Resolved 2026-06-17, phase 2 (in CHANGELOG [Unreleased], queued for
+  the next release). Root cause was neither
+  suspected path exactly: rescan() recorded its poll() short-circuit
+  mtime AFTER parseTranscript() read to EOF, so an append landing in
+  the read window had its mtime recorded without its bytes parsed —
+  poll()'s equality skip then stranded the task until an unrelated
+  later write (the >2 s lag). Fix (both trackers): sample the
+  change-signal (mtime + new m_lastRescanSizeBytes) BEFORE the parse,
+  and poll() re-parses when EITHER mtime or size moved. Behavioural
+  regression Ants1458Phase2PollSizeReparse (verified red pre-fix).
+  Spec docs/specs/ANTS-1458.md §2.5. Incremental-parse fast-path
+  (parse cost) remains deferred to phase 3.
 
 - ✅ [ANTS-1457] **False-positive ledger
   (`.ants_review_falsepos.jsonl`) shared across `/audit`,

@@ -98,4 +98,9 @@ private:
     QFileSystemWatcher m_watcher;
     QList<ClaudeTask> m_tasks;
     qint64 m_lastRescanMtimeMs = 0;
+    // ANTS-1458 phase 2 — size is the second change-signal alongside
+    // mtime. poll() re-parses when EITHER differs, so a same-millisecond
+    // (or coarse-mtime-granularity) append that left mtime unchanged still
+    // triggers a rescan rather than stranding the new task.
+    qint64 m_lastRescanSizeBytes = 0;
 };
