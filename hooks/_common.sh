@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2034  # ANTS_NUDGE_TOOL is a sourced-lib output read cross-file by ants-bash-veto.sh (${ANTS_NUDGE_TOOL:-…}); shellcheck can't see the consumer (ANTS-2145).
 # ants-terminal hook pack — shared helpers (sourced, not executed).
 # See docs/specs/ANTS-1252.md.
 #
@@ -104,7 +105,7 @@ ants_is_source_search() {
         ack|ack-grep)  ANTS_NUDGE_TOOL=ack;      return 0 ;;
         grep|egrep|fgrep)
             case " $pre " in
-                *" -r"*|*" -R"*|*" --recursive"*) ANTS_NUDGE_TOOL=grep; return 0 ;;
+                *" -r"*|*" -R"*|*" --recursive"*) ANTS_NUDGE_TOOL="grep"; return 0 ;;
             esac
             ;;
         git)
@@ -130,7 +131,7 @@ ants_is_source_search() {
                 *" -delete"*|*" -exec"*|*" -ok"*|*" -fprint"*|*" -fls"*)
                     return 1 ;;
             esac
-            ANTS_NUDGE_TOOL=find
+            ANTS_NUDGE_TOOL="find"
             return 0
             ;;
     esac

@@ -22003,12 +22003,13 @@ contributors don't duplicate research.
   Source: in-session-2026-06-16 (surfaced by shellcheck during ANTS-2023).
   Resolved (2026-06-17): deduped the find-primary glob list in hooks/_common.sh:126 — dropped -execdir/-okdir/-fprintf (each subsumed by the shorter -exec/-ok/-fprint substring glob, so behaviour is provably unchanged). shellcheck SC2221/SC2222 now 0 on the file; added a comment naming the subsumption so the shorter list doesn't read as missing vs spec §2.2.
 
-- 📋 [ANTS-2145] **Clear residual lint: shellcheck SC2034/SC2209 in hooks/_common.sh + unused-include notes in mcp_call_site_contract test.**
+- ✅ [ANTS-2145] **Clear residual lint: shellcheck SC2034/SC2209 in hooks/_common.sh + unused-include notes in mcp_call_site_contract test.**
   Surfaced (not introduced) while doing ANTS-2143/2131:\n(1) shellcheck on hooks/_common.sh reports SC2034 (x2, unused variable — likely false-positive for a sourced lib whose vars are read by callers; if so, an inline `# shellcheck disable=SC2034` with a reason, not a code change) and SC2209 (x3, \"use var=$(command) to assign output\" — verify each is intentional before touching). (2) clangd flags unused includes <fstream>/<sstream> in tests/features/mcp_call_site_contract/test_mcp_call_site_contract.cpp (pre-existing; left alone under the stay-in-lane rule during the ANTS-2131 regex edit). Triage each: fix or suppress-with-reason. Low priority; none affect behaviour.
   **Layman:** A handful of harmless linter complaints left over from earlier work; tidy them so the lint output stays clean and real problems aren't lost in the noise.
   Kind: chore.
   Lanes: hooks, tests.
   Source: in-session-2026-06-17 (surfaced during ANTS-2143/2131).
+  Resolved (2026-06-17): shellcheck on hooks/_common.sh now exits 0. (1) SC2034 — verified false positive: ANTS_NUDGE_TOOL is a sourced-lib output read cross-file by hooks/ants-bash-veto.sh:41,58 (${ANTS_NUDGE_TOOL:-…}); suppressed with a file-level `# shellcheck disable=SC2034` + reason. Actual count was 1 (not 2 as the bullet estimated). (2) SC2209 (actual 2, not 3) — quoted the two bareword string literals shellcheck mistakes for command substitutions (ANTS_NUDGE_TOOL="grep"/"find"); left rg/ag/ack/git-grep unquoted since those aren't recognised command names so don't trip SC2209 — quoting exactly the ambiguous cases is the surgical, intent-clarifying fix. (3) Removed unused <fstream>/<sstream> from tests/features/mcp_call_site_contract/test_mcp_call_site_contract.cpp (verified no f/stringstream symbols used). Verified: shellcheck exit 0; test_claude rebuilt; 7 call-site/pagination tests green; hook_pack test_hooks.sh all assertions pass.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

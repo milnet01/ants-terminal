@@ -53,6 +53,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Cleared residual lint in the hook pack and an MCP contract test — shellcheck now passes clean.** (ANTS-2145)
+  Quoted two string literals in hooks/_common.sh that shellcheck mistook for forgotten command substitutions (SC2209), suppressed a false-positive unused-variable warning for the sourced-lib output ANTS_NUDGE_TOOL with an explanatory comment (SC2034), and dropped two unused includes from a feature test. No behaviour change.
+
 - **First word of a row renders on a lower baseline — per-run QTextLayout used each line's own ascent instead of the shared cell baseline.** (ANTS-2100)
   Sometimes the very first word on a line sat lower than the rest. Each word is drawn separately and was lining itself up independently; now every word is pinned to the same baseline so they sit level.
 
