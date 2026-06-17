@@ -53,6 +53,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **workspace_search no longer times out under concurrent MCP load — its ripgrep search now runs off the socket thread.** (ANTS-2144)
+  The project-wide code search blocked the server's main thread while ripgrep ran, so a second tool call arriving at the same time could be starved and give up with a transport timeout — sending the session back to slower raw grep. The search now runs on a background worker, keeping the connection responsive so concurrent calls are answered instead of timing out.
+
 - **Cleared residual lint in the hook pack and an MCP contract test — shellcheck now passes clean.** (ANTS-2145)
   Quoted two string literals in hooks/_common.sh that shellcheck mistook for forgotten command substitutions (SC2209), suppressed a false-positive unused-variable warning for the sourced-lib output ANTS_NUDGE_TOOL with an explanatory comment (SC2034), and dropped two unused includes from a feature test. No behaviour change.
 

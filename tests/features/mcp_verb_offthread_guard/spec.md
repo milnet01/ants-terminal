@@ -19,6 +19,12 @@ dispatching (main) thread and **blocks on `QProcess::waitForFinished`**:
   (`debtsweepengine.cpp:945`).
 - `debt_sweep_defer`, `debt_sweep_triage_prompt` — fast and in-process,
   wrapped too for family uniformity + future-safety.
+- `workspace_search` (ANTS-2144) — shells out to ripgrep
+  (`remotecontrol.cpp` `rg.waitForFinished(budgetMs)`). On `rcDelegate`
+  the wait blocked the socket thread, so a concurrent verb starved the
+  `QLocalSocket` notifier and the client tripped its transport deadline
+  (`-32000 timed out`), falling back to raw grep. Moved to
+  `rcDelegateWorker` so the rg wait runs off the socket thread.
 
 `waitForFinished` blocks on the child-process pipe and does **not** pump
 the main loop's socket notifiers, so — unlike the `QEventLoop` verbs —
@@ -58,9 +64,15 @@ other RC-shim verb stays on `rcDelegate`.
   synchronous `rcDelegate`.
 - **INV-3** — all four `debt_sweep_*` verbs (`scan`, `apply_fix`,
   `defer`, `triage_prompt`) are registered through `rcDelegateWorker`.
+- **INV-4** (ANTS-2144) — `workspace_search` is registered through
+  `rcDelegateWorker(&RemoteControl::cmdWorkspaceSearch)`, so its ripgrep
+  `waitForFinished` runs off the socket thread and cannot starve a
+  concurrent verb into a transport timeout. The `--remote` CLI dispatch
+  path stays synchronous (it never touches the MCP socket).
 
 Reverting any of these to the synchronous `rcDelegate` re-freezes the GUI
-and fails this test.
+(or, for `workspace_search`, reopens the socket-starvation timeout) and
+fails this test.
 
 ## Out of scope
 

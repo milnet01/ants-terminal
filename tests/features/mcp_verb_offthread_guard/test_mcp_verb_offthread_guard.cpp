@@ -81,5 +81,12 @@ TEST(McpVerbOffthreadGuard, Main) {
                "INV-3/debt_sweep-off-main-thread", fn);
     }
 
+    // INV-4 (ANTS-2144) — workspace_search registers through
+    // rcDelegateWorker so its ripgrep waitForFinished runs off the socket
+    // thread and can't starve a concurrent verb into a transport timeout.
+    expect(mw.find("rcDelegateWorker(&RemoteControl::cmdWorkspaceSearch)")
+               != std::string::npos,
+           "INV-4/workspace_search-off-main-thread");
+
     EXPECT_EQ(0, expect_failures());
 }

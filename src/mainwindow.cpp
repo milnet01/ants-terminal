@@ -4906,9 +4906,14 @@ void MainWindow::setupClaudeMcpProviders() {
             return QString::fromUtf8(
                 m_remoteControl->cmdGetText(req).toJson(QJsonDocument::Compact));
         });
+    // ANTS-2144 — off the socket thread: cmdWorkspaceSearch blocks on
+    // rg.waitForFinished(), which starved the QLocalSocket notifier and
+    // tripped concurrent verbs into a -32000 transport timeout. caller_cwd
+    // is Required here, so the off-thread path never reaches the
+    // m_main->currentTerminal() fallback (main-thread-only state).
     m_claudeIntegration->registerToolProvider("workspace_search",
         ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdWorkspaceSearch));
+        rcDelegateWorker(&RemoteControl::cmdWorkspaceSearch));
     m_claudeIntegration->registerToolProvider("file_outline",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdFileOutline));
