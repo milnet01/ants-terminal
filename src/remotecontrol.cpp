@@ -2517,6 +2517,29 @@ static QJsonDocument cmdRoadmapLogPassFlip(
     if (!r.ok)
         return err(r.code, QStringLiteral("no pass matched the locator"));
 
+    // ANTS-2136 — dry_run preview: the locator resolved and the would-be
+    // markdown is computed; return the preview (located id, target line,
+    // would-be bytes) WITHOUT writing ROADMAP.md. A dry_run that returns
+    // ok:true proves the locator resolves on a pass-headings roadmap —
+    // the exact verification gap RetroDB flagged for flip/annotate.
+    if (req.value(QStringLiteral("dry_run")).toBool()) {
+        QJsonObject out;
+        out["ok"]      = true;
+        out["op"]      = annotateMode ? QStringLiteral("annotate")
+                                       : QStringLiteral("flip");
+        out["dry_run"] = true;
+        out["id"]      = r.matchedId;
+        out["file"]    = QStringLiteral("ROADMAP.md");
+        out["line"]    = r.headingLine + 1;
+        out["format"]  = QStringLiteral("pass-headings");
+        out["bytes"]   = static_cast<qint64>(r.markdown.toUtf8().size());
+        if (annotateMode) {
+            out["note_appended"] = true;
+            out["note_line"]     = r.changedLine + 1;
+        }
+        return QJsonDocument(out);
+    }
+
     if (!rcAtomicWriteRoadmap(roadmapPath, r.markdown))
         return err(QStringLiteral("roadmap_write_failed"),
             QStringLiteral("atomic write of \"%1\" failed").arg(roadmapPath));
@@ -5189,6 +5212,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     const bool annotateMode =
         req.value(QStringLiteral("op")).toString() ==
             QStringLiteral("annotate");
+    // ANTS-2136 — dry_run preview flag (parity with op:append). When set,
+    // every locator/format/status refusal still fires, but a resolving
+    // call returns the would-be edit and writes nothing.
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
 
     // 1. Required fields: caller_cwd, to_status (flip only), plus one
     //    of the three locators (id / anchor / headline).
@@ -5469,6 +5496,32 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 noteLine = appendBodyNote(lines, v1target.firstLine, note);
             }
             const QString updated = lines.join(QChar('\n'));
+            // ANTS-2136 — dry_run preview (ants-v1 path): the locator
+            // resolved and the surgery is computed in-memory; return the
+            // would-be edit WITHOUT writing ROADMAP.md.
+            if (dryRun) {
+                const QByteArray previewUtf8 = updated.toUtf8();
+                QJsonObject out;
+                out["ok"]              = true;
+                out["op"]              = annotateMode
+                                           ? QStringLiteral("annotate")
+                                           : QStringLiteral("flip");
+                out["dry_run"]         = true;
+                out["format"]          = QStringLiteral("ants-v1");
+                out["from_status"]     = fromStatus;
+                out["to_status"]       = annotateMode ? fromStatus
+                                                      : targetEmoji;
+                out["file"]            = QStringLiteral("ROADMAP.md");
+                out["line"]            = v1target.firstLine + 1;
+                out["bytes"]           = static_cast<qint64>(previewUtf8.size());
+                out["anchor_injected"] = false;
+                out["id"]              = v1target.id;
+                if (!note.isEmpty()) {
+                    out["note_appended"] = true;
+                    out["note_line"]     = noteLine + 1;
+                }
+                return QJsonDocument(out);
+            }
             QSaveFile rw(roadmapPath);
             if (!rw.open(QIODevice::WriteOnly | QIODevice::Text)) {
                 return rlErr(QStringLiteral("roadmap_write_failed"),
@@ -5734,6 +5787,34 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         noteLine = appendBodyNote(lines, target.headlineLine, note);
     }
     const QString updated = lines.join(QChar('\n'));
+
+    // ANTS-2136 — dry_run preview: the locator resolved, the surgery is
+    // computed in-memory (status emoji / appended note / would-be anchor),
+    // and we return the preview WITHOUT writing ROADMAP.md or bumping
+    // .roadmap-counter. Mirrors the success envelope below but carries
+    // dry_run:true and `bytes` (would-be) instead of bytes_written.
+    if (dryRun) {
+        const QByteArray previewUtf8 = updated.toUtf8();
+        QJsonObject out;
+        out["ok"]              = true;
+        out["op"]              = annotateMode ? QStringLiteral("annotate")
+                                              : QStringLiteral("flip");
+        out["dry_run"]         = true;
+        out["from_status"]     = target.status;
+        out["to_status"]       = annotateMode ? target.status : targetEmoji;
+        out["file"]            = QStringLiteral("ROADMAP.md");
+        out["line"]            = target.firstLine + 1;
+        out["bytes"]           = static_cast<qint64>(previewUtf8.size());
+        out["anchor_injected"] = !anchorToInject.isEmpty();
+        if (!anchorToInject.isEmpty()) out["anchor"] = anchorToInject;
+        if (!target.boldId.isEmpty()) out["id"] = target.boldId;
+        if (needInjection && newCounter >= 0) out["counter"] = newCounter;
+        if (!note.isEmpty()) {
+            out["note_appended"] = true;
+            out["note_line"]     = noteLine + 1;
+        }
+        return QJsonDocument(out);
+    }
 
     // 12. Write ROADMAP.md atomically.
     QSaveFile rw(roadmapPath);
@@ -6190,6 +6271,37 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
 
     // 8. write once.
     const QString updated = lines.join(QChar('\n'));
+
+    // ANTS-2136 — dry_run preview: every locator has resolved or landed in
+    // `skipped`, the surgery is computed in-memory; return the would-be
+    // flipped/skipped sets + bytes WITHOUT writing ROADMAP.md or bumping
+    // .roadmap-counter. `would_flip_count` parallels append_batch's
+    // would_apply_count.
+    if (req.value(QStringLiteral("dry_run")).toBool()) {
+        QList<int> previewOrder = claimedFirstLines.values();
+        std::sort(previewOrder.begin(), previewOrder.end());
+        QJsonArray previewFlipped;
+        for (const int fl : previewOrder)
+            if (resultByFirstLine.contains(fl))
+                previewFlipped.append(resultByFirstLine.value(fl));
+        QJsonObject out;
+        out["ok"]               = true;
+        out["op"]               = QStringLiteral("flip_batch");
+        out["dry_run"]          = true;
+        out["format"]           = isGfm ? QStringLiteral("gfm")
+                                         : QStringLiteral("ants-v1");
+        out["file"]             = QStringLiteral("ROADMAP.md");
+        out["to_status"]        = targetEmoji;
+        out["flipped"]          = previewFlipped;
+        out["would_flip_count"] = previewFlipped.size();
+        out["skipped"]          = skipped;
+        out["skipped_count"]    = skipped.size();
+        out["bytes"]            = static_cast<qint64>(updated.toUtf8().size());
+        if (newCounter >= 0 && newCounter != counterStart)
+            out["counter"] = newCounter;
+        return QJsonDocument(out);
+    }
+
     QSaveFile rw(roadmapPath);
     if (!rw.open(QIODevice::WriteOnly | QIODevice::Text))
         return rlErr(QStringLiteral("roadmap_write_failed"),
@@ -6529,6 +6641,24 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
     for (int i = toInsert.size() - 1; i >= 0; --i)
         lines.insert(insertAt, toInsert.at(i));
     const QString updated = lines.join(QChar('\n'));
+
+    // ANTS-2136 — dry_run preview: the heading + intro block are rendered
+    // and the insertion point resolved; return the would-be slug, 1-based
+    // heading line and inserted-byte count WITHOUT writing ROADMAP.md.
+    if (req.value(QStringLiteral("dry_run")).toBool()) {
+        qint64 previewBytes = 0;
+        for (const QString &ln : toInsert)
+            previewBytes += ln.toUtf8().size() + 1;   // + '\n'
+        QJsonObject out;
+        out["ok"]      = true;
+        out["op"]      = QStringLiteral("create_section");
+        out["dry_run"] = true;
+        out["slug"]    = newSlug;
+        out["file"]    = QStringLiteral("ROADMAP.md");
+        out["line"]    = insertAt + 1;                // 1-based heading line
+        out["bytes"]   = previewBytes;
+        return QJsonDocument(out);
+    }
 
     // 7. Atomic write.
     QSaveFile rw(roadmapPath);

@@ -300,6 +300,62 @@ TEST(roadmap_log_flip_batch, Inv7Dedup) {
         << "the same bullet must flip exactly once";
 }
 
+// ANTS-2136 — dry_run preview: flip / flip_batch / create_section resolve
+// the locator/target and return the would-be edit WITHOUT mutating the file.
+TEST(roadmap_log_flip_batch, Inv8DryRunWritesNothing) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedV1()));
+    const QByteArray before = readFile(roadmapPath(tmp.path()));
+    RemoteControl rc(nullptr);
+
+    // flip_batch dry_run — resolves two locators, writes nothing.
+    QJsonArray locs;
+    locs.append(locId(QStringLiteral("ANTS-0042")));
+    locs.append(locId(QStringLiteral("ANTS-0043")));
+    QJsonObject breq = batchReq(tmp.path(), QStringLiteral("shipped"), locs);
+    breq[QStringLiteral("dry_run")] = true;
+    const QJsonObject bresp = rc.cmdRoadmapLogFlipBatchForTest(breq).object();
+    EXPECT_TRUE(bresp.value(QStringLiteral("ok")).toBool());
+    EXPECT_TRUE(bresp.value(QStringLiteral("dry_run")).toBool());
+    EXPECT_EQ(bresp.value(QStringLiteral("would_flip_count")).toInt(), 2);
+    EXPECT_FALSE(bresp.contains(QStringLiteral("bytes_written")))
+        << "dry_run reports `bytes`, not a real `bytes_written`";
+    EXPECT_EQ(readFile(roadmapPath(tmp.path())), before)
+        << "flip_batch dry_run must leave ROADMAP.md byte-identical";
+
+    // single flip dry_run.
+    QJsonObject freq;
+    freq[QStringLiteral("caller_cwd")] = tmp.path();
+    freq[QStringLiteral("op")]         = QStringLiteral("flip");
+    freq[QStringLiteral("to_status")]  = QStringLiteral("shipped");
+    freq[QStringLiteral("id")]         = QStringLiteral("ANTS-0042");
+    freq[QStringLiteral("dry_run")]    = true;
+    const QJsonObject fresp = rc.cmdRoadmapLogFlipForTest(freq).object();
+    EXPECT_TRUE(fresp.value(QStringLiteral("ok")).toBool());
+    EXPECT_TRUE(fresp.value(QStringLiteral("dry_run")).toBool());
+    EXPECT_EQ(fresp.value(QStringLiteral("to_status")).toString(),
+              QString::fromUtf8("\xE2\x9C\x85"));  // ✅
+    EXPECT_EQ(readFile(roadmapPath(tmp.path())), before)
+        << "flip dry_run must leave ROADMAP.md byte-identical";
+
+    // create_section dry_run — resolves after_section, writes nothing.
+    QJsonObject creq;
+    creq[QStringLiteral("caller_cwd")]    = tmp.path();
+    creq[QStringLiteral("op")]            = QStringLiteral("create_section");
+    creq[QStringLiteral("after_section")] = QStringLiteral("work-items");
+    creq[QStringLiteral("level")]         = 3;
+    creq[QStringLiteral("title")]         = QStringLiteral("New Section");
+    creq[QStringLiteral("dry_run")]       = true;
+    const QJsonObject cresp =
+        rc.cmdRoadmapLogCreateSectionForTest(creq).object();
+    EXPECT_TRUE(cresp.value(QStringLiteral("ok")).toBool());
+    EXPECT_TRUE(cresp.value(QStringLiteral("dry_run")).toBool());
+    EXPECT_FALSE(cresp.value(QStringLiteral("slug")).toString().isEmpty());
+    EXPECT_EQ(readFile(roadmapPath(tmp.path())), before)
+        << "create_section dry_run must leave ROADMAP.md byte-identical";
+}
+
 // INV (source) — dispatch routes flip_batch + schema advertises it.
 TEST(roadmap_log_flip_batch, SourceSurface) {
     expect_reset();

@@ -7155,6 +7155,7 @@ void ClaudeIntegration::onMcpConnection() {
                     opEnum.append("flip_batch");
                     opEnum.append("annotate");
                     opEnum.append("create_section");
+                    opEnum.append("bundle_row");
                     opProp["enum"] = opEnum;
                     opProp["description"] = QStringLiteral(
                         "Verb mode. Default \"append\" (ANTS-1424). "
@@ -7187,7 +7188,16 @@ void ClaudeIntegration::onMcpConnection() {
                         "pass `after_section` (slug), `level` (2 or 3), "
                         "`title`, optional `intro_body`. Returns the "
                         "new slug so a follow-up op:\"append\" / "
-                        "op:\"append_batch\" can key on it.");
+                        "op:\"append_batch\" can key on it. "
+                        "\"bundle_row\" (ANTS-1691) appends a row to a "
+                        "Markdown progress table under a section heading — "
+                        "pass `section` (heading text/slug) + `cells` "
+                        "(non-empty array of cell strings), optional "
+                        "`header` (creates the table if absent), `position` "
+                        "(\"end\" default) and `sort_col` (keep the table "
+                        "sorted by a column). Pipe-escapes each cell and "
+                        "folds newlines to <br>, so a bundle-tracking table "
+                        "no longer needs a hand-edit / sed.");
                     QJsonObject toStatusProp;
                     toStatusProp["type"] = "string";
                     QJsonArray toStatusEnum;
