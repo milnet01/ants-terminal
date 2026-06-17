@@ -22003,6 +22003,13 @@ contributors don't duplicate research.
   Source: in-session-2026-06-16 (surfaced by shellcheck during ANTS-2023).
   Resolved (2026-06-17): deduped the find-primary glob list in hooks/_common.sh:126 — dropped -execdir/-okdir/-fprintf (each subsumed by the shorter -exec/-ok/-fprint substring glob, so behaviour is provably unchanged). shellcheck SC2221/SC2222 now 0 on the file; added a comment naming the subsumption so the shorter list doesn't read as missing vs spec §2.2.
 
+- 📋 [ANTS-2145] **Clear residual lint: shellcheck SC2034/SC2209 in hooks/_common.sh + unused-include notes in mcp_call_site_contract test.**
+  Surfaced (not introduced) while doing ANTS-2143/2131:\n(1) shellcheck on hooks/_common.sh reports SC2034 (x2, unused variable — likely false-positive for a sourced lib whose vars are read by callers; if so, an inline `# shellcheck disable=SC2034` with a reason, not a code change) and SC2209 (x3, \"use var=$(command) to assign output\" — verify each is intentional before touching). (2) clangd flags unused includes <fstream>/<sstream> in tests/features/mcp_call_site_contract/test_mcp_call_site_contract.cpp (pre-existing; left alone under the stay-in-lane rule during the ANTS-2131 regex edit). Triage each: fix or suppress-with-reason. Low priority; none affect behaviour.
+  **Layman:** A handful of harmless linter complaints left over from earlier work; tidy them so the lint output stays clean and real problems aren't lost in the noise.
+  Kind: chore.
+  Lanes: hooks, tests.
+  Source: in-session-2026-06-17 (surfaced during ANTS-2143/2131).
+
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.
