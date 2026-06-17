@@ -164,6 +164,12 @@ config-file-only tuning keys:
   confirm via `performModelSwitchHandshake`). Runs on the 2 s tick
   independently of the master gate; stands down while an Ants-initiated
   handshake owns the dialog; sends only ENTER (no continuation prompt).
+- `claude.auto_model_debug` (bool, default false) — ANTS-1976: toggleable
+  per-tick switcher trace. When true, force-enables the DebugLog
+  `autoswitch` category so every gate evaluation + switch decision is
+  logged to `debug.log` (state, composerEmpty, composerStaleMs,
+  toolUseMs, current/target tier, act, tier, blockedBy[], reason, epoch).
+  Env equivalent: `ANTS_DEBUG=autoswitch`. Off = single bit-test, no cost.
 
 Config keys for result offload (ANTS-2094, observation masking) — when a
 large read result is spilled to a content-addressed cache file and a

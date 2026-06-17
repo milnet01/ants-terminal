@@ -8,6 +8,9 @@
 // written. The override restores on dtor (QTemporaryDir cleanup) but
 // we explicitly unsetenv at TearDown for belt-and-braces hygiene.
 #include <gtest/gtest.h>
+#include <QDir>
+#include <QFile>
+#include <QJsonObject>
 #include <QTemporaryDir>
 #include "config.h"
 
@@ -54,6 +57,28 @@ TEST_F(ConfigSurfacingDefaults, RoundTripToFalsePersists) {
     EXPECT_FALSE(cfg2.claudeAutoModelToastEnabled());
     EXPECT_FALSE(cfg2.claudeAutoModelChipPulseEnabled());
     EXPECT_FALSE(cfg2.claudeAutoModelUndoEnabled());
+}
+
+// ANTS-1976 — claudeAutoModel() surfaces "debug" defaulting FALSE on a
+// fresh config; writing claude.auto_model_debug:true reads through. Locks
+// the config-key name the auto-switcher debug trace gates on.
+TEST_F(ConfigSurfacingDefaults, DebugSurfacesAndDefaultsFalse) {
+    {
+        Config cfg;
+        EXPECT_FALSE(cfg.claudeAutoModel().value("debug").toBool())
+            << "debug must default false on a fresh config";
+    }
+    // Write config.json with the key set true under the isolated XDG dir.
+    const QString cfgDir = m_dir->path() + QStringLiteral("/ants-terminal");
+    ASSERT_TRUE(QDir().mkpath(cfgDir));
+    QFile f(cfgDir + QStringLiteral("/config.json"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write("{\"claude.auto_model_debug\": true}\n");
+    f.close();
+
+    Config cfg2;
+    EXPECT_TRUE(cfg2.claudeAutoModel().value("debug").toBool())
+        << "claude.auto_model_debug:true must surface as debug:true";
 }
 
 // INV-11 each-toggle-independent — flipping one off leaves the other

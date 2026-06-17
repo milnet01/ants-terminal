@@ -465,6 +465,12 @@ QJsonObject Config::claudeAutoModel() const {
     int idleCeil = m_data.value("claude.auto_model_idle_ceiling_sec").toInt(180);
     if (idleCeil > 86'400) idleCeil = 86'400;   // 1 day ceiling guard
     out.insert("idle_ceiling_sec", idleCeil);
+    // ANTS-1976 — toggleable per-tick switcher debug trace. When true, the
+    // controller force-enables the DebugLog `autoswitch` category so every
+    // gate evaluation + switch decision is logged to debug.log. Off by
+    // default (no perf cost). The env route is ANTS_DEBUG=autoswitch.
+    out.insert("debug",
+               m_data.value("claude.auto_model_debug").toBool(false));
     return out;
 }
 

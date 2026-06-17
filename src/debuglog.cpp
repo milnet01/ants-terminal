@@ -46,6 +46,7 @@ static const struct {
     {DebugLog::Session,  "session"},
     {DebugLog::Perf,        "perf"},
     {DebugLog::Scrollback,  "scrollback"},
+    {DebugLog::AutoSwitch,  "autoswitch"},
 };
 
 quint32 DebugLog::parseCategories(const QString &spec) {

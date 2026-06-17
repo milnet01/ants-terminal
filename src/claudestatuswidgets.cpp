@@ -48,6 +48,11 @@
 // re-pointing contract.
 
 namespace {
+// ANTS-1976 — forward decl; the definition lives in the later anonymous
+// namespace block (it sits beside the near-miss telemetry it was written
+// for), but refreshAutoModelSwitch's debug trace needs it earlier.
+QString claudeStateName(ClaudeState s);
+
 // ANTS-2116 — process-local cached Config, reloaded only when config.json
 // changes on disk. Each Config() ctor does open + readAll + JSON parse; the
 // 2 s status-bar tick calls refreshModelChip / refreshModelStateChip /
@@ -1670,6 +1675,37 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     }
 
     const ModelAutoSwitch::Decision dec = ModelAutoSwitch::decide(gate);
+
+    // ANTS-1976 — toggleable per-tick switcher trace. Off by default; enabled
+    // via ANTS_DEBUG=autoswitch (env, at launch) or claude.auto_model_debug
+    // (config, honoured live). The config flag force-enables the AutoSwitch
+    // DebugLog category — one-way for the session so the sink stays open; the
+    // env/menu routes toggle it freely. ANTS_LOG is a single bit-test when the
+    // category is off, so there is no cost on the default path. `gate.enabled`
+    // is omitted: the !enabled case returns at L1504, so it is always true
+    // here — blockedBy[] carries the real near-miss reasons. kSwitcherEpoch
+    // travels with each line so traces are comparable only within a behaviour
+    // generation.
+    if (autoCfg.value("debug").toBool()
+        && !DebugLog::enabled(DebugLog::AutoSwitch)) {
+        DebugLog::setActive(DebugLog::active() | DebugLog::AutoSwitch);
+    }
+    ANTS_LOG(DebugLog::AutoSwitch,
+        "tick epoch=%d state=%s composerEmpty=%d composerStaleMs=%lld "
+        "toolUseMs=%lld current=%s target=%s act=%d tier=%s blockedBy=[%s] "
+        "reason=%s",
+        ModelSwitchLedger::kSwitcherEpoch,
+        qPrintable(claudeStateName(gate.focusedState)),
+        static_cast<int>(gate.composerEmpty),
+        static_cast<long long>(gate.composerStaleMs),
+        static_cast<long long>(gate.toolUseElapsedMs),
+        qPrintable(ModelRecommender::tierName(gate.current)),
+        qPrintable(ModelRecommender::tierName(dec.recommendedTier)),
+        static_cast<int>(dec.act),
+        qPrintable(dec.tierArg),
+        qPrintable(dec.blockedBy.join(QLatin1Char(','))),
+        qPrintable(rec.reason));
+
     if (!dec.act) {
         // ANTS-1894 — emit a near-miss record on signature change (INV-5/6).
         maybeEmitNearMiss(dec, gate, projectRoot, nowMs);

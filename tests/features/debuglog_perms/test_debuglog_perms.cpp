@@ -175,3 +175,17 @@ static int runMain() {
 TEST(DebuglogPerms, Main) {
     ASSERT_EQ(0, runMain());
 }
+
+// ANTS-1976 — the `autoswitch` category round-trips through the name
+// table, and ANTS_DEBUG=autoswitch parses to exactly the AutoSwitch bit.
+// Locks the enum / kCategoryTable / parseCategories wiring the auto-model
+// switcher's debug trace depends on.
+TEST(DebuglogPerms, AutoSwitchCategoryRoundTrips) {
+    EXPECT_EQ(DebugLog::categoryFor(QStringLiteral("autoswitch")),
+              DebugLog::AutoSwitch);
+    EXPECT_STREQ(DebugLog::nameFor(DebugLog::AutoSwitch), "autoswitch");
+    EXPECT_EQ(DebugLog::parseCategories(QStringLiteral("autoswitch")),
+              static_cast<quint32>(DebugLog::AutoSwitch));
+    EXPECT_TRUE(DebugLog::categoryNames().contains(
+        QStringLiteral("autoswitch")));
+}

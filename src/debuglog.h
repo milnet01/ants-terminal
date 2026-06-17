@@ -37,6 +37,7 @@ public:
         Session    = 1u << 13, // session persistence save/restore
         Perf       = 1u << 14, // event-loop stalls, slow handlers, budget overruns
         Scrollback = 1u << 15, // ANTS-1118 — scrollback pin / m_scrollOffset / overwrite-during-stream traces
+        AutoSwitch = 1u << 16, // ANTS-1976 — auto-model switcher per-tick gate evaluation + switch decision
         All        = 0xFFFFFFFFu,
     };
 
