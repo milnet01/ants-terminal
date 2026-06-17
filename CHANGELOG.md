@@ -42,6 +42,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **verify_changes and the debt_sweep_* MCP verbs now run on a background thread, so the window no longer freezes while they shell out to git/build/test commands** (ANTS-2131)
+  Mirrors the background-thread treatment audit_run and the in-app review already got. The two verbs that pump an event loop were moved earlier (ANTS-2103/2104, the crash fix); this moves the ones that just block on a child process, purely so the UI stays responsive. A regression test pins every blocking MCP verb to a background thread.
+
 - **Trim load-bearing MCP tool description blobs; serve encyclopedic per-op detail via tool_info.** (ANTS-2079)
   Shorten the long help text the assistant loads for each tool to save on usage.
 
@@ -49,6 +52,12 @@ for security-relevant changes.
   The first orientation call a Claude session makes now also refreshes Ants' codebase map (so it's fresh without anyone remembering a separate step), and the startup prelude advertises the codebase_index verb with a 'query before grep' nudge. Result: faster, cheaper code navigation down the line.
 
 ### Fixed
+
+- **First word of a row renders on a lower baseline — per-run QTextLayout used each line's own ascent instead of the shared cell baseline.** (ANTS-2100)
+  Sometimes the very first word on a line sat lower than the rest. Each word is drawn separately and was lining itself up independently; now every word is pinned to the same baseline so they sit level.
+
+- **Tab close (×) glyph never rendered — Qt6 QSS cannot load a data-URI image; replaced with a themed per-tab QToolButton.** (ANTS-2098)
+  The little × you click to close a tab was invisible because the way it was drawn (an image embedded in text) is something Qt silently refuses to display. Now each tab gets a real close button we draw ourselves, so it always shows.
 
 - **audit_run silently drops cppcheck/clazy findings on clean exit — reads stdout but those tools emit to stderr; only the crash path read stderr.** (ANTS-2105)
   The MCP audit tool was throwing away all the C++ checker results unless the checker happened to crash. So a clean run reported "0 problems" even when there were dozens. Fix: read the checker's error stream where it actually writes its findings.
