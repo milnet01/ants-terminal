@@ -56,6 +56,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Task List dialog rows now have even spacing — long rows no longer reserve a spurious blank line.** (ANTS-1641)
+
 - **Tasks chip + Task List dialog no longer lag noticeably behind a burst of new tasks.** (ANTS-1458)
   When Claude Code logged several tasks in quick succession, the
   bottom-bar task count and the Task List could take much longer than

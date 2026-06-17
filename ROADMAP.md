@@ -15102,11 +15102,12 @@ template / mutate this state atomically" → movable. If it's
   Lanes: diffviewer, claudestatuswidgets.
   Source: user request 2026-05-19 (Review Changes screenshot).
 
-- 🚧 [ANTS-1641] **Task List dialog — uneven vertical spacing between rows; `[]` was the first trigger, but the symptom recurs without `[]` so the cause is broader.**
+- ✅ [ANTS-1641] **Task List dialog — uneven vertical spacing between rows; `[]` was the first trigger, but the symptom recurs without `[]` so the cause is broader.**
   Reported 2026-05-19 with a screenshot of the Task List dialog showing the 5 tasks for this MCP-bundle session. The ANTS-1620 row (which has `probed_paths[]` in its description) renders with visibly more vertical padding between it and the next row than the sibling rows have between each other — looks like the parser sanitiser (ANTS-1639) or the QTextDocument rich-text renderer is treating the `[]` token as a markdown empty-link-anchor and emitting an extra block-level break around it.
   Progress 2026-06-17: root cause identified and a fix staged in
   build-fast/ (commit pending), awaiting the user's visual confirmation
   before flipping to ✅.
+  Resolved (2026-06-17): user visually confirmed even row gaps after relaunch. Fix = WrapHeightDelegate sizing each row from its wrapped text at the real viewport content width (no spurious extra line). Original markdown-[]-anchor theory was wrong — QListWidgetItem rows are plain text.
 
   The roadmap's first theory was WRONG: the renderer does NOT treat `[]`
   as a markdown empty-link anchor. A QListWidgetItem renders PLAIN text
