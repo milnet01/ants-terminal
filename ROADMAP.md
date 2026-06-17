@@ -15102,8 +15102,38 @@ template / mutate this state atomically" → movable. If it's
   Lanes: diffviewer, claudestatuswidgets.
   Source: user request 2026-05-19 (Review Changes screenshot).
 
-- 📋 [ANTS-1641] **Task List dialog — uneven vertical spacing between rows; `[]` was the first trigger, but the symptom recurs without `[]` so the cause is broader.**
+- 🚧 [ANTS-1641] **Task List dialog — uneven vertical spacing between rows; `[]` was the first trigger, but the symptom recurs without `[]` so the cause is broader.**
   Reported 2026-05-19 with a screenshot of the Task List dialog showing the 5 tasks for this MCP-bundle session. The ANTS-1620 row (which has `probed_paths[]` in its description) renders with visibly more vertical padding between it and the next row than the sibling rows have between each other — looks like the parser sanitiser (ANTS-1639) or the QTextDocument rich-text renderer is treating the `[]` token as a markdown empty-link-anchor and emitting an extra block-level break around it.
+  Progress 2026-06-17: root cause identified and a fix staged in
+  build-fast/ (commit pending), awaiting the user's visual confirmation
+  before flipping to ✅.
+
+  The roadmap's first theory was WRONG: the renderer does NOT treat `[]`
+  as a markdown empty-link anchor. A QListWidgetItem renders PLAIN text
+  (claudetasklistdialog.cpp builds rows with `new QListWidgetItem(rowText(t),
+  m_list)` — no markdown/HTML path), so no token (`[]`, `→ ✅`,
+  `(tail -20)`, `--label-regex`) is ever special. The "escape `[`/`]` to
+  entities" remedy in the original entry would have been a no-op.
+
+  Real cause: a QListView word-wrap sizeHint quirk. With setWordWrap(true)
+  + QListView::Adjust, the built-in delegate sizes a row at a width that
+  doesn't match the width the painter later wraps at, so a row whose text
+  lands near a wrap boundary reserves a whole extra line of height — the
+  empty strip the user saw as a "gap" around the longer rows.
+
+  Fix: a custom WrapHeightDelegate (claudetasklistdialog.cpp) whose
+  sizeHint() computes the row height from the wrapped text at the actual
+  viewport content width, so reserved height == rendered height for every
+  row and the vertical rhythm is uniform.
+
+  Test: tests/features/task_list_dialog_context_menu —
+  Ants1641WrappedRowHeightsEven locks the contract (a `[]` token does not
+  change a row's height; the long row wraps taller but bounded). NOTE: the
+  over-reservation does NOT reproduce under the offscreen QPA platform (the
+  default delegate there yields the same bounded heights), so this is a
+  contract guard, not a bug-reproducing red→green test — the visual gap can
+  only be confirmed in the live render path. Hence the 🚧-pending-visual
+  state.
 
   **Second observation (2026-05-19, MCP pull 30 session):** another screenshot of the Task List dialog (8 tasks for the cold_eyes/indie_review fold-in port) shows the same extra gap between task #7 ("Build + run features fast lane — Token-frugal build (tail -20) + ctest --label-regex features, verify pre-fix tests fail / post-fix pass.") and task #8 ("Update ROADMAP + CHANGELOG + flip ANTS-1644 → ✅ — Mirror pull 29 doc-update pattern: roadmap flip + new CHANGELOG section. Commit + push (public repo)."). **Neither row contains `[]`** — so the renderer's "extra block break" trigger is broader than empty-bracket-link. Candidate triggers in those two rows that should be tested: `(tail -20)` / `(public repo)` parenthesised tokens; the `→ ✅` ASCII-arrow + emoji combo; the `--label-regex` double-dash run; trailing `pass.` + leading `Update`; the em-dashes (`—`) separating subject from description on each row.
 

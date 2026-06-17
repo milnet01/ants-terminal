@@ -4,8 +4,11 @@
 #include "dialogchrome.h"
 #include "themes.h"
 
+#include <QAbstractItemView>
 #include <QAction>
+#include <QApplication>
 #include <QClipboard>
+#include <QFontMetrics>
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -15,6 +18,8 @@
 #include <QMenu>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QStyle>
+#include <QStyledItemDelegate>
 #include <QVBoxLayout>
 
 namespace {
@@ -89,6 +94,63 @@ QString markdownForRow(const QString &status,
     return QStringLiteral("- %1 %2 — %3").arg(box, subject, description);
 }
 
+// ANTS-1641 — even vertical rhythm for the wrapped rows. The reported
+// "extra padding" around certain rows (the `probed_paths[]` row, the
+// `→ ✅` row, …) was NOT the roadmap's first theory that the renderer
+// treats `[]` as a markdown empty-link anchor — a QListWidgetItem's
+// text is plain, never markdown-parsed, so no token is special. The
+// real cause is a QListView word-wrap quirk: with setWordWrap(true) +
+// QListView::Adjust, the built-in delegate sizes a row at a width that
+// doesn't match the width the painter later wraps at, so a row whose
+// text lands near a wrap boundary reserves a whole extra line of
+// height — the empty strip that reads as a gap. This delegate sizes
+// every row from its wrapped text at the *actual* viewport content
+// width, so reserved height == rendered height for all rows and the
+// gaps are uniform. Re-queried on resize because Adjust re-lays-out.
+class WrapHeightDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    QSize sizeHint(const QStyleOptionViewItem &option,
+                   const QModelIndex &index) const override {
+        QStyleOptionViewItem opt(option);
+        initStyleOption(&opt, index);
+        const int w = contentWidth(opt);
+        if (w <= 0 || opt.text.isEmpty())
+            return QStyledItemDelegate::sizeHint(option, index);
+
+        const QFontMetrics fm(opt.font);
+        const QRect bounds(0, 0, w, 1 << 24);
+        const QRect br = fm.boundingRect(
+            bounds, Qt::TextWordWrap | Qt::AlignLeft | Qt::AlignTop,
+            opt.text);
+        // +2 px matches the built-in delegate's vertical text margin.
+        return QSize(w, br.height() + 2);
+    }
+
+private:
+    // Text width the painter wraps at: the list viewport minus per-item
+    // spacing on both sides minus the style's horizontal text margin.
+    // viewport()->width() already excludes a visible scrollbar, and
+    // Adjust mode re-lays-out when the scrollbar toggles, so the value
+    // is self-correcting. Falls back to opt.rect when no view is set.
+    static int contentWidth(const QStyleOptionViewItem &opt) {
+        int w = opt.rect.width();
+        if (const auto *view =
+                qobject_cast<const QAbstractItemView *>(opt.widget)) {
+            int vw = view->viewport()->width();
+            if (const auto *lv = qobject_cast<const QListView *>(view))
+                vw -= 2 * lv->spacing();
+            if (vw > 0) w = vw;
+        }
+        QStyle *style = opt.widget ? opt.widget->style()
+                                   : QApplication::style();
+        const int hMargin = style->pixelMetric(
+            QStyle::PM_FocusFrameHMargin, &opt, opt.widget) + 1;
+        return w - 2 * hMargin;
+    }
+};
+
 } // namespace
 
 ClaudeTaskListDialog::ClaudeTaskListDialog(ClaudeTaskListTracker *tracker,
@@ -142,6 +204,9 @@ ClaudeTaskListDialog::ClaudeTaskListDialog(ClaudeTaskListTracker *tracker,
     // (user-tuned 2026-05-14: 6 → 4 → 3; first two read too
     // generous, settled at 3 for a tight-but-readable gap).
     list->setSpacing(3);
+    // ANTS-1641 — size rows from their wrapped text at the real content
+    // width so no row reserves a spurious extra line (uneven gaps).
+    list->setItemDelegate(new WrapHeightDelegate(list));
     m_list = list;
 
     auto *btnRow = new QHBoxLayout;
