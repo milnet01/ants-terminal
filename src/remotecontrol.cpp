@@ -7883,11 +7883,19 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
     // ANTS-1249-INV-2: empty path → bad_path; non-existent path
     // returns not_found (set further down by FileOutline::compute).
-    const QString rawPath = req.value("path").toString();
+    // ANTS-2149 — accept `file_path` as an alias for `path`, mirroring the
+    // sibling codebase_index verb (which keys on `file_path`); using the
+    // two back-to-back on the same file otherwise trips on the differing
+    // arg name. `path` stays the source of truth; `file_path` only fills
+    // in when `path` is absent (same idiom as workspace_search's
+    // query↔pattern alias, ANTS-2041).
+    QString rawPath = req.value("path").toString();
+    if (rawPath.isEmpty())
+        rawPath = req.value(QStringLiteral("file_path")).toString();
     if (rawPath.isEmpty()) {
         QJsonObject o;
         o["ok"]    = false;
-        o["error"] = QStringLiteral("file_outline: missing or empty \"path\"");
+        o["error"] = QStringLiteral("file_outline: missing or empty \"path\" (alias: \"file_path\")");
         o["code"]  = QStringLiteral("bad_path");
         return QJsonDocument(o);
     }
@@ -8386,7 +8394,12 @@ QJsonDocument RemoteControl::cmdCodebaseIndex(const QJsonObject &req) {
     params.symbol = req.value(QStringLiteral("symbol")).toString();
     params.lane   = req.value(QStringLiteral("lane")).toString();
 
-    const QString rawFilePath = req.value(QStringLiteral("file_path")).toString();
+    // ANTS-2149 — accept `path` as an alias for `file_path`, mirroring the
+    // sibling file_outline verb (which keys on `path`). `file_path` stays
+    // the source of truth; `path` only fills in when `file_path` is absent.
+    QString rawFilePath = req.value(QStringLiteral("file_path")).toString();
+    if (rawFilePath.isEmpty())
+        rawFilePath = req.value(QStringLiteral("path")).toString();
     if (!rawFilePath.isEmpty()) {
         const auto check = PathValidation::validatePath(
             rawFilePath, rootCanonical,

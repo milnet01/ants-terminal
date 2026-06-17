@@ -98,9 +98,14 @@ const QRegularExpression &rxMdHeading() {
 
 Mode pickModeByExt(const QString &absPath) {
     const QString ext = QFileInfo(absPath).suffix().toLower();
-    if (ext == QLatin1String("cpp") || ext == QLatin1String("cc") ||
-        ext == QLatin1String("cxx") || ext == QLatin1String("h")   ||
-        ext == QLatin1String("hpp") || ext == QLatin1String("hh")) {
+    // ANTS-2148 — the C family (`.c`, `.hxx`) outlines fine with the C++
+    // regex set (shared surface syntax); admitting it here keeps
+    // codebase_index (admittedSuffix) able to extract symbols from a
+    // C-only project instead of returning an empty map.
+    if (ext == QLatin1String("cpp") || ext == QLatin1String("cc")  ||
+        ext == QLatin1String("cxx") || ext == QLatin1String("c")   ||
+        ext == QLatin1String("h")   || ext == QLatin1String("hpp") ||
+        ext == QLatin1String("hh")  || ext == QLatin1String("hxx")) {
         return Mode::Cpp;
     }
     if (ext == QLatin1String("py"))  return Mode::Py;

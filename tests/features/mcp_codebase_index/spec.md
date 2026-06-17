@@ -29,6 +29,15 @@ source-scrapes the MCP wiring sites. It maps to the spec invariants:
 - **INV-13** — a version-0 / foreign-root / garbage cache rebuilds.
 - **INV-14** — `lane=` symbol cap → `symbols_truncated`, first symbol kept.
 - **INV-16** — summary `roles{}`/`languages{}` sum to `file_count`.
+- **INV-17** — (ANTS-2148) the C family (`.c`, `.cxx`, `.hxx`) is admitted by
+  `admittedSuffix` and outlined via the C++ regex set, so a C-only project
+  yields a non-empty map (a `.c` free function surfaces as a symbol). The
+  summary carries a soft `empty` flag = `file_count == 0`, so an empty map is
+  distinguishable from a small one (survives `session_orient`'s trim).
+- **INV-18** — (ANTS-2149) `file_outline` accepts `file_path` as an alias for
+  `path`, and `codebase_index` accepts `path` as an alias for `file_path`
+  (canonical name stays the source of truth; alias fills in only when absent —
+  source-scraped in remotecontrol.cpp).
 
 The test must fail against pre-implementation source (no `codebaseindex.*`,
 no `codebase_index` wiring) and pass after the feature lands.

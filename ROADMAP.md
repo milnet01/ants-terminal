@@ -16625,6 +16625,13 @@ server build id so clients can self-diagnose this.
   Lanes: mcp, codebaseindex, fileoutline.
   Source: cross-session-2026-06-16 (DOOM Ants, renderer session).
 
+- 📋 [ANTS-2150] **codebase_index should cover as many programming languages as possible.**
+  Follow-on to ANTS-2148 (which widened the index to the full C family + a soft empty-signal). The index is still C/C++/Python-only because both gates are narrow: codebaseindex.cpp admittedSuffix() and FileOutline::pickModeByExt only know the C/C++/Py families, and FileOutline only has a Cpp/Py/Md/Json regex mode set. A session opening a Rust/Go/JS/TS/Java/C#/Ruby/Kotlin/Swift project gets file_count:0 (now at least flagged empty:true).\nGoal: broaden language coverage as far as is practical with the regex-scanner approach. Work items: (1) extend admittedSuffix + pickModeByExt with the common suffixes (rs, go, js/jsx/ts/tsx, java, cs, rb, kt, swift, php, scala, lua, sh, …); (2) add a FileOutline Mode + a per-language symbol regex (fn/func/def/class/type/impl/struct/interface per language) for each — lean on the existing possessive-quantifier + per-line byte-cap discipline (INV-8); (3) keep SymbolQuery::langForExt in step so find_definition/find_caller cover the same set; (4) a per-language feature-test fixture asserting at least one symbol per added language. Consider a small data-driven table (suffix -> Mode -> {symbol regexes}) instead of hand-rolled if/else chains as the set grows (Rule of Three). Scope/sequence is the maintainer's call — likely several passes, one language-family per pass. RAM/perf: regex set is compiled once per process (static const), so each added language is a fixed small cost; the per-file scan stays linear.
+  **Layman:** Make the project code-map understand far more languages (Rust, Go, JS/TS, Java, C#, Ruby, Kotlin, Swift, …), not just C/C++/Python — so every kind of project a Claude session opens gets a useful map.
+  Kind: enhancement.
+  Lanes: mcp, codebaseindex, fileoutline, symbolquery.
+  Source: user-request-2026-06-17 (follow-on to ANTS-2148).
+
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 
 A new testing initiative the user requested: give the agent a repeatable way to

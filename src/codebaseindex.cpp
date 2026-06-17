@@ -25,9 +25,18 @@ namespace {
 
 // Indexed-suffix set (§ 2.2): the walk admits only these.
 bool admittedSuffix(const QString &suffixLower) {
+    // ANTS-2148 — admit the full C/C++ family (incl. `.c`, `.cxx`, `.hxx`),
+    // not just C++-only extensions. A C-only project (DOOM: 65 `.c` files)
+    // was yielding file_count:0 because `.c` was absent here AND from
+    // FileOutline::pickModeByExt; both now map the C family to the C++
+    // outline regexes (C and C++ share enough surface syntax). Kept in
+    // step with SymbolQuery::langForExt so count → outline → symbol query
+    // cover the same files.
     return suffixLower == QLatin1String("cpp") || suffixLower == QLatin1String("cc")
+        || suffixLower == QLatin1String("cxx") || suffixLower == QLatin1String("c")
         || suffixLower == QLatin1String("h")   || suffixLower == QLatin1String("hpp")
-        || suffixLower == QLatin1String("hh")  || suffixLower == QLatin1String("py");
+        || suffixLower == QLatin1String("hh")  || suffixLower == QLatin1String("hxx")
+        || suffixLower == QLatin1String("py");
 }
 
 QString roleFor(const QString &relPath, const QString &basename) {
@@ -326,6 +335,13 @@ QJsonObject query(const Index &idx, const QueryParams &params,
         env[QStringLiteral("lanes")]      = lanes;
         env[QStringLiteral("languages")]  = langs;
         env[QStringLiteral("roles")]      = roles;
+        // ANTS-2148 — soft empty-signal. An empty map (file_count:0) is
+        // otherwise indistinguishable from a tiny project, so a consuming
+        // session can't tell "no source admitted" from "nothing here" and
+        // may trust an empty index instead of falling back to grep. The
+        // flag is stable while the tree is unchanged (it does not perturb
+        // session_orient's 304 ETag, unlike generated_at_ms).
+        env[QStringLiteral("empty")] = idx.files.isEmpty();
     } else if (!params.symbol.isEmpty()) {
         QJsonArray matches;
         for (const FileEntry &fe : idx.files)

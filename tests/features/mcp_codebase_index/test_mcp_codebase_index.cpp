@@ -341,6 +341,44 @@ TEST(CodebaseIndex, SummarySumsToFileCount) {
     EXPECT_EQ(langSum, fc);
 }
 
+// ANTS-2148 — the C family (`.c`, `.hxx`) is admitted and outlined with the
+// C++ regex set, so a C-only project is not an empty map; the summary carries
+// a soft `empty` signal keyed off file_count (so a consuming session can tell
+// "nothing admitted" from "small project" instead of trusting an empty index).
+TEST(CodebaseIndex, CFamilyAdmittedAndEmptySignal) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/src/game.c",
+              QStringLiteral("int update_state(int n) {\n    return n + 1;\n}\n"));
+    writeFile(dir.path() + "/src/defs.hxx",
+              QStringLiteral("struct Vec { int x; };\n"));
+    Index idx = build(dir.path(), 1000);
+    ASSERT_GE(idx.files.size(), 1);
+    QStringList paths;
+    for (const FileEntry &fe : idx.files) paths << fe.path;
+    EXPECT_TRUE(paths.contains(QStringLiteral("src/game.c")))
+        << "ANTS-2148: a .c file must be admitted to the index";
+    bool sawCFunc = false;
+    for (const FileEntry &fe : idx.files)
+        if (fe.path == QStringLiteral("src/game.c"))
+            for (const Symbol &s : fe.symbols)
+                if (s.name == QStringLiteral("update_state")) sawCFunc = true;
+    EXPECT_TRUE(sawCFunc) << "ANTS-2148: a .c free function must be outlined";
+
+    QJsonObject env = query(idx, summaryQ(), 0, QStringLiteral("/c"));
+    EXPECT_FALSE(env.value("empty").toBool());  // non-empty map → empty:false
+
+    // A project with no admitted source must report empty:true alongside
+    // file_count:0 (the soft signal DOOM asked for).
+    QTemporaryDir noSrc;
+    writeFile(noSrc.path() + "/README.txt", QStringLiteral("nothing to index\n"));
+    Index e = build(noSrc.path(), 1000);
+    EXPECT_EQ(e.files.size(), 0);
+    QJsonObject ee = query(e, summaryQ(), 0, QStringLiteral("/c"));
+    EXPECT_EQ(ee.value("file_count").toInt(), 0);
+    EXPECT_TRUE(ee.value("empty").toBool())
+        << "ANTS-2148: file_count:0 must carry empty:true";
+}
+
 // INV-8/9/10 — wiring source-scrapes.
 TEST(CodebaseIndex, WiringRegistered) {
     const std::string ci = ants_test::slurpFile(srcPath("src/claudeintegration.cpp"));
@@ -363,6 +401,11 @@ TEST(CodebaseIndex, WiringRegistered) {
     // handler routes file_path through PathValidation (INV-7).
     EXPECT_TRUE(has(rc, "cmdCodebaseIndex"));
     EXPECT_TRUE(has(rc, "validatePath"));
+    // ANTS-2149 — codebase_index accepts `path` as an alias for `file_path`
+    // and file_outline accepts `file_path` as an alias for `path`; both
+    // aliases are wired in remotecontrol.cpp.
+    EXPECT_TRUE(has(rc, "ANTS-2149"));
+    EXPECT_TRUE(has(rc, "(alias: \\\"file_path\\\")"));
     // atomic cache write (INV-12).
     EXPECT_TRUE(has(ants_test::slurpFile(srcPath("src/codebaseindex.cpp")), "QSaveFile"));
 }
