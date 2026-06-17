@@ -108,6 +108,18 @@ struct RunResult {
     // first-class envelope field instead of forcing a by_tool[] scan.
     bool                       partial = false;
     QStringList                incompleteTools;
+    // ANTS-1870 — since-last-run findings delta. `delta` carries
+    // {added[], removed[], added_count, removed_count,
+    // carried_forward_count} and is present only for an actually-narrowed,
+    // non-empty `since-last-run` with a readable, untruncated prior
+    // baseline. `deltaUnavailableReason` (no_prior_findings /
+    // prior_findings_unreadable / findings_truncated) is the mutually
+    // exclusive fallback. `findingsTruncated` is the OR over the run's
+    // per-tool ParsedOutput.findingsTruncated (a tool hit the
+    // kSarifFindingsMax finding ceiling).
+    QJsonObject                delta;
+    QString                    deltaUnavailableReason;
+    bool                       findingsTruncated = false;
 };
 
 // Aggregate cap = min(tools.count * capPerToolSeconds * 1.5, 240 s).
@@ -149,6 +161,13 @@ struct ParsedCounts {
     int rawCount = 0;
     int afterFilterCount = 0;
     int sampleCount = 0;
+    // ANTS-1870 — the full per-finding set (uncapped), whether it hit the
+    // kSarifFindingsMax ceiling, and whether every finding carries a
+    // 16-hex-char fp. Lets the feature test assert INV-1 without exposing
+    // the anonymous-namespace ParsedOutput.
+    int  findingsCount = 0;
+    bool findingsTruncated = false;
+    bool allFindingsHaveHexFp = false;
 };
 ParsedCounts parseWithSuppression(const QString &tool, const QString &raw,
                                   int sampleCap,

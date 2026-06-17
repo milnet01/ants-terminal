@@ -4616,6 +4616,17 @@ void MainWindow::setupClaudeMcpProviders() {
             }
             if (r.noChanges)
                 env["no_changes"] = true;
+            // ANTS-1870 — since-last-run findings delta. `delta` and
+            // `delta_unavailable_reason` are mutually exclusive; exactly one
+            // appears under a narrowed since-last-run, neither otherwise.
+            // `findings_truncated` flags a run that hit the per-tool finding
+            // ceiling (the delta is then suppressed in favour of the reason).
+            if (!r.delta.isEmpty())
+                env["delta"] = r.delta;
+            if (!r.deltaUnavailableReason.isEmpty())
+                env["delta_unavailable_reason"] = r.deltaUnavailableReason;
+            if (r.findingsTruncated)
+                env["findings_truncated"] = true;
             return QString::fromUtf8(
                 QJsonDocument(env).toJson(QJsonDocument::Compact));
         });

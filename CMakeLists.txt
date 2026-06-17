@@ -430,6 +430,8 @@ add_library(ants_audit_lib STATIC
     src/auditcache.cpp
     # ANTS-1504 — changed-file resolver for audit_run narrowing scopes.
     src/auditscope.cpp
+    # ANTS-1870 — pure since-last-run findings delta.
+    src/auditdelta.cpp
     # ANTS-1719 — native safe-list auto-fix engine.
     src/auditautofix.cpp
     # ANTS-1352 — indie-review dispatcher (Qt6::Network).
@@ -1292,6 +1294,8 @@ if(ANTS_TESTS)
                 tests/features/audit_run_cache/test_audit_run_cache.cpp
                 # ANTS-1504 audit_run since-last-run scope.
                 tests/features/audit_run_since_last_run/test_audit_run_since_last_run.cpp
+                # ANTS-1870 audit_run since-last-run findings delta.
+                tests/features/audit_run_delta/test_audit_run_delta.cpp
                 # ANTS-1642 schema-vs-lambda dispatch-forward completeness.
                 tests/features/mcp_dispatch_forward_completeness/test_mcp_dispatch_forward_completeness.cpp
                 # ANTS-1569 current_state MCP aggregator.
@@ -1379,6 +1383,8 @@ if(ANTS_TESTS)
         SRC_AUDITCACHE_H_PATH="${CMAKE_SOURCE_DIR}/src/auditcache.h"
         # ANTS-1504 — audit_run since-last-run scope source-scrape.
         SRC_AUDITSCOPE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditscope.cpp"
+        # ANTS-1870 — since-last-run findings delta source-scrape.
+        SRC_AUDITDELTA_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdelta.cpp"
         # ANTS-1299 + ANTS-1300 — build/test cache MCP source-scrape.
         SRC_BUILDCACHE_H_PATH="${CMAKE_SOURCE_DIR}/src/buildcache.h"
         SRC_TESTRESCACHE_H_PATH="${CMAKE_SOURCE_DIR}/src/testrescache.h"

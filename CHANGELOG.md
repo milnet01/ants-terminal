@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`audit_run` `since-last-run` now returns a precise findings delta + a whole-tree carry-forward SARIF** (ANTS-1870)
+  A fast re-audit now tells you exactly which warnings appeared, disappeared, or carried over: the envelope carries `delta:{added, removed, added_count, removed_count, carried_forward_count}` (or an honest `delta_unavailable_reason`), and the saved SARIF + a new findings sidecar cover the whole project, not just the files you touched.
+
 - **`session_orient` now surfaces a `feedback_pending` block — the un-triaged-addenda backlog across the cross-session `*_Ants_MCP_Feedback.md` files.** (ANTS-1964)
   At session start the Ants maintainer session sees, at a glance, which feedback files have new contributor input (and how many lines) without one feedback_query round-trip per file. Reuses the canonical FeedbackFile::parse; shown only in the Ants project, only for files with pending input.
 

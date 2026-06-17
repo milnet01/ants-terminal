@@ -15,17 +15,21 @@
 //   * `scope:"since-tag:<X>"` argv-safe (INV-15)
 //   * `cap_per_tool_seconds` + `top_findings_count` range check (INV-16)
 //
-// Out of v1 scope (logged as roadmap follow-up):
-//   * Rich per-tool finding parsers (AuditDialog config-table
-//     integration). v1 counts findings heuristically from raw output
-//     line count after a simple severity grep; emitted SARIF lists
-//     each tool as a driver entry with the raw output as a single
-//     notification rather than per-finding result entries.
+// ANTS-1870 — the v2 per-finding parser landed: parseToolOutput now
+// materialises the FULL `findings[]` set (each with its fp), writeSarif
+// emits per-finding result entries from it (with a carry-forward run
+// under since-last-run), and the runner computes a precise added/removed/
+// carried-forward delta against the prior run's findings sidecar. The two
+// "v2 will parse the SARIF result entries" deferrals below are resolved.
+//
+// Out of scope (logged as roadmap follow-up):
+//   * Cross-tool finding correlation (cppcheck + clazy reporting the same
+//     underlying defect as one) — each tool diffs within its own checkId
+//     namespace (ANTS-1870 § 5).
 //   * `.audit_suppress` / `.audit_allowlist.json` regex hardening
 //     (INV-6 second half). v1 reads `.audit_allowlist.json` shape only.
-//   * Top-findings extraction from SARIF (INV-13 top_findings array
-//     is currently echo-only — populated from samples, not from full
-//     SARIF). v2 will parse the SARIF result entries.
+//   * Line-precise finding identity — the fingerprint is line-insensitive
+//     by design (ANTS-1820 / ANTS-1870 § 2.2).
 //
 // All of the v1 scope above honours the spec's INV anchors via
 // source-scrape; behavioural tests cover env scrub + cap timing +
@@ -34,6 +38,7 @@
 #include "auditrunner.h"
 
 #include "auditcache.h"     // ANTS-1555
+#include "auditdelta.h"     // ANTS-1870 since-last-run findings delta
 #include "auditscope.h"     // ANTS-1504 changed-file resolver
 #include "auditengine.h"    // ANTS-1576 buildVcsProvenanceBlock
 #include "auditfpledger.h"  // ANTS-1820 learned-FP ledger (headless gap)
@@ -512,6 +517,11 @@ struct ParsedOutput {
     int        rawCount = 0;
     int        suppressedCount = 0;  // ANTS-1820 — learned-FP matches
     QJsonArray samples;  // first N matching lines as {file,line,message,severity}
+    // ANTS-1870 — the FULL per-finding set (every non-suppressed finding,
+    // not just the `sampleCap` preview), each carrying its `fp`. Bounded at
+    // kSarifFindingsMax; `findingsTruncated` is set when that ceiling is hit.
+    QJsonArray findings;
+    bool       findingsTruncated = false;
 };
 
 // ANTS-1820 — learned-FP suppression for the headless path. The GUI's
@@ -558,7 +568,10 @@ ParsedOutput parseToolOutput(const QString &tool,
                 }
             }
             out.rawCount = arr.size();
-            for (int i = 0; i < arr.size() && out.samples.size() < sampleCap; ++i) {
+            // ANTS-1870 — iterate EVERY entry so `findings` collects the full
+            // non-suppressed set; the `< sampleCap` gate now applies only to
+            // the `samples` preview append below.
+            for (int i = 0; i < arr.size(); ++i) {
                 const QJsonObject e = arr.at(i).toObject();
                 // Best-effort field extraction (tools vary).
                 QString fileStr;
@@ -597,7 +610,18 @@ ParsedOutput parseToolOutput(const QString &tool,
                 s["message"]  = internal::capMessage(msg);
                 s["rule"]     = ruleStr;
                 s["severity"] = e.value(QStringLiteral("severity")).toString();
-                out.samples.append(s);
+                // ANTS-1870 — full set with fp (line-insensitive identity),
+                // bounded at kSarifFindingsMax. JSON tools key the fingerprint
+                // on the tool's own check_id (ruleStr), matching § 2.2.
+                if (out.findings.size() < kSarifFindingsMax) {
+                    QJsonObject f = s;
+                    f["fp"] = ants::auditfp::computeFingerprint(
+                        fileStr, ruleStr, msg);
+                    out.findings.append(f);
+                } else {
+                    out.findingsTruncated = true;
+                }
+                if (out.samples.size() < sampleCap) out.samples.append(s);
             }
             // Honour SARIF cap.
             if (out.rawCount > kSarifFindingsMax)
@@ -627,27 +651,73 @@ ParsedOutput parseToolOutput(const QString &tool,
             ++out.suppressedCount;
             continue;
         }
-        if (out.samples.size() >= sampleCap) continue;
         QJsonObject s;
         s["file"]    = fileStr;
         s["line"]    = m.captured(2).toInt();
         s["message"] = internal::capMessage(msg);
         s["rule"]    = tool;
         s["severity"]= QStringLiteral("UNKNOWN");
-        out.samples.append(s);
+        // ANTS-1870 — full set with fp; line-based tools key the fingerprint
+        // on the tool name (matching the GUI's Finding::checkId), § 2.2.
+        if (out.findings.size() < kSarifFindingsMax) {
+            QJsonObject f = s;
+            f["fp"] = ants::auditfp::computeFingerprint(fileStr, tool, msg);
+            out.findings.append(f);
+        } else {
+            out.findingsTruncated = true;
+        }
+        if (out.samples.size() < sampleCap) out.samples.append(s);
     }
     out.rawCount = located;
     return out;
 }
 
+// ANTS-1870 — build one SARIF result entry from a `{file,line,rule,
+// severity,message,fp}` finding object. `carried` tags the result with
+// `properties.carried_forward:true` so a consumer can tell a freshly
+// re-scanned finding from an assumed-still-present one.
+QJsonObject sarifResultFromFinding(const QJsonObject &s, bool carried) {
+    QJsonObject result;
+    result["ruleId"] = s.value(QStringLiteral("rule")).toString();
+    QJsonObject msg;
+    msg["text"] = s.value(QStringLiteral("message")).toString();
+    result["message"] = msg;
+    QJsonObject artLoc;
+    artLoc["uri"] = s.value(QStringLiteral("file")).toString();
+    QJsonObject region;
+    region["startLine"] = s.value(QStringLiteral("line")).toInt();
+    QJsonObject physLoc;
+    physLoc["artifactLocation"] = artLoc;
+    physLoc["region"]          = region;
+    QJsonObject loc;
+    loc["physicalLocation"] = physLoc;
+    QJsonArray locs;
+    locs.append(loc);
+    result["locations"] = locs;
+    if (carried) {
+        QJsonObject props;
+        props["carried_forward"] = true;
+        result["properties"] = props;
+    }
+    return result;
+}
+
 // Emit a SARIF v2.1.0 document with each tool as a driver entry +
-// each tool's raw output as a single notification (v1; v2 will parse
-// per-tool results into result entries).
+// each tool's raw output as a single notification. ANTS-1870 — the
+// per-tool `results[]` now carry the FULL parsed finding set
+// (`findingsByTool`), not the capped samples; under since-last-run a
+// non-empty `carriedForward` (prior findings on untouched files) is
+// emitted as one extra synthetic run tagged carried_forward. The whole
+// document is bounded at kSarifFindingsMax results, current-first — the
+// carried-forward run sheds first on overflow.
 bool writeSarif(const QString &path,
                 const QHash<QString, ToolResult> &byTool,
                 const QHash<QString, QString> &rawByTool,
-                const QString &rootCanonical) {
+                const QString &rootCanonical,
+                const QHash<QString, QJsonArray> &findingsByTool,
+                const QJsonArray &carriedForward = {}) {
     QJsonArray  runsArr;
+    int         emitted = 0;   // running result count vs kSarifFindingsMax
     // ANTS-1576 — capture once, attach to every run we emit. The probe
     // forks at most three short git subprocesses; runs once per
     // writeSarif call (not per tool).
@@ -700,34 +770,44 @@ bool writeSarif(const QString &path,
             notifs.append(notif);
             run["toolExecutionNotifications"] = notifs;
         }
-        // Lightweight results[] from samples (best-effort).
+        // ANTS-1870 — results[] from the FULL parsed finding set (falls back
+        // to the capped samples only when no full set was threaded, e.g. a
+        // /tmp legacy caller). current-first cap vs kSarifFindingsMax.
         QJsonArray results;
-        for (const QJsonValue &v : tr.samples) {
-            const QJsonObject s = v.toObject();
-            QJsonObject result;
-            result["ruleId"] = s.value(QStringLiteral("rule")).toString();
-            QJsonObject msg;
-            msg["text"] = s.value(QStringLiteral("message")).toString();
-            result["message"] = msg;
-            QJsonObject loc;
-            QJsonObject artLoc;
-            artLoc["uri"] = s.value(QStringLiteral("file")).toString();
-            QJsonObject physLoc;
-            physLoc["artifactLocation"] = artLoc;
-            QJsonObject region;
-            region["startLine"] = s.value(QStringLiteral("line")).toInt();
-            physLoc["region"] = region;
-            loc["physicalLocation"] = physLoc;
-            QJsonArray locs;
-            locs.append(loc);
-            result["locations"] = locs;
-            results.append(result);
+        const QJsonArray &src = findingsByTool.contains(it.key())
+            ? findingsByTool[it.key()] : tr.samples;
+        for (const QJsonValue &v : src) {
+            if (emitted >= kSarifFindingsMax) break;
+            results.append(sarifResultFromFinding(v.toObject(), false));
+            ++emitted;
         }
         run["results"] = results;
         // ANTS-1576 — attach VCS provenance when capture succeeded.
         if (!vcpBlock.isEmpty()) {
             run["versionControlProvenance"] = vcpBlock;
         }
+        runsArr.append(run);
+    }
+    // ANTS-1870 — carry-forward synthetic run: prior findings on untouched
+    // files, assumed still present, tagged carried_forward. Sheds first on
+    // the kSarifFindingsMax overflow (emitted from current runs above first).
+    if (!carriedForward.isEmpty()) {
+        QJsonArray results;
+        for (const QJsonValue &v : carriedForward) {
+            if (emitted >= kSarifFindingsMax) break;
+            results.append(sarifResultFromFinding(v.toObject(), true));
+            ++emitted;
+        }
+        QJsonObject driver;
+        driver["name"]    = QStringLiteral("carried-forward");
+        driver["version"] = QStringLiteral("auto");
+        QJsonObject tool;
+        tool["driver"] = driver;
+        QJsonObject run;
+        run["tool"]    = tool;
+        run["results"] = results;
+        if (!vcpBlock.isEmpty())
+            run["versionControlProvenance"] = vcpBlock;
         runsArr.append(run);
     }
     QJsonObject doc;
@@ -1120,9 +1200,23 @@ ParsedCounts parseWithSuppression(const QString &tool, const QString &raw,
                                   const QSet<QString> &learnedFps) {
     const ParsedOutput p =
         parseToolOutput(tool, raw, sampleCap, learnedFps);
-    return ParsedCounts{p.rawCount,
-                        p.rawCount - p.suppressedCount,
-                        static_cast<int>(p.samples.size())};
+    // ANTS-1870 — every finding must carry a 16-lowercase-hex fp.
+    static const QRegularExpression rxFp(QStringLiteral("^[0-9a-f]{16}$"));
+    bool allHex = !p.findings.isEmpty();
+    for (const QJsonValue &v : p.findings) {
+        if (!rxFp.match(v.toObject().value(QStringLiteral("fp")).toString())
+                 .hasMatch()) {
+            allHex = false;
+            break;
+        }
+    }
+    ParsedCounts c{p.rawCount,
+                   p.rawCount - p.suppressedCount,
+                   static_cast<int>(p.samples.size())};
+    c.findingsCount        = static_cast<int>(p.findings.size());
+    c.findingsTruncated     = p.findingsTruncated;
+    c.allFindingsHaveHexFp  = allHex;
+    return c;
 }
 
 }  // namespace internal
@@ -1289,6 +1383,13 @@ RunResult runAudit(const RunRequest &req) {
     // tree. Each tool's scoped list (or the caller's `req.paths` under
     // `auto` / a demoted full scan) flows through `perToolPaths`.
     QHash<QString, QStringList> perToolPaths;
+    // ANTS-1870 — captured for the since-last-run findings delta below.
+    // `sinceLastRunActive` is set only for an actually-narrowed, non-empty
+    // `since-last-run`; `priorFindingsFile` is the prior run's sidecar
+    // basename (empty → no baseline → no_prior_findings).
+    QSet<QString> sinceLastRunChangedFiles;
+    bool          sinceLastRunActive = false;
+    QString       priorFindingsFile;
     {
         auto applyFullScan = [&](const QString &resolvedLabel) {
             r.scopeResolved = resolvedLabel;
@@ -1322,9 +1423,10 @@ RunResult runAudit(const RunRequest &req) {
                 perToolPaths[tool] = safe.isEmpty() ? req.paths : safe;
             }
         } else {
+        const QJsonObject priorLastRun =
+            AuditCache::loadManifest(canonProject).lastRun;
         const QString priorCommit =
-            AuditCache::loadManifest(canonProject)
-                .lastRun.value(QStringLiteral("commit")).toString();
+            priorLastRun.value(QStringLiteral("commit")).toString();
         const AuditScope::Resolution sr =
             AuditScope::resolveChangedFiles(canonProject, req.scope, priorCommit);
 
@@ -1353,6 +1455,16 @@ RunResult runAudit(const RunRequest &req) {
             r.scopeResolved     = req.scope;
             r.scopeAnchorCommit = sr.anchorCommit;
             r.changedFilesCount = static_cast<int>(sr.files.size());
+            // ANTS-1870 — only `since-last-run` produces a findings delta
+            // (§ 2.8 / INV-10). Capture the changed set + the prior sidecar
+            // basename for the delta computation after the run completes.
+            if (req.scope == QLatin1String("since-last-run")) {
+                sinceLastRunActive = true;
+                for (const QString &f : sr.files)
+                    sinceLastRunChangedFiles.insert(f);
+                priorFindingsFile = priorLastRun
+                    .value(QStringLiteral("findings_file")).toString();
+            }
             QStringList toDrop;
             for (auto it = toolAbsPath.constBegin();
                  it != toolAbsPath.constEnd(); ++it) {
@@ -1423,6 +1535,11 @@ RunResult runAudit(const RunRequest &req) {
     QHash<QString, QString>            rawByTool;
     QHash<QString, std::shared_ptr<QProcess>> procs;
     QHash<QString, QElapsedTimer>      perToolTimer;
+    // ANTS-1870 — the FULL per-tool finding set (uncapped, with fp), kept
+    // out of ToolResult so the envelope stays lean. Feeds the carry-forward
+    // SARIF, the delta, and the recorded sidecar.
+    QHash<QString, QJsonArray>         fullFindingsByTool;
+    bool                               anyFindingsTruncated = false;
     int                                pending = 0;
     QTimer aggTimer;
     aggTimer.setSingleShot(true);
@@ -1442,6 +1559,8 @@ RunResult runAudit(const RunRequest &req) {
         // ledger; afterFilterCount drops the suppressed total.
         tr.afterFilterCount = parsed.rawCount - parsed.suppressedCount;
         tr.samples          = parsed.samples;
+        fullFindingsByTool[tool] = parsed.findings;           // ANTS-1870
+        if (parsed.findingsTruncated) anyFindingsTruncated = true;
         r.byTool[tool]      = tr;
         --pending;
         if (pending <= 0) loop.quit();
@@ -1563,6 +1682,80 @@ RunResult runAudit(const RunRequest &req) {
         r.topFindings = top;
     }
 
+    // ── ANTS-1870 / since-last-run findings delta + carry-forward set.
+    //
+    // Build the flat whole-of-this-run finding set from the per-tool full
+    // findings, then (for a narrowed since-last-run with a readable,
+    // untruncated baseline) diff it against the prior sidecar. The
+    // carry-forward array feeds the SARIF; `mergedForRecord` is the
+    // whole-tree set persisted to the next sidecar (current ∪
+    // priorOnUntouched), so a chain of since-last-run calls does not shed
+    // untouched-file findings (INV-7).
+    r.findingsTruncated = anyFindingsTruncated;
+    QJsonArray currentFindings;
+    for (auto it = r.byTool.constBegin(); it != r.byTool.constEnd(); ++it)
+        for (const QJsonValue &v : fullFindingsByTool.value(it.key()))
+            currentFindings.append(v);
+
+    QJsonArray carriedForwardForSarif;   // priorOnUntouched, tagged in SARIF
+    QJsonArray mergedForRecord = currentFindings;  // default: auto/full = current
+    bool       mergedTruncated = anyFindingsTruncated;
+    if (sinceLastRunActive) {
+        const AuditCache::SidecarLoad prior =
+            AuditCache::readFindingsSidecar(canonProject, priorFindingsFile);
+        if (priorFindingsFile.isEmpty()) {
+            r.deltaUnavailableReason = QStringLiteral("no_prior_findings");
+        } else if (!prior.valid) {
+            r.deltaUnavailableReason =
+                QStringLiteral("prior_findings_unreadable");
+        } else {
+            const AuditDelta::DeltaResult d = AuditDelta::computeDelta(
+                currentFindings, prior.findings, sinceLastRunChangedFiles);
+            mergedForRecord = d.merged;
+            // carriedForward ∖ current = the priorOnUntouched subset (the
+            // current∩priorOnChanged half is already emitted by the per-tool
+            // SARIF runs, so only the untouched-file findings need tagging).
+            QSet<QString> curFps;
+            for (const QJsonValue &v : currentFindings)
+                curFps.insert(v.toObject().value(QStringLiteral("fp")).toString());
+            for (const QJsonValue &v : d.carriedForward)
+                if (!curFps.contains(
+                        v.toObject().value(QStringLiteral("fp")).toString()))
+                    carriedForwardForSarif.append(v);
+            mergedTruncated = anyFindingsTruncated || prior.truncated
+                || mergedForRecord.size() > kSarifFindingsMax;
+            if (prior.truncated || anyFindingsTruncated) {
+                // Truncated either side → the diff would mis-report; suppress
+                // the envelope delta but still write the merged SARIF/sidecar.
+                r.deltaUnavailableReason =
+                    QStringLiteral("findings_truncated");
+            } else {
+                // Envelope arrays cap at kSamplesPerToolDefault (NOT the
+                // caller's top_findings_count, which defaults to 0) and drop
+                // the internal `fp`; the *_count fields stay exact (§ 2.8).
+                auto previewArray = [](const QJsonArray &src) {
+                    QJsonArray out;
+                    for (int i = 0; i < src.size()
+                                 && out.size() < kSamplesPerToolDefault; ++i) {
+                        QJsonObject o = src.at(i).toObject();
+                        o.remove(QStringLiteral("fp"));
+                        out.append(o);
+                    }
+                    return out;
+                };
+                QJsonObject delta;
+                delta[QStringLiteral("added")]   = previewArray(d.added);
+                delta[QStringLiteral("removed")] = previewArray(d.removed);
+                delta[QStringLiteral("added_count")]   = d.addedCount;
+                delta[QStringLiteral("removed_count")] = d.removedCount;
+                delta[QStringLiteral("carried_forward_count")] =
+                    d.carriedForwardCount;
+                r.delta = delta;
+            }
+        }
+    }
+    r.findingsTruncated = mergedTruncated;
+
     // ── INV-12 / SARIF + optional HTML.
     //
     // ANTS-1555 — route through `<root>/.audit_cache/` when the
@@ -1583,7 +1776,8 @@ RunResult runAudit(const RunRequest &req) {
                                                  gitI.shortSha);
         if (!cacheSarifAbs.isEmpty()
          && ensurePrivateDir(AuditCache::cacheDir(canonProject))  // ANTS-1988 — 0700
-         && writeSarif(cacheSarifAbs, r.byTool, rawByTool, req.projectRoot)) {
+         && writeSarif(cacheSarifAbs, r.byTool, rawByTool, req.projectRoot,
+                       fullFindingsByTool, carriedForwardForSarif)) {
             r.sarifPath = cacheSarifAbs;
             r.cachePath = cacheSarifAbs;
         } else {
@@ -1591,7 +1785,8 @@ RunResult runAudit(const RunRequest &req) {
             // sarifPath still work even on read-only roots.
             cacheSarifAbs.clear();
             const QString sp = allocSarifPath();
-            if (writeSarif(sp, r.byTool, rawByTool, req.projectRoot)) {
+            if (writeSarif(sp, r.byTool, rawByTool, req.projectRoot,
+                           fullFindingsByTool, carriedForwardForSarif)) {
                 r.sarifPath = sp;
             }
         }
@@ -1666,9 +1861,17 @@ RunResult runAudit(const RunRequest &req) {
             byToolJson[it.key()] = t;
         }
         lastRunJson[QStringLiteral("by_tool")] = byToolJson;
+        // ANTS-1870 — the sidecar's `truncated` flag mirrors this; a later
+        // clean run records false and self-heals the baseline (§ 2.6).
+        lastRunJson[QStringLiteral("findings_truncated")] = mergedTruncated;
 
         QJsonObject prior;
-        AuditCache::recordRun(canonProject, lastRunJson, &prior);
+        // ANTS-1870 — persist the whole-tree merged findings as the next
+        // sidecar baseline (current ∪ priorOnUntouched under since-last-run;
+        // the current set under auto/full). Always seeds a baseline so the
+        // next since-last-run can diff (§ 2.3).
+        AuditCache::recordRun(canonProject, lastRunJson, &prior,
+                              mergedForRecord);
         r.priorRun = prior;
     }
 

@@ -145,7 +145,8 @@ Manifest loadManifest(const QString &canonProject) {
 
 RecordedRun recordRun(const QString &canonProject,
                       const QJsonObject &lastRunJson,
-                      QJsonObject *priorRunOut) {
+                      QJsonObject *priorRunOut,
+                      const QJsonArray &mergedFindings) {
     RecordedRun out;
     if (!ensureCacheDir(canonProject)) {
         if (priorRunOut) *priorRunOut = {};
@@ -183,10 +184,48 @@ RecordedRun recordRun(const QString &canonProject,
         out.htmlPath = dir + QLatin1Char('/') + out.htmlPath;
     }
 
+    // ANTS-1870 — when the caller supplies a merged whole-tree findings
+    // set, write a sibling findings sidecar `findings-<iso>-<sha>.json` and
+    // stamp its basename onto last_run.findings_file. The iso here is the
+    // colon form (forManifest); the filename takes the colons→hyphens form
+    // sarifPathFor uses, so the stem matches the run's sarif/html siblings.
+    QJsonObject lastRun = lastRunJson;
+    if (!mergedFindings.isEmpty()) {
+        QString fnIso = out.iso;
+        fnIso.replace(QLatin1Char(':'), QLatin1Char('-'));
+        const QString findingsBasename =
+            QStringLiteral("findings-%1-%2.json").arg(fnIso, out.sha);
+        QJsonObject sidecar;
+        sidecar[QStringLiteral("version")]       = 1;
+        sidecar[QStringLiteral("iso_timestamp")] = out.iso;
+        sidecar[QStringLiteral("commit")]        = out.sha;
+        sidecar[QStringLiteral("scope")] =
+            lastRunJson.value(QStringLiteral("scope"));
+        sidecar[QStringLiteral("truncated")] =
+            lastRunJson.value(QStringLiteral("findings_truncated")).toBool(false);
+        sidecar[QStringLiteral("findings")]      = mergedFindings;
+        const QString sidecarPath =
+            dir + QLatin1Char('/') + findingsBasename;
+        QSaveFile sc(sidecarPath);
+        if (sc.open(QIODevice::WriteOnly)) {
+            setOwnerOnlyPerms(sc);
+            const QByteArray scBody =
+                QJsonDocument(sidecar).toJson(QJsonDocument::Compact);
+            if (sc.write(scBody) == scBody.size() && sc.commit()) {
+                setOwnerOnlyPerms(sidecarPath);
+                fsyncParentDir(sidecarPath);
+                lastRun[QStringLiteral("findings_file")] = findingsBasename;
+            } else {
+                qWarning() << "AuditCache: failed to write findings sidecar"
+                           << sidecarPath;
+            }
+        }
+    }
+
     // Build the new manifest: version + last_run + history[].
     QJsonObject newManifest;
     newManifest[QStringLiteral("version")]  = 1;
-    newManifest[QStringLiteral("last_run")] = lastRunJson;
+    newManifest[QStringLiteral("last_run")] = lastRun;
 
     QJsonArray history;
     if (!prev.lastRun.isEmpty()) {
@@ -203,6 +242,12 @@ RecordedRun recordRun(const QString &canonProject,
         if (prev.lastRun.contains(QStringLiteral("html"))) {
             entry[QStringLiteral("html")] =
                 prev.lastRun.value(QStringLiteral("html"));
+        }
+        // ANTS-1870 — carry the findings sidecar basename so the reaper
+        // can delete it alongside the sarif/html when this run ages out.
+        if (prev.lastRun.contains(QStringLiteral("findings_file"))) {
+            entry[QStringLiteral("findings_file")] =
+                prev.lastRun.value(QStringLiteral("findings_file"));
         }
         history.append(entry);
     }
@@ -269,6 +314,8 @@ RecordedRun recordRun(const QString &canonProject,
         const QJsonObject e = v.toObject();
         const QString sarif = e.value(QStringLiteral("sarif")).toString();
         const QString html  = e.value(QStringLiteral("html")).toString();
+        const QString findingsFile =
+            e.value(QStringLiteral("findings_file")).toString();
         auto reapOne = [&](const QString &basename) {
             if (basename.isEmpty()) return;
             QString abs = basename;
@@ -293,10 +340,42 @@ RecordedRun recordRun(const QString &canonProject,
         };
         reapOne(sarif);
         reapOne(html);
+        reapOne(findingsFile);  // ANTS-1870
     }
 
     out.ok = true;
     return out;
+}
+
+AuditCache::SidecarLoad readFindingsSidecar(const QString &canonProject,
+                                            const QString &basename) {
+    SidecarLoad s;
+    if (basename.isEmpty()) return s;
+    const QString d = cacheDirImpl(canonProject);
+    if (d.isEmpty()) return s;
+    QString abs = basename;
+    if (!abs.startsWith(QLatin1Char('/')))
+        abs = d + QLatin1Char('/') + abs;
+    QFile f(abs);
+    if (!f.exists()) return s;
+    s.present = true;
+    if (!f.open(QIODevice::ReadOnly)) return s;
+    const QByteArray bytes = f.readAll();
+    f.close();
+    QJsonParseError err{};
+    const QJsonDocument doc = QJsonDocument::fromJson(bytes, &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) return s;
+    const QJsonObject o = doc.object();
+    if (o.value(QStringLiteral("version")).toInt(0) != 1) return s;
+    s.valid     = true;
+    s.truncated = o.value(QStringLiteral("truncated")).toBool(false);
+    s.findings  = o.value(QStringLiteral("findings")).toArray();
+    return s;
+}
+
+QJsonArray loadFindingsSidecar(const QString &canonProject,
+                               const QString &basename) {
+    return readFindingsSidecar(canonProject, basename).findings;
 }
 
 }  // namespace AuditCache

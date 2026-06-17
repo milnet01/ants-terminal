@@ -13152,7 +13152,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-token-reduction, mcp-audit-run, auditrunner.
   Source: in-session-2026-05-18 (token-saving brainstorm).
 
-- 📋 [ANTS-1870] **`audit_run` precise since-last-run delta +
+- ✅ [ANTS-1870] **`audit_run` precise since-last-run delta +
   carry-forward SARIF merge (the deferred half of ANTS-1504).**
   ANTS-1504 ships the file-narrowing but NOT the
   `delta:{added, removed, carried_forward}` envelope or the carry-forward
@@ -13167,8 +13167,9 @@ template / mutate this state atomically" → movable. If it's
   cross-scope comparison).
   **Layman:** make the fast re-audit also tell you exactly which warnings appeared, disappeared, or carried over — needs a smarter results parser first.
   Kind: enhancement.
-  Lanes: mcp-audit-run, auditrunner, auditengine.
+  Lanes: mcp-audit-run, auditrunner, auditengine, auditcache, auditdelta.
   Source: in-session-2026-05-25 (ANTS-1504 spec re-scope).
+  Resolved (2026-06-17): shipped. New pure module `auditdelta.{h,cpp}` (computeDelta over QJsonArray); parseToolOutput now materialises the full per-finding `findings[]` set (each with its ANTS-1820 fp) uncapped; `recordRun` writes a `findings-<iso>-<sha>.json` sidecar (reaped in lockstep) read back via `loadFindingsSidecar`; writeSarif emits a whole-tree merge + a carry-forward run; the envelope returns `delta:{added,removed,*_count}` or an honest `delta_unavailable_reason`. Spec docs/specs/ANTS-1870.md (cold-eyes-converged, 5 loops). Tests tests/features/audit_run_delta/ (8 green). Resolves the ANTS-1504 §5 + ANTS-1555 §4 deferrals.
 
 - ✅ [ANTS-1505] ****Per-tool `typical_token_cost` + `worst_case_tokens` on every descriptor.****
   Sister to ANTS-1453 (selection_hint): add two integer fields to every

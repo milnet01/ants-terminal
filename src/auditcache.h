@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
 
@@ -74,15 +75,24 @@ Manifest loadManifest(const QString &canonProject);
 //   3. Migrate prior `last_run` into the head of `history[]`.
 //   4. Trim `history[]` to 10 entries (reaper deletes dropped
 //      files matching its own naming convention — never AuditDialog
-//      GUI files).
+//      GUI files; covers sarif/html AND the ANTS-1870 findings sidecar).
 //   5. QSaveFile + commit on `index.json` with 0600 perms.
 //
-// Returns true on success. On any failure (mkdir denied, save
-// failure), returns false; the caller's RunResult should keep
-// `cachePath` empty + retain its `/tmp` fallback for `sarifPath`.
+// Returns a RecordedRun with `ok==true` on success. On any failure
+// (mkdir denied, save failure), `ok` is false; the caller's RunResult
+// should keep `cachePath` empty + retain its `/tmp` fallback for
+// `sarifPath`.
 //
 // `priorRunOut` is filled with the manifest's pre-existing
 // `last_run` (so the caller can surface it as `RunResult.priorRun`).
+//
+// ANTS-1870 — when `mergedFindings` is non-empty, a sibling findings
+// sidecar `findings-<iso>-<sha>.json` (version 1) is written in the same
+// atomic flow and its basename recorded as `last_run.findings_file`; the
+// sidecar's `truncated` flag mirrors `last_run.findings_truncated`. The
+// default (empty) preserves the no-findings back-compat path. The param
+// trails `priorRunOut` because a defaulted parameter cannot precede a
+// non-defaulted one.
 struct RecordedRun {
     QString iso;          // canonical, with colons
     QString sha;          // 7-char short OR "nogit"
@@ -92,6 +102,27 @@ struct RecordedRun {
 };
 RecordedRun recordRun(const QString &canonProject,
                       const QJsonObject &lastRunJson,
-                      QJsonObject *priorRunOut);
+                      QJsonObject *priorRunOut,
+                      const QJsonArray &mergedFindings = {});
+
+// ANTS-1870 — read a findings sidecar by basename (resolved under
+// `<canonProject>/.audit_cache/`). `present` is set when the referenced
+// file exists; `valid` when it parsed as a version-1 sidecar; `truncated`
+// mirrors the sidecar's flag. A missing / unparseable / wrong-version
+// sidecar yields `{present, valid:false, findings:{}}` (mirrors the
+// manifest forward-compat rule). The caller distinguishes
+// `no_prior_findings` (basename empty) from `prior_findings_unreadable`
+// (referenced but `!valid`).
+struct SidecarLoad {
+    bool       present = false;
+    bool       valid = false;
+    bool       truncated = false;
+    QJsonArray findings;
+};
+SidecarLoad readFindingsSidecar(const QString &canonProject,
+                                const QString &basename);
+// Convenience: the `findings[]` array only (empty on any failure).
+QJsonArray loadFindingsSidecar(const QString &canonProject,
+                               const QString &basename);
 
 }  // namespace AuditCache
