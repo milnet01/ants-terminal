@@ -1308,6 +1308,8 @@ if(ANTS_TESTS)
                 tests/features/cold_eyes_fold_in_narrative/test_cold_eyes_fold_in_narrative.cpp
                 # ANTS-1644 indie_review_fold_in narrative_mode port.
                 tests/features/indie_review_fold_in_narrative/test_indie_review_fold_in_narrative.cpp
+                # ANTS-1630 cold_eyes/indie_review fold-in caller_cwd anchoring.
+                tests/features/fold_in_caller_anchor/test_fold_in_caller_anchor.cpp
                 # ANTS-1309 spec_query MCP tool.
                 tests/features/mcp_spec_query/test_mcp_spec_query.cpp
                 # ANTS-1308 invariant_check MCP tool.

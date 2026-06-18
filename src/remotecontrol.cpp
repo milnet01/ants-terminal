@@ -12991,12 +12991,20 @@ QJsonDocument RemoteControl::cmdIndieReviewSynthesisPrompt(const QJsonObject &re
 QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
         QStringLiteral("indie_review_fold_in: no MainWindow")));
-    // ANTS-1372: gate on caller_cwd matching focused tab.
-    const auto gate = RcGate::checkCallerCwd(
-        resolveRootCanonical(m_main), req,
-        QStringLiteral("indie_review_fold_in"));
-    if (!gate.ok) return QJsonDocument(RcGate::gateErrorEnvelope(gate));
-    const QString root = gate.focused;
+    // ANTS-1630: caller-cwd-anchored write — resolve the ROADMAP root from
+    // the caller's own caller_cwd, not the focused tab (see cmdColdEyesFoldIn
+    // for the rationale). resolveCallerCwdRoot (ANTS-1401) is the canonical
+    // decoder; absent caller_cwd is refused upstream by the Required contract.
+    const QString callerCwd =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    const ants::ResolvedRoot rr =
+        ants::resolveCallerCwdRoot(m_main, callerCwd);
+    if (rr.cwd.isEmpty() || !QFileInfo(rr.cwd).isDir())
+        return QJsonDocument(irErr(
+            QStringLiteral("cwd_bad"),
+            QStringLiteral("indie_review_fold_in: caller_cwd \"%1\" does not "
+                           "resolve to a directory").arg(callerCwd)));
+    const QString root = rr.cwd;
 
     // ANTS-1644 — narrative-mode short-circuit. Caller supplies
     // pre-rendered markdown under the `### 🔍 Indie-review fold-in
@@ -14575,12 +14583,25 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(ceErr(
         QStringLiteral("no_window"),
         QStringLiteral("cold_eyes_fold_in: no MainWindow")));
-    // ANTS-1372: gate on caller_cwd matching focused tab.
-    const auto gate = RcGate::checkCallerCwd(
-        resolveRootCanonical(m_main), req,
-        QStringLiteral("cold_eyes_fold_in"));
-    if (!gate.ok) return QJsonDocument(RcGate::gateErrorEnvelope(gate));
-    const QString root = gate.focused;
+    // ANTS-1630: caller-cwd-anchored write. Resolve the ROADMAP root from
+    // the caller's own caller_cwd (the project the orchestrating session
+    // owns), NOT the focused tab — so a /cold-eyes run folds into its own
+    // project even when the user has a different tab focused. The pre-1630
+    // focused-tab gate refused with cwd_mismatch whenever caller != focused.
+    // resolveCallerCwdRoot (ANTS-1401) is the single canonical caller_cwd
+    // decoder (no second open-coded canonicalisation); absent
+    // caller_cwd is already refused upstream by the Required contract
+    // (caller_cwd_required) before this handler runs.
+    const QString callerCwd =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    const ants::ResolvedRoot rr =
+        ants::resolveCallerCwdRoot(m_main, callerCwd);
+    if (rr.cwd.isEmpty() || !QFileInfo(rr.cwd).isDir())
+        return QJsonDocument(ceErr(
+            QStringLiteral("cwd_bad"),
+            QStringLiteral("cold_eyes_fold_in: caller_cwd \"%1\" does not "
+                           "resolve to a directory").arg(callerCwd)));
+    const QString root = rr.cwd;
 
     // ANTS-1644 — narrative-mode short-circuit. Caller supplies
     // pre-rendered markdown under the `### 📝 Cold-eyes <DATE>`

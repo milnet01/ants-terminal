@@ -74,18 +74,19 @@ TEST(ColdEyesFoldInNarrative, HandlerShortCircuitsOnNarrativeMode) {
     EXPECT_TRUE(contains(body, "RoadmapFoldIn::insertBlock"))
         << "narrative branch must call insertBlock";
 
-    // INV-5 — RcGate runs BEFORE the narrative-mode read. The branch
-    // therefore appears textually AFTER the gate check. We assert
-    // that the gate check exists and precedes the narrative_mode
-    // read.
-    const auto gatePos = body.find("RcGate::checkCallerCwd");
+    // INV-5 — the caller_cwd resolution runs BEFORE the narrative-mode
+    // read, so narrative mode cannot bypass the cwd_bad refusal. ANTS-1630
+    // replaced the RcGate focused-tab gate with caller-cwd anchoring via
+    // resolveCallerCwdRoot; the ordering invariant is preserved against the
+    // new resolution site.
+    const auto gatePos = body.find("resolveCallerCwdRoot");
     const auto narrPos = body.find("\"narrative_mode\"");
     ASSERT_NE(gatePos, std::string::npos)
-        << "RcGate::checkCallerCwd must remain in the handler";
+        << "resolveCallerCwdRoot must remain in the handler";
     ASSERT_NE(narrPos, std::string::npos);
     EXPECT_LT(gatePos, narrPos)
-        << "narrative-mode branch must come AFTER the RcGate "
-           "check (INV-5: gate must not be bypassed)";
+        << "narrative-mode branch must come AFTER the caller_cwd "
+           "resolution (INV-5: resolution must not be bypassed)";
 
     // INV-6 — narrative branch is positioned BEFORE the
     // actionable[] validation, so the empty-actionable refusal does

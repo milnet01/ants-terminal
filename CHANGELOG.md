@@ -51,6 +51,16 @@ for security-relevant changes.
 
 ### Changed
 
+- **`cold_eyes_fold_in` / `indie_review_fold_in` now anchor their ROADMAP write to the caller's own `caller_cwd`, not the focused tab** (ANTS-1630)
+  An orchestrating Claude Code session running /cold-eyes or /indie-review
+  against its own project used to get refused with `cwd_mismatch` whenever a
+  different Ants tab was focused, forcing a manual ROADMAP edit. Both verbs
+  now resolve the write root from caller_cwd via the ANTS-1401 decoder
+  (refusing `cwd_bad` on an unresolvable/non-directory path), so the fold-in
+  lands on the right project regardless of focus. The two already-caller-
+  anchored siblings (`roadmap_log`, `test_audit_fold_in`) were unaffected;
+  the same-UID IPC trust boundary is unchanged.
+
 - **The `cold_eyes_*` / `indie_review_*` / `test_audit_*` MCP tools now label themselves a "parallel API" in their tools/list descriptions — clarifying that the `/cold-eyes`, `/indie-review`, and `/test-audit` skills orchestrate those steps themselves and don't call the tools.** (ANTS-1581)
   Stops a Claude reading the deferred-tool list from reaching for the MCP review verbs mid-skill (three sister sessions hit this). Added once via the existing description-mutation loop, not per-tool.
 

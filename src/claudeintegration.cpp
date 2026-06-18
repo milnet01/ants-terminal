@@ -5213,9 +5213,11 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject callerProp;
                     callerProp["type"] = "string";
                     callerProp["description"] = QStringLiteral(
-                        "Your $PWD. Mutating verbs refuse on mismatch "
-                        "with the focused tab's cwd (ANTS-1372 "
-                        "cross-project write gate).");
+                        "Your $PWD — the project this fold-in writes to. "
+                        "Anchored to caller_cwd (ANTS-1630): the write "
+                        "lands on YOUR project's ROADMAP regardless of "
+                        "which Ants tab is focused; refuses cwd_bad if "
+                        "caller_cwd doesn't resolve to a directory.");
                     // ANTS-1644 — narrative-mode escape hatch.
                     QJsonObject nmProp;
                     nmProp["type"] = "boolean";
@@ -6748,9 +6750,12 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject callerProp;
                     callerProp["type"] = "string";
                     callerProp["description"] = QStringLiteral(
-                        "Your $PWD. Mutating verbs refuse on "
-                        "mismatch with the focused tab's cwd "
-                        "(ANTS-1372).");
+                        "Your $PWD — the project this fold-in writes "
+                        "to. Anchored to caller_cwd (ANTS-1630): the "
+                        "write lands on YOUR project's ROADMAP "
+                        "regardless of which Ants tab is focused; "
+                        "refuses cwd_bad if it doesn't resolve to a "
+                        "directory.");
                     // ANTS-1644 — narrative-mode escape hatch.
                     QJsonObject nmProp;
                     nmProp["type"] = "boolean";

@@ -464,15 +464,18 @@ int countOccurrences(const QByteArray &hay, const QByteArray &needle) {
 
 } // namespace
 
-// S1: remotecontrol.cpp must call RcGate::checkCallerCwd at ≥ 7 sites
-// (one per gated verb).
+// S1: remotecontrol.cpp must call RcGate::checkCallerCwd at ≥ 6 sites
+// (one per remaining gated verb). ANTS-1630 migrated cold_eyes_fold_in +
+// indie_review_fold_in off the focused-tab gate onto caller-cwd anchoring,
+// dropping the count from 8 to 6 (verify_changes, plan_template,
+// session_memory, workflow_state, debt_sweep_apply_fix, debt_sweep_defer).
 TEST(Ants1372SourceGrep, S1CheckCallerCwdCallSitesPresent) {
     const QByteArray src = slurpAbsolute(
         QStringLiteral(SRC_REMOTECONTROL_CPP_PATH));
     ASSERT_FALSE(src.isEmpty()) << "could not read remotecontrol.cpp";
     const int n = countOccurrences(src, "RcGate::checkCallerCwd");
-    EXPECT_GE(n, 7) << "expected ≥7 gate call sites (one per mutating "
-                       "verb); got " << n;
+    EXPECT_GE(n, 6) << "expected ≥6 gate call sites (one per remaining "
+                       "gated verb); got " << n;
 }
 
 // S2: the helper module emits the cwd_mismatch literal.
