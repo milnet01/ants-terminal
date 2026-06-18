@@ -14031,7 +14031,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: perf.
   Source: user-request-2026-05-18.
 
-- 📋 [ANTS-1553] **Unity-build lib-boundary rework — make `ANTS_UNITY_BUILD=ON` viable end-to-end.**
+- ✅ [ANTS-1553] **Unity-build lib-boundary rework — make `ANTS_UNITY_BUILD=ON` viable end-to-end.**
   ANTS-1550 shipped `ANTS_UNITY_BUILD=ON` as an opt-in CMake option but the current STATIC-lib layout makes it experimental:
   
   1. Per-test-bundle `static int runMain()` + anonymous-namespace `slurp`/`expect_*` helpers (`tests/_support/expect.h`) collide when unified. Mitigated by `set_target_properties(<bundle> PROPERTIES UNITY_BUILD OFF)` inside `ants_add_gui_bundle` / `ants_add_core_bundle` — test bundles run on the per-TU path.
@@ -14051,6 +14051,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: refactor.
   Lanes: build, perf, cmake, test-infrastructure.
   Source: in-session-2026-05-18 (ANTS-1550 follow-up).
+  Resolved 2026-06-18. Root cause turned out narrower than options (a)/(b): the breakage is unity COARSENING the subset-linked libs. Test bundles link only a lib subset via selective --start-group — test_core (core), test_vt (vt+core), test_audit (audit+core), test_lua (lua+core). Unity batches those libs' TUs into a few coarse unity_N.o; pulling any drags cross-lib externals the bundle never links. The killer is core's aggregated AUTOMOC (mocs_compilation bundles EVERY core QObject's metaobject), so e.g. vt's TerminalWidget touching VtStream pulls the whole core moc → RemoteControl → dangling MainWindow/RoadmapDialog/AuditEngine. Fix (third option, cleaner than relayering or full-stack-linking): unity ONLY on the always-fully-linked libs (chrome/claude/dialogs/audit_dialog — the Widgets-heavy cc1plus hogs where unity pays off); the four subset-linked libs stay per-TU via UNITY_BUILD OFF. Enabling unity on dialogs also surfaced one latent anon-namespace ODR clash (systemPrompt() in coldeyes/indie-review/test-audit dialogs) — renamed each to a unique name. Validated: ANTS_UNITY_BUILD=ON full build exit 0 + 2164/2164 tests green (serial). Deviation from the original note: unity is NOT wired into the `fast` preset — it penalises incremental rebuilds (one-file edit recompiles its whole batch), which is exactly what `fast` optimises; kept as explicit -DANTS_UNITY_BUILD=ON opt-in. CMakeLists, CLAUDE.md updated.
 
 - ✅ [ANTS-1554] **`-Wnull-dereference` warning in MainWindow::refreshRepoVisibility silenced.** Shipped 2026-05-18 (pull-9 pull 3).
   Added a tightly-scoped `#pragma GCC diagnostic push / ignored
@@ -15321,6 +15322,12 @@ template / mutate this state atomically" → movable. If it's
   Lanes: modelrecommender, claudestatuswidgets.
   Source: in-session-2026-05-29 (observed while reading modelrecommender.cpp).
   Resolved 2026-06-01: QHash memo keyed by (path, mtime, size) in score(); kCacheCap=16. All 3 post-open return sites go through memoize(). Source-grep INV-5 (single tail-read) still passes.
+
+- 📋 [ANTS-2154] **McpResultOffload tests race on the shared spill-cache dir under parallel ctest.**
+  Found running `ctest -j3` on the ANTS-1553 unity probe: 3/2164 fail (McpResultOffload Inv4OwnerOnlyPerms, Inv5And6ReadSpillPaging, Inv8IdempotentReSpill); all 11 offload tests pass 11/11 when run in isolation. Pre-existing test-isolation bug (the offload tests share a content-addressed spill-cache path), NOT caused by unity — the default ctest presets run serially so it's latent. Fix: give each offload test a unique temp spill dir (e.g. QTemporaryDir per test / per-PID cache root) so parallel ctest is safe.
+  **Layman:** A few "big-result offload" tests step on each other's shared scratch folder when the test runner runs them at the same time, so they flake. They pass fine one-at-a-time.
+  Kind: test.
+  Source: in-session-2026-06-18 (surfaced during ANTS-1553 unity validation).
 
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 

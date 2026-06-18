@@ -501,6 +501,33 @@ else()
     message(STATUS "Lua 5.4 not found — plugin system disabled")
 endif()
 
+# ANTS-1553 — make ANTS_UNITY_BUILD=ON viable end-to-end: unity only on
+# the libs that are ALWAYS linked in full.
+#
+# CMAKE_UNITY_BUILD batches each STATIC lib's TUs into a few coarse
+# unity_N.o. That breaks the test bundles that link only a SUBSET of the
+# lib stack via selective `--start-group`: ants_core_lib / ants_vt_lib /
+# ants_audit_lib / ants_lua_lib are each linked alone (with core) by
+# test_core / test_vt / test_audit / test_lua. Coarsening their objects
+# drags cross-lib references those bundles do NOT link — chiefly core's
+# aggregated AUTOMOC (mocs_compilation.cpp bundles EVERY core QObject's
+# metaobject, so referencing one — e.g. vt's TerminalWidget touching
+# VtStream — pulls the whole moc, which references RemoteControl reaching
+# up into MainWindow/RoadmapDialog/AuditEngine) → dangling externals →
+# broken link. Pre-unity each TU was its own .o island, so the selective
+# pull never reached those symbols.
+#
+# So opt these four OUT of unity; they stay per-TU exactly as a non-unity
+# build. chrome / claude / dialogs / audit_dialog are only ever linked in
+# FULL (the full-stack bundles + the main exe), so their unity coarsening
+# always resolves — and they are the Widgets-heavy, RAM-hungry cc1plus
+# instances where unity pays off most. No-op unless ANTS_UNITY_BUILD=ON.
+set(_ants_subset_linked_libs ants_core_lib ants_vt_lib ants_audit_lib)
+if(LUA_FOUND)
+    list(APPEND _ants_subset_linked_libs ants_lua_lib)
+endif()
+set_target_properties(${_ants_subset_linked_libs} PROPERTIES UNITY_BUILD OFF)
+
 if(LayerShellQt_FOUND)
     message(STATUS "LayerShellQt found — Wayland-native Quake-mode enabled")
 else()

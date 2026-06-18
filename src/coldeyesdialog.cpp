@@ -22,7 +22,7 @@
 
 namespace {
 
-QString systemPrompt() {
+QString coldEyesSystemPrompt() {
     return QStringLiteral(
         "You are a cold-eyes documentation reviewer. You receive a set of "
         "project docs (inlined verbatim — you have no Read tool) plus "
@@ -279,7 +279,7 @@ LlmRequest ColdEyesDialog::composeBrief(const ReviewLane &laneRef) {
         req.model    = config()->aiModel();
     }
     req.maxTokens    = 2048;
-    req.systemPrompt = systemPrompt();
+    req.systemPrompt = coldEyesSystemPrompt();
 
     const ColdEyesEngine::Lane *lane = laneByName(laneRef.id);
     if (!lane) {

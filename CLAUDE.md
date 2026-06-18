@@ -56,8 +56,14 @@ ctest --test-dir build --output-on-failure 2>&1 | tail -20
 - `-DANTS_TESTS=OFF` — drop test targets from the graph.
 - `-DANTS_CCACHE=ON` (default) — ccache compiler launcher; a cache hit
   skips `cc1plus` entirely.
-- `-DANTS_UNITY_BUILD=ON` — experimental, opt-in; the current STATIC-lib
-  layout breaks test-bundle links (ANTS-1553 tracks the rework).
+- `-DANTS_UNITY_BUILD=ON` — opt-in; viable end-to-end since ANTS-1553.
+  Unity applies only to the always-fully-linked libs (chrome / claude /
+  dialogs / audit_dialog — the Widgets-heavy cc1plus hogs); the
+  subset-linked libs (core / vt / audit / lua) stay per-TU so the test
+  bundles' selective `--start-group` links don't drag cross-lib externals
+  (esp. core's aggregated AUTOMOC). Best for cold full builds; it
+  penalises incremental rebuilds (a one-file edit recompiles its whole
+  unity batch), so it is NOT wired into the `fast` preset.
 - `cmake --preset=fast` — isolated `build-fast/` dir + `ANTS_LINK_POOL=2`
   (parallel test-bundle linking); ccache + PCH are unconditional defaults
   on every preset, not fast-only.

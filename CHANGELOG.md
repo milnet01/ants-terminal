@@ -51,6 +51,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **`ANTS_UNITY_BUILD=ON` is now viable end-to-end** (ANTS-1553)
+  Unity now applies only to the always-fully-linked libs (chrome/claude/dialogs/audit_dialog); the subset-linked libs (core/vt/audit/lua) stay per-TU so test bundles' selective links don't drag cross-lib externals. Resolves a latent anonymous-namespace clash in the review dialogs. Opt-in only (not in the `fast` preset, which optimises incremental rebuilds).
+
 - **`cold_eyes_fold_in` / `indie_review_fold_in` now anchor their ROADMAP write to the caller's own `caller_cwd`, not the focused tab** (ANTS-1630)
   An orchestrating Claude Code session running /cold-eyes or /indie-review
   against its own project used to get refused with `cwd_mismatch` whenever a

@@ -19,7 +19,7 @@
 
 namespace {
 
-QString systemPrompt() {
+QString indieReviewSystemPrompt() {
     return QStringLiteral(
         "You are an independent code reviewer. You receive one subsystem's "
         "source files (inlined verbatim and fenced — you have no Read tool) "
@@ -172,7 +172,7 @@ LlmRequest IndieReviewDialog::composeBrief(const ReviewLane &laneRef) {
         req.model    = config()->aiModel();
     }
     req.maxTokens    = 2048;
-    req.systemPrompt = systemPrompt();
+    req.systemPrompt = indieReviewSystemPrompt();
 
     const IndieReviewEngine::Lane *lane = laneByName(laneRef.id);
     if (!lane) {

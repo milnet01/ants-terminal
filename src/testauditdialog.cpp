@@ -24,7 +24,7 @@
 
 namespace {
 
-QString systemPrompt(const QStringList &dims) {
+QString testAuditSystemPrompt(const QStringList &dims) {
     return QStringLiteral(
                "You are a test-suite auditor. Review the inlined test files "
                "(verbatim — you have no Read tool) across these dimensions: "
@@ -298,7 +298,7 @@ LlmRequest TestAuditDialog::composeBrief(const ReviewLane &laneRef) {
         req.model    = config()->aiModel();
     }
     req.maxTokens    = 2048;
-    req.systemPrompt = systemPrompt(m_dimensionsActive);
+    req.systemPrompt = testAuditSystemPrompt(m_dimensionsActive);
 
     const auto b = briefFor(laneRef.id);
     if (!b.ok) {
