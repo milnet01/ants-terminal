@@ -235,7 +235,13 @@ TEST(mcp_audit_run, Ants1456ScopeDescriptorClarified) {
     // Locate the audit_run descriptor block by anchoring on its name.
     const auto pos = ci.find("t[\"name\"] = \"audit_run\"");
     ASSERT_NE(pos, std::string::npos);
-    const std::string region = ci.substr(pos, 5000);
+    // Bound the probe to the audit_run descriptor block (anchor → its
+    // tools.append) rather than a fixed char window: ANTS-1870 grew the
+    // scope description past the old 5000-char slice, pushing the "full"
+    // guidance out of range. Block-bounding is robust to future growth.
+    const auto blockEnd = ci.find("tools.append(t);", pos);
+    ASSERT_NE(blockEnd, std::string::npos);
+    const std::string region = ci.substr(pos, blockEnd - pos);
     expect(contains(region, "deterministic full sweep"),
            "AR-6: scope description recommends an explicit "
            "since-tag override for deterministic full sweeps");
