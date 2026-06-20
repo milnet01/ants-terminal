@@ -15323,11 +15323,12 @@ template / mutate this state atomically" → movable. If it's
   Source: in-session-2026-05-29 (observed while reading modelrecommender.cpp).
   Resolved 2026-06-01: QHash memo keyed by (path, mtime, size) in score(); kCacheCap=16. All 3 post-open return sites go through memoize(). Source-grep INV-5 (single tail-read) still passes.
 
-- 📋 [ANTS-2154] **McpResultOffload tests race on the shared spill-cache dir under parallel ctest.**
+- ✅ [ANTS-2154] **McpResultOffload tests race on the shared spill-cache dir under parallel ctest.**
   Found running `ctest -j3` on the ANTS-1553 unity probe: 3/2164 fail (McpResultOffload Inv4OwnerOnlyPerms, Inv5And6ReadSpillPaging, Inv8IdempotentReSpill); all 11 offload tests pass 11/11 when run in isolation. Pre-existing test-isolation bug (the offload tests share a content-addressed spill-cache path), NOT caused by unity — the default ctest presets run serially so it's latent. Fix: give each offload test a unique temp spill dir (e.g. QTemporaryDir per test / per-PID cache root) so parallel ctest is safe.
   **Layman:** A few "big-result offload" tests step on each other's shared scratch folder when the test runner runs them at the same time, so they flake. They pass fine one-at-a-time.
   Kind: test.
   Source: in-session-2026-06-18 (surfaced during ANTS-1553 unity validation).
+  Resolved (2026-06-20): added a test-only mcp::setSpillDirOverride() seam; each McpResultOffload test now points at a unique per-test QTemporaryDir, removing the shared-path assumption. The fixture drops the process-global QStandardPaths test-mode flip the old approach needed (the ANTS-2151 hazard). Production path unchanged when the override is empty. Verified: 11/11 in isolation, full test_core bundle 329/329, and 18 concurrent processes x 3 repeats green (a harder repro than ctest -j3). Commit 3a8bff8.
 
 ### 📝 Cold-eyes 2026-05-18 (full doc-tree sweep)
 
