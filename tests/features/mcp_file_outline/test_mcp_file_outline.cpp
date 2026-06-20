@@ -255,6 +255,53 @@ TEST(McpFileOutline, FreeFunctionCapture) {
            "mis-detected as a function symbol";
 }
 
+// ANTS-2150 — brace-family generic outline: auto-detection by extension
+// yields the precise language name (rust/go/typescript) and extracts symbols.
+TEST(McpFileOutline, BraceFamilyGenericOutline) {
+    expect_reset();
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    auto outlineOf = [&](const char *rel, const char *body) {
+        const QString path = tmp.path() + QLatin1Char('/') + QLatin1String(rel);
+        QFile f(path);
+        EXPECT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+        f.write(body);
+        f.close();
+        // Mode::Auto so pickModeByExt routes to Mode::Generic by extension.
+        return FileOutline::compute(path, FileOutline::Mode::Auto,
+                                    /*includeDocComment=*/false,
+                                    /*maxSymbols=*/100);
+    };
+    auto hasName = [](const QJsonObject &o, const char *n) {
+        for (const auto &v : o.value("symbols").toArray())
+            if (v.toObject().value("name").toString() == QLatin1String(n))
+                return true;
+        return false;
+    };
+
+    const QJsonObject rs = outlineOf("lib.rs",
+        "pub fn rustParse(p: &str) -> u32 { 0 }\n"
+        "pub struct RustCfg { x: u32 }\n");
+    EXPECT_EQ(rs.value("language").toString().toStdString(), "rust");
+    EXPECT_TRUE(hasName(rs, "rustParse")) << "rust fn not outlined";
+    EXPECT_TRUE(hasName(rs, "RustCfg"))   << "rust struct not outlined";
+
+    const QJsonObject go = outlineOf("server.go",
+        "func goNewServer(addr string) *Server {\n}\n"
+        "type Server struct {\n}\n");
+    EXPECT_EQ(go.value("language").toString().toStdString(), "go");
+    EXPECT_TRUE(hasName(go, "goNewServer")) << "go func not outlined";
+    EXPECT_TRUE(hasName(go, "Server"))      << "go type not outlined";
+
+    const QJsonObject ts = outlineOf("service.ts",
+        "export class TsService {\n}\n"
+        "export const tsHandler = (req, res) => {\n}\n");
+    EXPECT_EQ(ts.value("language").toString().toStdString(), "typescript");
+    EXPECT_TRUE(hasName(ts, "TsService")) << "ts class not outlined";
+    EXPECT_TRUE(hasName(ts, "tsHandler")) << "ts arrow assignment not outlined";
+}
+
 // INV-10 — non-existent path returns the not_found code without
 // crashing.
 TEST(McpFileOutline, NotFoundPath) {

@@ -276,6 +276,104 @@ TEST(McpSymbolQuery, LiveBehaviour) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-2150 — brace-family generic anchors: Rust / Go / TypeScript / Java.
+// One def + one caller per language proves the generic def/call patterns fire,
+// and the lang filter restricts to Lang::Generic.
+TEST(McpSymbolQuery, BraceFamilyLanguages) {
+    expect_reset();
+
+    QTemporaryDir tmp;
+    expect(tmp.isValid(), "setup: QTemporaryDir valid");
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+
+    // Rust — keyword fn/struct + a caller.
+    writeFile(root, QStringLiteral("src/lib.rs"),
+              QStringLiteral("pub fn rustParse(path: &str) -> u32 {\n"
+                             "    helper()\n"
+                             "}\n"
+                             "pub struct RustCfg {\n"
+                             "    x: u32,\n"
+                             "}\n"
+                             "fn rust_caller() {\n"
+                             "    rustParse(\"x\");\n"   // caller
+                             "}\n"));
+    // Go — bare func, method-with-receiver, type struct + a caller.
+    writeFile(root, QStringLiteral("src/server.go"),
+              QStringLiteral("func goNewServer(addr string) *Server {\n"
+                             "    return nil\n"
+                             "}\n"
+                             "func (s *Server) goStart() error {\n"
+                             "    goNewServer(\"x\")\n"   // caller
+                             "    return nil\n"
+                             "}\n"
+                             "type Server struct {\n"
+                             "}\n"));
+    // TypeScript — class, arrow assignment, function + a caller.
+    writeFile(root, QStringLiteral("src/service.ts"),
+              QStringLiteral("export class TsService {\n"
+                             "}\n"
+                             "export const tsHandler = (req, res) => {\n"
+                             "    return tsLoad()\n"     // caller
+                             "}\n"
+                             "function tsLoad() {\n"
+                             "    return 1\n"
+                             "}\n"));
+    // Java — class + a keyword-less C-style method definition.
+    writeFile(root, QStringLiteral("src/Account.java"),
+              QStringLiteral("public class JavaAccount {\n"
+                             "    private void javaDoStuff() {\n"
+                             "        helper();\n"
+                             "    }\n"
+                             "}\n"));
+
+    SymbolQuery::Options def;
+
+    auto defFound = [&](const char *sym) {
+        return SymbolQuery::findDefinition(root, QString::fromUtf8(sym), def)
+                   .definitions.size() >= 1;
+    };
+    // Rust
+    expect(defFound("rustParse"), "rust: fn def found");
+    expect(defFound("RustCfg"),   "rust: struct def found");
+    // Go
+    expect(defFound("goNewServer"), "go: func def found");
+    expect(defFound("goStart"),     "go: method-with-receiver def found");
+    expect(defFound("Server"),      "go: type struct def found");
+    // TypeScript
+    expect(defFound("TsService"), "ts: class def found");
+    expect(defFound("tsHandler"), "ts: arrow-assignment def found");
+    expect(defFound("tsLoad"),    "ts: function def found");
+    // Java
+    expect(defFound("JavaAccount"), "java: class def found");
+    expect(defFound("javaDoStuff"), "java: C-style method def found");
+
+    // Callers fire across the family.
+    expect(SymbolQuery::findCaller(root, QStringLiteral("rustParse"), def)
+               .callers.size() >= 1, "rust: caller found");
+    expect(SymbolQuery::findCaller(root, QStringLiteral("goNewServer"), def)
+               .callers.size() >= 1, "go: caller found");
+    expect(SymbolQuery::findCaller(root, QStringLiteral("tsLoad"), def)
+               .callers.size() >= 1, "ts: caller found");
+
+    // The def line itself is never reported as a caller (INV-9 parity).
+    bool noDefAsCaller = true;
+    for (const auto &cm : SymbolQuery::findCaller(
+             root, QStringLiteral("goNewServer"), def).callers)
+        if (cm.context.startsWith(QStringLiteral("func goNewServer")))
+            noDefAsCaller = false;
+    expect(noDefAsCaller, "generic: definition line not reported as caller");
+
+    // lang filter: Lang::Generic finds the brace-family def; Lang::Py does not.
+    SymbolQuery::Options gen;  gen.lang = SymbolQuery::Lang::Generic;
+    SymbolQuery::Options pyf;  pyf.lang = SymbolQuery::Lang::Py;
+    expect(SymbolQuery::findDefinition(root, QStringLiteral("rustParse"), gen)
+               .definitions.size() >= 1, "lang=generic finds the rust def");
+    expect(SymbolQuery::findDefinition(root, QStringLiteral("rustParse"), pyf)
+               .definitions.isEmpty(), "lang=py finds no brace-family def");
+
+    EXPECT_EQ(0, expect_failures());
+}
+
 TEST(McpSymbolQuery, WiringContract) {
     expect_reset();
 

@@ -96,6 +96,68 @@ const QRegularExpression &rxMdHeading() {
     return rx;
 }
 
+// ANTS-2150 — brace-family generic outline (Mode::Generic). Three regexes
+// cover the top-level declaration surface shared across Rust / Go / JS / TS /
+// Java / C# / Kotlin / Swift / Scala / PHP. Possessive quantifiers (`*+`,
+// `++`) + the per-line byte cap bound backtracking (INV-8), same as the C++ set.
+
+// (1) keyword declarations: optional modifiers, a declaration keyword, an
+// optional Go receiver `(s *T)`, then the name. Captures kw=group1, name=group2.
+const QRegularExpression &rxGenericDecl() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(R"(^\s*(?:(?:pub|export|default|public|private|protected|internal|static|final|abstract|sealed|async|open|override|suspend|inline|const|unsafe|extern|data)\s++)*+(fn|fun|func|function|def|class|struct|enum|trait|impl|interface|type|module|object|protocol|extension|namespace|record)\b(?:\s++\([^)]*\))?\s++([A-Za-z_$][\w$]*))"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
+// (2) C-style method definitions (Java / C# / Swift / Kotlin members that lack
+// a leading decl keyword): return-type token(s) + name + parens + a body `{`.
+// The trailing `{` (not `;`) keeps it a definition, never a call; the negative
+// lookahead rejects control-flow keywords. Captures name=group1.
+const QRegularExpression &rxGenericMethod() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(R"(^\s*(?!(?:return|if|for|while|switch|catch|else|throw|new|await|do|in|of)\b)(?:[A-Za-z_$<>\[\].]+[\s*&]++)++([A-Za-z_$][\w$]*)\s*\([^;{]*\)\s*(?:->\s*[\w$<>\[\].?]+\s*|:\s*[\w$<>\[\].?]+\s*)?\{)"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
+// (3) JS/TS arrow-function assignments: `export const foo = (…) => …`.
+// Captures name=group1.
+const QRegularExpression &rxGenericArrow() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(R"(^\s*(?:export\s++)?(?:default\s++)?(?:const|let|var)\s++([A-Za-z_$][\w$]*)\s*=\s*(?:async\s++)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>)"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
+
+// Map a brace-family extension to its precise language name for the response
+// `language` field (so the map reads "rust"/"typescript", not "generic").
+// Returns "" for an extension not in the generic family.
+QString genericLangName(const QString &ext) {
+    if (ext == QLatin1String("rs"))   return QStringLiteral("rust");
+    if (ext == QLatin1String("go"))   return QStringLiteral("go");
+    if (ext == QLatin1String("js") || ext == QLatin1String("jsx") ||
+        ext == QLatin1String("mjs") || ext == QLatin1String("cjs"))
+        return QStringLiteral("javascript");
+    if (ext == QLatin1String("ts") || ext == QLatin1String("tsx"))
+        return QStringLiteral("typescript");
+    if (ext == QLatin1String("java"))  return QStringLiteral("java");
+    if (ext == QLatin1String("cs"))    return QStringLiteral("csharp");
+    if (ext == QLatin1String("kt") || ext == QLatin1String("kts"))
+        return QStringLiteral("kotlin");
+    if (ext == QLatin1String("swift")) return QStringLiteral("swift");
+    if (ext == QLatin1String("scala") || ext == QLatin1String("sc"))
+        return QStringLiteral("scala");
+    if (ext == QLatin1String("php"))   return QStringLiteral("php");
+    return QString();
+}
+
+bool isGenericExt(const QString &ext) { return !genericLangName(ext).isEmpty(); }
+
 Mode pickModeByExt(const QString &absPath) {
     const QString ext = QFileInfo(absPath).suffix().toLower();
     // ANTS-2148 — the C family (`.c`, `.hxx`) outlines fine with the C++
@@ -112,26 +174,29 @@ Mode pickModeByExt(const QString &absPath) {
     if (ext == QLatin1String("md")   || ext == QLatin1String("markdown") ||
         ext == QLatin1String("txt")) return Mode::Md;
     if (ext == QLatin1String("json")) return Mode::Json;
+    if (isGenericExt(ext)) return Mode::Generic;  // ANTS-2150 brace family
     return Mode::Auto;  // sentinel meaning "unknown" downstream
 }
 
 const char *modeToLanguageString(Mode m) {
     switch (m) {
-        case Mode::Cpp:  return "cpp";
-        case Mode::Py:   return "py";
-        case Mode::Md:   return "md";
-        case Mode::Json: return "json";
-        case Mode::Auto: return "unknown";
+        case Mode::Cpp:     return "cpp";
+        case Mode::Py:      return "py";
+        case Mode::Md:      return "md";
+        case Mode::Json:    return "json";
+        case Mode::Generic: return "generic";  // compute() overrides w/ precise name
+        case Mode::Auto:    return "unknown";
     }
     return "unknown";
 }
 
 QString headerCommentMarker(Mode m) {
     switch (m) {
-        case Mode::Cpp:  return QStringLiteral("//");
-        case Mode::Py:   return QStringLiteral("#");
-        case Mode::Md:   return QStringLiteral("<!--");
-        default:         return QString();
+        case Mode::Cpp:     return QStringLiteral("//");
+        case Mode::Generic: return QStringLiteral("//");  // brace family (ANTS-2150)
+        case Mode::Py:      return QStringLiteral("#");
+        case Mode::Md:      return QStringLiteral("<!--");
+        default:            return QString();
     }
 }
 
@@ -164,6 +229,7 @@ Mode parseMode(const QString &s) {
     if (s == QLatin1String("py"))   return Mode::Py;
     if (s == QLatin1String("md"))   return Mode::Md;
     if (s == QLatin1String("json")) return Mode::Json;
+    if (s == QLatin1String("generic")) return Mode::Generic;
     return Mode::Auto;
 }
 
@@ -335,14 +401,41 @@ QJsonObject compute(const QString &absPath,
             if (m.hasMatch()) {
                 offer("heading", m.captured(2), line);
             }
+        } else if (effective == Mode::Generic) {
+            // Try keyword decl, then C-style method, then arrow assignment;
+            // first hit wins (ANTS-2150).
+            QRegularExpressionMatch m = rxGenericDecl().match(line);
+            if (m.hasMatch()) {
+                const QString kw = m.captured(1);
+                const char *kind =
+                    (kw == QLatin1String("fn")  || kw == QLatin1String("fun") ||
+                     kw == QLatin1String("func")|| kw == QLatin1String("function") ||
+                     kw == QLatin1String("def")) ? "func"
+                    : (kw == QLatin1String("type") || kw == QLatin1String("module") ||
+                       kw == QLatin1String("namespace")) ? "type"
+                    : "class";
+                offer(kind, m.captured(2), line);
+            } else if ((m = rxGenericMethod().match(line)).hasMatch()) {
+                offer("func", m.captured(1), line);
+            } else if ((m = rxGenericArrow().match(line)).hasMatch()) {
+                offer("func", m.captured(1), line);
+            }
         }
     }
     f.close();
 
+    // ANTS-2150 — report the precise brace-family language (rust/go/typescript…)
+    // rather than the shared "generic" mode name.
+    QString languageStr = QString::fromLatin1(modeToLanguageString(effective));
+    if (effective == Mode::Generic) {
+        const QString precise = genericLangName(QFileInfo(absPath).suffix().toLower());
+        if (!precise.isEmpty()) languageStr = precise;
+    }
+
     QJsonObject out;
     out["ok"]          = true;
     out["path"]        = absPath;
-    out["language"]    = QString::fromLatin1(modeToLanguageString(effective));
+    out["language"]    = languageStr;
     out["header_doc"]  = headerDoc;
     out["symbols"]     = symbols;
     out["truncated"]   = truncated;

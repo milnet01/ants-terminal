@@ -19,15 +19,24 @@
 
 namespace FileOutline {
 
-// Mode hint matches the MCP tool surface — "auto" + the 4 explicit
+// Mode hint matches the MCP tool surface — "auto" + the explicit
 // languages. Unknown extensions fall through to a byte-count-only
 // envelope (still useful for orientation).
+//
+// ANTS-2150 — `Generic` is one shared brace-family regex set (Rust, Go,
+// JS/TS, Java, C#, Kotlin, Swift, Scala, PHP). It is auto-detected from
+// the file extension (pickModeByExt); the response `language` field still
+// reports the precise language name (rust / go / typescript …) so the map
+// stays useful. One mode covers many languages because their top-level
+// declaration syntax overlaps enough that a keyword/method/arrow regex
+// trio extracts the 90% case — the same Karpathy §2 bet the C++/Py set makes.
 enum class Mode {
     Auto,
     Cpp,
     Py,
     Md,
     Json,
+    Generic,
 };
 
 Mode parseMode(const QString &s);

@@ -29,11 +29,12 @@ bool isAsciiAlnum(QChar c) {
 
 const char *langStr(Lang l) {
     switch (l) {
-        case Lang::Cpp:  return "cpp";
-        case Lang::Py:   return "py";
-        case Lang::Lua:  return "lua";
-        case Lang::Sh:   return "sh";
-        case Lang::Auto: return "";
+        case Lang::Cpp:     return "cpp";
+        case Lang::Py:      return "py";
+        case Lang::Lua:     return "lua";
+        case Lang::Sh:      return "sh";
+        case Lang::Generic: return "generic";
+        case Lang::Auto:    return "";
     }
     return "";
 }
@@ -49,6 +50,18 @@ Lang langForExt(const QString &ext) {
     if (ext == QLatin1String("py") || ext == QLatin1String("pyi")) return Lang::Py;
     if (ext == QLatin1String("lua")) return Lang::Lua;
     if (ext == QLatin1String("sh") || ext == QLatin1String("bash")) return Lang::Sh;
+    // ANTS-2150 — brace family (kept in step with FileOutline::genericLangName
+    // + CodebaseIndex::admittedSuffix so count → outline → symbol query agree).
+    if (ext == QLatin1String("rs")  || ext == QLatin1String("go")  ||
+        ext == QLatin1String("js")  || ext == QLatin1String("jsx") ||
+        ext == QLatin1String("mjs") || ext == QLatin1String("cjs") ||
+        ext == QLatin1String("ts")  || ext == QLatin1String("tsx") ||
+        ext == QLatin1String("java")|| ext == QLatin1String("cs")  ||
+        ext == QLatin1String("kt")  || ext == QLatin1String("kts") ||
+        ext == QLatin1String("swift")|| ext == QLatin1String("scala") ||
+        ext == QLatin1String("sc")  || ext == QLatin1String("php")) {
+        return Lang::Generic;
+    }
     return Lang::Auto;
 }
 
@@ -114,6 +127,17 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             add(QStringLiteral("^\\s*function\\s+") + s + QStringLiteral("\\b"));
             a.call = QRegularExpression(QStringLiteral("\\b") + s + QStringLiteral("\\b"));
             break;
+        case Lang::Generic:
+            // ANTS-2150 — mirror FileOutline's three brace-family patterns,
+            // spliced around the (escaped) query symbol `s`:
+            // (1) keyword declaration (`pub fn s`, `class s`, `func (r R) s`),
+            add(QStringLiteral("^\\s*(?:(?:pub|export|default|public|private|protected|internal|static|final|abstract|sealed|async|open|override|suspend|inline|const|unsafe|extern|data)\\s+)*(?:fn|fun|func|function|def|class|struct|enum|trait|impl|interface|type|module|object|protocol|extension|namespace|record)\\b(?:\\s+\\([^)]*\\))?\\s+") + s + QStringLiteral("\\b"));
+            // (2) C-style method definition (`private void s(...) {`),
+            add(QStringLiteral("^\\s*(?!(?:return|if|for|while|switch|catch|else|throw|new|await|do|in|of)\\b)(?:[A-Za-z_$<>\\[\\].]+[\\s*&]+)+") + s + QStringLiteral("\\s*\\([^;{]*\\)\\s*(?:->\\s*[\\w$<>\\[\\].?]+\\s*|:\\s*[\\w$<>\\[\\].?]+\\s*)?\\{"));
+            // (3) JS/TS arrow-function assignment (`const s = (...) =>`).
+            add(QStringLiteral("^\\s*(?:export\\s+)?(?:default\\s+)?(?:const|let|var)\\s+") + s + QStringLiteral("\\s*=\\s*(?:async\\s+)?(?:\\([^)]*\\)|[A-Za-z_$][\\w$]*)\\s*=>"));
+            a.call = QRegularExpression(QStringLiteral("\\b") + s + QStringLiteral("\\s*\\("));
+            break;
         case Lang::Auto:
             break;
     }
@@ -130,7 +154,8 @@ struct ScanState {
     bool walkCapped = false;
 
     // Anchors keyed by language ordinal; built once per call.
-    Anchors anchors[5];
+    // Size == Lang enum cardinality (Auto,Cpp,Py,Lua,Sh,Generic — ANTS-2150).
+    Anchors anchors[6];
 
     // Definition buckets (definitions first, then declarations).
     bool collectDefs = false;
@@ -272,6 +297,7 @@ void prepare(ScanState &st, const QString &rootCanonical,
     buildIf(Lang::Py);
     buildIf(Lang::Lua);
     buildIf(Lang::Sh);
+    buildIf(Lang::Generic);
 }
 
 bool rootUsable(const QString &rootCanonical) {
@@ -286,6 +312,7 @@ Lang parseLang(const QString &s) {
     if (s == QLatin1String("py"))  return Lang::Py;
     if (s == QLatin1String("lua")) return Lang::Lua;
     if (s == QLatin1String("sh"))  return Lang::Sh;
+    if (s == QLatin1String("generic")) return Lang::Generic;
     return Lang::Auto;
 }
 

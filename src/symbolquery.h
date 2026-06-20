@@ -23,9 +23,13 @@
 
 namespace SymbolQuery {
 
-enum class Lang { Auto, Cpp, Py, Lua, Sh };
+// ANTS-2150 — `Generic` is the shared brace-family family (Rust, Go, JS/TS,
+// Java, C#, Kotlin, Swift, Scala, PHP); its anchors mirror FileOutline's
+// generic outline regexes so find_definition / find_caller cover the same
+// files codebase_index / file_outline now do.
+enum class Lang { Auto, Cpp, Py, Lua, Sh, Generic };
 
-// "" / "auto" → Auto; "cpp"/"py"/"lua"/"sh" → the explicit family;
+// "" / "auto" → Auto; "cpp"/"py"/"lua"/"sh"/"generic" → the explicit family;
 // anything else → Auto (permissive — the caller's lang hint never
 // hard-fails the scan).
 Lang parseLang(const QString &s);
