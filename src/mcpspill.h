@@ -61,6 +61,14 @@ SpillSlice readSpill(const QString &handle, qint64 offset, qint64 maxBytes);
 // Session-start sweep: drop spill files with mtime older than 24 h (INV-7).
 void spillSweep();
 
+// Test seam (ANTS-2154): redirect the spill cache root so each test process
+// owns a unique directory. The default path (GenericCacheLocation) has no
+// per-process component, so under parallel ctest concurrent test binaries
+// share one spill dir and the count/existence assertions race. Pass a unique
+// per-test QTemporaryDir path here in SetUp; pass an empty string to restore
+// the default. Production never calls this.
+void setSpillDirOverride(const QString &dir);
+
 }  // namespace mcp
 
 #endif  // ANTS_MCPSPILL_H

@@ -31,7 +31,14 @@ constexpr qint64 kReadDefaultBytes = 512LL * 1024;        // read_spill default
 constexpr qint64 kReadCeilingBytes = 4LL * 1024 * 1024;   // read_spill ceiling
 constexpr qint64 kSweepMaxAgeSec   = 24 * 60 * 60;        // 24 h
 
+// Test-only override of the spill cache root (ANTS-2154). Empty ⇒ default.
+// Written once from a test's SetUp before any dispatch; production never sets
+// it, so the dispatch-thread read below races nothing in a real session.
+QString g_spillDirOverride;
+
 QString spillDir() {
+    if (!g_spillDirOverride.isEmpty())
+        return g_spillDirOverride;
     return QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
            + QStringLiteral("/ants-terminal/mcp-spill/");
 }
@@ -162,6 +169,18 @@ SpillSlice readSpill(const QString &handle, qint64 offset, qint64 maxBytes) {
     s.bytes     = keep;
     s.truncated = (offset + keep) < total;
     return s;
+}
+
+void setSpillDirOverride(const QString &dir) {
+    if (dir.isEmpty()) {
+        g_spillDirOverride.clear();
+    } else {
+        // spillPath() concatenates dir + handle + ".json", so normalise to a
+        // trailing slash regardless of how the caller passed it.
+        g_spillDirOverride = dir.endsWith(QLatin1Char('/'))
+                                 ? dir
+                                 : dir + QLatin1Char('/');
+    }
 }
 
 void spillSweep() {

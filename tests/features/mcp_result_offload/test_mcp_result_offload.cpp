@@ -19,15 +19,10 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
-#include <QStandardPaths>
 #include <QString>
+#include <QTemporaryDir>
 
 namespace {
-
-QString spillDir() {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
-           + QStringLiteral("/ants-terminal/mcp-spill/");
-}
 
 QString readSource(const char *path) {
     QFile f(QString::fromUtf8(path));
@@ -35,28 +30,28 @@ QString readSource(const char *path) {
     return QString::fromUtf8(f.readAll());
 }
 
-// A test fixture that isolates the spill cache under a throwaway test dir
-// (QStandardPaths test mode) and starts each test from an empty dir.
+// A test fixture that isolates the spill cache under a unique per-test
+// QTemporaryDir (ANTS-2154). The default cache root (GenericCacheLocation)
+// has no per-process component, so under parallel ctest concurrent test
+// binaries share one spill dir and the count/existence assertions race
+// (pass in isolation, fail under `ctest -j3`). A throwaway dir per test
+// removes the shared-path assumption entirely — and drops the prior
+// approach's process-global QStandardPaths test-mode flip, which the
+// ANTS-2151 note flagged as silently corrupting sibling tests' config
+// isolation when left enabled.
 class McpResultOffload : public ::testing::Test {
 protected:
     void SetUp() override {
-        // ANTS-2151 — test mode is a PROCESS-GLOBAL flag that redirects
-        // standard paths and ignores XDG_CONFIG_HOME. Capture the prior
-        // state so TearDown can restore it; leaving it enabled silently
-        // bypasses the XdgConfigHomeGuard isolation in sibling tests
-        // (e.g. ConfigAiReviewConcurrency.INV14 reads a stale config.json
-        // from the deterministic test-mode path and fails only in
-        // full-bundle order).
-        m_priorTestMode = QStandardPaths::isTestModeEnabled();
-        QStandardPaths::setTestModeEnabled(true);
-        QDir(spillDir()).removeRecursively();
+        ASSERT_TRUE(m_tmp.isValid());
+        mcp::setSpillDirOverride(m_tmp.path());
         mcp::setOffloadConfig(true, 16384, 2048);   // enabled, defaults
     }
     void TearDown() override {
-        QDir(spillDir()).removeRecursively();
-        QStandardPaths::setTestModeEnabled(m_priorTestMode);
+        mcp::setSpillDirOverride(QString());        // restore default root
     }
-    bool m_priorTestMode = false;
+    // Matches mcp::spillPath()'s dir + handle + ".json" concatenation.
+    QString spillDir() const { return m_tmp.path() + QStringLiteral("/"); }
+    QTemporaryDir m_tmp;
 };
 
 }  // namespace
