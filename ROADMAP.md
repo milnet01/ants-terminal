@@ -16797,12 +16797,13 @@ server build id so clients can self-diagnose this.
   Lanes: mcp, fileoutline.
   Source: cross-session-2026-06-20 (DOOM Ants, r_vulkan.cpp); reproduced on Ants' own fileoutline.cpp.
 
-- 📋 [ANTS-2160] **Per-project Ants settings file declaring source / docs / roadmap / changelog / spec locations.**
+- ✅ [ANTS-2160] **Per-project Ants settings file declaring source / docs / roadmap / changelog / spec locations.**
   User proposal. Today Ants assumes a src/+tests/ layout: codebase_index candidates() (codebaseindex.cpp:119) walks ONLY src/ + tests/, so a non-src project (DOOM: 65 .c files under linuxdoom-1.10/) gets file_count:0 from session_orient / codebase_index even after ANTS-2148 admitted the .c suffix; project_layout / roadmap_query / changelog_log are likewise heuristic. Proposal: an opt-in per-project config (location/format TBD — likely .ants/project.json, or a block in the existing per-project config, or reuse CLAUDE.md which is already parsed for lanes) with keys for source roots[], docs dir, roadmap path, changelog path, specs dir, optionally lane defs. MCP verbs consume it to locate everything; fall back to the current heuristics when the file is absent or a key is unset (zero regression for existing projects). Supersedes the candidates() root-walk heuristic (the deferred "non-src layout follow-on" noted in the admittedSuffix comment). Needs a spec through /cold-eyes before implementation.
   **Layman:** A small per-project file telling Ants exactly where the code, docs, roadmap and changelog live — so it stops guessing and works for projects that don't use a src/ folder.
   Kind: feature.
   Lanes: mcp, codebaseindex, remotecontrol.
   Source: user-request-2026-06-24 (prompted by DOOM file_count:0 + layout-discovery feedback).
+  Resolved (2026-06-24): implemented on main. Pure src/projectsettings.{h,cpp} loader (isInsideProject-validated, no cache); source_roots/test_roots wired into codebase_index candidates() (all 3 call-sites: build/staleFiles/refresh), docs_dir into docs_index walkDocs(), roadmap/changelog into findRoadmapUnder/findChangelogUnder + project_layout scanRoadmap/scanChangelog, specs_dir into spec_query/spec_log/current_state + project_layout. Absent file/key → existing heuristic (zero regression). Spec docs/specs/ANTS-2160.md (cold-eyes loops 1–5). 13 feature tests in tests/features/project_settings/ (test_claude bundle) green; 142 related codebase/docs/layout/spec/roadmap/changelog tests still pass. Flips to shipped X.Y.Z label at next release.
 
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 

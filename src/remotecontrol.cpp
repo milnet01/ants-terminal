@@ -24,6 +24,7 @@
 #include "mainwindow.h"
 #include "paginationengine.h"
 #include "pathvalidation.h"
+#include "projectsettings.h"    // ANTS-2160 — .ants/project.json overrides
 #include "plantemplateengine.h"
 #include "falseposledger.h"
 #include "projectlayoutengine.h"
@@ -109,6 +110,12 @@ QString resolveRootCanonical(MainWindow *main, const QJsonObject &req);
 // "repo-root only" search returned no_roadmap_loaded.
 QString findRoadmapUnder(const QString &canonicalRoot) {
     if (canonicalRoot.isEmpty()) return {};
+    // ANTS-2160 — .ants/project.json roadmap override (must be an existing
+    // file under root); else the candidate-list probe below.
+    if (const auto rm = ProjectSettings::load(canonicalRoot).roadmap) {
+        const QString c = canonicalRoot + QLatin1Char('/') + *rm;
+        if (QFileInfo(c).isFile()) return c;
+    }
     static const QStringList kCandidates = {
         QStringLiteral("ROADMAP.md"),
         QStringLiteral("roadmap.md"),
@@ -132,6 +139,11 @@ QString findRoadmapUnder(const QString &canonicalRoot) {
 // ANTS-1548 — CHANGELOG.md resolver, same shape as findRoadmapUnder.
 QString findChangelogUnder(const QString &canonicalRoot) {
     if (canonicalRoot.isEmpty()) return {};
+    // ANTS-2160 — .ants/project.json changelog override.
+    if (const auto cl = ProjectSettings::load(canonicalRoot).changelog) {
+        const QString c = canonicalRoot + QLatin1Char('/') + *cl;
+        if (QFileInfo(c).isFile()) return c;
+    }
     static const QStringList kCandidates = {
         QStringLiteral("CHANGELOG.md"),
         QStringLiteral("changelog.md"),
@@ -9446,8 +9458,13 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
         rel = pathArg;
     } else {
         const bool isPhase = id.startsWith(QStringLiteral("phase_"));
+        // ANTS-2160 — specs_dir override (phase routing unchanged).
+        QString specsDir = QStringLiteral("docs/specs");
+        if (const auto sd = ProjectSettings::load(rootCanonical).specsDir;
+            sd && QDir(rootCanonical + QLatin1Char('/') + *sd).exists())
+            specsDir = *sd;
         rel = (isPhase ? QStringLiteral("docs/phases/")
-                       : QStringLiteral("docs/specs/")) +
+                       : specsDir + QLatin1Char('/')) +
               id + QStringLiteral(".md");
         full = rootCanonical + QLatin1Char('/') + rel;
     }
@@ -11250,8 +11267,13 @@ QJsonDocument RemoteControl::cmdCurrentState(const QJsonObject &req) {
                               .value(QStringLiteral("id"))
                               .toString();
         if (!id.isEmpty()) {
+            // ANTS-2160 — specs_dir override for the spec_path probe.
+            QString specsDir = QStringLiteral("docs/specs");
+            if (const auto sd = ProjectSettings::load(rootCanonical).specsDir;
+                sd && QDir(rootCanonical + QLatin1Char('/') + *sd).exists())
+                specsDir = *sd;
             const QString specRel =
-                QStringLiteral("docs/specs/") + id +
+                specsDir + QLatin1Char('/') + id +
                 QStringLiteral(".md");
             const QFileInfo specInfo(
                 rootCanonical + QStringLiteral("/") + specRel);
@@ -11937,9 +11959,14 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
         sourceTag = QStringLiteral("path");
     } else {
         isPhase = id.startsWith(QStringLiteral("phase_"));
+        // ANTS-2160 — specs_dir override (phase routing unchanged).
+        QString specsDir = QStringLiteral("docs/specs");
+        if (const auto sd = ProjectSettings::load(rootCanonical).specsDir;
+            sd && QDir(rootCanonical + QLatin1Char('/') + *sd).exists())
+            specsDir = *sd;
         const QString dirRel = isPhase
             ? QStringLiteral("docs/phases/")
-            : QStringLiteral("docs/specs/");
+            : (specsDir + QLatin1Char('/'));
         rel  = dirRel + id + QStringLiteral(".md");
         full = rootCanonical + QLatin1Char('/') + rel;
         sourceTag = isPhase

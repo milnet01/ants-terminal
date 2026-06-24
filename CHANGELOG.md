@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Per-project Ants settings file declaring source / docs / roadmap / changelog / spec locations.** (ANTS-2160)
+  A small per-project file telling Ants exactly where the code, docs, roadmap and changelog live — so it stops guessing and works for projects that don't use a src/ folder.
+
 - **roadmap_query mode:"bundles" — one-call work-bundle discovery** (ANTS-1922)
   Groups active roadmap items (📋/🚧) into thematic bundles by headline similarity, flagging items a shipped sibling may already cover and items a body note marks as blocked — the "what's the next bundle of related to-dos?" view in a single call.
 

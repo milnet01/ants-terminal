@@ -79,7 +79,18 @@ that did not author a `detail` simply omit the key from `tool_info`.
   `~/.cache/ants-terminal/codebase-index/<cwdHash>.json` (cold-built on
   absent / unparseable / version|root-mismatch, mtime-incremental
   refresh); reuses `FileOutline` + `SubsystemMap`; ETag-304 + `fields`;
-  caller_cwd-Required (ANTS-1637).
+  caller_cwd-Required (ANTS-1637). **Layout override (ANTS-2160):** a
+  repo-committed `<root>/.ants/project.json` may declare
+  `source_roots`/`test_roots` (arrays of dirs); when present the walk
+  uses them instead of the default `src/`+`tests/` (each must be an
+  existing dir; an all-dropped key falls back). The same file's
+  `docs_dir` / `roadmap` / `changelog` / `specs_dir` keys redirect
+  `docs_index` / `roadmap_query`+`roadmap_log` / `changelog_log` /
+  `spec_query`+`spec_log`+`current_state` / `project_layout`
+  respectively. Pure loader `ProjectSettings::load`
+  (`src/projectsettings.cpp`); paths validated under root via
+  `PathValidation::isInsideProject`; absent file / key ⟹ today's
+  heuristic (zero regression). Spec `docs/specs/ANTS-2160.md`.
 - **`docs_index`** — the documentation-map sibling of `codebase_index`:
   serves a pre-computed, **project-agnostic** map of every doc so a
   session finds the right doc in one call instead of grep / `Read` across

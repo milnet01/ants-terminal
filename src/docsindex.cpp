@@ -4,6 +4,7 @@
 #include "docsindex.h"
 
 #include "sessionmemoryengine.h"
+#include "projectsettings.h"   // ANTS-2160 — docs_dir override
 
 #include <QDir>
 #include <QDirIterator>
@@ -167,7 +168,17 @@ QStringList walkDocs(const QString &rootCanonical) {
     }
     rootMd.sort();
 
-    const QString docsBase = rootCanonical + QStringLiteral("/docs");
+    // ANTS-2160 — .ants/project.json docs_dir override; else the default
+    // <root>/docs subtree. An absent / non-dir override falls back, so the
+    // no-settings walk is unchanged (INV-1/INV-3).
+    QString docsRel = QStringLiteral("docs");
+    {
+        const ProjectSettings::Settings s = ProjectSettings::load(rootCanonical);
+        if (s.docsDir &&
+            QDir(rootCanonical + QLatin1Char('/') + *s.docsDir).exists())
+            docsRel = *s.docsDir;
+    }
+    const QString docsBase = rootCanonical + QLatin1Char('/') + docsRel;
     if (QDir(docsBase).exists()) {
         QDirIterator it(docsBase, QDir::Files | QDir::NoSymLinks,
                         QDirIterator::Subdirectories);

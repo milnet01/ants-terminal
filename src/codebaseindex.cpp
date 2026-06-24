@@ -6,6 +6,7 @@
 #include "fileoutline.h"
 #include "subsystemmap.h"
 #include "sessionmemoryengine.h"
+#include "projectsettings.h"   // ANTS-2160 — source_roots / test_roots override
 
 #include <QDir>
 #include <QDirIterator>
@@ -117,8 +118,30 @@ QStringList walkSubtree(const QString &rootCanonical, const QString &sub) {
 }
 
 QStringList candidates(const QString &rootCanonical) {
-    return walkSubtree(rootCanonical, QStringLiteral("src"))
-         + walkSubtree(rootCanonical, QStringLiteral("tests"));
+    // ANTS-2160 — honour .ants/project.json source_roots / test_roots when
+    // present; else the src/ + tests/ default. Each declared root must be an
+    // existing directory (a file-typed or vanished entry is skipped; if that
+    // empties a key it falls back to its default — INV-5/INV-10). The load is
+    // inside candidates() so every call-site (build / staleFiles / refresh)
+    // is settings-aware (INV-12). removeDuplicates() collapses overlapping
+    // nested declared roots (INV-9); for the disjoint src/tests default it is
+    // a no-op, so absent-settings output is byte-identical (INV-1).
+    const ProjectSettings::Settings s = ProjectSettings::load(rootCanonical);
+    const auto resolve = [&](const std::optional<QStringList> &declared,
+                             const QString &def) -> QStringList {
+        if (!declared) return {def};
+        QStringList dirs;
+        for (const QString &r : *declared)
+            if (QDir(rootCanonical + QLatin1Char('/') + r).exists()) dirs << r;
+        return dirs.isEmpty() ? QStringList{def} : dirs;   // all dropped → default
+    };
+    QStringList out;
+    for (const QString &r : resolve(s.sourceRoots, QStringLiteral("src")))
+        out += walkSubtree(rootCanonical, r);
+    for (const QString &r : resolve(s.testRoots, QStringLiteral("tests")))
+        out += walkSubtree(rootCanonical, r);
+    out.removeDuplicates();
+    return out;
 }
 
 FileEntry outlineFile(const QString &rootCanonical, const QString &rel,

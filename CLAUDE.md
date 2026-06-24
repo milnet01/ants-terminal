@@ -114,6 +114,14 @@ load. Quick check: `LC_ALL=C.UTF-8 ctest --test-dir build`.
 
 - Signals/slots for cross-component comms.
 - Config at `~/.config/ants-terminal/config.json`, mode 0600.
+- Per-project layout is optionally declared in a repo-committed
+  `<root>/.ants/project.json` (ANTS-2160, `src/projectsettings.cpp`):
+  `source_roots`/`test_roots` (codebase_index), `docs_dir`,
+  `roadmap`, `changelog`, `specs_dir` — consumed by codebase_index /
+  docs_index / roadmap_query / changelog_log / spec_query+log /
+  current_state / project_layout, each falling back to its heuristic
+  when a key is absent. Distinct from the global config above:
+  per-project, world-readable, no secrets (NOT mode 0600).
 - Scrollback default 50k, max 1M.
 - Theme colors set on `TerminalGrid`; ANSI palette (16+216+24) lives there.
 - QTextLayout for ligature shaping.

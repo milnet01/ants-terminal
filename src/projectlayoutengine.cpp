@@ -2,6 +2,8 @@
 
 #include "projectlayoutengine.h"
 
+#include "projectsettings.h"   // ANTS-2160 — roadmap / changelog / specs_dir override
+
 #include <QByteArray>
 #include <QDateTime>
 #include <QDir>
@@ -211,7 +213,14 @@ void scanRoadmap(const QString &cwd, RoadmapInfo &out,
                  QStringList &probed, QStringList &discovered) {
     QString rel;
     QString full;
+    // ANTS-2160 — a declared roadmap in .ants/project.json wins over the
+    // heuristic candidates; the enrichment below then runs on it.
+    if (const auto rm = ProjectSettings::load(cwd).roadmap) {
+        const QString c = cwd + QLatin1Char('/') + *rm;
+        if (QFileInfo(c).isFile()) { rel = *rm; full = c; discovered.append(*rm); }
+    }
     for (const QString &cand : kRoadmapCandidates) {
+        if (!rel.isEmpty()) break;   // settings override already resolved it
         probed.append(cand);
         // ANTS-1507 — case-insensitive resolution. `Readme.md`,
         // `roadmap.md`, etc. resolve to the same probe key.
@@ -274,6 +283,17 @@ void scanRoadmap(const QString &cwd, RoadmapInfo &out,
 
 void scanChangelog(const QString &cwd, ChangelogInfo &out,
                    QStringList &probed, QStringList &discovered) {
+    // ANTS-2160 — a declared changelog in .ants/project.json wins.
+    if (const auto cl = ProjectSettings::load(cwd).changelog) {
+        const QFileInfo fi(cwd + QLatin1Char('/') + *cl);
+        if (fi.isFile()) {
+            out.path      = *cl;
+            out.sizeBytes = fi.size();
+            out.mtimeMs   = fi.lastModified().toMSecsSinceEpoch();
+            discovered.append(*cl);
+            return;
+        }
+    }
     for (const QString &cand : kChangelogCandidates) {
         probed.append(cand);
         // ANTS-1507 — case-insensitive resolution + YAML extensions.
@@ -421,6 +441,13 @@ LayoutEnvelope scanLayout(const QString &absoluteCwd) {
                 env.discovered);
     scanChangelog(absoluteCwd, env.changelog, env.probedPaths,
                   env.discovered);
+    // ANTS-2160 — a declared specs_dir wins over the candidate probe below
+    // (roadmap / changelog overrides live in scanRoadmap / scanChangelog so
+    // the existing format/size enrichment runs on the declared file). Setting
+    // env.specsDir here short-circuits the candidate loop.
+    if (const auto sd = ProjectSettings::load(absoluteCwd).specsDir;
+        sd && QDir(absoluteCwd + QLatin1Char('/') + *sd).exists())
+        env.specsDir = *sd;
     // ANTS-1493 — iterate candidate dirs; first-hit wins per field.
     for (const QString &cand : kSpecsCandidates) {
         if (!env.specsDir.isEmpty()) break;
