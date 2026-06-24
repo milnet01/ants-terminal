@@ -341,6 +341,18 @@ public:
     // in `req`. Zero-arg-equivalent (empty req) is back-compat with
     // ANTS-1244 callers — returns the full unfiltered array.
     QJsonDocument cmdRoadmapQuery(const QJsonObject &req = {});
+    // ANTS-1922 — pure work-bundle builder for roadmap_query
+    // mode:"bundles". Static + public so the feature test drives it
+    // directly with hand-authored fixtures (the bundles branch calls it
+    // on m_roadmapCacheBullets). softCapBytes bounds the emitted
+    // bundles[]; truncation drops whole trailing bundles. See
+    // docs/specs/ANTS-1922.md.
+    static QJsonObject buildRoadmapBundlesEnvelope(
+        const QJsonArray &cacheBullets, int softCapBytes);
+    // ANTS-1922 — test-only soft-cap override for the bundles branch
+    // (0 = use PaginationEngine::kSoftCapBytes). The pure builder above
+    // takes the cap directly; this lets a live-verb path force truncation.
+    void setBundleSoftCapOverride(int bytes) { m_bundleSoftCapOverride = bytes; }
     // ANTS-1583 — roadmap_branch_drift: compare ROADMAP ✅ entries'
     // cited commit SHAs against HEAD's reachable history. Reuses
     // findRoadmapUnder + collectGitSnapshot + runGit. See
@@ -763,6 +775,10 @@ private:
     // `duplicate_ids` only when non-empty so a clean roadmap stays at
     // its existing envelope shape.
     mutable QJsonArray m_roadmapCacheDuplicateIds;
+    // ANTS-1922 — test-only soft-cap override for bundles mode (0 =
+    // default PaginationEngine::kSoftCapBytes). Set via
+    // setBundleSoftCapOverride; never written on the live path.
+    int m_bundleSoftCapOverride = 0;
     // ANTS-1287 — heading index + section-slice bullet cache. Shares
     // (path, mtime, stamp) keys with the bullets cache; cleared on
     // mtime advance or TTL expiry. See docs/specs/ANTS-1287.md § 2.3.

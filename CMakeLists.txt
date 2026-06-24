@@ -1171,6 +1171,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_query_section_index/test_roadmap_query_section_index.cpp
                 # ANTS-1881 roadmap_query mode:"headline_only".
                 tests/features/roadmap_query_headline_only/test_roadmap_query_headline_only.cpp
+                # ANTS-1922 roadmap_query mode:"bundles".
+                tests/features/mcp_roadmap_bundles/test_roadmap_bundles.cpp
                 # ANTS-1876 workspace_search payload knobs.
                 tests/features/workspace_search_payload_knobs/test_workspace_search_payload_knobs.cpp
                 # ANTS-1882 roadmap_query per-section ETag invariance.

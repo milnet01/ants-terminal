@@ -47,7 +47,21 @@ that did not author a `detail` simply omit the key from `tool_info`.
 
 - **`get_scrollback`** — since-cursor incremental mode (ANTS-1500).
 - **`roadmap_query`** — recognises ants-v1 / github-task-list /
-  pass-headings formats (ANTS-1530).
+  pass-headings formats (ANTS-1530). `mode:"bundles"` (ANTS-1922)
+  groups the active subset (📋/🚧, id-bearing) into thematic
+  work-bundles by headline-token Jaccard (≥0.50, ≥2 shared tokens,
+  union-find / transitive closure) — the one-call "next bundle of
+  related to-dos?" view. Active-only: a passed `status` is ignored;
+  refuses `bad_mode_combo` with `section`/`id`/`ids`. Each bundle:
+  `{bundle_label, lanes, size, items[]}`; each item may carry
+  `possibly_resolved_by`/`possibly_resolved_score` (a ✅ sibling at
+  Jaccard ≥0.60 may already cover it) and `gate_note`/`blocked` (a
+  body gate/blocker marker — `blocked by`, `until …lands/ships`, …;
+  bare `blocks` is excluded). Byte-stable envelope (size-desc,
+  id-asc); whole-bundle soft-cap truncation at
+  `PaginationEngine::kSoftCapBytes` (no `next_offset` in v1). The
+  builder is the pure static `RemoteControl::buildRoadmapBundlesEnvelope`
+  (warm-cache, no re-parse). Spec `docs/specs/ANTS-1922.md`.
 - **`read_log`** — filters a log file (the Ants debug log or a
   `caller_cwd` path) to matching lines via the pure `ReadLog::filter`
   helper; streaming drop-oldest byte cap + `since_cursor` incremental

@@ -957,6 +957,30 @@ QString rcNormaliseHeadline(const QString &raw) {
     return out;
 }
 
+// ANTS-1922 — token-Jaccard ratio of two already-tokenised headlines,
+// or -1.0 when fewer than `minShared` tokens overlap (the stop-word
+// floor: a sub-floor pair returns -1.0, which fails every caller's
+// `>=` threshold, so callers apply ONLY their ratio threshold and must
+// not re-implement a separate count check). 2nd call-site of the
+// rcComputePossibleDuplicates scoring (Rule-of-Three extract); the
+// dup-detector keeps its 0.60 gate, bundles clustering uses 0.50, the
+// ✅-sibling check uses 0.60.
+double rcHeadlineJaccard(const QSet<QString> &tokA,
+                         const QSet<QString> &tokB,
+                         int minShared = 2) {
+    if (tokA.isEmpty() || tokB.isEmpty()) return -1.0;
+    const QSet<QString> &small = (tokA.size() <= tokB.size()) ? tokA : tokB;
+    const QSet<QString> &large = (tokA.size() <= tokB.size()) ? tokB : tokA;
+    int inter = 0;
+    for (const QString &t : small) {
+        if (large.contains(t)) ++inter;
+    }
+    if (inter < minShared) return -1.0;
+    const int uni = tokA.size() + tokB.size() - inter;
+    if (uni <= 0) return -1.0;
+    return static_cast<double>(inter) / uni;
+}
+
 // ANTS-2043 — soft near-duplicate CONTENT detector for op:append /
 // append_batch. Ants already flags exact duplicate IDs
 // (rcComputeDuplicateIds, canonical-ID collisions); this catches two
@@ -991,16 +1015,13 @@ QJsonArray rcComputePossibleDuplicates(
             const QStringList exList =
                 normEx.split(QLatin1Char(' '), Qt::SkipEmptyParts);
             const QSet<QString> tokEx(exList.begin(), exList.end());
-            int inter = 0;
-            for (const QString &t : tokNew) {
-                if (tokEx.contains(t)) ++inter;
-            }
-            const int uni = tokNew.size() + tokEx.size() - inter;
-            if (uni > 0 && inter >= 2) {
-                const double jac = static_cast<double>(inter) / uni;
-                if (jac >= 0.60) {
-                    score = static_cast<int>(jac * 100.0 + 0.5);
-                }
+            // ANTS-1922 — extracted scoring (was an inline inter/uni loop
+            // + ≥2-token floor + 0.60 gate here). rcHeadlineJaccard returns
+            // -1.0 below the floor, so the >= 0.60 test subsumes the old
+            // `inter >= 2` guard; behaviour is unchanged.
+            const double jac = rcHeadlineJaccard(tokNew, tokEx);
+            if (jac >= 0.60) {
+                score = static_cast<int>(jac * 100.0 + 0.5);
             }
         }
         if (score > 0) cands.append({rec.id, rec.headline, score});
@@ -2641,6 +2662,357 @@ static QJsonDocument cmdRoadmapLogPassFlipBatch(
 }
 // ========================== end ANTS-2126 ==========================
 
+// ANTS-1922 — id-ordering for bundles mode. Compares the integer
+// suffix of an ANTS-NNNN id ascending (so ANTS-999 precedes ANTS-1000,
+// which a plain string sort inverts); falls back to a lexicographic
+// compare on the full id for any non-conforming id or an equal suffix.
+// One rule, three call-sites (items[] sort, bundle size-tie-break,
+// bundle_label lowest-id fallback) so the envelope is byte-stable.
+static bool rcRoadmapIdLess(const QString &a, const QString &b) {
+    auto suffix = [](const QString &id, bool *ok) -> qlonglong {
+        const int dash = id.lastIndexOf(QLatin1Char('-'));
+        if (dash < 0 || dash + 1 >= id.size()) { *ok = false; return 0; }
+        return id.mid(dash + 1).toLongLong(ok);
+    };
+    bool okA = false, okB = false;
+    const qlonglong na = suffix(a, &okA);
+    const qlonglong nb = suffix(b, &okB);
+    if (okA && okB) {
+        if (na != nb) return na < nb;
+        return a < b;   // equal numeric suffix → lexicographic tie-break
+    }
+    return a < b;       // non-conforming id → lexicographic
+}
+
+// ANTS-1922 — scan a (≤2000-char cached) bullet body for the FIRST
+// line carrying a directional gate/blocker marker; return it trimmed
+// then capped to ≤160 chars (empty = no marker). A "line" is the text
+// between `\n` separators. Match is a case-folded substring test per
+// line; the `until` rule additionally requires `lands` or `ships` on
+// the same line, in any order. `blocks ` is deliberately NOT a marker
+// (an item that blocks others is itself actionable, and the bare verb
+// false-fires on prose like "blocks the cursor"). Only `blocked by` and
+// the `until`+(`lands`|`ships`) rule are INV-locked (INV-5); the rest
+// are best-effort. The 2000-char cap is a hard character cut, so a
+// marker past it — or on the line straddling it — is missed (acceptable
+// for v1: gate notes sit near the bullet head by convention).
+static QString rcExtractGateNote(const QString &body) {
+    static const QStringList markers = {
+        QStringLiteral("blocked by"), QStringLiteral("gated"),
+        QStringLiteral("depends on"), QStringLiteral("waiting on"),
+        QStringLiteral("parked"),     QStringLiteral("superseded"),
+    };
+    const QStringList lines = body.split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        const QString lower = line.toLower();
+        bool hit = false;
+        for (const QString &m : markers) {
+            if (lower.contains(m)) { hit = true; break; }
+        }
+        if (!hit && lower.contains(QStringLiteral("until ")) &&
+            (lower.contains(QStringLiteral("lands")) ||
+             lower.contains(QStringLiteral("ships")))) {
+            hit = true;
+        }
+        if (hit) {
+            QString note = line.trimmed();
+            if (note.size() > 160) note.truncate(160);
+            return note;
+        }
+    }
+    return QString();
+}
+
+// ANTS-1922 — canonical bullet-cache array builder. Mirrors the
+// bullet-mode pre-fill loop exactly (same fields, incl. section_slug)
+// so a bundles-mode lazy-fill keeps the SHARED m_roadmapCacheBullets
+// consistent for a later section_index call within the TTL. Used only
+// by the bundles branch's lazy-fill; the three legacy fill sites inside
+// cmdRoadmapQuery are deliberately NOT migrated to it — that would move
+// their `for (const auto &b : bullets)` loops out of the function body
+// and perturb the count-based roadmap_query_section_index INV-7 guard
+// (a follow-on can migrate them + update that test).
+static QJsonArray rcBuildBulletCacheArray(const QString &markdown) {
+    const auto bullets = RoadmapDialog::parseBullets(markdown);
+    QJsonArray arr;
+    for (const auto &b : bullets) {
+        QJsonObject o;
+        o["id"] = b.id;
+        o["status"] = b.status;
+        o["headline"] = b.headline;
+        o["headline_oneline"] = rcHeadlineOneline(b.headline);
+        rcMaybeEmitHeadlineFull(o, b);
+        rcSetBodyFields(o, b.body);
+        o["kind"] = b.kind;
+        QJsonArray lanes;
+        for (const QString &l : b.lanes) lanes.append(l);
+        o["lanes"] = lanes;
+        o["section_slug"] = b.sectionSlug;
+        if (b.format == QLatin1String("github-task-list")) {
+            o["format"] = b.format;
+        }
+        if (b.synthetic) o["synthetic"] = true;
+        if (!b.anchor.isEmpty()) o["anchor"] = b.anchor;
+        if (!b.boldId.isEmpty()) o["bold_id"] = b.boldId;
+        arr.append(o);
+    }
+    return arr;
+}
+
+// ANTS-1922 — pure work-bundle builder over a cached bullet array.
+// Static + public (see remotecontrol.h) so the feature test drives it
+// directly with hand-authored fixtures; cmdRoadmapQuery's bundles
+// branch calls it on m_roadmapCacheBullets. Active subset = id-bearing
+// 📋/🚧 bullets (same posture as the default bullets[] predicate — INV-1
+// wants real ids). Clusters by headline-token Jaccard ≥ 0.50 (≥2 shared
+// tokens) via union-find, flags items a ✅ sibling may already cover
+// (≥0.60) or a body gate-marker blocks, and bounds the emitted
+// bundles[] at softCapBytes by dropping whole trailing bundles.
+QJsonObject RemoteControl::buildRoadmapBundlesEnvelope(
+        const QJsonArray &cacheBullets, int softCapBytes) {
+    const QString plannedEmoji  = QString::fromUtf8("\xF0\x9F\x93\x8B"); // 📋
+    const QString progressEmoji = QString::fromUtf8("\xF0\x9F\x9A\xA7"); // 🚧
+    const QString doneEmoji     = QString::fromUtf8("\xE2\x9C\x85");     // ✅
+
+    struct Item {
+        QString id, status, headlineOneline, body;
+        QStringList lanes;
+        QSet<QString> tokens;
+    };
+    struct Shipped { QString id; QSet<QString> tokens; };
+    QVector<Item> active;
+    QVector<Shipped> shipped;
+
+    // Tokenise every bullet's headline once (built for ✅ too, since the
+    // sibling check needs shipped-item tokens). Tokens come from the
+    // FULL headline; the emitted item carries headline_oneline.
+    for (const auto &v : cacheBullets) {
+        const QJsonObject o = v.toObject();
+        const QString id       = o.value(QStringLiteral("id")).toString();
+        const QString status   = o.value(QStringLiteral("status")).toString();
+        const QString headline = o.value(QStringLiteral("headline")).toString();
+        const QStringList toks = rcNormaliseHeadline(headline)
+                                     .split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        const QSet<QString> tokset(toks.begin(), toks.end());
+        if (status == doneEmoji) {
+            if (!id.isEmpty()) shipped.append({id, tokset});
+            continue;
+        }
+        if ((status == plannedEmoji || status == progressEmoji) &&
+            !id.isEmpty()) {
+            Item it;
+            it.id = id;
+            it.status = status;
+            it.headlineOneline =
+                o.value(QStringLiteral("headline_oneline")).toString();
+            it.body = o.value(QStringLiteral("body")).toString();
+            const QJsonArray la = o.value(QStringLiteral("lanes")).toArray();
+            for (const auto &l : la) it.lanes.append(l.toString());
+            it.tokens = tokset;
+            active.append(it);
+        }
+    }
+
+    const int activeTotal = active.size();
+
+    // Union-find: edge ⟺ jaccard ≥ 0.50 (the ≥2-shared-token floor is
+    // enforced by rcHeadlineJaccard's -1.0 sentinel). Bundles are the
+    // connected components (transitive closure of the edge relation).
+    QVector<int> parent(activeTotal);
+    for (int i = 0; i < activeTotal; ++i) parent[i] = i;
+    auto findRoot = [&parent](int x) {
+        while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+        return x;
+    };
+    for (int i = 0; i < activeTotal; ++i) {
+        for (int j = i + 1; j < activeTotal; ++j) {
+            if (rcHeadlineJaccard(active[i].tokens, active[j].tokens) >= 0.50) {
+                const int ri = findRoot(i), rj = findRoot(j);
+                if (ri != rj) parent[ri] = rj;
+            }
+        }
+    }
+    QHash<int, QVector<int>> groups;
+    for (int i = 0; i < activeTotal; ++i) groups[findRoot(i)].append(i);
+
+    // Label-only stop-word set (distinct from tokenisation, which has
+    // none — §2.3) so a label never reads "the for".
+    static const QSet<QString> labelStops = {
+        QStringLiteral("a"), QStringLiteral("an"), QStringLiteral("the"),
+        QStringLiteral("of"), QStringLiteral("for"), QStringLiteral("to"),
+        QStringLiteral("and"), QStringLiteral("or"), QStringLiteral("in"),
+        QStringLiteral("on"), QStringLiteral("vs"), QStringLiteral("with"),
+        QString::fromUtf8("\xE2\x80\x94"),   // em-dash —
+    };
+
+    struct Bundle {
+        QString label;
+        QStringList lanes;
+        QString lowestId;
+        QJsonArray items;
+        int size = 0;
+    };
+    QVector<Bundle> bundles;
+
+    for (auto git = groups.constBegin(); git != groups.constEnd(); ++git) {
+        QVector<int> members = git.value();
+        // Items sorted by id asc → byte-stable (union-find order is
+        // otherwise unspecified). members.first() is then the lowest id.
+        std::sort(members.begin(), members.end(), [&](int a, int b) {
+            return rcRoadmapIdLess(active[a].id, active[b].id);
+        });
+        const int size = members.size();
+
+        QJsonArray itemsArr;
+        for (int mi : members) {
+            const Item &m = active[mi];
+            QJsonObject io;
+            io["id"] = m.id;
+            io["status"] = m.status;
+            io["headline_oneline"] = m.headlineOneline;
+            QStringList ml = m.lanes;
+            std::sort(ml.begin(), ml.end());   // per-item lanes asc (verbatim)
+            QJsonArray mla;
+            for (const QString &l : ml) mla.append(l);
+            io["lanes"] = mla;
+            // Refinement 1 — possibly_resolved_by (max ✅ Jaccard ≥ 0.60).
+            double best = -1.0;
+            QString bestId;
+            for (const Shipped &s : shipped) {
+                const double j = rcHeadlineJaccard(m.tokens, s.tokens);
+                if (j >= 0.60 &&
+                    (j > best || (j == best && rcRoadmapIdLess(s.id, bestId)))) {
+                    best = j;
+                    bestId = s.id;
+                }
+            }
+            if (!bestId.isEmpty()) {
+                io["possibly_resolved_by"] = bestId;
+                // Canonical dup-detector rounding (remotecontrol.cpp ~1002)
+                // so the score is byte-identical + stable (INV-11).
+                io["possibly_resolved_score"] =
+                    static_cast<int>(best * 100.0 + 0.5);
+            }
+            // Refinement 2 — gate_note / blocked.
+            const QString gate = rcExtractGateNote(m.body);
+            if (!gate.isEmpty()) {
+                io["gate_note"] = gate;
+                io["blocked"] = true;
+            }
+            itemsArr.append(io);
+        }
+
+        // bundle_label: shared tokens (label stop-words dropped) in
+        // ≥ ceil(size/2) members, sorted (freq desc, token asc), first 3.
+        QHash<QString, int> tokFreq;
+        for (int mi : members) {
+            for (const QString &t : active[mi].tokens) tokFreq[t] += 1;
+        }
+        const int need = (size + 1) / 2;   // ceil(size/2)
+        QStringList qualifying;
+        for (auto t = tokFreq.constBegin(); t != tokFreq.constEnd(); ++t) {
+            if (t.value() >= need && !labelStops.contains(t.key())) {
+                qualifying.append(t.key());
+            }
+        }
+        QString label;
+        if (!qualifying.isEmpty()) {
+            std::sort(qualifying.begin(), qualifying.end(),
+                      [&](const QString &a, const QString &b) {
+                          const int fa = tokFreq.value(a), fb = tokFreq.value(b);
+                          if (fa != fb) return fa > fb;   // freq desc
+                          return a < b;                    // token asc
+                      });
+            QStringList top;
+            for (int k = 0; k < qualifying.size() && k < 3; ++k) {
+                top.append(qualifying[k]);
+            }
+            label = top.join(QLatin1Char(' '));
+        } else {
+            // Fallback — most-common lane (case-folded tally, tie-break
+            // ascending case-folded key); else lowest member id.
+            QHash<QString, int> laneFreq;
+            for (int mi : members) {
+                for (const QString &l : active[mi].lanes) {
+                    laneFreq[l.toLower()] += 1;
+                }
+            }
+            if (!laneFreq.isEmpty()) {
+                QString bestLane;
+                int bestCnt = -1;
+                for (auto l = laneFreq.constBegin(); l != laneFreq.constEnd(); ++l) {
+                    if (l.value() > bestCnt ||
+                        (l.value() == bestCnt && l.key() < bestLane)) {
+                        bestCnt = l.value();
+                        bestLane = l.key();
+                    }
+                }
+                label = bestLane;
+            } else {
+                label = active[members.first()].id;
+            }
+        }
+
+        // lanes union — distinct, case-sensitive verbatim, sorted asc.
+        QSet<QString> laneUnion;
+        for (int mi : members) {
+            for (const QString &l : active[mi].lanes) laneUnion.insert(l);
+        }
+        QStringList laneList(laneUnion.begin(), laneUnion.end());
+        std::sort(laneList.begin(), laneList.end());
+
+        Bundle b;
+        b.label = label;
+        b.lanes = laneList;
+        b.lowestId = active[members.first()].id;
+        b.items = itemsArr;
+        b.size = size;
+        bundles.append(b);
+    }
+
+    // Sort bundles: size desc, tie-break lowest member id asc (this
+    // already places 1-item bundles last).
+    std::sort(bundles.begin(), bundles.end(),
+              [](const Bundle &a, const Bundle &b) {
+                  if (a.size != b.size) return a.size > b.size;
+                  return rcRoadmapIdLess(a.lowestId, b.lowestId);
+              });
+
+    // Whole-bundle measure loop: stop before the first bundle that would
+    // cross the soft cap; emitted bundles stay intact (INV-12, never
+    // item-split). Always keep ≥1 bundle so a non-empty active set never
+    // returns an empty bundles[] purely from the cap.
+    QJsonArray bundlesArr;
+    bool truncated = false;
+    int runningBytes = 0;
+    for (const Bundle &b : bundles) {
+        QJsonObject bo;
+        bo["bundle_label"] = b.label;
+        QJsonArray la;
+        for (const QString &l : b.lanes) la.append(l);
+        bo["lanes"] = la;
+        bo["size"] = b.size;
+        bo["items"] = b.items;
+        const int sz =
+            QJsonDocument(bo).toJson(QJsonDocument::Compact).size();
+        if (!bundlesArr.isEmpty() && runningBytes + sz > softCapBytes) {
+            truncated = true;
+            break;
+        }
+        bundlesArr.append(bo);
+        runningBytes += sz;
+    }
+
+    QJsonObject out;
+    out["ok"] = true;
+    out["mode"] = QStringLiteral("bundles");
+    out["active_total"] = activeTotal;
+    out["bundle_count"] = bundlesArr.size();
+    out["truncated"] = truncated;
+    out["bundles"] = bundlesArr;
+    return out;
+}
+
 // ANTS-1117 v1: roadmap-query — parse the active tab's ROADMAP.md
 // (cached on mtime; INV-10 rate-limit) into a structured bullet
 // stream for Claude. Returns the unified `{ok, error, code}` shape
@@ -2790,7 +3162,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     if (mode.isEmpty()) mode = QStringLiteral("bullets");
     if (mode != QLatin1String("bullets") &&
         mode != QLatin1String("section_index") &&
-        mode != QLatin1String("headline_only")) {
+        mode != QLatin1String("headline_only") &&
+        mode != QLatin1String("bundles")) {   // ANTS-1922
         QString verbatim = req.value(QStringLiteral("mode")).toString();
         if (verbatim.size() > 64) verbatim.truncate(64);
         for (int i = 0; i < verbatim.size(); ++i) {
@@ -2862,6 +3235,35 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["error"] = QStringLiteral(
             "ids selector does not combine with section; ids scans "
             "the whole roadmap");
+        out["code"] = QStringLiteral("bad_mode_combo");
+        return QJsonDocument(out);
+    }
+    // ANTS-1922 — `bundles` is a whole-roadmap active rollup (same
+    // rationale as section_index), so it does not compose with the
+    // section= sub-slice or the id / ids single-item selectors. Three
+    // guards modelled on the three section_index combos above
+    // (bundles+section / bundles+id / bundles+ids). The mode-independent
+    // id+section / ids+id / ids+section guards already fire above, so a
+    // bundles request never reaches a bare id/ids+section without one of
+    // these tripping first.
+    if (mode == QLatin1String("bundles") && !section.isEmpty()) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "bundles mode does not accept section= filter");
+        out["code"] = QStringLiteral("bad_mode_combo");
+        return QJsonDocument(out);
+    }
+    if (mode == QLatin1String("bundles") && !idArg.isEmpty()) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "id selector does not combine with mode:bundles");
+        out["code"] = QStringLiteral("bad_mode_combo");
+        return QJsonDocument(out);
+    }
+    if (mode == QLatin1String("bundles") && !idsArg.isEmpty()) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "ids selector does not combine with mode:bundles");
         out["code"] = QStringLiteral("bad_mode_combo");
         return QJsonDocument(out);
     }
@@ -3339,6 +3741,34 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             out["duplicate_ids"] = m_roadmapCacheDuplicateIds;
         }
         return QJsonDocument(out);
+    }
+
+    // ANTS-1922 — bundles branch. Groups the active subset (📋/🚧) into
+    // thematic work-bundles by headline-token similarity, flagging items
+    // a shipped sibling may already cover (possibly_resolved_by) or a
+    // body gate-marker blocks (gate_note). Active-only; a passed `status`
+    // is ignored (INV-7). Early return like section_index; reads the warm
+    // cache with no re-parse (INV-8). Lazy-fills via rcBuildBulletCacheArray
+    // when a prior section-mode call left the bullet cache empty on a hit
+    // (mirror of the section_index lazy-fill; the helper keeps section_slug
+    // on the shared cache for a follow-up section_index call within the TTL).
+    if (mode == QLatin1String("bundles")) {
+        if (m_roadmapCacheBullets.isEmpty() &&
+            (m_roadmapCachePath == path) &&
+            (m_roadmapCacheMtimeMs == mtime)) {
+            QFile f(path);
+            if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                const QString markdown = QString::fromUtf8(f.readAll());
+                m_roadmapCacheBullets = rcBuildBulletCacheArray(markdown);
+                m_roadmapCacheDuplicateIds =
+                    rcComputeDuplicateIds(m_roadmapCacheBullets);
+            }
+        }
+        const int cap = (m_bundleSoftCapOverride > 0)
+                            ? m_bundleSoftCapOverride
+                            : PaginationEngine::kSoftCapBytes;
+        return QJsonDocument(
+            buildRoadmapBundlesEnvelope(m_roadmapCacheBullets, cap));
     }
 
     // ANTS-1287 — section branch.

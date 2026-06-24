@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_query mode:"bundles" — one-call work-bundle discovery** (ANTS-1922)
+  Groups active roadmap items (📋/🚧) into thematic bundles by headline similarity, flagging items a shipped sibling may already cover and items a body note marks as blocked — the "what's the next bundle of related to-dos?" view in a single call.
+
 - **workspace_search now hints when a multi-word query was matched as one phrase** (ANTS-2045)
   If you search several words at once and get nothing back, the result now tells you it searched for the exact phrase (not the words separately) and how to broaden it.
 

@@ -1888,7 +1888,8 @@ void ClaudeIntegration::onMcpConnection() {
                     "status (all|active|shipped), section=<slug>, id / "
                     "ids[] (single/bundle fetch by [PROJ-NNNN]). mode: "
                     "bullets (default) | section_index (slug discovery) | "
-                    "headline_only (~10x smaller). Opt-in: include_body, "
+                    "headline_only (~10x smaller) | bundles (group active "
+                    "items into thematic work-bundles). Opt-in: include_body, "
                     "compact, fields, etag_match. Refusals: bad_case, "
                     "bad_section, bad_mode_combo. caller_cwd Required.");
                 // ANTS-2079 — full per-op reference lives in `detail`,
@@ -2129,6 +2130,9 @@ void ClaudeIntegration::onMcpConnection() {
                     // ANTS-1881 — third mode value. Narrow per-bullet
                     // shape for callers that only want the catalogue.
                     modeEnum.append("headline_only");
+                    // ANTS-1922 — fourth mode value. Groups active items
+                    // into thematic work-bundles for session triage.
+                    modeEnum.append("bundles");
                     modeProp["enum"] = modeEnum;
                     modeProp["default"] = "bullets";
                     modeProp["description"] = QStringLiteral(
@@ -2155,7 +2159,21 @@ void ClaudeIntegration::onMcpConnection() {
                         "{id, status, headline_oneline, section_slug} per "
                         "bullet (skips body/lanes/kind) — ~10× smaller "
                         "payload on dense bundle sections; composes with "
-                        "section=, status=, id=, pagination, and ETag.");
+                        "section=, status=, id=, pagination, and ETag. "
+                        "ANTS-1922 — \"bundles\" groups the active subset "
+                        "(📋+🚧) into thematic work-bundles by headline-token "
+                        "similarity (the one-call \"what's the next bundle "
+                        "of related to-dos?\" view). Active-only — a passed "
+                        "`status` is ignored; cannot combine with section=, "
+                        "id, or ids (bad_mode_combo). Returns "
+                        "bundles[{bundle_label, lanes, size, items[{id, "
+                        "status, headline_oneline, lanes, "
+                        "possibly_resolved_by?, possibly_resolved_score?, "
+                        "gate_note?, blocked?}]}] sorted by size desc, plus "
+                        "active_total / bundle_count / truncated. "
+                        "`possibly_resolved_by` flags an item a shipped ✅ "
+                        "sibling may already cover; `gate_note`/`blocked` "
+                        "surface a body gate/blocker marker.");
                     props["mode"] = modeProp;
                     // ANTS-1436 — offset/limit pagination args.
                     QJsonObject offsetProp;
