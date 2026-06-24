@@ -815,6 +815,15 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 30)
 
+    # ANTS-2164/2165 — cut-rc.sh cadence-hardening + hotfix behavioural
+    # conformance (shell harness drives the real script against throwaway git
+    # repos; the C++ release_rc_pipeline test keeps the source-scrape layer).
+    add_test(NAME cut_rc_behaviour
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/release_rc_pipeline/cut_rc_behaviour_test.sh")
+    set_tests_properties(cut_rc_behaviour PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 120)
+
     # bench_vt_throughput — VT parse + grid-apply throughput harness.
     # Drives the 0.8.0 "Terminal throughput slowdowns" investigation
     # (ROADMAP.md § 0.8.0 > ⚡ Performance). Linked against only

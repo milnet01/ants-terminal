@@ -12,6 +12,16 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **Added an out-of-cadence hotfix path, `cut-rc.sh hotfix`.** (ANTS-2165)
+  Two phases around a `/bump` that ship the latest public release plus a cherry-picked fix as the next public patch (and roll any in-flight RC up one number), for an urgent bug that can't wait for the next Wednesday.
+
+### Changed
+
+- **Hardened the weekly RC→release→new-RC cadence into one guarded `cut-rc.sh cycle`.** (ANTS-2164)
+  `new-rc` refuses an empty RC and auto-rolls `[Unreleased]`; `promote` refuses an empty/placeholder or stale (>14-day) RC and auto-date-stamps the CHANGELOG/metainfo/debian release notes; version-drift is now a hard gate. Stops the recurring empty-RC / half-finished-release class of incident.
+
 ## [0.7.98] — unreleased (Patron RC preview)
 
 **Theme:** Rolling Patron preview of the next release. Fixes and features land

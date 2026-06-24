@@ -292,10 +292,22 @@ changes.
 public release + a Patron-preview RC. The `-rcN` suffix lives ONLY at the
 git tag, GitHub-release title, and AppImage filename — never in
 `CMakeLists.txt` / `bump.json` (INV-3 / INV-9). RC orchestration is
-`packaging/cut-rc.sh` (`new-rc` / `respin` / `promote` / `status`), NOT
-the global `/release` skill. Flow: `/bump` to base `X.Y.Z`, then
-`cut-rc.sh new-rc --push`. `release.yml` routes RC AppImages to a separate
-zsync channel so stable users can't auto-update onto an RC.
+`packaging/cut-rc.sh` (`new-rc` / `respin` / `promote` / `status` /
+`cycle` / `hotfix`), NOT the global `/release` skill. Flow: `/bump` to
+base `X.Y.Z`, then `cut-rc.sh new-rc --push`. `release.yml` routes RC
+AppImages to a separate zsync channel so stable users can't auto-update
+onto an RC.
+
+The **guarded Wednesday cadence is `cut-rc.sh cycle`** (ANTS-2164):
+promote the in-flight RC, then cut the next one — each phase self-skips
+when there is nothing to do and hard-refuses an empty / placeholder /
+stale / drifted RC; `new-rc` auto-rolls `[Unreleased]` and `promote`
+auto-date-stamps the CHANGELOG/metainfo/debian carriers. The bump
+between phases is still a separate `/bump` (the script never edits
+version files). For an urgent bug in the already-published release, use
+**`cut-rc.sh hotfix <fix-sha>…`** (ANTS-2165): two phases around a
+`/bump` that ship `vN` + the cherry-picked fix as the next public patch
+and roll the in-flight RC up one number.
 
 ## Key design decisions (non-obvious)
 

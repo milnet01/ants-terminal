@@ -36,3 +36,34 @@ source so they can't silently regress.
 - **INV-6 (irreversible-action gate)** — `cut-rc.sh` only pushes tags
   and creates releases under an explicit `--push`; without it the
   script rehearses (local tag + printed commands).
+
+## ANTS-2164 / ANTS-2165 — cadence-hardening + hotfix
+
+Two test layers cover the hardened pipeline:
+
+- **Source-scrape** (`test_release_rc_pipeline.cpp`, the C++ cases
+  `Ants2164*` / `Ants2165*`) — the §2.1 helpers exist, the INV-1/2/3/4/8/9
+  guards are wired into `new-rc`/`promote`, the drift check is a hard gate
+  (INV-5), `promote` tags the frozen `^{commit}` (INV-6), `cycle` self-skips
+  and is dispatched (INV-7), and `hotfix` publishes a non-prerelease tag with
+  no `wednesday_guard`, refuses an off-main SHA, and is wired into the arg
+  parser (ANTS-2165 INV-3/5/7).
+
+- **Behavioural** (`cut_rc_behaviour_test.sh`, registered as the `cut_rc_behaviour`
+  ctest, label `features;fast`) — drives the real `cut-rc.sh` against throwaway
+  git repos (per-repo bare origin + a no-op `gh` shim + a drift stub,
+  `--skip-build`), asserting exit codes and the resulting CHANGELOG/metainfo/
+  debian/tag state. Cases: empty-RC refusal + `--allow-empty-rc` override
+  (INV-1); `[Unreleased]` roll (INV-4); placeholder-promote refusal (INV-2);
+  three-carrier date-stamp + frozen-commit tag with main ahead (INV-3/INV-6);
+  the 14-vs-15-day stale boundary + `--force-stale` (INV-8); public-base
+  refusal (INV-9); `cycle` self-skip and both-ready (INV-7); and the full
+  hotfix path — off-main refusal, `rc_base_mismatch`, `hotfix_branch_exists`,
+  conflict-abort (INV-6), and a no-RC hotfix asserting the minimal tree
+  (no leaked feature) + `[H] > [N]` CHANGELOG order (ANTS-2165 INV-2/INV-4).
+
+A `bash` script is exercised by a shell harness (the project already
+registers shell feature tests — `hook_pack`, `claude_git_context_hook`);
+the C++ layer keeps the cheaper structural scrape. Every behavioural case
+was verified to FAIL against the pre-fix `cut-rc.sh` (17 of 28 assertions
+fail pre-fix; the rest are override/boundary paths that coincide).
