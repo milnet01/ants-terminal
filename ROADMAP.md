@@ -8551,6 +8551,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: implement.
   Source: user-request-2026-06-24 (recurring RC/release issues).
   Shipped 2026-06-25 (commit a3fd123). Helpers + hardened new-rc/promote + cycle in cut-rc.sh; 9 C++ source-scrape + 28 behavioural shell assertions (reproduce-before-fix confirmed: 17/28 fail pre-fix); 2226/2226 features green; drift clean. PENDING (§5, user-gated): delete the empty v0.7.98-rc1 tag + GitHub pre-release and revert the 0.7.98 channel-opener sections.
+  §5 reconciliation resolved 2026-06-25: user chose to LEAVE the empty v0.7.98-rc1 in place. Safe — the hardened promote (INV-2) refuses to ship it empty; the next real cut produces rc2 with content and self-heals. Destructive delete declined (avoids Patron pre-release removal + rc1 tag-name reuse). Item fully complete.
 
 - ✅ [ANTS-2165] **Add an out-of-cadence hotfix path to the release standard (`cut-rc.sh hotfix`).**
   The weekly cadence (ANTS-1318) + its hardening (ANTS-2164) cover a bug
