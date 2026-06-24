@@ -8551,6 +8551,24 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: implement.
   Source: user-request-2026-06-24 (recurring RC/release issues).
 
+- 🚧 [ANTS-2165] **Add an out-of-cadence hotfix path to the release standard (`cut-rc.sh hotfix`).**
+  The weekly cadence (ANTS-1318) + its hardening (ANTS-2164) cover a bug
+  found DURING the RC freeze (cherry-pick → respin) but NOT an urgent bug in
+  the already-published release that can't wait for the next Wednesday.
+  User-chosen model (2026-06-24): "dedicated hotfix, RC rolls up" — ship a
+  minimal patch = current public + ONLY the urgent fix as the next patch
+  number (public 0.7.97 → hotfix 0.7.98), and roll the in-flight RC up one
+  (0.7.98-rc1 → 0.7.99-rc1) so SemVer stays monotonic and the week's
+  half-baked preview features never ship early. New `cut-rc.sh hotfix
+  <sha>...` guarded primitive (branch off the public tag, cherry-pick,
+  build/test, tag public, publish) + assistant-orchestrated version bumps
+  (cut-rc.sh never bumps — ANTS-1318 INV-9). Spec: docs/specs/ANTS-2165.md
+  (extends ANTS-1318 + ANTS-2164). Out-of-cadence — the explicit exception
+  to ANTS-1318 INV-1.
+  **Layman:** Add an emergency-fix lane: if a bad bug ships to everyone, we can push a small fix-only release immediately instead of waiting for the weekly Wednesday release.
+  Kind: implement.
+  Source: user-request-2026-06-24 (hotfix path for urgent published-release bugs).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
