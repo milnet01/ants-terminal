@@ -49,9 +49,20 @@ that did not author a `detail` simply omit the key from `tool_info`.
 - **`roadmap_query`** — recognises ants-v1 / github-task-list /
   pass-headings formats (ANTS-1530). `mode:"bundles"` (ANTS-1922)
   groups the active subset (📋/🚧, id-bearing) into thematic
-  work-bundles by headline-token Jaccard (≥0.50, ≥2 shared tokens,
-  union-find / transitive closure) — the one-call "next bundle of
-  related to-dos?" view. Active-only: a passed `status` is ignored;
+  work-bundles by a denoised headline-token edge (union-find /
+  transitive closure) — the one-call "next bundle of related to-dos?"
+  view. **ANTS-2155 reworked the edge** (the original Jaccard ≥ 0.50
+  divided by the union, so long vocabulary-varied headlines never
+  cleared the bar and the real roadmap produced all-singletons):
+  clustering tokens are now DENOISED first — stop-words, length ≤ 2,
+  pure numbers (`6162`), and file/path/qualified identifiers
+  (`auditdialog.cpp`) are dropped, plus corpus-ubiquitous tokens
+  (document frequency > max(8, 40 %) — a TF-style filter). The edge is
+  then length-insensitive: ≥ 2 shared denoised tokens AND (overlap
+  coefficient |∩|/min ≥ 0.5 OR ≥ 3 shared tokens OR a shared lane). The
+  envelope also carries `total_bundle_count` + `bundles_omitted`
+  alongside the emitted `bundle_count` so a truncated response no longer
+  reads as if clustering happened when it didn't. Active-only: a passed `status` is ignored;
   refuses `bad_mode_combo` with `section`/`id`/`ids`. Each bundle:
   `{bundle_label, lanes, size, items[]}`; each item may carry
   `possibly_resolved_by`/`possibly_resolved_score` (a ✅ sibling at

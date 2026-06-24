@@ -17782,7 +17782,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: user-request-2026-06-15.
   Resolved (2026-06-16): softened the grep/find-over-source veto in ants-bash-veto.sh from a hard block to a non-blocking PreToolUse additionalContext nudge (no permissionDecision — verified via claude-code-guide doc re-fetch). Broadened coverage (rg/ag/ack default-recursive, pathless grep -rn, git grep, project find under ./src/tests/include) with non-source-root + .log + destructive-find exemptions; per-session throttle (ANTS_GREP_NUDGE_THROTTLE_SEC, key ANTS_GREP_NUDGE_KEY:-$PPID, fail-open); bounded grep-nudge counter + tools/grep-vs-index.sh readout vs token_usage. Install scope resolved: inherits the global ants_hooks_pack_v1 (.ants-project-gated), no new hook. Spec docs/specs/ANTS-2141.md cold-eyes loops 1-5 (converged to polish). New hook_pack assertions green, verified red against pre-change hooks. Created hooks/README.md (closed a 3-site dangling ref); annotated ANTS-1252 INV-4 split + fixed its §1.2 git_state→get_git_status drift.
 
-- 📋 [ANTS-2155] **roadmap_query mode:"bundles" clustering too strict — zero multi-item bundles on the real roadmap.**
+- ✅ [ANTS-2155] **roadmap_query mode:"bundles" clustering too strict — zero multi-item bundles on the real roadmap.**
   Live call on the 173-active-item roadmap (2026-06-24) produced
   ZERO multi-item bundles — all bundles size 1, emitted id-ascending,
   truncated:true. The shipped edge test (headline-token Jaccard >=0.50
@@ -17804,6 +17804,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   **Layman:** The "group my to-dos into related bundles" tool currently puts every single item in its own bundle, so it never actually groups anything — it needs smarter matching to be useful.
   Kind: enhancement.
   Source: in-session-2026-06-24 (used mode:"bundles" to pick the next bundle; got 173 singletons).
+  Resolved (2026-06-24): implemented on main. Reworked buildRoadmapBundlesEnvelope clustering: a denoised clusterTokens set (drops stop-words, len≤2, pure-numeric, file/path/qualified identifiers, and DF>max(8,40%) corpus-common tokens) feeds a length-insensitive edge — ≥2 shared denoised tokens AND (overlap coefficient ≥0.5 OR ≥3 shared OR shared lane) — replacing the union-penalising Jaccard≥0.50 that produced all-singletons. Envelope adds total_bundle_count + bundles_omitted so a truncated response no longer reads as if clustering happened. rcHeadlineJaccard (dup-detector + ✅-sibling check) left unchanged. Docs synced (mcp-behavioural-notes.md, ANTS-1922.md Refined-by). 4 new feature tests (mcp_roadmap_bundles Ants2155*); full test_claude 1199/1199 green.
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 

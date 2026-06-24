@@ -87,6 +87,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The roadmap "bundles" view (`roadmap_query mode:"bundles"`) now actually groups related to-dos instead of putting every item in its own bundle.** (ANTS-2155)
+  The clustering edge was reworked: tokens are denoised (numbers, filenames, ubiquitous words dropped) and the edge is length-insensitive (overlap coefficient / shared-count / shared-lane), so long varied headlines that share a theme now cluster. The envelope also reports total_bundle_count + bundles_omitted under truncation.
+
 - **`file_outline` no longer mislabels local variable declarations and `case` statements as functions, and now finds functions written in the older C style (return type or `{` on its own line).** (ANTS-2159)
   The C++ scanner gained brace-scope awareness (a string/char/comment/raw-string-aware brace counter) so function symbols are emitted only at file or type-body scope, never inside a function body, plus multi-line signature handling for id-Software / GNU brace style.
 

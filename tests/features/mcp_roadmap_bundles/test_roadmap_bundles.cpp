@@ -283,6 +283,49 @@ TEST(mcp_roadmap_bundles, Inv12Truncation) {
         << "truncation must drop at least one bundle";
 }
 
+// ANTS-2155 — long, vocabulary-varied headlines that share 2-3 real topic
+// words now cluster (the old union-penalising Jaccard left them singletons),
+// while numeric / filename tokens never form a spurious edge.
+TEST(mcp_roadmap_bundles, Ants2155ClusterLongHeadlines) {
+    QJsonArray a;
+    // (i) 3 shared topic tokens despite long varied headlines (Jaccard < 0.5).
+    a.append(bullet("ANTS-4001", kPlanned,
+        "incremental codebase index refresh on file change"));
+    a.append(bullet("ANTS-4002", kPlanned,
+        "codebase index incremental cache invalidation strategy"));
+    // (ii) exactly 2 shared topic tokens + a shared lane → lane assist.
+    a.append(bullet("ANTS-4101", kPlanned,
+        "auditdialog severity filter dropdown persistence", {"auditdialog"}));
+    a.append(bullet("ANTS-4102", kPlanned,
+        "auditdialog confidence column sort persistence", {"auditdialog"}));
+    // (iii) numeric + filename tokens must NOT create a spurious edge.
+    a.append(bullet("ANTS-4201", kPlanned, "fix 6162 in foo.cpp"));
+    a.append(bullet("ANTS-4202", kPlanned, "fix 6162 in bar.cpp"));
+
+    const QJsonObject env = RemoteControl::buildRoadmapBundlesEnvelope(a, kCap);
+    EXPECT_EQ(findBundle(env, "ANTS-4001").value("size").toInt(), 2);  // abs-count (≥3 shared)
+    EXPECT_EQ(findBundle(env, "ANTS-4101").value("size").toInt(), 2);  // lane assist (2 shared + lane)
+    EXPECT_EQ(findBundle(env, "ANTS-4201").value("size").toInt(), 1);  // 6162 / *.cpp denoised away
+    EXPECT_EQ(findBundle(env, "ANTS-4202").value("size").toInt(), 1);
+}
+
+// ANTS-2155 — under truncation the envelope reports the full pre-cap total
+// so a caller can tell bundles were hidden.
+TEST(mcp_roadmap_bundles, Ants2155TotalBundleCount) {
+    QJsonArray a;
+    a.append(bullet("ANTS-5001", kPlanned, "distinctalpha separatealpha uniquealpha"));
+    a.append(bullet("ANTS-5002", kPlanned, "distinctbeta separatebeta uniquebeta"));
+    a.append(bullet("ANTS-5003", kPlanned, "distinctgamma separategamma uniquegamma"));
+    a.append(bullet("ANTS-5004", kPlanned, "distinctdelta separatedelta uniquedelta"));
+    const QJsonObject env =
+        RemoteControl::buildRoadmapBundlesEnvelope(a, /*softCapBytes=*/50);
+    EXPECT_TRUE(env.value("truncated").toBool());
+    EXPECT_EQ(env.value("total_bundle_count").toInt(), 4);   // all 4 singletons counted
+    EXPECT_LT(env.value("bundle_count").toInt(), 4);         // fewer emitted
+    EXPECT_EQ(env.value("bundles_omitted").toInt(),
+              4 - env.value("bundle_count").toInt());
+}
+
 // INV-13 — label lane-fallback folds case.
 TEST(mcp_roadmap_bundles, Inv13MixedCaseLaneLabel) {
     QJsonArray a;

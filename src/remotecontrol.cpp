@@ -2789,7 +2789,8 @@ QJsonObject RemoteControl::buildRoadmapBundlesEnvelope(
     struct Item {
         QString id, status, headlineOneline, body;
         QStringList lanes;
-        QSet<QString> tokens;
+        QSet<QString> tokens;          // raw headline tokens (labels + ✅-sibling check)
+        QSet<QString> clusterTokens;   // ANTS-2155 — denoised, for the bundle edge
     };
     struct Shipped { QString id; QSet<QString> tokens; };
     QVector<Item> active;
@@ -2827,28 +2828,9 @@ QJsonObject RemoteControl::buildRoadmapBundlesEnvelope(
 
     const int activeTotal = active.size();
 
-    // Union-find: edge ⟺ jaccard ≥ 0.50 (the ≥2-shared-token floor is
-    // enforced by rcHeadlineJaccard's -1.0 sentinel). Bundles are the
-    // connected components (transitive closure of the edge relation).
-    QVector<int> parent(activeTotal);
-    for (int i = 0; i < activeTotal; ++i) parent[i] = i;
-    auto findRoot = [&parent](int x) {
-        while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
-        return x;
-    };
-    for (int i = 0; i < activeTotal; ++i) {
-        for (int j = i + 1; j < activeTotal; ++j) {
-            if (rcHeadlineJaccard(active[i].tokens, active[j].tokens) >= 0.50) {
-                const int ri = findRoot(i), rj = findRoot(j);
-                if (ri != rj) parent[ri] = rj;
-            }
-        }
-    }
-    QHash<int, QVector<int>> groups;
-    for (int i = 0; i < activeTotal; ++i) groups[findRoot(i)].append(i);
-
-    // Label-only stop-word set (distinct from tokenisation, which has
-    // none — §2.3) so a label never reads "the for".
+    // Label-only stop-word set (also used to denoise the clustering tokens
+    // below) so a label never reads "the for" and a stop-word never forms
+    // a bundle edge.
     static const QSet<QString> labelStops = {
         QStringLiteral("a"), QStringLiteral("an"), QStringLiteral("the"),
         QStringLiteral("of"), QStringLiteral("for"), QStringLiteral("to"),
@@ -2856,6 +2838,69 @@ QJsonObject RemoteControl::buildRoadmapBundlesEnvelope(
         QStringLiteral("on"), QStringLiteral("vs"), QStringLiteral("with"),
         QString::fromUtf8("\xE2\x80\x94"),   // em-dash —
     };
+
+    // ANTS-2155 — build a DENOISED clustering-token set per item. The old
+    // edge (token-Jaccard ≥ 0.50 over the FULL headline) divided by the
+    // union, so long vocabulary-varied headlines that share 2-3 real topic
+    // words scored well below 0.50 and never clustered (the real roadmap
+    // produced all-singletons). Drop tokens that don't discriminate a
+    // theme: stop-words, length ≤ 2, pure numbers ("6162"), and
+    // file/path/qualified identifiers ("auditdialog.cpp"); then drop
+    // corpus-ubiquitous tokens (TF-style) that would over-merge.
+    const auto isNoiseToken = [](const QString &t) {
+        if (t.size() <= 2) return true;
+        bool allDigit = true;
+        for (const QChar c : t) if (!c.isDigit()) { allDigit = false; break; }
+        if (allDigit) return true;
+        return t.contains(QLatin1Char('.')) || t.contains(QLatin1Char('/'));
+    };
+    QHash<QString, int> df;
+    for (const Item &it : active)
+        for (const QString &t : it.tokens)
+            if (!isNoiseToken(t) && !labelStops.contains(t)) df[t] += 1;
+    const int dfDrop = std::max(8, (activeTotal * 2) / 5);   // > max(8, 40%) ⟹ too common
+    for (int i = 0; i < activeTotal; ++i)
+        for (const QString &t : active[i].tokens)
+            if (!isNoiseToken(t) && !labelStops.contains(t) && df.value(t) <= dfDrop)
+                active[i].clusterTokens.insert(t);
+
+    // Union-find over a length-insensitive edge. Bundles are the connected
+    // components (transitive closure). Edge ⟺ ≥ 2 shared denoised tokens
+    // AND (overlap coefficient ≥ 0.5 — |∩| / min(|A|,|B|) — OR ≥ 3 shared
+    // tokens OR a shared lane). Overlap-coefficient + the absolute-count
+    // escape replace the union-penalising Jaccard; the lane assist catches
+    // same-lane items that share exactly 2 topic words in long headlines.
+    QVector<int> parent(activeTotal);
+    for (int i = 0; i < activeTotal; ++i) parent[i] = i;
+    auto findRoot = [&parent](int x) {
+        while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+        return x;
+    };
+    const auto clusterEdge = [&active](int x, int y) -> bool {
+        const QSet<QString> &tx = active[x].clusterTokens;
+        const QSet<QString> &ty = active[y].clusterTokens;
+        if (tx.isEmpty() || ty.isEmpty()) return false;
+        const QSet<QString> &small = (tx.size() <= ty.size()) ? tx : ty;
+        const QSet<QString> &large = (tx.size() <= ty.size()) ? ty : tx;
+        int inter = 0;
+        for (const QString &t : small) if (large.contains(t)) ++inter;
+        if (inter < 2) return false;                                  // ≥2 shared-topic floor
+        if (inter >= 3) return true;                                  // strong overlap
+        if (static_cast<double>(inter) / small.size() >= 0.5) return true;  // overlap coefficient
+        QSet<QString> lx(active[x].lanes.begin(), active[x].lanes.end());  // lane assist
+        for (const QString &l : active[y].lanes) if (lx.contains(l)) return true;
+        return false;
+    };
+    for (int i = 0; i < activeTotal; ++i) {
+        for (int j = i + 1; j < activeTotal; ++j) {
+            if (clusterEdge(i, j)) {
+                const int ri = findRoot(i), rj = findRoot(j);
+                if (ri != rj) parent[ri] = rj;
+            }
+        }
+    }
+    QHash<int, QVector<int>> groups;
+    for (int i = 0; i < activeTotal; ++i) groups[findRoot(i)].append(i);
 
     struct Bundle {
         QString label;
@@ -3020,6 +3065,12 @@ QJsonObject RemoteControl::buildRoadmapBundlesEnvelope(
     out["mode"] = QStringLiteral("bundles");
     out["active_total"] = activeTotal;
     out["bundle_count"] = bundlesArr.size();
+    // ANTS-2155 — under truncation `bundle_count` is the EMITTED count;
+    // total_bundle_count is the full pre-cap total so a caller can tell N
+    // bundles were hidden (the old envelope made "173 active / 93 bundles"
+    // read as if clustering had happened when it hadn't).
+    out["total_bundle_count"] = bundles.size();
+    out["bundles_omitted"] = static_cast<int>(bundles.size()) - bundlesArr.size();
     out["truncated"] = truncated;
     out["bundles"] = bundlesArr;
     return out;
