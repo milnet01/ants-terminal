@@ -16769,6 +16769,41 @@ server build id so clients can self-diagnose this.
   Source: user-request-2026-06-17 (follow-on to ANTS-2148).
   Progress (2026-06-20) — first pass shipped (commit 1f15662): one shared brace-family "generic" mode added across the three named gates (FileOutline Mode::Generic + 3 regexes, SymbolQuery Lang::Generic mirrored anchors, CodebaseIndex::admittedSuffix), covering Rust, Go, JS/TS, Java, C#, Kotlin, Swift, Scala, PHP. file_outline reports the precise language name (rust/go/typescript...) not "generic". Regexes validated vs positive+negative samples; possessive quantifiers + per-line byte cap bound backtracking (INV-8). Tests: McpSymbolQuery.BraceFamilyLanguages + McpFileOutline.BraceFamilyGenericOutline; test_claude 1153/1153, test_core 329/329 green. REMAINING follow-ons: (1) Ruby (#-comment + end-block; def/class match the keyword regex but module + header_doc don't); (2) the codebase_index candidates() walk only descends src/ + tests/, so a non-src layout (Go root pkgs, JS root) still yields file_count:0 even with the suffix admitted — widen the walk roots; (3) mirror the mapping into SimilarCode::langForExt; (4) optionally surface lang:"generic" in the find_definition/find_caller/file_outline schema enums (auto-detection already covers it).
 
+- 📋 [ANTS-2156] **Exemplar-retrieval-for-codegen MCP verb — return 1–3 canonical full function/class bodies for a concept, not match lines.**
+  Vestige Obs #16. Before writing a new GPU subsystem the agent did ~13 read/grep round-trips; the expensive half (6 reads) was "show me this codebase's canonical example of pattern X" to mirror an idiom faithfully. similar_code / workspace_search return MATCH LINES (pointers to where a pattern lives); to copy an idiom the agent needs the COMPLETE idiom, so it opens the whole file anyway. Proposed verb (distinct from search): given a concept ("compute-shader dispatch", "3D texture creation", "headless GL parity test") return the 1–3 best exemplars in-repo as FULL function/class bodies, ranked by canonical-ness (call-count, recency, proximity to conventions), each with a one-line "this is the idiom" gloss. Alternative: a similar_code "return full enclosing definition + rank by canonical-ness" mode. One call would have replaced the 6 reads.
+  **Layman:** When I'm about to write code that must copy an existing pattern, give me the best 1–3 complete examples in full — so I don't open six files just to learn one idiom.
+  Kind: enhancement.
+  Lanes: mcp, remotecontrol.
+  Source: cross-session-2026-06-18 (Vestige, volumetric-fog session, Obs #16).
+
+- 📋 [ANTS-2157] **Subsystem-integration-brief MCP verb — ordered pipeline stages + insertion points + accessors for a pipeline.**
+  Vestige Obs #17. The recurring "where do I hook into existing code?" shape — reconstructed by grepping renderer.cpp for fog/composite/CSM lines then reading a 140-line composite region to find the insertion point + member accessors (getCascadedShadowMap(), m_directionalLight). subsystem / file_outline get close but return STRUCTURE, not SEQUENCE + insertion points. Verb: for a render/update pipeline, return the ordered stage list with file:line anchors + the public accessors other stages use, collapsing this to one call. Lower priority than the exemplar-retrieval verb.
+  **Layman:** A tool that says: to add a step to this pipeline, here are the existing steps in order, where to splice in, and the helpers a new step usually needs.
+  Kind: enhancement.
+  Lanes: mcp, remotecontrol.
+  Source: cross-session-2026-06-18 (Vestige, volumetric-fog session, Obs #17).
+
+- 📋 [ANTS-2158] **Reduce the deferred-schema tax — eager-load highest-frequency MCP verb schemas + point-of-use nudge.**
+  Vestige Obs #18 + a confirmed cross-session recurrence ("using Ants MCP less and less"). Root cause named: the deferred-schema tax — Ants verbs are deferred, so the first use of each needs a ToolSearch round-trip before it can be called, while raw Bash/Read/Edit are always-loaded. That asymmetry is a friction gradient ("grep is one call, the verb is two") that compounds into drift no willpower fully closes. Highest-leverage fix: eager-load the top verbs' schemas (workspace_search, find_definition, file_outline, read_region, roadmap_log, changelog_log) so they're callable without a ToolSearch hop. Investigate whether eager-load is server- or harness-controlled. Secondary (Obs #18): a non-blocking point-of-use nudge — on the Nth raw grep/Read in a short window that a verb could serve (esp. a raw edit to ROADMAP.md / CHANGELOG.md / docs/specs/*) emit one high-precision suggestion. Tune for near-zero false positives.
+  **Layman:** The cheap Ants tools cost an extra step to 'unlock' before first use, while plain grep/Read are instant — so over a long session I drift back to grep. Making the common Ants tools instantly callable flips that.
+  Kind: enhancement.
+  Lanes: mcp, claudeintegration.
+  Source: cross-session-2026-06-18 (Vestige, Obs #18 + confirmed recurrence).
+
+- 📋 [ANTS-2159] **file_outline C++ scanner — tags local var decls / case-labels as funcs and misses return-type-on-prev-line definitions.**
+  DOOM reported file_outline on r_vulkan.cpp returned local `std::vector<...> name(...)` declarations tagged kind:func while the real top-level functions (CreateInstance(), extern "C" RB_Vulkan_*, struct VulkanState) were absent. Reproduced on Ants' OWN fileoutline.cpp: `QFile f(absPath);` tagged func `f`; `case Mode::Cpp: return QStringLiteral("//");` tagged func `QStringLiteral`. Two coupled defects in the single-line regex scanner (fileoutline.cpp rxCppFunc): (a) FALSE POSITIVE — most-vexing-parse `Type name(expr);` locals + statement lines after a case-label (the negative lookahead guards only the FIRST token, so `case ... return f();` slips through); (b) FALSE NEGATIVE — id-Software / GNU style `void\nName(args)\n{` with the return type on the previous line never matches (rxCppFunc requires a return-type token on the name's line). A correct fix needs scope-awareness + multi-line signature handling + a regression sweep across headers/impl; spec-first to avoid trading DOOM's wrong answers for header-outline regressions. Rated LOW–MEDIUM by the reporter.
+  **Layman:** The 'what's in this file' tool mislabels ordinary local variables as functions and skips real functions written in the older C style, so the outline points at the wrong lines.
+  Kind: fix.
+  Lanes: mcp, fileoutline.
+  Source: cross-session-2026-06-20 (DOOM Ants, r_vulkan.cpp); reproduced on Ants' own fileoutline.cpp.
+
+- 📋 [ANTS-2160] **Per-project Ants settings file declaring source / docs / roadmap / changelog / spec locations.**
+  User proposal. Today Ants assumes a src/+tests/ layout: codebase_index candidates() (codebaseindex.cpp:119) walks ONLY src/ + tests/, so a non-src project (DOOM: 65 .c files under linuxdoom-1.10/) gets file_count:0 from session_orient / codebase_index even after ANTS-2148 admitted the .c suffix; project_layout / roadmap_query / changelog_log are likewise heuristic. Proposal: an opt-in per-project config (location/format TBD — likely .ants/project.json, or a block in the existing per-project config, or reuse CLAUDE.md which is already parsed for lanes) with keys for source roots[], docs dir, roadmap path, changelog path, specs dir, optionally lane defs. MCP verbs consume it to locate everything; fall back to the current heuristics when the file is absent or a key is unset (zero regression for existing projects). Supersedes the candidates() root-walk heuristic (the deferred "non-src layout follow-on" noted in the admittedSuffix comment). Needs a spec through /cold-eyes before implementation.
+  **Layman:** A small per-project file telling Ants exactly where the code, docs, roadmap and changelog live — so it stops guessing and works for projects that don't use a src/ folder.
+  Kind: feature.
+  Lanes: mcp, codebaseindex, remotecontrol.
+  Source: user-request-2026-06-24 (prompted by DOOM file_count:0 + layout-discovery feedback).
+
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 
 A new testing initiative the user requested: give the agent a repeatable way to
@@ -17736,6 +17771,29 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Lanes: mcp, claudeintegration, hooks.
   Source: user-request-2026-06-15.
   Resolved (2026-06-16): softened the grep/find-over-source veto in ants-bash-veto.sh from a hard block to a non-blocking PreToolUse additionalContext nudge (no permissionDecision — verified via claude-code-guide doc re-fetch). Broadened coverage (rg/ag/ack default-recursive, pathless grep -rn, git grep, project find under ./src/tests/include) with non-source-root + .log + destructive-find exemptions; per-session throttle (ANTS_GREP_NUDGE_THROTTLE_SEC, key ANTS_GREP_NUDGE_KEY:-$PPID, fail-open); bounded grep-nudge counter + tools/grep-vs-index.sh readout vs token_usage. Install scope resolved: inherits the global ants_hooks_pack_v1 (.ants-project-gated), no new hook. Spec docs/specs/ANTS-2141.md cold-eyes loops 1-5 (converged to polish). New hook_pack assertions green, verified red against pre-change hooks. Created hooks/README.md (closed a 3-site dangling ref); annotated ANTS-1252 INV-4 split + fixed its §1.2 git_state→get_git_status drift.
+
+- 📋 [ANTS-2155] **roadmap_query mode:"bundles" clustering too strict — zero multi-item bundles on the real roadmap.**
+  Live call on the 173-active-item roadmap (2026-06-24) produced
+  ZERO multi-item bundles — all bundles size 1, emitted id-ascending,
+  truncated:true. The shipped edge test (headline-token Jaccard >=0.50
+  AND >=2 shared tokens) is far too strict for these long,
+  vocabulary-varied headlines; obvious thematic clusters miss the gate
+  (e.g. ANTS-1466/1467/1468 test-harness dedup; ANTS-1270/1271
+  auditdialog; ANTS-1263/1264/1275/1277 roadmapdialog; ANTS-1043/1044
+  .cpp decomposition). Code path verified correct (no sort bug) — the
+  threshold/feature is the issue. Wire the deferred ANTS-1922 follow-ons:
+  (a) lane-overlap as an additional edge (share a lane => candidate);
+  (b) recent-commit affinity; (c) drop numeric / code-identifier tokens
+  (e.g. "6162", "auditdialog.cpp") that pollute the set and depress
+  Jaccard; (d) consider a lower threshold or TF-style weighting for long
+  headlines. Secondary: under truncation `bundle_count` reports the
+  EMITTED count (93), not the total (~173) and there is no next_offset,
+  so a caller can't tell N bundles were hidden and "173 active / 93
+  bundles" misleadingly implies clustering happened — emit a
+  total_bundle_count or page. Follow-on to shipped ANTS-1922.
+  **Layman:** The "group my to-dos into related bundles" tool currently puts every single item in its own bundle, so it never actually groups anything — it needs smarter matching to be useful.
+  Kind: enhancement.
+  Source: in-session-2026-06-24 (used mode:"bundles" to pick the next bundle; got 173 singletons).
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
