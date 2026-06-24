@@ -139,6 +139,17 @@ server-controllable beyond this per-tool hint.
   Complements `spec_query` (the deep per-spec reader) — `docs_index` is the
   shallow cross-doc discovery layer over all doc types (ANTS-2139).
 
+- **`similar_code`** — `include_bodies:true` (ANTS-2156) makes each
+  (top-N, score-ranked) match additionally carry the FULL enclosing
+  definition — `symbol`, `body` lines, `body_start_line`/`body_end_line`,
+  `body_truncated` — extracted via `ReadRegion::extract`, so a session
+  copying an in-repo idiom gets the complete exemplar in ONE call instead
+  of N follow-up Reads. A match whose signature doesn't resolve to an
+  outline symbol carries `body_unavailable:true` (file:line still given).
+  Pair with a small `max_results` (default 3). Ranking is the existing
+  structural-similarity score; richer canonical-ness signals
+  (call-count / recency) are a deferred follow-on.
+
 ## Write / edit verbs
 
 - **`apply_edits`** — applies N `{path, old, new}` edits across M project

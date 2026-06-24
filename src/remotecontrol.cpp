@@ -13259,6 +13259,31 @@ SimilarCode::Options scOptions(const QJsonObject &req) {
     return opts;
 }
 
+// ANTS-2156 — derive a read_region-resolvable symbol name from a
+// similar_code match's signature line: strip a leading "ReturnType "
+// (keep a Class::method qualifier), and for a class/struct take the name
+// after the keyword. Empty when nothing parseable (caller falls back).
+QString scSymbolFromSignature(const QString &signature, const QString &kind) {
+    QString s = signature.trimmed();
+    if (kind == QLatin1String("class")) {
+        // "class Widget" / "struct Foo : Base" → "Widget" / "Foo".
+        static const QRegularExpression rx(
+            QStringLiteral("^(?:class|struct|namespace)\\s+([\\w:]+)"));
+        const auto m = rx.match(s);
+        return m.hasMatch() ? m.captured(1) : QString();
+    }
+    // func: name = the identifier (possibly Class::method) before '('.
+    const int lp = s.indexOf(QLatin1Char('('));
+    if (lp > 0) s = s.left(lp).trimmed();
+    const int sp = s.lastIndexOf(QLatin1Char(' '));   // drop the return type
+    if (sp >= 0) s = s.mid(sp + 1);
+    // Trim leading * / & off a pointer/ref return (e.g. "*foo").
+    while (!s.isEmpty() && (s.front() == QLatin1Char('*')
+                            || s.front() == QLatin1Char('&')))
+        s.remove(0, 1);
+    return s;
+}
+
 }  // namespace
 
 QJsonDocument RemoteControl::cmdSimilarCode(const QJsonObject &req) {
@@ -13282,6 +13307,13 @@ QJsonDocument RemoteControl::cmdSimilarCode(const QJsonObject &req) {
         return QJsonDocument(o);
     }
 
+    // ANTS-2156 — include_bodies returns the FULL enclosing definition for
+    // each (already top-N, score-ranked) match, so a session copying an
+    // in-repo idiom gets the complete exemplar in ONE call instead of N
+    // follow-up Reads. Reuses ReadRegion's symbol-body extractor.
+    const bool includeBodies =
+        req.value(QStringLiteral("include_bodies")).toBool(false);
+
     QJsonArray matches;
     for (const SimilarCode::Match &m : res.matches) {
         QJsonObject o;
@@ -13291,6 +13323,27 @@ QJsonDocument RemoteControl::cmdSimilarCode(const QJsonObject &req) {
         o["kind"]      = m.kind;
         o["lang"]      = m.lang;
         o["score"]     = m.score;
+        if (includeBodies) {
+            const QString sym = scSymbolFromSignature(m.signature, m.kind);
+            bool got = false;
+            if (!sym.isEmpty()) {
+                ReadRegion::Options ro;
+                ro.symbol = sym;
+                const QJsonObject body =
+                    ReadRegion::extract(root + QLatin1Char('/') + m.file, ro);
+                if (body.value(QStringLiteral("ok")).toBool(false)) {
+                    o["symbol"]          = sym;
+                    o["body"]            = body.value(QStringLiteral("lines"));
+                    o["body_start_line"] = body.value(QStringLiteral("start_line"));
+                    o["body_end_line"]   = body.value(QStringLiteral("end_line"));
+                    o["body_truncated"]  = body.value(QStringLiteral("truncated"));
+                    got = true;
+                }
+            }
+            // Graceful fallback — the signature didn't resolve to an outline
+            // symbol; the caller still has file:line to open it.
+            if (!got) o["body_unavailable"] = true;
+        }
         matches.append(o);
     }
 
@@ -13303,6 +13356,12 @@ QJsonDocument RemoteControl::cmdSimilarCode(const QJsonObject &req) {
     out["files_scanned"] = res.filesScanned;
     out["truncated"]     = res.truncated;
     out["walk_capped"]   = res.walkCapped;
+    if (includeBodies) {
+        out["bodies_note"] = QStringLiteral(
+            "Full enclosing definitions for the top matches, ranked by "
+            "structural similarity (score desc). Copy the idiom from these "
+            "rather than opening each file.");
+    }
     return QJsonDocument(out);
 }
 

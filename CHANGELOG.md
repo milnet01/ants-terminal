@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`similar_code` can now return the FULL body of each matching definition (`include_bodies:true`), so you copy a canonical in-repo idiom in one call instead of opening each file.** (ANTS-2156)
+  Each top match gains symbol + body lines (extracted via read_region), ranked by structural similarity. A signature that doesn't resolve to an outline symbol carries body_unavailable (file:line still given).
+
 - **Ants now detects when a project's code isn't under `src/` and offers to write its `.ants/project.json` for you, plus a `project_settings` MCP verb to create/update it.** (ANTS-2161)
   session_orient surfaces a project_settings_suggestion when the codebase map comes back near-empty; the new project_settings verb (detect/init/set) creates and updates the settings file in one call. Follow-on to ANTS-2160 (the reader).
 

@@ -3463,7 +3463,7 @@ void ClaudeIntegration::onMcpConnection() {
                     "(bad_path) and the file is written world-readable. "
                     "caller_cwd required.");
                 psTool["selection_hint"] = QStringLiteral(
-                    "Call op:detect (or read session_orient's "
+                    "Use op:detect (or read session_orient's "
                     "project_settings_suggestion) when codebase_index comes back "
                     "near-empty; op:init to accept the suggestion, op:set to "
                     "declare source_roots/docs_dir/roadmap/etc. explicitly.");
@@ -5063,6 +5063,25 @@ void ClaudeIntegration::onMcpConnection() {
                             "Cap on matches[] (default 3, max 20). "
                             "matches_count carries the pre-cap total.");
                         props["max_results"] = p;
+                    }
+                    {
+                        // ANTS-2156 — return the FULL enclosing definition
+                        // per match so the idiom is copyable in one call.
+                        QJsonObject p;
+                        p["type"]        = "boolean";
+                        p["default"]     = false;
+                        p["description"] = QStringLiteral(
+                            "When true, each match also carries the FULL "
+                            "enclosing definition (`symbol`, `body` lines, "
+                            "`body_start_line`/`body_end_line`, "
+                            "`body_truncated`) extracted via read_region — "
+                            "so you copy the canonical in-repo idiom in ONE "
+                            "call instead of opening each file. A match whose "
+                            "signature doesn't resolve to an outline symbol "
+                            "carries `body_unavailable:true` (file:line still "
+                            "given). Pair with a small max_results (the "
+                            "default 3).");
+                        props["include_bodies"] = p;
                     }
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
