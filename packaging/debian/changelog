@@ -1,10 +1,27 @@
 ants-terminal (0.7.97-1) unstable; urgency=medium
 
-  * Patron RC preview — opens the 0.7.97 preview channel. No changes yet
-    beyond 0.7.96; fixes land here during the freeze window before the
-    stable release.
+  * A large MCP / Claude-integration milestone: read_region now returns
+    integration briefs (call_sequence + accessors), similar_code returns
+    full function bodies, auto-detect projects without src/ and offer to
+    write .ants/project.json settings, group active to-dos into thematic
+    bundles (roadmap_query mode:"bundles"). (ANTS-2157/2156/2160/2161/1922)
+  * Most-used MCP tools (code search, definitions, read-region, roadmap edits)
+    are now always loaded in Claude Code, callable instantly without discovery.
+    (ANTS-2158)
+  * Added docs_index — a documentation map like codebase_index, plus session
+    startup now surfaces un-triaged cross-session MCP feedback. (ANTS-2139/1964)
+  * Fixed: file_outline no longer mislabels local variables and case statements
+    as functions; finds functions in older C style (return type / { on own line).
+    (ANTS-2159)
+  * Regression-locked two use-after-free crash classes in audit/review paths;
+    workspace-search no longer times out under concurrent load. (ANTS-2102/2144)
+  * Six code-navigation accuracy fixes: roadmap bundles clustering, session_orient
+    on ID-less roadmap, task-list row spacing, task-chip lag, text-layout
+    baseline, audit stderr capture. (ANTS-2155/2052/1641/1458/2100/2105)
+  * Security: block credential-bearing AI endpoint URLs and refuse cleartext-HTTP
+    Bearer egress across the review family. (ANTS-2109/2108)
 
- -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 12 Jun 2026 00:00:00 +0200
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 24 Jun 2026 12:00:00 +0200
 
 ants-terminal (0.7.96-1) unstable; urgency=medium
 

@@ -103,9 +103,21 @@
   </screenshots>
 
   <releases>
-    <release version="0.7.97" date="2026-06-12">
+    <release version="0.7.97" date="2026-06-24">
       <description>
-        <p>Patron RC preview — opens the 0.7.97 preview channel. No user-facing changes yet beyond 0.7.96; fixes land here during the freeze window before the stable release.</p>
+        <p>A large MCP / Claude-integration milestone. Ants now answers "where do I hook into this pipeline?" and "show me the canonical idiom" in a single call, auto-detects projects whose code isn't under <code>src/</code> and offers to write their settings file, groups related to-dos into thematic work-bundles, and keeps its most-used tools instantly callable. Under the hood: two audit/review use-after-free crash classes are regression-locked, the C++ file-outline scanner stops mislabelling locals and <code>case</code> labels as functions, and a sweep of code-navigation accuracy fixes lands.</p>
+        <ul>
+          <li><em>Added:</em> <code>read_region</code> can return a pipeline's integration brief (<code>call_sequence:true</code>) — the ordered steps inside a function with their line anchors plus the accessors a new step typically needs, answering "where do I hook in?" in one call. (ANTS-2157)</li>
+          <li><em>Added:</em> <code>similar_code</code> can now return the full body of each matching definition (<code>include_bodies:true</code>), so you copy a canonical in-repo idiom in one call instead of opening each file. (ANTS-2156)</li>
+          <li><em>Added:</em> Ants detects when a project's code isn't under <code>src/</code> and offers to write its <code>.ants/project.json</code> settings file, plus a <code>project_settings</code> MCP verb to create/update it. (ANTS-2160/2161)</li>
+          <li><em>Added:</em> <code>roadmap_query mode:"bundles"</code> — groups active to-dos into thematic work-bundles by headline similarity, flagging blocked items and shipped siblings in one call. (ANTS-1922)</li>
+          <li><em>Added:</em> High-frequency MCP tools (code search, definitions, file outline, read-region, roadmap/changelog edits) are now always loaded in Claude Code, callable instantly without a discovery step. (ANTS-2158)</li>
+          <li><em>Added:</em> <code>audit_run since-last-run</code> returns a precise findings delta (added / removed / carried-forward) plus whole-tree SARIF, and <code>session_orient</code> surfaces an un-triaged-feedback backlog at startup. (ANTS-1870/1964)</li>
+          <li><em>Added:</em> <code>docs_index</code> MCP verb — a documentation map sibling to codebase_index, so sessions find the right doc in one call. (ANTS-2139)</li>
+          <li><em>Fixed:</em> <code>file_outline</code> no longer mislabels local variable declarations and <code>case</code> statements as functions, and now finds functions written in older C style (return type or <code>{</code> on its own line). (ANTS-2159)</li>
+          <li><em>Fixed:</em> Regression-locked two use-after-free crash classes in audit/review, workspace-search no longer times out under concurrent load, and six code-navigation accuracy fixes land. (ANTS-2102/2144/2052/2100/2098/2105/2104/2138)</li>
+          <li><em>Security:</em> Block credential-bearing AI endpoint URLs and refuse cleartext-HTTP Bearer egress across the review family. (ANTS-2109/2108)</li>
+        </ul>
       </description>
     </release>
     <release version="0.7.96" date="2026-06-12">
