@@ -9113,6 +9113,167 @@ QJsonDocument RemoteControl::cmdDocsIndex(const QJsonObject &req) {
                          params));
 }
 
+// ANTS-2161 — project_settings: detect a misplaced layout + create/update
+// <root>/.ants/project.json. Ops detect (read-only preview) / init (write
+// the detected or explicit block, refuse settings_exists, no clobber) / set
+// (create-or-update; raw-JSON merge preserving unknown keys). caller_cwd
+// Required. The file is written world-readable (0644) by design — it holds
+// only non-secret path declarations (contrast the 0600 global config). See
+// docs/specs/ANTS-2161.md.
+QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const auto err = [](const QString &code, const QString &msg) {
+        QJsonObject o;
+        o[QStringLiteral("ok")]    = false;
+        o[QStringLiteral("code")]  = code;
+        o[QStringLiteral("error")] = msg;
+        return QJsonDocument(o);
+    };
+    if (rootCanonical.isEmpty())
+        return err(QStringLiteral("bad_path"),
+                   QStringLiteral("project_settings: no focused project"));
+
+    const QString op = req.value(QStringLiteral("op")).toString();
+    if (op != QLatin1String("detect") && op != QLatin1String("init")
+        && op != QLatin1String("set"))
+        return err(QStringLiteral("bad_args"),
+                   QStringLiteral("project_settings: op must be detect|init|set"));
+
+    const QString settingsPath =
+        rootCanonical + QStringLiteral("/.ants/project.json");
+
+    // ---- detect (read-only) ----
+    if (op == QLatin1String("detect")) {
+        const ProjectSettings::Suggestion sug =
+            ProjectSettings::detect(rootCanonical);
+        QJsonObject s;
+        if (sug.sourceRoots)
+            s[QStringLiteral("source_roots")] =
+                QJsonArray::fromStringList(*sug.sourceRoots);
+        s[QStringLiteral("reason")]               = sug.reason;
+        s[QStringLiteral("default_source_count")] = sug.defaultSourceCount;
+        s[QStringLiteral("total_source_count")]   = sug.totalSourceCount;
+        QJsonObject o;
+        o[QStringLiteral("ok")]         = true;
+        o[QStringLiteral("present")]    = sug.present;
+        o[QStringLiteral("suggestion")] = s;
+        return QJsonDocument(o);
+    }
+
+    // Recognised flat keys → a `changes` object (a present JSON-null is
+    // retained so set can clear a key — INV-8).
+    static const QStringList kKeys = {
+        QStringLiteral("source_roots"), QStringLiteral("test_roots"),
+        QStringLiteral("docs_dir"), QStringLiteral("specs_dir"),
+        QStringLiteral("roadmap"), QStringLiteral("changelog")};
+    QJsonObject changes;
+    for (const QString &k : kKeys)
+        if (req.contains(k)) changes[k] = req.value(k);
+
+    // Shared atomic writer: world-readable 0644 (NOT setOwnerOnlyPerms).
+    const auto writeOut = [&](const QJsonObject &obj) -> QJsonDocument {
+        QDir().mkpath(rootCanonical + QStringLiteral("/.ants"));
+        QSaveFile sf(settingsPath);
+        if (!sf.open(QIODevice::WriteOnly))
+            return err(QStringLiteral("write_failed"),
+                       QStringLiteral("project_settings: cannot open %1")
+                           .arg(settingsPath));
+        sf.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
+        if (!sf.commit())
+            return err(QStringLiteral("write_failed"),
+                       QStringLiteral("project_settings: commit failed for %1")
+                           .arg(settingsPath));
+        QFile::setPermissions(settingsPath,
+                              QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                  | QFileDevice::ReadGroup
+                                  | QFileDevice::ReadOther);
+        fsyncParentDir(settingsPath);
+        QJsonObject o;
+        o[QStringLiteral("ok")]       = true;
+        o[QStringLiteral("written")]  = true;
+        o[QStringLiteral("path")]     = settingsPath;
+        o[QStringLiteral("settings")] = obj;
+        return QJsonDocument(o);
+    };
+
+    // ---- init (create only, no clobber) ----
+    if (op == QLatin1String("init")) {
+        if (QFileInfo::exists(settingsPath)) {
+            QJsonObject o;
+            o[QStringLiteral("ok")]    = false;
+            o[QStringLiteral("code")]  = QStringLiteral("settings_exists");
+            o[QStringLiteral("error")] = QStringLiteral(
+                "project_settings: .ants/project.json already exists (use op:set to update)");
+            o[QStringLiteral("path")]  = settingsPath;
+            return QJsonDocument(o);
+        }
+        QJsonObject toWrite;
+        if (!changes.isEmpty()) {                 // explicit keys suppress the detector
+            QString ec, ek, ev;
+            const auto merged = ProjectSettings::applyWrite(
+                QJsonObject{}, changes, rootCanonical, &ec, &ek, &ev);
+            if (!merged)
+                return err(ec, QStringLiteral("project_settings: invalid %1=%2")
+                                   .arg(ek, ev));
+            toWrite = *merged;
+        } else {
+            const ProjectSettings::Suggestion sug =
+                ProjectSettings::detect(rootCanonical);
+            if (sug.sourceRoots)
+                toWrite[QStringLiteral("source_roots")] =
+                    QJsonArray::fromStringList(*sug.sourceRoots);
+            if (toWrite.isEmpty()) {              // nothing to do is not an error
+                QJsonObject o;
+                o[QStringLiteral("ok")]       = true;
+                o[QStringLiteral("written")]  = false;
+                o[QStringLiteral("reason")]   = sug.reason.isEmpty()
+                    ? QStringLiteral("layout already standard; nothing to write")
+                    : sug.reason;
+                return QJsonDocument(o);
+            }
+        }
+        return writeOut(toWrite);
+    }
+
+    // ---- set (create-or-update; merge preserves unknown keys) ----
+    QJsonObject existing;
+    if (QFileInfo::exists(settingsPath)) {
+        QFile f(settingsPath);
+        if (!f.open(QIODevice::ReadOnly))
+            return err(QStringLiteral("read_failed"),
+                       QStringLiteral("project_settings: cannot read %1")
+                           .arg(settingsPath));
+        const QByteArray raw = f.readAll();
+        f.close();
+        QJsonParseError pe{};
+        const QJsonDocument d = QJsonDocument::fromJson(raw, &pe);
+        if (pe.error != QJsonParseError::NoError || !d.isObject()) {
+            QJsonObject o;
+            o[QStringLiteral("ok")]              = false;
+            o[QStringLiteral("code")]            = QStringLiteral("unrecognised_format");
+            o[QStringLiteral("expected_format")] =
+                QJsonArray{QStringLiteral("json-object")};
+            o[QStringLiteral("hint")] = QStringLiteral(
+                "existing .ants/project.json is not a JSON object — hand-edit or delete it");
+            o[QStringLiteral("error")] = QStringLiteral(
+                "project_settings: existing .ants/project.json is not a JSON object");
+            return QJsonDocument(o);
+        }
+        existing = d.object();
+    }
+    if (changes.isEmpty())
+        return err(QStringLiteral("bad_args"), QStringLiteral(
+            "project_settings set: supply at least one of "
+            "source_roots/test_roots/docs_dir/specs_dir/roadmap/changelog"));
+    QString ec, ek, ev;
+    const auto merged = ProjectSettings::applyWrite(
+        existing, changes, rootCanonical, &ec, &ek, &ev);
+    if (!merged)
+        return err(ec,
+                   QStringLiteral("project_settings: invalid %1=%2").arg(ek, ev));
+    return writeOut(*merged);
+}
+
 // ANTS-1961 — feedback_query: return the un-triaged delta + mapped IDs.
 QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     QString resolved;
@@ -11685,6 +11846,36 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
         ci.remove(QStringLiteral("refreshed_files"));
         ci.remove(QStringLiteral("etag"));
         result[QStringLiteral("codebase_index")] = ci;
+
+        // --- project_settings_suggestion (ANTS-2161) ---
+        // When no .ants/project.json exists AND the codebase_index came
+        // back near-empty, surface the layout detector's suggestion so a
+        // non-src/ project (e.g. DOOM's linuxdoom-1.10/) learns it can
+        // declare source_roots. Cheap gate: the detect() walk runs ONLY
+        // when file_count is below the low-water mark, so a healthy project
+        // never pays for it. Omitted entirely otherwise (ETag-stable for
+        // standard projects). Does NOT contribute to allOk.
+        constexpr int kSuggestLowWaterMark = 5;
+        const int fileCount = ci.value(QStringLiteral("file_count")).toInt(-1);
+        if (fileCount >= 0 && fileCount < kSuggestLowWaterMark
+            && !QFileInfo::exists(rootCanonical
+                                  + QStringLiteral("/.ants/project.json"))) {
+            const ProjectSettings::Suggestion sug =
+                ProjectSettings::detect(rootCanonical);
+            if (sug.sourceRoots) {
+                QJsonObject suggested;
+                suggested[QStringLiteral("source_roots")] =
+                    QJsonArray::fromStringList(*sug.sourceRoots);
+                QJsonObject sg;
+                sg[QStringLiteral("reason")]               = sug.reason;
+                sg[QStringLiteral("suggested")]            = suggested;
+                sg[QStringLiteral("write_via")]            =
+                    QStringLiteral("project_settings op:\"init\"");
+                sg[QStringLiteral("default_source_count")] = sug.defaultSourceCount;
+                sg[QStringLiteral("total_source_count")]   = sug.totalSourceCount;
+                result[QStringLiteral("project_settings_suggestion")] = sg;
+            }
+        }
     }
 
     // --- feedback_pending (ANTS-1964, ANTS-1961 follow-on "b") ---

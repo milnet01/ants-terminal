@@ -7,6 +7,7 @@
 #ifndef ANTS_PROJECTSETTINGS_H
 #define ANTS_PROJECTSETTINGS_H
 
+#include <QJsonObject>
 #include <QString>
 #include <QStringList>
 #include <optional>
@@ -35,6 +36,40 @@ struct Settings {
 // by dropping becomes nullopt. The dir-vs-file type check is left to the
 // consumer.
 Settings load(const QString &rootCanonical);
+
+// ANTS-2161 — layout-suggestion detector. See docs/specs/ANTS-2161.md § 2.1.
+struct Suggestion {
+    bool                       present = false;   // .ants/project.json already on disk
+    std::optional<QStringList> sourceRoots;       // suggested dirs, when the layout looks misplaced
+    QString                    reason;            // human string incl. counts; empty ⟺ no suggestion
+    int                        defaultSourceCount = 0;  // admitted files under literal src/+tests/
+    int                        totalSourceCount   = 0;  // admitted files repo-wide (bounded)
+};
+
+// Bounded shallow analysis of <rootCanonical>. If .ants/project.json
+// already exists → {present:true} with NO walk and NO suggestion. Else
+// counts source files (CodebaseIndex::isIndexableSuffix) per top-level dir
+// (skipping noise dirs, capped at kDetectFileCeiling) and suggests
+// `sourceRoots` = the subdir set covering >= kDominanceRatio of total
+// source, but only when the default src/+tests/ walk would miss more than
+// kMissRatio of it and such a subdir set exists. Suggests subdirs only,
+// never the repo root.
+Suggestion detect(const QString &rootCanonical);
+
+// Merge `changes` into `existing` for an op:"set"/"init" write. `changes`
+// carries only the caller-supplied keys; a JSON-null value REMOVES the key.
+// Recognised keys are validated at write-time under the canonical root
+// (source_roots/test_roots/docs_dir/specs_dir must be existing dirs;
+// roadmap/changelog existing files) — STRICT, unlike load()'s lenient
+// read-time drop. Unrecognised keys already in `existing` are preserved.
+// On a validation failure returns nullopt and sets *errCode ("bad_args"
+// for a wrong-typed/shape value, "bad_path" for an escaping / non-existent
+// / wrong-type path) + *errKey + *errVal. nullptr out-params are tolerated.
+std::optional<QJsonObject> applyWrite(const QJsonObject &existing,
+                                      const QJsonObject &changes,
+                                      const QString &rootCanonical,
+                                      QString *errCode, QString *errKey,
+                                      QString *errVal);
 
 }  // namespace ProjectSettings
 

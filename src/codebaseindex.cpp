@@ -22,10 +22,10 @@
 
 namespace CodebaseIndex {
 
-namespace {
-
-// Indexed-suffix set (§ 2.2): the walk admits only these.
-bool admittedSuffix(const QString &suffixLower) {
+// Indexed-suffix set (§ 2.2): the walk admits only these. Exported
+// (ANTS-2161) so the project_settings layout detector counts source files
+// by the same rule — declared in codebaseindex.h.
+bool isIndexableSuffix(const QString &suffixLower) {
     // ANTS-2148 — admit the full C/C++ family (incl. `.c`, `.cxx`, `.hxx`),
     // not just C++-only extensions. A C-only project (DOOM: 65 `.c` files)
     // was yielding file_count:0 because `.c` was absent here AND from
@@ -52,6 +52,8 @@ bool admittedSuffix(const QString &suffixLower) {
         || suffixLower == QLatin1String("swift")|| suffixLower == QLatin1String("scala")
         || suffixLower == QLatin1String("sc")  || suffixLower == QLatin1String("php");
 }
+
+namespace {
 
 QString roleFor(const QString &relPath, const QString &basename) {
     const QString lower = basename.toLower();
@@ -110,7 +112,7 @@ QStringList walkSubtree(const QString &rootCanonical, const QString &sub) {
     const int prefix = rootCanonical.size() + 1;  // strip "<root>/"
     while (it.hasNext()) {
         it.next();
-        if (!admittedSuffix(it.fileInfo().suffix().toLower())) continue;
+        if (!isIndexableSuffix(it.fileInfo().suffix().toLower())) continue;
         out << it.filePath().mid(prefix);
     }
     out.sort();

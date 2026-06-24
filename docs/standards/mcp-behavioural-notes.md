@@ -114,6 +114,25 @@ that did not author a `detail` simply omit the key from `tool_info`.
   `QSaveFile` + `fsyncParentDir`); per-edit `skipped[]` (not_found /
   ambiguous / too_large / commit_failed); fail-closed `bad_path` on root
   escape; caller_cwd-Required (ANTS-2022).
+- **`project_settings`** — detect a non-standard layout + create/update
+  `<root>/.ants/project.json` (the ANTS-2160 reader's source). Ops:
+  `detect` (read-only — `{present, suggestion:{source_roots?, reason,
+  default_source_count, total_source_count}}`; its bounded shallow walk
+  reuses `CodebaseIndex::isIndexableSuffix` so counts agree with what the
+  index admits), `init` (write the detected/explicit keys; refuses
+  `settings_exists` on an existing file — no clobber; `written:false`
+  when nothing to suggest), `set` (create-or-update; raw-JSON merge
+  preserving unknown keys; a `null` value clears a key; refuses
+  `bad_args` when no key is supplied, `unrecognised_format` on a
+  malformed existing file). Validation is **STRICT at write-time**
+  (`bad_path` on an escaping / non-existent / wrong-type declared path) —
+  deliberately unlike the ANTS-2160 reader's lenient read-time drop. The
+  file is written **world-readable 0644** by design (NOT
+  `setOwnerOnlyPerms`). Pure helpers `ProjectSettings::detect` /
+  `applyWrite`; handler `cmdProjectSettings`. `session_orient` surfaces a
+  `project_settings_suggestion` block when no settings file exists AND
+  `codebase_index.file_count` is below a low-water mark (= 5), so a
+  standard project never pays for the detector walk (ANTS-2161).
 - **`feedback_query` / `feedback_log`** — read/write the
   `*_Ants_MCP_Feedback.md` files via the pure `FeedbackFile` module
   (delta parse + block render; ANTS-1961/1962); suffix-guarded on

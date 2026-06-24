@@ -3439,6 +3439,79 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(diTool);
 
+                // ANTS-2161 — project_settings: detect a misplaced layout +
+                // create/update <root>/.ants/project.json so a non-src/
+                // project (e.g. code under linuxdoom-1.10/) stops getting an
+                // empty codebase_index. Companion to the read-side ANTS-2160.
+                QJsonObject psTool;
+                psTool["name"] = "project_settings";
+                psTool["description"] = QStringLiteral(
+                    "Detect a non-standard project layout and create/update the "
+                    "repo-committed <root>/.ants/project.json (the ANTS-2160 "
+                    "reader's source). op:\"detect\" (read-only) → {present, "
+                    "suggestion:{source_roots?, reason, default_source_count, "
+                    "total_source_count}} — suggests source_roots when the "
+                    "default src/+tests/ walk would miss most of the repo's "
+                    "code. op:\"init\" → write the detected (or explicit) keys; "
+                    "refuses settings_exists if the file is present (no "
+                    "clobber); writes nothing (written:false) when there's "
+                    "nothing to suggest. op:\"set\" → create-or-update any key "
+                    "(merges into an existing file, preserving keys it doesn't "
+                    "touch; a null value clears a key); refuses bad_args when no "
+                    "key is supplied, unrecognised_format on a malformed "
+                    "existing file. Declared paths are validated under the root "
+                    "(bad_path) and the file is written world-readable. "
+                    "caller_cwd required.");
+                psTool["selection_hint"] = QStringLiteral(
+                    "Call op:detect (or read session_orient's "
+                    "project_settings_suggestion) when codebase_index comes back "
+                    "near-empty; op:init to accept the suggestion, op:set to "
+                    "declare source_roots/docs_dir/roadmap/etc. explicitly.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    QJsonObject props;
+                    QJsonObject opProp; opProp["type"] = "string";
+                        opProp["enum"] = QJsonArray{QStringLiteral("detect"),
+                            QStringLiteral("init"), QStringLiteral("set")};
+                        opProp["description"] = QStringLiteral(
+                            "detect (preview, read-only) | init (create, no "
+                            "clobber) | set (create-or-update). Required.");
+                    const auto dirArrayProp = []() {
+                        QJsonObject p; p["type"] = "array";
+                        QJsonObject items; items["type"] = "string"; p["items"] = items;
+                        return p;
+                    };
+                    QJsonObject srProp = dirArrayProp();
+                        srProp["description"] = QStringLiteral(
+                            "Source root dirs (repo-relative) for init/set; "
+                            "replaces the src/ default. Must exist.");
+                    QJsonObject trProp = dirArrayProp();
+                        trProp["description"] = QStringLiteral(
+                            "Test root dirs (repo-relative); replaces tests/.");
+                    QJsonObject ddProp; ddProp["type"] = "string";
+                        ddProp["description"] = QStringLiteral("Docs dir (repo-relative).");
+                    QJsonObject sdProp; sdProp["type"] = "string";
+                        sdProp["description"] = QStringLiteral("Specs dir (repo-relative).");
+                    QJsonObject rmProp; rmProp["type"] = "string";
+                        rmProp["description"] = QStringLiteral("Roadmap file (repo-relative).");
+                    QJsonObject clProp; clProp["type"] = "string";
+                        clProp["description"] = QStringLiteral("Changelog file (repo-relative).");
+                    props["op"]           = opProp;
+                    props["source_roots"] = srProp;
+                    props["test_roots"]   = trProp;
+                    props["docs_dir"]     = ddProp;
+                    props["specs_dir"]    = sdProp;
+                    props["roadmap"]      = rmProp;
+                    props["changelog"]    = clProp;
+                    props["caller_cwd"]   = makeCallerCwdReadProp();
+                    schema["properties"]  = props;
+                    schema["required"]    = QJsonArray{QStringLiteral("op")};
+                    psTool["inputSchema"] = schema;
+                }
+                tools.append(psTool);
+
                 // ANTS-1961 — feedback_query: read the un-triaged tail of
                 // a *_Ants_MCP_Feedback.md file instead of a full Read.
                 {
@@ -8087,6 +8160,8 @@ void ClaudeIntegration::onMcpConnection() {
                         {QStringLiteral("roadmap_query"),     {1700, 12000}},
                         {QStringLiteral("roadmap_log"),       {200,  600}},
                         {QStringLiteral("project_layout"),    {600,  2000}},
+                        // ANTS-2161 — project_settings: small detect/write envelope.
+                        {QStringLiteral("project_settings"),  {300,  1500}},
                         {QStringLiteral("session_memory"),    {200,  1000}},
                         {QStringLiteral("session_brief"),     {300,  1200}},
                         // ANTS-1883 — composer of three large reads + ANTS-1922
@@ -8220,6 +8295,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-2139 — docs_index: project-scoped
                         // documentation-map reader.
                         name == QLatin1String("docs_index") ||
+                        // ANTS-2161 — project_settings: project-scoped
+                        // layout-config detect + create/update.
+                        name == QLatin1String("project_settings") ||
                         name == QLatin1String("project_layout") ||
                         name == QLatin1String("subsystem") ||
                         // ANTS-1569 — current_state is a project-scoped
@@ -9267,6 +9345,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-2139 — docs_index is a project-scoped documentation-map reader
     // keyed on the resolved root; Required (sibling of codebase_index).
     if (toolName == QStringLiteral("docs_index"))          return C::Required;
+    // ANTS-2161 — project_settings reads/writes <root>/.ants/project.json
+    // anchored on the resolved root; Required.
+    if (toolName == QStringLiteral("project_settings"))    return C::Required;
     // ANTS-1961 / ANTS-1962 — feedback verbs resolve a relative `path`
     // off caller_cwd and anchor tenancy; Required even though the
     // canonical case is an absolute shared-root path.

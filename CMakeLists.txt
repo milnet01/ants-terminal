@@ -1121,6 +1121,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_docs_index/test_mcp_docs_index.cpp
                 # ANTS-2160 — per-project .ants/project.json settings file.
                 tests/features/project_settings/test_project_settings.cpp
+                # ANTS-2161 — layout auto-detect + project_settings verb.
+                tests/features/project_settings_verb/test_project_settings_verb.cpp
                 # ANTS-1961 / ANTS-1962 / ANTS-1963 — feedback + spec_log verbs.
                 tests/features/mcp_feedback_query/test_mcp_feedback_query.cpp
                 tests/features/mcp_feedback_log/test_mcp_feedback_log.cpp

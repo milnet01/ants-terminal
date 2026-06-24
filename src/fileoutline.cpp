@@ -162,7 +162,7 @@ Mode pickModeByExt(const QString &absPath) {
     const QString ext = QFileInfo(absPath).suffix().toLower();
     // ANTS-2148 — the C family (`.c`, `.hxx`) outlines fine with the C++
     // regex set (shared surface syntax); admitting it here keeps
-    // codebase_index (admittedSuffix) able to extract symbols from a
+    // codebase_index (isIndexableSuffix) able to extract symbols from a
     // C-only project instead of returning an empty map.
     if (ext == QLatin1String("cpp") || ext == QLatin1String("cc")  ||
         ext == QLatin1String("cxx") || ext == QLatin1String("c")   ||

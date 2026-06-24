@@ -70,6 +70,7 @@ against the table below.
 | `ai_not_configured` | The project's AI provider is disabled or unset (ANTS-1352). Envelope hint names `Settings → AI`. | `indie_review_dispatch` when `Config::aiEnabled()` is false OR `Config::aiEndpoint()` is empty. |
 | `no_roadmap_loaded` | The roadmap dialog has no roadmap loaded. | roadmap-tied verb during early startup. |
 | `plan_exists` | Conflicting state: a plan file already exists. | `plan_template` told to write over an existing file without `overwrite:true`. |
+| `settings_exists` | Conflicting state: a per-project settings file already exists, so a create-only op refuses rather than clobber. Envelope carries `path`. Sibling of `plan_exists` (ANTS-2161). | `project_settings op:"init"` when `<root>/.ants/project.json` is already present (use `op:"set"` to update). |
 | `file_changed` | Apply-time mismatch: source bytes drifted between scan and fix. | `debt_sweep_apply_fix` after the file was edited. |
 | `not_fixable` | The fix the caller asked for isn't a defined operation here. | `debt_sweep_apply_fix` with an op the engine doesn't implement. |
 | `unrecognised_format` | The file shape isn't one the parser handles. Envelope additionally carries `expected_format[]` and standardised `hint` (ANTS-1463). | `roadmap_query` against a file that isn't ants-v1 or GFM. |

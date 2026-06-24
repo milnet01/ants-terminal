@@ -51,7 +51,7 @@ Lang langForExt(const QString &ext) {
     if (ext == QLatin1String("lua")) return Lang::Lua;
     if (ext == QLatin1String("sh") || ext == QLatin1String("bash")) return Lang::Sh;
     // ANTS-2150 — brace family (kept in step with FileOutline::genericLangName
-    // + CodebaseIndex::admittedSuffix so count → outline → symbol query agree).
+    // + CodebaseIndex::isIndexableSuffix so count → outline → symbol query agree).
     if (ext == QLatin1String("rs")  || ext == QLatin1String("go")  ||
         ext == QLatin1String("js")  || ext == QLatin1String("jsx") ||
         ext == QLatin1String("mjs") || ext == QLatin1String("cjs") ||

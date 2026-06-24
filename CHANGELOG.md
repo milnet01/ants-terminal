@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Ants now detects when a project's code isn't under `src/` and offers to write its `.ants/project.json` for you, plus a `project_settings` MCP verb to create/update it.** (ANTS-2161)
+  session_orient surfaces a project_settings_suggestion when the codebase map comes back near-empty; the new project_settings verb (detect/init/set) creates and updates the settings file in one call. Follow-on to ANTS-2160 (the reader).
+
 - **Per-project Ants settings file declaring source / docs / roadmap / changelog / spec locations.** (ANTS-2160)
   A small per-project file telling Ants exactly where the code, docs, roadmap and changelog live — so it stops guessing and works for projects that don't use a src/ folder.
 

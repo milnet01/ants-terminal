@@ -121,7 +121,12 @@ load. Quick check: `LC_ALL=C.UTF-8 ctest --test-dir build`.
   docs_index / roadmap_query / changelog_log / spec_query+log /
   current_state / project_layout, each falling back to its heuristic
   when a key is absent. Distinct from the global config above:
-  per-project, world-readable, no secrets (NOT mode 0600).
+  per-project, world-readable, no secrets (NOT mode 0600). ANTS-2161
+  adds the write side: `session_orient` emits a
+  `project_settings_suggestion` when a project's code isn't under
+  `src/` (gated on a near-empty `codebase_index`), and the
+  `project_settings` verb (`detect`/`init`/`set`) creates & updates the
+  file in one call.
 - Scrollback default 50k, max 1M.
 - Theme colors set on `TerminalGrid`; ANSI palette (16+216+24) lives there.
 - QTextLayout for ligature shaping.

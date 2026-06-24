@@ -75,6 +75,12 @@ struct StaleSet {
     }
 };
 
+// True iff a lowercased file suffix is one the index walk admits (the
+// C/C++/brace/script family — ANTS-2148/2150). Exported (ANTS-2161) so the
+// settings-suggestion detector counts source files by the SAME rule the
+// index admits by; single-sourced here (callers: walkSubtree + detect).
+bool isIndexableSuffix(const QString &suffixLower);
+
 // mtime (ms) of the canonical lane-map source (docs/subsystems.md when
 // present, else CLAUDE.md) for `rootCanonical`; 0 if neither exists.
 qint64 mapSourceMtimeMs(const QString &rootCanonical);
