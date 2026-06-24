@@ -103,6 +103,11 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.98" date="2026-06-24">
+      <description>
+        <p>Patron RC preview — opens the 0.7.98 preview channel. No user-facing changes yet beyond 0.7.97; fixes land here during the freeze window before the stable release.</p>
+      </description>
+    </release>
     <release version="0.7.97" date="2026-06-24">
       <description>
         <p>A large MCP / Claude-integration milestone. Ants now answers "where do I hook into this pipeline?" and "show me the canonical idiom" in a single call, auto-detects projects whose code isn't under <code>src/</code> and offers to write their settings file, groups related to-dos into thematic work-bundles, and keeps its most-used tools instantly callable. Under the hood: two audit/review use-after-free crash classes are regression-locked, the C++ file-outline scanner stops mislabelling locals and <code>case</code> labels as functions, and a sweep of code-navigation accuracy fixes lands.</p>

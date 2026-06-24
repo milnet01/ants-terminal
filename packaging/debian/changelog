@@ -1,3 +1,11 @@
+ants-terminal (0.7.98-1) unstable; urgency=medium
+
+  * Patron RC preview — opens the 0.7.98 preview channel. No changes yet
+    beyond 0.7.97; fixes land here during the freeze window before the
+    stable release.
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 24 Jun 2026 12:00:00 +0200
+
 ants-terminal (0.7.97-1) unstable; urgency=medium
 
   * A large MCP / Claude-integration milestone: read_region now returns

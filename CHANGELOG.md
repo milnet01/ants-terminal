@@ -12,6 +12,14 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.98] — unreleased (Patron RC preview)
+
+**Theme:** Rolling Patron preview of the next release. Fixes and features land
+in this section as they ship during the freeze window; the section gets its
+public date when 0.7.98 is promoted to a stable release.
+
+_No changes yet beyond 0.7.97 — this entry opens the 0.7.98 preview channel._
+
 ## [0.7.97] — 2026-06-24
 
 **Theme:** A large MCP / Claude-integration milestone. Ants now answers "where
