@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include <QDateTime>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -27,7 +28,12 @@ L::Record rec(const QString &from, const QString &to, bool pending, int turns,
               bool override_ = false, bool underRoute = false,
               const QString &project = QStringLiteral("/projA")) {
     L::Record r;
-    r.ts = QStringLiteral("2026-05-25T14:00:00Z");
+    // Relative-recent so the record stays inside statsForProject's default
+    // 30-day recency window regardless of when the suite runs. (A fixed
+    // 2026-05-25 stamp aged out of the window on 2026-06-24T14:00 and
+    // started failing GlobalScope/ProjectScoped — a test time-bomb, not a
+    // behaviour change.)
+    r.ts = QDateTime::currentDateTimeUtc().addDays(-1).toString(Qt::ISODate);
     r.project = project;
     r.fromTier = from;
     r.toTier = to;
