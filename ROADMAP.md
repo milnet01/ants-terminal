@@ -8532,7 +8532,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-06-24 (0.7.97 release).
 
-- 🚧 [ANTS-2164] **Harden the RC→release→new-RC cadence into one guarded `cut-rc.sh cycle` command (extends ANTS-1318).**
+- ✅ [ANTS-2164] **Harden the RC→release→new-RC cadence into one guarded `cut-rc.sh cycle` command (extends ANTS-1318).**
   Recurring releases problems trace to the cadence being a multi-step manual
   dance with warn-only guards (FM-8/11/15 in the 2026-06-24 failure-mode
   catalogue). Collapse the Wednesday dual-cut into one orchestrated command
@@ -8550,8 +8550,9 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** Make releasing a one-command, foolproof step: it either does the whole release correctly or stops and says what's wrong — so we never again publish an empty release or forget to update the notes.
   Kind: implement.
   Source: user-request-2026-06-24 (recurring RC/release issues).
+  Shipped 2026-06-25 (commit a3fd123). Helpers + hardened new-rc/promote + cycle in cut-rc.sh; 9 C++ source-scrape + 28 behavioural shell assertions (reproduce-before-fix confirmed: 17/28 fail pre-fix); 2226/2226 features green; drift clean. PENDING (§5, user-gated): delete the empty v0.7.98-rc1 tag + GitHub pre-release and revert the 0.7.98 channel-opener sections.
 
-- 🚧 [ANTS-2165] **Add an out-of-cadence hotfix path to the release standard (`cut-rc.sh hotfix`).**
+- ✅ [ANTS-2165] **Add an out-of-cadence hotfix path to the release standard (`cut-rc.sh hotfix`).**
   The weekly cadence (ANTS-1318) + its hardening (ANTS-2164) cover a bug
   found DURING the RC freeze (cherry-pick → respin) but NOT an urgent bug in
   the already-published release that can't wait for the next Wednesday.
@@ -8568,6 +8569,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** Add an emergency-fix lane: if a bad bug ships to everyone, we can push a small fix-only release immediately instead of waiting for the weekly Wednesday release.
   Kind: implement.
   Source: user-request-2026-06-24 (hotfix path for urgent published-release bugs).
+  Shipped 2026-06-25 (commit a3fd123). Two-phase `hotfix` subcommand + fix_is_on_main; guards fix_not_on_main / rc_base_mismatch / hotfix_branch_exists / conflict-abort; covered by the cut_rc_behaviour shell harness + Ants2165* source-scrape cases.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
