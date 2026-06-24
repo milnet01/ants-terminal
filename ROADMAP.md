@@ -8519,6 +8519,19 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-06-17 (sibling of ANTS-2146).
   Resolved (2026-06-17): same root cause, fixed in lockstep. fileoutline.cpp rxCppFunc gained the matching `(?!(?:return|co_return|co_await|co_yield|throw|else)\b)` lookahead after the leading `\s*`, so `return gamma(7);` is no longer emitted as a spurious `gamma` function symbol (which had propagated into read_region symbol-mode + codebase_index resolution). Regression locked by tests/features/mcp_file_outline INV-12 (fixture `return gamma(7);` → no `gamma` symbol, enclosing `beta` still surfaces); confirmed red pre-fix. rxCppMember left untouched (column-0 + `::`-qualified, cannot match indented dispatch lines).
 
+- 📋 [ANTS-2163] **Realign stale `.claude/bump.json` README replace-pattern so `/bump` updates the version banner.**
+  bump.json's README rules target `Current version: <strong>{OLD}</strong>` and
+  `Ants_Terminal-{OLD}-x86_64.AppImage`, but README.md actually reads
+  `Version <strong>{VER}</strong>` (line 20) and has no versioned AppImage URL.
+  So /bump's automated README replace silently no-ops; the banner only stayed
+  correct because it was hand-edited during the 0.7.97 → 0.7.98 cut.
+  check-version-drift.sh did not flag it. Fix: realign the bump.json README
+  pattern(s) to the current README text and confirm the drift check actually
+  validates the banner. Found during the 0.7.97 release.
+  **Layman:** On a version bump, the README's "Version X" line isn't auto-updated anymore — the updater searches for old wording. Fix the wording it looks for.
+  Kind: fix.
+  Source: in-session-2026-06-24 (0.7.97 release).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
