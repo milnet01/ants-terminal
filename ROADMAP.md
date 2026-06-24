@@ -8532,6 +8532,25 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-06-24 (0.7.97 release).
 
+- 🚧 [ANTS-2164] **Harden the RC→release→new-RC cadence into one guarded `cut-rc.sh cycle` command (extends ANTS-1318).**
+  Recurring releases problems trace to the cadence being a multi-step manual
+  dance with warn-only guards (FM-8/11/15 in the 2026-06-24 failure-mode
+  catalogue). Collapse the Wednesday dual-cut into one orchestrated command
+  that turns the soft guards HARD and automates the manual steps:
+  (1) refuse to promote an empty/placeholder release (CHANGELOG version
+  section still the "_no changes yet_" channel-opener text); (2) auto-roll
+  [Unreleased] into the [V] section at RC-cut and auto-date-stamp it +
+  debian changelog at promote; (3) stop cutting empty channel-opener RCs —
+  an RC is cut from main HEAD WITH content, frozen, and promote tags that
+  exact commit (frozen model: Patrons preview the bits the public gets a
+  week later, INV-2); (4) run drift-check / prerelease-flag / one-RC-in-flight
+  as hard gates; (5) auto-draft the metainfo <release> + debian bodies from
+  the rolled CHANGELOG via the changelog-writer subagent (FM-4). Spec:
+  docs/specs/ANTS-2164.md (extends ANTS-1318). Found during the 0.7.97 cut.
+  **Layman:** Make releasing a one-command, foolproof step: it either does the whole release correctly or stops and says what's wrong — so we never again publish an empty release or forget to update the notes.
+  Kind: implement.
+  Source: user-request-2026-06-24 (recurring RC/release issues).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
