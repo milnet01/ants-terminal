@@ -21273,6 +21273,24 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   Kind: chore.
   Source: planned.
 
+- 📋 [ANTS-2166] **Sandbox-aware shell spawning (flatpak-spawn --host).**
+  Detect a Flatpak sandbox (FLATPAK_ID env / /.flatpak-info present) and route shell spawning through `flatpak-spawn --host` instead of forking a PTY directly against a sandboxed binary. Without it a Flatpak build can only run the few binaries inside the runtime — useless for a terminal. Model on Black Box / GNOME Console / Ptyxis. Requires the `--talk-name=org.freedesktop.Flatpak` finish-arg. First of the Flathub epic; gates the manifest item (ANTS-2168).
+  **Layman:** Make Ants Terminal launch your real shell when it runs inside a sandbox, so it can run programs on your actual computer — the prerequisite for a Flatpak/Flathub build.
+  Kind: implement.
+  Source: user-request-2026-06-24 (Flathub publishing).
+
+- 📋 [ANTS-2167] **Rename app ID org.ants.Terminal -> io.github.milnet01.* for Flathub.**
+  Flathub requires the reverse-DNS app ID to match a domain or code host you control. org.ants.Terminal implies ants.org (not owned); rename to the GitHub-hosted scheme io.github.milnet01.AntsTerminal. Ripples through metainfo (org.ants.Terminal.metainfo.xml -> renamed), the .desktop file, icon filenames, D-Bus/service names, and any hardcoded ID. User chose this scheme 2026-06-24. Gates the manifest item (ANTS-2168).
+  **Layman:** Change the app's internal identifier to a GitHub-based one that Flathub accepts for free (the current org.ants.Terminal would require owning the ants.org domain).
+  Kind: refactor.
+  Source: user-request-2026-06-24 (Flathub publishing).
+
+- 📋 [ANTS-2168] **Flatpak manifest + metainfo polish + Flathub submission.**
+  Write the Flatpak manifest (build against org.kde.Platform/Sdk 6.x Qt6 runtime, no network during build, sourced from a tagged release). Add the AppStream bits the validator needs: OARS content-rating, SPDX license, screenshots, homepage URL. Submit via a PR to flathub/flathub (new-pr branch); the build bot + reviewer check sandbox finish-args. On merge, future updates push to the dedicated flathub/<app-id> repo (wire into CI like the AppImage pipeline). DEPENDS ON ANTS-2166 (sandbox-aware spawning) + ANTS-2167 (app-ID rename). Verify current submission steps against flathub.org/docs before acting.
+  **Layman:** Package Ants Terminal as a Flatpak and submit it to Flathub so it appears in KDE Discover, GNOME Software and most Linux app stores (AppImage stays as-is alongside it).
+  Kind: package.
+  Source: user-request-2026-06-24 (Flathub publishing).
+
 ### 🔌 Plugins — marketplace
 
 - 📋 [ANTS-1073] **Signed plugin packaging**: Ed25519 sig over a tarball containing
