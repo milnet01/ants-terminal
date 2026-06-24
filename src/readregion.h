@@ -23,6 +23,7 @@ struct Options {
     int     endLine   = 0;      // 1-based inclusive
     QString symbol;             // non-empty → symbol-body mode
     int     maxBytes  = 0;      // <=0 → kDefaultBytesCap; clamped to ceiling
+    bool    callSequence = false;  // ANTS-2157 — also emit the ordered call list + accessors
 };
 
 // Slice the already-resolved file at `absPath`. Returns the read_region

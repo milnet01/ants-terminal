@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`read_region` can now return a pipeline's integration brief (`call_sequence:true`): the ordered steps inside a function with their line anchors, plus the accessors a new step typically needs — answering "where do I hook in?" in one call.** (ANTS-2157)
+  Implemented reuse-first as an option on read_region's symbol-body mode (not a new verb): call_sequence lists the body's calls in source order ({line, callee}, signature skipped), and accessors lists the m_ members + get/is/has getters referenced.
+
 - **`similar_code` can now return the FULL body of each matching definition (`include_bodies:true`), so you copy a canonical in-repo idiom in one call instead of opening each file.** (ANTS-2156)
   Each top match gains symbol + body lines (extracted via read_region), ranked by structural similarity. A signature that doesn't resolve to an outline symbol carries body_unavailable (file:line still given).
 

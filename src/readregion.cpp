@@ -11,7 +11,10 @@
 #include <QByteArray>
 #include <QFile>
 #include <QJsonArray>
+#include <QRegularExpression>
+#include <QSet>
 
+#include <algorithm>
 #include <climits>
 
 namespace ReadRegion {
@@ -157,6 +160,58 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
             env["symbol_ambiguous"] = true;
             env["symbol_match_count"] = symMatchCount;
         }
+    }
+
+    // ANTS-2157 — integration brief: the ordered call-expressions inside the
+    // returned region (the pipeline's STAGES, with line anchors = insertion
+    // points) + the accessors a new stage typically needs (m_ members +
+    // get/is/has getters referenced). Answers "to add a step here, what are
+    // the existing steps in order and the helpers they use?" in one call.
+    // A heuristic line scan (same Karpathy-§2 bet as file_outline); reuses
+    // the region this call already sliced. The first kept line in symbol
+    // mode is the signature — its own call is not a stage.
+    if (opts.callSequence) {
+        static const QRegularExpression callRx(
+            QStringLiteral(R"((?:^|[^\w.>])([A-Za-z_]\w*)\s*\()"));
+        static const QRegularExpression memRx(QStringLiteral(R"(\bm_[A-Za-z_]\w*)"));
+        static const QRegularExpression getRx(
+            QStringLiteral(R"(\b((?:get|is|has)[A-Za-z_]\w*)\s*\()"));
+        static const QSet<QString> kw = {
+            QStringLiteral("if"), QStringLiteral("for"), QStringLiteral("while"),
+            QStringLiteral("switch"), QStringLiteral("return"), QStringLiteral("sizeof"),
+            QStringLiteral("catch"), QStringLiteral("do"), QStringLiteral("else"),
+            QStringLiteral("new"), QStringLiteral("delete"), QStringLiteral("throw"),
+            QStringLiteral("and"), QStringLiteral("or"), QStringLiteral("not"),
+            QStringLiteral("co_await"), QStringLiteral("co_return"),
+        };
+        constexpr int kMaxSeq = 300;
+        QJsonArray seq;
+        QSet<QString> accessors;
+        for (int i = 0; i < lines.size(); ++i) {
+            const QString ln = lines.at(i).toString();
+            const int lineNum = startLine + i;
+            const bool isSignatureLine = (hasSym && i == 0);
+            if (!isSignatureLine && seq.size() < kMaxSeq) {
+                auto it = callRx.globalMatch(ln);
+                while (it.hasNext() && seq.size() < kMaxSeq) {
+                    const QString callee = it.next().captured(1);
+                    if (kw.contains(callee)) continue;
+                    QJsonObject c;
+                    c[QStringLiteral("line")]   = lineNum;
+                    c[QStringLiteral("callee")] = callee;
+                    seq.append(c);
+                }
+            }
+            for (auto mit = memRx.globalMatch(ln); mit.hasNext(); )
+                accessors.insert(mit.next().captured(0));
+            for (auto git = getRx.globalMatch(ln); git.hasNext(); )
+                accessors.insert(git.next().captured(1));
+        }
+        QStringList accList(accessors.begin(), accessors.end());
+        std::sort(accList.begin(), accList.end());
+        env["call_sequence"] = seq;
+        env["call_sequence_truncated"] = (seq.size() >= kMaxSeq);
+        env["accessors"] = QJsonArray::fromStringList(accList);
     }
     return env;
 }

@@ -1129,6 +1129,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_eager_load/test_mcp_eager_load.cpp
                 # ANTS-2156 — similar_code include_bodies (exemplar retrieval).
                 tests/features/similar_code_bodies/test_similar_code_bodies.cpp
+                # ANTS-2157 — read_region call_sequence (integration brief).
+                tests/features/read_region_call_sequence/test_read_region_call_sequence.cpp
                 # ANTS-1961 / ANTS-1962 / ANTS-1963 — feedback + spec_log verbs.
                 tests/features/mcp_feedback_query/test_mcp_feedback_query.cpp
                 tests/features/mcp_feedback_log/test_mcp_feedback_log.cpp

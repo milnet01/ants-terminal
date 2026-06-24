@@ -149,6 +149,18 @@ server-controllable beyond this per-tool hint.
   Pair with a small `max_results` (default 3). Ranking is the existing
   structural-similarity score; richer canonical-ness signals
   (call-count / recency) are a deferred follow-on.
+- **`read_region`** — `call_sequence:true` (ANTS-2157) is the
+  integration-brief view: alongside the symbol's body it returns
+  `call_sequence` (the body's call-expressions in source order — a
+  pipeline's STAGES, each `{line, callee}`, with the line as the
+  insertion point; the signature line is skipped, scanning stops at the
+  symbol's end) and `accessors` (the distinct `m_` members + `get`/`is`/
+  `has` getters referenced — the helpers a new stage usually needs).
+  Answers "where do I hook into this pipeline, in order, and what does a
+  new step touch?" in one call. Best paired with a `symbol` naming the
+  driver function. Opt-in (back-compat when absent); a heuristic line
+  scan over the region read_region already slices. v1 is one-function
+  scoped (cross-method pipeline mapping is a follow-on).
 
 ## Write / edit verbs
 

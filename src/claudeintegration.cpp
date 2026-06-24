@@ -3206,6 +3206,24 @@ void ClaudeIntegration::onMcpConnection() {
                     props["end_line"]   = endProp;
                     props["symbol"]     = symProp;
                     props["max_bytes"]  = mbProp;
+                    {
+                        // ANTS-2157 — integration brief.
+                        QJsonObject p;
+                        p["type"]        = "boolean";
+                        p["default"]     = false;
+                        p["description"] = QStringLiteral(
+                            "When true, also return `call_sequence` (the "
+                            "ordered call-expressions inside the region — a "
+                            "pipeline's STAGES, each {line, callee}; line = "
+                            "the insertion point) and `accessors` (the m_ "
+                            "members + get/is/has getters referenced — the "
+                            "helpers a new stage usually needs). Answers "
+                            "\"to add a step to this pipeline, what are the "
+                            "existing steps in order and what does a new one "
+                            "hook into?\" in one call. Best with a `symbol` "
+                            "naming the pipeline driver function.");
+                        props["call_sequence"] = p;
+                    }
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     props["fields"]     = makeFieldsProp();      // ANTS-1720

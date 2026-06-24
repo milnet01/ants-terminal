@@ -8769,8 +8769,10 @@ QJsonDocument RemoteControl::cmdReadRegion(const QJsonObject &req) {
     }
 
     ReadRegion::Options opts;
-    opts.symbol   = req.value(QStringLiteral("symbol")).toString();
-    opts.maxBytes = req.value(QStringLiteral("max_bytes")).toInt(0);
+    opts.symbol       = req.value(QStringLiteral("symbol")).toString();
+    opts.maxBytes     = req.value(QStringLiteral("max_bytes")).toInt(0);
+    opts.callSequence =                                        // ANTS-2157
+        req.value(QStringLiteral("call_sequence")).toBool(false);
     const QJsonValue startV = req.value(QStringLiteral("start_line"));
     const QJsonValue endV   = req.value(QStringLiteral("end_line"));
     if (startV.isDouble()) {
