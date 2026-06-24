@@ -87,6 +87,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`file_outline` no longer mislabels local variable declarations and `case` statements as functions, and now finds functions written in the older C style (return type or `{` on its own line).** (ANTS-2159)
+  The C++ scanner gained brace-scope awareness (a string/char/comment/raw-string-aware brace counter) so function symbols are emitted only at file or type-body scope, never inside a function body, plus multi-line signature handling for id-Software / GNU brace style.
+
 - **session_orient no longer reads as "no active work" on an ID-less roadmap** (ANTS-2052)
   On a roadmap whose items have no [PROJECT-1234] IDs, the start-up "what should I work on?" summary used to show an empty queue even with many open items; it now recovers and lists them.
 

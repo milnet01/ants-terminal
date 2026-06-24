@@ -79,6 +79,100 @@ const QRegularExpression &rxCppQt() {
     }();
     return rx;
 }
+// ANTS-2159 — multi-line definition support. `rxCppFuncOpen` is rxCppFunc
+// with the trailing terminator relaxed to end-of-line: it matches a
+// `ReturnType name(args)` header whose body `{` sits on the NEXT line
+// (id-Software / GNU brace style). Control keywords are rejected up front.
+const QRegularExpression &rxCppFuncOpen() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(R"(^(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else|if|for|while|switch|do|catch)\b)(?:[\w:<>]+[\s*&]+)++(\w+)\s*\([^)]*\)\s*$)"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
+// ANTS-2159 — a bare `name(args)` (no return type, no terminator) line: the
+// continuation of an old-style definition whose return type was on the
+// PREVIOUS line (paired with a pending-return-type line by the scanner).
+const QRegularExpression &rxCppNameArgs() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(R"(^\s*(?!(?:return|co_return|co_await|co_yield|throw|else|if|for|while|switch|do|catch|sizeof|new|delete)\b)([A-Za-z_]\w*(?:::[\w~]+)?)\s*\([^)]*\)\s*$)"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
+// ANTS-2159 — a line that is ONLY return-type / modifier tokens (no parens,
+// terminator, brace or `=`): a candidate return type for an old-style
+// definition split across lines. Statement / declaration keywords are
+// rejected so a bare `return`/`else`/`class` line is never a pending type.
+const QRegularExpression &rxCppTypeOnly() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(R"(^\s*(?!(?:return|co_return|else|do|case|default|break|continue|goto|public|private|protected|using|namespace|typedef|friend|template|class|struct|enum|union)\b)[\w:<>*&]+(?:\s+[\w:<>*&]+)*\s*$)"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
+// ANTS-2159 — net `{` minus `}` on a line, ignoring braces inside string /
+// char literals, line comments, and block comments, so the scope counter
+// doesn't drift on `"{"` or `// {`. `inBlock` carries block-comment state
+// across lines. A heuristic (raw-string literals are not special-cased —
+// rare in a declaration region); good enough to keep the depth honest.
+int netBraceDelta(const QString &line, bool &inBlock) {
+    int delta = 0;
+    const int n = line.size();
+    for (int i = 0; i < n; ++i) {
+        const QChar c = line.at(i);
+        if (inBlock) {
+            if (c == QLatin1Char('*') && i + 1 < n
+                && line.at(i + 1) == QLatin1Char('/')) { inBlock = false; ++i; }
+            continue;
+        }
+        if (c == QLatin1Char('/') && i + 1 < n) {
+            const QChar d = line.at(i + 1);
+            if (d == QLatin1Char('/')) break;                       // line comment
+            if (d == QLatin1Char('*')) { inBlock = true; ++i; continue; }
+        }
+        if (c == QLatin1Char('"')) {
+            // Raw string R"delim( … )delim" (L/u8/u/U prefix keyed on the
+            // immediately-preceding 'R'): its content — incl. braces in a
+            // regex literal like R"({1,6})" — is fully literal and must not
+            // move the depth. Critical for self-scan (this codebase's regex
+            // builders sit inside function bodies).
+            if (i > 0 && line.at(i - 1) == QLatin1Char('R')) {
+                int j = i + 1;
+                QString delim;
+                while (j < n && line.at(j) != QLatin1Char('(')) {
+                    delim.append(line.at(j)); ++j;
+                }
+                const QString close =
+                    QStringLiteral(")") + delim + QStringLiteral("\"");
+                const int end = (j < n) ? line.indexOf(close, j) : -1;
+                if (end < 0) { i = n; break; }   // unterminated on this line
+                i = end + close.size() - 1;
+                continue;
+            }
+            for (++i; i < n; ++i) {              // ordinary string literal
+                const QChar e = line.at(i);
+                if (e == QLatin1Char('\\')) { ++i; continue; }
+                if (e == QLatin1Char('"')) break;
+            }
+            continue;
+        }
+        if (c == QLatin1Char('\'')) {            // char literal
+            for (++i; i < n; ++i) {
+                const QChar e = line.at(i);
+                if (e == QLatin1Char('\\')) { ++i; continue; }
+                if (e == QLatin1Char('\'')) break;
+            }
+            continue;
+        }
+        if (c == QLatin1Char('{')) ++delta;
+        else if (c == QLatin1Char('}')) --delta;
+    }
+    return delta;
+}
 const QRegularExpression &rxPy() {
     static const QRegularExpression rx = []{
         QRegularExpression r(QStringLiteral(R"(^(async\s+)?(def|class)\s+(\w+))"));
@@ -270,6 +364,17 @@ QJsonObject compute(const QString &absPath,
     const QString headerMarker = headerCommentMarker(effective);
     int headerLinesEmitted = 0;
 
+    // ANTS-2159 — C++ scope tracking: a function/member symbol is emitted
+    // only at file or type-body scope, never inside a code body (so a
+    // most-vexing-parse local or a `case X: return f();` statement is not
+    // mistaken for a function); and a definition whose return type and/or
+    // `{` sit on adjacent lines is still found.
+    int braceDepth = 0;            // literal/comment-aware net brace depth
+    int funcOpenAtDepth = -1;      // depth a function body opened at; -1 = file/type scope
+    bool funcBodyEntered = false;  // the body's opening '{' has been seen
+    bool inBlockComment = false;   // block-comment carry for netBraceDelta
+    QString pendingType;           // prior file-scope line that was a bare return type
+
     while (!f.atEnd()) {
         const QByteArray rawLine = f.readLine();
         totalBytes += rawLine.size();
@@ -351,42 +456,69 @@ QJsonObject compute(const QString &absPath,
         };
 
         if (effective == Mode::Cpp) {
-            // Match order: type-decl, member-def (qualified),
-            // free-func, Qt-marker. Short-circuit on the first hit.
+            // ANTS-2159 — scope-aware. A function/member symbol is emitted
+            // only at file or type-body scope (funcOpenAtDepth < 0); inside
+            // a code body the func paths are suppressed so a local
+            // `Type name(arg);` or a `case X: return f();` statement is not
+            // mistaken for a function. Match order: type-decl, qualified
+            // member-def, free-func, multi-line func header, old-style
+            // (return type on the prior line), Qt-marker, bare-type
+            // (records a pending return type for the next line).
+            const bool inFuncBody = (funcOpenAtDepth >= 0);
+            const QString prevPendingType = pendingType;
+            pendingType.clear();
+            bool funcDefOpensBody = false;   // a definition whose body opens (now or on a later '{')
             QRegularExpressionMatch m;
-            m = rxCppType().match(line);
-            if (m.hasMatch()) {
-                const QString name = m.captured(2);
-                offer("class", name, line);
-                continue;
-            }
-            m = rxCppMember().match(line);
-            if (m.hasMatch()) {
-                // Name = up to the first '(' in the line.
+
+            if ((m = rxCppType().match(line)).hasMatch()) {
+                offer("class", m.captured(2), line);   // type/namespace body — never code
+            } else if (!inFuncBody && (m = rxCppMember().match(line)).hasMatch()) {
                 const int lparen = line.indexOf(QLatin1Char('('));
-                QString name = (lparen > 0) ? line.left(lparen).trimmed()
-                                            : line;
-                // Strip leading "ReturnType " — keep "Class::method".
+                QString name = (lparen > 0) ? line.left(lparen).trimmed() : line;
                 const int firstColon = name.indexOf(QStringLiteral("::"));
                 if (firstColon > 0) {
-                    const int spaceBeforeName = name.lastIndexOf(
-                        QLatin1Char(' '), firstColon);
-                    if (spaceBeforeName > 0) {
-                        name = name.mid(spaceBeforeName + 1);
-                    }
+                    const int spaceBeforeName =
+                        name.lastIndexOf(QLatin1Char(' '), firstColon);
+                    if (spaceBeforeName > 0) name = name.mid(spaceBeforeName + 1);
                 }
                 offer("func", name, line);
-                continue;
-            }
-            m = rxCppFunc().match(line);
-            if (m.hasMatch()) {
+                funcDefOpensBody = !line.trimmed().endsWith(QLatin1Char(';'));
+            } else if (!inFuncBody && (m = rxCppFunc().match(line)).hasMatch()) {
                 offer("func", m.captured(2), line);
-                continue;
-            }
-            m = rxCppQt().match(line);
-            if (m.hasMatch()) {
+                funcDefOpensBody = !line.trimmed().endsWith(QLatin1Char(';'));
+            } else if (!inFuncBody && (m = rxCppFuncOpen().match(line)).hasMatch()) {
+                offer("func", m.captured(2), line);    // ReturnType name(args), body '{' next line
+                funcDefOpensBody = true;
+            } else if (!inFuncBody && !prevPendingType.isEmpty()
+                       && (m = rxCppNameArgs().match(line)).hasMatch()) {
+                offer("func", m.captured(1), line);    // old-style: return type on the prior line
+                funcDefOpensBody = true;
+            } else if ((m = rxCppQt().match(line)).hasMatch()) {
                 offer("qt", m.captured(1), line);
-                continue;
+            } else if (!inFuncBody && rxCppTypeOnly().match(line).hasMatch()) {
+                pendingType = line;                    // candidate return type for the next line
+            }
+
+            // Brace-scope bookkeeping (runs every C++ line). A definition
+            // that opens a body records funcOpenAtDepth; the interior stays
+            // suppressed until the matching '}' returns the depth to it.
+            const int before = braceDepth;
+            braceDepth += netBraceDelta(line, inBlockComment);
+            if (funcDefOpensBody && funcOpenAtDepth < 0) {
+                if (braceDepth > before) {             // body opened on this line
+                    funcOpenAtDepth = before;
+                    funcBodyEntered = true;
+                } else if (!line.contains(QLatin1Char('{'))) {  // await '{' on a later line
+                    funcOpenAtDepth = before;
+                    funcBodyEntered = false;
+                }
+                // else: single-line body ('{' opened and closed) → stay at file scope
+            } else if (funcOpenAtDepth >= 0) {
+                if (braceDepth > funcOpenAtDepth) funcBodyEntered = true;
+                if (funcBodyEntered && braceDepth <= funcOpenAtDepth) {
+                    funcOpenAtDepth = -1;
+                    funcBodyEntered = false;
+                }
             }
         } else if (effective == Mode::Py) {
             QRegularExpressionMatch m = rxPy().match(line);
