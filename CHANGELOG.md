@@ -60,6 +60,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **The most-used Ants tools (code search, definitions, file outline, region read, roadmap/changelog edits) are now always loaded in Claude Code, so they're callable instantly instead of needing a discovery step first.** (ANTS-2158)
+  Marks the curated high-frequency verbs with anthropic/alwaysLoad in their tools/list _meta (honoured by Claude Code v2.1.121+; ignored gracefully by older clients), removing the ToolSearch round-trip that nudged long sessions back to raw grep.
+
 - **`ANTS_UNITY_BUILD=ON` is now viable end-to-end** (ANTS-1553)
   Unity now applies only to the always-fully-linked libs (chrome/claude/dialogs/audit_dialog); the subset-linked libs (core/vt/audit/lua) stay per-TU so test bundles' selective links don't drag cross-lib externals. Resolves a latent anonymous-namespace clash in the review dialogs. Opt-in only (not in the `fast` preset, which optimises incremental rebuilds).
 

@@ -1125,6 +1125,8 @@ if(ANTS_TESTS)
                 tests/features/project_settings_verb/test_project_settings_verb.cpp
                 # ANTS-2159 — file_outline C++ scanner scope-awareness.
                 tests/features/fileoutline_cpp_scanner/test_fileoutline_cpp_scanner.cpp
+                # ANTS-2158 — eager-load high-frequency MCP verbs.
+                tests/features/mcp_eager_load/test_mcp_eager_load.cpp
                 # ANTS-1961 / ANTS-1962 / ANTS-1963 — feedback + spec_log verbs.
                 tests/features/mcp_feedback_query/test_mcp_feedback_query.cpp
                 tests/features/mcp_feedback_log/test_mcp_feedback_log.cpp

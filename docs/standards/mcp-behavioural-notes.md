@@ -43,6 +43,27 @@ trimmed verb's full per-op/per-arg reference, make one `tool_info` call —
 the same call ANTS-1399 already prescribes before invoking a verb. Tools
 that did not author a `detail` simply omit the key from `tool_info`.
 
+## Tool-search deferral exemption (ANTS-2158)
+
+Claude Code defers MCP tool *schemas* (tool-search): a deferred verb
+needs a `ToolSearch` round-trip before its first call, while built-in
+Bash grep / Read / Edit are always loaded — a friction gradient that
+nudges long sessions back to raw grep (Vestige Obs #18). The
+`tools/list` builder marks a curated high-frequency set with
+`"anthropic/alwaysLoad": true` in each tool's `_meta` object, which
+Claude Code **v2.1.121+** honours to keep those tools always-loaded
+(older clients ignore the field — graceful). The set
+(`kEagerVerbs` in `claudeintegration.cpp`) is deliberately small — each
+always-loaded tool costs context — and covers the verbs that most
+directly replace always-loaded built-ins: `workspace_search`,
+`find_definition`, `file_outline`, `read_region` (grep / Read
+substitutes) and `roadmap_log` / `changelog_log` (ROADMAP/CHANGELOG
+edit substitutes). There is **no** server-wide "eager-load the whole
+server" lever; the only other knob is the client-side per-server
+`"alwaysLoad": true` in `.mcp.json`, which a heavy user can set
+themselves. Deferral itself is a Claude Code architectural choice, not
+server-controllable beyond this per-tool hint.
+
 ## Read / incremental verbs
 
 - **`get_scrollback`** — since-cursor incremental mode (ANTS-1500).

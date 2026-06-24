@@ -8486,6 +8486,32 @@ void ClaudeIntegration::onMcpConnection() {
                             }
                         }
                     }
+                    // ANTS-2158 — exempt the highest-frequency verbs from
+                    // Claude Code's MCP tool-search DEFERRAL so they are
+                    // callable without a ToolSearch round-trip (the
+                    // "deferred-schema tax" that nudged sessions back to raw
+                    // grep/Read/Edit). Honoured by Claude Code v2.1.121+ via
+                    // the tool's `_meta`; older clients ignore the field
+                    // (graceful). The set is small on purpose — each
+                    // always-loaded tool costs context, so only the verbs
+                    // that most directly replace always-loaded built-ins
+                    // (Bash grep / Read / Edit, ROADMAP/CHANGELOG edits).
+                    // See docs/standards/mcp-behavioural-notes.md.
+                    static const QSet<QString> kEagerVerbs = {
+                        QStringLiteral("workspace_search"),
+                        QStringLiteral("find_definition"),
+                        QStringLiteral("file_outline"),
+                        QStringLiteral("read_region"),
+                        QStringLiteral("roadmap_log"),
+                        QStringLiteral("changelog_log"),
+                    };
+                    if (kEagerVerbs.contains(
+                            t.value(QStringLiteral("name")).toString())) {
+                        QJsonObject meta =
+                            t.value(QStringLiteral("_meta")).toObject();
+                        meta[QStringLiteral("anthropic/alwaysLoad")] = true;
+                        t[QStringLiteral("_meta")] = meta;
+                    }
                     tools.replace(i, t);
                 }
 
