@@ -12351,11 +12351,12 @@ template / mutate this state atomically" → movable. If it's
   Source: in-session-2026-06-11 (token-saving brainstorm).
   Resolved (2026-06-11): moved the MCP-authoring contracts to docs/standards/mcp-tools.md (new 'Load-bearing contracts' section) and the per-verb behavioural notes to docs/standards/mcp-behavioural-notes.md; CLAUDE.md keeps a one-line pointer + the toolkit-discovery paragraph. Preamble 367->268 lines (~27%).
 
-- 💭 [ANTS-2090] **Tabular/columnar encoding option for homogeneous-array MCP responses (TOON-style).**
+- 📋 [ANTS-2090] **Tabular/columnar encoding option for homogeneous-array MCP responses (TOON-style).**
   JSON repeats every key for every element; the big offenders are roadmap_query bullets[], workspace_search matches[], find_caller callers[], file_outline symbols[]. A format:"tabular" arm emits one header row + N value rows (or NDJSON, one record per line) — 30-60% smaller on large arrays per the TOON (Tool Output Optimization Notation) pattern. Distinct from fields= (caller-named subset) and from the roadmap_query streaming/pagination item — this is per-element key elision across all array-heavy verbs. Decide the encoding (columnar JSON vs TOON vs NDJSON) + which verbs opt in. Refs: speakeasy/mindstudio MCP-optimization writeups.
   **Layman:** Pack list-shaped answers into rows-and-columns instead of repeating every field name for every item — much smaller.
   Kind: optimize.
   Source: in-session-2026-06-11 (token-saving research: context-engineering + MCP-optimization corpus).
+  Promoted from considered (💭) to planned (📋) 2026-06-25 — selected as the first phase-2 token-savings design after the ANTS-2094 offload fast-follow shipped. Spec-first (docs/specs/ANTS-2090.md) + cold-eyes per project discipline.
 
 - ✅ [ANTS-2091] **Compact envelope transform: elide null / empty / false-default fields from MCP read responses.**
   Many envelopes ship dead weight (truncated:false, walk_capped:false, empty arrays, scope echoes) the model never reads. A dispatch-layer compact transform (sibling of mcp::appendReadHints / mcp::projectFields) drops null/empty/false-default fields — opt-in via compact:true or a session default (pairs with ANTS-2085 verbosity). Distinct from fields= (caller must name keys); this is automatic dead-weight removal. Must keep fields callers branch on (ok, code, etag).
@@ -21352,6 +21353,40 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   Source: user-request-2026-06-24 (Flathub publishing).
   Progress (2026-06-25): manifest + metainfo verified build-ready. appstreamcli validate passes (1 pedantic info only); desktop-file-validate clean; OARS oars-1.1 + SPDX (MIT/CC0-1.0) + 3 captioned screenshots + homepage/bugtracker/vcs URLs all present. make-flathub-manifest.sh correctly emits type:git/tag:v<ver>. FlatpakHostShell + FlatpakLuaModule tests green. Remaining before submission: (1) ANTS-2167 app-ID rename, (2) local flatpak-builder shakedown (flatpak-builder not installed on dev host), (3) the outward-facing flathub/flathub PR — held pending shakedown.
   Build VERIFIED (2026-06-25, commit fd38edf): flatpak-builder build + --user install succeed end-to-end (org.ants.Terminal installed). Found+fixed 4 latent bugs that had made it unbuildable: 6.7 runtime EOL->6.10, Lua `make linux-noreadline`->`make linux`, ANTS_TESTS ON->OFF (hermetic build can't FetchContent googletest), Lua header mirror to /app/include/lua5.4/. Flathub CI lint (flatpak-builder-lint manifest) remaining errors = the SUBMISSION checklist, all submission-stage: (a) appid-url-not-reachable (ants.org) -> resolved by ANTS-2167 rename; (b) finish-args-flatpak-spawn-access + finish-args-home-filesystem-access -> standard terminal-emulator items needing a Flathub reviewer exception (cf Ptyxis/BlackBox); (c) finish-args-unnecessary-xdg-{config,data}-...-create -> redundant under --filesystem=home, removable as part of a holistic home-vs-host finish-args decision at submission; (d) installed icon is ants-terminal.png but Flathub wants <app-id>.png (folds into ANTS-2167 icon rename). Local build is ready to shake down: flatpak run org.ants.Terminal.
+
+- 📋 [ANTS-2177] **Include a Flatpak build in every public release + RC (wire into `cut-rc.sh cycle` / `release.yml`).**
+  The weekly dual-cut (cut-rc.sh cycle, ANTS-1318 + ANTS-2164) and
+  release.yml currently produce/publish only the AppImage (CLAUDE.md:
+  "release.yml routes RC AppImages to a separate zsync channel"). The
+  Flathub epic (ANTS-2166 ✅, ANTS-2167 📋, ANTS-2168 📋) gets Ants ONTO
+  Flathub but does not put a Flatpak into the recurring release cadence.
+  Close that gap: each public release AND each RC must also ship the
+  Flatpak version.
+  Two delivery surfaces (both in scope):
+  (1) a single-file `.flatpak` bundle (`flatpak build-bundle`) attached to
+      the GitHub release / RC pre-release, alongside the AppImage — gives
+      Flatpak users a direct download independent of Flathub-store latency;
+  (2) once live on Flathub (ANTS-2168 merged), push the update to the
+      dedicated flathub/<app-id> repo as part of the same cadence — the
+      "wire into CI like the AppImage pipeline" line already noted in
+      ANTS-2168, lifted here so it is a cadence obligation, not an
+      afterthought.
+  Touch points to VERIFY then wire (don't assume current shape): the
+  release workflow (.github/workflows/release.yml AppImage/zsync routing),
+  packaging/cut-rc.sh (new-rc / promote / cycle artifact steps),
+  packaging/flatpak/make-flathub-manifest.sh (already emits type:git /
+  tag:v<ver>), and the RC-channel split so an RC Flatpak can't land on
+  stable Flathub users (mirror the AppImage zsync-channel separation —
+  Flathub supports a beta branch).
+  DEPENDS ON ANTS-2167 (app-ID rename) + ANTS-2168 (manifest +
+  flatpak-builder shakedown) landing first; the bundle build also needs
+  flatpak-builder available in CI (absent on the dev host per ANTS-2168).
+  Extends the ANTS-1318 / ANTS-2164 cadence; spec before implementing
+  (touches the release contract). Verify Flathub beta-branch + GitHub
+  Actions flatpak-builder setup against current docs before acting.
+  **Layman:** Make every weekly release — both the public one and the Patron preview (RC) — also ship a Flatpak version, so Flatpak/Flathub users get the same update on the same schedule as AppImage users.
+  Kind: package.
+  Source: user-request-2026-06-25 (Flatpak must ride the RC→public→new-RC cadence)..
 
 ### 🔌 Plugins — marketplace
 
