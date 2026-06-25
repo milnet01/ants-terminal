@@ -12395,6 +12395,28 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Source: in-session-2026-06-11 (plan-reuse research, 41-80% agentic cost cut).
 
+- 📋 [ANTS-2178] **Fix 9 pre-existing failing feature tests on main (brittle source-count drift + GUI/runtime), unrelated to ANTS-2093.**
+  Verified pre-existing (all 9 fail identically on clean HEAD via a git-stash rerun; ANTS-2093 touches none of the counted files). Three categories:
+  
+  1. Brittle source-COUNT drift (magic numbers stale vs current source — likely from ANTS-2090/2094 and peers adding MCP verbs/props without bumping the expectation; matches the source-scrape-window debt class):
+     - McpProjection.Inv10SchemaDeclaresFields — expects 9 makeFieldsProp() call-sites in claudeintegration.cpp, found 12.
+     - RcLaunchCwdAnchor.Main (WI-3) — expects 18 PathValidation::validatePath call-sites in remotecontrol.cpp, found 23.
+     - Ants1372SourceGrep.S1CheckCallerCwdCallSitesPresent — RcGate::checkCallerCwd count in remotecontrol.cpp below the asserted floor.
+     Fix: update each magic number to the true current count (and consider replacing exact-equality counts with ">=" floors or a generated manifest to stop the recurring drift).
+  
+  2. UI source/asset assertions:
+     - ThemedstylesheetExtraction.Main, TabCloseButtonVisible.Main — themed-stylesheet / close-button-rule extraction assertions failing.
+     - FlatpakLuaModule.Main (INV-5) — the Flatpak manifest invokes `make linux` (aliases to linux-readline); the test wants `make linux-noreadline` so readline isn't pulled into the sandbox. (May tie into ANTS-2177 Flatpak-in-RC work.)
+  
+  3. Runtime/state:
+     - RoadmapViewerTabs.Main (INV-12) — roadmapDialogGeometry persistence assertion.
+     - McpModelSwitchStats.GlobalScopeAggregatesAcrossProjects + .ProjectScoped — ledger aggregation assertions (possibly fixture/env-dependent — confirm whether env-specific before changing code).
+  
+  Action: a focused debt-sweep to re-green these; investigate the runtime trio for env-vs-real before touching code. NOT in scope for ANTS-2093 (the feature added 11 green tests; full test_lua + test_claude otherwise pass).
+  **Layman:** Nine tests were already failing on the main branch before today's work — mostly because they count things in the code (like "expect 18 of X") and recent features added more without updating the number. Worth a cleanup pass so the test suite goes fully green again.
+  Kind: test.
+  Source: in-session-2026-06-25 (observed during ANTS-2093 full-suite run; verified pre-existing via clean-HEAD rerun).
+
 ### 🎨 At-a-glance build-version surface (user request 2026-05-14)
 
 - ✅ [ANTS-1323] **`v0.7.92 · 2026-05-14 08:48` build-badge on
