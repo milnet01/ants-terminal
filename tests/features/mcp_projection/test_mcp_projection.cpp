@@ -225,13 +225,29 @@ TEST(McpReadHints, Ants2081And2086RoadmapQueryLargeBody) {
               -1);
 }
 
-// Below the byte threshold → untouched, byte-for-byte.
-TEST(McpReadHints, Ants2086SmallBodyUntouched) {
+// Below the leaner-byte threshold AND no etag → untouched, byte-for-byte.
+TEST(McpReadHints, Ants2086SmallBodyNoEtagUntouched) {
     const QString body =
-        QStringLiteral("{\"ok\":true,\"etag\":\"abc\"}");
+        QStringLiteral("{\"ok\":true,\"count\":3}");
     EXPECT_EQ(mcp::appendReadHints(QStringLiteral("roadmap_query"),
                                    QJsonObject{}, body, false),
               body);
+}
+
+// ANTS-2180 — a small (< 4 KiB) etag-bearing body STILL gets the
+// etag-reuse nudge (a 304 next call saves the full body regardless of
+// this slice's size — the read_region / file_outline re-read loop), but
+// NOT the leaner nudge, which keeps its worthwhile-body gate.
+TEST(McpReadHints, Ants2180SmallEtagBodyGetsReuseHintOnly) {
+    const QString body =
+        QStringLiteral("{\"ok\":true,\"etag\":\"abc123\"}");
+    const QJsonObject o = parse(mcp::appendReadHints(
+        QStringLiteral("file_outline"), QJsonObject{}, body,
+        /*etagUnchanged=*/false));
+    ASSERT_TRUE(o.contains("next_call_hint"));
+    EXPECT_NE(o.value("next_call_hint").toString().indexOf("abc123"), -1);
+    EXPECT_FALSE(o.contains("leaner_call_hint"))
+        << "the byte-gated leaner nudge must not fire on a small body";
 }
 
 // A 304 (etagUnchanged) never gets nudges.

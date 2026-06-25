@@ -136,11 +136,17 @@ QString leanerModeHintFor(const QString &tool, const QJsonObject &args) {
 
 QString appendReadHints(const QString &tool, const QJsonObject &args,
                         const QString &responseText, bool etagUnchanged) {
-    constexpr int kHintThresholdBytes = 4096;  // only nudge worthwhile bodies
+    // ANTS-2086 — the leaner-mode nudge only pays on a sizeable body.
+    // ANTS-2180 — the etag-reuse nudge does NOT share that gate: a 304 on the
+    // next call saves the FULL body regardless of how small THIS slice was,
+    // and the highest-churn re-read targets (read_region / file_outline
+    // symbol slices across an edit loop) are usually < 4 KiB. So parse every
+    // non-304, non-fields, ok:true body and decide the two nudges
+    // independently.
+    constexpr int kLeanerThresholdBytes = 4096;  // leaner-nudge gate only
     if (etagUnchanged) return responseText;
     if (args.contains(QStringLiteral("fields"))) return responseText;
     const QByteArray utf8 = responseText.toUtf8();
-    if (utf8.size() < kHintThresholdBytes) return responseText;
     QJsonParseError pe{};
     const QJsonDocument d = QJsonDocument::fromJson(utf8, &pe);
     if (pe.error != QJsonParseError::NoError || !d.isObject())
@@ -148,6 +154,7 @@ QString appendReadHints(const QString &tool, const QJsonObject &args,
     QJsonObject env = d.object();
     if (!env.value(QStringLiteral("ok")).toBool()) return responseText;
     bool changed = false;
+    // etag-reuse nudge — any body size (ANTS-2180).
     if (env.contains(QStringLiteral("etag")) &&
         !args.contains(QStringLiteral("etag_match")) &&
         !env.contains(QStringLiteral("next_call_hint"))) {
@@ -157,7 +164,9 @@ QString appendReadHints(const QString &tool, const QJsonObject &args,
                 .arg(env.value(QStringLiteral("etag")).toString());
         changed = true;
     }
-    if (!env.contains(QStringLiteral("leaner_call_hint"))) {
+    // leaner-mode nudge — only worth surfacing on a worthwhile body.
+    if (utf8.size() >= kLeanerThresholdBytes &&
+        !env.contains(QStringLiteral("leaner_call_hint"))) {
         const QString lean = leanerModeHintFor(tool, args);
         if (!lean.isEmpty()) {
             env[QStringLiteral("leaner_call_hint")] = lean;

@@ -29,6 +29,14 @@ Part of **ANTS-1879**. Full design + invariants live in
 - **INV-9** `unrecognised_format` short-circuits the whole batch.
 - **INV-10** source-grep: `formatRoadmapBullet(` is called from
   both `cmdRoadmapLogAppend` AND `cmdRoadmapLogAppendBatch`.
+- **ANTS-2179** counter reconcile — the `.roadmap-counter` is a hint,
+  not the sole source of truth. When it lags the file's true max
+  `[PREFIX-NNNN]` id, both the single and batch append paths skip past
+  the live max (`newId = max(counter, fileMax) + 1`), self-heal the
+  counter, and surface `counter_advanced_to`. An explicit `id_hint` at
+  or below the file max is refused `id_taken` (single) / skipped
+  `id_taken` (batch) rather than written as a duplicate. A counter
+  already ahead of the file allocates normally with no reconcile flag.
 
 ## Method
 

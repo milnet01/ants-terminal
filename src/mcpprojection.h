@@ -41,16 +41,19 @@ bool isOffloadEligible(const QString &toolName);
 // so the etag a narrowed call returns equals a full call's etag.
 QString projectFields(const QString &responseText, const QJsonArray &fields);
 
-// ANTS-2081 + ANTS-2086 — for a large successful read response, append
+// ANTS-2081 + ANTS-2086 — for a successful read response, append
 // presentation-only nudges: `next_call_hint` (reuse the issued etag to
 // 304 a repeat read) and `leaner_call_hint` (the cheaper mode on this
 // verb). Pure so the dispatch layer and the feature test share one
 // implementation (mirrors projectFields). Lives here rather than inline
 // in ClaudeIntegration so the per-verb tool-name literals don't displace
 // the source-string-match anchors the WiringContract tests use against
-// claudeintegration.cpp. Returns `responseText` unchanged on: a 304
-// (`etagUnchanged`), a fields=-narrowed call, a body under the byte
-// threshold, a refusal (`ok:false`), or an unparseable body.
+// claudeintegration.cpp. ANTS-2180 — the `next_call_hint` fires for ANY
+// body size (a 304 saves the full body next time even on a tiny
+// read_region/file_outline slice); only `leaner_call_hint` keeps the
+// 4 KiB worthwhile-body gate. Returns `responseText` unchanged on: a 304
+// (`etagUnchanged`), a fields=-narrowed call, a refusal (`ok:false`), an
+// unparseable body, or when neither nudge applies.
 QString appendReadHints(const QString &toolName, const QJsonObject &args,
                         const QString &responseText, bool etagUnchanged);
 

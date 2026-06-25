@@ -671,3 +671,88 @@ TEST(McpRoadmapLogAppendBatch, Ants2080SingleAppendReturnHeadlineOnly) {
     EXPECT_EQ(pb[0].toObject()["headline_oneline"].toString(),
               QStringLiteral("Single echo."));
 }
+
+// ───────────────────────────────────────────────────────────────────
+// ANTS-2179 — the .roadmap-counter is only a hint. When it LAGS the
+// file's true max [PREFIX-NNNN] id, counter+1 must not reissue a live id
+// (never-reuse invariant). Reconcile against the file max and self-heal
+// the counter. minimalRoadmap()'s max id is ANTS-9002.
+// ───────────────────────────────────────────────────────────────────
+
+QJsonObject singleAppendReq(const QString &dir) {
+    QJsonObject req;
+    req["caller_cwd"] = dir;
+    req["op"]         = QStringLiteral("append");
+    req["section"]    = QStringLiteral("performance");
+    req["headline"]   = QStringLiteral("Reconcile me.");
+    req["kind"]       = QStringLiteral("implement");
+    req["source"]     = QStringLiteral("test");
+    req["status"]     = QStringLiteral("planned");
+    return req;
+}
+
+TEST(McpRoadmapLogAppendBatch, Ants2179SingleReconcilesLaggingCounter) {
+    QTemporaryDir dir;
+    setupProject(dir, /*counter=*/9000);   // BELOW the file max of 9002
+    RemoteControl rc(nullptr);
+    const QJsonObject out =
+        rc.cmdRoadmapLogAppendForTest(singleAppendReq(dir.path())).object();
+    ASSERT_TRUE(out["ok"].toBool()) << QJsonDocument(out).toJson().toStdString();
+    // 9000+1 would be ANTS-9001 — a live id. Must skip past the file max.
+    EXPECT_EQ(out["id"].toString(), QStringLiteral("ANTS-9003"));
+    EXPECT_EQ(out["counter_advanced_to"].toInt(), 9003);
+    EXPECT_EQ(readCounter(dir.path()), 9003)
+        << ".roadmap-counter must self-heal to the new high-water";
+}
+
+TEST(McpRoadmapLogAppendBatch, Ants2179BatchReconcilesLaggingCounter) {
+    QTemporaryDir dir;
+    setupProject(dir, /*counter=*/9000);   // BELOW the file max of 9002
+    RemoteControl rc(nullptr);
+    QJsonArray bs;
+    bs.append(bullet("First."));
+    bs.append(bullet("Second."));
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(
+        baseReq(dir.path(), bs)).object();
+    ASSERT_TRUE(out["ok"].toBool()) << QJsonDocument(out).toJson().toStdString();
+    const QJsonArray ids = out["ids"].toArray();
+    ASSERT_EQ(ids.size(), 2);
+    EXPECT_EQ(ids[0].toString(), QStringLiteral("ANTS-9003"));   // not 9001
+    EXPECT_EQ(ids[1].toString(), QStringLiteral("ANTS-9004"));   // not 9002
+    EXPECT_EQ(out["counter_advanced_to"].toInt(), 9004);
+    EXPECT_EQ(readCounter(dir.path()), 9004);
+    // No duplicate ANTS-9001/9002 bullets appeared.
+    const QString roadmap = readRoadmap(dir.path());
+    EXPECT_EQ(roadmap.count(QStringLiteral("[ANTS-9001]")), 1);
+    EXPECT_EQ(roadmap.count(QStringLiteral("[ANTS-9002]")), 1);
+}
+
+// No-regression: a counter AHEAD of the file max allocates from the
+// counter and never flags a reconcile.
+TEST(McpRoadmapLogAppendBatch, Ants2179NoReconcileWhenCounterAhead) {
+    QTemporaryDir dir;
+    setupProject(dir, /*counter=*/9100);   // ABOVE the file max of 9002
+    RemoteControl rc(nullptr);
+    QJsonArray bs; bs.append(bullet("Ahead."));
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(
+        baseReq(dir.path(), bs)).object();
+    ASSERT_TRUE(out["ok"].toBool());
+    EXPECT_EQ(out["ids"].toArray()[0].toString(), QStringLiteral("ANTS-9101"));
+    EXPECT_FALSE(out.contains("counter_advanced_to"))
+        << "counter_advanced_to must be absent when the counter leads the file";
+}
+
+// An explicit id_hint that collides with a live id the lagging counter
+// never knew about is refused, not silently written as a duplicate.
+TEST(McpRoadmapLogAppendBatch, Ants2179SingleIdHintCollisionRefused) {
+    QTemporaryDir dir;
+    setupProject(dir, /*counter=*/9000);   // lags; file max is 9002
+    RemoteControl rc(nullptr);
+    QJsonObject req = singleAppendReq(dir.path());
+    req["id_hint"] = 9001;                  // > counter 9000, but ALIVE
+    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(req).object();
+    EXPECT_FALSE(out["ok"].toBool());
+    EXPECT_EQ(out["code"].toString(), QStringLiteral("id_taken"));
+    EXPECT_EQ(readCounter(dir.path()), 9000)
+        << ".roadmap-counter must be untouched on a refused collision";
+}

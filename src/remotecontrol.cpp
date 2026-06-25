@@ -456,6 +456,31 @@ QString rlResolveCounterPrefix(const QString &idPrefixArg,
     return rlLeafDirPrefix(callerCanonical);
 }
 
+// ANTS-2179 — highest numeric suffix among existing [pfx-NNNN] bullet ids
+// in the parsed roadmap. The op:append / op:append_batch paths reconcile
+// their .roadmap-counter against this: the counter is only a hint, and if
+// it lags the file (a manual roadmap edit, a cross-tool append, a counter
+// reset) then counter+1 would reissue a live id and silently violate
+// roadmap-format.md's never-reuse-ids invariant. The bullets are already
+// parsed at every call site (preflightBullets), so this is a free in-memory
+// scan. Returns 0 when no id matches `pfx`.
+qint64 rlMaxExistingIdForPrefix(
+        const QVector<RoadmapDialog::BulletRecord> &bullets,
+        const QString &pfx) {
+    static const QRegularExpression idRe(
+        QStringLiteral("^([A-Za-z][A-Za-z0-9_-]*)-([0-9]{1,8})$"));
+    qint64 maxN = 0;
+    for (const auto &b : bullets) {
+        if (b.id.isEmpty()) continue;
+        const auto m = idRe.match(b.id);
+        if (!m.hasMatch() || m.captured(1) != pfx) continue;
+        bool ok = false;
+        const qint64 n = m.captured(2).toLongLong(&ok);
+        if (ok && n > maxN) maxN = n;
+    }
+    return maxN;
+}
+
 // ANTS-2055 — collect the child-subsection slugs of `sec`: any indexed
 // heading deeper than `sec` whose heading line falls inside sec's span.
 // op:append / op:append_batch splice at sec.lineEnd; for a `##`
@@ -5581,6 +5606,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     // strategy the id is the caller-supplied stable_id, not an
     // ANTS-NNNN string allocated from .roadmap-counter.
     QString idStr;
+    bool counterReconciled = false;   // ANTS-2179 — counter lagged the file
     if (useStablePrefix) {
         idStr = stableId;
     } else {
@@ -5591,6 +5617,29 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         // roadmap.
         const QString pfx =
             rlResolveCounterPrefix(idPrefixArg, markdown, callerCanonical);
+        // ANTS-2179 — reconcile newId against the file's true max id for
+        // this prefix so a stale .roadmap-counter can't reissue a live id.
+        // preflightBullets is already in hand, so the scan is free.
+        const qint64 maxFileId =
+            rlMaxExistingIdForPrefix(preflightBullets, pfx);
+        if (req.contains(QStringLiteral("id_hint"))) {
+            // An explicit hint already cleared the counter (above); also
+            // refuse when it collides with a live id the lagging counter
+            // never knew about (id_hint at or below the file's high-water).
+            if (newId <= maxFileId) {
+                return rlErr(QStringLiteral("id_taken"),
+                    QStringLiteral("roadmap_log: id_hint %1 is at or below "
+                                   "the highest existing %2-NNNN id in "
+                                   "ROADMAP.md (%3) — pick a value > %3 or "
+                                   "omit the hint")
+                        .arg(newId).arg(pfx).arg(maxFileId));
+            }
+        } else if (maxFileId >= newId) {
+            // Counter lagged the file: skip past the live max so we never
+            // write a duplicate, and let the counter rewrite below self-heal.
+            newId = maxFileId + 1;
+            counterReconciled = true;
+        }
         idStr = QStringLiteral("%1-%2").arg(pfx).arg(newId, 4, 10,
                                                      QLatin1Char('0'));
         if (newId > 9999)
@@ -5629,6 +5678,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         out["line"]    = insertAt + 1;  // 1-based for humans
         out["bullet"]  = bulletNoTrailNl;
         out["bytes"]   = static_cast<qint64>(bullet.toUtf8().size());
+        if (counterReconciled) out["counter_advanced_to"] = newId;  // ANTS-2179
         const QJsonArray possibleDuplicates =
             rcComputePossibleDuplicates(preflightBullets, headline);
         if (!possibleDuplicates.isEmpty()) {
@@ -5705,6 +5755,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     out["file"]          = QStringLiteral("ROADMAP.md");
     out["line"]          = insertAt + 1;  // 1-based for humans
     out["bytes_written"] = static_cast<qint64>(bullet.toUtf8().size());
+    if (counterReconciled) out["counter_advanced_to"] = newId;  // ANTS-2179
     // ANTS-2043 — non-blocking near-duplicate advisory. preflightBullets
     // was parsed BEFORE the splice, so the just-appended bullet can't
     // match itself. Surfaced only when there's at least one candidate.
@@ -7776,7 +7827,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     const QString counterPfx =
         rlResolveCounterPrefix(idPrefixArg, markdown, callerCanonical);
 
-    qint64 nextId = counter + 1;
+    // ANTS-2179 — reconcile the (possibly lagging) .roadmap-counter against
+    // the file's true max id for this prefix: a stale counter must not
+    // reissue a live id. effCounter is the high-water mark the auto
+    // allocation and any id_hint must clear; preflightBullets is in hand so
+    // the scan is free. stable_prefix bypasses the counter entirely, so the
+    // reconcile flag never fires there.
+    const qint64 maxFileId =
+        rlMaxExistingIdForPrefix(preflightBullets, counterPfx);
+    const qint64 effCounter = std::max(counter, maxFileId);
+    const bool counterReconciled = !useStablePrefix && effCounter > counter;
+
+    qint64 nextId = effCounter + 1;
     bool firstAccepted = true;
 
     for (int i = 0; i < bullets.size(); ++i) {
@@ -7850,10 +7912,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             if (firstAccepted && b.contains(QStringLiteral("id_hint"))) {
                 const qint64 hint =
                     b.value(QStringLiteral("id_hint")).toInteger();
-                if (hint <= counter) {
+                if (hint <= effCounter) {
+                    // ANTS-2179 — effCounter folds in the file's true max,
+                    // so a hint that collides with a live id the lagging
+                    // counter never knew about is refused too.
                     skip(QStringLiteral("id_taken"),
-                         QStringLiteral("id_hint %1 is at or below current "
-                                        "counter %2").arg(hint).arg(counter));
+                         QStringLiteral("id_hint %1 is at or below the "
+                                        "highest live id %2 (counter %3, "
+                                        "file max %4)").arg(hint)
+                             .arg(effCounter).arg(counter).arg(maxFileId));
                     continue;
                 }
                 nextId = hint;
@@ -7949,6 +8016,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         out["skipped"]           = skipped;
         out["skipped_count"]     = skipped.size();
         out["bytes"]             = totalBytes;
+        if (counterReconciled)        // ANTS-2179 — last allocated id
+            out["counter_advanced_to"] = nextId - 1;
         return QJsonDocument(out);
     }
 
@@ -8033,6 +8102,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     out["skipped"]       = skipped;
     out["skipped_count"] = skipped.size();
     out["bytes_written"] = totalBytes;
+    if (counterReconciled)            // ANTS-2179 — self-healed high-water
+        out["counter_advanced_to"] = nextId - 1;
     if (!possibleDuplicates.isEmpty()) {
         out["possible_duplicates"] = possibleDuplicates;
     }
@@ -8104,6 +8175,34 @@ QJsonObject wsErr(const char *code, const QString &message) {
 }
 
 }  // namespace
+
+// ANTS-2181 — a regex:true alternation that contains very short (<=3 char)
+// bare (un-anchored, plain-word) terms substring-matches inside longer words
+// (e.g. "tan" inside "constant"), flooding the result set. Collect those
+// terms so cmdWorkspaceSearch can advise anchoring them with \b. Heuristic
+// and non-load-bearing: a false positive is just an ignorable nudge, a false
+// negative simply omits it. Only top-level `|`-split pieces stripped of
+// wrapping group syntax that are purely [A-Za-z]{1,3} qualify — any piece
+// carrying an anchor (\b, ^, $) or other metacharacter is exempt (that's the
+// user already being specific). Caps at 5 distinct terms.
+static QStringList rcShortBareAltTerms(const QString &pattern) {
+    if (!pattern.contains(QChar('|'))) return {};
+    static const QRegularExpression bareShort(
+        QStringLiteral("^[A-Za-z]{1,3}$"));
+    QStringList terms;
+    const QStringList pieces = pattern.split(QChar('|'));
+    for (QString p : pieces) {
+        while (p.startsWith(QStringLiteral("(?:"))) p.remove(0, 3);
+        while (p.startsWith(QChar('('))) p.remove(0, 1);
+        while (p.endsWith(QChar(')'))) p.chop(1);
+        p = p.trimmed();
+        if (bareShort.match(p).hasMatch() && !terms.contains(p)) {
+            terms.append(p);
+            if (terms.size() >= 5) break;
+        }
+    }
+    return terms;
+}
 
 QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     QElapsedTimer wall;
@@ -8535,6 +8634,22 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             : QStringLiteral("query matched as one literal phrase, not as "
                 "separate words; pass a single token, or set regex:true and "
                 "join terms with .* to AND them");
+    }
+    // ANTS-2181 — complementary advisory: a regex alternation carrying very
+    // short bare terms substring-matches inside longer words (the "tan in
+    // constant" self-inflicted-noise class). Pure response-shaping, distinct
+    // key from the zero-match `hint` above; pairs with the leaner_call_hint
+    // appended downstream.
+    if (isRegex) {
+        const QStringList shortTerms = rcShortBareAltTerms(pattern);
+        if (!shortTerms.isEmpty()) {
+            out["regex_advisory"] = QStringLiteral(
+                "alternation contains short bare term(s) [%1] that match "
+                "inside longer words (e.g. \"tan\" in \"constant\"); anchor "
+                "with \\b (e.g. \\b%2\\b) or raise specificity to cut noise")
+                    .arg(shortTerms.join(QStringLiteral(", ")),
+                         shortTerms.first());
+        }
     }
     // ANTS-1452-INV-4: echo effective filter values so callers can tell
     // a filter-induced 0-match result from a genuinely clean tree.

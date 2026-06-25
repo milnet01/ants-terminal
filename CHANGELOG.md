@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **`workspace_search` now emits a `regex_advisory` when a `regex:true` alternation contains very short un-anchored terms (e.g. `tan`) that substring-match inside longer words, flooding results.** (ANTS-2181)
+
 - **Claude can now ask Ants to compute an answer across your project's files and get back just the result — not the file text — via a new sandboxed `project_query` MCP verb. (ANTS-2093)**
   The "code-execution" token-saver: Claude sends a small read-only Lua snippet (with project.read/list/root + string/table/math/utf8), Ants runs it safely over the project and returns only what it computes — a count, a filtered list — instead of reading every file into the conversation. Fully sandboxed: read-only, confined to the project directory, no network/exec/write, and memory/time/output-capped on a worker thread so a runaway snippet can never freeze the app. On by default (Settings → General → "Let Ants run read-only project queries for Claude"); compiled out in builds without the Lua subsystem.
 
@@ -34,6 +36,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **MCP read responses now surface the etag re-use hint (`next_call_hint`) regardless of body size — repeated small `read_region` / `file_outline` slices can now 304 their re-reads. The 4 KiB gate now applies only to the `leaner_call_hint`.** (ANTS-2180)
+
 - **Ants MCP now offloads oversized read replies to a short preview + pointer by default**
   Large MCP read results (roadmap_query, workspace_search, get_scrollback, …) are saved to a scratch file and returned as a short preview plus a handle, so a Claude session spends a few tokens instead of thousands and fetches the rest (via read_spill) only if it needs it. Shipped switched off in the prior release; now on by default per the "token-savers default ON" rule, and it fails open — if the scratch file can't be written, the full reply is sent as normal. A new Settings → General toggle ("Offload huge Ants MCP replies to a preview + pointer") turns it off. (ANTS-2094 fast-follow)
 
@@ -41,6 +45,8 @@ for security-relevant changes.
   `new-rc` refuses an empty RC and auto-rolls `[Unreleased]`; `promote` refuses an empty/placeholder or stale (>14-day) RC and auto-date-stamps the CHANGELOG/metainfo/debian release notes; version-drift is now a hard gate. Stops the recurring empty-RC / half-finished-release class of incident.
 
 ### Fixed
+
+- **`roadmap_log` no longer reissues a live roadmap ID when `.roadmap-counter` lags the file. Both `op:append` and `op:append_batch` now reconcile the counter against the highest existing `[PREFIX-NNNN]` id, skip past it, self-heal the counter, and surface `counter_advanced_to`; an `id_hint` that collides with a live id is refused `id_taken` instead of overwriting a bullet.** (ANTS-2179)
 
 - **Flatpak installs now reach Ants MCP from Claude sessions (ANTS-1900)** (ANTS-1900)
   Inside a Flatpak sandbox the user's shell runs on the host via
