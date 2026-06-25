@@ -92,6 +92,11 @@ QString htmlEscape(QString s) {
     s.replace('&', QStringLiteral("&amp;"));
     s.replace('<', QStringLiteral("&lt;"));
     s.replace('>', QStringLiteral("&gt;"));
+    // Escape '"' too: htmlEscape output lands in HTML *attribute* position in
+    // several card sinks (href="ants://…/%1", id="rm-%1") where rec.id is
+    // attacker-influenceable via a hostile ROADMAP.md bold-ID. Without this a
+    // '"' in the id breaks out of the attribute (CWE-79, markup-injection).
+    s.replace('"', QStringLiteral("&quot;"));
     return s;
 }
 

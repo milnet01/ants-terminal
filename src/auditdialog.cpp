@@ -2991,7 +2991,7 @@ bool AuditDialog::debtAllow(const DebtSweepEngine::Finding &f,
 
 QString AuditDialog::debtTriagePrompt() const {
     QList<DebtSweepEngine::Finding> llm;
-    for (const DebtSweepEngine::Finding &d : m_debtFindings)
+    for (const DebtSweepEngine::Finding &d : std::as_const(m_debtFindings))
         if (!d.autoFixable) llm.append(d);
     return DebtSweepEngine::triagePrompt(llm);
 }
@@ -3093,7 +3093,7 @@ void AuditDialog::renderDebtResults() {
     if (m_debtDeferAllBtn) m_debtDeferAllBtn->setEnabled(any);
 
     bool hasLlmShaped = false;
-    for (const DebtSweepEngine::Finding &d : m_debtFindings)
+    for (const DebtSweepEngine::Finding &d : std::as_const(m_debtFindings))
         if (!d.autoFixable) { hasLlmShaped = true; break; }
     if (m_debtTriageBtn) {
         Config cfg;
@@ -3224,7 +3224,7 @@ void AuditDialog::onDebtTriageClicked() {
         return;
     }
     int llmCount = 0;
-    for (const DebtSweepEngine::Finding &d : m_debtFindings)
+    for (const DebtSweepEngine::Finding &d : std::as_const(m_debtFindings))
         if (!d.autoFixable) ++llmCount;
     const auto reply = QMessageBox::question(this, "Triage with AI",
         QString("Send %1 non-mechanical finding%2 to %3 for triage?")
@@ -4799,7 +4799,7 @@ void AuditDialog::handleCheckOutput(const QString &output) {
     // for the omittedCount tail since those findings never had their
     // line text materialized; the LCS suggester needs the line.
     if (m_qualityTracker) {
-        for (const Finding &f : r.findings) {
+        for (const Finding &f : std::as_const(r.findings)) {
             if (f.suppressed) continue;
             m_qualityTracker->recordFire(check.id, f.message);
         }

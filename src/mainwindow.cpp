@@ -6665,11 +6665,18 @@ void MainWindow::refreshRepoVisibility() {
 
     auto *proc = new QProcess(this);
     proc->setProgram(QStringLiteral("gh"));
+    // `slug` is read verbatim from the repo's .git/config origin URL, so a
+    // hostile clone with an origin like `https://github.com/-x/y` could hand
+    // `gh` a leading-dash arg parsed as a flag. Guard with a trailing `--`
+    // end-of-options sentinel AFTER the flags (gh/Cobra treats everything past
+    // `--` as positional, so the `--json`/`-q` flags must precede it; slug then
+    // parses as the positional repo even with a leading dash).
     proc->setArguments({QStringLiteral("repo"), QStringLiteral("view"),
-                        slug, QStringLiteral("--json"),
+                        QStringLiteral("--json"),
                         QStringLiteral("visibility"),
                         QStringLiteral("-q"),
-                        QStringLiteral(".visibility")});
+                        QStringLiteral(".visibility"),
+                        QStringLiteral("--"), slug});
     QPointer<MainWindow> self(this);
     connect(proc,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),

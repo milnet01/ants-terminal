@@ -8624,6 +8624,18 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: test.
   Source: in-session-2026-06-25 (compiler warning surfaced during fast-preset build).
 
+- 📋 [ANTS-2182] **`audit_run` cppcheck/clazy don't pass the project's `compile_commands.json` — cppcheck floods with `missingInclude`/namespace-as-C noise and clazy returns 0 findings, so the MCP audit path gives materially worse signal than the in-app AuditDialog / ants-audit CLI.**
+  2026-06-26 /audit: audit_run({scope:"full"}) returned cppcheck=2330 raw (≈all missingIncludeSystem + `namespaceX{` is-invalid-C-code syntaxErrors) and clazy=0. The SAME tree re-run with `cppcheck --project=build/compile_commands.json --library=qt --suppress=missingIncludeSystem` gave 522 findings with zero include-noise; the ants-audit CLI report (which uses compile_commands) had clazy=49 (real range-loop-detach/qstring-arg). Sibling of ANTS-2105 (stderr-channel) and the ANTS-1119 shared-engine intent. Fix: default the cppcheck/clazy invocation to `--project=<build>/compile_commands.json` when present (ANTS-1446 already validates the arg path), with the skill's `--suppress=missingIncludeSystem --suppress=missingInclude` as the no-DB fallback. Without it every MCP audit is unusably noisy + clazy-blind.
+  **Layman:** When Claude asks Ants to run the code audit, the C++ checkers can't find Qt's headers, so they emit thousands of bogus 'missing include' warnings and the Qt-aware checker finds nothing at all — much worse than the audit inside the app. Fix: point them at the build's compile database.
+  Kind: fix.
+  Source: in-session-2026-06-26 /audit run.
+
+- 📋 [ANTS-2183] **`audit_run` full-tree (`scope:"full"`) sweep exceeds the MCP transport timeout — the run completes server-side and writes SARIF, but the synchronous call times out, forcing the caller to scrape the result via `last_audit_summary` disk read.**
+  2026-06-26: audit_run({scope:"full", top_findings_count:60, cap_per_tool_seconds:60}) AND an immediate last_audit_summary both returned `MCP error -32000: Ants MCP transport: timed out` while the 9-tool sweep ran for minutes; .audit_cache then showed findings JSON + 2.3 MB SARIF written at HEAD. Options: (a) return a job handle immediately + a poll/complete verb (async); (b) honor result-offload (ANTS-2094) so the envelope is a small {cache_path} handle; (c) raise the transport timeout for the audit verb class. Today the caller must know to fall back to a last_audit_summary scrape.
+  **Layman:** A full audit takes minutes, but the link between Claude and Ants gives up sooner — so Claude never gets the 'done' reply even though the audit finished and saved its results. Claude has to dig them off disk. Fix: hand back a ticket Claude can check on instead of making it wait on the line.
+  Kind: fix.
+  Source: in-session-2026-06-26 /audit run.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
@@ -9760,6 +9772,147 @@ new minor item:
 - ✅ [ANTS-2020] **Auto-switcher robustness: `directModelSwitchVisible` (modelautoswitch.cpp:275) matches the bare phrase `"Set model to"` with no structural anchor — build output, a log line, or a transcript quoting the phrase can false-positive and trigger an unwanted continuation via `shouldContinueAfterDirectSwitch` when auto-mode is on.** Anchor it like `switchConfirmVisible` does (title + an option line), e.g. require `"Set model to Claude"`. (No effect while the master gate is OFF, but a robustness hole before any default-ON flip.) Session trust-signal context: 4 measured downgrades, regret_rate 50% (calibrating, n<10), under_route_count 2, dominant near-miss blocker composer_not_empty (33/24h).
   Kind: bug. Lanes: modelautoswitch, claudestatuswidgets. Source: indie-review-2026-06-04.
   Resolved (2026-06-04): directModelSwitchVisible now requires a tier token immediately after the title ('Set model to Sonnet/Opus/Haiku/Default') instead of the bare 'Set model to' substring. Note: the roadmap's suggested 'Set model to Claude' anchor was wrong — CC's banner is 'Set model to Sonnet 4.6…', verified against the model_switch_confirm feature test. Negative regression test added.
+
+### 🔍 Indie-review #8 + audit fold-in (2026-06-26)
+
+Full-codebase independent cold-review sweep (13 lanes across all of src/, ~96k
+LoC) + Qt-aware static-analysis (cppcheck via compile_commands.json, clazy).
+Zero CRITICAL, zero confirmed HIGH-with-default-config. In-session fixes
+(shipped this sweep): clazy range-loop-detach ×6 (std::as_const); VtParser
+truncated-flag now honoured for DCS/APC (ANTS-1663 was OSC-only); secretredact
+adds glpat-/xapp- shapes; aidialog command-preview byte-count math; gh repo view
+`--` argv guard; roadmapdialog htmlEscape now escapes `"`. The items below are
+verified-real findings deferred for design / multi-site change / TDD-first
+treatment. Confirmed false positives (cppcheck moved-from, exec-hotspot,
+apiKey-from-config, secretredact.h filename, openUrl internal URL, trigger sh
+-c, claudeintegration focused-tab index arithmetic) logged to
+.ants_review_falsepos.jsonl, not re-raised.
+
+- 📋 [ANTS-2185] **`audit_run` scoped positional paths can begin with `-` (no `--`/`./` separator) → argv option-injection on a hostile-clone tree.**
+  isAuditArgSafe (auditrunner.cpp:217) allows a leading `-` anywhere except the exact `-o`/`-O`; scoped/`full`/git-ls-files positionals are then appended bare (cppcheck :292, ruff :324, bandit :331, shellcheck :379, mypy :385) with no `--` end-of-options and no `./` prefix. The lane's own external spec mandates `--`/`./`. Fix: prefix every scoped positional with `./` when not absolute, or insert a literal `--` before the file list for each tool that supports it; tighten isAuditArgSafe to reject a leading `-` at the path call-sites (keep the dash allowance only for the check-id arg). TDD: a fixture file named `-x.cpp` must not reach the tool as a flag.
+  **Layman:** When the code-checker scans a project, a file deviously named like a command-line flag (e.g. `-rf.cpp`) gets handed to the checker as a flag instead of a filename. Low real impact (the tools have no destructive flags), but the audit standard says to guard against exactly this.
+  Kind: security.
+  Source: indie-review-8 2026-06-26 audit-pipeline H1.
+
+- 📋 [ANTS-2186] **Auto-switcher direct-`/model` continuation has no active-turn gate — an opted-in user typing `/model` at idle starts an unrequested billable turn (violates the no-auto-billable-work invariant).**
+  shouldContinueAfterDirectSwitch(bool autoModeOn) is `return autoModeOn;` (modelautoswitch.cpp:301) — no activeTurn param. pollUnarmedSwitchConfirm fires the continuation on that gate alone (claudestatuswidgets.cpp:1976→1981). Every sibling path gates on activeTurn (performModelSwitchHandshake :1821; sendUnarmedConfirm :2011). Fix: add an activeTurn arg and gate identically (idle ⇒ observe/confirm only, never continue). Hard billing-safety invariant per project memory; only fires when the parked feature is opted in, but must be closed before un-parking. TDD: idle + /model must NOT emit a continuation.
+  **Layman:** If you turn on the (currently parked) auto-model feature and type `/model opus` while idle just to pre-pick a model for later, Ants would inject 'please continue' and start a paid turn you didn't ask for. Picking a model is not consent to resume.
+  Kind: fix.
+  Source: indie-review-8 2026-06-26 model-switcher HIGH-2.
+
+- 📋 [ANTS-2187] **`IndieReviewEngine::assembleBrief` is a zombie that inlines RAW source into an LLM prompt with no fence-hardening — latent prompt-injection trap if ever re-wired.**
+  find_caller confirms no production caller — only indiereviewengine.h:13/141 doc comments + test_indie_review_engine.cpp:184. The live path is assembleBriefForDispatch (fence-hardened via BriefDispatch::fenceBody). assembleBrief (indiereviewengine.cpp:256) inlines `=== file: <slurpUtf8> ===` with no fenceBody and ends with a false `(not inlined; reviewer fetches if needed)` note (a raw API endpoint has no Read tool). Fix: delete assembleBrief + repoint the test to assembleBriefForDispatch, and drop the stale header contract comment.
+  **Layman:** There's an old, unused function that would paste raw project files straight into an AI prompt without the safety wrapping its live replacement uses. Nothing calls it today, but its name reads like the main entry point, so a future change could wire it back in and open a prompt-injection hole. Delete it.
+  Kind: security.
+  Source: indie-review-8 2026-06-26 review-engines H-1.
+
+- 📋 [ANTS-2188] **trivy secret-scanner output is embedded UNREDACTED into the on-disk SARIF + MCP envelope (gitleaks runs `--redact`).**
+  gitleaks runs with --redact (auditrunner.cpp:352) but trivy runs `--scanners vuln,secret` with no redaction (:363) and the raw output is written into the SARIF notification text (:767 `msg["text"] = raw.left(...)`), landing in <root>/.audit_cache/audit-*.sarif (0600, retained 10 deep) and flowing back via top_findings. Fix: add trivy redaction, or run the embedded `raw` through SecretRedact::scrub before writing.
+  **Layman:** One of the security scanners (trivy) can find secret values and Ants writes them verbatim into the audit report file and back to Claude — unlike the other scanner (gitleaks) which masks them. A found secret could leak into the cached report.
+  Kind: security.
+  Source: indie-review-8 2026-06-26 audit-pipeline M1.
+
+- 📋 [ANTS-2189] **`.audit_cache/index.json` read-modify-write has no advisory lock — a second Ants instance / CC session auditing the same tree races last-writer-wins (drops history, orphans SARIF).**
+  recordRun does loadManifest → mutate → QSaveFile commit (auditcache.cpp:158-299) with no lock. Same-process is single-flighted, but a second instance/session races. The learned-FP ledger took a ConfigWriteLock for exactly this (auditfpledger.cpp:112). Fix: take ConfigWriteLock(manifestPath) across recordRun's load-mutate-commit.
+  **Layman:** If two Ants windows (or two Claude sessions) audit the same project at once, their shared history file can clobber each other, losing entries and leaving stray report files. The fix reuses a lock the project already has elsewhere.
+  Kind: fix.
+  Source: indie-review-8 2026-06-26 audit-pipeline M2.
+
+- 📋 [ANTS-2190] **Cold-start window accepts a sibling-tab PermissionRequest and commits `m_lastHookSessionId` → wrong-tab attribution of a permission prompt with two live Claude tabs.**
+  isFocusedTabSession returns true when m_transcriptPath is empty (claudeintegration.cpp:1098); state-mutating hooks are dropped during cold-start but PermissionRequest is intentionally ungated and commits m_lastHookSessionId (:1208). Fix: drop non-focused PermissionRequests during cold-start (mirror the state-mutating-hook drop), or route by the tracker's session→shell map.
+  **Layman:** For 1–3 seconds after switching tabs, a permission prompt from a different Claude tab can be attributed to the wrong tab. Needs two Claude sessions running to hit.
+  Kind: fix.
+  Source: indie-review-8 2026-06-26 claude-integration M2.
+
+- 📋 [ANTS-2191] **`effectiveLastEventMs` falls back to same-UID-spoofable file mtime when no content timestamp — narrowed re-open of the ANTS-1163 wrong-session bind.**
+  effectiveLastEventMs (claudeintegration.cpp:463-468) uses QFileInfo::lastModified() when lastEventTimestampMs returns 0. Under ADR-0004 same-UID it's an integrity smell, not a privilege crossing. Fix: when a live PID anchor exists (minLastEventMs>0), require a content timestamp and reject the candidate rather than fall back to mtime.
+  **Layman:** When a Claude transcript has no usable timestamp inside it, Ants falls back to the file's modified-time to decide which session is 'current' — and that time can be faked by any same-user process, so the wrong session's state could surface. Same bug-class ANTS-1163 fixed.
+  Kind: fix.
+  Source: indie-review-8 2026-06-26 claude-integration M3.
+
+- 📋 [ANTS-2192] **No rate-limit on DA/CPR/DSR/DECRQSS/Kitty-query response writes back to the PTY — a hostile program streaming `\e[6n` forces unbounded response writes (amplification).**
+  Every CSI 6n/5n/c, DCS $q, APC G a=q triggers an unconditional m_responseCallback (terminalgrid.cpp:884/887/848/2955/3328) with no throttle, unlike OSC 52 (60 s quota) and OSC 133 (cool-down). Response CONTENT injection is correctly closed (fixed strings); this is volume. Fix: rolling per-second response cap, mirroring the OSC 52 quota.
+  **Layman:** A malicious program can spam the terminal with 'tell me your cursor position' requests and Ants answers every one, flooding the write path. Not a crash, but a self-inflicted load. The clipboard path already has a rate cap; this one doesn't.
+  Kind: security.
+  Source: indie-review-8 2026-06-26 vt-parser/grid M2.
+
+- 📋 [ANTS-2193] **`project_query` blocks the GUI/dispatch thread up to ~5.25 s via `QThread::wait()` — contradicts the ANTS-1750 'GUI never blocks on a worker' design.**
+  runQueryThreaded blocks on worker->wait(timeout+250ms) on the dispatch thread (luaengine.cpp:1068); QThread::wait does not pump events, so the GUI freezes for the full snippet budget (default 1500 ms, ceiling 5000 ms → ~5.25 s join). Detach-on-wedge prevents a permanent freeze but not the common-case stall. Fix: run the verb off the dispatch thread, or document the worst-case stall in docs/specs/ANTS-2093.md failure-modes.
+  **Layman:** When Claude runs a project query, the whole app UI can freeze for up to ~5 seconds while it waits for the query to finish. The plugin system was specifically built so the UI never freezes on a worker — this feature re-introduces exactly that freeze.
+  Kind: fix.
+  Source: indie-review-8 2026-06-26 lua-sandbox M3.
+
+- 📋 [ANTS-2194] **Zombie Lua worker threads (`g_queryZombies` / `m_zombies`) leak unbounded with no cap or telemetry on a wedged-worker pathology.**
+  g_queryZombies (luaengine.cpp:898-903) and PluginManager m_zombies are append-only, never reaped, with no cap (each leaks a ~512 KiB-stack thread + heap slot). Violates the project's name-eviction/cap rule (MEMORY: consider RAM in feature design). Fix: cap + log zombie count so a wedge-loop is observable; assert/document the single-thread no-lock precondition at the append site (re-entrancy via nested-loop dispatch is the only theoretical race).
+  **Layman:** If a plugin or query gets stuck in a way it can't be killed, Ants parks the thread and never cleans it up — with no limit and no warning. A repeating wedge slowly leaks memory/threads invisibly.
+  Kind: fix.
+  Source: indie-review-8 2026-06-26 lua-sandbox M2.
+
+- 📋 [ANTS-2195] **Auto-switcher documented PARKED but the keystroke-injection actuator is fully wired, gated only by a default-false config bool — no code guard enforces the parked decision.**
+  refreshAutoModelSwitch is connected to the 2 s timer (mainwindow.cpp:806) and injects `/model <tier>\r` on dec.act (claudestatuswidgets.cpp:1744), gated only by claude.auto_model_switch (default false, config.cpp:434). Per project memory the feature is parked because keystroke injection is the only mechanism and every firing window is unsafe. Fix: gate the actuator's sendToPty behind an explicit second 'un-parked' guard / compile flag so the parked decision can't be undone by a config-migration bug. Pairs with ANTS-2186.
+  **Layman:** The auto-model feature was deliberately parked as unsafe, but the risky keystroke-injection code is still fully connected — one config flag away from running. A settings bug could re-arm it. The 'parked' decision should be enforced in code, not just a note.
+  Kind: fix.
+  Source: indie-review-8 2026-06-26 model-switcher (parked enforcement).
+
+- 📋 [ANTS-2196] **Model-switch ledger `evictToCap` can grow unbounded past the 256 KiB cap when pending records dominate (outcomes never settle).**
+  evictToCap breaks when only pinned/pending + newest remain (modelswitchledger.cpp:130-139) — correct pending-pinning, but no secondary bound. fillPendingLedgerOutcomes `continue`s (never clears) when a project dir vanishes (claudestatuswidgets.cpp:2517/2534), so pending accumulates past cap. Fix: hard ceiling — evict oldest regardless of pending once total exceeds, e.g., 4× cap.
+  **Layman:** The file that tracks model-switch outcomes is supposed to cap at 256 KiB by dropping old entries, but it never drops 'still-pending' ones — so a session that keeps switching in disappearing folders can grow the file without limit.
+  Kind: fix.
+  Source: indie-review-8 2026-06-26 model-switcher MEDIUM-2.
+
+- 📋 [ANTS-2197] **`directModelSwitchVisible` matches the `Set model to <tier>` banner as a bare substring anywhere in 12-line scrollback — a quoted banner can (with auto-mode on) trigger a continuation.**
+  directModelSwitchVisible (modelautoswitch.cpp:283-292) matches the tier-anchored banner anywhere in recentOutput(kSwitchConfirmScanLines=12). Compounds ANTS-2186: a quoted banner + auto-mode could fire a continuation with no real switch. Fix: require evidence of a just-issued user `/model` line within a short window, not a bare scrollback substring.
+  **Layman:** Ants detects a model switch by spotting the text 'Set model to Opus' in recent output — but that text appearing in a quote or log (like this very review) could be mistaken for a real switch and trigger an action.
+  Kind: fix.
+  Source: indie-review-8 2026-06-26 model-switcher MEDIUM-3.
+
+- 📋 [ANTS-2198] **`codebase_index` / `docs_index` stale-but-warm refresh walks the filesystem 2–3× per call (re-loading `.ants/project.json` each walk) — the highest-frequency MCP hot path.**
+  CodebaseIndex::serve calls staleFiles (codebaseindex.cpp:532), then refresh calls staleFiles AGAIN (:288) and re-walks candidates() (:306), each re-loading project.json (:131). Same double-walk in DocsIndex (docsindex.cpp:256/285). Fix: thread the already-computed StaleSet + candidate list through refresh instead of recomputing.
+  **Layman:** Every time Claude refreshes its project map (which happens at session start and often after), Ants scans the whole project folder two or three times when once would do. On a big project that's wasted work on the most-used path.
+  Kind: perf.
+  Source: indie-review-8 2026-06-26 mcp-engines M1.
+
+- 📋 [ANTS-2199] **`debt_sweep` `since` ref flows unvalidated into `git diff <since>..HEAD` argv — the only unvalidated user string reaching a subprocess in the MCP-engines lane.**
+  opt.sinceRef = req.value("since") (remotecontrol.cpp:14244) reaches `since + "..HEAD"` (debtsweepengine.cpp:96) with no shape check. Argv + same-UID so not a privilege crossing. Fix: `^[A-Za-z0-9_./~^-]{1,128}$` guard → bad_args on miss.
+  **Layman:** The debt-sweep tool passes a user-supplied git revision straight to git. It goes through argv (not a shell) so it's low-risk, but a bad value gives a confusing git error mid-scan instead of a clean rejection.
+  Kind: fix.
+  Source: indie-review-8 2026-06-26 mcp-engines M2.
+
+- 📋 [ANTS-2200] **`pageBullets` `measureCutPoint` re-serializes a growing prefix on each O(log n) probe (O(n log n) bytes serialized to size one page).**
+  measureCutPoint rebuilds + JSON-serializes a fresh `probe` of `mid` elements each iteration (paginationengine.cpp:30-31). Fix: serialize each element once, prefix-sum the byte sizes, binary-search the sums (O(n)).
+  **Layman:** When paginating a long roadmap list, the code re-builds and re-serializes a growing chunk of it on each step of its search — more work than needed. Bounded today by the page-size cap, so low impact.
+  Kind: perf.
+  Source: indie-review-8 2026-06-26 mcp-engines M3.
+
+- 📋 [ANTS-2201] **`RoadmapFoldIn::allocateIds` burns `.roadmap-counter` values that `insertBlock` never persists when the insert fails — ID gap + misleading `ok:true / written:false` envelope.**
+  allocateIds commits the bumped counter in its own lock then returns; insertBlock runs separately (remotecontrol.cpp:13976-13978 + 5 callers). If insertBlock returns false (heading missing / refusal / lock fail) or heading is empty, IDs are consumed but unwritten. ANTS-1742 covered the concurrent case, not insert-failed-after-allocate. Fix: share one held CounterLock across allocate+insert with rollback, or move findActiveReleaseHeading above allocateIds so an empty heading can't burn IDs.
+  **Layman:** When folding findings into the roadmap, Ants reserves the ID numbers first, then writes the block. If the write fails, the IDs are used up but never appear — leaving a gap and a confusing 'ok but not written' result.
+  Kind: fix.
+  Source: indie-review-8 2026-06-26 roadmap-system M1.
+
+- 📋 [ANTS-2202] **RC-socket `readyRead` lacks the `_handled` re-entrancy latch its MCP sibling has and never clears the consumed line from `_buf` — latent double-execution if any future RC verb pumps a nested event loop.**
+  remotecontrol.cpp:1583 sets only `_buf` (never `_handled`) and leaves the consumed line in `_buf` after dispatch; the MCP twin (claudeintegration.cpp:1510) guards via `_handled`. The comment at :1602 wrongly cites audit_run as a nested-loop verb reachable via RemoteControl::dispatch (it isn't). Fix: mirror the MCP latch + clear `_buf` to buf.mid(nlIdx+1) before dispatch; delete the stale comment. Latent (no current nested-loop RC verb).
+  **Layman:** The remote-control socket handler is missing a guard that its twin (the MCP socket) has. Today no command triggers the problem, but if one is added later, a command could run twice. Cheap to close now and delete a misleading comment.
+  Kind: fix.
+  Source: indie-review-8 2026-06-26 remotecontrol M1.
+
+- 📋 [ANTS-2203] **`project_query` `project.list` reports symlinked files whose target escapes the project root (read re-validates, so it is name/existence disclosure only) — a 'FS-confined' surface leaks a name `read` will refuse.**
+  lua_project_list (luaengine.cpp:949-961) enumerates with QDirIterator::Subdirectories and emits rel names without re-validating per entry; a symlink to a file outside the root is listed (its rel may contain no `..`). project.read re-runs validatePath so contents stay confined. Fix: skip entries whose QFileInfo(abs).isSymLink() canonicalises outside m_queryRoot, or run each abs through validatePath before appending.
+  **Layman:** The read-only project-query tool can list the NAME of a symlinked file that points outside the project, even though it would refuse to read its contents. Minor info leak vs the 'confined to the project' promise.
+  Kind: fix.
+  Source: indie-review-8 2026-06-26 remotecontrol M2 / lua-sandbox.
+
+- 📋 [ANTS-2204] **Child-side `getenv("HOME")` between fork and exec is not on the POSIX async-signal-safe list — inconsistent with ptyhandler's own pre-fork discipline.**
+  ptyhandler.cpp:334 `getenv("HOME")` in the child chdir-fallback branch is not on POSIX 2024 §2.4.3 (glibc's is lock-free, hence low risk), but setenv/toLocal8Bit were moved pre-fork for exactly this discipline. Fix: resolve HOME into a stack buffer pre-fork (alongside shellBytesPre) and read that in the child.
+  **Layman:** In the tiny window between starting a shell process and launching it, the code calls one function that technically isn't guaranteed safe there — the same kind of call the file deliberately moved out of that window elsewhere. Low real risk on Linux.
+  Kind: fix.
+  Source: indie-review-8 2026-06-26 pty M1.
+
+- 📋 [ANTS-2205] **LOW cluster (security/observability): byte-vs-UTF16 caps, ignored chmod returns, wall-clock hot-path timer, terminal a11y, unbounded per-root caches.**
+  (1) clipboardguard kUntrustedMaxBytes + aidialog kInsertCommandMaxBytes measure QString UTF-16 units not bytes (2-4× looser) — consistency follow-up to ANTS-1846; measure toUtf8().size() or rename …MaxChars. (2) claudeallowlist.cpp:345/352 ignore setOwnerOnlyPerms() return — log on failure (world-readable token risk on FAT/SMB). (3) luaengine.cpp:205 instructionHook uses QDateTime::currentMSecsSinceEpoch per hook → QElapsedTimer (monotonic, cheaper, skew-immune). (4) terminalwidget sets no QAccessible name/role — screen readers can't read terminal content (known terminal-emulator gap). (5) codebaseindex/docsindex/sessionmemory/testrescache never evict per-root cache files (mcp-caches.md names eviction). (6) review dialogs duplicate cap constants + the `-6`-byte fence-close-reserve truncation tail — extract BriefDispatch::clipToCapClosingFence + promote constants to ReviewDialogBase. (7) mainwindow refreshClaudeHooksStatus checks 3 of the 5 events installClaudeHooks writes (green status can lie); KWin-script ~50-line dup (mainwindow.cpp:3422/3500); SSH dialog + hook-installer strings bypass tr() (i18n, latent).
+  **Layman:** A handful of small tidy-ups: two size caps labelled 'bytes' actually count characters (so 2–4× looser for non-English text); a couple of permission-set failures are silently ignored; a hot loop reads wall-clock time when a cheaper monotonic timer would do; the terminal has no screen-reader support; some caches never get cleaned up.
+  Kind: fix.
+  Source: indie-review-8 2026-06-26 (LOW cluster).
 
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
@@ -11147,6 +11300,12 @@ gets one CHANGELOG section + one drift cycle + one push.
   Source: in-session-2026-05-22 build warning.
   Resolved (2026-06-06): the two CHECK_EQ sites comparing grid.cellAt().codepoint (uint32_t, terminalgrid.h:50) against char literals 'A'/'B' (lines 113-114) now cast the expected to static_cast<uint32_t>(...), so the macro's `_a != _e` is unsigned-vs-unsigned, killing -Wsign-compare. The other CHECK_EQ sites are int-vs-int and untouched. Rebuilt test_vt TU: no sign-compare warning; RisPreservesCallbacks green. Test-only, no runtime/CHANGELOG impact. NOTE (separate, not fixed — out of lane): clangd flags a pre-existing unused <cstdio> include at line 11 of the same test; surfaced, not drive-by removed.
 
+- 📋 [ANTS-2184] **cppcheck `uninitMemberVarNoCtor` brace-init hygiene sweep — ~52 helper-struct members in src/ lack a default-member-initializer (e.g. `Hit::score`, `InlineImage::row/col`, `UrlSpan`/`PaintTextRun` fields, `RunOut::started/timedOut/crashed`).**
+  2026-06-26 Qt-aware cppcheck (`--project=build/compile_commands.json --check-level=exhaustive`) flagged 52 warning-severity `uninitMemberVarNoCtor` across helper POD structs. All are aggregate-initialised at their current use sites (no live bug found this run), but adding `{}` default-member-initialisers removes the warning class and forecloses a future partially-initialised read. Bulk/mechanical → one sweep, not inline. NOTE: the 6 clazy `range-loop-detach` findings from the same run were fixed in-session (aidialog/antshelper/auditdelta/auditdialog, `std::as_const` + hoisted-local); the remaining clazy style (qstring-arg ×2, container-inside-loop ×1) and the cppcheck style bulk (useStlAlgorithm ×182, constVariablePointer, funcArgNamesDifferent) stay under ANTS-1789 (clazy style sweep).
+  **Layman:** About 50 small data-holder structs don't set their number/flag fields to a starting value. Nothing is broken today (they're always filled in before use), but giving them a default of 0/false is tidy and forecloses a future bug. Best done as one tidy-up pass.
+  Kind: audit-fix.
+  Source: in-session-2026-06-26 /audit run (Qt-aware cppcheck via compile_commands.json).
+
 ### 🔌 Skill improvements observed (for the /audit and /indie-review skill markdown)
 
 - ✅ [ANTS-1683] **/audit step 5 `semgrep` invocation should drop `p/cpp` from the recommended pack list.** `p/cpp` returns HTTP 404 from the semgrep registry as of 2026-05-19; the C/C++ coverage path is `p/security-audit` alone (which does the right thing). `p/c` errors out on every `.h` file because the tree-sitter-c grammar doesn't parse C++. Update `~/.claude/skills/audit/SKILL.md` step 5 semgrep invocation. Token-saving: prevents the 0-findings + 14-errors result on every C++ project /audit run. Lane: skill.
@@ -11154,6 +11313,30 @@ gets one CHANGELOG section + one drift cycle + one push.
 - ✅ [ANTS-1685] **Ants MCP `indie_review_partition` returns duplicate lanes when CLAUDE.md groups multiple subsystems under one paragraph (e.g. `claudetasklist`/`claudebgtasks` and `luaengine`/`pluginmanager` both produce sibling entries with identical summary text, and `ants_core_lib` returns empty sourcePaths).** Deduplicate by sourcePaths union + drop empty-paths entries server-side. Lane: mcp-ants.
 - 📋 [ANTS-1686] **Ants MCP `indie_review_brief` could accept a `lanes:[]` array and return all briefs in one call instead of 1 per lane.** With 11 lanes the round-trip cost is meaningful (~1.5 MCP turns per lane). Server-side change; same caller_cwd. Lane: mcp-ants.
 - ✅ [ANTS-1687] **/audit skill should document the false-positive ledger read+write workflow inline.** Currently the standards file is referenced but the recipe isn't surfaced at the triage step. After triage, orchestrator should append confirmed FPs via the documented `printf '\n%s\n' "$record" >>` recipe. Add a step 10.5 between triage and roadmap fold-in. Lane: skill.
+
+- 📋 [ANTS-2206] **Make `/indie-review` cheaper: lane-digest cache + since-last-run scope — skip lanes whose source is unchanged since their last clean review.**
+  This run cost ~1.5M subagent tokens for 13 lanes (~115k/lane); lane SOURCE reads dominate, and most lanes returned 0 CRITICAL/0 HIGH. Mirror audit_run's since-last-run scope: store a per-lane content hash + last-clean-review commit in .indie-review/digest.json; a re-run reviews only lanes whose hash changed (or whose files appear in `git diff <last-review>..HEAD`). indie_review_partition gains a `since` arg returning changed lanes only. Biggest single win for the re-run cadence.
+  **Layman:** A full independent review re-reads every file every time, even files nobody touched since last week's review. Remember a fingerprint of each subsystem's source after a clean review and skip the unchanged ones next time — the single biggest cost cut, because most subsystems don't change between reviews.
+  Kind: enhancement.
+  Source: in-session-2026-06-26 /indie-review #8 cost analysis.
+
+- 📋 [ANTS-2207] **Make `/indie-review` cheaper: bundle FP-ledger + CLAUDE.md threat-model slice + per-lane ROADMAP slice into the `indie_review_brief` response (one read vs 3–4 per agent).**
+  Each of the 13 agents this run independently Read CLAUDE.md (large preamble), .ants_review_falsepos.jsonl, and re-derived context. The skill notes a per-lane ROADMAP slice cuts agent OUTPUT 30-50% but the brief verb doesn't assemble it. Extend indie_review_brief / indie_review_orchestrate to embed: (a) the FP-ledger entries matching the lane's files, (b) the relevant CLAUDE.md threat-model slice, (c) the grep'd ROADMAP slice of still-open items for the lane's basenames. Cuts N× redundant Reads + biases agents to dedup during review.
+  **Layman:** Every reviewer agent separately re-reads the big project guide, the false-positives list, and re-derives which roadmap items touch its files. Hand each agent one pre-assembled bundle instead, so it does one read, not four.
+  Kind: enhancement.
+  Source: in-session-2026-06-26 /indie-review #8 cost analysis.
+
+- 📋 [ANTS-2208] **Make `/indie-review` cheaper: two-tier model routing — cheap-model breadth pass across all lanes, escalate only finding-bearing lanes to the strong model.**
+  11 of 13 lanes this run returned 0 CRITICAL/0 HIGH — yet each paid full strong-model cost. Skill change: Phase-2 dispatch a cheap-model shallow pass (severity-floor MEDIUM, breadth-only); re-dispatch ONLY lanes that surfaced >=1 MEDIUM+ to the strong model for the deep adversarial read. Pairs with corroboration-driven depth (next).
+  **Layman:** Run a cheaper, faster model over every subsystem first to find the suspicious spots, then only spend the expensive model on the subsystems that actually flagged something. Most subsystems are clean, so you pay the cheap rate for them.
+  Kind: enhancement.
+  Source: in-session-2026-06-26 /indie-review #8 cost analysis.
+
+- 📋 [ANTS-2209] **Make `/indie-review` cheaper: corroboration-driven depth — shallow-scan all lanes, deep-verify only findings cited by ≥2 lanes or above a severity floor.**
+  indie_review_corroborate already finds (file,line) cited by >=N lanes server-side. Restructure the skill: Phase 2 = cheap breadth scan; Phase 3 = corroborate; Phase 4 = a focused deep-verify pass ONLY on corroborated or HIGH+ findings. Also auto-apply indie_review_partition's suggested_merges (this run flagged luaengine+pluginmanager and claudetasklist+claudebgtasks as identical-summary merges) to cut near-duplicate agent dispatches; and cache per-lane file_outline server-side so big-file lanes (remotecontrol 16k LoC) skip the outline round-trip.
+  **Layman:** Instead of every reviewer going deep on everything, do a quick scan everywhere and only spend the expensive deep-analysis on issues that more than one reviewer independently flagged (the gold-signal shared blind spots). Avoids paying deep-review cost on every line.
+  Kind: enhancement.
+  Source: in-session-2026-06-26 /indie-review #8 cost analysis.
 
 ### 🟡 False positives logged (`.ants_review_falsepos.jsonl` entries appended 2026-05-19)
 

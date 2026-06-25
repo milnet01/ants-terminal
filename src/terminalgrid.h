@@ -430,8 +430,8 @@ private:
     void handleCsi(const VtAction &a);
     void handleEsc(const VtAction &a);
     void handleOsc(const std::string &payload, bool truncated = false);
-    void handleDcs(const std::string &payload);  // Sixel graphics
-    void handleApc(const std::string &payload);  // Kitty graphics
+    void handleDcs(const std::string &payload, bool truncated = false);  // Sixel graphics
+    void handleApc(const std::string &payload, bool truncated = false);  // Kitty graphics
 
     // CSI helpers
     void handleSGR(const std::vector<int> &params, const std::vector<bool> &colonSep = {});

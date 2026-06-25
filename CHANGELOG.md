@@ -46,6 +46,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Refuse truncated DCS/APC image payloads; correct the AI command-preview byte warning.**
+  A DCS (Sixel) or APC (Kitty/iTerm2) payload that overflowed the parser's 10 MiB accumulator is now refused outright instead of being decoded from a corrupt prefix (ANTS-1663 was previously honoured only for OSC 8/52). The AI command-confirmation dialog's "N additional bytes will be executed" warning is now accurate (and never negative) for commands containing HTML-special characters.
+
 - **`roadmap_log` no longer reissues a live roadmap ID when `.roadmap-counter` lags the file. Both `op:append` and `op:append_batch` now reconcile the counter against the highest existing `[PREFIX-NNNN]` id, skip past it, self-heal the counter, and surface `counter_advanced_to`; an `id_hint` that collides with a live id is refused `id_taken` instead of overwriting a bullet.** (ANTS-2179)
 
 - **Flatpak installs now reach Ants MCP from Claude sessions (ANTS-1900)** (ANTS-1900)
@@ -59,6 +62,11 @@ for security-relevant changes.
   gated on a non-empty value (omitted when MCP is disabled). Plain
   terms: install Ants Terminal as a Flatpak and Claude can now use the
   cheaper Ants tools just like a native install.
+
+### Security
+
+- **Harden several input boundaries (indie-review #8 sweep).**
+  Secret-redaction now covers GitLab personal-access tokens (glpat-) and Slack app-level tokens (xapp-) before context is sent to an LLM. The repo-visibility `gh repo view` call now passes a `--` end-of-options sentinel so a hostile clone's `-`-prefixed origin slug can't be parsed as a flag, and the roadmap-card HTML escaper now escapes `"` so a quote in a ROADMAP bold-ID can't break out of an HTML attribute (CWE-79).
 
 ## [0.7.98] — unreleased (Patron RC preview)
 

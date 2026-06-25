@@ -50,7 +50,7 @@ DeltaResult computeDelta(const QJsonArray &current,
         if (!priorChangedFps.contains(fpOf(v))) d.added.append(v);
 
     // 3. removed = priorOnChanged ∖ current.
-    for (const QJsonValue &v : priorOnChanged)
+    for (const QJsonValue &v : std::as_const(priorOnChanged))
         if (!currentFps.contains(fpOf(v))) d.removed.append(v);
 
     // 4. carriedForward = (current ∩ priorOnChanged) ∪ priorOnUntouched.

@@ -294,10 +294,10 @@ void TerminalGrid::processAction(const VtAction &action) {
         handleOsc(action.oscString, action.truncated);
         break;
     case VtAction::DcsEnd:
-        handleDcs(action.oscString);
+        handleDcs(action.oscString, action.truncated);
         break;
     case VtAction::ApcEnd:
-        handleApc(action.oscString);
+        handleApc(action.oscString, action.truncated);
         break;
     }
 }
@@ -2900,8 +2900,14 @@ void TerminalGrid::resize(int rows, int cols) {
 
 // --- Sixel Graphics (DCS q ... ST) ---
 
-void TerminalGrid::handleDcs(const std::string &payload) {
+void TerminalGrid::handleDcs(const std::string &payload, bool truncated) {
     if (payload.empty()) return;
+
+    // ANTS-1663 — a DCS body that overflowed the parser's 10 MiB accumulator was
+    // silently truncated. Sixel is a byte-exact consumer: decoding a corrupt
+    // prefix renders garbage pixels. Refuse the directive, mirroring handleOsc's
+    // byte-exact-consumer discipline (a legitimate DECRQSS reply is never 10 MiB).
+    if (truncated) return;
 
     // The vt-parser caps individual DCS bodies at 10 MiB. Sixel's
     // first pass walks every byte of the payload (no per-pass cycle
@@ -3208,8 +3214,13 @@ static uint32_t safeStoul(const std::string &s, uint32_t defaultVal = 0) {
     catch (...) { return defaultVal; }
 }
 
-void TerminalGrid::handleApc(const std::string &payload) {
+void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
     if (payload.empty() || payload[0] != 'G') return;
+
+    // ANTS-1663 — refuse a truncated APC (Kitty/iTerm2) payload: the base64 image
+    // body decoded from a 10 MiB-truncated prefix is garbage. Byte-exact consumer,
+    // same discipline as handleOsc's OSC 8/52 refusal.
+    if (truncated) return;
 
     // Parse key=value pairs (comma-separated) before the semicolon
     size_t semicolon = payload.find(';');

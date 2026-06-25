@@ -73,11 +73,17 @@ AiDialog::AiDialog(QWidget *parent) : QDialog(parent) {
         // Preview-vs-cmd length parity: if the preview truncates, the
         // user's confirmation doesn't cover the tail — attacker could
         // put benign text first and payload after. Warn explicitly.
-        QString preview = cmd.toHtmlEscaped();
         const int kPreviewMax = 500;
-        const bool truncatedPreview = (preview.size() > kPreviewMax);
+        // Truncate the RAW command first, THEN HTML-escape. Escaping before
+        // truncation would (a) split a multi-char entity ("&am|p;") at the cut,
+        // and (b) let the escaped length exceed kPreviewMax while cmd.size() is
+        // under it — making the "%1 additional byte(s)" warning below render as
+        // zero or negative. Counting the cut on the raw cmd keeps it correct.
+        const bool truncatedPreview = (cmd.size() > kPreviewMax);
+        QString preview =
+            (truncatedPreview ? cmd.left(kPreviewMax) : cmd).toHtmlEscaped();
         if (truncatedPreview) {
-            preview = preview.left(kPreviewMax) + QStringLiteral("…");
+            preview += QStringLiteral("…");
         }
         QString msg = QStringLiteral(
             "The AI suggested this command. It will be typed into the "
@@ -342,7 +348,7 @@ QString AiDialog::extractAndSanitizeCommand(const QString &response,
 
     QString clean;
     clean.reserve(cmd.size());
-    for (QChar c : cmd) {
+    for (QChar c : std::as_const(cmd)) {
         if (isDangerous(c.unicode())) {
             ++stripped;
             continue;

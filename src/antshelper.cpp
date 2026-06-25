@@ -69,7 +69,8 @@ QJsonObject driftCheck(const QJsonObject & /*request*/,
     // old `contains("..")` wrongly refused legitimate directories like
     // "my..project". The canonicalisation below resolves any genuine traversal.
     bool hasTraversalComponent = false;
-    for (const QString &comp : repoRoot.split(QChar('/')))
+    const QStringList comps = repoRoot.split(QChar('/'));
+    for (const QString &comp : comps)
         if (comp == QStringLiteral("..")) { hasTraversalComponent = true; break; }
     if (hasTraversalComponent || repoRoot.contains(QChar('\0'))) {
         setExit(1);

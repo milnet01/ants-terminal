@@ -75,6 +75,11 @@ inline const std::vector<Rule> &rules()
         // GitHub app installation / user-to-server / refresh.
         { QRegularExpression(QStringLiteral("\\bgh[sur]_[A-Za-z0-9]{36}\\b")),
           QStringLiteral("github_app"), 0 },
+        // GitLab personal/project/group access token: `glpat-` + 20+ chars
+        // (length has grown across GitLab versions; lower-bound on the opaque
+        // payload rather than an exact count). indie-review #8 (2026-06-26).
+        { QRegularExpression(QStringLiteral("\\bglpat-[A-Za-z0-9_\\-]{20,}")),
+          QStringLiteral("gitlab_pat"), 0 },
 
         // AWS access key ID. AKIA = long-lived, ASIA = STS temp
         // credential. 16 uppercase alphanum suffix is the documented
@@ -100,6 +105,11 @@ inline const std::vector<Rule> &rules()
         // Slack tokens: xoxb/xoxa/xoxp/xoxr/xoxo/xoxs.
         { QRegularExpression(QStringLiteral("\\bxox[abpros]-[A-Za-z0-9-]{10,}")),
           QStringLiteral("slack"), 0 },
+        // Slack app-level token (`xapp-1-...`) — distinct prefix from the
+        // `xox*-` workspace tokens above, so it needs its own rule.
+        // indie-review #8 (2026-06-26).
+        { QRegularExpression(QStringLiteral("\\bxapp-[A-Za-z0-9-]{10,}")),
+          QStringLiteral("slack_app"), 0 },
 
         // Google API keys — `AIza` prefix + 35 chars (39 total).
         // Documented shape per Google Cloud's API-key format.
