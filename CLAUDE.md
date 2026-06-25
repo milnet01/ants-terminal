@@ -31,16 +31,29 @@ main-exe-only iteration.
 Make ignores it, and the resulting cc1plus over-parallelism earlyoom-reaped
 binaries in 0.7.x.
 
-**Never relink `build/` while an instance is running (ANTS-2025).** The user
-launches `build/ants-terminal` (Plasma icon → `launch.sh`), and the linker
-rewrites that file in place, so a running instance later demand-pages a
-corrupted code page and SIGSEGVs. During a live session build to the isolated
-`build-fast/` tree (`cmake --build build-fast`, or `tools/build-and-stage.sh`
-which also atomically swaps the result into `build/`); `launch.sh` promotes a
-newer `build-fast/` binary into `build/` via an atomic `rename(2)` on the next
-launch — a running instance keeps its old inode. The binary must run from
-`build/` (it resolves assets + the MCP project root via `applicationDirPath`),
-so the file is swapped, not relocated.
+**The live binary runs from a home-drive copy, not the project tree
+(ANTS-2174, an ANTS-2025 follow-up).** The Plasma icon → `launch.sh` copies the
+freshest of `build/` and `build-fast/` to
+`${XDG_DATA_HOME:-~/.local/share}/ants-terminal/bin/ants-terminal` (atomic
+temp+rename, only when newer) and execs *that* copy. So the running process
+shares no inode with any build output: an in-place relink of `build/` while
+Ants is open can no longer corrupt the live code pages — **the ANTS-2025
+SIGSEGV class is gone, and you may rebuild `build/` freely during a live
+session** *provided the running instance was launched by this (ANTS-2174 or
+later) `launch.sh`*. Verify with `pgrep -af ants-terminal`: the path must be
+the home copy (`…/.local/share/ants-terminal/bin/ants-terminal`), NOT
+`…/build/ants-terminal`. A legacy instance launched before this change still
+runs from `build/`'s inode and remains vulnerable until relaunched — keep
+building to `build-fast/` while such a process is live. `build-fast/` is no
+longer required for safety once everyone's on the home copy; it stays useful as
+an isolated/parallel build tree (the `fast` preset). Launching also never
+writes into the project tree (no `build/` promote step), so `git status` stays
+clean. The binary is location-independent: its only path-relative load is the
+app-icon fallback (`applicationDirPath()/../assets`), which never fires because
+the icon is installed in the hicolor theme; the MCP project root is resolved
+per-call from `caller_cwd` / the focused tab's cwd, NOT from `applicationDirPath`
+(see `remotecontrol.cpp:8129` — applicationDirPath would be the build dir, which
+is wrong); all user state lives under XDG paths.
 
 **Token-frugal invocations** (pipe to `tail` so a 10k-line log stays out
 of the assistant's context):

@@ -22308,6 +22308,29 @@ contributors don't duplicate research.
   Kind: refactor.
   Source: in-session-2026-06-25 (noticed during ANTS-1901 cold-eyes).
 
+- ✅ [ANTS-2174] **launch.sh runs a home-drive copy of the binary, never from the project tree (ANTS-2025 follow-up).**
+  Previously launch.sh promoted build-fast/ → build/ and ran
+  build/ants-terminal, so the live process shared an inode with a build
+  output (the ANTS-2025 in-place-relink-SIGSEGV hazard) and every launch
+  wrote into the project tree. Now launch.sh copies the freshest of
+  build-fast/ and build/ to
+  `${XDG_DATA_HOME:-~/.local/share}/ants-terminal/bin/ants-terminal`
+  (atomic temp+rename, only when newer) and execs from there. The project
+  build dirs are read-only at launch; the running process is a home-drive
+  copy sharing no inode with any build output. Verified the binary is
+  self-contained for this: the only path-relative load is the app-icon
+  fallback (`applicationDirPath()/../assets`, main.cpp:391 +
+  titlebar.cpp:26), which never fires because the icon is installed in the
+  hicolor theme; the MCP project root is resolved per-call from caller_cwd
+  / focused-tab cwd, NOT from applicationDirPath (remotecontrol.cpp:8129
+  comment confirms applicationDirPath would be wrong); all user state is
+  XDG-pathed. Consequence: the build-fast/ rule is no longer required for
+  SAFETY during live sessions (rebuild build/ freely while Ants runs); it
+  stays useful as an isolated/parallel build tree.
+  **Layman:** The terminal now launches from a copy kept in your home folder instead of from the project's build folder — so building never disturbs the running app, and the project folder is left untouched when you launch.
+  Kind: chore.
+  Source: user-request-2026-06-25.
+
 ### 🔒 Security
 
 - 💭 [ANTS-1095] **Confidential computing**: run the PTY in an SGX/SEV enclave,
