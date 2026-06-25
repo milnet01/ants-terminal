@@ -22291,6 +22291,23 @@ contributors don't duplicate research.
   Kind: feature.
   Source: in-session-2026-06-25 (split from ANTS-1901 part (c) during its spec cold-eyes).
 
+- 📋 [ANTS-2173] **Unify the unknown-tool refusal label: envelope code `unknown_tool` vs telemetry `dispatchResult` `tool_not_found`.**
+  The same unknown-tool refusal sets the caller-facing envelope
+  `env["code"] = "unknown_tool"` (`src/claudeintegration.cpp:9072`, the
+  value registered in `docs/standards/mcp-error-codes.md` §5) but the
+  internal `dispatchResult = "tool_not_found"` (`:9263`) that feeds
+  recordDispatch / token_usage's failed-call accumulator. So a correlation
+  between the envelope a caller saw and the telemetry result label is
+  mismatched for this one refusal class. Low priority (both are correct in
+  their own layer). Fix: align the `dispatchResult` string to
+  `unknown_tool` (or register `tool_not_found` as the canonical code and
+  update the envelope) so the two layers agree. Add a one-line note to
+  mcp-error-codes.md if `tool_not_found` is kept as a distinct telemetry
+  label.
+  **Layman:** A tiny inconsistency in internal labels: when Claude calls a tool that doesn't exist, the error message it gets and the stats Ants records use two different names for the same thing. Harmless, just tidier to make them match.
+  Kind: refactor.
+  Source: in-session-2026-06-25 (noticed during ANTS-1901 cold-eyes).
+
 ### 🔒 Security
 
 - 💭 [ANTS-1095] **Confidential computing**: run the PTY in an SGX/SEV enclave,
