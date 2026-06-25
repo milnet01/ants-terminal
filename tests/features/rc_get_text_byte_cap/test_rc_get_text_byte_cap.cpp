@@ -12,8 +12,6 @@
 #include <QByteArray>
 #include <QString>
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #include <gtest/gtest.h>
