@@ -8573,6 +8573,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: user-request-2026-06-24 (hotfix path for urgent published-release bugs).
   Shipped 2026-06-25 (commit a3fd123). Two-phase `hotfix` subcommand + fix_is_on_main; guards fix_not_on_main / rc_base_mismatch / hotfix_branch_exists / conflict-abort; covered by the cut_rc_behaviour shell harness + Ants2165* source-scrape cases.
 
+- 📋 [ANTS-2169] **Bash guard-hook false-positives on filename mentions + blocks line-level git diff.**
+  Two guard-hook frictions hit while working: (1) a `grep` that merely listed ROADMAP.md / CHANGELOG.md as `grep -v` EXCLUSIONS tripped the "use roadmap_query" guard — it pattern-matches the literal filename in the command string regardless of read-vs-exclude intent; the guard should not fire when the filename only appears after `-v` / as an exclusion. (2) `git diff` (line-level verification of a surgical multi-file edit) is blocked toward get_git_status / verify_changes, but no MCP verb returns the raw unified diff content, so there is no cheap path to actually SEE the changed lines. Consider a verb that returns a bounded unified diff, or relax the git-diff guard for small/staged diffs.
+  **Layman:** The helper that nudges me toward cheaper Ants tools sometimes fires when it shouldn't, slowing me down.
+  Kind: enhancement.
+  Source: in-session-2026-06-25 (Flathub epic work).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
@@ -21278,11 +21284,12 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   Kind: chore.
   Source: planned.
 
-- 📋 [ANTS-2166] **Sandbox-aware shell spawning (flatpak-spawn --host).**
+- ✅ [ANTS-2166] **Sandbox-aware shell spawning (flatpak-spawn --host).**
   Detect a Flatpak sandbox (FLATPAK_ID env / /.flatpak-info present) and route shell spawning through `flatpak-spawn --host` instead of forking a PTY directly against a sandboxed binary. Without it a Flatpak build can only run the few binaries inside the runtime — useless for a terminal. Model on Black Box / GNOME Console / Ptyxis. Requires the `--talk-name=org.freedesktop.Flatpak` finish-arg. First of the Flathub epic; gates the manifest item (ANTS-2168).
   **Layman:** Make Ants Terminal launch your real shell when it runs inside a sandbox, so it can run programs on your actual computer — the prerequisite for a Flatpak/Flathub build.
   Kind: implement.
   Source: user-request-2026-06-24 (Flathub publishing).
+  Resolved (2026-06-25): already implemented by prior work — no new code needed. src/ptyhandler.cpp detects FLATPAK_ID / /.flatpak-info (lines 133-135) and routes the child through execvp("flatpak-spawn","--host",...) with TERM* via --env= and cwd via --directory= (ANTS-1046 pre-fork prep + ANTS-1135 envp). The manifest already carries the --talk-name=org.freedesktop.Flatpak finish-arg (packaging/flatpak/org.ants.Terminal.yml:53). Specced + tested: tests/features/flatpak_host_shell/spec.md (INV-1..4), FlatpakHostShell.Main passes. Verified green this session.
 
 - 📋 [ANTS-2167] **Rename app ID org.ants.Terminal -> io.github.milnet01.* for Flathub.**
   Flathub requires the reverse-DNS app ID to match a domain or code host you control. org.ants.Terminal implies ants.org (not owned); rename to the GitHub-hosted scheme io.github.milnet01.AntsTerminal. Ripples through metainfo (org.ants.Terminal.metainfo.xml -> renamed), the .desktop file, icon filenames, D-Bus/service names, and any hardcoded ID. User chose this scheme 2026-06-24. Gates the manifest item (ANTS-2168).
@@ -21295,6 +21302,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   **Layman:** Package Ants Terminal as a Flatpak and submit it to Flathub so it appears in KDE Discover, GNOME Software and most Linux app stores (AppImage stays as-is alongside it).
   Kind: package.
   Source: user-request-2026-06-24 (Flathub publishing).
+  Progress (2026-06-25): manifest + metainfo verified build-ready. appstreamcli validate passes (1 pedantic info only); desktop-file-validate clean; OARS oars-1.1 + SPDX (MIT/CC0-1.0) + 3 captioned screenshots + homepage/bugtracker/vcs URLs all present. make-flathub-manifest.sh correctly emits type:git/tag:v<ver>. FlatpakHostShell + FlatpakLuaModule tests green. Remaining before submission: (1) ANTS-2167 app-ID rename, (2) local flatpak-builder shakedown (flatpak-builder not installed on dev host), (3) the outward-facing flathub/flathub PR — held pending shakedown.
 
 ### 🔌 Plugins — marketplace
 
