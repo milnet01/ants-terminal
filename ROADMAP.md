@@ -22227,9 +22227,9 @@ contributors don't duplicate research.
   Closes the ANTS-1897 § 4 follow-up — the MCP-orientation cheat-sheet
   now reaches Claude sessions inside flatpak-sandboxed Ants installs.
 
-- 📋 [ANTS-1901] **Master Ants-MCP on/off toggle (Settings + menubar) with graceful-degrade for all MCP-dependent features.**
-  MCP server starts unconditionally in `MainWindow` ctor at `src/mainwindow.cpp:3867` (`m_claudeIntegration->startMcpServer(mcpSocket)`) with no user-facing toggle. Add: (a) new config key `claude.mcp_enabled` (bool, default true); (b) Settings → AI Assistant master checkbox 'Enable Ants MCP integration' above the existing autoswitch + orientation toggles (visual hierarchy: master → per-feature opt-ins); (c) optional menubar shortcut (View → Claude → MCP integration, or similar); (d) graceful-degrade wiring for every MCP-dependent feature when toggled off: ANTS-1735 autoswitcher (skip dwell + decide), ANTS-1888 model chip (read transcript only, no MCP-derived state), ANTS-1891 model_switch_stats (refuse with `code:"mcp_disabled"` envelope), ANTS-1897 orientation prelude (skip install + remove hook), `model_switch_ledger` (don't write records), MCP socket (don't bind, no `/tmp/ants-terminal-mcp-*` file, no `ANTS_MCP_SOCKET` env-var export). Spec needs a dependency-matrix section enumerating every MCP-consumer and its degrade behaviour. Pairs with ANTS-1897 (which already adds the per-feature orientation toggle in the same Settings page; ANTS-1901 inserts the master toggle above it). User raised 2026-05-27 during ANTS-1897 implementation.
-  **Layman:** Ants MCP starts automatically every time you open Ants Terminal — there's no way to turn it off. This adds a master on/off switch (under Settings → AI Assistant, and also in the menubar) so users who don't want Ants observing their Claude sessions can opt out. Every feature that depends on MCP (auto-switcher, status chip, cheat-sheet) gracefully shows 'MCP disabled' instead of being broken.
+- 📋 [ANTS-1901] **Master Ants-MCP on/off toggle (Settings) with graceful-degrade for all MCP-dependent features.**
+  MCP server starts unconditionally in `setupStatusBarChrome()` at `src/mainwindow.cpp:4046-4048` (`m_claudeIntegration->startMcpServer(mcpSocket)`; was cited as ctor `:3867` pre-drift) with no user-facing toggle. Add: (a) new config key `claude.mcp_enabled` (bool, default true); (b) Settings → General tab master checkbox 'Enable Ants MCP integration' above the existing autoswitch + orientation toggles (the General tab is where those toggles live — corrected from "AI Assistant" per ANTS-1901 spec § 2.5 + ANTS-1897:346) (visual hierarchy: master → per-feature opt-ins); (c) **[split to ANTS-2172]** optional menubar shortcut (View → Claude → MCP integration) — deferred to keep this item's surface to the load-bearing gating; (d) graceful-degrade wiring for every MCP-dependent feature when toggled off: ANTS-1735 autoswitcher (skip dwell + decide), ANTS-1888 model chip (read transcript only, no MCP-derived state), ANTS-1891 model_switch_stats (refuse with `code:"mcp_disabled"` envelope), ANTS-1897 orientation prelude (skip install + remove hook), `model_switch_ledger` (don't write records), MCP socket (don't bind, no `/tmp/ants-terminal-mcp-*` file, no `ANTS_MCP_SOCKET` env-var export). Spec needs a dependency-matrix section enumerating every MCP-consumer and its degrade behaviour. Pairs with ANTS-1897 (which already adds the per-feature orientation toggle in the same Settings page; ANTS-1901 inserts the master toggle above it). User raised 2026-05-27 during ANTS-1897 implementation.
+  **Layman:** Ants MCP starts automatically every time you open Ants Terminal — there's no way to turn it off. This adds a master on/off switch (under Settings → General; a menubar shortcut is split to ANTS-2172) so users who don't want Ants observing their Claude sessions can opt out. Every feature that depends on MCP (auto-switcher, status chip, cheat-sheet) gracefully shows 'MCP disabled' instead of being broken.
   Kind: feature.
   Lanes: claudeintegration, settingsdialog, menubar.
   Source: user-feedback-2026-05-27 (raised during ANTS-1897 implementation; user noted MCP itself has no on/off toggle today)..
@@ -22262,6 +22262,21 @@ contributors don't duplicate research.
   **Layman:** Ship a handful of extra colour themes styled after well-known video games, so users have more fun looks to pick from out of the box.
   Kind: feature.
   Source: user-request-2026-06-25.
+
+- 📋 [ANTS-2172] **Menubar entry for the Ants-MCP master toggle (View → Claude → MCP integration).**
+  Split out of ANTS-1901 (which lands the config key + Settings → General
+  master checkbox + graceful-degrade). This is the optional convenience
+  duplicate: a checkable `QAction` (View → Claude → "MCP integration",
+  or similar) mirroring `Config::claudeMcpEnabled()`. Wiring: the action's
+  `toggled` calls `setClaudeMcpEnabled()` + the same runtime propagation
+  ANTS-1901 § 2.6 adds (`m_claudeIntegration->setMcpEnabled(...)`), and the
+  `settingsChanged` handler keeps the action's checkmark in sync when the
+  toggle is flipped from Settings. Deferred from ANTS-1901 to keep that
+  spec's surface to the load-bearing gating; this is pure UI convenience.
+  Small — ~15 lines + a checkmark-sync line.
+  **Layman:** A quick on/off switch for the Ants–Claude helper right in the menubar, so you don't have to open Settings to flip it.
+  Kind: feature.
+  Source: in-session-2026-06-25 (split from ANTS-1901 part (c) during its spec cold-eyes).
 
 ### 🔒 Security
 
