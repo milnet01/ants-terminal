@@ -6482,11 +6482,12 @@ class; the deferrals below cover the rest.
   Lanes: auditengine.
   Source: indie-review-2026-06-11 (auditengine M1) — deferred 2026-06-12.
 
-- 📋 [ANTS-2124] **Drop dead <fstream>/<sstream> includes in test_audit_engine_extraction.cpp.**
+- ✅ [ANTS-2124] **Drop dead <fstream>/<sstream> includes in test_audit_engine_extraction.cpp.**
   tests/features/audit_engine_extraction/test_audit_engine_extraction.cpp includes <fstream> (line 18) and <sstream> (line 20) but uses neither (verified by grep). clangd flags both as unused-includes. Pre-existing (not introduced by the ANTS-2118 merge-test addition); left in place rather than drive-by-removed. Trivial: delete the two lines next time the file is touched.
   **Layman:** Two unused #include lines in an audit-engine test file; harmless but flagged by the linter.
   Kind: chore.
   Source: in-session-2026-06-12 (clangd unused-includes, surfaced while adding the ANTS-2118 merge test).
+  Resolved (2026-06-25): folded into the ANTS-2072 sweep (commit 8686e66) — test_audit_engine_extraction.cpp lost <fstream>+<sstream>, kept <cstdio> (uses std::fprintf).
 
 - ✅ [ANTS-2130] **ClaudeTranscriptRobustness inv7/inv8 raced the kernel's mid-execve window — empty /proc/cmdline failed detection on loaded CI.**
   Red CI on ANTS-2126 + ANTS-2129 pushes (both unrelated to those changes). findClaudeChildPid's isClaudePid matches /proc/<pid>/cmdline; the kernel sets /proc/<pid>/comm during execve BEFORE arg_start/arg_end, so a child preempted in that window reads an empty cmdline and is correctly rejected. inv7/inv8 probed during that window on the loaded runner (CI diag: comm=claude, cmdline=[], child in children list, ppid ok); inv9 already settled and passed. Fix is test-side (production self-heals on the 2s poll): new waitForCmdlineReady() bounded poll (~1.5s) before probing in inv7/inv8. inv9 left untouched.
@@ -10874,7 +10875,7 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   Resolved (2026-06-11): removed dead std::regex nextHeader (mcp_current_state), dead FakeTracker class (task_list_dialog_context_menu), dead kCheck (mcp_feedback_log), 24 unused QCoreApplication includes; renamed test_mode_arm.cpp -> test_mcp_model_switch_stats_near_misses.cpp (+ CMakeLists); moved conflict_markers/bad.cpp @expect markers inline and de-confused memory_patterns prose. audit_self_test green.
 
 
-- 📋 [ANTS-2072] **Dead <fstream>/<sstream>/<cstdio> includes linger in slurpFile-migrated test files.**
+- ✅ [ANTS-2072] **Dead <fstream>/<sstream>/<cstdio> includes linger in slurpFile-migrated test files.**
   Many feature tests migrated their file-read to ants_test::slurpFile
   (srcgrep.h) but kept the now-unused <fstream>/<sstream>/<cstdio>
   includes. clangd flags them as unused-includes. Confirmed in (at least)
@@ -10890,6 +10891,7 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   **Layman:** Tidy up leftover unused header lines in test files so the warnings stop.
   Kind: chore.
   Source: in-session-2026-06-11.
+  Resolved (2026-06-25): dropped dead <fstream>/<sstream> from all 12 named files and <cstdio> from the 5 not using std::fprintf (kept in command_mark_gutter, sync_output_snapshot, audit_engine_extraction). build-fast green, 35 affected feature tests pass. Commit 8686e66.
 
 - ✅ [ANTS-2151] **`mcp_result_offload` test leaks `QStandardPaths::setTestModeEnabled(true)` — pollutes `ConfigAiReviewConcurrency.INV14` later in the `test_core` bundle.**
   `tests/features/mcp_result_offload/test_mcp_result_offload.cpp:43` calls
