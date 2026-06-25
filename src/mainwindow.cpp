@@ -4014,8 +4014,9 @@ void MainWindow::setupClaudeMcpProviders() {
     // on out of the box); the Settings Apply path and onConfigFileChanged
     // (external edits) re-publish it.
     mcp::setTerseDefault(m_config.claudeMcpTerseResponses());
-    // ANTS-2094 — publish the result-offload config (default OFF) and run a
-    // one-shot session-start sweep of stale (>24 h) spill files.
+    // ANTS-2094 — publish the result-offload config (default ON since the
+    // 2026-06-25 fast-follow) and run a one-shot session-start sweep of
+    // stale (>24 h) spill files.
     mcp::setOffloadConfig(m_config.claudeMcpOffloadLargeResults(),
                           m_config.claudeMcpOffloadThresholdBytes(),
                           m_config.claudeMcpOffloadHeadBytes());

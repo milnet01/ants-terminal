@@ -153,12 +153,13 @@ public:
     void setClaudeMcpTerseResponses(bool enabled);
 
     // ANTS-2094 — proactive result offload (observation masking).
-    // Config-file-only (no Settings UI in v1). Default OFF: offload changes
-    // the response contract (a head+pointer instead of the body), so it is
-    // opt-in until read_spill round-tripping is field-proven, then flipped
-    // ON in a fast-follow. Threshold clamps to [4096, 1048576], head to
-    // [256, 16384] in mcp::setOffloadConfig. See docs/specs/ANTS-2094.md.
+    // Default ON since the 2026-06-25 fast-follow: large read bodies are
+    // offloaded to a head+pointer out of the box (token-savers default ON).
+    // The master bool has a Settings toggle + setter; threshold/head remain
+    // config-file-only tuning keys. Threshold clamps to [4096, 1048576],
+    // head to [256, 16384] in mcp::setOffloadConfig. See docs/specs/ANTS-2094.md.
     bool claudeMcpOffloadLargeResults() const;
+    void setClaudeMcpOffloadLargeResults(bool enabled);
     int  claudeMcpOffloadThresholdBytes() const;
     int  claudeMcpOffloadHeadBytes() const;
 

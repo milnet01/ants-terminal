@@ -8610,6 +8610,20 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: in-session-2026-06-25 (Flathub epic work).
 
+- 📋 [ANTS-2175] **MCP dispatch silently ignores unknown / misspelled args — echo an `ignored_args` advisory.**
+  Trigger: passed `query="token"` to `roadmap_query`, which has no `query` param (its filters are status / section / id / mode). The unknown arg was silently dropped and the verb returned the full unfiltered roadmap — looked like a working search, cost ~6 extra calls to realise the filter was a no-op.
+  
+  Proposal: at the `tools/call` dispatch choke point, diff the incoming args object against the verb's known-param set and, when non-empty, attach a non-fatal `ignored_args:[...]` advisory field to the success envelope (NOT a refusal — preserves back-compat for callers that pass dispatch-layer args like `offload`/`compact`/`fields`, which must be whitelisted as universally-accepted). Cheap correctness + token win: a typo'd or stale param name surfaces immediately rather than masquerading as a working call. Needs the per-verb known-param set (derivable from each inputSchema's `properties` keys) plus the dispatch-layer universal-arg allowlist.
+  **Layman:** If Claude passes a setting name a tool doesn't recognise (a typo, or an option that doesn't exist), the tool quietly ignores it and can return wrong-looking results. It should name the inputs it ignored so the mistake is caught on the first call instead of after several.
+  Kind: enhancement.
+  Source: in-session-2026-06-25 (roadmap_query unknown-arg silently ignored).
+
+- 📋 [ANTS-2176] **Fix -Wshadow in test_roadmap_viewer_archive.cpp — inner `QTemporaryDir tmp` shadows outer.**
+  tests/features/roadmap_viewer_archive/test_roadmap_viewer_archive.cpp:589 `QTemporaryDir tmp;` shadows the outer declaration at line 69 (`-Wshadow=compatible-local`). Pre-existing, surfaced on a fast-preset build. Rename the inner to a distinct identifier (e.g. `tmp2`/`archiveTmp`). Trivial; keeps the build warning-clean.
+  **Layman:** A test file declares the same temporary-folder variable name twice (one inside the other), which the compiler warns about. Harmless today, but warnings should be clean — rename the inner one.
+  Kind: test.
+  Source: in-session-2026-06-25 (compiler warning surfaced during fast-preset build).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
@@ -12371,6 +12385,7 @@ template / mutate this state atomically" → movable. If it's
   Source: in-session-2026-06-11 (observation-masking / context-offload research).
   Spec docs/specs/ANTS-2094.md accepted 2026-06-16 after 5 cold-eyes loops (0 HIGH/CRITICAL from loop 3 on; both final reviewers affirmed implementable). OQ-1 resolved: ship default OFF (opt-in) for v1, flip ON in a fast-follow once read_spill is field-proven. Implementing: src/mcpspill.{h,cpp}, offload at the dispatch choke point, read_spill verb (remotecontrol/mainwindow/claudeintegration), mcp::isOffloadEligible, 3 config keys, feature test tests/features/mcp_result_offload/.
   Implemented + merged to main (b2a9d08), full suite green (2141/2141; 11 new conformance cases INV-1..12). src/mcpspill.{h,cpp} + read_spill verb + dispatch-site offload + mcpprojection::isOffloadEligible + 3 config keys. Ships OFF-by-default (opt-in) per OQ-1. Release-time follow-ups (NOT done here): (1) CHANGELOG entry at /bump; (2) fast-follow to flip claude.mcp_offload_large_results default ON once read_spill round-tripping is field-proven; (3) optional Settings-UI toggle for the config keys.
+  Fast-follow shipped (2026-06-25): claude.mcp_offload_large_results default flipped OFF->ON (config.cpp toBool(true)) + added a Settings -> General toggle ("Offload huge Ants MCP replies to a preview + pointer") with live Apply re-publish. Realizes the saving for every session per the token-savers-default-ON rule; the contract-change risk is held by fail-open (INV-11) + the conformance round-trip (INV-5/6/10). Live round-trip field-proof through a running instance deferred to the next relaunch. Docs synced: spec section 2.6/5/OQ-1, CLAUDE.md offload block, config.h/.cpp + mainwindow comments.
 
 - 💭 [ANTS-2095] **task_priors plan replay — cache a completed skill/workflow's tool-call sequence and surface it on a similar task.**
   'Plan reuse' (reported 41-80% agentic cost cut): after a skill/workflow completes, store its tool-call sequence + retrieval pattern keyed by a task signature; on a similar task, surface the prior plan so the agent skips rediscovery. task_priors already bundles task-start context (conventions + recent changes) — extend it to also serve a matching prior plan. Needs a task-signature scheme + a bounded on-disk plan store (RAM/disk cap + eviction policy per the consider-RAM-in-feature-design rule).

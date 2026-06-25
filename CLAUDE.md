@@ -214,17 +214,20 @@ config-file-only tuning keys:
 Config keys for result offload (ANTS-2094, observation masking) — when a
 large read result is spilled to a content-addressed cache file and a
 `{offloaded:true, handle, head, …}` envelope returned instead; re-read the
-full body via the `read_spill` verb. Config-file-only:
+full body via the `read_spill` verb.
 
-- `claude.mcp_offload_large_results` (bool, default **false**) — session
-  default for the per-call `offload` arg (per-call wins). OFF for v1
-  because it changes the response contract; flips ON in a fast-follow once
-  `read_spill` is field-proven.
+- `claude.mcp_offload_large_results` (bool, default **true** since the
+  2026-06-25 fast-follow) — session default for the per-call `offload` arg
+  (per-call wins). Default ON per the "token-savers default ON" rule, now
+  that `read_spill` round-tripping is field-proven; fails open (untrimmed
+  delivery resumes if the scratch cache is unwritable). Exposed in
+  Settings → General ("Offload huge Ants MCP replies to a preview +
+  pointer").
 - `claude.mcp_offload_threshold_bytes` (int, default 16384, clamp
-  `[4096, 1048576]`) — minimum final body size to offload.
+  `[4096, 1048576]`) — minimum final body size to offload. Config-file-only.
 - `claude.mcp_offload_head_bytes` (int, default 2048, clamp `[256, 16384]`)
   — preview head size; offload only fires when the body also exceeds this
-  (spilling something that fits in the head saves nothing).
+  (spilling something that fits in the head saves nothing). Config-file-only.
 
 ## Cross-session MCP feedback
 

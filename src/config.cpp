@@ -586,11 +586,19 @@ void Config::setClaudeMcpTerseResponses(bool enabled) {
     save();
 }
 
-// ANTS-2094 — result-offload config (config-file-only; no setters / UI in
-// v1). Default OFF (opt-in) — see config.h. The raw values here are clamped
-// by mcp::setOffloadConfig before they go live.
+// ANTS-2094 — result-offload config. Default ON since the ANTS-2094
+// fast-follow (2026-06-25): read_spill round-tripping is field-proven, so
+// per the "token-savers default ON" rule every session offloads large read
+// bodies to a head+pointer out of the box. The master bool has a Settings
+// toggle + setter; threshold/head stay config-file-only tuning keys. The
+// raw values here are clamped by mcp::setOffloadConfig before they go live.
 bool Config::claudeMcpOffloadLargeResults() const {
-    return m_data.value("claude.mcp_offload_large_results").toBool(false);
+    return m_data.value("claude.mcp_offload_large_results").toBool(true);
+}
+
+void Config::setClaudeMcpOffloadLargeResults(bool enabled) {
+    if (!storeIfChanged("claude.mcp_offload_large_results", enabled)) return;
+    save();
 }
 
 int Config::claudeMcpOffloadThresholdBytes() const {

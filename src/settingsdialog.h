@@ -102,6 +102,8 @@ private:
     QCheckBox *m_claudeMcpOrientation = nullptr;
     // ANTS-2085 — terse-by-default for Ants MCP read replies (default on).
     QCheckBox *m_claudeMcpTerse = nullptr;
+    // ANTS-2094 — offload large MCP read bodies to a head+pointer (default on).
+    QCheckBox *m_claudeMcpOffload = nullptr;
     void installClaudeHooks();
     void refreshClaudeHooksStatus();
     void installClaudeGitContextHook();

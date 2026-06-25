@@ -31,6 +31,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Ants MCP now offloads oversized read replies to a short preview + pointer by default**
+  Large MCP read results (roadmap_query, workspace_search, get_scrollback, …) are saved to a scratch file and returned as a short preview plus a handle, so a Claude session spends a few tokens instead of thousands and fetches the rest (via read_spill) only if it needs it. Shipped switched off in the prior release; now on by default per the "token-savers default ON" rule, and it fails open — if the scratch file can't be written, the full reply is sent as normal. A new Settings → General toggle ("Offload huge Ants MCP replies to a preview + pointer") turns it off. (ANTS-2094 fast-follow)
+
 - **Hardened the weekly RC→release→new-RC cadence into one guarded `cut-rc.sh cycle`.** (ANTS-2164)
   `new-rc` refuses an empty RC and auto-rolls `[Unreleased]`; `promote` refuses an empty/placeholder or stale (>14-day) RC and auto-date-stamps the CHANGELOG/metainfo/debian release notes; version-drift is now a hard gate. Stops the recurring empty-RC / half-finished-release class of incident.
 

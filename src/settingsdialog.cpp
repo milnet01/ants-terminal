@@ -7,6 +7,7 @@
 #include "globalshortcutsportal.h"
 #include "mcporientation.h"  // ANTS-1897 — apply toggle immediately on Apply.
 #include "mcpprojection.h"   // ANTS-2085 — mcp::setTerseDefault on Apply.
+#include "mcpspill.h"        // ANTS-2094 — mcp::setOffloadConfig on Apply.
 #include "secureio.h"
 #include "themes.h"
 
@@ -376,6 +377,21 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         "value apart from a missing one.");
     layout->addRow(m_claudeMcpTerse);
 
+    // ANTS-2094 — offload large MCP read bodies to a head + pointer. On by
+    // default (token-saving out of the box). A huge read result becomes a
+    // short preview plus a handle the session re-reads (via read_spill) only
+    // if it needs the rest — fails open, so untrimmed delivery resumes if
+    // the scratch cache can't be written.
+    m_claudeMcpOffload = new QCheckBox(
+        "Offload huge Ants MCP replies to a preview + pointer", tab);
+    m_claudeMcpOffload->setToolTip(
+        "When on, an oversized MCP read reply is saved to a scratch file and "
+        "Ants hands Claude a short preview plus a pointer instead of the whole "
+        "thing — Claude fetches the rest only if it needs it, saving tokens. "
+        "On by default. If the scratch file can't be written, the full reply "
+        "is sent as normal.");
+    layout->addRow(m_claudeMcpOffload);
+
     // ANTS-1901 — the MCP master toggle gates the whole Claude group.
     // Defined here (after every child widget exists) so it can reference
     // them. When off, the auto-switch checkbox, orientation hook, and
@@ -391,6 +407,7 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         if (m_claudeAutoModelSwitch) m_claudeAutoModelSwitch->setEnabled(on);
         if (m_claudeMcpOrientation)  m_claudeMcpOrientation->setEnabled(on);
         if (m_claudeMcpTerse)        m_claudeMcpTerse->setEnabled(on);
+        if (m_claudeMcpOffload)      m_claudeMcpOffload->setEnabled(on);
         if (on) {
             mirrorMaster();   // sub-toggles follow the auto-switch checkbox
         } else {
@@ -435,6 +452,7 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         if (m_claudeMcpEnabled) m_claudeMcpEnabled->setChecked(true);  // ANTS-1901 default on
         if (m_claudeMcpOrientation) m_claudeMcpOrientation->setChecked(true);
         if (m_claudeMcpTerse) m_claudeMcpTerse->setChecked(true);
+        if (m_claudeMcpOffload) m_claudeMcpOffload->setChecked(true);  // ANTS-2094 default on
     });
     layout->addRow(QString(), generalDefaultsBtn);
 }
@@ -1075,6 +1093,8 @@ void SettingsDialog::loadSettings() {
         m_claudeMcpOrientation->setChecked(m_config->claudeMcpOrientationEnabled());
     if (m_claudeMcpTerse)
         m_claudeMcpTerse->setChecked(m_config->claudeMcpTerseResponses());
+    if (m_claudeMcpOffload)
+        m_claudeMcpOffload->setChecked(m_config->claudeMcpOffloadLargeResults());
 
     int fmtIdx = m_tabTitleFormat->findData(m_config->tabTitleFormat());
     if (fmtIdx >= 0) m_tabTitleFormat->setCurrentIndex(fmtIdx);
@@ -1220,6 +1240,17 @@ void SettingsDialog::applySettings() {
         const bool terse = m_claudeMcpTerse->isChecked();
         m_config->setClaudeMcpTerseResponses(terse);
         mcp::setTerseDefault(terse);
+    }
+
+    // ANTS-2094 — persist + apply the result-offload toggle live (same
+    // self-write-echo reasoning as the terse toggle above). Threshold/head
+    // stay config-file-only; re-publish them with the new enabled bit.
+    if (m_claudeMcpOffload) {
+        const bool offload = m_claudeMcpOffload->isChecked();
+        m_config->setClaudeMcpOffloadLargeResults(offload);
+        mcp::setOffloadConfig(offload,
+                              m_config->claudeMcpOffloadThresholdBytes(),
+                              m_config->claudeMcpOffloadHeadBytes());
     }
 
     // Appearance
