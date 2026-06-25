@@ -74,21 +74,23 @@ static int runMain() {
              "land where CMake's FindLua looks");
     }
 
-    // INV-5 — linux-noreadline target.
-    if (!has("make linux-noreadline")) {
-        fail("INV-5: Lua build target must be `linux-noreadline` "
-             "to avoid pulling readline into the sandbox");
+    // INV-5 — readline-free Lua build target. In Lua 5.4.6+ the
+    // top-level `linux` target is itself readline-free (src/Makefile
+    // aliases `linux` -> `linux-noreadline`); `linux-readline` is the
+    // variant that links -lreadline. The top level exposes only
+    // `linux` / `linux-readline` via PLATS — `make linux-noreadline`
+    // at the top level is NOT a valid target and fails the build with
+    // "No rule to make target". So the manifest must invoke the
+    // readline-free `make linux` and must not use `make linux-readline`.
+    if (!has("make linux ")) {
+        fail("INV-5: Lua build must invoke the readline-free top-level "
+             "`make linux` target (5.4.6+ aliases it to linux-noreadline "
+             "in src/Makefile); note `make linux-noreadline` is not a "
+             "valid TOP-level target and fails the build");
     }
-    // Belt-and-braces: the default `linux` target (which aliases to
-    // linux-readline) must not appear as a standalone `make linux` call.
-    // Allow `linux-noreadline` as a substring match.
-    {
-        auto pos = src.find("make linux ");
-        if (pos != std::string::npos) {
-            fail("INV-5: manifest must not invoke `make linux ` "
-                 "(the default aliases to linux-readline); use "
-                 "`make linux-noreadline` instead");
-        }
+    if (has("make linux-readline")) {
+        fail("INV-5: Lua build must not use `make linux-readline` — it "
+             "links -lreadline into the sandbox; use `make linux`");
     }
 
     // INV-6 — x-checker-data stanza present on the Lua module.

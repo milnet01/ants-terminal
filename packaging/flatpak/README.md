@@ -8,7 +8,7 @@ tagged release is green through CI.
 
 ```bash
 # Required once:
-flatpak install --user flathub org.kde.Platform//6.7 org.kde.Sdk//6.7 \
+flatpak install --user flathub org.kde.Platform//6.10 org.kde.Sdk//6.10 \
                                org.flatpak.Builder
 
 # From the project root (manifest is aware of its relative `../..`):
@@ -55,14 +55,17 @@ finish-args (already set) so the sandbox can reach the host-side
 ## Lua plugins
 
 The manifest builds Lua 5.4 as an in-manifest `archive` module before
-`ants-terminal`. `org.kde.Sdk//6.7` does not carry `lua54-devel` and
+`ants-terminal`. `org.kde.Sdk//6.10` does not carry `lua54-devel` and
 `flathub/shared-modules` has no Lua 5.4 entry today, so an in-manifest
 module is the pragmatic path.
 
-Build invocation: `make linux-noreadline MYCFLAGS="-fPIC"` followed by
-`make install INSTALL_TOP=/app`. `linux-noreadline` avoids pulling a
-readline dependency into the sandbox; the terminal links `liblua.a`
-statically and does not ship the Lua REPL binary. CMake's `FindLua`
+Build invocation: `make linux MYCFLAGS="-fPIC"` followed by
+`make install INSTALL_TOP=/app`. In Lua 5.4.6+ the top-level `linux`
+target is already readline-free (`src/Makefile` aliases it to
+`linux-noreadline`; `linux-readline` is the readline variant, and
+`make linux-noreadline` is not a valid top-level target), so the
+terminal links `liblua.a` statically without pulling readline into the
+sandbox and does not ship the Lua REPL binary. CMake's `FindLua`
 module picks up `/app/include/lua.h` + `/app/lib/liblua.a` — no pkg
 config file is needed.
 

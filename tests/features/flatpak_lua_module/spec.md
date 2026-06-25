@@ -4,7 +4,7 @@
 
 The Flatpak manifest at `packaging/flatpak/org.ants.Terminal.yml` must
 build Lua 5.4 in-manifest so `PluginManager` has the same plugin
-surface inside the sandbox as the native packages. `org.kde.Sdk//6.7`
+surface inside the sandbox as the native packages. `org.kde.Sdk//6.10`
 does not ship `lua54-devel` and `flathub/shared-modules` has no Lua
 5.4 entry today, so an in-manifest `archive` module is the
 pragmatic path.
@@ -41,11 +41,15 @@ exactly where CMake's `FindLua` module searches by default when
 `CMAKE_INSTALL_PREFIX=/app`.
 
 **INV-5 — Readline-free build target.**
-Lua's default `make linux` target aliases to `linux-readline`, which
-adds `-lreadline` to the lua interpreter link step. We don't ship the
-Lua REPL binary (the terminal only statically links `liblua.a`), so
-pulling in readline is pure bloat. The build target must be
-`linux-noreadline` to keep the sandbox minimal.
+In Lua 5.4.6+ the top-level `make linux` target is already
+readline-free (`src/Makefile` aliases `linux` -> `linux-noreadline`);
+`linux-readline` is the variant that adds `-lreadline` to the lua
+interpreter link step. We don't ship the Lua REPL binary (the terminal
+only statically links `liblua.a`), so pulling in readline is pure
+bloat. The build must invoke `make linux` and must not use
+`linux-readline`. NB: `make linux-noreadline` at the **top** level is
+not a valid target — PLATS exposes only `linux` / `linux-readline` —
+and fails the build with "No rule to make target".
 
 **INV-6 — Tarball-hash auto-refresh.**
 The Lua module must carry an `x-checker-data:` stanza compatible with

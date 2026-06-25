@@ -9,9 +9,10 @@
 #     flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
 #         manifest packaging/flatpak/org.ants.Terminal.yml
 #
-# Targets org.kde.Platform//6.7 — the KDE SDK brings cmake, ninja, and all
+# Targets org.kde.Platform//6.10 — the KDE SDK brings cmake, ninja, and all
 # Qt6 components the build needs (Core, Gui, Widgets, Network, OpenGL,
-# OpenGLWidgets, DBus). Qt6.7 also clears the CMakeLists.txt 6.2 floor.
+# OpenGLWidgets, DBus). Qt6.10 also clears the CMakeLists.txt 6.2 floor.
+# (Bumped from 6.7, which Flathub no longer serves — only 6.9/6.10 remain.)
 #
 # Host shell. `src/ptyhandler.cpp` detects FLATPAK_ID / /.flatpak-info in
 # the forked child and exec's the user's shell via `flatpak-spawn --host`,
@@ -37,7 +38,7 @@
 id: org.ants.Terminal
 
 runtime: org.kde.Platform
-runtime-version: '6.7'
+runtime-version: '6.10'
 sdk: org.kde.Sdk
 
 command: ants-terminal
@@ -74,16 +75,29 @@ modules:
   # Lua 5.4 — plugin system runtime. Built first so the ants-terminal
   # CMake configure step finds headers under /app/include and the
   # static library at /app/lib/liblua.a (CMake's FindLua module picks
-  # up both). Using `linux-noreadline` instead of the default `linux`
-  # target avoids pulling a readline dependency into the sandbox; the
+  # up both). The top-level `linux` target is already readline-free in
+  # Lua 5.4.6+ (src/Makefile aliases `linux` -> `linux-noreadline`);
+  # `linux-readline` is the variant that links -lreadline. NB: the top
+  # level exposes only `linux` / `linux-readline` via PLATS — `make
+  # linux-noreadline` at the TOP level is not a valid target and fails
+  # the build ("No rule to make target"), so we invoke `make linux`. The
   # terminal only links liblua.a, it does not ship the Lua REPL
   # binary. `-fPIC` is required because liblua.a is linked into the
   # ants-terminal executable which itself is PIE.
   - name: lua
     buildsystem: simple
     build-commands:
-      - make linux-noreadline MYCFLAGS="-fPIC" -j ${FLATPAK_BUILDER_N_JOBS:-1}
+      - make linux MYCFLAGS="-fPIC" -j ${FLATPAK_BUILDER_N_JOBS:-1}
       - make install INSTALL_TOP=/app
+      # luaengine.cpp does `#include <lua5.4/lua.hpp>` (the distro header
+      # layout — Debian/openSUSE ship Lua headers under
+      # /usr/include/lua5.4/). `make install` lays them FLAT under
+      # /app/include, so CMake's FindLua finds lua.h there and passes
+      # -I/app/include — but the angle-bracket include then needs the
+      # headers under a lua5.4/ subdir. Mirror them so it resolves
+      # without patching the (portable, distro-correct) source include.
+      - mkdir -p /app/include/lua5.4
+      - cp -a /app/include/lua.h /app/include/luaconf.h /app/include/lualib.h /app/include/lauxlib.h /app/include/lua.hpp /app/include/lua5.4/
     sources:
       - type: archive
         url: https://www.lua.org/ftp/lua-5.4.7.tar.gz
@@ -105,12 +119,16 @@ modules:
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
       - -DCMAKE_INSTALL_PREFIX=/app
-      # Tests execute ctest-via-CMakeLists (shell fixture + feature
-      # binaries). Shell-harness tests assume a GNU sed / grep on PATH
-      # which the KDE SDK provides; the source-grep feature tests
-      # require no runtime services. Kept on so the Flatpak CI stage
-      # runs the same regression suite the other recipes do.
-      - -DANTS_TESTS=ON
+      # Tests are NOT built in the Flatpak. ANTS_TESTS=ON pulls
+      # googletest via FetchContent (CMakeLists.txt) when no system
+      # GTest is present — and the org.kde.Sdk has none — but a
+      # flatpak-builder / Flathub build is hermetic (no network at build
+      # time), so that git-clone fails ("Configuring incomplete"). The
+      # Flatpak ships only the app; the regression suite runs in the
+      # native CI recipes. flatpak-builder also does not run ctest here
+      # (no run-tests:true), so building the test binaries would be pure
+      # cost even if the fetch succeeded.
+      - -DANTS_TESTS=OFF
     sources:
       - type: dir
         # flatpak-builder invokes from this manifest's directory; the
