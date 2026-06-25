@@ -3492,6 +3492,37 @@ minor tag (next: pre-0.8.0).
   **Layman:** On the very first launch (or first launch after a fresh user account), Ants Terminal should notice it has never been set up and ask the user whether to wire up the bits that make the Ants × Claude Code experience work: the hook scripts under `~/.claude/hooks/`, the MCP server registration in `~/.claude.json` (or whichever Claude Code config the runtime version uses), the `.claude/settings.json` template, etc. A single "Set up Claude Code integration" dialog with a checkbox per feature beats today's "read the README and copy these files by hand" path.</layman> <parameter name="body">First-run detection should probably key on `~/.config/ants-terminal/config.json` absence (or an explicit `first_run_completed` flag inside it). The wizard then offers (defaults all ON, each individually opt-out): (1) install/refresh the hook pack into `~/.claude/hooks/` (matches `tests/hook_pack/`); (2) register the Ants MCP server in `~/.claude.json` so the `mcp__ants__*` tools light up in fresh Claude Code…
   Kind: feature.
   Source: user-request-2026-05-26.
+  Scope expansion (user-request-2026-06-25): the first-run wizard
+  should ALSO open with a plain-language tour of Ants's main features
+  (a "what can this terminal do" welcome panel) BEFORE the
+  integration-install checklist — not just the hook/MCP install offer.
+  One wizard, two stages: (1) feature tour in layman's terms →
+  (2) optional install of Claude Code hooks + MCP integration (the
+  existing scope above). Keep the tour skimmable (short cards, plain
+  language, an everyday analogy per feature) per the layman-docs
+  preference. Pairs with the new post-update "What's New" popup item
+  (returning-user counterpart to this fresh-install wizard).
+
+- 📋 [ANTS-2171] **Post-update "What's New" popup — show a layman-friendly changelog on first launch after an upgrade.**
+  Detection: store the last-seen version in config (e.g.
+  `ui.last_seen_version`); on launch compare to `ANTS_VERSION`. If the
+  running version is newer, show the dialog once, then write the new
+  version back (so it fires exactly once per upgrade, never on a fresh
+  install — that path is ANTS-1887's first-run wizard). Content source:
+  a CURATED plain-language highlights list per release, NOT the raw
+  Keep-a-Changelog technical bullets (too jargon-heavy for the target
+  "vibe coder" audience). Likely a dedicated `docs/whats-new/<version>.md`
+  (or reuse the roadmap `Layman:` lines that already exist per shipped
+  item) authored at release time — fold this into the `/bump` flow so a
+  release can't ship without its layman highlights. Render via
+  DialogChrome (dialogs.md D1-D4: themed, resizable, size-persisted,
+  re-centred). "Don't show again" is implicit (version watermark). RAM:
+  trivial (one short markdown doc + one config string). Pairs with
+  ANTS-1887: fresh-install = feature-tour wizard; post-update = this
+  What's-New popup. Both are the onboarding surface.
+  **Layman:** After you update Ants Terminal, the first time you open the new version a friendly "What's New" box pops up summarising what changed in plain everyday language — no jargon, no technical bullets.
+  Kind: feature.
+  Source: user-request-2026-06-25.
 
 ### 🎨 Claude Code companion offload (user request 2026-04-30)
 
