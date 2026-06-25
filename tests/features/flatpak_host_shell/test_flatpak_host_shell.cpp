@@ -172,6 +172,33 @@ static int runMain() {
         }
     }
 
+    // INV-7 — ANTS_MCP_SOCKET crosses the sandbox via --env= (ANTS-1900).
+    // flatpak-spawn does not inherit the parent env (same reason as
+    // INV-3), so the socket path mainwindow.cpp exports for the
+    // MCP-orientation hook (ANTS-1897 INV-14) must be forwarded
+    // explicitly or the cheat-sheet + every socket-gated MCP affordance
+    // stays silent in a flatpak install.
+    if (!has("\"--env=ANTS_MCP_SOCKET=%s\"") &&
+        !has("\"--env=ANTS_MCP_SOCKET=\"")) {
+        fail("INV-7: host-branch argv must include a "
+             "\"--env=ANTS_MCP_SOCKET=%s\" format string (or "
+             "\"--env=ANTS_MCP_SOCKET=\" concat prefix) so the MCP "
+             "socket path crosses the sandbox (ANTS-1900)");
+    }
+    // The value must come from the live env, not a hardcoded path, so it
+    // tracks whichever socket the MCP server actually bound.
+    if (!has("getenv(\"ANTS_MCP_SOCKET\")")) {
+        fail("INV-7: ANTS_MCP_SOCKET value must be read from "
+             "getenv(\"ANTS_MCP_SOCKET\")");
+    }
+    // The arg must be conditional (mirrors INV-4's --directory gating)
+    // so an MCP-disabled install omits it rather than passing an empty
+    // "--env=ANTS_MCP_SOCKET=".
+    if (!has("flatpakMcpSocketArg[0] != '\\0'")) {
+        fail("INV-7: --env=ANTS_MCP_SOCKET insertion must be gated on a "
+             "non-empty value so an MCP-disabled install omits the arg");
+    }
+
     if (failures) {
         std::fprintf(stderr,
             "flatpak_host_shell: %d assertion(s) failed\n", failures);

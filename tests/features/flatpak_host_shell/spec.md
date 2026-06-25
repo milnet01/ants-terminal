@@ -53,6 +53,22 @@ possible on corrupted installs), the child must fall through to
 `_exit(127)` the same way a missing shell does on the direct-exec
 path. No crash, no undefined state.
 
+**INV-7 — `ANTS_MCP_SOCKET` crosses the sandbox via `--env=`.**
+`flatpak-spawn --host` does not inherit the caller's environment (same
+reason as INV-3). When Ants runs directly, the MCP socket path reaches
+Claude sessions through the non-flatpak `environ`-copy loop
+(ANTS-1897 INV-14); inside a flatpak the sandbox boundary swallows it.
+The host branch must therefore forward `--env=ANTS_MCP_SOCKET=<path>`,
+reading the value from `getenv("ANTS_MCP_SOCKET")` (the path
+`src/mainwindow.cpp` exported via `qputenv` after `startMcpServer`), so
+the SessionStart MCP-orientation hook — and every socket-gated MCP
+affordance — fires the same inside a flatpak install as outside. The
+token is gated on a non-empty value (mirrors INV-4's `--directory`
+gating) so an MCP-disabled install omits the arg rather than passing an
+empty `--env=ANTS_MCP_SOCKET=`. The buffer is filled pre-fork
+(ANTS-1046 no-heap-after-fork discipline). (ANTS-1900, follow-up to
+ANTS-1897 § 4.)
+
 ## Why these invariants matter
 
 - **INV-1/INV-2:** getting the detection or the --host flag wrong
@@ -67,6 +83,11 @@ path. No crash, no undefined state.
   "open-new-tab-in-this-project" UX.
 - **INV-5:** a change to the Flatpak branch that breaks the
   non-Flatpak branch would hit every user on every install.
+- **INV-7:** without the socket forward, a flatpak-installed Ants runs
+  MCP fine but Claude never learns it's there — the cheat-sheet never
+  prints and the assistant falls back to the token-heavy built-ins.
+  Silent degradation, exactly the ANTS-1897 regression this closes for
+  the flatpak path.
 
 ## Test strategy
 

@@ -22,6 +22,20 @@ for security-relevant changes.
 - **Hardened the weekly RC→release→new-RC cadence into one guarded `cut-rc.sh cycle`.** (ANTS-2164)
   `new-rc` refuses an empty RC and auto-rolls `[Unreleased]`; `promote` refuses an empty/placeholder or stale (>14-day) RC and auto-date-stamps the CHANGELOG/metainfo/debian release notes; version-drift is now a hard gate. Stops the recurring empty-RC / half-finished-release class of incident.
 
+### Fixed
+
+- **Flatpak installs now reach Ants MCP from Claude sessions (ANTS-1900)** (ANTS-1900)
+  Inside a Flatpak sandbox the user's shell runs on the host via
+  `flatpak-spawn --host`, which does not inherit the caller's
+  environment — so the `ANTS_MCP_SOCKET` path that lets a Claude Code
+  session find Ants's MCP helper never crossed the boundary. The
+  SessionStart cheat-sheet (and every socket-gated MCP affordance) was
+  therefore silent in Flatpak installs. `src/ptyhandler.cpp` now
+  forwards `--env=ANTS_MCP_SOCKET=<path>` on the flatpak-spawn argv,
+  gated on a non-empty value (omitted when MCP is disabled). Plain
+  terms: install Ants Terminal as a Flatpak and Claude can now use the
+  cheaper Ants tools just like a native install.
+
 ## [0.7.98] — unreleased (Patron RC preview)
 
 **Theme:** Rolling Patron preview of the next release. Fixes and features land

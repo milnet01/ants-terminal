@@ -135,6 +135,7 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         ::access("/.flatpak-info", F_OK) == 0;
     char flatpakVerArg[128];
     char flatpakDirArg[PATH_MAX + 16];
+    char flatpakMcpSocketArg[PATH_MAX + 32];
     if (inFlatpak) {
         (void)::snprintf(flatpakVerArg, sizeof(flatpakVerArg),
                          "--env=TERM_PROGRAM_VERSION=%s", ANTS_VERSION);
@@ -144,6 +145,26 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
                              "--directory=%s", workDirBytes.constData());
         } else {
             flatpakDirArg[0] = '\0';
+        }
+        // ANTS-1900 — flatpak-spawn does NOT inherit the caller's env
+        // (same reason TERM* + workDir are forwarded explicitly above),
+        // so the ANTS_MCP_SOCKET path mainwindow.cpp exported via
+        // qputenv after startMcpServer (ANTS-1897 INV-14) never reaches
+        // the host shell. Without this forward, a flatpak-installed Ants
+        // runs MCP fine but the SessionStart orientation hook's
+        // `[ -S "$ANTS_MCP_SOCKET" ]` guard fails, so the cheat-sheet —
+        // and every socket-gated MCP affordance — stays silent. getenv
+        // reads the parent's env here (pre-fork, parent context); the
+        // value is copied into a stack buffer so the child reads the
+        // buffer, not the environ pointer. Gated on a non-empty value so
+        // an MCP-disabled install omits the arg rather than passing a
+        // bare "--env=ANTS_MCP_SOCKET=".
+        const char *mcpSocketEnv = ::getenv("ANTS_MCP_SOCKET");
+        if (mcpSocketEnv != nullptr && mcpSocketEnv[0] != '\0') {
+            (void)::snprintf(flatpakMcpSocketArg, sizeof(flatpakMcpSocketArg),
+                             "--env=ANTS_MCP_SOCKET=%s", mcpSocketEnv);
+        } else {
+            flatpakMcpSocketArg[0] = '\0';
         }
     }
 
@@ -356,7 +377,7 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
             // unconditionally with stable string literals or with
             // pre-built buffers from the pre-fork prep. No heap
             // touch.
-            const char *argv[12];
+            const char *argv[14];
             size_t i = 0;
             argv[i++] = "flatpak-spawn";
             argv[i++] = "--host";
@@ -366,6 +387,7 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
             argv[i++] = flatpakVerArg;
             argv[i++] = "--env=COLORFGBG=15;0";
             if (flatpakDirArg[0] != '\0') argv[i++] = flatpakDirArg;
+            if (flatpakMcpSocketArg[0] != '\0') argv[i++] = flatpakMcpSocketArg;
             argv[i++] = "--";
             argv[i++] = shellCStr;
             argv[i++] = nullptr;

@@ -22179,12 +22179,22 @@ contributors don't duplicate research.
   Source: in-session-2026-05-27 (ANTS-1897 spec § 4 follow-up)..
   Note (2026-06-05): largely superseded by ANTS-1985 — `tool_info {catalog:true}` already returns every verb grouped by category with its selection_hint in one call, which covers this item's core ask. Remaining unique scope: per-tool `est_token_cost` cue and an optional `category` filter arg. Narrow this item to just those two extras, or close as done if they are not wanted.
 
-- 📋 [ANTS-1900] **Flatpak PTY env-var export — make ANTS_MCP_SOCKET reach Claude sessions inside flatpak-sandboxed Ants installs.**
+- ✅ [ANTS-1900] **Flatpak PTY env-var export — make ANTS_MCP_SOCKET reach Claude sessions inside flatpak-sandboxed Ants installs.**
   ANTS-1897 INV-14 explicitly scopes the `ANTS_MCP_SOCKET` env-var export to the non-flatpak shell-launch branch of `src/ptyhandler.cpp` (the `environ`-copy loop at L171). The flatpak branch uses `flatpak-spawn` with different env-pass semantics — needs separate plumbing (likely `--env=ANTS_MCP_SOCKET=…` on the flatpak-spawn argv). Without this, MCP discoverability silently degrades inside flatpak-sandboxed Ants installs even though the rest of MCP works.
   **Layman:** ANTS-1897 makes the cheat-sheet appear at the start of every Claude session — but only when Ants is run directly (non-flatpak). If you install Ants Terminal via flatpak, the sandbox boundary swallows the environment variable that tells the hook 'Ants is here, print the cheat-sheet'. This follow-up extends the same plumbing to the flatpak path.
   Kind: feature.
   Lanes: ptyhandler, claudeintegration.
   Source: in-session-2026-05-27 (ANTS-1897 spec § 4 follow-up; flatpak branch scoped out of INV-14)..
+  Resolved (2026-06-25): src/ptyhandler.cpp now forwards
+  --env=ANTS_MCP_SOCKET=<path> on the flatpak-spawn --host argv,
+  reading the value from getenv("ANTS_MCP_SOCKET") (the path
+  mainwindow.cpp exports via qputenv after startMcpServer). Buffer is
+  filled pre-fork (ANTS-1046 no-heap-after-fork discipline); arg is
+  gated on a non-empty value so an MCP-disabled install omits it.
+  Regression locked by flatpak_host_shell INV-7 (source-grep, +spec).
+  Verified: test_core passes, ants-terminal links clean in build-fast.
+  Closes the ANTS-1897 § 4 follow-up — the MCP-orientation cheat-sheet
+  now reaches Claude sessions inside flatpak-sandboxed Ants installs.
 
 - 📋 [ANTS-1901] **Master Ants-MCP on/off toggle (Settings + menubar) with graceful-degrade for all MCP-dependent features.**
   MCP server starts unconditionally in `MainWindow` ctor at `src/mainwindow.cpp:3867` (`m_claudeIntegration->startMcpServer(mcpSocket)`) with no user-facing toggle. Add: (a) new config key `claude.mcp_enabled` (bool, default true); (b) Settings → AI Assistant master checkbox 'Enable Ants MCP integration' above the existing autoswitch + orientation toggles (visual hierarchy: master → per-feature opt-ins); (c) optional menubar shortcut (View → Claude → MCP integration, or similar); (d) graceful-degrade wiring for every MCP-dependent feature when toggled off: ANTS-1735 autoswitcher (skip dwell + decide), ANTS-1888 model chip (read transcript only, no MCP-derived state), ANTS-1891 model_switch_stats (refuse with `code:"mcp_disabled"` envelope), ANTS-1897 orientation prelude (skip install + remove hook), `model_switch_ledger` (don't write records), MCP socket (don't bind, no `/tmp/ants-terminal-mcp-*` file, no `ANTS_MCP_SOCKET` env-var export). Spec needs a dependency-matrix section enumerating every MCP-consumer and its degrade behaviour. Pairs with ANTS-1897 (which already adds the per-feature orientation toggle in the same Settings page; ANTS-1901 inserts the master toggle above it). User raised 2026-05-27 during ANTS-1897 implementation.
