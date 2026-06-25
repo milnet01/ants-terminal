@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Claude can now ask Ants to compute an answer across your project's files and get back just the result — not the file text — via a new sandboxed `project_query` MCP verb. (ANTS-2093)**
+  The "code-execution" token-saver: Claude sends a small read-only Lua snippet (with project.read/list/root + string/table/math/utf8), Ants runs it safely over the project and returns only what it computes — a count, a filtered list — instead of reading every file into the conversation. Fully sandboxed: read-only, confined to the project directory, no network/exec/write, and memory/time/output-capped on a worker thread so a runaway snippet can never freeze the app. On by default (Settings → General → "Let Ants run read-only project queries for Claude"); compiled out in builds without the Lua subsystem.
+
 - **Master on/off switch for the Ants MCP integration (ANTS-1901)** (ANTS-1901)
   Settings → General → "Enable Ants MCP integration" (on by default) is a
   single master switch for the whole Ants ↔ Claude Code helper. Turn it

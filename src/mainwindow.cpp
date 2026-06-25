@@ -62,6 +62,7 @@ void sweepKwinScriptOrphansOnce();
 
 #ifdef ANTS_LUA_PLUGINS
 #include "pluginmanager.h"
+#include "luaengine.h"  // ANTS-2093 — project_query provider lambda
 #endif
 
 #include <algorithm>
@@ -4983,6 +4984,25 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("project_settings",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdProjectSettings));
+#ifdef ANTS_LUA_PLUGINS
+    // ANTS-2093 — project_query: run an agent-supplied read-only Lua snippet
+    // server-side and return only its result (the code-execution token-saver).
+    // Lives entirely in ants_lua_lib (LuaEngine::projectQueryVerb) because
+    // ants_core_lib's RemoteControl cannot see LuaEngine; the provider lambda
+    // (chrome_lib, which links lua_lib) reads the gate + tuning from Config and
+    // delegates. Registered only in ANTS_LUA_PLUGINS builds (verb absent
+    // otherwise — clean drop-out, no dead refusal path). See docs/specs/ANTS-2093.md.
+    m_claudeIntegration->registerToolProvider("project_query",
+        ClaudeIntegration::CallerCwdContract::Required,
+        [this](const QJsonObject &args) -> QString {
+            return QString::fromUtf8(QJsonDocument(LuaEngine::projectQueryVerb(
+                    args,
+                    m_config.claudeMcpProjectQueryEnabled(),
+                    m_config.claudeMcpProjectQueryTimeoutMs(),
+                    m_config.claudeMcpProjectQueryResultCapBytes()))
+                .toJson(QJsonDocument::Compact));
+        });
+#endif
     // ANTS-1961 / ANTS-1962 — cross-session feedback-file read + write.
     m_claudeIntegration->registerToolProvider("feedback_query",
         ClaudeIntegration::CallerCwdContract::Required,

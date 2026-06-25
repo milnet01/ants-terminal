@@ -4,6 +4,8 @@
 #include <QStringList>
 #include <QObject>
 #include <QHash>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <atomic>
 #include <vector>
 
@@ -83,6 +85,60 @@ public:
     // `loadScript` or an event firing).
     void setPcallBudgetMs(qint64 ms) { m_pcallBudgetMs = ms; }
 
+    // ===================================================================
+    // ANTS-2093 — project_query: run an agent-supplied READ-ONLY Lua
+    // snippet server-side and return only its marshalled result. Reuses
+    // the plugin sandbox (5-lib allowlist + sandboxEnvironment() +
+    // allocator + hook) but installs ONLY the read-only `project.*` API
+    // (registerQueryApi) — none of registerApi()'s write callbacks.
+    // See docs/specs/ANTS-2093.md.
+    // ===================================================================
+
+    // Marshalled outcome of one snippet run. Invariant: code/error are
+    // non-empty iff ok==false; a success carries neither, a refusal both.
+    struct QueryResult {
+        bool       ok = false;
+        QJsonValue result;     // §2.4 marshal of the snippet's return value
+        QString    code;       // refusal code — set iff !ok (INV-8)
+        QString    error;      // operator-facing message — set iff !ok
+        qint64     elapsedMs = 0;  // wall-clock around the lua_pcall
+    };
+
+    // Install ONLY the read-only `project` table (read/list/root, §2.2)
+    // for query mode. `root` is the canonicalised caller_cwd that scopes
+    // every project.* file access (§2.3, FS confinement via validatePath).
+    void registerQueryApi(const QString &root);
+
+    // Run `code` text-only under the budget on THIS fresh VM configured
+    // for `root`, marshalling the single top-of-stack return value under
+    // `resultCapBytes`. Synchronous; must run on the engine's own thread.
+    // Pure outcome — no signals emitted in query mode (§2.4).
+    QueryResult runQuery(const QString &code, const QString &root,
+                         qint64 timeoutMs, int resultCapBytes);
+
+    // ANTS-2093 §2.4 — orchestrate runQuery() on a fresh ephemeral worker
+    // thread with a BOUNDED join (timeout + 250 ms grace). A snippet stuck
+    // in an uninterruptible C call (which the hook can't preempt) is
+    // DETACHED at the deadline — the call returns query_timeout and the
+    // caller's thread resumes; the worker is held as a zombie until process
+    // exit (its lua_State is owned by the stuck C frame). Safe to call from
+    // the GUI/dispatch thread.
+    static QueryResult runQueryThreaded(const QString &code,
+                                        const QString &root,
+                                        qint64 timeoutMs, int resultCapBytes);
+
+    // ANTS-2093 §2.5 — full `project_query` verb body: feature-gate FIRST
+    // (off → query_disabled, before any arg validation), then caller_cwd /
+    // code validation, then runQueryThreaded, then the success/refusal
+    // envelope. Pure — no MainWindow/RemoteControl needed (so it lives in
+    // ants_lua_lib where LuaEngine + PathValidation are both visible; the
+    // core-lib RemoteControl cannot see LuaEngine).
+    static QJsonObject projectQueryVerb(const QJsonObject &req, bool enabled,
+                                        qint64 timeoutMs, int resultCapBytes);
+
+    // §2.4 join grace added to the timeout before the worker is detached.
+    static constexpr int kQueryJoinGraceMs = 250;
+
 public slots:
     // Worker-side entry points (ANTS-1750). After the engine is moved onto
     // its worker QThread, PluginManager invokes these across the thread
@@ -149,8 +205,21 @@ private:
     static int lua_ants_settings_set(lua_State *L);
     static int lua_ants_palette_register(lua_State *L);
 
+    // ANTS-2093 — read-only query API callbacks (project.*). Each anchors
+    // its path argument to m_queryRoot via PathValidation::validatePath
+    // (§2.3) and raises a Lua error on escape / missing file.
+    static int lua_project_read(lua_State *L);
+    static int lua_project_list(lua_State *L);
+    static int lua_project_root(lua_State *L);
+
     void registerApi();
     void sandboxEnvironment();
+
+    // ANTS-2093 — shared VM construction extracted from initialize() so the
+    // query path reuses the EXACT sandbox setup (allowlist + allocator +
+    // hook) and the two can't drift on a security fix. queryMode picks
+    // registerQueryApi(queryRoot) over registerApi().
+    bool buildVm(bool queryMode, const QString &queryRoot);
 
     // Custom memory allocator with limit
     static void *luaAlloc(void *ud, void *ptr, size_t osize, size_t nsize);
@@ -180,6 +249,9 @@ private:
     qint64 m_pcallBudgetMs   = 1500;  // Tunable via setPcallBudgetMs().
     QString m_recentOutput;
     QString m_cwd;
+    // ANTS-2093 — canonical caller_cwd that scopes project.* reads in query
+    // mode. Set by registerQueryApi(); empty for a normal plugin VM.
+    QString m_queryRoot;
 
     // ANTS-1750 — GUI-set abort flag (see requestAbort()). Read in
     // instructionHook; never cleared — a demoted plugin is neutered for the

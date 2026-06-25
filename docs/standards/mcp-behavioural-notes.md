@@ -188,6 +188,38 @@ server-controllable beyond this per-tool hint.
   `project_settings_suggestion` block when no settings file exists AND
   `codebase_index.file_count` is below a low-water mark (= 5), so a
   standard project never pays for the detector walk (ANTS-2161).
+- **`project_query`** — run an agent-supplied **read-only** Lua snippet
+  server-side and return only its marshalled result (the code-execution
+  token-saver; ANTS-2093). Args `caller_cwd` + `code` (the snippet, which
+  must `return` a value). Host surface is the `project.*` table only:
+  `read(relpath)` / `list(subdir?)` / `root()` — plus the
+  `string`/`table`/`math`/`utf8` stdlib. **None** of the plugin `ants.*`
+  write callbacks are installed; `os`/`io`/`load`/`require`/`debug` stay
+  unloaded. Confinement: every `project.*` path runs through
+  `PathValidation::validatePath` against the canonical `caller_cwd`
+  (canonical anchor — a `..`/absolute/symlink escape raises). Caps: VM
+  10 MiB + 100k-instruction hook (inherited), wall-clock
+  `claude.mcp_project_query_timeout_ms` (default 1500, clamp [100,5000]),
+  output `claude.mcp_project_query_result_cap_bytes` (default 64 KiB,
+  clamp [1 KiB,1 MiB]). Threading: each call runs on a **fresh ephemeral
+  worker thread** with a bounded join (timeout + 250 ms grace); a snippet
+  stuck in an uninterruptible C call is **detached** (returns
+  `query_timeout`, worker held as a zombie until process exit) so the GUI
+  is never frozen beyond the budget. Marshalling (§2.4): nil→null, bool,
+  number (integer subtype preserved; non-finite → `query_error`), string
+  (invalid UTF-8 → `query_error`), array-like table → array, string-keyed
+  table → object (both recursive, ≤ 32 levels — the bound also catches a
+  circular table); function/userdata/thread/non-string-key → `query_error`.
+  Feature-gated by `claude.mcp_project_query_enabled` (**default ON**;
+  off → `query_disabled`, checked before arg validation); under the master
+  `claude.mcp_enabled` gate (off → `mcp_disabled`, takes precedence).
+  A large result spills via the ANTS-2094 offload path (in
+  `isOffloadEligible`). Refusal codes: `query_error` / `query_timeout` /
+  `query_oom` / `result_too_large` / `query_disabled`
+  (mcp-error-codes.md § 6). Compiled out under `-DANTS_LUA_PLUGINS=OFF`
+  (verb unregistered; absent from the catalogue). Pure entry point
+  `LuaEngine::projectQueryVerb`; the provider lambda lives in
+  `mainwindow.cpp` (the core-lib `RemoteControl` can't see `LuaEngine`).
 - **`feedback_query` / `feedback_log`** — read/write the
   `*_Ants_MCP_Feedback.md` files via the pure `FeedbackFile` module
   (delta parse + block render; ANTS-1961/1962); suffix-guarded on

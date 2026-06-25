@@ -229,6 +229,25 @@ full body via the `read_spill` verb.
   — preview head size; offload only fires when the body also exceeds this
   (spilling something that fits in the head saves nothing). Config-file-only.
 
+Config keys for `project_query` (ANTS-2093, the code-execution token-saver)
+— the `project_query` MCP verb runs an agent-supplied **read-only** Lua
+snippet server-side over `caller_cwd`'s files and returns only its result
+(host surface: `project.read`/`list`/`root` + string/table/math/utf8;
+sandboxed read-only, FS-confined, mem/time/output-capped, run on a detachable
+worker so a pathological snippet can't freeze the GUI). Reuses the plugin Lua
+sandbox; compiled out under `-DANTS_LUA_PLUGINS=OFF`.
+
+- `claude.mcp_project_query_enabled` (bool, default **true**) — feature gate,
+  Settings → General ("Let Ants run read-only project queries for Claude").
+  Off → `query_disabled` (checked before arg validation); under the master
+  `claude.mcp_enabled` gate, which takes precedence (`mcp_disabled`).
+- `claude.mcp_project_query_timeout_ms` (int, default 1500, clamp
+  `[100, 5000]`) — wall-clock budget; the ceiling bounds the worst-case GUI
+  stall (join = budget + 250 ms grace). Config-file-only.
+- `claude.mcp_project_query_result_cap_bytes` (int, default 65536, clamp
+  `[1024, 1048576]`) — output cap; over-cap → `result_too_large` (aggregate
+  harder). Config-file-only.
+
 ## Cross-session MCP feedback
 
 Other CC sessions (Vestige, MAME Curator, Album Builder, RetroArch,

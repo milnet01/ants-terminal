@@ -459,6 +459,16 @@ stdout behaving as in a standalone Lua REPL.
 signature byte (`0x1B`), the loader refuses to execute it. Ship Lua
 **source**, not compiled `.luac`.
 
+**The `project.*` query API is NOT this surface (ANTS-2093).** Ants has a
+separate read-only Lua surface — `project.read` / `project.list` /
+`project.root` — reachable **only** through the `project_query` MCP verb
+(used by Claude Code), never from plugin `init.lua`. It runs in its own
+fresh sandbox VM with **none** of the `ants.*` callbacks, is confined to the
+querying project's directory, and is read-only by construction. Plugins
+neither see nor can call `project.*`; conversely a `project_query` snippet
+sees neither `ants.*` nor your plugin's state. Two distinct surfaces — don't
+conflate them.
+
 **What a plugin cannot do** (and a misbehaving plugin therefore cannot
 abuse):
 

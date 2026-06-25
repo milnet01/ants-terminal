@@ -1,10 +1,21 @@
 #include "luaengine.h"
 
+#include "pathvalidation.h"
+
 #include <lua5.4/lua.hpp>
 #include <QDateTime>
 #include <QDebug>
+#include <QDir>
+#include <QDirIterator>
+#include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QThread>
+#include <QVector>
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>
 
 // Helper to retrieve LuaEngine* from Lua state upvalue
@@ -98,7 +109,17 @@ bool LuaEngine::initialize() {
     // thread, so this also holds there.
     Q_ASSERT(thread() == QThread::currentThread());
     if (m_state) return true;
+    return buildVm(/*queryMode=*/false, QString());
+}
 
+// ANTS-2093 — shared VM construction. The plugin path (initialize) and the
+// query path (runQuery) both come through here so the sandbox setup — the
+// 5-lib allowlist, the memory allocator, the instruction/wall-clock hook —
+// has ONE definition and the two can't drift apart on a future hardening
+// fix. The ONLY difference is which API table is installed: registerApi()
+// (the write-capable ants.*) for a plugin, registerQueryApi() (read-only
+// project.*) for a query.
+bool LuaEngine::buildVm(bool queryMode, const QString &queryRoot) {
     m_luaMemUsage = 0;
     m_timedOut = false;
     m_killed = false;
@@ -117,8 +138,13 @@ bool LuaEngine::initialize() {
     lua_pushlightuserdata(m_state, this);
     lua_setfield(m_state, LUA_REGISTRYINDEX, "__ants_engine");
 
-    // Register our API
-    registerApi();
+    // Register our API — write-capable ants.* (plugin) or read-only
+    // project.* (query). ANTS-2093: a query VM never sees registerApi()'s
+    // side-effecting callbacks (INV-1).
+    if (queryMode)
+        registerQueryApi(queryRoot);
+    else
+        registerApi();
 
     // Sandbox: remove dangerous functions
     sandboxEnvironment();
@@ -312,6 +338,10 @@ void LuaEngine::sandboxEnvironment() {
         "string", "table", "math", "utf8",
         // Ants plugin API
         "ants",
+        // ANTS-2093 — read-only query API (registerQueryApi). A no-op in
+        // plugin mode (no `project` global exists there); kept so the query
+        // VM's `project` table survives the _G purge.
+        "project",
         nullptr,
     };
     auto isAllowed = [&](const char *name) {
@@ -700,4 +730,397 @@ int LuaEngine::lua_ants_palette_register(lua_State *L) {
     }
     lua_pop(L, 3);
     return 0;
+}
+
+// =====================================================================
+// ANTS-2093 — project_query: server-side read-only Lua snippet runner.
+// =====================================================================
+
+namespace {
+
+// Minimal strict UTF-8 validator (rejects overlongs, surrogates,
+// > U+10FFFF, truncated sequences). Lua strings are raw byte arrays, so
+// a snippet can build or `project.read` a non-UTF-8 string; the JSON
+// result must be valid UTF-8, so an invalid one is refused at marshal
+// time (INV-6) rather than silently lossy-converted to U+FFFD.
+bool isValidUtf8(const char *s, size_t len) {
+    const auto *p = reinterpret_cast<const unsigned char *>(s);
+    size_t i = 0;
+    while (i < len) {
+        const unsigned char c = p[i];
+        if (c < 0x80) { ++i; continue; }
+        int n;                              // continuation-byte count
+        unsigned char lo = 0x80, hi = 0xBF; // bounds for the 1st cont. byte
+        if ((c & 0xE0) == 0xC0) { n = 1; if (c < 0xC2) return false; }
+        else if ((c & 0xF0) == 0xE0) { n = 2; if (c == 0xE0) lo = 0xA0; if (c == 0xED) hi = 0x9F; }
+        else if ((c & 0xF8) == 0xF0) { n = 3; if (c == 0xF0) lo = 0x90; if (c == 0xF4) hi = 0x8F; if (c > 0xF4) return false; }
+        else return false;
+        if (i + static_cast<size_t>(n) >= len) return false;  // truncated
+        for (int k = 1; k <= n; ++k) {
+            const unsigned char cc = p[i + k];
+            const unsigned char rlo = (k == 1) ? lo : 0x80;
+            const unsigned char rhi = (k == 1) ? hi : 0xBF;
+            if (cc < rlo || cc > rhi) return false;
+        }
+        i += static_cast<size_t>(n) + 1;
+    }
+    return true;
+}
+
+// §2.4 marshalling. Depth-bounded at 32 levels — also what stops a
+// circular table (t.self=t) from looping the encoder (caught by the
+// bound, not a separate cycle check). `err` is sticky: once set, every
+// recursive call short-circuits and the caller refuses with query_error.
+constexpr int kMarshalMaxDepth = 32;
+
+QJsonValue marshalLuaValue(lua_State *L, int idx, int depth, QString &err);
+
+QJsonValue marshalLuaTable(lua_State *L, int idx, int depth, QString &err) {
+    // Bound only TABLE nesting (a scalar leaf at any depth is harmless).
+    // A table at level > 32 refuses — this is also what stops a circular
+    // table (t.self=t) from looping the encoder: each recursion bumps depth
+    // until the bound trips, no separate cycle detection needed.
+    if (depth > kMarshalMaxDepth) {
+        err = QStringLiteral("table nested deeper than %1 levels").arg(kMarshalMaxDepth);
+        return {};
+    }
+    // Each nesting level keeps a key+value pair on the Lua value stack while
+    // recursing, so a deep (or circular) table can exhaust the default stack
+    // — ensure headroom rather than push blindly into undefined behaviour.
+    if (!lua_checkstack(L, 4)) {
+        err = QStringLiteral("marshal: Lua stack exhausted");
+        return {};
+    }
+    idx = lua_absindex(L, idx);
+    const lua_Integer n = static_cast<lua_Integer>(lua_rawlen(L, idx));
+
+    // Array-like iff every key is an integer in 1..n and the key count
+    // equals n (no holes, no extra string keys).
+    bool arrayLike = true;
+    lua_Integer keyCount = 0;
+    lua_pushnil(L);
+    while (lua_next(L, idx) != 0) {
+        ++keyCount;
+        if (lua_type(L, -2) == LUA_TNUMBER && lua_isinteger(L, -2)) {
+            const lua_Integer k = lua_tointeger(L, -2);
+            if (k < 1 || k > n) arrayLike = false;
+        } else {
+            arrayLike = false;
+        }
+        lua_pop(L, 1);  // pop value, keep key for next lua_next
+    }
+
+    if (arrayLike && keyCount == n) {
+        QJsonArray arr;
+        for (lua_Integer i = 1; i <= n; ++i) {
+            lua_rawgeti(L, idx, i);
+            arr.append(marshalLuaValue(L, -1, depth + 1, err));
+            lua_pop(L, 1);
+            if (!err.isEmpty()) return {};
+        }
+        return arr;
+    }
+
+    // Otherwise a string-keyed object; a non-string key refuses (INV-6).
+    QJsonObject obj;
+    lua_pushnil(L);
+    while (lua_next(L, idx) != 0) {
+        if (lua_type(L, -2) != LUA_TSTRING) {
+            lua_pop(L, 2);  // pop value + key, abandon iteration
+            err = QStringLiteral("table has a non-string key");
+            return {};
+        }
+        size_t klen = 0;
+        const char *ks = lua_tolstring(L, -2, &klen);  // key is a string ⇒ no mutation
+        if (!isValidUtf8(ks, klen)) {
+            lua_pop(L, 2);
+            err = QStringLiteral("object key is not valid UTF-8");
+            return {};
+        }
+        const QString key = QString::fromUtf8(ks, static_cast<int>(klen));
+        const QJsonValue v = marshalLuaValue(L, -1, depth + 1, err);
+        lua_pop(L, 1);  // pop value, keep key for next lua_next
+        if (!err.isEmpty()) { lua_pop(L, 1); return {}; }
+        obj.insert(key, v);
+    }
+    return obj;
+}
+
+QJsonValue marshalLuaValue(lua_State *L, int idx, int depth, QString &err) {
+    if (!err.isEmpty()) return {};
+    switch (lua_type(L, idx)) {
+        case LUA_TNIL:
+        case LUA_TNONE:
+            return QJsonValue(QJsonValue::Null);
+        case LUA_TBOOLEAN:
+            return QJsonValue(static_cast<bool>(lua_toboolean(L, idx)));
+        case LUA_TNUMBER:
+            if (lua_isinteger(L, idx))
+                return QJsonValue(static_cast<qint64>(lua_tointeger(L, idx)));
+            else {
+                const double d = lua_tonumber(L, idx);
+                if (!std::isfinite(d)) {  // NaN/Inf has no JSON form (would serialise to null)
+                    err = QStringLiteral("non-finite number");
+                    return {};
+                }
+                return QJsonValue(d);
+            }
+        case LUA_TSTRING: {
+            size_t len = 0;
+            const char *s = lua_tolstring(L, idx, &len);
+            if (!isValidUtf8(s, len)) {
+                err = QStringLiteral("string is not valid UTF-8");
+                return {};
+            }
+            return QJsonValue(QString::fromUtf8(s, static_cast<int>(len)));
+        }
+        case LUA_TTABLE:
+            return marshalLuaTable(L, idx, depth, err);
+        default:  // function / userdata / thread
+            err = QStringLiteral("unsupported return type");
+            return {};
+    }
+}
+
+// Serialise a marshalled value to its compact UTF-8 bytes for the output
+// cap (§2.4). QJsonDocument only wraps object/array, so a scalar is wrapped
+// in a one-element array and the enclosing brackets stripped.
+QByteArray serializeJsonValue(const QJsonValue &v) {
+    if (v.isObject())
+        return QJsonDocument(v.toObject()).toJson(QJsonDocument::Compact);
+    if (v.isArray())
+        return QJsonDocument(v.toArray()).toJson(QJsonDocument::Compact);
+    const QByteArray wrapped =
+        QJsonDocument(QJsonArray{v}).toJson(QJsonDocument::Compact);
+    return wrapped.mid(1, wrapped.size() - 2);  // strip "[" … "]"
+}
+
+// §2.4 — detached query workers held until process exit. A worker stuck in
+// an uninterruptible C call owns its lua_State frame and can't be safely
+// joined or freed, so the thread (and its captured heap result slot) leaks
+// by design (RAM consequence in spec §4). Appended ONLY from the
+// single-threaded MCP dispatch thread, so no lock is needed.
+QVector<QThread *> g_queryZombies;
+
+}  // namespace
+
+void LuaEngine::registerQueryApi(const QString &root) {
+    m_queryRoot = root;
+    lua_newtable(m_state);
+    lua_pushcfunction(m_state, lua_project_read);  lua_setfield(m_state, -2, "read");
+    lua_pushcfunction(m_state, lua_project_list);  lua_setfield(m_state, -2, "list");
+    lua_pushcfunction(m_state, lua_project_root);  lua_setfield(m_state, -2, "root");
+    lua_setglobal(m_state, "project");
+}
+
+int LuaEngine::lua_project_read(lua_State *L) {
+    LuaEngine *engine = getEngine(L);
+    const char *rel = luaL_checkstring(L, 1);
+    if (!engine) return luaL_error(L, "project.read: no engine");
+    const auto chk = PathValidation::validatePath(
+        QString::fromUtf8(rel), engine->m_queryRoot,
+        QStringLiteral("project_query"), QStringLiteral("path"));
+    if (chk.bad) return luaL_error(L, "project.read: \"%s\" escapes project root", rel);
+    if (chk.resolved.isEmpty()) return luaL_error(L, "project.read: no such file: %s", rel);
+    QFile f(chk.resolved);
+    if (!f.open(QIODevice::ReadOnly)) return luaL_error(L, "project.read: cannot open %s", rel);
+    const QByteArray data = f.readAll();  // VM 10 MiB cap bounds the push below
+    lua_pushlstring(L, data.constData(), static_cast<size_t>(data.size()));
+    return 1;
+}
+
+int LuaEngine::lua_project_list(lua_State *L) {
+    LuaEngine *engine = getEngine(L);
+    if (!engine) return luaL_error(L, "project.list: no engine");
+    QString base = engine->m_queryRoot;
+    if (lua_gettop(L) >= 1 && !lua_isnoneornil(L, 1)) {
+        const char *sub = luaL_checkstring(L, 1);
+        const auto chk = PathValidation::validatePath(
+            QString::fromUtf8(sub), engine->m_queryRoot,
+            QStringLiteral("project_query"), QStringLiteral("subdir"));
+        if (chk.bad) return luaL_error(L, "project.list: \"%s\" escapes project root", sub);
+        if (chk.resolved.isEmpty() || !QFileInfo(chk.resolved).isDir())
+            return luaL_error(L, "project.list: not a directory: %s", sub);
+        base = chk.resolved;
+    }
+    // Enumerate regular files (incl. dotfiles like .gitignore — project
+    // content), skipping only .git/ (internal metadata; perf on big repos).
+    const QDir rootDir(engine->m_queryRoot);
+    QList<QByteArray> rels;
+    QDirIterator it(base,
+                    QDir::Files | QDir::NoDotAndDotDot | QDir::Hidden,
+                    QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QString abs = it.next();
+        const QString rel = rootDir.relativeFilePath(abs);
+        if (rel == QStringLiteral(".git") ||
+            rel.startsWith(QStringLiteral(".git/")) ||
+            rel.contains(QStringLiteral("/.git/")))
+            continue;
+        rels.append(rel.toUtf8());
+    }
+    // Sort by raw UTF-8 bytes (QByteArray operator< is memcmp) — codepoint
+    // order, locale-independent, so identical snapshots yield identical
+    // bytes regardless of the runner's collation (INV-7; guards ANTS-2120).
+    std::sort(rels.begin(), rels.end());
+    lua_createtable(L, static_cast<int>(rels.size()), 0);
+    int i = 1;
+    for (const QByteArray &r : rels) {
+        lua_pushlstring(L, r.constData(), static_cast<size_t>(r.size()));
+        lua_rawseti(L, -2, i++);
+    }
+    return 1;
+}
+
+int LuaEngine::lua_project_root(lua_State *L) {
+    LuaEngine *engine = getEngine(L);
+    const QByteArray r = engine ? engine->m_queryRoot.toUtf8() : QByteArray();
+    lua_pushlstring(L, r.constData(), static_cast<size_t>(r.size()));
+    return 1;
+}
+
+LuaEngine::QueryResult LuaEngine::runQuery(const QString &code, const QString &root,
+                                           qint64 timeoutMs, int resultCapBytes) {
+    Q_ASSERT(thread() == QThread::currentThread());  // INV-1 — own thread only
+    QueryResult qr;
+    QElapsedTimer timer;
+    timer.start();
+
+    if (m_state) shutdown();  // fresh VM per call (INV-5) even on a reused engine
+    setPcallBudgetMs(timeoutMs);
+    if (!buildVm(/*queryMode=*/true, root)) {
+        qr.code  = QStringLiteral("query_error");
+        qr.error = QStringLiteral("project_query: VM construction failed");
+        return qr;
+    }
+
+    auto fail = [&](const QString &codeStr, const QString &msg) -> QueryResult {
+        qr.ok = false; qr.code = codeStr; qr.error = msg;
+        qr.elapsedMs = timer.elapsed();
+        shutdown();
+        return qr;
+    };
+
+    // Load text-only (mode "t") — mirrors loadScript's bytecode rejection.
+    const QByteArray codeUtf8 = code.toUtf8();
+    int lr = luaL_loadbufferx(m_state, codeUtf8.constData(),
+                              static_cast<size_t>(codeUtf8.size()),
+                              "=project_query", "t");
+    if (lr != LUA_OK) {
+        const char *e = lua_tostring(m_state, -1);
+        const QString msg = QStringLiteral("project_query: %1")
+                                .arg(e ? QString::fromUtf8(e) : QStringLiteral("load error"));
+        return fail(lr == LUA_ERRMEM ? QStringLiteral("query_oom")
+                                     : QStringLiteral("query_error"), msg);
+    }
+
+    startPcallBudget();
+    const int pr = lua_pcall(m_state, 0, 1, 0);  // exactly one result (§2.4)
+    qr.elapsedMs = timer.elapsed();
+    if (pr != LUA_OK) {
+        const char *e = lua_tostring(m_state, -1);
+        const QString msg = QStringLiteral("project_query: %1")
+                                .arg(e ? QString::fromUtf8(e) : QStringLiteral("runtime error"));
+        // m_timedOut (set by the wall-clock hook) wins over the LUA_ERRMEM
+        // status so a budget kill never misreports as OOM.
+        QString refusal = QStringLiteral("query_error");
+        if (m_timedOut)              refusal = QStringLiteral("query_timeout");
+        else if (pr == LUA_ERRMEM)   refusal = QStringLiteral("query_oom");
+        return fail(refusal, msg);
+    }
+
+    // Marshal the single top-of-stack value.
+    QString merr;
+    const QJsonValue value = marshalLuaValue(m_state, lua_gettop(m_state), 1, merr);
+    if (!merr.isEmpty())
+        return fail(QStringLiteral("query_error"),
+                    QStringLiteral("project_query: %1").arg(merr));
+
+    const QByteArray bytes = serializeJsonValue(value);
+    if (bytes.size() > resultCapBytes)
+        return fail(QStringLiteral("result_too_large"),
+                    QStringLiteral("project_query: result is %1 bytes (cap %2) — "
+                                   "aggregate further (return a count, not the rows)")
+                        .arg(bytes.size()).arg(resultCapBytes));
+
+    qr.ok = true;
+    qr.result = value;
+    shutdown();
+    return qr;
+}
+
+LuaEngine::QueryResult LuaEngine::runQueryThreaded(const QString &code, const QString &root,
+                                                   qint64 timeoutMs, int resultCapBytes) {
+    // Heap result slot: the worker may outlive this call (detach path), so
+    // it must NOT write into a stack local. `code`/`root` are copied into
+    // the worker's functor (each thread owns its QString refs).
+    auto *slot = new QueryResult();
+    const QString codeCopy = code;
+    const QString rootCopy = root;
+    QThread *worker = QThread::create([slot, codeCopy, rootCopy, timeoutMs, resultCapBytes]() {
+        LuaEngine eng;  // QObject affinity = this worker thread
+        *slot = eng.runQuery(codeCopy, rootCopy, timeoutMs, resultCapBytes);
+    });
+    worker->setObjectName(QStringLiteral("ants-project-query"));
+    worker->setStackSize(512 * 1024);  // shallow sandbox; matches plugin workers
+    worker->start();
+
+    if (worker->wait(timeoutMs + kQueryJoinGraceMs)) {
+        const QueryResult out = *slot;
+        delete worker;
+        delete slot;
+        return out;
+    }
+
+    // Detached — the snippet is stuck in an uninterruptible C call past the
+    // join deadline. Leak worker + slot (the worker still owns them); the
+    // GUI/dispatch thread resumes now with query_timeout.
+    g_queryZombies.append(worker);
+    QueryResult out;
+    out.ok    = false;
+    out.code  = QStringLiteral("query_timeout");
+    out.error = QStringLiteral("project_query: snippet exceeded %1 ms (detached)")
+                    .arg(timeoutMs);
+    return out;
+}
+
+QJsonObject LuaEngine::projectQueryVerb(const QJsonObject &req, bool enabled,
+                                        qint64 timeoutMs, int resultCapBytes) {
+    auto refuse = [](const QString &code, const QString &msg) {
+        QJsonObject o;
+        o[QStringLiteral("ok")]    = false;
+        o[QStringLiteral("code")]  = code;
+        o[QStringLiteral("error")] = msg;
+        return o;
+    };
+
+    // §2.5 — feature gate is the FIRST statement, before any arg validation,
+    // so a feature-off call yields query_disabled regardless of arg state.
+    if (!enabled)
+        return refuse(QStringLiteral("query_disabled"),
+                      QStringLiteral("project_query is disabled (Settings → General → "
+                                     "\"Let Ants run read-only project queries for Claude\")"));
+
+    const QString rawCaller = req.value(QStringLiteral("caller_cwd")).toString();
+    const QString root = QFileInfo(rawCaller).canonicalFilePath();
+    if (root.isEmpty() || !QFileInfo(root).isDir())
+        return refuse(QStringLiteral("cwd_bad"),
+                      QStringLiteral("project_query: caller_cwd \"%1\" is not a directory")
+                          .arg(rawCaller));
+
+    const QString code = req.value(QStringLiteral("code")).toString();
+    if (code.isEmpty())
+        return refuse(QStringLiteral("missing_field"),
+                      QStringLiteral("project_query: \"code\" is required (a read-only "
+                                     "Lua snippet that returns a value)"));
+
+    const QueryResult qr = runQueryThreaded(code, root, timeoutMs, resultCapBytes);
+    if (!qr.ok)
+        return refuse(qr.code, qr.error);
+
+    QJsonObject o;
+    o[QStringLiteral("ok")]         = true;
+    o[QStringLiteral("result")]     = qr.result;
+    o[QStringLiteral("elapsed_ms")] = qr.elapsedMs;
+    return o;
 }

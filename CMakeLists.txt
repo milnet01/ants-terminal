@@ -1132,6 +1132,8 @@ if(ANTS_TESTS)
                 tests/features/project_settings/test_project_settings.cpp
                 # ANTS-2161 — layout auto-detect + project_settings verb.
                 tests/features/project_settings_verb/test_project_settings_verb.cpp
+                # ANTS-2093 — project_query sandboxed server-side query verb.
+                tests/features/project_query/test_project_query.cpp
                 # ANTS-2159 — file_outline C++ scanner scope-awareness.
                 tests/features/fileoutline_cpp_scanner/test_fileoutline_cpp_scanner.cpp
                 # ANTS-2158 — eager-load high-frequency MCP verbs.

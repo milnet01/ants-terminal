@@ -117,6 +117,23 @@ against the table below.
 | `unknown_tool` | The dispatcher has no provider for the tool name. | `tools/call` with a typo in `name`. |
 | `mcp_disabled` | The Ants MCP integration is toggled off (Settings → General → "Enable Ants MCP integration"); the dispatcher refuses every verb before any handler runs. | Any `tools/call` after the master switch is turned off mid-session (ANTS-1901). |
 
+### 6 — Query execution (ANTS-2093, `project_query`)
+
+Outcomes of running an agent-supplied **sandboxed read-only Lua snippet**
+server-side. A new category, not a fold into 1–5: these describe the
+*execution* of caller-supplied code (none of input-validation /
+resource-state / caller-cwd / I/O / dispatcher covers that), and each is a
+genuinely distinct caller action — fix the snippet / make it cheaper /
+narrow the data / aggregate harder / re-enable the feature.
+
+| Code | Meaning | Examples |
+|------|---------|----------|
+| `query_error` | The snippet failed to load or run, or its return value can't be marshalled: a syntax/runtime error or explicit `error(...)`, a `project.*` path that escapes the project root, an unsupported return type (function/userdata/thread), a non-string table key, invalid UTF-8, or a table nested past 32 levels (also how a circular table is caught). The Lua message is carried in `error`. | `project_query` with `code:"return project.read('../../etc/passwd')"` (path escape) or `code:"return function() end"` (unsupported type). |
+| `query_timeout` | The snippet exceeded the wall-clock budget (`claude.mcp_project_query_timeout_ms`, default 1500). A pure-Lua/C-in-loop runaway is killed at the next bytecode boundary; a single uninterruptible C call is detached at the join deadline (budget + 250 ms grace). | `project_query` with `code:"while true do end"`. |
+| `query_oom` | The snippet tripped the VM's 10 MiB allocation cap (the allocator returns null → Lua raises a memory error). The refusal, never a partial/nil result. | `project_query` with a snippet that grows a table without bound. |
+| `result_too_large` | The marshalled result's UTF-8 byte count exceeds `claude.mcp_project_query_result_cap_bytes` (default 64 KiB). Carries the byte size; emits **no** `result` (never truncated). | `project_query` returning every line of every file instead of a count — aggregate harder. |
+| `query_disabled` | The `project_query` feature is off (`claude.mcp_project_query_enabled` false, Settings → General → "Let Ants run read-only project queries for Claude"). Checked *first* in the handler, before arg validation; the master `mcp_disabled` gate still takes precedence (it refuses before the handler runs). | Any `project_query` call while the feature toggle is off. |
+
 ## Adding a new code
 
 1. Pick the category your refusal belongs to.

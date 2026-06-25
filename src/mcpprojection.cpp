@@ -51,7 +51,10 @@ bool isOffloadEligible(const QString &toolName) {
         || toolName == QStringLiteral("codebase_index")
         || toolName == QStringLiteral("docs_index")
         || toolName == QStringLiteral("find_sources")
-        || toolName == QStringLiteral("roadmap_query");
+        || toolName == QStringLiteral("roadmap_query")
+        // ANTS-2093 — project_query: a large snippet result spills like any
+        // other read body (INV-9), re-read verbatim via read_spill.
+        || toolName == QStringLiteral("project_query");
 }
 
 QString projectFields(const QString &responseText, const QJsonArray &fields) {

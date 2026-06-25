@@ -3530,6 +3530,59 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(psTool);
 
+#ifdef ANTS_LUA_PLUGINS
+                // ANTS-2093 — project_query: run an agent-supplied READ-ONLY
+                // Lua snippet server-side and return ONLY its result (the
+                // code-execution token-saver). Listed only in ANTS_LUA_PLUGINS
+                // builds — the verb is unregistered without the Lua subsystem.
+                {
+                    QJsonObject pqTool;
+                    pqTool["name"] = "project_query";
+                    pqTool["description"] = QStringLiteral(
+                        "Run a small READ-ONLY Lua snippet over the project's "
+                        "files server-side and get back ONLY its computed "
+                        "result — not the file text. The token-saver for "
+                        "\"compute an aggregate across files\" questions (count "
+                        "TODOs, which files import X, sum sizes): the snippet "
+                        "greps/filters/counts itself and you receive just the "
+                        "number/list. API (the whole surface): project.read("
+                        "relpath)->string, project.list(subdir?)->array of "
+                        "project-relative file paths (sorted, skips .git/), "
+                        "project.root()->string; plus the string/table/math/utf8 "
+                        "stdlib. The snippet MUST `return` a value (the answer). "
+                        "Sandboxed: read-only, confined to caller_cwd (no "
+                        "escape, no write, no network, no os/io), 10 MiB + "
+                        "wall-clock + output-size capped. NOT a workspace_search "
+                        "replacement — scope to a known file set (or a "
+                        "workspace_search result) then aggregate, don't pull the "
+                        "whole tree through project.read. Success {ok, result, "
+                        "elapsed_ms}; refusals query_error (bad/erroring snippet "
+                        "or path escape), query_timeout, query_oom, "
+                        "result_too_large (aggregate harder), query_disabled "
+                        "(feature off). caller_cwd required.");
+                    pqTool["selection_hint"] = QStringLiteral(
+                        "Use when you'd otherwise Read several files just to "
+                        "count/filter/aggregate over them — ship the count "
+                        "logic as a Lua snippet and get back only the number.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    QJsonObject props;
+                    QJsonObject codeProp;
+                    codeProp["type"] = "string";
+                    codeProp["description"] = QStringLiteral(
+                        "The read-only Lua snippet. Must `return` a value. "
+                        "Has project.read/list/root + string/table/math/utf8.");
+                    props["code"]       = codeProp;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    schema["required"]   = QJsonArray{QStringLiteral("code"),
+                                                      QStringLiteral("caller_cwd")};
+                    pqTool["inputSchema"] = schema;
+                    tools.append(pqTool);
+                }
+#endif
+
                 // ANTS-1961 — feedback_query: read the un-triaged tail of
                 // a *_Ants_MCP_Feedback.md file instead of a full Read.
                 {
@@ -8199,6 +8252,9 @@ void ClaudeIntegration::onMcpConnection() {
                         {QStringLiteral("project_layout"),    {600,  2000}},
                         // ANTS-2161 — project_settings: small detect/write envelope.
                         {QStringLiteral("project_settings"),  {300,  1500}},
+                        // ANTS-2093 — project_query: aggregate answer, occasionally
+                        // a small list; result_cap_bytes (64 KiB default) bounds it.
+                        {QStringLiteral("project_query"),     {400,  4000}},
                         {QStringLiteral("session_memory"),    {200,  1000}},
                         {QStringLiteral("session_brief"),     {300,  1200}},
                         // ANTS-1883 — composer of three large reads + ANTS-1922
@@ -8335,6 +8391,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-2161 — project_settings: project-scoped
                         // layout-config detect + create/update.
                         name == QLatin1String("project_settings") ||
+                        // ANTS-2093 — project_query: project-scoped read
+                        // (runs a sandboxed snippet over caller_cwd's files).
+                        name == QLatin1String("project_query") ||
                         name == QLatin1String("project_layout") ||
                         name == QLatin1String("subsystem") ||
                         // ANTS-1569 — current_state is a project-scoped
@@ -9434,6 +9493,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-2161 — project_settings reads/writes <root>/.ants/project.json
     // anchored on the resolved root; Required.
     if (toolName == QStringLiteral("project_settings"))    return C::Required;
+    // ANTS-2093 — project_query: caller_cwd is both the project anchor and
+    // the FS-confinement root for the snippet's project.* reads.
+    if (toolName == QStringLiteral("project_query"))       return C::Required;
     // ANTS-1961 / ANTS-1962 — feedback verbs resolve a relative `path`
     // off caller_cwd and anchor tenancy; Required even though the
     // canonical case is an absolute shared-root path.

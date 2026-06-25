@@ -1,5 +1,7 @@
 #include "config.h"
 
+#include <algorithm>
+
 #include "configbackup.h"
 #include "debuglog.h"
 #include "secureio.h"
@@ -607,6 +609,29 @@ int Config::claudeMcpOffloadThresholdBytes() const {
 
 int Config::claudeMcpOffloadHeadBytes() const {
     return m_data.value("claude.mcp_offload_head_bytes").toInt(2048);
+}
+
+// ANTS-2093 — project_query gating + tuning. Master Settings toggle +
+// setter; timeout/result-cap stay config-file-only tuning keys. Clamped in
+// the accessor (no separate "go live" path like offload's mcp::setOffloadConfig).
+bool Config::claudeMcpProjectQueryEnabled() const {
+    return m_data.value("claude.mcp_project_query_enabled").toBool(true);
+}
+
+void Config::setClaudeMcpProjectQueryEnabled(bool enabled) {
+    if (!storeIfChanged("claude.mcp_project_query_enabled", enabled)) return;
+    save();
+}
+
+int Config::claudeMcpProjectQueryTimeoutMs() const {
+    return std::clamp(
+        m_data.value("claude.mcp_project_query_timeout_ms").toInt(1500), 100, 5000);
+}
+
+int Config::claudeMcpProjectQueryResultCapBytes() const {
+    return std::clamp(
+        m_data.value("claude.mcp_project_query_result_cap_bytes").toInt(65536),
+        1024, 1048576);
 }
 
 void Config::setClaudeMcpOrientationNudgeShown(bool shown) {

@@ -163,6 +163,15 @@ public:
     int  claudeMcpOffloadThresholdBytes() const;
     int  claudeMcpOffloadHeadBytes() const;
 
+    // ANTS-2093 — project_query gating. Master bool has a Settings toggle +
+    // setter; timeout/result-cap remain config-file-only tuning keys, clamped
+    // in their accessors to [100, 5000] ms and [1024, 1048576] bytes. Default
+    // ON per the token-savers rule. See docs/specs/ANTS-2093.md.
+    bool claudeMcpProjectQueryEnabled() const;
+    void setClaudeMcpProjectQueryEnabled(bool enabled);
+    int  claudeMcpProjectQueryTimeoutMs() const;
+    int  claudeMcpProjectQueryResultCapBytes() const;
+
     // ANTS-1154 v2 card-renderer state. Each set stores the IDs /
     // slugs the user has manually toggled to "expanded" or
     // "table-view". Restored on dialog open; updated on close.
