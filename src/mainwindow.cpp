@@ -1995,6 +1995,18 @@ void MainWindow::setupSettingsMenu() {
                     m_pluginManager->fireEvent(PluginEvent::WindowConfigReloaded, QString());
 #endif
 
+                // ANTS-1901 — propagate the master MCP toggle live. Off is
+                // honoured immediately: the dispatcher refuses every verb
+                // (setMcpEnabled) and the orientation hook is removed so
+                // future Claude sessions don't show the cheat-sheet. The
+                // socket itself is bound/unbound only at launch (see
+                // setupStatusBarChrome), so turning the switch back ON takes
+                // effect on the next start.
+                if (m_claudeIntegration)
+                    m_claudeIntegration->setMcpEnabled(m_config.claudeMcpEnabled());
+                if (!m_config.claudeMcpEnabled())
+                    ants::mcp_orientation::uninstall();
+
                 showStatusMessage("Settings applied", 3000);
             });
             connect(m_settingsDialog, &QDialog::finished, this, [this]() {
@@ -4043,23 +4055,35 @@ void MainWindow::setupClaudeMcpProviders() {
         }
     }
 
-    QString mcpSocket = QDir::tempPath() + "/ants-terminal-mcp-" +
-                        QString::number(QApplication::applicationPid());
-    m_claudeIntegration->startMcpServer(mcpSocket);
+    // ANTS-1901 — master MCP gate. Seed the dispatcher's live bit, then
+    // bind the socket + export ANTS_MCP_SOCKET only when enabled. When
+    // off: no socket binds, no /tmp/ants-terminal-mcp-* file, no env
+    // export (the orientation script self-silences on the missing var),
+    // and any stale hook is removed below. Turning the switch ON takes
+    // effect on the next launch (the socket binds here); turning it OFF
+    // is honoured immediately by the dispatcher guard (ANTS-1901 § 2.4).
+    const bool mcpOn = m_config.claudeMcpEnabled();
+    m_claudeIntegration->setMcpEnabled(mcpOn);
+    if (mcpOn) {
+        QString mcpSocket = QDir::tempPath() + "/ants-terminal-mcp-" +
+                            QString::number(QApplication::applicationPid());
+        m_claudeIntegration->startMcpServer(mcpSocket);
 
-    // ANTS-1897 INV-14 — export the MCP socket path into the parent
-    // process env so every PTY spawned after this point (via the
-    // non-flatpak `environ`-copy loop at ptyhandler.cpp:171)
-    // inherits ANTS_MCP_SOCKET. The orientation prelude script
-    // gates on this var being set + the socket file existing. The
-    // ordering is correct because setupStatusBarChrome() (which
-    // calls this) runs at L609 of the MainWindow ctor, BEFORE the
-    // first newTab() at L612 spawns a PTY. Verified via grep.
-    qputenv("ANTS_MCP_SOCKET", mcpSocket.toLocal8Bit());
+        // ANTS-1897 INV-14 — export the MCP socket path into the parent
+        // process env so every PTY spawned after this point (via the
+        // non-flatpak `environ`-copy loop at ptyhandler.cpp:171)
+        // inherits ANTS_MCP_SOCKET. The orientation prelude script
+        // gates on this var being set + the socket file existing. The
+        // ordering is correct because setupStatusBarChrome() (which
+        // calls this) runs at L609 of the MainWindow ctor, BEFORE the
+        // first newTab() at L612 spawns a PTY. Verified via grep.
+        qputenv("ANTS_MCP_SOCKET", mcpSocket.toLocal8Bit());
+    }
 
-    // ANTS-1897 — install the SessionStart hook + bundled orientation
-    // script when the user has not opted out (default ON).
-    if (m_config.claudeMcpOrientationEnabled()) {
+    // ANTS-1897 / ANTS-1901 — install the SessionStart hook only when the
+    // master MCP gate AND the per-feature toggle are both on (default ON);
+    // otherwise remove any stale Ants entry.
+    if (mcpOn && m_config.claudeMcpOrientationEnabled()) {
         auto orient = ants::mcp_orientation::install();
         if (!orient.warning.isEmpty()) {
             qWarning().noquote() << "[mcp-orientation]" << orient.warning;

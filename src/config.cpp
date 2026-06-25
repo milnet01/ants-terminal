@@ -558,6 +558,16 @@ void Config::setClaudeMcpOrientationEnabled(bool enabled) {
     save();
 }
 
+// ANTS-1901 — master MCP gate (default true).
+bool Config::claudeMcpEnabled() const {
+    return m_data.value("claude.mcp_enabled").toBool(true);
+}
+
+void Config::setClaudeMcpEnabled(bool enabled) {
+    if (!storeIfChanged("claude.mcp_enabled", enabled)) return;
+    save();
+}
+
 bool Config::claudeMcpOrientationNudgeShown() const {
     return m_data.value("claude.mcp_orientation_nudge_shown").toBool(false);
 }

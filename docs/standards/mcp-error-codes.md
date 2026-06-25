@@ -115,6 +115,7 @@ against the table below.
 | Code | Meaning | Examples |
 |------|---------|----------|
 | `unknown_tool` | The dispatcher has no provider for the tool name. | `tools/call` with a typo in `name`. |
+| `mcp_disabled` | The Ants MCP integration is toggled off (Settings → General → "Enable Ants MCP integration"); the dispatcher refuses every verb before any handler runs. | Any `tools/call` after the master switch is turned off mid-session (ANTS-1901). |
 
 ## Adding a new code
 

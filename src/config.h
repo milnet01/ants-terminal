@@ -138,6 +138,13 @@ public:
     bool claudeMcpOrientationNudgeShown() const;
     void setClaudeMcpOrientationNudgeShown(bool shown);
 
+    // ANTS-1901 — master on/off gate for the whole Ants MCP integration
+    // (default true). When false: no socket binds, no ANTS_MCP_SOCKET
+    // export, the orientation hook is removed, the auto model switcher
+    // stands down, and every MCP verb refuses with `mcp_disabled`.
+    bool claudeMcpEnabled() const;
+    void setClaudeMcpEnabled(bool enabled);
+
     // ANTS-2085 — terse-by-default for Ants MCP read responses. Default
     // true: token-saving on out of the box. Drives mcp::setTerseDefault()
     // so the dispatcher compacts field-projection read responses without a

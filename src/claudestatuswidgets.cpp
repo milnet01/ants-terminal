@@ -1482,6 +1482,14 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     const QJsonObject autoCfg = cfg.claudeAutoModel();
     const bool enabled = autoCfg.value("switch_enabled").toBool();
 
+    // ANTS-1901 — master MCP gate. When Ants MCP integration is off the
+    // whole auto-switcher subsystem stands down: no first-run nudge, no
+    // decide(), no /model injection, no ledger writes. `cfg` is the
+    // mtime-guarded cachedConfig(), so a Settings toggle degrades on the
+    // next tick without a restart (setClaudeMcpEnabled's save() bumps
+    // config.json's mtime).
+    if (!cfg.claudeMcpEnabled()) return;
+
     auto *focused = m_focusedTerminalProvider
         ? m_focusedTerminalProvider() : nullptr;
     if (!focused || !m_tracker) return;

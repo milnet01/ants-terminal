@@ -8682,6 +8682,29 @@ void ClaudeIntegration::onMcpConnection() {
                 // (not zero). Stop right before recordMcpTrace below.
                 QElapsedTimer mcpTraceTimer;
                 mcpTraceTimer.start();
+                // ANTS-1901 — master MCP gate. When the integration is
+                // toggled off at runtime the socket stays bound until the
+                // next launch, but observation must stop now: refuse every
+                // verb with `mcp_disabled` as the FIRST gate — before the
+                // caller_cwd contract check and the idempotent-read cache
+                // lookup — so a disabled session never serves even a
+                // memoised response. setMcpEnabled() drives m_mcpEnabled
+                // from MainWindow on the live Settings toggle; at startup a
+                // disabled master never binds the socket, so this branch is
+                // only reachable in the runtime toggle-off window.
+                if (!m_mcpEnabled) {
+                    QJsonObject env;
+                    env["ok"]    = false;
+                    env["code"]  = QStringLiteral("mcp_disabled");
+                    env["error"] = QStringLiteral(
+                        "Ants MCP integration is disabled (Settings → "
+                        "General → \"Enable Ants MCP integration\"). "
+                        "Re-enable it to use this tool.");
+                    responseText = QString::fromUtf8(
+                        QJsonDocument(env).toJson(QJsonDocument::Compact));
+                    toolHandled    = true;
+                    dispatchResult = QStringLiteral("mcp_disabled");
+                }
                 // ANTS-1404 — per-tool caller_cwd contract check.
                 // Runs BEFORE the cache lookup so a refused call
                 // doesn't pollute the cache, and BEFORE the
@@ -8720,7 +8743,7 @@ void ClaudeIntegration::onMcpConnection() {
                     toolName == QStringLiteral("get_session_info") ||
                     toolName == QStringLiteral("tool_info") ||
                     m_toolProviders.find(toolName) != m_toolProviders.end();
-                if (toolKnown &&
+                if (!toolHandled && toolKnown &&
                     contract == CallerCwdContract::Required &&
                     callerCwd.isEmpty()) {
                     // ANTS-1853 — distinguish "the whole arguments object

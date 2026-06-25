@@ -118,8 +118,10 @@ TEST(McpCallerCwdContracts, RefusalBypassesCache) {
     ASSERT_NE(pos, std::string::npos);
     // Window widened to 16000 (ANTS-1415 Phase 3b added the
     // TabSpecific refusal branch, pushing the cache gate to ~offset
-    // 11000 from the tools/call branch start).
-    const std::string region = cc.substr(pos, 16000);
+    // 11000 from the tools/call branch start); 16000→21000 (ANTS-1901
+    // inserted the master-MCP `mcp_disabled` guard ahead of the
+    // caller_cwd check, shifting everything below it down ~1.1 KiB).
+    const std::string region = cc.substr(pos, 21000);
     // The cacheable assignment must depend on !toolHandled so a
     // refusal-set toolHandled value short-circuits the cache lookup.
     EXPECT_NE(region.find("!toolHandled && isIdempotentReadTool(toolName)"),
@@ -141,7 +143,9 @@ TEST(McpCallerCwdContracts, RefusalSetsDispatchResult) {
     // an empty-arguments diagnostic (args_empty flag + DebugLog::Claude
     // trace recording raw request length / args-key presence / fingerprint),
     // pushing the branch close brace past the original 9000-char window.
-    const std::string region = cc.substr(pos, 11000);
+    // 11000→16000 (ANTS-1901): the master-MCP guard inserted ahead of
+    // the caller_cwd block shifts the close brace down ~1.1 KiB.
+    const std::string region = cc.substr(pos, 16000);
     // Locate the ANTS-1404 refusal block (anchored on the literal
     // code string already asserted by DISP-2) and walk forward to
     // the toolHandled = true that closes the branch; the
@@ -177,7 +181,9 @@ TEST(McpCallerCwdContracts, ProviderDispatchGuardedByToolHandled) {
     // ANTS-1857 widened 16000→18000: the size-aware empty-arguments
     // steer added a few lines ahead of the provider-dispatch guard,
     // pushing `if (!toolHandled) {` to offset ~16.5 KiB.
-    const std::string region = cc.substr(pos, 18000);
+    // ANTS-1901 widened 18000→23000: the master-MCP guard ahead of the
+    // caller_cwd block shifts the provider dispatch down a further ~1.1 KiB.
+    const std::string region = cc.substr(pos, 23000);
     // The provider-dispatch block historically guarded on `!cachedHit`;
     // ANTS-1404 widens that to `!toolHandled` so refusals also
     // short-circuit the provider lambda invocation.

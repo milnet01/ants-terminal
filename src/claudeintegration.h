@@ -180,6 +180,13 @@ public:
     bool startMcpServer(const QString &socketPath);
     void stopMcpServer();
 
+    // ANTS-1901 — master MCP gate mirror. MainWindow seeds this from
+    // Config::claudeMcpEnabled() at startup and updates it on a live
+    // Settings toggle. When false, the tools/call dispatcher refuses
+    // every verb with `mcp_disabled` (so a runtime toggle-off stops
+    // observation immediately, without a mid-call socket teardown).
+    void setMcpEnabled(bool enabled) { m_mcpEnabled = enabled; }
+
     // ANTS-1253: single tool-provider registry. Each handler receives
     // the JSON-RPC `arguments` object and returns the tool's response
     // as a JSON string (the dispatcher wraps it into a text content
@@ -518,6 +525,8 @@ private:
 
     // MCP server
     QLocalServer *m_mcpServer = nullptr;
+    // ANTS-1901 — master MCP gate mirror (default true). See setMcpEnabled().
+    bool m_mcpEnabled = true;
     // ANTS-1253: per-tool providers consolidated into a single
     // name-keyed registry. See registerToolProvider() above.
     // ANTS-1419: value type carries the per-tool CallerCwdContract

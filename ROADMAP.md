@@ -22227,12 +22227,25 @@ contributors don't duplicate research.
   Closes the ANTS-1897 § 4 follow-up — the MCP-orientation cheat-sheet
   now reaches Claude sessions inside flatpak-sandboxed Ants installs.
 
-- 📋 [ANTS-1901] **Master Ants-MCP on/off toggle (Settings) with graceful-degrade for all MCP-dependent features.**
+- ✅ [ANTS-1901] **Master Ants-MCP on/off toggle (Settings) with graceful-degrade for all MCP-dependent features.**
   MCP server starts unconditionally in `setupStatusBarChrome()` at `src/mainwindow.cpp:4046-4048` (`m_claudeIntegration->startMcpServer(mcpSocket)`; was cited as ctor `:3867` pre-drift) with no user-facing toggle. Add: (a) new config key `claude.mcp_enabled` (bool, default true); (b) Settings → General tab master checkbox 'Enable Ants MCP integration' above the existing autoswitch + orientation toggles (the General tab is where those toggles live — corrected from "AI Assistant" per ANTS-1901 spec § 2.5 + ANTS-1897:346) (visual hierarchy: master → per-feature opt-ins); (c) **[split to ANTS-2172]** optional menubar shortcut (View → Claude → MCP integration) — deferred to keep this item's surface to the load-bearing gating; (d) graceful-degrade wiring for every MCP-dependent feature when toggled off: ANTS-1735 autoswitcher (skip dwell + decide), ANTS-1888 model chip (read transcript only, no MCP-derived state), ANTS-1891 model_switch_stats (refuse with `code:"mcp_disabled"` envelope), ANTS-1897 orientation prelude (skip install + remove hook), `model_switch_ledger` (don't write records), MCP socket (don't bind, no `/tmp/ants-terminal-mcp-*` file, no `ANTS_MCP_SOCKET` env-var export). Spec needs a dependency-matrix section enumerating every MCP-consumer and its degrade behaviour. Pairs with ANTS-1897 (which already adds the per-feature orientation toggle in the same Settings page; ANTS-1901 inserts the master toggle above it). User raised 2026-05-27 during ANTS-1897 implementation.
   **Layman:** Ants MCP starts automatically every time you open Ants Terminal — there's no way to turn it off. This adds a master on/off switch (under Settings → General; a menubar shortcut is split to ANTS-2172) so users who don't want Ants observing their Claude sessions can opt out. Every feature that depends on MCP (auto-switcher, status chip, cheat-sheet) gracefully shows 'MCP disabled' instead of being broken.
   Kind: feature.
   Lanes: claudeintegration, settingsdialog, menubar.
   Source: user-feedback-2026-05-27 (raised during ANTS-1897 implementation; user noted MCP itself has no on/off toggle today)..
+  Resolved (2026-06-25): implemented per docs/specs/ANTS-1901.md
+  (accepted after 5 cold-eyes loops). `claude.mcp_enabled` (default true)
+  gates the whole integration: startup socket-bind + ANTS_MCP_SOCKET
+  export + orientation hook (mainwindow.cpp), auto-switcher early return
+  (claudestatuswidgets.cpp), and a `mcp_disabled` dispatcher guard at the
+  tools/call chokepoint (claudeintegration.cpp) honouring a runtime
+  toggle-off immediately. Settings → General master checkbox greys out
+  the dependent toggles (settingsdialog.cpp). mcp_disabled registered in
+  mcp-error-codes.md §5. Feature test tests/features/mcp_master_toggle/
+  (8 cases: real config round-trip + 7 source-greps) passes; widened the
+  ANTS-1404/1415 dispatch source-scrape windows the +22-line guard
+  shifted. Full suite green (2234 features). Menubar entry split to
+  ANTS-2172.
 
 - ✅ [ANTS-1902] **MCP-orientation hook installer: dedupe sweep + bash-quote the script path.**
   Two field-discovered bugs in `src/mcporientation.cpp` (ANTS-1897 INV-3 implementation) — the `~/.claude/settings.json` SessionStart entry accumulated stale duplicates on every Ants Terminal launch, and bash split the un-quoted path at the space in `Ants Terminal/hooks/mcp-orientation.sh` causing `SessionStart:startup hook error: bash: /home/ants/.config/Ants: No such file or directory` on every Claude Code session start. Root cause: (a) marker substring `ants-terminal/hooks/mcp-orientation.sh` (lowercase-hyphenated) did not match the production path `Ants Terminal/hooks/mcp-orientation.sh` (Qt's `QStandardPaths::AppConfigLocation` uses `applicationName` verbatim → capital + space), so `findAntsEntry` returned -1 and each launch appended a fresh outer container instead of updating in place; (b) `hookCommand` concatenated `"bash " + scriptPath` raw with no quoting, so once a path containing a space was written, the hook runner couldn't parse it. Fix: shrink marker to suffix-only (`/hooks/mcp-orientation.sh`), bash-quote the path with single quotes (handle embedded `'` as `'\''`), and replace the find-first/update-or-append logic with sweep-all-then-append so the install path is self-healing against settings.json files that accumulated duplicates from buggy prior versions. Spec ANTS-1897 INV-3 wording amended in lockstep (loop-6 fold-in). Tests: 2 new `TEST()` cases in `tests/features/mcp_orientation_install/` (`SweepsExistingDuplicates`, `CommandRunnableWithSpacesInPath`); both FAIL pre-fix, PASS post-fix; existing 13 INV-1..14 cases continue to pass; 1771/1771 ctest green. End-to-end verification: seeded a broken unquoted duplicate, launched the rebuilt binary, settings.json swept to a single canonical quoted entry. Resolved 2026-05-27.

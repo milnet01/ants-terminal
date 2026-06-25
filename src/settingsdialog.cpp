@@ -251,6 +251,22 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         "on you to answer a permission prompt in that tab.");
     layout->addRow(m_claudeTabStatusIndicator);
 
+    // ANTS-1901 — master on/off for the whole Ants MCP integration.
+    // Sits above the per-feature toggles (auto-switcher, orientation
+    // hook, terse replies) as the top of the hierarchy and greys them
+    // out when off. Default on. Enabling takes effect on the next launch
+    // (the MCP socket binds at startup); disabling is honoured immediately.
+    m_claudeMcpEnabled = new QCheckBox(
+        "Enable Ants MCP integration", tab);
+    m_claudeMcpEnabled->setToolTip(
+        "Master switch for the Ants/Claude Code helper — the MCP "
+        "integration that lets Claude use Ants's cheaper tools and read "
+        "terminal state. On by default. Turn it off to stop Ants "
+        "observing your Claude sessions; every dependent feature below "
+        "greys out. Enabling takes effect on the next Ants launch; "
+        "disabling takes effect immediately.");
+    layout->addRow(m_claudeMcpEnabled);
+
     // ANTS-1735 §2.7 — single prominent toggle for the autonomous
     // model switcher. Quietly swaps Claude Code between Haiku /
     // Sonnet / Opus at turn boundaries so the user never has to
@@ -360,6 +376,34 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         "value apart from a missing one.");
     layout->addRow(m_claudeMcpTerse);
 
+    // ANTS-1901 — the MCP master toggle gates the whole Claude group.
+    // Defined here (after every child widget exists) so it can reference
+    // them. When off, the auto-switch checkbox, orientation hook, and
+    // terse toggles grey out — and the auto-switch sub-toggles with them;
+    // when on, the sub-toggles still follow the auto-switch checkbox
+    // (mirrorMaster), so the two-level hierarchy composes. Disabling a
+    // checkbox never unchecks it, so flipping the master back on restores
+    // each child's prior choice. loadSettings()'s setChecked fires this
+    // via the toggled signal, so the loaded state is reflected with no
+    // restart.
+    auto mirrorMcpMaster = [this, mirrorMaster]() {
+        const bool on = m_claudeMcpEnabled->isChecked();
+        if (m_claudeAutoModelSwitch) m_claudeAutoModelSwitch->setEnabled(on);
+        if (m_claudeMcpOrientation)  m_claudeMcpOrientation->setEnabled(on);
+        if (m_claudeMcpTerse)        m_claudeMcpTerse->setEnabled(on);
+        if (on) {
+            mirrorMaster();   // sub-toggles follow the auto-switch checkbox
+        } else {
+            if (m_claudeAutoModelHomeTier)  m_claudeAutoModelHomeTier->setEnabled(false);
+            if (m_claudeAutoModelToast)     m_claudeAutoModelToast->setEnabled(false);
+            if (m_claudeAutoModelChipPulse) m_claudeAutoModelChipPulse->setEnabled(false);
+            if (m_claudeAutoModelUndo)      m_claudeAutoModelUndo->setEnabled(false);
+        }
+    };
+    connect(m_claudeMcpEnabled, &QCheckBox::toggled,
+            this, [mirrorMcpMaster](bool) { mirrorMcpMaster(); });
+    mirrorMcpMaster();   // initial combined state
+
     // Restore Defaults — resets ONLY the General-tab controls to
     // their schema defaults. Doesn't touch m_config until the user
     // clicks Apply or OK; Cancel rolls everything back as usual.
@@ -388,6 +432,7 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         if (m_claudeAutoModelToast)     m_claudeAutoModelToast->setChecked(true);
         if (m_claudeAutoModelChipPulse) m_claudeAutoModelChipPulse->setChecked(true);
         if (m_claudeAutoModelUndo)      m_claudeAutoModelUndo->setChecked(true);
+        if (m_claudeMcpEnabled) m_claudeMcpEnabled->setChecked(true);  // ANTS-1901 default on
         if (m_claudeMcpOrientation) m_claudeMcpOrientation->setChecked(true);
         if (m_claudeMcpTerse) m_claudeMcpTerse->setChecked(true);
     });
@@ -1024,6 +1069,8 @@ void SettingsDialog::loadSettings() {
         m_claudeAutoModelChipPulse->setChecked(m_config->claudeAutoModelChipPulseEnabled());
     if (m_claudeAutoModelUndo)
         m_claudeAutoModelUndo->setChecked(m_config->claudeAutoModelUndoEnabled());
+    if (m_claudeMcpEnabled)
+        m_claudeMcpEnabled->setChecked(m_config->claudeMcpEnabled());
     if (m_claudeMcpOrientation)
         m_claudeMcpOrientation->setChecked(m_config->claudeMcpOrientationEnabled());
     if (m_claudeMcpTerse)
@@ -1139,6 +1186,8 @@ void SettingsDialog::applySettings() {
         m_config->setNotificationTimeoutMs(m_notificationTimeout->value() * 1000);
     if (m_claudeTabStatusIndicator)
         m_config->setClaudeTabStatusIndicator(m_claudeTabStatusIndicator->isChecked());
+    if (m_claudeMcpEnabled)
+        m_config->setClaudeMcpEnabled(m_claudeMcpEnabled->isChecked());
     if (m_claudeAutoModelSwitch)
         m_config->setClaudeAutoModelSwitch(m_claudeAutoModelSwitch->isChecked());
     // ANTS-1893 — persist the three surfacing mute toggles.

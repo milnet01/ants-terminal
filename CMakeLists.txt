@@ -1726,6 +1726,7 @@ if(ANTS_TESTS)
                 tests/features/local_subagent_framework/test_local_subagent_framework.cpp
                 tests/features/flatpak_host_shell/test_flatpak_host_shell.cpp
                 tests/features/flatpak_lua_module/test_flatpak_lua_module.cpp
+                tests/features/mcp_master_toggle/test_mcp_master_toggle.cpp
                 tests/features/flathub_manifest_transform/test_flathub_manifest_transform.cpp
                 tests/features/config_parse_failure_guard/test_config_parse_failure.cpp
                 tests/features/config_reload_loop_safety/test_config_reload_loop_safety.cpp
@@ -1860,5 +1861,7 @@ if(ANTS_TESTS)
         FLATPAK_MANIFEST_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/org.ants.Terminal.yml"
         TRANSFORMER_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/make-flathub-manifest.sh"
         # ANTS-1450 — test_audit pattern/dimension drift guard.
-        TEST_AUDIT_PATTERNS_JSON="${CMAKE_SOURCE_DIR}/docs/standards/test-audit-grep-patterns.json")
+        TEST_AUDIT_PATTERNS_JSON="${CMAKE_SOURCE_DIR}/docs/standards/test-audit-grep-patterns.json"
+        # ANTS-1901 — master MCP toggle registration grep.
+        MCP_ERROR_CODES_MD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md")
 endif()

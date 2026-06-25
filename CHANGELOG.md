@@ -14,6 +14,18 @@ for security-relevant changes.
 
 ### Added
 
+- **Master on/off switch for the Ants MCP integration (ANTS-1901)** (ANTS-1901)
+  Settings → General → "Enable Ants MCP integration" (on by default) is a
+  single master switch for the whole Ants ↔ Claude Code helper. Turn it
+  off and Ants stops the integration: the MCP socket isn't bound at next
+  launch, the start-of-session cheat-sheet is removed, the auto model
+  switcher stands down, and every MCP tool call is refused with a
+  `mcp_disabled` message. Turning it back on takes effect on the next Ants
+  launch; turning it off is honoured immediately. Every dependent toggle
+  (auto-switcher, cheat-sheet, lean replies) greys out when the master is
+  off. Plain terms: one switch to fully turn the Ants–Claude integration
+  on or off.
+
 - **Added an out-of-cadence hotfix path, `cut-rc.sh hotfix`.** (ANTS-2165)
   Two phases around a `/bump` that ship the latest public release plus a cherry-picked fix as the next public patch (and roll any in-flight RC up one number), for an urgent bug that can't wait for the next Wednesday.
 

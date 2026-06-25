@@ -94,6 +94,10 @@ private:
     QCheckBox *m_claudeAutoModelToast     = nullptr;
     QCheckBox *m_claudeAutoModelChipPulse = nullptr;
     QCheckBox *m_claudeAutoModelUndo      = nullptr;
+    // ANTS-1901 — master on/off toggle for the whole Ants MCP
+    // integration (default on). Greys out every dependent control below
+    // (auto-switcher, orientation hook, terse replies) when off.
+    QCheckBox *m_claudeMcpEnabled = nullptr;
     // ANTS-1897 — master toggle for the MCP discoverability hook.
     QCheckBox *m_claudeMcpOrientation = nullptr;
     // ANTS-2085 — terse-by-default for Ants MCP read replies (default on).

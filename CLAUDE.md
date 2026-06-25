@@ -160,6 +160,14 @@ Both were moved out of this preamble by ANTS-2088 — read on demand; the
 live verb catalogue + one-line *when to use* per verb is `tool_info
 {catalog:true}`.
 
+Master Ants-MCP gate (ANTS-1901) — sits hierarchically above every
+per-feature key below: `claude.mcp_enabled` (bool, default true),
+Settings → General → "Enable Ants MCP integration". When false, the MCP
+socket isn't bound at launch, the orientation hook is removed, the
+auto-switcher stands down, and every verb refuses with `mcp_disabled`
+(turning it off is honoured immediately via the dispatcher guard;
+turning it back on takes effect on the next launch).
+
 Config keys for the autonomous model switcher (ANTS-1735 §2.7) — single
 Settings toggle "Let Ants pick the Claude model for me" + two
 config-file-only tuning keys:

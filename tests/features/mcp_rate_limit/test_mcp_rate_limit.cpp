@@ -94,8 +94,10 @@ TEST_F(RateLimitTestFixture, Inv5CacheHitsConsume) {
     // Bound the search to the dispatcher region for tools/call.
     // Window widened to 16000 (ANTS-1415 Phase 3b added the
     // TabSpecific refusal branch, pushing the cache gate past the
-    // original 9000-char window).
-    const std::string region = cc.substr(dispatchStart, 16000);
+    // original 9000-char window); 16000→21000 (ANTS-1901 inserted the
+    // master-MCP `mcp_disabled` guard ahead of the caller_cwd block,
+    // shifting the cache gate down a further ~1.1 KiB).
+    const std::string region = cc.substr(dispatchStart, 21000);
 
     const auto rateLimitPos = region.find("rateLimitCheck(toolName");
     const auto cachePos     = region.find("isIdempotentReadTool(toolName)");

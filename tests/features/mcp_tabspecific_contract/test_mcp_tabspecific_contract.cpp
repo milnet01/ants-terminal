@@ -42,7 +42,10 @@ TEST(McpTabSpecificContract, Inv2RefusalBlockPresent) {
     ASSERT_FALSE(cc.empty());
     const auto pos = cc.find("else if (method == \"tools/call\")");
     ASSERT_NE(pos, std::string::npos) << "tools/call branch missing";
-    const std::string region = cc.substr(pos, 12000);
+    // 12000→17000 (ANTS-1901): the master-MCP `mcp_disabled` guard
+    // inserted ahead of the caller_cwd block shifts the TabSpecific
+    // refusal down ~1.1 KiB.
+    const std::string region = cc.substr(pos, 17000);
     EXPECT_TRUE(has(region, "\"tab_or_cwd_required\""))
         << "ANTS-1415 INV-2: code literal missing";
     EXPECT_TRUE(has(region, "contract == CallerCwdContract::TabSpecific"))
