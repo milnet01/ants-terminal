@@ -27,3 +27,14 @@ in v2 (roadmap follow-up).
   `^[A-Za-z0-9._/+-]{1,128}$` + leading-`-` reject.
 - **INV-16 / Range checks.** `cap_per_tool_seconds` [5, 60];
   `top_findings_count` [0, 100].
+- **INV-17 / Secret redaction of raw tool output (ANTS-2188).** Each
+  tool's raw output is run through `SecretRedact::scrub` in the `finish`
+  lambda *before* it is stored into `rawByTool` (→ the on-disk SARIF
+  notification text) or handed to `parseToolOutput` (→ `samples` /
+  `top_findings`). trivy runs `--scanners secret` and surfaces the
+  literal secret value; gitleaks already runs `--redact`, but trivy did
+  not, so an unredacted secret would otherwise reach both the
+  `.audit_cache/*.sarif` artifact and the MCP envelope returned to the
+  LLM (OWASP LLM06). One scrub at the single capture point covers both
+  sinks; the scrubbed value (not the raw) must feed `rawByTool` and
+  `parseToolOutput`.

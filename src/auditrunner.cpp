@@ -43,6 +43,7 @@
 #include "auditengine.h"    // ANTS-1576 buildVcsProvenanceBlock
 #include "auditfpledger.h"  // ANTS-1820 learned-FP ledger (headless gap)
 #include "secureio.h"       // setOwnerOnlyPerms — 0600 on SARIF/HTML
+#include "secretredact.h"   // ANTS-2188 scrub secret shapes from raw output
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -1551,9 +1552,21 @@ RunResult runAudit(const RunRequest &req) {
         tr.tool       = tool;
         tr.status     = status;
         tr.elapsedMs  = elapsedMs;
-        rawByTool[tool] = rawOutput;
+        // ANTS-2188 — scrub well-known secret shapes from the raw tool
+        // output at this single capture point, before it reaches either
+        // sink: rawByTool (→ the SARIF notification text written to
+        // .audit_cache/*.sarif) or parseToolOutput (→ samples /
+        // top_findings returned over MCP). trivy's `--scanners secret`
+        // surfaces the literal secret value; gitleaks already runs
+        // `--redact` but trivy did not, so the secret would otherwise
+        // leak verbatim to disk and back to the LLM (OWASP LLM06).
+        // Scrubbing before the JSON parse is safe: the [REDACTED:*] token
+        // and the secret char-classes contain no quotes, so JSON string
+        // values stay balanced and rawCount is unaffected.
+        const QString scrubbed = SecretRedact::scrub(rawOutput).text;
+        rawByTool[tool] = scrubbed;
         const ParsedOutput parsed =
-            parseToolOutput(tool, rawOutput, kSamplesPerToolDefault, learnedFps);
+            parseToolOutput(tool, scrubbed, kSamplesPerToolDefault, learnedFps);
         tr.rawCount         = parsed.rawCount;
         // ANTS-1820 — the only filter the v1 runner applies is the learned-FP
         // ledger; afterFilterCount drops the suppressed total.

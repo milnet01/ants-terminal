@@ -250,6 +250,38 @@ TEST(mcp_audit_run, Ants1456ScopeDescriptorClarified) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-2188 INV-17 — raw tool output is secret-scrubbed at the single
+// capture point (the `finish` lambda) before it reaches either sink:
+// rawByTool (→ SARIF notification text on disk) or parseToolOutput
+// (→ samples / top_findings in the MCP envelope). trivy's
+// `--scanners secret` surfaces literal secret values; without this scrub
+// they leak verbatim to the .audit_cache SARIF and back to the LLM
+// (OWASP LLM06). gitleaks already runs --redact; trivy did not.
+TEST(mcp_audit_run, Ants2188RawOutputSecretScrubbed) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
+    expect(contains(cpp, "#include \"secretredact.h\""),
+           "INV-17: auditrunner.cpp includes secretredact.h");
+    // Bound the probe to the `finish` lambda body (anchor → its
+    // parseToolOutput call) so the wiring assertions can't be satisfied
+    // by an unrelated scrub elsewhere in the file.
+    const auto pos = cpp.find("auto finish = [&](const QString &tool");
+    ASSERT_NE(pos, std::string::npos);
+    const auto blockEnd = cpp.find("r.byTool[tool]", pos);
+    ASSERT_NE(blockEnd, std::string::npos);
+    const std::string body = cpp.substr(pos, blockEnd - pos);
+    expect(contains(body, "SecretRedact::scrub(rawOutput)"),
+           "INV-17: finish() scrubs rawOutput through SecretRedact::scrub");
+    // The scrubbed value — not the raw — must feed BOTH sinks.
+    expect(contains(body, "rawByTool[tool] = scrubbed"),
+           "INV-17: the scrubbed value feeds rawByTool (SARIF sink), "
+           "not the raw output");
+    expect(contains(body, "parseToolOutput(tool, scrubbed"),
+           "INV-17: the scrubbed value feeds parseToolOutput (findings/"
+           "samples sink), not the raw output");
+    EXPECT_EQ(0, expect_failures());
+}
+
 // Dispatch — provider lambda registered in mainwindow.
 TEST(mcp_audit_run, DispatchProviderRegistered) {
     expect_reset();

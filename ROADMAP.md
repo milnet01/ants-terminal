@@ -9806,11 +9806,12 @@ apiKey-from-config, secretredact.h filename, openUrl internal URL, trigger sh
   Kind: security.
   Source: indie-review-8 2026-06-26 review-engines H-1.
 
-- 📋 [ANTS-2188] **trivy secret-scanner output is embedded UNREDACTED into the on-disk SARIF + MCP envelope (gitleaks runs `--redact`).**
+- ✅ [ANTS-2188] **trivy secret-scanner output is embedded UNREDACTED into the on-disk SARIF + MCP envelope (gitleaks runs `--redact`).**
   gitleaks runs with --redact (auditrunner.cpp:352) but trivy runs `--scanners vuln,secret` with no redaction (:363) and the raw output is written into the SARIF notification text (:767 `msg["text"] = raw.left(...)`), landing in <root>/.audit_cache/audit-*.sarif (0600, retained 10 deep) and flowing back via top_findings. Fix: add trivy redaction, or run the embedded `raw` through SecretRedact::scrub before writing.
   **Layman:** One of the security scanners (trivy) can find secret values and Ants writes them verbatim into the audit report file and back to Claude — unlike the other scanner (gitleaks) which masks them. A found secret could leak into the cached report.
   Kind: security.
   Source: indie-review-8 2026-06-26 audit-pipeline M1.
+  Resolved (2026-06-26): scrub each tool's raw output through SecretRedact::scrub at the single capture point in auditrunner.cpp's `finish` lambda, before it feeds rawByTool (→ SARIF notification text) or parseToolOutput (→ samples/top_findings). gitleaks already --redact'd; trivy did not. Scrub-before-parse is JSON-safe (redaction token + secret char-classes have no quotes). Regression test: mcp_audit_run INV-17 (red→green). Full suite 2254/2254.
 
 - 📋 [ANTS-2189] **`.audit_cache/index.json` read-modify-write has no advisory lock — a second Ants instance / CC session auditing the same tree races last-writer-wins (drops history, orphans SARIF).**
   recordRun does loadManifest → mutate → QSaveFile commit (auditcache.cpp:158-299) with no lock. Same-process is single-flighted, but a second instance/session races. The learned-FP ledger took a ConfigWriteLock for exactly this (auditfpledger.cpp:112). Fix: take ConfigWriteLock(manifestPath) across recordRun's load-mutate-commit.

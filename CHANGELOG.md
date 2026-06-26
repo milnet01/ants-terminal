@@ -65,6 +65,15 @@ for security-relevant changes.
 
 ### Security
 
+- **`audit_run` now secret-scrubs raw tool output before it reaches disk or the LLM (ANTS-2188).**
+  trivy's `--scanners secret` surfaces literal secret values; unlike
+  gitleaks (which runs `--redact`) trivy's output was embedded verbatim
+  into the `.audit_cache/*.sarif` notification text and returned over MCP
+  via `top_findings`. Each tool's output is now run through
+  `SecretRedact::scrub` at the single capture point in the runner, before
+  it feeds either sink — closing both the on-disk artifact and the LLM
+  envelope (OWASP LLM06). Regression-locked by mcp_audit_run INV-17.
+
 - **Harden several input boundaries (indie-review #8 sweep).**
   Secret-redaction now covers GitLab personal-access tokens (glpat-) and Slack app-level tokens (xapp-) before context is sent to an LLM. The repo-visibility `gh repo view` call now passes a `--` end-of-options sentinel so a hostile clone's `-`-prefixed origin slug can't be parsed as a flag, and the roadmap-card HTML escaper now escapes `"` so a quote in a ROADMAP bold-ID can't break out of an HTML attribute (CWE-79).
 
