@@ -58,6 +58,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Model-switch banner detection hardened against a quoted banner in scrollback** (ANTS-2197)
+  directModelSwitchVisible now requires the tier title and the banner's 'saved as your default' tail together, so a bare quoted fragment no longer trips a continuation.
+
+- **Model-switch ledger now hard-bounded even when outcomes never settle** (ANTS-2196)
+  A secondary ceiling (4x the soft cap) drops the oldest record regardless of pending state, so a run of never-settling pending outcomes can't grow the file unbounded.
+
+- **Model auto-switcher: a /model typed while idle no longer starts an unrequested billable turn** (ANTS-2186)
+  The direct-switch continuation now gates on an active turn, matching every sibling path. Pre-picking a model at idle is not consent to resume work.
+
 - **Refuse truncated DCS/APC image payloads; correct the AI command-preview byte warning.**
   A DCS (Sixel) or APC (Kitty/iTerm2) payload that overflowed the parser's 10 MiB accumulator is now refused outright instead of being decoded from a corrupt prefix (ANTS-1663 was previously honoured only for OSC 8/52). The AI command-confirmation dialog's "N additional bytes will be executed" warning is now accurate (and never negative) for commands containing HTML-special characters.
 
@@ -76,6 +85,9 @@ for security-relevant changes.
   cheaper Ants tools just like a native install.
 
 ### Security
+
+- **Model auto-switcher: code-level parked guard so a config bug can't re-arm keystroke injection** (ANTS-2195)
+  The auto-switcher's only actuator is keystroke injection and is deliberately parked as unsafe. A new compile-time guard (kAutoSwitchActuatorParked) short-circuits the firing site before the /model send, so the parked decision can no longer be undone by config alone.
 
 - **Terminal query-responses are now rate-limited to bound a `\e[6n`-flood amplification (ANTS-2192).**
   DA/CPR/DSR/DECRQSS/colour/Kitty query replies fired an unconditional

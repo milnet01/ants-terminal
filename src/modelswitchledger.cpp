@@ -137,6 +137,15 @@ QList<QByteArray> evictToCap(QList<QByteArray> lines, qint64 capBytes) {
         if (victim < 0) break;   // only pinned records + newest remain
         lines.removeAt(victim);
     }
+    // ANTS-2196 — hard secondary ceiling. The loop above honours pending-pinning,
+    // so a run of never-settling pending records (a project dir that vanished, so
+    // fillPendingLedgerOutcomes can never clear them) leaves the file growing past
+    // capBytes unbounded. Once it reaches kEvictHardCeilingMult× the soft cap,
+    // drop the OLDEST line regardless of pending state (never the newest) so the
+    // ledger is hard-bounded. Pin is a soft preference, not a leak licence.
+    const qint64 hardCap = capBytes * kEvictHardCeilingMult;
+    while (total() > hardCap && lines.size() > 1)
+        lines.removeAt(0);   // oldest first; newest (last) always survives
     return lines;
 }
 

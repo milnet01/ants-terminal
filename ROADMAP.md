@@ -9795,11 +9795,12 @@ apiKey-from-config, secretredact.h filename, openUrl internal URL, trigger sh
   Source: indie-review-8 2026-06-26 audit-pipeline H1.
   Resolved (2026-06-26): toolArgv normalises every scoped positional through flagSafeScopedPathImpl at a single chokepoint, prefixing ./ to dash-leading relative paths so a file named `-rf.cpp` reaches the child tool as a path, not a flag. Absolute + ordinary relative paths byte-identical (delta-match preserved). `--` rejected: ruff/bandit/shellcheck/mypy append flags after the path list. Tests: mcp_audit_run INV-18 (behavioural flagSafeScopedPath transform red→green + source-scrape wiring red→green). Widened the audit_run_scoped_check byte-window 4000→5000 (the normalisation block shifted the clang-tidy branch past the old edge). Full suite 2256/2256.
 
-- 📋 [ANTS-2186] **Auto-switcher direct-`/model` continuation has no active-turn gate — an opted-in user typing `/model` at idle starts an unrequested billable turn (violates the no-auto-billable-work invariant).**
+- ✅ [ANTS-2186] **Auto-switcher direct-`/model` continuation has no active-turn gate — an opted-in user typing `/model` at idle starts an unrequested billable turn (violates the no-auto-billable-work invariant).**
   shouldContinueAfterDirectSwitch(bool autoModeOn) is `return autoModeOn;` (modelautoswitch.cpp:301) — no activeTurn param. pollUnarmedSwitchConfirm fires the continuation on that gate alone (claudestatuswidgets.cpp:1976→1981). Every sibling path gates on activeTurn (performModelSwitchHandshake :1821; sendUnarmedConfirm :2011). Fix: add an activeTurn arg and gate identically (idle ⇒ observe/confirm only, never continue). Hard billing-safety invariant per project memory; only fires when the parked feature is opted in, but must be closed before un-parking. TDD: idle + /model must NOT emit a continuation.
   **Layman:** If you turn on the (currently parked) auto-model feature and type `/model opus` while idle just to pre-pick a model for later, Ants would inject 'please continue' and start a paid turn you didn't ask for. Picking a model is not consent to resume.
   Kind: fix.
   Source: indie-review-8 2026-06-26 model-switcher HIGH-2.
+  Resolved 2026-06-26: shouldContinueAfterDirectSwitch now takes activeTurn and returns autoModeOn && activeTurn, mirroring shouldContinueAfterUnarmedConfirm; the pollUnarmedSwitchConfirm call site computes activeTurn from the tracker (Thinking/ToolUse). Idle /model emits no continuation. Test: UnarmedConfirm.DirectSwitchNoContinuationAtIdle.
 
 - ✅ [ANTS-2187] **`IndieReviewEngine::assembleBrief` is a zombie that inlines RAW source into an LLM prompt with no fence-hardening — latent prompt-injection trap if ever re-wired.**
   find_caller confirms no production caller — only indiereviewengine.h:13/141 doc comments + test_indie_review_engine.cpp:184. The live path is assembleBriefForDispatch (fence-hardened via BriefDispatch::fenceBody). assembleBrief (indiereviewengine.cpp:256) inlines `=== file: <slurpUtf8> ===` with no fenceBody and ends with a false `(not inlined; reviewer fetches if needed)` note (a raw API endpoint has no Read tool). Fix: delete assembleBrief + repoint the test to assembleBriefForDispatch, and drop the stale header contract comment.
@@ -9852,23 +9853,26 @@ apiKey-from-config, secretredact.h filename, openUrl internal URL, trigger sh
   Kind: fix.
   Source: indie-review-8 2026-06-26 lua-sandbox M2.
 
-- 📋 [ANTS-2195] **Auto-switcher documented PARKED but the keystroke-injection actuator is fully wired, gated only by a default-false config bool — no code guard enforces the parked decision.**
+- ✅ [ANTS-2195] **Auto-switcher documented PARKED but the keystroke-injection actuator is fully wired, gated only by a default-false config bool — no code guard enforces the parked decision.**
   refreshAutoModelSwitch is connected to the 2 s timer (mainwindow.cpp:806) and injects `/model <tier>\r` on dec.act (claudestatuswidgets.cpp:1744), gated only by claude.auto_model_switch (default false, config.cpp:434). Per project memory the feature is parked because keystroke injection is the only mechanism and every firing window is unsafe. Fix: gate the actuator's sendToPty behind an explicit second 'un-parked' guard / compile flag so the parked decision can't be undone by a config-migration bug. Pairs with ANTS-2186.
   **Layman:** The auto-model feature was deliberately parked as unsafe, but the risky keystroke-injection code is still fully connected — one config flag away from running. A settings bug could re-arm it. The 'parked' decision should be enforced in code, not just a note.
   Kind: fix.
   Source: indie-review-8 2026-06-26 model-switcher (parked enforcement).
+  Resolved 2026-06-26: constexpr kAutoSwitchActuatorParked=true (modelautoswitch.h) hard-gates the refreshAutoModelSwitch firing site with an early return before the /model keystroke injection, so a config-migration bug flipping claude.auto_model_switch can never re-arm the actuator. Test: McpMasterToggle.Ants2195ParkedGuardPrecedesInjection.
 
-- 📋 [ANTS-2196] **Model-switch ledger `evictToCap` can grow unbounded past the 256 KiB cap when pending records dominate (outcomes never settle).**
+- ✅ [ANTS-2196] **Model-switch ledger `evictToCap` can grow unbounded past the 256 KiB cap when pending records dominate (outcomes never settle).**
   evictToCap breaks when only pinned/pending + newest remain (modelswitchledger.cpp:130-139) — correct pending-pinning, but no secondary bound. fillPendingLedgerOutcomes `continue`s (never clears) when a project dir vanishes (claudestatuswidgets.cpp:2517/2534), so pending accumulates past cap. Fix: hard ceiling — evict oldest regardless of pending once total exceeds, e.g., 4× cap.
   **Layman:** The file that tracks model-switch outcomes is supposed to cap at 256 KiB by dropping old entries, but it never drops 'still-pending' ones — so a session that keeps switching in disappearing folders can grow the file without limit.
   Kind: fix.
   Source: indie-review-8 2026-06-26 model-switcher MEDIUM-2.
+  Resolved 2026-06-26: evictToCap gained a hard secondary ceiling (kEvictHardCeilingMult=4x soft cap) that drops the oldest line regardless of pending state, so never-settling pending records can no longer grow the ledger unbounded. Test: ModelSwitchLedger.Ants2196PendingHardCeiling.
 
-- 📋 [ANTS-2197] **`directModelSwitchVisible` matches the `Set model to <tier>` banner as a bare substring anywhere in 12-line scrollback — a quoted banner can (with auto-mode on) trigger a continuation.**
+- ✅ [ANTS-2197] **`directModelSwitchVisible` matches the `Set model to <tier>` banner as a bare substring anywhere in 12-line scrollback — a quoted banner can (with auto-mode on) trigger a continuation.**
   directModelSwitchVisible (modelautoswitch.cpp:283-292) matches the tier-anchored banner anywhere in recentOutput(kSwitchConfirmScanLines=12). Compounds ANTS-2186: a quoted banner + auto-mode could fire a continuation with no real switch. Fix: require evidence of a just-issued user `/model` line within a short window, not a bare scrollback substring.
   **Layman:** Ants detects a model switch by spotting the text 'Set model to Opus' in recent output — but that text appearing in a quote or log (like this very review) could be mistaken for a real switch and trigger an action.
   Kind: fix.
   Source: indie-review-8 2026-06-26 model-switcher MEDIUM-3.
+  Resolved 2026-06-26: directModelSwitchVisible now requires BOTH the tier-anchored title AND the banner's 'saved as your default' tail (title+corroborator, like switchConfirmVisible), so a bare quoted fragment cannot trip it. Scrollback /model-keystroke detection was rejected as unverifiable from here. Tests added in test_unarmed_confirm.cpp.
 
 - 📋 [ANTS-2198] **`codebase_index` / `docs_index` stale-but-warm refresh walks the filesystem 2–3× per call (re-loading `.ants/project.json` each walk) — the highest-frequency MCP hot path.**
   CodebaseIndex::serve calls staleFiles (codebaseindex.cpp:532), then refresh calls staleFiles AGAIN (:288) and re-walks candidates() (:306), each re-loading project.json (:131). Same double-walk in DocsIndex (docsindex.cpp:256/285). Fix: thread the already-computed StaleSet + candidate list through refresh instead of recomputing.

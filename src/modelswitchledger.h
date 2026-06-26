@@ -22,6 +22,13 @@ namespace ModelSwitchLedger {
 
 // INV-10 — drop-oldest byte cap. INV-11 — author-correlation window.
 constexpr qint64 kMaxLedgerBytes        = 256 * 1024;   // 256 KiB
+// ANTS-2196 — hard secondary ceiling on the soft cap. evictToCap pins pending
+// records (their outcome is still settling), but fillPendingLedgerOutcomes can
+// leave outcomes permanently pending when a project dir vanishes — pending then
+// accumulates past kMaxLedgerBytes unbounded. Once the file reaches this multiple
+// of the soft cap, the oldest line is dropped regardless of pending state: pin is
+// a soft preference, never a leak licence.
+constexpr int    kEvictHardCeilingMult  = 4;            // hard cap = 4× soft cap
 constexpr qint64 kAuthorWindowMs        = 10'000;       // 10 s
 constexpr int    kOutcomeWindowTurns    = 5;            // "within 5 turns"
 constexpr qint64 kCleanEndQuietMs       = 10 * 60 * 1000; // ANTS-1891 — 10 min

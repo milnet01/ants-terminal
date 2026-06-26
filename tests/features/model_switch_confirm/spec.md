@@ -66,6 +66,17 @@ the handshake's existing terminator. There is **no** "Esc to cancel" footer.
   with auto mode off the user typed `/model` as a one-off and has their own next
   message ready (ANTS-1958). The active-turn read mirrors
   `performModelSwitchHandshake`.
+- **INV-9 — direct `/model <tier>` (no-dialog) path (ANTS-1975 / 2020 / 2186 / 2197).**
+  When the user types `/model <tier>` with an explicit tier, CC switches without a
+  "Switch model?" dialog and prints a banner; `directModelSwitchVisible` is the
+  only signal. It requires BOTH the tier-anchored title (`Set model to <Tier>`)
+  AND the banner's `saved as your default` tail (ANTS-2197 title+corroborator) so
+  a bare quoted fragment in scrollback cannot trip it. The budget-exhausted
+  `pollUnarmedSwitchConfirm` branch fires a continuation only when
+  `shouldContinueAfterDirectSwitch(autoModeOn, activeTurn)` holds — auto mode on
+  AND a turn active. ANTS-2186 added the `activeTurn` gate: `/model` typed at idle
+  to pre-pick a model is not consent to start a billable turn (ANTS-1959), so it
+  now mirrors INV-8 exactly.
 
 ## Tests
 

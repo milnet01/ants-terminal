@@ -177,13 +177,17 @@ bool switchConfirmVisible(const QString &recentOutput);
 // ANTS-1975 — detect CC's no-dialog direct-switch banner ("Set model to …").
 // When the user types `/model <tier>` with an explicit tier argument CC switches
 // immediately without a "Switch model?" dialog; this banner is the only signal
-// that a switch happened. Pure + case-insensitive; stable English string.
+// that a switch happened. ANTS-2197 hardens it to require the tier-anchored title
+// AND the "saved as your default" tail (title+corroborator, mirroring
+// switchConfirmVisible) so a bare quoted fragment in scrollback cannot trip it.
+// Pure + case-insensitive; stable English string.
 bool directModelSwitchVisible(const QString &recentOutput);
 
-// ANTS-1975 — for the direct-switch (no-dialog) path: resume iff auto mode on.
-// No activeTurn gate: a deliberate user /model command is the request; it is not
-// an Ants-initiated idle switch (ANTS-1958/1959 billing concern doesn't apply).
-bool shouldContinueAfterDirectSwitch(bool autoModeOn);
+// ANTS-1975/ANTS-2186 — for the direct-switch (no-dialog) path: resume iff auto
+// mode on AND a turn is still active. ANTS-2186 added the activeTurn gate —
+// typing `/model <tier>` while idle to pre-pick a model is NOT consent to start a
+// billable turn (the ANTS-1959 invariant). Mirrors shouldContinueAfterUnarmedConfirm.
+bool shouldContinueAfterDirectSwitch(bool autoModeOn, bool activeTurn);
 
 // ANTS-1951 — gate for auto-confirming a "Switch model?" dialog that Ants did
 // NOT initiate (the user typed /model directly). Returns true only when the
@@ -222,6 +226,17 @@ double conservatismDwellMultiplier(int  measuredDowngrades,
                                    int  regretRatePct,
                                    int  headlineFloor,
                                    bool isMechanical);
+
+// ANTS-2195 — PARKED-feature enforcement. The autonomous model switcher's only
+// actuator is keystroke injection (`/model <tier>\r` into the focused PTY), and
+// every firing window was judged unsafe (project decision: PARKED — see the
+// ROADMAP "Auto-switcher PARKED" note). claude.auto_model_switch defaults false,
+// but a config-migration bug could flip it true and silently re-arm the actuator.
+// This second, code-level guard makes the parked decision un-undoable from config
+// alone: the firing site in ClaudeStatusBarController short-circuits while this is
+// true. Flip to false ONLY when a real, safe switch API replaces keystroke
+// injection (and close the de-risk items ANTS-2186/2197 first).
+constexpr bool   kAutoSwitchActuatorParked = true;
 
 constexpr int    kStableTicks      = 2;   // ~4 s at the 2 s status tick (INV-5)
 // ANTS-1925 — reset-hysteresis. The stable counter resets only after this

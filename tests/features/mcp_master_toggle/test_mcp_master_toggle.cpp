@@ -119,6 +119,22 @@ TEST(McpMasterToggle, INV4_AutoSwitcherEarlyReturn) {
         << "the master early return must precede the /model injection";
 }
 
+// ANTS-2195 — the parked-feature code guard must short-circuit the actuator
+// BEFORE the /model keystroke injection, so a config-migration bug that flips
+// claude.auto_model_switch on cannot silently re-arm keystroke injection.
+TEST(McpMasterToggle, Ants2195ParkedGuardPrecedesInjection) {
+    const std::string cw = slurp(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const auto fn = cw.find("ClaudeStatusBarController::refreshAutoModelSwitch");
+    ASSERT_NE(fn, std::string::npos);
+    const auto guard  = cw.find("kAutoSwitchActuatorParked", fn);
+    const auto inject = cw.find("QStringLiteral(\"/model \")", fn);
+    ASSERT_NE(guard, std::string::npos)
+        << "ANTS-2195 parked guard missing from refreshAutoModelSwitch";
+    ASSERT_NE(inject, std::string::npos);
+    EXPECT_LT(guard, inject)
+        << "the parked guard must precede the /model injection";
+}
+
 // INV-5 — dispatcher refuses with mcp_disabled before the caller_cwd gate.
 TEST(McpMasterToggle, INV5_DispatcherRefusal) {
     const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);

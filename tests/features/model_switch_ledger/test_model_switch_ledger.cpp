@@ -139,6 +139,35 @@ TEST(ModelSwitchLedger, Inv10MaxBytesConstant) {
     EXPECT_EQ(L::kMaxLedgerBytes, 256 * 1024);
 }
 
+// ANTS-2196: pending records are soft-pinned, but a run of never-settling
+// pending outcomes (a vanished project dir → fillPendingLedgerOutcomes can never
+// clear them) would grow the file unbounded under the soft cap alone. The hard
+// secondary ceiling (kEvictHardCeilingMult× the soft cap) drops the OLDEST line
+// regardless of pending state, so the ledger stays bounded; the newest survives.
+TEST(ModelSwitchLedger, Ants2196PendingHardCeiling) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("ledger.jsonl"));
+    const qint64 cap = 900;
+    // 30 all-pending records: every one is soft-pinned (~406B each ⇒ ~12 KiB),
+    // so only the hard ceiling (4×900 = 3600B) can bound the file.
+    for (int i = 0; i < 30; ++i)
+        ASSERT_TRUE(L::appendRecord(
+            path, makeRecord("opus","haiku",true,QStringLiteral("p%1").arg(i)), cap));
+
+    EXPECT_LE(QFile(path).size(), cap * L::kEvictHardCeilingMult)
+        << "all-pending ledger grew past the hard ceiling";
+
+    const QList<L::Record> recs = L::readRecords(path);
+    ASSERT_FALSE(recs.isEmpty());
+    EXPECT_EQ(recs.last().sessionId, QStringLiteral("p29"))
+        << "newest record must always survive";
+    bool hasOldest = false;
+    for (const L::Record &r : recs)
+        if (r.sessionId == QStringLiteral("p0")) hasOldest = true;
+    EXPECT_FALSE(hasOldest)
+        << "oldest pending record should be evicted at the hard ceiling";
+}
+
 // INV-11: two auto-switches in the window, each transcript /model matching its
 // own auto record by tier+time → NOT an override.
 TEST(ModelSwitchLedger, Inv11AutoThenAutoNotOverride) {

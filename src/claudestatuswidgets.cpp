@@ -1736,6 +1736,14 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     }
     m_autoSwitchPendingTier.clear();   // switch is about to fire — clear intent
 
+    // ANTS-2195 — parked-feature enforcement (see modelautoswitch.h). The
+    // decision above (dec.act) and its near-miss telemetry still run, but the
+    // keystroke-injection actuator stays disarmed in code until a safe switch API
+    // exists — so a config-migration bug that flips claude.auto_model_switch on
+    // can never re-arm it. Remove this guard only when un-parking the feature.
+    if (ModelAutoSwitch::kAutoSwitchActuatorParked)
+        return;
+
     // Act — INV-9 keeps tierArg derived solely from the enum.
     // QStringLiteral matches the model-chip click pattern at :152 — CI's
     // stricter Qt build rejected the `u"..."` form (char16_t[8] vs QString
@@ -1973,7 +1981,17 @@ void ClaudeStatusBarController::pollUnarmedSwitchConfirm(int attempt) {
             if (ModelAutoSwitch::directModelSwitchVisible(recent)) {
                 const bool autoModeOn =
                     Config().claudeAutoModel().value("switch_enabled").toBool();
-                if (ModelAutoSwitch::shouldContinueAfterDirectSwitch(autoModeOn)) {
+                // ANTS-2186 — gate the continuation on an active turn, identically
+                // to sendUnarmedConfirm: a `/model` typed at idle (pre-picking a
+                // model for later) must NOT inject a continuation and start an
+                // unrequested billable turn (the ANTS-1959 invariant).
+                const pid_t pid = focused->shellPid();
+                const ClaudeState st = (m_tracker && pid > 0)
+                    ? m_tracker->shellState(pid).state : ClaudeState::NotRunning;
+                const bool activeTurn =
+                    (st == ClaudeState::Thinking || st == ClaudeState::ToolUse);
+                if (ModelAutoSwitch::shouldContinueAfterDirectSwitch(autoModeOn,
+                                                                     activeTurn)) {
                     const QString cont = Config().claudeAutoModelContinuationPrompt();
                     if (!cont.isEmpty()) {
                         QPointer<TerminalWidget> g2(focused);

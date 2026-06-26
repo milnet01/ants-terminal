@@ -280,26 +280,43 @@ bool shouldContinueAfterUnarmedConfirm(bool autoModeOn, bool activeTurn) {
 // false-negative (no spurious continuation — the safe direction), never a
 // false-positive. Tier set verified against the model_switch_confirm
 // feature-test banners (Sonnet 4.6 / Opus 4.8).
+// ANTS-2197 — require BOTH the tier-anchored title AND the banner's distinctive
+// "saved as your default" tail, the same title+corroborator structure
+// switchConfirmVisible uses for the dialog. The tier token alone (ANTS-2020)
+// still matched a bare quote of "Set model to Opus" sitting in scrollback prose
+// or a transcript, which — with auto-mode on — could fire a continuation with no
+// real switch. Pairing it with the persistent-default clause shrinks the
+// accidental-match surface to an exact full-banner quote (then further gated by
+// the activeTurn requirement of shouldContinueAfterDirectSwitch, ANTS-2186). A
+// CC banner reword is a false-negative (no spurious continuation — the safe
+// direction). Scrollback detection of the user's own `/model` keystroke was
+// considered and rejected: CC's rendering of a submitted slash command is not
+// verifiable from here, so a token corroborator is the soundest available signal.
 bool directModelSwitchVisible(const QString &recentOutput) {
-    return recentOutput.contains(
-               QStringLiteral("Set model to Sonnet"), Qt::CaseInsensitive)
+    const bool tierTitle =
+        recentOutput.contains(
+            QStringLiteral("Set model to Sonnet"), Qt::CaseInsensitive)
         || recentOutput.contains(
-               QStringLiteral("Set model to Opus"), Qt::CaseInsensitive)
+            QStringLiteral("Set model to Opus"), Qt::CaseInsensitive)
         || recentOutput.contains(
-               QStringLiteral("Set model to Haiku"), Qt::CaseInsensitive)
+            QStringLiteral("Set model to Haiku"), Qt::CaseInsensitive)
         || recentOutput.contains(
-               QStringLiteral("Set model to Default"), Qt::CaseInsensitive);
+            QStringLiteral("Set model to Default"), Qt::CaseInsensitive);
+    const bool persisted = recentOutput.contains(
+        QStringLiteral("saved as your default"), Qt::CaseInsensitive);
+    return tierTitle && persisted;
 }
 
-// ANTS-1975 — for the no-dialog direct-switch path: resume iff auto mode on.
-// Unlike the dialog path (ANTS-1969) we do NOT gate on activeTurn — the user
-// explicitly typed /model to change model, which IS the "request" for fresh
-// work (it is not an Ants-initiated switch at idle). The billing-safety concern
-// of ANTS-1959 applies to Ants-initiated idle switches; a deliberate user
-// command is a different context. If the session was at idle because context
-// compacted, this gets work going again — which is what the user expects.
-bool shouldContinueAfterDirectSwitch(bool autoModeOn) {
-    return autoModeOn;
+// ANTS-1975/ANTS-2186 — for the no-dialog direct-switch path: resume iff auto
+// mode on AND a turn is still active. ANTS-1975 originally skipped the activeTurn
+// gate, reasoning a deliberate `/model` was itself the request for work. ANTS-2186
+// closed that: typing `/model <tier>` while idle to pre-pick a model for a later
+// message is NOT consent to start a billable turn — injecting a continuation
+// there would start unrequested work (the hard ANTS-1959 billing-safety
+// invariant). This now mirrors shouldContinueAfterUnarmedConfirm exactly: idle ⇒
+// observe/confirm only, never continue.
+bool shouldContinueAfterDirectSwitch(bool autoModeOn, bool activeTurn) {
+    return autoModeOn && activeTurn;
 }
 
 }  // namespace ModelAutoSwitch

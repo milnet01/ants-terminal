@@ -69,8 +69,22 @@ TEST(UnarmedConfirm, DirectSwitchBannerDetected) {
         QStringLiteral("Set model to Sonnet 4.6 and saved as your default for new sessions")));
     EXPECT_TRUE(directModelSwitchVisible(
         QStringLiteral("Set model to Opus 4.8 and saved as your default for new sessions")));
-    // Case-insensitive.
-    EXPECT_TRUE(directModelSwitchVisible(QStringLiteral("set model to haiku")));
+    // Case-insensitive (full banner, lowercased).
+    EXPECT_TRUE(directModelSwitchVisible(
+        QStringLiteral("set model to haiku and saved as your default for new sessions")));
+}
+
+// ANTS-2197 — the tier-anchored title ALONE (no "saved as your default" tail) must
+// NOT match: a bare quote of "Set model to Opus" in scrollback prose / a
+// transcript would otherwise fire an unwanted continuation under auto mode. The
+// detector now requires the banner's distinctive persistent-default corroborator.
+TEST(UnarmedConfirm, DirectSwitchTitleWithoutCorroboratorNotFalsePositive) {
+    EXPECT_FALSE(directModelSwitchVisible(QStringLiteral("Set model to Opus")));
+    EXPECT_FALSE(directModelSwitchVisible(
+        QStringLiteral("...as the review noted, Set model to Opus 4.8 would...")));
+    // The corroborator alone (no tier title) also must not match.
+    EXPECT_FALSE(directModelSwitchVisible(
+        QStringLiteral("your edits were saved as your default formatting")));
 }
 
 // An unrelated output line must not match.
@@ -94,12 +108,22 @@ TEST(UnarmedConfirm, DirectSwitchBarePhraseNotFalsePositive) {
     EXPECT_FALSE(directModelSwitchVisible(QStringLiteral("Set model to")));
 }
 
-// Auto mode ON → continuation fires (no activeTurn gate on direct path).
-TEST(UnarmedConfirm, DirectSwitchContinuesWhenAutoModeOn) {
-    EXPECT_TRUE(shouldContinueAfterDirectSwitch(/*autoModeOn=*/true));
+// ANTS-2186 — continuation fires only with auto mode ON *and* an active turn.
+TEST(UnarmedConfirm, DirectSwitchContinuesWhenAutoModeOnAndActiveTurn) {
+    EXPECT_TRUE(shouldContinueAfterDirectSwitch(/*autoModeOn=*/true,
+                                                /*activeTurn=*/true));
 }
 
-// Auto mode OFF → no continuation.
+// Auto mode OFF → no continuation, regardless of turn state.
 TEST(UnarmedConfirm, DirectSwitchNoContinuationWhenAutoModeOff) {
-    EXPECT_FALSE(shouldContinueAfterDirectSwitch(false));
+    EXPECT_FALSE(shouldContinueAfterDirectSwitch(false, true));
+    EXPECT_FALSE(shouldContinueAfterDirectSwitch(false, false));
+}
+
+// ANTS-2186 — idle (no active turn) → never continue, even with auto mode on:
+// pre-picking a model with `/model` is not consent to start a billable turn
+// (the ANTS-1959 invariant), mirroring shouldContinueAfterUnarmedConfirm.
+TEST(UnarmedConfirm, DirectSwitchNoContinuationAtIdle) {
+    EXPECT_FALSE(shouldContinueAfterDirectSwitch(/*autoModeOn=*/true,
+                                                 /*activeTurn=*/false));
 }
