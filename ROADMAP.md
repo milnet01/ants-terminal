@@ -9847,11 +9847,12 @@ apiKey-from-config, secretredact.h filename, openUrl internal URL, trigger sh
   Kind: fix.
   Source: indie-review-8 2026-06-26 lua-sandbox M3.
 
-- 📋 [ANTS-2194] **Zombie Lua worker threads (`g_queryZombies` / `m_zombies`) leak unbounded with no cap or telemetry on a wedged-worker pathology.**
+- ✅ [ANTS-2194] **Zombie Lua worker threads (`g_queryZombies` / `m_zombies`) leak unbounded with no cap or telemetry on a wedged-worker pathology.**
   g_queryZombies (luaengine.cpp:898-903) and PluginManager m_zombies are append-only, never reaped, with no cap (each leaks a ~512 KiB-stack thread + heap slot). Violates the project's name-eviction/cap rule (MEMORY: consider RAM in feature design). Fix: cap + log zombie count so a wedge-loop is observable; assert/document the single-thread no-lock precondition at the append site (re-entrancy via nested-loop dispatch is the only theoretical race).
   **Layman:** If a plugin or query gets stuck in a way it can't be killed, Ants parks the thread and never cleans it up — with no limit and no warning. A repeating wedge slowly leaks memory/threads invisibly.
   Kind: fix.
   Source: indie-review-8 2026-06-26 lua-sandbox M2.
+  Resolved 2026-06-26: runQueryThreaded now refuses new threaded queries once g_queryZombies reaches kMaxQueryZombies (64 ≈ 32 MiB of leaked stacks) — back-pressure bounds a wedge-loop that can never be reaped — and qWarnings the running count on each detach. PluginManager m_zombies detach log now includes the running leaked-worker count for the same observability. Single-thread no-lock precondition documented at the append site. Full suite green (2262).
 
 - ✅ [ANTS-2195] **Auto-switcher documented PARKED but the keystroke-injection actuator is fully wired, gated only by a default-false config bool — no code guard enforces the parked decision.**
   refreshAutoModelSwitch is connected to the 2 s timer (mainwindow.cpp:806) and injects `/model <tier>\r` on dec.act (claudestatuswidgets.cpp:1744), gated only by claude.auto_model_switch (default false, config.cpp:434). Per project memory the feature is parked because keystroke injection is the only mechanism and every firing window is unsafe. Fix: gate the actuator's sendToPty behind an explicit second 'un-parked' guard / compile flag so the parked decision can't be undone by a config-migration bug. Pairs with ANTS-2186.

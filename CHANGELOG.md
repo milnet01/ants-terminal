@@ -61,6 +61,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Wedged project-query workers are now bounded and logged instead of leaking silently** (ANTS-2194)
+  A hung query snippet that can't be killed parks its worker thread; past a hard ceiling Ants refuses new background queries (and logs the count) so a repeating hang can't slowly exhaust memory unnoticed.
+
 - **Shell launch resolves HOME before forking for signal-safety** (ANTS-2204)
   The child's working-directory fallback no longer calls getenv() in the fork/exec window; HOME is captured pre-fork like the other launch parameters.
 

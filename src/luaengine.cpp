@@ -899,8 +899,16 @@ QByteArray serializeJsonValue(const QJsonValue &v) {
 // an uninterruptible C call owns its lua_State frame and can't be safely
 // joined or freed, so the thread (and its captured heap result slot) leaks
 // by design (RAM consequence in spec §4). Appended ONLY from the
-// single-threaded MCP dispatch thread, so no lock is needed.
+// single-threaded MCP dispatch thread, so no lock is needed — the only
+// theoretical race is re-entrancy via a nested-loop dispatch, which this path
+// never triggers (ANTS-2194).
 QVector<QThread *> g_queryZombies;
+// ANTS-2194 — hard ceiling on leaked query workers. A wedged worker can never be
+// reaped, so an unbounded wedge-loop would leak ~512 KiB/thread until OOM. Past
+// this cap runQueryThreaded refuses new threaded queries (and logs the count) so
+// the leak is bounded and the pathology observable rather than silent. 64 ×
+// 512 KiB ≈ 32 MiB — well past any healthy steady state, short of run-away.
+constexpr int kMaxQueryZombies = 64;
 
 }  // namespace
 
@@ -1063,6 +1071,20 @@ LuaEngine::QueryResult LuaEngine::runQuery(const QString &code, const QString &r
 
 LuaEngine::QueryResult LuaEngine::runQueryThreaded(const QString &code, const QString &root,
                                                    qint64 timeoutMs, int resultCapBytes) {
+    // ANTS-2194 — back-pressure: if too many prior workers are already wedged,
+    // refuse rather than spawn yet another doomed (unreapable) thread. Bounds the
+    // leak under a pathological wedge-loop. Only ever read/written on the single
+    // dispatch thread (same precondition as g_queryZombies.append below).
+    if (g_queryZombies.size() >= kMaxQueryZombies) {
+        QueryResult out;
+        out.ok    = false;
+        out.code  = QStringLiteral("query_error");
+        out.error = QStringLiteral("project_query: %1 query workers already wedged "
+                                   "(cap %2) — refusing new threaded query")
+                        .arg(g_queryZombies.size()).arg(kMaxQueryZombies);
+        return out;
+    }
+
     // Heap result slot: the worker may outlive this call (detach path), so
     // it must NOT write into a stack local. `code`/`root` are copied into
     // the worker's functor (each thread owns its QString refs).
@@ -1088,6 +1110,10 @@ LuaEngine::QueryResult LuaEngine::runQueryThreaded(const QString &code, const QS
     // join deadline. Leak worker + slot (the worker still owns them); the
     // GUI/dispatch thread resumes now with query_timeout.
     g_queryZombies.append(worker);
+    // ANTS-2194 — log the running zombie count so a wedge-loop is observable
+    // (a steadily climbing number is the signal a snippet class reliably hangs).
+    qWarning("project_query: detached wedged worker; %d now leaked (cap %d)",
+             static_cast<int>(g_queryZombies.size()), kMaxQueryZombies);
     QueryResult out;
     out.ok    = false;
     out.code  = QStringLiteral("query_timeout");

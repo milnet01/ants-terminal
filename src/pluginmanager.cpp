@@ -148,10 +148,14 @@ void PluginManager::teardownEngine(const QString &name, LuaEngine *engine,
         m_demoted.remove(engine);
         m_execStart.remove(engine);
         m_zombies.append(Zombie{thread, engine});
+        // ANTS-2194 — include the running zombie count so a wedge-loop (a plugin
+        // class that reliably hangs on teardown) is observable as a climbing
+        // number rather than a silent per-event leak.
         emit logMessage(QString("Plugin worker did not stop in %1ms — "
-                                "detached: %2")
+                                "detached: %2 (%3 plugin workers now leaked)")
                             .arg(kTeardownMs)
-                            .arg(engine ? engine->pluginName() : QString()));
+                            .arg(engine ? engine->pluginName() : QString())
+                            .arg(m_zombies.size()));
     }
 }
 
