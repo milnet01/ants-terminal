@@ -235,6 +235,22 @@ bool isAuditCheckSafe(const QString &check) {
     return true;
 }
 
+// ANTS-2185 — make a scoped positional safe to hand to a child tool as
+// an argument. A path that begins with `-` (a file named e.g. `-rf.cpp`
+// in a hostile-clone tree) would otherwise be parsed as a FLAG by the
+// tool (argv option-injection). Prefixing `./` makes it unambiguously a
+// path for every tool we spawn. Only relative, dash-leading names are
+// rewritten — absolute paths and ordinary relative paths pass through
+// byte-identical, so the since-last-run findings delta keeps matching
+// them across runs. A `--` end-of-options separator is deliberately NOT
+// used: ruff/bandit/shellcheck/mypy append flags AFTER the path list,
+// and everything after `--` would be swallowed as a positional.
+QString flagSafeScopedPathImpl(const QString &p) {
+    return p.startsWith(QLatin1Char('-'))
+               ? QStringLiteral("./") + p
+               : p;
+}
+
 // Per-tool argv builder. v1 uses minimal sane defaults (parallel to
 // the /audit skill's step 5). ANTS-1456 — `src/` existence is
 // auto-detected so flat-layout projects (RetroArch et al.) no longer
@@ -247,6 +263,14 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
                      const QStringList &scopedPaths = {},
                      const QStringList &scopedChecks = {},
                      const QString &gitleaksConfig = {}) {
+    // ANTS-2185 — guard every scoped positional against argv
+    // option-injection before it reaches any tool branch's bare append.
+    // This is the single chokepoint where positionals (from the resolved
+    // scope set OR the `req.paths` fallback) become child argv.
+    QStringList scoped;
+    scoped.reserve(scopedPaths.size());
+    for (const QString &p : scopedPaths)
+        scoped += flagSafeScopedPathImpl(p);
     // ANTS-1464 — project-side override wins. ANTS-1456 cold-eyes
     // follow-up: every arg is validated through isAuditArgSafe()
     // before it reaches child argv. If ANY arg fails, the whole
@@ -258,7 +282,7 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
     // project-config override is BYPASSED. Scoped invocations are a
     // narrow-on-purpose mode; the project's full-run defaults would
     // re-broaden the scope.
-    if (projectConfig.contains(tool) && scopedPaths.isEmpty()
+    if (projectConfig.contains(tool) && scoped.isEmpty()
         && scopedChecks.isEmpty()) {
         const QJsonObject cfg =
             projectConfig.value(tool).toObject();
@@ -290,7 +314,7 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
                             QStringLiteral("-I"),
                             srcRoot};
         // ANTS-1512 — scoped paths override the default src/ scan.
-        if (!scopedPaths.isEmpty()) args += scopedPaths;
+        if (!scoped.isEmpty()) args += scoped;
         else                        args += srcRoot;
         return args;
     }
@@ -300,7 +324,7 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
                             projectRoot + QLatin1String("/build/compile_commands.json")};
         // ANTS-1504 — narrowing scopes append the changed source files;
         // clazy-standalone takes source positionals like clang-tidy.
-        if (!scopedPaths.isEmpty()) args += scopedPaths;
+        if (!scoped.isEmpty()) args += scoped;
         return args;
     }
     // ANTS-1512 — clang-tidy scoped invocation. Default argv when no
@@ -315,21 +339,21 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
             // outer runner has already validated each entry.
             args += QStringLiteral("--checks=-*,") + scopedChecks.join(QChar(','));
         }
-        if (!scopedPaths.isEmpty()) args += scopedPaths;
+        if (!scoped.isEmpty()) args += scoped;
         return args;
     }
     // ANTS-1504 — the file-oriented tools below take the narrowed file set
     // (when non-empty) in place of their default whole-tree target.
     if (tool == QLatin1String("ruff")) {
         QStringList args = {QStringLiteral("check")};
-        if (!scopedPaths.isEmpty()) args += scopedPaths;
+        if (!scoped.isEmpty()) args += scoped;
         else                        args += QStringLiteral(".");
         args += QStringLiteral("--output-format=json");
         return args;
     }
     if (tool == QLatin1String("bandit")) {
         QStringList args;
-        if (!scopedPaths.isEmpty()) args += scopedPaths;  // explicit files
+        if (!scoped.isEmpty()) args += scoped;  // explicit files
         else args += {QStringLiteral("-r"), srcRoot};      // recurse src dir
         args += {QStringLiteral("-f"), QStringLiteral("json"),
                  QStringLiteral("-ll")};
@@ -342,7 +366,7 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
                             QStringLiteral("--metrics=off"),
                             QStringLiteral("--config"),
                             QStringLiteral("p/security-audit")};
-        if (!scopedPaths.isEmpty()) args += scopedPaths;
+        if (!scoped.isEmpty()) args += scoped;
         else                        args += QStringLiteral(".");
         return args;
     }
@@ -377,13 +401,13 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
         // changed shell files instead.
         QStringList args = {QStringLiteral("-f"), QStringLiteral("json"),
                             QStringLiteral("-S"), QStringLiteral("warning")};
-        if (!scopedPaths.isEmpty()) args += scopedPaths;
+        if (!scoped.isEmpty()) args += scoped;
         else                        args += QStringLiteral("scripts");
         return args;
     }
     if (tool == QLatin1String("mypy")) {
         QStringList args = {QStringLiteral("--no-color-output")};
-        if (!scopedPaths.isEmpty()) args += scopedPaths;
+        if (!scoped.isEmpty()) args += scoped;
         else                        args += QStringLiteral(".");
         return args;
     }
@@ -1193,6 +1217,10 @@ QStringList extractIncludeArgs(const QStringList &args) {
 }
 QStringList splitCommandString(const QString &cmd) {
     return splitCommandStringImpl(cmd);
+}
+// ANTS-2185 — test hook for the scoped-positional argv-injection guard.
+QString flagSafeScopedPath(const QString &p) {
+    return flagSafeScopedPathImpl(p);
 }
 
 // ANTS-1820 — test hook delegating to the anonymous-namespace parser.

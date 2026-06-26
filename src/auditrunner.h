@@ -198,6 +198,11 @@ bool isIncludePathAllowed(const QString &includePath,
 QStringList extractIncludeArgs(const QStringList &args);
 QStringList splitCommandString(const QString &cmd);
 
+// ANTS-2185 — scoped-positional argv-injection guard. Prefixes `./` to a
+// dash-leading relative path so the child tool can't parse it as a flag;
+// absolute and ordinary relative paths pass through unchanged.
+QString flagSafeScopedPath(const QString &p);
+
 }  // namespace internal
 
 }  // namespace AuditRunner

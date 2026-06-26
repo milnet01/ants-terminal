@@ -65,6 +65,16 @@ for security-relevant changes.
 
 ### Security
 
+- **`audit_run` scoped positionals are now guarded against argv option-injection (ANTS-2185).**
+  A scoped file path beginning with `-` (e.g. a hostile-clone file named
+  `-rf.cpp`) was appended bare to each tool's argv and parsed as a flag.
+  `toolArgv` now `./`-prefixes dash-leading relative paths at a single
+  chokepoint so they are unambiguously paths; absolute and ordinary
+  relative paths are unchanged (the since-last-run delta keeps matching
+  them). `--` was rejected because ruff/bandit/shellcheck/mypy append
+  flags after the path list. Regression-locked by mcp_audit_run INV-18
+  (behavioural + wiring).
+
 - **`audit_run` now secret-scrubs raw tool output before it reaches disk or the LLM (ANTS-2188).**
   trivy's `--scanners secret` surfaces literal secret values; unlike
   gitleaks (which runs `--redact`) trivy's output was embedded verbatim

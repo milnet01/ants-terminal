@@ -282,6 +282,43 @@ TEST(mcp_audit_run, Ants2188RawOutputSecretScrubbed) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-2185 INV-18 — scoped positionals are guarded against argv
+// option-injection: no tool branch may append the raw scopedPaths; every
+// scoped path goes through the ./-guard first. A file named `-rf.cpp` in
+// a hostile-clone tree must reach the child tool as a path, not a flag.
+TEST(mcp_audit_run, Ants2185ToolArgvAppliesFlagGuard) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
+    expect(!contains(cpp, "args += scopedPaths"),
+           "INV-18: tool branches must append the guarded `scoped` list, "
+           "not the raw scopedPaths (argv option-injection)");
+    expect(contains(cpp, "flagSafeScopedPathImpl"),
+           "INV-18: toolArgv normalises scoped positionals via the "
+           "flag-safe guard");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-2185 INV-18 — behavioural: the guard ./-prefixes dash-leading
+// relative paths and leaves everything else byte-identical.
+TEST(mcp_audit_run, Ants2185FlagSafeScopedPathTransform) {
+    expect_reset();
+    using AuditRunner::internal::flagSafeScopedPath;
+    expect(flagSafeScopedPath(QStringLiteral("-x.cpp"))
+               == QStringLiteral("./-x.cpp"),
+           "INV-18: a dash-leading relative path is ./-prefixed");
+    expect(flagSafeScopedPath(QStringLiteral("--config=evil"))
+               == QStringLiteral("./--config=evil"),
+           "INV-18: a long-option-shaped name is ./-prefixed");
+    expect(flagSafeScopedPath(QStringLiteral("src/a.py"))
+               == QStringLiteral("src/a.py"),
+           "INV-18: an ordinary relative path passes through unchanged");
+    expect(flagSafeScopedPath(QStringLiteral("/abs/-y.c"))
+               == QStringLiteral("/abs/-y.c"),
+           "INV-18: an absolute path passes through unchanged "
+           "(never flag-parsed)");
+    EXPECT_EQ(0, expect_failures());
+}
+
 // Dispatch — provider lambda registered in mainwindow.
 TEST(mcp_audit_run, DispatchProviderRegistered) {
     expect_reset();

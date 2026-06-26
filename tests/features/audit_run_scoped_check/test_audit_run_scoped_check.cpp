@@ -92,10 +92,13 @@ TEST(AuditRunScopedCheck, ToolArgvBuildsScopedClangTidyInvocation) {
     // NB: toolArgv's signature carries `= {}` default-argument braces, so
     // slurpFunctionBody() would latch onto the first `{}` default and return
     // an empty body. A fixed byte-window is the correct tool here (ANTS-1474
-    // does not apply to brace-default signatures).
+    // does not apply to brace-default signatures). Window widened
+    // 4000 → 5000 by ANTS-2185, whose scoped-positional guard added a
+    // normalisation block at the top of toolArgv that pushed the
+    // clang-tidy branch (`--checks=-*,`) past the old 4000-byte edge.
     const auto fn = src.find("QStringList toolArgv(");
     ASSERT_NE(fn, std::string::npos);
-    const std::string region = src.substr(fn, 4000);
+    const std::string region = src.substr(fn, 5000);
     EXPECT_TRUE(contains(region, "scopedPaths"));
     EXPECT_TRUE(contains(region, "scopedChecks"));
     EXPECT_TRUE(contains(region, "--checks=-*,"))
