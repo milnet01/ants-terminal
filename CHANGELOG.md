@@ -65,6 +65,16 @@ for security-relevant changes.
 
 ### Security
 
+- **Terminal query-responses are now rate-limited to bound a `\e[6n`-flood amplification (ANTS-2192).**
+  DA/CPR/DSR/DECRQSS/colour/Kitty query replies fired an unconditional
+  PTY write per request, so a program streaming a query in a tight loop
+  forced unbounded response writes. All replies now funnel through
+  TerminalGrid::sendQueryResponse(), a rolling 1 s cap (256/sec) mirroring
+  the OSC 52 quota — a flood is bounded while a legitimate synchronous
+  query is never throttled. Response content was already fixed/derived;
+  this bounds volume only. Regression-locked by
+  query_response_ratelimit (INV-1/2/3).
+
 - **`audit_run` scoped positionals are now guarded against argv option-injection (ANTS-2185).**
   A scoped file path beginning with `-` (e.g. a hostile-clone file named
   `-rf.cpp`) was appended bare to each tool's argv and parsed as a flag.

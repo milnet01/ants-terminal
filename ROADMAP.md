@@ -9832,11 +9832,12 @@ apiKey-from-config, secretredact.h filename, openUrl internal URL, trigger sh
   Kind: fix.
   Source: indie-review-8 2026-06-26 claude-integration M3.
 
-- 📋 [ANTS-2192] **No rate-limit on DA/CPR/DSR/DECRQSS/Kitty-query response writes back to the PTY — a hostile program streaming `\e[6n` forces unbounded response writes (amplification).**
+- ✅ [ANTS-2192] **No rate-limit on DA/CPR/DSR/DECRQSS/Kitty-query response writes back to the PTY — a hostile program streaming `\e[6n` forces unbounded response writes (amplification).**
   Every CSI 6n/5n/c, DCS $q, APC G a=q triggers an unconditional m_responseCallback (terminalgrid.cpp:884/887/848/2955/3328) with no throttle, unlike OSC 52 (60 s quota) and OSC 133 (cool-down). Response CONTENT injection is correctly closed (fixed strings); this is volume. Fix: rolling per-second response cap, mirroring the OSC 52 quota.
   **Layman:** A malicious program can spam the terminal with 'tell me your cursor position' requests and Ants answers every one, flooding the write path. Not a crash, but a self-inflicted load. The clipboard path already has a rate cap; this one doesn't.
   Kind: security.
   Source: indie-review-8 2026-06-26 vt-parser/grid M2.
+  Resolved (2026-06-26): added TerminalGrid::sendQueryResponse() — a single throttle chokepoint with a per-terminal rolling 1s cap (QUERY_RESP_MAX_PER_SEC=256) mirroring the OSC 52 quota. Routed all 12 query-reply sites through it (DA1/DA2, CPR, DSR, colour-scheme 996, kitty keyboard-flags query, OSC 10/11/12 colour query, DECRQSS invalid+reply, Kitty graphics OK/ENODATA ×4). The unsolicited OSC 997 colour-scheme-change notification (mainwindow sendResponse) is deliberately NOT throttled (user/theme-initiated, not amplifiable). Test query_response_ratelimit (INV-1 single answered, INV-2 flood capped <1000 vs pre-fix 4000 — verified red via stash, INV-3 content intact). Full suite 2259/2259.
 
 - 📋 [ANTS-2193] **`project_query` blocks the GUI/dispatch thread up to ~5.25 s via `QThread::wait()` — contradicts the ANTS-1750 'GUI never blocks on a worker' design.**
   runQueryThreaded blocks on worker->wait(timeout+250ms) on the dispatch thread (luaengine.cpp:1068); QThread::wait does not pump events, so the GUI freezes for the full snippet budget (default 1500 ms, ceiling 5000 ms → ~5.25 s join). Detach-on-wedge prevents a permanent freeze but not the common-case stall. Fix: run the verb off the dispatch thread, or document the worst-case stall in docs/specs/ANTS-2093.md failure-modes.

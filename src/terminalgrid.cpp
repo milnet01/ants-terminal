@@ -217,6 +217,27 @@ void TerminalGrid::setResponseCallback(ResponseCallback cb) {
     m_responseCallback = std::move(cb);
 }
 
+// ANTS-2192 — throttled query-response write. DA/CPR/DSR/DECRQSS/colour/
+// Kitty query replies all funnel through here so a program streaming a
+// query (e.g. `\e[6n` in a tight loop) can't force one unbounded PTY
+// write per request (amplification). Rolling 1 s window mirroring the
+// OSC 52 quota; silently drop once the per-second budget is spent. A
+// legitimate synchronous query (one request, then a blocking read for
+// the reply) issues a single response and never nears the cap. Response
+// CONTENT is fixed/derived, never attacker-controlled — this bounds
+// VOLUME only.
+void TerminalGrid::sendQueryResponse(const std::string &data) {
+    if (!m_responseCallback) return;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now - m_queryRespWindowStartMs >= 1000) {
+        m_queryRespWindowStartMs = now;
+        m_queryRespCount = 0;
+    }
+    if (m_queryRespCount >= QUERY_RESP_MAX_PER_SEC) return;
+    m_queryRespCount += 1;
+    m_responseCallback(data);
+}
+
 const std::vector<HyperlinkSpan> &TerminalGrid::screenHyperlinks(int row) const {
     static const std::vector<HyperlinkSpan> s_empty;
     if (row >= 0 && row < static_cast<int>(m_screenHyperlinks.size()))
@@ -845,12 +866,12 @@ void TerminalGrid::handleCsi(const VtAction &a) {
             // DA1: Primary Device Attributes
             int da = p.empty() ? 0 : p[0];
             if (da == 0 && m_responseCallback)
-                m_responseCallback("\x1B[?62;22c"); // VT220 + ANSI color
+                sendQueryResponse("\x1B[?62;22c"); // VT220 + ANSI color
         } else if (a.intermediate == ">") {
             // DA2: Secondary Device Attributes
             int da = p.empty() ? 0 : p[0];
             if (da == 0 && m_responseCallback)
-                m_responseCallback("\x1B[>41;0;0c"); // xterm-like
+                sendQueryResponse("\x1B[>41;0;0c"); // xterm-like
         }
         break;
     case 'q':
@@ -881,16 +902,16 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                 // CPR: Cursor Position Report
                 std::string r = "\x1B[" + std::to_string(m_cursorRow + 1)
                               + ";" + std::to_string(m_cursorCol + 1) + "R";
-                m_responseCallback(r);
+                sendQueryResponse(r);
             } else if (!p.empty() && p[0] == 5 && m_responseCallback) {
                 // DSR: Device Status Report — terminal OK
-                m_responseCallback("\x1B[0n");
+                sendQueryResponse("\x1B[0n");
             }
         } else if (a.intermediate == "?") {
             // CSI ? 996 n — Color scheme query
             if (!p.empty() && p[0] == 996 && m_responseCallback) {
                 // Report current color scheme preference (1=dark, 2=light)
-                m_responseCallback("\x1B[?996;1n");
+                sendQueryResponse("\x1B[?996;1n");
             }
         }
         break;
@@ -924,7 +945,7 @@ void TerminalGrid::handleCsi(const VtAction &a) {
             // CSI ? u — Kitty keyboard: query current flags
             if (m_responseCallback) {
                 std::string r = "\x1B[?" + std::to_string(m_kittyKeyFlags) + "u";
-                m_responseCallback(r);
+                sendQueryResponse(r);
             }
         } else if (a.intermediate == "=") {
             // CSI = flags ; mode u — Kitty keyboard: set/or/not flags
@@ -1072,7 +1093,7 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
                           c.red()   * 0x0101,
                           c.green() * 0x0101,
                           c.blue()  * 0x0101);
-            m_responseCallback(buf);
+            sendQueryResponse(buf);
         }
     }
     // OSC 8 — Hyperlinks: OSC 8 ; params ; uri ST (open) or OSC 8 ; ; ST (close)
@@ -2953,12 +2974,12 @@ void TerminalGrid::handleDcs(const std::string &payload, bool truncated) {
             reply = std::to_string(static_cast<int>(m_cursorShape)) + " q";
         } else {
             // Unknown / unsupported setting — reply "invalid" per spec
-            m_responseCallback("\x1BP0$r\x1B\\");
+            sendQueryResponse("\x1BP0$r\x1B\\");
             return;
         }
 
         std::string out = "\x1BP1$r" + reply + "\x1B\\";
-        m_responseCallback(out);
+        sendQueryResponse(out);
         return;
     }
 
@@ -3328,7 +3349,7 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
         // Send response
         if (m_responseCallback) {
             std::string resp = "\x1B_Gi=" + std::to_string(imageId) + ";OK\x1B\\";
-            m_responseCallback(resp);
+            sendQueryResponse(resp);
         }
         return;
     }
@@ -3337,7 +3358,7 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
         // Query — respond with OK
         if (m_responseCallback) {
             std::string resp = "\x1B_Gi=" + std::to_string(imageId) + ";OK\x1B\\";
-            m_responseCallback(resp);
+            sendQueryResponse(resp);
         }
         return;
     }
@@ -3407,7 +3428,7 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
         // Failed to decode — send error response
         if (m_responseCallback) {
             std::string resp = "\x1B_Gi=" + std::to_string(imageId) + ";ENODATA\x1B\\";
-            m_responseCallback(resp);
+            sendQueryResponse(resp);
         }
         return;
     }
@@ -3485,6 +3506,6 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
     // Send OK response
     if (m_responseCallback) {
         std::string resp = "\x1B_Gi=" + std::to_string(imageId) + ";OK\x1B\\";
-        m_responseCallback(resp);
+        sendQueryResponse(resp);
     }
 }

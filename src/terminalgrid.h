@@ -610,6 +610,16 @@ private:
     int m_userVarWriteCount = 0;
     static constexpr int USERVAR_MAX_WRITES_PER_MIN = 64;
 
+    // ANTS-2192 — query-response amplification cap (see
+    // QUERY_RESP_MAX_PER_SEC). Rolling 1 s window; counters reset when the
+    // window advances. Every DA/CPR/DSR/DECRQSS/colour/Kitty reply funnels
+    // through sendQueryResponse(), which drops silently once the per-second
+    // budget is spent so a streamed query can't force unbounded PTY writes.
+    qint64 m_queryRespWindowStartMs = 0;
+    int m_queryRespCount = 0;
+    static constexpr int QUERY_RESP_MAX_PER_SEC = 256;
+    void sendQueryResponse(const std::string &data);
+
     // Response callback
     ResponseCallback m_responseCallback;
     // Clipboard callback (OSC 52) — separate channel, see ANTS-1739.

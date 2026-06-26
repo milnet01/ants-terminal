@@ -896,6 +896,8 @@ if(ANTS_TESTS)
                 tests/features/origin_mode_correctness/test_origin_mode.cpp
                 tests/features/osc_color_query/test_osc_color_query.cpp
                 tests/features/decrqss/test_decrqss.cpp
+                # ANTS-2192 — query-response amplification cap.
+                tests/features/query_response_ratelimit/test_query_response_ratelimit.cpp
                 # ANTS-1827 — CSI param-truncation flag.
                 tests/features/vtparser_csi_param_truncation/test_csi_param_truncation.cpp
                 # ANTS-1828/1829 — inline-image budget + iTerm2 base64 hardening.
