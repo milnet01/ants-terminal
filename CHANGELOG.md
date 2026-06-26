@@ -61,6 +61,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Shell launch resolves HOME before forking for signal-safety** (ANTS-2204)
+  The child's working-directory fallback no longer calls getenv() in the fork/exec window; HOME is captured pre-fork like the other launch parameters.
+
+- **Remote-control socket gained the same re-entrancy guard as the MCP socket** (ANTS-2202)
+  A latch + consumed-line clear prevent a command from being dispatched twice should a future verb pump a nested event loop. Also corrected a misleading code comment.
+
 - **Fold-in verbs no longer burn roadmap ID numbers when there's nothing to write under** (ANTS-2201)
   indie_review_fold_in / debt_sweep_defer / cold_eyes_fold_in now check for an active release heading before reserving IDs, so a missing heading returns a clean no_release_heading refusal instead of consuming counter values into a permanent gap.
 
@@ -91,6 +97,9 @@ for security-relevant changes.
   cheaper Ants tools just like a native install.
 
 ### Security
+
+- **project_query's file listing no longer discloses names of files symlinked outside the project** (ANTS-2203)
+  project.list now re-validates each entry against the project root, so a symlink whose target escapes is skipped entirely — matching project.read, which already refuses to read it.
 
 - **debt_sweep now rejects a malformed `since` revision instead of passing it to git** (ANTS-2199)
   The user-supplied git ref is shape-checked before it reaches the git diff argv, giving a clean error instead of a confusing mid-scan git failure.

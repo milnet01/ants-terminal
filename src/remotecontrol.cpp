@@ -1582,8 +1582,14 @@ void RemoteControl::onNewConnection() {
         // persistent-session protocol and good enough for the full
         // Kitty command set (which is also one-shot).
         socket->setProperty("_buf", QByteArray());
+        // ANTS-2202 — re-entrancy latch, mirroring the MCP twin
+        // (claudeintegration.cpp). Once a complete line is dispatched, _handled
+        // blocks a second readyRead (e.g. fired from inside a nested event loop)
+        // from re-dispatching buffered bytes.
+        socket->setProperty("_handled", false);
         connect(socket, &QLocalSocket::readyRead, this,
                 [this, socket, idleTimer]() {
+            if (socket->property("_handled").toBool()) return;
             QByteArray buf = socket->property("_buf").toByteArray();
             buf += socket->readAll();
             // Bound the in-memory buffer for defence-in-depth against
@@ -1598,12 +1604,18 @@ void RemoteControl::onNewConnection() {
             int nlIdx = buf.indexOf('\n');
             if (nlIdx < 0) return;  // partial line, wait for more
 
-            // ANTS-2026 — a complete request is in hand: stop the slow-loris
-            // idle timer before dispatching. dispatch() can run a nested event
-            // loop (audit_run pumps QProcesses; any > 5 s verb), during which a
-            // still-armed timer would fire timeout -> socket->abort() ->
-            // disconnected -> deleteLater(), and that deleteLater is processed
-            // BY the nested loop — freeing this socket before the write below.
+            // ANTS-2202 — a complete line is in hand. Latch _handled and drop the
+            // consumed line from _buf so a re-entrant readyRead (should a future
+            // RC verb pump a nested event loop) can't re-dispatch it.
+            socket->setProperty("_handled", true);
+            socket->setProperty("_buf", buf.mid(nlIdx + 1));
+
+            // ANTS-2026 — stop the slow-loris idle timer BEFORE dispatching. No
+            // current RC verb runs a nested event loop, but if one is added a
+            // still-armed timer could fire timeout -> socket->abort() ->
+            // disconnected -> deleteLater(), and that deleteLater would be
+            // processed by the nested loop, freeing this socket before the write
+            // below. Defensive, and parity with the MCP path (ANTS-2101).
             idleTimer->stop();
 
             const QByteArray line = buf.left(nlIdx);

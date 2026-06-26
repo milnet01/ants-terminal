@@ -239,6 +239,14 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
     // .constData() via fork's COW semantics with no child-side allocation.
     const QByteArray shellBytesPre   = shellPath.toLocal8Bit();
     const QByteArray workDirBytesPre = workDir.toLocal8Bit();
+    // ANTS-2204 — capture HOME pre-fork too. The child's chdir-fallback branch
+    // (below) read ::getenv("HOME") between fork and exec, which is not on the
+    // POSIX async-signal-safe list (glibc's is lock-free, hence low real risk);
+    // resolving it here in the parent matches the shell/workdir/setenv pre-fork
+    // discipline so the child only reads a pre-built buffer.
+    const char *homeEnvPre = ::getenv("HOME");
+    const QByteArray homeBytesPre =
+        homeEnvPre ? QByteArray(homeEnvPre) : QByteArray();
 
     // indie-review-2026-05-19 ptyhandler M1 — explicit -1 init.
     // POSIX forkpty does not guarantee `*amaster` is untouched on -1.
@@ -330,9 +338,10 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         // Change to requested working directory before exec
         if (!workDir.isEmpty()) {
             if (::chdir(workDirBytesPre.constData()) != 0) {
-                // Fall back to home directory
-                const char *home = ::getenv("HOME");
-                if (home && ::chdir(home) != 0) { /* last-resort fallback, ignore failure */ }
+                // Fall back to home directory — resolved pre-fork (ANTS-2204) so
+                // no async-signal-unsafe getenv() runs between fork and exec.
+                if (!homeBytesPre.isEmpty() &&
+                    ::chdir(homeBytesPre.constData()) != 0) { /* last-resort fallback, ignore failure */ }
             }
         }
 

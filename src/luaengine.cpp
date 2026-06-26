@@ -946,6 +946,8 @@ int LuaEngine::lua_project_list(lua_State *L) {
     // Enumerate regular files (incl. dotfiles like .gitignore — project
     // content), skipping only .git/ (internal metadata; perf on big repos).
     const QDir rootDir(engine->m_queryRoot);
+    // ANTS-2203 — canonical root for the per-entry containment check below.
+    const QString canonRoot = QFileInfo(engine->m_queryRoot).canonicalFilePath();
     QList<QByteArray> rels;
     QDirIterator it(base,
                     QDir::Files | QDir::NoDotAndDotDot | QDir::Hidden,
@@ -956,6 +958,16 @@ int LuaEngine::lua_project_list(lua_State *L) {
         if (rel == QStringLiteral(".git") ||
             rel.startsWith(QStringLiteral(".git/")) ||
             rel.contains(QStringLiteral("/.git/")))
+            continue;
+        // ANTS-2203 — re-validate each entry's canonical path against the root so
+        // a symlink (leaf file OR an ancestor dir QDirIterator followed) whose
+        // target escapes the project is not disclosed even by name. project.read
+        // already canonicalises+validates, so this keeps list ⊆ read-acceptable;
+        // an empty canonical path (broken/escaping link) is skipped.
+        const QString canon = QFileInfo(abs).canonicalFilePath();
+        if (canon.isEmpty() ||
+            (canon != canonRoot &&
+             !canon.startsWith(canonRoot + QLatin1Char('/'))))
             continue;
         rels.append(rel.toUtf8());
     }

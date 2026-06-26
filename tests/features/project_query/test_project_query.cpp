@@ -208,6 +208,32 @@ TEST(ProjectQuery, ConfinementAndList) {
     ASSERT_TRUE(l1.result.isArray());
     EXPECT_EQ(l1.result, l2.result);
     EXPECT_GE(l1.result.toArray().size(), 2);  // a.txt, sub/c.txt (≥; not .git)
+
+    // ANTS-2203 — a symlink whose target escapes the root must not be disclosed
+    // even by name (project.read already refuses its contents); an in-root
+    // symlink stays listed, keeping list ⊆ read-acceptable.
+    QTemporaryDir outside;
+    ASSERT_TRUE(outside.isValid());
+    {
+        QFile f(outside.path() + "/secret.txt");
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("nope");
+    }
+    QFile::link(QFileInfo(outside.path() + "/secret.txt").canonicalFilePath(),
+                root + "/leak.txt");                       // target outside root
+    write("real.txt", "y");
+    QFile::link(QFileInfo(root + "/real.txt").canonicalFilePath(),
+                root + "/inlink.txt");                     // target inside root
+    const auto escList = run("return project.list()", root).result.toArray();
+    bool hasLeak = false, hasInlink = false;
+    for (const auto &v : escList) {
+        const QString s = v.toString();
+        if (s == QStringLiteral("leak.txt"))   hasLeak = true;
+        if (s == QStringLiteral("inlink.txt")) hasInlink = true;
+    }
+    EXPECT_FALSE(hasLeak)
+        << "ANTS-2203: a symlink escaping the root must not be listed by name";
+    EXPECT_TRUE(hasInlink) << "an in-root symlink must stay listed";
 }
 
 // ---- INV-8 — verb-layer gating + envelope (projectQueryVerb) ----
