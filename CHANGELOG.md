@@ -44,6 +44,18 @@ for security-relevant changes.
 - **Hardened the weekly RC→release→new-RC cadence into one guarded `cut-rc.sh cycle`.** (ANTS-2164)
   `new-rc` refuses an empty RC and auto-rolls `[Unreleased]`; `promote` refuses an empty/placeholder or stale (>14-day) RC and auto-date-stamps the CHANGELOG/metainfo/debian release notes; version-drift is now a hard gate. Stops the recurring empty-RC / half-finished-release class of incident.
 
+### Removed
+
+- **Deleted the dead `IndieReviewEngine::assembleBrief` zombie — a latent prompt-injection trap (ANTS-2187).**
+  The unfenced v1 brief assembler had no production caller (only doc
+  comments + one feature test) yet inlined raw source into an LLM prompt
+  with no fence-hardening, and its name read like the main entry point —
+  so a future rewire would have reopened a prompt-injection hole. The live
+  path is assembleBriefForDispatch (fence-hardened via
+  BriefDispatch::fenceBody) / assembleBriefManifest, both already covered
+  by their own tests. Removed the function, its declaration, the stale
+  header contract comments, and the orphaned Inv3 shape test.
+
 ### Fixed
 
 - **Refuse truncated DCS/APC image payloads; correct the AI command-preview byte warning.**

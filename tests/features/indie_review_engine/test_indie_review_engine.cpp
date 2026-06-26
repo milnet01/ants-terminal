@@ -169,27 +169,11 @@ TEST(IndieReviewEngine, Ants1832OverrideSourcePathsRejectsTraversal) {
     }
 }
 
-TEST(IndieReviewEngine, Inv3AssembleBriefShape) {
-    QTemporaryDir tmp;
-    ASSERT_TRUE(tmp.isValid());
-    seedProject(tmp,
-                "# x\n## Module map (src/)\n- `foo` \xe2\x80\x94 F\n",
-                QStringList{"foo.h", "foo.cpp"});
-    // Empty ROADMAP just to exercise the slice block.
-    writeFile(tmp.path(), "ROADMAP.md", "# Roadmap\n");
-
-    const auto lanes = IndieReviewEngine::derivePartition(tmp.path());
-    ASSERT_FALSE(lanes.isEmpty());
-
-    const QString brief = IndieReviewEngine::assembleBrief(tmp.path(), lanes[0]);
-    EXPECT_TRUE(brief.startsWith("=== Lane: foo ==="));
-    EXPECT_TRUE(brief.contains("=== file: src/foo.h ==="));
-    EXPECT_TRUE(brief.contains("=== file: src/foo.cpp ==="));
-    EXPECT_TRUE(brief.contains("=== ROADMAP slice ==="));
-    EXPECT_TRUE(brief.contains("docs/standards/coding.md"));
-    EXPECT_TRUE(brief.contains("docs/standards/testing.md"));
-    EXPECT_TRUE(brief.contains("docs/standards/documentation.md"));
-}
+// ANTS-2187 — Inv3AssembleBriefShape removed with the unfenced v1
+// assembleBrief() it exercised. The live brief assemblers are covered
+// elsewhere: assembleBriefForDispatch by brief_dispatch_fence +
+// indie_review_dispatch + indie_review_dialog, and assembleBriefManifest
+// by indie_review_brief_manifest.
 
 TEST(IndieReviewEngine, Inv4ExtractCitationsLineLevel) {
     QTemporaryDir tmp;

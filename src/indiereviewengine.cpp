@@ -253,87 +253,6 @@ QList<MergeSuggestion> suggestedMerges(const QList<Lane> &lanes) {
     return out;
 }
 
-QString assembleBrief(const QString &projectPath, const Lane &lane) {
-    QString out;
-    out.reserve(8 * 1024);
-    out += QStringLiteral("=== Lane: ");
-    out += lane.name;
-    out += QStringLiteral(" ===\n\n");
-    out += QStringLiteral("Summary: ");
-    out += lane.summary;
-    out += QStringLiteral("\n\n");
-    out += QStringLiteral("Source files (");
-    out += QString::number(lane.sourcePaths.size());
-    out += QStringLiteral("):\n");
-    for (const QString &sp : lane.sourcePaths) {
-        out += QStringLiteral("- ");
-        out += sp;
-        out += QChar('\n');
-    }
-    out += QChar('\n');
-
-    for (const QString &sp : lane.sourcePaths) {
-        const QString abs = projectPath + QChar('/') + sp;
-        // Path-traversal guard: canonicalise + ensure under projectPath.
-        const QFileInfo fi(abs);
-        const QString canon = fi.canonicalFilePath();
-        const QFileInfo rootInfo(projectPath);
-        const QString rootCanon = rootInfo.canonicalFilePath();
-        if (canon.isEmpty() || rootCanon.isEmpty()
-            || !canon.startsWith(rootCanon + QChar('/'))) {
-            continue;
-        }
-        out += QStringLiteral("=== file: ");
-        out += sp;
-        out += QStringLiteral(" ===\n");
-        out += slurpUtf8(canon);
-        if (!out.endsWith(QChar('\n'))) out += QChar('\n');
-        out += QChar('\n');
-    }
-
-    // ROADMAP slice — grep lines that mention the lane name as
-    // `Lanes:` value or basename token.
-    const QString roadmap = slurpUtf8(projectPath
-                                      + QStringLiteral("/ROADMAP.md"));
-    if (!roadmap.isEmpty()) {
-        out += QStringLiteral("=== ROADMAP slice ===\n");
-        const QStringList lines = roadmap.split(QChar('\n'));
-        const QString needle = lane.name;
-        for (const QString &line : lines) {
-            if (line.contains(QStringLiteral("Lanes:"), Qt::CaseInsensitive)
-                && line.contains(needle, Qt::CaseInsensitive)) {
-                out += line;
-                out += QChar('\n');
-            } else if (line.contains(QStringLiteral("`")
-                                     + needle + QStringLiteral("`"))) {
-                out += line;
-                out += QChar('\n');
-            }
-        }
-        out += QChar('\n');
-    }
-
-    // ANTS-1457 — previously-rejected findings (do not re-raise).
-    // Pulled from `.ants_review_falsepos.jsonl` at project root;
-    // empty if file absent or all entries filtered out.
-    {
-        const auto fpEntries = ants::falsepos::filter(
-            ants::falsepos::loadEntries(projectPath),
-            QStringLiteral("indie-review"), lane.name);
-        const QString block = ants::falsepos::formatForBrief(fpEntries);
-        if (!block.isEmpty()) {
-            out += block;
-            if (!out.endsWith(QChar('\n'))) out += QChar('\n');
-        }
-    }
-
-    out += QStringLiteral("=== Standards reference (not inlined; reviewer fetches if needed) ===\n");
-    out += QStringLiteral("- docs/standards/coding.md\n");
-    out += QStringLiteral("- docs/standards/testing.md\n");
-    out += QStringLiteral("- docs/standards/documentation.md\n");
-    return out;
-}
-
 // ANTS-1352 — dispatch-shaped brief assembler. See header for the
 // contract; cold-eyes loops 1 (H-3) + 2 (M-new-2) fold-ins.
 QString assembleBriefForDispatch(const QString &projectPath,
@@ -375,7 +294,7 @@ QString assembleBriefForDispatch(const QString &projectPath,
         out += BriefDispatch::fenceBody(sp, slurpUtf8(canon));
     }
 
-    // ROADMAP slice — same logic as assembleBrief.
+    // ROADMAP slice — same logic as assembleBriefManifest.
     const QString roadmap = slurpUtf8(projectPath
                                       + QStringLiteral("/ROADMAP.md"));
     if (!roadmap.isEmpty()) {
@@ -442,8 +361,8 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
         QStringLiteral("docs/standards/documentation.md"),
     };
     // INV-4: path-traversal guard parity. Filter sourcePaths through
-    // the same canonicalisation check assembleBrief uses on the
-    // body-inline loop, but apply it BEFORE listing the path in the
+    // the same canonicalisation check assembleBriefForDispatch uses on
+    // the body-inline loop, but apply it BEFORE listing the path in the
     // brief — tighter than v1's path-listed-but-body-skipped.
     const QFileInfo rootInfo(projectPath);
     const QString rootCanon = rootInfo.canonicalFilePath();
@@ -488,7 +407,7 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
         "doing so would inflate parent (orchestrator) context for no "
         "reviewer benefit.\n\n");
 
-    // ROADMAP slice — same filter as v1 assembleBrief.
+    // ROADMAP slice — same filter as assembleBriefForDispatch.
     const QString roadmap = slurpUtf8(projectPath
                                       + QStringLiteral("/ROADMAP.md"));
     if (!roadmap.isEmpty()) {
@@ -510,7 +429,7 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
     }
 
     // ANTS-1457 — previously-rejected findings (do not re-raise).
-    // v2 BriefManifest path mirrors the v1 assembleBrief injection.
+    // v2 BriefManifest path mirrors the assembleBriefForDispatch injection.
     {
         const auto fpEntries = ants::falsepos::filter(
             ants::falsepos::loadEntries(projectPath),

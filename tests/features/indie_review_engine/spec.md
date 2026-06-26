@@ -8,8 +8,13 @@ Locks the six pure helpers in src/indiereviewengine.{h,cpp}.
   containing `## Module map (src/)` with at least one bullet.
 - INV-2: derivePartition honours
   `<projectPath>/.indie-review/partition.json` when present.
-- INV-3: assembleBrief emits `=== Lane: NAME ===` first line +
-  `=== file: <path> ===` for each source.
+- INV-3: *removed in ANTS-2187* — exercised the unfenced v1
+  `assembleBrief`, deleted as a latent prompt-injection trap (it
+  inlined raw source into an LLM prompt with no fence-hardening). The
+  live brief assemblers are covered elsewhere:
+  `assembleBriefForDispatch` by brief_dispatch_fence /
+  indie_review_dispatch / indie_review_dialog, and
+  `assembleBriefManifest` by indie_review_brief_manifest.
 - INV-4: extractFileLineCitations returns a Citation with
   `(file, line)` for `src/foo.cpp:42` (when foo.cpp exists in the
   fixture), and skips citations whose file doesn't resolve.

@@ -297,7 +297,7 @@ TEST(FalseposLedger, G15IndieReviewDispatchIncludesBlock) {
            != std::string::npos) {
         ++count; ++pos;
     }
-    EXPECT_GE(count, 2u);  // assembleBrief + assembleBriefForDispatch
+    EXPECT_GE(count, 2u);  // assembleBriefForDispatch + assembleBriefManifest
 }
 
 TEST(FalseposLedger, G16ColdEyesManifestBriefIncludesBlock) {
