@@ -243,7 +243,12 @@ Index build(const QString &rootCanonical, qint64 generatedAtMs,
     return idx;
 }
 
-StaleSet staleDocs(const Index &prev, const QString &rootCanonical) {
+// ANTS-2198 — internal worker accepting a precomputed doc list so the hot
+// serve()->refresh() path walks walkDocs() (which loads .ants/project.json)
+// once instead of 2-3x. The public staleDocs/refresh below pass a fresh
+// walkDocs() for standalone (test) callers.
+static StaleSet staleDocsWith(const Index &prev, const QString &rootCanonical,
+                              const QStringList &docs) {
     StaleSet ss;
     QSet<QString> prevPaths;
     QMap<QString, qint64> prevMtime;
@@ -253,7 +258,7 @@ StaleSet staleDocs(const Index &prev, const QString &rootCanonical) {
     }
 
     QSet<QString> curSet;
-    for (const QString &rel : walkDocs(rootCanonical)) {
+    for (const QString &rel : docs) {
         curSet.insert(rel);
         const qint64 m = QFileInfo(rootCanonical + QLatin1Char('/') + rel)
                              .lastModified().toMSecsSinceEpoch();
@@ -265,10 +270,16 @@ StaleSet staleDocs(const Index &prev, const QString &rootCanonical) {
     return ss;
 }
 
-Index refresh(const Index &prev, const QString &rootCanonical,
-              qint64 generatedAtMs, const Options &opts, int *refreshedOut) {
-    const StaleSet ss = staleDocs(prev, rootCanonical);
+StaleSet staleDocs(const Index &prev, const QString &rootCanonical) {
+    return staleDocsWith(prev, rootCanonical, walkDocs(rootCanonical));
+}
 
+// ANTS-2198 — internal worker taking the precomputed StaleSet + doc list so
+// the serve() hot path does not recompute either.
+static Index refreshWith(const Index &prev, const QString &rootCanonical,
+                         qint64 generatedAtMs, const Options &opts,
+                         int *refreshedOut, const StaleSet &ss,
+                         const QStringList &docs) {
     QSet<QString> rescan;
     for (const QString &p : ss.changed) rescan.insert(p);
     for (const QString &p : ss.added)   rescan.insert(p);
@@ -282,7 +293,7 @@ Index refresh(const Index &prev, const QString &rootCanonical,
     idx.generatedAtMs = generatedAtMs;
 
     qint64 budget = 0;
-    for (const QString &rel : walkDocs(rootCanonical)) {
+    for (const QString &rel : docs) {
         if (idx.docs.size() >= opts.maxIndexDocs) { idx.docsTruncated = true; break; }
         DocEntry de = (rescan.contains(rel) || !byPath.contains(rel))
                           ? scanToEntry(rootCanonical, rel, opts)
@@ -296,6 +307,17 @@ Index refresh(const Index &prev, const QString &rootCanonical,
     }
     if (refreshedOut) *refreshedOut = ss.changed.size() + ss.added.size();
     return idx;
+}
+
+Index refresh(const Index &prev, const QString &rootCanonical,
+              qint64 generatedAtMs, const Options &opts, int *refreshedOut) {
+    // Standalone (test) entry: compute the doc list + stale set once, then
+    // delegate. The hot serve() path computes these once itself and calls
+    // refreshWith directly, so walkDocs() runs once per serve (ANTS-2198).
+    const QStringList docs = walkDocs(rootCanonical);
+    const StaleSet ss = staleDocsWith(prev, rootCanonical, docs);
+    return refreshWith(prev, rootCanonical, generatedAtMs, opts,
+                       refreshedOut, ss, docs);
 }
 
 QJsonObject query(const Index &idx, const QueryParams &params,
@@ -553,9 +575,13 @@ QJsonObject serve(const QString &rootCanonical, qint64 nowMs,
     }
 
     if (haveValid) {
-        const StaleSet ss = staleDocs(prev, rootCanonical);
+        // ANTS-2198 — walkDocs() (loads .ants/project.json) + the stale set are
+        // computed ONCE and threaded into refreshWith, instead of staleDocs +
+        // refresh each re-walking the docs tree.
+        const QStringList docs = walkDocs(rootCanonical);
+        const StaleSet ss = staleDocsWith(prev, rootCanonical, docs);
         if (ss.any()) {
-            idx = refresh(prev, rootCanonical, nowMs, opts, &refreshed);
+            idx = refreshWith(prev, rootCanonical, nowMs, opts, &refreshed, ss, docs);
             needWrite = true;
         } else {
             idx = prev;  // fully warm — no write, generated_at_ms preserved

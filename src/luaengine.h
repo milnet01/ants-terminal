@@ -6,6 +6,7 @@
 #include <QHash>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QElapsedTimer>
 #include <atomic>
 #include <vector>
 
@@ -245,7 +246,12 @@ private:
     // runs at normal cadence) and in shutdown(). Header default-init
     // matches the m_timedOut pattern above.
     bool m_killed = false;
-    qint64 m_pcallDeadlineMs = 0;  // ANTS-1172 — wall-clock deadline.
+    // ANTS-2205 — monotonic budget timer (was an epoch-ms deadline). The hook
+    // reads it per instruction-batch; QElapsedTimer uses CLOCK_MONOTONIC, so it
+    // is cheaper than QDateTime::currentMSecsSinceEpoch() and immune to wall-
+    // clock steps (NTP / manual set) that could otherwise fire or defer the
+    // budget kill spuriously. Started in startPcallBudget(); !isValid() == unarmed.
+    QElapsedTimer m_pcallTimer;
     qint64 m_pcallBudgetMs   = 1500;  // Tunable via setPcallBudgetMs().
     QString m_recentOutput;
     QString m_cwd;

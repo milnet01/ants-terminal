@@ -36,6 +36,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Codebase/docs index refresh now scans the project tree once per call instead of two-to-three times.** (ANTS-2198)
+
 - **Roadmap pagination cut-point search is now O(n) instead of O(n log n)** (ANTS-2200)
   Each list element is serialized once and accumulated, rather than re-serializing a growing prefix on every binary-search probe. Same output, less work on long lists.
 
@@ -60,6 +62,12 @@ for security-relevant changes.
   header contract comments, and the orphaned Inv3 shape test.
 
 ### Fixed
+
+- **Settings reports Claude hooks as installed only when all five hook events are present (previously it could show green with two missing); failures to lock down the Claude settings-file permissions are now logged instead of ignored.** (ANTS-2205)
+
+- **With two Claude tabs open, a permission prompt arriving during the brief tab-switch window is no longer attributed to the wrong tab.** (ANTS-2190)
+
+- **Audit history file is now guarded against two Ants/Claude sessions auditing the same project at once (no lost history or orphaned reports).** (ANTS-2189)
 
 - **Wedged project-query workers are now bounded and logged instead of leaking silently** (ANTS-2194)
   A hung query snippet that can't be killed parks its worker thread; past a hard ceiling Ants refuses new background queries (and logs the count) so a repeating hang can't slowly exhaust memory unnoticed.
@@ -100,6 +108,8 @@ for security-relevant changes.
   cheaper Ants tools just like a native install.
 
 ### Security
+
+- **The "which Claude session is current" check no longer trusts a file's modified-time when a live Claude process is known, closing a same-user spoofing gap.** (ANTS-2191)
 
 - **project_query's file listing no longer discloses names of files symlinked outside the project** (ANTS-2203)
   project.list now re-validates each entry against the project root, so a symlink whose target escapes is skipped entirely — matching project.read, which already refuses to read it.

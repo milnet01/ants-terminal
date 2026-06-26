@@ -49,6 +49,18 @@ that contain only metadata events such as `last-prompt`,
 file's mtime is used as a fallback, since the live process is
 guaranteed to bump it on every write.
 
+**ANTS-2191 refinement.** The mtime fallback is same-UID-spoofable
+(any process running as the user can `touch` a transcript; ADR-0004
+treats this as an integrity smell, not a privilege crossing). So the
+fallback is gated on filter (a) being inactive: when a live PID anchor
+exists (`minLastEventMs > 0`) a candidate with no content timestamp is
+**rejected** rather than adopted via mtime — a tampered transcript's
+mtime must not pass the freshness filter and bind the wrong session
+(a narrowed re-open of this spec's own wrong-session bind). With no
+PID anchor (`minLastEventMs == 0`) the mtime fallback is retained — it
+is the only freshness signal available, and the liveness floor (b)
+still bounds staleness.
+
 ## 3. Why both fixes stack
 
 Either filter alone leaves a hole.
@@ -98,7 +110,8 @@ INV labels qualified `ANTS-1163-INV-N`.
 | 8  | filter | `sessionPathForCwd(cwd)` (no boundary) preserves legacy newest-by-mtime behaviour. |
 | 9  | wiring | `activeSessionPath(cwd)` calls `processStartTimeMs(m_claudePid)` and threads it as `minLastEventMs` when `m_claudePid > 0`. |
 | 10 | wiring | `activeSessionPath(cwd)` always passes the current epoch as `nowMs` so the 24 h liveness floor is applied even when `m_claudePid == 0`. |
-| 11 | fallback | A JSONL with only metadata events (no `timestamp` field anywhere) falls back to mtime as the effective last-event ms. |
+| 11 | fallback | (ANTS-2191) A metadata-only JSONL (no `timestamp` field) is **rejected** when a live PID anchor exists (`minLastEventMs > 0`) — no spoofable-mtime fallback. |
+| 11b | fallback | (ANTS-2191) With no PID anchor (`minLastEventMs == 0`) a metadata-only JSONL still uses the mtime fallback (only freshness signal available; liveness floor (b) bounds staleness). |
 | 12 | filter | Cold-start tight floor: `sessionPathForCwd(cwd, minLastEventMs=0, nowMs=NOW)` drops a 12 h-old transcript (within the 24 h wide floor, but outside the 5 min tight floor that applies when filter (a) is inactive). |
 | 13 | filter | Wide floor preserved when PID known: `sessionPathForCwd(cwd, minLastEventMs=T, nowMs=NOW)` does NOT drop a 3 h-old transcript with `T = NOW - 4h` — idle long-running Claude session shouldn't get nuked. |
 

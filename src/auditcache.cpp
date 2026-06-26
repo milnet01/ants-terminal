@@ -3,6 +3,7 @@
 #include "auditcache.h"
 
 #include "secureio.h"
+#include "configbackup.h"  // ConfigWriteLock — ANTS-2189
 
 #include <QDateTime>
 #include <QDebug>
@@ -153,6 +154,19 @@ RecordedRun recordRun(const QString &canonProject,
         return out;
     }
 
+    // ANTS-2189 — serialise this whole load-mutate-commit (+ reaper) of
+    // index.json against a second Ants instance / CC session auditing the
+    // same tree. Without it the manifest RMW is last-writer-wins: a
+    // concurrent recordRun can drop history entries and orphan the SARIF
+    // they pointed at. Mirrors the ConfigWriteLock the learned-FP ledger
+    // takes (auditfpledger.cpp). On a 5 s acquisition timeout we proceed
+    // best-effort — recording the run beats dropping it, and the lock still
+    // serialises every cooperating writer that did acquire.
+    const QString manifestPath =
+        cacheDirImpl(canonProject) + QLatin1Char('/')
+        + QLatin1String(kManifestName);
+    ConfigWriteLock manifestLock(manifestPath);
+
     // Load prior manifest to (a) surface priorRun, (b) migrate
     // last_run into history.
     const Manifest prev = loadManifest(canonProject);
@@ -269,9 +283,9 @@ RecordedRun recordRun(const QString &canonProject,
     }
     newManifest[QStringLiteral("history")] = history;
 
-    // Atomic write of index.json via QSaveFile.
-    const QString manifestPath =
-        dir + QLatin1Char('/') + QLatin1String(kManifestName);
+    // Atomic write of index.json via QSaveFile. manifestPath + the
+    // ConfigWriteLock guarding this RMW were taken at function entry
+    // (ANTS-2189).
     QSaveFile sf(manifestPath);
     if (!sf.open(QIODevice::WriteOnly)) {
         qWarning() << "AuditCache: failed to open index.json for write:"

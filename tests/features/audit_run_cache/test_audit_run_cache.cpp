@@ -172,6 +172,31 @@ TEST(AuditRunCache, ReaperRunsAfterManifestCommit) {
         << "ANTS-2004: reaper must run after the manifest is committed";
 }
 
+TEST(AuditRunCache, RecordRunHoldsConfigWriteLockAcrossManifestRMW) {
+    // ANTS-2189 — the index.json read-modify-write (loadManifest → mutate →
+    // QSaveFile commit → reaper) must be serialised by a ConfigWriteLock so a
+    // second Ants instance / CC session auditing the same tree can't race
+    // last-writer-wins (dropping history, orphaning SARIF). Enforce at the
+    // source level: the lock is constructed BEFORE loadManifest, so it spans
+    // the whole RMW.
+    const std::string src = ants_test::slurpFile(SRC_AUDITCACHE_CPP_PATH);
+    ASSERT_FALSE(src.empty());
+
+    EXPECT_TRUE(contains(src, "#include \"configbackup.h\""))
+        << "auditcache must include configbackup.h for ConfigWriteLock";
+
+    const auto lockPos = src.find("ConfigWriteLock manifestLock");
+    const auto loadPos = src.find("loadManifest(canonProject)");
+    ASSERT_NE(lockPos, std::string::npos)
+        << "ANTS-2189: recordRun must take a ConfigWriteLock on the manifest";
+    ASSERT_NE(loadPos, std::string::npos) << "loadManifest call not found";
+    EXPECT_LT(lockPos, loadPos)
+        << "ANTS-2189: the lock must be acquired before loadManifest so it "
+           "spans the whole read-modify-write";
+    EXPECT_TRUE(contains(src, "ANTS-2189"))
+        << "the lock rationale must cite ANTS-2189";
+}
+
 // ─────────────────────── In-process module exercise ──
 
 TEST(AuditRunCache, CacheDirPathDerivesFromCanonProject) {

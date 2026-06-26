@@ -9816,23 +9816,26 @@ apiKey-from-config, secretredact.h filename, openUrl internal URL, trigger sh
   Source: indie-review-8 2026-06-26 audit-pipeline M1.
   Resolved (2026-06-26): scrub each tool's raw output through SecretRedact::scrub at the single capture point in auditrunner.cpp's `finish` lambda, before it feeds rawByTool (→ SARIF notification text) or parseToolOutput (→ samples/top_findings). gitleaks already --redact'd; trivy did not. Scrub-before-parse is JSON-safe (redaction token + secret char-classes have no quotes). Regression test: mcp_audit_run INV-17 (red→green). Full suite 2254/2254.
 
-- 📋 [ANTS-2189] **`.audit_cache/index.json` read-modify-write has no advisory lock — a second Ants instance / CC session auditing the same tree races last-writer-wins (drops history, orphans SARIF).**
+- ✅ [ANTS-2189] **`.audit_cache/index.json` read-modify-write has no advisory lock — a second Ants instance / CC session auditing the same tree races last-writer-wins (drops history, orphans SARIF).**
   recordRun does loadManifest → mutate → QSaveFile commit (auditcache.cpp:158-299) with no lock. Same-process is single-flighted, but a second instance/session races. The learned-FP ledger took a ConfigWriteLock for exactly this (auditfpledger.cpp:112). Fix: take ConfigWriteLock(manifestPath) across recordRun's load-mutate-commit.
   **Layman:** If two Ants windows (or two Claude sessions) audit the same project at once, their shared history file can clobber each other, losing entries and leaving stray report files. The fix reuses a lock the project already has elsewhere.
   Kind: fix.
   Source: indie-review-8 2026-06-26 audit-pipeline M2.
+  Resolved 2026-06-26: recordRun holds a ConfigWriteLock on index.json across the whole load-mutate-commit + reaper (mirrors auditfpledger ANTS-1989), best-effort on the 5s acquisition timeout. Test: AuditRunCache.RecordRunHoldsConfigWriteLockAcrossManifestRMW (source-scrape: lock constructed before loadManifest); spec INV-4b. Suite 2264/2264.
 
-- 📋 [ANTS-2190] **Cold-start window accepts a sibling-tab PermissionRequest and commits `m_lastHookSessionId` → wrong-tab attribution of a permission prompt with two live Claude tabs.**
+- ✅ [ANTS-2190] **Cold-start window accepts a sibling-tab PermissionRequest and commits `m_lastHookSessionId` → wrong-tab attribution of a permission prompt with two live Claude tabs.**
   isFocusedTabSession returns true when m_transcriptPath is empty (claudeintegration.cpp:1098); state-mutating hooks are dropped during cold-start but PermissionRequest is intentionally ungated and commits m_lastHookSessionId (:1208). Fix: drop non-focused PermissionRequests during cold-start (mirror the state-mutating-hook drop), or route by the tracker's session→shell map.
   **Layman:** For 1–3 seconds after switching tabs, a permission prompt from a different Claude tab can be attributed to the wrong tab. Needs two Claude sessions running to hit.
   Kind: fix.
   Source: indie-review-8 2026-06-26 claude-integration M2.
+  Resolved 2026-06-26: PermissionRequest is no longer exempt from the cold-start drop. During cold-start (m_transcriptPath empty) isFocusedTabSession() returns true for any session, so a sibling-tab PermissionRequest cannot be attributed to the focused tab; it is now dropped (neither permissionRequested emitted nor m_lastHookSessionId committed). Only SessionStart still falls through. Test: ClaudeStatusBarPerTab.ColdStartPermissionRequestDropped; spec I5.
 
-- 📋 [ANTS-2191] **`effectiveLastEventMs` falls back to same-UID-spoofable file mtime when no content timestamp — narrowed re-open of the ANTS-1163 wrong-session bind.**
+- ✅ [ANTS-2191] **`effectiveLastEventMs` falls back to same-UID-spoofable file mtime when no content timestamp — narrowed re-open of the ANTS-1163 wrong-session bind.**
   effectiveLastEventMs (claudeintegration.cpp:463-468) uses QFileInfo::lastModified() when lastEventTimestampMs returns 0. Under ADR-0004 same-UID it's an integrity smell, not a privilege crossing. Fix: when a live PID anchor exists (minLastEventMs>0), require a content timestamp and reject the candidate rather than fall back to mtime.
   **Layman:** When a Claude transcript has no usable timestamp inside it, Ants falls back to the file's modified-time to decide which session is 'current' — and that time can be faked by any same-user process, so the wrong session's state could surface. Same bug-class ANTS-1163 fixed.
   Kind: fix.
   Source: indie-review-8 2026-06-26 claude-integration M3.
+  Resolved 2026-06-26: effectiveLastEventMs gains requireContentTs (threaded from minLastEventMs>0). With a live PID anchor a candidate lacking a content timestamp returns 0 (rejected by filter (a)) instead of falling back to same-UID-spoofable mtime; the mtime fallback is retained when no PID anchor exists. Tests: claude_session_freshness INV-11/INV-11b (flipped red->green); spec section 2 + INV map.
 
 - ✅ [ANTS-2192] **No rate-limit on DA/CPR/DSR/DECRQSS/Kitty-query response writes back to the PTY — a hostile program streaming `\e[6n` forces unbounded response writes (amplification).**
   Every CSI 6n/5n/c, DCS $q, APC G a=q triggers an unconditional m_responseCallback (terminalgrid.cpp:884/887/848/2955/3328) with no throttle, unlike OSC 52 (60 s quota) and OSC 133 (cool-down). Response CONTENT injection is correctly closed (fixed strings); this is volume. Fix: rolling per-second response cap, mirroring the OSC 52 quota.
@@ -9841,11 +9844,12 @@ apiKey-from-config, secretredact.h filename, openUrl internal URL, trigger sh
   Source: indie-review-8 2026-06-26 vt-parser/grid M2.
   Resolved (2026-06-26): added TerminalGrid::sendQueryResponse() — a single throttle chokepoint with a per-terminal rolling 1s cap (QUERY_RESP_MAX_PER_SEC=256) mirroring the OSC 52 quota. Routed all 12 query-reply sites through it (DA1/DA2, CPR, DSR, colour-scheme 996, kitty keyboard-flags query, OSC 10/11/12 colour query, DECRQSS invalid+reply, Kitty graphics OK/ENODATA ×4). The unsolicited OSC 997 colour-scheme-change notification (mainwindow sendResponse) is deliberately NOT throttled (user/theme-initiated, not amplifiable). Test query_response_ratelimit (INV-1 single answered, INV-2 flood capped <1000 vs pre-fix 4000 — verified red via stash, INV-3 content intact). Full suite 2259/2259.
 
-- 📋 [ANTS-2193] **`project_query` blocks the GUI/dispatch thread up to ~5.25 s via `QThread::wait()` — contradicts the ANTS-1750 'GUI never blocks on a worker' design.**
+- ✅ [ANTS-2193] **`project_query` blocks the GUI/dispatch thread up to ~5.25 s via `QThread::wait()` — contradicts the ANTS-1750 'GUI never blocks on a worker' design.**
   runQueryThreaded blocks on worker->wait(timeout+250ms) on the dispatch thread (luaengine.cpp:1068); QThread::wait does not pump events, so the GUI freezes for the full snippet budget (default 1500 ms, ceiling 5000 ms → ~5.25 s join). Detach-on-wedge prevents a permanent freeze but not the common-case stall. Fix: run the verb off the dispatch thread, or document the worst-case stall in docs/specs/ANTS-2093.md failure-modes.
   **Layman:** When Claude runs a project query, the whole app UI can freeze for up to ~5 seconds while it waits for the query to finish. The plugin system was specifically built so the UI never freezes on a worker — this feature re-introduces exactly that freeze.
   Kind: fix.
   Source: indie-review-8 2026-06-26 lua-sandbox M3.
+  Resolved 2026-06-26 (doc): the bounded GUI stall is the already-accepted design (INV-4 / section 2.4 / cold-eyes Loop 1 C), not a regression. Added an Implementation note (2026-06-26) clarifying the common case (QThread::wait returns on worker completion, sub-100ms; the timeout+grace worst case is reached only by a budget-hitting/wedged snippet) and why fully-async dispatch is out of scope (the MCP dispatcher returns its response string synchronously; the rcDelegateWorker wrapper still joins on the dispatch thread, buying re-entrancy safety not responsiveness). No code change; INV-4 stands.
 
 - ✅ [ANTS-2194] **Zombie Lua worker threads (`g_queryZombies` / `m_zombies`) leak unbounded with no cap or telemetry on a wedged-worker pathology.**
   g_queryZombies (luaengine.cpp:898-903) and PluginManager m_zombies are append-only, never reaped, with no cap (each leaks a ~512 KiB-stack thread + heap slot). Violates the project's name-eviction/cap rule (MEMORY: consider RAM in feature design). Fix: cap + log zombie count so a wedge-loop is observable; assert/document the single-thread no-lock precondition at the append site (re-entrancy via nested-loop dispatch is the only theoretical race).
@@ -9875,11 +9879,12 @@ apiKey-from-config, secretredact.h filename, openUrl internal URL, trigger sh
   Source: indie-review-8 2026-06-26 model-switcher MEDIUM-3.
   Resolved 2026-06-26: directModelSwitchVisible now requires BOTH the tier-anchored title AND the banner's 'saved as your default' tail (title+corroborator, like switchConfirmVisible), so a bare quoted fragment cannot trip it. Scrollback /model-keystroke detection was rejected as unverifiable from here. Tests added in test_unarmed_confirm.cpp.
 
-- 📋 [ANTS-2198] **`codebase_index` / `docs_index` stale-but-warm refresh walks the filesystem 2–3× per call (re-loading `.ants/project.json` each walk) — the highest-frequency MCP hot path.**
+- ✅ [ANTS-2198] **`codebase_index` / `docs_index` stale-but-warm refresh walks the filesystem 2–3× per call (re-loading `.ants/project.json` each walk) — the highest-frequency MCP hot path.**
   CodebaseIndex::serve calls staleFiles (codebaseindex.cpp:532), then refresh calls staleFiles AGAIN (:288) and re-walks candidates() (:306), each re-loading project.json (:131). Same double-walk in DocsIndex (docsindex.cpp:256/285). Fix: thread the already-computed StaleSet + candidate list through refresh instead of recomputing.
   **Layman:** Every time Claude refreshes its project map (which happens at session start and often after), Ants scans the whole project folder two or three times when once would do. On a big project that's wasted work on the most-used path.
   Kind: perf.
   Source: indie-review-8 2026-06-26 mcp-engines M1.
+  Resolved 2026-06-26: codebaseindex + docsindex serve() now compute candidates()/walkDocs() (each loads .ants/project.json) and the StaleSet ONCE and thread both into new static refreshWith/staleFilesWith(/staleDocsWith) helpers, collapsing the hot warm-refresh path's 3x candidate-walk + 2x stat-pass to 1x each. Public staleFiles/staleDocs/refresh signatures unchanged so the mcp_codebase_index / mcp_docs_index / project_settings tests stay intact. Suite 2264/2264.
 
 - ✅ [ANTS-2199] **`debt_sweep` `since` ref flows unvalidated into `git diff <since>..HEAD` argv — the only unvalidated user string reaching a subprocess in the MCP-engines lane.**
   opt.sinceRef = req.value("since") (remotecontrol.cpp:14244) reaches `since + "..HEAD"` (debtsweepengine.cpp:96) with no shape check. Argv + same-UID so not a privilege crossing. Fix: `^[A-Za-z0-9_./~^-]{1,128}$` guard → bad_args on miss.
@@ -9928,6 +9933,7 @@ apiKey-from-config, secretredact.h filename, openUrl internal URL, trigger sh
   **Layman:** A handful of small tidy-ups: two size caps labelled 'bytes' actually count characters (so 2–4× looser for non-English text); a couple of permission-set failures are silently ignored; a hot loop reads wall-clock time when a cheaper monotonic timer would do; the terminal has no screen-reader support; some caches never get cleaned up.
   Kind: fix.
   Source: indie-review-8 2026-06-26 (LOW cluster).
+  Progress 2026-06-26: 3 of 7 sub-items fixed inline. (2) claudeallowlist saveSettings now logs setOwnerOnlyPerms() failures on both the temp-fd and final-path chmod (world-readable bearer-token risk on FAT/SMB/copy-fallback). (3) luaengine instructionHook budget switched from per-hook QDateTime::currentMSecsSinceEpoch to a monotonic QElapsedTimer (m_pcallTimer) — cheaper and skew-immune (NTP steps no longer fire/defer the kill); all ANTS-1332 latch invariants preserved. (7a) settingsdialog refreshClaudeHooksStatus now verifies ALL five installed hook events via a shared claudeHookEvents() list (was a 3-of-5 subset, so the green status could lie when SessionStart/PreCompact were missing). Suite 2264/2264. Still open under this cluster: (1) byte-vs-UTF16 caps (clipboardguard/aidialog), (4) terminal QAccessible name/role, (5) per-root cache eviction (codebaseindex/docsindex/sessionmemory/testrescache), (6) ReviewDialogBase fence/cap dedup, (7b) KWin-script ~50-line dup, (7c) SSH-dialog + hook-installer tr() i18n gaps.
 
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 

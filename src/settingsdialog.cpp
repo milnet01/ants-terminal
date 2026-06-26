@@ -1392,6 +1392,19 @@ static QString claudeSettingsPath() {
     return ConfigPaths::claudeSettingsJson();
 }
 
+// ANTS-2205 — single source of truth for the hook events installClaudeHooks()
+// writes, so refreshClaudeHooksStatus() cannot drift to verifying a subset.
+// (It previously checked only PreToolUse/PostToolUse/Stop, so the green
+// "Hooks installed" status lied when SessionStart / PreCompact were absent —
+// e.g. a pre-ANTS-1897 install or a foreign tool stripping an event array.)
+static const QStringList &claudeHookEvents() {
+    static const QStringList events{
+        QStringLiteral("SessionStart"), QStringLiteral("PreToolUse"),
+        QStringLiteral("PostToolUse"),  QStringLiteral("Stop"),
+        QStringLiteral("PreCompact")};
+    return events;
+}
+
 void SettingsDialog::refreshClaudeHooksStatus() {
     if (!m_claudeHooksStatus) return;
     const bool scriptPresent = QFile::exists(hookScriptPath());
@@ -1401,9 +1414,10 @@ void SettingsDialog::refreshClaudeHooksStatus() {
         QJsonDocument doc = QJsonDocument::fromJson(sf.readAll());
         sf.close();
         QJsonObject hooks = doc.object().value("hooks").toObject();
-        hooksWired = hooks.contains(QStringLiteral("PreToolUse")) &&
-                     hooks.contains(QStringLiteral("PostToolUse")) &&
-                     hooks.contains(QStringLiteral("Stop"));
+        // ANTS-2205 — verify EVERY event the installer writes, not a subset.
+        hooksWired = true;
+        for (const QString &event : claudeHookEvents())
+            if (!hooks.contains(event)) { hooksWired = false; break; }
     }
     if (scriptPresent && hooksWired) {
         m_claudeHooksStatus->setText(
@@ -1531,9 +1545,7 @@ void SettingsDialog::installClaudeHooks() {
         QJsonArray outer; outer.append(wrapper);
         return outer;
     };
-    for (const QString &event : QStringList{"SessionStart", "PreToolUse",
-                                             "PostToolUse", "Stop",
-                                             "PreCompact"}) {
+    for (const QString &event : claudeHookEvents()) {
         // Only overwrite if our script isn't already referenced — keeps
         // user-added custom hooks on the same event intact.
         QJsonArray existing = hooks.value(event).toArray();

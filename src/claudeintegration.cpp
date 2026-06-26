@@ -462,10 +462,19 @@ qint64 ClaudeIntegration::processStartTimeMs(pid_t pid) {
 // Effective last-event ms for a JSONL — last timestamped event in the
 // tail if found, else file mtime. Used as the freshness signal in
 // sessionPathForCwd.
-static qint64 effectiveLastEventMs(const QFileInfo &fi) {
+// ANTS-2191 — when a live PID anchor exists (requireContentTs, threaded from
+// minLastEventMs > 0 at the call site) we require a content timestamp: file
+// mtime is same-UID-spoofable (ADR-0004 integrity smell), so falling back to
+// it could let a tampered transcript's mtime pass the freshness filter and
+// bind the wrong session (narrowed re-open of the ANTS-1163 wrong-session
+// bind). Returning 0 makes the candidate fail filter (a) in sessionPathForCwd
+// (0 < minLastEventMs - kLeewayMs). With no PID anchor the mtime fallback is
+// the only freshness signal we have, so it is retained.
+static qint64 effectiveLastEventMs(const QFileInfo &fi, bool requireContentTs) {
     const qint64 fromContent =
         ClaudeIntegration::lastEventTimestampMs(fi.absoluteFilePath());
     if (fromContent > 0) return fromContent;
+    if (requireContentTs) return 0;  // reject: no trustworthy timestamp
     return fi.lastModified().toMSecsSinceEpoch();
 }
 
@@ -506,7 +515,7 @@ QString ClaudeIntegration::sessionPathForCwd(const QString &projectCwd,
             QFileInfo bestInfo;
             qint64 bestEffMs = 0;
             for (const QFileInfo &fi : proj.entryInfoList({"*.jsonl"}, QDir::Files, QDir::Time)) {
-                const qint64 effMs = effectiveLastEventMs(fi);
+                const qint64 effMs = effectiveLastEventMs(fi, minLastEventMs > 0);
                 // Process-anchored identity filter (a).
                 if (minLastEventMs > 0 && effMs < minLastEventMs - kLeewayMs)
                     continue;
@@ -1151,10 +1160,19 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
     // the cold-start fallthrough (it bootstraps m_activeSessionId);
     // every other state-mutating hook should drop silently until poll
     // resolves the transcript path.
+    //
+    // ANTS-2190 — PermissionRequest is NO LONGER exempt from the cold-start
+    // drop. During the window isFocusedTabSession() returns true for ANY
+    // session_id (m_transcriptPath is empty), so a sibling tab's
+    // PermissionRequest would both commit m_lastHookSessionId and emit
+    // permissionRequested, mis-attributing the prompt to the focused tab when
+    // two Claude tabs are live. We cannot confirm focus during cold-start, so
+    // the safe action is to drop it (mirrors the state-mutating-hook drop): a
+    // missed prompt indicator during a 1-3 s window beats a wrong-tab one.
+    // Only SessionStart still falls through (it bootstraps m_activeSessionId).
     const bool coldStart = m_transcriptPath.isEmpty();
-    const bool isStateMutatingHook = hookName != "SessionStart" &&
-                                     hookName != "PermissionRequest";
-    if (coldStart && isStateMutatingHook) {
+    const bool isColdStartDroppable = hookName != "SessionStart";
+    if (coldStart && isColdStartDroppable) {
         if (DebugLog::enabled(DebugLog::Claude)) {
             ANTS_LOG(DebugLog::Claude,
                      "hook-drop (cold-start): session=%s hook=%s",
@@ -1166,17 +1184,12 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
 
     // The event passed the cold-start gate; commit to last-seen.
     //
-    // ANTS-1996 — EXCEPT a cold-start SessionStart. SessionStart and
-    // PermissionRequest are the only two hooks allowed through the
-    // cold-start drop above (they are not state-mutating). During that
-    // window m_transcriptPath is empty, so isFocusedTabSession()
-    // optimistically returns true for ANY session_id — a sibling tab's
-    // SessionStart would otherwise overwrite m_lastHookSessionId, and a
-    // PermissionRequest arriving before the next poll resolves the
-    // transcript path routes via that poisoned field to the wrong tab.
-    // PermissionRequest still commits its own session_id here (it self-
-    // routes), so a real prompt's routing stays correct; we only refuse
-    // the un-confirmable sibling SessionStart write.
+    // ANTS-1996 / ANTS-2190 — during cold-start ONLY SessionStart reaches
+    // here now (PermissionRequest is dropped above, ANTS-2190). A cold-start
+    // SessionStart must NOT commit m_lastHookSessionId: m_transcriptPath is
+    // empty so isFocusedTabSession() optimistically returns true for ANY
+    // session_id, and a sibling tab's SessionStart would otherwise poison the
+    // routing field. Warm-path hooks (incl. PermissionRequest) commit normally.
     if (!(coldStart && hookName == QLatin1String("SessionStart")))
         m_lastHookSessionId = incomingSessionId;
 

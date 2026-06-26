@@ -202,9 +202,11 @@ void LuaEngine::instructionHook(lua_State *L, lua_Debug * /*ar*/) {
         luaL_error(L, "Script wall-clock budget exceeded (latched)");
         return;
     }
-    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    // ANTS-2205 — monotonic elapsed vs budget (was epoch-ms now > deadline).
+    // !isValid() == unarmed (startPcallBudget not yet called).
     const bool wallExpired =
-        eng->m_pcallDeadlineMs > 0 && nowMs > eng->m_pcallDeadlineMs;
+        eng->m_pcallBudgetMs > 0 && eng->m_pcallTimer.isValid()
+        && eng->m_pcallTimer.elapsed() > eng->m_pcallBudgetMs;
     if (wallExpired) {
         eng->m_timedOut = true;
         eng->m_killed = true;
@@ -234,7 +236,7 @@ void LuaEngine::startPcallBudget() {
     // still" rather than "frozen." `m_pcallBudgetMs` is tunable via
     // `setPcallBudgetMs()` for tests that exercise the kill path —
     // production callers never touch it.
-    m_pcallDeadlineMs = QDateTime::currentMSecsSinceEpoch() + m_pcallBudgetMs;
+    m_pcallTimer.start();  // ANTS-2205 — monotonic budget clock
 }
 
 void LuaEngine::registerApi() {

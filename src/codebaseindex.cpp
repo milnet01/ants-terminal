@@ -257,8 +257,14 @@ Index build(const QString &rootCanonical, qint64 generatedAtMs,
     return idx;
 }
 
-StaleSet staleFiles(const Index &prev, const QString &rootCanonical,
-                    qint64 currentMapSourceMtimeMs) {
+// ANTS-2198 — internal worker accepting a precomputed candidate list, so the
+// hot serve()->refresh() path walks candidates() (which loads
+// .ants/project.json) exactly once instead of 2-3x, and runs the per-file
+// stat pass once instead of twice. The public staleFiles/refresh below pass a
+// fresh candidates() for standalone (test) callers.
+static StaleSet staleFilesWith(const Index &prev, const QString &rootCanonical,
+                               qint64 currentMapSourceMtimeMs,
+                               const QStringList &cands) {
     StaleSet ss;
     ss.mapSourceChanged = currentMapSourceMtimeMs != prev.mapSourceMtimeMs;
 
@@ -270,7 +276,7 @@ StaleSet staleFiles(const Index &prev, const QString &rootCanonical,
     }
 
     QSet<QString> curSet;
-    for (const QString &rel : candidates(rootCanonical)) {
+    for (const QString &rel : cands) {
         curSet.insert(rel);
         const qint64 m = QFileInfo(rootCanonical + QLatin1Char('/') + rel)
                              .lastModified().toMSecsSinceEpoch();
@@ -282,11 +288,18 @@ StaleSet staleFiles(const Index &prev, const QString &rootCanonical,
     return ss;
 }
 
-Index refresh(const Index &prev, const QString &rootCanonical,
-              qint64 generatedAtMs, qint64 currentMapSourceMtimeMs,
-              const Options &opts, int *refreshedOut) {
-    const StaleSet ss = staleFiles(prev, rootCanonical, currentMapSourceMtimeMs);
+StaleSet staleFiles(const Index &prev, const QString &rootCanonical,
+                    qint64 currentMapSourceMtimeMs) {
+    return staleFilesWith(prev, rootCanonical, currentMapSourceMtimeMs,
+                          candidates(rootCanonical));
+}
 
+// ANTS-2198 — internal worker taking the precomputed StaleSet + candidate
+// list so the serve() hot path does not recompute either.
+static Index refreshWith(const Index &prev, const QString &rootCanonical,
+                         qint64 generatedAtMs, qint64 currentMapSourceMtimeMs,
+                         const Options &opts, int *refreshedOut,
+                         const StaleSet &ss, const QStringList &cands) {
     QSet<QString> reoutline;
     for (const QString &p : ss.changed) reoutline.insert(p);
     for (const QString &p : ss.added)   reoutline.insert(p);
@@ -303,7 +316,7 @@ Index refresh(const Index &prev, const QString &rootCanonical,
     idx.mapSourceMtimeMs = currentMapSourceMtimeMs;
 
     qint64 budget = 0;
-    for (const QString &rel : candidates(rootCanonical)) {
+    for (const QString &rel : cands) {
         if (idx.files.size() >= opts.maxIndexFiles) { idx.filesTruncated = true; break; }
         FileEntry fe;
         if (reoutline.contains(rel) || !byPath.contains(rel)) {
@@ -323,6 +336,19 @@ Index refresh(const Index &prev, const QString &rootCanonical,
     rebuildLaneToFiles(idx);
     if (refreshedOut) *refreshedOut = ss.changed.size() + ss.added.size();
     return idx;
+}
+
+Index refresh(const Index &prev, const QString &rootCanonical,
+              qint64 generatedAtMs, qint64 currentMapSourceMtimeMs,
+              const Options &opts, int *refreshedOut) {
+    // Standalone (test) entry: compute the candidate list + stale set once,
+    // then delegate. The hot serve() path computes these once itself and calls
+    // refreshWith directly, so candidates() is walked once per serve (ANTS-2198).
+    const QStringList cands = candidates(rootCanonical);
+    const StaleSet ss =
+        staleFilesWith(prev, rootCanonical, currentMapSourceMtimeMs, cands);
+    return refreshWith(prev, rootCanonical, generatedAtMs,
+                       currentMapSourceMtimeMs, opts, refreshedOut, ss, cands);
 }
 
 QJsonObject query(const Index &idx, const QueryParams &params,
@@ -529,9 +555,14 @@ QJsonObject serve(const QString &rootCanonical, qint64 nowMs,
     }
 
     if (haveValid) {
-        const StaleSet ss = staleFiles(prev, rootCanonical, curMapMtime);
+        // ANTS-2198 — compute candidates() (loads .ants/project.json) + the
+        // stale set ONCE and thread both into refreshWith, instead of letting
+        // staleFiles + refresh each re-walk the tree.
+        const QStringList cands = candidates(rootCanonical);
+        const StaleSet ss = staleFilesWith(prev, rootCanonical, curMapMtime, cands);
         if (ss.any()) {
-            idx = refresh(prev, rootCanonical, nowMs, curMapMtime, opts, &refreshed);
+            idx = refreshWith(prev, rootCanonical, nowMs, curMapMtime, opts,
+                              &refreshed, ss, cands);
             needWrite = true;
         } else {
             idx = prev;  // fully warm — no write, generated_at_ms preserved

@@ -5,6 +5,7 @@
 #include "dialogchrome.h"
 #include "secureio.h"
 
+#include <QDebug>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -342,14 +343,23 @@ bool ClaudeAllowlistDialog::saveSettings() {
     // to any UID on the host. Post-commit chmod closes the gap.
     QSaveFile file(m_settingsPath);
     if (!file.open(QIODevice::WriteOnly)) return false;
-    setOwnerOnlyPerms(file);
+    // ANTS-2205 — this file can hold Claude Code bearer tokens; a failed chmod
+    // leaves them world-readable on FAT/SMB/copy-fallback filesystems. Log so
+    // the leak is diagnosable rather than silent (the write still proceeds —
+    // dropping the save would be worse than a logged perms gap).
+    if (!setOwnerOnlyPerms(file))
+        qWarning() << "ClaudeAllowlist: failed to set owner-only perms on the"
+                   << "settings temp file (tokens may be world-readable):"
+                   << m_settingsPath;
     const QByteArray payload = QJsonDocument(root).toJson(QJsonDocument::Indented);
     if (file.write(payload) != payload.size()) {
         file.cancelWriting();
         return false;
     }
     if (!file.commit()) return false;
-    setOwnerOnlyPerms(m_settingsPath);
+    if (!setOwnerOnlyPerms(m_settingsPath))
+        qWarning() << "ClaudeAllowlist: failed to set owner-only perms on"
+                   << m_settingsPath << "(tokens may be world-readable)";
     return true;
 }
 

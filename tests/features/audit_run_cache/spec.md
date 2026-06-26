@@ -33,6 +33,14 @@ Full spec: `docs/specs/ANTS-1555.md`.
   files intact, so the manifest and filesystem never disagree.
   Source-scrape: `sf.commit()` precedes the reaper loop in
   `auditcache.cpp`. Remove failures are surfaced via `qWarning`.
+- **INV-4b** (ANTS-2189) — `recordRun` serialises the whole
+  load-mutate-commit (+ reaper) of `index.json` under a
+  `ConfigWriteLock`, so a second Ants instance / CC session auditing
+  the same tree can't race last-writer-wins (dropping history,
+  orphaning SARIF). Source-scrape: `auditcache.cpp` includes
+  `configbackup.h` and constructs `ConfigWriteLock manifestLock`
+  *before* `loadManifest`. Best-effort on a 5 s acquisition timeout
+  (mirrors the learned-FP ledger's lock, ANTS-1989).
 - **INV-6** — `recordRun` writes manifest with 0600 perms via
   `setOwnerOnlyPerms` + `QSaveFile`. Source-scrape:
   `auditcache.cpp` uses both helpers.

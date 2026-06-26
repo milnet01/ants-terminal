@@ -164,6 +164,31 @@ int runPrePollTolerance() {
     return ok ? 0 : 1;
 }
 
+int runColdStartPermissionRequestDropped() {
+    // I5 (ANTS-2190) — during cold-start (m_transcriptPath empty,
+    // isFocusedTabSession() returns true for ANY session_id) a
+    // PermissionRequest cannot be attributed to the focused tab, so it must be
+    // DROPPED rather than fired + committed to m_lastHookSessionId. Pre-fix it
+    // self-routed via the poisoned last-seen session field, mis-attributing a
+    // sibling tab's prompt to the focused tab when two Claude tabs are live.
+    auto *ci = new ClaudeIntegration();   // cold-start: no transcript path set
+    QSignalSpy permSpy(ci, &ClaudeIntegration::permissionRequested);
+
+    ci->processHookEventForTest(permissionRequest(kSiblingSession, "Bash"));
+    QCoreApplication::processEvents();
+
+    const bool notFired = permSpy.count() == 0;
+    const bool sidNotStashed = ci->lastHookSessionId().isEmpty();
+
+    const bool ok = notFired && sidNotStashed;
+    std::fprintf(stderr,
+        "[I5 coldstart-perm-drop] notFired=%d sidNotStashed=%d  %s\n",
+        notFired, sidNotStashed, ok ? "PASS" : "FAIL");
+
+    delete ci;
+    return ok ? 0 : 1;
+}
+
 }  // namespace
 
 
@@ -181,5 +206,9 @@ TEST(ClaudeStatusBarPerTab, PermissionRequestUngated) {
 
 TEST(ClaudeStatusBarPerTab, PrePollTolerance) {
     ASSERT_EQ(runPrePollTolerance(), 0);
+}
+
+TEST(ClaudeStatusBarPerTab, ColdStartPermissionRequestDropped) {
+    ASSERT_EQ(runColdStartPermissionRequestDropped(), 0);
 }
 

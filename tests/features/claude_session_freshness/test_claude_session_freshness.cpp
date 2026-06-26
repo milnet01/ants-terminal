@@ -240,18 +240,43 @@ void testFilterAndPick(QTemporaryDir &home) {
                "ANTS-1163-INV-5: 24h liveness floor drops 48h-old transcript");
     }
 
-    // INV-11: metadata-only file falls back to mtime as the
-    // effective last-event ts. Set mtime fresh; should be adopted.
+    // INV-11 (ANTS-2191): a metadata-only file (no content timestamp) is
+    // REJECTED when a live PID anchor exists (minLastEventMs > 0), rather than
+    // falling back to the same-UID-spoofable file mtime. Pre-fix (ANTS-1163)
+    // this adopted the mtime — a tampered transcript's mtime could pass the
+    // freshness filter and bind the wrong session (narrowed re-open of the
+    // ANTS-1163 wrong-session bind).
     {
         const qint64 freshSec = nowSec - 5;
         QByteArray body = fixtureBody({metadataEvent(), metadataEvent()});
         DIE_IF_FALSE(writeWithMtime(oldPath, body, freshSec),
                      "rewrite " + oldPath.toStdString());
+        QFile::remove(newPath);
 
         const QString picked = ClaudeIntegration::sessionPathForCwd(
             cwd, /*minLastEventMs=*/claudeStartMs, /*nowMs=*/0);
+        expect(picked.isEmpty(),
+               "ANTS-2191-INV-11: metadata-only file rejected (no mtime "
+               "fallback) when a live PID anchor exists",
+               "picked=" + picked.toStdString());
+    }
+
+    // INV-11b (ANTS-2191): with NO PID anchor (minLastEventMs == 0) the mtime
+    // fallback is retained — it is the only freshness signal available, and
+    // the liveness floor (b) still bounds staleness. A fresh metadata-only
+    // file is adopted.
+    {
+        const qint64 freshSec = nowSec - 5;
+        QByteArray body = fixtureBody({metadataEvent(), metadataEvent()});
+        DIE_IF_FALSE(writeWithMtime(oldPath, body, freshSec),
+                     "rewrite " + oldPath.toStdString());
+        QFile::remove(newPath);
+
+        const QString picked = ClaudeIntegration::sessionPathForCwd(
+            cwd, /*minLastEventMs=*/0, /*nowMs=*/nowMs);
         expect(picked == oldPath,
-               "ANTS-1163-INV-11: metadata-only file uses mtime fallback",
+               "ANTS-2191-INV-11b: metadata-only file still uses mtime "
+               "fallback when no PID anchor is known",
                "picked=" + picked.toStdString());
     }
 

@@ -26,17 +26,28 @@ For every hook event arriving on the singleton's UDS:
 - **I2 — Focused session_id is honoured.** A hook event whose
   `session_id` matches the basename of `m_transcriptPath` MUST update
   state and emit `stateChanged` exactly as before the gate was added.
-- **I3 — PermissionRequest stays ungated.** Permission prompts route
-  per-tab via `m_lastHookSessionId` in the slot, not via the
-  singleton's `m_state`. The gate MUST NOT drop these events — they
-  belong to whichever tab the prompt is for, and the slot resolves
-  the right one downstream.
+- **I3 — PermissionRequest stays ungated on the warm path.** Once
+  `m_transcriptPath` is resolved, permission prompts route per-tab via
+  `m_lastHookSessionId` in the slot, not via the singleton's
+  `m_state`. The gate MUST NOT drop these events — they belong to
+  whichever tab the prompt is for, and the slot resolves the right one
+  downstream. (Cold-start is the exception — see I5.)
 - **I4 — Pre-poll tolerance.** When `m_transcriptPath` is empty (the
   focused tab's Claude has been bound but `pollClaudeProcess` hasn't
   yet resolved its transcript), the gate MUST default to "accept"
   rather than dropping every event. Without this carve-out the very
   first `SessionStart` would be dropped before `m_activeSessionId`
   could be set.
+- **I5 — Cold-start PermissionRequest is dropped (ANTS-2190).** During
+  cold-start (`m_transcriptPath` empty) `isFocusedTabSession()` returns
+  true for ANY `session_id`, so a sibling tab's `PermissionRequest`
+  cannot be attributed to the focused tab. It MUST be dropped — neither
+  `permissionRequested` emitted nor `m_lastHookSessionId` committed —
+  rather than self-route via a poisoned last-seen session and
+  mis-attribute the prompt to the focused tab. Only `SessionStart`
+  still falls through cold-start (it bootstraps `m_activeSessionId`,
+  and is itself refused from committing the session id, ANTS-1996). The
+  warm-path I3 behaviour is unchanged.
 
 ## Out of scope
 
