@@ -36,6 +36,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Roadmap pagination cut-point search is now O(n) instead of O(n log n)** (ANTS-2200)
+  Each list element is serialized once and accumulated, rather than re-serializing a growing prefix on every binary-search probe. Same output, less work on long lists.
+
 - **MCP read responses now surface the etag re-use hint (`next_call_hint`) regardless of body size — repeated small `read_region` / `file_outline` slices can now 304 their re-reads. The 4 KiB gate now applies only to the `leaner_call_hint`.** (ANTS-2180)
 
 - **Ants MCP now offloads oversized read replies to a short preview + pointer by default**
@@ -57,6 +60,9 @@ for security-relevant changes.
   header contract comments, and the orphaned Inv3 shape test.
 
 ### Fixed
+
+- **Fold-in verbs no longer burn roadmap ID numbers when there's nothing to write under** (ANTS-2201)
+  indie_review_fold_in / debt_sweep_defer / cold_eyes_fold_in now check for an active release heading before reserving IDs, so a missing heading returns a clean no_release_heading refusal instead of consuming counter values into a permanent gap.
 
 - **Model-switch banner detection hardened against a quoted banner in scrollback** (ANTS-2197)
   directModelSwitchVisible now requires the tier title and the banner's 'saved as your default' tail together, so a bare quoted fragment no longer trips a continuation.
@@ -85,6 +91,9 @@ for security-relevant changes.
   cheaper Ants tools just like a native install.
 
 ### Security
+
+- **debt_sweep now rejects a malformed `since` revision instead of passing it to git** (ANTS-2199)
+  The user-supplied git ref is shape-checked before it reaches the git diff argv, giving a clean error instead of a confusing mid-scan git failure.
 
 - **Model auto-switcher: code-level parked guard so a config bug can't re-arm keystroke injection** (ANTS-2195)
   The auto-switcher's only actuator is keystroke injection and is deliberately parked as unsafe. A new compile-time guard (kAutoSwitchActuatorParked) short-circuits the firing site before the /model send, so the parked decision can no longer be undone by config alone.

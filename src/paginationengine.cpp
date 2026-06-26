@@ -14,25 +14,29 @@ namespace {
 // slice with next_offset:0).
 int measureCutPoint(const QJsonArray &filtered, int budget) {
     if (filtered.isEmpty()) return 0;
-    // Fast path: full array fits.
-    {
-        QJsonArray a;
-        for (const auto &v : filtered) a.append(v);
-        const auto bytes = QJsonDocument(a).toJson(QJsonDocument::Compact).size();
-        if (bytes <= budget) return filtered.size();
+    // ANTS-2200 — serialize each element exactly once, then accumulate. The old
+    // binary search re-serialized a growing `mid`-element prefix on every probe
+    // (O(n log n) bytes serialized just to size one page); this is O(n).
+    //
+    // Compact-array bytes for the first n elements (n>=1) are:
+    //   2 (the `[` `]` brackets) + (n-1) commas + sum(elemLen[0..n-1])
+    // where elemLen[i] is the compact serialization length of element i — got by
+    // serializing the singleton array `[elem]` (= "[" elem "]") and subtracting
+    // the 2 bracket bytes. The running total is monotonic in n, so the first
+    // element that overflows `budget` ends the prefix that fits.
+    qint64 running = 0;   // compact bytes of filtered.mid(0, cut)
+    int cut = 0;
+    for (const auto &v : filtered) {
+        QJsonArray one;
+        one.append(v);
+        const qint64 elemLen =
+            QJsonDocument(one).toJson(QJsonDocument::Compact).size() - 2;
+        // n==1: 2 brackets + elemLen; n>=2: prior total + 1 comma + elemLen.
+        running = (cut == 0) ? (2 + elemLen) : (running + 1 + elemLen);
+        if (running > budget) break;
+        ++cut;
     }
-    // Binary search the cut.
-    int lo = 0;
-    int hi = filtered.size();
-    while (lo < hi) {
-        const int mid = lo + (hi - lo + 1) / 2;  // ceiling midpoint
-        QJsonArray probe;
-        for (int i = 0; i < mid; ++i) probe.append(filtered.at(i));
-        const auto bytes = QJsonDocument(probe).toJson(QJsonDocument::Compact).size();
-        if (bytes <= budget) lo = mid;       // mid fits, try larger
-        else                 hi = mid - 1;   // mid too big, shrink
-    }
-    return lo;
+    return cut;
 }
 
 }  // namespace

@@ -69,6 +69,7 @@ against the table below.
 | `no_lanes` | A reviewer-dispatching tool's partition resolved empty (ANTS-1352). | `indie_review_dispatch` against a project with no `## Module map (src/)` in CLAUDE.md and no override. |
 | `ai_not_configured` | The project's AI provider is disabled or unset (ANTS-1352). Envelope hint names `Settings → AI`. | `indie_review_dispatch` when `Config::aiEnabled()` is false OR `Config::aiEndpoint()` is empty. |
 | `no_roadmap_loaded` | The roadmap dialog has no roadmap loaded. | roadmap-tied verb during early startup. |
+| `no_release_heading` | A fold-in verb found no active release heading to insert its block under (and none was passed via `release_block_heading`). Resolved before ID allocation so a no-op insert can't burn `.roadmap-counter` IDs (ANTS-2201). | `indie_review_fold_in` / `debt_sweep_defer` / `cold_eyes_fold_in` against a roadmap with no in-flight/shipped release heading. |
 | `plan_exists` | Conflicting state: a plan file already exists. | `plan_template` told to write over an existing file without `overwrite:true`. |
 | `settings_exists` | Conflicting state: a per-project settings file already exists, so a create-only op refuses rather than clobber. Envelope carries `path`. Sibling of `plan_exists` (ANTS-2161). | `project_settings op:"init"` when `<root>/.ants/project.json` is already present (use `op:"set"` to update). |
 | `file_changed` | Apply-time mismatch: source bytes drifted between scan and fix. | `debt_sweep_apply_fix` after the file was edited. |

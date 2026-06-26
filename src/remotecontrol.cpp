@@ -13962,6 +13962,18 @@ QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
         dateIso = QDate::currentDate().toString(Qt::ISODate);
     }
 
+    // ANTS-2201 — resolve the target heading BEFORE allocating IDs. allocateIds
+    // bumps .roadmap-counter immediately; if no active release heading is found
+    // the insert below never runs, so allocating first would burn IDs into a
+    // permanent gap and return a misleading ok:true/written:false envelope.
+    // Refuse up front instead, leaving the counter untouched.
+    QString heading = req.value(QStringLiteral("release_block_heading")).toString();
+    if (heading.isEmpty()) heading = RoadmapFoldIn::findActiveReleaseHeading(root);
+    if (heading.isEmpty()) return QJsonDocument(irErr(
+        QStringLiteral("no_release_heading"),
+        QStringLiteral("indie_review_fold_in: no active release heading to insert "
+                       "under (pass release_block_heading explicitly)")));
+
     const auto ids = RoadmapFoldIn::allocateIds(root, actionable.size());
     if (ids.isEmpty()) return QJsonDocument(irErr(
         QStringLiteral("counter_failed"),
@@ -13970,13 +13982,7 @@ QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
     const QString block = IndieReviewEngine::templateIndieReviewFoldInBlock(
         actionable, ids, dateIso);
 
-    QString heading = req.value(QStringLiteral("release_block_heading")).toString();
-    if (heading.isEmpty()) heading = RoadmapFoldIn::findActiveReleaseHeading(root);
-
-    bool written = false;
-    if (!heading.isEmpty()) {
-        written = RoadmapFoldIn::insertBlock(root, heading, block);
-    }
+    const bool written = RoadmapFoldIn::insertBlock(root, heading, block);
 
     QJsonObject env;
     env["ok"]            = true;
@@ -14242,6 +14248,18 @@ QJsonDocument RemoteControl::cmdDebtSweepScan(const QJsonObject &req) {
 
     DebtSweepEngine::ScanOptions opt;
     opt.sinceRef = req.value(QStringLiteral("since")).toString();
+    // ANTS-2199 — validate the user-supplied git ref before it reaches
+    // `git diff <since>..HEAD` argv (debtsweepengine.cpp). It is passed via argv
+    // (no shell) and is same-UID, so not a privilege crossing, but an
+    // unconstrained value yields a confusing git error mid-scan; reject early
+    // with a clean bad_args. Empty `since` is fine — the engine picks a default.
+    if (!opt.sinceRef.isEmpty()) {
+        static const QRegularExpression reSinceRef(
+            QStringLiteral("^[A-Za-z0-9_./~^-]{1,128}$"));
+        if (!reSinceRef.match(opt.sinceRef).hasMatch())
+            return QJsonDocument(dsErr(QStringLiteral("bad_args"),
+                QStringLiteral("debt_sweep_scan: invalid `since` ref shape")));
+    }
     if (req.contains(QStringLiteral("categories"))) {
         QSet<QString> wanted;
         for (const auto &v : req.value(QStringLiteral("categories")).toArray())
@@ -14386,6 +14404,16 @@ QJsonDocument RemoteControl::cmdDebtSweepDefer(const QJsonObject &req) {
         dateIso = QDate::currentDate().toString(Qt::ISODate);
     }
 
+    // ANTS-2201 — resolve the heading BEFORE allocating IDs so a missing active
+    // release heading can't burn .roadmap-counter values on an insert that never
+    // runs (see the indie_review_fold_in sibling for the full rationale).
+    QString heading = req.value(QStringLiteral("release_block_heading")).toString();
+    if (heading.isEmpty()) heading = RoadmapFoldIn::findActiveReleaseHeading(root);
+    if (heading.isEmpty()) return QJsonDocument(dsErr(
+        QStringLiteral("no_release_heading"),
+        QStringLiteral("debt_sweep_defer: no active release heading to insert "
+                       "under (pass release_block_heading explicitly)")));
+
     const auto ids = RoadmapFoldIn::allocateIds(root, deferred.size());
     if (ids.isEmpty()) return QJsonDocument(dsErr(
         QStringLiteral("counter_failed"),
@@ -14394,13 +14422,7 @@ QJsonDocument RemoteControl::cmdDebtSweepDefer(const QJsonObject &req) {
     const QString block = DebtSweepEngine::templateDebtSweepFoldInBlock(
         deferred, ids, dateIso);
 
-    QString heading = req.value(QStringLiteral("release_block_heading")).toString();
-    if (heading.isEmpty()) heading = RoadmapFoldIn::findActiveReleaseHeading(root);
-
-    bool written = false;
-    if (!heading.isEmpty()) {
-        written = RoadmapFoldIn::insertBlock(root, heading, block);
-    }
+    const bool written = RoadmapFoldIn::insertBlock(root, heading, block);
 
     QJsonObject env;
     env["ok"]            = true;
@@ -15587,8 +15609,21 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
     }
     const bool skipAlloc = (idAllocMode == QStringLiteral("skip"));
 
+    QString heading = req.value(QStringLiteral("release_block_heading"))
+                          .toString();
+    if (heading.isEmpty()) heading =
+        RoadmapFoldIn::findActiveReleaseHeading(root);
+
     QList<int> ids;
     if (!skipAlloc) {
+        // ANTS-2201 — only allocate (and bump .roadmap-counter) once we know
+        // there is a heading to insert the IDs under; otherwise the insert never
+        // runs and the IDs leak into a permanent gap. skip-alloc/freeform mode
+        // allocates nothing, so it may still return its block with no heading.
+        if (heading.isEmpty()) return QJsonDocument(ceErr(
+            QStringLiteral("no_release_heading"),
+            QStringLiteral("cold_eyes_fold_in: no active release heading to insert "
+                           "under (pass release_block_heading explicitly)")));
         ids = RoadmapFoldIn::allocateIds(root, actionable.size());
         if (ids.isEmpty()) return QJsonDocument(ceErr(
             QStringLiteral("counter_failed"),
@@ -15600,11 +15635,6 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
               actionable, dateIso)
         : ColdEyesEngine::templateColdEyesFoldInBlock(
               actionable, ids, dateIso);
-
-    QString heading = req.value(QStringLiteral("release_block_heading"))
-                          .toString();
-    if (heading.isEmpty()) heading =
-        RoadmapFoldIn::findActiveReleaseHeading(root);
 
     bool written = false;
     if (!heading.isEmpty()) {

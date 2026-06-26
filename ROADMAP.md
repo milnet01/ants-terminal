@@ -9880,23 +9880,26 @@ apiKey-from-config, secretredact.h filename, openUrl internal URL, trigger sh
   Kind: perf.
   Source: indie-review-8 2026-06-26 mcp-engines M1.
 
-- 📋 [ANTS-2199] **`debt_sweep` `since` ref flows unvalidated into `git diff <since>..HEAD` argv — the only unvalidated user string reaching a subprocess in the MCP-engines lane.**
+- ✅ [ANTS-2199] **`debt_sweep` `since` ref flows unvalidated into `git diff <since>..HEAD` argv — the only unvalidated user string reaching a subprocess in the MCP-engines lane.**
   opt.sinceRef = req.value("since") (remotecontrol.cpp:14244) reaches `since + "..HEAD"` (debtsweepengine.cpp:96) with no shape check. Argv + same-UID so not a privilege crossing. Fix: `^[A-Za-z0-9_./~^-]{1,128}$` guard → bad_args on miss.
   **Layman:** The debt-sweep tool passes a user-supplied git revision straight to git. It goes through argv (not a shell) so it's low-risk, but a bad value gives a confusing git error mid-scan instead of a clean rejection.
   Kind: fix.
   Source: indie-review-8 2026-06-26 mcp-engines M2.
+  Resolved 2026-06-26: cmdDebtSweepScan validates `since` against ^[A-Za-z0-9_./~^-]{1,128}$ and returns bad_args on miss, before the ref reaches `git diff <since>..HEAD` argv. Empty since still falls through to the engine default.
 
-- 📋 [ANTS-2200] **`pageBullets` `measureCutPoint` re-serializes a growing prefix on each O(log n) probe (O(n log n) bytes serialized to size one page).**
+- ✅ [ANTS-2200] **`pageBullets` `measureCutPoint` re-serializes a growing prefix on each O(log n) probe (O(n log n) bytes serialized to size one page).**
   measureCutPoint rebuilds + JSON-serializes a fresh `probe` of `mid` elements each iteration (paginationengine.cpp:30-31). Fix: serialize each element once, prefix-sum the byte sizes, binary-search the sums (O(n)).
   **Layman:** When paginating a long roadmap list, the code re-builds and re-serializes a growing chunk of it on each step of its search — more work than needed. Bounded today by the page-size cap, so low impact.
   Kind: perf.
   Source: indie-review-8 2026-06-26 mcp-engines M3.
+  Resolved 2026-06-26: measureCutPoint now serializes each element exactly once and accumulates compact-array bytes (2 brackets + commas + elem lengths), breaking at the first overflow — O(n) instead of re-serializing a growing prefix per probe (O(n log n)). Behaviour-identical; existing pagination tests green.
 
-- 📋 [ANTS-2201] **`RoadmapFoldIn::allocateIds` burns `.roadmap-counter` values that `insertBlock` never persists when the insert fails — ID gap + misleading `ok:true / written:false` envelope.**
+- ✅ [ANTS-2201] **`RoadmapFoldIn::allocateIds` burns `.roadmap-counter` values that `insertBlock` never persists when the insert fails — ID gap + misleading `ok:true / written:false` envelope.**
   allocateIds commits the bumped counter in its own lock then returns; insertBlock runs separately (remotecontrol.cpp:13976-13978 + 5 callers). If insertBlock returns false (heading missing / refusal / lock fail) or heading is empty, IDs are consumed but unwritten. ANTS-1742 covered the concurrent case, not insert-failed-after-allocate. Fix: share one held CounterLock across allocate+insert with rollback, or move findActiveReleaseHeading above allocateIds so an empty heading can't burn IDs.
   **Layman:** When folding findings into the roadmap, Ants reserves the ID numbers first, then writes the block. If the write fails, the IDs are used up but never appear — leaving a gap and a confusing 'ok but not written' result.
   Kind: fix.
   Source: indie-review-8 2026-06-26 roadmap-system M1.
+  Resolved 2026-06-26: the three fold-in verbs (indie_review_fold_in, debt_sweep_defer, cold_eyes_fold_in) now resolve+verify the release heading BEFORE allocateIds and refuse with no_release_heading when none exists, so a no-op insert can't burn .roadmap-counter IDs into a gap. cold_eyes skip/freeform mode still returns its block with no heading (it allocates nothing). New code registered in mcp-error-codes.md. Full suite green (2262).
 
 - 📋 [ANTS-2202] **RC-socket `readyRead` lacks the `_handled` re-entrancy latch its MCP sibling has and never clears the consumed line from `_buf` — latent double-execution if any future RC verb pumps a nested event loop.**
   remotecontrol.cpp:1583 sets only `_buf` (never `_handled`) and leaves the consumed line in `_buf` after dispatch; the MCP twin (claudeintegration.cpp:1510) guards via `_handled`. The comment at :1602 wrongly cites audit_run as a nested-loop verb reachable via RemoteControl::dispatch (it isn't). Fix: mirror the MCP latch + clear `_buf` to buf.mid(nlIdx+1) before dispatch; delete the stale comment. Latent (no current nested-loop RC verb).
