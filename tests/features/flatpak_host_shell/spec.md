@@ -20,7 +20,9 @@ misses sandboxes started outside the usual `flatpak run` path;
 is an OR so either signal triggers the host-shell branch.
 
 **INV-2 — Host branch invokes `flatpak-spawn --host`.**
-The in-sandbox exec must go through `execvp("flatpak-spawn", …)` with
+The in-sandbox exec must go through `execvpe("flatpak-spawn", …, childEnvp)`
+(ANTS-1994 — the pre-fork sanitised envp, matching the direct-exec path; was
+`execvp` pre-1994) with
 `--host` as the first positional argument. The `--` separator must
 appear before the shell path so flatpak-spawn cleanly separates its
 own options from the command to run.

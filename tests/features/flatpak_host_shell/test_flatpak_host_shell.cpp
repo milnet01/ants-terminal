@@ -3,7 +3,7 @@
 //
 // Why source-grep: the branch fires inside a forkpty child that can't
 // be exercised headlessly — there's no Flatpak sandbox on CI runners
-// and the only side effect is execvp() replacing the process. What the
+// and the only side effect is execvpe() replacing the process. What the
 // spec guarantees is "this branch exists with this exact shape", which
 // a regex/find check on ptyhandler.cpp locks in cheaply.
 
@@ -68,8 +68,8 @@ static int runMain() {
     }
 
     // INV-2 — host branch invokes flatpak-spawn --host with -- separator.
-    if (!has("execvp(\"flatpak-spawn\"")) {
-        fail("INV-2: host branch must execvp(\"flatpak-spawn\", ...)");
+    if (!has("execvpe(\"flatpak-spawn\"")) {
+        fail("INV-2: host branch must execvpe(\"flatpak-spawn\", ...)");
     }
     if (!has("\"flatpak-spawn\"")) {
         fail("INV-2: argv[0] literal \"flatpak-spawn\" must appear");
@@ -146,21 +146,21 @@ static int runMain() {
     // The Flatpak branch must come BEFORE the direct-exec call so we
     // actually take it when the detection succeeds.
     {
-        auto flatpakBranchPos = src.find("execvp(\"flatpak-spawn\"");
+        auto flatpakBranchPos = src.find("execvpe(\"flatpak-spawn\"");
         auto directExecPos = src.find("execle(shellCStr, argv0,");
         if (flatpakBranchPos != std::string::npos &&
             directExecPos != std::string::npos &&
             flatpakBranchPos > directExecPos) {
-            fail("INV-5: Flatpak execvp branch must precede the direct "
+            fail("INV-5: Flatpak execvpe branch must precede the direct "
                  "execle call so the detection branch wins");
         }
     }
 
     // INV-6 — failure mode matches direct exec. The Flatpak branch's
-    // post-execvp must fall through to _exit(127) the same way the
+    // post-execvpe must fall through to _exit(127) the same way the
     // direct-exec path does.
     {
-        auto flatpakBranchPos = src.find("execvp(\"flatpak-spawn\"");
+        auto flatpakBranchPos = src.find("execvpe(\"flatpak-spawn\"");
         if (flatpakBranchPos != std::string::npos) {
             // Scan forward a bounded window for _exit(127) — it must
             // appear before the next function/class boundary.
@@ -172,8 +172,27 @@ static int runMain() {
         }
     }
 
+    // INV-8 (ANTS-1994) — the Flatpak exec passes the pre-fork sanitised
+    // childEnvp as its envp (via execvpe), matching the direct
+    // execle(childEnvp) path, rather than letting plain execvp inherit the
+    // raw parent environ. flatpak-spawn still forwards only --env= values
+    // to the host shell, so this is an in-sandbox consistency fix.
+    {
+        auto pos = src.find("execvpe(\"flatpak-spawn\"");
+        if (pos != std::string::npos) {
+            auto window = src.substr(pos, 200);
+            if (window.find("childEnvp") == std::string::npos) {
+                fail("INV-8: Flatpak execvpe must pass childEnvp as its envp "
+                     "(ANTS-1994) so flatpak-spawn runs with the sanitised "
+                     "environment, not the raw parent environ");
+            }
+        } else {
+            fail("INV-8: expected an execvpe(\"flatpak-spawn\", ...) call");
+        }
+    }
+
     // INV-7 — ANTS_MCP_SOCKET crosses the sandbox via --env= (ANTS-1900).
-    // flatpak-spawn does not inherit the parent env (same reason as
+    // The host shell does not inherit flatpak-spawn's env (same reason as
     // INV-3), so the socket path mainwindow.cpp exports for the
     // MCP-orientation hook (ANTS-1897 INV-14) must be forwarded
     // explicitly or the cheat-sheet + every socket-gated MCP affordance
