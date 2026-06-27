@@ -7,10 +7,13 @@
 #include "readregion.h"
 
 #include "fileoutline.h"
+#include "pathvalidation.h"
 
 #include <QByteArray>
+#include <QCryptographicHash>
 #include <QFile>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QRegularExpression>
 #include <QSet>
 
@@ -399,6 +402,138 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
         env["accessors"] = QJsonArray::fromStringList(accList);
     }
     return env;
+}
+
+namespace {
+
+// ANTS-2219 — hex16-of-sha256 of a result object's compact JSON. Same shape
+// as the file_outline multi-path per-file etag, so callers see one etag
+// format across the MCP read surface.
+QString sliceEtag(const QJsonObject &obj) {
+    const QByteArray buf = QJsonDocument(obj).toJson(QJsonDocument::Compact);
+    return QString::fromUtf8(QCryptographicHash::hash(
+        buf, QCryptographicHash::Sha256).toHex().left(16));
+}
+
+// ANTS-2219 — resolve ONE batch item (path + selector) under rootCanonical:
+// validate the path through the central PathValidation chokepoint, run
+// extract() with the supplied byte budget, and reframe the echoed path
+// project-relative. Returns the slice envelope on success, or an ok:false
+// {code,error} object so the batch loop records one bad item without aborting.
+QJsonObject readOneRegion(const QJsonObject &item,
+                          const QString &rootCanonical, int maxBytes) {
+    const QString rawPath = item.value(QStringLiteral("path")).toString();
+    if (rawPath.isEmpty()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("read_regions: item missing \"path\"");
+        o["code"]  = QStringLiteral("bad_args");
+        return o;
+    }
+    const PathValidation::Check check = PathValidation::validatePath(
+        rawPath, rootCanonical,
+        QStringLiteral("read_regions"), QStringLiteral("path"));
+    if (check.bad) return check.err;
+    if (check.resolved.isEmpty()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("read_regions: \"%1\" does not exist")
+                         .arg(rawPath);
+        o["code"]  = QStringLiteral("not_found");
+        return o;
+    }
+    Options opts;
+    opts.symbol   = item.value(QStringLiteral("symbol")).toString();
+    opts.section  = item.value(QStringLiteral("section")).toString();
+    opts.maxBytes = maxBytes;
+    const QJsonValue startV = item.value(QStringLiteral("start_line"));
+    const QJsonValue endV   = item.value(QStringLiteral("end_line"));
+    if (startV.isDouble()) {
+        opts.hasLine   = true;
+        opts.startLine = startV.toInt();
+        opts.endLine   = endV.isDouble() ? endV.toInt() : opts.startLine;
+    }
+    QJsonObject result = extract(check.resolved, opts);
+    // Reframe the echoed absolute path to project-relative for stable,
+    // launch-location-independent paths.
+    if (result.value(QStringLiteral("ok")).toBool()) {
+        const QString abs = result.value(QStringLiteral("path")).toString();
+        if (abs.startsWith(rootCanonical + QLatin1Char('/')))
+            result["path"] = abs.mid(rootCanonical.size() + 1);
+    }
+    return result;
+}
+
+}  // namespace
+
+QJsonObject extractBatch(const QString &rootCanonical,
+                         const QJsonValue &itemsValue, int maxBytes) {
+    if (!itemsValue.isArray()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("read_regions: \"items\" array is required");
+        o["code"]  = QStringLiteral("bad_args");
+        return o;
+    }
+    const QJsonArray items = itemsValue.toArray();
+    if (items.isEmpty()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("read_regions: \"items\" must not be empty");
+        o["code"]  = QStringLiteral("bad_args");
+        return o;
+    }
+    constexpr int kMaxItems = 64;
+    if (items.size() > kMaxItems) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral(
+            "read_regions: too many items (%1 > %2) — split the batch")
+                .arg(items.size()).arg(kMaxItems);
+        o["code"]  = QStringLiteral("too_many_items");
+        return o;
+    }
+
+    // Shared byte budget across the set: default 512 KiB, clamped to the
+    // 4 MiB read-family ceiling. Consumed in item order; once exhausted, a
+    // later item gets a 1-byte floor (extract keeps >= 1 line and flags
+    // truncated) rather than silently re-expanding to the per-call default.
+    int budget = maxBytes > 0 ? maxBytes : kDefaultBytesCap;
+    if (budget > kMaxBytesCeiling) budget = kMaxBytesCeiling;
+
+    QJsonArray results;
+    bool anyTruncated = false, budgetExhausted = false;
+    for (const QJsonValue &iv : items) {
+        const QJsonObject item = iv.toObject();
+        const int itemCap = budget > 0 ? budget : 1;
+        QJsonObject slice = readOneRegion(item, rootCanonical, itemCap);
+        const QString etag = sliceEtag(slice);
+        const QString prior =
+            item.value(QStringLiteral("etag_match")).toString();
+        QJsonObject entry;
+        if (slice.value(QStringLiteral("ok")).toBool() && !prior.isEmpty() &&
+            prior == etag) {
+            entry["path"]      = slice.value(QStringLiteral("path"));
+            entry["ok"]        = true;
+            entry["unchanged"] = true;
+            entry["etag"]      = etag;
+        } else {
+            slice["etag"] = etag;
+            if (slice.value(QStringLiteral("truncated")).toBool())
+                anyTruncated = true;
+            entry = slice;
+        }
+        budget -= QJsonDocument(entry).toJson(QJsonDocument::Compact).size();
+        if (budget <= 0) budgetExhausted = true;
+        results.append(entry);
+    }
+
+    QJsonObject out;
+    out["ok"]      = true;
+    out["results"] = results;
+    out["count"]   = results.size();
+    if (anyTruncated || budgetExhausted) out["truncated"] = true;
+    return out;
 }
 
 }  // namespace ReadRegion

@@ -8647,12 +8647,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: remotecontrol, claudeintegration.
   Source: in-session 2026-06-27 (hit while fixing ANTS-1670 M2).
 
-- 📋 [ANTS-2219] **`read_regions` MCP verb — batched multi-selector read (read-side mirror of `apply_edits`).**
+- ✅ [ANTS-2219] **`read_regions` MCP verb — batched multi-selector read (read-side mirror of `apply_edits`).**
   Contributor (DOOM path-tracer session) issued ~8 separate read_region/file_outline/Read calls to assemble one mental model for a feature. Add `read_regions(items:[{path, symbol} | {path, start_line, end_line}])` returning an array of slices in one call — the read-side mirror of apply_edits' batched writes (and the filesystem server's read_multiple_files, but symbol-aware + project-rooted). Per-item `etag_match` so unchanged slices 304 individually; one `max_bytes` budget across the set. Collapses "outline → read the 6 interesting symbols" from 7 calls to 2 — the single biggest call-count sink in an implementation session. Highest-value of the S1-S5 set; new verb so needs the full mcp-tools.md checklist (schema, caller_cwd contract, wrap, ETag, refusal codes, test).
   **Layman:** Let Claude fetch several code snippets in one request instead of one call each — fewer round-trips, fewer tokens.
   Kind: feature.
   Lanes: remotecontrol.
   Source: DOOM_Ants feedback S1 (2026-06-27 2nd session).
+  Resolved (2026-06-27): new read_regions verb — items[]:{path, symbol|start_line/end_line|section, etag_match?} → {ok, results[], count, truncated?} in one call. Per-item etag → individual 304 stub; one shared max_bytes budget consumed in item order; per-item failures isolated (batch stays ok); 64-item cap (too_many_items). Pure batch logic in ReadRegion::extractBatch (core, reuses extract + PathValidation), thin cmdReadRegions handler resolves root; offload-eligible. Full mcp-tools.md checklist: schema, caller_cwd Required contract, kindForName bucket, provider, isOffloadEligible. Regression test: read_regions RR-1..6 (6 cases).
 
 - ✅ [ANTS-2220] **`workspace_search` `enclosing_symbol` — add each match's enclosing function/symbol.**
   After a `workspace_search` hit, the usual next question is "which function does this live in?" (def site vs teardown vs per-frame rebuild), today answered with a follow-up file_outline. Add opt-in `enclosing_symbol:true` that annotates each match with `{enclosing:"Foo::bar"}`, reusing the outline symbol-range map the server already builds. Pairs with the existing `context` window. Folds the most common post-search orientation step into the search — the way `find_definition include_body` folded the post-find read in.

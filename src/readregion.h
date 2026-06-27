@@ -8,6 +8,7 @@
 #pragma once
 
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QString>
 
 namespace ReadRegion {
@@ -41,5 +42,21 @@ struct Options {
 // Exactly one of {line range, symbol, section} must be selected.
 // The dispatcher injects `etag` (ANTS-1499); the helper emits none.
 QJsonObject extract(const QString &absPath, const Options &opts);
+
+// ANTS-2219 — read_regions: batched multi-selector read. Resolves each
+// `itemsValue[]` entry ({path, symbol|start_line/end_line|section,
+// etag_match?}) under `rootCanonical` via PathValidation, runs extract(),
+// reframes the path project-relative, and attaches a per-item etag (an item
+// whose `etag_match` matches 304s to an {unchanged:true} stub). One shared
+// `maxBytes` budget (<=0 → kDefaultBytesCap; clamped to ceiling) is consumed
+// in item order. Returns {ok:true, results[], count, truncated?} or a refusal
+// {ok:false, code, error}:
+//   bad_args        — itemsValue is not an array, or is empty.
+//   too_many_items  — more than 64 items.
+// Per-item failures (bad/missing path, invalid selector) land in that item's
+// result with ok:false; the batch envelope stays ok:true. Pure (Qt6::Core +
+// PathValidation), so the handler in remotecontrol.cpp only resolves the root.
+QJsonObject extractBatch(const QString &rootCanonical,
+                         const QJsonValue &itemsValue, int maxBytes);
 
 }  // namespace ReadRegion

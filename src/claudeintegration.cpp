@@ -3331,6 +3331,100 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(rrTool);
 
+                // ANTS-2219 — read_regions: batched multi-selector read.
+                // Fetch several slices (symbol bodies / line ranges / md
+                // sections, across one or many files) in ONE call.
+                QJsonObject rrsTool;
+                rrsTool["name"] = "read_regions";
+                rrsTool["description"] = QStringLiteral(
+                    "Batched read_region: fetch several file slices in ONE "
+                    "call instead of N. `items` is an array of {path, + "
+                    "exactly one selector: symbol | start_line[/end_line] | "
+                    "section}, each with an optional per-item etag_match. "
+                    "Returns {ok, results:[…], count, truncated?} — one slice "
+                    "envelope per item, in order; an item whose etag_match "
+                    "matches its current slice 304s to a compact {path, "
+                    "ok:true, unchanged:true, etag} stub, so a re-read after "
+                    "editing one file re-sends only the changed slices. A "
+                    "bad/missing item path yields a per-item {ok:false, code} "
+                    "without aborting the batch. One shared max_bytes budget "
+                    "(default 512 KiB, 4 MiB ceiling) is consumed in item "
+                    "order. Max 64 items (too_many_items over that). "
+                    "caller_cwd required. The read-side mirror of apply_edits' "
+                    "batched writes — collapses \"outline → read the 6 "
+                    "interesting symbols\" from 7 calls to 2.");
+                rrsTool["selection_hint"] = QStringLiteral(
+                    "Use when one file_outline/find_definition pass surfaced "
+                    "several symbols/sections to read together — batch them "
+                    "here instead of one read_region per slice.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    QJsonObject props;
+                    QJsonObject itemsProp;
+                    itemsProp["type"] = "array";
+                    itemsProp["description"] = QStringLiteral(
+                        "Slices to fetch (1-64). Each item: a `path` plus "
+                        "exactly one selector — `symbol` (a function/aggregate "
+                        "body), `start_line` (+ optional `end_line`) for a "
+                        "line range, or `section` (a markdown heading "
+                        "slug/text). Optional per-item `etag_match` 304s an "
+                        "unchanged slice.");
+                    QJsonObject itemSchema;
+                    itemSchema["type"] = "object";
+                    itemSchema["additionalProperties"] = false;
+                    QJsonObject ip;
+                    { QJsonObject p; p["type"] = "string";
+                      p["description"] = QStringLiteral(
+                          "Project file path resolved under caller_cwd.");
+                      ip["path"] = p; }
+                    { QJsonObject p; p["type"] = "string";
+                      p["description"] = QStringLiteral(
+                          "Symbol-body selector (function/method or "
+                          "struct/class/union aggregate). Mutually exclusive "
+                          "with start_line/end_line/section.");
+                      ip["symbol"] = p; }
+                    { QJsonObject p; p["type"] = "integer"; p["minimum"] = 1;
+                      p["description"] = QStringLiteral(
+                          "Line-range selector: 1-based first line.");
+                      ip["start_line"] = p; }
+                    { QJsonObject p; p["type"] = "integer"; p["minimum"] = 1;
+                      p["description"] = QStringLiteral(
+                          "Line-range selector: 1-based last line "
+                          "(inclusive); defaults to start_line.");
+                      ip["end_line"] = p; }
+                    { QJsonObject p; p["type"] = "string";
+                      p["description"] = QStringLiteral(
+                          "Markdown section selector (.md): a heading slug or "
+                          "text (ANTS-2221).");
+                      ip["section"] = p; }
+                    { QJsonObject p; p["type"] = "string";
+                      p["description"] = QStringLiteral(
+                          "Per-item ETag: when it equals this item's current "
+                          "slice etag, the item 304s to an {unchanged:true} "
+                          "stub.");
+                      ip["etag_match"] = p; }
+                    itemSchema["properties"] = ip;
+                    QJsonArray itemReq; itemReq.append("path");
+                    itemSchema["required"] = itemReq;
+                    itemsProp["items"] = itemSchema;
+                    props["items"] = itemsProp;
+                    { QJsonObject p; p["type"] = "integer"; p["minimum"] = 1;
+                      p["description"] = QStringLiteral(
+                          "Shared cap on total results[] bytes across the set "
+                          "(default 512 KiB, 4 MiB ceiling), consumed in item "
+                          "order.");
+                      props["max_bytes"] = p; }
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    QJsonArray required;
+                    required.append("items");
+                    schema["required"] = required;
+                    rrsTool["inputSchema"] = schema;
+                }
+                tools.append(rrsTool);
+
                 // ANTS-2094 — read_spill: re-read a body the offload path
                 // spilled to a content-addressed cache file, by its handle,
                 // byte-paged. Pairs with the offload envelope's `hint`.
@@ -8468,6 +8562,8 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-2021 — read_region: caller_cwd-Required,
                         // path-validated slice reader (file_outline family).
                         name == QLatin1String("read_region") ||
+                        // ANTS-2219 — read_regions: batched slice reader.
+                        name == QLatin1String("read_regions") ||
                         // ANTS-2094 — read_spill: re-read an offloaded result
                         // by content-addressed handle (global cache reader).
                         name == QLatin1String("read_spill") ||
@@ -9586,6 +9682,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-2021 — read_region resolves a project-relative path + anchors
     // tenancy; Required.
     if (toolName == QStringLiteral("read_region"))         return C::Required;
+    // ANTS-2219 — read_regions: batched sibling; each item resolves under
+    // the same root, so caller_cwd is Required.
+    if (toolName == QStringLiteral("read_regions"))        return C::Required;
     // ANTS-2094 — read_spill resolves a GLOBAL content-addressed handle
     // under ~/.cache (not project-scoped), so caller_cwd is neither an
     // anchor nor required; Optional accepts the absent case.

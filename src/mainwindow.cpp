@@ -4975,6 +4975,11 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("read_region",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdReadRegion));
+    // ANTS-2219 — read_regions: batched multi-selector read (read-side mirror
+    // of apply_edits). Per-item etag → individual 304; shared max_bytes budget.
+    m_claudeIntegration->registerToolProvider("read_regions",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdReadRegions));
     // ANTS-2094 — read_spill: re-read an offloaded result by its handle.
     // caller_cwd Optional — the spill store is global/content-addressed,
     // not project-scoped.

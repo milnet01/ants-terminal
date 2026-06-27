@@ -9050,6 +9050,31 @@ QJsonDocument RemoteControl::cmdReadRegion(const QJsonObject &req) {
     return QJsonDocument(ReadRegion::extract(check.resolved, opts));
 }
 
+// ANTS-2219 — read_regions: batched multi-selector read, the read-side mirror
+// of apply_edits' batched writes. Collapses "outline → read the 6 interesting
+// symbols" from N calls to one. Thin wrapper: resolve the project root (same
+// sentinel + caller_cwd path as cmdReadRegion), then delegate the per-item
+// loop, validation, per-item etag/304 and shared-budget logic to the pure
+// ReadRegion::extractBatch (core, unit-testable without a MainWindow).
+QJsonDocument RemoteControl::cmdReadRegions(const QJsonObject &req) {
+    const QString callerRaw =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    const QString sentinelRoot = ants::expandGlobalConfigSentinel(callerRaw);
+    const QString rootCanonical =
+        !sentinelRoot.isEmpty() ? sentinelRoot
+                                : resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("read_regions: no focused project");
+        o["code"]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
+    return QJsonDocument(ReadRegion::extractBatch(
+        rootCanonical, req.value(QStringLiteral("items")),
+        req.value(QStringLiteral("max_bytes")).toInt(0)));
+}
+
 // ANTS-2094 — read_spill: re-read a body spilled by the offload path, by its
 // content-addressed handle, byte-paged. The spill store is global (under
 // ~/.cache, not project-scoped), so this verb takes no project root and

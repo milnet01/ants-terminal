@@ -47,6 +47,9 @@ bool isOffloadEligible(const QString &toolName) {
         || toolName == QStringLiteral("get_text")
         || toolName == QStringLiteral("read_log")
         || toolName == QStringLiteral("read_region")
+        // ANTS-2219 — read_regions: a 64-slice batch can be large; spill it
+        // like any other read body, re-read verbatim via read_spill.
+        || toolName == QStringLiteral("read_regions")
         || toolName == QStringLiteral("workspace_search")
         || toolName == QStringLiteral("codebase_index")
         || toolName == QStringLiteral("docs_index")

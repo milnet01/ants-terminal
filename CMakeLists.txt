@@ -1148,6 +1148,8 @@ if(ANTS_TESTS)
                 tests/features/read_region_aggregate_body/test_read_region_aggregate_body.cpp
                 # ANTS-2221 — read_region markdown section: selector.
                 tests/features/read_region_md_section/test_read_region_md_section.cpp
+                # ANTS-2219 — read_regions batched multi-selector verb.
+                tests/features/read_regions/test_read_regions.cpp
                 # ANTS-1961 / ANTS-1962 / ANTS-1963 — feedback + spec_log verbs.
                 tests/features/mcp_feedback_query/test_mcp_feedback_query.cpp
                 tests/features/mcp_feedback_log/test_mcp_feedback_log.cpp

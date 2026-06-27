@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`read_regions` MCP verb — batched multi-selector read (read-side mirror of `apply_edits`).** (ANTS-2219)
+  Let Claude fetch several code snippets in one request instead of one call each — fewer round-trips, fewer tokens.
+
 - **Surface `feedback_query` / `feedback_log` to contributor CC sessions (self-advertising banner).** (ANTS-2226)
   Tell the other projects' Claude sessions they can read and add to these feedback files through Ants directly, instead of editing them by hand.
 

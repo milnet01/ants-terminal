@@ -420,6 +420,11 @@ public:
     // ANTS-2021 — read_region: return a line range or a named symbol's
     // body from a caller_cwd-relative project file via ReadRegion::extract.
     QJsonDocument cmdReadRegion(const QJsonObject &req);
+    // ANTS-2219 — read_regions: batched multi-selector read. Each item is a
+    // {path, symbol|start_line/end_line|section, etag_match?}; returns one
+    // slice envelope per item (per-item etag → individual 304) under a shared
+    // max_bytes budget. The read-side mirror of apply_edits' batched writes.
+    QJsonDocument cmdReadRegions(const QJsonObject &req);
     // ANTS-2022 — apply_edits: apply N {path, old, new} edits across M
     // project files in one call, atomic per file (ApplyEdits::applyToContent
     // + QSaveFile), with per-edit skipped[] accounting.
