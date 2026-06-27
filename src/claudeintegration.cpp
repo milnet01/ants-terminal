@@ -3236,14 +3236,20 @@ void ClaudeIntegration::onMcpConnection() {
                 rrTool["name"] = "read_region";
                 rrTool["description"] = QStringLiteral(
                     "Return an exact slice of a project file — a line range "
-                    "(start_line/end_line, 1-based inclusive) OR a named "
-                    "symbol's body (symbol) — instead of Read-ing the whole "
-                    "file. Exactly one selector. Symbol mode resolves via the "
+                    "(start_line/end_line, 1-based inclusive), a named "
+                    "symbol's body (symbol), OR a markdown heading's body "
+                    "(section) — instead of Read-ing the whole file. Exactly "
+                    "one selector. Symbol mode resolves via the "
                     "flat file_outline (function/method, or a struct/class/"
                     "union aggregate whose FULL brace-matched body is returned "
                     "— ANTS-2222; a namespace still resolves to its declaration "
                     "only, use line mode for one) and can see only the first "
-                    "1000 outline symbols. "
+                    "1000 outline symbols. Section mode (ANTS-2221, .md files) "
+                    "returns one heading's body up to the next same-or-higher-"
+                    "level heading; pass either the heading text or its slug "
+                    "(\"4.2 Emission model\" and \"4-2-emission-model\" both "
+                    "resolve) — the markdown analogue of symbol mode, so you "
+                    "skip the file_outline→line-arithmetic dance. "
                     "Byte-capped (max_bytes, default 512 KiB, 4 MiB ceiling), "
                     "keeping the head. ETag-304: a matching etag_match "
                     "re-read is free. caller_cwd required.");
@@ -3272,7 +3278,18 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject symProp; symProp["type"] = "string";
                         symProp["description"] = QStringLiteral(
                             "Symbol-body mode: return this symbol's body. "
-                            "Mutually exclusive with start_line/end_line.");
+                            "Mutually exclusive with start_line/end_line and "
+                            "section.");
+                    QJsonObject sectionProp; sectionProp["type"] = "string";
+                        sectionProp["description"] = QStringLiteral(
+                            "Section-body mode (.md, ANTS-2221): return one "
+                            "markdown heading's body — the heading line through "
+                            "the line before the next same-or-higher-level "
+                            "heading. Accepts the heading text or its slug "
+                            "(both \"4.2 Emission model\" and "
+                            "\"4-2-emission-model\" resolve). Mutually "
+                            "exclusive with the other selectors. Echoes "
+                            "section + section_slug.");
                     QJsonObject mbProp; mbProp["type"] = "integer";
                         mbProp["minimum"] = 1;
                         mbProp["description"] = QStringLiteral(
@@ -3283,6 +3300,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["start_line"] = startProp;
                     props["end_line"]   = endProp;
                     props["symbol"]     = symProp;
+                    props["section"]    = sectionProp;   // ANTS-2221
                     props["max_bytes"]  = mbProp;
                     {
                         // ANTS-2157 — integration brief.

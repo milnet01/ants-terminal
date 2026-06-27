@@ -8662,12 +8662,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: DOOM_Ants feedback S2 (2026-06-27 2nd session).
   Shipped 2026-06-27: opt-in enclosing_symbol on workspace_search — static-inline RemoteControl::enclosingSymbolForLine (nearest-preceding), one cached FileOutline::compute per matched file, `enclosing` field. Tests: workspace_search_enclosing_symbol (ES-1..6 + WI-1..3). Build+suite green.
 
-- 📋 [ANTS-2221] **`read_region` markdown `section` selector — read a heading's body by slug.**
+- ✅ [ANTS-2221] **`read_region` markdown `section` selector — read a heading's body by slug.**
   Reading a spec's §4.2 today means file_outline (headings + line numbers) then hand-computing a start_line/end_line range. For `.md`, add a `section:"4-2-emission-model"` selector (the same slug file_outline already emits for headings) returning that heading's body up to the next same-or-higher-level heading — the markdown analogue of symbol-mode for code. Removes the outline→line-arithmetic→read dance for every spec/ADR section read.
   **Layman:** Let Claude ask for one section of a doc by name instead of working out its line numbers first.
   Kind: enhancement.
   Lanes: remotecontrol.
   Source: DOOM_Ants feedback S3 (2026-06-27 2nd session).
+  Resolved (2026-06-27): read_region gains a third selector, section, for .md files — returns one ATX heading's body through the line before the next same-or-higher-level heading, fence-aware. Idempotent GitHub-style slug, so the caller passes the heading text OR its slug. Echoes section + section_slug; refuses section_not_found / bad_args (selector exclusivity). NOTE: the roadmap premise "the slug file_outline already emits" was inaccurate — file_outline emits no slug; read_region slugifies the heading text itself (verified, no file_outline change). Regression test: read_region_md_section MD-1..8 (8 cases, all green).
 
 - ✅ [ANTS-2222] **`read_region` symbol-mode returns the full body for aggregates (struct/class/enum/union).**
   read_region symbol-mode "stops at a class's first nested symbol" (its own note), so a struct/class/enum body can't be fetched by name — the contributor read a whole 217-line header instead. When the resolved symbol's kind is an aggregate (struct/class/enum/union), extend the slice to its matching closing brace (`}`/`};`) via the same brace-balance the multi-line-signature fix (ANTS-2212) already added for functions, rather than stopping at the next outline entry. Most surgical of the S1-S5 set.

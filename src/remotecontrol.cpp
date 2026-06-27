@@ -9036,6 +9036,7 @@ QJsonDocument RemoteControl::cmdReadRegion(const QJsonObject &req) {
 
     ReadRegion::Options opts;
     opts.symbol       = req.value(QStringLiteral("symbol")).toString();
+    opts.section      = req.value(QStringLiteral("section")).toString();  // ANTS-2221
     opts.maxBytes     = req.value(QStringLiteral("max_bytes")).toInt(0);
     opts.callSequence =                                        // ANTS-2157
         req.value(QStringLiteral("call_sequence")).toBool(false);

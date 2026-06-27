@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`read_region` markdown `section` selector — read a heading's body by slug.** (ANTS-2221)
+  Let Claude ask for one section of a doc by name instead of working out its line numbers first.
+
 - **`workspace_search` `enclosing_symbol` — annotate each match with the function it lives in (ANTS-2220).**
   Opt-in `enclosing_symbol:true` adds `enclosing:"Foo::bar"` to each match (the nearest-preceding symbol from the file outline), folding the usual "which function is this in?" follow-up into the search. One outline scan per distinct matched file, cached; off by default. (DOOM_Ants feedback S2.)
 

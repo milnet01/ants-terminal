@@ -141,18 +141,102 @@ SymRange resolveSymbol(const QString &absPath, const QString &name) {
     return r;
 }
 
+// ANTS-2221 — GitHub-style heading slug: lowercase, every run of
+// non-alphanumeric characters collapses to a single '-', and leading/
+// trailing '-' are trimmed. Idempotent (the slug of a slug is itself), so a
+// caller may pass either the heading text ("4.2 Emission model") or its slug
+// ("4-2-emission-model") and both resolve to the same key.
+QString mdHeadingSlug(const QString &text) {
+    QString out;
+    out.reserve(text.size());
+    bool pendingDash = false;
+    for (const QChar c : text) {
+        if (c.isLetterOrNumber()) {
+            if (pendingDash && !out.isEmpty()) out.append(QLatin1Char('-'));
+            pendingDash = false;
+            out.append(c.toLower());
+        } else {
+            pendingDash = true;
+        }
+    }
+    return out;
+}
+
+// ANTS-2221 — resolve a markdown heading slug to its section-body range: the
+// ATX-heading line through the line BEFORE the next heading of the same or a
+// higher level (≤ '#' count), or to EOF when none follows. Tracks ``` / ~~~
+// fenced code so a '#' inside a code block is never read as a heading. First
+// slug match wins. The markdown analogue of resolveSymbol for code.
+struct SecRange {
+    bool    found = false;
+    int     start = 0;   // 1-based heading line
+    int     end   = 0;   // 1-based last line (INT_MAX → to EOF)
+    QString slug;
+};
+
+int mdHeadingLevel(const QString &trimmed) {
+    int h = 0;
+    while (h < trimmed.size() && trimmed.at(h) == QLatin1Char('#')) ++h;
+    // ATX heading: 1-6 leading '#' then a space (or the whole line).
+    if (h >= 1 && h <= 6 &&
+        (h == trimmed.size() || trimmed.at(h) == QLatin1Char(' ')))
+        return h;
+    return 0;
+}
+
+SecRange resolveSection(const QString &absPath, const QString &wantSlug) {
+    SecRange r;
+    QFile f(absPath);
+    if (!f.open(QIODevice::ReadOnly)) return r;
+    int lineNo = 0, matchLevel = 0;
+    bool inFence = false;
+    QString fenceMarker;
+    while (!f.atEnd()) {
+        QString line = QString::fromUtf8(f.readLine());
+        ++lineNo;
+        if (line.endsWith(QLatin1Char('\n'))) line.chop(1);
+        const QString trimmed = line.trimmed();
+        // Fence toggling: ``` or ~~~ opens, the same marker family closes.
+        if (trimmed.startsWith(QLatin1String("```")) ||
+            trimmed.startsWith(QLatin1String("~~~"))) {
+            const QString marker = trimmed.left(3);
+            if (!inFence) { inFence = true; fenceMarker = marker; }
+            else if (marker == fenceMarker) { inFence = false; }
+            continue;
+        }
+        if (inFence) continue;
+        const int level = mdHeadingLevel(trimmed);
+        if (level == 0) continue;
+        if (!r.found) {
+            if (mdHeadingSlug(trimmed.mid(level).trimmed()) == wantSlug) {
+                r.found    = true;
+                r.start    = lineNo;
+                r.slug     = wantSlug;
+                matchLevel = level;
+            }
+            continue;
+        }
+        if (level <= matchLevel) { r.end = lineNo - 1; return r; }
+    }
+    if (r.found && r.end == 0) r.end = INT_MAX;  // runs to EOF
+    return r;
+}
+
 }  // namespace
 
 QJsonObject extract(const QString &absPath, const Options &opts) {
     QJsonObject env;
 
-    // INV-3 — exactly one selector. hasLine == hasSym means neither or both.
+    // INV-3 — exactly one selector of {line range, symbol, section}.
     const bool hasSym = !opts.symbol.isEmpty();
-    if (opts.hasLine == hasSym) {
+    const bool hasSec = !opts.section.isEmpty();
+    const int selectorCount =
+        (opts.hasLine ? 1 : 0) + (hasSym ? 1 : 0) + (hasSec ? 1 : 0);
+    if (selectorCount != 1) {
         env["ok"] = false;
         env["code"] = QStringLiteral("bad_args");
         env["error"] = QStringLiteral(
-            "read_region: exactly one of {line range, symbol} required");
+            "read_region: exactly one of {line range, symbol, section} required");
         return env;
     }
     if (opts.hasLine && (opts.startLine < 1 || opts.endLine < opts.startLine)) {
@@ -174,8 +258,25 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
     int startLine = opts.startLine;
     int endLine   = opts.endLine;
     QString symbolEcho;
+    QString sectionEcho, sectionSlugEcho;
     bool symAmbiguous = false;
     int  symMatchCount = 0;
+    if (hasSec) {
+        const QString wantSlug = mdHeadingSlug(opts.section);
+        const SecRange sec = resolveSection(absPath, wantSlug);
+        if (!sec.found) {
+            env["ok"] = false;
+            env["code"] = QStringLiteral("section_not_found");
+            env["error"] = QStringLiteral(
+                "read_region: no markdown heading matches section: %1")
+                    .arg(opts.section);
+            return env;
+        }
+        startLine       = sec.start;
+        endLine         = sec.end;
+        sectionEcho     = opts.section;
+        sectionSlugEcho = wantSlug;
+    }
     if (hasSym) {
         const SymRange sr = resolveSymbol(absPath, opts.symbol);
         if (!sr.found) {
@@ -240,6 +341,10 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
             env["symbol_ambiguous"] = true;
             env["symbol_match_count"] = symMatchCount;
         }
+    }
+    if (hasSec) {
+        env["section"] = sectionEcho;
+        env["section_slug"] = sectionSlugEcho;
     }
 
     // ANTS-2157 — integration brief: the ordered call-expressions inside the
