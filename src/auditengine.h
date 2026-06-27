@@ -359,6 +359,9 @@ std::optional<AuditSummary> summariseClangTidyText(
 // `check_id`, and `extra.severity` ∈ {ERROR, WARNING, INFO}. Mapped to
 // SARIF levels error|warning|note. Returns nullopt on read failure or
 // malformed JSON.
+// ANTS-2123 — a `# nosemgrep`-ignored finding (extra.is_ignored=true) is
+// tallied into countSuppressed in parallel (not excluded), matching the SARIF
+// suppressions[] path (ANTS-1254 INV-3).
 std::optional<AuditSummary> summariseSemgrepJson(
     const QString &jsonPath,
     int topN,

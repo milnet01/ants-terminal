@@ -634,6 +634,19 @@ int Config::claudeMcpProjectQueryResultCapBytes() const {
         1024, 1048576);
 }
 
+// ANTS-1863 — persisted debug-log category mask. The runtime mask reset to
+// off every relaunch, forcing a re-tick before each Claude session; persist it
+// so the last selection is restored at startup. Stored as a plain int (only
+// the ~15 DebugLog::Category bits are used). 0 = off.
+quint32 Config::debugCategoryMask() const {
+    return static_cast<quint32>(m_data.value("debug.category_mask").toInt(0));
+}
+
+void Config::setDebugCategoryMask(quint32 mask) {
+    if (!storeIfChanged("debug.category_mask", static_cast<int>(mask))) return;
+    save();
+}
+
 void Config::setClaudeMcpOrientationNudgeShown(bool shown) {
     if (!storeIfChanged("claude.mcp_orientation_nudge_shown", shown)) return;
     save();

@@ -117,6 +117,45 @@ TEST(McpLastAuditSummary, Inv4CountsCoverFullSetNotFiltered) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-2123 — semgrep countSuppressed parity. A `# nosemgrep`-ignored finding
+// carries extra.is_ignored=true; summariseSemgrepJson must tally it into
+// countSuppressed (parallel to the SARIF suppressions[] path) WITHOUT excluding
+// it from the level counts or the top-findings pool.
+TEST(McpLastAuditSummary, Ants2123SemgrepCountSuppressed) {
+    expect_reset();
+    QTemporaryDir dir;
+    expect(dir.isValid(), "ANTS-2123", "temp dir invalid");
+    const QString jsonPath = dir.path() + "/semgrep.json";
+    {
+        std::ofstream out(jsonPath.toStdString());
+        out << R"json({
+          "results": [
+            {"path":"src/a.cpp","start":{"line":10},"check_id":"rule.ignored",
+             "extra":{"message":"ignored finding","severity":"ERROR","is_ignored":true}},
+            {"path":"src/b.cpp","start":{"line":20},"check_id":"rule.live",
+             "extra":{"message":"live finding","severity":"WARNING"}}
+          ],
+          "errors": []
+        })json";
+    }
+    auto s = AuditEngine::summariseSemgrepJson(jsonPath, 50, "note");
+    expect(s.has_value(), "ANTS-2123", "summariseSemgrepJson returned nullopt");
+    if (!s) FAIL();
+    // Suppressed finding is tallied in parallel: counted by level AND kept in
+    // the pool, exactly like the SARIF path.
+    expect(s->countSuppressed == 1, "ANTS-2123",
+           ("countSuppressed=" + std::to_string(s->countSuppressed) +
+            "; expected 1").c_str());
+    expect(s->countError == 1, "ANTS-2123",
+           ("countError=" + std::to_string(s->countError)).c_str());
+    expect(s->countWarning == 1, "ANTS-2123",
+           ("countWarning=" + std::to_string(s->countWarning)).c_str());
+    expect(s->topFindings.size() == 2, "ANTS-2123",
+           ("topFindings size=" + std::to_string(s->topFindings.size()) +
+            "; suppressed finding must still appear").c_str());
+    EXPECT_EQ(0, expect_failures());
+}
+
 TEST(McpLastAuditSummary, Inv7FilePassthroughNoRewrite) {
     expect_reset();
     auto s = AuditEngine::summariseSarif(

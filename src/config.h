@@ -172,6 +172,14 @@ public:
     int  claudeMcpProjectQueryTimeoutMs() const;
     int  claudeMcpProjectQueryResultCapBytes() const;
 
+    // ANTS-1863 — persist the Tools → Debug Mode category bit-mask across
+    // relaunch. The runtime mask (DebugLog::active()) otherwise reset to off on
+    // every restart, forcing the user to re-tick categories before each Claude
+    // session. Stored as a plain int (only ~15 category bits are used); 0 = all
+    // off. Restored at startup unless ANTS_DEBUG overrides. See DebugLog.
+    quint32 debugCategoryMask() const;
+    void    setDebugCategoryMask(quint32 mask);
+
     // ANTS-1154 v2 card-renderer state. Each set stores the IDs /
     // slugs the user has manually toggled to "expanded" or
     // "table-view". Restored on dialog open; updated on close.

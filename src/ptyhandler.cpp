@@ -400,8 +400,19 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
             argv[i++] = "--";
             argv[i++] = shellCStr;
             argv[i++] = nullptr;
-            ::execvp("flatpak-spawn",
-                     const_cast<char *const *>(argv));
+            // ANTS-1994 — run flatpak-spawn itself with the pre-fork
+            // sanitised childEnvp (built unconditionally above), not the
+            // parent's raw `environ` that plain execvp() would inherit. This
+            // matches the direct-exec path's execle(childEnvp) so the TERM*
+            // normalisation is consistent across both branches and the
+            // ANTS-1135 "child only execs a prepared envp" contract holds on
+            // the flatpak path too. execvpe keeps execvp's PATH search (PATH is
+            // preserved in childEnvp) and is async-signal-safe. The host shell
+            // still receives only the explicit --env= values above; flatpak-
+            // spawn does not forward its own env across the sandbox boundary.
+            ::execvpe("flatpak-spawn",
+                      const_cast<char *const *>(argv),
+                      const_cast<char *const *>(childEnvp));
             ::_exit(127);
         }
 

@@ -36,6 +36,8 @@ for security-relevant changes.
 
 ### Changed
 
+- ****Status bar** stops polling while the Ants window is in the background — saves battery and scheduler wakeups on laptops.** (ANTS-1363)
+
 - **`computeConfidence` moved to `AuditEngine` so non-GUI consumers score findings without Qt6::Widgets.** (ANTS-1262)
   The confidence formula was a pure data-transform stranded in the GUI dialog. It now lives in AuditEngine::computeConfidence (single source of truth); AuditDialog::computeConfidence forwards, so call-sites and the public static surface are unchanged.
 
@@ -65,6 +67,14 @@ for security-relevant changes.
   header contract comments, and the orphaned Inv3 shape test.
 
 ### Fixed
+
+- ****Roadmap dialog** now has a deterministic keyboard tab order through its filters and controls.** (ANTS-1350)
+
+- ****Audit summary** reports an honest suppressed-finding count for semgrep runs instead of always zero.** (ANTS-2123)
+
+- ****Debug Mode** category selection is remembered across restarts instead of resetting to off every launch.** (ANTS-1863)
+
+- ****Subsystem recent-changes** no longer freezes the UI on slow git — the per-file git calls are now one batched invocation.** (ANTS-1340)
 
 - **Per-tab image memory budget no longer double-counts shared image buffers.** (ANTS-1265)
   A Kitty `T` stores an image in m_kittyImages and pushes a COW copy into m_inlineImages; recomputeImageBudget summed both, over-counting real RAM ~2x and rejecting legitimate later transfers. It now dedups by QImage::constBits() so a shared buffer counts once.
@@ -123,6 +133,10 @@ for security-relevant changes.
   cheaper Ants tools just like a native install.
 
 ### Security
+
+- ****Plugin loader** refuses a second plugin that resolves to an already-loaded name, preventing a silent overwrite via symlinked directories.** (ANTS-1370)
+
+- ****Flatpak shell launch** now runs `flatpak-spawn` with the same pre-fork sanitised environment as the direct path (consistent terminal-variable handling across the sandbox boundary).** (ANTS-1994)
 
 - **`workspace_search` rejects a leading `!` in `glob` (negation that resurrects ignored trees).** (ANTS-1274)
   ripgrep treats a `!`-prefixed `--glob` as a negation whose precedence is above .gitignore, so `!.git`/`!node_modules/**` could un-exclude an ignored directory. The glob validator now rejects a leading `!` (the only resurrection vector) alongside the existing `..`/256-byte guards; legitimate brace/charclass globs are unaffected.

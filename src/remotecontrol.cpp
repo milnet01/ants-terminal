@@ -10266,10 +10266,30 @@ QJsonObject runLogOp(MainWindow *main, const QJsonObject &req) {
     }
     const bool wantBody = req.value("body").toBool(false);
 
-    const auto pc = PathValidation::validatePath(
-        req.value("path").toString(), rootCanonical,
-        QStringLiteral("git_state"), QStringLiteral("path"));
-    if (pc.bad) return pc.err;
+    // ANTS-1340 — accept either a single `path` or a `paths` array. The lane
+    // recent_changes composer (cmdSubsystem) passes the whole lane file list so
+    // git resolves the union of touching commits in ONE invocation instead of
+    // forking git once per file (worst case N×5 s serial, blocking the GUI on a
+    // wedged repo). `git log -- f1 f2 …` already dedups + date-sorts, so the
+    // result is identical to the prior per-file-merge. Every path is validated
+    // through PathValidation exactly as the single-path form (INV-5 argv `--`).
+    QStringList pathArgv;
+    const QJsonValue pathsVal = req.value("paths");
+    if (pathsVal.isArray()) {
+        for (const QJsonValue &pv : pathsVal.toArray()) {
+            const auto pcp = PathValidation::validatePath(
+                pv.toString(), rootCanonical,
+                QStringLiteral("git_state"), QStringLiteral("paths"));
+            if (pcp.bad) return pcp.err;
+            if (!pcp.argvForm.isEmpty()) pathArgv << pcp.argvForm;
+        }
+    } else {
+        const auto pc = PathValidation::validatePath(
+            req.value("path").toString(), rootCanonical,
+            QStringLiteral("git_state"), QStringLiteral("path"));
+        if (pc.bad) return pc.err;
+        if (!pc.argvForm.isEmpty()) pathArgv << pc.argvForm;
+    }
 
     // Format: SHA<US>SUBJECT<US>DATE(<US>BODY)?<RS>
     // Use 0x1f (US) between fields, 0x1e (RS) between commits.
@@ -10289,9 +10309,9 @@ QJsonObject runLogOp(MainWindow *main, const QJsonObject &req) {
     argv << QStringLiteral("--pretty=format:") + fmt;
     // Fetch n+1 to detect truncation (INV-3).
     argv << QStringLiteral("-n") << QString::number(n + 1);
-    // ANTS-1250-INV-5: argv -- separator before user-derived path.
+    // ANTS-1250-INV-5: argv -- separator before user-derived path(s).
     argv << QStringLiteral("--");
-    if (!pc.argvForm.isEmpty()) argv << pc.argvForm;
+    argv << pathArgv;
 
     GitWrap::Result g = GitWrap::run(rootCanonical, argv);
     if (!g.started) {
@@ -10827,24 +10847,34 @@ QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
     // sha → commit object; preserve insertion order for tie-breaks.
     QHash<QString, QJsonObject>           bySha;
     QVector<QString>                      shaOrder;
-    for (const QString &f : files) {
+    // ANTS-1340 (was ANTS-1251-INV-5: per-file compose) — ONE batched
+    // `git log -- <all lane files>` instead of forking git once per file
+    // (worst case 20 files × 5 s = 100 s blocking the GUI on a wedged repo).
+    // git returns the union of commits touching any lane file, already deduped
+    // + date-sorted; the merge/sort/truncate below is kept as a defensive
+    // normaliser (a near-no-op on the batched result, and it still bounds the
+    // output to n).
+    {
         QJsonObject sub;
-        sub["op"]   = "log";
-        sub["n"]    = n;
-        sub["path"] = f;
+        sub["op"] = "log";
+        sub["n"]  = n;
+        QJsonArray pathsArr;
+        for (const QString &f : files) pathsArr.append(f);
+        sub["paths"] = pathsArr;
         // Thread caller_cwd so git resolves against the caller's project,
         // not the focused tab — matches every sibling composer
         // (current_state / task_priors / build_status). indie-review-2026-05-21.
         sub["caller_cwd"] = req.value("caller_cwd");
         const QJsonObject r = cmdGitState(sub).object();
-        if (!r.value("ok").toBool()) continue;
-        const QJsonArray commits = r.value("commits").toArray();
-        for (const QJsonValue &v : commits) {
-            const QJsonObject c = v.toObject();
-            const QString sha = c.value("sha").toString();
-            if (sha.isEmpty() || bySha.contains(sha)) continue;
-            bySha.insert(sha, c);
-            shaOrder.push_back(sha);
+        if (r.value("ok").toBool()) {
+            const QJsonArray commits = r.value("commits").toArray();
+            for (const QJsonValue &v : commits) {
+                const QJsonObject c = v.toObject();
+                const QString sha = c.value("sha").toString();
+                if (sha.isEmpty() || bySha.contains(sha)) continue;
+                bySha.insert(sha, c);
+                shaOrder.push_back(sha);
+            }
         }
     }
 

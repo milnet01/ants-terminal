@@ -6042,7 +6042,7 @@ class; the deferrals below cover the rest.
   Kind: security.
   Source: indie-review-2026-05-14.
 
-- 📋 [ANTS-1338] **`sessionPathForCwd` PID-reuse defense
+- ✅ [ANTS-1338] **`sessionPathForCwd` PID-reuse defense
   (lane-3 H2).** Linux PID reuse on a busy system recycles
   within seconds. The two-layer freshness filter
   (`processStartTimeMs`-anchored at `claudeintegration.cpp:421`)
@@ -6060,6 +6060,7 @@ class; the deferrals below cover the rest.
   recheck on every lookup.
   Kind: security.
   Source: indie-review-2026-05-14.
+  Resolved (2026-06-27): the substantive PID-reuse risk is structurally closed by hardenings landed after this item was filed. sessionPathForCwd never trusts PID identity — activeSessionPath feeds processStartTimeMs(m_claudePid) as a freshness FLOOR (minLastEventMs). A reused PID yields a newer start time → stricter floor → can only reject candidates, never surface a dead/foreign transcript (ANTS-1845 floor-only design; ANTS-2191 closes the mtime-spoof gap via requireContentTs). Took the roadmap's stated alternative ("document the caller's contract loudly"): added an explicit PID-reuse contract comment at sessionPathForCwd so no future caller misuses minLastEventMs as trusted identity. No argv recheck needed (the fn receives a timestamp, not a PID).
 
 - ✅ [ANTS-1375] **Per-tab Claude state dot regression — dots
   missing on tabs with active CC sessions (v0.7.91).** Confirmed
@@ -6137,7 +6138,7 @@ class; the deferrals below cover the rest.
   Kind: perf.
   Source: indie-review-2026-05-14.
 
-- 📋 [ANTS-1340] **`cmdSubsystem` synchronous per-file git
+- ✅ [ANTS-1340] **`cmdSubsystem` synchronous per-file git
   invocation blocks GUI (lane-2 M7).** `remotecontrol.cpp:1797–
   1812` invokes `cmdGitState({op:"log", path: f})` for each
   file in a lane. Each call spawns a git process with a 5 s
@@ -6150,6 +6151,7 @@ class; the deferrals below cover the rest.
   git calls instead of looping serially.
   Kind: perf.
   Source: indie-review-2026-05-14.
+  Resolved (2026-06-27): runLogOp now accepts a paths[] array; cmdSubsystem recent_changes issues ONE batched `git log -- <files>` instead of forking git per file (was worst-case 20×5 s GUI block). git returns the union deduped + date-sorted, equivalent to the prior per-file merge. McpSubsystem.WiringContract green.
 
 - ✅ [ANTS-1341] **`claudetasklist` Mode B `in_progress` leak
   accumulates forever (lane-3 H3).** Shipped 2026-05-16 (Bundle F
@@ -6320,7 +6322,7 @@ class; the deferrals below cover the rest.
 
 #### 🐛 Tier 3 — small fixes & cleanup
 
-- 📋 [ANTS-1350] **Roadmap dialog tab order + compact font
+- ✅ [ANTS-1350] **Roadmap dialog tab order + compact font
   size (lane-6 L-1, L-2).** No explicit `setTabOrder` —
   current order is creation-order-incidental and will shuffle
   silently when a widget is inserted. Compact density emits 9
@@ -6331,6 +6333,7 @@ class; the deferrals below cover the rest.
   above the WCAG minimum.
   Kind: fix.
   Source: indie-review-2026-05-14.
+  Resolved (2026-06-27): tab-order half (lane-6 L-1) shipped — RoadmapDialog ctor now builds an explicit, deterministic setTabOrder chain (tabs → search → filters → density → kind checkboxes in kKinds order → toc → viewer → buttons), so order no longer shuffles when a widget is inserted. UiStatePersistence ctor tests green. Compact-font half (lane-6 L-2) split to ANTS-2211: the 9 px is a deliberate ANTS-1238 INV-8 floor, so raising it needs a spec amendment + design decision, not a silent bump.
 
 - ✅ [ANTS-2097] **Theme switch crashes (SIGSEGV in QApplication::setStyleSheet) — restyle runs inside the Themes menu's nested event loop and walks a freed widget pointer.**
   Selecting a theme from View→Themes fires QAction::triggered synchronously inside the QMenu's mouse-event/nested-loop context; applyTheme() then calls qApp->setStyleSheet() which walks Qt's global widget set and re-polishes each widget. As the menu tears down it reaps a deleteLater'd transient status-bar widget (ANTS-1893 toast/Undo button, or a Claude permission prompt) mid-walk, invalidating Qt's iterator → the polish loop dereferences a freed widget pointer. Coredump confirms: SIGSEGV at `testb $1,0x30(%rax)` with rax=0x31 (a garbage pointer), frame #1 QApplication::setStyleSheet, #2 MainWindow::applyTheme. Recurs (coredumps 2026-06-05, -06-06, -06-11). The ANTS-2024 DeferredDelete reap was insufficient — it's the menu's OWN nested loop, not a pending DeferredDelete, that does the teardown. Fix (mainwindow.cpp applyTheme): when QApplication::activePopupWidget() is non-null, defer the whole restyle via QTimer::singleShot(0) so it runs after the menu closes and the event stack unwinds, against a quiescent widget set; startup/programmatic callers stay synchronous. Awaiting user relaunch to confirm no crash.
@@ -6506,12 +6509,13 @@ class; the deferrals below cover the rest.
   Lanes: featurecoverage.
   Source: indie-review-2026-06-11 (featurecoverage H2) — deferred 2026-06-12.
 
-- 📋 [ANTS-2123] **auditengine: populate countSuppressed for semgrep/cppcheck/clang-tidy (SARIF parity, ANTS-2118 M1).**
+- ✅ [ANTS-2123] **auditengine: populate countSuppressed for semgrep/cppcheck/clang-tidy (SARIF parity, ANTS-2118 M1).**
   summariseSarif counts SARIF suppressions[] into s.countSuppressed (ANTS-1254 INV-3) but summariseSemgrepJson / summariseClangTidyText / summariseCppcheckXml leave it at 0, so last_audit_summary reports `suppressed:0` for a semgrep run with N nosemgrep-ignored findings — contradicting the SARIF path for the same logical run. At minimum read semgrep `extra.is_ignored` (auditengine.cpp summariseSemgrepJson) and bump s.countSuppressed; document the clang-tidy(NOLINT)/cppcheck(inconclusive) gap in the header if left at 0. Needs its own test locking the suppression-count contract.
   **Layman:** The audit summary always reports 0 'suppressed' findings for non-SARIF tools even when some were suppressed; make the count honest.
   Kind: audit-fix.
   Lanes: auditengine.
   Source: indie-review-2026-06-11 (auditengine M1) — deferred 2026-06-12.
+  Resolved (2026-06-27): summariseSemgrepJson tallies extra.is_ignored into countSuppressed in parallel (matching the SARIF suppressions[] path, ANTS-1254 INV-3). clang-tidy/cppcheck stay 0 by construction (no per-finding suppression metadata in their output) — documented in-header. New test McpLastAuditSummary.Ants2123SemgrepCountSuppressed.
 
 - ✅ [ANTS-2124] **Drop dead <fstream>/<sstream> includes in test_audit_engine_extraction.cpp.**
   tests/features/audit_engine_extraction/test_audit_engine_extraction.cpp includes <fstream> (line 18) and <sstream> (line 20) but uses neither (verified by grep). clangd flags both as unused-includes. Pre-existing (not introduced by the ANTS-2118 merge-test addition); left in place rather than drive-by-removed. Trivial: delete the two lines next time the file is touched.
@@ -8865,7 +8869,7 @@ indie-review finding.
   Kind: perf.
   Source: indie-review-2026-05-14 (lane-1 open question).
 
-- 📋 [ANTS-1363] **Status-bar refresh pauses on
+- ✅ [ANTS-1363] **Status-bar refresh pauses on
   window-unfocus.** The 2 s timer in
   `ClaudeStatusBarController::refresh*` fires regardless of
   whether the Ants window is focused. On laptops, an
@@ -8876,6 +8880,7 @@ indie-review finding.
   window isn't visible — saves battery on laptops.
   Kind: perf.
   Source: indie-review-2026-05-14 (self-observed).
+  Resolved (2026-06-27): MainWindow::event pauses m_statusTimer on WindowDeactivate and resumes on WindowActivate. The 2 s freshness bound (ANTS-1219-INV-2 / ANTS-1160 §9) only governs config/resolver swaps that originate while focused, so it is preserved.
 
 - ✅ [ANTS-1364] **`session_memory` `serializedSize` caching.**
   Every `Set` op re-serialised the whole QJsonObject to bytes
@@ -8934,7 +8939,7 @@ indie-review finding.
   Kind: perf.
   Source: indie-review-2026-05-14 (lane-1 L2).
 
-- 📋 [ANTS-1369] **Project `.gitleaks.toml` allowlist persisted.**
+- ✅ [ANTS-1369] **Project `.gitleaks.toml` allowlist persisted.**
   `/audit` on 2026-05-14 produced 25 gitleaks findings, all
   false positives in `tests/audit_fixtures/secrets_scan/bad.cpp`
   (fixture deliberately containing test-secret patterns) and
@@ -8949,8 +8954,9 @@ indie-review finding.
   every audit.
   Kind: refactor.
   Source: indie-review-2026-05-14 (self-observed).
+  Resolved-by-design (2026-06-27): both named gitleaks FP sources are already filtered built-in, not via a persisted .gitleaks.toml. auditdialog.cpp's skip fn excludes tests/audit_fixtures/ (covers secrets_scan/bad.cpp) and AUTOMATED_AUDIT_REPORT_*.json (reAuditReport regex). The chosen mechanism is a built-in skip that ships without per-project config (comment: "Scoped here rather than as a per-project path_rule so the skip ships built-in"), and auditrunner.cpp writes a throwaway gitleaks --config (ANTS-2016) for build/.audit_cache pruning. Adding a tracked .gitleaks.toml would contradict that design; no action needed.
 
-- 📋 [ANTS-1370] **`m_engines.insert` duplicate-key guard
+- ✅ [ANTS-1370] **`m_engines.insert` duplicate-key guard
   (lane-6 L-4).** Even after the ANTS-1370 (lane-6 C-1) name-
   spoofing fix, two plugin directories with the same
   canonical name across symlink shenanigans could still
@@ -8961,8 +8967,9 @@ indie-review finding.
   with the same name never silently overwrite each other.
   Kind: security.
   Source: indie-review-2026-05-14 (lane-6 L-4).
+  Resolved (2026-06-27): added an m_engines.contains() guard at the top of loadPlugin — a duplicate canonical name is now refused with a log line, not silently overwritten (leaking the first engine/thread).
 
-- 📋 [ANTS-1645] **`DBGLOG` macro uses GNU
+- ✅ [ANTS-1645] **`DBGLOG` macro uses GNU
   `##__VA_ARGS__` token-paste extension.** Renumbered from
   ANTS-1415 (duplicate-ID collision with Phase 3b TabSpecific
   contract enforcement at line 5597); the latter was added
@@ -8984,6 +8991,7 @@ indie-review finding.
   Kind: refactor.
   Source: in-session-2026-05-15 (clang diagnostic during
   ANTS-1333 fix build).
+  Resolved (2026-06-27): already fixed under ANTS-1792 — DBGLOG in terminalgrid.cpp:18 uses C++20 __VA_OPT__(,); no remaining ##__VA_ARGS__ usages in any .cpp. Stale item; flipped on verification.
 
 - 📋 [ANTS-1408] **Archive-rotate shipped 0.7.x sections out of
   `ROADMAP.md`.** Current file: 12,373 lines / ~657 KiB. Nine
@@ -9301,7 +9309,7 @@ indie-review finding.
   Source: in-session-2026-05-25 (found building ANTS-1548 add_from_roadmap).
   Fixed 2026-05-29: updated rxLayman regex in parseBullets to match both plain "Layman:" and bold "**Layman:**" forms. Now correctly extracts the plain-English field from roadmap bullets created by roadmap_log.
 
-- 📋 [ANTS-1863] **Persist the debug-log category selection across relaunch (currently resets to off every restart).**
+- ✅ [ANTS-1863] **Persist the debug-log category selection across relaunch (currently resets to off every restart).**
   The DebugLog category enable state is runtime-only and resets on
   relaunch, so the user must re-toggle "Claude Code Integration" (and any
   other category) after every restart — easy to forget before resuming a
@@ -9314,6 +9322,7 @@ indie-review finding.
   Kind: enhancement.
   Lanes: debuglog, settings, observability.
   Source: user-request-2026-05-25 (debug category off after every relaunch).
+  Resolved (2026-06-27): debug.category_mask persisted to config.json (Config::debugCategoryMask/setDebugCategoryMask); restored at startup unless ANTS_DEBUG is set; written on every Debug Mode toggle + All/None. DebuglogPerms tests green.
 
 - ✅ [ANTS-1864] **Colored cell backgrounds (diff green/red highlights) appear more opaque than the base when terminal opacity < 1.**
   Colored cell backgrounds already get effectiveAlpha
@@ -9456,6 +9465,12 @@ indie-review finding.
   Kind: enhancement.
   Lanes: mcp, threading.
   Source: in-session-2026-06-15 (threading survey).
+
+- 💭 [ANTS-2211] **Roadmap dialog Compact-density font floor (9 px) vs readability — revisit ANTS-1238 INV-8.**
+  Deferred half of ANTS-1350 (lane-6 L-2). The Compact density tier emits 9 px on .rm-state-label / .rm-kind / .rm-section-counts. This is NOT an accidental value: ANTS-1238 INV-8 deliberately sets a 9 px floor on the label+meta groups (kDensityTable Compact row, roadmapdialog.cpp). Raising it would change INV-8 and likely break ANTS-1238's density tests, and WCAG 2.2 does not actually mandate a fixed px minimum (1.4.4 is about resize-to-200% / reflow, which a px font in a QTextBrowser permits). So this needs a design decision + an ANTS-1238 spec amendment, not a silent floor bump. Options: (a) lift Compact meta/label floor to 10-11 px and update INV-8 + tests; (b) keep 9 px and rely on the Comfortable/Cozy tiers + app zoom for low-vision users; (c) make the floor configurable. Tab-order half (L-1) shipped under ANTS-1350.
+  **Layman:** The most compact Roadmap view uses very small 9px text for the meta/label tier; decide whether to raise that minimum for readability.
+  Kind: accessibility.
+  Source: split from ANTS-1350 L-2 (in-session 2026-06-27).
 
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
@@ -9665,10 +9680,11 @@ under one guard). The deferrals below.
   **Layman:** A program you run in the terminal could fake the "allow this action?" prompt by printing the right words. Tighten what counts as a real prompt.
   Kind: bug. Lanes: terminalwidget, claude-integration. Source: indie-review-2026-06-04.
   Resolved (2026-06-06): added a structural gate (src/claudepromptdetect.{h,cpp}, ClaudePromptDetect::isPermissionPromptStructure) — the scroll-scanner now requires an anchor phrase AND corroborating prompt structure (numbered Yes/No options, ❯ cursor, Esc-to-cancel, or y/n line) before any footer anchor counts, so a lone 'always allow' / 'allow access to' line can no longer manufacture a phantom allowlist button. Step 1 of checkForClaudePermissionPrompt is gated on it. Regression test: tests/features/claude_permission_prompt_structure (7 INV, fails anchor-only pre-fix). Terminal output stays attacker-controllable, so this is defense-in-depth against incidental triggering, not a trust boundary.
-- 📋 [ANTS-1994] **ptyhandler: Flatpak exec path inherits the full parent environment instead of the sanitised `childEnvp` (ANTS-1135), leaking secrets-bearing env vars to the host shell.** Also: destructor sends SIGHUP without a liveness check (PID-reuse hazard when `onReadReady` left `m_childPid` set after an unreaped EOF); missing `writeLost` signal on the EAGAIN-oversize drop path.
+- ✅ [ANTS-1994] **ptyhandler: Flatpak exec path inherits the full parent environment instead of the sanitised `childEnvp` (ANTS-1135), leaking secrets-bearing env vars to the host shell.** Also: destructor sends SIGHUP without a liveness check (PID-reuse hazard when `onReadReady` left `m_childPid` set after an unreaped EOF); missing `writeLost` signal on the EAGAIN-oversize drop path.
   Kind: bug. Lanes: ptyhandler. Source: indie-review-2026-06-04.
   Investigated (2026-06-06), deferred — needs a Flatpak test env + an env-policy decision, not a surgical patch. Findings: the Flatpak branch (ptyhandler.cpp:354-375) calls execvp("flatpak-spawn", argv) so flatpak-spawn inherits Ants's full environ, then only ADDS TERM*/COLORTERM/etc via --env=. The non-Flatpak branch (execle, :384) uses the pre-fork childEnvp, but note childEnvp is ALSO ~the full parent environ (it copies environ minus the 5 TERM dup keys, then re-adds them) — so "sanitised" today means TERM-deduped, NOT secret-stripped. So the real fix isn't "use childEnvp on the flatpak path" verbatim; it's deciding what env crosses the sandbox→host boundary. The in-code comment at :343-346 claims "flatpak-spawn does NOT inherit the calling process's env" — this contradicts the finding and MUST be verified against flatpak-spawn's actual default (believed to forward the sandbox environ unless --clear-env is passed; if so the comment is wrong). A clean fix likely means --clear-env + an explicit forward-list, or a login shell to re-derive host PATH/HOME — both need testing inside an actual Flatpak build. Two smaller, separable sub-issues bundled here are tractable independently: (2) destructor SIGHUP at :28-29 has no liveness/reuse guard (kill a possibly-reused PID if onReadReady left m_childPid set after an unreaped EOF); (3) the EAGAIN/oversize write-drop path (:437-442) drops bytes without emitting a writeLost signal. Recommend splitting (2)+(3) into their own item from the Flatpak env-policy headline.
   Progress (2026-06-06) — sub-issues (2) and (3) resolved; headline (1) Flatpak env-policy still OPEN (needs a Flatpak test env + a sandbox→host env-crossing decision, unchanged). (3) FIXED: the EAGAIN-oversize write-drop path (ptyhandler.cpp ~:465-472) returned without emitting writeLost, unlike the pending-queue-full path (:444, ANTS-1349) — bytes past the kernel PTY buffer + 4 MiB queue cap vanished with no notification. Added `emit writeLost(remaining)`. Locked by new INV-8 in pty_write_eagain_queue (≥2 emit-writeLost sites in Pty::write body); spec.md out-of-scope note corrected (overflow is no longer silent; only a *pre*-drop stall warning remains out of scope). test_core green. (2) INVESTIGATED — NOT a live hazard, no fix applied: the destructor's SIGHUP at :28-29 fires before any liveness check, but a PID-reuse hit requires the child to have been reaped-and-freed between onReadReady-EOF and ~Pty. Verified there is NO parent-wide reaper in the codebase (no SIGCHLD handler / waitpid(-1); main.cpp only SIG_IGNs SIGPIPE; the sigaction block at :248-264 runs in the forked CHILD). So an unreaped child left with m_childPid>0 is a zombie that HOLDS its PID until ~Pty reaps it — the PID cannot be reused, and SIGHUP to our own zombie is a harmless no-op. A kill(pid,0) guard would be cargo-cult (it returns 0 for a zombie too and can't detect reuse), so none was added per the no-over-engineering rule. Re-evaluate (2) only if a global SIGCHLD reaper is ever introduced.
+  Resolved (2026-06-27): the flatpak branch now uses execvpe(childEnvp) so flatpak-spawn itself runs with the pre-fork sanitised env, matching the direct execle(childEnvp) path and the ANTS-1135 contract. Host shell still receives only the explicit --env= values.
 - ✅ [ANTS-1995] **remotecontrol: `spec_query` `path=` mode uses a manual `..` substring check and no canonical re-check against root — a symlink inside the project escapes it.** Route through `PathValidation::validatePath` as its write twin `spec_log` already does. Also: `rcScrubLeakedToolXml` runs a backtracking `[\s\S]*?` regex on uncapped `note` fields (`remotecontrol.cpp:4503`) → same-UID slow-regex DoS via `roadmap_log op:flip_batch` (cap notes at 4 KiB); IPC client omits the server's SO_PEERCRED check.
   Kind: bug. Lanes: remotecontrol. Source: indie-review-2026-06-04.
   Resolved (2026-06-06): all three sub-issues. (1) spec_query path= now routes through PathValidation::validatePath (canonical, symlink-resolving) exactly like its write twin spec_log — the old manual '..'-substring check let a project-internal symlink resolve outside root. (2) roadmap_log note fields (op:flip/annotate + flip_batch locators) capped at 4096 chars before rcScrubLeakedToolXml's lazy [\s\S]*? regex (kRcMaxNoteChars), closing the same-UID slow-regex DoS. (3) the --remote client now verifies the SERVER's SO_PEERCRED UID before write(), mirroring the server's check, so a hijacked $ANTS_REMOTE_SOCKET can't harvest the request body. WI-3 call-site count test updated 21→22.

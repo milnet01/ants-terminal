@@ -2778,6 +2778,32 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     btnRow->addWidget(closeBtn);
     root->addLayout(btnRow);
 
+    // ANTS-1350 (lane-6 L-1) — explicit, deterministic keyboard tab order.
+    // Without this the order is creation-order-incidental and shuffles silently
+    // whenever a widget is inserted. Chain the focusable controls in reading
+    // order; the Kind checkboxes follow the file-scope kKinds table so their
+    // order is stable (not QHash-iteration order). Buttons come last.
+    {
+        QList<QWidget *> tabChain;
+        if (m_tabs)             tabChain << m_tabs.data();
+        if (m_searchBox)        tabChain << m_searchBox.data();
+        if (m_filterDone)       tabChain << m_filterDone.data();
+        if (m_filterPlanned)    tabChain << m_filterPlanned.data();
+        if (m_filterInProgress) tabChain << m_filterInProgress.data();
+        if (m_filterConsidered) tabChain << m_filterConsidered.data();
+        if (m_filterCurrent)    tabChain << m_filterCurrent.data();
+        if (m_densityCombo)     tabChain << m_densityCombo.data();
+        for (const KindEntry &k : kKinds) {
+            if (QCheckBox *cb = m_kindCheckboxes.value(QString::fromLatin1(k.value)))
+                tabChain << cb;
+        }
+        if (m_toc)    tabChain << m_toc.data();
+        if (m_viewer) tabChain << m_viewer.data();
+        tabChain << refreshBtn << resetBtn << closeBtn;
+        for (int i = 1; i < tabChain.size(); ++i)
+            QWidget::setTabOrder(tabChain[i - 1], tabChain[i]);
+    }
+
     // Live-update plumbing: 200 ms file-change debounce shared with
     // sibling dialogs (review-changes, bg-tasks). Kept separate from
     // m_searchDebounce below — the two have different latency budgets:

@@ -437,6 +437,16 @@ void PluginManager::reloadAll(const QStringList &enabledList) {
 }
 
 void PluginManager::loadPlugin(const PluginInfo &info) {
+    // ANTS-1370 (lane-6 L-4) — belt-and-braces duplicate-name guard. Even
+    // after the name-spoofing fix (lane-6 C-1), two plugin directories that
+    // resolve to the same canonical name (symlink shenanigans) could still
+    // collide silently on m_engines.insert below, leaking the first engine +
+    // worker thread. Refuse the second load up front.
+    if (m_engines.contains(info.name)) {
+        emit logMessage(QString("Skipping duplicate plugin name: %1").arg(info.name));
+        return;
+    }
+
     // Permission acceptance. If the manifest declares permissions and the user
     // hasn't granted them yet (per the GrantStore callback), prompt via
     // PermissionPrompt. Deny by default if no prompt wired.

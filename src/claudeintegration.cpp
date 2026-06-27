@@ -478,6 +478,18 @@ static qint64 effectiveLastEventMs(const QFileInfo &fi, bool requireContentTs) {
     return fi.lastModified().toMSecsSinceEpoch();
 }
 
+// ANTS-1338 (lane-3 H2) — PID-reuse contract. This function NEVER trusts a
+// process identity: `minLastEventMs` is a process-start FLOOR (the epoch-ms
+// when the live Claude PID started, per processStartTimeMs / ANTS-1845), not a
+// PID and not a claim about which process owns the transcript. Linux PID reuse
+// is therefore benign here: a reused (non-Claude) PID only yields a NEWER start
+// time, i.e. a STRICTER floor, which can only reject more candidates — it can
+// never surface another process's or a dead session's transcript (selection is
+// cwd-scoped and the floor moves monotonically up). The residual integrity gap
+// (mtime spoofing of the freshness signal) is closed by ANTS-2191's
+// requireContentTs in effectiveLastEventMs. Callers must keep passing a
+// start-time floor here, not a trusted PID — do not "optimise" this into a
+// direct PID/argv check.
 QString ClaudeIntegration::sessionPathForCwd(const QString &projectCwd,
                                               qint64 minLastEventMs,
                                               qint64 nowMs) {

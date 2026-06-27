@@ -732,6 +732,10 @@ std::optional<AuditSummary> summariseCppcheckXml(
     AuditSummary s;
     s.sarifPath    = xmlPath;  // historical field name; XML path lives here
     s.sourceFormat = QStringLiteral("cppcheck-xml");
+    // ANTS-2123 — countSuppressed stays 0 here by construction: cppcheck's XML
+    // carries no per-finding suppression metadata (inconclusive/--suppress are
+    // applied tool-side and the finding is simply absent from the output), so
+    // there is nothing to tally. Documented gap vs the SARIF/semgrep paths.
 
     const int floorOrd = levelOrdinal(levelFloor);
     QList<AuditSummaryFinding> pool;
@@ -851,6 +855,10 @@ std::optional<AuditSummary> summariseClangTidyText(
     AuditSummary s;
     s.sarifPath    = textPath;
     s.sourceFormat = QStringLiteral("clang-tidy-text");
+    // ANTS-2123 — countSuppressed stays 0 here by construction: clang-tidy's
+    // text output carries no per-finding suppression metadata (NOLINT-ignored
+    // diagnostics are dropped tool-side before printing), so there is nothing
+    // to tally. Documented gap vs the SARIF/semgrep paths.
 
     const int floorOrd = levelOrdinal(levelFloor);
     QList<AuditSummaryFinding> pool;
@@ -984,6 +992,16 @@ std::optional<AuditSummary> summariseSemgrepJson(
         if (ord == 2)      ++s.countError;
         else if (ord == 0) ++s.countNote;
         else               ++s.countWarning;
+
+        // ANTS-2123 — SARIF parity. semgrep marks a `# nosemgrep`-ignored
+        // finding with extra.is_ignored=true. summariseSarif tallies
+        // suppressions[] into countSuppressed (ANTS-1254 INV-3) as a PARALLEL
+        // count that does not exclude the finding; mirror that here so
+        // last_audit_summary reports an honest non-zero `suppressed` for a
+        // semgrep run instead of always 0 (which contradicted the SARIF path
+        // for the same logical run).
+        if (extra.value(QStringLiteral("is_ignored")).toBool())
+            ++s.countSuppressed;
 
         if (ord < floorOrd) continue;
 

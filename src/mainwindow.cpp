@@ -1701,6 +1701,16 @@ void MainWindow::setupToolsMenu() {
     // action; ticking one starts writing that category's events to
     // `~/.local/share/ants-terminal/debug.log`. Bottom of submenu
     // has All / None / Open Log File / Clear Log.
+    // ANTS-1863 — restore the persisted debug-category mask so the user's last
+    // selection survives a relaunch (the runtime mask otherwise resets to off,
+    // losing hook/state logs when resuming a Claude session). ANTS_DEBUG wins:
+    // only restore from config when the env var is unset, mirroring the
+    // precedence in main.cpp's debug bootstrap. Must run BEFORE the checkable
+    // actions below so their initial checked state reflects the restored mask.
+    if (!qEnvironmentVariableIsSet("ANTS_DEBUG")) {
+        const quint32 savedDebugMask = m_config.debugCategoryMask();
+        if (savedDebugMask != 0) DebugLog::setActive(savedDebugMask);
+    }
     QMenu *debugMenu = toolsMenu->addMenu("&Debug Mode");
     debugMenu->setToolTipsVisible(true);
     QList<QPair<DebugLog::Category, QString>> catList = {
@@ -1725,22 +1735,25 @@ void MainWindow::setupToolsMenu() {
         a->setCheckable(true);
         a->setChecked((DebugLog::active() & entry.first) != 0);
         const quint32 bit = entry.first;
-        connect(a, &QAction::toggled, this, [bit](bool on) {
+        connect(a, &QAction::toggled, this, [this, bit](bool on) {
             quint32 cur = DebugLog::active();
             if (on) cur |= bit; else cur &= ~bit;
             DebugLog::setActive(cur);
+            m_config.setDebugCategoryMask(cur);  // ANTS-1863 persist
         });
     }
     debugMenu->addSeparator();
     QAction *debugAllAction = debugMenu->addAction("Enable &All Categories");
-    connect(debugAllAction, &QAction::triggered, this, [debugMenu]() {
+    connect(debugAllAction, &QAction::triggered, this, [this, debugMenu]() {
         DebugLog::setActive(DebugLog::All);
+        m_config.setDebugCategoryMask(DebugLog::active());  // ANTS-1863 persist
         for (QAction *a : debugMenu->actions())
             if (a->isCheckable()) a->setChecked(true);
     });
     QAction *debugNoneAction = debugMenu->addAction("Disable All (&Off)");
-    connect(debugNoneAction, &QAction::triggered, this, [debugMenu]() {
+    connect(debugNoneAction, &QAction::triggered, this, [this, debugMenu]() {
         DebugLog::setActive(DebugLog::None);
+        m_config.setDebugCategoryMask(0);  // ANTS-1863 persist
         for (QAction *a : debugMenu->actions())
             if (a->isCheckable()) a->setChecked(false);
     });
@@ -5441,6 +5454,21 @@ bool MainWindow::event(QEvent *event) {
         event->type() == QEvent::FocusIn ||
         event->type() == QEvent::WindowActivate) {
         m_titleBar->finishSystemDrag();
+    }
+    // ANTS-1363 — pause the 2 s status-poll timer while Ants is not the
+    // active window. updateStatusBar(), the chip refreshes and the
+    // autonomous-switcher gate all run on this tick; an unfocused Ants in a
+    // background workspace otherwise pays per-tick CPU + scheduler wakeups for
+    // UI nobody is looking at (battery cost on laptops). The 2 s freshness
+    // bound (ANTS-1219-INV-2 / ANTS-1160 §9) only governs config/resolver
+    // swaps, which can only originate while the window is focused, so pausing
+    // here preserves the contract — the timer restarts on re-activation.
+    if (m_statusTimer) {
+        if (event->type() == QEvent::WindowActivate) {
+            if (!m_statusTimer->isActive()) m_statusTimer->start();
+        } else if (event->type() == QEvent::WindowDeactivate) {
+            m_statusTimer->stop();
+        }
     }
     return QMainWindow::event(event);
 }
