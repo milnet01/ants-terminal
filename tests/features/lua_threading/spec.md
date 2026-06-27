@@ -44,6 +44,14 @@ fails on pre-fix source (none of the symbols exist yet).
 - **S5 (INV-7) — synchronous settings.get blocks the worker, not the
   GUI.** `PluginManager::wireEngine` uses `Qt::BlockingQueuedConnection`
   for the `settingsGetRequested` edge.
+- **S5b (ANTS-1997 / ANTS-2117) — teardown severs the blocking edge before
+  Unload.** `PluginManager::teardownEngine` `disconnect`s the
+  `settingsGetRequested` edge *before* posting the Unload event. Without
+  this, an Unload handler's `ants.settings.get` parks the worker on the
+  blocking-queued emit while the GUI thread sits in `thread->wait()` (not
+  spinning its loop) — a 2 s stall that spuriously zombifies a healthy
+  plugin on hot-reload. Source-grep guard: within `teardownEngine` the
+  disconnect precedes the `PluginEvent::Unload` dispatch.
 - **S6 (INV-12) — no `lua_close` on the GUI thread.** No GUI-thread code
   path calls `engine->shutdown()` (the `unloadAll` + load-failure
   synchronous `shutdown()` calls are gone); teardown destroys engines via

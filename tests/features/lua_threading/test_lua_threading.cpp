@@ -171,6 +171,28 @@ void runSourceChecks() {
            QStringLiteral("wireEngine must use Qt::BlockingQueuedConnection "
                           "for the settingsGetRequested edge"));
 
+    // S5b (ANTS-1997 / ANTS-2117) — teardown severs the blocking settings.get
+    // edge BEFORE posting Unload. The Unload handler ("save state") may call
+    // ants.settings.get, whose blocking-queued emit would park the worker
+    // while the GUI thread is in thread->wait() (not spinning its loop) — a
+    // 2 s stall that spuriously zombifies a healthy plugin. With the edge
+    // severed first, a late settings.get finds no slot and returns nil.
+    {
+        const int tdIdx =
+            pmc.indexOf(QStringLiteral("PluginManager::teardownEngine"));
+        const int discIdx = pmc.indexOf(
+            QStringLiteral("disconnect(engine, &LuaEngine::settingsGetRequested"),
+            tdIdx);
+        const int unloadIdx =
+            pmc.indexOf(QStringLiteral("PluginEvent::Unload"), tdIdx);
+        expect(tdIdx >= 0 && discIdx > tdIdx && unloadIdx > discIdx,
+               "S5b/sever-settings-edge-before-unload",
+               QStringLiteral("teardownEngine must disconnect "
+                              "settingsGetRequested before posting Unload "
+                              "(td=%1 disc=%2 unload=%3)")
+                   .arg(tdIdx).arg(discIdx).arg(unloadIdx));
+    }
+
     // S6 — no lua_close on the GUI thread: the synchronous GUI-path
     // engine->shutdown() calls (unloadAll + load-failure) are gone.
     expect(!pmc.contains(QStringLiteral("engine->shutdown()")),
