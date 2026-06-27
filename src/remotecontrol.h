@@ -300,6 +300,27 @@ public:
         return r;
     }
 
+    // ANTS-2220 — the function/method enclosing `line`, given a file_outline
+    // `symbols[]` array (each {line, name}). Nearest-preceding symbol by
+    // start line; empty when `line` precedes the first symbol (e.g. a match
+    // up in the includes). Used by cmdWorkspaceSearch's `enclosing_symbol`
+    // annotation. Defined inline (like capJsonArrayToBytes above) so the
+    // feature test can exercise the heuristic without the MainWindow chain.
+    static inline QString enclosingSymbolForLine(const QJsonArray &symbols,
+                                                 int line) {
+        QString best;
+        int bestLine = -1;  // greatest start line <= `line`
+        for (const QJsonValue &sv : symbols) {
+            const QJsonObject so = sv.toObject();
+            const int sl = so.value(QStringLiteral("line")).toInt();
+            if (sl <= line && sl > bestLine) {
+                bestLine = sl;
+                best     = so.value(QStringLiteral("name")).toString();
+            }
+        }
+        return best;
+    }
+
     // ANTS-1347 — path-side byte hygiene for the `cwd` field on
     // `launch` and `new-tab`. Reject-not-strip semantics: silently
     // mutating a path would change its identity and mislead the

@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **`workspace_search` `enclosing_symbol` — annotate each match with the function it lives in (ANTS-2220).**
+  Opt-in `enclosing_symbol:true` adds `enclosing:"Foo::bar"` to each match (the nearest-preceding symbol from the file outline), folding the usual "which function is this in?" follow-up into the search. One outline scan per distinct matched file, cached; off by default. (DOOM_Ants feedback S2.)
+
+- **`file_outline` multi-path — outline several related files in one call (ANTS-2223).**
+  Pass `paths:[...]` instead of `path` to outline a header + its impl + a consumer in a single MCP round-trip; returns a `files:[{path, symbols, etag, …}]` array, each entry resolved and byte-capped independently. An optional `etags` map ({relPath: priorEtag}) 304s any unchanged file to a compact stub, so re-outlining a set after editing one file re-sends only the changed bodies. Single-path callers are unaffected. (DOOM_Ants feedback S5.)
+
 - **`workspace_search` now emits a `regex_advisory` when a `regex:true` alternation contains very short un-anchored terms (e.g. `tan`) that substring-match inside longer words, flooding results.** (ANTS-2181)
 
 - **Claude can now ask Ants to compute an answer across your project's files and get back just the result — not the file text — via a new sandboxed `project_query` MCP verb. (ANTS-2093)**

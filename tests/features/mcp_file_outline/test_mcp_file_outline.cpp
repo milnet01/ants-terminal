@@ -132,6 +132,9 @@ TEST(McpFileOutline, WiringContract) {
                       p);
         expect(contains(ciCpp, p), label, d);
     }
+    // ANTS-2223 — `path` is no longer strictly required: the multi-path
+    // `paths` form satisfies the verb without it. The schema must register
+    // `paths` + `etags` props instead.
     {
         const size_t reqPos = ciCpp.find("\"file_outline\"");
         bool ok = false;
@@ -140,11 +143,12 @@ TEST(McpFileOutline, WiringContract) {
                                               reqPos + 6000);
             const std::string window = ciCpp.substr(reqPos,
                                                     windowEnd - reqPos);
-            ok = contains(window, "\"required\"") &&
-                 contains(window, "\"path\"");
+            ok = contains(window, "\"paths\"") &&
+                 contains(window, "\"etags\"");
         }
-        expect(ok, "INV-5 required",
-               "file_outline inputSchema does not declare [\"path\"] as required");
+        expect(ok, "INV-5 multipath",
+               "file_outline inputSchema does not register the ANTS-2223 "
+               "\"paths\" + \"etags\" props");
     }
 
     // INV-6 — tools/list schema declares the file_outline tool.
@@ -171,6 +175,43 @@ TEST(McpFileOutline, WiringContract) {
            "mainwindow.cpp does not delegate the provider lambda to cmdFileOutline");
 
     EXPECT_EQ(0, expect_failures()) << expect_failures() << " ANTS-1249 wiring invariant(s) failed";
+}
+
+// ANTS-2223 — multi-path (`paths:[...]`) wiring. The branch lives in the
+// cmdFileOutline handler, which needs a live MainWindow to invoke, so the
+// contract is locked at the source level (mirrors INV-2/INV-4 above). Three
+// load-bearing facts: the handler branches on a `paths` array, both call-sites
+// share the extracted `outlineOneFile` helper, and the optional `etags` map
+// 304s an unchanged entry to an `unchanged` stub.
+TEST(McpFileOutline, MultiPathWiring) {
+    expect_reset();
+    const std::string rcCpp =
+        ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+
+    // The shared per-file helper is extracted and called from both forms.
+    expect(contains(rcCpp, "outlineOneFile("),
+           "ANTS-2223 helper",
+           "remotecontrol.cpp missing the extracted outlineOneFile() helper");
+    // Multi-path branch keys on a `paths` array.
+    expect(contains(rcCpp, "QStringLiteral(\"paths\")") &&
+           contains(rcCpp, "pathsVal.isArray()"),
+           "ANTS-2223 branch",
+           "cmdFileOutline does not branch on a `paths` array");
+    // Per-file etag + 304 stub via the optional `etags` map.
+    expect(contains(rcCpp, "outlineFileEtag(") &&
+           contains(rcCpp, "QStringLiteral(\"etags\")") &&
+           contains(rcCpp, "\"unchanged\""),
+           "ANTS-2223 per-file-304",
+           "cmdFileOutline multi-path is missing the per-file etag / "
+           "`etags` 304 / unchanged-stub path");
+    // The batch envelope carries files[] + count.
+    expect(contains(rcCpp, "out[\"files\"]") &&
+           contains(rcCpp, "out[\"count\"]"),
+           "ANTS-2223 envelope",
+           "cmdFileOutline multi-path does not emit files[] + count");
+
+    EXPECT_EQ(0, expect_failures())
+        << expect_failures() << " ANTS-2223 multi-path wiring invariant(s) failed";
 }
 
 // INV-9 — runtime smoke. compute() against the in-tree

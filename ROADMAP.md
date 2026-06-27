@@ -8654,12 +8654,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: remotecontrol.
   Source: DOOM_Ants feedback S1 (2026-06-27 2nd session).
 
-- 📋 [ANTS-2220] **`workspace_search` `enclosing_symbol` — add each match's enclosing function/symbol.**
+- ✅ [ANTS-2220] **`workspace_search` `enclosing_symbol` — add each match's enclosing function/symbol.**
   After a `workspace_search` hit, the usual next question is "which function does this live in?" (def site vs teardown vs per-frame rebuild), today answered with a follow-up file_outline. Add opt-in `enclosing_symbol:true` that annotates each match with `{enclosing:"Foo::bar"}`, reusing the outline symbol-range map the server already builds. Pairs with the existing `context` window. Folds the most common post-search orientation step into the search — the way `find_definition include_body` folded the post-find read in.
   **Layman:** When Claude searches the code, also tell it which function each result is inside, so it doesn't need a second lookup.
   Kind: enhancement.
   Lanes: remotecontrol.
   Source: DOOM_Ants feedback S2 (2026-06-27 2nd session).
+  Shipped 2026-06-27: opt-in enclosing_symbol on workspace_search — static-inline RemoteControl::enclosingSymbolForLine (nearest-preceding), one cached FileOutline::compute per matched file, `enclosing` field. Tests: workspace_search_enclosing_symbol (ES-1..6 + WI-1..3). Build+suite green.
 
 - 📋 [ANTS-2221] **`read_region` markdown `section` selector — read a heading's body by slug.**
   Reading a spec's §4.2 today means file_outline (headings + line numbers) then hand-computing a start_line/end_line range. For `.md`, add a `section:"4-2-emission-model"` selector (the same slug file_outline already emits for headings) returning that heading's body up to the next same-or-higher-level heading — the markdown analogue of symbol-mode for code. Removes the outline→line-arithmetic→read dance for every spec/ADR section read.
@@ -8676,12 +8677,34 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: DOOM_Ants feedback S4 (2026-06-27 2nd session).
   Resolved (2026-06-27): read_region symbol-mode now brace-matches struct/class/union aggregates to their full body instead of stopping at the first member. resolveSymbol (readregion.cpp) detects the aggregate via the outline kind ("class") + signature keyword (struct/class/union — namespace excluded, its body can span the whole file) and a new aggregateEndLine() brace-balanced scan (skips //, /* */, "…"/'…'). Default-behavior fix, no new arg. Tests: tests/features/read_region_aggregate_body (FullBody / NestedBracesBalanced / FunctionUnaffected) — 19/19 read_region+file_outline green. Tool description + docs/specs/ANTS-2021.md synced. Limitation: anonymous typedef structs depend on file_outline tagging (out of scope). DOOM_Ants feedback S4.
 
-- 📋 [ANTS-2223] **`file_outline` multi-path — outline a header + impl + consumer in one call.**
+- ✅ [ANTS-2223] **`file_outline` multi-path — outline a header + impl + consumer in one call.**
   Subsystem work spans a header + its impl + a consumer; today each is a separate file_outline call. Accept `paths:[...]` and return a `{path → symbols}` map in one call, with the existing per-file `etag`s in an array so each file still 304s independently. Composes with S1 (read_regions): outline the subsystem, then batch-read the interesting symbols. Same round-trip win as S1 on the outline side.
   **Layman:** Let Claude get the structure of several related files at once instead of one call per file.
   Kind: enhancement.
   Lanes: remotecontrol.
   Source: DOOM_Ants feedback S5 (2026-06-27 2nd session).
+  Shipped 2026-06-27: `paths:[...]` multi-path form on file_outline — extracted shared outlineOneFile() helper, per-file etag + `etags` 304 stubs, files[]+count envelope. Tests: mcp_file_outline INV-5 (schema) + MultiPathWiring. Build+suite green.
+
+- 📋 [ANTS-2224] **`find_definition include_body` / `read_region` symbol-mode — brace-match function bodies so a missing outline boundary can't over-read.**
+  When the cpp outline misses the next symbol (e.g. an extern "C" fn — the ANTS-2159 gap), the symbol-body extractor extends the body to the next *recognised* symbol, over-reading past the real closing brace. DOOM repro: find_definition BuildEmitterList include_body:true returned body_end_line 2470 for a fn that closes at 2387 — ~83 lines / ~700 wasted tokens, swallowing the entire next extern "C" fn. Belt-and-braces: brace-match the function body (stop at the balanced closing }) instead of trusting the next-outline-symbol line — the same brace-balance ANTS-2212 (multi-line sig) and ANTS-2222 (aggregate body) already use, so the over-read is capped even when the outline misses the boundary. Complements ANTS-2159 (which fixes the outline capture).
+  **Layman:** Stop Claude's 'show me this function' from accidentally grabbing the next function too.
+  Kind: fix.
+  Lanes: readregion, fileoutline.
+  Source: DOOM_Ants feedback 2026-06-27 (3rd session).
+
+- 📋 [ANTS-2225] **`roadmap_query section=<slug>` misses `#### Pass N.M` bullets nested under a prose-shaped `###`.**
+  A section-scoped query returns count:0, section_shape:"prose" for a slug whose #### Pass N.M synthesised bullet BOTH session_orient active_bullets and id-query DO surface. The classifier labels the whole ### block prose (sibling prose follow-ups) and skips the nested pass-heading bullet. Cleanest signal: mode:"section_index" count (1) and the section-scoped fetch (0) disagree for the same slug. Expected: section-scoped queries surface #### Pass N.M synthesised bullets regardless of sibling prose (parity with active_bullets / id-query / the ANTS-2126 pass-heading support already in roadmap_log).
+  **Layman:** When Claude asks for the to-do items in one section, don't silently skip the ones tucked under a mostly-text heading.
+  Kind: fix.
+  Lanes: roadmap_query.
+  Source: RetroDB feedback 2026-06-26 (Pass 49.1).
+
+- 📋 [ANTS-2226] **Surface `feedback_query` / `feedback_log` to contributor CC sessions (self-advertising banner).**
+  Contributor sessions can already READ updates via feedback_query and APPEND findings via feedback_log op:append_finding, but nothing in the feedback files themselves points them at the verbs — so they may still hand-edit with Write/Edit (losing the watermark/delta machinery). Add a one-line contributor banner at the top of each *_Ants_MCP_Feedback.md (and a note in docs/standards/mcp-feedback-files.md) naming the two verbs + the triage loop, so the read/write loop is self-advertising. Discoverability gates value (cf. ANTS-1897). The maintainer side already has feedback_pending session_orient surfacing (ANTS-1964); this closes the contributor side.
+  **Layman:** Tell the other projects' Claude sessions they can read and add to these feedback files through Ants directly, instead of editing them by hand.
+  Kind: enhancement.
+  Lanes: feedback, docs.
+  Source: user-request-2026-06-27.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 

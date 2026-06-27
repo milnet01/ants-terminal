@@ -1204,6 +1204,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_roadmap_bundles/test_roadmap_bundles.cpp
                 # ANTS-1876 workspace_search payload knobs.
                 tests/features/workspace_search_payload_knobs/test_workspace_search_payload_knobs.cpp
+                # ANTS-2220 workspace_search enclosing_symbol annotation.
+                tests/features/workspace_search_enclosing_symbol/test_workspace_search_enclosing_symbol.cpp
                 # ANTS-1882 roadmap_query per-section ETag invariance.
                 tests/features/roadmap_query_per_section_etag/test_roadmap_query_per_section_etag.cpp
                 # ANTS-1880 spec_query + project_layout phases-dir recognition.

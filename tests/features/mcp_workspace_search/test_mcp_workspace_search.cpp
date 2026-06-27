@@ -145,6 +145,8 @@ TEST(McpWorkspaceSearch, WiringContract) {
     // timeout_sec with its own description blurb. Widened to 16000
     // after ANTS-2041 added the `query` alias prop (its own blurb
     // pushed `required.append("pattern")` to ~14.6 KiB past the anchor).
+    // Widened to 18000 after ANTS-2220 added the `enclosing_symbol` prop +
+    // its description blurb and a detail-field paragraph.
     {
         // Anchor at the tools/list registration (literal "workspace_search"
         // with quotes), not the first incidental occurrence in a setter
@@ -153,7 +155,7 @@ TEST(McpWorkspaceSearch, WiringContract) {
         bool ok = false;
         if (reqPos != std::string::npos) {
             const size_t windowEnd = std::min(ciCpp.size(),
-                                              reqPos + 16000);
+                                              reqPos + 18000);
             const std::string window = ciCpp.substr(reqPos,
                                                     windowEnd - reqPos);
             ok = contains(window, "\"required\"") &&

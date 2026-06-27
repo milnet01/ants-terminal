@@ -2775,7 +2775,9 @@ void ClaudeIntegration::onMcpConnection() {
                     "...}. Args: pattern (required; alias query), regex, "
                     "lane, glob, max_results (cap 500), context [0,10], "
                     "case, respect_gitignore, include_hidden, dedup, "
-                    "timeout_sec [1,30], max_match_bytes, headline_only. "
+                    "timeout_sec [1,30], max_match_bytes, headline_only, "
+                    "enclosing_symbol (annotate each match with its "
+                    "enclosing function). "
                     "caller_cwd anchors the project root (or '~global' for "
                     "~/.claude/). The query is ONE literal/regex pattern, not "
                     "AND-combined words — a multi-word query that hits 0 "
@@ -2822,7 +2824,14 @@ void ClaudeIntegration::onMcpConnection() {
                     "`{file, line, headline}` triples without "
                     "`text` / `context_*` — pair with "
                     "`max_match_bytes` for ~10× wire reduction on "
-                    "dense bundle sweeps). On hard-kill the "
+                    "dense bundle sweeps). ANTS-2220: "
+                    "`enclosing_symbol:true` annotates each match with "
+                    "`enclosing:\"Foo::bar\"` (the function/method it "
+                    "lives inside, via the file outline's "
+                    "nearest-preceding symbol) — folds the post-search "
+                    "\"which function?\" lookup into the search; costs "
+                    "one outline scan per distinct matched file, so it "
+                    "is off by default. On hard-kill the "
                     "rg_failed envelope carries a `hint` field with "
                     "the three viable next steps. ANTS-1390: pass "
                     "`caller_cwd: "
@@ -2994,7 +3003,21 @@ void ClaudeIntegration::onMcpConnection() {
                         "Alias for `pattern` — used only when `pattern` "
                         "is absent/empty. Prefer `pattern` (the "
                         "canonical, required arg).");
+                    // ANTS-2220 — enclosing_symbol: annotate each match
+                    // with the function/method it lives inside.
+                    QJsonObject encProp;  encProp["type"] = "boolean";
+                    encProp["default"] = false;
+                    encProp["description"] = QStringLiteral(
+                        "When true, annotate each match with "
+                        "`enclosing:\"Foo::bar\"` — the function/method it "
+                        "lives inside (nearest-preceding symbol from the "
+                        "file outline) — folding the usual \"which function "
+                        "is this in?\" follow-up into the search. Costs one "
+                        "file-outline scan per distinct matched file, so it "
+                        "is off by default. A match before the first symbol "
+                        "(e.g. in includes) carries no `enclosing`.");
                     props["pattern"]     = patternProp;
+                    props["enclosing_symbol"] = encProp;          // ANTS-2220
                     props["query"]       = queryProp;
                     props["regex"]       = regexProp;
                     props["lane"]        = laneProp;
@@ -3039,7 +3062,13 @@ void ClaudeIntegration::onMcpConnection() {
                     "(alias `\"~claude-config\"`) to outline files "
                     "under ~/.claude/ — for sessions editing global "
                     "Claude config (skills, agents, the global "
-                    "CLAUDE.md).");
+                    "CLAUDE.md). "
+                    "ANTS-2223: pass `paths:[...]` instead of `path` to "
+                    "outline several related files (a header + its impl + a "
+                    "consumer) in ONE call — returns a `files:[{path, "
+                    "symbols, etag, …}]` array, each entry 304ing "
+                    "independently via the optional `etags` map "
+                    "({relPath: priorEtag}).");
                 foTool["selection_hint"] = QStringLiteral(
                     "Use to map a large file's symbols before Read. "
                     "Prefer over `Read` when you only need a "
@@ -3080,7 +3109,29 @@ void ClaudeIntegration::onMcpConnection() {
                             "truncated:true + symbols_dropped:<n> "
                             "(+ bytes_cap_clamped:true if the requested cap "
                             "exceeded the ceiling).");
+                    // ANTS-2223 — multi-path batch. `paths` is the
+                    // alternative to `path`; `etags` 304s unchanged entries.
+                    QJsonObject pathsProp;    pathsProp["type"]    = "array";
+                    {
+                        QJsonObject items; items["type"] = "string";
+                        pathsProp["items"] = items;
+                    }
+                    pathsProp["description"] = QStringLiteral(
+                        "Repo-relative or absolute paths to outline in one "
+                        "call (alternative to `path`; wins when both sent). "
+                        "Returns files:[{path, symbols, etag, …}] — one entry "
+                        "per path, each resolved + capped independently.");
+                    QJsonObject etagsProp;    etagsProp["type"]    = "object";
+                    etagsProp["description"] = QStringLiteral(
+                        "Optional {project-relative-path: prior etag} map for "
+                        "the `paths` form. Any file whose current etag matches "
+                        "is returned as a compact {path, unchanged:true, etag} "
+                        "stub instead of its full symbols — so a re-outline "
+                        "after editing one file in the set re-sends only the "
+                        "changed bodies.");
                     props["path"]                 = pathProp;
+                    props["paths"]                = pathsProp;
+                    props["etags"]                = etagsProp;
                     props["mode"]                 = modeProp;
                     props["include_doc_comment"]  = hdrProp;
                     props["max_symbols"]          = maxSymProp;
@@ -3091,9 +3142,9 @@ void ClaudeIntegration::onMcpConnection() {
                     props["fields"]               = makeFieldsProp();      // ANTS-1720
                     props["compact"]              = makeCompactProp();     // ANTS-2091
                     schema["properties"] = props;
-                    QJsonArray required;
-                    required.append("path");
-                    schema["required"] = required;
+                    // `path` is no longer strictly required: the `paths` form
+                    // (ANTS-2223) satisfies the verb without it. The handler
+                    // returns bad_path when neither is usable.
                     foTool["inputSchema"] = schema;
                 }
                 tools.append(foTool);

@@ -8633,6 +8633,48 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         rcApplyHeadlineOnly(matches);
     }
 
+    // ANTS-2220 — enclosing_symbol: annotate each match with the function /
+    // method it lives inside, folding the common "which function is this in?"
+    // follow-up into the search (the way find_definition include_body folded
+    // in the post-find read). Opt-in (default off): one FileOutline::compute
+    // per UNIQUE matched file (cached), then each match resolves to the
+    // nearest-preceding symbol by start line — the same flat outline map
+    // read_region symbol-mode uses. Heuristic: a match in the gap between two
+    // top-level symbols attributes to the preceding one (the flat outline
+    // carries start lines only — precise brace-bounded attribution is out of
+    // scope). Cost scales with the number of distinct matched files, so it is
+    // off by default and only paid when asked for.
+    const bool enclosingSymbol =
+        req.value(QStringLiteral("enclosing_symbol")).toBool(false);
+    if (enclosingSymbol && !matches.isEmpty()) {
+        // One outline scan per UNIQUE matched file, cached by relative path.
+        QHash<QString, QJsonArray> outlineCache;
+        auto symbolsFor = [&](const QString &relFile) -> const QJsonArray & {
+            const auto it = outlineCache.find(relFile);
+            if (it != outlineCache.end()) return it.value();
+            QJsonArray syms;
+            const QString absPath = QDir::isAbsolutePath(relFile)
+                ? relFile
+                : rootCanonical + QLatin1Char('/') + relFile;
+            const QJsonObject outline = FileOutline::compute(
+                absPath, FileOutline::Mode::Auto,
+                /*includeDocComment=*/false, /*maxSymbols=*/2000);
+            if (outline.value("ok").toBool())
+                syms = outline.value("symbols").toArray();
+            return *outlineCache.insert(relFile, syms);
+        };
+        for (qsizetype i = 0; i < matches.size(); ++i) {
+            QJsonObject m = matches.at(i).toObject();
+            const QString enclosing = enclosingSymbolForLine(
+                symbolsFor(m.value("file").toString()),
+                m.value("line").toInt());
+            if (!enclosing.isEmpty()) {
+                m["enclosing"] = enclosing;
+                matches.replace(i, m);
+            }
+        }
+    }
+
     QJsonObject out;
     out["ok"]         = true;
     out["pattern"]    = pattern;
@@ -8712,6 +8754,68 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     return QJsonDocument(out);
 }
 
+// ANTS-2223 — outline ONE already-root-resolved file. The per-file body
+// shared by the single-path and multi-path (`paths:[...]`) forms of
+// cmdFileOutline (Rule of Three: two call-sites + a clean contract). Returns
+// the per-file outline object on success (ok:true + path/symbols/…), or an
+// ok:false {code,error} object on a per-file failure (empty/escaping/missing
+// path) — so the multi-path loop can record one bad entry without aborting
+// the batch.
+static QJsonObject outlineOneFile(const QString &rawPath,
+                                  const QString &rootCanonical,
+                                  FileOutline::Mode mode, bool includeDoc,
+                                  int maxSymbols, int maxBytes) {
+    if (rawPath.isEmpty()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("file_outline: empty path entry");
+        o["code"]  = QStringLiteral("bad_path");
+        return o;
+    }
+    // ANTS-1249-INV-1 / ANTS-1295: anchor through the central
+    // PathValidation chokepoint; not_found is distinct from the
+    // anchor-fail bad_path envelope.
+    const auto check = PathValidation::validatePath(
+        rawPath, rootCanonical,
+        QStringLiteral("file_outline"), QStringLiteral("path"));
+    if (check.bad) return check.err;
+    if (check.resolved.isEmpty()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("file_outline: \"%1\" does not exist")
+                         .arg(rawPath);
+        o["code"]  = QStringLiteral("not_found");
+        return o;
+    }
+    QJsonObject result = FileOutline::compute(check.resolved, mode,
+                                              includeDoc, maxSymbols);
+    // Reframe the path back to project-relative so callers get stable
+    // paths regardless of where the binary was launched.
+    if (result.value("ok").toBool()) {
+        const QString abs = result.value("path").toString();
+        if (abs.startsWith(rootCanonical + QLatin1Char('/')))
+            result["path"] = abs.mid(rootCanonical.size() + 1);
+        // ANTS-1293: byte-cap so a file full of long signatures can't blow
+        // the transport budget. Trims symbols[] from the tail.
+        const auto cap = RemoteControl::capJsonArrayToBytes(
+            result, QStringLiteral("symbols"),
+            QStringLiteral("symbols_dropped"), maxBytes);
+        if (cap.capClamped) result["bytes_cap_clamped"] = true;
+    }
+    return result;
+}
+
+// ANTS-2223 — per-file etag for the multi-path form. Same hex16-of-sha256
+// shape as ClaudeIntegration::etagFor so callers see ONE etag format across
+// the whole MCP surface (kept in sync deliberately — a 2-line hash, not worth
+// a cross-layer dependency from remotecontrol → claudeintegration).
+static QString outlineFileEtag(const QJsonObject &fileObj) {
+    const QByteArray buf =
+        QJsonDocument(fileObj).toJson(QJsonDocument::Compact);
+    return QString::fromUtf8(QCryptographicHash::hash(
+        buf, QCryptographicHash::Sha256).toHex().left(16));
+}
+
 // ANTS-1249: file_outline — structured file outline (header_doc +
 // symbols[]). Replaces a full Read of a 5 000-line file with a ~1 K
 // token orientation envelope. Path-escape guarded by canonical-path
@@ -8719,34 +8823,11 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
 // work itself lives in fileoutline.cpp — this body validates input,
 // resolves the path, and delegates.
 QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
-    // ANTS-1249-INV-2: empty path → bad_path; non-existent path
-    // returns not_found (set further down by FileOutline::compute).
-    // ANTS-2149 — accept `file_path` as an alias for `path`, mirroring the
-    // sibling codebase_index verb (which keys on `file_path`); using the
-    // two back-to-back on the same file otherwise trips on the differing
-    // arg name. `path` stays the source of truth; `file_path` only fills
-    // in when `path` is absent (same idiom as workspace_search's
-    // query↔pattern alias, ANTS-2041).
-    QString rawPath = req.value("path").toString();
-    if (rawPath.isEmpty())
-        rawPath = req.value(QStringLiteral("file_path")).toString();
-    if (rawPath.isEmpty()) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("file_outline: missing or empty \"path\" (alias: \"file_path\")");
-        o["code"]  = QStringLiteral("bad_path");
-        return QJsonDocument(o);
-    }
-
-    // ANTS-1249-INV-1 / ANTS-1295: anchor through the central
-    // PathValidation chokepoint. file_outline requires the path to
-    // exist (we can't outline a file we can't read), so reject when
-    // check.resolved is empty with a `not_found` code distinct from
-    // the anchor-fail `bad_path` envelope.
     // ANTS-1391: prefer caller_cwd's project root over the focused tab.
     // ANTS-1390: `~global` / `~claude-config` sentinel routes to
     // ~/.claude/ so global-config edits (skills, agents, the global
-    // CLAUDE.md) can be outlined without a project root.
+    // CLAUDE.md) can be outlined without a project root. Resolved once
+    // and shared across every path in the multi-path form.
     const QString callerRaw =
         req.value(QStringLiteral("caller_cwd")).toString();
     const QString sentinelRoot =
@@ -8761,49 +8842,72 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
         o["code"]  = QStringLiteral("bad_path");
         return QJsonDocument(o);
     }
-    const auto check = PathValidation::validatePath(
-        rawPath, rootCanonical,
-        QStringLiteral("file_outline"),
-        QStringLiteral("path"));
-    if (check.bad) return QJsonDocument(check.err);
-    if (check.resolved.isEmpty()) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = QStringLiteral("file_outline: \"%1\" does not exist").arg(rawPath);
-        o["code"]  = QStringLiteral("not_found");
-        return QJsonDocument(o);
-    }
-    const QString resolved = check.resolved;
 
-    // ANTS-1249: mode + flags. Delegate to fileoutline.cpp for the
-    // actual scan.
+    // ANTS-1249: mode + flags, parsed once (uniform across a multi-path
+    // batch).
     const FileOutline::Mode mode = FileOutline::parseMode(
         req.value("mode").toString());
     const bool includeDoc = req.value("include_doc_comment").toBool(true);
-    int maxSymbols = req.value("max_symbols").toInt(200);
+    const int  maxSymbols = req.value("max_symbols").toInt(200);
+    const int  maxBytes   = req.value("max_bytes").toInt(0);
 
-    QJsonObject result = FileOutline::compute(resolved, mode,
-                                              includeDoc, maxSymbols);
-
-    // Reframe the path back to project-relative so callers get stable
-    // paths regardless of where the binary was launched.
-    if (result.value("ok").toBool()) {
-        QString abs = result.value("path").toString();
-        if (abs.startsWith(rootCanonical + QLatin1Char('/'))) {
-            result["path"] = abs.mid(rootCanonical.size() + 1);
+    // ANTS-2223 — multi-path form: outline several related files (a header +
+    // its impl + a consumer) in ONE call instead of N. Triggered by a `paths`
+    // array (wins over `path` when both are sent). Each entry resolves
+    // independently and carries its own per-file `etag`; an optional `etags`
+    // map ({relPath: priorEtag}) 304s any unchanged file to a compact
+    // {path, unchanged:true, etag} stub, so a re-outline after editing one
+    // file in the set re-sends only the changed bodies.
+    const QJsonValue pathsVal = req.value(QStringLiteral("paths"));
+    if (pathsVal.isArray()) {
+        const QJsonArray  paths      = pathsVal.toArray();
+        const QJsonObject priorEtags =
+            req.value(QStringLiteral("etags")).toObject();
+        QJsonArray files;
+        for (const QJsonValue &pv : paths) {
+            QJsonObject fileObj = outlineOneFile(
+                pv.toString(), rootCanonical, mode, includeDoc,
+                maxSymbols, maxBytes);
+            const QString etag = outlineFileEtag(fileObj);
+            const QString rel  = fileObj.value(QStringLiteral("path")).toString();
+            const QString prior = priorEtags.value(rel).toString();
+            if (fileObj.value("ok").toBool() && !prior.isEmpty() &&
+                prior == etag) {
+                QJsonObject stub;
+                stub["path"]      = rel;
+                stub["ok"]        = true;
+                stub["unchanged"] = true;
+                stub["etag"]      = etag;
+                files.append(stub);
+            } else {
+                fileObj["etag"] = etag;
+                files.append(fileObj);
+            }
         }
-        // ANTS-1293: byte-cap the response. max_symbols bounds the count;
-        // this bounds total size so a file full of long signatures can't
-        // blow the transport budget. Trims symbols[] from the tail.
-        const int maxBytes = req.value("max_bytes").toInt(0);
-        const auto cap = RemoteControl::capJsonArrayToBytes(
-            result, QStringLiteral("symbols"),
-            QStringLiteral("symbols_dropped"), maxBytes);
-        if (cap.capClamped) result["bytes_cap_clamped"] = true;
+        QJsonObject out;
+        out["ok"]    = true;
+        out["files"] = files;
+        out["count"] = files.size();
+        return QJsonDocument(out);
     }
-    // ANTS-1249-INV-10: reachability gate — UDS / MCP socket
-    // SO_PEERCRED UID match (same as ANTS-1248). Nothing extra here.
-    return QJsonDocument(result);
+
+    // Single-path form (back-compat, unchanged response shape).
+    // ANTS-1249-INV-2: empty path → bad_path.
+    // ANTS-2149 — accept `file_path` as an alias for `path` (mirrors the
+    // sibling codebase_index verb). `path` stays the source of truth.
+    QString rawPath = req.value("path").toString();
+    if (rawPath.isEmpty())
+        rawPath = req.value(QStringLiteral("file_path")).toString();
+    if (rawPath.isEmpty()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("file_outline: missing or empty \"path\" (alias: \"file_path\", \"paths\")");
+        o["code"]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
+    // ANTS-1249-INV-10: reachability gate is upstream (UDS SO_PEERCRED).
+    return QJsonDocument(outlineOneFile(rawPath, rootCanonical, mode,
+                                        includeDoc, maxSymbols, maxBytes));
 }
 
 // ANTS-1855 — read_log: filter a log file, return only matching lines.
