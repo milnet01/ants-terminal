@@ -81,6 +81,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_query section=<slug>` misses `#### Pass N.M` bullets nested under a prose-shaped `###`.** (ANTS-2225)
+  When Claude asks for the to-do items in one section, don't silently skip the ones tucked under a mostly-text heading.
+
 - **`find_definition include_body` / `read_region` symbol-mode — brace-match function bodies so a missing outline boundary can't over-read.** (ANTS-2224)
   Stop Claude's 'show me this function' from accidentally grabbing the next function too.
 

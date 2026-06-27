@@ -3945,14 +3945,39 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             // to OTHER sections, which is the whole point.
             sectionEtag = rcComputeSectionEtag(slice);
             m_roadmapSectionEtags.insert(sec->slug, sectionEtag);
-            const auto bullets = RoadmapDialog::parseBullets(slice);
+            auto bullets = RoadmapDialog::parseBullets(slice);
+            // ANTS-2225 — pass-heading fallback. parseBullets engages its
+            // `#### Pass N.M` reader only when it sees >= 2 pass headings AND
+            // >= 2 status markers across its INPUT (roadmapdialog.cpp:759). A
+            // single-section slice may carry just one pass heading, so
+            // slice-local detection fails and the synthesised bullet is
+            // dropped — the section reads "prose"/empty even though
+            // session_orient active_bullets, an id-query, and mode:section_index
+            // all surface it from the whole-file parse. When the slice parsed
+            // empty, fall back to the authoritative whole-file parse filtered
+            // to this slug: the global parse has the pass-heading context, and
+            // parseBullets' sectionSlug is the same global slug the index uses
+            // (the section_index tally at L3646 relies on that). INV-9's
+            // "section mode doesn't pre-fill the full cache" is preserved for
+            // the common (non-empty-slice) path; the whole-file parse runs only
+            // on this otherwise-empty branch. A non-pass-heading doc yields no
+            // bullet for the slug here, so the section stays empty as before.
+            if (bullets.empty()) {
+                const auto whole = RoadmapDialog::parseBullets(markdown);
+                QVector<RoadmapDialog::BulletRecord> filtered;
+                for (const auto &b : whole)
+                    if (b.sectionSlug == sec->slug) filtered.append(b);
+                if (!filtered.empty()) bullets = std::move(filtered);
+            }
             // ANTS-1696 — classify the slice ONLY when parseBullets
             // found nothing. The hint exists to disambiguate a
             // "section is a table" empty from a truly empty section;
             // computing it for bullet-rich slices wastes cycles and
             // would just emit shape:"prose" for the inline rationale
             // text most bullets carry above them. Cache by slug so
-            // subsequent section= hits don't re-classify.
+            // subsequent section= hits don't re-classify. Runs after the
+            // ANTS-2225 fallback so a recovered pass-heading bullet
+            // suppresses the (now-wrong) prose hint.
             if (bullets.empty()) {
                 m_roadmapSectionShape.insert(sec->slug,
                                              rcSectionShape(slice));

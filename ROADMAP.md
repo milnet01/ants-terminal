@@ -8693,12 +8693,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: DOOM_Ants feedback 2026-06-27 (3rd session).
   Resolved (2026-06-27): function bodies in read_region symbol-mode / find_definition include_body are now capped at the balanced closing brace (renamed aggregateEndLine → braceBalancedEndLine, reused for kind "func"). std::min only tightens vs the outline-derived end. Regression test: read_region_aggregate_body INV-4 (FunctionOverreadCapped + LastFunctionCapsAtBrace), confirmed failing pre-fix.
 
-- 📋 [ANTS-2225] **`roadmap_query section=<slug>` misses `#### Pass N.M` bullets nested under a prose-shaped `###`.**
+- ✅ [ANTS-2225] **`roadmap_query section=<slug>` misses `#### Pass N.M` bullets nested under a prose-shaped `###`.**
   A section-scoped query returns count:0, section_shape:"prose" for a slug whose #### Pass N.M synthesised bullet BOTH session_orient active_bullets and id-query DO surface. The classifier labels the whole ### block prose (sibling prose follow-ups) and skips the nested pass-heading bullet. Cleanest signal: mode:"section_index" count (1) and the section-scoped fetch (0) disagree for the same slug. Expected: section-scoped queries surface #### Pass N.M synthesised bullets regardless of sibling prose (parity with active_bullets / id-query / the ANTS-2126 pass-heading support already in roadmap_log).
   **Layman:** When Claude asks for the to-do items in one section, don't silently skip the ones tucked under a mostly-text heading.
   Kind: fix.
   Lanes: roadmap_query.
   Source: RetroDB feedback 2026-06-26 (Pass 49.1).
+  Resolved (2026-06-27): section-scoped roadmap_query now falls back to the whole-file parse filtered by sec->slug when the single-section slice parses empty — the pass-headings adapter needs ≥2 Pass headings + ≥2 Status markers, which a one-pass section slice can't meet in isolation. INV-9 (no full-cache pre-fill) preserved for the common non-empty-slice path. Regression test: roadmap_query_section_pass_heading INV-1..4 (slice-local detection confirmed failing, whole-file filter recovers the bullet).
 
 - 📋 [ANTS-2226] **Surface `feedback_query` / `feedback_log` to contributor CC sessions (self-advertising banner).**
   Contributor sessions can already READ updates via feedback_query and APPEND findings via feedback_log op:append_finding, but nothing in the feedback files themselves points them at the verbs — so they may still hand-edit with Write/Edit (losing the watermark/delta machinery). Add a one-line contributor banner at the top of each *_Ants_MCP_Feedback.md (and a note in docs/standards/mcp-feedback-files.md) naming the two verbs + the triage loop, so the read/write loop is self-advertising. Discoverability gates value (cf. ANTS-1897). The maintainer side already has feedback_pending session_orient surfacing (ANTS-1964); this closes the contributor side.
