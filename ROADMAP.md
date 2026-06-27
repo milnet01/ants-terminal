@@ -8702,11 +8702,19 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: RetroDB feedback 2026-06-26 (Pass 49.1).
   Resolved (2026-06-27): section-scoped roadmap_query now falls back to the whole-file parse filtered by sec->slug when the single-section slice parses empty — the pass-headings adapter needs ≥2 Pass headings + ≥2 Status markers, which a one-pass section slice can't meet in isolation. INV-9 (no full-cache pre-fill) preserved for the common non-empty-slice path. Regression test: roadmap_query_section_pass_heading INV-1..4 (slice-local detection confirmed failing, whole-file filter recovers the bullet).
 
-- 📋 [ANTS-2226] **Surface `feedback_query` / `feedback_log` to contributor CC sessions (self-advertising banner).**
+- ✅ [ANTS-2226] **Surface `feedback_query` / `feedback_log` to contributor CC sessions (self-advertising banner).**
   Contributor sessions can already READ updates via feedback_query and APPEND findings via feedback_log op:append_finding, but nothing in the feedback files themselves points them at the verbs — so they may still hand-edit with Write/Edit (losing the watermark/delta machinery). Add a one-line contributor banner at the top of each *_Ants_MCP_Feedback.md (and a note in docs/standards/mcp-feedback-files.md) naming the two verbs + the triage loop, so the read/write loop is self-advertising. Discoverability gates value (cf. ANTS-1897). The maintainer side already has feedback_pending session_orient surfacing (ANTS-1964); this closes the contributor side.
   **Layman:** Tell the other projects' Claude sessions they can read and add to these feedback files through Ants directly, instead of editing them by hand.
   Kind: enhancement.
   Lanes: feedback, docs.
+  Source: user-request-2026-06-27.
+  Resolved (2026-06-27): FeedbackFile::skeleton() now emits a contributor banner naming feedback_query / feedback_log op:append_finding (+ the maintainer op:append_tracking) so a contributor session discovers the verbs from the file itself; docs/standards/mcp-feedback-files.md documents it. The banner is a blockquote, inert to the boundary-heading delta parser (verified delta_present:false on all 6 live files post-insert). Back-filled the banner into all 6 existing *_Ants_MCP_Feedback.md files (outside the repo). Complements the existing ANTS-1970 session-start hook banner. Regression test: McpFeedbackQuery.SkeletonBannerAdvertisesVerbs.
+
+- 📋 [ANTS-2227] **`dry_run` preview parity across every mutating Ants-MCP verb.**
+  Only 3 verbs expose `dry_run:true` today — roadmap_log (ANTS-2077), changelog_log (ANTS-2136), spec_log. Every OTHER mutating verb writes immediately with no preview. Audit the full write surface and add a uniform `dry_run` that returns the would-be result envelope (carrying `dry_run:true`) without touching disk. Highest-value targets first: apply_edits (preview the resolved hunks + post-image without writing — the biggest blast-radius verb), feedback_log (append_finding/append_tracking), project_settings (init/set), audit_falsepos_log, debt_sweep_apply_fix / debt_sweep_defer, and the review fold-in verbs (cold_eyes_fold_in / indie_review_fold_in / test_audit_fold_in). Read-only verbs (get_*, *_query, find_*, read_*) are out of scope. Contract: a `dry_run` arg on each, defaulting false; the preview path shares the exact code that computes the write so the preview can't drift from the real result. Mirrors the existing ANTS-2077 / ANTS-2136 envelope convention. Document per-verb dry_run support in docs/standards/mcp-tools.md so it's a checklist item for future write verbs.
+  **Layman:** Let Claude ask "show me what this would change" before any Ants command that writes — not just the three that support it today.
+  Kind: enhancement.
+  Lanes: remotecontrol, claudeintegration.
   Source: user-request-2026-06-27.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)

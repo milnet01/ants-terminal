@@ -265,6 +265,13 @@ QString skeleton(const QString &projectTitle) {
     out += QStringLiteral(
         "> Format: docs/standards/mcp-feedback-files.md in the Ants "
         "Terminal repo.\n"
+        "> **Contributors (ANTS-2226):** read new items with the "
+        "`feedback_query` Ants-MCP\n"
+        "> verb (the un-triaged tail) and append findings with `feedback_log "
+        "op:append_finding`\n"
+        "> — don't hand-edit, that keeps the read-the-tail watermark intact. "
+        "The maintainer\n"
+        "> stamps roadmap IDs via `feedback_log op:append_tracking`.\n"
         "> Contributors append below the last maintainer block; never "
         "edit a\n"
         "> maintainer table; never assign ANTS-NNNN IDs.\n");

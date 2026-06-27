@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Surface `feedback_query` / `feedback_log` to contributor CC sessions (self-advertising banner).** (ANTS-2226)
+  Tell the other projects' Claude sessions they can read and add to these feedback files through Ants directly, instead of editing them by hand.
+
 - **`read_region` markdown `section` selector — read a heading's body by slug.** (ANTS-2221)
   Let Claude ask for one section of a doc by name instead of working out its line numbers first.
 

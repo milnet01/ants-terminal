@@ -64,6 +64,11 @@ the block headings below are structural.
 <one-paragraph intro: who this project is, how it uses the MCP server>
 
 > Format: docs/standards/mcp-feedback-files.md in the Ants Terminal repo.
+> **Contributors (ANTS-2226):** read new items with the `feedback_query`
+> Ants-MCP verb (the un-triaged tail) and append findings with `feedback_log
+> op:append_finding` — don't hand-edit, that keeps the read-the-tail
+> watermark intact. The maintainer stamps roadmap IDs via `feedback_log
+> op:append_tracking`.
 > Contributors append below the last maintainer block; never edit a
 > maintainer table; never assign ANTS-NNNN IDs.
 
@@ -80,9 +85,13 @@ it, so a parser MUST NOT require it: identify feedback files by the
 filename glob `*_Ants_MCP_Feedback.md` and treat the marker as an
 optional confirmation (same posture as roadmap-format.md's file marker).
 New files SHOULD carry it. The blockquote header pointer is the
-contributor's one-screen reminder of the rules. No current corpus file
-carries the marker or the pointer yet — both are net-new with this spec;
-adopting them in the existing files is a one-line, non-destructive edit.
+contributor's one-screen reminder of the rules — including the
+`feedback_query` / `feedback_log` verb names (ANTS-2226), so a contributor
+session discovers the read/write tools from the file itself rather than
+hand-editing. `FeedbackFile::skeleton()` emits this banner for every
+new file; the existing corpus files were back-filled with it under
+ANTS-2226. The banner is a blockquote, inert to the boundary-heading
+delta parser, so it never perturbs the un-triaged-tail computation.
 
 ## Contributor block
 

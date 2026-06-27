@@ -275,3 +275,27 @@ TEST(McpFeedbackQuery, ByteCapKeepsHead) {
     EXPECT_FALSE(delta.contains("TAILMARKER"));     // tail dropped
     EXPECT_GT(env.value("delta_line_count").toInt(), 100);  // full count
 }
+
+// ANTS-2226 — the skeleton's contributor banner names the read/write verbs
+// so a contributor session discovers them from the file itself, and the
+// banner (a blockquote above the H1's content) is inert to the
+// boundary-heading delta parser once a maintainer block exists.
+TEST(McpFeedbackQuery, SkeletonBannerAdvertisesVerbs) {
+    const QString sk = FeedbackFile::skeleton(QStringLiteral("Demo Project"));
+    EXPECT_TRUE(sk.contains(QStringLiteral("feedback_query")))
+        << "skeleton must name the feedback_query verb";
+    EXPECT_TRUE(sk.contains(QStringLiteral("feedback_log")))
+        << "skeleton must name the feedback_log verb";
+    // Inert to the parser: with a maintainer block present (the steady
+    // state of a triaged file), the banner sits ABOVE it, so no contributor
+    // heading follows the last maintainer block — zero un-triaged delta.
+    const QString triaged = sk +
+        QString::fromUtf8(
+            "\n## \xF0\x9F\x93\x8B Ants Terminal roadmap tracking update "
+            "(2026-06-27, maintainer)\n\n| a | ANTS-1 | shipped |\n");
+    const FeedbackFile::ParseResult r = FeedbackFile::parse(triaged);
+    EXPECT_EQ(r.maintainerBlockCount, 1);
+    EXPECT_FALSE(r.deltaPresent)
+        << "the blockquote banner above the maintainer block must not "
+           "register as un-triaged delta";
+}
