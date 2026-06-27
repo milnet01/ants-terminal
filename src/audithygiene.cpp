@@ -207,4 +207,191 @@ QStringList semgrepRulePacks(const QStringList &frameworks) {
     return args;
 }
 
+namespace {
+
+// ANTS-1759 — is the 'R' at rIdx a C++ raw-string prefix? The
+// contiguous identifier run ending at R must be exactly one of the
+// string-literal raw prefixes (R / LR / u8R / uR / UR); this rejects
+// `fooR"..."` where R is just the tail of an identifier.
+bool isRawStringPrefix(const QString &src, int rIdx) {
+    int start = rIdx;
+    while (start > 0) {
+        const QChar p = src[start - 1];
+        if (p.isLetterOrNumber() || p == QLatin1Char('_')) --start;
+        else break;
+    }
+    const QString run = src.mid(start, rIdx - start + 1);
+    return run == QLatin1String("R")  || run == QLatin1String("LR") ||
+           run == QLatin1String("u8R")|| run == QLatin1String("uR") ||
+           run == QLatin1String("UR");
+}
+
+}  // namespace
+
+bool lineHasCode(const QString &source, const QString &path, int line) {
+    // ANTS-2210 — moved verbatim from AuditDialog::lineIsCode (ANTS-1270 /
+    // ANTS-1759) so the lexer is a pure, test-linkable surface. The GUI
+    // method now reads + size-caps the file and forwards `source` here.
+    if (line <= 0) return true;
+
+    // State: 0=code, 1=line-comment (until \n), 2=block-comment,
+    // 3=string, 4=C++ raw string (ANTS-1759).
+    int state = 0;
+    int curLine = 1;
+    bool hasCodeOnLine = false;
+    QChar stringQuote;
+    QString rawTerminator;  // ")" + d-char-seq + "\"" for state 4
+
+    // ANTS-1270 — comment/string syntax is language-specific. The default
+    // C-style lexer (//, /* */, ", ', raw strings) misclassifies # comments
+    // (Python / shell / Ruby / YAML / TOML / CMake / Makefile) and Lua
+    // -- / [[ ]] forms, so e.g. `# TODO: "10.0.0.1"` was scanned as code and
+    // its IP/secret/TODO finding survived. Pick the lexer by file extension.
+    enum class Syntax { CStyle, Hash, Lua };
+    Syntax syntax = Syntax::CStyle;
+    bool pyTriple = false;
+    {
+        const QString p = path.toLower();
+        auto ext = [&p](const char *e) { return p.endsWith(QLatin1String(e)); };
+        if (ext(".py") || ext(".pyw")) { syntax = Syntax::Hash; pyTriple = true; }
+        else if (ext(".sh") || ext(".bash") || ext(".zsh") || ext(".ksh") ||
+                 ext(".rb") || ext(".pl") || ext(".pm") || ext(".yaml") ||
+                 ext(".yml") || ext(".toml") || ext(".cmake") || ext(".mk") ||
+                 p.endsWith(QLatin1String("cmakelists.txt")) ||
+                 p.endsWith(QLatin1String("makefile")) ||
+                 p.endsWith(QLatin1String("dockerfile")))
+            syntax = Syntax::Hash;
+        else if (ext(".lua"))
+            syntax = Syntax::Lua;
+    }
+
+    for (int i = 0; i < source.size(); ++i) {
+        const QChar c = source[i];
+        const QChar n = (i + 1 < source.size()) ? source[i + 1] : QChar();
+
+        if (curLine == line) {
+            // A line counts as "code" only if there's a real identifier/
+            // operator character outside strings and comments. Structural
+            // punctuation alone (whitespace, argument-list glue like
+            // `,;(){}[]`, and the string-delimiter characters themselves)
+            // doesn't count — that catches continuation lines like
+            //   "system(), popen()…", "Security",
+            // which are pure string-literal data inside a multi-line call,
+            // and shouldn't trigger security regex matches. Escape chars
+            // (`\`) also don't count as code on their own.
+            if (state == 0 && !c.isSpace() &&
+                c != ',' && c != ';' &&
+                c != '(' && c != ')' &&
+                c != '{' && c != '}' &&
+                c != '[' && c != ']' &&
+                c != '"' && c != '\'' && c != '\\' &&
+                // ANTS-1270 — the bare comment-introducer ('#' for Hash, '-'
+                // for Lua's '--') must not read as code, else an
+                // otherwise-comment-only line is kept as code.
+                !(syntax == Syntax::Hash && c == '#') &&
+                !(syntax == Syntax::Lua && c == '-')) {
+                hasCodeOnLine = true;
+            }
+        } else if (curLine > line) {
+            break;
+        }
+
+        if (c == '\n') {
+            if (state == 1) state = 0;
+            ++curLine;
+            continue;
+        }
+
+        switch (state) {
+        case 0:  // code
+            if (syntax == Syntax::Hash) {
+                if (c == '#') { state = 1; }
+                else if (pyTriple && (c == '"' || c == '\'') &&
+                         i + 2 < source.size() &&
+                         source[i + 1] == c && source[i + 2] == c) {
+                    stringQuote = c; state = 5; i += 2;  // consume the triple
+                }
+                else if (c == '"' || c == '\'') { state = 3; stringQuote = c; }
+                break;
+            }
+            if (syntax == Syntax::Lua) {
+                // -- line comment, --[[ ]] block comment, [[ ]] long string.
+                // Level-0 brackets only; leveled [==[ ]==] forms are rare and
+                // fall through as code (conservative — preserves findings).
+                if (c == '-' && n == '-') {
+                    if (i + 3 < source.size() && source[i + 2] == QLatin1Char('[') &&
+                        source[i + 3] == QLatin1Char('[')) {
+                        rawTerminator = QStringLiteral("]]"); state = 6; i += 3;
+                    } else { state = 1; ++i; }
+                }
+                else if (c == '[' && n == '[') {
+                    rawTerminator = QStringLiteral("]]"); state = 6; ++i;
+                }
+                else if (c == '"' || c == '\'') { state = 3; stringQuote = c; }
+                break;
+            }
+            if (c == '/' && n == '/') { state = 1; ++i; }
+            else if (c == '/' && n == '*') { state = 2; ++i; }
+            else if (c == '"' && i > 0 && source[i - 1] == QLatin1Char('R') &&
+                     isRawStringPrefix(source, i - 1)) {
+                // ANTS-1759 — C++ raw string R"delim( ... )delim". Capture
+                // the d-char-seq (up to '(', ≤16 chars, no ()\"/ws) so an
+                // embedded //, " or \ inside the literal can't desync the
+                // scanner for the rest of the file. Fall back to a normal
+                // string if no valid delimiter terminates in '(' — covers
+                // e.g. Python's R"foo" (no paren-delimited form).
+                QString delim;
+                int j = i + 1;
+                bool isRaw = false;
+                for (; j < source.size() && delim.size() <= 16; ++j) {
+                    const QChar d = source[j];
+                    if (d == QLatin1Char('(')) { isRaw = true; break; }
+                    if (d == QLatin1Char(')') || d == QLatin1Char('\\') ||
+                        d == QLatin1Char('"') || d.isSpace()) break;
+                    delim += d;
+                }
+                if (isRaw) {
+                    rawTerminator = QLatin1Char(')') + delim + QLatin1Char('"');
+                    state = 4;
+                    i = j;  // resume after '(' (loop does ++i)
+                } else {
+                    state = 3; stringQuote = c;
+                }
+            }
+            else if (c == '"' || c == '\'') { state = 3; stringQuote = c; }
+            break;
+        case 1:  // line comment — terminated only by newline (handled above)
+            break;
+        case 2:  // block comment
+            if (c == '*' && n == '/') { state = 0; ++i; }
+            break;
+        case 3:  // string
+            if (c == '\\') { ++i; }  // skip escape
+            else if (c == stringQuote) state = 0;
+            break;
+        case 4:  // C++ raw string — ends only at )delim" (no escapes)
+            if (c == QLatin1Char(')') &&
+                source.mid(i, rawTerminator.size()) == rawTerminator) {
+                i += rawTerminator.size() - 1;  // loop does ++i
+                state = 0;
+            }
+            break;
+        case 5:  // ANTS-1270 — Python triple-quoted string (""" or ''')
+            if (c == stringQuote && i + 2 < source.size() &&
+                source[i + 1] == stringQuote && source[i + 2] == stringQuote) {
+                i += 2;  // consume the closing triple (loop does ++i)
+                state = 0;
+            }
+            break;
+        case 6:  // ANTS-1270 — Lua long bracket (string / --[[ comment ]]), L0
+            if (c == QLatin1Char(']') && n == QLatin1Char(']')) {
+                ++i;  // consume the second ']' (loop does ++i)
+                state = 0;
+            }
+            break;
+        }
+    }
+    return hasCodeOnLine;
+}
+
 } // namespace AuditHygiene

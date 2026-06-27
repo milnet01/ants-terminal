@@ -63,6 +63,23 @@ cmake --build build 2>&1 | tail -20
 ctest --test-dir build --output-on-failure 2>&1 | tail -20
 ```
 
+**Run the suite in parallel (ANTS-2231).** ctest is serial by default
+(~78 s full suite); the test presets now parallelise it — `default` /
+`fast` at `-j4`, `workstation` at `-j2` (`debug` stays serial: ASan is
+~3× RAM; `perf` stays serial: benchmarks must not contend):
+
+```bash
+ctest --preset=default          # ~19 s — parallel, perf excluded
+ctest --test-dir build -j4      # same, without the preset wrapper
+```
+
+`-j4` is the cap tuned for this 32 GiB / earlyoom host — the test
+processes are light (unlike parallel `cc1plus`), but keep it ≤4 so a
+heavy desktop session doesn't thrash. The full suite is verified green
++ flake-free at `-j4`. Narrower runs stay fastest: `-R <regex>` (one
+suite), `-L features` (one label), `--target <bundle>` to build only the
+bundle you touched.
+
 ### Cheaper iteration loops (ANTS-1550 / ANTS-1552)
 
 - `cmake --build build --target ants-terminal` — skip the ~11 test binaries.

@@ -48,4 +48,15 @@ QStringList detectProjectFrameworks(const QString &projectPath);
 // react, vue.
 QStringList semgrepRulePacks(const QStringList &frameworks);
 
+// ANTS-2210 — classify whether line `line` (1-based) of `source` contains
+// real code, as opposed to being entirely inside a comment or string
+// literal. The comment/string syntax is selected from `path`'s extension
+// (ANTS-1270): C-style (`//`, `/* */`, `"`, `'`, C++ raw strings) by
+// default; `#` line comments + Python triple-quotes for `.py`/`.sh`/`.yaml`/
+// …; Lua `--`, `--[[ ]]`, `[[ ]]` for `.lua`. Pure — no file IO; the GUI
+// `AuditDialog::lineIsCode()` reads + 2 MB-caps the file and delegates here
+// so test_audit can exercise the lexer without linking the QDialog TU.
+// `line <= 0` returns true (safe default: treat as code, preserve findings).
+bool lineHasCode(const QString &source, const QString &path, int line);
+
 } // namespace AuditHygiene

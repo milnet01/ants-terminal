@@ -1506,6 +1506,8 @@ if(ANTS_TESTS)
                 tests/features/audit_dedup_96bit/test_audit_dedup_96bit.cpp
                 tests/features/audit_engine_extraction/test_audit_engine_extraction.cpp
                 tests/features/audit_hygiene/test_audit_hygiene.cpp
+                # ANTS-2210 — per-language comment/string lexer regression test.
+                tests/features/audit_line_lexer/test_audit_line_lexer.cpp
                 tests/features/audit_incremental_output_drain/test_audit_incremental_output_drain.cpp
                 tests/features/audit_path_traversal/test_audit_path_traversal.cpp
                 tests/features/audit_per_tool_timeout/test_audit_per_tool_timeout.cpp

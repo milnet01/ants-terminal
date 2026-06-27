@@ -71,6 +71,9 @@
             "output": {
                 "outputOnFailure": true
             },
+            "execution": {
+                "jobs": 4
+            },
             "filter": {
                 "exclude": {
                     "label": "perf"
@@ -82,6 +85,9 @@
             "configurePreset": "workstation",
             "output": {
                 "outputOnFailure": true
+            },
+            "execution": {
+                "jobs": 2
             },
             "filter": {
                 "exclude": {
@@ -106,6 +112,9 @@
             "configurePreset": "fast",
             "output": {
                 "outputOnFailure": true
+            },
+            "execution": {
+                "jobs": 4
             },
             "filter": {
                 "exclude": {

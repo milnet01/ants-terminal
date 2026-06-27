@@ -51,6 +51,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **Parallelise the ctest presets (`-j4` default/fast, `-j2` workstation; debug/perf stay serial).** (ANTS-2231)
+  Running the whole test suite used to take about 78 seconds because the tests ran one after another. They now run 4 at a time, finishing in about 19 seconds — roughly 4× faster — capped at 4 so it won't bog the machine down.
+
+- **Regression test for the per-language `lineIsCode` lexer (ANTS-1270 follow-up).** (ANTS-2210)
+  Add an automated test proving the audit pipeline correctly treats # comments (Python/shell) and Lua --/[[ ]] as comments, so the ANTS-1270 fix can't silently regress.
+
 - **`read_region` symbol-mode returns a struct/class/union's full body (ANTS-2222).**
   Asking for an aggregate by name used to return only its declaration line (the flat outline ends it at the first member); it now brace-matches to the closing brace and returns the whole body. A namespace (also tagged kind class) still resolves to its head — use line mode. From DOOM_Ants cross-session MCP feedback.
 

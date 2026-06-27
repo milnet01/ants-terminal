@@ -8726,6 +8726,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: DOOM_Ants feedback 2026-06-27 (4a/4b-i bring-up).
   Resolved (2026-06-27): file_outline's cpp scanner now registers `typedef struct TAG_s { … } ALIAS_t;` (and anonymous `typedef struct { … } ALIAS_t;`) as aggregate symbols — a pending-typedef recorded at the opening line emits at the matching close via the existing braceDepth bookkeeping, keyed by BOTH alias and tag with a signature starting "struct" so ANTS-2222's aggregate-body brace-match reads the full struct. read_region symbol:"subsector_t"/"subsector_s" now resolve. Forward decls unaffected. Regression test: file_outline_typedef_struct TS-1..5.
 
+- 📋 [ANTS-2229] **Review Changes dialog stops auto-updating on in-place / subdirectory edits.**
+  User reports the Review Changes dialog (diffviewer.cpp, ANTS-1145) no longer auto-refreshes — they must click Refresh. Diagnosis: the QFileSystemWatcher (0.7.32) watches only the repo ROOT dir + .git internals (HEAD/index/refs/logs). Two structural gaps: (1) QFileSystemWatcher::directoryChanged fires on dir-ENTRY changes (create/rename/delete), NOT on in-place content edits, so an editor that rewrites a file in place triggers nothing; (2) the watch is non-recursive, so editing a file in any SUBDIRECTORY (e.g. src/foo.cpp) never fires the cwd watch, and an unstaged edit doesn't touch .git/index either. So auto-refresh only ever fired on git ops (commit/checkout/add) or atomic-rename saves of root-level files — likely a perceived regression now that work is in subdirs. Candidate fix: add a low-frequency safety-net re-probe QTimer (~2-3 s, gated by the existing 0.7.37 diff-skip so an unchanged probe is a no-op render — zero scroll/flicker churn), mirroring the roadmap dialog's watcher+manual-refresh safety net but periodic since the diff'd file SET is dynamic. Confirm whether the regression is this watcher-scope gap (auto-updates on commit but not on bare save) vs. a render-path regression from the b5b5d13 QTextEdit→QTextBrowser swap before implementing. Kind: fix. Lanes: diffviewer.
+  **Layman:** Make the 'Review Changes' window refresh itself when you save a file, instead of you having to click Refresh.
+  Kind: fix.
+  Lanes: diffviewer.
+  Source: user-report-2026-06-27.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
@@ -8908,6 +8915,28 @@ suppression that survives line drift.
   Kind: feature.
   Lanes: claudeintegration, auditfpledger, mcp.
   Source: self-audit 2026-05-20; deferred from ANTS-1708.
+
+- 📋 [ANTS-2230] **C-style `//` and `/*` comment introducers aren't excluded from lineHasCode's code-detection (ANTS-1270 left them; the `#`/`--` analogue).**
+  `AuditHygiene::lineHasCode` (moved from AuditDialog::lineIsCode by
+  ANTS-2210) marks a line as code when it sees any non-excluded char in
+  state 0 (pre-comment). ANTS-1270 added `!(syntax==Hash && c=='#')` and
+  `!(syntax==Lua && c=='-')` so the Hash/Lua introducers don't read as
+  code — but the C-style introducer `/` (for `//` and `/*`) was never
+  added, so a `// password = "x"` or `/* TODO secret */`-only line in a
+  .cpp/.h/.js/etc. file registers its leading `/` as code and the finding
+  survives dropFindingsInCommentsOrStrings. Block-comment INTERIOR lines
+  are already correct (state 2 suppresses detection); only the
+  introducer LINE itself leaks. Fix: exclude `/` from the state-0
+  code-detection when the next char also forms a comment opener
+  (`//` or `/*`) under CStyle — mirror the Hash/Lua guard precisely so a
+  bare division operator `a / b` still counts as code. The ANTS-2210
+  test (tests/features/audit_line_lexer) currently LOCKS the buggy
+  behavior (asserts `//`-only line is code) with a comment citing this
+  item; flip that assertion to FALSE when this ships.
+  Kind: audit-fix.
+  **Layman:** The audit code that decides "is this line real code or just a comment?" was taught (in an earlier fix) that `#` (Python/shell) and `--` (Lua) start comments, so findings inside those comments get dropped. But for C/C++ it was never taught the same about `//` and `/*` — so a secret or TODO written inside a `// comment` in a C++ file is still reported as a real finding. This makes the audit cry wolf on commented-out lines.
+  Kind: audit-fix.
+  Source: in-session-2026-06-27 (discovered writing the ANTS-2210 lexer regression test).
 
 ### ⚡ Other improvements (performance, security, optimisations)
 
@@ -11250,6 +11279,20 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   Source: in-session-2026-06-17 (found running full test_core during ANTS-1976).
   Resolved (2026-06-17): mcp_result_offload's fixture now captures QStandardPaths::isTestModeEnabled() in SetUp and restores it in TearDown, so test mode no longer leaks past the bundle. Full test_core is 329/329 green (was 328/329 with ConfigAiReviewConcurrency.INV14 failing in full-bundle order). Found + fixed same session while running test_core for ANTS-1976.
 
+- ✅ [ANTS-2231] **Parallelise the ctest presets (`-j4` default/fast, `-j2` workstation; debug/perf stay serial).**
+  ctest is serial by default. Added `execution.jobs` to the test presets:
+  default + fast = 4, workstation = 2. debug stays serial (ASan ~3× RAM)
+  and perf stays serial (benchmarks must not contend for throughput
+  numbers). Cap tuned for the 32 GiB / earlyoom host — test processes are
+  light vs parallel cc1plus, but ≤4 keeps a heavy desktop session safe.
+  Verified green + flake-free across two full runs at -j4 (2309 tests,
+  ~19 s vs ~78 s serial). Documented in CLAUDE.md (`ctest --preset=default`
+  or `ctest --test-dir build -j4`).
+  Kind: chore.
+  **Layman:** Running the whole test suite used to take about 78 seconds because the tests ran one after another. They now run 4 at a time, finishing in about 19 seconds — roughly 4× faster — capped at 4 so it won't bog the machine down.
+  Kind: chore.
+  Source: user-request-2026-06-27.
+
 ### 📝 Cold-eyes 2026-05-21
 
 Docs reviewed: PLUGINS.md, README.md, CONTRIBUTING.md, CHANGELOG.md, SECURITY.md, docs/specs/ANTS-1120.md, ANTS-1160.md, ANTS-1318.md, docs/decisions/ADR-0002 + ADR-0003, docs/standards/* (all). Loops to clean: 8. Findings fixed: ~20 across the run.
@@ -12116,11 +12159,12 @@ own design + test cycles.
   Source: indie-review-2026-05-13.
   Resolved 2026-05-26 (in-session token-savings bundle). CorroboratedFinding now carries optional {title, description, layman, kind} fields. When populated the indie-review/cold-eyes fold-in renderer (shared via IndieReviewEngine::templateIndieReviewFoldInBlock) emits a standard roadmap card — bold title + body + Layman: + Kind:; when absent it emits a LOUD `**TODO: describe this finding (cited by N lanes at file:line).**` placeholder so a stub bullet cannot ship silently. Both cmdIndieReviewFoldIn and cmdColdEyesFoldIn parse the new fields; descriptors document the opt-in (saves the post-insert Edit pass that prompted this finding). Duplicate `Lanes:` row was already removed by ANTS-1812. New INV-13 in indie_review_engine/spec.md; tests Inv13TemplateFoldInRichFields + Inv13TemplateFoldInLoudTodoOnAbsent. Full suite green (1709/1709).</note>
 
-- 📋 [ANTS-2210] **Regression test for the per-language `lineIsCode` lexer (ANTS-1270 follow-up).**
+- ✅ [ANTS-2210] **Regression test for the per-language `lineIsCode` lexer (ANTS-1270 follow-up).**
   ANTS-1270 added extension-dispatched comment/string lexing to AuditDialog::lineIsCode, but the method is a private static on the GUI dialog and the existing audit feature tests (e.g. audit_path_traversal) deliberately reimplement helper logic rather than link the widget bundle. A direct regression test therefore needs lineIsCode promoted to a testable surface (public static, or a thin pure helper in ants_audit_lib it forwards to) so a test in the test_dialogs / test_audit bundle can drive Python/shell/Lua fixtures and assert comment lines classify as non-code. Until then the lexer is covered only by the full build + suite, not a targeted invariant.
   **Layman:** Add an automated test proving the audit pipeline correctly treats # comments (Python/shell) and Lua --/[[ ]] as comments, so the ANTS-1270 fix can't silently regress.
   Kind: test.
   Source: in-session-2026-06-27 (ANTS-1270 fix-pass).
+  Resolved (2026-06-27): extracted the per-language comment/string lexer from AuditDialog::lineIsCode into the pure AuditHygiene::lineHasCode (ants_audit_lib); the GUI method now reads + 2 MB-caps the file and delegates. Added tests/features/audit_line_lexer (8 cases, AL-1..8) in the test_audit bundle. Writing the test surfaced ANTS-2230 (C-style // /* introducers not excluded); the test locks current behavior and cites it.
 
 ### 🔌 MCP integration deepening — token + perf (2026-05-13)
 
