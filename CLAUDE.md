@@ -85,7 +85,15 @@ bundle you touched.
 - `cmake --build build --target ants-terminal` — skip the ~11 test binaries.
 - `-DANTS_TESTS=OFF` — drop test targets from the graph.
 - `-DANTS_CCACHE=ON` (default) — ccache compiler launcher; a cache hit
-  skips `cc1plus` entirely.
+  skips `cc1plus` entirely. **Keep the cache big enough** — at the 5 GiB
+  default this Qt codebase fills it and self-evicts (~40% hit rate);
+  `ccache -M 20G` once lifts the hit rate so cold-after-pull rebuilds
+  reuse far more objects (pure disk, no RAM cost). `ccache -s` to check.
+- `-DANTS_USE_MOLD=ON` (default when `mold` is on PATH; ANTS-2233) — links
+  with mold instead of GNU ld. Linking is the heaviest, highest-RSS step
+  (hence `link_pool=1`); mold is multi-threaded *and* lower-RSS, so it
+  shortens the ~30-bundle link tail without raising the OOM ceiling. Auto
+  falls back to the default linker when mold is absent (e.g. CI).
 - `-DANTS_UNITY_BUILD=ON` — opt-in; viable end-to-end since ANTS-1553.
   Unity applies only to the always-fully-linked libs (chrome / claude /
   dialogs / audit_dialog — the Widgets-heavy cc1plus hogs); the

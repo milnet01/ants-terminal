@@ -158,6 +158,25 @@ set(CMAKE_JOB_POOL_COMPILE compile_pool)
 set(CMAKE_JOB_POOL_LINK    link_pool)
 message(STATUS "Build job pools: compile=${_ANTS_COMPILE_CAP} link=${ANTS_LINK_POOL} (host nproc=${_ANTS_NPROC})")
 
+# ANTS-2233 — link with mold when available. Linking is the heaviest,
+# most RAM-hungry step here (hence the link_pool=1 cap above); mold is
+# multi-threaded AND uses markedly less peak RSS than GNU ld, so it
+# shortens the ~30-bundle link tail WITHOUT raising the OOM ceiling — the
+# right kind of speedup for a 32 GiB / earlyoom host. Auto-detected;
+# opt out with -DANTS_USE_MOLD=OFF. GCC 12+ honours -fuse-ld=mold
+# (host toolchain is GCC 15). Applies to every target defined below.
+option(ANTS_USE_MOLD "Link with mold when found (-fuse-ld=mold)" ON)
+if(ANTS_USE_MOLD)
+    find_program(ANTS_MOLD_PROGRAM mold)
+    if(ANTS_MOLD_PROGRAM)
+        add_link_options(-fuse-ld=mold)
+        message(STATUS "Linking with mold (${ANTS_MOLD_PROGRAM}) — multi-threaded, low-RSS")
+    else()
+        message(STATUS "mold not found — using default linker "
+                       "(install mold to speed the link tail)")
+    endif()
+endif()
+
 # ---------------------------------------------------------------------------
 # Shared compile-flag interface (ANTS-1217 Phase 1)
 # ---------------------------------------------------------------------------

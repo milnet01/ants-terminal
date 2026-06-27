@@ -11293,6 +11293,19 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   Kind: chore.
   Source: user-request-2026-06-27.
 
+- ✅ [ANTS-2233] **Link with the mold linker when available (`-fuse-ld=mold`, auto-detected, opt-out).**
+  Links are the heaviest, highest-RSS step (hence link_pool=1). mold is
+  multi-threaded and lower-RSS than GNU ld, so it shortens the ~30-bundle
+  link tail without raising the OOM ceiling — the right speedup for the
+  32 GiB / earlyoom host. `add_link_options(-fuse-ld=mold)` gated on
+  find_program(mold), opt out with -DANTS_USE_MOLD=OFF; CI without mold
+  falls back silently. GCC 12+ honours -fuse-ld=mold (host is GCC 15).
+  Verified the main exe + full suite link clean with mold.
+  Kind: chore.
+  **Layman:** Switched the build's final "linking" step to a much faster linker called mold (it was already installed but unused). Linking is the slowest, most memory-hungry part of the build, and mold is both faster and lighter on memory — so the build finishes sooner without risking the machine hanging. Falls back to the old linker automatically if mold isn't installed.
+  Kind: chore.
+  Source: user-request-2026-06-27.
+
 ### 📝 Cold-eyes 2026-05-21
 
 Docs reviewed: PLUGINS.md, README.md, CONTRIBUTING.md, CHANGELOG.md, SECURITY.md, docs/specs/ANTS-1120.md, ANTS-1160.md, ANTS-1318.md, docs/decisions/ADR-0002 + ADR-0003, docs/standards/* (all). Loops to clean: 8. Findings fixed: ~20 across the run.
@@ -18395,6 +18408,32 @@ partition (11 lanes) is documented in this fold-in for reuse.
   - Verb shape: new build_run vs build_status op:"run". Needs a spec +
     /cold-eyes loop before implementation.
   **Layman:** Let Claude hand Ants a build command; Ants runs it, watches it finish, and reports just the errors/warnings — instead of Claude shelling out and streaming a 10,000-line log into its context.
+  Kind: feature.
+  Source: user-request-2026-06-27.
+
+- 📋 [ANTS-2232] **Per-session "section pins" — name up to 5 code/doc selectors that re-resolve to the current slice on recall (survives /compact).**
+  A new MCP verb (working name `pin`) maintaining a per-project,
+  caller_cwd-scoped store of up to 5 named selectors. Ops:
+  - set {name, path, selector} where selector is symbol | section | line
+    range (the same selectors read_region accepts). Cap 5; LRU-evict the
+    oldest, or refuse-when-full with a clear code (decide at spec time).
+  - list — names + paths + selector kind, no bodies.
+  - get {name} — re-resolves the selector through read_region's extractor
+    and returns the CURRENT slice + etag + resolved_range. A pinned
+    symbol/section that no longer resolves returns {ok:true, found:false,
+    stale:true, hint} so the session re-pins.
+  - clear {name} / clear_all.
+  RAM: stores only metadata (name + path + selector) — never the body, so
+  ~5 tiny records per project; body is re-extracted on get. Persisted to
+  XDG state next to session_memory; distinct from it (live selector vs
+  frozen text — link both in the spec). Composes with ETag-304 (an
+  unchanged pinned region 304s) and read_spill (a large pinned slice
+  offloads). v1 is the explicit "session tells Ants what to remember"
+  form; an auto-suggest-what-to-pin heuristic is a deferred follow-up.
+  Killer use case: post-/compact working-set rehydration. Spec it through
+  /cold-eyes before implementing (multi-file design doc).
+  Kind: feature.
+  **Layman:** Let a Claude session bookmark up to 5 spots in the code or docs ("remember the audit lexer", "remember the scroll spec"), then jump back to any of them in a single call. Unlike a plain note, the bookmark stores WHERE the code is, not a frozen copy — so when you recall it, you get the up-to-date version even if the code moved or changed. The big win is after a context reset (/compact): the session can instantly re-open the exact spots it was working on instead of re-searching for them, which saves tokens.
   Kind: feature.
   Source: user-request-2026-06-27.
 

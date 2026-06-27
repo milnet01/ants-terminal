@@ -51,6 +51,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Link with the mold linker when available (`-fuse-ld=mold`, auto-detected, opt-out).** (ANTS-2233)
+  Switched the build's final "linking" step to a much faster linker called mold (it was already installed but unused). Linking is the slowest, most memory-hungry part of the build, and mold is both faster and lighter on memory — so the build finishes sooner without risking the machine hanging. Falls back to the old linker automatically if mold isn't installed.
+
 - **Parallelise the ctest presets (`-j4` default/fast, `-j2` workstation; debug/perf stay serial).** (ANTS-2231)
   Running the whole test suite used to take about 78 seconds because the tests ran one after another. They now run 4 at a time, finishing in about 19 seconds — roughly 4× faster — capped at 4 so it won't bog the machine down.
 
