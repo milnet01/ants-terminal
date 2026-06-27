@@ -18,9 +18,17 @@ had to fall back to line mode and hand-compute the range (DOOM_Ants feedback S4)
   aggregate (its own `{ … }`) does not prematurely end the range; the close is
   the aggregate's own matching brace, not the first inner `}`.
 - **INV-3 functions unaffected** — a plain function symbol still resolves to its
-  own body and does not absorb a following declaration (back-compat: only
-  aggregate kinds are brace-extended; `namespace` — also tagged kind `class` by
+  own body and does not absorb a following declaration (back-compat: aggregate
+  kinds are brace-*extended*; `namespace` — also tagged kind `class` by
   `file_outline` — is excluded so its body isn't pulled in wholesale).
+- **INV-4 function over-read capped (ANTS-2224)** — a function body is capped at
+  its own balanced closing `}`, even when `file_outline` misses the *next*
+  symbol (e.g. a one-line `extern "C" void thunk() { … }` — the ANTS-2159 gap)
+  and the outline-derived end would otherwise extend past the real close into
+  the following definition. The brace cap only ever *tightens*: a normal body's
+  brace-end equals the outline end; a body-less declaration brace-matches past
+  the next symbol so the outline end is kept; the last symbol's to-EOF end
+  collapses to its closing brace.
 
 ## Out of scope
 

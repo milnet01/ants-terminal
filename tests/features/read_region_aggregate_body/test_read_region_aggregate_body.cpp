@@ -97,3 +97,54 @@ TEST(ReadRegionAggregateBody, FunctionUnaffected) {
     ASSERT_TRUE(env.value("ok").toBool());
     EXPECT_FALSE(joinLines(env).contains(QStringLiteral("struct Tail")));
 }
+
+// INV-4 (ANTS-2224) — a function body is capped at its own closing brace even
+// when file_outline misses the NEXT symbol. A one-line `extern "C" void …() {`
+// is missed by every cpp regex (the `"C"` breaks the return-type group), so the
+// outline-derived end for BuildEmitterList would extend to the line before the
+// next *recognised* symbol (NextThing), swallowing the extern "C" fn. The brace
+// cap stops at BuildEmitterList's own '}'.
+TEST(ReadRegionAggregateBody, FunctionOverreadCapped) {
+    QTemporaryDir dir;
+    const QString root = QFileInfo(dir.path()).canonicalFilePath();
+    QDir().mkpath(root + "/src");
+    const QString path = root + "/src/emit.cpp";
+    const QJsonObject env = extractSym(path,
+        "void BuildEmitterList() {\n"        // 1  <- target symbol (captured)
+        "    setupEmitters();\n"             // 2
+        "    flushQueue();\n"                // 3
+        "}\n"                                // 4  <- real close
+        "extern \"C\" void doom_thunk() {\n"  // 5  <- MISSED by file_outline
+        "    legacyBridge();\n"              // 6
+        "}\n"                                // 7
+        "void NextThing() {\n"               // 8  <- next captured symbol
+        "    return;\n"                      // 9
+        "}\n",                               // 10
+        "BuildEmitterList");
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("end_line").toInt(), 4)
+        << "function body must cap at its own closing brace, not the next "
+           "recognised symbol";
+    const QString body = joinLines(env);
+    EXPECT_TRUE(body.contains(QStringLiteral("flushQueue();")));  // own body kept
+    EXPECT_FALSE(body.contains(QStringLiteral("doom_thunk")));    // gap fn excluded
+    EXPECT_FALSE(body.contains(QStringLiteral("legacyBridge")));
+}
+
+// INV-4 corollary — the LAST function in a file caps at its own close instead of
+// reading to EOF (outline end is INT_MAX; the brace cap collapses it).
+TEST(ReadRegionAggregateBody, LastFunctionCapsAtBrace) {
+    QTemporaryDir dir;
+    const QString root = QFileInfo(dir.path()).canonicalFilePath();
+    QDir().mkpath(root + "/src");
+    const QString path = root + "/src/tail.cpp";
+    const QJsonObject env = extractSym(path,
+        "void only() {\n"   // 1
+        "    work();\n"     // 2
+        "}\n"               // 3  <- close
+        "\n"                // 4  trailing blank lines (would be read to EOF)
+        "\n",               // 5
+        "only");
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("end_line").toInt(), 3);
+}

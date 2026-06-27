@@ -8685,12 +8685,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: DOOM_Ants feedback S5 (2026-06-27 2nd session).
   Shipped 2026-06-27: `paths:[...]` multi-path form on file_outline — extracted shared outlineOneFile() helper, per-file etag + `etags` 304 stubs, files[]+count envelope. Tests: mcp_file_outline INV-5 (schema) + MultiPathWiring. Build+suite green.
 
-- 📋 [ANTS-2224] **`find_definition include_body` / `read_region` symbol-mode — brace-match function bodies so a missing outline boundary can't over-read.**
+- ✅ [ANTS-2224] **`find_definition include_body` / `read_region` symbol-mode — brace-match function bodies so a missing outline boundary can't over-read.**
   When the cpp outline misses the next symbol (e.g. an extern "C" fn — the ANTS-2159 gap), the symbol-body extractor extends the body to the next *recognised* symbol, over-reading past the real closing brace. DOOM repro: find_definition BuildEmitterList include_body:true returned body_end_line 2470 for a fn that closes at 2387 — ~83 lines / ~700 wasted tokens, swallowing the entire next extern "C" fn. Belt-and-braces: brace-match the function body (stop at the balanced closing }) instead of trusting the next-outline-symbol line — the same brace-balance ANTS-2212 (multi-line sig) and ANTS-2222 (aggregate body) already use, so the over-read is capped even when the outline misses the boundary. Complements ANTS-2159 (which fixes the outline capture).
   **Layman:** Stop Claude's 'show me this function' from accidentally grabbing the next function too.
   Kind: fix.
   Lanes: readregion, fileoutline.
   Source: DOOM_Ants feedback 2026-06-27 (3rd session).
+  Resolved (2026-06-27): function bodies in read_region symbol-mode / find_definition include_body are now capped at the balanced closing brace (renamed aggregateEndLine → braceBalancedEndLine, reused for kind "func"). std::min only tightens vs the outline-derived end. Regression test: read_region_aggregate_body INV-4 (FunctionOverreadCapped + LastFunctionCapsAtBrace), confirmed failing pre-fix.
 
 - 📋 [ANTS-2225] **`roadmap_query section=<slug>` misses `#### Pass N.M` bullets nested under a prose-shaped `###`.**
   A section-scoped query returns count:0, section_shape:"prose" for a slug whose #### Pass N.M synthesised bullet BOTH session_orient active_bullets and id-query DO surface. The classifier labels the whole ### block prose (sibling prose follow-ups) and skips the nested pass-heading bullet. Cleanest signal: mode:"section_index" count (1) and the section-scoped fetch (0) disagree for the same slug. Expected: section-scoped queries surface #### Pass N.M synthesised bullets regardless of sibling prose (parity with active_bullets / id-query / the ANTS-2126 pass-heading support already in roadmap_log).

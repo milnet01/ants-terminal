@@ -36,12 +36,13 @@ struct SymRange {
     int  matchCount = 0;
 };
 
-// ANTS-2222 — brace-balanced scan from an aggregate's declaration line to its
-// matching closing brace. Returns the 1-based closing-brace line, or 0 if no
-// balanced close is found (caller keeps the outline-derived fallback). Skips
+// ANTS-2222 / ANTS-2224 — brace-balanced scan from a symbol's declaration line
+// to its matching closing brace. Returns the 1-based closing-brace line, or 0
+// if no balanced close is found (caller keeps the outline-derived fallback).
+// Serves both aggregate bodies (struct/class/union) and function bodies. Skips
 // braces inside // and /* */ comments and "…"/'…' literals (heuristic, the
 // same altitude as file_outline).
-int aggregateEndLine(const QString &absPath, int startLine) {
+int braceBalancedEndLine(const QString &absPath, int startLine) {
     QFile f(absPath);
     if (!f.open(QIODevice::ReadOnly)) return 0;
     int lineNo = 0, depth = 0;
@@ -117,8 +118,25 @@ SymRange resolveSymbol(const QString &absPath, const QString &name) {
         (sig.startsWith(QLatin1String("struct")) ||
          sig.startsWith(QLatin1String("class"))  ||
          sig.startsWith(QLatin1String("union")));
-    const int braceEnd = isAggregate ? aggregateEndLine(absPath, r.start) : 0;
-    r.end = (braceEnd >= r.start) ? braceEnd : outlineEnd;
+    if (isAggregate) {
+        // The flat outline's "next entry" for a struct is its first member, so
+        // the outline-derived end stops there. Brace-match to the real close.
+        const int braceEnd = braceBalancedEndLine(absPath, r.start);
+        r.end = (braceEnd >= r.start) ? braceEnd : outlineEnd;
+    } else if (kind == QLatin1String("func")) {
+        // ANTS-2224 — belt-and-braces cap on function bodies. When file_outline
+        // misses the next symbol (e.g. an extern "C" fn — the ANTS-2159 gap),
+        // outlineEnd extends past the real closing brace and swallows the
+        // following definition (DOOM repro: a fn closing at 2387 returned
+        // end 2470). Cap at the balanced closing '}'. std::min only ever
+        // TIGHTENS: a normal body's brace-end equals outlineEnd; a body-less
+        // declaration brace-matches past the next symbol so min keeps
+        // outlineEnd; the last symbol's INT_MAX (to-EOF) collapses to the close.
+        const int braceEnd = braceBalancedEndLine(absPath, r.start);
+        r.end = (braceEnd >= r.start) ? std::min(braceEnd, outlineEnd) : outlineEnd;
+    } else {
+        r.end = outlineEnd;
+    }
     if (r.end < r.start) r.end = r.start;
     return r;
 }

@@ -81,6 +81,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`find_definition include_body` / `read_region` symbol-mode — brace-match function bodies so a missing outline boundary can't over-read.** (ANTS-2224)
+  Stop Claude's 'show me this function' from accidentally grabbing the next function too.
+
 - ****SessionStart MCP catalog** now tells you to call each verb by its full `mcp__ants__<name>` — the bare names it listed weren't directly callable.** (ANTS-2213)
 
 - ****`file_outline` / `read_region`** now capture C/C++ functions whose parameter list wraps across multiple lines (id-Software / K&R prototypes) — previously dropped.** (ANTS-2212)
