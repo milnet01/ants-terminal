@@ -36,6 +36,8 @@ for security-relevant changes.
 
 ### Changed
 
+- ****Roadmap dialog (Compact density)** — the smallest text (status / kind / section-count labels) is now 11px instead of 9px, for readability.** (ANTS-2211)
+
 - ****Status bar** stops polling while the Ants window is in the background — saves battery and scheduler wakeups on laptops.** (ANTS-1363)
 
 - **`computeConfidence` moved to `AuditEngine` so non-GUI consumers score findings without Qt6::Widgets.** (ANTS-1262)

@@ -126,19 +126,21 @@ static int runMain() {
                 "tier table degenerate.");
 
         // INV-2b: tier-unique sentinels.
-        // Compact uses 9px for .rm-state-label + meta floor; no
-        // other tier emits 9.
-        if (!hCompact.contains(QStringLiteral("font-size:9px")))
+        // ANTS-2211 raised the Compact meta/label floor 9px→11px, so 9px is
+        // no longer emitted by any tier. Compact's h1 rule (14px) is now the
+        // stable Compact-unique mark — Comfortable's 14px sizes are on h3/code,
+        // not the h1 rule, so `h1{font-size:14px;}` is Compact-only.
+        if (!hCompact.contains(QStringLiteral("h1{font-size:14px;}")))
             return fail("INV-2b",
-                "Compact render missing `font-size:9px` sentinel — "
-                "label/meta floor isn't being emitted.");
-        if (hCozy.contains(QStringLiteral("font-size:9px")))
+                "Compact render missing `h1{font-size:14px;}` sentinel — "
+                "the Compact tier isn't reaching the CSS.");
+        if (hCozy.contains(QStringLiteral("h1{font-size:14px;}")))
             return fail("INV-2b",
-                "Cozy render contains `font-size:9px` — sentinel "
+                "Cozy render contains `h1{font-size:14px;}` — sentinel "
                 "is not Compact-unique.");
-        if (hComfortable.contains(QStringLiteral("font-size:9px")))
+        if (hComfortable.contains(QStringLiteral("h1{font-size:14px;}")))
             return fail("INV-2b",
-                "Comfortable render contains `font-size:9px` — "
+                "Comfortable render contains `h1{font-size:14px;}` — "
                 "sentinel is not Compact-unique.");
         // Cozy uses 16px for h1 only.
         if (!hCozy.contains(QStringLiteral("font-size:16px")))

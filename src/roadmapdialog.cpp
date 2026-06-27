@@ -131,8 +131,9 @@ constexpr KindEntry kKinds[] = {
 // scale, looked up by renderCardsHtml when building the embedded
 // `<style>` block. Cozy column preserves pre-1238 byte-equal
 // rendering (INV-1); Compact / Comfortable are -2 / +2 shifts on
-// the body / heading / code groups, with a 9 px floor on the
-// meta tier (INV-8). Spec: docs/specs/ANTS-1238.md § 2.f.
+// the body / heading / code groups, with an 11 px floor on the
+// meta + label tier (INV-8; raised from 9 px by ANTS-2211). Spec:
+// docs/specs/ANTS-1238.md § 2.f.
 //
 // Field naming mirrors the spec: bodyPx covers `body`,
 // `.rm-summary`, `.rm-state`, `.rm-section-toggle`,
@@ -140,8 +141,8 @@ constexpr KindEntry kKinds[] = {
 // tier). h1Px..h4Px cover the four heading levels. codePx
 // covers `code`, `.rm-toggle`, `.rm-id`, `td`, `th`. metaPx
 // covers `.rm-kind`, `.rm-section-counts`, `.rm-parent`,
-// `.rm-date`. labelPx is `.rm-state-label` (one step below
-// metaPx, with the floor applying first). Vertical padding
+// `.rm-date`. labelPx is `.rm-state-label`; at Compact it shares the
+// 11 px floor with metaPx (ANTS-2211). Vertical padding
 // scales: pMargin is `p` `margin:Npx 0`; hMarginTop /
 // hMarginBottom are h1-h4 `margin:Tpx 0 Bpx 0`; cardPaddingY /
 // cardPaddingX are `.rm-card` `padding:Ypx Xpx`; cardMargin
@@ -161,9 +162,10 @@ struct DensityTier {
     int bodyFirstMarginTop;
 };
 constexpr DensityTier kDensityTable[3] = {
-    // Compact: -2 px tier with 9 px floor on label + meta groups.
+    // Compact: -2 px tier; label + meta groups floored at 11 px (ANTS-2211,
+    // raised from 9 px for readability).
     {/*bodyPx*/11, /*h1Px*/14, /*h2Px*/11, /*h3Px*/10, /*h4Px*/10,
-     /*codePx*/10, /*metaPx*/9, /*labelPx*/9,
+     /*codePx*/10, /*metaPx*/11, /*labelPx*/11,
      /*pMargin*/1, /*hMarginTop*/2, /*hMarginBottom*/1,
      /*cardPaddingY*/2, /*cardPaddingX*/6, /*cardMargin*/1,
      /*bodyFirstPaddingTop*/2, /*bodyFirstMarginTop*/1},

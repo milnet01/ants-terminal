@@ -9466,11 +9466,12 @@ indie-review finding.
   Lanes: mcp, threading.
   Source: in-session-2026-06-15 (threading survey).
 
-- 💭 [ANTS-2211] **Roadmap dialog Compact-density font floor (9 px) vs readability — revisit ANTS-1238 INV-8.**
+- ✅ [ANTS-2211] **Roadmap dialog Compact-density font floor (9 px) vs readability — revisit ANTS-1238 INV-8.**
   Deferred half of ANTS-1350 (lane-6 L-2). The Compact density tier emits 9 px on .rm-state-label / .rm-kind / .rm-section-counts. This is NOT an accidental value: ANTS-1238 INV-8 deliberately sets a 9 px floor on the label+meta groups (kDensityTable Compact row, roadmapdialog.cpp). Raising it would change INV-8 and likely break ANTS-1238's density tests, and WCAG 2.2 does not actually mandate a fixed px minimum (1.4.4 is about resize-to-200% / reflow, which a px font in a QTextBrowser permits). So this needs a design decision + an ANTS-1238 spec amendment, not a silent floor bump. Options: (a) lift Compact meta/label floor to 10-11 px and update INV-8 + tests; (b) keep 9 px and rely on the Comfortable/Cozy tiers + app zoom for low-vision users; (c) make the floor configurable. Tab-order half (L-1) shipped under ANTS-1350.
   **Layman:** The most compact Roadmap view uses very small 9px text for the meta/label tier; decide whether to raise that minimum for readability.
   Kind: accessibility.
   Source: split from ANTS-1350 L-2 (in-session 2026-06-27).
+  Resolved (2026-06-27, user decision): bumped the Compact-density meta/label floor 9px → 11px (kDensityTable Compact row: metaPx/labelPx 9→11) for readability. ANTS-1238 INV-8 amended (9px floor → 11px meta/label, 10px absolute) in spec + code comments. roadmap_density test sentinel migrated from the now-absent `font-size:9px` to the Compact-unique `h1{font-size:14px;}`. RoadmapDensity.Main green. Note: Compact .rm-state-label (11px) now slightly exceeds Cozy's (10px) — accepted at the user's instruction.
 
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
