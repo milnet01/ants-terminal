@@ -36,6 +36,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **`read_region` symbol-mode returns a struct/class/union's full body (ANTS-2222).**
+  Asking for an aggregate by name used to return only its declaration line (the flat outline ends it at the first member); it now brace-matches to the closing brace and returns the whole body. A namespace (also tagged kind class) still resolves to its head — use line mode. From DOOM_Ants cross-session MCP feedback.
+
 - ****Roadmap dialog (Cozy density, the default)** — the status / kind / section-count labels are now 12px (was 10–11px), keeping a readable Compact (11px) < Cozy (12px) < Comfortable (13px) ladder.** (ANTS-2211)
 
 - ****Roadmap dialog (Compact density)** — the smallest text (status / kind / section-count labels) is now 11px instead of 9px, for readability.** (ANTS-2211)

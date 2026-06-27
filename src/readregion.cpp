@@ -35,6 +35,54 @@ struct SymRange {
     int  end        = 0;
     int  matchCount = 0;
 };
+
+// ANTS-2222 — brace-balanced scan from an aggregate's declaration line to its
+// matching closing brace. Returns the 1-based closing-brace line, or 0 if no
+// balanced close is found (caller keeps the outline-derived fallback). Skips
+// braces inside // and /* */ comments and "…"/'…' literals (heuristic, the
+// same altitude as file_outline).
+int aggregateEndLine(const QString &absPath, int startLine) {
+    QFile f(absPath);
+    if (!f.open(QIODevice::ReadOnly)) return 0;
+    int lineNo = 0, depth = 0;
+    bool seenOpen = false, inBlockComment = false;
+    while (!f.atEnd()) {
+        const QByteArray raw = f.readLine();
+        ++lineNo;
+        if (lineNo < startLine) continue;
+        const QString line = QString::fromUtf8(raw);
+        bool inString = false, inChar = false;
+        for (int i = 0; i < line.size(); ++i) {
+            const QChar c = line.at(i);
+            const QChar n = (i + 1 < line.size()) ? line.at(i + 1) : QChar();
+            if (inBlockComment) {
+                if (c == QLatin1Char('*') && n == QLatin1Char('/')) { inBlockComment = false; ++i; }
+                continue;
+            }
+            if (inString) {
+                if (c == QLatin1Char('\\')) ++i;
+                else if (c == QLatin1Char('"')) inString = false;
+                continue;
+            }
+            if (inChar) {
+                if (c == QLatin1Char('\\')) ++i;
+                else if (c == QLatin1Char('\'')) inChar = false;
+                continue;
+            }
+            if (c == QLatin1Char('/') && n == QLatin1Char('/')) break;  // line comment
+            if (c == QLatin1Char('/') && n == QLatin1Char('*')) { inBlockComment = true; ++i; continue; }
+            if (c == QLatin1Char('"'))  { inString = true; continue; }
+            if (c == QLatin1Char('\'')) { inChar = true; continue; }
+            if (c == QLatin1Char('{')) { ++depth; seenOpen = true; }
+            else if (c == QLatin1Char('}')) {
+                if (--depth <= 0 && seenOpen) return lineNo;
+            }
+        }
+        if (lineNo - startLine > 200000) break;  // defensive bound
+    }
+    return 0;
+}
+
 SymRange resolveSymbol(const QString &absPath, const QString &name) {
     SymRange r;
     // maxSymbols is hard-clamped to kMaxSymbolsCap (1000) inside compute;
@@ -52,11 +100,25 @@ SymRange resolveSymbol(const QString &absPath, const QString &name) {
     }
     if (firstIdx < 0) return r;  // not found
     r.found = true;
-    r.start = syms.at(firstIdx).toObject().value(QStringLiteral("line")).toInt();
-    if (firstIdx + 1 < syms.size())
-        r.end = syms.at(firstIdx + 1).toObject().value(QStringLiteral("line")).toInt() - 1;
-    else
-        r.end = INT_MAX;  // to EOF
+    const QJsonObject symObj = syms.at(firstIdx).toObject();
+    r.start = symObj.value(QStringLiteral("line")).toInt();
+    const int outlineEnd = (firstIdx + 1 < syms.size())
+        ? syms.at(firstIdx + 1).toObject().value(QStringLiteral("line")).toInt() - 1
+        : INT_MAX;  // to EOF
+    // ANTS-2222 — aggregate symbols (struct/class/union) get their FULL body.
+    // The flat outline's "next entry" for a struct is its first member, so the
+    // outline-derived end stops at the first field. Brace-match to the closing
+    // brace instead. file_outline tags struct/class/namespace all as kind
+    // "class"; the signature keyword distinguishes them — namespace is excluded
+    // (its body can span the whole file, not a quotable unit).
+    const QString kind = symObj.value(QStringLiteral("kind")).toString();
+    const QString sig  = symObj.value(QStringLiteral("signature")).toString().trimmed();
+    const bool isAggregate = kind == QLatin1String("class") &&
+        (sig.startsWith(QLatin1String("struct")) ||
+         sig.startsWith(QLatin1String("class"))  ||
+         sig.startsWith(QLatin1String("union")));
+    const int braceEnd = isAggregate ? aggregateEndLine(absPath, r.start) : 0;
+    r.end = (braceEnd >= r.start) ? braceEnd : outlineEnd;
     if (r.end < r.start) r.end = r.start;
     return r;
 }

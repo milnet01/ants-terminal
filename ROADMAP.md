@@ -8647,6 +8647,42 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: remotecontrol, claudeintegration.
   Source: in-session 2026-06-27 (hit while fixing ANTS-1670 M2).
 
+- 📋 [ANTS-2219] **`read_regions` MCP verb — batched multi-selector read (read-side mirror of `apply_edits`).**
+  Contributor (DOOM path-tracer session) issued ~8 separate read_region/file_outline/Read calls to assemble one mental model for a feature. Add `read_regions(items:[{path, symbol} | {path, start_line, end_line}])` returning an array of slices in one call — the read-side mirror of apply_edits' batched writes (and the filesystem server's read_multiple_files, but symbol-aware + project-rooted). Per-item `etag_match` so unchanged slices 304 individually; one `max_bytes` budget across the set. Collapses "outline → read the 6 interesting symbols" from 7 calls to 2 — the single biggest call-count sink in an implementation session. Highest-value of the S1-S5 set; new verb so needs the full mcp-tools.md checklist (schema, caller_cwd contract, wrap, ETag, refusal codes, test).
+  **Layman:** Let Claude fetch several code snippets in one request instead of one call each — fewer round-trips, fewer tokens.
+  Kind: feature.
+  Lanes: remotecontrol.
+  Source: DOOM_Ants feedback S1 (2026-06-27 2nd session).
+
+- 📋 [ANTS-2220] **`workspace_search` `enclosing_symbol` — add each match's enclosing function/symbol.**
+  After a `workspace_search` hit, the usual next question is "which function does this live in?" (def site vs teardown vs per-frame rebuild), today answered with a follow-up file_outline. Add opt-in `enclosing_symbol:true` that annotates each match with `{enclosing:"Foo::bar"}`, reusing the outline symbol-range map the server already builds. Pairs with the existing `context` window. Folds the most common post-search orientation step into the search — the way `find_definition include_body` folded the post-find read in.
+  **Layman:** When Claude searches the code, also tell it which function each result is inside, so it doesn't need a second lookup.
+  Kind: enhancement.
+  Lanes: remotecontrol.
+  Source: DOOM_Ants feedback S2 (2026-06-27 2nd session).
+
+- 📋 [ANTS-2221] **`read_region` markdown `section` selector — read a heading's body by slug.**
+  Reading a spec's §4.2 today means file_outline (headings + line numbers) then hand-computing a start_line/end_line range. For `.md`, add a `section:"4-2-emission-model"` selector (the same slug file_outline already emits for headings) returning that heading's body up to the next same-or-higher-level heading — the markdown analogue of symbol-mode for code. Removes the outline→line-arithmetic→read dance for every spec/ADR section read.
+  **Layman:** Let Claude ask for one section of a doc by name instead of working out its line numbers first.
+  Kind: enhancement.
+  Lanes: remotecontrol.
+  Source: DOOM_Ants feedback S3 (2026-06-27 2nd session).
+
+- ✅ [ANTS-2222] **`read_region` symbol-mode returns the full body for aggregates (struct/class/enum/union).**
+  read_region symbol-mode "stops at a class's first nested symbol" (its own note), so a struct/class/enum body can't be fetched by name — the contributor read a whole 217-line header instead. When the resolved symbol's kind is an aggregate (struct/class/enum/union), extend the slice to its matching closing brace (`}`/`};`) via the same brace-balance the multi-line-signature fix (ANTS-2212) already added for functions, rather than stopping at the next outline entry. Most surgical of the S1-S5 set.
+  **Layman:** When Claude asks for a struct or class by name, give it the whole thing, not just the first line.
+  Kind: enhancement.
+  Lanes: remotecontrol.
+  Source: DOOM_Ants feedback S4 (2026-06-27 2nd session).
+  Resolved (2026-06-27): read_region symbol-mode now brace-matches struct/class/union aggregates to their full body instead of stopping at the first member. resolveSymbol (readregion.cpp) detects the aggregate via the outline kind ("class") + signature keyword (struct/class/union — namespace excluded, its body can span the whole file) and a new aggregateEndLine() brace-balanced scan (skips //, /* */, "…"/'…'). Default-behavior fix, no new arg. Tests: tests/features/read_region_aggregate_body (FullBody / NestedBracesBalanced / FunctionUnaffected) — 19/19 read_region+file_outline green. Tool description + docs/specs/ANTS-2021.md synced. Limitation: anonymous typedef structs depend on file_outline tagging (out of scope). DOOM_Ants feedback S4.
+
+- 📋 [ANTS-2223] **`file_outline` multi-path — outline a header + impl + consumer in one call.**
+  Subsystem work spans a header + its impl + a consumer; today each is a separate file_outline call. Accept `paths:[...]` and return a `{path → symbols}` map in one call, with the existing per-file `etag`s in an array so each file still 304s independently. Composes with S1 (read_regions): outline the subsystem, then batch-read the interesting symbols. Same round-trip win as S1 on the outline side.
+  **Layman:** Let Claude get the structure of several related files at once instead of one call per file.
+  Kind: enhancement.
+  Lanes: remotecontrol.
+  Source: DOOM_Ants feedback S5 (2026-06-27 2nd session).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
