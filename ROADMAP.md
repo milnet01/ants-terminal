@@ -8640,6 +8640,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-06-26 /audit run.
 
+- 📋 [ANTS-2218] **Ants MCP read tools escape envelope-tag literals in returned source — agents editing wrap code see sentinels, not bytes.**
+  `read_region` / `file_outline` / `workspace_search` wrap returned file content in the `<ants_mcp_data>` envelope and neutralise literal envelope close-tags inside it (correct, to protect the envelope). But when the file being read IS the `wrapMcpData` scrubber (`claudeintegration.cpp`), the returned lines render as no-op `replace(\"<sentinel/>\", \"<sentinel/>\")` calls and a wrong close tag — an agent constructing an `Edit`/`apply_edits` from that output would corrupt the file. This session it forced a native-Read fallback to obtain the true bytes. Fix options: a reversible/documented escaping the agent can invert, or a per-call `raw` mode that round-trips source manipulating the envelope tags faithfully (apply_edits matching is already byte-exact server-side; only the read display is lossy).
+  **Layman:** When Claude reads the very code that builds Ants' data-wrapper tags, the reading tool hides the real tag text to protect its own output — so Claude sees doctored lines and could corrupt the file if it edits from them.
+  Kind: fix.
+  Lanes: remotecontrol, claudeintegration.
+  Source: in-session 2026-06-27 (hit while fixing ANTS-1670 M2).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
@@ -11309,14 +11316,31 @@ gets one CHANGELOG section + one drift cycle + one push.
 - ✅ [ANTS-1667] **terminalgrid M1/M2 — Window-title + OSC 9/777 notification bodies pass C1 control bytes.** Strip `< 0xA0 && >= 0x80` from titles and notification bodies. Lane: terminalgrid.
 - ✅ [ANTS-1668] **terminalgrid M5 — `scrollDown` doesn't shift hyperlinks; clickable spans orphan on reverse-index / IL / RI.** Mirror `scrollUp`'s `std::rotate` block. Lane: terminalgrid.
 - ✅ [ANTS-1669] **claude-statusbar H2 — Bg-task completion uses `contains()` substring match; can false-flip a task whose id is a substring of another running task's id.** Switch to word-boundary regex or drop the fallback. Lane: claude-statusbar.
-- 📋 [ANTS-1670] **claudeintegration M1-M4 — Cold-start gate ordering, `wrapMcpData` open/close-tag tolerance asymmetry, `extractCwdFromTranscript` untrusted-cwd consumption, and per-tick transcript re-parse of up to 4 MiB.** All four are quality-of-implementation tightenings; details in indie-review lane report. Lane: claudeintegration.
-- 📋 [ANTS-1671] **ipc-trust H1/H2/M1-M5 — XDG_RUNTIME_DIR client/server-side resolution divergence; JSON nesting cap + value-size cap on `session_memory`; antshelper `..` substring check; remotecontrol.cpp refusal-envelope drift across 30+ sites; QVariant `_buf` round-trip O(N²); `SO_PEERCRED` skipped on `fd < 0`; slow-loris on client wait-loop.** Each item is a small fix; cluster them in one sweep. Lane: remotecontrol / antshelper.
+- ✅ [ANTS-1670] **claudeintegration M1-M4 — Cold-start gate ordering, `wrapMcpData` open/close-tag tolerance asymmetry, `extractCwdFromTranscript` untrusted-cwd consumption, and per-tick transcript re-parse of up to 4 MiB.** All four are quality-of-implementation tightenings; details in indie-review lane report. Lane: claudeintegration.
+  Resolved (2026-06-27): verified all four against current source. M2 (wrapMcpData open/close tolerance asymmetry) fixed — added a symmetric open-tag scrub mirroring the close-tag regex (claudeintegration.cpp ~9417), with INV-6/INV-7 added to the mcp_wrap_comment_escape feature test (14/14 green). M3 (extractCwdFromTranscript untrusted cwd) fixed — gate the transcript cwd through new isSafeAbsolutePath() (absolute + no `..` traversal + no NUL) before it becomes a process working directory; bad values fall through to decodeProjectPath(). M1 (cold-start gate ordering) and M4 (per-tick 4 MiB re-parse) verified ALREADY-ADDRESSED in current code — M1 by ANTS-1225-INV-2 ordering, M4 mischaracterised (steady state is a 32 KB tail read; 4 MiB is a rare worst-case ceiling).
+- ✅ [ANTS-1671] **ipc-trust H1/H2/M1-M5 — XDG_RUNTIME_DIR client/server-side resolution divergence; JSON nesting cap + value-size cap on `session_memory`; antshelper `..` substring check; remotecontrol.cpp refusal-envelope drift across 30+ sites; QVariant `_buf` round-trip O(N²); `SO_PEERCRED` skipped on `fd < 0`; slow-loris on client wait-loop.** Each item is a small fix; cluster them in one sweep. Lane: remotecontrol / antshelper.
+  Resolved (2026-06-27): verified all seven. M5 (client slow-loris) fixed — added a 10 s cumulative read deadline to the --remote wait loop (remotecontrol.cpp ~10645) so a slow-drip peer under the 1 MiB cap can no longer hang the client. H1 (XDG resolution divergence), M1 (antshelper `..` substring), M4 (SO_PEERCRED on fd<0) verified ALREADY-FIXED in current source (unified defaultSocketPath; per-component check ANTS-1649; fail-closed ANTS-1797). H2 — per-value 16 KiB cap present; nesting-depth bounded by Qt's QJsonDocument::fromJson DeepNesting guard + the byte cap, no separate engine guard warranted. Residual M2 (refusal-envelope drift, ~40 sites) + M3 (`_buf` O(N²) round-trip) folded out to ANTS-2216.
 - ✅ [ANTS-1672] **mcp-review-engines H1 — Ledger load per brief assembly is re-parsed N times for N lanes.** Cache by `(projectPath, mtime)` inside `falseposledger.cpp`, or hoist load to the dispatch handler. Lane: mcp-engines.
   Shipped 2026-05-29. Added function-static QHash<path, {mtime_s, entries}> cache to loadEntries() in falseposledger.cpp. Eliminates 2 extra disk reads on each indie-review dispatch (3 call sites → 1 parse per session).
 - ✅ [ANTS-1673] **mcp-review-engines M1 — `stripLineBreaks` doesn't strip C0 controls; `lane`/`topic`/`logged_by` can carry ESC sequences into brief headers outside the data fence.** Strip `[\x00-\x1F\x7F]` in `stripLineBreaks`. Lane: mcp-engines.
 - ✅ [ANTS-1674] **mcp-review-engines M3 — `extractCitedCodePaths` slurps every cited doc body unbounded; ROADMAP.md (~600 KB today) is read N times per cold-eyes brief.** Cache `slurpUtf8` by `(absPath, mtime)` using a 32-entry LRU. Lane: mcp-engines.
   Shipped 2026-05-29. Added mtime-keyed QHash cache to slurpUtf8() in coldeyesengine, indiereviewengine, briefdispatch, and debtsweepengine. ROADMAP.md no longer read N times per N-lane brief assembly.
-- 📋 [ANTS-1675] **audit-pipeline M1-M4 — Dedup 16-char legacy hash band; `noiseRatePct` always-0 zombie field; QProcess lambda-capture lifetime tangle; 32 MiB `compile_commands.json` cap allocates 100+ MB transient.** Lane: audit.
+- ✅ [ANTS-1675] **audit-pipeline M1-M4 — Dedup 16-char legacy hash band; `noiseRatePct` always-0 zombie field; QProcess lambda-capture lifetime tangle; 32 MiB `compile_commands.json` cap allocates 100+ MB transient.** Lane: audit.
+  Resolved (2026-06-27): verified all four. M1 (16-char dedup band) ALREADY-FIXED — live key is 24 hex; the 16-char path is an intentional legacy-suppression back-compat shim, not a mis-dedup hazard. M2 (noiseRatePct zombie) ALREADY-FIXED — genuinely computed (auditrunner.cpp:1695) and consumed (mainwindow.cpp:4607), no dead copy. M3 (QProcess lambda lifetime) ALREADY-FIXED — process captured by-value as shared_ptr + synchronous loop.exec() make every capture lifetime-safe. M4 (compile_commands.json transient) is the only still-present item; folded out to ANTS-2217 (needs a streaming scan, not a cap reduction which would reject valid large DBs).
+
+- 📋 [ANTS-2216] **IPC hardening residual from ANTS-1671 — refusal-envelope drift + `_buf` O(N²) round-trip.**
+  Fold-out of the two still-present sub-issues from ANTS-1671 (the rest were already fixed or bounded). M2 — `remotecontrol.cpp` builds `{ok:false, code, error}` refusal envelopes inconsistently across ~40 hand-rolled sites plus three per-family helpers (`csErr` ~11470, `smErr` ~15908, `subsystemErr` ~10681); introduce one shared `rcRefuse(code, msg, extra={})` and migrate the families + hand-rolled sites (large mechanical sweep — stage across commits). M3 — the Kitty rc_protocol `readyRead` (`remotecontrol.cpp` ~1593-1611) and its MCP twin in `claudeintegration.cpp` round-trip the accumulation buffer through `QLocalSocket::property("_buf")` every readyRead (copy-out → append → copy-in), an O(N²) accumulate if a request arrives in many small reads. Bounded at 1 MiB and connections are one-shot, so low severity; move both twins to a member `QHash<QLocalSocket*, QByteArray>` with disconnect-time cleanup.
+  **Layman:** Two leftover code-tidy jobs from a security sweep: make all the Claude-link error replies use one shared shape, and stop a socket buffer from copying itself over and over.
+  Kind: refactor.
+  Lanes: remotecontrol, claudeintegration.
+  Source: ANTS-1671 fold-out (verified in-session 2026-06-27).
+
+- 📋 [ANTS-2217] **Bound the `compile_commands.json` parse transient in audit validation (ANTS-1675 M4).**
+  `validateCompileCommandsImpl` (`auditrunner.cpp` ~1080-1097) reads up to 32 MiB of raw bytes then builds a full `QJsonDocument` DOM in the same scope, so `raw` and the DOM are co-resident and a string-heavy max-size file peaks at ~100+ MB transient. Simply lowering `kCompileCommandsMaxBytes` would reject legitimately large monorepo databases (the 50k-entry cap implies ~32 MiB is a valid size), so the real fix is an iterative/streaming scan that enumerates only the `-I` / include arguments without retaining the whole DOM. Lowest-priority of the ANTS-1675 set; M1/M2/M3 were verified already-fixed.
+  **Layman:** When checking a project's build database, the audit step can briefly use 100+ MB of memory for a big file; make it scan the file leanly instead.
+  Kind: perf.
+  Lanes: auditrunner.
+  Source: ANTS-1675 fold-out (verified in-session 2026-06-27).
 
 ### 🏗 Tier 3 — structural
 
@@ -23339,6 +23363,19 @@ contributors don't duplicate research.
   **Layman:** If a project's roadmap is in a layout the app can't turn into cards, the Claude MCP tool still lists the section headers, but the app just shows empty sections with no explanation.
   Kind: enhancement.
   Source: in-session-2026-05-20 (roadmap MCP-vs-dialog parity audit).
+
+- 💭 [ANTS-2215] **Roadmap dialog layman-usability overhaul (future — user flagged 2026-06-27).**
+  User noted the Roadmap dialog "still isn't very usable by a layman but it is
+  better than it was" and intends to target it again — explicitly much later, not
+  now. Placeholder to capture the intent so it isn't lost. When picked up: treat
+  as a UX pass (plain-language labels/filters, clearer preset meaning, less
+  jargon on the cards, discoverability of search/filter/density) rather than
+  piecemeal tweaks; gather the user's specific pain points first. Recent
+  incremental fixes: ANTS-1350 (deterministic tab order), ANTS-2211 (Compact 11px
+  / Cozy 12px meta-label readability).
+  **Layman:** The roadmap window is better than it was but still not easy for a non-programmer to use; revisit its UX as a dedicated pass later.
+  Kind: ux.
+  Source: user-request-2026-06-27 (deferred: "much later").
 
 ## How to propose a roadmap item
 

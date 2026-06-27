@@ -9414,6 +9414,20 @@ QString ClaudeIntegration::wrapMcpData(const QString &toolName,
         QRegularExpression::CaseInsensitiveOption);
     sanitised.replace(closeTagVariantRe,
                       QStringLiteral("<ants_mcp_data_escaped/>"));
+    // ANTS-1670 M2 — symmetric open-tag scrub. The close-tag breakout
+    // above is only half the wrapper: a payload carrying a literal
+    // `<ants_mcp_data …>` open tag (or a case/whitespace variant) could
+    // spoof a nested wrapper-open for a consuming assistant that matches
+    // the open tag tolerantly, desyncing the real frame. Neutralise the
+    // open form too. (The `\b` after the tag name leaves the
+    // `<ants_mcp_data_escaped/>` sentinel emitted just above untouched:
+    // `data` is followed by `_`, itself a word char, so no word boundary
+    // exists there and the sentinel is never re-matched.)
+    static const QRegularExpression openTagVariantRe(
+        QStringLiteral(R"(<\s*ants_mcp_data\b[^>]*>)"),
+        QRegularExpression::CaseInsensitiveOption);
+    sanitised.replace(openTagVariantRe,
+                      QStringLiteral("<ants_mcp_data_escaped/>"));
     // ANTS-1996 — neutralise XML/HTML comment markers. The close-tag
     // scrub above is defeated by a comment desync: an unterminated
     // `<!--` in the payload swallows the real `</ants_mcp_data>` from a
@@ -10079,6 +10093,18 @@ QString ClaudeIntegration::encodeProjectPath(const QString &path) {
     return encoded;
 }
 
+// ANTS-1670 M3 — an absolute path whose components contain no `..`
+// traversal (and no NUL byte). Used to gate the untrusted transcript cwd
+// before it is consumed as a process working directory / project root.
+static bool isSafeAbsolutePath(const QString &p) {
+    if (!QDir::isAbsolutePath(p)) return false;
+    if (p.contains(QChar(u'\0'))) return false;
+    const QStringList comps = p.split(QLatin1Char('/'));
+    for (const QString &c : comps)
+        if (c == QLatin1String("..")) return false;
+    return true;
+}
+
 // Extract the real project path from a transcript's first user message cwd field
 static QString extractCwdFromTranscript(const QString &transcriptPath) {
     QFile file(transcriptPath);
@@ -10101,8 +10127,16 @@ static QString extractCwdFromTranscript(const QString &transcriptPath) {
         if (!doc.isObject()) continue;
         QJsonObject obj = doc.object();
         // user messages and some other types carry cwd
-        QString cwd = obj.value("cwd").toString();
-        if (!cwd.isEmpty()) return cwd;
+        const QString cwd = obj.value("cwd").toString();
+        // ANTS-1670 M3 — the transcript is attacker-influenceable (a
+        // corrupted or hand-crafted .jsonl), and this cwd flows on to
+        // launch/resume a `claude` process working directory and a project
+        // root. Accept only an absolute path with no `..` traversal; on a
+        // bad value fall through to the caller's decodeProjectPath()
+        // fallback. (Existence is deliberately NOT required — a validly
+        // recorded project may have moved; a stale dir just fails the later
+        // launch harmlessly, whereas a relative/`..` value is never valid.)
+        if (!cwd.isEmpty() && isSafeAbsolutePath(cwd)) return cwd;
     }
     return {};
 }

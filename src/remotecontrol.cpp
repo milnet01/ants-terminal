@@ -10642,6 +10642,15 @@ int RemoteControl::runClient(const QString &command,
     // (set $ANTS_REMOTE_SOCKET to its own listener) and reply with a
     // multi-hundred-MB body that saturates this client process.
     constexpr qint64 kMaxResponseBytes = 1 * 1024 * 1024;
+    // ANTS-1671 M5 — overall read deadline. The per-iteration 2 s timeout
+    // resets every loop, so a hostile peer (one that won $ANTS_REMOTE_SOCKET
+    // and answers in this client's place) could dribble one byte just under
+    // every 2 s and tie this process up indefinitely while staying under the
+    // 1 MiB byte cap. The byte cap bounds total data, not total time — so
+    // bound the cumulative wait as well.
+    constexpr qint64 kOverallTimeoutMs = 10 * 1000;
+    const qint64 deadline =
+        QDateTime::currentMSecsSinceEpoch() + kOverallTimeoutMs;
     QByteArray resp;
     while (socket.waitForReadyRead(2000)) {
         resp += socket.readAll();
@@ -10651,6 +10660,13 @@ int RemoteControl::runClient(const QString &command,
                     "ants-terminal --remote: response exceeds %lld bytes; "
                     "aborting (suspect socket hijack)\n",
                     static_cast<long long>(kMaxResponseBytes));
+            return 1;
+        }
+        if (QDateTime::currentMSecsSinceEpoch() > deadline) {
+            fprintf(stderr,
+                    "ants-terminal --remote: response timed out after %lld ms; "
+                    "aborting (suspect slow-drip peer)\n",
+                    static_cast<long long>(kOverallTimeoutMs));
             return 1;
         }
     }

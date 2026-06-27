@@ -142,6 +142,15 @@ for security-relevant changes.
 
 ### Security
 
+- **`--remote` client now has an overall read deadline (slow-loris guard) (ANTS-1671).**
+  The per-iteration 2 s timeout on the `--remote` client read loop reset every iteration, so a hostile same-machine peer that won `$ANTS_REMOTE_SOCKET` could dribble bytes under the 1 MiB cap and hang the client forever. A 10 s cumulative deadline now bounds the total wait.
+
+- **Untrusted project path from a Claude transcript is now validated before use (ANTS-1670).**
+  The `cwd` read from a (attacker-influenceable) `.jsonl` transcript is gated through a new absolute-path / no-`..`-traversal / no-NUL check before it becomes the working directory used to launch or resume a `claude` process; a bad value falls back to the safe path decoder.
+
+- **MCP data-wrapper now neutralises a spoofed *open* tag, not just the close tag (ANTS-1670).**
+  `wrapMcpData` already scrubbed a literal `</ants_mcp_data>` (and case/whitespace variants) from payloads; it now scrubs the symmetric `<ants_mcp_data …>` open form too, so attacker-controlled scrollback / commit text can no longer spoof a nested wrapper-open and desync the frame a consuming model sees.
+
 - ****Plugin loader** refuses a second plugin that resolves to an already-loaded name, preventing a silent overwrite via symlinked directories.** (ANTS-1370)
 
 - ****Flatpak shell launch** now runs `flatpak-spawn` with the same pre-fork sanitised environment as the direct path (consistent terminal-variable handling across the sandbox boundary).** (ANTS-1994)
