@@ -18217,6 +18217,39 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: in-session-2026-06-24 (used mode:"bundles" to pick the next bundle; got 173 singletons).
   Resolved (2026-06-24): implemented on main. Reworked buildRoadmapBundlesEnvelope clustering: a denoised clusterTokens set (drops stop-words, len≤2, pure-numeric, file/path/qualified identifiers, and DF>max(8,40%) corpus-common tokens) feeds a length-insensitive edge — ≥2 shared denoised tokens AND (overlap coefficient ≥0.5 OR ≥3 shared OR shared lane) — replacing the union-penalising Jaccard≥0.50 that produced all-singletons. Envelope adds total_bundle_count + bundles_omitted so a truncated response no longer reads as if clustering happened. rcHeadlineJaccard (dup-detector + ✅-sibling check) left unchanged. Docs synced (mcp-behavioural-notes.md, ANTS-1922.md Refined-by). 4 new feature tests (mcp_roadmap_bundles Ants2155*); full test_claude 1199/1199 green.
 
+- 📋 [ANTS-2214] **Ants MCP runs + monitors builds (build_run) — CC supplies the command, Ants executes it and returns parsed results.**
+  Feasible — extends the existing build_status verb (which already parses
+  GCC/clang/cppcheck-2.x output into errors[]/warnings_count and caches to
+  .audit_cache/build.json) with the missing "execute + monitor" front half.
+  CC supplies the exact command; Ants runs it in caller_cwd via QProcess,
+  monitors to completion, parses stdout+stderr through build_status's parser,
+  and returns {exit_code, errors[], warnings_count, duration_ms} + a head of
+  the log (full log via the ANTS-2094 offload/read_spill pattern, never the
+  whole 10k-line stream into CC context). That token win is the whole point
+  and matches the project focus.
+  
+  Design / open questions to settle before building:
+  - Async model: builds take minutes. Either (a) blocking with a wall-clock
+    cap, run OFF the socket thread (ANTS-2144 pattern) so concurrent verbs
+    aren't starved; or (b) start->poll: build_run returns a handle, a
+    build_poll/build_status reports running/%/done (MCP progress
+    notifications are thin — ANTS-1443). Lean start->poll or blocking+cap.
+  - Resource safety (hard user constraint): MUST run exactly CC's command,
+    never inject -j (earlyoom history; JOB_POOLS lives in the command CC
+    sends). Optionally wrap in the tools/safe-build.sh systemd-user scope
+    (MemoryMax/MemorySwapMax) so a runaway build is killed, not the session.
+  - Security/trust: arbitrary command execution is a real escalation over
+    today's read-mostly + structured-write surface. The socket is
+    SO_PEERCRED UID-gated (same-UID trust, ADR-0004) so it's "as trusted as
+    the user," but still gate behind a Settings toggle (default OFF) and/or a
+    command allowlist (cmake/ninja/make/ctest only), confined to caller_cwd,
+    under the master claude.mcp_enabled gate.
+  - Verb shape: new build_run vs build_status op:"run". Needs a spec +
+    /cold-eyes loop before implementation.
+  **Layman:** Let Claude hand Ants a build command; Ants runs it, watches it finish, and reports just the errors/warnings — instead of Claude shelling out and streaming a 10,000-line log into its context.
+  Kind: feature.
+  Source: user-request-2026-06-27.
+
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
 - 📋 **Trust-model gaps in IPC sockets.** Two independent
