@@ -8718,6 +8718,14 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: remotecontrol, claudeintegration.
   Source: user-request-2026-06-27.
 
+- ✅ [ANTS-2228] **file_outline registers `typedef struct TAG_s { … } ALIAS_t;` aggregates (the dominant C struct idiom).**
+  file_outline's cpp scanner (rxCppType `^(class|struct|namespace)\s+`) catches a bare `struct line_s;` FORWARD DECL but skips the `typedef struct NAME_s { …body… } NAME_t;` DEFINITION — the standard C aggregate idiom. DOOM repro: file_outline on linuxdoom-1.10/r_defs.h returns exactly ONE symbol (the forward decl) while the header defines ~12 core engine structs (vertex_t, sector_t, line_t, subsector_t, seg_t [anonymous-struct alias], node_t…). read_region symbol:"subsector_t" / "subsector_s" / "seg_t" → symbol_not_found, so ANTS-2222's brace-matched aggregate-body read is UNREACHABLE for C structs — the very declarations one most wants to quote during renderer work. Distinct from ANTS-2159 (cpp FUNCTION extraction) — this is the STRUCT/typedef path. Fix: register both `typedef struct TAG_s { … } ALIAS_t;` and anonymous `typedef struct { … } ALIAS_t;` as aggregate symbols, keyed by BOTH the tag and the alias (the alias sits on the closing `} ALIAS_t;` line, so the scanner records a pending-typedef at the opening line and emits when the matching close is reached, using the existing braceDepth bookkeeping). Then ANTS-2222's aggregate-body slice resolves either name. Kind: fix. Lanes: fileoutline, readregion.
+  **Layman:** Let Claude pull one C struct definition by name instead of reading the whole header to find it.
+  Kind: fix.
+  Lanes: fileoutline, readregion.
+  Source: DOOM_Ants feedback 2026-06-27 (4a/4b-i bring-up).
+  Resolved (2026-06-27): file_outline's cpp scanner now registers `typedef struct TAG_s { … } ALIAS_t;` (and anonymous `typedef struct { … } ALIAS_t;`) as aggregate symbols — a pending-typedef recorded at the opening line emits at the matching close via the existing braceDepth bookkeeping, keyed by BOTH alias and tag with a signature starting "struct" so ANTS-2222's aggregate-body brace-match reads the full struct. read_region symbol:"subsector_t"/"subsector_s" now resolve. Forward decls unaffected. Regression test: file_outline_typedef_struct TS-1..5.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,

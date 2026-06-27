@@ -43,6 +43,29 @@ const QRegularExpression &rxCppType() {
     }();
     return rx;
 }
+// ANTS-2228 — opening line of the dominant C aggregate idiom
+// `typedef struct [TAG] {` (brace opens on this line). Group 1 = optional
+// struct tag (absent for an anonymous `typedef struct { … } ALIAS;`). The
+// alias sits on the matching close line, captured by rxCppTypedefStructClose.
+// Distinct from rxCppType, which only catches a bare `struct X` / forward decl.
+const QRegularExpression &rxCppTypedefStructOpen() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(R"(^typedef\s+struct\s+(\w+)?\s*\{)"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
+// ANTS-2228 — `} ALIAS;` (or `} ALIAS, *PTR;`) closing line of a
+// typedef-struct; group 1 = the typedef alias.
+const QRegularExpression &rxCppTypedefStructClose() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(R"(\}\s*(\w+)\s*[;,])"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
 const QRegularExpression &rxCppFunc() {
     // Possessive `++` quantifiers bound backtracking on adversarial
     // input. The PCRE2 engine emits a single linear scan.
@@ -405,6 +428,12 @@ QJsonObject compute(const QString &absPath,
     int funcArgStartLine = 0;       // 1-based line where the name sits
     QString funcArgName;           // captured function name
     QString funcArgSig;            // accumulated header text → signature
+    // ANTS-2228 — typedef-struct capture. A `typedef struct TAG { … } ALIAS;`
+    // opens here and emits at its START line when the brace balances back,
+    // keyed by BOTH the tag and the alias so read_region symbol-mode (and
+    // ANTS-2222's aggregate-body slice) resolve either.
+    struct PendingTypedef { int startLine; QString tag; int depthAtOpen; };
+    QVector<PendingTypedef> pendingTypedefs;
 
     while (!f.atEnd()) {
         const QByteArray rawLine = f.readLine();
@@ -536,6 +565,12 @@ QJsonObject compute(const QString &absPath,
                     inFuncArgs = false;
                     funcArgSig.clear();
                 }
+            } else if ((m = rxCppTypedefStructOpen().match(line)).hasMatch()) {
+                // ANTS-2228 — `typedef struct [TAG] {`. Record the opening;
+                // the symbol(s) emit at the matching close line (where the
+                // alias lives). `braceDepth` here is the pre-delta scope depth
+                // this struct body sits above.
+                pendingTypedefs.append({totalLines, m.captured(1), braceDepth});
             } else if ((m = rxCppType().match(line)).hasMatch()) {
                 offer("class", m.captured(2), line);   // type/namespace body — never code
             } else if (!inFuncBody && (m = rxCppMember().match(line)).hasMatch()) {
@@ -595,6 +630,27 @@ QJsonObject compute(const QString &absPath,
                     funcOpenAtDepth = -1;
                     funcBodyEntered = false;
                 }
+            }
+
+            // ANTS-2228 — close pending typedef-struct(s) whose brace balanced
+            // back on this line. Emit at the recorded start line, keyed by the
+            // alias (from `} ALIAS;`) and, when distinct, the tag. The
+            // signature begins "struct" so resolveSymbol's aggregate-body path
+            // (ANTS-2222) reads the FULL body via brace-match.
+            while (!pendingTypedefs.isEmpty() &&
+                   braceDepth <= pendingTypedefs.last().depthAtOpen) {
+                const PendingTypedef pt = pendingTypedefs.takeLast();
+                const QRegularExpressionMatch cm =
+                    rxCppTypedefStructClose().match(line);
+                const QString alias =
+                    cm.hasMatch() ? cm.captured(1) : QString();
+                const QString sig = pt.tag.isEmpty()
+                    ? QStringLiteral("struct")
+                    : (QStringLiteral("struct ") + pt.tag);
+                if (!alias.isEmpty())
+                    offerAt(pt.startLine, "class", alias, sig);
+                if (!pt.tag.isEmpty() && pt.tag != alias)
+                    offerAt(pt.startLine, "class", pt.tag, sig);
             }
         } else if (effective == Mode::Py) {
             QRegularExpressionMatch m = rxPy().match(line);

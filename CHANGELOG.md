@@ -90,6 +90,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **file_outline registers `typedef struct TAG_s { … } ALIAS_t;` aggregates (the dominant C struct idiom).** (ANTS-2228)
+  Let Claude pull one C struct definition by name instead of reading the whole header to find it.
+
 - **`roadmap_query section=<slug>` misses `#### Pass N.M` bullets nested under a prose-shaped `###`.** (ANTS-2225)
   When Claude asks for the to-do items in one section, don't silently skip the ones tucked under a mostly-text heading.
 
