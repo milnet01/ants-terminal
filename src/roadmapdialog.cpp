@@ -129,8 +129,10 @@ constexpr KindEntry kKinds[] = {
 
 // ANTS-1238 — per-density-tier CSS px values + vertical-padding
 // scale, looked up by renderCardsHtml when building the embedded
-// `<style>` block. Cozy column preserves pre-1238 byte-equal
-// rendering (INV-1); Compact / Comfortable are -2 / +2 shifts on
+// `<style>` block. Cozy is the default tier (INV-1 locks default==Cozy;
+// ANTS-2211 raised its meta/label tier to 12 px, so Cozy is no longer
+// byte-equal to the pre-1238 renderer for those classes). Compact /
+// Comfortable are -2 / +2 shifts on
 // the body / heading / code groups, with an 11 px floor on the
 // meta + label tier (INV-8; raised from 9 px by ANTS-2211). Spec:
 // docs/specs/ANTS-1238.md § 2.f.
@@ -169,9 +171,11 @@ constexpr DensityTier kDensityTable[3] = {
      /*pMargin*/1, /*hMarginTop*/2, /*hMarginBottom*/1,
      /*cardPaddingY*/2, /*cardPaddingX*/6, /*cardMargin*/1,
      /*bodyFirstPaddingTop*/2, /*bodyFirstMarginTop*/1},
-    // Cozy: current default. Byte-equal to pre-1238 renderer.
+    // Cozy: current default. (ANTS-2211 raised the meta + label tier to
+    // 12 px for readability, so Cozy is no longer byte-equal to the
+    // pre-1238 renderer for those two classes; INV-1 default==Cozy holds.)
     {/*bodyPx*/13, /*h1Px*/16, /*h2Px*/13, /*h3Px*/12, /*h4Px*/11,
-     /*codePx*/12, /*metaPx*/11, /*labelPx*/10,
+     /*codePx*/12, /*metaPx*/12, /*labelPx*/12,
      /*pMargin*/3, /*hMarginTop*/4, /*hMarginBottom*/2,
      /*cardPaddingY*/4, /*cardPaddingX*/8, /*cardMargin*/2,
      /*bodyFirstPaddingTop*/4, /*bodyFirstMarginTop*/2},

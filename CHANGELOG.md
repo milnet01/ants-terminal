@@ -36,6 +36,8 @@ for security-relevant changes.
 
 ### Changed
 
+- ****Roadmap dialog (Cozy density, the default)** — the status / kind / section-count labels are now 12px (was 10–11px), keeping a readable Compact (11px) < Cozy (12px) < Comfortable (13px) ladder.** (ANTS-2211)
+
 - ****Roadmap dialog (Compact density)** — the smallest text (status / kind / section-count labels) is now 11px instead of 9px, for readability.** (ANTS-2211)
 
 - ****Status bar** stops polling while the Ants window is in the background — saves battery and scheduler wakeups on laptops.** (ANTS-1363)
