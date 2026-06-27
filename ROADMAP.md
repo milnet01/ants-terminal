@@ -17212,6 +17212,18 @@ server build id so clients can self-diagnose this.
   Source: cross-session-2026-06-25 (DOOM Ants — read-side session, LOW).
   Resolved (2026-06-25): added rcShortBareAltTerms() + a regex_advisory field on cmdWorkspaceSearch's envelope under the isRegex branch. Source-scrape test Ants2181RegexShortBareTermAdvisory.
 
+- ✅ [ANTS-2212] **file_outline / read_region miss C functions with multi-line parameter lists (refines ANTS-2148).**
+  DOOM_Ants reported that on v0.7.98 file_outline omitted emit_wall / clip_poly / emit_cap_poly in r_mesh.c and read_region symbol-mode returned symbol_not_found for them — every missed function had a signature spanning multiple source lines. ANTS-2148 correctly admitted .c files but the C matcher (rxCppFunc/rxCppFuncOpen) required the closing ')' on the opening line, so id-Software/K&R wrapped prototypes were dropped. Fix (fileoutline.cpp): new rxCppFuncHeaderOpen detects `ReturnType name(` with no closing paren on the line; a wrapped-arg collector folds continuation lines until the parens balance (netBraceDelta generalised to tally parens in the same literal/comment-aware pass) and emits the symbol at the header START line so read_region symbol-mode returns the full definition. Test: McpFileOutline.MultiLineSignatureCapture.
+  **Layman:** Functions whose argument list wraps onto several lines (common in older C code like DOOM) were skipped by the file-structure tool; now they're found.
+  Kind: fix.
+  Source: DOOM_Ants feedback 2026-06-26.
+
+- ✅ [ANTS-2213] **SessionStart MCP catalog advertised bare verb names that aren't directly callable.**
+  The orientation prelude (mcporientation.cpp) listed verbs by bare name; a first call with the advertised name failed with 'No such tool available'. Added a one-line note (call each by its full name, e.g. mcp__ants__workspace_search) within the INV-10 ≤1400-byte cap. McpOrientation_Inv10.ScriptOutputByteCap green.
+  **Layman:** The session-start tip listed tools like `workspace_search`, but the real name to call is `mcp__ants__workspace_search`; the first call with the short name failed and wasted a round-trip.
+  Kind: doc-fix.
+  Source: DOOM_Ants feedback 2026-06-27.
+
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 
 A new testing initiative the user requested: give the agent a repeatable way to

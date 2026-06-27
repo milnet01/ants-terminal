@@ -255,6 +255,60 @@ TEST(McpFileOutline, FreeFunctionCapture) {
            "mis-detected as a function symbol";
 }
 
+// ANTS-2148 follow-up (DOOM_Ants feedback 2026-06-26) — a C/C++ function whose
+// PARAMETER LIST wraps across source lines (id-Software / K&R prototypes, e.g.
+// DOOM's emit_wall) must still be outlined, AND resolve to the header's START
+// line so read_region symbol-mode returns the full definition. Pre-fix,
+// rxCppFunc / rxCppFuncOpen required the ')' on the opening line, so these defs
+// were silently dropped (symbol_not_found on read_region).
+TEST(McpFileOutline, MultiLineSignatureCapture) {
+    expect_reset();
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + QStringLiteral("/mesh.c");
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+        f.write(
+            "void push_vert(int x) { }\n"                    // L1 single-line guard
+            "static void emit_wall(int bld, int seg,\n"     // L2 header start, wrapped
+            "                      int texnum, int flags,\n" // L3 continuation
+            "                      int topplane)\n"          // L4 ')' here, '{' next line
+            "{\n"                                            // L5
+            "    return;\n"                                  // L6
+            "}\n"                                            // L7
+            "static int clip_poly(int a,\n"                  // L8 header start, wrapped
+            "                     int c) {\n"                // L9 ')' + '{' same line
+            "    return 0;\n"                                // L10
+            "}\n");                                          // L11
+        f.close();
+    }
+    const QJsonObject out = FileOutline::compute(
+        path, FileOutline::Mode::Cpp, /*includeDocComment=*/false,
+        /*maxSymbols=*/100);
+    ASSERT_TRUE(out.value("ok").toBool());
+    const QJsonArray symbols = out.value("symbols").toArray();
+    auto lineOf = [&](const char *n) -> int {
+        for (const auto &v : symbols)
+            if (v.toObject().value("name").toString() == QLatin1String(n))
+                return v.toObject().value("line").toInt();
+        return -1;
+    };
+    EXPECT_EQ(lineOf("push_vert"), 1)
+        << "single-line function regressed";
+    EXPECT_EQ(lineOf("emit_wall"), 2)
+        << "ANTS-2148: wrapped-signature 'emit_wall' not captured at its header "
+           "start line (read_region symbol-mode would miss the signature)";
+    EXPECT_EQ(lineOf("clip_poly"), 8)
+        << "ANTS-2148: wrapped-signature 'clip_poly' (brace on close line) not "
+           "captured at its header start line";
+    bool hasReturn = false;
+    for (const auto &v : symbols)
+        if (v.toObject().value("name").toString() == QLatin1String("return"))
+            hasReturn = true;
+    EXPECT_FALSE(hasReturn) << "interior 'return' mis-detected as a symbol";
+}
+
 // ANTS-2150 — brace-family generic outline: auto-detection by extension
 // yields the precise language name (rust/go/typescript) and extracts symbols.
 TEST(McpFileOutline, BraceFamilyGenericOutline) {

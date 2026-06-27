@@ -68,6 +68,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- ****SessionStart MCP catalog** now tells you to call each verb by its full `mcp__ants__<name>` — the bare names it listed weren't directly callable.** (ANTS-2213)
+
+- ****`file_outline` / `read_region`** now capture C/C++ functions whose parameter list wraps across multiple lines (id-Software / K&R prototypes) — previously dropped.** (ANTS-2212)
+
 - ****Roadmap dialog** now has a deterministic keyboard tab order through its filters and controls.** (ANTS-1350)
 
 - ****Audit summary** reports an honest suppressed-finding count for semgrep runs instead of always zero.** (ANTS-2123)

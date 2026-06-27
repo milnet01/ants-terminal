@@ -102,6 +102,20 @@ const QRegularExpression &rxCppNameArgs() {
     }();
     return rx;
 }
+// ANTS-2148 follow-up — the OPENING line of a function whose parameter list
+// wraps across source lines: `ReturnType name(` with args that do NOT close on
+// this line (the trailing `[^)]*$` forbids a ')' to end-of-line). rxCppFuncOpen
+// only matched a closed `(args)`; this catches id-Software / K&R prototypes
+// like `static void emit_wall(builder_t* bld, seg_t* seg, ...,` whose ')' sits
+// 2-3 lines down. Control keywords are rejected up front as in the siblings.
+const QRegularExpression &rxCppFuncHeaderOpen() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(R"(^(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else|if|for|while|switch|do|catch)\b)(?:[\w:<>]+[\s*&]+)++(\w+)\s*\([^)]*$)"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
 // ANTS-2159 — a line that is ONLY return-type / modifier tokens (no parens,
 // terminator, brace or `=`): a candidate return type for an old-style
 // definition split across lines. Statement / declaration keywords are
@@ -119,8 +133,9 @@ const QRegularExpression &rxCppTypeOnly() {
 // doesn't drift on `"{"` or `// {`. `inBlock` carries block-comment state
 // across lines. A heuristic (raw-string literals are not special-cased —
 // rare in a declaration region); good enough to keep the depth honest.
-int netBraceDelta(const QString &line, bool &inBlock) {
+int netBraceDelta(const QString &line, bool &inBlock, int *parenDeltaOut = nullptr) {
     int delta = 0;
+    if (parenDeltaOut) *parenDeltaOut = 0;
     const int n = line.size();
     for (int i = 0; i < n; ++i) {
         const QChar c = line.at(i);
@@ -170,6 +185,13 @@ int netBraceDelta(const QString &line, bool &inBlock) {
         }
         if (c == QLatin1Char('{')) ++delta;
         else if (c == QLatin1Char('}')) --delta;
+        else if (parenDeltaOut) {
+            // ANTS-2148 follow-up — the same literal/comment-aware pass tallies
+            // parens so the wrapped-parameter-list collector shares one scan
+            // (no second pass, no double-toggle of the block-comment state).
+            if (c == QLatin1Char('(')) ++*parenDeltaOut;
+            else if (c == QLatin1Char(')')) --*parenDeltaOut;
+        }
     }
     return delta;
 }
@@ -374,6 +396,15 @@ QJsonObject compute(const QString &absPath,
     bool funcBodyEntered = false;  // the body's opening '{' has been seen
     bool inBlockComment = false;   // block-comment carry for netBraceDelta
     QString pendingType;           // prior file-scope line that was a bare return type
+    // ANTS-2148 follow-up — wrapped-parameter-list collector state. When a
+    // function header opens '(' without closing it on the same line, collect
+    // continuation lines until the parens balance, then emit at the header's
+    // start line so read_region symbol-mode resolves the whole definition.
+    bool inFuncArgs = false;
+    int funcArgParenDepth = 0;      // running '(' - ')' across the wrapped header
+    int funcArgStartLine = 0;       // 1-based line where the name sits
+    QString funcArgName;           // captured function name
+    QString funcArgSig;            // accumulated header text → signature
 
     while (!f.atEnd()) {
         const QByteArray rawLine = f.readLine();
@@ -454,6 +485,18 @@ QJsonObject compute(const QString &absPath,
             }
             appendSymbol(symbols, totalLines, kind, name, signature);
         };
+        // ANTS-2148 follow-up — emit at an explicit line. A multi-line header
+        // resolves to its START line (where the name sits), not the closing-
+        // paren line, so read_region symbol-mode returns the full definition.
+        auto offerAt = [&](int lineNo, const char *kind,
+                           const QString &name, const QString &signature) {
+            ++seenSymbols;
+            if (symbols.size() >= maxSymbols) {
+                truncated = true;
+                return;
+            }
+            appendSymbol(symbols, lineNo, kind, name, signature);
+        };
 
         if (effective == Mode::Cpp) {
             // ANTS-2159 — scope-aware. A function/member symbol is emitted
@@ -470,7 +513,30 @@ QJsonObject compute(const QString &absPath,
             bool funcDefOpensBody = false;   // a definition whose body opens (now or on a later '{')
             QRegularExpressionMatch m;
 
-            if ((m = rxCppType().match(line)).hasMatch()) {
+            // ANTS-2148 follow-up — one literal/comment-aware pass yields both
+            // the brace delta (scope tracking, below) and the paren delta (the
+            // wrapped-parameter-list collector here), so inBlockComment toggles
+            // exactly once per line.
+            int parenDeltaThisLine = 0;
+            const int braceDeltaThisLine =
+                netBraceDelta(line, inBlockComment, &parenDeltaThisLine);
+
+            if (inFuncArgs) {
+                // Folding continuation lines of a wrapped parameter list into
+                // the signature until the parens balance; then emit at the
+                // header's start line.
+                if (!funcArgSig.isEmpty()) funcArgSig += QLatin1Char(' ');
+                funcArgSig += line.trimmed();
+                funcArgParenDepth += parenDeltaThisLine;
+                if (funcArgParenDepth <= 0) {
+                    offerAt(funcArgStartLine, "func", funcArgName,
+                            funcArgSig.simplified());
+                    funcDefOpensBody =
+                        !line.trimmed().endsWith(QLatin1Char(';'));
+                    inFuncArgs = false;
+                    funcArgSig.clear();
+                }
+            } else if ((m = rxCppType().match(line)).hasMatch()) {
                 offer("class", m.captured(2), line);   // type/namespace body — never code
             } else if (!inFuncBody && (m = rxCppMember().match(line)).hasMatch()) {
                 const int lparen = line.indexOf(QLatin1Char('('));
@@ -493,6 +559,16 @@ QJsonObject compute(const QString &absPath,
                        && (m = rxCppNameArgs().match(line)).hasMatch()) {
                 offer("func", m.captured(1), line);    // old-style: return type on the prior line
                 funcDefOpensBody = true;
+            } else if (!inFuncBody
+                       && (m = rxCppFuncHeaderOpen().match(line)).hasMatch()) {
+                // ANTS-2148 follow-up — `ReturnType name(` opens a parameter
+                // list that does not close on this line. Start collecting; the
+                // closing line emits the symbol at funcArgStartLine.
+                funcArgName       = m.captured(2);
+                funcArgStartLine  = totalLines;
+                funcArgSig        = line.trimmed();
+                funcArgParenDepth = parenDeltaThisLine;   // >= 1 by construction
+                inFuncArgs        = true;
             } else if ((m = rxCppQt().match(line)).hasMatch()) {
                 offer("qt", m.captured(1), line);
             } else if (!inFuncBody && rxCppTypeOnly().match(line).hasMatch()) {
@@ -503,7 +579,7 @@ QJsonObject compute(const QString &absPath,
             // that opens a body records funcOpenAtDepth; the interior stays
             // suppressed until the matching '}' returns the depth to it.
             const int before = braceDepth;
-            braceDepth += netBraceDelta(line, inBlockComment);
+            braceDepth += braceDeltaThisLine;
             if (funcDefOpensBody && funcOpenAtDepth < 0) {
                 if (braceDepth > before) {             // body opened on this line
                     funcOpenAtDepth = before;
