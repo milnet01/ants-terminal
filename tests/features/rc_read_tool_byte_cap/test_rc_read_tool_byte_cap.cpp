@@ -141,18 +141,22 @@ TEST(RcReadToolByteCap, HelperContract) {
                "matches array empty when cap below base size");
     }
 
-    // WI-1 — file_outline handler caps symbols[] with symbols_dropped.
+    // WI-1 — the file_outline path caps symbols[] with symbols_dropped.
+    // ANTS-2223 hoisted the per-file slice (and its byte-cap) out of
+    // cmdFileOutline into the shared `outlineOneFile` helper so the
+    // multi-path (`paths:[…]`) loop reuses it; assert the cap in the helper
+    // body where it now lives.
     {
         const std::string rc = ants_test::slurpFile(SRC_RC_CPP);
-        const auto p = rc.find("RemoteControl::cmdFileOutline");
-        expect(p != std::string::npos, "WI-1", "cmdFileOutline not found");
-        // ANTS-2064 — brace-matched body, not a fixed 6000-char window.
+        const auto p = rc.find("outlineOneFile");
+        expect(p != std::string::npos, "WI-1",
+               "outlineOneFile helper not found");
         const std::string body =
-            ants_test::slurpFunctionBody(rc, "RemoteControl::cmdFileOutline");
+            ants_test::slurpFunctionBody(rc, "outlineOneFile");
         expect(body.find("capJsonArrayToBytes") != std::string::npos &&
                    body.find("symbols_dropped") != std::string::npos,
                "WI-1b",
-               "cmdFileOutline does not byte-cap symbols[] (ANTS-1293)");
+               "outlineOneFile does not byte-cap symbols[] (ANTS-1293)");
     }
 
     // WI-2 — workspace_search handler caps matches[] with results_dropped.

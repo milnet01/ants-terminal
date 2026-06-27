@@ -405,7 +405,10 @@ TEST(CodebaseIndex, WiringRegistered) {
     // and file_outline accepts `file_path` as an alias for `path`; both
     // aliases are wired in remotecontrol.cpp.
     EXPECT_TRUE(has(rc, "ANTS-2149"));
-    EXPECT_TRUE(has(rc, "(alias: \\\"file_path\\\")"));
+    // ANTS-2223 extended the file_outline message to
+    // `(alias: "file_path", "paths")`, so match the prefix without the
+    // trailing ')' (the alias is still wired; the list just grew).
+    EXPECT_TRUE(has(rc, "(alias: \\\"file_path\\\""));
     // atomic cache write (INV-12).
     EXPECT_TRUE(has(ants_test::slurpFile(srcPath("src/codebaseindex.cpp")), "QSaveFile"));
 }
