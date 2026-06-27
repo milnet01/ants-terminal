@@ -11727,7 +11727,7 @@ own design + test cycles.
   Kind: review-fix.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1274] **ripgrep `--glob` `!` prefix + gitignore-style escape
+- ✅ [ANTS-1274] **ripgrep `--glob` `!` prefix + gitignore-style escape
   (remotecontrol).** `src/remotecontrol.cpp:748`. `workspace-search`
   forwards `glob` as a single argv to `rg --glob` with only a `..`
   substring filter + 256-byte cap. Leading `!` flips the meaning
@@ -11739,8 +11739,9 @@ own design + test cycles.
   un-excludes `.git/` or other ignored directories.
   Kind: review-fix.
   Source: indie-review-2026-05-13.
+  Resolved (2026-06-27): workspace-search glob validation now rejects a leading '!' (negation) — the one gitignore-glob shape that can un-exclude an ignored tree (precedence above .gitignore). remotecontrol.cpp. The broad meta-allowlist from the finding was deliberately NOT added: it would reject legitimate brace/charclass globs, and '!' is the actual resurrection vector.
 
-- 📋 [ANTS-1275] **Preamble prose hidden on every preset
+- ✅ [ANTS-1275] **Preamble prose hidden on every preset
   (roadmapdialog).** `src/roadmapdialog.cpp:1497`. `renderCardsHtml`
   initialises `sectionVisible=true`, `sectionExpanded=false`; preamble
   prose before the first `## ` is gated on `sectionExpanded` and
@@ -11751,6 +11752,7 @@ own design + test cycles.
   paragraph at the top of the document, but currently doesn't.
   Kind: review-fix.
   Source: indie-review-2026-05-13.
+  Resolved (2026-06-27): renderCardsHtml preamble prose (before the first '## ') is no longer gated on sectionExpanded — the collapse gate now applies only to section-intro prose (currentSlug non-empty), so the document intro renders on the Full preset (R23 / §4.1). roadmapdialog.cpp.
 
 - ✅ [ANTS-1276] **Anchor-target slug not validated (roadmapdialog).**
   `src/roadmapdialog.cpp:2318`. `handleAnchorClicked` parses the
@@ -11767,7 +11769,7 @@ own design + test cycles.
 
 #### 🔒 Tier 2 — correctness & hardening
 
-- 📋 [ANTS-1266] **`bool truncated` field on `VtAction` (vtparser).**
+- ✅ [ANTS-1266] **`bool truncated` field on `VtAction` (vtparser).**
   `src/vtparser.cpp:196`. `appendUtf8` silently drops bytes past the
   10 MiB OSC/DCS/APC cap; consumers (terminalgrid OSC 52 clipboard,
   OSC 133 shell-integration) can't distinguish a truncated payload
@@ -11780,6 +11782,7 @@ own design + test cycles.
   right now it silently accepts a corrupt result.
   Kind: review-fix.
   Source: indie-review-2026-05-13.
+  Resolved earlier by ANTS-1663 (truncated) + ANTS-1827 (paramsTruncated), verified 2026-06-27: VtAction carries both flags; truncated is propagated to OSC/DCS/APC End actions and reset per-sequence (ANTS-1663), paramsTruncated covers the CSI >32-param case, and consumers handleOsc/handleDcs/handleApc receive the flag.
 
 - 📋 [ANTS-1261] **Extract `ClaudeTranscriptWalker` (claude-trackers).**
   `src/claudetasklist.cpp:100` + `src/claudebgtasks.cpp:170`. Two
@@ -11806,7 +11809,7 @@ own design + test cycles.
   Kind: review-fix.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1269] **`isCatastrophicRegex` overpromise — alternation +
+- ✅ [ANTS-1269] **`isCatastrophicRegex` overpromise — alternation +
   backreferences (auditengine + auditdialog).** `src/auditengine.cpp:25`.
   Header docstring claims to catch "alternation under a quantifier
   `(a|b)+`" plus backreference patterns; the regex
@@ -11819,8 +11822,9 @@ own design + test cycles.
   than it actually checks — fix the code or fix the docstring.
   Kind: review-fix.
   Source: indie-review-2026-05-13.
+  Resolved earlier by ANTS-1665/ANTS-1758, verified 2026-06-27: isCatastrophicRegex moved to ants::regex (regexharden.cpp) and now catches BOTH nested-quant ((.+)+) and alternation-under-quant ((a|b)+) via the altQuant pattern, with an honest BEST-EFFORT docstring noting LIMIT_MATCH is the real backstop. Contract no longer overpromises.
 
-- 📋 [ANTS-1270] **Per-language `lineIsCode` (auditdialog).**
+- ✅ [ANTS-1270] **Per-language `lineIsCode` (auditdialog).**
   `src/auditdialog.cpp:1866`. The comment/string filter only
   recognises `//`, `/* */`, `'`, `"` — applied across Python,
   shell, Lua sources too. A `# TODO: hard-coded "10.0.0.1"` in
@@ -11833,8 +11837,9 @@ own design + test cycles.
   raises false alarms on legitimate comments.
   Kind: review-fix.
   Source: indie-review-2026-05-13.
+  Resolved (2026-06-27): lineIsCode dispatches the comment/string lexer on file extension — # comments (Python/shell/Ruby/YAML/TOML/CMake/Makefile/Dockerfile), Lua -- and [[ ]] long brackets, Python triple-quotes. The bare comment-introducer no longer reads as code. auditdialog.cpp. Follow-up: a direct regression test needs lineIsCode promoted to a testable surface (it is a private GUI method); logged separately.
 
-- 📋 [ANTS-1271] **Path-rule glob normalisation vs absolute paths
+- ✅ [ANTS-1271] **Path-rule glob normalisation vs absolute paths
   (auditdialog).** `src/auditdialog.cpp:2216`. `globToRegex("tests/
   audit_fixtures/**")` emits `^tests/audit_fixtures/.*$`. Scanners
   emitting absolute paths (clang-tidy, semgrep, mypy on cross-cwd
@@ -11847,8 +11852,9 @@ own design + test cycles.
   relative ones.
   Kind: review-fix.
   Source: indie-review-2026-05-13.
+  Resolved (2026-06-27): applyPathRules normalises Finding::file to project-relative before matching, so absolute-path findings (clang-tidy/semgrep/mypy on cross-cwd inputs) match the relative globs. auditdialog.cpp.
 
-- 📋 [ANTS-1272] **Wire or delete `detectProjectFrameworks`
+- ✅ [ANTS-1272] **Wire or delete `detectProjectFrameworks`
   (audit-support).** `src/audithygiene.cpp:119`. `detectProjectFrameworks`
   + `semgrepRulePacks` ship as binary weight + green tests but
   have ZERO production callers. The function is exercised only by
@@ -11861,10 +11867,11 @@ own design + test cycles.
   remove it.
   Kind: review-fix.
   Source: indie-review-2026-05-13.
+  Resolved earlier by ANTS-1257, verified 2026-06-27: detectProjectFrameworks IS wired into the live semgrep invocation (auditdialog.cpp ~1522) via semgrepRulePacks() — framework packs feed the --config flags and the badge label. No longer dead code.
 
 #### ⚡ Tier 3 — perf / refactor / a11y
 
-- 📋 [ANTS-1262] **Move `computeConfidence` to `AuditEngine`
+- ✅ [ANTS-1262] **Move `computeConfidence` to `AuditEngine`
   (auditengine + auditdialog).** `src/auditdialog.cpp:2351`. The
   confidence-score formula lives in the dialog despite being pure
   data-transform with no widget dependency. Non-GUI consumers
@@ -11876,6 +11883,7 @@ own design + test cycles.
   widget toolkit in.
   Kind: refactor.
   Source: indie-review-2026-05-13.
+  Resolved (2026-06-27): computeConfidence moved to AuditEngine::computeConfidence (non-GUI lib, single source of truth, no Qt6::Widgets); AuditDialog::computeConfidence now forwards so the 3 call-sites + public static surface are unchanged. auditengine.{h,cpp} + auditdialog.cpp.
 
 - 📋 [ANTS-1263] **Delete dead `renderHtml` v1 + retest
   (roadmapdialog).** `src/roadmapdialog.cpp:684`. CLAUDE.md claims
@@ -11891,6 +11899,7 @@ own design + test cycles.
   rename so future readers stop hunting for callers.
   Kind: refactor.
   Source: indie-review-2026-05-13.
+  Progress (2026-06-27): confirmed renderHtml v1 has ZERO production callers — every reference is in tests/specs (the spec itself already documents it as "test-only since ANTS-1747"). remotecontrol's roadmap-query path uses parseBullets, not renderHtml. So the CLAUDE.md "IPC verb consumers" justification is indeed stale. Left planned: the delete-or-rename is NOT a quick win — it is a 318-line removal plus a rewrite of 4 feature-test suites (roadmap_viewer, roadmap_viewer_tabs, roadmap_kind_facets, roadmap_current_preset_excludes_shipped) whose locked INVs assert renderHtml's existence/signature/anchor-emission. Needs its own focused session to avoid destabilising the test corpus.
 
 - 📋 [ANTS-1264] **Implement INV-13 scroll-position persistence
   (roadmapdialog).** `src/roadmapdialog.cpp:2206`. Spec ANTS-1154
@@ -11906,7 +11915,7 @@ own design + test cycles.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1265] **Image-budget COW dedup (terminalgrid).**
+- ✅ [ANTS-1265] **Image-budget COW dedup (terminalgrid).**
   `src/terminalgrid.cpp:767`. `recomputeImageBudget()` sums
   `m_inlineImages` and `m_kittyImages` `sizeInBytes()`
   independently; the "conservative direction" comment in the
@@ -11922,6 +11931,7 @@ own design + test cycles.
   images that would fit.
   Kind: review-fix.
   Source: indie-review-2026-05-13.
+  Resolved (2026-06-27): recomputeImageBudget dedups by QImage::constBits() (the non-detaching accessor) so COW copies sharing one buffer — a Kitty T stores into m_kittyImages AND pushes a shared copy into m_inlineImages — count once instead of ~2×, no longer rejecting legitimate later transfers. terminalgrid.cpp.
 
 - 📋 [ANTS-1267] **Hoist per-row `vector<TextRun>` (terminalwidget).**
   `src/terminalwidget.cpp:775-1003`. `paintEvent` allocates
@@ -11952,6 +11962,7 @@ own design + test cycles.
   open/closed state.
   Kind: accessibility.
   Source: indie-review-2026-05-13.
+  Progress (2026-06-27): the viewer is a QTextBrowser whose default Qt::TextBrowserInteraction already includes LinksAccessibleByKeyboard, so the keyboard-expand half is already provided by the framework — Tab focuses an ants:// section/card toggle anchor and Enter activates it (no flags overridden anywhere). The remaining ask (aria-expanded / role=button on the chevrons) is unverifiable against QTextDocument's accessibility bridge, which exposes plain text + link targets, not custom HTML attributes — emitting aria-* would be a likely no-op. Left planned for a proper screen-reader (Orca/QAccessible) verification pass that can confirm what actually surfaces before adding markup.
 
 #### 🧰 Tooling — surfaced during this fold-in
 
@@ -11983,6 +11994,12 @@ own design + test cycles.
   Kind: tooling.
   Source: indie-review-2026-05-13.
   Resolved 2026-05-26 (in-session token-savings bundle). CorroboratedFinding now carries optional {title, description, layman, kind} fields. When populated the indie-review/cold-eyes fold-in renderer (shared via IndieReviewEngine::templateIndieReviewFoldInBlock) emits a standard roadmap card — bold title + body + Layman: + Kind:; when absent it emits a LOUD `**TODO: describe this finding (cited by N lanes at file:line).**` placeholder so a stub bullet cannot ship silently. Both cmdIndieReviewFoldIn and cmdColdEyesFoldIn parse the new fields; descriptors document the opt-in (saves the post-insert Edit pass that prompted this finding). Duplicate `Lanes:` row was already removed by ANTS-1812. New INV-13 in indie_review_engine/spec.md; tests Inv13TemplateFoldInRichFields + Inv13TemplateFoldInLoudTodoOnAbsent. Full suite green (1709/1709).</note>
+
+- 📋 [ANTS-2210] **Regression test for the per-language `lineIsCode` lexer (ANTS-1270 follow-up).**
+  ANTS-1270 added extension-dispatched comment/string lexing to AuditDialog::lineIsCode, but the method is a private static on the GUI dialog and the existing audit feature tests (e.g. audit_path_traversal) deliberately reimplement helper logic rather than link the widget bundle. A direct regression test therefore needs lineIsCode promoted to a testable surface (public static, or a thin pure helper in ants_audit_lib it forwards to) so a test in the test_dialogs / test_audit bundle can drive Python/shell/Lua fixtures and assert comment lines classify as non-code. Until then the lexer is covered only by the full build + suite, not a targeted invariant.
+  **Layman:** Add an automated test proving the audit pipeline correctly treats # comments (Python/shell) and Lua --/[[ ]] as comments, so the ANTS-1270 fix can't silently regress.
+  Kind: test.
+  Source: in-session-2026-06-27 (ANTS-1270 fix-pass).
 
 ### 🔌 MCP integration deepening — token + perf (2026-05-13)
 

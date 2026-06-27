@@ -2401,14 +2401,32 @@ void TerminalGrid::writeInlineError(const QString &text) {
 }
 
 void TerminalGrid::recomputeImageBudget() {
+    // ANTS-1265 — m_inlineImages / m_altInlineImages / m_kittyImages can hold
+    // COW copies of the SAME QImage: a Kitty `T` (transmit+display) stores the
+    // image in m_kittyImages AND pushes a shared copy into m_inlineImages
+    // (terminalgrid.cpp Kitty path). Those share one pixel buffer in RAM, so
+    // summing each container independently over-counts real usage (~2×),
+    // filling the budget early and rejecting legitimate later transfers. Count
+    // each distinct pixel buffer once, keyed on the shared-data pointer
+    // constBits() returns — the non-detaching accessor, so the COW link is
+    // preserved (inline/cached images are never mutated after intake, so the
+    // pointer stays stable and shared).
     size_t total = 0;
-    for (const auto &img : m_inlineImages) total += imageByteCost(img.image);
+    QSet<const uchar *> seen;
+    auto addOnce = [&](const QImage &img) {
+        if (img.isNull()) return;
+        const uchar *bits = img.constBits();
+        if (bits && seen.contains(bits)) return;
+        if (bits) seen.insert(bits);
+        total += imageByteCost(img);
+    };
+    for (const auto &img : m_inlineImages)    addOnce(img.image);
     // ANTS-1828 — the saved other-buffer images (held in m_altInlineImages
     // across a 1049 alt-screen swap) still occupy RAM, so they count toward
     // the per-terminal cap. Omitting them let a program breach the 256 MB
     // budget ~2× by filling both the main and alt buffers.
-    for (const auto &img : m_altInlineImages) total += imageByteCost(img.image);
-    for (const auto &kv  : m_kittyImages) total += imageByteCost(kv.second);
+    for (const auto &img : m_altInlineImages) addOnce(img.image);
+    for (const auto &kv  : m_kittyImages)     addOnce(kv.second);
     m_imageBudget.used = total;
 }
 

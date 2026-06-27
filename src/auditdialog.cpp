@@ -1933,6 +1933,29 @@ bool AuditDialog::lineIsCode(const QString &absPath, int line) {
     QChar stringQuote;
     QString rawTerminator;  // ")" + d-char-seq + "\"" for state 4
 
+    // ANTS-1270 — comment/string syntax is language-specific. The default
+    // C-style lexer (//, /* */, ", ', raw strings) misclassifies # comments
+    // (Python / shell / Ruby / YAML / TOML / CMake / Makefile) and Lua
+    // -- / [[ ]] forms, so e.g. `# TODO: "10.0.0.1"` was scanned as code and
+    // its IP/secret/TODO finding survived. Pick the lexer by file extension.
+    enum class Syntax { CStyle, Hash, Lua };
+    Syntax syntax = Syntax::CStyle;
+    bool pyTriple = false;
+    {
+        const QString p = absPath.toLower();
+        auto ext = [&p](const char *e) { return p.endsWith(QLatin1String(e)); };
+        if (ext(".py") || ext(".pyw")) { syntax = Syntax::Hash; pyTriple = true; }
+        else if (ext(".sh") || ext(".bash") || ext(".zsh") || ext(".ksh") ||
+                 ext(".rb") || ext(".pl") || ext(".pm") || ext(".yaml") ||
+                 ext(".yml") || ext(".toml") || ext(".cmake") || ext(".mk") ||
+                 p.endsWith(QLatin1String("cmakelists.txt")) ||
+                 p.endsWith(QLatin1String("makefile")) ||
+                 p.endsWith(QLatin1String("dockerfile")))
+            syntax = Syntax::Hash;
+        else if (ext(".lua"))
+            syntax = Syntax::Lua;
+    }
+
     const QString src = QString::fromUtf8(all);
     for (int i = 0; i < src.size(); ++i) {
         const QChar c = src[i];
@@ -1953,7 +1976,12 @@ bool AuditDialog::lineIsCode(const QString &absPath, int line) {
                 c != '(' && c != ')' &&
                 c != '{' && c != '}' &&
                 c != '[' && c != ']' &&
-                c != '"' && c != '\'' && c != '\\') {
+                c != '"' && c != '\'' && c != '\\' &&
+                // ANTS-1270 — the bare comment-introducer ('#' for Hash, '-'
+                // for Lua's '--') must not read as code, else an
+                // otherwise-comment-only line is kept as code.
+                !(syntax == Syntax::Hash && c == '#') &&
+                !(syntax == Syntax::Lua && c == '-')) {
                 hasCodeOnLine = true;
             }
         } else if (curLine > line) {
@@ -1968,6 +1996,32 @@ bool AuditDialog::lineIsCode(const QString &absPath, int line) {
 
         switch (state) {
         case 0:  // code
+            if (syntax == Syntax::Hash) {
+                if (c == '#') { state = 1; }
+                else if (pyTriple && (c == '"' || c == '\'') &&
+                         i + 2 < src.size() &&
+                         src[i + 1] == c && src[i + 2] == c) {
+                    stringQuote = c; state = 5; i += 2;  // consume the triple
+                }
+                else if (c == '"' || c == '\'') { state = 3; stringQuote = c; }
+                break;
+            }
+            if (syntax == Syntax::Lua) {
+                // -- line comment, --[[ ]] block comment, [[ ]] long string.
+                // Level-0 brackets only; leveled [==[ ]==] forms are rare and
+                // fall through as code (conservative — preserves findings).
+                if (c == '-' && n == '-') {
+                    if (i + 3 < src.size() && src[i + 2] == QLatin1Char('[') &&
+                        src[i + 3] == QLatin1Char('[')) {
+                        rawTerminator = QStringLiteral("]]"); state = 6; i += 3;
+                    } else { state = 1; ++i; }
+                }
+                else if (c == '[' && n == '[') {
+                    rawTerminator = QStringLiteral("]]"); state = 6; ++i;
+                }
+                else if (c == '"' || c == '\'') { state = 3; stringQuote = c; }
+                break;
+            }
             if (c == '/' && n == '/') { state = 1; ++i; }
             else if (c == '/' && n == '*') { state = 2; ++i; }
             else if (c == '"' && i > 0 && src[i - 1] == QLatin1Char('R') &&
@@ -2011,6 +2065,19 @@ bool AuditDialog::lineIsCode(const QString &absPath, int line) {
             if (c == QLatin1Char(')') &&
                 src.mid(i, rawTerminator.size()) == rawTerminator) {
                 i += rawTerminator.size() - 1;  // loop does ++i
+                state = 0;
+            }
+            break;
+        case 5:  // ANTS-1270 — Python triple-quoted string (""" or ''')
+            if (c == stringQuote && i + 2 < src.size() &&
+                src[i + 1] == stringQuote && src[i + 2] == stringQuote) {
+                i += 2;  // consume the closing triple (loop does ++i)
+                state = 0;
+            }
+            break;
+        case 6:  // ANTS-1270 — Lua long bracket (string / --[[ comment ]]), L0
+            if (c == QLatin1Char(']') && n == QLatin1Char(']')) {
+                ++i;  // consume the second ']' (loop does ++i)
                 state = 0;
             }
             break;
@@ -2333,8 +2400,23 @@ bool AuditDialog::applyPathRules(Finding &f) const {
     // Generated-file skip is absolute — happens before user overrides.
     if (isGeneratedFile(f.file)) return false;
 
+    // ANTS-1271 — path-rule globs are project-relative (globToRegex of e.g.
+    // "tests/audit_fixtures/**" → "^tests/audit_fixtures/.*$"). Scanners that
+    // emit absolute paths (clang-tidy, semgrep, mypy on cross-cwd inputs)
+    // produce f.file == "/home/.../proj/tests/…", which never matches such a
+    // rule. Match against a project-relative form so the rule applies no
+    // matter how the upstream tool spelled the path. Findings outside the
+    // project root keep their absolute path (those rules shouldn't apply).
+    QString relFile = f.file;
+    if (!m_projectPath.isEmpty()) {
+        const QString prefix = m_projectPath.endsWith(QLatin1Char('/'))
+            ? m_projectPath : m_projectPath + QLatin1Char('/');
+        if (relFile.startsWith(prefix))
+            relFile = relFile.mid(prefix.size());
+    }
+
     for (const PathRule &rule : m_pathRules) {
-        if (!rule.compiled.match(f.file).hasMatch()) continue;
+        if (!rule.compiled.match(relFile).hasMatch()) continue;
 
         if (rule.skipRules.contains(f.checkId)) return false;
         if (rule.skip) return false;
@@ -2433,50 +2515,13 @@ void AuditDialog::enrichWithBlame(Finding &f) const {
 // Confidence score — replaces the binary `highConfidence` ★
 // ---------------------------------------------------------------------------
 //
-// Weighted sum keyed to signals reference tools surface publicly:
-//   - severity is the biggest single factor (~60% of the ceiling)
-//   - multi-tool agreement is strong positive (CodeQL / Snyk model)
-//   - external AST tools (cppcheck/clang-tidy/clazy/bandit/…) rank above
-//     raw regex grep because they already understand comments/strings/AST
-//   - test paths and generated files get a penalty
-//   - AI triage (when present) can raise or lower confidence explicitly
-// Clamped to [0, 100].
+// ANTS-1262 — the weighted-sum logic moved to AuditEngine::computeConfidence
+// (pure data-transform, no widget state) so non-GUI consumers can score a
+// finding without linking Qt6::Widgets. This static method forwards so the
+// existing call-sites + the public static surface are unchanged.
 
 int AuditDialog::computeConfidence(const Finding &f) {
-    int score = 10;  // floor
-    // Severity base: Info=0, Minor=15, Major=30, Critical=45, Blocker=60
-    score += static_cast<int>(f.severity) * 15;
-
-    if (f.highConfidence) score += 20;
-
-    // External AST/semantic tools — hand-curated list that matches sources
-    // produced by sourceForCheck().
-    static const QSet<QString> kExternalTools = {
-        "cppcheck", "clang-tidy", "clazy", "semgrep",
-        "pylint", "bandit", "ruff", "mypy", "shellcheck", "luacheck",
-        "cargo-clippy", "cargo-audit", "go vet", "govulncheck",
-        "golangci-lint", "eslint", "npm audit", "gcc",
-        "osv-scanner", "trufflehog", "hadolint", "checkov", "ast-grep",
-        "secrets",  // ANTS-2003 — gitleaks/secrets_scan family
-    };
-    if (kExternalTools.contains(f.source)) score += 10;
-
-    // Path-based penalties
-    const QString lp = f.file.toLower();
-    const bool inTests = lp.contains("/tests/") || lp.contains("/test/") ||
-                         lp.contains("test_") || lp.endsWith("_test.py") ||
-                         lp.endsWith("_test.go") || lp.endsWith(".test.js") ||
-                         lp.endsWith(".spec.js");
-    if (inTests) score -= 20;
-
-    // Pure grep + message very short → likely noisy
-    if (f.source == "grep" && f.message.size() < 30) score -= 5;
-
-    // Explicit AI triage shifts confidence into its own band.
-    if (f.aiVerdict == "FALSE_POSITIVE") score = std::min(score, 30);
-    if (f.aiVerdict == "TRUE_POSITIVE")  score = std::max(score, 80);
-
-    return std::clamp(score, 0, 100);
+    return AuditEngine::computeConfidence(f);
 }
 
 // ---------------------------------------------------------------------------

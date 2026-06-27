@@ -36,6 +36,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **`computeConfidence` moved to `AuditEngine` so non-GUI consumers score findings without Qt6::Widgets.** (ANTS-1262)
+  The confidence formula was a pure data-transform stranded in the GUI dialog. It now lives in AuditEngine::computeConfidence (single source of truth); AuditDialog::computeConfidence forwards, so call-sites and the public static surface are unchanged.
+
 - **Codebase/docs index refresh now scans the project tree once per call instead of two-to-three times.** (ANTS-2198)
 
 - **Roadmap pagination cut-point search is now O(n) instead of O(n log n)** (ANTS-2200)
@@ -62,6 +65,18 @@ for security-relevant changes.
   header contract comments, and the orphaned Inv3 shape test.
 
 ### Fixed
+
+- **Per-tab image memory budget no longer double-counts shared image buffers.** (ANTS-1265)
+  A Kitty `T` stores an image in m_kittyImages and pushes a COW copy into m_inlineImages; recomputeImageBudget summed both, over-counting real RAM ~2x and rejecting legitimate later transfers. It now dedups by QImage::constBits() so a shared buffer counts once.
+
+- **Audit path rules now match findings reported with absolute paths.** (ANTS-1271)
+  applyPathRules matched project-relative globs against Finding::file, so absolute-path findings (clang-tidy/semgrep/mypy) silently no-op'd the rules. Finding::file is now normalised to project-relative before matching.
+
+- **Audit pipeline: comment/string detection is now language-aware (`#`, Lua `--`/`[[ ]]`, Python triple-quotes).** (ANTS-1270)
+  lineIsCode applied a C-style lexer to every file, so `# TODO: "10.0.0.1"` in a Python/shell file scanned as code and its IP/secret/TODO finding survived. The lexer now dispatches on file extension and the bare comment-introducer no longer reads as code.
+
+- **Roadmap dialog: the document preamble (intro before the first section) now shows on the Full preset.** (ANTS-1275)
+  renderCardsHtml gated preamble prose on sectionExpanded, which is still false before the first `## ` heading, silently dropping the document intro. The collapse gate now applies only to section-intro prose.
 
 - **Settings reports Claude hooks as installed only when all five hook events are present (previously it could show green with two missing); failures to lock down the Claude settings-file permissions are now logged instead of ignored.** (ANTS-2205)
 
@@ -108,6 +123,9 @@ for security-relevant changes.
   cheaper Ants tools just like a native install.
 
 ### Security
+
+- **`workspace_search` rejects a leading `!` in `glob` (negation that resurrects ignored trees).** (ANTS-1274)
+  ripgrep treats a `!`-prefixed `--glob` as a negation whose precedence is above .gitignore, so `!.git`/`!node_modules/**` could un-exclude an ignored directory. The glob validator now rejects a leading `!` (the only resurrection vector) alongside the existing `..`/256-byte guards; legitimate brace/charclass globs are unaffected.
 
 - **The "which Claude session is current" check no longer trusts a file's modified-time when a live Claude process is known, closing a same-user spoofing gap.** (ANTS-2191)
 

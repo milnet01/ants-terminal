@@ -184,6 +184,16 @@ QString sourceForCheck(const QString &checkId);
 QString computeDedup(const QString &file, int line,
                      const QString &checkId, const QString &title);
 
+// ANTS-1262 — confidence score (0-100) for a finding. Pure data-transform
+// (reads only Finding fields), moved out of AuditDialog so non-GUI consumers
+// (ants-helper, the MCP last_audit_summary verb, headless CI runners) compute
+// it without linking Qt6::Widgets or re-implementing the formula (drift risk).
+// AuditDialog::computeConfidence forwards here. Weighting: floor +10,
+// severity×15, +20 cross-tool corroboration, +10 external AST/semantic tool,
+// −20 test path, −5 short grep finding; AI triage caps FALSE_POSITIVE ≤30 /
+// TRUE_POSITIVE ≥80; clamped to [0, 100].
+int computeConfidence(const Finding &f);
+
 // ANTS-1708 — mark findings whose line-independent content fingerprint
 // (ants::auditfp::computeFingerprint) is in the learned-FP ledger set as
 // `suppressed = true`, recording `aiReasoning` as a "learned FP" note when it

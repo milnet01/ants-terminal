@@ -8303,6 +8303,16 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             return QJsonDocument(wsErr("bad_glob",
                 QStringLiteral("workspace-search: \"glob\" contains \"..\" segments")));
         }
+        // ANTS-1274: reject a leading '!'. ripgrep treats a !-prefixed
+        // --glob as a NEGATION whose precedence is ABOVE .gitignore, so
+        // "!.git" / "!node_modules/**" resurrects trees the ignore files
+        // excluded. workspace-search only ever wants inclusion globs; the
+        // negation operator has no legitimate use here and is the one
+        // gitignore-glob shape that can un-exclude an ignored directory.
+        if (glob.startsWith(QChar('!'))) {
+            return QJsonDocument(wsErr("bad_glob",
+                QStringLiteral("workspace-search: \"glob\" must not start with \"!\" (negation)")));
+        }
     }
 
     // ANTS-1248-INV-4: server-side max_results clamp at 500.

@@ -2198,7 +2198,14 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
 
         // Prose / narration / section-intros. INV-11.
         if (opts.activePreset != Preset::Full) continue;
-        if (!sectionVisible || !sectionExpanded) continue;
+        // ANTS-1275 — preamble prose before the first "## " section has no
+        // owning section yet (currentSlug empty), so sectionExpanded is
+        // still false at this point; gating it on sectionExpanded silently
+        // dropped the document intro on the Full preset (R23 / §4.1 require
+        // it shown). Apply the collapse gate only to *section-intro* prose
+        // (inside a section); the top-of-document preamble always shows.
+        if (!currentSlug.isEmpty() && (!sectionVisible || !sectionExpanded))
+            continue;
         if (raw.trimmed().isEmpty()) continue;
         html += QStringLiteral("<p>") + applyInline(raw)
               + QStringLiteral("</p>");

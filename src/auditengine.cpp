@@ -17,6 +17,7 @@
 #include <QJsonValue>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QSet>
 #include <QTextStream>
 #include <QXmlStreamReader>
 
@@ -171,6 +172,49 @@ QString computeDedup(const QString &file, int line,
     return QString::fromLatin1(
         QCryptographicHash::hash(raw.toUtf8(), QCryptographicHash::Sha256)
             .toHex().left(24));
+}
+
+// ANTS-1262 — confidence score, moved verbatim from AuditDialog. Pure
+// data-transform over Finding; see the header for the weighting rationale.
+//   - severity is the biggest single factor (~60% of the ceiling)
+//   - multi-tool agreement is strong positive (CodeQL / Snyk model)
+//   - external AST tools rank above raw regex grep (they understand AST)
+//   - test paths get a penalty; AI triage can override into its own band
+int computeConfidence(const Finding &f) {
+    int score = 10;  // floor
+    // Severity base: Info=0, Minor=15, Major=30, Critical=45, Blocker=60
+    score += static_cast<int>(f.severity) * 15;
+
+    if (f.highConfidence) score += 20;
+
+    // External AST/semantic tools — hand-curated list that matches sources
+    // produced by sourceForCheck().
+    static const QSet<QString> kExternalTools = {
+        "cppcheck", "clang-tidy", "clazy", "semgrep",
+        "pylint", "bandit", "ruff", "mypy", "shellcheck", "luacheck",
+        "cargo-clippy", "cargo-audit", "go vet", "govulncheck",
+        "golangci-lint", "eslint", "npm audit", "gcc",
+        "osv-scanner", "trufflehog", "hadolint", "checkov", "ast-grep",
+        "secrets",  // ANTS-2003 — gitleaks/secrets_scan family
+    };
+    if (kExternalTools.contains(f.source)) score += 10;
+
+    // Path-based penalties
+    const QString lp = f.file.toLower();
+    const bool inTests = lp.contains("/tests/") || lp.contains("/test/") ||
+                         lp.contains("test_") || lp.endsWith("_test.py") ||
+                         lp.endsWith("_test.go") || lp.endsWith(".test.js") ||
+                         lp.endsWith(".spec.js");
+    if (inTests) score -= 20;
+
+    // Pure grep + message very short → likely noisy
+    if (f.source == "grep" && f.message.size() < 30) score -= 5;
+
+    // Explicit AI triage shifts confidence into its own band.
+    if (f.aiVerdict == "FALSE_POSITIVE") score = std::min(score, 30);
+    if (f.aiVerdict == "TRUE_POSITIVE")  score = std::max(score, 80);
+
+    return std::clamp(score, 0, 100);
 }
 
 // (anon namespace already closed above, before sourceForCheck.)
