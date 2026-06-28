@@ -1,6 +1,8 @@
 #pragma once
 
+#include <QSet>
 #include <QString>
+#include <QStringList>
 
 class QJsonArray;
 class QJsonObject;
@@ -89,5 +91,18 @@ QString compactEnvelope(const QString &responseText);
 // Cache-free — no per-call config I/O. Default false (full back-compat).
 void setTerseDefault(bool terse);
 bool terseDefault();
+
+// ANTS-2175 — return, sorted, the keys in `args` that the verb does not
+// recognise: neither in its declared inputSchema property set (`known`) nor
+// a universal dispatch-layer arg accepted by every verb (caller_cwd /
+// etag_match / fields / compact / offload). Lets the dispatcher echo a
+// non-fatal `ignored_args` advisory on the success envelope so a typo'd or
+// stale param surfaces on the FIRST call instead of being silently dropped —
+// the trigger was a `query=` passed to roadmap_query (which has no such
+// param), which returned the full unfiltered roadmap and looked like a
+// working search. Pure (mirrors projectFields) so the dispatch layer and the
+// feature test share one implementation. `known` is empty -> every non-
+// universal key is reported (matches a verb that declares no properties).
+QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known);
 
 }  // namespace mcp

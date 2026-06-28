@@ -8817,6 +8817,30 @@ void ClaudeIntegration::onMcpConnection() {
                 // tool_info(name) for the full schema.
                 m_lastToolsList = tools;
 
+                // ANTS-2175 — cache each verb's declared inputSchema property
+                // names so the tools/call dispatcher can flag args a verb
+                // doesn't recognise (a typo'd / stale param, silently dropped
+                // today) via an `ignored_args` advisory. Rebuilt in lockstep
+                // with the snapshot above so it can never go stale; the schema
+                // is compile-time-literal so this fires ~once per session.
+                // Derived from the FULL array (pre-detail-strip) — the strip
+                // only touches `description`, not `inputSchema`.
+                m_toolParamKeys.clear();
+                for (const auto &v : std::as_const(tools)) {
+                    const QJsonObject t = v.toObject();
+                    const QString name =
+                        t.value(QStringLiteral("name")).toString();
+                    if (name.isEmpty()) continue;
+                    const QJsonObject props =
+                        t.value(QStringLiteral("inputSchema")).toObject()
+                         .value(QStringLiteral("properties")).toObject();
+                    QSet<QString> keys;
+                    for (auto pit = props.constBegin();
+                         pit != props.constEnd(); ++pit)
+                        keys.insert(pit.key());
+                    m_toolParamKeys.insert(name, keys);
+                }
+
                 // ANTS-2079 — strip per-op `detail` from the wire payload;
                 // the snapshot above retains it so tool_info can serve it on
                 // demand. QJsonArray is copy-on-write: mutating `tools` here
@@ -9361,6 +9385,44 @@ void ClaudeIntegration::onMcpConnection() {
                         // (handler + contract); call the handler.
                         responseText = it->second.handler(argsObj);
                         toolHandled = true;
+                    }
+                }
+                // ANTS-2175 — unknown-arg advisory. Diff the call's arg keys
+                // against the verb's declared inputSchema properties (plus the
+                // universal dispatch-layer args, handled inside mcp::ignoredArgs)
+                // and, when a key is unrecognised, attach a non-fatal
+                // `ignored_args:[...]` field to the success envelope so a
+                // typo'd / stale param surfaces on the first call rather than
+                // masquerading as a working filter (the trigger was `query=`
+                // passed to roadmap_query, silently dropped). Runs only on a
+                // freshly-dispatched call (skip cache hits — the cached body
+                // already carries the advisory for those args) and BEFORE the
+                // cache insert so a future hit returns it too. Parses the body
+                // only when there IS an unrecognised arg (rare), so the
+                // steady-state cost is one cheap key-set diff. Refusal
+                // envelopes (ok:false) are left untouched — the caller already
+                // reads their error. Empty m_toolParamKeys (no tools/list yet)
+                // degrades to no advisory.
+                if (toolHandled && !cachedHit &&
+                    m_toolParamKeys.contains(toolName)) {
+                    const QStringList ignored = mcp::ignoredArgs(
+                        argsObj, m_toolParamKeys.value(toolName));
+                    if (!ignored.isEmpty()) {
+                        QJsonParseError perr{};
+                        const QJsonDocument advDoc = QJsonDocument::fromJson(
+                            responseText.toUtf8(), &perr);
+                        if (perr.error == QJsonParseError::NoError &&
+                            advDoc.isObject()) {
+                            QJsonObject env = advDoc.object();
+                            if (env.value(QStringLiteral("ok"))
+                                    != QJsonValue(false)) {
+                                env[QStringLiteral("ignored_args")] =
+                                    QJsonArray::fromStringList(ignored);
+                                responseText = QString::fromUtf8(
+                                    QJsonDocument(env)
+                                        .toJson(QJsonDocument::Compact));
+                            }
+                        }
                     }
                 }
                 // ANTS-1357 — populate cache on miss-success. INV-5

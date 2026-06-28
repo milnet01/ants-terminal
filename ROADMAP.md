@@ -8614,19 +8614,21 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: in-session-2026-06-25 (Flathub epic work).
 
-- 📋 [ANTS-2175] **MCP dispatch silently ignores unknown / misspelled args — echo an `ignored_args` advisory.**
+- ✅ [ANTS-2175] **MCP dispatch silently ignores unknown / misspelled args — echo an `ignored_args` advisory.**
   Trigger: passed `query="token"` to `roadmap_query`, which has no `query` param (its filters are status / section / id / mode). The unknown arg was silently dropped and the verb returned the full unfiltered roadmap — looked like a working search, cost ~6 extra calls to realise the filter was a no-op.
   
   Proposal: at the `tools/call` dispatch choke point, diff the incoming args object against the verb's known-param set and, when non-empty, attach a non-fatal `ignored_args:[...]` advisory field to the success envelope (NOT a refusal — preserves back-compat for callers that pass dispatch-layer args like `offload`/`compact`/`fields`, which must be whitelisted as universally-accepted). Cheap correctness + token win: a typo'd or stale param name surfaces immediately rather than masquerading as a working call. Needs the per-verb known-param set (derivable from each inputSchema's `properties` keys) plus the dispatch-layer universal-arg allowlist.
   **Layman:** If Claude passes a setting name a tool doesn't recognise (a typo, or an option that doesn't exist), the tool quietly ignores it and can return wrong-looking results. It should name the inputs it ignored so the mistake is caught on the first call instead of after several.
   Kind: enhancement.
   Source: in-session-2026-06-25 (roadmap_query unknown-arg silently ignored).
+  Resolved (2026-06-28): added pure `mcp::ignoredArgs(args, known)` (mcpprojection.cpp) that diffs a call's arg keys against the verb's declared inputSchema properties plus the universal dispatch-layer args (caller_cwd/etag_match/fields/compact/offload). The tools/list handler now caches each verb's property set into `m_toolParamKeys` (rebuilt in lockstep with m_lastToolsList); the tools/call dispatch site attaches a non-fatal `ignored_args:[...]` field to the success envelope when a key is unrecognised — gated on a fresh (non-cached) dispatch and never annotating a refusal (ok:false). Parses the body only when an unrecognised arg is present (rare), so steady-state cost is one key-set diff. Feature test tests/features/mcp_ignored_args (6 INVs) green; full suite 2330/2330. Live confirmation pending a relaunch (running instance predates the build).
 
-- 📋 [ANTS-2176] **Fix -Wshadow in test_roadmap_viewer_archive.cpp — inner `QTemporaryDir tmp` shadows outer.**
+- ✅ [ANTS-2176] **Fix -Wshadow in test_roadmap_viewer_archive.cpp — inner `QTemporaryDir tmp` shadows outer.**
   tests/features/roadmap_viewer_archive/test_roadmap_viewer_archive.cpp:589 `QTemporaryDir tmp;` shadows the outer declaration at line 69 (`-Wshadow=compatible-local`). Pre-existing, surfaced on a fast-preset build. Rename the inner to a distinct identifier (e.g. `tmp2`/`archiveTmp`). Trivial; keeps the build warning-clean.
   **Layman:** A test file declares the same temporary-folder variable name twice (one inside the other), which the compiler warns about. Harmless today, but warnings should be clean — rename the inner one.
   Kind: test.
   Source: in-session-2026-06-25 (compiler warning surfaced during fast-preset build).
+  Resolved (2026-06-28): the report named line 589, but a fresh full build surfaced six -Wshadow=compatible-local sites in this file (lines 422, 424, 472, 488, 506, 543) — all INV-14 inner blocks re-declaring `tmp`/`root` over the outer pair at lines 69/71. Rather than rename six blocks, renamed the OUTER pair to `baseTmp`/`baseRoot` (used only lines 69-127); every inner block keeps its natural `tmp` with zero shadow. File now builds warning-clean; full suite green.
 
 - 📋 [ANTS-2182] **`audit_run` cppcheck/clazy don't pass the project's `compile_commands.json` — cppcheck floods with `missingInclude`/namespace-as-C noise and clazy returns 0 findings, so the MCP audit path gives materially worse signal than the in-app AuditDialog / ants-audit CLI.**
   2026-06-26 /audit: audit_run({scope:"full"}) returned cppcheck=2330 raw (≈all missingIncludeSystem + `namespaceX{` is-invalid-C-code syntaxErrors) and clazy=0. The SAME tree re-run with `cppcheck --project=build/compile_commands.json --library=qt --suppress=missingIncludeSystem` gave 522 findings with zero include-noise; the ants-audit CLI report (which uses compile_commands) had clazy=49 (real range-loop-detach/qstring-arg). Sibling of ANTS-2105 (stderr-channel) and the ANTS-1119 shared-engine intent. Fix: default the cppcheck/clazy invocation to `--project=<build>/compile_commands.json` when present (ANTS-1446 already validates the arg path), with the skill's `--suppress=missingIncludeSystem --suppress=missingInclude` as the no-DB fallback. Without it every MCP audit is unusably noisy + clazy-blind.
@@ -17548,6 +17550,18 @@ load) still open, no regression. New items below.
   Kind: enhancement.
   Source: DOOM-2026-06-28.
   Resolved 2026-06-28: session_orient project_settings_suggestion now carries a next_step nudge ('run project_settings op:init to index these source_roots').
+
+- 📋 [ANTS-3356] **`spec_log` / `spec_query` `id` routing is hardcoded to the `ANTS-` prefix — project-prefixed spec ids (e.g. `DOOM-0009`) are rejected.**
+  DOOM reported `spec_log op:append_loop id:"DOOM-0009"` returns `{code:"bad_id", error:"id must match ANTS-NNNN or phase_<NN>_<topic>"}`, even though the spec file is `docs/specs/DOOM-0009-path-tracer.md` and roadmap_log/changelog_log already handle the DOOM- prefix (ANTS-2076 fixed that hardcode for roadmap_log). `spec_query`'s `id` routing carries the same ANTS-NNNN-only shape. Workaround that works first try: pass `path:"docs/specs/DOOM-0009-path-tracer.md"`. LOW — self-correcting (the error names accepted shapes; `path` is documented). Fix: generalise spec id-routing the same way ANTS-2076 did roadmap_log — accept any `<PREFIX>-NNNN` spec id and glob `docs/specs/<id>-*.md` / `docs/specs/<id>.md`, deriving the prefix from the project (and honouring `.ants/project.json` `specs_dir`, ANTS-2160) rather than hardcoding `ANTS-`. Keep `path` as the explicit override. Same hardcoded-ANTS-prefix class already closed for roadmap_log.
+  **Layman:** When another project asks Ants to open a spec by its own ID (like DOOM-0009), Ants only recognises IDs starting with ANTS-, so it refuses and the session has to pass the full file path instead.
+  Kind: enhancement.
+  Source: doom-feedback-2026-06-28.
+
+- 📋 [ANTS-3357] **`project_settings` op:detect ranks a vendored third-party tree (e.g. `mingw-deps/` holding SDL2 + Vulkan-Headers) as the dominant source_root.**
+  DOOM reported `project_settings op:detect` suggested `source_roots ['mingw-deps','linuxdoom-1.10']` (reason: 'default src/+tests/ walk indexed 0 of 654 source files; mingw-deps, linuxdoom-1.10 hold 632'). But `mingw-deps/` is vendored third-party for Windows cross-compilation (SDL2-2.32.10, SDL2_mixer-2.8.2, Vulkan-Headers) — ~632 of the 654 files are deps, not first-party code. The detect heuristic counts .c/.h/.cpp files and ranks the dependency tree as the dominant root; accepting it verbatim via op:init would silently pollute codebase_index / find_definition with thousands of third-party symbols. LOW — op:init accepts explicit source_roots so the escape is one call (DOOM declared [linuxdoom-1.10, sndserv, sersrc, ipx] explicitly), but a session trusting the suggestion mis-declares its roots and the pollution is silent. Fix: teach op:detect to discount well-known vendored/dependency dirs — (a) skip dir names matching vendor / third_party / third-party / deps / external / node_modules and *-deps / *-prefix; and/or (b) treat a .gitignored dir or git submodule as a strong vendored signal and exclude it. Cheap belt-and-braces: flag a header-only / non-buildable upstream candidate as possibly_vendored:true so the caller reviews before init.
+  **Layman:** When Ants auto-suggests which folders hold a project's real code, it can be fooled by a big folder of bundled outside libraries and recommend indexing those instead of the project's own code.
+  Kind: enhancement.
+  Source: doom-feedback-2026-06-28.
 
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 

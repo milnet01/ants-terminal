@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **MCP dispatch silently ignores unknown / misspelled args — echo an `ignored_args` advisory.** (ANTS-2175)
+  If Claude passes a setting name a tool doesn't recognise (a typo, or an option that doesn't exist), the tool quietly ignores it and can return wrong-looking results. It should name the inputs it ignored so the mistake is caught on the first call instead of after several.
+
 - **Implement INV-13 scroll-position persistence (roadmapdialog).** (ANTS-1264)
   the Roadmap dialog is supposed to remember where
 
@@ -122,6 +125,9 @@ for security-relevant changes.
   header contract comments, and the orphaned Inv3 shape test.
 
 ### Fixed
+
+- **Fix -Wshadow in test_roadmap_viewer_archive.cpp — inner `QTemporaryDir tmp` shadows outer.** (ANTS-2176)
+  A test file declares the same temporary-folder variable name twice (one inside the other), which the compiler warns about. Harmless today, but warnings should be clean — rename the inner one.
 
 - **cppcheck `uninitMemberVarNoCtor` residue in tests/ — 10 test-only helper-struct members lack default-member-initialisers.** (ANTS-3354)
   Added `{}` default-member-initialisers to 10 cppcheck-flagged members across 6 test-helper structs (BenchResult, Fixture, Entry, PositiveCase, NegativeCase, Cand, Site). Completes the uninitMemberVarNoCtor cleanup started in ANTS-2184 — our code (src/ + tests/) is now fully clean of the warning; only third-party googletest remains. Test-only, no behaviour change.

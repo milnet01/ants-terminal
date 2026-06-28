@@ -257,4 +257,35 @@ QString compactEnvelope(const QString &responseText) {
             .toJson(QJsonDocument::Compact));
 }
 
+namespace {
+
+// ANTS-2175 — args the dispatch layer (claudeintegration.cpp) consumes for
+// EVERY verb, independent of the per-verb inputSchema: the caller_cwd anchor
+// (ANTS-1520), the ETag short-circuit (ANTS-1499), the fields= projection
+// (ANTS-1720) + compact flag (ANTS-2091/ANTS-2085), and the result-offload
+// flag (ANTS-2094). A verb that doesn't redeclare these in its own schema
+// still accepts them, so they must never be reported as ignored. Keep in
+// sync with the dispatch post-processing chain.
+bool isUniversalDispatchArg(const QString &key) {
+    return key == QStringLiteral("caller_cwd")
+        || key == QStringLiteral("etag_match")
+        || key == QStringLiteral("fields")
+        || key == QStringLiteral("compact")
+        || key == QStringLiteral("offload");
+}
+
+}  // namespace
+
+QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known) {
+    QStringList out;
+    for (auto it = args.constBegin(); it != args.constEnd(); ++it) {
+        const QString &key = it.key();
+        if (known.contains(key) || isUniversalDispatchArg(key))
+            continue;
+        out.append(key);
+    }
+    out.sort();  // deterministic order for callers and the feature test
+    return out;
+}
+
 }  // namespace mcp

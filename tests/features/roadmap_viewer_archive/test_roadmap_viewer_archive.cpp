@@ -66,17 +66,20 @@ static int runMain() {
 
     // INV-1: archiveDirFor(canonical-resolved path)/docs/roadmap/ on
     // a real layout. We construct one in a temp dir.
-    QTemporaryDir tmp;
-    if (!tmp.isValid()) return fail("INV-1", "QTemporaryDir not created");
-    const QString root = tmp.path();
-    QDir(root).mkpath(QStringLiteral("docs/roadmap"));
+    // ANTS-2176 — `baseTmp`/`baseRoot`: distinct from the per-INV inner
+    // blocks below (which each declare their own `tmp`), so the outer pair
+    // staying in scope no longer trips -Wshadow=compatible-local.
+    QTemporaryDir baseTmp;
+    if (!baseTmp.isValid()) return fail("INV-1", "QTemporaryDir not created");
+    const QString baseRoot = baseTmp.path();
+    QDir(baseRoot).mkpath(QStringLiteral("docs/roadmap"));
     const QString roadmapPath =
-        writeFile(root, QStringLiteral("ROADMAP.md"),
+        writeFile(baseRoot, QStringLiteral("ROADMAP.md"),
                   QByteArrayLiteral("# Current\n\n- 📋 [ANTS-9999] Test\n"));
     if (roadmapPath.isEmpty()) return fail("INV-1", "ROADMAP.md not writable");
     {
         const QString got = RoadmapDialog::archiveDirFor(roadmapPath);
-        const QString want = root + QStringLiteral("/docs/roadmap");
+        const QString want = baseRoot + QStringLiteral("/docs/roadmap");
         if (QFileInfo(got).canonicalFilePath() !=
             QFileInfo(want).canonicalFilePath())
             return fail("INV-1", "archiveDirFor() did not resolve to docs/roadmap");
@@ -124,7 +127,7 @@ static int runMain() {
 
     // INV-2: loadMarkdown(includeArchive=false) returns just the
     // current file's content. Independent of archive presence.
-    writeFile(root + QStringLiteral("/docs/roadmap"),
+    writeFile(baseRoot + QStringLiteral("/docs/roadmap"),
               QStringLiteral("0.7.md"),
               QByteArrayLiteral("# 0.7\n\n- ✅ [ANTS-7777] shipped\n"));
     {

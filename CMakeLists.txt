@@ -1839,6 +1839,10 @@ if(ANTS_TESTS)
                 # mcpspill.cpp is in ants_core_lib (linked); the wiring INVs
                 # source-scrape claudeintegration / mainwindow / remotecontrol.
                 tests/features/mcp_result_offload/test_mcp_result_offload.cpp
+                # ANTS-2175 — MCP unknown-arg `ignored_args` advisory.
+                # mcp::ignoredArgs is in ants_core_lib (linked); the dispatch
+                # wiring INVs source-scrape claudeintegration.cpp.
+                tests/features/mcp_ignored_args/test_mcp_ignored_args.cpp
                 # ANTS-1727 — ai_review_concurrency config clamp (INV-14).
                 tests/features/config_ai_review_concurrency/test_config_ai_review_concurrency.cpp
                 # ANTS-1764 — tab_title_format fixed-enum getter/setter validation.

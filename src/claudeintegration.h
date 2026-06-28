@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QFileSystemWatcher>
 #include <QHash>
+#include <QSet>
 #include <QList>
 #include <QQueue>
 #include <QMutex>
@@ -549,6 +550,15 @@ private:
     // descriptors are built from compile-time literals so the
     // snapshot never goes stale in practice.
     mutable QJsonArray m_lastToolsList;
+
+    // ANTS-2175 — per-verb declared inputSchema property names, rebuilt in
+    // lockstep with m_lastToolsList at the end of the `tools/list` handler.
+    // The dispatcher diffs an incoming call's arg keys against this set (plus
+    // the universal dispatch-layer args in mcp::ignoredArgs) to attach a
+    // non-fatal `ignored_args` advisory naming any unrecognised param, instead
+    // of silently dropping it. Empty until the first tools/list (Claude Code
+    // always lists before any call); an empty map degrades to "no advisory".
+    mutable QHash<QString, QSet<QString>> m_toolParamKeys;
 
     // ANTS-1357 — short-TTL idempotent-read cache.
     // Allowlist: get_cwd / get_environment / tab_list / last_audit_summary.
