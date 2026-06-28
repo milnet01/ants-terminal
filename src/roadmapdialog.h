@@ -374,8 +374,44 @@ public:
     static bool shouldLoadHistory(Preset activePreset,
                                   const QString &searchText);
 
+    // ANTS-1264 (spec ANTS-1154 §4.5, INV-13) — scroll-position
+    // persistence. The dialog records the topmost visible card per tab on
+    // close and restores it on the next open. The anchor is ID-keyed (not
+    // a raw pixel offset) so it survives roadmap edits between sessions.
+    struct ScrollAnchor {
+        QString sectionSlug;  // section of the captured card (fallback key)
+        QString id;           // captured card id (`<PREFIX>-NNNN`)
+        int offsetPx = 0;     // pixels the card had scrolled above the top
+    };
+
+    // Outcome of resolving a saved ScrollAnchor against freshly-rendered
+    // content. Card: the id still exists, restore to it + offset. Section:
+    // the id is gone but its section survives, scroll to that section.
+    // Top: neither survives, leave at the top.
+    struct ScrollTarget {
+        enum Kind { Top, Section, Card };
+        Kind kind = Top;
+        QString id;           // Card only
+        QString sectionSlug;  // Section only
+        int offsetPx = 0;     // Card only
+    };
+
+    // Pure + static (the feature test drives it without a dialog) — decide
+    // what to scroll to from a saved anchor and the ids / section slugs
+    // present in the freshly-rendered document. Implements the INV-13
+    // three-case resolver: card → section → top. Empty saved fields are
+    // treated as "not present".
+    static ScrollTarget resolveScrollAnchor(const ScrollAnchor &saved,
+                                            const QSet<QString> &presentIds,
+                                            const QSet<QString> &presentSlugs);
+
 protected:
     void closeEvent(QCloseEvent *event) override;
+    // ANTS-1264 — restore the persisted scroll anchor on the first show,
+    // once the viewport has a real size (a ctor-time restore would clamp
+    // to a zero-height scrollbar). Deferred one event-loop turn so the
+    // QTextBrowser layout has settled.
+    void showEvent(QShowEvent *event) override;
     // ANTS-1236 — open / toggle the keyboard-shortcut cheatsheet on
     // `?` (Shift+/), gated by §3.d's search-box-focus guard so the
     // user can type `?` into the substring filter. Layout-robust:
@@ -416,6 +452,13 @@ private:
     // ANTS-1154 — refresh m_shippedDates from m_changelogPath when its
     // mtime has changed since the last call. No-op if path empty.
     void refreshShippedDatesIfStale();
+
+    // ANTS-1264 — capture the topmost visible card to
+    // Config::roadmapScrollAnchors (keyed by the active preset tab) on
+    // close; restore it on first show. Both no-op without a Config or a
+    // live viewer. See spec ANTS-1154 §4.5.
+    void captureScrollAnchor();
+    void restoreScrollAnchor();
 
     // ANTS-1150: persist the active preset to Config. Called from
     // BOTH applyPreset (named-preset path) and onCheckboxToggled
@@ -474,6 +517,10 @@ private:
     Preset m_activePreset = Preset::Full;
     bool m_suppressCheckboxSignal = false;
     bool m_suppressTabSignal = false;
+    // ANTS-1264 — guard so the deferred scroll-anchor restore fires only
+    // on the first show (the dialog is WA_DeleteOnClose, so this is
+    // belt-and-braces against a re-show).
+    bool m_scrollRestored = false;
     // ANTS-1154 v2 card-renderer in-memory state. Loaded from Config
     // in the ctor, mutated by handleAnchorClicked, persisted back to
     // Config in closeEvent.

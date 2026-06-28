@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Implement INV-13 scroll-position persistence (roadmapdialog).** (ANTS-1264)
+  the Roadmap dialog is supposed to remember where
+
 - **`read_regions` MCP verb — batched multi-selector read (read-side mirror of `apply_edits`).** (ANTS-2219)
   Let Claude fetch several code snippets in one request instead of one call each — fewer round-trips, fewer tokens.
 

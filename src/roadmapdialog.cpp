@@ -8,6 +8,7 @@
 #include "themes.h"
 #include "titlebar.h"
 
+#include <QAbstractTextDocumentLayout>
 #include <QByteArray>
 #include <QCheckBox>
 #include <QComboBox>
@@ -33,8 +34,11 @@
 #include <QScrollBar>
 #include <QSplitter>
 #include <QStringBuilder>
+#include <QShowEvent>
 #include <QTabBar>
+#include <QTextBlock>
 #include <QTextBrowser>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace {
@@ -2970,8 +2974,171 @@ void RoadmapDialog::closeEvent(QCloseEvent *event) {
             QStringList(m_expandedSections.begin(), m_expandedSections.end()));
         m_config->setRoadmapTableSections(
             QStringList(m_tableSections.begin(), m_tableSections.end()));
+        // ANTS-1154 §4.5 / INV-13 — remember where the user scrolled to.
+        captureScrollAnchor();
     }
     QDialog::closeEvent(event);
+}
+
+// ANTS-1264 — first-show restore. Deferred one event-loop turn (singleShot
+// 0) so the QTextBrowser has been laid out against its real viewport size;
+// restoring against a still-zero-height scrollbar in showEvent itself would
+// clamp every target to 0. `this` as the timer context auto-cancels the
+// callback if the dialog is destroyed before it fires.
+void RoadmapDialog::showEvent(QShowEvent *event) {
+    QDialog::showEvent(event);
+    if (m_scrollRestored) return;
+    m_scrollRestored = true;
+    QTimer::singleShot(0, this, [this] { restoreScrollAnchor(); });
+}
+
+namespace {
+
+// ANTS-1264 — scan the rendered roadmap document for card anchors
+// (`rm-<id>`, emitted by renderCardsHtml as `<div id="rm-...">`),
+// returning each card's id and its pixel top in document coordinates (the
+// vertical-scrollbar value that puts that card at the viewport top).
+// Section headers carry positional `roadmap-toc-N` anchors which are not
+// edit-stable, so only the id-keyed card anchors are collected — the
+// section fallback is resolved via these same card anchors (the first
+// rendered card of a section), not the header.
+struct RenderedCard {
+    QString id;
+    int top;
+};
+QVector<RenderedCard> scanRenderedCards(const QTextDocument *doc) {
+    QVector<RenderedCard> cards;
+    if (!doc) return cards;
+    QAbstractTextDocumentLayout *layout = doc->documentLayout();
+    if (!layout) return cards;
+    for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+        for (QTextBlock::iterator it = b.begin(); !it.atEnd(); ++it) {
+            const QTextFragment f = it.fragment();
+            if (!f.isValid()) continue;
+            for (const QString &name : f.charFormat().anchorNames()) {
+                if (!name.startsWith(QLatin1String("rm-"))) continue;
+                cards.push_back(
+                    {name.mid(3), qRound(layout->blockBoundingRect(b).top())});
+            }
+        }
+    }
+    return cards;
+}
+
+}  // namespace
+
+// ANTS-1264 — pure INV-13 resolver: card → section → top.
+RoadmapDialog::ScrollTarget
+RoadmapDialog::resolveScrollAnchor(const ScrollAnchor &saved,
+                                   const QSet<QString> &presentIds,
+                                   const QSet<QString> &presentSlugs) {
+    ScrollTarget t;
+    if (!saved.id.isEmpty() && presentIds.contains(saved.id)) {
+        t.kind = ScrollTarget::Card;
+        t.id = saved.id;
+        t.offsetPx = saved.offsetPx;
+    } else if (!saved.sectionSlug.isEmpty()
+               && presentSlugs.contains(saved.sectionSlug)) {
+        t.kind = ScrollTarget::Section;
+        t.sectionSlug = saved.sectionSlug;
+    }  // else: default Top.
+    return t;
+}
+
+void RoadmapDialog::captureScrollAnchor() {
+    if (!m_config || !m_viewer) return;
+    auto *vbar = m_viewer->verticalScrollBar();
+    if (!vbar) return;
+    const int scrollY = vbar->value();
+
+    // Topmost card sitting at or above the viewport top.
+    const QVector<RenderedCard> cards = scanRenderedCards(m_viewer->document());
+    QString topId;
+    int topCardTop = -1;
+    for (const RenderedCard &c : cards) {
+        if (c.top <= scrollY && c.top > topCardTop) {
+            topCardTop = c.top;
+            topId = c.id;
+        }
+    }
+
+    QJsonObject anchors = m_config->roadmapScrollAnchors();
+    QString key = m_config->roadmapActivePreset();
+    if (key.isEmpty()) key = QStringLiteral("full");
+
+    if (topId.isEmpty()) {
+        // Scrolled above the first card (header region) — drop any saved
+        // anchor for this tab so the next open lands at the top.
+        anchors.remove(key);
+    } else {
+        // ID → section slug (the edit-stable fallback key) via the parsed
+        // bullets. One parse on close is cheap relative to the user action.
+        QString slug;
+        const QVector<BulletRecord> recs =
+            parseBullets(loadRoadmapMarkdown(wantsHistoryLoad()));
+        for (const BulletRecord &r : recs) {
+            if (r.id == topId) {
+                slug = r.sectionSlug;
+                break;
+            }
+        }
+        QJsonObject a;
+        a.insert(QStringLiteral("slug"), slug);
+        a.insert(QStringLiteral("id"), topId);
+        a.insert(QStringLiteral("offset"), scrollY - topCardTop);
+        anchors.insert(key, a);
+    }
+    m_config->setRoadmapScrollAnchors(anchors);
+}
+
+void RoadmapDialog::restoreScrollAnchor() {
+    if (!m_config || !m_viewer) return;
+    QString key = m_config->roadmapActivePreset();
+    if (key.isEmpty()) key = QStringLiteral("full");
+    const QJsonObject a = m_config->roadmapScrollAnchors().value(key).toObject();
+    if (a.isEmpty()) return;
+
+    ScrollAnchor saved;
+    saved.sectionSlug = a.value(QStringLiteral("slug")).toString();
+    saved.id = a.value(QStringLiteral("id")).toString();
+    saved.offsetPx = a.value(QStringLiteral("offset")).toInt();
+
+    // Present id set + per-card pixel tops from the rendered document; the
+    // section-slug set is the slugs of those rendered cards (a section is
+    // reachable only if at least one of its cards is on screen).
+    const QVector<RenderedCard> cards = scanRenderedCards(m_viewer->document());
+    if (cards.isEmpty()) return;
+    QSet<QString> presentIds;
+    QHash<QString, int> topById;
+    for (const RenderedCard &c : cards) {
+        presentIds.insert(c.id);
+        topById.insert(c.id, c.top);
+    }
+    QHash<QString, QString> slugById;
+    QSet<QString> presentSlugs;
+    const QVector<BulletRecord> recs =
+        parseBullets(loadRoadmapMarkdown(wantsHistoryLoad()));
+    for (const BulletRecord &r : recs) {
+        if (!presentIds.contains(r.id)) continue;
+        slugById.insert(r.id, r.sectionSlug);
+        presentSlugs.insert(r.sectionSlug);
+    }
+
+    const ScrollTarget t = resolveScrollAnchor(saved, presentIds, presentSlugs);
+    auto *vbar = m_viewer->verticalScrollBar();
+    if (!vbar) return;
+    int target = -1;
+    if (t.kind == ScrollTarget::Card) {
+        target = topById.value(t.id, -1);
+        if (target >= 0) target += t.offsetPx;
+    } else if (t.kind == ScrollTarget::Section) {
+        // First rendered card of the surviving section (smallest top).
+        for (const RenderedCard &c : cards) {
+            if (slugById.value(c.id) != t.sectionSlug) continue;
+            if (target < 0 || c.top < target) target = c.top;
+        }
+    }
+    if (target >= 0) vbar->setValue(qBound(0, target, vbar->maximum()));
 }
 
 // ANTS-1236 — Roadmap dialog keyboard cheatsheet trigger. `?` opens

@@ -1649,6 +1649,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_viewer_archive/test_roadmap_viewer_archive.cpp
                 tests/features/roadmap_kind_facets/test_roadmap_kind_facets.cpp
                 tests/features/roadmap_dialog_cards/test_roadmap_dialog_cards.cpp
+                # ANTS-1264 — scroll-position persistence resolver + wiring.
+                tests/features/roadmap_scroll_persistence/test_roadmap_scroll_persistence.cpp
                 tests/features/roadmap_shortcuts_cheatsheet/test_roadmap_shortcuts_cheatsheet.cpp
                 tests/features/roadmap_search_keybinds/test_roadmap_search_keybinds.cpp
                 tests/features/roadmap_inprogress_age/test_roadmap_inprogress_age.cpp

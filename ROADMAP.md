@@ -16551,7 +16551,7 @@ own design + test cycles.
   Source: indie-review-2026-05-13.
   Progress (2026-06-27): confirmed renderHtml v1 has ZERO production callers — every reference is in tests/specs (the spec itself already documents it as "test-only since ANTS-1747"). remotecontrol's roadmap-query path uses parseBullets, not renderHtml. So the CLAUDE.md "IPC verb consumers" justification is indeed stale. Left planned: the delete-or-rename is NOT a quick win — it is a 318-line removal plus a rewrite of 4 feature-test suites (roadmap_viewer, roadmap_viewer_tabs, roadmap_kind_facets, roadmap_current_preset_excludes_shipped) whose locked INVs assert renderHtml's existence/signature/anchor-emission. Needs its own focused session to avoid destabilising the test corpus.
 
-- 📋 [ANTS-1264] **Implement INV-13 scroll-position persistence
+- ✅ [ANTS-1264] **Implement INV-13 scroll-position persistence
   (roadmapdialog).** `src/roadmapdialog.cpp:2206`. Spec ANTS-1154
   §3.5 / §4.5 (INV-13) requires the dialog to write the topmost
   visible card's `(sectionSlug, idIfAny, offsetPx)` to
@@ -16564,6 +16564,7 @@ own design + test cycles.
   the spec but unimplemented.
   Kind: implement.
   Source: indie-review-2026-05-13.
+  Resolved (2026-06-28): implemented INV-13 scroll-position persistence. Config::roadmapScrollAnchors() / setRoadmapScrollAnchors() already existed; wired the dialog side. closeEvent → captureScrollAnchor() records the topmost visible card as {slug, id, offsetPx} keyed by the active preset tab; a new showEvent override → QTimer::singleShot(0) → restoreScrollAnchor() restores once the viewport is sized. Pure static resolveScrollAnchor() implements the §4.5 three-case resolver (card → section → top); the section fallback locates the first rendered card of the surviving section (card anchors are edit-stable; section headers carry only positional roadmap-toc-N anchors). Card/section presence + pixel tops are read from the live QTextDocument via a fragment anchor scan (verified `<div id="rm-...">` registers as a queryable anchor with a blockBoundingRect top, so the byte-stable card HTML is untouched). New feature test tests/features/roadmap_scroll_persistence (6 INVs: card hit / section fallback / top fallback / card precedence / empty-anchor / source-wiring) — all green; RoadmapViewer/Cards regression-clean. Pixel glue is best-effort (never crashes; degrades to top); offset uses a self-consistent capture/restore convention so the round-trip is pixel-accurate. RAM: one small JSON object per preset key (≤6), no unbounded growth.
 
 - ✅ [ANTS-1265] **Image-budget COW dedup (terminalgrid).**
   `src/terminalgrid.cpp:767`. `recomputeImageBudget()` sums
