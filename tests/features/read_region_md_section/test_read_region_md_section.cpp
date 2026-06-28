@@ -103,6 +103,18 @@ QString writeDoc(QTemporaryDir &dir, const char *name) {
     return root + "/docs/" + QLatin1String(name);
 }
 
+// ANTS-2234 — write an arbitrary doc body then resolve `section` against it.
+QJsonObject extractFrom(const QString &path, const char *doc,
+                        const char *section) {
+    QFile f(path);
+    EXPECT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write(doc);
+    f.close();
+    ReadRegion::Options opts;
+    opts.section = QString::fromLatin1(section);
+    return ReadRegion::extract(path, opts);
+}
+
 }  // namespace
 
 // MD-1 — body by slug: heading line through the line before the next
@@ -206,6 +218,80 @@ TEST(ReadRegionMdSection, SelectorExclusivity) {
         EXPECT_FALSE(env.value("ok").toBool());
         EXPECT_EQ(env.value("code").toString().toStdString(), "bad_args");
     }
+}
+
+// MD-9 (ANTS-2234) — a short title resolves a heading carrying a trailing
+// parenthetical, when it uniquely prefixes one heading. The echoed
+// section_slug is the RESOLVED heading slug, not the input.
+TEST(ReadRegionMdSection, ShortTitlePrefixResolvesParenthetical) {
+    QTemporaryDir dir;
+    const char *doc =
+        "# Build Spec\n"
+        "## 7. Build order (cheapest-first; independently verifiable)\n"
+        "Body for build order.\n"
+        "## 8. Cleanup\n"
+        "Cleanup body.\n";
+    const QJsonObject env =
+        extractFrom(writeDoc(dir, "h.md"), doc, "7. Build order");
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("start_line").toInt(), 2);
+    EXPECT_EQ(env.value("end_line").toInt(), 3);  // before "## 8. Cleanup"
+    EXPECT_EQ(env.value("section_slug").toString().toStdString(),
+              "7-build-order-cheapest-first-independently-verifiable");
+    EXPECT_TRUE(joinLines(env).contains(QStringLiteral("Body for build order.")));
+}
+
+// MD-10 (ANTS-2234) — a short title that prefixes ≥2 headings refuses with
+// section_ambiguous + the candidate slugs, rather than guessing.
+TEST(ReadRegionMdSection, AmbiguousPrefixRefuses) {
+    QTemporaryDir dir;
+    const char *doc =
+        "# Amb Spec\n"
+        "## 3. Setup (local)\n"
+        "Local setup.\n"
+        "## 3. Setup (remote)\n"
+        "Remote setup.\n";
+    const QJsonObject env =
+        extractFrom(writeDoc(dir, "i.md"), doc, "3. Setup");
+    EXPECT_FALSE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("code").toString().toStdString(), "section_ambiguous");
+    const QJsonArray cands = env.value("candidates").toArray();
+    EXPECT_EQ(cands.size(), 2);
+}
+
+// MD-11 (ANTS-2234) — an exact slug still wins even when it ALSO prefixes a
+// longer heading; the prefix fallback only fires when no exact match exists.
+TEST(ReadRegionMdSection, ExactMatchWinsOverPrefix) {
+    QTemporaryDir dir;
+    const char *doc =
+        "# Spec\n"
+        "## 3. Setup\n"
+        "Bare setup body.\n"
+        "## 3. Setup (extended)\n"
+        "Extended setup body.\n";
+    const QJsonObject env =
+        extractFrom(writeDoc(dir, "j.md"), doc, "3. Setup");
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("start_line").toInt(), 2);
+    EXPECT_EQ(env.value("section_slug").toString().toStdString(), "3-setup");
+    EXPECT_TRUE(joinLines(env).contains(QStringLiteral("Bare setup body.")));
+}
+
+// MD-12 (ANTS-2234) — the full parenthetical heading text still resolves
+// exactly (back-compat: prefix logic must not regress the exact path).
+TEST(ReadRegionMdSection, FullParentheticalTextStillResolves) {
+    QTemporaryDir dir;
+    const char *doc =
+        "# Build Spec\n"
+        "## 7. Build order (cheapest-first; independently verifiable)\n"
+        "Body for build order.\n";
+    const QJsonObject env = extractFrom(
+        writeDoc(dir, "k.md"), doc,
+        "7. Build order (cheapest-first; independently verifiable)");
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("start_line").toInt(), 2);
+    EXPECT_EQ(env.value("section_slug").toString().toStdString(),
+              "7-build-order-cheapest-first-independently-verifiable");
 }
 
 // MD-8 — handler + schema wiring (the handler needs a live MainWindow).

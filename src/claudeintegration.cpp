@@ -3286,9 +3286,15 @@ void ClaudeIntegration::onMcpConnection() {
                             "the line before the next same-or-higher-level "
                             "heading. Accepts the heading text or its slug "
                             "(both \"4.2 Emission model\" and "
-                            "\"4-2-emission-model\" resolve). Mutually "
-                            "exclusive with the other selectors. Echoes "
-                            "section + section_slug.");
+                            "\"4-2-emission-model\" resolve). A short title "
+                            "also resolves a heading with a trailing "
+                            "parenthetical (\"7. Build order\" matches "
+                            "\"7. Build order (cheapest-first)\") when it "
+                            "uniquely prefixes one heading; ambiguous prefixes "
+                            "refuse with section_ambiguous + candidates "
+                            "(ANTS-2234). Mutually exclusive with the other "
+                            "selectors. Echoes section + the resolved "
+                            "section_slug.");
                     QJsonObject mbProp; mbProp["type"] = "integer";
                         mbProp["minimum"] = 1;
                         mbProp["description"] = QStringLiteral(

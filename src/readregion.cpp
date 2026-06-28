@@ -16,6 +16,8 @@
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QSet>
+#include <QStringList>
+#include <QVector>
 
 #include <algorithm>
 #include <climits>
@@ -169,12 +171,17 @@ QString mdHeadingSlug(const QString &text) {
 // ATX-heading line through the line BEFORE the next heading of the same or a
 // higher level (≤ '#' count), or to EOF when none follows. Tracks ``` / ~~~
 // fenced code so a '#' inside a code block is never read as a heading. First
-// slug match wins. The markdown analogue of resolveSymbol for code.
+// slug match wins; failing that, a dash-bounded prefix match resolves a
+// heading's short title when it carries a trailing parenthetical (ANTS-2234),
+// but only when exactly one heading qualifies. The markdown analogue of
+// resolveSymbol for code.
 struct SecRange {
-    bool    found = false;
-    int     start = 0;   // 1-based heading line
-    int     end   = 0;   // 1-based last line (INT_MAX → to EOF)
-    QString slug;
+    bool        found = false;
+    int         start = 0;   // 1-based heading line
+    int         end   = 0;   // 1-based last line (INT_MAX → to EOF)
+    QString     slug;        // the RESOLVED heading slug (may differ from the query)
+    bool        ambiguous = false;  // ANTS-2234 — >1 prefix candidate
+    QStringList candidates;         // the qualifying heading slugs when ambiguous
 };
 
 int mdHeadingLevel(const QString &trimmed) {
@@ -191,7 +198,11 @@ SecRange resolveSection(const QString &absPath, const QString &wantSlug) {
     SecRange r;
     QFile f(absPath);
     if (!f.open(QIODevice::ReadOnly)) return r;
-    int lineNo = 0, matchLevel = 0;
+
+    // One pass: collect every (fence-aware) ATX heading as {line, level, slug}.
+    struct Head { int line; int level; QString slug; };
+    QVector<Head> heads;
+    int lineNo = 0;
     bool inFence = false;
     QString fenceMarker;
     while (!f.atEnd()) {
@@ -210,18 +221,40 @@ SecRange resolveSection(const QString &absPath, const QString &wantSlug) {
         if (inFence) continue;
         const int level = mdHeadingLevel(trimmed);
         if (level == 0) continue;
-        if (!r.found) {
-            if (mdHeadingSlug(trimmed.mid(level).trimmed()) == wantSlug) {
-                r.found    = true;
-                r.start    = lineNo;
-                r.slug     = wantSlug;
-                matchLevel = level;
-            }
-            continue;
-        }
-        if (level <= matchLevel) { r.end = lineNo - 1; return r; }
+        heads.push_back({lineNo, level, mdHeadingSlug(trimmed.mid(level).trimmed())});
     }
-    if (r.found && r.end == 0) r.end = INT_MAX;  // runs to EOF
+
+    // Tier 1 — exact slug (back-compat: full heading text / full slug). First
+    // match wins. Tier 2 (ANTS-2234) — when no exact match, a dash-bounded
+    // prefix (`<wantSlug>-…`) resolves a short title whose heading carries a
+    // trailing parenthetical, but ONLY when exactly one heading qualifies;
+    // ≥2 is ambiguous and refused rather than guessed.
+    int idx = -1;
+    for (int i = 0; i < heads.size(); ++i)
+        if (heads[i].slug == wantSlug) { idx = i; break; }
+    if (idx < 0 && !wantSlug.isEmpty()) {
+        const QString pfx = wantSlug + QLatin1Char('-');
+        QVector<int> cands;
+        for (int i = 0; i < heads.size(); ++i)
+            if (heads[i].slug.startsWith(pfx)) cands.push_back(i);
+        if (cands.size() == 1) {
+            idx = cands.front();
+        } else if (cands.size() > 1) {
+            r.ambiguous = true;
+            for (int i : cands) r.candidates << heads[i].slug;
+            return r;
+        }
+    }
+    if (idx < 0) return r;  // not found
+
+    r.found = true;
+    r.start = heads[idx].line;
+    r.slug  = heads[idx].slug;  // the resolved heading's slug
+    const int matchLevel = heads[idx].level;
+    // End = line before the next heading at the same-or-higher level, else EOF.
+    r.end = INT_MAX;
+    for (int i = idx + 1; i < heads.size(); ++i)
+        if (heads[i].level <= matchLevel) { r.end = heads[i].line - 1; break; }
     return r;
 }
 
@@ -267,6 +300,18 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
     if (hasSec) {
         const QString wantSlug = mdHeadingSlug(opts.section);
         const SecRange sec = resolveSection(absPath, wantSlug);
+        if (sec.ambiguous) {
+            // ANTS-2234 — a short title that prefixes ≥2 headings is refused,
+            // not guessed; the candidate slugs tell the agent which to pick.
+            env["ok"] = false;
+            env["code"] = QStringLiteral("section_ambiguous");
+            env["error"] = QStringLiteral(
+                "read_region: section: %1 matches %2 headings — pass a fuller "
+                "title or the slug")
+                    .arg(opts.section).arg(sec.candidates.size());
+            env["candidates"] = QJsonArray::fromStringList(sec.candidates);
+            return env;
+        }
         if (!sec.found) {
             env["ok"] = false;
             env["code"] = QStringLiteral("section_not_found");
@@ -278,7 +323,7 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
         startLine       = sec.start;
         endLine         = sec.end;
         sectionEcho     = opts.section;
-        sectionSlugEcho = wantSlug;
+        sectionSlugEcho = sec.slug;  // resolved heading slug (may differ from input)
     }
     if (hasSym) {
         const SymRange sr = resolveSymbol(absPath, opts.symbol);

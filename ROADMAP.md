@@ -8733,6 +8733,31 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: diffviewer.
   Source: user-report-2026-06-27.
 
+- ✅ [ANTS-2234] **`read_region` section selector: forgiving match for a heading's short title when it carries a trailing parenthetical (ANTS-2221 follow-up).**
+  resolveSection (src/readregion.cpp) matches a heading only on EXACT
+  slug equality, so `section:"7. Build order"` (slug 7-build-order) misses
+  `## 7. Build order (cheapest-first; …)` (slug 7-build-order-cheapest-
+  first-…). Fix: after the exact match fails, fall back to a dash-bounded
+  prefix match — a heading whose slug starts with `<wantSlug>-`. Resolve
+  only when EXACTLY ONE heading qualifies; ≥2 → new refusal
+  `section_ambiguous` listing the candidate slugs (mirrors roadmap's
+  bullet_ambiguous + the existing symbol matchCount path). Exact match
+  still wins (back-compat: full text / full slug unaffected). Echo the
+  RESOLVED heading slug in section_slug (not the input slug) so the agent
+  learns the canonical key. Add section_ambiguous to
+  docs/standards/mcp-error-codes.md; refresh the `section` schema
+  description; extend tests/features/read_region_md_section (prefix
+  resolves, ambiguous refuses, exact-still-wins, full-parenthetical-text
+  still works). Same self-correcting ergonomics class as the
+  file_outline path/file_path alias.
+  Kind: enhancement.
+  Lanes: readregion.
+  **Layman:** When a Claude session wants to read one section of a spec, it naturally types the short heading title (e.g. "7. Build order"). But many headings have a descriptive bit in brackets after them ("7. Build order (cheapest-first; ...)"), and right now the short title doesn't match — the session has to type the whole thing or fall back to line numbers. This makes the section reader accept the short title as long as it unambiguously points at one heading.
+  Kind: enhancement.
+  Lanes: readregion.
+  Source: doom-feedback-2026-06-28 (DOOM-0009 step 4d/5 session).
+  Resolved (2026-06-28): resolveSection (readregion.cpp) now collects headings in one pass and, when no exact slug match exists, resolves a unique dash-bounded prefix (`<wantSlug>-…`); ≥2 candidates → new `section_ambiguous` refusal carrying `candidates[]`; exact match still wins; section_slug echoes the resolved heading slug. Added section_ambiguous + the previously-undocumented section_not_found to mcp-error-codes.md; refreshed the section schema description; extended read_region_md_section (MD-9..12). Full suite 2313 green.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,

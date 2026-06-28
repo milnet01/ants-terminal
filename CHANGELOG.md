@@ -51,6 +51,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **`read_region` section selector: forgiving match for a heading's short title when it carries a trailing parenthetical (ANTS-2221 follow-up).** (ANTS-2234)
+  When a Claude session wants to read one section of a spec, it naturally types the short heading title (e.g. "7. Build order"). But many headings have a descriptive bit in brackets after them ("7. Build order (cheapest-first; ...)"), and right now the short title doesn't match — the session has to type the whole thing or fall back to line numbers. This makes the section reader accept the short title as long as it unambiguously points at one heading.
+
 - **Link with the mold linker when available (`-fuse-ld=mold`, auto-detected, opt-out).** (ANTS-2233)
   Switched the build's final "linking" step to a much faster linker called mold (it was already installed but unused). Linking is the slowest, most memory-hungry part of the build, and mold is both faster and lighter on memory — so the build finishes sooner without risking the machine hanging. Falls back to the old linker automatically if mold isn't installed.
 

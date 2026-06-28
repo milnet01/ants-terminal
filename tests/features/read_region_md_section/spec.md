@@ -30,6 +30,23 @@ of {line range, symbol, section} must be selected.
 - **MD-8 wiring** — `cmdReadRegion` reads the `section` arg; the
   `read_region` inputSchema declares the `section` property.
 
+### Forgiving short-title match (ANTS-2234)
+
+A heading's short title is the natural key, but headings often carry a
+trailing parenthetical. When no exact text/slug match exists, a
+dash-bounded prefix (`<wantSlug>-…`) resolves the heading — but only when
+it is unique.
+
+- **MD-9 short-title prefix** — `section:"7. Build order"` resolves
+  `## 7. Build order (cheapest-first; …)`; the echoed `section_slug` is the
+  RESOLVED heading slug, not the input.
+- **MD-10 ambiguous prefix** — when a short title prefixes ≥2 headings, refuse
+  with `section_ambiguous` and a `candidates[]` array of the qualifying slugs.
+- **MD-11 exact wins** — an exact slug match still wins even when it also
+  prefixes a longer heading; the prefix fallback fires only on no exact match.
+- **MD-12 full text back-compat** — the full parenthetical heading text still
+  resolves exactly (the prefix logic must not regress the exact path).
+
 ## Out of scope
 
 - Setext (`===` / `---` underline) headings — ATX (`#`) only, matching
