@@ -8794,6 +8794,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: chore.
   Source: debt-sweep-2026-06-28.
 
+- 📋 [ANTS-3348] **Line-grain `.debt_sweep_suppress` ledger for the irreducible FP residue.**
+  debt-sweep has no FP ledger (unlike /audit's .audit_suppress and the prose .ants_review_falsepos.jsonl shared by cold-eyes/indie-review/test-audit). Its findings are mechanical line-grain (detector_id+file+line), so the right shape is a `.audit_suppress`-style ledger (NOT a review_kind in the prose ledger). GATED behind the detector fixes (ANTS-3342/3343) + fixture-dir exclusion (ANTS-3344): build only for the small residue those leave. Spec first + cold-eyes before code. test-audit needs nothing — it already isolates via review_kind in the shared prose ledger."
+  **Layman:** A way to permanently silence a debt-sweep false alarm that can't be fixed in the detector itself — but only after the detector and fixture fixes remove the bulk first.
+  Kind: feature.
+  Source: user-request-2026-06-28.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
@@ -17470,6 +17476,42 @@ server build id so clients can self-diagnose this.
   **Layman:** The session-start tip listed tools like `workspace_search`, but the real name to call is `mcp__ants__workspace_search`; the first call with the short name failed and wasted a round-trip.
   Kind: doc-fix.
   Source: DOOM_Ants feedback 2026-06-27.
+
+### 🔌 Ants-MCP feedback from CC sessions (DOOM 2026-06-28)
+
+DOOM-0009 step-6 SVGF denoiser sessions. Confirmed shipped: ANTS-2081 (ETag
+next_call_hint on read verbs, confirmed-in-anger), ANTS-2160
+(project_settings_suggestion), ANTS-2159 (file_outline top-level functions —
+false-negative fixed). ANTS-2079 (multi-KB write-verb schema blobs on ToolSearch
+load) still open, no regression. New items below.
+
+- ✅ [ANTS-3349] **read_region/read_regions symbol-mode should prefer the definition over a forward declaration.**
+  symbol-mode resolves to the forward declaration (`void Foo();`) with symbol_ambiguous:true/match_count:2 instead of the `{…}` definition body. Common in single-TU renderers (r_vulkan.cpp). Fix: when a symbol has multiple matches, prefer the definition (a brace-body) over a declaration (ends `;`), or return the candidate list with kind:"declaration"|"definition" so the caller picks a line. find_definition already makes this distinction — reuse its classifier.
+  **Layman:** When you ask for a function by name and the file declares it up top and defines it lower down, the tool returns the useless one-line declaration instead of the actual code body.
+  Kind: fix.
+  Source: DOOM-2026-06-28.
+  Resolved 2026-06-28: resolveSymbol prefers the first match whose signature does not end in ';' (the definition) over a forward declaration. Regression test ReadRegionAggregateBody.PrefersDefinitionOverForwardDeclaration.
+
+- ✅ [ANTS-3350] **roadmap_log/changelog_log should walk up to the repo root, matching the read verbs.**
+  Write verbs refuse no_roadmap when caller_cwd is a project subdir (e.g. linuxdoom-1.10/) while ROADMAP.md/CHANGELOG.md sit at repo root; read verbs (workspace_search, file_outline, read_region, find_definition) resolve the root from the same subdir. Fix: walk UP from caller_cwd to locate the .md (stop at the .git/repo boundary), reusing the read-verb root resolution. Failing that, the no_roadmap error should suggest the repo-root path it would have found.
+  **Layman:** Writing to the roadmap fails if you're working in a sub-folder of the project, even though searching/reading works fine from there — you have to remember to point it at the top folder.
+  Kind: fix.
+  Source: DOOM-2026-06-28.
+  Resolved 2026-06-28: findRoadmapUnder/findChangelogUnder walk up to the .git repo boundary; append counter resolves next to the resolved roadmap. caller_cwd==root is byte-identical to before. Scrape test extended in McpLastAuditSummary.Ants1459FindRoadmapUnderWidens.
+
+- 📋 [ANTS-3351] **file_outline (.cpp): most-vexing-parse locals still mis-tagged as functions (ANTS-2159 residual).**
+  ANTS-2159's false-negative (real functions omitted) is fixed, but the false-positive half lingers: `std::vector<…> name(n);` declarations inside a function body are still classified kind:"func". Fix: require namespace/file scope or a `{`-body (not a trailing `;`) before classifying `Type name(args)` as a function.
+  **Layman:** The file-structure overview occasionally lists a local variable as if it were a function.
+  Kind: fix.
+  Source: DOOM-2026-06-28.
+  Root cause (2026-06-28, verified vs DOOM r_vulkan.cpp:107/121): the locals leak because the ENCLOSING function (e.g. RB_VulkanProbe) is not registered as a function body — funcOpenAtDepth stays <0, so its interior is treated as file scope where `std::vector<…> name(n);` matches the free-function regex. Same class as ANTS-2159's false-negative (undetected function). Fix must make the enclosing function detected (so !inFuncBody suppresses the locals), NOT add a new local-filter heuristic — that would risk regressing the working ANTS-2159 scope logic. Deferred pending the exact reason that function header is missed; needs the repro file. LOW (drowned out by correct entries).
+
+- ✅ [ANTS-3352] **session_orient: nudge `project_settings op:init` when a project_settings_suggestion is present.**
+  session_orient returns project_settings_suggestion (source_roots, reason, write_via) for non-src layouts — add an inline next-step nudge ('run project_settings op:init to index these roots') so the suggestion is one obvious call away. LOW / optional.
+  **Layman:** When the tool notices your code isn't where it expected and suggests a fix, it could also tell you the one command that applies it.
+  Kind: enhancement.
+  Source: DOOM-2026-06-28.
+  Resolved 2026-06-28: session_orient project_settings_suggestion now carries a next_step nudge ('run project_settings op:init to index these source_roots').
 
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 

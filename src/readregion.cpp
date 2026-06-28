@@ -98,18 +98,29 @@ SymRange resolveSymbol(const QString &absPath, const QString &name) {
                              /*includeDocComment=*/false, /*maxSymbols=*/1000);
     const QJsonArray syms = outline.value(QStringLiteral("symbols")).toArray();
     int firstIdx = -1;
+    int defIdx   = -1;  // ANTS-3349 — first match that is a definition
     for (int i = 0; i < syms.size(); ++i) {
-        if (syms.at(i).toObject().value(QStringLiteral("name")).toString() == name) {
+        const QJsonObject so = syms.at(i).toObject();
+        if (so.value(QStringLiteral("name")).toString() == name) {
             if (firstIdx < 0) firstIdx = i;
             ++r.matchCount;
+            // Prefer the definition over a forward declaration: a declaration
+            // signature ends with ';' (`void Foo();`); a definition's does not
+            // (`void Foo() {` / `void Foo()`). Mirrors find_definition's kind.
+            if (defIdx < 0) {
+                const QString s =
+                    so.value(QStringLiteral("signature")).toString().trimmed();
+                if (!s.endsWith(QLatin1Char(';'))) defIdx = i;
+            }
         }
     }
     if (firstIdx < 0) return r;  // not found
     r.found = true;
-    const QJsonObject symObj = syms.at(firstIdx).toObject();
+    const int chosenIdx = (defIdx >= 0) ? defIdx : firstIdx;
+    const QJsonObject symObj = syms.at(chosenIdx).toObject();
     r.start = symObj.value(QStringLiteral("line")).toInt();
-    const int outlineEnd = (firstIdx + 1 < syms.size())
-        ? syms.at(firstIdx + 1).toObject().value(QStringLiteral("line")).toInt() - 1
+    const int outlineEnd = (chosenIdx + 1 < syms.size())
+        ? syms.at(chosenIdx + 1).toObject().value(QStringLiteral("line")).toInt() - 1
         : INT_MAX;  // to EOF
     // ANTS-2222 — aggregate symbols (struct/class/union) get their FULL body.
     // The flat outline's "next entry" for a struct is its first member, so the

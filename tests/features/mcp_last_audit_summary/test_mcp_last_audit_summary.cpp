@@ -341,6 +341,11 @@ TEST(McpLastAuditSummary, Ants1459FindRoadmapUnderWidens) {
     expect(rc.find(".github/ROADMAP.md") != std::string::npos,
            "RQ-2",
            "findRoadmapUnder must probe .github/ROADMAP.md");
+    // ANTS-3350 — the resolver walks up to the enclosing git repo so write/
+    // query verbs resolve the project from a subdirectory (DOOM_Ants feedback).
+    expect(rc.find("/.git") != std::string::npos,
+           "ANTS-3350",
+           "findRoadmapUnder must walk up to the .git repo boundary");
     EXPECT_EQ(0, expect_failures());
 }
 

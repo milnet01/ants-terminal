@@ -111,6 +111,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Ants MCP, from DOOM cross-session feedback: read_region/read_regions symbol-mode now returns a symbol's definition rather than its forward declaration; roadmap_log/changelog_log resolve ROADMAP/CHANGELOG from a project subdirectory (walk up to the git repo root) like the read verbs; session_orient's project_settings_suggestion gained a next_step nudge.**
+  ANTS-3349 / ANTS-3350 / ANTS-3352. A residual file_outline most-vexing-parse mis-tag (ANTS-3351) remains deferred — its root cause is an undetected enclosing function, same class as ANTS-2159.
+
 - **Debt-sweep detector false positives: brace-less `if`/`else`/`for` bodies no longer flagged as dead branches; `Q_UNUSED` of Qt-typedef params and in comments no longer flagged as orphans; shell (`test_*.sh`/`.bash`) tests now count toward invariant coverage.**
   Also removed two duplicate `#include`s in mainwindow.cpp. Deeper detector-scope issues (shipped_without_commit windowing, missing_inv_test behavioural matching, fixture-dir exclusion, scan output capping) deferred to ANTS-3342..3347.
 

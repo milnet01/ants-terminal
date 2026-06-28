@@ -110,28 +110,47 @@ QString resolveRootCanonical(MainWindow *main, const QJsonObject &req);
 // "repo-root only" search returned no_roadmap_loaded.
 QString findRoadmapUnder(const QString &canonicalRoot) {
     if (canonicalRoot.isEmpty()) return {};
-    // ANTS-2160 — .ants/project.json roadmap override (must be an existing
-    // file under root); else the candidate-list probe below.
-    if (const auto rm = ProjectSettings::load(canonicalRoot).roadmap) {
-        const QString c = canonicalRoot + QLatin1Char('/') + *rm;
-        if (QFileInfo(c).isFile()) return c;
-    }
-    static const QStringList kCandidates = {
-        QStringLiteral("ROADMAP.md"),
-        QStringLiteral("roadmap.md"),
-        QStringLiteral("Roadmap.md"),
-        QStringLiteral("docs/ROADMAP.md"),
-        QStringLiteral("docs/roadmap.md"),
-        QStringLiteral("docs/private/ROADMAP.md"),
-        QStringLiteral("docs/private/roadmap.md"),
-        QStringLiteral("docs/internal/ROADMAP.md"),
-        QStringLiteral("docs/internal/roadmap.md"),
-        QStringLiteral(".github/ROADMAP.md"),
-        QStringLiteral(".github/roadmap.md"),
+    // Single-directory probe: .ants/project.json roadmap override (ANTS-2160)
+    // then the candidate list under `dir` (ANTS-1459 — docs/, docs/private/,
+    // docs/internal/, .github/).
+    auto probeDir = [](const QString &dir) -> QString {
+        if (const auto rm = ProjectSettings::load(dir).roadmap) {
+            const QString c = dir + QLatin1Char('/') + *rm;
+            if (QFileInfo(c).isFile()) return c;
+        }
+        static const QStringList kCandidates = {
+            QStringLiteral("ROADMAP.md"),
+            QStringLiteral("roadmap.md"),
+            QStringLiteral("Roadmap.md"),
+            QStringLiteral("docs/ROADMAP.md"),
+            QStringLiteral("docs/roadmap.md"),
+            QStringLiteral("docs/private/ROADMAP.md"),
+            QStringLiteral("docs/private/roadmap.md"),
+            QStringLiteral("docs/internal/ROADMAP.md"),
+            QStringLiteral("docs/internal/roadmap.md"),
+            QStringLiteral(".github/ROADMAP.md"),
+            QStringLiteral(".github/roadmap.md"),
+        };
+        for (const QString &n : kCandidates) {
+            const QString c = dir + QLatin1Char('/') + n;
+            if (QFileInfo::exists(c)) return c;
+        }
+        return {};
     };
-    for (const QString &n : kCandidates) {
-        const QString c = canonicalRoot + QLatin1Char('/') + n;
-        if (QFileInfo::exists(c)) return c;
+    // ANTS-3350 — resolve from a project SUBDIRECTORY too: walk up to the
+    // nearest ancestor that holds a roadmap, bounded by the enclosing git
+    // repo (.git) so the search never escapes the project. caller_cwd == root
+    // returns on the first probe (byte-identical to the prior single-dir
+    // behaviour); only a subdir caller walks up. Matches the code read verbs,
+    // which already resolve the project from a subdir.
+    QString dir = canonicalRoot;
+    for (int depth = 0; depth < 64 && !dir.isEmpty(); ++depth) {
+        const QString hit = probeDir(dir);
+        if (!hit.isEmpty()) return hit;
+        if (QFileInfo::exists(dir + QStringLiteral("/.git"))) break;
+        const QString parent = QFileInfo(dir).path();
+        if (parent == dir) break;
+        dir = parent;
     }
     return {};
 }
@@ -139,21 +158,35 @@ QString findRoadmapUnder(const QString &canonicalRoot) {
 // ANTS-1548 — CHANGELOG.md resolver, same shape as findRoadmapUnder.
 QString findChangelogUnder(const QString &canonicalRoot) {
     if (canonicalRoot.isEmpty()) return {};
-    // ANTS-2160 — .ants/project.json changelog override.
-    if (const auto cl = ProjectSettings::load(canonicalRoot).changelog) {
-        const QString c = canonicalRoot + QLatin1Char('/') + *cl;
-        if (QFileInfo(c).isFile()) return c;
-    }
-    static const QStringList kCandidates = {
-        QStringLiteral("CHANGELOG.md"),
-        QStringLiteral("changelog.md"),
-        QStringLiteral("Changelog.md"),
-        QStringLiteral("docs/CHANGELOG.md"),
-        QStringLiteral("docs/changelog.md"),
+    auto probeDir = [](const QString &dir) -> QString {
+        // ANTS-2160 — .ants/project.json changelog override.
+        if (const auto cl = ProjectSettings::load(dir).changelog) {
+            const QString c = dir + QLatin1Char('/') + *cl;
+            if (QFileInfo(c).isFile()) return c;
+        }
+        static const QStringList kCandidates = {
+            QStringLiteral("CHANGELOG.md"),
+            QStringLiteral("changelog.md"),
+            QStringLiteral("Changelog.md"),
+            QStringLiteral("docs/CHANGELOG.md"),
+            QStringLiteral("docs/changelog.md"),
+        };
+        for (const QString &n : kCandidates) {
+            const QString c = dir + QLatin1Char('/') + n;
+            if (QFileInfo::exists(c)) return c;
+        }
+        return {};
     };
-    for (const QString &n : kCandidates) {
-        const QString c = canonicalRoot + QLatin1Char('/') + n;
-        if (QFileInfo::exists(c)) return c;
+    // ANTS-3350 — walk up to the repo (.git) boundary, mirroring
+    // findRoadmapUnder, so changelog_log resolves from a subdirectory.
+    QString dir = canonicalRoot;
+    for (int depth = 0; depth < 64 && !dir.isEmpty(); ++depth) {
+        const QString hit = probeDir(dir);
+        if (!hit.isEmpty()) return hit;
+        if (QFileInfo::exists(dir + QStringLiteral("/.git"))) break;
+        const QString parent = QFileInfo(dir).path();
+        if (parent == dir) break;
+        dir = parent;
     }
     return {};
 }
@@ -5375,9 +5408,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                 .arg(callerCanonical));
     }
 
-    // Counter path next to ROADMAP.md.
+    // Counter path next to the RESOLVED ROADMAP.md. ANTS-3350 — when
+    // caller_cwd is a subdirectory, findRoadmapUnder resolved the roadmap in a
+    // parent; the counter lives beside it, not under caller_cwd.
     const QString counterPath =
-        callerCanonical + QLatin1Char('/') +
+        QFileInfo(roadmapPath).absolutePath() + QLatin1Char('/') +
         QStringLiteral(".roadmap-counter");
 
     // ANTS-1905 — id_strategy switch. Default "counter" (back-compat
@@ -12262,6 +12297,9 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
                 sg[QStringLiteral("suggested")]            = suggested;
                 sg[QStringLiteral("write_via")]            =
                     QStringLiteral("project_settings op:\"init\"");
+                sg[QStringLiteral("next_step")]            =
+                    QStringLiteral("run project_settings op:\"init\" to "
+                                   "index these source_roots");
                 sg[QStringLiteral("default_source_count")] = sug.defaultSourceCount;
                 sg[QStringLiteral("total_source_count")]   = sug.totalSourceCount;
                 result[QStringLiteral("project_settings_suggestion")] = sg;

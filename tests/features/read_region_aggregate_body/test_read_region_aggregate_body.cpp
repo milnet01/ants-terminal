@@ -60,6 +60,32 @@ TEST(ReadRegionAggregateBody, FullBody) {
     EXPECT_FALSE(body.contains(QStringLiteral("unrelated")));      // stops at the struct
 }
 
+// ANTS-3349 — when a symbol has both a forward declaration and a later
+// definition, symbol-mode returns the DEFINITION body, not the 1-line decl
+// (DOOM_Ants feedback 2026-06-28; r_vulkan.cpp forward-declares several
+// helpers).
+TEST(ReadRegionAggregateBody, PrefersDefinitionOverForwardDeclaration) {
+    QTemporaryDir dir;
+    const QString root = QFileInfo(dir.path()).canonicalFilePath();
+    QDir().mkpath(root + "/src");
+    const QString path = root + "/src/r_vk.cpp";
+    const QJsonObject env = extractSym(path,
+        "void UpdateDescriptor();\n"          // 1  forward declaration
+        "\n"                                  // 2
+        "void otherThing() { return; }\n"    // 3  single-line body
+        "\n"                                  // 4
+        "void UpdateDescriptor() {\n"        // 5  definition
+        "    doWork();\n"                     // 6
+        "    finish();\n"                     // 7
+        "}\n",                               // 8
+        "UpdateDescriptor");
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("start_line").toInt(), 5);  // the definition, not line 1
+    const QString body = joinLines(env);
+    EXPECT_TRUE(body.contains(QStringLiteral("doWork();")));   // definition body
+    EXPECT_TRUE(body.contains(QStringLiteral("finish();")));
+}
+
 // INV-2 — a nested method body inside the aggregate doesn't end the range
 // early; the close is the aggregate's own matching brace.
 TEST(ReadRegionAggregateBody, NestedBracesBalanced) {
