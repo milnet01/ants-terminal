@@ -108,6 +108,9 @@ for security-relevant changes.
 
 ### Removed
 
+- **Deleted the decayed `claude_statusbar_extraction` source-grep test (ANTS-1381).**
+  It froze the 0.7.74 ClaudeStatusBarController extraction with byte-for-byte signature/connect-site/LoC greps; the controller's behaviour is covered at runtime by the model_near_miss_ledger and model_auto_switch_outcome_fillin tests. Investigation found the other five "extraction" tests in the same roadmap item are NOT decayed (two carry live runtime unit tests; three are the sole guard for their behaviour) and were kept.
+
 - **Deleted the dead `IndieReviewEngine::assembleBrief` zombie — a latent prompt-injection trap (ANTS-2187).**
   The unfenced v1 brief assembler had no production caller (only doc
   comments + one feature test) yet inlined raw source into an LLM prompt

@@ -10199,7 +10199,7 @@ that shipped 6+ months ago — pure self-reference).
   Source: test-suite-audit-2026-05-15 (lane B).
   Resolved (2026-06-28): concurrent_writer_lock now roots its lock file in a private QTemporaryDir (0700, random name, auto-removed) instead of the predictable /tmp/ants-cwl-<pid>-<time>.dat, and the child's lock open gains O_NOFOLLOW (defence-in-depth). Closes the symlink-attack window. Verified: ConcurrentWriterLock.Main passes, no predictable /tmp literal remains. SCOPE CORRECTION on the second named site: claude_status_bar_per_tab's `/tmp/projects/dummy/<uuid>.jsonl` is NOT a vulnerability — verified the transcript path is only ever basename-compared (setTranscriptPathForTest → confused-deputy guard), never opened or created, so there is no symlink window; kFocusedSession is a fixed UUID-shaped constant, not a real path. Left as-is (converting a never-opened synthetic path to QTemporaryDir would be pointless churn). Also corrected the roadmap's prescription: O_EXCL was NOT applied — the child must open the *existing* lock file (pre-created by the parent ConfigWriteLock) to contend on the flock, so O_EXCL would break the test; O_NOFOLLOW alone is correct. Production ConfigWriteLock unchanged (its real path is the user-private config dir, never /tmp).
 
-- 📋 [ANTS-1381] **Delete decayed source-grep tripwires
+- ✅ [ANTS-1381] **Delete decayed source-grep tripwires
   (~2000 LoC, zero behavioural coverage loss).** Four
   `*_extraction` tests freeze one-shot refactors that
   shipped ≥ 6 months ago (`claude_statusbar_extraction`,
@@ -10224,6 +10224,18 @@ that shipped 6+ months ago — pure self-reference).
   source-string ones.
   Kind: refactor.
   Source: test-suite-audit-2026-05-15 (lane C).
+  Resolved (2026-06-28) — but the item's premise ("delete all six, ~2000 LoC, zero behavioural coverage loss") was VERIFIED WRONG. Per-test reality (confirmed by reading each + a sibling-coverage sweep), only ONE of the six was a genuinely-decayed deletable tripwire:
+
+  DELETED: claude_statusbar_extraction (336 LoC + spec.md). Its ClaudeStatusBarController is constructed + driven at runtime by model_near_miss_ledger/* and model_auto_switch_outcome_fillin/test_override_cache_controller, so deleting loses only structural locks (byte-for-byte signal/method signatures, exactly-8 connect-site count, LoC anchors) frozen to the 0.7.74 refactor — behaviour is runtime-covered.
+
+  KEPT (NOT decayed — would lose real coverage):
+  - audit_engine_extraction — has live runtime tests: AuditEngine::capFindings (INV-8), parseFindings (INV-9), and AuditEngineMergeChannels.Ants2118Parity (an active ANTS-2118 regression lock on mergeToolChannels). Plus the hasGuiInclude Qt6::Core-only linkage discipline.
+  - themedstylesheet_extraction — hybrid; INV-8 unit-tests buildAppStylesheet/buildChipStylesheet against a real Theme, asserting rendered QSS (colours/margins/radius/weight).
+  - diffviewer_extraction — SOLE guard: no runtime test exercises diffviewer::show; only production calls it.
+  - audit_drop_alias — SOLE guard: the `// audit: drop` inline-suppress alias is functionally untested anywhere (tests/audit_self_test.sh's shell regex does not even contain the token).
+  - claude_task_list_session_isolation — its endpoints (parseTranscript, sessionPathForCwd) are runtime-tested separately, but the resolver↔parser glue wiring (refreshTasksButton → activeSessionPath → setTranscriptPath on the 2 s tick) it locks is grep-only and unique to this test.
+
+  Follow-up coverage gaps surfaced for diffviewer::show and the `// audit: drop` alias — see ANTS-3355. Net: 1 test removed (~336 LoC, 1 link step), 5 retained with rationale. The original ~2000 LoC / 5-link-step estimate does not hold.
 
 - ✅ [ANTS-1382] **Extract `tests/_support/expect.h` —
   buffer-on-success + drop `if (runMain != 0) FAIL();`.**
@@ -11243,6 +11255,12 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   ghost or overdraw on adjacent rows; the per-pixel terminal-area
   fillRect alpha (opacity config) interacting with the cell BG fill.
   Lane = terminalwidget, not diffviewerdialog.
+
+- 📋 [ANTS-3355] **Add runtime coverage for diffviewer::show and the `// audit: drop` inline-suppress alias (currently grep-only).**
+  Surfaced while verifying ANTS-1381 (which found these two source-grep tests are the SOLE guard for their behaviour): (1) diffviewer::show (src/diffviewer.cpp, the extracted Review Changes dialog) has no runtime test — only production (mainwindow.cpp:6966) calls it; diffviewer_extraction + review_changes_* are all source-grep. Add a test that constructs the dialog with a synthetic diff and asserts rendered rows / nav behaviour. (2) The `// audit: drop` inline-suppress alias (AuditDialog::commentSuppresses / inlineSuppressed, auditdialog.cpp ~2026/2092) is functionally untested — tests/audit_self_test.sh's SUPPRESS_RE doesn't even contain the token. Add a runtime test that feeds a finding annotated with `// audit: drop` through the suppression path and asserts it is dropped. Once these land, diffviewer_extraction and audit_drop_alias can be retired (the original ANTS-1381 goal).
+  **Layman:** Two behaviours are only checked by tests that read the source code as text, not by tests that actually run the code: the Review-Changes diff popup, and one shorthand comment that silences an audit warning. Add real run-the-code tests so the text-matching guards can eventually retire.
+  Kind: test.
+  Source: in-session-2026-06-28; surfaced during ANTS-1381 sibling-coverage verification..
 
 ## 0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)
 
