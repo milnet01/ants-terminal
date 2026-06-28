@@ -3253,9 +3253,11 @@ void ClaudeIntegration::onMcpConnection() {
                     "keeping the head. ETag-304: a matching etag_match "
                     "re-read is free. caller_cwd required.");
                 rrTool["selection_hint"] = QStringLiteral(
-                    "Use after find_definition/file_outline to read just one "
-                    "function's body, or any line range, instead of a full "
-                    "Read — and to re-read it for free when unchanged.");
+                    "Use after find_definition/file_outline to read one "
+                    "function's body or any line range instead of a full Read — "
+                    "and re-read it free when unchanged. Reading several slices? "
+                    "Batch them in one `read_regions` call (worth it on first "
+                    "reads too).");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";

@@ -63,7 +63,7 @@ constexpr const char *kOrientationScriptBody =
     "  • roadmap_log        → ROADMAP.md append / status flip / annotate\n"
     "  • changelog_log      → CHANGELOG.md append (Keep-a-Changelog aware)\n"
     "  • workspace_search   → project-wide code search (saves 250–4500 tokens vs grep)\n"
-    "  • file_outline       → scan a file's structure cheaply\n"
+    "  • file_outline       → outline a file; read_region(s) fetch its slices\n"
     "  • find_definition    → \"where is foo defined?\"\n"
     "  • find_sources       → \"who calls bar?\"\n"
     "  • git_state          → status + branch + ahead/behind in one call\n"

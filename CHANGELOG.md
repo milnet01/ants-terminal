@@ -57,6 +57,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **`read_regions` discoverability — surface the batch reader in the SessionStart prelude + cross-link it from `read_region`.** (ANTS-3359)
+  When Claude needs several chunks of a big file, the cheaper "read them all in one go" tool wasn't visible up-front, so it fell back to the slower built-in reader. Make that batch reader easy to find.
+
 - **Review-dialog and clipboard/AI size caps: honest unit naming + de-duplicated truncation tail (ANTS-2205)**
   Renamed the clipboard and AI-command length caps from `…MaxBytes`
   to `…MaxChars` so the name matches what they measure (QString
