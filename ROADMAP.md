@@ -16344,6 +16344,7 @@ own design + test cycles.
   as the same user.
   Kind: review-fix.
   Source: indie-review-2026-05-13.
+  Re-confirmed deferred (2026-06-28): the architectural blocker still holds — grep of src/claudeintegration.h shows ClaudeTabTracker referenced only in comments, with no tracker member/pointer on ClaudeIntegration (which owns the single shared hook UDS). So the session_id→shell cross-check (shellForSessionId) still has no path to the hook owner without threading a ClaudeTabTracker* into it — the same hot hook-routing change the 2026-05-25 note flagged. Mitigations unchanged and intact (SO_PEERCRED same-UID gate, isFocusedTabSession per-event gate, cold-start drop). Left planned for a focused session that can wire the tracker pointer + add a feature test on the gate.
 
 - ✅ [ANTS-1273] **`/tmp/ants-terminal-<uid>.sock` fallback TOCTOU
   (remotecontrol).** `src/remotecontrol.cpp:82`. The XDG-runtime-dir
@@ -16584,7 +16585,7 @@ own design + test cycles.
   Source: indie-review-2026-05-13.
   Resolved (2026-06-27): recomputeImageBudget dedups by QImage::constBits() (the non-detaching accessor) so COW copies sharing one buffer — a Kitty T stores into m_kittyImages AND pushes a shared copy into m_inlineImages — count once instead of ~2×, no longer rejecting legitimate later transfers. terminalgrid.cpp.
 
-- 📋 [ANTS-1267] **Hoist per-row `vector<TextRun>` (terminalwidget).**
+- ✅ [ANTS-1267] **Hoist per-row `vector<TextRun>` (terminalwidget).**
   `src/terminalwidget.cpp:775-1003`. `paintEvent` allocates
   `std::vector<TextRun>` per row, every frame, plus per-run
   `std::vector<char32_t>` codepoint buffers. On a 60 fps repaint
@@ -16597,6 +16598,7 @@ own design + test cycles.
   measurably faster on heavy Claude output.
   Kind: optimize.
   Source: indie-review-2026-05-13.
+  Resolved (2026-06-28) — already done, superseded. This 2026-05-13 item predates the optimisation it requested. Verified in src/terminalwidget.cpp: ANTS-1779 already hoisted the per-row run vector and the per-run codepoint buffer into mutable members m_paintRuns (std::vector<PaintTextRun>) + m_paintCps (std::vector<char32_t>), reused across rows AND frames via clear() (capacity retained); PaintTextRun now records its codepoints as a [cpStart, cpStart+cpLen) slice into the shared m_paintCps arena rather than owning a nested vector (terminalwidget.h:665,675-676; terminalwidget.cpp:800-808). ANTS-1149 separately hoisted the QTextLayout (m_paintLayout member) out of the per-run loop. The only remaining std::vector in the paint loop (PaintHighlightSpan `computed`, terminalwidget.cpp:775) is allocated on a highlight-cache MISS only, then moved into m_hlSpanCache — not per-frame. No per-row/per-frame heap churn remains. No code change made: churning a hot, already-optimised paint path would be redundant (the item's own caveat was 'measure perf-overlay delta first' — there is no delta to capture).
 
 - 📋 [ANTS-1277] **Keyboard nav + aria-expanded on collapsible
   cards (roadmapdialog).** `src/roadmapdialog.cpp:1888`. The dialog
