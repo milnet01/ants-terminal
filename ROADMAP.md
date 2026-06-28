@@ -8758,6 +8758,42 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: doom-feedback-2026-06-28 (DOOM-0009 step 4d/5 session).
   Resolved (2026-06-28): resolveSection (readregion.cpp) now collects headings in one pass and, when no exact slug match exists, resolves a unique dash-bounded prefix (`<wantSlug>-…`); ≥2 candidates → new `section_ambiguous` refusal carrying `candidates[]`; exact match still wins; section_slug echoes the resolved heading slug. Added section_ambiguous + the previously-undocumented section_not_found to mcp-error-codes.md; refreshed the section schema description; extended read_region_md_section (MD-9..12). Full suite 2313 green.
 
+- 📋 [ANTS-3342] **debt_sweep_scan `shipped_without_commit` ignores the `since` window.**
+  Detector scans the whole ROADMAP against `git log --all` regardless of `--since`, so ~433 pre-convention ✅ items (e.g. ANTS-1007) re-surface every sweep. Fix: only flag ✅ bullets added/flipped within `since..HEAD` (diff ROADMAP.md in the window).
+  **Layman:** The doc-drift check re-flags every historically-shipped roadmap item every run (433 false positives), instead of only ones marked done in the current window.
+  Kind: fix.
+  Source: debt-sweep-2026-06-28.
+
+- 📋 [ANTS-3343] **debt_sweep_scan `missing_inv_test` matches the literal `INV-N` token only.**
+  String-match of `INV-N` in test_* files, so behaviour-tested-without-the-comment reads as uncovered. Decide the convention: either mandate INV-N citations in test bodies, or match coverage behaviourally. `.sh`/`.bash` blind-spot already fixed this session.
+  **Layman:** The test-coverage check flags an invariant as untested unless the test literally writes its INV number in a comment — even when the test fully exercises the behaviour (~220 false positives).
+  Kind: investigate.
+  Source: debt-sweep-2026-06-28.
+
+- 📋 [ANTS-3344] **debt_sweep code-quality detectors fire on deliberate test-fixture data.**
+  orphan_q_unused / obsolete_qstring_idiom / dead_branch_after_return scan tests/features/ & tests/audit_fixtures/, which embed bad patterns as fixtures. Add a shared fixture-dir exclusion (obsolete_qstring already special-cases the engine's own source — generalise it).
+  **Layman:** Detectors flag the bad-pattern examples that test files deliberately contain as inputs.
+  Kind: fix.
+  Source: debt-sweep-2026-06-28.
+
+- 📋 [ANTS-3345] **debt_sweep_scan produces unbounded output — transport timeout + token overflow.**
+  153-file diff times out the MCP transport; even a 10-file scope returns ~134k chars on one line (1000+ findings), bypassing the offload path and blowing the token cap. Needs result cap + pagination + offload (claude.mcp_offload_large_results) and benefits from the detector-FP fixes above that shrink volume.
+  **Layman:** Running the scan on a real release-sized diff either times out or returns a 130k+ character blob the assistant can't read.
+  Kind: fix.
+  Source: debt-sweep-2026-06-28.
+
+- 📋 [ANTS-3346] **debt_sweep_defer must triage before folding — never dump raw scan output.**
+  The `debt-sweep-fold-in-2026-06-28` section holds 1106 raw FP findings (ANTS-2235..~3340) from a `debt_sweep_defer` on un-triaged output, inflating the active count and burning ~1106 counter IDs. Guard the verb against bulk-deferring auto_fixable=false detector noise; require a triage gate.
+  **Layman:** A previous run wrote 1,106 false-positive findings straight into the roadmap as real items.
+  Kind: fix.
+  Source: debt-sweep-2026-06-28.
+
+- 📋 [ANTS-3347] **-Wshadow: `tmp` shadows in test_roadmap_viewer_archive.cpp:69.**
+  Build emits a -Wshadow warning at tests/features/roadmap_viewer_archive/test_roadmap_viewer_archive.cpp:69 (`tmp` shadows an outer declaration). Rename the inner.
+  **Layman:** A harmless variable-name clash the compiler warns about, surfaced during this build.
+  Kind: chore.
+  Source: debt-sweep-2026-06-28.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,

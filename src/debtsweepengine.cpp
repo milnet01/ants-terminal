@@ -341,6 +341,14 @@ QList<Finding> detectOrphanQUnused(
         struct Marker { int line; QString varname; };
         QList<Marker> markers;
         for (int i = 0; i < lines.size(); ++i) {
+            // Skip comment-only lines: doc comments that *name* the markers
+            // (e.g. "// find Q_UNUSED(x) / (void)x;") are documentation, not
+            // live markers — scanning them is a self-match false positive.
+            const QString t = lines.at(i).trimmed();
+            if (t.startsWith(QStringLiteral("//"))
+                || t.startsWith(QStringLiteral("*"))
+                || t.startsWith(QStringLiteral("/*")))
+                continue;
             auto it = kQUnusedRe.globalMatch(lines.at(i));
             while (it.hasNext()) {
                 const auto m = it.next();
@@ -367,7 +375,7 @@ QList<Finding> detectOrphanQUnused(
             // matching too much.
             const QString &v = mk.varname;
             const QRegularExpression typedDecl(
-                QStringLiteral(R"(\b(?:auto|int|bool|float|double|char|short|long|size_t|int32_t|int64_t|uint32_t|uint64_t|qint64|qreal|const|volatile|unsigned|signed|void)\b[^;{=,)]*\b%1\b)").arg(QRegularExpression::escape(v)));
+                QStringLiteral(R"(\b(?:auto|int|bool|float|double|char|short|long|size_t|int32_t|int64_t|uint32_t|uint64_t|qint8|qint16|qint32|qint64|quint8|quint16|quint32|quint64|qlonglong|qulonglong|qreal|qsizetype|uchar|ushort|uint|ulong|const|volatile|unsigned|signed|void)\b[^;{=,)]*\b%1\b)").arg(QRegularExpression::escape(v)));
             const QRegularExpression typedCustom(
                 QStringLiteral(R"(\b[A-Z][A-Za-z_0-9]*\s*[*&]?\s*\b%1\b\s*[;,)=])").arg(QRegularExpression::escape(v)));
             const QRegularExpression lambdaCap(
@@ -700,6 +708,25 @@ QList<Finding> scanDeadBranchAfterReturn(const QString &relPath,
     for (int i = 0; i < lines.size(); ++i) {
         const QString exitLine = stripComment(lines.at(i)).trimmed();
         if (!kExitRe.match(exitLine).hasMatch()) continue;
+        // The exit may be the brace-less body of a preceding control-flow
+        // header (`if (..)\n  return;`): the following statement then runs
+        // when the branch is not taken, so it is NOT dead. Detect via the
+        // previous non-blank/non-comment line — a header ends in `)` (an
+        // `if`/`for`/`while` condition, possibly multi-line) or is `else`/`do`.
+        {
+            int p = i - 1;
+            while (p >= 0
+                   && isCommentOrBlank(stripComment(lines.at(p)).trimmed()))
+                --p;
+            if (p >= 0) {
+                const QString prev = stripComment(lines.at(p)).trimmed();
+                if (prev.endsWith(QChar(')'))
+                    || prev == QStringLiteral("else")
+                    || prev.endsWith(QStringLiteral("else"))
+                    || prev == QStringLiteral("do"))
+                    continue;
+            }
+        }
         // Find the next non-blank, non-comment line.
         int j = i + 1;
         while (j < lines.size() && isCommentOrBlank(lines.at(j).trimmed()))
@@ -784,7 +811,8 @@ QList<Finding> detectMissingInvariantTests(
         const QStringList testGlobs = {
             QStringLiteral("test_*.cpp"), QStringLiteral("test_*.py"),
             QStringLiteral("test_*.js"),  QStringLiteral("test_*.go"),
-            QStringLiteral("test_*.rs"),
+            QStringLiteral("test_*.rs"),  QStringLiteral("test_*.sh"),
+            QStringLiteral("test_*.bash"),
         };
         const QFileInfoList testFiles =
             tdir.entryInfoList(testGlobs,
@@ -805,7 +833,7 @@ QList<Finding> detectMissingInvariantTests(
             fnd.file        = relSpec;
             fnd.line        = lineOf.at(i);
             fnd.message     = QStringLiteral(
-                "INV-%1 declared in spec.md but no test_*.cpp/py/js/go/rs in this dir mentions it"
+                "INV-%1 declared in spec.md but no test_*.{cpp,py,js,go,rs,sh,bash} in this dir mentions it"
             ).arg(ids.at(i));
             out.append(fnd);
         }

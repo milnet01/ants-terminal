@@ -90,7 +90,6 @@ void sweepKwinScriptOrphansOnce();
 #include <QScreen>
 #include <QStandardPaths>
 #include <QDir>
-#include <QDateTime>
 #include <QProcess>
 #include <QFile>
 #include <QNetworkAccessManager>
@@ -124,7 +123,6 @@ void sweepKwinScriptOrphansOnce();
 #include <QFormLayout>
 #include <QDialogButtonBox>
 #include <QRegularExpression>
-#include <QLineEdit>
 #include <QPainter>
 #include <QScopeGuard>
 #include <QSystemTrayIcon>

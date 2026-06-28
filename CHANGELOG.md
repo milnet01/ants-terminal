@@ -111,6 +111,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Debt-sweep detector false positives: brace-less `if`/`else`/`for` bodies no longer flagged as dead branches; `Q_UNUSED` of Qt-typedef params and in comments no longer flagged as orphans; shell (`test_*.sh`/`.bash`) tests now count toward invariant coverage.**
+  Also removed two duplicate `#include`s in mainwindow.cpp. Deeper detector-scope issues (shipped_without_commit windowing, missing_inv_test behavioural matching, fixture-dir exclusion, scan output capping) deferred to ANTS-3342..3347.
+
 - **C-style `//` and `/*` comment introducers aren't excluded from lineHasCode's code-detection (ANTS-1270 left them; the `#`/`--` analogue).** (ANTS-2230)
   The audit code that decides "is this line real code or just a comment?" was taught (in an earlier fix) that `#` (Python/shell) and `--` (Lua) start comments, so findings inside those comments get dropped. But for C/C++ it was never taught the same about `//` and `/*` — so a secret or TODO written inside a `// comment` in a C++ file is still reported as a real finding. This makes the audit cry wolf on commented-out lines.
 

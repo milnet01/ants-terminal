@@ -157,6 +157,36 @@ TEST(DebtSweepEngine, Inv9ApplyDetectorMismatch) {
 }
 
 // ---------------------------------------------------------------------------
+// detectOrphanQUnused — typedef + comment false-positive guards
+// ---------------------------------------------------------------------------
+
+TEST(DebtSweepEngine, OrphanQUnusedSkipsTypedefsAndComments) {
+    if (!gitAvailable()) GTEST_SKIP() << "git not available";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString dir = tmp.path();
+    ASSERT_EQ(runGitIn(dir, {"init", "-q"}), 0);
+    runGitIn(dir, {"config", "user.email", "t@example.com"});
+    runGitIn(dir, {"config", "user.name", "Test"});
+
+    // timestamp: a Qt-typedef param (was a typeword-list FP).
+    // ghost:     named only inside a // comment (was a self-match FP).
+    // realghost: genuinely undeclared → the one true orphan.
+    writeFile(dir, "src/x.cpp",
+              "void f(qulonglong timestamp) {\n"
+              "    // mentions Q_UNUSED(ghost) in prose\n"
+              "    Q_UNUSED(timestamp);\n"
+              "    Q_UNUSED(realghost);\n"
+              "}\n");
+    ASSERT_EQ(runGitIn(dir, {"add", "src/x.cpp"}), 0);
+
+    DebtSweepEngine::ScanOptions opt;
+    const auto out = DebtSweepEngine::detectOrphanQUnused(dir, opt);
+    ASSERT_EQ(out.size(), 1);
+    EXPECT_TRUE(out[0].message.contains("realghost"));
+}
+
+// ---------------------------------------------------------------------------
 // INV-4 — detectMissingInvariantTests
 // ---------------------------------------------------------------------------
 
@@ -214,6 +244,22 @@ TEST(DebtSweepEngine, Inv4NoFindingsWhenAllCovered) {
 TEST(DebtSweepEngine, Inv4MissingFeaturesDirSilentNoOp) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
+    DebtSweepEngine::ScanOptions opt;
+    const auto out = DebtSweepEngine::detectMissingInvariantTests(
+        tmp.path(), opt);
+    EXPECT_EQ(out.size(), 0);
+}
+
+TEST(DebtSweepEngine, Inv4ShellTestCoversInvariant) {
+    // A feature tested by a shell script must count as covered (test_*.sh
+    // was previously absent from the scan globs — hook_pack FP class).
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    writeFile(tmp.path(), "tests/features/sh/spec.md",
+              "- INV-1. covered by a shell test\n");
+    writeFile(tmp.path(), "tests/features/sh/test_sh.sh",
+              "#!/bin/sh\n# asserts INV-1 behaviour\n");
+
     DebtSweepEngine::ScanOptions opt;
     const auto out = DebtSweepEngine::detectMissingInvariantTests(
         tmp.path(), opt);
@@ -468,6 +514,30 @@ TEST(DebtSweepEngine, Inv18DeadBranchAfterReturn) {
     EXPECT_EQ(DebtSweepEngine::detail::scanDeadBranchAfterReturn(
                   "x", "switch (x) {\ncase 1:\n    break;\ncase 2:\n    g();\n}\n")
                   .size(), 0);
+}
+
+TEST(DebtSweepEngine, Inv18DeadBranchBracelessBodyNotFlagged) {
+    // Brace-less `if` body return — the statement after runs when the
+    // condition is false, so it is reachable (regression for the 407-FP
+    // sweep: `if (cond)\n  return X;\n  next;`).
+    EXPECT_EQ(DebtSweepEngine::detail::scanDeadBranchAfterReturn(
+                  "x", "QString f() {\n    if (c)\n        return a();\n"
+                       "    return b();\n}\n").size(), 0);
+
+    // Multi-line condition (closing `)` on its own line) — still reachable.
+    EXPECT_EQ(DebtSweepEngine::detail::scanDeadBranchAfterReturn(
+                  "x", "QString f() {\n    if (aaa ||\n        bbb)\n"
+                       "        return a();\n    return b();\n}\n").size(), 0);
+
+    // Brace-less `else` body return — reachable sibling after.
+    EXPECT_EQ(DebtSweepEngine::detail::scanDeadBranchAfterReturn(
+                  "x", "void f() {\n    if (c) { g(); }\n    else\n"
+                       "        return;\n    h();\n}\n").size(), 0);
+
+    // Genuine dead code after an *unconditional* return is still flagged.
+    EXPECT_EQ(DebtSweepEngine::detail::scanDeadBranchAfterReturn(
+                  "x", "void f() {\n    g();\n    return;\n    dead();\n}\n")
+                  .size(), 1);
 }
 
 // ---------------------------------------------------------------------------
