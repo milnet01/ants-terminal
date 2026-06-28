@@ -50,9 +50,9 @@ namespace {
 
 struct BenchResult {
     std::string corpus;
-    size_t bytes;
-    size_t actions;
-    double wallMs;
+    size_t bytes{};
+    size_t actions{};
+    double wallMs{};
 };
 
 std::string makeAsciiPrint(size_t targetBytes) {

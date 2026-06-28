@@ -120,6 +120,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **cppcheck `uninitMemberVarNoCtor` residue in tests/ — 10 test-only helper-struct members lack default-member-initialisers.** (ANTS-3354)
+  Added `{}` default-member-initialisers to 10 cppcheck-flagged members across 6 test-helper structs (BenchResult, Fixture, Entry, PositiveCase, NegativeCase, Cand, Site). Completes the uninitMemberVarNoCtor cleanup started in ANTS-2184 — our code (src/ + tests/) is now fully clean of the warning; only third-party googletest remains. Test-only, no behaviour change.
+
 - **cppcheck `uninitMemberVarNoCtor` brace-init hygiene sweep — ~52 helper-struct members in src/ lack a default-member-initializer (e.g. `Hit::score`, `InlineImage::row/col`, `UrlSpan`/`PaintTextRun` fields, `RunOut::started/timedOut/crashed`).** (ANTS-2184)
   Added `{}` default-member-initialisers to 11 cppcheck-flagged scalar/pointer members across 8 helper structs in 7 src/ files (Marker, Hit, SpecToken, ChangelogBullet, PendingTypedef, Head, Frame, StatusHit). Forecloses the uninitMemberVarNoCtor warning class in src/; no behaviour change (all were assigned before use). Verified: 0 findings post-fix, clean build, 242 touched-subsystem tests pass.
 

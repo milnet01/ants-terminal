@@ -85,7 +85,7 @@ TEST(AiContextRedaction, Main) {
     // ─────────────────────────────────────────────────────────────
 
     struct PositiveCase {
-        const char *label;
+        const char *label{};
         QString input;
         QString rawSecret;
         QString expectedKind;
@@ -243,7 +243,7 @@ TEST(AiContextRedaction, Main) {
     // ─────────────────────────────────────────────────────────────
 
     struct NegativeCase {
-        const char *label;
+        const char *label{};
         QString input;
     };
 

@@ -79,7 +79,7 @@ public:
     }
 
 private:
-    struct Entry { QByteArray name; QByteArray prior; bool hadPrior; };
+    struct Entry { QByteArray name; QByteArray prior; bool hadPrior{}; };
 
     void snapshot(const char *name) {
         for (const auto &e : m_env)

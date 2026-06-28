@@ -22,8 +22,8 @@ namespace {
 // tools/list region, paired with the next descriptor's start.
 struct Site {
     std::string tool;
-    std::size_t namePos;
-    std::size_t nextNamePos;  // start of the following descriptor (or
+    std::size_t namePos{};
+    std::size_t nextNamePos{};  // start of the following descriptor (or
                               // end-of-region for the last one)
 };
 

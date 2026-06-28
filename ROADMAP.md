@@ -11599,11 +11599,12 @@ gets one CHANGELOG section + one drift cycle + one push.
   Kind: audit-fix.
   Source: audit-2026-06-28 (ants-audit v0.7.98 run).
 
-- 📋 [ANTS-3354] **cppcheck `uninitMemberVarNoCtor` residue in tests/ — 10 test-only helper-struct members lack default-member-initialisers.**
+- ✅ [ANTS-3354] **cppcheck `uninitMemberVarNoCtor` residue in tests/ — 10 test-only helper-struct members lack default-member-initialisers.**
   After ANTS-2184 zeroed the src/ uninitMemberVarNoCtor class, cppcheck 2.21.0 (`--project=build/compile_commands.json --check-level=exhaustive --enable=warning`) still flags 10 members in tests/: BenchResult::bytes/actions/wallMs (tests/perf/bench_vt_throughput.cpp), Fixture::name (test_threaded_parse_equivalence), Entry::hadPrior (tests/_support/xdg_guard.h), PositiveCase::label + NegativeCase::label (test_ai_context_redaction), Cand::narrow (test_mcp_last_audit_summary), Site::namePos + Site::nextNamePos (test_mcp_selection_hint). Same one-line `{}` mechanical fix. (3 further hits are in build/_deps googletest — third-party, auto-skipped, not ours.)
   **Layman:** Ten small data-holder structs in the test code (not the shipped app) don't set their number fields to a starting value. Harmless today; tidy-up pass like the src/ one.
   Kind: audit-fix.
   Source: in-session-2026-06-28; split out of ANTS-2184 (src/-scoped) after reproducing the current cppcheck 2.21.0 finding set..
+  Resolved (2026-06-28): added `{}` default-member-initialisers to the 10 cppcheck-flagged members across 6 test files — BenchResult::bytes/actions/wallMs (bench_vt_throughput), Fixture::name (threaded_parse_equivalence), Entry::hadPrior (xdg_guard.h), PositiveCase::label + NegativeCase::label (ai_context_redaction), Cand::narrow (mcp_last_audit_summary), Site::namePos/nextNamePos (mcp_selection_hint). Verified: cppcheck 2.21.0 now reports 0 uninitMemberVarNoCtor across all our code (src/ + tests/) — only third-party build/_deps googletest remains; clean build, affected tests pass (ThreadedParseEquivalence, AiContextRedaction, McpSelectionHint, McpLastAuditSummary ×21, vt_throughput). Completes the warning-class cleanup begun in ANTS-2184.
 
 ### 🔌 Skill improvements observed (for the /audit and /indie-review skill markdown)
 

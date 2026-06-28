@@ -20,7 +20,7 @@
 namespace {
 
 struct Fixture {
-    const char *name;
+    const char *name{};
     std::string bytes;
 };
 

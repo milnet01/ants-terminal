@@ -695,7 +695,7 @@ PickProbe pickForeign(const QDir &dir, const QString &glob) {
         out.basis = QStringLiteral("sole");
         return out;
     }
-    struct Cand { QString name; qint64 mtimeMs; qint64 size; bool narrow; };
+    struct Cand { QString name; qint64 mtimeMs; qint64 size; bool narrow{}; };
     QList<Cand> cands;
     qint64 newestMs = 0;
     for (const QString &n : ns) {
