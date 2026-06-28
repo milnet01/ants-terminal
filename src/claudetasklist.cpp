@@ -1,14 +1,12 @@
 #include "claudetasklist.h"
 #include "claudecontent.h"   // ANTS-2002 — content-as-array text extraction
+#include "claudetranscriptwalker.h"  // ANTS-1261 — shared JSONL walk + gating
 
 #include <algorithm>
 
-#include <QDateTime>
-#include <QFile>
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
-#include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QRegularExpression>
@@ -44,16 +42,6 @@ ClaudeTask taskFromTodoEntry(const QJsonObject &o) {
     t.status     = o.value(QStringLiteral("status")).toString();
     if (t.status.isEmpty()) t.status = QStringLiteral("pending");
     return t;
-}
-
-// ANTS-1341: parse an ISO-8601-with-ms timestamp string into epoch
-// ms. Returns 0 on empty / unparseable input — fail-soft so the
-// abandonment filter preserves tasks whose timestamps are missing.
-// Pattern matches src/claudebgtasks.cpp:245-246.
-qint64 parseIsoMs(const QString &ts) {
-    if (ts.isEmpty()) return 0;
-    const QDateTime dt = QDateTime::fromString(ts, Qt::ISODateWithMs);
-    return dt.isValid() ? dt.toMSecsSinceEpoch() : 0;
 }
 
 // ANTS-1341: abandonment threshold. An `in_progress` task whose
@@ -237,69 +225,21 @@ qint64 ClaudeTaskListTracker::lastRescanMtimeMs() const {
 //     not a plan add).
 QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
     QList<ClaudeTask> out;
-    if (path.isEmpty()) return out;
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) return out;
-
-    // Cap parsed bytes at 16 MiB — same bound as claudebgtasks.cpp:147.
-    // Mode B truncation drops oldest TaskCreate history (acceptable).
-    // Mode A truncation could in theory drop the only TodoWrite — but
-    // a 16 MiB+ session is extreme and the latest snapshot typically
-    // sits in the recent tail. If a user hits this we'll re-evaluate.
-    constexpr qint64 kMaxBytes = 16 * 1024 * 1024;
-    const qint64 size = file.size();
-    if (size > kMaxBytes) {
-        if (!file.seek(size - kMaxBytes)) return out;
-        file.readLine();  // discard partial leading line
-    }
-
     bool sawTodoWrite = false;
     QHash<QString, int> idxByToolUseId;   // tool_use_id → index in `out`
-    qint64 latestEventMs = 0;             // ANTS-1341: monotonic over the
-                                          // walk; abandonment threshold uses
-                                          // this as the reference time
 
-    while (!file.atEnd()) {
-        const QByteArray rawLine = file.readLine().trimmed();
-        if (rawLine.isEmpty()) continue;
-        const QJsonDocument doc = QJsonDocument::fromJson(rawLine);
-        if (!doc.isObject()) continue;
-        const QJsonObject ev = doc.object();
-
-        // Sidechain filter — subagent's own TodoWrite/TaskCreate/etc.
-        // never count toward the parent's plan.
-        if (ev.value(QStringLiteral("isSidechain")).toBool()) continue;
-
-        // ANTS-1341 / ANTS-2115: advance `latestEventMs` AFTER the sidechain
-        // filter but BEFORE the compact-summary skip. Sidechain events are a
-        // subagent actively doing the parent's work — they are NOT parent
-        // wall-clock progress, so letting them drive the abandonment clock
-        // would treat a long-running subagent as if the parent task had gone
-        // stale and silently drop a live `in_progress` task (ANTS-2115). A
-        // `/compact` pause, by contrast, IS a genuine wall-clock gap in the
-        // parent's own stream, so the compact-summary event (skipped below)
-        // still counts — a task stuck before a compact must remain eligible
-        // for the abandonment threshold.
-        const qint64 evMs =
-            parseIsoMs(ev.value(QStringLiteral("timestamp")).toString());
-        if (evMs > latestEventMs) latestEventMs = evMs;
-
-        // ANTS-1327 (2026-05-14, user-request): `isCompactSummary`
-        // is NO LONGER a state-reset checkpoint. Previously (ANTS-1224,
-        // 0.7.82) the parser cleared `out` on each compact event so
-        // the chip showed only post-compact tasks; user feedback was
-        // that the chip should mirror what Claude Code's own sidebar
-        // shows — i.e. the *full* task history, including pre-compact
-        // completed tasks. We now skip ONLY the compact-summary event
-        // itself (it carries a synthetic conversation summary with no
-        // tool_use blocks) and let prior pre-compact TaskCreate /
-        // TodoWrite / TaskUpdate events keep contributing. The chip's
-        // `done/total` numerator therefore reflects the lifetime of
-        // the resumed session, matching the CC sidebar.
-        if (ev.value(QStringLiteral("isCompactSummary")).toBool()) {
-            continue;
-        }
-
+    // ANTS-1261 — the 16 MiB tail cap, the blank-line / non-object skip,
+    // and the isSidechain / isCompactSummary gating now live in
+    // ClaudeTranscript::walk (shared with ClaudeBgTaskTracker). The handler
+    // runs once per surviving event with that event's own timestamp `evMs`
+    // — ANTS-1341: TodoWrite / TaskCreate / TaskUpdate stamp it onto the
+    // touched task as `lastEventAtMs`. The returned latestEventMs is the
+    // deterministic abandonment reference time: advanced over every
+    // non-sidechain event INCLUDING compact summaries (ANTS-2115), so a
+    // task stranded just before a `/compact` stays eligible for the
+    // threshold applied after the walk.
+    const qint64 latestEventMs = ClaudeTranscript::walk(path,
+        [&](const QJsonObject &ev, qint64 evMs) {
         const QString type = ev.value(QStringLiteral("type")).toString();
 
         if (type == QLatin1String("assistant")) {
@@ -443,7 +383,7 @@ QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
                 if (!id.isEmpty()) out[it.value()].id = id;
             }
         }
-    }
+    });
 
     // ANTS-1407: `deleted` tasks live in `out` during the walk so
     // that later TaskUpdate-by-id can find them, but the visible

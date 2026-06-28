@@ -51,6 +51,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Extract `ClaudeTranscriptWalker` (claude-trackers).** (ANTS-1261)
+  the two task-list trackers have ended up as
+
 - **cppcheck cleanup: default member initializers on 32 struct fields + 2 const-ref getters.** (ANTS-3341)
   An /audit run flagged a batch of small code-quality warnings: several data structures had number/flag fields with no default value (a latent source of "uninitialised value" bugs if one were ever used before being filled), and two small accessor functions copied a string instead of handing back a reference. Gave every flagged field a sensible default (0 / false / the documented default) and switched the two accessors to return by reference. Verified with cppcheck that the warnings are gone and all 2314 tests still pass.
 

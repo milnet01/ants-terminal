@@ -1,13 +1,12 @@
 #include "claudebgtasks.h"
 #include "claudecontent.h"   // ANTS-2002 — content-as-array text extraction
+#include "claudetranscriptwalker.h"  // ANTS-1261 — shared JSONL walk + gating
 
 #include <QDateTime>
 #include <QDir>
-#include <QFile>
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
-#include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QRegularExpression>
@@ -204,22 +203,6 @@ void ClaudeBgTaskTracker::poll() {
 //   • Recovering output paths after /tmp purge (we trust the transcript).
 QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseTranscript(const QString &path) {
     QList<ClaudeBackgroundTask> out;
-    if (path.isEmpty()) return out;
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) return out;
-
-    // Cap parsed bytes at 16 MiB to bound work on enormous transcripts.
-    // Background-task entries are short JSON objects and the fields we
-    // care about are appended; truncating the head just loses old
-    // already-finished tasks, which is acceptable.
-    constexpr qint64 kMaxBytes = 16 * 1024 * 1024;
-    const qint64 size = file.size();
-    if (size > kMaxBytes) {
-        if (!file.seek(size - kMaxBytes)) return out;
-        // Discard the (likely-truncated) first line.
-        file.readLine();
-    }
-
     // Map tool_use_id (toolu_...) → index into `out`. Used to correlate
     // tool_use start with tool_result confirmation.
     QHash<QString, int> idxByToolUseId;
@@ -227,26 +210,13 @@ QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseTranscript(const QString &
     // by completion/kill matchers.
     QHash<QString, int> idxByBgId;
 
-    while (!file.atEnd()) {
-        const QByteArray rawLine = file.readLine().trimmed();
-        if (rawLine.isEmpty()) continue;
-        const QJsonDocument doc = QJsonDocument::fromJson(rawLine);
-        if (!doc.isObject()) continue;
-        const QJsonObject ev = doc.object();
-        // Drop sidechain (subagent) events — bg-task launches inside a
-        // subagent's inline conversation must not inflate the parent
-        // session's running count. Mirrors claudetasklist.cpp's filter
-        // (ANTS-1158 sidechain rationale).
-        if (ev.value(QStringLiteral("isSidechain")).toBool()) continue;
-        // ANTS-1327 parity (2026-05-14): no longer reset on compact —
-        // the bg-tasks dialog should match the foreground tracker's
-        // full-history semantics (which match Claude Code's own
-        // sidebar). We only skip the compact-summary event itself
-        // (it carries no tool_use); pre-compact background tasks
-        // continue to contribute to the lifetime view.
-        if (ev.value(QStringLiteral("isCompactSummary")).toBool()) {
-            continue;
-        }
+    // ANTS-1261 — the 16 MiB tail cap, the blank-line / non-object skip,
+    // and the isSidechain / isCompactSummary gating live in
+    // ClaudeTranscript::walk (shared with ClaudeTaskListTracker; the
+    // compact-summary skip is the ANTS-1327 full-history parity). Background
+    // tasks track no per-event time, so the handler ignores `evMs` and the
+    // returned latest-event clock is discarded.
+    ClaudeTranscript::walk(path, [&](const QJsonObject &ev, qint64 /*evMs*/) {
         const QString type = ev.value(QStringLiteral("type")).toString();
 
         if (type == QLatin1String("assistant")) {
@@ -370,7 +340,7 @@ QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseTranscript(const QString &
                 }
             }
         }
-    }
+    });
 
     // Drop entries that never received a backgroundTaskId — those are
     // launches that crashed before the user-side confirmation, and we

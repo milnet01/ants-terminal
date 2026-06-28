@@ -16433,7 +16433,7 @@ own design + test cycles.
   Source: indie-review-2026-05-13.
   Resolved earlier by ANTS-1663 (truncated) + ANTS-1827 (paramsTruncated), verified 2026-06-27: VtAction carries both flags; truncated is propagated to OSC/DCS/APC End actions and reset per-sequence (ANTS-1663), paramsTruncated covers the CSI >32-param case, and consumers handleOsc/handleDcs/handleApc receive the flag.
 
-- 📋 [ANTS-1261] **Extract `ClaudeTranscriptWalker` (claude-trackers).**
+- ✅ [ANTS-1261] **Extract `ClaudeTranscriptWalker` (claude-trackers).**
   `src/claudetasklist.cpp:100` + `src/claudebgtasks.cpp:170`. Two
   trackers with byte-similar `parseTranscript` (16 MiB cap, leading
   partial-line discard, line walk, `isSidechain` / `isCompactSummary`
@@ -16445,6 +16445,7 @@ own design + test cycles.
   back into one base so future fixes apply to both.
   Kind: refactor.
   Source: indie-review-2026-05-13.
+  Resolved (2026-06-28): extracted ClaudeTranscript::walk into header-only src/claudetranscriptwalker.h — owns the shared 16 MiB tail cap, blank/non-object skip, and isSidechain/isCompactSummary gating, plus the latestEventMs clock (preserving the load-bearing ANTS-2115 ordering: timestamp advances over compact-summary but not sidechain events). Both ClaudeTaskListTracker::parseTranscript and ClaudeBgTaskTracker::parseTranscript now plug a per-event lambda into the walker; handler bodies kept byte-identical. parseIsoMs moved into the shared header; orphaned includes pruned. Behavior-preserving — 47 transcript-parser feature tests green (ClaudeTaskList incl. Ants1327/Ants1341, ClaudeBgTasksButton, ClaudeTranscriptRobustness). Note: 2 call sites (not the strict Rule-of-Three), justified by the documented drift the two copies had already accumulated.
 
 - ✅ [ANTS-1268] **Convert Lua `_G` strip to allowlist (lua-plugins).**
   `src/luaengine.cpp:223`. The `dangerous[]` array is a denylist —
