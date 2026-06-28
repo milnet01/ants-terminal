@@ -186,7 +186,11 @@ TEST(ThemedstylesheetExtraction, Main) {
 
     // INV-8 — unit-level helper tests. Direct calls into the
     // pure functions; assert structural substrings.
-    const Theme &theme = Themes::byName(QStringLiteral("dark"));
+    // Copy, not a reference: Themes::byName returns a ref into the stable
+    // static table (non-dangling), but GCC's -Wdangling-reference heuristic
+    // false-positives on `const T& = func_returning_ref(arg)`. Theme is a
+    // small value struct, so a copy is free here and keeps the build clean.
+    const Theme theme = Themes::byName(QStringLiteral("dark"));
     {
         const QString app = themedstylesheet::buildAppStylesheet(theme);
         if (!containsQ(app, "QMainWindow { background-color:"))

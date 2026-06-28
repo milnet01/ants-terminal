@@ -9664,6 +9664,12 @@ indie-review finding.
   Source: split from ANTS-1350 L-2 (in-session 2026-06-27).
   Resolved (2026-06-27, user decision): bumped the Compact-density meta/label floor 9px → 11px (kDensityTable Compact row: metaPx/labelPx 9→11) for readability. ANTS-1238 INV-8 amended (9px floor → 11px meta/label, 10px absolute) in spec + code comments. roadmap_density test sentinel migrated from the now-absent `font-size:9px` to the Compact-unique `h1{font-size:14px;}`. RoadmapDensity.Main green. Note: Compact .rm-state-label (11px) now slightly exceeds Cozy's (10px) — accepted at the user's instruction.
 
+- 📋 [ANTS-3358] **Silence 37 GCC `-Wnull-dereference` false-positives inlining from `dialogchrome.cpp` (ChromeGuard widget-geometry accessors) — ANTS-1554 class.**
+  A full `cmake --build build --clean-first` emits 37 `-Wnull-dereference` warnings, all inlining from `src/dialogchrome.cpp:58-104` — the `ChromeGuard::recenter()` / `positionGrip()` paths that call `m_dlg->rect()/width()/height()/size()` on the `QPointer<QDialog> m_dlg`. The warnings land inside Qt's own inlined `QWidget::rect/width/height` → `QScopedPointer<QObjectData>::operator->`: GCC can't prove the widget's d-pointer is non-null even though our code guards `if (!m_dlg) return;` first. Same false-positive class as ANTS-1554 (which scoped a `#pragma GCC diagnostic ignored "-Wnull-dereference"` around the one QHash site in mainwindow.cpp and locked it with tests/features/build_warning_repo_visibility_null_deref). Fix: apply the same `#if defined(__GNUC__) && !defined(__clang__)`-guarded scoped pragma around the geometry-accessor block(s) in ChromeGuard (recenter + positionGrip), and add a source-grep regression test mirroring the ANTS-1554 fixture. Deferred from the ANTS-2175/2176 MCP bundle to keep that change surgical (orthogonal subsystem).
+  **Layman:** Every full build prints 37 harmless compiler warnings from the dialog-frame helper. They're false alarms (the compiler can't prove a Qt widget pointer is set, though our code already checks it). Quiet them the same way we quieted the earlier one, so real warnings don't get lost in the noise.
+  Kind: fix.
+  Source: in-session-2026-06-28 (full-build warning sweep).
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested
