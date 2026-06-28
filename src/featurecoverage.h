@@ -35,7 +35,7 @@ namespace FeatureCoverage {
 
 struct SpecToken {
     QString token;
-    int line;  // 1-based line in the spec body where the token appears
+    int line{};  // 1-based line in the spec body where the token appears
 };
 
 // Extract backtick-fenced identifier-shaped tokens from a markdown body.
@@ -66,7 +66,7 @@ QList<SpecToken> findDriftTokens(
 struct ChangelogBullet {
     QString section;  // e.g. "Added", "Fixed"; empty if no ### header seen yet
     QString text;     // bullet body with leading "- " stripped
-    int line;         // 1-based line in CHANGELOG where the bullet starts
+    int line{};         // 1-based line in CHANGELOG where the bullet starts
 };
 
 // Parse the topmost `## ...` version section of a Keep-a-Changelog-style

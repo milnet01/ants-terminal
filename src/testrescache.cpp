@@ -101,8 +101,8 @@ ParsedTests parseCtestOutput(const QString &output) {
 
     // First pass: collect per-test status lines.
     struct StatusHit {
-        int     start;
-        int     end;
+        int     start{};
+        int     end{};
         QString name;
         QString token;
     };

@@ -120,6 +120,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **cppcheck `uninitMemberVarNoCtor` brace-init hygiene sweep — ~52 helper-struct members in src/ lack a default-member-initializer (e.g. `Hit::score`, `InlineImage::row/col`, `UrlSpan`/`PaintTextRun` fields, `RunOut::started/timedOut/crashed`).** (ANTS-2184)
+  Added `{}` default-member-initialisers to 11 cppcheck-flagged scalar/pointer members across 8 helper structs in 7 src/ files (Marker, Hit, SpecToken, ChangelogBullet, PendingTypedef, Head, Frame, StatusHit). Forecloses the uninitMemberVarNoCtor warning class in src/; no behaviour change (all were assigned before use). Verified: 0 findings post-fix, clean build, 242 touched-subsystem tests pass.
+
 - **Ants MCP, from DOOM cross-session feedback: read_region/read_regions symbol-mode now returns a symbol's definition rather than its forward declaration; roadmap_log/changelog_log resolve ROADMAP/CHANGELOG from a project subdirectory (walk up to the git repo root) like the read verbs; session_orient's project_settings_suggestion gained a next_step nudge.**
   ANTS-3349 / ANTS-3350 / ANTS-3352. A residual file_outline most-vexing-parse mis-tag (ANTS-3351) remains deferred — its root cause is an undetected enclosing function, same class as ANTS-2159.
 

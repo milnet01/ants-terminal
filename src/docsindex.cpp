@@ -373,7 +373,7 @@ QJsonObject query(const Index &idx, const QueryParams &params,
         const QStringList tokens =
             params.topic.toLower().split(QRegularExpression(QStringLiteral("\\s+")),
                                          Qt::SkipEmptyParts);
-        struct Hit { int score; QString path, id, title; QStringList evidence; };
+        struct Hit { int score{}; QString path, id, title; QStringList evidence; };
         QVector<Hit> hits;
         for (const DocEntry &de : idx.docs) {
             const QString titleLower = de.title.toLower();

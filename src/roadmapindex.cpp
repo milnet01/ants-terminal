@@ -161,7 +161,7 @@ QHash<QString, SectionCounts> rollupCounts(
                   return a->lineEnd > b->lineEnd;
               });
 
-    struct Frame { const Section *sec; SectionCounts agg; };
+    struct Frame { const Section *sec{}; SectionCounts agg; };
     QVector<Frame> stack;
     auto addInto = [](SectionCounts &dst, const SectionCounts &src) {
         dst.active        += src.active;

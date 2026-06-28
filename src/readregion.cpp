@@ -211,7 +211,7 @@ SecRange resolveSection(const QString &absPath, const QString &wantSlug) {
     if (!f.open(QIODevice::ReadOnly)) return r;
 
     // One pass: collect every (fence-aware) ATX heading as {line, level, slug}.
-    struct Head { int line; int level; QString slug; };
+    struct Head { int line{}; int level{}; QString slug; };
     QVector<Head> heads;
     int lineNo = 0;
     bool inFence = false;

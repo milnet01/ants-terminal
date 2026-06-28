@@ -432,7 +432,7 @@ QJsonObject compute(const QString &absPath,
     // opens here and emits at its START line when the brace balances back,
     // keyed by BOTH the tag and the alias so read_region symbol-mode (and
     // ANTS-2222's aggregate-body slice) resolve either.
-    struct PendingTypedef { int startLine; QString tag; int depthAtOpen; };
+    struct PendingTypedef { int startLine{}; QString tag; int depthAtOpen{}; };
     QVector<PendingTypedef> pendingTypedefs;
 
     while (!f.atEnd()) {

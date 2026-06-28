@@ -338,7 +338,7 @@ QList<Finding> detectOrphanQUnused(
 
         // Per-marker pass: find Q_UNUSED(x) / (void)x;, then check
         // for any plausible declaration of `x` anywhere in this file.
-        struct Marker { int line; QString varname; };
+        struct Marker { int line{}; QString varname; };
         QList<Marker> markers;
         for (int i = 0; i < lines.size(); ++i) {
             // Skip comment-only lines: doc comments that *name* the markers
