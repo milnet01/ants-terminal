@@ -8800,6 +8800,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: feature.
   Source: user-request-2026-06-28.
 
+- 📋 [ANTS-3353] **Make `.ants/project.json` self-advertising for any non-standard layout, not just non-src source.**
+  Discoverability gap (user question 2026-06-28): a CC session learns about .ants/project.json almost only via session_orient's project_settings_suggestion, which (1) fires only when codebase_index is near-empty (source not under src/) and (2) suggests source_roots ONLY. ProjectSettings::detect analyses source layout only. Other sessions don't read Ants's CLAUDE.md, and project_settings isn't in the SessionStart prelude. Fix: extend ProjectSettings::detect to ALSO flag off-default docs_dir/roadmap/changelog/specs_dir (compare project_layout's resolved paths vs the conventional defaults), and have session_orient surface those keys in project_settings_suggestion + the ANTS-3352 next_step — so the file self-advertises on the first call for ANY non-standard layout, staying silent (ETag-stable) for standard ones. Decided AGAINST: adding project_settings to the always-on SessionStart prelude (standing token cost for a low-frequency setup verb) and per-verb scattered hints (redundant once session_orient covers it). ANTS-3352 (next_step nudge) already shipped as the first increment.
+  **Layman:** Right now another Claude session only learns it can create a project-settings file if its code isn't in the usual `src/` folder. If its code is fine but its roadmap/changelog/docs live somewhere unusual, it never hears about the file — so the helpful path-pinning never happens.
+  Kind: enhancement.
+  Source: user-request-2026-06-28.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
