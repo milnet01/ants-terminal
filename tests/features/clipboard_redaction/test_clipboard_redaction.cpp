@@ -73,7 +73,7 @@ TEST(ClipboardRedaction, Main) {
         QString in(twoMiB, QLatin1Char('A'));
         const QString out = clipboardguard::sanitize(
             in, clipboardguard::Source::UntrustedPty);
-        if (out.size() != clipboardguard::kUntrustedMaxBytes)
+        if (out.size() != clipboardguard::kUntrustedMaxChars)
             return fail("INV-3",
                 "UntrustedPty sanitise should cap at 1 MiB");
     }
@@ -84,7 +84,7 @@ TEST(ClipboardRedaction, Main) {
         QString in(twoMiB, QLatin1Char('B'));
         const QString out = clipboardguard::sanitize(
             in, clipboardguard::Source::UntrustedPlugin);
-        if (out.size() != clipboardguard::kUntrustedMaxBytes)
+        if (out.size() != clipboardguard::kUntrustedMaxChars)
             return fail("INV-4",
                 "UntrustedPlugin sanitise should cap at 1 MiB");
     }

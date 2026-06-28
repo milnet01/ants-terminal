@@ -204,11 +204,11 @@ void testLengthCap() {
 
     int n = 0;
     QString cmd = AiDialog::extractAndSanitizeCommand(big, &n);
-    expect(cmd.size() <= AiDialog::kInsertCommandMaxBytes,
-           "cap: output <= 4 KiB",
+    expect(cmd.size() <= AiDialog::kInsertCommandMaxChars,
+           "cap: output <= 4096 chars",
            QString("size=%1 cap=%2").arg(cmd.size())
-                                     .arg(AiDialog::kInsertCommandMaxBytes));
-    expect(n >= 5000 - AiDialog::kInsertCommandMaxBytes,
+                                     .arg(AiDialog::kInsertCommandMaxChars));
+    expect(n >= 5000 - AiDialog::kInsertCommandMaxChars,
            "cap: stripped count includes truncation amount");
 }
 

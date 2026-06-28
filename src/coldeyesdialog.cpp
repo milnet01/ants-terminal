@@ -262,13 +262,9 @@ QString ColdEyesDialog::assembleCappedPrompt(const ColdEyesEngine::Lane &lane,
     const QString hardMarker = QStringLiteral(
         "\n[brief truncated — lane bodies clipped to fit the 200 KiB "
         "budget]\n");
-    QByteArray utf = fixed.toUtf8();
-    // ANTS-1991 — reserve the 6-byte fence-close withClosedFence may append.
-    const int room =
-        static_cast<int>(kPromptCapBytes) - hardMarker.toUtf8().size() - 6;
-    if (room > 0 && utf.size() > room) utf.truncate(room);
-    // ANTS-1991 — close a fence the clip may have left open before the marker.
-    return BriefDispatch::withClosedFence(QString::fromUtf8(utf)) + hardMarker;
+    // ANTS-2205 — shared clip-to-cap + fence-close tail (was ANTS-1991 inline).
+    return BriefDispatch::clipToCapClosingFence(
+        fixed.toUtf8(), hardMarker, kPromptCapBytes);
 }
 
 LlmRequest ColdEyesDialog::composeBrief(const ReviewLane &laneRef) {

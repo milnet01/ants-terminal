@@ -152,16 +152,8 @@ QString IndieReviewDialog::assembleCappedPrompt(const QString &brief) const {
     // already frames the bodies as data, so a clipped tail stays safe.
     const QString marker = QStringLiteral(
         "\n[brief truncated — lane exceeds 200 KiB budget]\n");
-    // ANTS-1991 — reserve room for the marker AND the 6-byte fence-close that
-    // withClosedFence may append, so the result still fits kPromptCapBytes.
-    const int room =
-        static_cast<int>(kPromptCapBytes) - marker.toUtf8().size() - 6;
-    QByteArray clipped = utf;
-    if (room > 0 && clipped.size() > room) clipped.truncate(room);
-    // ANTS-1991 — the clip may land inside a fenceBody() 4-backtick block;
-    // close it before the marker so the LLM doesn't read the marker (and any
-    // trailing instructions) as fenced data.
-    return BriefDispatch::withClosedFence(QString::fromUtf8(clipped)) + marker;
+    // ANTS-2205 — shared clip-to-cap + fence-close tail (was ANTS-1991 inline).
+    return BriefDispatch::clipToCapClosingFence(utf, marker, kPromptCapBytes);
 }
 
 LlmRequest IndieReviewDialog::composeBrief(const ReviewLane &laneRef) {

@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <QByteArray>
 #include <QString>
 #include <QStringList>
 
@@ -61,5 +62,19 @@ QString inlineRelevantSections(const QString &projectPath,
 // fence. Idempotent on balanced text. Used by the per-dialog assembleCappedPrompt
 // truncation paths.
 QString withClosedFence(const QString &truncated);
+
+// ANTS-2205 — bytes withClosedFence() may append ("\n````\n"); reserved in
+// the cap budget so a fence-closed truncation still fits.
+inline constexpr int kFenceCloseReserveBytes = 6;
+
+// ANTS-2205 — shared truncation tail for the review dialogs'
+// assembleCappedPrompt paths (was triplicated across indiereview / coldeyes
+// / testaudit). Clips already-UTF-8 `utf` so that, after closing any fence
+// the clip leaves dangling (withClosedFence) and appending `marker`, the
+// result still fits `capBytes` (kFenceCloseReserveBytes reserved for the
+// fence close). Returns the assembled clipped + fence-balanced + marker
+// string.
+QString clipToCapClosingFence(QByteArray utf, const QString &marker,
+                              qint64 capBytes);
 
 }  // namespace BriefDispatch

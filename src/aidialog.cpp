@@ -309,12 +309,12 @@ QString AiDialog::extractAndSanitizeCommand(const QString &response,
         return QString();
     }
 
-    // 2) Length cap — trim to 4 KiB. Excess bytes count as stripped for
-    //    the user-facing counter.
+    // 2) Length cap — trim to kInsertCommandMaxChars chars. Excess
+    //    chars count as stripped for the user-facing counter.
     int stripped = 0;
-    if (cmd.size() > kInsertCommandMaxBytes) {
-        stripped += cmd.size() - kInsertCommandMaxBytes;
-        cmd.truncate(kInsertCommandMaxBytes);
+    if (cmd.size() > kInsertCommandMaxChars) {
+        stripped += cmd.size() - kInsertCommandMaxChars;
+        cmd.truncate(kInsertCommandMaxChars);
     }
 
     // 3) Filter dangerous controls — broader set than remotecontrol.cpp

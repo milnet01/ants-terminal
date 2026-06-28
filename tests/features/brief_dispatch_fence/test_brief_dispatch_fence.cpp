@@ -74,6 +74,30 @@ TEST(BriefDispatchFence, Ants1991ClosesDanglingFence) {
     EXPECT_EQ(BriefDispatch::withClosedFence(bal), bal);
 }
 
+// ANTS-2205 — clipToCapClosingFence: the shared review-dialog truncation tail
+// (was triplicated). Clips so that, after closing a dangling fence and
+// appending the marker, the assembled result still fits the cap.
+TEST(BriefDispatchFence, Ants2205ClipToCapClosingFence) {
+    const QString marker = QStringLiteral("\n[truncated]\n");
+    const int cap = 200;
+
+    // Over-cap body whose clip lands inside an open fence: the result fits the
+    // cap (marker + 6-byte fence-close reserved) AND the dangling opener is
+    // closed (even fence count).
+    QString body = QStringLiteral("````\n");
+    body += QString('a').repeated(500);          // opener, no closer
+    const QString out =
+        BriefDispatch::clipToCapClosingFence(body.toUtf8(), marker, cap);
+    EXPECT_LE(out.toUtf8().size(), cap) << out.toStdString();
+    EXPECT_EQ(countSubstr(out, k4) % 2, 0) << out.toStdString();
+    EXPECT_TRUE(out.endsWith(marker)) << out.toStdString();
+
+    // Under-cap body is returned with the marker appended, unclipped + balanced.
+    const QString small = QStringLiteral("hello");
+    EXPECT_EQ(BriefDispatch::clipToCapClosingFence(small.toUtf8(), marker, cap),
+              small + marker);
+}
+
 // ANTS-1991 — a backtick in the relPath/label must not survive into the header
 // line above the fence (it could open an inline span / fence).
 TEST(BriefDispatchFence, Ants1991SanitisesBacktickInPath) {

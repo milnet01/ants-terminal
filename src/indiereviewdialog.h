@@ -41,8 +41,8 @@ public:
         QList<IndieReviewEngine::CorroboratedFinding> uncorroborated;
     };
 
-    // INV-3 — sum-gate backstop over the composed user prompt.
-    static constexpr qint64 kPromptCapBytes = 200 * 1024;
+    // INV-3 — sum-gate backstop over the composed user prompt is the
+    // inherited ReviewDialogBase::kPromptCapBytes (ANTS-2205).
 
     // ---- control / accessor surface (also used by the feature test) ----
     const QList<IndieReviewEngine::Lane> &engineLanes() const { return m_allLanes; }

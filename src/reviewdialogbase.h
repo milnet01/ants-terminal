@@ -48,6 +48,11 @@ public:
     // is non-empty AND http/https.
     static bool endpointDispatchable(const QString &endpoint);
 
+    // ANTS-2205 — sum-gate cap over the whole composed user prompt, promoted
+    // here from the three concrete dialogs (was triplicated). Accessible as
+    // <Dialog>::kPromptCapBytes via inheritance.
+    static constexpr qint64 kPromptCapBytes = 200 * 1024;
+
 protected:
     // ---- engine-specific hooks ----
     virtual QList<ReviewLane> derivePartition() = 0;                         // step 1

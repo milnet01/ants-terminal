@@ -24,20 +24,22 @@ enum class Source {
     UntrustedPlugin,  // ants.clipboard.write from a Lua plugin
 };
 
-// Hard size cap on untrusted clipboard writes. The OSC 52 parser
-// layer already has its own cap; this is defence-in-depth at the
-// clipboard surface.
-inline constexpr int kUntrustedMaxBytes = 1 * 1024 * 1024;  // 1 MiB
+// Hard size cap on untrusted clipboard writes, measured in QString
+// length units (UTF-16 code units / chars), NOT bytes — a loose
+// defence-in-depth memory bound, not a precise byte limit (ANTS-2205).
+// The OSC 52 parser layer already has its own cap; this is the
+// backstop at the clipboard surface.
+inline constexpr int kUntrustedMaxChars = 1 * 1024 * 1024;  // 1,048,576 chars
 
 // Pure: returns a sanitised copy of `text` per the source's policy.
 // - All sources: strip embedded `QChar(0)` (NUL).
-// - UntrustedPty / UntrustedPlugin: truncate to kUntrustedMaxBytes.
+// - UntrustedPty / UntrustedPlugin: truncate to kUntrustedMaxChars.
 // - Trusted: no truncation (a 10 MiB context-menu copy is a
 //   legitimate user flow).
 inline QString sanitize(QString text, Source source) {
     text.remove(QChar(0));
-    if (source != Source::Trusted && text.size() > kUntrustedMaxBytes)
-        text.truncate(kUntrustedMaxBytes);
+    if (source != Source::Trusted && text.size() > kUntrustedMaxChars)
+        text.truncate(kUntrustedMaxChars);
     return text;
 }
 

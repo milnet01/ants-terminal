@@ -32,11 +32,12 @@ back to the last non-empty line.
 are preserved (a multi-line paste is legitimate). Multi-byte UTF-8
 characters (U+0080+) pass through unchanged.
 
-### Invariant 3 — length capped at 4 KiB
+### Invariant 3 — length capped at 4096 chars
 
-`kInsertCommandMaxBytes = 4096`. Excess bytes are truncated. The
-stripped-byte counter includes both the truncation count and the
-control-char count.
+`kInsertCommandMaxChars = 4096` (QString length units / UTF-16 chars,
+not bytes — the sanitizer is codepoint-oriented). Excess chars are
+truncated. The stripped counter includes both the truncation count and
+the control-codepoint count.
 
 ### Invariant 4 — `out_stripped` reports total filtered bytes
 

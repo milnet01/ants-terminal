@@ -135,6 +135,20 @@ QString withClosedFence(const QString &truncated) {
     return truncated;
 }
 
+QString clipToCapClosingFence(QByteArray utf, const QString &marker,
+                              qint64 capBytes) {
+    // Reserve room for the marker AND the fence-close withClosedFence may
+    // append, so the assembled result still fits capBytes.
+    const qint64 room =
+        capBytes - marker.toUtf8().size() - kFenceCloseReserveBytes;
+    if (room > 0 && utf.size() > room)
+        utf.truncate(static_cast<qsizetype>(room));
+    // The clip may land inside a fenceBody() 4-backtick block; close it
+    // before the marker so the LLM doesn't read the marker (and any trailing
+    // instructions) as fenced data.
+    return withClosedFence(QString::fromUtf8(utf)) + marker;
+}
+
 QString inlineRelevantSections(const QString &projectPath,
                                const QStringList &relPaths,
                                const QStringList &keywords,

@@ -43,8 +43,8 @@ public:
         QStringList staleFindings;  // pre-found accuracy findings (no model)
     };
 
-    // INV-4 — sum-gate cap over the whole composed user prompt.
-    static constexpr qint64 kPromptCapBytes = 200 * 1024;
+    // INV-4 — sum-gate cap over the whole composed user prompt is the
+    // inherited ReviewDialogBase::kPromptCapBytes (ANTS-2205).
     static constexpr qint64 kPerFileCapBytes = 64 * 1024;   // lane bodies
     static constexpr qint64 kPerDocCapBytes = 32 * 1024;    // cross-ref slices
 

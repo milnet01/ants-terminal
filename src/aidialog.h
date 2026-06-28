@@ -46,13 +46,16 @@ public:
     //
     // Returns the sanitized command (possibly empty if no candidate
     // was found). If `out_stripped` is non-null, receives the number
-    // of control bytes removed + the number of bytes truncated by the
-    // 4 KiB cap (same counter, the UX just tells the user "X bytes
-    // were filtered").
+    // of control codepoints removed + the number of chars truncated by
+    // the kInsertCommandMaxChars cap (same counter, the UX just tells
+    // the user "X bytes were filtered").
     static QString extractAndSanitizeCommand(const QString &response,
                                              int *out_stripped = nullptr);
 
-    static constexpr int kInsertCommandMaxBytes = 4096;
+    // Length cap in QString chars (UTF-16 units), NOT bytes — the
+    // sanitizer is codepoint-oriented (it strips C1 / Unicode-attack
+    // codepoints on QChar), so the cap is a char count (ANTS-2205).
+    static constexpr int kInsertCommandMaxChars = 4096;
 
 private slots:
     void onSend();

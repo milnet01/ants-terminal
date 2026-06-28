@@ -28,9 +28,14 @@ already solved this inline; ANTS-1727 § 2.3 extracts the kernel into
   falls back to the leading block (H1 + intro) when none match.
 - `withClosedFence(truncated)` (ANTS-1991) — appends a closing fence when
   the text has an odd number of `````` fence-marker lines (a truncation left
-  one open); no-op on balanced text. The per-dialog `assembleCappedPrompt`
-  truncation paths call it before the truncation marker so a clipped prompt
-  never leaves the LLM in a "fenced data" state.
+  one open); no-op on balanced text.
+- `clipToCapClosingFence(utf, marker, capBytes)` (ANTS-2205) — the shared
+  truncation tail (was triplicated across the indie-review / cold-eyes /
+  test-audit `composeBrief` paths): clips already-UTF-8 `utf` so that, after
+  `withClosedFence` and appending `marker`, the result still fits `capBytes`
+  (`kFenceCloseReserveBytes` = 6 reserved for the fence close), then closes a
+  dangling fence so a clipped prompt never leaves the LLM in a "fenced data"
+  state. The dialogs call this instead of inlining the reserve arithmetic.
 
 The per-file / per-doc caps are measured in **bytes** (the UTF-8 encoding),
 not QChar count (ANTS-1991) — a multi-byte doc is clipped near the byte
@@ -53,6 +58,10 @@ relPath / label too, not just the body.
   absolute one. An absolute path outside the root is still skipped.
 - **INV-1991a** — `withClosedFence` appends a closing fence on odd marker
   count and is a no-op on balanced text.
+- **INV-2205** — `clipToCapClosingFence` clips an over-cap body so the
+  assembled (clip + closing fence + marker) result fits `capBytes` and has a
+  balanced (even) fence count; an under-cap body is returned unclipped with
+  the marker appended.
 - **INV-1991b** — `fenceBody` neutralises a backtick in the relPath/label so
   it can't open an inline span / fence in the header line.
 - **INV-1991c** — `inlineBodies` caps by UTF-8 byte length: a 600-byte

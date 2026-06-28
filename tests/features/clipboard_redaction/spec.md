@@ -21,10 +21,11 @@ Source-grep + behavioural drive of the pure `sanitize` helper.
   (NUL) characters. Behavioural drive: feed `"a\0b\0c"`, expect
   `"abc"`.
 - **INV-3** `sanitize(text, UntrustedPty)` truncates input
-  exceeding 1 MiB. Behavioural drive: feed 2 MiB of `'A'`, expect
-  exactly 1 MiB out.
+  exceeding `kUntrustedMaxChars` (1,048,576 QString chars, not
+  bytes — ≈1 MiB for ASCII). Behavioural drive: feed 2 Mi `'A'`,
+  expect exactly `kUntrustedMaxChars` out.
 - **INV-4** `sanitize(text, UntrustedPlugin)` applies the same
-  1 MiB cap as `UntrustedPty`. Behavioural drive.
+  `kUntrustedMaxChars` cap as `UntrustedPty`. Behavioural drive.
 - **INV-5** `sanitize(text, Trusted)` does NOT truncate large
   inputs — a 2 MiB feed comes through unchanged. The user
   pasting a large file dump from the context menu is a legitimate

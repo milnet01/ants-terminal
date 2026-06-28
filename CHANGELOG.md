@@ -54,6 +54,15 @@ for security-relevant changes.
 
 ### Changed
 
+- **Review-dialog and clipboard/AI size caps: honest unit naming + de-duplicated truncation tail (ANTS-2205)**
+  Renamed the clipboard and AI-command length caps from `…MaxBytes`
+  to `…MaxChars` so the name matches what they measure (QString
+  length units, not bytes — they never changed behaviour). Pulled
+  the review dialogs' shared "clip-to-cap then close any open code
+  fence" step into one `BriefDispatch::clipToCapClosingFence` helper
+  and lifted the 200 KiB prompt cap to the shared base, removing
+  three copies. Internal tidy-up; no user-visible change.
+
 - **Extract `ClaudeTranscriptWalker` (claude-trackers).** (ANTS-1261)
   the two task-list trackers have ended up as
 
