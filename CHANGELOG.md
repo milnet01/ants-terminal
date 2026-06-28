@@ -214,6 +214,9 @@ for security-relevant changes.
 
 ### Security
 
+- **`concurrent_writer_lock` predictable `/tmp/ants-cwl-<pid>-<time>.dat` + symlink-attack exposure.** (ANTS-1380)
+  concurrent_writer_lock test now roots its lock file in a private QTemporaryDir (0700, random name) instead of a predictable /tmp/ants-cwl-<pid>-<time>.dat, with O_NOFOLLOW on the lock open — closes a symlink-attack window on shared /tmp. Test-only; production ConfigWriteLock (user-private config dir) was never exposed.
+
 - **`--remote` client now has an overall read deadline (slow-loris guard) (ANTS-1671).**
   The per-iteration 2 s timeout on the `--remote` client read loop reset every iteration, so a hostile same-machine peer that won `$ANTS_REMOTE_SOCKET` could dribble bytes under the 1 MiB cap and hang the client forever. A 10 s cumulative deadline now bounds the total wait.
 

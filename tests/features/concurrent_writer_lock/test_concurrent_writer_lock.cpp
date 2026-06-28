@@ -27,6 +27,7 @@
 #include <unistd.h>
 
 #include <QString>
+#include <QTemporaryDir>
 
 
 #include <gtest/gtest.h>
@@ -48,14 +49,6 @@ namespace {
 
 
 
-// A throw-away path under /tmp. Tests run in parallel — embed pid so
-// concurrent ctest runs don't collide.
-QString uniqueTempPath() {
-    return QStringLiteral("/tmp/ants-cwl-%1-%2.dat")
-        .arg(::getpid())
-        .arg(static_cast<int>(::time(nullptr)));
-}
-
 // Fork a child that tries to acquire ConfigWriteLock on `path` and
 // exits with code 0 if it acquired, 1 if it did not. The child uses
 // a SHORT-DEADLINE wrapper because the production helper waits 5 s,
@@ -71,8 +64,13 @@ int childTryLock(const QString &path) {
         // Child.
         const std::string lockPath =
             (path + QStringLiteral(".lock")).toLocal8Bit().toStdString();
+        // O_NOFOLLOW: refuse to open through a symlink (defence-in-depth;
+        // the lock file lives in a private QTemporaryDir so no attacker can
+        // pre-place one, but the flag costs nothing). NOT O_EXCL: the parent
+        // ConfigWriteLock legitimately pre-creates this file and the child
+        // must open the *existing* file to contend on the flock (ANTS-1380).
         int fd = ::open(lockPath.c_str(),
-                        O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+                        O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0600);
         if (fd < 0) std::exit(2);
         int rc = ::flock(fd, LOCK_EX | LOCK_NB);
         std::exit(rc == 0 ? 0 : 1);
@@ -84,7 +82,14 @@ int childTryLock(const QString &path) {
 }
 
 void runtimeTests() {
-    const QString path = uniqueTempPath();
+    // Private 0700 dir with a random name, auto-removed at scope exit —
+    // no predictable path in world-writable /tmp, so no symlink-attack
+    // window on the lock file (ANTS-1380). Parallel ctest runs each get
+    // their own dir, so the old pid/time uniqueness is no longer needed.
+    QTemporaryDir tmp;
+    expect(tmp.isValid(), "I-A/tempdir-created",
+           tmp.errorString().toStdString());
+    const QString path = tmp.path() + QStringLiteral("/ants-cwl.dat");
 
     {
         ConfigWriteLock A(path);

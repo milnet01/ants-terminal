@@ -10179,7 +10179,7 @@ that shipped 6+ months ago — pure self-reference).
   Kind: refactor.
   Source: test-suite-audit-2026-05-15 (lane B).
 
-- 📋 [ANTS-1380] **`concurrent_writer_lock` predictable
+- ✅ [ANTS-1380] **`concurrent_writer_lock` predictable
   `/tmp/ants-cwl-<pid>-<time>.dat` + symlink-attack
   exposure.** `tests/features/concurrent_writer_lock/
   test_concurrent_writer_lock.cpp:69` builds a predictable
@@ -10196,6 +10196,7 @@ that shipped 6+ months ago — pure self-reference).
   small symlink-attack window on shared `/tmp`.
   Kind: security.
   Source: test-suite-audit-2026-05-15 (lane B).
+  Resolved (2026-06-28): concurrent_writer_lock now roots its lock file in a private QTemporaryDir (0700, random name, auto-removed) instead of the predictable /tmp/ants-cwl-<pid>-<time>.dat, and the child's lock open gains O_NOFOLLOW (defence-in-depth). Closes the symlink-attack window. Verified: ConcurrentWriterLock.Main passes, no predictable /tmp literal remains. SCOPE CORRECTION on the second named site: claude_status_bar_per_tab's `/tmp/projects/dummy/<uuid>.jsonl` is NOT a vulnerability — verified the transcript path is only ever basename-compared (setTranscriptPathForTest → confused-deputy guard), never opened or created, so there is no symlink window; kFocusedSession is a fixed UUID-shaped constant, not a real path. Left as-is (converting a never-opened synthetic path to QTemporaryDir would be pointless churn). Also corrected the roadmap's prescription: O_EXCL was NOT applied — the child must open the *existing* lock file (pre-created by the parent ConfigWriteLock) to contend on the flock, so O_EXCL would break the test; O_NOFOLLOW alone is correct. Production ConfigWriteLock unchanged (its real path is the user-private config dir, never /tmp).
 
 - 📋 [ANTS-1381] **Delete decayed source-grep tripwires
   (~2000 LoC, zero behavioural coverage loss).** Four
