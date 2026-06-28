@@ -28,12 +28,13 @@ comment/string. Safe default is true (preserve findings).
 - **AL-3 Lua comments** — `.lua`: a `-- note` line is non-code; a `--[[ … ]]`
   block comment's interior line is non-code; a `[[ long string ]]` interior
   line is non-code; a real `local x = 1` line is code.
-- **AL-4 C-style comments** — `.cpp`: the interior of a `/* … */` block is
-  non-code; an `int x;` line is code. NOTE: a `// note`-only line currently
-  reads as code (its leading `/` registers in state 0) — the C-style
-  introducer is not excluded the way `#`/`--` are. This is the known
-  ANTS-2230 gap; the test LOCKS the current behavior and flips when 2230
-  ships.
+- **AL-4 C-style comments** — `.cpp`: a `// note`-only line and the interior
+  of a `/* … */` block are non-code; an `int x;` line is code. ANTS-2230 — the
+  `//` and `/*` introducers are excluded from code-detection (the C-style
+  analogue of ANTS-1270's `#`/`--` exclusion), so a finding inside a
+  comment-only C/C++ line is dropped.
+- **AL-4b division stays code** — a bare `/` division operator (`a / b`) still
+  reads as code; only the comment-opening `//` and `/*` are excluded.
 - **AL-5 C++ raw string** — `.cpp`: a `const char *p = R"(a//b"c)";` line is
   code (it has the `const`/identifier), and the raw-string body does NOT
   desync the lexer — the immediately following `int y;` line is still code.

@@ -371,7 +371,7 @@ private:
     bool mouseReportingActive() const;
 
     // URL and file path detection (includes OSC 8 hyperlinks)
-    struct UrlSpan { int startCol; int endCol; QString url; bool isFilePath; bool isOsc8; };
+    struct UrlSpan { int startCol = 0; int endCol = 0; QString url; bool isFilePath = false; bool isOsc8 = false; };
     std::vector<UrlSpan> detectUrls(int globalLine) const;
     // ANTS-1841 — cached front-end for detectUrls. Returns the line's
     // spans from m_urlSpanCache, computing + memoising on a miss. Event
@@ -631,7 +631,7 @@ private:
     std::vector<HighlightRule> m_highlightRules;
 
     // Paint-loop span caches (avoid per-frame regex matching)
-    struct PaintHighlightSpan { int start; int end; QColor fg; QColor bg; };
+    struct PaintHighlightSpan { int start = 0; int end = 0; QColor fg; QColor bg; };
     mutable std::unordered_map<int, std::vector<UrlSpan>> m_urlSpanCache;
     mutable std::unordered_map<int, std::vector<PaintHighlightSpan>> m_hlSpanCache;
     mutable bool m_spanCacheDirty = true;
@@ -661,16 +661,16 @@ private:
     // reuses the allocation across rows and frames. Mutable so
     // paintEvent's const-correctness is preserved.
     struct PaintTextRun {
-        int startCol;
-        int cpStart;   // offset into m_paintCps
-        int cpLen;
+        int startCol = 0;
+        int cpStart = 0;   // offset into m_paintCps
+        int cpLen = 0;
         QColor fg;
         QColor bg;
-        bool bold;
-        bool italic;
-        bool underline;
-        bool strikethrough;
-        bool isUrl;
+        bool bold = false;
+        bool italic = false;
+        bool underline = false;
+        bool strikethrough = false;
+        bool isUrl = false;
     };
     mutable std::vector<PaintTextRun> m_paintRuns;
     mutable std::vector<char32_t> m_paintCps;
@@ -755,7 +755,7 @@ private:
 
     // URL quick-select mode
     bool m_urlQuickSelectActive = false;
-    struct QuickSelectLabel { int globalLine; int startCol; int endCol; QString url; QString label; bool isFilePath; };
+    struct QuickSelectLabel { int globalLine = 0; int startCol = 0; int endCol = 0; QString url; QString label; bool isFilePath = false; };
     std::vector<QuickSelectLabel> m_quickSelectLabels;
     QString m_quickSelectInput;
 

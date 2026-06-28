@@ -135,7 +135,7 @@ namespace AuditEngine {
 // nested struct before extraction). Returned by applyFilter.
 struct FilterResult {
     QString body;
-    int count;
+    int count = 0;
 };
 
 // Pure-function counterpart of `AuditDialog::applyFilter`. Takes

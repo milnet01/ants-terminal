@@ -19,7 +19,7 @@ struct VtAction {
         ApcEnd,         // APC sequence complete (Kitty graphics, etc.)
     };
 
-    Type type;
+    Type type = Print;
     uint32_t codepoint = 0;       // For Print (scalar path: single decoded codepoint)
     // For Print coalesced runs: pointer into the caller's feed() buffer +
     // length. Only valid for the duration of the ActionCallback invocation;

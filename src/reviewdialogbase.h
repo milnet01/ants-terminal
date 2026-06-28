@@ -66,7 +66,7 @@ protected:
     void changeEvent(QEvent *e) override;
 
     // ---- base services ----
-    QString projectCwd() const { return m_projectCwd; }
+    const QString &projectCwd() const { return m_projectCwd; }
     Config *config() const { return m_config; }
     void    setResultsWidget(QWidget *w);
     void    runPartition();                                    // derivePartition() → setLanes()
@@ -82,7 +82,7 @@ protected:
     QString    activeReleaseHeading();                         // RoadmapFoldIn::findActiveReleaseHeading
     QList<int> allocateFoldInIds(int n);                       // RoadmapFoldIn::allocateIds; [] + reason on fail
     bool       insertFoldInBlock(const QString &heading, const QString &block);
-    QString    lastFoldInError() const { return m_lastFoldInError; }
+    const QString &lastFoldInError() const { return m_lastFoldInError; }
 
     // Test seam: replace the runner used by both batch dispatch and
     // dispatchOne. Default = a real LlmClient per job.

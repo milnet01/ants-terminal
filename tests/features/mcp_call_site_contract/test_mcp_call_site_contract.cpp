@@ -137,9 +137,13 @@ TEST(mcp_call_site_contract, Inv4MapValueTypeCarriesContract) {
            "INV-4: m_toolProviders value type must bundle the "
            "handler and contract (RegisteredTool struct or "
            "equivalent pair)");
-    // Look for the contract field declaration inside the struct.
+    // Look for the contract field declaration inside the struct. The field
+    // may carry a default member initializer (`= CallerCwdContract::Optional`,
+    // ANTS-2230 cppcheck sweep) — accept either terminator, but NOT the
+    // `contract,` parameter form in registerToolProvider's signature.
     expect(contains(h, "CallerCwdContract contract;") ||
-           contains(h, "CallerCwdContract  contract;"),
+           contains(h, "CallerCwdContract  contract;") ||
+           contains(h, "CallerCwdContract contract ="),
            "INV-4: RegisteredTool must carry a CallerCwdContract "
            "field");
     EXPECT_EQ(0, expect_failures());

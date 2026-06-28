@@ -86,26 +86,26 @@ struct InlineImage {
     enum class Origin : quint8 { Kitty, Sixel, ITerm2 };
 
     QImage image;
-    int row;        // screen row where image starts
-    int col;        // column where image starts
-    int cellWidth;  // width in cells (or pixels if pixelSized)
-    int cellHeight; // height in cells (or pixels if pixelSized)
+    int row = 0;        // screen row where image starts
+    int col = 0;        // column where image starts
+    int cellWidth = 0;  // width in cells (or pixels if pixelSized)
+    int cellHeight = 0; // height in cells (or pixels if pixelSized)
     bool pixelSized = false; // true for Sixel/Kitty (dimensions are pixels, not cells)
     Origin origin = Origin::ITerm2;
 };
 
 // OSC 8 hyperlink span stored per-line
 struct HyperlinkSpan {
-    int startCol;
-    int endCol;
+    int startCol = 0;
+    int endCol = 0;
     std::string uri;
     std::string id;  // optional link id for grouping
 };
 
 // Shell integration (OSC 133) prompt region
 struct PromptRegion {
-    int startLine;   // global line (scrollback + screen)
-    int endLine;
+    int startLine = 0;   // global line (scrollback + screen)
+    int endLine = 0;
     bool hasOutput = false;
     qint64 commandStartMs = 0;  // epoch ms when command started (OSC 133 B)
     qint64 commandEndMs = 0;    // epoch ms when command ended (OSC 133 D)

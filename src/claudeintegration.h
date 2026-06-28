@@ -534,7 +534,7 @@ private:
     // call-site declaration without a separate table lookup.
     struct RegisteredTool {
         ToolHandler handler;
-        CallerCwdContract contract;
+        CallerCwdContract contract = CallerCwdContract::Optional;
     };
     std::map<QString, RegisteredTool> m_toolProviders;
 

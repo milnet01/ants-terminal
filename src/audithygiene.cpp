@@ -285,11 +285,15 @@ bool lineHasCode(const QString &source, const QString &path, int line) {
                 c != '{' && c != '}' &&
                 c != '[' && c != ']' &&
                 c != '"' && c != '\'' && c != '\\' &&
-                // ANTS-1270 — the bare comment-introducer ('#' for Hash, '-'
-                // for Lua's '--') must not read as code, else an
-                // otherwise-comment-only line is kept as code.
+                // ANTS-1270 / ANTS-2230 — a bare comment-introducer must not
+                // read as code, else an otherwise-comment-only line is kept as
+                // code (a finding inside it survives dropFindingsInComments...).
+                // '#' for Hash, '-' for Lua's '--', and the C-style '/' when it
+                // opens '//' or '/*' (a division '/ ' keeps reading as code).
                 !(syntax == Syntax::Hash && c == '#') &&
-                !(syntax == Syntax::Lua && c == '-')) {
+                !(syntax == Syntax::Lua && c == '-') &&
+                !(syntax == Syntax::CStyle && c == '/' &&
+                  (n == QLatin1Char('/') || n == QLatin1Char('*')))) {
                 hasCodeOnLine = true;
             }
         } else if (curLine > line) {

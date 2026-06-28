@@ -162,9 +162,9 @@ inline Result scrub(const QString &input)
     if (input.isEmpty()) return out;
 
     struct Match {
-        int start;
-        int length;
-        int priority; // lower = higher priority; ties lose to later
+        int start = 0;
+        int length = 0;
+        int priority = 0; // lower = higher priority; ties lose to later
         QString kind;
     };
 

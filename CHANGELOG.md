@@ -51,6 +51,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **cppcheck cleanup: default member initializers on 32 struct fields + 2 const-ref getters.** (ANTS-3341)
+  An /audit run flagged a batch of small code-quality warnings: several data structures had number/flag fields with no default value (a latent source of "uninitialised value" bugs if one were ever used before being filled), and two small accessor functions copied a string instead of handing back a reference. Gave every flagged field a sensible default (0 / false / the documented default) and switched the two accessors to return by reference. Verified with cppcheck that the warnings are gone and all 2314 tests still pass.
+
 - **`read_region` section selector: forgiving match for a heading's short title when it carries a trailing parenthetical (ANTS-2221 follow-up).** (ANTS-2234)
   When a Claude session wants to read one section of a spec, it naturally types the short heading title (e.g. "7. Build order"). But many headings have a descriptive bit in brackets after them ("7. Build order (cheapest-first; ...)"), and right now the short title doesn't match — the session has to type the whole thing or fall back to line numbers. This makes the section reader accept the short title as long as it unambiguously points at one heading.
 
@@ -101,6 +104,9 @@ for security-relevant changes.
   header contract comments, and the orphaned Inv3 shape test.
 
 ### Fixed
+
+- **C-style `//` and `/*` comment introducers aren't excluded from lineHasCode's code-detection (ANTS-1270 left them; the `#`/`--` analogue).** (ANTS-2230)
+  The audit code that decides "is this line real code or just a comment?" was taught (in an earlier fix) that `#` (Python/shell) and `--` (Lua) start comments, so findings inside those comments get dropped. But for C/C++ it was never taught the same about `//` and `/*` — so a secret or TODO written inside a `// comment` in a C++ file is still reported as a real finding. This makes the audit cry wolf on commented-out lines.
 
 - **file_outline registers `typedef struct TAG_s { … } ALIAS_t;` aggregates (the dominant C struct idiom).** (ANTS-2228)
   Let Claude pull one C struct definition by name instead of reading the whole header to find it.

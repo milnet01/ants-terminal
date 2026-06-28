@@ -45,21 +45,25 @@ TEST(AuditLineLexer, LuaCommentsAndLongString) {
     EXPECT_FALSE(lineHasCode(lua, "a.lua", 6));
 }
 
-// AL-4 — C-style `/* */` block-comment interior is non-code. The `//`
-// line-comment introducer is NOT excluded from code-detection (the leading
-// `/` reads as code in state 0) — this is the known ANTS-2230 gap, the
-// C-style analogue of the `#`/`--` exclusion ANTS-1270 added. We LOCK that
-// current behavior here; flip the `// a note` assertion to FALSE when
-// ANTS-2230 ships.
+// AL-4 — C-style `//` line comment and `/* */` block interior are non-code.
+// ANTS-2230 — the `//` and `/*` introducers are now excluded from
+// code-detection (the C-style analogue of ANTS-1270's `#`/`--` exclusion), so
+// a finding inside a comment-only C/C++ line is dropped, not kept.
 TEST(AuditLineLexer, CStyleComments) {
     const QString cpp =
         "int x;\n"               // 1 — code
-        "// a note\n"            // 2 — leading `/` reads as code (ANTS-2230)
+        "// a note\n"            // 2 — line comment (ANTS-2230: non-code)
         "/* block\n"             // 3 — block open
         "still in block */\n";   // 4 — inside /* */
     EXPECT_TRUE(lineHasCode(cpp, "a.cpp", 1));
-    EXPECT_TRUE(lineHasCode(cpp, "a.cpp", 2));   // ANTS-2230 — currently code
+    EXPECT_FALSE(lineHasCode(cpp, "a.cpp", 2));  // ANTS-2230 — comment, non-code
     EXPECT_FALSE(lineHasCode(cpp, "a.cpp", 4));  // block interior: non-code
+}
+
+// AL-4b (ANTS-2230) — a bare division `/` still reads as code; only the
+// comment-opening `//` and `/*` are excluded.
+TEST(AuditLineLexer, CStyleDivisionStillCode) {
+    EXPECT_TRUE(lineHasCode("a = b / c;\n", "a.cpp", 1));
 }
 
 // AL-5 — a C++ raw string body does not desync the lexer for later lines.
