@@ -10178,6 +10178,7 @@ that shipped 6+ months ago — pure self-reference).
   test. Centralise the cleanup so this stops happening.
   Kind: refactor.
   Source: test-suite-audit-2026-05-15 (lane B).
+  Status re-verified 2026-06-28: the LIVE-LEAK portion of this item is already fixed. (1) The shared RAII helper this item asked to "extract to tests/_support/sandbox.h" now exists as `tests/_support/xdg_guard.h` (ants_test::XdgGuard, shipped by ANTS-2062) — env save/restore + setTestMode + reverse-order restore + move-only. (2) Both specifically-named unrestored offenders are converged onto it: tab_color and kwin_position_tracker now `#include xdg_guard.h` (the permanent setTestModeEnabled(true) flip is gone). remote_control_opt_in, roadmap_density, audit_command_rule_trust, model_near_miss_ledger, dialog_chrome_affordances also migrated. RESIDUAL (not a live bug): ~10 config/feature tests still carry hand-rolled save/restore guards that DO restore (manually) but duplicate XdgGuard and aren't exception-safe on early gtest-ASSERT unwind — mcp_master_toggle, config_reload_loop_safety, config_tab_title_format, config_ai_review_concurrency, config_parse_failure_guard (NB: carries an explicit "do NOT use [guard] here" comment — needs per-file care), shell_command_wiring, session_persistence_default, debuglog_perms, claude_session_freshness, auto_switch_surfacing, ui_state_persistence, tool_detection_engine, claude_tab_status_indicator. This is an incremental convergence chore (dedup + exception-safety), best done one-file-at-a-time with per-file test verification, not a batch. Recommend a dedicated session.
 
 - ✅ [ANTS-1380] **`concurrent_writer_lock` predictable
   `/tmp/ants-cwl-<pid>-<time>.dat` + symlink-attack
@@ -11873,6 +11874,7 @@ Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, du
   - Dimension: isolation
   - Severity: MED
   - Fix: Wrap env-mutation in a Sandbox struct whose dtor restores the original value; or use the existing env-guard helper if one exists in _support.
+  Status re-verified 2026-06-28: duplicate-theme of ANTS-1379 (env-pollution RAII). The shared guard ants_test::XdgGuard (tests/_support/xdg_guard.h, ANTS-2062) exists and the named unrestored leaks are migrated. Audited the current qputenv/qunsetenv/setTestModeEnabled surface across tests/: the remaining sites (XDG_CONFIG_HOME / HOME / PATH mutations in the config_* tests, shell_command_wiring, debuglog_perms, claude_session_freshness, tool_detection_engine PathScope, etc.) all DO restore manually — no active leak found. Residual work is the same incremental XdgGuard convergence tracked under ANTS-1379; this item is effectively a co-dependent duplicate. Resolve together when the convergence chore is scheduled.
 - ✅ [ANTS-1474] **Several files use fixed-byte-window substr(pos, N) (sizes 800/2000/4000/12000) for source-region searches — silently truncate as source grows..**
   - File: tests/features/*:0
   - Dimension: accuracy
