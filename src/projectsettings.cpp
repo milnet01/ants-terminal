@@ -88,9 +88,20 @@ constexpr double kDominanceRatio    = 0.9;    // suggested dirs must cover >= th
 bool isNoiseDir(const QString &name) {
     if (name.startsWith(QLatin1Char('.'))) return true;      // .git, .ants, .cache, …
     if (name.startsWith(QLatin1String("build"))) return true; // build/, build-fast/, …
+    // ANTS-3357 — discount well-known vendored / third-party trees so
+    // op:detect doesn't rank a bundled-dependency dir as the dominant
+    // source_root (DOOM bundles SDL2 + Vulkan-Headers under `mingw-deps/`,
+    // ~632 of 654 files). A *-deps / *-prefix suffix is the strongest
+    // signal for cross-compile dependency staging dirs; the exact names
+    // cover the conventional vendoring layouts. Belt-and-braces only —
+    // op:init still accepts explicit source_roots to override.
+    if (name.endsWith(QLatin1String("-deps")) ||
+        name.endsWith(QLatin1String("-prefix"))) return true; // mingw-deps, x-prefix
     static const QStringList noise = {
         QStringLiteral("node_modules"), QStringLiteral("dist"),
-        QStringLiteral("target"), QStringLiteral("vendor"), QStringLiteral("out")};
+        QStringLiteral("target"), QStringLiteral("vendor"), QStringLiteral("out"),
+        QStringLiteral("third_party"), QStringLiteral("third-party"),
+        QStringLiteral("deps"), QStringLiteral("external"), QStringLiteral("extern")};
     return noise.contains(name);
 }
 

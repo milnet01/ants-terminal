@@ -33,6 +33,11 @@ file-static).
   `tests/` still walked.
 - **INV-12** — settings honoured on the warm `refresh()` path, not just
   `build()` (no spurious re-outline; `Index.files` stays scoped).
+- **INV-13** (ANTS-3357) — `detect` discounts vendored / third-party
+  trees (`mingw-deps/`, `third_party/`): they are excluded from both the
+  suggested `source_roots` and the repo-wide `totalSourceCount`, so a
+  bundled-dependency dir is never ranked as the dominant source root and
+  the project's own code dir (`linuxdoom/`) is suggested instead.
 - **Wiring** — every consumer (`codebaseindex` / `docsindex` /
   `remotecontrol` finders + spec routing / `projectlayoutengine`) calls
   `ProjectSettings::load`.

@@ -174,7 +174,10 @@ server-controllable beyond this per-tool hint.
   `detect` (read-only — `{present, suggestion:{source_roots?, reason,
   default_source_count, total_source_count}}`; its bounded shallow walk
   reuses `CodebaseIndex::isIndexableSuffix` so counts agree with what the
-  index admits), `init` (write the detected/explicit keys; refuses
+  index admits, and discounts vendored / third-party trees — `*-deps`,
+  `*-prefix`, `third_party`, `external`, `deps`, `vendor`, … — so a
+  bundled-dependency dir is never ranked as the dominant `source_root`
+  nor counted in `total_source_count`, ANTS-3357), `init` (write the detected/explicit keys; refuses
   `settings_exists` on an existing file — no clobber; `written:false`
   when nothing to suggest), `set` (create-or-update; raw-JSON merge
   preserving unknown keys; a `null` value clears a key; refuses
@@ -227,7 +230,16 @@ server-controllable beyond this per-tool hint.
 - **`spec_log`** — writes a spec's Status line / cold-eyes loop log /
   `INV-N` via the pure `SpecLog` module (`op:"set_status"` /
   `"append_loop"` / `"append_inv"`), never renumbering; reuses
-  `spec_query`'s id routing (ANTS-1963).
+  `spec_query`'s id routing (ANTS-1963). Shared id routing accepts any
+  `<PREFIX>-NNNN` id (e.g. `DOOM-0009`, not just `ANTS-NNNN`) and resolves
+  the file via `resolveSpecRelForId` — exact `<id>.md`, then a `<id>-*.md`
+  glob for topic-suffixed specs (`DOOM-0009-path-tracer.md`), ANTS-3356.
+- **`spec_query` list mode (ANTS-3360)** — called with neither `id` nor
+  `path`, enumerates the specs dir → `{mode:"list", specs_dir,
+  specs:[{id, title, status, path, size_bytes, mtime_ms}], count,
+  truncated}` (bounded at 500, filename order) — the spec-side analogue of
+  `roadmap_query mode:section_index` for spec discovery. `spec_log` with
+  neither id nor path still refuses `bad_id` (it has no list semantics).
 - **`roadmap_log` on pass-headings (`#### Pass N.M`) roadmaps** —
   append/append_batch/flip/flip_batch/annotate now WRITE the heading
   format via the pure `PassHeadingWrite` module (ANTS-2126), routed

@@ -4510,9 +4510,19 @@ void ClaudeIntegration::onMcpConnection() {
                         "(`- **INV-N** — body`). Use when you need "
                         "the contract list of a spec without reading "
                         "the full ~2 K-line body. ID routing: "
-                        "ANTS-NNNN → docs/specs/<id>.md (source=specs); "
+                        "<PREFIX>-NNNN → docs/specs/<id>.md (source=specs; "
+                        "any project prefix, e.g. ANTS-1963 or DOOM-0009 "
+                        "— ANTS-3356; a topic-suffixed file `<id>-*.md` "
+                        "such as DOOM-0009-path-tracer.md also resolves); "
                         "phase_<NN>_<topic> → docs/phases/<id>.md "
-                        "(source=phases, ANTS-1880). ANTS-1906 — pass "
+                        "(source=phases, ANTS-1880). LIST MODE (ANTS-3360): "
+                        "call with NEITHER `id` nor `path` to enumerate the "
+                        "specs dir — returns {ok, mode:\"list\", specs_dir, "
+                        "specs:[{id, title, status, path, size_bytes, "
+                        "mtime_ms}], count, truncated}, the spec-side "
+                        "analogue of roadmap_query mode:section_index "
+                        "(use it to discover spec ids, not a shell `ls`). "
+                        "ANTS-1906 — pass "
                         "an explicit project-relative `path` instead "
                         "of `id` for projects whose specs live "
                         "elsewhere (e.g. "
@@ -4520,8 +4530,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "the response `source` becomes \"path\" and "
                         "`id` is auto-derived from the basename. Path "
                         "must be project-relative (no leading '/', no "
-                        "'..' traversal). Refusals: `bad_id` (missing "
-                        "or not matching the recognised id shape), "
+                        "'..' traversal). Refusals: `bad_id` (an `id` was "
+                        "passed that doesn't match the recognised shape), "
                         "`bad_path` (path escaped the project root), "
                         "`not_found` (file absent), `no_project` "
                         "(caller_cwd unresolved).");
@@ -4537,11 +4547,16 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject idProp;
                     idProp["type"] = "string";
                     idProp["description"] = QStringLiteral(
-                        "Spec ID. ANTS-NNNN → docs/specs/<id>.md; "
+                        "Spec ID. <PREFIX>-NNNN → docs/specs/<id>.md "
+                        "(any project prefix, e.g. ANTS-1963 or "
+                        "DOOM-0009 — ANTS-3356; topic-suffixed "
+                        "`<id>-*.md` files also resolve); "
                         "phase_<NN>_<topic> → docs/phases/<id>.md "
                         "(ANTS-1880). Optional when `path` is set "
                         "(ANTS-1906); the explicit `id` then wins as "
-                        "the response's display id.");
+                        "the response's display id. Omit BOTH `id` and "
+                        "`path` for list mode (ANTS-3360 — enumerate "
+                        "the specs dir).");
                     props["id"]         = idProp;
                     QJsonObject pathProp;
                     pathProp["type"] = "string";
@@ -4584,8 +4599,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "cold-eyes loop-log bullet (creating the section "
                         "if absent); op:\"append_inv\" appends an INV-N "
                         "bullet at the end of the Invariants section "
-                        "(never renumbers). Target via `id` (ANTS-NNNN → "
-                        "docs/specs/<id>.md; phase_<NN>_<topic> → "
+                        "(never renumbers). Target via `id` (<PREFIX>-NNNN → "
+                        "docs/specs/<id>.md, any project prefix e.g. "
+                        "DOOM-0009 — ANTS-3356, topic-suffixed `<id>-*.md` "
+                        "also resolves; phase_<NN>_<topic> → "
                         "docs/phases/) or a project-relative `path`. "
                         "Atomic write. Returns {ok, op, id?, path, line, "
                         "bytes_written}; dry_run:true previews line/`bytes` "
@@ -4611,8 +4628,10 @@ void ClaudeIntegration::onMcpConnection() {
                             "append_inv.");
                     QJsonObject idProp; idProp["type"] = "string";
                         idProp["description"] = QStringLiteral(
-                            "Spec id (ANTS-NNNN or phase_<NN>_<topic>). "
-                            "Required unless `path` is set.");
+                            "Spec id (<PREFIX>-NNNN, any project prefix "
+                            "e.g. ANTS-1963 or DOOM-0009 — ANTS-3356, or "
+                            "phase_<NN>_<topic>). Required unless `path` "
+                            "is set.");
                     QJsonObject pathProp; pathProp["type"] = "string";
                         pathProp["description"] = QStringLiteral(
                             "Optional project-relative path to the spec "

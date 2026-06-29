@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **Ants MCP: `project_settings op:detect` no longer ranks a bundled-dependency tree (e.g. `mingw-deps/`, `third_party/`) as a project's source root — vendored dirs are discounted from the suggestion and the file total.** (ANTS-3357)
+
+- **Ants MCP: `spec_query` with no `id`/`path` now lists the specs directory (`{mode:"list", specs, count}`) instead of erroring — spec discovery without a shell `ls`.** (ANTS-3360)
+
+- **Ants MCP: `spec_query` / `spec_log` accept any `<PREFIX>-NNNN` spec id (e.g. `DOOM-0009`), not just `ANTS-NNNN`, and resolve topic-suffixed spec files (`DOOM-0009-path-tracer.md`) from the bare id.** (ANTS-3356)
+  Generalised the spec id routing the same way roadmap_log was (ANTS-2076); `path` stays the explicit override for non-standard layouts.
+
 - **MCP dispatch silently ignores unknown / misspelled args — echo an `ignored_args` advisory.** (ANTS-2175)
   If Claude passes a setting name a tool doesn't recognise (a typo, or an option that doesn't exist), the tool quietly ignores it and can return wrong-looking results. It should name the inputs it ignored so the mistake is caught on the first call instead of after several.
 

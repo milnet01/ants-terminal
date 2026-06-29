@@ -278,6 +278,35 @@ TEST(ProjectSettings, RefreshPathHonoursSettings) {
     EXPECT_FALSE(hasPath(cur.files, QStringLiteral("src/y.c")));  // still scoped to a/
 }
 
+// INV-13 — ANTS-3357: op:detect discounts vendored / third-party trees so
+// a bundled-dependency dir (DOOM ships SDL2 + Vulkan-Headers under
+// `mingw-deps/`) is never ranked as the dominant source_root and never
+// inflates the repo-wide total. The project's own code dir is suggested.
+TEST(ProjectSettings, DetectDiscountsVendoredDeps) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    // Bundled deps: a *-deps staging tree + a conventional third_party name,
+    // together holding far more files than the first-party code.
+    for (int i = 0; i < 30; ++i)
+        writeFile(root + QStringLiteral("/mingw-deps/SDL2/src/f%1.c").arg(i),
+                  cFile(QStringLiteral("dep%1").arg(i)));
+    for (int i = 0; i < 12; ++i)
+        writeFile(root + QStringLiteral("/third_party/vk/g%1.c").arg(i),
+                  cFile(QStringLiteral("vk%1").arg(i)));
+    // First-party code in a non-src layout dir (the DOOM shape).
+    for (int i = 0; i < 5; ++i)
+        writeFile(root + QStringLiteral("/linuxdoom/h%1.c").arg(i),
+                  cFile(QStringLiteral("game%1").arg(i)));
+
+    ProjectSettings::Suggestion s = ProjectSettings::detect(root);
+    // Vendored dirs are excluded from both the suggestion and the total.
+    EXPECT_EQ(s.totalSourceCount, 5);  // only linuxdoom/ counts
+    ASSERT_TRUE(s.sourceRoots.has_value());
+    EXPECT_FALSE(s.sourceRoots->contains(QStringLiteral("mingw-deps")));
+    EXPECT_FALSE(s.sourceRoots->contains(QStringLiteral("third_party")));
+    EXPECT_TRUE(s.sourceRoots->contains(QStringLiteral("linuxdoom")));
+}
+
 // Wiring — every consumer calls ProjectSettings::load.
 TEST(ProjectSettings, ConsumerWiring) {
     const std::string ci = ants_test::slurpFile(srcPath("src/codebaseindex.cpp"));

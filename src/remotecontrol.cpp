@@ -9320,8 +9320,12 @@ namespace {
 
 // Forward decl — isValidSpecId is defined in the spec-tools anonymous
 // namespace block further down (it predates these verbs). cmdSpecLog
-// reuses it for ANTS-NNNN / phase_* id routing parity with cmdSpecQuery.
+// reuses it for <PREFIX>-NNNN / phase_* id routing parity with cmdSpecQuery.
 bool isValidSpecId(const QString &id);
+// ANTS-3356 — forward decl (defined alongside isValidSpecId). cmdSpecLog
+// and cmdSpecQuery share it to resolve `<id>.md` then a `<id>-*.md` glob.
+QString resolveSpecRelForId(const QString &rootCanonical,
+                            const QString &dirRel, const QString &id);
 
 QJsonObject fbErr(const QString &code, const QString &message) {
     QJsonObject o;
@@ -9963,8 +9967,9 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
     }
     if (!id.isEmpty() && pathArg.isEmpty() && !isValidSpecId(id)) {
         return slErr(QStringLiteral("bad_id"),
-                     QStringLiteral("spec_log: id must match ANTS-NNNN "
-                                    "or phase_<NN>_<topic>"));
+                     QStringLiteral("spec_log: id must match <PREFIX>-NNNN "
+                                    "(e.g. ANTS-1963, DOOM-0009) or "
+                                    "phase_<NN>_<topic>"));
     }
 
     // Root: caller_cwd canonical (m_main-independent, mirrors
@@ -10004,9 +10009,11 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
         if (const auto sd = ProjectSettings::load(rootCanonical).specsDir;
             sd && QDir(rootCanonical + QLatin1Char('/') + *sd).exists())
             specsDir = *sd;
-        rel = (isPhase ? QStringLiteral("docs/phases/")
-                       : specsDir + QLatin1Char('/')) +
-              id + QStringLiteral(".md");
+        const QString dirRel = isPhase ? QStringLiteral("docs/phases/")
+                                        : specsDir + QLatin1Char('/');
+        // ANTS-3356 — exact `<id>.md`, then a `<id>-*.md` glob so a
+        // topic-suffixed project spec (DOOM-0009-path-tracer.md) resolves.
+        rel  = resolveSpecRelForId(rootCanonical, dirRel, id);
         full = rootCanonical + QLatin1Char('/') + rel;
     }
 
@@ -12389,19 +12396,49 @@ QJsonObject sqErr(const QString &code, const QString &message) {
     return o;
 }
 
-// Strict id check accepting either ANTS-NNNN (canonical
+// Strict id check accepting either <PREFIX>-NNNN (canonical
 // docs/specs/ layout) or phase_<NN>_<topic> (docs/phases/ layout
-// used by some sister projects — ANTS-1880). The two prefixes are
-// disjoint, so the routing in cmdSpecQuery is unambiguous.
+// used by some sister projects — ANTS-1880). The two arms are
+// disjoint (arm 1 ends in `-<digits>`, the phase arm never does), so
+// the routing in cmdSpecQuery is unambiguous.
 bool isValidSpecId(const QString &id) {
     // ANTS-1906 — widened the `phase_*` arm to accept hyphens and
     // mixed case in the topic suffix so non-Ants projects (Vestige
     // ships `phase_22_threading_design`-style filenames already, but
     // others use `phase_22_Foo-Bar`) can drive the routing without
     // an explicit `path` override.
+    // ANTS-3356 — widened arm 1 from the hardcoded `ANTS-` prefix to
+    // any `<PREFIX>-NNNN` shape (e.g. `DOOM-0009`), mirroring what
+    // ANTS-2076 did for roadmap_log's counter-ID prefix. A spec id is
+    // routed to docs/specs/ and resolved by resolveSpecRelForId (exact
+    // `<id>.md`, then a `<id>-*.md` glob for topic-suffixed files);
+    // `path` stays the explicit override.
     static const QRegularExpression re(
-        QStringLiteral("^(ANTS-[0-9]+|phase_[0-9]+_[A-Za-z0-9_-]+)$"));
+        QStringLiteral("^([A-Za-z][A-Za-z0-9_-]*-[0-9]+"
+                       "|phase_[0-9]+_[A-Za-z0-9_-]+)$"));
     return re.match(id).hasMatch();
+}
+
+// ANTS-3356 — resolve the spec/phase file for `id` under `dirRel`
+// (which carries a trailing slash, e.g. "docs/specs/"). Tries the
+// canonical `<dirRel><id>.md` first (ANTS-NNNN + phase_* shapes), then
+// globs `<dirRel><id>-*.md` so a project-prefixed spec carrying a topic
+// suffix (e.g. docs/specs/DOOM-0009-path-tracer.md) resolves from the
+// bare id. Returns the project-relative path of the match, or the
+// canonical exact path when nothing exists so the caller's not_found
+// message still names the expected file. Shared by spec_query (read)
+// and spec_log (write); both treat a spec as edit-in-place of an
+// existing file.
+QString resolveSpecRelForId(const QString &rootCanonical,
+                            const QString &dirRel, const QString &id) {
+    const QString exactRel = dirRel + id + QStringLiteral(".md");
+    if (QFileInfo::exists(rootCanonical + QLatin1Char('/') + exactRel))
+        return exactRel;
+    QDir dir(rootCanonical + QLatin1Char('/') + dirRel);
+    const QStringList hits = dir.entryList(
+        {id + QStringLiteral("-*.md")}, QDir::Files, QDir::Name);
+    if (!hits.isEmpty()) return dirRel + hits.first();
+    return exactRel;  // nothing matched — keep canonical path for not_found
 }
 
 // Parse a spec file's body into {title, status, kind, invariants[]}.
@@ -12411,10 +12448,13 @@ QJsonObject parseSpecBody(const QString &body) {
     QJsonObject out;
     QString title, status, kind;
 
-    // Title: first line starting with `# ANTS-NNNN — title` or
-    // `# ANTS-NNNN - title`. Tolerate either em-dash or hyphen.
+    // Title: first line starting with `# <PREFIX>-NNNN — title` or
+    // `# <PREFIX>-NNNN - title`. Tolerate either em-dash or hyphen.
+    // ANTS-3356 — generalised the `ANTS-` prefix to any `<PREFIX>-NNNN`
+    // (e.g. `# DOOM-0009 — Path tracer`) so non-Ants spec titles parse;
+    // the id arm is non-greedy-anchored by the `-[0-9]+` + separator.
     static const QRegularExpression titleRe(
-        QStringLiteral(R"(^#\s+ANTS-[0-9]+\s*[—\-]\s*(.+?)\s*$)"),
+        QStringLiteral(R"(^#\s+[A-Za-z][A-Za-z0-9_-]*-[0-9]+\s*[—\-]\s*(.+?)\s*$)"),
         QRegularExpression::MultilineOption);
     const auto titleM = titleRe.match(body);
     if (titleM.hasMatch()) title = titleM.captured(1);
@@ -12510,6 +12550,62 @@ QJsonObject parseSpecBody(const QString &body) {
     return out;
 }
 
+// ANTS-3360 — spec_query list/index mode. With neither `id` nor `path`,
+// enumerate the specs dir (`.ants/project.json` specs_dir override
+// honoured, ANTS-2160) and return a compact directory of
+// {id, title, status, path, size_bytes, mtime_ms} — the spec-side
+// analogue of roadmap_query mode:section_index, so a session discovers
+// spec ids without a shell `ls`. Phase docs (docs/phases/) are
+// intentionally excluded; pass an explicit `path` for those. Bounded at
+// kSpecListCap entries (filename order) so a pathological tree can't
+// blow the response.
+QJsonObject specListEnvelope(const QString &rootCanonical) {
+    QString specsDir = QStringLiteral("docs/specs");
+    if (const auto sd = ProjectSettings::load(rootCanonical).specsDir;
+        sd && QDir(rootCanonical + QLatin1Char('/') + *sd).exists())
+        specsDir = *sd;
+    QJsonObject out;
+    out["ok"]        = true;
+    out["mode"]      = QStringLiteral("list");
+    out["specs_dir"] = specsDir;
+    QJsonArray specs;
+    int dropped = 0;
+    QDir dir(rootCanonical + QLatin1Char('/') + specsDir);
+    if (dir.exists()) {
+        const QStringList files = dir.entryList(
+            {QStringLiteral("*.md")}, QDir::Files, QDir::Name);
+        constexpr int kSpecListCap = 500;
+        for (const QString &fname : files) {
+            if (specs.size() >= kSpecListCap) {
+                dropped = files.size() - specs.size();
+                break;
+            }
+            QJsonObject e;
+            QString sid = fname;
+            if (sid.endsWith(QStringLiteral(".md"))) sid.chop(3);
+            e["id"]   = sid;
+            e["path"] = specsDir + QLatin1Char('/') + fname;
+            QFileInfo fi(dir.filePath(fname));
+            e["size_bytes"] = fi.size();
+            e["mtime_ms"]   = fi.lastModified().toMSecsSinceEpoch();
+            QFile f(fi.absoluteFilePath());
+            if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                const QJsonObject parsed =
+                    parseSpecBody(QString::fromUtf8(f.readAll()));
+                f.close();
+                e["title"]  = parsed.value(QStringLiteral("title")).toString();
+                e["status"] = parsed.value(QStringLiteral("status")).toString();
+            }
+            specs.append(e);
+        }
+    }
+    out["specs"]     = specs;
+    out["count"]     = specs.size();
+    out["truncated"] = dropped > 0;
+    if (dropped > 0) out["specs_dropped"] = dropped;
+    return out;
+}
+
 }  // namespace
 
 QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
@@ -12525,14 +12621,21 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
     // wants a specific display id).
     const QString pathArg = req.value(QStringLiteral("path")).toString();
     if (id.isEmpty() && pathArg.isEmpty()) {
-        return QJsonDocument(sqErr(
-            QStringLiteral("bad_id"),
-            QStringLiteral("spec_query: pass \"id\" or \"path\"")));
+        // ANTS-3360 — no id/path → list mode (spec discovery), the
+        // spec-side analogue of roadmap_query mode:section_index.
+        const QString rootCanonical = resolveRootCanonical(m_main, req);
+        if (rootCanonical.isEmpty()) {
+            return QJsonDocument(sqErr(
+                QStringLiteral("no_project"),
+                QStringLiteral("spec_query: project root unresolved")));
+        }
+        return QJsonDocument(specListEnvelope(rootCanonical));
     }
     if (!id.isEmpty() && pathArg.isEmpty() && !isValidSpecId(id)) {
         return QJsonDocument(sqErr(
             QStringLiteral("bad_id"),
-            QStringLiteral("spec_query: id must match ANTS-NNNN or "
+            QStringLiteral("spec_query: id must match <PREFIX>-NNNN "
+                           "(e.g. ANTS-1963, DOOM-0009) or "
                            "phase_<NN>_<topic>, or pass an explicit "
                            "`path` (ANTS-1906)")));
     }
@@ -12587,7 +12690,9 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
         const QString dirRel = isPhase
             ? QStringLiteral("docs/phases/")
             : (specsDir + QLatin1Char('/'));
-        rel  = dirRel + id + QStringLiteral(".md");
+        // ANTS-3356 — exact `<id>.md`, then a `<id>-*.md` glob so a
+        // topic-suffixed project spec (DOOM-0009-path-tracer.md) resolves.
+        rel  = resolveSpecRelForId(rootCanonical, dirRel, id);
         full = rootCanonical + QLatin1Char('/') + rel;
         sourceTag = isPhase
             ? QStringLiteral("phases")

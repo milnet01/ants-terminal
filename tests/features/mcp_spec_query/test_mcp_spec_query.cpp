@@ -103,19 +103,26 @@ TEST(McpSpecQuery, WiringContract) {
     expect(contains(ciCpp, "t[\"name\"] = \"spec_query\""),
            "INV-7a",
            "tools/list block must register a \"spec_query\" entry");
-    // The spec_query registration block must carry both `id` and
-    // `caller_cwd` in `required` — look for the block by its
-    // unique ANTS-1309 anchor comment, then scan a window.
+    // Scope to the actual spec_query registration block — from its
+    // `t["name"]` line to the closing `tools.append(t);` — rather than a
+    // fixed byte window (the window broke when ANTS-1906 / ANTS-3360 grew
+    // the description). caller_cwd is the ONLY unconditionally-required
+    // arg: ANTS-1906 made `id` optional (pass `path` instead), and
+    // ANTS-3360 made *both* id and path optional (list mode), so the
+    // schema must NOT mark `id` required.
     {
-        const auto anchorPos = ciCpp.find("ANTS-1309");
-        ASSERT_NE(anchorPos, std::string::npos);
-        const std::string region = ciCpp.substr(anchorPos, 2500);
-        expect(contains(region, "req.append(\"id\")"),
+        const auto sqPos = ciCpp.find("t[\"name\"] = \"spec_query\"");
+        ASSERT_NE(sqPos, std::string::npos);
+        const auto sqEnd = ciCpp.find("tools.append(t);", sqPos);
+        ASSERT_NE(sqEnd, std::string::npos);
+        const std::string block = ciCpp.substr(sqPos, sqEnd - sqPos);
+        expect(contains(block, "req.append(\"caller_cwd\")"),
                "INV-7b",
-               "spec_query schema must mark \"id\" as required");
-        expect(contains(region, "req.append(\"caller_cwd\")"),
-               "INV-7c",
                "spec_query schema must mark \"caller_cwd\" as required");
+        expect(!contains(block, "req.append(\"id\")"),
+               "INV-7c",
+               "spec_query schema must NOT mark \"id\" as required "
+               "(ANTS-1906 optional id, ANTS-3360 list mode)");
     }
 
     // INV-8 — Required contract.
@@ -137,4 +144,27 @@ TEST(McpSpecQuery, WiringContract) {
                "INV-8",
                "spec_query must be classified C::Required");
     }
+
+    // INV-9 — ANTS-3360 list mode: cmdSpecQuery delegates the no-id/no-path
+    // case to the specListEnvelope helper (spec discovery).
+    expect(contains(body, "specListEnvelope"),
+           "INV-9a",
+           "cmdSpecQuery must delegate list mode to specListEnvelope");
+    expect(contains(rcCpp, "ANTS-3360"),
+           "INV-9b",
+           "list-mode code must carry an ANTS-3360 anchor");
+
+    // INV-10 — ANTS-3356 generalised id routing: any <PREFIX>-NNNN id
+    // resolves via resolveSpecRelForId (exact `<id>.md`, then `<id>-*.md`).
+    expect(contains(body, "resolveSpecRelForId"),
+           "INV-10a",
+           "cmdSpecQuery must resolve the spec file via resolveSpecRelForId");
+    expect(contains(rcCpp, "ANTS-3356"),
+           "INV-10b",
+           "generalised id routing must carry an ANTS-3356 anchor");
+
+    // The INVs above are counted by expect(); enforce them here so a
+    // regression actually fails the test (previously omitted — the
+    // source-grep INVs were toothless).
+    EXPECT_EQ(0, expect_failures());
 }
