@@ -10152,6 +10152,13 @@ apiKey-from-config, secretredact.h filename, openUrl internal URL, trigger sh
   Progress 2026-06-28: 2 more sub-items fixed (5 of 7 now done). (1) clipboardguard kUntrustedMaxBytes -> kUntrustedMaxChars and aidialog kInsertCommandMaxBytes -> kInsertCommandMaxChars: the caps measure QString length units (UTF-16 chars), not bytes -- renamed for honesty rather than made byte-accurate. The aidialog sanitizer is codepoint-oriented by design (strips C1/Unicode-attack codepoints on QChar), so a char cap is consistent with its own model; clipboardguard's is a loose defence-in-depth memory bound where a char cap still holds. (Contrast ANTS-1846, which went byte-accurate -- that was a streamed-accumulator memory ceiling where O(delta) UTF-8 conversion was natural.) Comments + 2 feature tests + 2 specs updated. (6) Extracted BriefDispatch::clipToCapClosingFence (+ kFenceCloseReserveBytes=6) -- the clip-to-cap + fence-close truncation tail triplicated across the indiereview/coldeyes/testaudit composeBrief paths -- and promoted kPromptCapBytes (200 KiB) to ReviewDialogBase (was duplicated in all three dialog headers; the inherited static still resolves <Dialog>::kPromptCapBytes in the tests). New INV-2205 feature test in brief_dispatch_fence. Suite 2325/2325. Still open under this cluster: (4) terminal QAccessible name/role [a11y feature -- own item], (5) per-root cache eviction [needs an eviction-policy + RAM-budget design], (7b) KWin-script ~50-line dup (mainwindow.cpp:3422/3500), (7c) SSH-dialog + hook-installer tr() i18n [latent -- no translation pipeline yet].
   Progress 2026-06-29: (7b) fixed — extracted MainWindow::runKWinScript(kwinJs, tag) from moveViaKWin / centerWindow (was ~35 duplicated lines each: the write-tempfile → loadScript → start → unloadScript → remove dbus chain). The two callers now build only their KWin JS body and call the helper with a tag ("move"/"center") that drives both the tempfile prefix (kwin_<tag>_ants_*) and the registered script name (ants_terminal_<tag>) — exact prior behaviour preserved. mainwindow.cpp −22 lines net. Suite 2340/2340. Now 6 of 7 done. Still open (all deferred-class, not surgical): (4) terminal QAccessible name/role [a11y feature — own item], (5) per-root cache eviction [needs eviction-policy + RAM-budget design], (7c) SSH-dialog + hook-installer tr() i18n [latent — no translation pipeline yet].
 
+- 📋 [ANTS-3364] **Stale m_claudeDetectTimer comment: terminalwidget.cpp:4792 still says "single-shot trailing-edge".**
+  The comment in clearClaudeQuestionPrompt() (terminalwidget.cpp:4792-4793) calls m_claudeDetectTimer a "single-shot trailing-edge timer ... during active output the scan never runs" — the pre-ANTS-1862 behaviour. The actual code (terminalwidget.cpp:2442-2443, `if (!m_claudeDetectTimer.isActive()) start()`) and the authoritative comment at :2430-2441 make it a LEADING-edge ~300 ms throttle that DOES fire during continuous output. One-line comment fix to match reality; no code change. Surfaced during the ANTS-1078 terminal-a11y spec cold-eyes loop (the spec's §2.5 relies on the correct leading-edge reading).
+  **Layman:** A code comment describes a timer the wrong way round — harmless to the app, but misleading to anyone reading the code.
+  Kind: doc-fix.
+  Source: cold-eyes-ANTS-1078-2026-06-29.
+  Scope widened 2026-06-29: a second stale comment at terminalwidget.h:123 ("the trailing-edge m_claudeDetectTimer rarely delivers while Claude streams output") describes the same pre-ANTS-1862 behaviour and should be fixed in the same pass. (A reviewer also flagged terminalwidget.cpp:179, but that line is m_syncTimer.setInterval(500) — unrelated; not in scope.)
+
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
 5-lane in-house audit of the 584-test suite across perf,
@@ -22566,7 +22573,7 @@ here.)
 
 ### 🖥 Accessibility
 
-- 📋 [ANTS-1078] **H9 — AT-SPI/ATK support**. Qt6 has AT-SPI over D-Bus natively.
+- 🚧 [ANTS-1078] **H9 — AT-SPI/ATK support**. Qt6 has AT-SPI over D-Bus natively.
   Work: implement `QAccessibleInterface` for `TerminalWidget`
   exposing role `Terminal`; fire `text-changed` / `text-inserted`
   on grid mutations (gate on OSC 133 `D` markers to batch); expose
@@ -22576,11 +22583,24 @@ here.)
   Fedora accessibility review gates on this.
   Kind: implement.
   Source: planned.
+  In progress 2026-06-29: implementing the core H9 slice — QAccessibleInterface + QAccessibleTextInterface adapter for TerminalWidget (role Terminal, visible-viewport text, caret = cursor, debounced text-changed events gated on QAccessible::isActive()). Spec at docs/specs/ANTS-1078.md. Also closes ANTS-2205 (4). Remaining H9 refinements (per-character a11y text attributes, OSC-133-D-gated batch boundaries beyond the existing output debounce) tracked as follow-up.
 - 💭 [ANTS-1079] **Screen-magnifier-friendly rendering**: honor
   `QGuiApplication::styleHints()->mousePressAndHoldInterval()` and
   provide high-contrast theme variants.
   Kind: implement.
   Source: planned.
+
+- 📋 [ANTS-3362] **Colourblind-safe theme presets (CVD-friendly ANSI palettes).**
+  Ship a small set of colour-vision-deficiency (CVD) safe theme presets — covering deuteranopia/protanopia (red-green) and tritanopia (blue-yellow) — that remap the 16-colour ANSI palette (and the theme fg/bg/accent) to perceptually-distinct hues per the chosen deficiency. Palette lives on TerminalGrid (16+216+24 ANSI palette is set there per CLAUDE.md). Pairs with [[ANTS-1079]] (high-contrast variants) — same theme-preset surface, different goal (high-contrast = low vision; CVD-safe = colour discrimination). Design as its own cycle: pick/derive validated CVD-safe palettes (e.g. from the Wong/Okabe-Ito or IBM colourblind-safe sets adapted to a 16-colour terminal), wire as selectable themes in Settings, no new runtime deps. Distinct from screen-reader work in [[ANTS-1078]].
+  **Layman:** Add ready-made colour themes designed for colourblind users, so red/green and blue/yellow text stay distinguishable.
+  Kind: implement.
+  Source: user-request-2026-06-29.
+
+- 📋 [ANTS-3363] **H9 a11y follow-up: rich terminal AT attributes, command-boundary batching, selection write-back.**
+  Deferred refinements from the ANTS-1078 core slice ([[ANTS-1078]] shipped role + viewport text + caret + throttled change events). Remaining H9 work: (a) per-character QAccessibleTextInterface attributes() relaying fg/bg/bold/italic; (b) text-inserted events gated on OSC 133 'D' command boundaries (finer than the existing ~300 ms output throttle); (c) expose the terminal selection as an AT selection and implement setCursorPosition / scrollToSubstring write-back; (d) wide/double-width-cell exact glyph rects in characterRect (the core slice maps one rect per grid column). Kind: implement.
+  **Layman:** Polish for the terminal screen-reader support: relay text colour/bold to the reader, announce output in command-sized chunks, and let the reader move the cursor and select text.
+  Kind: implement.
+  Source: spec-ANTS-1078-deferred-2026-06-29.
 
 ### 🌍 Internationalization
 
