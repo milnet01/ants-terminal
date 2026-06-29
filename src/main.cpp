@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "remotecontrol.h"
+#include "terminalaccessible.h"  // ANTS-1078 — screen-reader factory
 #include "dialogshowtracer.h"
 
 #include <QApplication>
@@ -164,6 +165,8 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName("Ants Terminal");
     app.setApplicationVersion(ANTS_VERSION);
+    // ANTS-1078 — register the screen-reader adapter for every TerminalWidget.
+    installTerminalAccessibilityFactory();
     // Wrap Fusion in NoAnimStyle so SH_Widget_Animation_Duration reports 0.
     // QProxyStyle takes ownership of the inner QStyle. See note on the
     // NoAnimStyle class for rationale.

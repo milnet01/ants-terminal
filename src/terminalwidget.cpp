@@ -16,6 +16,7 @@
 #include <QContextMenuEvent>
 #include <QFontMetrics>
 #include <QApplication>
+#include <QAccessible>          // ANTS-1078 — screen-reader change events
 #include <QClipboard>
 #include <QMimeData>
 #include <QInputMethodEvent>
@@ -172,6 +173,10 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     m_claudeDetectTimer.setSingleShot(true);
     m_claudeDetectTimer.setInterval(300);
     connect(&m_claudeDetectTimer, &QTimer::timeout, this, &TerminalWidget::checkForClaudePermissionPrompt);
+
+    // ANTS-1078 — drive screen-reader change events off the (throttled)
+    // output signal. notifyAccessibilityChanged() no-ops when no AT runs.
+    connect(this, &TerminalWidget::outputReceived, this, &TerminalWidget::notifyAccessibilityChanged);
 
     // Sync output safety timeout — if sync mode stays on for >500ms
     // (e.g. truncated sequence), force a repaint so the screen isn't frozen
@@ -3619,6 +3624,138 @@ QString TerminalWidget::selectedText() const {
     }
 
     return result;
+}
+
+// --- Accessibility (ANTS-1078) ---
+// See docs/specs/ANTS-1078.md. const helpers read m_grid / cellAtGlobal /
+// combiningAt / effectiveCursorRow()/Col() directly (grid() is non-const).
+
+int TerminalWidget::firstVisibleGlobalLine() const {
+    return m_grid->scrollbackSize() - m_scrollOffset;
+}
+
+// Last column of `globalLine` that is not a blank cell — blank ==
+// codepoint 0/' ' with no combining marks (§2.6) — or -1 if all blank.
+int TerminalWidget::a11yLastNonBlankCol(int globalLine) const {
+    for (int c = m_grid->cols() - 1; c >= 0; --c) {
+        const Cell &cell = cellAtGlobal(globalLine, c);
+        const bool blankCp = (cell.codepoint == 0 || cell.codepoint == ' ');
+        const auto *comb = combiningAt(globalLine, c);
+        if (!blankCp || (comb && !comb->empty())) return c;
+    }
+    return -1;
+}
+
+// Compose cols [beginCol, endCol) of globalLine into UTF-16 text
+// (codepoint 0 -> space, plus combining marks) — the same per-cell
+// composition selectedText() uses; no trimming.
+QString TerminalWidget::a11yComposeCols(int globalLine, int beginCol, int endCol) const {
+    QString out;
+    for (int c = beginCol; c < endCol; ++c) {
+        uint32_t cp = cellAtGlobal(globalLine, c).codepoint;
+        if (cp == 0) cp = ' ';
+        out += QString::fromUcs4(reinterpret_cast<const char32_t *>(&cp), 1);
+        if (auto *comb = combiningAt(globalLine, c)) {
+            for (uint32_t combCp : *comb)
+                out += QString::fromUcs4(reinterpret_cast<const char32_t *>(&combCp), 1);
+        }
+    }
+    return out;
+}
+
+// One emitted line per viewport row (trailing blank cells trimmed),
+// with trailing all-blank lines dropped. Line index i == viewport row i.
+QStringList TerminalWidget::a11yViewportLines() const {
+    const int rows = m_grid->rows();
+    const int top = firstVisibleGlobalLine();
+    QStringList lines;
+    lines.reserve(rows);
+    for (int r = 0; r < rows; ++r) {
+        const int gl = top + r;
+        const int last = a11yLastNonBlankCol(gl);
+        lines << (last < 0 ? QString() : a11yComposeCols(gl, 0, last + 1));
+    }
+    while (!lines.isEmpty() && lines.last().isEmpty())
+        lines.removeLast();
+    return lines;
+}
+
+QString TerminalWidget::accessibleText() const {
+    return a11yViewportLines().join(QLatin1Char('\n'));
+}
+
+int TerminalWidget::accessibleCaretOffset() const {
+    const QStringList lines = a11yViewportLines();
+    int total = 0;
+    for (int i = 0; i < lines.size(); ++i)
+        total += lines[i].size() + (i ? 1 : 0);   // +1 per '\n' join
+
+    const int caretRow = effectiveCursorRow() + m_scrollOffset;  // viewport row
+    if (caretRow < 0 || caretRow >= lines.size())
+        return total;                              // caret scrolled out of view
+
+    const int gl = firstVisibleGlobalLine() + caretRow;
+    int caretCol = effectiveCursorCol();
+    const int last = a11yLastNonBlankCol(gl);
+    if (caretCol > last + 1) caretCol = last + 1;  // clamp into trimmed content
+    if (caretCol < 0) caretCol = 0;
+
+    int acc = 0;
+    for (int i = 0; i < caretRow; ++i) acc += lines[i].size() + 1;
+    return acc + a11yComposeCols(gl, 0, caretCol).size();
+}
+
+QRect TerminalWidget::accessibleRectForOffset(int offset) const {
+    if (offset < 0 || m_cellWidth <= 0 || m_cellHeight <= 0) return {};
+    const QStringList lines = a11yViewportLines();
+    const int top = firstVisibleGlobalLine();
+    int acc = 0;
+    for (int i = 0; i < lines.size(); ++i) {
+        const int lineLen = lines[i].size();
+        if (offset >= acc && offset < acc + lineLen) {
+            const int inLine = offset - acc;       // UTF-16 index within line i
+            const int gl = top + i;
+            const int cols = m_grid->cols();
+            int used = 0;
+            for (int c = 0; c < cols; ++c) {
+                const int clen = a11yComposeCols(gl, c, c + 1).size();
+                if (inLine < used + clen)
+                    return QRect(m_padding + c * m_cellWidth,
+                                 m_padding + i * m_cellHeight,
+                                 m_cellWidth, m_cellHeight);
+                used += clen;
+            }
+            return {};
+        }
+        acc += lineLen;
+        if (i < lines.size() - 1) {
+            if (offset == acc) return {};          // '\n' separator offset
+            acc += 1;
+        }
+    }
+    return {};
+}
+
+int TerminalWidget::accessibleOffsetAt(const QPoint &widgetPos) const {
+    if (m_cellWidth <= 0 || m_cellHeight <= 0) return -1;
+    if (widgetPos.x() < m_padding || widgetPos.y() < m_padding) return -1;
+    const int col = (widgetPos.x() - m_padding) / m_cellWidth;
+    const int row = (widgetPos.y() - m_padding) / m_cellHeight;
+    const QStringList lines = a11yViewportLines();
+    if (row < 0 || row >= lines.size()) return -1;
+    if (col < 0 || col >= m_grid->cols()) return -1;
+    const int gl = firstVisibleGlobalLine() + row;
+    const int prefix = a11yComposeCols(gl, 0, col).size();
+    if (prefix >= lines[row].size()) return -1;    // padding / past trimmed end / blank area
+    int acc = 0;
+    for (int i = 0; i < row; ++i) acc += lines[i].size() + 1;
+    return acc + prefix;
+}
+
+void TerminalWidget::notifyAccessibilityChanged() {
+    if (!QAccessible::isActive()) return;          // zero cost when no AT
+    QAccessibleTextCursorEvent ev(this, accessibleCaretOffset());
+    QAccessible::updateAccessibility(&ev);
 }
 
 void TerminalWidget::copySelection() {

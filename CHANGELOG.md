@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Screen-reader support for the terminal area (AT-SPI / Orca).** (ANTS-1078)
+  The terminal's content is now readable by assistive technology. A QAccessibleInterface adapter (role Terminal) with a text interface exposes the visible viewport as plain text, reports the caret, and fires a throttled change event as output arrives — so a blind user's screen reader can read the terminal, not just the window chrome. Costs nothing when no screen reader is running. Core slice of the H9 accessibility bundle; richer text attributes, command-boundary batching, and selection write-back are tracked separately (ANTS-3363). Also resolves the terminal-a11y gap in ANTS-2205 (4).
+
 - **Tabular (columnar) encoding for homogeneous-array MCP replies (ANTS-2090).**
   Opt-in `encoding:"tabular"` on the list-shaped read verbs (roadmap_query,
   workspace_search, file_outline, find_sources, find_caller, codebase_index,

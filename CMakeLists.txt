@@ -354,6 +354,7 @@ add_library(ants_vt_lib STATIC
     src/vtparser.cpp
     src/terminalgrid.cpp
     src/terminalwidget.cpp
+    src/terminalaccessible.cpp
     src/themes.cpp
 )
 target_link_libraries(ants_vt_lib
@@ -985,6 +986,11 @@ if(ANTS_TESTS)
                 tests/features/update_available_menubar/test_update_available_menubar.cpp
                 tests/features/status_bar_branch_chip/test_status_bar_branch_chip.cpp
                 tests/features/a11y_chrome_names/test_a11y_chrome_names.cpp
+                # ANTS-1078 — terminal screen-reader accessibility. Lives in
+                # test_chrome (not test_vt) because constructing a full
+                # TerminalWidget transitively pulls remotecontrol -> MainWindow,
+                # whose symbols are in ants_chrome_lib.
+                tests/features/terminal_a11y/test_terminal_a11y.cpp
                 tests/features/command_palette_ghost_completion/test_command_palette_ghost_completion.cpp
                 tests/features/no_anim_style/test_no_anim_style.cpp
                 tests/features/paste_dialog_custom/test_paste_dialog_custom.cpp
@@ -1022,6 +1028,7 @@ if(ANTS_TESTS)
         SRC_TERMINALWIDGET_IMPL_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
         TERMINALWIDGET_CPP="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
         TERMINALWIDGET_H="${CMAKE_SOURCE_DIR}/src/terminalwidget.h"
+        SRC_TERMINALACCESSIBLE_PATH="${CMAKE_SOURCE_DIR}/src/terminalaccessible.h"
         SRC_SESSIONMANAGER_H_PATH="${CMAKE_SOURCE_DIR}/src/sessionmanager.h"
         SRC_PORTAL_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/globalshortcutsportal.h"
         SRC_PORTAL_IMPL_PATH="${CMAKE_SOURCE_DIR}/src/globalshortcutsportal.cpp"

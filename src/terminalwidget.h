@@ -101,6 +101,18 @@ public:
     // Access to grid for session save/restore
     TerminalGrid *grid() { return m_grid.get(); }
 
+    // --- Accessibility (ANTS-1078) ---
+    // Content helpers consumed by the TerminalWidgetAccessible adapter
+    // (src/terminalaccessible.cpp). const, so they read m_grid /
+    // cellAtGlobal / combiningAt / effectiveCursorRow()/Col() directly —
+    // grid() has no const overload. Offsets are UTF-16 indices into
+    // accessibleText(). See docs/specs/ANTS-1078.md.
+    int firstVisibleGlobalLine() const;                     // scrollbackSize() - m_scrollOffset
+    QString accessibleText() const;                         // visible viewport as plain text
+    int accessibleCaretOffset() const;                      // caret offset within accessibleText()
+    QRect accessibleRectForOffset(int offset) const;        // widget-relative cell rect; null if none
+    int accessibleOffsetAt(const QPoint &widgetPos) const;  // offset under point, or -1 if no cell
+
     // Force grid size recalculation (call after session restore)
     void forceRecalcSize();
 
@@ -684,6 +696,16 @@ private:
     // and `make_hyperlink` rules against the finalized line text and applies
     // attr / hyperlink mutations directly to the grid row.
     void onGridLineCompleted(int screenRow);
+
+    // ANTS-1078 — coalesced screen-reader change notification. Connected
+    // to the (throttled) outputReceived signal; emits one caret event
+    // per call, and only when an assistive technology is active.
+    // Q_INVOKABLE so the INV-9 feature test can drive it by name.
+    Q_INVOKABLE void notifyAccessibilityChanged();
+    // ANTS-1078 internal helpers — compose viewport text + offset mapping.
+    int a11yLastNonBlankCol(int globalLine) const;
+    QString a11yComposeCols(int globalLine, int beginCol, int endCol) const;
+    QStringList a11yViewportLines() const;
 
     // Exit code tracking for error detection
     int m_lastTrackedExitCode = 0;
