@@ -250,15 +250,22 @@ TEST(McpFeedbackLog, Refusals) {
       QJsonArray fs; fs.append(finding("T")); r["findings"] = fs;
       EXPECT_EQ(rc.cmdFeedbackLog(r).object().value("code").toString(),
                 "not_feedback_file"); }
-    // append_tracking on absent file → not_found
+    // append_tracking on absent file → not_found. ANTS-3366: the dir
+    // holds a real sibling (F_Ants_MCP_Feedback.md, written above), so the
+    // not_found envelope lists it under `candidates` + carries a `hint`.
     { const QString np = dir.path() + "/Gone_Ants_MCP_Feedback.md";
       QJsonObject r; r["path"] = np; r["caller_cwd"] = dir.path();
       r["op"] = "append_tracking";
       QJsonArray rows; QJsonObject row; row["item"] = "x";
       row["status"] = QString::fromUtf8(kClip); rows.append(row);
       r["rows"] = rows;
-      EXPECT_EQ(rc.cmdFeedbackLog(r).object().value("code").toString(),
-                "not_found"); }
+      const QJsonObject e = rc.cmdFeedbackLog(r).object();
+      EXPECT_EQ(e.value("code").toString(), "not_found");
+      ASSERT_TRUE(e.contains("candidates"));
+      const QJsonArray cands = e.value("candidates").toArray();
+      ASSERT_EQ(cands.size(), 1);
+      EXPECT_EQ(cands.at(0).toString(), p);  // the F sibling
+      EXPECT_TRUE(e.contains("hint")); }
 }
 
 // T8 — atomicity: forced write failure leaves the original untouched.

@@ -249,6 +249,42 @@ TEST(McpFeedbackQuery, Refusals) {
       EXPECT_EQ(e.value("code").toString(), "not_found"); }
 }
 
+// ANTS-3366 — a not_found envelope lists sibling *_Ants_MCP_Feedback.md
+// files in the same dir under `candidates` (+ a `hint`) so a caller that
+// derived the wrong basename (e.g. the doubled-suffix "DOOM_Ants" case)
+// recovers without shelling out to `ls`.
+TEST(McpFeedbackQuery, NotFoundListsSiblingCandidates) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    RemoteControl rc(nullptr);
+
+    // A real sibling exists; the query asks for a doubled-suffix path that
+    // does not.
+    const QString real =
+        writeFeedback(dir, "DOOM_Ants_MCP_Feedback.md", "# x\n");
+    ASSERT_FALSE(real.isEmpty());
+    const QString wrong =
+        dir.path() + "/DOOM_Ants_Ants_MCP_Feedback.md";  // doubled token
+
+    QJsonObject req; req["path"] = wrong; req["caller_cwd"] = dir.path();
+    const QJsonObject e = rc.cmdFeedbackQuery(req).object();
+    EXPECT_FALSE(e.value("ok").toBool());
+    EXPECT_EQ(e.value("code").toString(), "not_found");
+    ASSERT_TRUE(e.contains("candidates"));
+    const QJsonArray cands = e.value("candidates").toArray();
+    ASSERT_EQ(cands.size(), 1);
+    EXPECT_EQ(cands.at(0).toString(), real);
+    EXPECT_TRUE(e.contains("hint"));
+
+    // No sibling → no candidates key (lean envelope unchanged).
+    QTemporaryDir empty; ASSERT_TRUE(empty.isValid());
+    QJsonObject req2;
+    req2["path"] = empty.path() + "/Gone_Ants_MCP_Feedback.md";
+    req2["caller_cwd"] = empty.path();
+    const QJsonObject e2 = rc.cmdFeedbackQuery(req2).object();
+    EXPECT_EQ(e2.value("code").toString(), "not_found");
+    EXPECT_FALSE(e2.contains("candidates"));
+}
+
 // T8 — byte cap: head kept, truncated true, full line count reported.
 TEST(McpFeedbackQuery, ByteCapKeepsHead) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());

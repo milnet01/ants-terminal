@@ -3833,8 +3833,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "ceiling) keeping the HEAD of the delta. Refusals: "
                         "`bad_args` (missing path), `not_feedback_file` "
                         "(basename not *_Ants_MCP_Feedback.md), `bad_path` "
-                        "(traversal), `not_found` (absent). caller_cwd "
-                        "required.");
+                        "(traversal), `not_found` (absent). A `not_found` "
+                        "envelope carries `candidates` (sibling "
+                        "*_Ants_MCP_Feedback.md paths in the same dir) + a "
+                        "`hint` when any exist (ANTS-3366) — recover the "
+                        "right basename without shelling out to `ls`. "
+                        "caller_cwd required.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to pull just the new feedback from a shared "
                         "*_Ants_MCP_Feedback.md report file instead of "
@@ -3884,7 +3888,9 @@ void ClaudeIntegration::onMcpConnection() {
                         "renders the 📋 watermark heading + a mapping "
                         "table. Creates an absent file with a conforming "
                         "skeleton on append_finding; append_tracking on an "
-                        "absent file refuses not_found. Atomic write. "
+                        "absent file refuses not_found (with `candidates` + "
+                        "`hint` listing sibling *_Ants_MCP_Feedback.md "
+                        "files — ANTS-3366). Atomic write. "
                         "Returns {ok, op, path, bytes_appended, date, "
                         "created}. Refusals: `bad_mode`, `bad_args`, "
                         "`bad_status` (row status outside 📋🚧✅💭🔄❓), "
@@ -4068,8 +4074,11 @@ void ClaudeIntegration::onMcpConnection() {
                     "Query git repo state (status / log / diff) as "
                     "structured JSON. Replaces multiple Bash "
                     "invocations of `git status` / `git log` / "
-                    "`git diff`. Required: op (\"status\" / \"log\" / "
-                    "\"diff\"). Op-specific: n (log only, default 10, "
+                    "`git diff`. op (\"status\" / \"log\" / \"diff\") "
+                    "defaults to \"status\" when omitted (ANTS-3365 — a "
+                    "bare git_state{caller_cwd} returns the one-call "
+                    "status+branch+ahead/behind read). Op-specific: n "
+                    "(log only, default 10, "
                     "cap 100), path (log/diff filter), range (diff "
                     "only, e.g. HEAD~5..HEAD; omit for the working-tree "
                     "diff — ANTS-2074), body (log only, "
@@ -4094,6 +4103,9 @@ void ClaudeIntegration::onMcpConnection() {
                     opEnum.append("log");
                     opEnum.append("diff");
                     opProp["enum"]    = opEnum;
+                    opProp["default"] = "status";   // ANTS-3365
+                    opProp["description"] = QStringLiteral(
+                        "defaults to \"status\" when omitted");
                     QJsonObject nProp;      nProp["type"]     = "integer";
                                             nProp["default"]  = 10;
                                             nProp["minimum"]  = 1;
@@ -4124,9 +4136,10 @@ void ClaudeIntegration::onMcpConnection() {
                     props["fields"] = makeFieldsProp();          // ANTS-1720
                     props["compact"] = makeCompactProp();        // ANTS-2091
                     schema["properties"] = props;
-                    QJsonArray required;
-                    required.append("op");
-                    schema["required"] = required;
+                    // ANTS-3365: op no longer required — defaults to
+                    // "status". caller_cwd is enforced by the dispatcher's
+                    // CallerCwdContract (Required), not the JSON schema.
+                    schema["required"] = QJsonArray();
                     gsTool["inputSchema"] = schema;
                 }
                 tools.append(gsTool);

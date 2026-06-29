@@ -18,7 +18,9 @@ Invariants exercised (docs/specs/ANTS-1962.md §3 / §6):
 - T5 — refusals: bad op → bad_mode; no findings → bad_args; empty title →
   bad_args; bad status → bad_status; non-ANTS id → bad_args; bad date →
   bad_args; non-feedback path → not_feedback_file; append_tracking on
-  absent file → not_found.
+  absent file → not_found. ANTS-3366: that not_found envelope lists
+  sibling `*_Ants_MCP_Feedback.md` files in the dir under `candidates`
+  (+ a `hint`).
 - T6 — absent file + append_finding creates skeleton (marker + derived H1
   + pointer blockquote); created:true.
 - T7 — append-at-end: a finding lands strictly below an existing

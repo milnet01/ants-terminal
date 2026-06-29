@@ -9339,6 +9339,38 @@ QJsonObject fbErr(const QString &code, const QString &message) {
 // & name"). Checked on the resolved/canonical basename.
 constexpr char kFeedbackSuffix[] = "_Ants_MCP_Feedback.md";
 
+// ANTS-3366: a project whose leaf name collides with the convention suffix
+// (e.g. "DOOM_Ants" → "DOOM_Ants_Ants_MCP_Feedback.md") derives a path that
+// doesn't exist. Rather than leave the not_found envelope a dead end —
+// forcing the caller to shell out to `ls | grep feedback` — list the sibling
+// *_Ants_MCP_Feedback.md files in the same dir so the correct basename is one
+// retry away. Cheap dir read; returns absolute paths in name order.
+QJsonArray feedbackSiblingCandidates(const QString &candidatePath) {
+    QJsonArray out;
+    const QDir dir = QFileInfo(candidatePath).absoluteDir();
+    const QStringList names = dir.entryList(
+        {QLatin1String("*") + QLatin1String(kFeedbackSuffix)},
+        QDir::Files, QDir::Name);
+    for (const QString &n : names)
+        out.append(dir.absoluteFilePath(n));
+    return out;
+}
+
+// ANTS-3366: augment a feedback not_found envelope with the sibling
+// candidate list (+ a one-line hint) when any exist.
+QJsonObject fbNotFound(const QString &message, const QString &resolved) {
+    QJsonObject e = fbErr(QStringLiteral("not_found"), message);
+    const QJsonArray cands = feedbackSiblingCandidates(resolved);
+    if (!cands.isEmpty()) {
+        e["candidates"] = cands;
+        e["hint"] = QStringLiteral(
+            "no file at that path; %1 sibling *_Ants_MCP_Feedback.md "
+            "file(s) exist in the same directory — see candidates")
+            .arg(cands.size());
+    }
+    return e;
+}
+
 // Resolve + validate the feedback-file `path` arg. On reject, fills
 // `err` and returns false. On success, `resolvedOut` is the absolute
 // path to read/write (which may not yet exist when `mustExist` is
@@ -9668,10 +9700,10 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
         return QJsonDocument(err);
     }
     if (!exists) {
-        return QJsonDocument(fbErr(
-            QStringLiteral("not_found"),
+        return QJsonDocument(fbNotFound(
             QStringLiteral("feedback_query: \"%1\" does not exist")
-                .arg(resolved)));
+                .arg(resolved),
+            resolved));
     }
     QFile f(resolved);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -9820,10 +9852,10 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             date, sessionLabel, h1, note, findings);
     } else {  // append_tracking
         if (!exists) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("not_found"),
+            return QJsonDocument(fbNotFound(
                 QStringLiteral("feedback_log: append_tracking on an "
-                               "absent file (nothing to triage)")));
+                               "absent file (nothing to triage)"),
+                resolved));
         }
         const QJsonArray rowsArr =
             req.value(QStringLiteral("rows")).toArray();
@@ -10761,7 +10793,12 @@ QJsonDocument RemoteControl::cmdAuditFalseposLog(const QJsonObject &req) {
 
 QJsonDocument RemoteControl::cmdGitState(const QJsonObject &req) {
     // ANTS-1250-INV-1: dispatch on op ∈ {status, log, diff}.
-    const QString op = req.value("op").toString();
+    // ANTS-3365: the verb is advertised as a one-call "status + branch +
+    // ahead/behind" read, so an omitted op defaults to "status" (a bare
+    // git_state{caller_cwd} just works). A non-empty unknown op still
+    // refuses with bad_op below.
+    QString op = req.value("op").toString();
+    if (op.isEmpty()) op = QStringLiteral("status");
     if (op == QLatin1String("status")) {
         // ANTS-1391: thread req through so caller_cwd anchors the root.
         return QJsonDocument(runStatusOp(m_main, req));

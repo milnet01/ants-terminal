@@ -24,7 +24,8 @@ ANTS-1248 / ANTS-1249 harnesses.
 5. IPC dispatcher in `remotecontrol.cpp` routes `"git-state"` →
    `cmdGitState`.
 6. MCP `tools/list` registers a single `git_state` entry with
-   `op` enum {status, log, diff} and `op` in `required[]`.
+   `op` enum {status, log, diff}. (ANTS-3365 — `op` is no longer in
+   `required[]`; it defaults to `"status"`.)
 7. MCP `tools/call` dispatcher carries
    `toolName == "git_state" && m_gitStateProvider`.
 8. `claudeintegration.h` declares `setGitStateProvider` +
@@ -41,6 +42,11 @@ ANTS-1248 / ANTS-1249 harnesses.
 12. Two-tier kill timer: gitwrap uses `kHardKillMs` (5 s) +
     `kKillGraceMs` (200 ms), calls `.terminate(` and `.kill(`.
 13. CMake wires `src/gitwrap.cpp` into `ants_core_lib`.
+14. ANTS-3365 — `cmdGitState` defaults an omitted/empty `op` to
+    `"status"` (`if (op.isEmpty()) op = ... "status"`) so a bare
+    `git_state{caller_cwd}` returns the one-call status read; a
+    non-empty unknown op still refuses `bad_op`. The schema marks
+    `op` optional and advertises the default.
 
 ## Why source-grep and not integration
 

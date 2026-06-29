@@ -122,25 +122,29 @@ TEST(McpGitState, WiringContract) {
            "cmdGitState routing");
 
     // INV-6 — tools/list registers a single "git_state" entry with
-    // op enum {status, log, diff} and op in required[].
+    // op enum {status, log, diff}. ANTS-3365 — op is no longer in
+    // required[] (it defaults to "status"); the schema advertises that.
     expect(contains(ciCpp, "\"git_state\""),
            "INV-6a",
            "tools/list missing \"git_state\" name registration");
     {
+        // Window widened to 4800 (ANTS-3365 lengthened the description +
+        // opProp); a fixed scrape window must outrun added schema text.
         const size_t pos = ciCpp.find("\"git_state\"");
         bool ok = false;
         if (pos != std::string::npos) {
-            const size_t windowEnd = std::min(ciCpp.size(), pos + 4000);
+            const size_t windowEnd = std::min(ciCpp.size(), pos + 4800);
             const std::string window = ciCpp.substr(pos, windowEnd - pos);
             ok = contains(window, "\"status\"") &&
                  contains(window, "\"log\"") &&
                  contains(window, "\"diff\"") &&
-                 contains(window, "\"required\"") &&
-                 contains(window, "\"op\"");
+                 contains(window, "\"op\"") &&
+                 // op default surfaced in-schema (ANTS-3365).
+                 contains(window, "\"default\"");
         }
         expect(ok, "INV-6b",
                "git_state inputSchema does not declare op enum "
-               "{status,log,diff} + op in required[]");
+               "{status,log,diff} + op default (ANTS-3365)");
     }
 
     // INV-7 — tools/list schema declares the git_state tool.
@@ -180,6 +184,20 @@ TEST(McpGitState, WiringContract) {
            "INV-10b",
            "remotecontrol.cpp does not surface bad_op error for "
            "unknown op (spec § 4 INV-1)");
+    // ANTS-3365 — an omitted op defaults to "status" (a bare
+    // git_state{caller_cwd} returns the one-call status read). The
+    // dispatch is `if (op.isEmpty()) op = ... "status"` before the
+    // {status,log,diff} branches; a non-empty unknown op still bad_op.
+    expect(contains(rcCpp, "op.isEmpty()") &&
+           contains(rcCpp, "ANTS-3365"),
+           "INV-10c",
+           "remotecontrol.cpp cmdGitState does not default an omitted "
+           "op to \"status\" (ANTS-3365)");
+    // The schema must drop op from `required` and advertise the default.
+    expect(contains(ciCpp, "ANTS-3365"),
+           "INV-10d",
+           "claudeintegration.cpp git_state schema does not mark op "
+           "optional / default \"status\" (ANTS-3365)");
 
     // INV-11 — stricter range regex closes leading-`-` flag-injection.
     // The regex literal in source must use `[a-zA-Z0-9._/^~]` (no `-`)

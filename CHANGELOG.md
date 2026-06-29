@@ -76,6 +76,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **feedback_query / feedback_log not_found returns sibling *_Ants_MCP_Feedback.md candidates.** (ANTS-3366)
+  When Ants can't find a feedback file at the guessed name, it now lists the real ones nearby so Claude doesn't have to shell out to find them.
+
+- **git_state defaults op to "status" when omitted.** (ANTS-3365)
+  Asking Ants for git status in one call now just works without naming the sub-command.
+
 - **De-duplicate the KWin scripting chain in `moveViaKWin` / `centerWindow` into a shared `runKWinScript` helper (ANTS-2205 7b)** (ANTS-2205)
 
 - **`read_regions` discoverability — surface the batch reader in the SessionStart prelude + cross-link it from `read_region`.** (ANTS-3359)

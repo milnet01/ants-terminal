@@ -17602,6 +17602,20 @@ load) still open, no regression. New items below.
   Kind: enhancement.
   Source: doom-feedback-2026-06-28.
 
+- ✅ [ANTS-3365] **git_state defaults op to "status" when omitted.**
+  The SessionStart hook advertises git_state as 'status + branch + ahead/behind in one call', so a bare git_state{caller_cwd} (no op) reasonably expects a status read — but it refuses with bad_op. Default an empty/omitted op to "status" (the blurb's implied behaviour). A genuinely unknown op (typo) still refuses with bad_op listing the enum. cmdGitState in src/remotecontrol.cpp.
+  **Layman:** Asking Ants for git status in one call now just works without naming the sub-command.
+  Kind: enhancement.
+  Source: DOOM-0044 feedback 2026-06-29.
+  Resolved (2026-06-29): cmdGitState defaults empty op to "status"; schema drops op from required[] + advertises the default. Tests: mcp_git_state INV-6b/10c/10d.
+
+- ✅ [ANTS-3366] **feedback_query / feedback_log not_found returns sibling *_Ants_MCP_Feedback.md candidates.**
+  A project whose leaf name ends in a convention-colliding token (e.g. 'DOOM_Ants') derives a doubled-suffix path (DOOM_Ants_Ants_MCP_Feedback.md) that doesn't exist; the not_found envelope was a dead end, forcing a Bash `ls | grep feedback` round-trip. On not_found, scan the resolved parent dir for sibling *_Ants_MCP_Feedback.md files and return them in a `candidates` array (+ hint). Cheap dir read; lets the caller recover in one retry. Non-goal: silent fuzzy-accept of a single candidate (reading a different file than asked is surprising). resolveFeedbackPath / cmdFeedbackQuery / cmdFeedbackLog in src/remotecontrol.cpp.
+  **Layman:** When Ants can't find a feedback file at the guessed name, it now lists the real ones nearby so Claude doesn't have to shell out to find them.
+  Kind: enhancement.
+  Source: DOOM-0091 feedback 2026-06-29.
+  Resolved (2026-06-29): fbNotFound scans the resolved parent dir for sibling *_Ants_MCP_Feedback.md files, attaches candidates[] + hint to feedback_query / feedback_log append_tracking not_found envelopes. Tests: mcp_feedback_query NotFoundListsSiblingCandidates, mcp_feedback_log Refusals.
+
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 
 A new testing initiative the user requested: give the agent a repeatable way to

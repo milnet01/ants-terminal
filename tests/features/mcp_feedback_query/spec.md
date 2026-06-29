@@ -21,6 +21,9 @@ Invariants exercised (see docs/specs/ANTS-1961.md §3 / §6):
 - T6 — `###`/deeper headings inside blocks are inert.
 - T7 — refusals: missing path → `bad_args`; non-feedback basename →
   `not_feedback_file`; non-existent feedback file → `not_found`.
+- ANTS-3366 — a `not_found` envelope lists sibling
+  `*_Ants_MCP_Feedback.md` files in the same dir under `candidates` (+ a
+  `hint`); a dir with no siblings yields no `candidates` key.
 - T8 — byte cap: a delta larger than max_bytes returns the head,
   `truncated:true`, full `delta_line_count`.
 
