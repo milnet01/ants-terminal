@@ -434,3 +434,211 @@ TEST(McpTerseDefault, Ants2085GetterSetterRoundTrips) {
     mcp::setTerseDefault(false);
     EXPECT_FALSE(mcp::terseDefault());   // restore module default for siblings
 }
+
+// ───────────────────────────────────────────────────────────────────
+// ANTS-2090 — mcp::tabularize: pack homogeneous top-level arrays-of-objects
+// into a columnar {__cols__, __rows__} form. See docs/specs/ANTS-2090.md.
+// ───────────────────────────────────────────────────────────────────
+
+namespace {
+
+// Decode a tabularized field back to the array of objects (the consuming
+// session's recipe): zip __cols__ with each __rows__ entry; a null cell
+// means the key was absent on that element (missing-key ⟺ null — INV-3).
+QJsonArray detabularize(const QJsonObject &tab) {
+    const QJsonArray cols = tab.value("__cols__").toArray();
+    const QJsonArray rows = tab.value("__rows__").toArray();
+    QJsonArray out;
+    for (const QJsonValue &rv : rows) {
+        const QJsonArray row = rv.toArray();
+        QJsonObject o;
+        for (int i = 0; i < cols.size(); ++i) {
+            const QJsonValue cell = row.at(i);
+            if (!cell.isNull()) o.insert(cols.at(i).toString(), cell);
+        }
+        out.append(o);
+    }
+    return out;
+}
+
+// A roadmap-ish envelope of `n` bullet objects with longish, repeated keys
+// (so the columnar header is amortised and the form is strictly smaller).
+QString bulletBody(int n) {
+    QJsonArray bullets;
+    for (int i = 0; i < n; ++i) {
+        QJsonObject b;
+        b["headline_oneline"] = QStringLiteral("bullet number %1").arg(i);
+        b["id"] = QStringLiteral("ANTS-%1").arg(2000 + i);
+        b["section_slug"] = QStringLiteral("some-section-slug");
+        b["status"] = QStringLiteral("📋");
+        bullets.append(b);
+    }
+    QJsonObject env;
+    env["ok"] = true;
+    env["bullets"] = bullets;
+    env["count"] = n;
+    return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
+}
+
+}  // namespace
+
+// INV-2/INV-3 — an eligible homogeneous array becomes columnar, and zipping
+// __cols__ with __rows__ reconstructs the original array (length-preserving:
+// __rows__.length == element count, and the sibling `count` stays consistent).
+TEST(McpTabular, Ants2090TransformAndRoundTrip) {
+    const QJsonObject before = parse(bulletBody(5));
+    const QJsonObject o = parse(mcp::tabularize(bulletBody(5)));
+
+    // The array field is now an object carrying the columnar discriminators.
+    ASSERT_TRUE(o.value("bullets").isObject());
+    const QJsonObject tab = o.value("bullets").toObject();
+    ASSERT_TRUE(tab.contains("__cols__"));
+    ASSERT_TRUE(tab.contains("__rows__"));
+    EXPECT_EQ(tab.value("__rows__").toArray().size(), 5);
+    EXPECT_EQ(o.value("count").toInt(), 5);
+    EXPECT_EQ(o.value("count").toInt(), tab.value("__rows__").toArray().size());
+    // Scalars untouched.
+    EXPECT_TRUE(o.value("ok").toBool());
+
+    // Round-trip equals the original parsed array, element order preserved.
+    EXPECT_EQ(detabularize(tab), before.value("bullets").toArray());
+}
+
+// INV-2 — ineligible top-level arrays are left unchanged: empty, single
+// element, a scalar array, and an array with a non-object element.
+TEST(McpTabular, Ants2090EligibilitySkips) {
+    for (const char *body : {
+             "{\"ok\":true,\"a\":[]}",                       // empty
+             "{\"ok\":true,\"a\":[{\"id\":\"x\",\"k\":1}]}", // single element
+             "{\"ok\":true,\"a\":[1,2,3]}",                  // scalars
+             "{\"ok\":true,\"a\":[{\"id\":1},[9,9]]}"}) {     // a non-object elem
+        const QString s = QString::fromUtf8(body);
+        EXPECT_EQ(mcp::tabularize(s), s) << "should be inert on: " << body;
+    }
+}
+
+// INV-4 — never costs bytes: a 2-element array of disjoint short keys does
+// not shrink in columnar form, so the original array is kept verbatim.
+TEST(McpTabular, Ants2090NeverCostsBytes) {
+    const QString s = QStringLiteral("{\"ok\":true,\"a\":[{\"x\":1},{\"y\":2}]}");
+    EXPECT_EQ(mcp::tabularize(s), s);
+}
+
+// INV-5 — nested object/array cell values are carried verbatim into the row.
+TEST(McpTabular, Ants2090NestedValuesPreserved) {
+    QJsonArray rows;
+    for (int i = 0; i < 4; ++i) {
+        QJsonObject b;
+        b["id"] = QStringLiteral("ANTS-%1").arg(i);
+        b["lanes"] = QJsonArray{QStringLiteral("core"), QStringLiteral("vt")};
+        b["headline_oneline"] = QStringLiteral("a fairly long headline here");
+        rows.append(b);
+    }
+    QJsonObject env; env["ok"] = true; env["bullets"] = rows;
+    const QString s =
+        QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
+    const QJsonObject o = parse(mcp::tabularize(s));
+    ASSERT_TRUE(o.value("bullets").isObject());
+    const QJsonArray back = detabularize(o.value("bullets").toObject());
+    ASSERT_EQ(back.size(), 4);
+    EXPECT_EQ(back.at(0).toObject().value("lanes").toArray().size(), 2);
+    EXPECT_EQ(back, rows);  // full nested fidelity
+}
+
+// INV-6 — refusal (ok:false) and non-object bodies are returned unchanged.
+TEST(McpTabular, Ants2090RefusalAndNonObjectFloor) {
+    const QString refusal = QStringLiteral(
+        "{\"ok\":false,\"code\":\"bad_args\","
+        "\"items\":[{\"a\":1,\"b\":2},{\"a\":3,\"b\":4}]}");
+    EXPECT_EQ(mcp::tabularize(refusal), refusal);
+    const QString raw = QStringLiteral("not json at all");
+    EXPECT_EQ(mcp::tabularize(raw), raw);
+    const QString arr = QStringLiteral("[{\"a\":1},{\"a\":2}]");
+    EXPECT_EQ(mcp::tabularize(arr), arr);  // top-level array is not an object
+}
+
+// INV-7 — determinism + lexicographic __cols__ independent of element order.
+// The first element introduces keys out of alphabetical order, so a naive
+// first-seen accumulator would differ from the sorted union.
+TEST(McpTabular, Ants2090DeterministicLexicographicColumns) {
+    // Long keys so the columnar form actually shrinks (and INV-4 lets it pass).
+    const QString s = QStringLiteral(
+        "{\"rows\":["
+        "{\"zeta_field\":\"v1\",\"alpha_field\":\"v2\",\"middle_field\":\"v3\"},"
+        "{\"zeta_field\":\"v4\",\"alpha_field\":\"v5\",\"middle_field\":\"v6\"},"
+        "{\"zeta_field\":\"v7\",\"alpha_field\":\"v8\",\"middle_field\":\"v9\"}]}");
+    const QString a = mcp::tabularize(s);
+    const QString b = mcp::tabularize(s);
+    EXPECT_EQ(a, b) << "identical input must yield byte-identical output";
+    const QJsonObject tab = parse(a).value("rows").toObject();
+    const QJsonArray cols = tab.value("__cols__").toArray();
+    ASSERT_EQ(cols.size(), 3);
+    EXPECT_EQ(cols.at(0).toString(), QStringLiteral("alpha_field"));
+    EXPECT_EQ(cols.at(1).toString(), QStringLiteral("middle_field"));
+    EXPECT_EQ(cols.at(2).toString(), QStringLiteral("zeta_field"));
+}
+
+// INV-3 — missing-key ⟺ explicit-null: an element missing a key and one
+// carrying an explicit null decode identically. The union column gets a null
+// cell for the missing key; both reconstruct to "key absent" on decode.
+TEST(McpTabular, Ants2090MissingVsExplicitNull) {
+    // Elements 2 (explicit null) and 3 (missing key) carry identical OTHER
+    // values, so the collapse is observable as exact equality on decode.
+    // Long keys + 3 elements so the sparse columnar form still shrinks.
+    const QString s = QStringLiteral(
+        "{\"rows\":["
+        "{\"common_one\":\"aaaa\",\"common_two\":\"bbbb\",\"sometimes_here\":\"c\"},"
+        "{\"common_one\":\"xxxx\",\"common_two\":\"yyyy\",\"sometimes_here\":null},"
+        "{\"common_one\":\"xxxx\",\"common_two\":\"yyyy\"}]}");
+    const QJsonObject o = parse(mcp::tabularize(s));
+    ASSERT_TRUE(o.value("rows").isObject());
+    const QJsonArray back = detabularize(o.value("rows").toObject());
+    ASSERT_EQ(back.size(), 3);
+    // Element 2 (explicit null) and element 3 (missing) both decode without
+    // the `sometimes_here` key — the documented collapse — and, since their
+    // other values match, decode to byte-identical objects.
+    EXPECT_FALSE(back.at(1).toObject().contains("sometimes_here"));
+    EXPECT_FALSE(back.at(2).toObject().contains("sometimes_here"));
+    EXPECT_EQ(back.at(1).toObject(), back.at(2).toObject());
+}
+
+// INV-1/INV-8/INV-9 — dispatch ordering + the encoding guard. Source-scrape
+// asserted BY SYMBOL (never line number): appendReadHints < tabularize <
+// offloadBody, and the encoding:"tabular" guard precedes the tabularize call.
+TEST(McpTabular, Ants2090DispatchOrderingAndGuard) {
+    QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QByteArray s = f.readAll();
+
+    const int hints = s.indexOf("mcp::appendReadHints(");
+    const int tab   = s.indexOf("mcp::tabularize(");
+    const int off   = s.indexOf("mcp::offloadBody(");
+    ASSERT_GT(tab, 0) << "mcp::tabularize call site not found";
+    ASSERT_GT(hints, 0) << "mcp::appendReadHints call site not found";
+    ASSERT_GT(off, 0) << "mcp::offloadBody call site not found";
+    EXPECT_LT(hints, tab) << "tabularize must run after appendReadHints";
+    EXPECT_LT(tab, off)   << "tabularize must run before offloadBody";
+
+    // INV-1 — gated on encoding:"tabular".
+    const int guard = s.indexOf("argsObj.value(QStringLiteral(\"encoding\"))");
+    ASSERT_GT(guard, 0) << "the encoding-arg guard must be present";
+    EXPECT_LT(guard, tab) << "the encoding guard must precede the tabularize call";
+    EXPECT_TRUE(s.contains("QStringLiteral(\"tabular\")"))
+        << "the guard must compare against \"tabular\"";
+}
+
+// §2.4 — each of the 7 list-shaped read verbs declares the `encoding` prop.
+TEST(McpTabular, Ants2090SchemaDeclaresEncoding) {
+    QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QByteArray s = f.readAll();
+    EXPECT_TRUE(s.contains("auto makeEncodingProp"))
+        << "the shared `encoding` schema fragment must be defined once";
+    // One call site per advertised verb: roadmap_query, find_sources,
+    // workspace_search, file_outline, codebase_index, docs_index, find_caller.
+    int count = 0, idx = 0;
+    const QByteArray needle = "makeEncodingProp();";
+    while ((idx = s.indexOf(needle, idx)) != -1) { ++count; idx += needle.size(); }
+    EXPECT_EQ(count, 7) << "expected 7 makeEncodingProp() call sites, got "
+                        << count;
+}

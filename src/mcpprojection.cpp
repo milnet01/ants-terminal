@@ -257,21 +257,97 @@ QString compactEnvelope(const QString &responseText) {
             .toJson(QJsonDocument::Compact));
 }
 
+QString tabularize(const QString &responseText) {
+    QJsonParseError err{};
+    const QJsonDocument doc =
+        QJsonDocument::fromJson(responseText.toUtf8(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject())
+        return responseText;  // INV-6 — non-object floor
+
+    const QJsonObject src = doc.object();
+    // INV-6 — never restructure a refusal envelope (ok present and false).
+    if (src.contains(QStringLiteral("ok")) &&
+        !src.value(QStringLiteral("ok")).toBool())
+        return responseText;
+
+    QJsonObject out = src;
+    bool changed = false;
+    for (auto it = src.constBegin(); it != src.constEnd(); ++it) {
+        if (!it.value().isArray()) continue;
+        const QJsonArray arr = it.value().toArray();
+        // INV-2 — eligibility: ≥2 elements, every element a JSON object.
+        if (arr.size() < 2) continue;
+        bool allObjects = true;
+        for (const QJsonValue &e : arr) {
+            if (!e.isObject()) { allObjects = false; break; }
+        }
+        if (!allObjects) continue;
+
+        // INV-7 / §2.3 step 2 — column set = union of element keys,
+        // drained into a LEXICOGRAPHICALLY sorted list (a single
+        // QJsonObject's keys are already sorted in Qt6, but the union
+        // across elements only inherits that if the accumulator sorts).
+        QSet<QString> colSet;
+        for (const QJsonValue &e : arr) {
+            const QJsonObject o = e.toObject();
+            for (auto ko = o.constBegin(); ko != o.constEnd(); ++ko)
+                colSet.insert(ko.key());
+        }
+        QStringList cols(colSet.constBegin(), colSet.constEnd());
+        cols.sort();
+
+        QJsonArray colsJson;
+        for (const QString &c : cols) colsJson.append(c);
+
+        // INV-3 — one row per element, value at its column index, `null`
+        // where the element lacks that key (missing-key ⟺ explicit-null).
+        // INV-5 — nested object/array cell values are carried verbatim.
+        QJsonArray rows;
+        for (const QJsonValue &e : arr) {
+            const QJsonObject o = e.toObject();
+            QJsonArray row;
+            for (const QString &c : cols)
+                row.append(o.contains(c) ? o.value(c) : QJsonValue());
+            rows.append(row);
+        }
+
+        QJsonObject tab;
+        tab.insert(QStringLiteral("__cols__"), colsJson);
+        tab.insert(QStringLiteral("__rows__"), rows);
+
+        // INV-4 — never costs bytes: emit the columnar form only when it
+        // is strictly smaller (compact UTF-8) than the original array.
+        const int origBytes =
+            QJsonDocument(arr).toJson(QJsonDocument::Compact).size();
+        const int tabBytes =
+            QJsonDocument(tab).toJson(QJsonDocument::Compact).size();
+        if (tabBytes < origBytes) {
+            out.insert(it.key(), tab);
+            changed = true;
+        }
+    }
+    // INV-1 — inert when nothing eligible: byte-identical passthrough.
+    if (!changed) return responseText;
+    return QString::fromUtf8(QJsonDocument(out).toJson(QJsonDocument::Compact));
+}
+
 namespace {
 
 // ANTS-2175 — args the dispatch layer (claudeintegration.cpp) consumes for
 // EVERY verb, independent of the per-verb inputSchema: the caller_cwd anchor
 // (ANTS-1520), the ETag short-circuit (ANTS-1499), the fields= projection
-// (ANTS-1720) + compact flag (ANTS-2091/ANTS-2085), and the result-offload
-// flag (ANTS-2094). A verb that doesn't redeclare these in its own schema
-// still accepts them, so they must never be reported as ignored. Keep in
-// sync with the dispatch post-processing chain.
+// (ANTS-1720) + compact flag (ANTS-2091/ANTS-2085), the result-offload flag
+// (ANTS-2094), and the tabular encoding selector (ANTS-2090). A verb that
+// doesn't redeclare these in its own schema still accepts them, so they must
+// never be reported as ignored. Keep in sync with the dispatch
+// post-processing chain.
 bool isUniversalDispatchArg(const QString &key) {
     return key == QStringLiteral("caller_cwd")
         || key == QStringLiteral("etag_match")
         || key == QStringLiteral("fields")
         || key == QStringLiteral("compact")
-        || key == QStringLiteral("offload");
+        || key == QStringLiteral("offload")
+        || key == QStringLiteral("encoding");
 }
 
 }  // namespace

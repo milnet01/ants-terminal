@@ -67,3 +67,35 @@ short-circuits when state is unchanged.
   (`{ok,unchanged,etag}`) is never narrowed.
 - **INV-10 — schema declares `fields`.** Each of the eleven tools'
   `inputSchema.properties` carries a `fields` array-of-string property.
+
+## ANTS-2090 — tabular (columnar) encoding (`encoding:"tabular"`)
+
+Same bundle, separate transform: `mcp::tabularize` packs each eligible
+top-level array-of-objects into a columnar `{__cols__,__rows__}` form (one
+sorted header row + one value-row per element), dropping the per-row key
+repetition that dominates list replies. Opt-in per call
+(`encoding:"tabular"`), self-guarding per array. Full design + cold-eyes
+log: `docs/specs/ANTS-2090.md`. Test invariants (`McpTabular` cases):
+
+- **INV-1/8/9 — dispatch order + guard.** `mcp::tabularize` is called
+  only under an `encoding == "tabular"` guard, after `mcp::appendReadHints`
+  and before `mcp::offloadBody` (source-scrape, by symbol not line number).
+- **INV-2 — eligibility.** Transformed iff a top-level array is non-empty,
+  has ≥2 elements, and every element is a JSON object; empty / single /
+  scalar / non-object-bearing arrays pass through unchanged.
+- **INV-3 — round-trip, length-preserving.** Zipping `__cols__` with each
+  `__rows__` entry reconstructs the original array (order preserved,
+  one row per element so a sibling `count` stays consistent), faithful up
+  to the missing-key ⟺ explicit-null collapse.
+- **INV-4 — never costs bytes.** Per array, the columnar form is emitted
+  only when strictly smaller (compact UTF-8); otherwise the array is kept.
+- **INV-5 — nested values verbatim.** Object/array cell values (`lanes`,
+  `also_at`, …) are carried into the row unchanged; no recursion in v1.
+- **INV-6 — refusal/non-object floor.** A non-object body or an `ok:false`
+  envelope is returned unchanged.
+- **INV-7 — determinism + lexicographic `__cols__`.** Identical input →
+  byte-identical output; the column union is sorted regardless of element
+  order.
+- **Schema** — the 7 list-shaped read verbs (`roadmap_query`,
+  `workspace_search`, `file_outline`, `find_sources`, `find_caller`,
+  `codebase_index`, `docs_index`) each declare the `encoding` enum prop.

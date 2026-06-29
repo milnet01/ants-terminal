@@ -1709,6 +1709,34 @@ void ClaudeIntegration::onMcpConnection() {
                     return p;
                 };
 
+                // ANTS-2090 — `encoding` selector, declared on the
+                // list-shaped read verbs. "tabular" packs each eligible
+                // top-level array-of-objects into a columnar
+                // {__cols__,__rows__} form (one header row + one value-row
+                // per element), 30–60% smaller on big lists. Opt-in only —
+                // the caller must decode it — so there is no session default.
+                auto makeEncodingProp = []{
+                    QJsonObject p;
+                    p["type"] = "string";
+                    QJsonArray enumVals;
+                    enumVals.append("json");
+                    enumVals.append("tabular");
+                    p["enum"] = enumVals;
+                    p["default"] = "json";
+                    p["description"] = QStringLiteral(
+                        "Optional (ANTS-2090). \"tabular\" packs each "
+                        "top-level array-of-objects into a columnar "
+                        "{__cols__:[names], __rows__:[[values]]} form — "
+                        "the per-row keys are dropped, so big list replies "
+                        "(bullets[], matches[], symbols[]) are 30–60% "
+                        "smaller. Decode by zipping __cols__ with each "
+                        "__rows__ entry (a null cell = key absent on that "
+                        "element). Opt-in because you must decode it; "
+                        "never made bigger than plain JSON. Default "
+                        "\"json\" (unchanged).");
+                    return p;
+                };
+
                 QJsonObject scrollbackTool;
                 scrollbackTool["name"] = "get_scrollback";
                 scrollbackTool["description"] = QStringLiteral(
@@ -2271,6 +2299,7 @@ void ClaudeIntegration::onMcpConnection() {
                             "a one-time per-section slicing cost).");
                         props["include_section_etags"] = p;
                     }
+                    props["encoding"] = makeEncodingProp();      // ANTS-2090
                     schema["properties"] = props;
                     roadmapTool["inputSchema"] = schema;
                 }
@@ -2752,6 +2781,7 @@ void ClaudeIntegration::onMcpConnection() {
                         props["max_results"] = p;
                     }
                     props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["encoding"] = makeEncodingProp();      // ANTS-2090
                     schema["properties"] = props;
                     QJsonArray req; req.append(QStringLiteral("topic"));
                     schema["required"] = req;
@@ -3033,6 +3063,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["timeout_sec"]       = timeoutSecProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"]  = makeCallerCwdReadProp();
+                    props["encoding"]    = makeEncodingProp();   // ANTS-2090
                     schema["properties"] = props;
                     QJsonArray required;
                     required.append("pattern");
@@ -3140,6 +3171,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["etag_match"]           = makeEtagMatchProp();   // ANTS-1499
                     props["fields"]               = makeFieldsProp();      // ANTS-1720
                     props["compact"]              = makeCompactProp();     // ANTS-2091
+                    props["encoding"]             = makeEncodingProp();    // ANTS-2090
                     schema["properties"] = props;
                     // `path` is no longer strictly required: the `paths` form
                     // (ANTS-2223) satisfies the verb without it. The handler
@@ -3595,6 +3627,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     props["fields"]     = makeFieldsProp();      // ANTS-1720
                     props["compact"]    = makeCompactProp();     // ANTS-2091
+                    props["encoding"]   = makeEncodingProp();    // ANTS-2090
                     schema["properties"] = props;
                     ciTool["inputSchema"] = schema;
                 }
@@ -3649,6 +3682,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     props["fields"]     = makeFieldsProp();      // ANTS-1720
+                    props["encoding"]   = makeEncodingProp();    // ANTS-2090
                     schema["properties"] = props;
                     diTool["inputSchema"] = schema;
                 }
@@ -5283,6 +5317,7 @@ void ClaudeIntegration::onMcpConnection() {
                         props["include_body"] = p;
                     }
                     props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["encoding"] = makeEncodingProp();      // ANTS-2090
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append("symbol");
@@ -9516,6 +9551,23 @@ void ClaudeIntegration::onMcpConnection() {
                 if (toolHandled) {
                     responseText = mcp::appendReadHints(
                         toolName, argsObj, responseText, etagUnchanged);
+                }
+
+                // ANTS-2090 — opt-in columnar encoding for homogeneous-array
+                // read replies. After appendReadHints (which operates on
+                // normal JSON top-level scalars, untouched by tabularize) and
+                // before offloadBody — a smaller tabular body may now fit
+                // under the spill threshold, and if it still spills the spill
+                // file holds valid tabular JSON (INV-8/INV-9). Per-call only
+                // (encoding:"tabular"); never a session default, because it
+                // changes a field's SHAPE and the caller must know how to
+                // decode {__cols__,__rows__}. tabularize is self-guarding per
+                // array (no tool-name predicate) — it no-ops on refusals,
+                // 304s, and arrays that don't shrink. See docs/specs/ANTS-2090.md.
+                if (toolHandled && !etagUnchanged &&
+                    argsObj.value(QStringLiteral("encoding")).toString()
+                        == QStringLiteral("tabular")) {
+                    responseText = mcp::tabularize(responseText);
                 }
 
                 // ANTS-2094 — proactive result offload (observation masking).

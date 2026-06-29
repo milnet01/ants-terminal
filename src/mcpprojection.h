@@ -76,6 +76,24 @@ QString appendReadHints(const QString &toolName, const QJsonObject &args,
 //     from absent (e.g. git_state's null binary-file markers) omits it.
 QString compactEnvelope(const QString &responseText);
 
+// ANTS-2090 — pack each eligible top-level array-of-objects field of a
+// response envelope into a columnar {__cols__, __rows__} form: one header
+// row of (lexicographically sorted) column names + one value-row per
+// element, with `null` where an element lacks a column. This drops the
+// per-row key repetition that dominates list-shaped replies
+// (roadmap_query bullets[], workspace_search matches[], file_outline
+// symbols[], …). Pure, Qt6::Core only. Opt-in: the dispatcher calls it
+// only when the caller passed encoding:"tabular", because it changes a
+// field's SHAPE and the caller must know how to decode it — never a
+// session default. Self-guarding PER ARRAY (no tool-name predicate):
+// returns `responseText` unchanged on a non-object body, a refusal
+// (`ok:false`), and leaves any array untouched unless it has ≥2 elements
+// that are all objects AND the columnar form is strictly smaller in
+// compact UTF-8 (so it can never cost bytes). v1 carries nested
+// object/array cell values verbatim (no recursion). See
+// docs/specs/ANTS-2090.md.
+QString tabularize(const QString &responseText);
+
 // ANTS-2085 — session/user "terse" default for read responses. When true,
 // the dispatcher applies compactEnvelope() to a field-projection read
 // response even when the caller did NOT pass compact:true — so a user can

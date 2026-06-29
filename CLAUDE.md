@@ -254,6 +254,16 @@ full body via the `read_spill` verb.
   — preview head size; offload only fires when the body also exceeds this
   (spilling something that fits in the head saves nothing). Config-file-only.
 
+Tabular (columnar) array encoding (ANTS-2090) — the opt-in per-call
+`encoding:"tabular"` arg on the list-shaped read verbs (roadmap_query,
+workspace_search, file_outline, find_sources, find_caller, codebase_index,
+docs_index) repacks each top-level array-of-objects into a columnar
+`{__cols__,__rows__}` form, dropping the per-row key repetition (30–60%
+smaller on big lists). Per-call only (no config key / session default — it
+changes a field's shape, so the caller must decode it); never costs bytes.
+Decode recipe + invariants in
+[`docs/standards/mcp-behavioural-notes.md`](docs/standards/mcp-behavioural-notes.md).
+
 Config keys for `project_query` (ANTS-2093, the code-execution token-saver)
 — the `project_query` MCP verb runs an agent-supplied **read-only** Lua
 snippet server-side over `caller_cwd`'s files and returns only its result

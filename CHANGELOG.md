@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **Tabular (columnar) encoding for homogeneous-array MCP replies (ANTS-2090).**
+  Opt-in `encoding:"tabular"` on the list-shaped read verbs (roadmap_query,
+  workspace_search, file_outline, find_sources, find_caller, codebase_index,
+  docs_index) packs each top-level array-of-objects into a columnar
+  {__cols__,__rows__} form — the per-row keys are dropped, so big list
+  replies are 30–60% smaller. Self-guarding per array; never made larger
+  than plain JSON; refusals/304s untouched. Decode by zipping __cols__ with
+  each __rows__ row (a null cell = key absent on that element).
+
 - **Ants MCP: `project_settings op:detect` no longer ranks a bundled-dependency tree (e.g. `mingw-deps/`, `third_party/`) as a project's source root — vendored dirs are discounted from the suggestion and the file total.** (ANTS-3357)
 
 - **Ants MCP: `spec_query` with no `id`/`path` now lists the specs directory (`{mode:"list", specs, count}`) instead of erroring — spec discovery without a shell `ls`.** (ANTS-3360)

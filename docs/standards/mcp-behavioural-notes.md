@@ -28,6 +28,38 @@ Both are presentation-only (added after the etag is computed, so they
 never perturb the hash) and are skipped on 304s, refusals (`ok:false`),
 `fields=`-narrowed calls, and bodies under the threshold.
 
+## Tabular (columnar) array encoding (ANTS-2090)
+
+Opt-in per-call `encoding:"tabular"` on the list-shaped read verbs —
+`roadmap_query`, `workspace_search`, `file_outline`, `find_sources`,
+`find_caller`, `codebase_index`, `docs_index`. The dispatcher runs
+`mcp::tabularize` after `appendReadHints` and before `offloadBody`: each
+**top-level** array-of-objects is repacked into a columnar form that drops
+the per-row key repetition dominating list replies (30–60% smaller on big
+lists):
+
+```json
+"bullets": { "__cols__": ["id","status"],
+             "__rows__": [["ANTS-2090","📋"], ["ANTS-2093","📋"]] }
+```
+
+**Decode:** for any object value carrying a `__cols__` key, zip `__cols__`
+with each `__rows__` entry to rebuild the array; a `null` cell means that
+key was absent on that element (an explicit-null and a missing key decode
+identically — the documented collapse).
+
+Self-guarding per array — it no-ops on a non-object body, an `ok:false`
+refusal, a 304, an array with <2 elements or any non-object element, and
+any array whose columnar form would not be strictly smaller (so it can
+**never** cost bytes). `__cols__` is lexicographically sorted, output is
+deterministic, and nested object/array cell values are carried verbatim
+(no recursion in v1). Per-call only — it changes a field's *shape*, so the
+caller must know how to decode it; there is no session default (unlike
+`compact`/`offload`). Composes with `fields=` (tabularizes whatever
+survived projection) and `offload` (a smaller body may now fit under the
+spill threshold; if it still spills, the spill file holds valid tabular
+JSON). Spec + cold-eyes log: `docs/specs/ANTS-2090.md`.
+
 ## Trimmed descriptions + `tool_info` `detail` (ANTS-2079)
 
 The seven largest tool descriptions (`roadmap_query`,

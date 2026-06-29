@@ -12885,12 +12885,13 @@ template / mutate this state atomically" → movable. If it's
   Source: in-session-2026-06-11 (token-saving brainstorm).
   Resolved (2026-06-11): moved the MCP-authoring contracts to docs/standards/mcp-tools.md (new 'Load-bearing contracts' section) and the per-verb behavioural notes to docs/standards/mcp-behavioural-notes.md; CLAUDE.md keeps a one-line pointer + the toolkit-discovery paragraph. Preamble 367->268 lines (~27%).
 
-- 📋 [ANTS-2090] **Tabular/columnar encoding option for homogeneous-array MCP responses (TOON-style).**
+- ✅ [ANTS-2090] **Tabular/columnar encoding option for homogeneous-array MCP responses (TOON-style).**
   JSON repeats every key for every element; the big offenders are roadmap_query bullets[], workspace_search matches[], find_caller callers[], file_outline symbols[]. A format:"tabular" arm emits one header row + N value rows (or NDJSON, one record per line) — 30-60% smaller on large arrays per the TOON (Tool Output Optimization Notation) pattern. Distinct from fields= (caller-named subset) and from the roadmap_query streaming/pagination item — this is per-element key elision across all array-heavy verbs. Decide the encoding (columnar JSON vs TOON vs NDJSON) + which verbs opt in. Refs: speakeasy/mindstudio MCP-optimization writeups.
   **Layman:** Pack list-shaped answers into rows-and-columns instead of repeating every field name for every item — much smaller.
   Kind: optimize.
   Source: in-session-2026-06-11 (token-saving research: context-engineering + MCP-optimization corpus).
   Promoted from considered (💭) to planned (📋) 2026-06-25 — selected as the first phase-2 token-savings design after the ANTS-2094 offload fast-follow shipped. Spec-first (docs/specs/ANTS-2090.md) + cold-eyes per project discipline.
+  Resolved (2026-06-29): shipped `mcp::tabularize` + opt-in `encoding:"tabular"` on the 7 list-shaped read verbs (roadmap_query, workspace_search, file_outline, find_sources, find_caller, codebase_index, docs_index). Columnar JSON {__cols__,__rows__}; self-guarding per array; never costs bytes; refusals/304s untouched; lexicographic cols; nested values verbatim. Wired after appendReadHints, before offloadBody. 9 McpTabular feature tests green; full suite 2340/2340. Spec docs/specs/ANTS-2090.md (cold-eyes loops 1–3 clean). Docs: CLAUDE.md + mcp-behavioural-notes.md + CHANGELOG.
 
 - ✅ [ANTS-2091] **Compact envelope transform: elide null / empty / false-default fields from MCP read responses.**
   Many envelopes ship dead weight (truncated:false, walk_capped:false, empty arrays, scope echoes) the model never reads. A dispatch-layer compact transform (sibling of mcp::appendReadHints / mcp::projectFields) drops null/empty/false-default fields — opt-in via compact:true or a session default (pairs with ANTS-2085 verbosity). Distinct from fields= (caller must name keys); this is automatic dead-weight removal. Must keep fields callers branch on (ok, code, etag).
