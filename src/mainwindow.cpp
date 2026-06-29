@@ -3456,41 +3456,7 @@ void MainWindow::moveViaKWin(int targetX, int targetY) {
         "}\n"
     ).arg(pid).arg(targetX).arg(targetY);
 
-    // Unpredictable tempfile via QTemporaryFile — 0.7.12 TOCTOU fix.
-    // See kwinpositiontracker.cpp for rationale.
-    QString scriptPath;
-    {
-        QTemporaryFile f(QDir::tempPath() + "/kwin_move_ants_XXXXXX.js");
-        f.setAutoRemove(false);
-        if (!f.open()) return;
-        f.write(kwinJs.toUtf8());
-        scriptPath = f.fileName();
-    }
-
-    auto *proc = new QProcess(this);
-    proc->start("dbus-send", {
-        "--session", "--dest=org.kde.KWin", "--print-reply",
-        "/Scripting", "org.kde.kwin.Scripting.loadScript",
-        QStringLiteral("string:%1").arg(scriptPath),
-        "string:ants_terminal_move"
-    });
-    connect(proc, &QProcess::finished, this, [this, proc, scriptPath]() {
-        proc->deleteLater();
-        auto *proc2 = new QProcess(this);
-        proc2->start("dbus-send", {
-            "--session", "--dest=org.kde.KWin", "--print-reply",
-            "/Scripting", "org.kde.kwin.Scripting.start"
-        });
-        connect(proc2, &QProcess::finished, this, [proc2, scriptPath]() {
-            proc2->deleteLater();
-            QProcess::startDetached("dbus-send", {
-                "--session", "--dest=org.kde.KWin", "--print-reply",
-                "/Scripting", "org.kde.kwin.Scripting.unloadScript",
-                "string:ants_terminal_move"
-            });
-            QFile::remove(scriptPath);
-        });
-    });
+    runKWinScript(kwinJs, QStringLiteral("move"));
 }
 
 void MainWindow::centerWindow() {
@@ -3528,37 +3494,49 @@ void MainWindow::centerWindow() {
         "}\n"
     ).arg(pid);
 
-    // Unpredictable tempfile via QTemporaryFile — 0.7.12 TOCTOU fix.
+    runKWinScript(kwinJs, QStringLiteral("center"));
+}
+
+// ANTS-2205 (7b) — shared KWin scripting chain extracted from moveViaKWin /
+// centerWindow (was ~35 duplicated lines each). Writes the script body to an
+// unpredictable tempfile (0.7.12 TOCTOU fix; see kwinpositiontracker.cpp), then
+// runs the async loadScript → start → unloadScript chain and removes the temp
+// file. The `tag` distinguishes the two callers in both the tempfile prefix
+// (kwin_<tag>_ants_*) and the registered script name (ants_terminal_<tag>).
+// Callers guard on kwinPresent() before invoking.
+void MainWindow::runKWinScript(const QString &kwinJs, const QString &tag) {
+    const QString scriptName = QStringLiteral("ants_terminal_%1").arg(tag);
     QString scriptPath;
     {
-        QTemporaryFile f(QDir::tempPath() + "/kwin_center_ants_XXXXXX.js");
+        QTemporaryFile f(QDir::tempPath() +
+                         QStringLiteral("/kwin_%1_ants_XXXXXX.js").arg(tag));
         f.setAutoRemove(false);
         if (!f.open()) return;
         f.write(kwinJs.toUtf8());
         scriptPath = f.fileName();
     }
 
-    // Run KWin script asynchronously to avoid blocking the event loop
+    // Run KWin script asynchronously to avoid blocking the event loop.
     auto *proc = new QProcess(this);
     proc->start("dbus-send", {
         "--session", "--dest=org.kde.KWin", "--print-reply",
         "/Scripting", "org.kde.kwin.Scripting.loadScript",
         QStringLiteral("string:%1").arg(scriptPath),
-        "string:ants_terminal_center"
+        QStringLiteral("string:%1").arg(scriptName)
     });
-    connect(proc, &QProcess::finished, this, [this, proc, scriptPath]() {
+    connect(proc, &QProcess::finished, this, [this, proc, scriptPath, scriptName]() {
         proc->deleteLater();
         auto *proc2 = new QProcess(this);
         proc2->start("dbus-send", {
             "--session", "--dest=org.kde.KWin", "--print-reply",
             "/Scripting", "org.kde.kwin.Scripting.start"
         });
-        connect(proc2, &QProcess::finished, this, [proc2, scriptPath]() {
+        connect(proc2, &QProcess::finished, this, [proc2, scriptPath, scriptName]() {
             proc2->deleteLater();
             QProcess::startDetached("dbus-send", {
                 "--session", "--dest=org.kde.KWin", "--print-reply",
                 "/Scripting", "org.kde.kwin.Scripting.unloadScript",
-                "string:ants_terminal_center"
+                QStringLiteral("string:%1").arg(scriptName)
             });
             QFile::remove(scriptPath);
         });

@@ -107,6 +107,10 @@ private:
     void applyTheme(const QString &name);
     void centerWindow();
     void moveViaKWin(int targetX, int targetY);
+    // Shared KWin scripting chain for moveViaKWin / centerWindow (ANTS-2205 7b).
+    // Caller guards on kwinPresent() and supplies the script body + a tag
+    // (used for both the tempfile prefix and the registered script name).
+    void runKWinScript(const QString &kwinJs, const QString &tag);
     void changeFontSize(int delta);
     void applyFontSizeToAll(int size);
 public:

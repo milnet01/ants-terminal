@@ -73,6 +73,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **De-duplicate the KWin scripting chain in `moveViaKWin` / `centerWindow` into a shared `runKWinScript` helper (ANTS-2205 7b)** (ANTS-2205)
+
 - **`read_regions` discoverability — surface the batch reader in the SessionStart prelude + cross-link it from `read_region`.** (ANTS-3359)
   When Claude needs several chunks of a big file, the cheaper "read them all in one go" tool wasn't visible up-front, so it fell back to the slower built-in reader. Make that batch reader easy to find.
 
