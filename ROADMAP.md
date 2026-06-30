@@ -17608,11 +17608,12 @@ server build id so clients can self-diagnose this.
   Kind: feature.
   Source: cc-feedback-2026-06-30 (Ants Terminal in-session).
 
-- 📋 [ANTS-3378] **roadmap_log op:flip headline locator — match the bold-span headline only + ANTS-2053-style targeted refusal.**
+- ✅ [ANTS-3378] **roadmap_log op:flip headline locator — match the bold-span headline only + ANTS-2053-style targeted refusal.**
   Vestige: op:flip headline:'AX11. Audio device hot-swap...' (exact untruncated bold-span of line 414) → bullet_not_found + 3 unrelated suggestions. Matcher appears to key on the full bullet LINE (bold span + ' — tail') not the bold-span headline. Fix: (a) match bold-span text only, case/whitespace-normalized (same token roadmap_query reports as headline); (b) on miss, return nearest-by-edit-distance candidates + bullet line, not section-wide suggestions. Beyond what closed ANTS-2075 (which was the synthetic_id refusal text).
   **Layman:** Marking a roadmap item done by its title still fails even when you give the exact title; fix the matcher and make the error helpful.
   Kind: fix.
   Source: cc-feedback-2026-06-30 (Vestige, extends shipped ANTS-2075).
+  Resolved (2026-06-30): GFM flip headline locator now matches the canonical headline roadmap_query reports (de-marked-up bold span / post-em-dash prose / bold-ID label), not just the raw stored head — rcGfmHeadlineMatchHashes + rcGfmCanonicalHeadline. Miss suggestions rank by token-overlap over the canonical headline and carry a `line`. Test: roadmap_log_flip_gfm_headline (4 behavioural, reproduced against pre-fix).
 
 - 📋 [ANTS-3379] **read_region call_sequence — suppress false-positive callees from comments and type constructors.**
   Vestige: call_sequence on AudioSystem::update listed real stages but also 'code','triggers','acquired' (comment words) and 'vec3','Engine' (type ctors/qualifiers). Tighten extraction to actual call-expressions: skip comment tokens; treat capitalised single-word type ctors separately from function calls.
@@ -17632,11 +17633,12 @@ server build id so clients can self-diagnose this.
   Kind: feature.
   Source: cc-feedback-2026-06-30 (Vestige, advisory fired ≥3 sessions).
 
-- 📋 [ANTS-3382] **roadmap_log — optional evidence:[paths] / attachments[] for image/log-driven bullets, echoed by roadmap_query.**
+- ✅ [ANTS-3382] **roadmap_log — optional evidence:[paths] / attachments[] for image/log-driven bullets, echoed by roadmap_query.**
   DOOM-0145 was diagnosed from phone photos referenced only in free-text; the real file paths aren't queryable. Add optional evidence:[paths] on roadmap_log append/annotate, echoed by roadmap_query, rendered as an 'Evidence:' line. Low priority, cheap, useful for image-heavy projects.
   **Layman:** Lets a bug logged from screenshots/logs record where those files are, so a later session can find the evidence again.
   Kind: feature.
   Source: cc-feedback-2026-06-30 (DOOM).
+  Resolved (2026-06-30): roadmap_log op:append / append_batch accept optional evidence:[paths]; rendered as an `Evidence: p1, p2` body line (no trailing period — paths carry dots) and echoed by roadmap_query as an `evidence` array (rcMaybeEmitEvidence at all 3 fill sites). parseBullets round-trips it. annotate-side evidence deferred (existing-line merge semantics) — append covers the DOOM screenshot use-case. Test: roadmap_log_evidence (3 behavioural).
 
 - ✅ [ANTS-3383] **Doc caveat — read_region / read_regions / file_outline do NOT satisfy the native Edit read-precondition.**
   In-session: read_region→Edit fails 'File has not been read yet' (~4× this session: mainwindow.cpp, debtsweepengine.cpp), doubling the read. Add a one-line caveat to read_region/read_regions/file_outline descriptions: 'Does NOT satisfy the Edit tool read-precondition — use native Read before editing.' Optionally a next_call_hint when the target is a source file.
@@ -17657,6 +17659,12 @@ server build id so clients can self-diagnose this.
   **Layman:** A niche helper that tells you whether adding a new setting needs a data-format version bump.
   Kind: investigate.
   Source: cc-feedback-2026-06-30 (Vestige Sug-D, niche).
+
+- 📋 [ANTS-3386] **Document the Evidence: bullet field in roadmap-format.md § 3.5 (ANTS-3382 follow-up).**
+  ANTS-3382 added the optional `Evidence: p1, p2` metadata line (file paths, no trailing period, echoed by roadmap_query as `evidence[]`). It's documented in the roadmap_log MCP schema + the feature spec, but roadmap-format.md's field taxonomy (Kind/Source/Lanes/Layman) doesn't mention it. Add a one-line entry; touches a contract doc so it runs through /cold-eyes.
+  **Layman:** The new Evidence line on roadmap items works and is documented in the live tool schema, but the human-facing roadmap-format standard doesn't list it yet.
+  Kind: doc.
+  Source: in-session-2026-06-30 (ANTS-3382 doc debt).
 
 ### 🔌 Ants-MCP feedback from CC sessions (DOOM 2026-06-28)
 

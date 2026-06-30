@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log append accepts optional evidence:[paths], echoed by roadmap_query** (ANTS-3382)
+  op:append / append_batch take an evidence file-path array, rendered as an Evidence: line (dots in paths preserved) and echoed back by roadmap_query as an evidence array — so a bug logged from screenshots/logs records where the files are for a later session.
+
 - **feedback_log / feedback_query: derive the feedback-file path when `path` is omitted (ANTS-3376)**
   Omit `path` and the verb derives <project-dir-leaf>_Ants_MCP_Feedback.md
   at the shared root, so a first-time log no longer needs a filesystem hunt;
@@ -197,6 +200,9 @@ for security-relevant changes.
   header contract comments, and the orphaned Inv3 shape test.
 
 ### Fixed
+
+- **roadmap_log op:flip locates GFM bullets by the canonical headline roadmap_query reports** (ANTS-3378)
+  Flipping a GFM task-list bullet by headline now matches the de-marked-up bold span / post-em-dash prose / bold-ID label (the token roadmap_query echoes), not just the raw stored head — so the exact title copied from roadmap_query no longer returns bullet_not_found. On a genuine miss, suggestions rank by token overlap against the canonical headline and carry the bullet line.
 
 - **Audit summaries no longer rank a scanner's progress-bar text as the top finding.** (ANTS-3372)
   Junk lines scraped from tool output (e.g. a "Working... 100%" progress bar) are now filtered out of every audit-summary parser before findings are ranked, so a real issue lands at the top instead of terminal noise.

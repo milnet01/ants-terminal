@@ -7726,6 +7726,25 @@ void ClaudeIntegration::onMcpConnection() {
                         "Optional subsystem owners. Emitted as a "
                         "`Lanes: a, b, c` line.");
 
+                    // ANTS-3382 — optional evidence file paths for
+                    // image/log-driven bullets (e.g. a bug diagnosed from
+                    // screenshots). Emitted as an `Evidence: <paths>` line
+                    // and echoed back by roadmap_query as an `evidence`
+                    // array. Accepted on op:"append" / "append_batch".
+                    QJsonObject evidenceProp;
+                    evidenceProp["type"] = "array";
+                    QJsonObject evidenceItem;
+                    evidenceItem["type"]      = "string";
+                    evidenceItem["maxLength"] = 500;
+                    evidenceProp["items"] = evidenceItem;
+                    evidenceProp["description"] = QStringLiteral(
+                        "Optional file paths (screenshots, logs) that "
+                        "evidence this item. Emitted as an `Evidence: "
+                        "path1, path2` line and echoed by roadmap_query "
+                        "as an `evidence` array so a later session can "
+                        "re-locate the files. Commas/newlines inside a "
+                        "path are folded to spaces.");
+
                     QJsonObject idHintProp;
                     idHintProp["type"]    = "integer";
                     idHintProp["minimum"] = 1;
@@ -7943,6 +7962,10 @@ void ClaudeIntegration::onMcpConnection() {
                         bulletItemProps["lanes"] = p;
                     }
                     {
+                        QJsonObject p = evidenceProp;  // ANTS-3382
+                        bulletItemProps["evidence"] = p;
+                    }
+                    {
                         QJsonObject p = idHintProp;
                         p["description"] = QStringLiteral(
                             "Optional explicit ID under op:\"append_batch\". "
@@ -8130,6 +8153,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["body"]          = bodyProp;
                     props["layman"]        = laymanProp;
                     props["lanes"]         = lanesProp;
+                    props["evidence"]      = evidenceProp;   // ANTS-3382
                     props["id_hint"]       = idHintProp;
                     props["id"]            = idProp;
                     props["anchor"]        = anchorProp;

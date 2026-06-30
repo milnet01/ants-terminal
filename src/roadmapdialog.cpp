@@ -981,6 +981,13 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
         QStringLiteral("^\\s*(?:\\*\\*)?Layman:(?:\\*\\*)?\\s*(.+?)\\s*[\\.\\n]"),
         QRegularExpression::MultilineOption |
         QRegularExpression::CaseInsensitiveOption);
+    // ANTS-3382 — optional `Evidence:` line listing file paths. Unlike
+    // Lanes:, the capture runs to end-of-line (NOT to the first period):
+    // evidence paths routinely contain dots (`photos/IMG_2031.jpg`), so a
+    // `[^\\.\\n]` stop would truncate at the extension.
+    static const QRegularExpression rxEvidence(
+        QStringLiteral("^\\s*Evidence:\\s*([^\\n]+)"),
+        QRegularExpression::MultilineOption);
 
     const QStringList lines = markdownText.split('\n');
     // ANTS-1428 — format detection runs once per parse. On
@@ -1313,6 +1320,22 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
         const auto laymanMatch = rxLayman.match(body);
         if (laymanMatch.hasMatch()) {
             rec.layman = laymanMatch.captured(1).trimmed();
+        }
+        // ANTS-3382 — Evidence: file paths (comma-separated, dots intact).
+        const auto evidenceMatch = rxEvidence.match(body);
+        if (evidenceMatch.hasMatch()) {
+            QString evRaw = evidenceMatch.captured(1).trimmed();
+            // Drop a single trailing sentence period if the writer added
+            // one, but keep dots inside paths.
+            if (evRaw.endsWith(QLatin1Char('.')) &&
+                !evRaw.endsWith(QStringLiteral(".."))) {
+                evRaw.chop(1);
+            }
+            const QStringList parts = evRaw.split(',', Qt::SkipEmptyParts);
+            for (const QString &part : parts) {
+                const QString trimmed = part.trimmed();
+                if (!trimmed.isEmpty()) rec.evidence.append(trimmed);
+            }
         }
         rec.body = body;
 

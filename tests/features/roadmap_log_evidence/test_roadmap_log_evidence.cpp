@@ -1,0 +1,150 @@
+// ANTS-3382 — feature-conformance test for roadmap_log evidence:[paths].
+// Behavioural: drives cmdRoadmapLogAppendForTest against a seeded temp
+// ROADMAP, then round-trips through RoadmapDialog::parseBullets.
+
+#include <gtest/gtest.h>
+#include <QDir>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QString>
+#include <QStringList>
+#include <QTemporaryDir>
+
+#include "remotecontrol.h"
+#include "roadmapdialog.h"
+
+namespace {
+
+QString freshRoadmap() {
+    return QString::fromUtf8(
+        "# Fresh Roadmap\n"
+        "\n"
+        "## Backlog\n"
+        "\n"
+        "- \xF0\x9F\x93\x8B [ANTS-9001] **An existing bullet.**\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n"
+        "\n");
+}
+
+bool writeRoadmap(const QString &dir, const QString &content) {
+    QFile f(dir + QStringLiteral("/ROADMAP.md"));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    f.write(content.toUtf8());
+    f.close();
+    return true;
+}
+
+bool writeCounter(const QString &dir, qint64 value) {
+    QFile f(dir + QStringLiteral("/.roadmap-counter"));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    f.write((QString::number(value) + QChar('\n')).toUtf8());
+    f.close();
+    return true;
+}
+
+QString readRoadmap(const QString &dir) {
+    QFile f(dir + QStringLiteral("/ROADMAP.md"));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
+    return QString::fromUtf8(f.readAll());
+}
+
+QJsonObject appendReq(const QString &dir, const QString &headline) {
+    QJsonObject r;
+    r["caller_cwd"] = dir;
+    r["op"]         = QStringLiteral("append");
+    r["section"]    = QStringLiteral("backlog");
+    r["status"]     = QStringLiteral("planned");
+    r["headline"]   = headline;
+    r["kind"]       = QStringLiteral("fix");
+    r["source"]     = QStringLiteral("test");
+    return r;
+}
+
+// Find the bullet whose headline contains `needle`.
+RoadmapDialog::BulletRecord findBullet(const QString &markdown,
+                                       const QString &needle) {
+    const auto bullets = RoadmapDialog::parseBullets(markdown);
+    for (const auto &b : bullets) {
+        if (b.headline.contains(needle)) return b;
+    }
+    return {};
+}
+
+}  // namespace
+
+// INV-1 / INV-2 — append with evidence writes an Evidence: line (no
+// trailing period) and parseBullets round-trips the paths, dots intact.
+TEST(roadmap_log_evidence, Inv1Inv2AppendAndRoundTrip) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeRoadmap(tmp.path(), freshRoadmap()));
+    ASSERT_TRUE(writeCounter(tmp.path(), 9001));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req = appendReq(tmp.path(), QStringLiteral("Crash on resume."));
+    QJsonArray ev;
+    ev.append(QStringLiteral("photos/IMG_2031.jpg"));
+    ev.append(QStringLiteral("logs/run.txt"));
+    req["evidence"] = ev;
+    const QJsonObject out =
+        rc.cmdRoadmapLogAppendForTest(req).object();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(out).toJson().toStdString();
+
+    const QString md = readRoadmap(tmp.path());
+    // INV-1 — the rendered line, no trailing sentence period.
+    EXPECT_TRUE(md.contains(QStringLiteral(
+        "  Evidence: photos/IMG_2031.jpg, logs/run.txt\n")))
+        << md.toStdString();
+
+    // INV-2 — parseBullets round-trip; the .jpg dot is not truncated.
+    const auto b = findBullet(md, QStringLiteral("Crash on resume"));
+    ASSERT_EQ(b.evidence.size(), 2);
+    EXPECT_EQ(b.evidence.at(0), QStringLiteral("photos/IMG_2031.jpg"));
+    EXPECT_EQ(b.evidence.at(1), QStringLiteral("logs/run.txt"));
+}
+
+// INV-3 — no evidence arg → no Evidence: line, empty evidence field.
+TEST(roadmap_log_evidence, Inv3NoEvidenceIsAdditive) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeRoadmap(tmp.path(), freshRoadmap()));
+    ASSERT_TRUE(writeCounter(tmp.path(), 9001));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(
+        appendReq(tmp.path(), QStringLiteral("Plain item."))).object();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool());
+
+    const QString md = readRoadmap(tmp.path());
+    EXPECT_FALSE(md.contains(QStringLiteral("Evidence:")));
+    const auto b = findBullet(md, QStringLiteral("Plain item"));
+    EXPECT_TRUE(b.evidence.isEmpty());
+}
+
+// INV-4 — a path with an embedded comma/newline is folded to spaces so
+// the single-line Evidence: field shape survives (no spurious 3rd path).
+TEST(roadmap_log_evidence, Inv4CommaInPathFolded) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeRoadmap(tmp.path(), freshRoadmap()));
+    ASSERT_TRUE(writeCounter(tmp.path(), 9001));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req = appendReq(tmp.path(), QStringLiteral("Weird path."));
+    QJsonArray ev;
+    ev.append(QStringLiteral("a/x,y.png"));   // comma inside one path
+    req["evidence"] = ev;
+    const QJsonObject out =
+        rc.cmdRoadmapLogAppendForTest(req).object();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool());
+
+    const QString md = readRoadmap(tmp.path());
+    const auto b = findBullet(md, QStringLiteral("Weird path"));
+    // The comma was folded to a space, so it stays ONE evidence entry.
+    ASSERT_EQ(b.evidence.size(), 1);
+    EXPECT_EQ(b.evidence.at(0), QStringLiteral("a/x y.png"));
+}

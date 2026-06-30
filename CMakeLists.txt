@@ -1319,6 +1319,10 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_flip_batch/test_roadmap_log_flip_batch.cpp
                 # ANTS-2059 roadmap_log flip/flip_batch on fully id-less ants-v1 bullets.
                 tests/features/roadmap_log_flip_idless_antsv1/test_roadmap_log_flip_idless_antsv1.cpp
+                # ANTS-3378 roadmap_log flip GFM headline locator (canonical headline match).
+                tests/features/roadmap_log_flip_gfm_headline/test_roadmap_log_flip_gfm_headline.cpp
+                # ANTS-3382 roadmap_log evidence:[paths] append + roadmap_query echo.
+                tests/features/roadmap_log_evidence/test_roadmap_log_evidence.cpp
                 # ANTS-2058 parseBullets inline `Kind: . Lanes: .` lanes extraction.
                 tests/features/roadmap_query_inline_lanes/test_roadmap_query_inline_lanes.cpp
                 # ANTS-1878 roadmap_log op:create_section.

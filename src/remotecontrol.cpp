@@ -615,6 +615,18 @@ void rcMaybeEmitHeadlineFull(QJsonObject &o,
     }
 }
 
+// ANTS-3382 — echo the bullet's `Evidence:` file paths when present.
+// Additive + gated: omitted entirely when the bullet has no evidence, so
+// the common-case payload is unchanged. Called from every roadmap_query
+// bullet-fill site (the same posture as the inline `lanes` emit).
+void rcMaybeEmitEvidence(QJsonObject &o,
+                         const RoadmapDialog::BulletRecord &b) {
+    if (b.evidence.isEmpty()) return;
+    QJsonArray ev;
+    for (const QString &p : b.evidence) ev.append(p);
+    o[QStringLiteral("evidence")] = ev;
+}
+
 // ANTS-2080 — confirm-after compact echo for roadmap_log write verbs.
 // When the caller passes return:"headline_only", the success envelope
 // carries `post_bullets`: the just-touched bullet(s) in the same compact
@@ -1139,6 +1151,58 @@ QString rcExtractCaretAnchor(const QString &line) {
     return m.captured(1);
 }
 
+// ANTS-3378 — the single canonical headline a GFM bullet is reported by.
+// The write-path walker (walkGfmBullets) stores the RAW post-checkbox
+// head: `**AX11. Audio device hot-swap** — automatically re-route audio`,
+// markdown emphasis + bold-ID label + em-dash tail intact. roadmap_query
+// (roadmapdialog.cpp parseBullets) reports a *de-marked-up* headline: the
+// post-em-dash prose when a `**ID** — text` split exists, else the bold
+// span / plain head, in both cases with the `**` emphasis and any trailing
+// caret anchor removed. A caller copies THAT token, so the flip headline
+// locator must derive the same form. Mirrors splitOnEmDash + the
+// rxTrailAnchor strip in roadmapdialog.cpp's GFM branch.
+QString rcGfmCanonicalHeadline(const QString &rawHead) {
+    QString s = rawHead;
+    static const QString kEmDash = QString::fromUtf8(" \xE2\x80\x94 ");  // " — "
+    int idx = s.indexOf(kEmDash);
+    int sepLen = kEmDash.size();
+    if (idx < 0) {
+        idx = s.indexOf(QStringLiteral(" -- "));
+        sepLen = 4;
+    }
+    if (idx >= 0) s = s.mid(idx + sepLen);  // post-em-dash prose
+    s.remove(QStringLiteral("**"));          // de-markup
+    static const QRegularExpression rxTrailAnchor(
+        QStringLiteral("\\s*\\^[a-z0-9-]+\\s*$"));
+    s.replace(rxTrailAnchor, QString());
+    return s.trimmed();
+}
+
+// ANTS-3378 — every distinct headline form the flip locator will accept
+// for one GFM bullet. A caller may pass the canonical headline
+// roadmap_query reports (the common case the old matcher missed), but the
+// legacy raw head, the de-marked-up whole head, and the bold-ID label all
+// stay valid. Returns normalised match hashes; the matcher tests the
+// locator's hash for membership.
+QSet<quint64> rcGfmHeadlineMatchHashes(const QString &rawHead,
+                                       const QString &boldId) {
+    QSet<quint64> hashes;
+    auto add = [&](QString s) {
+        static const QRegularExpression rxTrailAnchor(
+            QStringLiteral("\\s*\\^[a-z0-9-]+\\s*$"));
+        s.replace(rxTrailAnchor, QString());
+        const QString n = rcNormaliseHeadline(s);
+        if (!n.isEmpty()) hashes.insert(rcFnv1a64(n));
+    };
+    add(rawHead);                                  // legacy raw head
+    QString deMark = rawHead;
+    deMark.remove(QStringLiteral("**"));
+    add(deMark);                                   // de-marked whole head
+    add(rcGfmCanonicalHeadline(rawHead));          // post-em-dash prose
+    if (!boldId.isEmpty()) add(boldId);            // bold-ID label
+    return hashes;
+}
+
 // ANTS-1428 Tier 2 — GFM-format bullet walker for the flip locator.
 // Single forward pass over the file, fence-tracked, recording each
 // top-level `- [ ]` / `- [x]` bullet with the data the locator and
@@ -1232,7 +1296,7 @@ QVector<GfmBullet> walkGfmBullets(const QStringList &lines) {
         // bullet, or a metadata key. The headline content line is the
         // anchor injection target.
         static const QRegularExpression rxMeta(QStringLiteral(
-            "^\\s+\\*\\*?(Lanes|Kind|Source|Layman)"
+            "^\\s+\\*\\*?(Lanes|Kind|Source|Layman|Evidence)"
             ":\\*?\\*?"));
         for (int j = i + 1; j < lines.size(); ++j) {
             const QString &cont = lines.at(j);
@@ -2829,6 +2893,7 @@ static QJsonArray rcBuildBulletCacheArray(const QString &markdown) {
         QJsonArray lanes;
         for (const QString &l : b.lanes) lanes.append(l);
         o["lanes"] = lanes;
+        rcMaybeEmitEvidence(o, b);  // ANTS-3382
         o["section_slug"] = b.sectionSlug;
         if (b.format == QLatin1String("github-task-list")) {
             o["format"] = b.format;
@@ -3543,6 +3608,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);
                 o["lanes"] = lanes;
+                rcMaybeEmitEvidence(o, b);  // ANTS-3382
                 // ANTS-1442 — section_slug must be on every cache
                 // population path. Without it the section_index
                 // tally walks objects keyed to "" and rolls up zero.
@@ -3606,6 +3672,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                     QJsonArray lanes;
                     for (const QString &l : b.lanes) lanes.append(l);
                     o["lanes"] = lanes;
+                    rcMaybeEmitEvidence(o, b);  // ANTS-3382
                     if (b.format == QLatin1String("github-task-list")) {
                         o["format"] = b.format;
                     }
@@ -6285,9 +6352,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             }
         }
     } else {
+        // ANTS-3378 — match against every headline form the bullet can be
+        // located by (canonical roadmap_query headline, de-marked-up head,
+        // bold-ID label, legacy raw head), not just the raw stored head.
         const quint64 needHash = headlineHash(locHeadline);
         for (int i = 0; i < bullets.size(); ++i) {
-            if (headlineHash(bullets.at(i).headline) == needHash) {
+            if (rcGfmHeadlineMatchHashes(bullets.at(i).headline,
+                                         bullets.at(i).boldId)
+                    .contains(needHash)) {
                 matchIndices.append(i);
             }
         }
@@ -6342,32 +6414,53 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 suggestions.append(s);
             }
         } else {
+            // ANTS-3378 — rank nearest neighbours by token overlap against
+            // each bullet's CANONICAL headline (the form roadmap_query
+            // reports), not the raw stored head. Comparing the raw head
+            // (markdown + bold-ID + em-dash tail) made the old shared-prefix
+            // ranking surface unrelated bullets. Each suggestion carries the
+            // bullet line so the caller can re-target precisely.
             const QString needle = !locHeadline.isEmpty()
                 ? locHeadline
                 : (!locId.isEmpty() ? locId : locAnchor);
             const QString norm = rcNormaliseHeadline(needle);
-            QVector<QPair<int, int>> scored;
+            const QStringList needleToks =
+                norm.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+            const QSet<QString> needleTokSet(needleToks.begin(),
+                                             needleToks.end());
+            // Score = token-Jaccard (≥1 shared token); shared-prefix as a
+            // small tie-breaker for the zero-overlap-but-near-prefix case.
+            QVector<QPair<double, int>> scored;
             for (int i = 0; i < bullets.size(); ++i) {
-                const QString h =
-                    rcNormaliseHeadline(bullets.at(i).headline);
-                int sharedLen = 0;
-                const int lim = std::min(h.size(), norm.size());
-                while (sharedLen < lim &&
-                       h.at(sharedLen) == norm.at(sharedLen)) {
-                    ++sharedLen;
+                const QString canon =
+                    rcGfmCanonicalHeadline(bullets.at(i).headline);
+                const QString h = rcNormaliseHeadline(canon);
+                const QStringList hToks =
+                    h.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+                const QSet<QString> hTokSet(hToks.begin(), hToks.end());
+                double score = rcHeadlineJaccard(needleTokSet, hTokSet, 1);
+                if (score < 0.0) {
+                    int sharedLen = 0;
+                    const int lim = std::min(h.size(), norm.size());
+                    while (sharedLen < lim &&
+                           h.at(sharedLen) == norm.at(sharedLen)) {
+                        ++sharedLen;
+                    }
+                    // Keep below any real Jaccard hit (∈ (0,1]).
+                    if (sharedLen > 0) score = sharedLen / 100000.0;
                 }
-                if (sharedLen > 0)
-                    scored.append(qMakePair(sharedLen, i));
+                if (score > 0.0) scored.append(qMakePair(score, i));
             }
             std::sort(scored.begin(), scored.end(),
-                [](const QPair<int,int> &a, const QPair<int,int> &b) {
+                [](const QPair<double,int> &a, const QPair<double,int> &b) {
                     return a.first > b.first;
                 });
             for (int k = 0; k < scored.size() &&
                             suggestions.size() < 3; ++k) {
                 const auto &b = bullets.at(scored.at(k).second);
                 QJsonObject s;
-                s["headline"] = b.headline;
+                s["headline"] = rcGfmCanonicalHeadline(b.headline);
+                s["line"]     = b.firstLine + 1;
                 if (!b.anchor.isEmpty()) s["anchor"] = b.anchor;
                 if (!b.boldId.isEmpty()) s["id"]     = b.boldId;
                 suggestions.append(s);
@@ -7093,6 +7186,27 @@ QString RemoteControl::formatRoadmapBullet(
         bullet += QStringLiteral("  Lanes: ") +
                   laneStrs.join(QStringLiteral(", ")) +
                   QStringLiteral(".\n");
+    }
+    // ANTS-3382 — optional Evidence: file paths for image/log-driven
+    // bullets. Rendered WITHOUT a trailing period (evidence paths contain
+    // dots; a sentence period would read as part of the last path).
+    const QJsonArray evidenceArr =
+        bulletReq.value(QStringLiteral("evidence")).toArray();
+    if (!evidenceArr.isEmpty()) {
+        QStringList evStrs;
+        for (const auto &v : evidenceArr) {
+            // Strip embedded newlines/commas so one path can't break the
+            // single-line `Evidence:` field shape.
+            QString p = rcSanitizeBulletField(v.toString(), 500);
+            p.replace(QChar('\n'), QChar(' '));
+            p.replace(QChar(','), QChar(' '));
+            p = p.trimmed();
+            if (!p.isEmpty()) evStrs.append(p);
+        }
+        if (!evStrs.isEmpty())
+            bullet += QStringLiteral("  Evidence: ") +
+                      evStrs.join(QStringLiteral(", ")) +
+                      QChar('\n');
     }
     bullet += QStringLiteral("  Source: ") +
               rcSanitizeBulletField(source, 200) +
