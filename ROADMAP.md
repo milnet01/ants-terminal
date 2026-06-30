@@ -17666,6 +17666,36 @@ server build id so clients can self-diagnose this.
   Kind: doc.
   Source: in-session-2026-06-30 (ANTS-3382 doc debt).
 
+- 📋 [ANTS-3387] **roadmap_query id/ids + roadmap_log flip/annotate return a silent miss (not bad_id_format) for a format-nonconforming bracket token that exists in the file.**
+  Vestige: roadmap_query {ids:["3D_E-0022"]} -> found:false though [3D_E-0022] is a well-formed actionable bullet at ROADMAP.md:192 (verified across 3D_E-0006/0012/0021/0022). Root cause CONFIRMED: idTokenPattern() (roadmapdialog.cpp:612) is letter-led `[A-Za-z][A-Za-z0-9_-]*-\d+` by deliberate design (ANTS-1405 INV-4 + roadmap-format.md 3.5.1), so a digit-leading prefix (3D_E starts with `3`) never parses as a project id — the bullet gets a synthetic hash id and the canonical token is unaddressable on BOTH read (query) and write (flip/annotate) paths. Primary fix (safe, non-controversial): when an id/ids locator looks like a well-formed bracket token but fails the PROJ-NNNN gate, return bad_id_format with the canonical-form hint instead of a silent found:false / bullet_not_found. Secondary (standards decision, NOT an obvious bug): whether 3.5.1 should admit digit-leading prefixes — ANTS-1405 INV-4 rejected them on purpose; revisit only if cross-project demand warrants. Related thread: ANTS-1987/2046/2053.
+  **Layman:** When a project uses an ID style Ants doesn't recognise, looking it up says 'not found' with no hint that the ID shape is the problem — so it looks like the item vanished.
+  Kind: fix.
+  Source: cc-feedback-2026-06-30 (Vestige, 3D_E-NNNN scheme).
+
+- 📋 [ANTS-3388] **roadmap_query mode:bundles clusters on headline tokens only — same kind+lane+stem items return as all-singletons, indistinguishable from no-clusters.**
+  MAME: 14 active items -> mode:bundles returned 14 size:1 bundles, missing the obvious cluster [1057/1058/1059] `Author src/mame_curator/<mod>/spec.md` (identical kind:doc + docs lane + ~4-token shared stem). Fix: (1) weight shared kind+lanes into the bundle edge score, not headline tokens alone; (2) structural-stem heuristic for `<verb> <path>`-template bullets; (3) emit an explicit no_clusters_found:true flag when every bundle is size:1, so a caller can tell 'grouped into singletons' from 'couldn't group'.
+  **Layman:** The 'what should I work on next as a group?' view fails to group obviously-related to-dos (same type, same area, same title shape), so it looks like nothing is related.
+  Kind: enhancement.
+  Source: cc-feedback-2026-06-30 (MAME Curator).
+
+- 📋 [ANTS-3389] **roadmap_query mode:bundles gate detection misses body-prose gates (only marker-style gates flagged blocked/gate_note).**
+  MAME: 1075's bold gate marker surfaced correctly, but 1058's plain-prose gate ('Wait for P10 to close before drafting') was not surfaced as blocked/gate_note. Only marker-style gates are detected; a 'wait for X' sentence in the body is missed. Lower priority than the clustering item.
+  **Layman:** If a to-do says 'wait for X to finish' in plain prose rather than a special tag, the next-work view doesn't mark it as blocked.
+  Kind: enhancement.
+  Source: cc-feedback-2026-06-30 (MAME Curator, secondary).
+
+- 📋 [ANTS-3390] **project_settings op:detect omits repo-root loose source files; source_roots replaces (not augments) the default walk, silently dropping them from codebase_index.**
+  RetroArch: op:detect suggested 11 SUBDIR source_roots, never the repo root, though retroarch.c (~9k LoC), configuration.c, runloop.c, command.c, dynamic.c sit loose AT the root. Because source_roots REPLACES the src/ default (not additive), detect->init drops them: codebase_index(file_path:"retroarch.c") -> found:false (verified); file_count 2271 of 2513. Silent coverage gap for any repo (RetroArch, many C/Go single-binary repos) whose entrypoint/orchestration code lives at the root. Fix: make detect repo-root-aware — include the root non-recursively / an include_root_sources flag / an additive non-recursive root scan; at minimum, detect's reason must warn 'N root-level sources will NOT be covered'.
+  **Layman:** When you accept Ants' auto-detected project layout, files sitting loose at the top of the repo (often the most important ones) get silently left out of the code index.
+  Kind: fix.
+  Source: cc-feedback-2026-06-30 (RetroArch).
+
+- 📋 [ANTS-3391] **roadmap_query accepts a query arg but silently no-ops it (ignored_args) — add a keyword/text-filter mode or refuse with bad_args.**
+  RetroArch: roadmap_query(query:"TIDY") returns the full active set with ignored_args:["query"] — the arg is parsed-but-discarded; the only filters are status/section/mode. Fix (preferred): add a case-insensitive text-filter mode matching the substring against headline+body, composing with the existing status/section filters (also serves MAME's by-keyword bullet lookup). Alternative: drop query from the accepted arg set so an unsupported filter is a self-documenting bad_args refusal rather than a silent no-op.
+  **Layman:** You can't search roadmap items by keyword; passing a search word is quietly ignored, so you have to fetch everything and filter by hand.
+  Kind: enhancement.
+  Source: cc-feedback-2026-06-30 (RetroArch; also serves MAME keyword-find).
+
 ### 🔌 Ants-MCP feedback from CC sessions (DOOM 2026-06-28)
 
 DOOM-0009 step-6 SVGF denoiser sessions. Confirmed shipped: ANTS-2081 (ETag
