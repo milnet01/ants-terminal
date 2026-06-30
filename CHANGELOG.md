@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- ****Donate** menu in the menu bar with GitHub Sponsors and Patreon links**
+  A new Donate menu (just left of Help) opens the project's GitHub Sponsors and Patreon pages in your browser, so supporters can find them without leaving the terminal.
+
 - **`dry_run` preview on the last two mutating Ants-MCP verbs — `test_audit_fold_in` and `debt_sweep_apply_fix` (ANTS-2227)**
   Completes dry_run parity across all 9 mutating verbs. `test_audit_fold_in` previews the would-be ROADMAP IDs + block without bumping the counter or writing; `debt_sweep_apply_fix` runs every guard and computes the patched source but skips the write, reporting `would_apply`. Pass `dry_run:true` to any of them to see the change before it happens.
 

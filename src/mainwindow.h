@@ -104,6 +104,7 @@ private:
     void setupToolsMenu();
     void setupSettingsMenu();
     void setupHelpMenu();
+    void setupDonateMenu();
     void applyTheme(const QString &name);
     void centerWindow();
     void moveViaKWin(int targetX, int targetY);

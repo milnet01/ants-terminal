@@ -1173,6 +1173,7 @@ void MainWindow::setupMenus() {
     setupSplitMenu();
     setupToolsMenu();
     setupSettingsMenu();
+    setupDonateMenu();
     setupHelpMenu();
 
     // One stay-open filter installed on every menu + submenu under the
@@ -2058,6 +2059,32 @@ void MainWindow::setupSettingsMenu() {
             QString("Loaded %1 plugins").arg(m_pluginManager->pluginCount()), 3000);
     });
 #endif
+}
+
+void MainWindow::setupDonateMenu() {
+    // User-requested 2026-06-30 — surface the project's funding pages in
+    // the GUI so supporters don't have to hunt for them on GitHub. Both
+    // actions open the user's default browser via QDesktopServices (the
+    // Qt 6 idiom — dispatches to xdg-open / ShellExecute / `open`). URLs
+    // are stable funding landing pages; the GitHub Sponsors handle mirrors
+    // .github/FUNDING.yml (`github: [milnet01]`). Defined + wired BEFORE
+    // setupHelpMenu so Help stays the rightmost menu (help_about_menu
+    // spec, Invariant 1 — the test greps source order of addMenu calls).
+    QMenu *donateMenu = m_menuBar->addMenu(tr("&Donate"));
+
+    QAction *githubAction = donateMenu->addAction(tr("Sponsor on &GitHub..."));
+    connect(githubAction, &QAction::triggered, this, [this]() {
+        QDesktopServices::openUrl(
+            QUrl(QStringLiteral("https://github.com/sponsors/milnet01")));
+        showStatusMessage(tr("Opening GitHub Sponsors in your browser…"), 3000);
+    });
+
+    QAction *patreonAction = donateMenu->addAction(tr("Support on &Patreon..."));
+    connect(patreonAction, &QAction::triggered, this, [this]() {
+        QDesktopServices::openUrl(
+            QUrl(QStringLiteral("https://www.patreon.com/c/AntsProjectsHub")));
+        showStatusMessage(tr("Opening Patreon in your browser…"), 3000);
+    });
 }
 
 void MainWindow::setupHelpMenu() {
