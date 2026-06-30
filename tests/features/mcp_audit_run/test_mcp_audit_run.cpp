@@ -13,7 +13,9 @@
 
 #include <QHash>
 #include <QJsonArray>
+#include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QTemporaryDir>
 
 #include <cstdio>
@@ -399,4 +401,79 @@ TEST(mcp_audit_run, Ants2183TransportCapDocumented) {
     expect(contains(region, "ANTS-2183"),
            "INV-20: descriptor carries the ANTS-2183 anchor");
     EXPECT_EQ(0, expect_failures());
+}
+
+// ─────────────────────────────────────────── ANTS-3394 ──
+// scope:"full" must not drown the real findings in build-output / vendored
+// noise: each whole-tree (non-scoped) tool invocation carries the default
+// exclusion set; a scoped invocation omits it (those files were chosen on
+// purpose).
+TEST(mcp_audit_run, Ants3394WholeTreeExclusionsApplied) {
+    const QString root = QStringLiteral("/nonexistent-proj");
+    auto joined = [](const QStringList &a) { return a.join(QLatin1Char(' ')); };
+
+    const QStringList ruff = AuditRunner::internal::toolArgv("ruff", root, {});
+    EXPECT_TRUE(ruff.contains(QStringLiteral("--extend-exclude")))
+        << "ruff whole-tree run must add --extend-exclude";
+    EXPECT_TRUE(joined(ruff).contains(QStringLiteral("dist")))
+        << "exclusion set must list dist/";
+
+    const QStringList bandit = AuditRunner::internal::toolArgv("bandit", root, {});
+    EXPECT_TRUE(bandit.contains(QStringLiteral("-x")));
+    EXPECT_TRUE(joined(bandit).contains(QStringLiteral("node_modules")));
+
+    const QStringList semgrep = AuditRunner::internal::toolArgv("semgrep", root, {});
+    EXPECT_TRUE(semgrep.contains(QStringLiteral("--exclude")));
+    EXPECT_TRUE(joined(semgrep).contains(QStringLiteral("__pycache__")));
+
+    const QStringList trivy = AuditRunner::internal::toolArgv("trivy", root, {});
+    EXPECT_TRUE(trivy.contains(QStringLiteral("--skip-dirs")));
+    EXPECT_TRUE(joined(trivy).contains(QStringLiteral("**/dist")));
+
+    const QStringList mypy = AuditRunner::internal::toolArgv("mypy", root, {});
+    EXPECT_TRUE(mypy.contains(QStringLiteral("--exclude")));
+    EXPECT_TRUE(joined(mypy).contains(QStringLiteral("dist")));
+}
+
+TEST(mcp_audit_run, Ants3394ScopedInvocationOmitsExclusions) {
+    const QString root = QStringLiteral("/nonexistent-proj");
+    const QStringList scoped = {QStringLiteral("app.py")};
+    EXPECT_FALSE(AuditRunner::internal::toolArgv("ruff", root, scoped)
+                     .contains(QStringLiteral("--extend-exclude")))
+        << "a scoped invocation must not re-broaden via exclusions";
+    EXPECT_FALSE(AuditRunner::internal::toolArgv("mypy", root, scoped)
+                     .contains(QStringLiteral("--exclude")));
+}
+
+// ─────────────────────────────────────────── ANTS-3395 ──
+// A JSON tool's progress bar / log noise must not be parsed as findings.
+// bandit emits its Rich progress bar to stderr; merged after the JSON it
+// would (pre-fix) break the whole-blob JSON parse and drop the tool into the
+// line-based fallback, which manufactures a phantom finding.
+TEST(mcp_audit_run, Ants3395BanditProgressBarNotParsedAsFinding) {
+    const QString raw =
+        QStringLiteral("{\"results\":["
+                       "{\"filename\":\"a.py\",\"line_number\":1},"
+                       "{\"filename\":\"b.py\",\"line_number\":2}]}\n"
+                       "Working... 100%");
+    const auto counts =
+        AuditRunner::internal::parseWithSuppression("bandit", raw, 10, {});
+    EXPECT_EQ(counts.rawCount, 2)
+        << "both real JSON findings recovered, progress bar ignored";
+    EXPECT_FALSE(counts.aborted);
+}
+
+// A trivy FATAL run-error means the scan aborted: it must yield zero findings
+// (not a phantom finding minted from the timestamp-prefixed log line) and be
+// flagged aborted so the runner records it as crashed (incomplete_tools[]).
+TEST(mcp_audit_run, Ants3395TrivyFatalRoutedToAbort) {
+    const QString raw = QStringLiteral(
+        "2026-06-30T20:13:45.123Z\tFATAL\trun error: fs scan error: "
+        "walk error: open static/images/x.png: unsupported file");
+    const auto counts =
+        AuditRunner::internal::parseWithSuppression("trivy", raw, 10, {});
+    EXPECT_EQ(counts.rawCount, 0)
+        << "a FATAL log line is not a finding";
+    EXPECT_TRUE(counts.aborted)
+        << "the abort marker must surface so the tool is marked crashed";
 }

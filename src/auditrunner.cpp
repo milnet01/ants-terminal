@@ -96,12 +96,12 @@ constexpr int kSarifFindingsMax          = 10'000;
 
 // ───────────────────────────── ANTS-1351-INV-6 (kExclusions) ──
 // Hardcoded — see § 8 decision "Exclusion list hardcoded in engine".
-// Skill markdown documents the same set inline. Currently each tool's
-// argv in toolArgv() builds invocations against `.` or `src/`; the
-// list is reserved for the v2 per-tool exclusion-flag plumbing
-// (passing --exclude entries to semgrep, ruff, trivy) which the v1
-// invocations don't yet do — defer to the v2 follow-up.
-[[maybe_unused]] const QStringList &kExclusions() {
+// Skill markdown documents the same set inline. ANTS-3394 — this set is now
+// wired into the whole-tree (non-scoped) invocation of each find-everything
+// tool via toolExclusionArgs(); a scope:"full" sweep no longer drowns the
+// real findings in build-output / vendored noise (a Flask app's dist/ +
+// node_modules/ flooded mypy with 130+ stub-file findings).
+const QStringList &kExclusions() {
     static const QStringList v = {
         QStringLiteral("logs"),
         QStringLiteral("data"),
@@ -116,6 +116,53 @@ constexpr int kSarifFindingsMax          = 10'000;
         QStringLiteral("env"),
     };
     return v;
+}
+
+// ANTS-3394 — per-tool exclusion flags for the whole-tree (non-scoped)
+// invocation of each find-everything tool, built from kExclusions() so the
+// dir set stays single-source. Scoped invocations already narrow to an
+// explicit changed-file list and get NO exclusions (those files were chosen
+// on purpose). cppcheck/clazy/clang-tidy run against src/ or the compile DB
+// (never the build-output tree), and gitleaks is filtered via its generated
+// --config (ANTS-2016), so none of them appear here.
+//
+// .gitignore: ruff and semgrep honour it by default (no flag needed); the
+// explicit set is what covers the gitignore-unaware tools (bandit, mypy,
+// trivy). A caller who really wants to audit a build tree can pass `paths`
+// (a scoped invocation), which bypasses these entirely.
+QStringList toolExclusionArgs(const QString &tool) {
+    const QStringList &dirs = kExclusions();
+    if (tool == QLatin1String("ruff"))
+        // ruff --extend-exclude ADDS to the default + .gitignore excludes.
+        return {QStringLiteral("--extend-exclude"),
+                dirs.join(QLatin1Char(','))};
+    if (tool == QLatin1String("bandit"))
+        // bandit -x matches each comma-listed dir name during its walk.
+        return {QStringLiteral("-x"), dirs.join(QLatin1Char(','))};
+    if (tool == QLatin1String("semgrep")) {
+        // semgrep --exclude skips any path whose name matches; repeatable.
+        QStringList a;
+        for (const QString &d : dirs)
+            a += {QStringLiteral("--exclude"), d};
+        return a;
+    }
+    if (tool == QLatin1String("trivy")) {
+        // trivy --skip-dirs takes a glob; `**/<name>` skips the dir anywhere.
+        QStringList a;
+        for (const QString &d : dirs)
+            a += {QStringLiteral("--skip-dirs"), QStringLiteral("**/") + d};
+        return a;
+    }
+    if (tool == QLatin1String("mypy")) {
+        // mypy --exclude is one regex matched against each file path.
+        QStringList escaped;
+        for (const QString &d : dirs)
+            escaped += QRegularExpression::escape(d);
+        return {QStringLiteral("--exclude"),
+                QStringLiteral("(^|/)(") + escaped.join(QLatin1Char('|'))
+                    + QStringLiteral(")/")};
+    }
+    return {};
 }
 
 // ───────────────────────────── ANTS-1351-INV-10 (env policy) ──
@@ -385,14 +432,17 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
     if (tool == QLatin1String("ruff")) {
         QStringList args = {QStringLiteral("check")};
         if (!scoped.isEmpty()) args += scoped;
-        else                        args += QStringLiteral(".");
+        else { args += QStringLiteral("."); args += toolExclusionArgs(tool); }
         args += QStringLiteral("--output-format=json");
         return args;
     }
     if (tool == QLatin1String("bandit")) {
         QStringList args;
         if (!scoped.isEmpty()) args += scoped;  // explicit files
-        else args += {QStringLiteral("-r"), srcRoot};      // recurse src dir
+        else {
+            args += {QStringLiteral("-r"), srcRoot};       // recurse src dir
+            args += toolExclusionArgs(tool);               // ANTS-3394
+        }
         args += {QStringLiteral("-f"), QStringLiteral("json"),
                  QStringLiteral("-ll")};
         return args;
@@ -405,7 +455,7 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
                             QStringLiteral("--config"),
                             QStringLiteral("p/security-audit")};
         if (!scoped.isEmpty()) args += scoped;
-        else                        args += QStringLiteral(".");
+        else { args += QStringLiteral("."); args += toolExclusionArgs(tool); }
         return args;
     }
     if (tool == QLatin1String("gitleaks")) {
@@ -423,16 +473,22 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
             args << QStringLiteral("--config") << gitleaksConfig;
         return args;
     }
-    if (tool == QLatin1String("trivy"))
-        return {QStringLiteral("fs"),
-                QStringLiteral("--scanners"),
-                QStringLiteral("vuln,secret"),
-                QStringLiteral("--severity"),
-                QStringLiteral("HIGH,CRITICAL"),
-                QStringLiteral("--quiet"),
-                QStringLiteral("--format"),
-                QStringLiteral("json"),
-                QStringLiteral(".")};
+    if (tool == QLatin1String("trivy")) {
+        // trivy fs is never file-scoped (it skips under narrowing), so it
+        // always scans the whole tree — the exclusion set keeps it off the
+        // build-output / media dirs that make it choke (ANTS-3394).
+        QStringList args = {QStringLiteral("fs"),
+                            QStringLiteral("--scanners"),
+                            QStringLiteral("vuln,secret"),
+                            QStringLiteral("--severity"),
+                            QStringLiteral("HIGH,CRITICAL"),
+                            QStringLiteral("--quiet"),
+                            QStringLiteral("--format"),
+                            QStringLiteral("json")};
+        args += toolExclusionArgs(tool);
+        args += QStringLiteral(".");
+        return args;
+    }
     if (tool == QLatin1String("shellcheck")) {
         // shellcheck wants files on argv; v1 passes the `scripts` dir and
         // lets it discover *.sh. ANTS-1504 — narrowing scopes pass the
@@ -446,7 +502,7 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
     if (tool == QLatin1String("mypy")) {
         QStringList args = {QStringLiteral("--no-color-output")};
         if (!scoped.isEmpty()) args += scoped;
-        else                        args += QStringLiteral(".");
+        else { args += toolExclusionArgs(tool); args += QStringLiteral("."); }
         return args;
     }
     return {};
@@ -585,6 +641,11 @@ struct ParsedOutput {
     // kSarifFindingsMax; `findingsTruncated` is set when that ceiling is hit.
     QJsonArray findings;
     bool       findingsTruncated = false;
+    // ANTS-3395 — a JSON-emitting tool logged a fatal abort (e.g. trivy
+    // "run error: fs scan error") and produced no parseable findings doc.
+    // The runner promotes this to a "crashed" status so the tool surfaces in
+    // incomplete_tools[] (ANTS-2032) instead of a misleading clean run.
+    bool       aborted = false;
 };
 
 // ANTS-1820 — learned-FP suppression for the headless path. The GUI's
@@ -602,21 +663,74 @@ bool isLearnedFp(const QSet<QString> &learnedFps, const QString &file,
         ants::auditfp::computeFingerprint(file, checkId, message));
 }
 
+// ANTS-3395 — tools whose findings are a single JSON document. Their output
+// must be parsed as JSON ONLY: the line-based fallback would mis-read a
+// progress bar (bandit's Rich bar) or a log line (trivy's FATAL) as a
+// finding. The plain-text tools (cppcheck / clazy / clang-tidy / mypy) stay
+// line-based — their findings have no JSON form.
+bool isJsonFindingTool(const QString &tool) {
+    return tool == QLatin1String("ruff")    || tool == QLatin1String("bandit")
+        || tool == QLatin1String("semgrep") || tool == QLatin1String("gitleaks")
+        || tool == QLatin1String("trivy")   || tool == QLatin1String("shellcheck");
+}
+
+// ANTS-3395 — extract the single top-level JSON document embedded in a
+// (possibly progress-bar-prefixed / log-suffixed) tool stream: the slice from
+// the first '{'/'[' to the matching last '}'/']'. Returns empty when no JSON
+// is present (e.g. trivy aborted before emitting any). This is what lets a
+// trailing Rich progress bar or log line no longer break the JSON parse and
+// dump the whole tool into the line-based fallback.
+QString extractJsonDocument(const QString &raw) {
+    const int objStart = raw.indexOf(QLatin1Char('{'));
+    const int arrStart = raw.indexOf(QLatin1Char('['));
+    int   start = -1;
+    QChar close;
+    if (arrStart >= 0 && (objStart < 0 || arrStart < objStart)) {
+        start = arrStart;
+        close = QLatin1Char(']');
+    } else if (objStart >= 0) {
+        start = objStart;
+        close = QLatin1Char('}');
+    }
+    if (start < 0) return {};
+    const int end = raw.lastIndexOf(close);
+    if (end <= start) return {};
+    return raw.mid(start, end - start + 1);
+}
+
+// ANTS-3395 — a JSON tool that emitted NO parseable findings doc but logged a
+// fatal abort. trivy's log line is `<iso-ts>\tFATAL\trun error: fs scan
+// error: ...`; the combination (FATAL level + a run/scan error) means the
+// scan aborted rather than ran clean. Matched conservatively (both tokens
+// required) so a finding message merely containing the word "fatal" never
+// trips it.
+bool hasToolAbortMarker(const QString &raw) {
+    static const QRegularExpression rxLevel(QStringLiteral("(^|\\s)FATAL(\\s|$)"));
+    static const QRegularExpression rxErr(
+        QStringLiteral("run error:|scan error"),
+        QRegularExpression::CaseInsensitiveOption);
+    return rxLevel.match(raw).hasMatch() && rxErr.match(raw).hasMatch();
+}
+
 ParsedOutput parseToolOutput(const QString &tool,
                              const QString &raw,
                              int sampleCap,
                              const QSet<QString> &learnedFps) {
     ParsedOutput out;
     if (raw.trimmed().isEmpty()) return out;
-    // Quick JSON sniff: tools that emit a JSON results[] array (semgrep,
-    // bandit, ruff, gitleaks, trivy) — count entries; non-JSON tools
-    // (cppcheck plain, shellcheck JSON, clazy, mypy) — count lines.
-    if (raw.trimmed().startsWith(QLatin1Char('{')) ||
-        raw.trimmed().startsWith(QLatin1Char('['))) {
+    // ANTS-3395 — JSON tools (semgrep/bandit/ruff/gitleaks/trivy/shellcheck)
+    // emit a single JSON document, sometimes wrapped in progress-bar / log
+    // noise on the merged stream. Parse ONLY the extracted JSON span, and
+    // never fall through to the line-based path below (which would turn a
+    // progress bar or a FATAL log line into a phantom finding). The plain-text
+    // tools fall straight through to the line-based parser.
+    if (isJsonFindingTool(tool)) {
+        const QString jsonDoc = extractJsonDocument(raw);
         QJsonParseError err;
-        const QJsonDocument doc =
-            QJsonDocument::fromJson(raw.toUtf8(), &err);
-        if (err.error == QJsonParseError::NoError) {
+        const QJsonDocument doc = jsonDoc.isEmpty()
+            ? QJsonDocument()
+            : QJsonDocument::fromJson(jsonDoc.toUtf8(), &err);
+        if (!jsonDoc.isEmpty() && err.error == QJsonParseError::NoError) {
             // Recognise common shapes; fall through to line-count if unknown.
             QJsonArray arr;
             if (doc.isArray()) arr = doc.array();
@@ -691,6 +805,12 @@ ParsedOutput parseToolOutput(const QString &tool,
                 out.rawCount = kSarifFindingsMax;
             return out;
         }
+        // ANTS-3395 — a JSON tool with no parseable findings doc. Do NOT fall
+        // through to the line-based parser (it would manufacture findings from
+        // a progress bar / log line). If the stream carries a fatal-abort
+        // marker, flag it so the runner records the tool as crashed.
+        if (hasToolAbortMarker(raw)) out.aborted = true;
+        return out;
     }
     // Line-based fallback for plain-text tools.
     const QStringList lines = raw.split(QChar('\n'), Qt::SkipEmptyParts);
@@ -1261,6 +1381,12 @@ QString flagSafeScopedPath(const QString &p) {
     return flagSafeScopedPathImpl(p);
 }
 
+// ANTS-3394 — test hook delegating to the anonymous-namespace argv builder.
+QStringList toolArgv(const QString &tool, const QString &projectRoot,
+                     const QStringList &scopedPaths) {
+    return AuditRunner::toolArgv(tool, projectRoot, {}, scopedPaths);
+}
+
 // ANTS-1820 — test hook delegating to the anonymous-namespace parser.
 ParsedCounts parseWithSuppression(const QString &tool, const QString &raw,
                                   int sampleCap,
@@ -1283,6 +1409,7 @@ ParsedCounts parseWithSuppression(const QString &tool, const QString &raw,
     c.findingsCount        = static_cast<int>(p.findings.size());
     c.findingsTruncated     = p.findingsTruncated;
     c.allFindingsHaveHexFp  = allHex;
+    c.aborted               = p.aborted;  // ANTS-3395
     return c;
 }
 
@@ -1638,6 +1765,12 @@ RunResult runAudit(const RunRequest &req) {
         // ledger; afterFilterCount drops the suppressed total.
         tr.afterFilterCount = parsed.rawCount - parsed.suppressedCount;
         tr.samples          = parsed.samples;
+        // ANTS-3395 — a JSON tool that logged a fatal abort (e.g. trivy "run
+        // error: fs scan error") produced no real findings; mark it crashed so
+        // it surfaces in incomplete_tools[] (ANTS-2032) rather than as a clean
+        // zero-finding run.
+        if (tr.status == QLatin1String("ok") && parsed.aborted)
+            tr.status = QStringLiteral("crashed");
         fullFindingsByTool[tool] = parsed.findings;           // ANTS-1870
         if (parsed.findingsTruncated) anyFindingsTruncated = true;
         r.byTool[tool]      = tr;

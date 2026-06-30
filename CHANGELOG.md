@@ -201,6 +201,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **audit_run no longer turns a tool's progress bar or fatal error into a fake finding** (ANTS-3395)
+  JSON-emitting tools (ruff, bandit, semgrep, gitleaks, trivy, shellcheck) are now parsed strictly as JSON, so bandit's progress bar and trivy's FATAL log line stop being counted as findings. A trivy scan that aborts is reported as a crashed/incomplete tool instead of a single misleading finding.
+
+- **audit_run scope:"full" now skips build-output, vendored, and cache dirs** (ANTS-3394)
+  The default exclusion set (logs, data, database, node_modules, dist, build, _build, __pycache__, .venv, venv, env) is now passed to each whole-tree audit tool (ruff, bandit, semgrep, trivy, mypy), so a full-project sweep no longer drowns real findings in build output or downloaded media. Scoped sweeps (an explicit file list) are unaffected.
+
 - **codebase_index + project_settings no longer index a project's committed virtualenv (ANTS-3393)**
   On a flat-layout project with a committed venv/, codebase_index (under source_roots=["."]) and project_settings op:detect both treated the vendored virtualenv as the project's source — indexing/suggesting thousands of library files instead of the ~10 real ones. The shared isNoiseDir skip-list now covers bare venv/env/__pycache__ (.venv was already skipped), and codebase_index's walk applies the same skip-list, so vendored / build / virtualenv trees are pruned even when "." is an explicit source root.
 

@@ -168,6 +168,9 @@ struct ParsedCounts {
     int  findingsCount = 0;
     bool findingsTruncated = false;
     bool allFindingsHaveHexFp = false;
+    // ANTS-3395 — true when a JSON tool logged a fatal abort and produced no
+    // parseable findings (the runner promotes this to a "crashed" status).
+    bool aborted = false;
 };
 ParsedCounts parseWithSuppression(const QString &tool, const QString &raw,
                                   int sampleCap,
@@ -202,6 +205,13 @@ QStringList splitCommandString(const QString &cmd);
 // dash-leading relative path so the child tool can't parse it as a flag;
 // absolute and ordinary relative paths pass through unchanged.
 QString flagSafeScopedPath(const QString &p);
+
+// ANTS-3394 — test hook exposing the per-tool argv builder so the default
+// exclusion-set wiring can be asserted without spawning a real tool.
+// `scopedPaths` empty == the whole-tree invocation (exclusions applied);
+// non-empty == a scoped invocation (exclusions deliberately omitted).
+QStringList toolArgv(const QString &tool, const QString &projectRoot,
+                     const QStringList &scopedPaths = {});
 
 }  // namespace internal
 
