@@ -98,6 +98,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **read_region / read_regions / file_outline tool descriptions now warn that an MCP read does not satisfy the native Edit read-precondition (ANTS-3383).**
+  Cross-session feedback: reading a file via these verbs and then editing it fails the harness's "File has not been read yet" check, so a native Read is still required first. Documented inline in the tool help so sessions stop paying for a doubled read.
+
 - **feedback_query / feedback_log not_found returns sibling *_Ants_MCP_Feedback.md candidates.** (ANTS-3366)
   When Ants can't find a feedback file at the guessed name, it now lists the real ones nearby so Claude doesn't have to shell out to find them.
 

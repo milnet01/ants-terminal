@@ -3144,7 +3144,11 @@ void ClaudeIntegration::onMcpConnection() {
                     "consumer) in ONE call — returns a `files:[{path, "
                     "symbols, etag, …}]` array, each entry 304ing "
                     "independently via the optional `etags` map "
-                    "({relPath: priorEtag}).");
+                    "({relPath: priorEtag}). "
+                    "NOTE (ANTS-3383): outlining a file via this verb does "
+                    "NOT satisfy the native Edit tool's read-precondition — "
+                    "do a native Read before editing a file you intend to "
+                    "modify.");
                 foTool["selection_hint"] = QStringLiteral(
                     "Use to map a large file's symbols before Read. "
                     "Prefer over `Read` when you only need a "
@@ -3329,7 +3333,10 @@ void ClaudeIntegration::onMcpConnection() {
                     "skip the file_outline→line-arithmetic dance. "
                     "Byte-capped (max_bytes, default 512 KiB, 4 MiB ceiling), "
                     "keeping the head. ETag-304: a matching etag_match "
-                    "re-read is free. caller_cwd required.");
+                    "re-read is free. caller_cwd required. NOTE (ANTS-3383): "
+                    "reading via this verb does NOT satisfy the native Edit "
+                    "tool's read-precondition — do a native Read before "
+                    "editing a file you intend to modify.");
                 rrTool["selection_hint"] = QStringLiteral(
                     "Use after find_definition/file_outline to read one "
                     "function's body or any line range instead of a full Read — "
@@ -3439,7 +3446,10 @@ void ClaudeIntegration::onMcpConnection() {
                     "order. Max 64 items (too_many_items over that). "
                     "caller_cwd required. The read-side mirror of apply_edits' "
                     "batched writes — collapses \"outline → read the 6 "
-                    "interesting symbols\" from 7 calls to 2.");
+                    "interesting symbols\" from 7 calls to 2. NOTE (ANTS-3383): "
+                    "reading via this verb does NOT satisfy the native Edit "
+                    "tool's read-precondition — do a native Read before editing "
+                    "a file you intend to modify.");
                 rrsTool["selection_hint"] = QStringLiteral(
                     "Use when one file_outline/find_definition pass surfaced "
                     "several symbols/sections to read together — batch them "
