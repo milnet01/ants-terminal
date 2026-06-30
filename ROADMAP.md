@@ -23949,6 +23949,48 @@ contributors don't duplicate research.
   Kind: ux.
   Source: user-request-2026-06-27 (deferred: "much later").
 
+- 📋 [ANTS-3392] **Lay roadmap bullets out in aligned columns instead of a cramped inline run.**
+  Problem: renderCardsHtml (src/roadmapdialog.cpp:1716) emits each bullet
+  as five consecutive inline <span>s (rm-state, rm-state-label, rm-kind,
+  rm-summary, rm-id) into a single QTextBrowser. rm-summary has zero
+  horizontal padding, so the headline fuses to the kind badge on its left
+  ("planned featureA dedicated page…") and the ID chip on its right
+  (#CL-0001 jammed to the edge). Section headings have the same bug —
+  rm-section-counts abuts rm-section-title ("7 plannedPlanned Features",
+  roadmapdialog.cpp:1962-1998). Nothing aligns vertically because the
+  rich-text engine flows everything inline like prose.
+  
+  Fix (full column redesign, chosen over a spacing-only patch):
+    - Render each section's bullets as one HTML <table> (QTextBrowser
+      supports tables; no engine/widget rewrite). One <tr> per bullet,
+      cells: [status emoji] [kind] [headline] [right-aligned ID + toggle].
+      Fixed widths on the first two + last cell so columns line up down
+      the whole section; headline cell takes remaining width.
+    - Drop the redundant repeated "planned" state-label word — the section
+      header already states the status; the emoji already shows it. Cuts
+      the biggest source of per-row visual noise.
+    - Fix the section-heading count-chip / title spacing in the same pass.
+  
+  Constraints / must-not-break:
+    - Keep the three density tiers working (kDensityTable, tierFor) —
+      table cell padding should scale with the existing cardPaddingY/X.
+    - Keep the ants:// collapse-toggle + ID anchor links functional.
+    - Existing tests pin HTML structure and will need updating:
+      tests/features/roadmap_dialog_cards/ (card structure) and
+      tests/features/roadmap_density/ (per-tier font sentinels).
+    - Spec ANTS-1154 (cards renderer) + ANTS-1238 (density) describe the
+      current contract — update both, run /cold-eyes on the design before
+      implementing.
+    - Right-alignment via QTextBrowser table cells, not CSS float (float
+      is not honoured by the rich-text engine).
+  
+  Effort: moderate, low risk (stays inside the HTML-gen pipeline).
+  Full QListView+delegate rewrite of the 3.7k-line file was considered and
+  rejected — too much churn for a visual cleanup.
+  **Layman:** Make the roadmap easy to scan: each item's status, type, description and ID line up in neat columns instead of running together into a wall of text.
+  Kind: ux.
+  Source: user-request-2026-06-30.
+
 ## How to propose a roadmap item
 
 Open a GitHub issue with:
