@@ -265,6 +265,17 @@ QString trivySkipDirsCsv();
 // per existing match. Leading space; embed inside the cppcheck command.
 QString cppcheckIgnoreShellExpr();
 
+// ANTS-2182 — locate the project's compile_commands.json by probing the
+// canonical build-dir variants (build, build-fast, build-asan,
+// build-workstation, build-release, build-debug, build-test, in that
+// order). Returns the absolute path to the first one found, else an empty
+// string. The MCP audit_run path (auditrunner.cpp::toolArgv) feeds it to
+// cppcheck (`--project`) / clazy / clang-tidy (`-p`) so they resolve Qt
+// system headers + per-TU compile flags from the build DB instead of
+// flooding `missingIncludeSystem` noise or returning 0 findings when the
+// DB lives in a non-`build/` tree.
+QString resolveCompileCommands(const QString &projectRoot);
+
 // ANTS-1254 — wire-shape view of a single SARIF finding for the
 // last_audit_summary MCP tool. Distinct from `Finding` (the audit
 // dialog's in-memory parse target) because the wire needs the

@@ -48,3 +48,24 @@ in v2 (roadmap follow-up).
   matching them). No tool branch may append the raw `scopedPaths`. A
   `--` end-of-options separator is *not* used: ruff/bandit/shellcheck/
   mypy append flags *after* the path list, which `--` would swallow.
+- **INV-19 / Compile-DB resolution for the C/C++ tools (ANTS-2182).**
+  `AuditEngine::resolveCompileCommands(projectRoot)` probes the canonical
+  build-dir variants (`build`, `build-fast`, `build-asan`,
+  `build-workstation`, `build-release`, `build-debug`, `build-test`) and
+  returns the first `<dir>/compile_commands.json` that exists, else an
+  empty string. The MCP `toolArgv` path uses it so cppcheck/clazy/
+  clang-tidy resolve Qt system headers + per-TU compile flags from the
+  build DB instead of flooding `missingIncludeSystem` / mis-parsing
+  `namespace X {` as invalid C (cppcheck) or returning 0 findings (clazy
+  when the DB lives in a non-`build/` tree). cppcheck gets `--project=<db>`
+  when a DB is found (with the missing-include suppressions as a
+  belt-and-suspenders / no-DB fallback); clazy and clang-tidy resolve
+  their `-p` argument through the same helper rather than a hardcoded
+  `build/` path.
+- **INV-20 / `audit_run` transport-cap guidance (ANTS-2183).** The
+  `audit_run` verb description documents that a full-tree sweep can exceed
+  the MCP client's ~60 s request timer (Claude Code's), surfacing
+  `transport: timed out` *outside* the response even though the run
+  completes server-side and writes its SARIF — and that the result is read
+  back via `last_audit_summary` (or the envelope's `cache_path`). Mirrors
+  the two-tier-timeout note `verify_changes` already carries.

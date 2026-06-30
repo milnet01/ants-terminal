@@ -96,9 +96,11 @@ TEST(AuditRunScopedCheck, ToolArgvBuildsScopedClangTidyInvocation) {
     // 4000 → 5000 by ANTS-2185, whose scoped-positional guard added a
     // normalisation block at the top of toolArgv that pushed the
     // clang-tidy branch (`--checks=-*,`) past the old 4000-byte edge.
+    // Widened 5000 → 6500 by ANTS-2182, whose cppcheck compile-DB +
+    // suppression block grew the branch above clang-tidy by ~30 lines.
     const auto fn = src.find("QStringList toolArgv(");
     ASSERT_NE(fn, std::string::npos);
-    const std::string region = src.substr(fn, 5000);
+    const std::string region = src.substr(fn, 6500);
     EXPECT_TRUE(contains(region, "scopedPaths"));
     EXPECT_TRUE(contains(region, "scopedChecks"));
     EXPECT_TRUE(contains(region, "--checks=-*,"))

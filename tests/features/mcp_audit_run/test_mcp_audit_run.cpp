@@ -4,9 +4,12 @@
 
 #include "../../_support/expect.h"
 #include "auditrunner.h"
+#include "auditengine.h"  // ANTS-2182 — resolveCompileCommands
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+
+#include <QDir>
 
 #include <QHash>
 #include <QJsonArray>
@@ -327,5 +330,73 @@ TEST(mcp_audit_run, DispatchProviderRegistered) {
            "dispatch: audit_run provider registered");
     expect(contains(mw, "AuditRunner::runAudit(req)"),
            "dispatch: provider calls AuditRunner::runAudit");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-2182 INV-19 — behavioural: resolveCompileCommands probes the
+// canonical build-dir variants and returns the first existing
+// compile_commands.json (and prefers `build/` when several exist).
+TEST(mcp_audit_run, Ants2182ResolveCompileCommandsProbesBuildDirs) {
+    expect_reset();
+    QTemporaryDir root;
+    ASSERT_TRUE(root.isValid());
+    const QString base = root.path();
+
+    // No build dir yet → empty.
+    expect(AuditEngine::resolveCompileCommands(base).isEmpty(),
+           "INV-19: no compile DB anywhere → empty string");
+
+    // DB only in build-fast/ (a non-`build/` tree) → found there. This is
+    // the exact ANTS-2182 case where clazy used to hardcode build/ and get 0.
+    ASSERT_TRUE(QDir(base).mkpath(QStringLiteral("build-fast")));
+    const QString fastDb =
+        base + QStringLiteral("/build-fast/compile_commands.json");
+    { QFile f(fastDb); ASSERT_TRUE(f.open(QIODevice::WriteOnly)); f.write("[]"); }
+    expect(AuditEngine::resolveCompileCommands(base) == fastDb,
+           "INV-19: DB in build-fast/ is resolved when build/ is absent");
+
+    // Now add build/ too → build/ wins (it is first in the probe order).
+    ASSERT_TRUE(QDir(base).mkpath(QStringLiteral("build")));
+    const QString buildDb =
+        base + QStringLiteral("/build/compile_commands.json");
+    { QFile f(buildDb); ASSERT_TRUE(f.open(QIODevice::WriteOnly)); f.write("[]"); }
+    expect(AuditEngine::resolveCompileCommands(base) == buildDb,
+           "INV-19: build/ takes precedence over build-fast/");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-2182 INV-19 — source-scrape: the C/C++ tool branches in toolArgv
+// resolve the compile DB through the shared helper instead of a bare
+// hardcoded `build/compile_commands.json`, and cppcheck drives off
+// --project when a DB is present.
+TEST(mcp_audit_run, Ants2182ToolArgvUsesCompileDb) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
+    expect(contains(cpp, "AuditEngine::resolveCompileCommands(projectRoot)"),
+           "INV-19: toolArgv resolves the compile DB via the shared helper");
+    expect(contains(cpp, "--project="),
+           "INV-19: cppcheck drives off --project=<db> when present");
+    expect(contains(cpp, "--suppress=missingIncludeSystem"),
+           "INV-19: cppcheck suppresses the missingIncludeSystem flood "
+           "(no-DB fallback)");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-2183 INV-20 — the audit_run descriptor warns that a full sweep can
+// trip the client's transport timer and to read results via
+// last_audit_summary (the run still completes server-side).
+TEST(mcp_audit_run, Ants2183TransportCapDocumented) {
+    expect_reset();
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const auto pos = ci.find("t[\"name\"] = \"audit_run\"");
+    ASSERT_NE(pos, std::string::npos);
+    const auto blockEnd = ci.find("tools.append(t);", pos);
+    ASSERT_NE(blockEnd, std::string::npos);
+    const std::string region = ci.substr(pos, blockEnd - pos);
+    expect(contains(region, "last_audit_summary"),
+           "INV-20: descriptor points the caller at last_audit_summary "
+           "for long sweeps");
+    expect(contains(region, "ANTS-2183"),
+           "INV-20: descriptor carries the ANTS-2183 anchor");
     EXPECT_EQ(0, expect_failures());
 }

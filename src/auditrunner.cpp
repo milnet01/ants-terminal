@@ -307,21 +307,53 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
         ? QStringLiteral("src")
         : QStringLiteral(".");
     if (tool == QLatin1String("cppcheck")) {
-        QStringList args = {QStringLiteral("--enable=all"),
+        // ANTS-2182 — hardened base flags. Suppress the include-resolution
+        // categories that flood the MCP audit path (missingIncludeSystem
+        // etc.) — mirrors the in-app AuditDialog suppress set, and is the
+        // no-compile-DB fallback that keeps the result usable without one.
+        QStringList args = {QStringLiteral("--library=qt"),
+                            QStringLiteral("--enable=all"),
                             QStringLiteral("--std=c++20"),
-                            QStringLiteral("--library=qt"),
                             QStringLiteral("--quiet"),
-                            QStringLiteral("-I"),
-                            srcRoot};
-        // ANTS-1512 — scoped paths override the default src/ scan.
-        if (!scoped.isEmpty()) args += scoped;
-        else                        args += srcRoot;
+                            QStringLiteral("--inline-suppr"),
+                            QStringLiteral("--suppress=missingInclude"),
+                            QStringLiteral("--suppress=missingIncludeSystem"),
+                            QStringLiteral("--suppress=unmatchedSuppression"),
+                            QStringLiteral("--suppress=unknownMacro"),
+                            QStringLiteral("--suppress=invalidSuppression")};
+        // ANTS-1512 — a narrowed (since-last-run) scope wants exactly those
+        // files; it bypasses the whole-project compile DB on purpose.
+        if (!scoped.isEmpty()) {
+            args += QStringLiteral("-I");
+            args += srcRoot;
+            args += scoped;
+            return args;
+        }
+        // ANTS-2182 — full run: drive cppcheck off the compile DB when one
+        // exists so it resolves Qt system headers + per-TU flags from the
+        // build (kills the missingIncludeSystem flood AND the `namespace X {`
+        // mis-parsed-as-C syntaxErrors). Fall back to the src/ scan otherwise.
+        const QString compileDb = AuditEngine::resolveCompileCommands(projectRoot);
+        if (!compileDb.isEmpty()) {
+            args += QStringLiteral("--project=") + compileDb;
+        } else {
+            args += QStringLiteral("-I");
+            args += srcRoot;
+            args += srcRoot;
+        }
         return args;
     }
     if (tool == QLatin1String("clazy")) {
+        // ANTS-2182 — resolve the compile DB via the shared probe (build/,
+        // build-fast/, …) instead of a hardcoded build/ path: clazy returns
+        // 0 findings against a non-existent -p target when the DB lives in
+        // an iteration tree like build-fast/.
+        const QString compileDb = AuditEngine::resolveCompileCommands(projectRoot);
         QStringList args = {QStringLiteral("-checks=level1"),
                             QStringLiteral("-p"),
-                            projectRoot + QLatin1String("/build/compile_commands.json")};
+                            compileDb.isEmpty()
+                                ? projectRoot + QLatin1String("/build/compile_commands.json")
+                                : compileDb};
         // ANTS-1504 — narrowing scopes append the changed source files;
         // clazy-standalone takes source positionals like clang-tidy.
         if (!scoped.isEmpty()) args += scoped;
@@ -331,8 +363,14 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
     // paths given is a no-op (the tool needs explicit file args), so
     // we surface a graceful failure via empty argv → "crashed" status.
     if (tool == QLatin1String("clang-tidy")) {
-        QStringList args = {QStringLiteral("-p"),
-                            projectRoot + QLatin1String("/build")};
+        // ANTS-2182 — clang-tidy -p takes the build DIR holding
+        // compile_commands.json; resolve it via the shared probe rather than
+        // hardcoding build/.
+        const QString compileDb = AuditEngine::resolveCompileCommands(projectRoot);
+        const QString tidyBuildDir = compileDb.isEmpty()
+            ? projectRoot + QLatin1String("/build")
+            : QFileInfo(compileDb).absolutePath();
+        QStringList args = {QStringLiteral("-p"), tidyBuildDir};
         if (!scopedChecks.isEmpty()) {
             // clang-tidy --checks syntax: comma-joined, leading `-`
             // opts a check OUT. Build the joined value here; the

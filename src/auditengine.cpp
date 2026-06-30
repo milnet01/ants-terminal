@@ -99,6 +99,24 @@ QString cppcheckIgnoreShellExpr() {
            QStringLiteral("; do [ -d \"$d\" ] && printf -- '-i %s ' \"$d\"; done)");
 }
 
+// ANTS-2182 — see the header. The probe order mirrors the in-app
+// AuditDialog build-dir loop (auditdialog.cpp), with `build/` first so a
+// canonical build wins over an iteration tree (build-fast/build-asan).
+QString resolveCompileCommands(const QString &projectRoot) {
+    static const QStringList kBuildDirs = {
+        QStringLiteral("build"),         QStringLiteral("build-fast"),
+        QStringLiteral("build-asan"),    QStringLiteral("build-workstation"),
+        QStringLiteral("build-release"), QStringLiteral("build-debug"),
+        QStringLiteral("build-test"),
+    };
+    for (const QString &d : kBuildDirs) {
+        const QString db = projectRoot + QLatin1Char('/') + d +
+                           QStringLiteral("/compile_commands.json");
+        if (QFileInfo::exists(db)) return db;
+    }
+    return QString();
+}
+
 namespace {
 
 // Lifted from auditdialog.cpp: resolve `./relative.cpp` references

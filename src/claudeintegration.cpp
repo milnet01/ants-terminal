@@ -6166,6 +6166,18 @@ void ClaudeIntegration::onMcpConnection() {
                         "artifact) and `incomplete_tools[]` naming the "
                         "offenders, so a single tool blowing its cap never "
                         "yields an all-or-nothing empty result. "
+                        "ANTS-2183 — **long sweeps & the transport cap:** a "
+                        "full-tree (scope:\"full\") run can take minutes and "
+                        "exceed the MCP client's request timer (Claude "
+                        "Code's is ~60 s), surfacing `MCP error -32000: "
+                        "transport: timed out` *outside* the response. The "
+                        "run is NOT lost — it completes server-side and "
+                        "writes its SARIF; read the result back via "
+                        "`last_audit_summary` (or this envelope's "
+                        "`cache_path`). To stay under the cap, narrow with "
+                        "`scope` / `tools` / a smaller `cap_per_tool_seconds`; "
+                        "otherwise expect the `last_audit_summary` fallback "
+                        "for full sweeps. "
                         "See docs/specs/ANTS-1351.md + ANTS-1555.md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to run the static-analysis sweep without "

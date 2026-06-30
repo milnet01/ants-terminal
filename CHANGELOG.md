@@ -156,6 +156,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **MCP `audit_run` description documents the client transport-cap + `last_audit_summary` fallback for long sweeps (ANTS-2183)** (ANTS-2183)
+  A full-tree sweep can exceed the MCP client's ~60 s request timer (Claude Code's), surfacing `transport: timed out` outside the response even though the run completes server-side and writes its SARIF. The verb description now states this and points the caller at `last_audit_summary` (or the envelope's `cache_path`) to read the result, mirroring the two-tier-timeout note `verify_changes` already carries.
+
+- **MCP `audit_run` now resolves the project's `compile_commands.json` for the C/C++ tools (ANTS-2182)** (ANTS-2182)
+  cppcheck full runs drive off `--project=<db>` (plus the missing-include suppress set as a no-DB fallback), and clazy/clang-tidy resolve their build dir via the new shared `AuditEngine::resolveCompileCommands` probe (build/, build-fast/, build-asan/, …) instead of a hardcoded `build/` path. Fixes the ~2330-finding `missingIncludeSystem`/namespace-as-C noise flood and clazy's 0-findings result when the compile DB lived in a non-`build/` tree — the MCP audit now matches the in-app AuditDialog / ants-audit CLI signal.
+
 - **Fix -Wshadow in test_roadmap_viewer_archive.cpp — inner `QTemporaryDir tmp` shadows outer.** (ANTS-2176)
   A test file declares the same temporary-folder variable name twice (one inside the other), which the compiler warns about. Harmless today, but warnings should be clean — rename the inner one.
 
