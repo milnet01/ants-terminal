@@ -14426,7 +14426,12 @@ QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
         QStringLiteral("indie_review_fold_in: no active release heading to insert "
                        "under (pass release_block_heading explicitly)")));
 
-    const auto ids = RoadmapFoldIn::allocateIds(root, actionable.size());
+    // ANTS-2227 — dry_run: peek the would-be IDs (no counter bump), render the
+    // same block, and skip the insert.
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+    const auto ids = dryRun
+        ? RoadmapFoldIn::peekIds(root, actionable.size())
+        : RoadmapFoldIn::allocateIds(root, actionable.size());
     if (ids.isEmpty()) return QJsonDocument(irErr(
         QStringLiteral("counter_failed"),
         QStringLiteral("indie_review_fold_in: could not allocate IDs")));
@@ -14434,10 +14439,12 @@ QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
     const QString block = IndieReviewEngine::templateIndieReviewFoldInBlock(
         actionable, ids, dateIso);
 
-    const bool written = RoadmapFoldIn::insertBlock(root, heading, block);
+    const bool written = dryRun
+        ? false : RoadmapFoldIn::insertBlock(root, heading, block);
 
     QJsonObject env;
     env["ok"]            = true;
+    if (dryRun) env["dry_run"] = true;
     env["block"]         = block;
     QJsonArray idsArr;
     for (int id : ids) idsArr.append(id);
@@ -14866,7 +14873,12 @@ QJsonDocument RemoteControl::cmdDebtSweepDefer(const QJsonObject &req) {
         QStringLiteral("debt_sweep_defer: no active release heading to insert "
                        "under (pass release_block_heading explicitly)")));
 
-    const auto ids = RoadmapFoldIn::allocateIds(root, deferred.size());
+    // ANTS-2227 — dry_run: peek the would-be IDs (no counter bump), render the
+    // same block, skip the insert.
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+    const auto ids = dryRun
+        ? RoadmapFoldIn::peekIds(root, deferred.size())
+        : RoadmapFoldIn::allocateIds(root, deferred.size());
     if (ids.isEmpty()) return QJsonDocument(dsErr(
         QStringLiteral("counter_failed"),
         QStringLiteral("debt_sweep_defer: could not allocate IDs")));
@@ -14874,10 +14886,12 @@ QJsonDocument RemoteControl::cmdDebtSweepDefer(const QJsonObject &req) {
     const QString block = DebtSweepEngine::templateDebtSweepFoldInBlock(
         deferred, ids, dateIso);
 
-    const bool written = RoadmapFoldIn::insertBlock(root, heading, block);
+    const bool written = dryRun
+        ? false : RoadmapFoldIn::insertBlock(root, heading, block);
 
     QJsonObject env;
     env["ok"]            = true;
+    if (dryRun) env["dry_run"] = true;
     env["block"]         = block;
     QJsonArray idsArr;
     for (int id : ids) idsArr.append(id);
@@ -15952,6 +15966,10 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
                            "resolve to a directory").arg(callerCwd)));
     const QString root = rr.cwd;
 
+    // ANTS-2227 — dry_run preview: peek IDs (no counter bump) and skip every
+    // ROADMAP.md insert (both the narrative and structured paths below).
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+
     // ANTS-1644 — narrative-mode short-circuit. Caller supplies
     // pre-rendered markdown under the `### 📝 Cold-eyes <DATE>`
     // heading; handler inserts it verbatim, skipping ID allocation and
@@ -15984,11 +16002,12 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
         if (heading.isEmpty()) heading =
             RoadmapFoldIn::findActiveReleaseHeading(root);
         bool written = false;
-        if (!heading.isEmpty()) {
+        if (!dryRun && !heading.isEmpty()) {
             written = RoadmapFoldIn::insertBlock(root, heading, block);
         }
         QJsonObject env;
         env["ok"]            = true;
+        if (dryRun) env["dry_run"] = true;
         env["block"]         = block;
         env["allocated_ids"] = QJsonArray();
         env["id_allocation"] = QStringLiteral("skip");
@@ -16076,7 +16095,10 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
             QStringLiteral("no_release_heading"),
             QStringLiteral("cold_eyes_fold_in: no active release heading to insert "
                            "under (pass release_block_heading explicitly)")));
-        ids = RoadmapFoldIn::allocateIds(root, actionable.size());
+        // ANTS-2227 — dry_run peeks the would-be IDs without bumping the counter.
+        ids = dryRun
+            ? RoadmapFoldIn::peekIds(root, actionable.size())
+            : RoadmapFoldIn::allocateIds(root, actionable.size());
         if (ids.isEmpty()) return QJsonDocument(ceErr(
             QStringLiteral("counter_failed"),
             QStringLiteral("cold_eyes_fold_in: could not allocate IDs")));
@@ -16089,12 +16111,13 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
               actionable, ids, dateIso);
 
     bool written = false;
-    if (!heading.isEmpty()) {
+    if (!dryRun && !heading.isEmpty()) {
         written = RoadmapFoldIn::insertBlock(root, heading, block);
     }
 
     QJsonObject env;
     env["ok"]            = true;
+    if (dryRun) env["dry_run"] = true;
     env["block"]         = block;
     QJsonArray idsArr;
     for (int id : ids) idsArr.append(id);

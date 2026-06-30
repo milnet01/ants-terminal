@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **`dry_run:true` preview extended to the ROADMAP fold-in verbs (ANTS-2227)**
+  indie_review_fold_in, cold_eyes_fold_in and debt_sweep_defer now accept
+  `dry_run:true`, returning the would-be allocated IDs and rendered block
+  without bumping .roadmap-counter or inserting into ROADMAP.md — so Claude
+  can preview a fold-in before committing it. Backed by a new non-mutating
+  RoadmapFoldIn::peekIds primitive that mirrors allocateIds' ID math.
+
 - **`dry_run:true` preview on four more mutating Ants MCP verbs (ANTS-2227)**
   apply_edits, project_settings, feedback_log and audit_falsepos_log now
   accept `dry_run:true`, returning the would-be result (carrying

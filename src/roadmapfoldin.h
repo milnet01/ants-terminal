@@ -41,6 +41,13 @@ namespace RoadmapFoldIn {
 // rename-based locking on a `.roadmap-counter.lock` sibling.
 QList<int> allocateIds(const QString &projectPath, int n);
 
+// ANTS-2227 — non-mutating peek of the next N ids allocateIds WOULD return,
+// WITHOUT bumping .roadmap-counter. For fold-in dry_run previews: same id math
+// as allocateIds (current+1 … current+N) via inspectCounter, and an empty list
+// on any counter error — so a caller reuses its allocateIds "counter_failed"
+// refusal path verbatim (`dryRun ? peekIds : allocateIds`).
+QList<int> peekIds(const QString &projectPath, int n);
+
 // ANTS-1490 — counter-file path resolver, exposed so callers can
 // include it in their error envelopes when allocateIds returns empty.
 // Returns the absolute path (canonicalised projectPath +

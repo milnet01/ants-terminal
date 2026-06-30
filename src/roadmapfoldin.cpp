@@ -294,6 +294,25 @@ QList<int> allocateIds(const QString &projectPath, int n) {
     return ids;
 }
 
+QList<int> peekIds(const QString &projectPath, int n) {
+    // ANTS-2227 — would-be allocation without the counter bump. inspectCounter
+    // does the path-guard + read + parse; we mirror allocateIds' id math but
+    // never write. Empty on any non-Ok state (lets callers reuse their
+    // allocateIds "counter_failed" path).
+    if (n <= 0) return {};
+    const CounterInspection insp = inspectCounter(projectPath);
+    // Ok → parsed value; EmptyOrAbsent → value stays 0, exactly as allocateIds
+    // treats a fresh/empty counter (current=0 → ids 1…n). Any other state
+    // (Corrupt / PermissionDenied / PathRefused) → empty, mirroring allocateIds'
+    // refusal so the caller's counter_failed path fires identically.
+    if (insp.state != CounterState::Ok &&
+        insp.state != CounterState::EmptyOrAbsent) return {};
+    QList<int> ids;
+    ids.reserve(n);
+    for (int i = 1; i <= n; ++i) ids.append(insp.value + i);
+    return ids;
+}
+
 QString findActiveReleaseHeading(const QString &projectPath) {
     QFile f(roadmapPath(projectPath));
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};

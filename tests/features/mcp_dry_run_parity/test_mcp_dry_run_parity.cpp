@@ -9,10 +9,13 @@
 #include "../../_support/srcgrep.h"
 
 #include "falseposledger.h"
+#include "roadmapfoldin.h"
 
 #include <QString>
 #include <QTemporaryDir>
 #include <QFileInfo>
+#include <QFile>
+#include <QList>
 #include <string>
 
 namespace {
@@ -91,14 +94,53 @@ TEST(McpDryRunParity, HandlerGatesWired) {
     // audit_falsepos_log — passes the flag to appendEntry.
     EXPECT_TRUE(has(rc, "ants::falsepos::appendEntry(root, e, dryRun)"))
         << "audit_falsepos_log must thread dry_run into appendEntry";
+    // Part 2 fold-in family — peekIds instead of allocateIds + gated insert.
+    EXPECT_TRUE(has(rc, "RoadmapFoldIn::peekIds(root, actionable.size())"))
+        << "indie_review/cold_eyes fold_in must peek IDs under dry_run";
+    EXPECT_TRUE(has(rc, "RoadmapFoldIn::peekIds(root, deferred.size())"))
+        << "debt_sweep_defer must peek IDs under dry_run";
+    EXPECT_TRUE(has(rc, "? false : RoadmapFoldIn::insertBlock(root, heading, block)"))
+        << "fold-in inserts must be skipped under dry_run";
 }
 
-// INV-5 — uniform schema prop factory, declared on all four descriptors.
+// INV-5 — uniform schema prop factory, declared on all seven new descriptors.
 TEST(McpDryRunParity, SchemaPropWired) {
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
     EXPECT_TRUE(has(ci, "auto makeDryRunProp = []"))
         << "makeDryRunProp factory missing";
-    EXPECT_GE(countOf(ci, "= makeDryRunProp();"), 4u)
-        << "dry_run prop must be declared on all four part-1 descriptors";
+    // 4 part-1 (apply_edits/project_settings/feedback_log/audit_falsepos_log)
+    // + 3 part-2 (indie_review/cold_eyes fold_in + debt_sweep_defer).
+    EXPECT_GE(countOf(ci, "= makeDryRunProp();"), 7u)
+        << "dry_run prop must be declared on all seven new write descriptors";
+}
+
+// INV-6 (part 2) — peekIds returns the same IDs allocateIds would, WITHOUT
+// bumping the counter.
+TEST(McpDryRunParity, PeekIdsMatchesAllocateWithoutBump) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    const QString counter = root + QStringLiteral("/.roadmap-counter");
+    { QFile f(counter); ASSERT_TRUE(f.open(QIODevice::WriteOnly)); f.write("5\n"); }
+
+    const auto peek = RoadmapFoldIn::peekIds(root, 3);
+    EXPECT_EQ(peek, (QList<int>{6, 7, 8}));
+    { QFile f(counter); ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+      EXPECT_EQ(f.readAll().trimmed(), QByteArray("5")); }   // peek did not bump
+
+    const auto alloc = RoadmapFoldIn::allocateIds(root, 3);
+    EXPECT_EQ(alloc, peek) << "peek must equal the real allocation";
+    { QFile f(counter); ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+      EXPECT_EQ(f.readAll().trimmed(), QByteArray("8")); }    // alloc bumped
+}
+
+// INV-6 (part 2) — an absent/fresh counter peeks as 1…N (allocateIds parity),
+// and the peek never creates the counter file.
+TEST(McpDryRunParity, PeekIdsFreshCounterStartsAtOne) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    EXPECT_EQ(RoadmapFoldIn::peekIds(tmp.path(), 2), (QList<int>{1, 2}));
+    EXPECT_FALSE(QFileInfo::exists(tmp.path() + QStringLiteral("/.roadmap-counter")))
+        << "peek must not create the counter file";
 }

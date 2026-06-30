@@ -5745,6 +5745,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["release_block_heading"]  = hdrProp;
                     props["narrative_mode"]         = nmProp;
                     props["narrative_md"]           = nmdProp;
+                    props["dry_run"]                = makeDryRunProp();  // ANTS-2227
                     props["caller_cwd"]             = callerProp;
                     schema["properties"] = props;
                     // ANTS-1644 — `actionable` dropped from required.
@@ -6014,6 +6015,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["deferred"]              = dProp;
                     props["date_iso"]              = dateProp;
                     props["release_block_heading"] = hdrProp;
+                    props["dry_run"]               = makeDryRunProp();   // ANTS-2227
                     props["caller_cwd"]            = callerProp;
                     schema["properties"] = props;
                     QJsonArray req;
@@ -7296,6 +7298,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["id_allocation"]         = iaProp;
                     props["narrative_mode"]        = nmProp;
                     props["narrative_md"]          = nmdProp;
+                    props["dry_run"]               = makeDryRunProp();  // ANTS-2227
                     props["caller_cwd"]            = callerProp;
                     schema["properties"] = props;
                     // ANTS-1644 — `actionable` dropped from required.

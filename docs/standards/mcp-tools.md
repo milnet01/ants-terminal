@@ -70,10 +70,13 @@ checklist below walks the full procedure; this is the at-a-glance map
   the shared `makeDryRunProp()` factory (the pre-factory verbs roadmap_log
   / changelog_log / spec_log keep tailored copies). Supported:
   roadmap_log, changelog_log, spec_log, apply_edits, project_settings,
-  feedback_log, audit_falsepos_log. Not yet (ANTS-2227 part 2): the
-  ID-allocating fold-in family + debt_sweep_defer / debt_sweep_apply_fix.
-  Read-only verbs (`get_*`, `*_query`, `find_*`, `read_*`) are out of
-  scope.
+  feedback_log, audit_falsepos_log, indie_review_fold_in, cold_eyes_fold_in,
+  debt_sweep_defer. The ROADMAP-fold-in verbs peek the would-be IDs via
+  `RoadmapFoldIn::peekIds` (no `.roadmap-counter` bump) and skip `insertBlock`.
+  Not yet (ANTS-2227 tail): test_audit_fold_in (struct-based, inline provider
+  lambda) and debt_sweep_apply_fix (shell-exec — needs the fix script's own
+  dry-run). Read-only verbs (`get_*`, `*_query`, `find_*`, `read_*`) are out
+  of scope.
 
 ---
 
