@@ -17543,6 +17543,114 @@ server build id so clients can self-diagnose this.
   Kind: doc-fix.
   Source: DOOM_Ants feedback 2026-06-27.
 
+- 📋 [ANTS-3368] **Co-change family verb — given an exemplar field stem, return the grouped edit-site checklist (refs + JSON string-keys + derived/camel-cased names).**
+  Vestige: every settings-backed slice (L5/AX5/AX6/AX8/AX9/AX11) is a ~10-file lockstep fan-out. find_sources/find_caller miss the string-literal key and derived names (setLodEnabled, AudioLodApplySink, audioLod). Verb keys on a stem, groups sites by file with a role guess (struct field/json key/apply sink/editor widget); accepts multi-field groups. Natural complement to ANTS-2156.
+  **Layman:** When you add a setting the same way as a previous one, this lists every file you must touch — including the easy-to-miss JSON key and the auto-named helper types.
+  Kind: feature.
+  Source: cc-feedback-2026-06-30 (Vestige Sug-A, 6 consecutive slices).
+
+- 📋 [ANTS-3369] **project_settings op:detect — populate source_roots + non-empty reason on non-standard / src-less layouts.**
+  Recurring across 4 projects: Vestige (missed low-count entry-point app/), Music (nested src/<pkg>/ + egg-info noise), RetroDB (src-less routes/services/scraper — 67% of code missed). Fix: when default walk covers <~60% of total_source_count, populate suggestion.source_roots with top-level dirs holding the missed code; include low-count entry-point dirs; echo would_use_roots + excluded[] (egg-info/build/dist); ALWAYS set a non-empty reason; when present:true echo declared source_roots instead of zeroed counts.
+  **Layman:** The auto-detect for a project's code folders gives up silently on projects that don't use a plain src/ folder. Make it actually suggest the right folders and always explain itself.
+  Kind: fix.
+  Source: cc-feedback-2026-06-30 (Vestige+Music+RetroDB, 4 reports).
+
+- 📋 [ANTS-3370] **session_orient / current_state — flag open_audit_findings_count as stale when the cached SARIF predates HEAD.**
+  RetroDB: session_orient reported open_audit_findings_count:11 with no staleness qualifier while last_audit_summary (same repo) knew the SARIF was cached at 48bda56, 4+ commits behind HEAD. Propagate the signal: emit open_audit_findings_count_stale:true + last_audit_commit (mirror last_audit_summary.stale/stale_reason). Cheapest form: an audit_stale boolean next to the count.
+  **Layman:** The session-start summary can show old audit warnings as if they were current, sending a session off to fix already-fixed problems.
+  Kind: fix.
+  Source: cc-feedback-2026-06-30 (RetroDB).
+
+- 📋 [ANTS-3371] **feedback_query — opt-in include_tracking returns maintainer tracking rows [{item, ids, status, notes}].**
+  DOOM: the recurring 'mark my prior suggestions that shipped' workflow needs per-item status, but feedback_query returns only mapped_ids[] (no status). Forces a full-file Read + hand-parse of tracking tables. Add include_tracking:true → compact rows array; tabular encoding keeps it tiny.
+  **Layman:** Lets a session see which of its past suggestions are now done without re-reading the whole (100KB+) feedback file.
+  Kind: feature.
+  Source: cc-feedback-2026-06-30 (DOOM).
+
+- 📋 [ANTS-3372] **last_audit_summary — drop/de-rank SARIF parse-artifact findings (progress-bar lines, non-path file, line:0+confidence:-1).**
+  RetroDB: top_findings[0] was {file:'Working... ━━ 100% 0', line:0, message:'05', confidence:-1}. Signature = file not under repo OR (line:0 AND confidence:-1 AND box-drawing/'Working...'/bare-percent chars). Drop or de-rank before ranking into top_findings.
+  **Layman:** A garbage 'finding' scraped from a tool's progress bar was ranked #1 in the audit summary; filter those out.
+  Kind: fix.
+  Source: cc-feedback-2026-06-30 (RetroDB).
+
+- 📋 [ANTS-3373] **verify_changes — orphaned-source lint: warn on an added *.cpp not referenced by any CMakeLists / *.cmake.**
+  Vestige hit this twice across two CMakeLists (AX11, AX9). Pure basename grep over CMakeLists.txt/*.cmake for each added *.cpp/*.cc in the working-tree diff; warn if unreferenced. Optionally flag the inverse (source-list entry pointing at a missing path).
+  **Layman:** Catches a new code file you forgot to add to the build — it compiles fine but is silently never built, so the work just doesn't run.
+  Kind: feature.
+  Source: cc-feedback-2026-06-30 (Vestige Sug-B, 2 days running).
+
+- 📋 [ANTS-3374] **recent_errors / build_status — attach likely_fix add_include for "'X' has not been declared" diagnostics.**
+  Vestige: 'DeviceHotSwapMode has not been declared' etc. On a 'X has not been declared'/'unknown type name X' diagnostic, auto-run find_definition(X) and attach likely_fix:{add_include:'<header>', defines:'X', at:'<failing file>'}. Stitches the existing 2-verb diagnose→fix loop.
+  **Layman:** For the most common C++ build error, auto-suggest the missing #include instead of making you look it up.
+  Kind: feature.
+  Source: cc-feedback-2026-06-30 (Vestige Sug-C).
+
+- 📋 [ANTS-3375] **Lightweight single-reviewer broker for a Rule-8 code/dependency diff (or document indie_review_dispatch for it).**
+  Vestige: cold_eyes_* is doc-only; indie_review_* is the heavyweight multi-agent pipeline. For a 4-file dep-add (libebur128) the contributor fell back to a raw general-purpose subagent (which caught a real non-PIC/-fPIE link bug). Either add an indie_review_brief mode taking an explicit changed-file set + 'verify upstream facts', or document indie_review_dispatch as the single-reviewer entry point. May be discoverability, not capability.
+  **Layman:** There's a one-command 'fresh eyes on this design doc' but none for 'fresh eyes on this small code/dependency change'; add or document one.
+  Kind: feature.
+  Source: cc-feedback-2026-06-30 (Vestige AX9).
+
+- 📋 [ANTS-3376] **feedback_log / feedback_query — derive a default <caller_cwd-leaf>_Ants_MCP_Feedback.md path when path is omitted.**
+  Ants Projects Hub: first-time log forces a find/ls hunt + naming guess; not_found candidates point at OTHER projects' files. Accept path omission → derive '<leaf>_Ants_MCP_Feedback.md' in the conventional dir (like roadmap_log/changelog_log anchor on caller_cwd); on not_found, rank a caller-name-matching candidate first or flag that all candidates belong to other projects.
+  **Layman:** Logging feedback for a brand-new project shouldn't require hunting the filesystem for the right filename.
+  Kind: feature.
+  Source: cc-feedback-2026-06-30 (Ants Projects Hub).
+
+- 📋 [ANTS-3377] **Read-only git_diff verb — per-file hunk headers for a clean commit split.**
+  git_state/get_git_status return only status+branch+ahead/behind. Add git_diff {path?, staged?, name_only?, context?} → {file, hunks:[{header, old_start, new_start, lines?}]}; name_only/header-only keeps it cheap. Mirrors git_state's read-only, caller_cwd-anchored posture.
+  **Layman:** Gives a cheap way to see which lines changed in a file so unrelated edits can be committed separately — today that needs raw git the hook discourages.
+  Kind: feature.
+  Source: cc-feedback-2026-06-30 (Ants Terminal in-session).
+
+- 📋 [ANTS-3378] **roadmap_log op:flip headline locator — match the bold-span headline only + ANTS-2053-style targeted refusal.**
+  Vestige: op:flip headline:'AX11. Audio device hot-swap...' (exact untruncated bold-span of line 414) → bullet_not_found + 3 unrelated suggestions. Matcher appears to key on the full bullet LINE (bold span + ' — tail') not the bold-span headline. Fix: (a) match bold-span text only, case/whitespace-normalized (same token roadmap_query reports as headline); (b) on miss, return nearest-by-edit-distance candidates + bullet line, not section-wide suggestions. Beyond what closed ANTS-2075 (which was the synthetic_id refusal text).
+  **Layman:** Marking a roadmap item done by its title still fails even when you give the exact title; fix the matcher and make the error helpful.
+  Kind: fix.
+  Source: cc-feedback-2026-06-30 (Vestige, extends shipped ANTS-2075).
+
+- 📋 [ANTS-3379] **read_region call_sequence — suppress false-positive callees from comments and type constructors.**
+  Vestige: call_sequence on AudioSystem::update listed real stages but also 'code','triggers','acquired' (comment words) and 'vec3','Engine' (type ctors/qualifiers). Tighten extraction to actual call-expressions: skip comment tokens; treat capitalised single-word type ctors separately from function calls.
+  **Layman:** The 'list the steps in this function' feature sometimes lists words from comments or type names as if they were function calls.
+  Kind: fix.
+  Source: cc-feedback-2026-06-30 (Vestige).
+
+- 📋 [ANTS-3380] **similar_code — down-weight trivial one-line/one-token signatures in ranking.**
+  Vestige: a prose-y shape query ranked a 0.0909 one-liner 'add' (tween.h) above the genuinely useful Settings struct (same score, #2). Token-set Jaccard rewards short signatures with incidental overlap. Down-weight trivial signatures or favour longer signature-token overlaps.
+  **Layman:** The 'find code like this' search sometimes puts a tiny irrelevant one-liner at the top.
+  Kind: fix.
+  Source: cc-feedback-2026-06-30 (Vestige).
+
+- 📋 [ANTS-3381] **changelog_log op:normalize — regroup stray prose/entries under canonical [Unreleased] category headings.**
+  Vestige: changelog_log op:add correctly warns (cites the line) that ## [Unreleased] interleaves prose between ### category blocks, across ≥3 sessions, with no resolution path. Add op:normalize (or a --fix flag) that regroups stray prose + entries under canonical category headings in one atomic write.
+  **Layman:** The changelog tool keeps warning about a messy 'Unreleased' section but offers no way to tidy it; add a one-shot fix.
+  Kind: feature.
+  Source: cc-feedback-2026-06-30 (Vestige, advisory fired ≥3 sessions).
+
+- 📋 [ANTS-3382] **roadmap_log — optional evidence:[paths] / attachments[] for image/log-driven bullets, echoed by roadmap_query.**
+  DOOM-0145 was diagnosed from phone photos referenced only in free-text; the real file paths aren't queryable. Add optional evidence:[paths] on roadmap_log append/annotate, echoed by roadmap_query, rendered as an 'Evidence:' line. Low priority, cheap, useful for image-heavy projects.
+  **Layman:** Lets a bug logged from screenshots/logs record where those files are, so a later session can find the evidence again.
+  Kind: feature.
+  Source: cc-feedback-2026-06-30 (DOOM).
+
+- 📋 [ANTS-3383] **Doc caveat — read_region / read_regions / file_outline do NOT satisfy the native Edit read-precondition.**
+  In-session: read_region→Edit fails 'File has not been read yet' (~4× this session: mainwindow.cpp, debtsweepengine.cpp), doubling the read. Add a one-line caveat to read_region/read_regions/file_outline descriptions: 'Does NOT satisfy the Edit tool read-precondition — use native Read before editing.' Optionally a next_call_hint when the target is a source file.
+  **Layman:** Note in the tool help that reading a file via these MCP tools doesn't count as 'read' for the editor, so you must still do a native Read before editing.
+  Kind: doc.
+  Source: cc-feedback-2026-06-30 (Ants Terminal in-session).
+
+- 📋 [ANTS-3384] **Document the canonical per-project feedback-file basename rule (and have feedback_log echo it).**
+  Ants Projects Hub: existing files use short brand names (RetroDB_, DOOM_, MAME_Curator_) that don't map 1:1 to project dirs, so a new project's basename is a guess → risk of duplicate/fragmented files. Document the rule in mcp-feedback-files.md (e.g. '<project-dir-leaf>_Ants_MCP_Feedback.md') and/or have feedback_log normalise/echo the expected basename.
+  **Layman:** Spell out exactly what a project's feedback file should be named so two sessions don't create two differently-named files for the same project.
+  Kind: doc.
+  Source: cc-feedback-2026-06-30 (Ants Projects Hub).
+
+- 💭 [ANTS-3385] **settings-schema-bump advisor — given a new settings field + how it deserializes, advise whether a schema-version bump is needed.**
+  Vestige (LOW/niche): additive + tolerant default ⟹ no bump; non-tolerant read ⟹ bump + migration arm. Settings-heavy projects only. Logged as considered.
+  **Layman:** A niche helper that tells you whether adding a new setting needs a data-format version bump.
+  Kind: investigate.
+  Source: cc-feedback-2026-06-30 (Vestige Sug-D, niche).
+
 ### 🔌 Ants-MCP feedback from CC sessions (DOOM 2026-06-28)
 
 DOOM-0009 step-6 SVGF denoiser sessions. Confirmed shipped: ANTS-2081 (ETag
