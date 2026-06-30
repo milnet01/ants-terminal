@@ -1755,8 +1755,11 @@ FoldInResult foldIn(const FoldInRequest &req) {
         if (!block.endsWith(QChar('\n'))) block += QChar('\n');
         const QString release =
             RoadmapFoldIn::findActiveReleaseHeading(canon);
-        const bool wrote =
-            RoadmapFoldIn::insertBlock(canon, release, block);
+        // ANTS-2227 — dry_run skips the write; report success with the
+        // would-be block so the caller can preview it.
+        const bool wrote = req.dryRun
+            ? true
+            : RoadmapFoldIn::insertBlock(canon, release, block);
         if (!wrote) {
             r.ok = false;
             r.code  = QStringLiteral("write_failed");
@@ -1828,7 +1831,12 @@ FoldInResult foldIn(const FoldInRequest &req) {
         headlines.append(h);
     }
     // Allocate all IDs upfront — single counter touch (INV-3).
-    const QList<int> allocatedInts = RoadmapFoldIn::allocateIds(canon, n);
+    // ANTS-2227 — dry_run peeks the would-be IDs without bumping the
+    // counter (peekIds returns empty on any counter error, mirroring
+    // allocateIds, so the size-mismatch refusal below still fires).
+    const QList<int> allocatedInts = req.dryRun
+        ? RoadmapFoldIn::peekIds(canon, n)
+        : RoadmapFoldIn::allocateIds(canon, n);
     if (allocatedInts.size() != n) {
         // ANTS-1490 — surface the counter-file path in the error so the
         // caller can clear a stale `.lock` sibling or inspect the file.
@@ -1903,8 +1911,11 @@ FoldInResult foldIn(const FoldInRequest &req) {
     // active release heading via the helper.
     const QString release =
         RoadmapFoldIn::findActiveReleaseHeading(canon);
-    const bool wrote =
-        RoadmapFoldIn::insertBlock(canon, release, block);
+    // ANTS-2227 — dry_run skips the write; report success with the
+    // would-be IDs + rendered block so the caller can preview it.
+    const bool wrote = req.dryRun
+        ? true
+        : RoadmapFoldIn::insertBlock(canon, release, block);
     if (!wrote) {
         r.ok = false;
         r.code  = QStringLiteral("write_failed");

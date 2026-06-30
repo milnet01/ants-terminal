@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`dry_run` preview on the last two mutating Ants-MCP verbs — `test_audit_fold_in` and `debt_sweep_apply_fix` (ANTS-2227)**
+  Completes dry_run parity across all 9 mutating verbs. `test_audit_fold_in` previews the would-be ROADMAP IDs + block without bumping the counter or writing; `debt_sweep_apply_fix` runs every guard and computes the patched source but skips the write, reporting `would_apply`. Pass `dry_run:true` to any of them to see the change before it happens.
+
 - **`dry_run:true` preview extended to the ROADMAP fold-in verbs (ANTS-2227)**
   indie_review_fold_in, cold_eyes_fold_in and debt_sweep_defer now accept
   `dry_run:true`, returning the would-be allocated IDs and rendered block

@@ -14819,7 +14819,12 @@ QJsonDocument RemoteControl::cmdDebtSweepApplyFix(const QJsonObject &req) {
     // pass `auto_fixable: true` to opt in.
     f.autoFixable = req.value(QStringLiteral("auto_fixable")).toBool(true);
 
-    const auto v = DebtSweepEngine::applyMechanicalFix(root, f);
+    // ANTS-2227 — dry_run: run every guard + compute the patch, but skip
+    // the in-place write. The verdict carries would_apply (applied stays
+    // false) so the caller can preview that the fix is still live.
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+
+    const auto v = DebtSweepEngine::applyMechanicalFix(root, f, dryRun);
 
     QJsonObject env;
     // ok=false ONLY on hard io_error; recognised no-ops (file_changed,
@@ -14827,6 +14832,10 @@ QJsonDocument RemoteControl::cmdDebtSweepApplyFix(const QJsonObject &req) {
     const bool hardErr = (v.errorCode == QStringLiteral("io_error"));
     env["ok"]      = !hardErr;
     env["applied"] = v.applied;
+    if (dryRun) {
+        env["dry_run"]     = true;
+        env["would_apply"] = v.wouldApply;
+    }
     if (!v.errorCode.isEmpty()) env["error_code"] = v.errorCode;
     if (!v.errorMessage.isEmpty()) env["error"] = v.errorMessage;
     return QJsonDocument(env);

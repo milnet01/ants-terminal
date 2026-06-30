@@ -1030,7 +1030,7 @@ QList<Finding> scanAll(
 // ---------------------------------------------------------------------------
 
 ApplyVerdict applyMechanicalFix(
-    const QString &projectPath, const Finding &finding) {
+    const QString &projectPath, const Finding &finding, bool dryRun) {
     ApplyVerdict v;
     if (!finding.autoFixable) {
         v.errorCode = QStringLiteral("not_fixable");
@@ -1114,6 +1114,15 @@ ApplyVerdict applyMechanicalFix(
     }
 
     const QByteArray newBody = kept.join(QChar('\n')).toUtf8();
+
+    // ANTS-2227 — dry_run: the patch passed every guard and a patched
+    // body was computed; report it would apply but skip the write. Shares
+    // the full validate-and-patch path above so the preview can't drift
+    // from the real fix.
+    if (dryRun) {
+        v.wouldApply = true;
+        return v;
+    }
 
     QSaveFile out(abs);
     if (!out.open(QIODevice::WriteOnly)) {

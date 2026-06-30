@@ -4823,6 +4823,8 @@ void MainWindow::setupClaudeMcpProviders() {
             // the engine's short-circuit gate is reachable.
             req.narrativeMode = args.value(QStringLiteral("narrative_mode")).toBool();
             req.narrativeMd   = args.value(QStringLiteral("narrative_md")).toString();
+            // ANTS-2227 — dry_run preview (no counter bump, no ROADMAP write).
+            req.dryRun        = args.value(QStringLiteral("dry_run")).toBool();
             const auto r = TestAuditEngine::foldIn(req);
             QJsonObject env;
             if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;
@@ -4837,6 +4839,7 @@ void MainWindow::setupClaudeMcpProviders() {
                 if (!r.counterPath.isEmpty()) env["counter_path"] = r.counterPath;
                 return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact)); }
             env["ok"]                    = true;
+            if (req.dryRun) env["dry_run"] = true;   // ANTS-2227
             env["block"]                 = r.block;
             env["allocated_ids"]         = QJsonArray::fromStringList(r.allocatedIds);
             env["written"]               = r.written;

@@ -5939,7 +5939,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "marker is still on the line before mutating. "
                         "Returns {ok, applied, error_code?, error?}; "
                         "ok=true with applied=false signals a recognised "
-                        "no-op (file_changed / not_fixable). Required: "
+                        "no-op (file_changed / not_fixable). Pass "
+                        "dry_run:true to run every guard + compute the "
+                        "patch but skip the write — the envelope then "
+                        "carries {dry_run:true, would_apply} (applied "
+                        "stays false). Required: "
                         "caller_cwd (string — your $PWD; ANTS-1372).");
                     t["selection_hint"] = QStringLiteral(
                         "Use to apply ONE triaged debt-sweep fix in "
@@ -5965,6 +5969,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["file"]         = fProp;
                     props["line"]         = lProp;
                     props["auto_fixable"] = aProp;
+                    props["dry_run"]      = makeDryRunProp();   // ANTS-2227
                     props["caller_cwd"]   = callerProp;
                     schema["properties"] = props;
                     QJsonArray req;
@@ -6696,6 +6701,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["narrative_mode"]  = nmP;
                     props["narrative_md"]    = nmdP;
                     props["caller_cwd"]      = ccwd;
+                    props["dry_run"]         = makeDryRunProp();  // ANTS-2227
                     schema["properties"] = props;
                     // ANTS-1635 — `actionable` is no longer strictly
                     // required at the schema level; the engine refuses

@@ -56,6 +56,10 @@ struct ScanOptions {
 // QFile errno state.
 struct ApplyVerdict {
     bool    applied = false;     // true iff the file was mutated
+    // ANTS-2227 — dry_run preview: true iff the fix passed every guard
+    // and a patched body was computed, but the write was skipped because
+    // dryRun was requested. `applied` stays false (nothing was mutated).
+    bool    wouldApply = false;
     QString errorCode;           // "" on success or expected no-op;
                                  // "not_fixable" / "file_changed" /
                                  // "io_error" on failure
@@ -197,8 +201,14 @@ QList<Finding> scanAll(
 // Apply ONE mechanical fix in-place. See § 3.9 of the spec for
 // the verdict-state machine. Caller is responsible for re-running
 // the build after applying fixes.
+//
+// ANTS-2227 — when `dryRun` is true, every guard runs and the patched
+// body is computed, but the file is NOT written: the verdict carries
+// `wouldApply=true` (and `applied=false`) so the caller can preview
+// that the fix is live without mutating source.
 ApplyVerdict applyMechanicalFix(
-    const QString &projectPath, const Finding &finding);
+    const QString &projectPath, const Finding &finding,
+    bool dryRun = false);
 
 // Fold-into-roadmap block template per spec § 3.10.
 //   Heading:  `### 🧹 Debt-sweep fold-in (<dateIso>)`

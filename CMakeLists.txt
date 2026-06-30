@@ -1491,6 +1491,8 @@ if(ANTS_TESTS)
         SRC_TESTRESCACHE_H_PATH="${CMAKE_SOURCE_DIR}/src/testrescache.h"
         # ANTS-1397 — test_audit engine source for source-scrape tests.
         SRC_TESTAUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/testauditengine.cpp"
+        # ANTS-2227 — debt-sweep engine source for dry_run no-write scrape.
+        SRC_DEBTSWEEPENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/debtsweepengine.cpp"
         # ANTS-1352 — indie_review_dispatch source-scrape paths.
         SRC_INDIE_REVIEW_DISPATCHER_H_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewdispatcher.h"
         SRC_INDIE_REVIEW_DISPATCHER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewdispatcher.cpp"

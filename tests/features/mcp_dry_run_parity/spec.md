@@ -13,10 +13,13 @@ would change" pre-flight. This feature adds a uniform `dry_run`:
   **cold_eyes_fold_in** and **debt_sweep_defer**. These bump `.roadmap-counter`
   (allocateIds) AND insert into ROADMAP.md (insertBlock); dry_run must skip
   BOTH while still previewing the would-be IDs + rendered block.
-
-Remaining (ANTS-2227 tail): **test_audit_fold_in** (struct-based, inline
-provider lambda) and **debt_sweep_apply_fix** (shell-exec — needs the fix
-script's own dry-run mode).
+- **Part 3** — the last two mutating verbs, each a distinct shape:
+  **test_audit_fold_in** (the fourth fold-in verb, but its logic lives in the
+  `TestAuditEngine::foldIn` *engine* behind an inline provider lambda, not in a
+  `cmd*` handler — `dryRun` is threaded through `FoldInRequest`) and
+  **debt_sweep_apply_fix** (mutates *source* in place via
+  `DebtSweepEngine::applyMechanicalFix`; dry_run runs every guard + computes
+  the patched body but skips the `QSaveFile` write).
 
 ## Surface
 
@@ -25,11 +28,18 @@ script's own dry-run mode).
 - `RoadmapFoldIn::peekIds(projectPath, n)` — the IDs allocateIds WOULD return,
   WITHOUT bumping `.roadmap-counter` (via inspectCounter; empty on any counter
   error, mirroring allocateIds' refusal). The fold-in dry_run primitive.
+- `DebtSweepEngine::applyMechanicalFix(projectPath, finding, dryRun)` — under
+  dryRun, runs every guard + computes the patched body but skips the
+  `QSaveFile` write; the verdict carries `wouldApply=true` (and
+  `applied=false`). The source-mutation dry_run primitive.
+- `TestAuditEngine::FoldInRequest::dryRun` — threads the flag into the engine,
+  which uses `peekIds` (not allocateIds) and skips both insert paths.
 - Per-handler `dry_run` gate in `src/remotecontrol.cpp` (cmdApplyEdits,
   cmdProjectSettings, cmdFeedbackLog, cmdAuditFalseposLog, cmdIndieReviewFoldIn,
-  cmdColdEyesFoldIn, cmdDebtSweepDefer).
+  cmdColdEyesFoldIn, cmdDebtSweepDefer, cmdDebtSweepApplyFix) plus the
+  test_audit_fold_in provider lambda in `src/mainwindow.cpp`.
 - A uniform `makeDryRunProp` schema-prop factory in
-  `src/claudeintegration.cpp`, declared on all seven new descriptors.
+  `src/claudeintegration.cpp`, declared on all nine new descriptors.
 
 ## Invariants
 
@@ -53,3 +63,14 @@ script's own dry-run mode).
   `.roadmap-counter` unbumped; a fresh/absent counter peeks as `1…N` and is
   never created. The fold-in handlers route `dryRun ? peekIds : allocateIds`
   and skip `insertBlock` under dry_run (source-scrape).
+- **INV-7 apply_fix no-write (part 3)** — `applyMechanicalFix(dir, finding,
+  /*dryRun=*/true)` on a still-valid auto-fixable finding returns
+  `wouldApply==true`, `applied==false`, and leaves the source file's bytes
+  unchanged on disk; the same finding with `dryRun=false` returns
+  `applied==true` and the file IS mutated (preview can't drift — shared
+  validate+patch path).
+- **INV-8 engine + lambda gates (part 3)** — `TestAuditEngine::foldIn` routes
+  `req.dryRun ? peekIds : allocateIds` and gates both `insertBlock` calls; the
+  test_audit_fold_in lambda (`src/mainwindow.cpp`) reads `dry_run` into
+  `req.dryRun` and echoes `dry_run:true`. cmdDebtSweepApplyFix threads `dryRun`
+  into `applyMechanicalFix` and echoes `{dry_run, would_apply}` (source-scrape).

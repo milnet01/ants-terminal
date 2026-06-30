@@ -195,6 +195,11 @@ struct FoldInRequest {
     // Music Production /test-audit 2026-05-18.
     bool        narrativeMode = false;
     QString     narrativeMd;
+    // ANTS-2227 — dry_run preview: peek the would-be IDs (no
+    // `.roadmap-counter` bump) and skip every ROADMAP.md insert (both
+    // the narrative and structured paths). The block is still rendered
+    // so the caller can preview it.
+    bool        dryRun = false;
 };
 
 struct FoldInResult {
