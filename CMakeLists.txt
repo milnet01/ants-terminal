@@ -1309,6 +1309,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_roadmap_log_verb/test_mcp_roadmap_log_verb.cpp
                 # ANTS-1433 roadmap_log two-stage commit rollback seam.
                 tests/features/mcp_roadmap_log_atomicity/test_mcp_roadmap_log_atomicity.cpp
+                # ANTS-3397 roadmap_log greenfield .roadmap-counter auto-init.
+                tests/features/roadmap_log_greenfield_counter/test_roadmap_log_greenfield_counter.cpp
                 # ANTS-2031 roadmap_log format_mismatch on pass-headings docs.
                 tests/features/mcp_roadmap_log_pass_format_mismatch/test_mcp_roadmap_log_pass_format_mismatch.cpp
                 # ANTS-2126 roadmap_log pass-headings WRITER (append/flip/annotate).

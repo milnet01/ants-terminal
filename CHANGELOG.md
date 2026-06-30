@@ -115,6 +115,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_log` counter strategy auto-creates `.roadmap-counter` at 0 on a greenfield roadmap instead of refusing (ANTS-3397)**
+  A counter-strategy op:append / op:append_batch on a roadmap that has no .roadmap-counter AND no existing bullet ids now auto-initialises the counter at 0 and proceeds (first id allocates as <prefix>-0001), rather than refusing with counter_missing and forcing a shell `echo 0 > .roadmap-counter` side-step that broke the all-MCP workflow. A roadmap that already carries ids but lost its counter file still refuses (counter_missing) — re-allocating from 0 would mint duplicate ids. Reported by the Contact_List CC session.
+
 - **project_settings op:detect now suggests all first-party source dirs on a non-standard layout, always explains itself, and echoes the roots/dirs it resolved (ANTS-3369).**
   Cross-session feedback from four projects: the layout auto-detector gave up silently on projects that don't use a plain src/ folder (it required one dominant subdir to cover ~90% of the code, so a spread layout or a small entry-point dir like app/ got nothing). It now suggests every first-party source subdir on a miss, always returns a non-empty reason, and adds would_use_roots (the roots already in effect) + excluded (the vendored/build dirs it skipped) so the output is never an opaque set of zeros.
 

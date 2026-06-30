@@ -17731,13 +17731,14 @@ server build id so clients can self-diagnose this.
   Kind: enhancement.
   Source: cc-feedback-2026-06-30 (Contact_List + RetroDB).
 
-- 📋 [ANTS-3397] **roadmap_log counter strategy refuses (counter_missing) on a fresh roadmap with no .roadmap-counter — auto-create the counter when there are no existing [PREFIX-NNNN] ids.**
+- ✅ [ANTS-3397] **roadmap_log counter strategy refuses (counter_missing) on a fresh roadmap with no .roadmap-counter — auto-create the counter when there are no existing [PREFIX-NNNN] ids.**
   Problem: on a project with a hand-authored ROADMAP.md but no .roadmap-counter, roadmap_log op:append_batch (counter strategy, id_prefix CL) refused with code:counter_missing — the message is clear ('touch the file with the current high-water mark') but requires a shell side-step (`printf '0' > .roadmap-counter`) that breaks the all-MCP workflow.
   Repro: counter-strategy append on a roadmap with no .roadmap-counter and no existing [PREFIX-NNNN] ids.
   Fix: when the counter strategy runs on a roadmap that has neither a .roadmap-counter nor any existing [PREFIX-NNNN] ids, auto-create the counter at 0 (greenfield is unambiguous), or expose a roadmap_log/project_settings op to initialize it. Keep refusing when ids exist but the counter is absent (that's a real desync worth surfacing).
   **Layman:** Starting a brand-new roadmap, the tool refuses to add the first item until you create a hidden counter file by hand in the shell — a small speed-bump that breaks the otherwise all-in-app workflow.
   Kind: enhancement.
   Source: cc-feedback-2026-06-30 (Contact_List).
+  Resolved 2026-07-01: counter strategy now auto-creates .roadmap-counter at 0 on a greenfield roadmap (no counter file AND no bullet ids of any kind), on both op:append and op:append_batch. New rlRoadmapHasAnyBulletId discriminator distinguishes greenfield from a lost-high-water-mark desync — a roadmap that already carries ids but lacks the counter still refuses with counter_missing (re-allocating from 0 would mint duplicate ids). A failed auto-create write refuses with counter_write_failed. Spec: ANTS-1877 §2.1 routing table + INV-5 (parity note in ANTS-1879). Test: tests/features/roadmap_log_greenfield_counter (Inv1-4).
 
 ### 🔌 Ants-MCP feedback from CC sessions (DOOM 2026-06-28)
 

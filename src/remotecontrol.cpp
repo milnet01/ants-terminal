@@ -425,6 +425,21 @@ QString rlDetectStablePrefixId(const QString &markdown) {
     return QString();
 }
 
+// ANTS-3397 — true when any of the first 50 parsed bullets carries a
+// non-empty id (of any shape: counter-style ANTS-NNNN, a project
+// prefix, or a stable string). Lets the counter allocator tell a
+// greenfield roadmap (no ids of any kind → safe to auto-init
+// .roadmap-counter at 0) apart from a roadmap that already allocated
+// ids but lost its counter file (a real desync we keep refusing).
+bool rlRoadmapHasAnyBulletId(const QString &markdown) {
+    const auto bullets = RoadmapDialog::parseBullets(markdown);
+    constexpr int kSniffCap = 50;
+    const int upTo = std::min<int>(bullets.size(), kSniffCap);
+    for (int i = 0; i < upTo; ++i)
+        if (!bullets.at(i).id.isEmpty()) return true;
+    return false;
+}
+
 // ANTS-2054 — infer the dominant counter-style ID prefix from the
 // existing roadmap so op:append / op:append_batch render
 // `[<prefix>-NNNN]` matching the project (e.g. "mame-curator-1073")
@@ -5563,7 +5578,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             }
             useStablePrefix = true;
         } else if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            if (!counterExists) {
+            if (counterExists) {
+                // File present but unreadable (permissions). Keep the
+                // back-compat code for any caller branching on it.
+                return rlErr(QStringLiteral("counter_read_failed"),
+                    QStringLiteral("roadmap_log: could not read "
+                                   ".roadmap-counter at \"%1\"")
+                        .arg(counterPath));
+            }
+            {
                 // Re-read the roadmap for the prefix sniffer. The
                 // markdown was about to be read for the section
                 // splice anyway; pull it here so we can diagnose
@@ -5603,19 +5626,44 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                     env["follow_up"] = QStringLiteral("ANTS-1905");
                     return QJsonDocument(env);
                 }
-                return rlErr(QStringLiteral("counter_missing"),
-                    QStringLiteral("roadmap_log: .roadmap-counter "
-                                   "does not exist at \"%1\" — "
-                                   "touch the file with the current "
-                                   "high-water mark to enable "
-                                   "op:append. Recipe: "
-                                   "echo 0 > %1")
-                        .arg(counterPath));
+                // ANTS-3397 — greenfield auto-init. No counter file AND
+                // no existing bullet ids of any kind is an unambiguous
+                // fresh roadmap: create .roadmap-counter at 0 so the
+                // first id allocates as <prefix>-0001, rather than
+                // forcing a shell `echo 0 > .roadmap-counter` side-step
+                // that breaks the all-MCP workflow. If the roadmap
+                // already carries ids (counter-style ANTS-NNNN slipped
+                // past the stable sniff above), the high-water mark is
+                // genuinely lost — keep refusing with counter_missing
+                // (a real desync worth surfacing).
+                if (rlRoadmapHasAnyBulletId(rmText)) {
+                    return rlErr(QStringLiteral("counter_missing"),
+                        QStringLiteral("roadmap_log: .roadmap-counter "
+                                       "does not exist at \"%1\" but the "
+                                       "roadmap already carries ids — the "
+                                       "high-water mark is lost; restore "
+                                       "it with: echo <highest-id> > %1")
+                            .arg(counterPath));
+                }
+                QSaveFile init(counterPath);
+                if (!init.open(QIODevice::WriteOnly | QIODevice::Text) ||
+                    init.write(QByteArrayLiteral("0\n")) != 2 ||
+                    !init.commit()) {
+                    return rlErr(QStringLiteral("counter_write_failed"),
+                        QStringLiteral("roadmap_log: could not "
+                                       "auto-create .roadmap-counter at "
+                                       "\"%1\"").arg(counterPath));
+                }
+                if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                    return rlErr(QStringLiteral("counter_read_failed"),
+                        QStringLiteral("roadmap_log: could not read the "
+                                       "just-created .roadmap-counter at "
+                                       "\"%1\"").arg(counterPath));
+                }
+                // cf now reads "0"; fall through to the shared
+                // counter-read block below (counter=0 → newId=1,
+                // id_hint honoured).
             }
-            return rlErr(QStringLiteral("counter_read_failed"),
-                QStringLiteral("roadmap_log: could not read "
-                               ".roadmap-counter at \"%1\"")
-                    .arg(counterPath));
         }
         if (!useStablePrefix) {
             const QByteArray raw = cf.readAll().trimmed();
@@ -7884,17 +7932,42 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     if (!useStablePrefix) {
         QFile cf(counterPath);
         if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            if (!QFile::exists(counterPath))
+            if (QFile::exists(counterPath))
+                return rlErr(QStringLiteral("counter_read_failed"),
+                    QStringLiteral("roadmap_log: could not read "
+                                   ".roadmap-counter at \"%1\"")
+                        .arg(counterPath));
+            // ANTS-3397 — greenfield auto-init (parity with the
+            // single-bullet append path). No counter file AND no
+            // existing bullet ids is an unambiguous fresh roadmap:
+            // create .roadmap-counter at 0 rather than forcing a shell
+            // side-step. If ids already exist, the high-water mark is
+            // lost — keep refusing with counter_missing.
+            QFile rmf(roadmapPath);
+            QString rmText;
+            if (rmf.open(QIODevice::ReadOnly | QIODevice::Text))
+                rmText = QString::fromUtf8(rmf.readAll());
+            if (rlRoadmapHasAnyBulletId(rmText))
                 return rlErr(QStringLiteral("counter_missing"),
-                    QStringLiteral("roadmap_log: .roadmap-counter "
-                                   "does not exist at \"%1\" — touch "
-                                   "the file with the current "
-                                   "high-water mark to enable "
-                                   "op:append_batch.").arg(counterPath));
-            return rlErr(QStringLiteral("counter_read_failed"),
-                QStringLiteral("roadmap_log: could not read "
-                               ".roadmap-counter at \"%1\"")
-                    .arg(counterPath));
+                    QStringLiteral("roadmap_log: .roadmap-counter does "
+                                   "not exist at \"%1\" but the roadmap "
+                                   "already carries ids — the high-water "
+                                   "mark is lost; restore it with: echo "
+                                   "<highest-id> > %1").arg(counterPath));
+            QSaveFile init(counterPath);
+            if (!init.open(QIODevice::WriteOnly | QIODevice::Text) ||
+                init.write(QByteArrayLiteral("0\n")) != 2 ||
+                !init.commit())
+                return rlErr(QStringLiteral("counter_write_failed"),
+                    QStringLiteral("roadmap_log: could not auto-create "
+                                   ".roadmap-counter at \"%1\"")
+                        .arg(counterPath));
+            if (!cf.open(QIODevice::ReadOnly | QIODevice::Text))
+                return rlErr(QStringLiteral("counter_read_failed"),
+                    QStringLiteral("roadmap_log: could not read the "
+                                   "just-created .roadmap-counter at "
+                                   "\"%1\"").arg(counterPath));
+            // cf now reads "0"; fall through.
         }
         const QByteArray raw = cf.readAll().trimmed();
         if (raw.isEmpty())
