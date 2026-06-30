@@ -219,12 +219,21 @@ server-controllable beyond this per-tool hint.
 - **`project_settings`** — detect a non-standard layout + create/update
   `<root>/.ants/project.json` (the ANTS-2160 reader's source). Ops:
   `detect` (read-only — `{present, suggestion:{source_roots?, reason,
-  default_source_count, total_source_count}}`; its bounded shallow walk
-  reuses `CodebaseIndex::isIndexableSuffix` so counts agree with what the
-  index admits, and discounts vendored / third-party trees — `*-deps`,
-  `*-prefix`, `third_party`, `external`, `deps`, `vendor`, … — so a
-  bundled-dependency dir is never ranked as the dominant `source_root`
-  nor counted in `total_source_count`, ANTS-3357), `init` (write the detected/explicit keys; refuses
+  default_source_count, total_source_count, would_use_roots?, excluded?}}`;
+  its bounded shallow walk reuses `CodebaseIndex::isIndexableSuffix` so
+  counts agree with what the index admits, and discounts vendored /
+  third-party trees — `*-deps`, `*-prefix`, `third_party`, `external`,
+  `deps`, `vendor`, … — so a bundled-dependency dir is never ranked as a
+  `source_root` nor counted in `total_source_count`, ANTS-3357. On a "miss"
+  (default `src/`+`tests/` walk indexes < half the source) it now suggests
+  ALL first-party source subdirs sorted count-desc/name-asc — not a
+  dominant-cover subset — so a spread src-less layout or a low-count
+  entry-point dir like `app/` is covered, not dropped; `reason` is ALWAYS
+  non-empty (nullopt `source_roots`, not an empty reason, is the
+  "no suggestion" signal); `would_use_roots` echoes the roots already in
+  effect (declared on `present:true`, else the default roots that hold
+  source) and `excluded` lists the skipped noise/vendored dirs — ANTS-3369),
+  `init` (write the detected/explicit keys; refuses
   `settings_exists` on an existing file — no clobber; `written:false`
   when nothing to suggest), `set` (create-or-update; raw-JSON merge
   preserving unknown keys; a `null` value clears a key; refuses

@@ -41,19 +41,28 @@ Settings load(const QString &rootCanonical);
 struct Suggestion {
     bool                       present = false;   // .ants/project.json already on disk
     std::optional<QStringList> sourceRoots;       // suggested dirs, when the layout looks misplaced
-    QString                    reason;            // human string incl. counts; empty ⟺ no suggestion
+    QString                    reason;            // human string incl. counts; ALWAYS non-empty after a walk/short-circuit (ANTS-3369). nullopt sourceRoots — not an empty reason — is the "no suggestion" signal.
     int                        defaultSourceCount = 0;  // admitted files under literal src/+tests/
     int                        totalSourceCount   = 0;  // admitted files repo-wide (bounded)
+    std::optional<QStringList> wouldUseRoots;     // ANTS-3369: roots already in effect — declared source_roots when present:true, else whichever of src/ or tests/ actually hold source on the no-override path. Echoed so a caller can confirm the layout even when nothing is suggested.
+    QStringList                excluded;          // ANTS-3369: every isNoiseDir match present on disk and skipped, minus dot-dirs (build* + vendored names listed; .git/.ants not). Names only, no descent.
 };
 
 // Bounded shallow analysis of <rootCanonical>. If .ants/project.json
-// already exists → {present:true} with NO walk and NO suggestion. Else
-// counts source files (CodebaseIndex::isIndexableSuffix) per top-level dir
-// (skipping noise dirs, capped at kDetectFileCeiling) and suggests
-// `sourceRoots` = the subdir set covering >= kDominanceRatio of total
-// source, but only when the default src/+tests/ walk would miss more than
-// kMissRatio of it and such a subdir set exists. Suggests subdirs only,
-// never the repo root.
+// already exists → {present:true} with NO directory walk — but loads the
+// file to echo its declared source_roots in `wouldUseRoots` + a `reason`
+// (ANTS-3369; an unparseable file → wouldUseRoots nullopt, reason still
+// non-empty). Else counts source files (CodebaseIndex::isIndexableSuffix)
+// per top-level dir (skipping the isNoiseDir set, capped at
+// kDetectFileCeiling) and, when the default src/+tests/ walk would miss
+// more than kMissRatio of the repo's source, suggests `sourceRoots` = ALL
+// first-party source subdirs (every counted dir except the tests default,
+// sorted count desc / name asc) — not a dominant-cover subset, so a
+// low-count entry-point dir and a spread layout are both covered
+// (ANTS-3369). Suggests subdirs only, never the repo root; source at the
+// repo root is noted in `reason` as an un-suggestable remainder. `reason`
+// is ALWAYS non-empty; `excluded`/`wouldUseRoots` echo what was skipped /
+// already in effect.
 Suggestion detect(const QString &rootCanonical);
 
 // Merge `changes` into `existing` for an op:"set"/"init" write. `changes`

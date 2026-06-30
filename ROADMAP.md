@@ -17549,11 +17549,12 @@ server build id so clients can self-diagnose this.
   Kind: feature.
   Source: cc-feedback-2026-06-30 (Vestige Sug-A, 6 consecutive slices).
 
-- 📋 [ANTS-3369] **project_settings op:detect — populate source_roots + non-empty reason on non-standard / src-less layouts.**
+- ✅ [ANTS-3369] **project_settings op:detect — populate source_roots + non-empty reason on non-standard / src-less layouts.**
   Recurring across 4 projects: Vestige (missed low-count entry-point app/), Music (nested src/<pkg>/ + egg-info noise), RetroDB (src-less routes/services/scraper — 67% of code missed). Fix: when default walk covers <~60% of total_source_count, populate suggestion.source_roots with top-level dirs holding the missed code; include low-count entry-point dirs; echo would_use_roots + excluded[] (egg-info/build/dist); ALWAYS set a non-empty reason; when present:true echo declared source_roots instead of zeroed counts.
   **Layman:** The auto-detect for a project's code folders gives up silently on projects that don't use a plain src/ folder. Make it actually suggest the right folders and always explain itself.
   Kind: fix.
   Source: cc-feedback-2026-06-30 (Vestige+Music+RetroDB, 4 reports).
+  Resolved (2026-06-30): detect() now suggests ALL first-party source subdirs on a miss (retired the kDominanceRatio gate), always sets a non-empty reason, and echoes wouldUseRoots + excluded. Spec ANTS-2161.md amended through a 6-loop cold-eyes pass (zero verified findings at loop 6). 8 ProjectSettings tests + full suite 2369/2369 green.
 
 - 📋 [ANTS-3370] **session_orient / current_state — flag open_audit_findings_count as stale when the cached SARIF predates HEAD.**
   RetroDB: session_orient reported open_audit_findings_count:11 with no staleness qualifier while last_audit_summary (same repo) knew the SARIF was cached at 48bda56, 4+ commits behind HEAD. Propagate the signal: emit open_audit_findings_count_stale:true + last_audit_commit (mirror last_audit_summary.stale/stale_reason). Cheapest form: an audit_stale boolean next to the count.
@@ -17633,11 +17634,12 @@ server build id so clients can self-diagnose this.
   Kind: feature.
   Source: cc-feedback-2026-06-30 (DOOM).
 
-- 📋 [ANTS-3383] **Doc caveat — read_region / read_regions / file_outline do NOT satisfy the native Edit read-precondition.**
+- ✅ [ANTS-3383] **Doc caveat — read_region / read_regions / file_outline do NOT satisfy the native Edit read-precondition.**
   In-session: read_region→Edit fails 'File has not been read yet' (~4× this session: mainwindow.cpp, debtsweepengine.cpp), doubling the read. Add a one-line caveat to read_region/read_regions/file_outline descriptions: 'Does NOT satisfy the Edit tool read-precondition — use native Read before editing.' Optionally a next_call_hint when the target is a source file.
   **Layman:** Note in the tool help that reading a file via these MCP tools doesn't count as 'read' for the editor, so you must still do a native Read before editing.
   Kind: doc.
   Source: cc-feedback-2026-06-30 (Ants Terminal in-session).
+  Resolved (2026-06-30): caveat added to read_region / read_regions / file_outline descriptions in claudeintegration.cpp. Pushed a9f9e4d; 257 claude/MCP tests green.
 
 - 📋 [ANTS-3384] **Document the canonical per-project feedback-file basename rule (and have feedback_log echo it).**
   Ants Projects Hub: existing files use short brand names (RetroDB_, DOOM_, MAME_Curator_) that don't map 1:1 to project dirs, so a new project's basename is a guess → risk of duplicate/fragmented files. Document the rule in mcp-feedback-files.md (e.g. '<project-dir-leaf>_Ants_MCP_Feedback.md') and/or have feedback_log normalise/echo the expected basename.

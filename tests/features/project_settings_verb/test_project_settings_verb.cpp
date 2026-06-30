@@ -67,7 +67,11 @@ TEST(ProjectSettingsVerb, StandardLayoutNoSuggestion) {
     const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
     EXPECT_FALSE(s.present);
     EXPECT_FALSE(s.sourceRoots.has_value());
-    EXPECT_TRUE(s.reason.isEmpty());
+    EXPECT_FALSE(s.reason.isEmpty());   // ANTS-3369 (INV-15): reason always set
+    // INV-16: no-override path echoes whichever of src/tests hold source.
+    ASSERT_TRUE(s.wouldUseRoots.has_value());
+    EXPECT_TRUE(s.wouldUseRoots->contains(QStringLiteral("src")));
+    EXPECT_TRUE(s.wouldUseRoots->contains(QStringLiteral("tests")));
 }
 
 // INV-2 — an existing settings file → present:true, no walk, no suggestion.
@@ -81,6 +85,10 @@ TEST(ProjectSettingsVerb, ConfiguredProjectShortCircuits) {
     const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
     EXPECT_TRUE(s.present);
     EXPECT_FALSE(s.sourceRoots.has_value());   // … but never second-guessed
+    EXPECT_FALSE(s.reason.isEmpty());          // ANTS-3369 (INV-15): present branch
+    // INV-16: present:true echoes the file's declared source_roots.
+    ASSERT_TRUE(s.wouldUseRoots.has_value());
+    EXPECT_EQ(*s.wouldUseRoots, QStringList{QStringLiteral("engine")});
 }
 
 // INV-3 — misplaced layout (code under engine/, no src/) → suggest engine.
@@ -232,17 +240,54 @@ TEST(ProjectSettingsVerb, RepoRootSourceNoSuggestion) {
     EXPECT_FALSE(s.sourceRoots.has_value());
 }
 
-// INV-14 — dominance gate: a miss where no subdir set reaches kDominanceRatio
-// (half the source at the repo root) → no suggestion.
-TEST(ProjectSettingsVerb, DominanceGateNoPartialSuggestion) {
+// INV-14 — ANTS-3369: on a miss, suggest ALL first-party source subdirs
+// (not a dominant-cover subset). Half the source at the repo root → the one
+// source subdir is STILL suggested (was nullopt pre-3369); the root files
+// are the un-suggestable remainder noted in `reason`.
+TEST(ProjectSettingsVerb, MissSuggestsAllSourceSubdirs) {
     QTemporaryDir dir;
     const QString root = canon(dir);
     writeFile(root + "/a.c", cFile("a"));          // 50% at root (not suggestable)
-    writeFile(root + "/engine/b.c", cFile("b"));   // 50% in engine/ (< 90%)
+    writeFile(root + "/engine/b.c", cFile("b"));   // 50% in engine/
 
     const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
     EXPECT_EQ(s.defaultSourceCount, 0);   // a miss …
-    EXPECT_FALSE(s.sourceRoots.has_value());  // … but no dominant subdir set
+    ASSERT_TRUE(s.sourceRoots.has_value());  // … now suggested, not dropped
+    EXPECT_EQ(*s.sourceRoots, QStringList{QStringLiteral("engine")});
+    EXPECT_EQ(s.totalSourceCount, 2);
+    EXPECT_FALSE(s.reason.isEmpty());
+}
+
+// INV-15 — ANTS-3369: detect() always sets a non-empty reason even when
+// there is no suggestion (empty repo here; the present / no-override
+// branches are covered by INV-2 / INV-1). nullopt sourceRoots — not an
+// empty reason — is the "no suggestion" signal.
+TEST(ProjectSettingsVerb, AlwaysSetsReasonEmptyRepo) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);   // no source files at all
+    const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
+    EXPECT_FALSE(s.sourceRoots.has_value());
+    EXPECT_FALSE(s.reason.isEmpty());
+}
+
+// INV-16 — ANTS-3369: `excluded` echoes the skipped noise/vendored dirs
+// (present on disk, minus dot-dirs) by name — covering a plain vendored
+// name AND the *-deps suffix rule. (The present:true → wouldUseRoots echo
+// is asserted in INV-2.)
+TEST(ProjectSettingsVerb, ExcludedEchoesVendoredDirs) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/engine/a.c", cFile("a"));
+    for (int i = 0; i < 5; ++i)   // a plain vendored name
+        writeFile(root + QStringLiteral("/node_modules/m%1.js").arg(i),
+                  QStringLiteral("function f%1(){}\n").arg(i));
+    writeFile(root + "/mingw-deps/SDL2/x.c", cFile("x"));   // the *-deps suffix rule
+
+    const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
+    EXPECT_TRUE(s.excluded.contains(QStringLiteral("node_modules")));
+    EXPECT_TRUE(s.excluded.contains(QStringLiteral("mingw-deps")));
+    // engine/ is first-party → suggested, not excluded.
+    EXPECT_FALSE(s.excluded.contains(QStringLiteral("engine")));
 }
 
 // INV-5 / INV-6 / INV-10 / INV-13 — verb-layer + registration wiring

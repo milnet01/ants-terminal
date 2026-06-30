@@ -98,6 +98,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **project_settings op:detect now suggests all first-party source dirs on a non-standard layout, always explains itself, and echoes the roots/dirs it resolved (ANTS-3369).**
+  Cross-session feedback from four projects: the layout auto-detector gave up silently on projects that don't use a plain src/ folder (it required one dominant subdir to cover ~90% of the code, so a spread layout or a small entry-point dir like app/ got nothing). It now suggests every first-party source subdir on a miss, always returns a non-empty reason, and adds would_use_roots (the roots already in effect) + excluded (the vendored/build dirs it skipped) so the output is never an opaque set of zeros.
+
 - **read_region / read_regions / file_outline tool descriptions now warn that an MCP read does not satisfy the native Edit read-precondition (ANTS-3383).**
   Cross-session feedback: reading a file via these verbs and then editing it fails the harness's "File has not been read yet" check, so a native Read is still required first. Documented inline in the tool help so sessions stop paying for a doubled read.
 

@@ -9585,6 +9585,14 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
         s[QStringLiteral("reason")]               = sug.reason;
         s[QStringLiteral("default_source_count")] = sug.defaultSourceCount;
         s[QStringLiteral("total_source_count")]   = sug.totalSourceCount;
+        // ANTS-3369 — echo what's already in effect / what was discounted,
+        // emitted only when non-empty (1:1 snake_case mapping like above).
+        if (sug.wouldUseRoots)
+            s[QStringLiteral("would_use_roots")] =
+                QJsonArray::fromStringList(*sug.wouldUseRoots);
+        if (!sug.excluded.isEmpty())
+            s[QStringLiteral("excluded")] =
+                QJsonArray::fromStringList(sug.excluded);
         QJsonObject o;
         o[QStringLiteral("ok")]         = true;
         o[QStringLiteral("present")]    = sug.present;
