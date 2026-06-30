@@ -19,8 +19,12 @@
 
 namespace {
 
-// UTF-8 literals for the maintainer-anchor emoji.
-const char *kClip = "\xF0\x9F\x93\x8B";  // 📋
+// UTF-8 literals for the maintainer-anchor + status emoji. (A `\x..`
+// escape inside QStringLiteral would be mis-read as separate UTF-16
+// units, so status emoji go in source bodies as literal glyphs and these
+// narrow-byte constants drive the comparisons via QString::fromUtf8.)
+const char *kClip  = "\xF0\x9F\x93\x8B";  // 📋
+const char *kCheck = "\xE2\x9C\x85";      // ✅
 
 QString writeFeedback(const QTemporaryDir &dir, const QString &name,
                       const QString &body) {
@@ -334,4 +338,78 @@ TEST(McpFeedbackQuery, SkeletonBannerAdvertisesVerbs) {
     EXPECT_FALSE(r.deltaPresent)
         << "the blockquote banner above the maintainer block must not "
            "register as un-triaged delta";
+}
+
+// ANTS-3371 — parse() extracts every maintainer tracking-table data row
+// (item, ids, status, notes), skipping the header + `|---|` separator,
+// across all maintainer blocks in document order. A later block's row for
+// the same item appears after the earlier one (caller sees the latest).
+TEST(McpFeedbackQuery, TrackingRowsExtracted) {
+    const QString body = QStringLiteral(
+        "# Title\n\n"
+        "## %1 Ants Terminal roadmap tracking update (2026-05-11, maintainer)\n\n"
+        "| Item | ID(s) | Status |\n"
+        "|------|-------|--------|\n"
+        "| First idea | ANTS-1000, ANTS-1001 | 📋 |\n"
+        "| Vague idea | n/a | 💭 |\n\n"
+        "## %1 Ants Terminal roadmap tracking update (2026-05-20, maintainer)\n\n"
+        "| Item | ID(s) | Status | Notes |\n"
+        "|------|-------|--------|-------|\n"
+        "| First idea | ANTS-1000 | ✅ | Shipped 2026-05-20. |\n")
+        .arg(QString::fromUtf8(kClip));
+    const FeedbackFile::ParseResult r = FeedbackFile::parse(body);
+    ASSERT_EQ(r.trackingRows.size(), 3);
+    // Block 1 row 1 — two comma-split IDs, no notes column.
+    EXPECT_EQ(r.trackingRows.at(0).item, "First idea");
+    ASSERT_EQ(r.trackingRows.at(0).ids.size(), 2);
+    EXPECT_EQ(r.trackingRows.at(0).ids.at(0), "ANTS-1000");
+    EXPECT_EQ(r.trackingRows.at(0).ids.at(1), "ANTS-1001");
+    EXPECT_EQ(r.trackingRows.at(0).status, QString::fromUtf8(kClip));  // 📋
+    EXPECT_TRUE(r.trackingRows.at(0).notes.isEmpty());
+    // Block 1 row 2 — "n/a" yields no IDs.
+    EXPECT_EQ(r.trackingRows.at(1).item, "Vague idea");
+    EXPECT_TRUE(r.trackingRows.at(1).ids.isEmpty());
+    // Block 2 row — later in document order, ✅ + notes column.
+    EXPECT_EQ(r.trackingRows.at(2).item, "First idea");
+    EXPECT_EQ(r.trackingRows.at(2).status, QString::fromUtf8(kCheck));  // ✅
+    EXPECT_EQ(r.trackingRows.at(2).notes, "Shipped 2026-05-20.");
+}
+
+// ANTS-3371 — include_tracking surfaces the rows in the envelope; absent
+// flag keeps the lean envelope (no `tracking` key).
+TEST(McpFeedbackQuery, IncludeTrackingEnvelope) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString body = QStringLiteral(
+        "# Title\n\n"
+        "## %1 Ants Terminal roadmap tracking update (2026-05-11, maintainer)\n\n"
+        "| Item | ID(s) | Status |\n"
+        "|------|-------|--------|\n"
+        "| idea | ANTS-9001 | ✅ |\n").arg(QString::fromUtf8(kClip));
+    const QString p = writeFeedback(dir, "Trk_Ants_MCP_Feedback.md", body);
+    ASSERT_FALSE(p.isEmpty());
+    RemoteControl rc(nullptr);
+
+    // Without the flag: no `tracking` key (lean envelope unchanged).
+    {
+        QJsonObject req; req["path"] = p; req["caller_cwd"] = dir.path();
+        const QJsonObject env = rc.cmdFeedbackQuery(req).object();
+        ASSERT_TRUE(env.value("ok").toBool());
+        EXPECT_FALSE(env.contains("tracking"));
+    }
+    // With the flag: a `tracking` array with the parsed row.
+    {
+        QJsonObject req; req["path"] = p; req["caller_cwd"] = dir.path();
+        req["include_tracking"] = true;
+        const QJsonObject env = rc.cmdFeedbackQuery(req).object();
+        ASSERT_TRUE(env.value("ok").toBool());
+        ASSERT_TRUE(env.contains("tracking"));
+        const QJsonArray trk = env.value("tracking").toArray();
+        ASSERT_EQ(trk.size(), 1);
+        const QJsonObject row = trk.at(0).toObject();
+        EXPECT_EQ(row.value("item").toString(), "idea");
+        const QJsonArray ids = row.value("ids").toArray();
+        ASSERT_EQ(ids.size(), 1);
+        EXPECT_EQ(ids.at(0).toString(), "ANTS-9001");
+        EXPECT_EQ(row.value("status").toString(), QString::fromUtf8(kCheck));
+    }
 }

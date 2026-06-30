@@ -21,6 +21,17 @@ namespace FeedbackFile {
 
 // ---- ANTS-1961: read side (the un-triaged delta parser) -------------
 
+// A maintainer tracking-table row. Authored by the write side (ANTS-1962,
+// renderTrackingBlock) and re-surfaced on the read side (ANTS-3371,
+// ParseResult::trackingRows). Defined before ParseResult so the read
+// parser can carry the structured rows.
+struct TrackingRow {
+    QString     item;
+    QStringList ids;     // ANTS-NNNN strings; empty → renders `n/a`
+    QString     status;  // an emoji from the machine-readable set
+    QString     notes;   // optional; triggers the 4th column when any row has it
+};
+
 struct ParseResult {
     QString     delta;               // text from the first contributor heading
                                      // after the last maintainer heading to EOF
@@ -32,6 +43,13 @@ struct ParseResult {
                                      // maintainer-block bodies only
     int         maintainerBlockCount = 0;
     int         lastMaintainerLine = -1; // 1-based; -1 when none
+    QVector<TrackingRow> trackingRows;   // ANTS-3371: every maintainer
+                                         // tracking-table data row, in
+                                         // document order (later rows
+                                         // supersede earlier ones for the
+                                         // same ID). Surfaced only when
+                                         // feedback_query is called with
+                                         // include_tracking.
 };
 
 // Parse the full file content per mcp-feedback-files.md § "The
@@ -48,13 +66,6 @@ struct Finding {
     QString repro;
     QString impact;
     QString suggestedFix;
-};
-
-struct TrackingRow {
-    QString     item;
-    QStringList ids;     // ANTS-NNNN strings; empty → renders `n/a`
-    QString     status;  // an emoji from the machine-readable set
-    QString     notes;   // optional; triggers the 4th column when any row has it
 };
 
 // Render a contributor session block: a dated heading (`## ` default,

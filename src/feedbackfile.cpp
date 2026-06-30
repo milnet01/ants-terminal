@@ -131,6 +131,8 @@ ParseResult parse(const QString &fileContent) {
     // only governs boundary detection, not ID extraction; an ID pasted
     // inside a maintainer-block fence is still a mapped ID.
     static const QRegularExpression idRe(QStringLiteral("ANTS-[0-9]+"));
+    // ANTS-3371 — separator row of a GFM table (`|---|:--:|` etc.).
+    static const QRegularExpression sepCellRe(QStringLiteral("^:?-{1,}:?$"));
     QSet<QString> idSet;
     for (int mi = 0; mi < maintainerIdx.size(); ++mi) {
         const int start = maintainerIdx.at(mi);
@@ -144,8 +146,43 @@ ParseResult parse(const QString &fileContent) {
             maintainerIdx.at(mi + 1) < end)
             end = maintainerIdx.at(mi + 1);
         for (int li = start; li < end; ++li) {
-            auto it = idRe.globalMatch(lines.at(li));
+            const QString &row = lines.at(li);
+            auto it = idRe.globalMatch(row);
             while (it.hasNext()) idSet.insert(it.next().captured(0));
+
+            // ANTS-3371 — extract the maintainer tracking-table data rows
+            // so include_tracking can return per-item status without a
+            // full-file Read + hand-parse. A pipe-table row trims to a
+            // leading `|`; split on `|`, drop the empty leading/trailing
+            // cells, skip the header (`Item …`) and `|---|` separator.
+            const QString trimmed = row.trimmed();
+            if (!trimmed.startsWith(QLatin1Char('|'))) continue;
+            QStringList cells = trimmed.split(QLatin1Char('|'));
+            if (!cells.isEmpty() && cells.first().trimmed().isEmpty())
+                cells.removeFirst();
+            if (!cells.isEmpty() && cells.last().trimmed().isEmpty())
+                cells.removeLast();
+            for (QString &c : cells) c = c.trimmed();
+            if (cells.size() < 3) continue;
+            if (cells.at(0).compare(QStringLiteral("Item"),
+                                    Qt::CaseInsensitive) == 0)
+                continue;  // header row
+            if (sepCellRe.match(cells.at(0)).hasMatch())
+                continue;  // |---| separator row
+            TrackingRow tr;
+            tr.item = cells.at(0);
+            const QString idCell = cells.at(1);
+            if (idCell.compare(QStringLiteral("n/a"),
+                               Qt::CaseInsensitive) != 0) {
+                const QStringList parts = idCell.split(QLatin1Char(','));
+                for (const QString &p : parts) {
+                    const QString id = p.trimmed();
+                    if (!id.isEmpty()) tr.ids.append(id);
+                }
+            }
+            tr.status = cells.at(2);
+            if (cells.size() >= 4) tr.notes = cells.at(3);
+            r.trackingRows.append(tr);
         }
     }
     r.mappedIds = QStringList(idSet.begin(), idSet.end());

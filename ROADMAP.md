@@ -17563,11 +17563,12 @@ server build id so clients can self-diagnose this.
   Source: cc-feedback-2026-06-30 (RetroDB).
   Resolved (2026-06-30): current_state (and session_orient, which nests it) now emit open_audit_findings_count_stale (+ _stale_reason) by propagating last_audit_summary's always-on ANTS-2056 stale signal — single source of truth, no extra git probe. Spec ANTS-1569 synced; tool description updated; wiring test Ants3370StalenessFlagPropagated added; full suite green. Commit pending.
 
-- 📋 [ANTS-3371] **feedback_query — opt-in include_tracking returns maintainer tracking rows [{item, ids, status, notes}].**
+- ✅ [ANTS-3371] **feedback_query — opt-in include_tracking returns maintainer tracking rows [{item, ids, status, notes}].**
   DOOM: the recurring 'mark my prior suggestions that shipped' workflow needs per-item status, but feedback_query returns only mapped_ids[] (no status). Forces a full-file Read + hand-parse of tracking tables. Add include_tracking:true → compact rows array; tabular encoding keeps it tiny.
   **Layman:** Lets a session see which of its past suggestions are now done without re-reading the whole (100KB+) feedback file.
   Kind: feature.
   Source: cc-feedback-2026-06-30 (DOOM).
+  Resolved (2026-06-30): feedback_query include_tracking:true now returns a `tracking` array of {item, ids, status, notes?} parsed from every maintainer tracking table (document order; header/separator skipped; n/a → empty ids; notes omitted when absent), surfaced only when the flag is set. Parsed in the same FeedbackFile::parse pass as mapped_ids (no extra read). Spec ANTS-1961 INV-12 + T10/T11 added; behavioural + handler tests added; full suite 2373/2373 green. Commit pending.
 
 - ✅ [ANTS-3372] **last_audit_summary — drop/de-rank SARIF parse-artifact findings (progress-bar lines, non-path file, line:0+confidence:-1).**
   RetroDB: top_findings[0] was {file:'Working... ━━ 100% 0', line:0, message:'05', confidence:-1}. Signature = file not under repo OR (line:0 AND confidence:-1 AND box-drawing/'Working...'/bare-percent chars). Drop or de-rank before ranking into top_findings.

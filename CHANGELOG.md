@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **feedback_query can now report which of a session's past suggestions shipped.** (ANTS-3371)
+  Pass include_tracking:true and the reply carries a compact tracking list (item, roadmap IDs, status, notes) pulled from the maintainer tables — so a contributor session sees what's done without re-reading the whole 100KB+ feedback file.
+
 - **The session-start summary now flags the audit-warning count as stale when the saved audit predates your latest commit.** (ANTS-3370)
   current_state / session_orient now carry open_audit_findings_count_stale, mirroring last_audit_summary's staleness signal — so a session doesn't chase warnings that were already fixed after the audit was cached.
 

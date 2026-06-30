@@ -9790,6 +9790,26 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     out["maintainer_block_count"] = pr.maintainerBlockCount;
     out["last_maintainer_line"]  = pr.lastMaintainerLine;
     out["truncated"]             = truncated;
+
+    // ANTS-3371 — opt-in maintainer tracking rows. The recurring
+    // "mark my prior suggestions that shipped" workflow needs per-item
+    // status, which `mapped_ids` (a flat ID list) can't give. When
+    // include_tracking is set, surface every maintainer-table data row
+    // [{item, ids, status, notes?}] in document order across all
+    // maintainer blocks (later rows supersede earlier ones for the same
+    // ID) — saves a full-file Read + table hand-parse.
+    if (req.value(QStringLiteral("include_tracking")).toBool(false)) {
+        QJsonArray tracking;
+        for (const FeedbackFile::TrackingRow &tr : pr.trackingRows) {
+            QJsonObject o;
+            o[QStringLiteral("item")]   = tr.item;
+            o[QStringLiteral("ids")]    = QJsonArray::fromStringList(tr.ids);
+            o[QStringLiteral("status")] = tr.status;
+            if (!tr.notes.isEmpty()) o[QStringLiteral("notes")] = tr.notes;
+            tracking.append(o);
+        }
+        out[QStringLiteral("tracking")] = tracking;
+    }
     // The `etag` field is injected centrally by the dispatch site
     // (ClaudeIntegration::applyEtagPattern) for tools listed in
     // isEtagSupportedTool — it is the sha256 of this envelope, which

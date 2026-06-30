@@ -3889,6 +3889,13 @@ void ClaudeIntegration::onMcpConnection() {
                         "maintainer_block_count, last_maintainer_line, "
                         "truncated, etag}. `mapped_ids` are the ANTS-NNNN "
                         "ids already cited in maintainer blocks. "
+                        "include_tracking:true (ANTS-3371) adds `tracking` "
+                        "— every maintainer tracking-table row "
+                        "[{item, ids, status, notes?}] in document order "
+                        "(later rows supersede earlier ones for the same "
+                        "id) — so a session sees which of its prior "
+                        "suggestions shipped without hand-parsing the "
+                        "tables. "
                         "Byte-capped (max_bytes, default 512 KiB, 4 MiB "
                         "ceiling) keeping the HEAD of the delta. Refusals: "
                         "`bad_args` (missing path), `not_feedback_file` "
@@ -3919,8 +3926,17 @@ void ClaudeIntegration::onMcpConnection() {
                             "512 KiB, server-clamped to 4 MiB). Keeps the "
                             "HEAD; sets truncated:true. delta_line_count "
                             "still reports the full count.");
-                    props["path"]       = pathProp;
-                    props["max_bytes"]  = mbProp;
+                    QJsonObject itProp; itProp["type"] = "boolean";
+                        itProp["description"] = QStringLiteral(
+                            "Optional (ANTS-3371). When true, add a "
+                            "`tracking` array of every maintainer "
+                            "tracking-table row [{item, ids, status, "
+                            "notes?}] in document order. Use for the "
+                            "\"which of my prior suggestions shipped?\" "
+                            "workflow without a full-file Read.");
+                    props["path"]            = pathProp;
+                    props["max_bytes"]       = mbProp;
+                    props["include_tracking"] = itProp;
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     schema["properties"] = props;
