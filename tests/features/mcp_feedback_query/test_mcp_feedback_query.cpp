@@ -10,6 +10,7 @@
 #include <QByteArray>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QIODevice>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -232,8 +233,9 @@ TEST(McpFeedbackQuery, Refusals) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
     RemoteControl rc(nullptr);
 
-    // missing path → bad_args
-    { QJsonObject req; req["caller_cwd"] = dir.path();
+    // missing path AND no resolvable caller_cwd → bad_args (ANTS-3376:
+    // with a resolvable caller_cwd the path is now derived instead).
+    { QJsonObject req;
       const QJsonObject e = rc.cmdFeedbackQuery(req).object();
       EXPECT_FALSE(e.value("ok").toBool());
       EXPECT_EQ(e.value("code").toString(), "bad_args"); }
@@ -287,6 +289,68 @@ TEST(McpFeedbackQuery, NotFoundListsSiblingCandidates) {
     const QJsonObject e2 = rc.cmdFeedbackQuery(req2).object();
     EXPECT_EQ(e2.value("code").toString(), "not_found");
     EXPECT_FALSE(e2.contains("candidates"));
+}
+
+// ANTS-3376 — with `path` omitted, the conventional
+// <caller_cwd-leaf>_Ants_MCP_Feedback.md at the shared root (the parent of
+// caller_cwd) is derived; an existing file at that default reads back with
+// path_derived:true.
+TEST(McpFeedbackQuery, DerivesDefaultPathFromCallerCwd) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    // caller_cwd is a project dir under the shared root; the feedback file
+    // lives in the shared root, named for the project leaf.
+    ASSERT_TRUE(QDir(root.path()).mkdir("RetroDB"));
+    const QString caller = root.path() + "/RetroDB";
+    const QString derived =
+        writeFeedback(root, "RetroDB_Ants_MCP_Feedback.md",
+                      "<!-- ants-mcp-feedback: 1 -->\n# x\n\n"
+                      "## 2026-06-30 — s\n\n- **What:** new.\n");
+    ASSERT_FALSE(derived.isEmpty());
+
+    RemoteControl rc(nullptr);
+    QJsonObject req; req["caller_cwd"] = caller;   // no "path"
+    const QJsonObject e = rc.cmdFeedbackQuery(req).object();
+    ASSERT_TRUE(e.value("ok").toBool());
+    EXPECT_EQ(QFileInfo(e.value("path").toString()).fileName(),
+              "RetroDB_Ants_MCP_Feedback.md");
+    EXPECT_TRUE(e.value("path_derived").toBool());
+    EXPECT_TRUE(e.value("delta").toString().contains("new."));
+
+    // Derived default that does not exist → not_found, and because the
+    // caller's own sibling is absent while OTHER projects' files exist, the
+    // envelope flags all_other_projects.
+    QTemporaryDir root2; ASSERT_TRUE(root2.isValid());
+    ASSERT_TRUE(QDir(root2.path()).mkdir("BrandNew"));
+    writeFeedback(root2, "Other_Ants_MCP_Feedback.md", "# o\n");
+    QJsonObject req2; req2["caller_cwd"] = root2.path() + "/BrandNew";
+    const QJsonObject e2 = rc.cmdFeedbackQuery(req2).object();
+    EXPECT_EQ(e2.value("code").toString(), "not_found");
+    EXPECT_TRUE(e2.value("all_other_projects").toBool());
+    EXPECT_TRUE(e2.contains("candidates"));
+}
+
+// ANTS-3376 — a not_found candidate list floats the caller's OWN file to
+// the front so the obvious retry is candidates[0].
+TEST(McpFeedbackQuery, NotFoundFloatsOwnFileFirst) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    ASSERT_TRUE(QDir(dir.path()).mkdir("RetroDB"));
+    // Two siblings present; the caller's own (RetroDB) is written second so
+    // name-order would otherwise place "AAA" first.
+    writeFeedback(dir, "AAA_Ants_MCP_Feedback.md", "# a\n");
+    const QString own =
+        writeFeedback(dir, "RetroDB_Ants_MCP_Feedback.md", "# r\n");
+
+    RemoteControl rc(nullptr);
+    // Ask for a wrong basename so it 404s but siblings are listed.
+    QJsonObject req;
+    req["path"] = dir.path() + "/Wrong_Ants_MCP_Feedback.md";
+    req["caller_cwd"] = dir.path() + "/RetroDB";
+    const QJsonObject e = rc.cmdFeedbackQuery(req).object();
+    EXPECT_EQ(e.value("code").toString(), "not_found");
+    const QJsonArray cands = e.value("candidates").toArray();
+    ASSERT_EQ(cands.size(), 2);
+    EXPECT_EQ(cands.at(0).toString(), own);     // own file first
+    EXPECT_FALSE(e.value("all_other_projects").toBool());
 }
 
 // T8 — byte cap: head kept, truncated true, full line count reported.

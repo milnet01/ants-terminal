@@ -3897,15 +3897,21 @@ void ClaudeIntegration::onMcpConnection() {
                         "suggestions shipped without hand-parsing the "
                         "tables. "
                         "Byte-capped (max_bytes, default 512 KiB, 4 MiB "
-                        "ceiling) keeping the HEAD of the delta. Refusals: "
-                        "`bad_args` (missing path), `not_feedback_file` "
-                        "(basename not *_Ants_MCP_Feedback.md), `bad_path` "
-                        "(traversal), `not_found` (absent). A `not_found` "
-                        "envelope carries `candidates` (sibling "
-                        "*_Ants_MCP_Feedback.md paths in the same dir) + a "
-                        "`hint` when any exist (ANTS-3366) — recover the "
-                        "right basename without shelling out to `ls`. "
-                        "caller_cwd required.");
+                        "ceiling) keeping the HEAD of the delta. `path` is "
+                        "OPTIONAL (ANTS-3376): omit it and the conventional "
+                        "<caller_cwd-leaf>_Ants_MCP_Feedback.md at the shared "
+                        "root (the parent of caller_cwd) is derived — the "
+                        "reply then carries path_derived:true. Refusals: "
+                        "`bad_args` (no path AND no resolvable caller_cwd to "
+                        "derive one), `not_feedback_file` (basename not "
+                        "*_Ants_MCP_Feedback.md), `bad_path` (traversal), "
+                        "`not_found` (absent). A `not_found` envelope carries "
+                        "`candidates` (sibling *_Ants_MCP_Feedback.md paths in "
+                        "the same dir) + a `hint`; the caller's own file is "
+                        "floated to the front, or `all_other_projects:true` "
+                        "flags that every candidate belongs to a different "
+                        "project (ANTS-3366/3376) — recover the right basename "
+                        "without shelling out to `ls`. caller_cwd required.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to pull just the new feedback from a shared "
                         "*_Ants_MCP_Feedback.md report file instead of "
@@ -3915,10 +3921,13 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject props;
                     QJsonObject pathProp; pathProp["type"] = "string";
                         pathProp["description"] = QStringLiteral(
-                            "Required. Path to the *_Ants_MCP_Feedback.md "
-                            "file. Absolute (the canonical case — files "
-                            "live at /mnt/Games/Scripts/Linux/) or "
-                            "caller_cwd-relative.");
+                            "Optional (ANTS-3376). Path to the "
+                            "*_Ants_MCP_Feedback.md file. Absolute (the "
+                            "canonical case — files live at "
+                            "/mnt/Games/Scripts/Linux/) or caller_cwd-"
+                            "relative. Omit to derive "
+                            "<caller_cwd-leaf>_Ants_MCP_Feedback.md at the "
+                            "shared root (parent of caller_cwd).");
                     QJsonObject mbProp; mbProp["type"] = "integer";
                         mbProp["minimum"] = 1;
                         mbProp["description"] = QStringLiteral(
@@ -3940,8 +3949,9 @@ void ClaudeIntegration::onMcpConnection() {
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     schema["properties"] = props;
+                    // ANTS-3376 — `path` is now optional (derived from
+                    // caller_cwd when omitted); only caller_cwd is required.
                     QJsonArray req;
-                    req.append(QStringLiteral("path"));
                     req.append(QStringLiteral("caller_cwd"));
                     schema["required"] = req;
                     t["inputSchema"] = schema;
@@ -3966,9 +3976,13 @@ void ClaudeIntegration::onMcpConnection() {
                         "skeleton on append_finding; append_tracking on an "
                         "absent file refuses not_found (with `candidates` + "
                         "`hint` listing sibling *_Ants_MCP_Feedback.md "
-                        "files — ANTS-3366). Atomic write. "
-                        "Returns {ok, op, path, bytes_appended, date, "
-                        "created}. Refusals: `bad_mode`, `bad_args`, "
+                        "files — ANTS-3366). `path` is OPTIONAL (ANTS-3376): "
+                        "omit it for a first-time log and the conventional "
+                        "<caller_cwd-leaf>_Ants_MCP_Feedback.md at the shared "
+                        "root is derived (reply carries path_derived:true). "
+                        "Atomic write. Returns {ok, op, path, bytes_appended, "
+                        "date, created}. Refusals: `bad_mode`, `bad_args` "
+                        "(includes no path AND no resolvable caller_cwd), "
                         "`bad_status` (row status outside 📋🚧✅💭🔄❓), "
                         "`not_feedback_file`, `bad_path`, `not_found`, "
                         "`write_failed`. caller_cwd required.");
@@ -3982,8 +3996,11 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject props;
                     QJsonObject pathProp; pathProp["type"] = "string";
                         pathProp["description"] = QStringLiteral(
-                            "Required. Path to the *_Ants_MCP_Feedback.md "
-                            "file (absolute or caller_cwd-relative).");
+                            "Optional (ANTS-3376). Path to the "
+                            "*_Ants_MCP_Feedback.md file (absolute or "
+                            "caller_cwd-relative). Omit to derive "
+                            "<caller_cwd-leaf>_Ants_MCP_Feedback.md at the "
+                            "shared root (parent of caller_cwd).");
                     QJsonObject opProp; opProp["type"] = "string";
                         { QJsonArray e; e.append(QStringLiteral("append_finding"));
                           e.append(QStringLiteral("append_tracking"));
@@ -4050,8 +4067,9 @@ void ClaudeIntegration::onMcpConnection() {
                     props["dry_run"]       = makeDryRunProp();   // ANTS-2227
                     props["caller_cwd"]    = makeCallerCwdReadProp();
                     schema["properties"] = props;
+                    // ANTS-3376 — `path` is now optional (derived from
+                    // caller_cwd when omitted); op + caller_cwd required.
                     QJsonArray req;
-                    req.append(QStringLiteral("path"));
                     req.append(QStringLiteral("op"));
                     req.append(QStringLiteral("caller_cwd"));
                     schema["required"] = req;

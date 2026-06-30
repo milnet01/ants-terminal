@@ -7,6 +7,7 @@
 
 #include <gtest/gtest.h>
 #include <QByteArray>
+#include <QDir>
 #include <QFile>
 #include <QIODevice>
 #include <QJsonArray>
@@ -288,4 +289,58 @@ TEST(McpFeedbackLog, AtomicWriteFailure) {
     EXPECT_FALSE(env.value("ok").toBool());
     EXPECT_EQ(env.value("code").toString(), "write_failed");
     EXPECT_EQ(readAll(p), seed) << "original must be byte-identical";
+}
+
+// ANTS-3376 — append_finding with `path` omitted creates the conventional
+// <caller_cwd-leaf>_Ants_MCP_Feedback.md at the shared root (parent of
+// caller_cwd) and echoes path_derived:true. No filesystem hunt for a
+// first-time log.
+TEST(McpFeedbackLog, DerivesDefaultPathOnCreate) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    ASSERT_TRUE(QDir(root.path()).mkdir("DOOM"));
+    const QString caller = root.path() + "/DOOM";
+    const QString expect = root.path() + "/DOOM_Ants_MCP_Feedback.md";
+
+    RemoteControl rc(nullptr);
+    QJsonObject req; req["caller_cwd"] = caller;   // no "path"
+    req["op"] = "append_finding"; req["date"] = "2026-06-30";
+    QJsonArray fs; fs.append(finding("First report")); req["findings"] = fs;
+
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_TRUE(env.value("created").toBool());
+    EXPECT_TRUE(env.value("path_derived").toBool());
+    EXPECT_EQ(env.value("path").toString(), expect);
+    EXPECT_TRUE(QFile::exists(expect));
+    EXPECT_TRUE(QString::fromUtf8(readAll(expect)).contains("First report"));
+
+    // No resolvable caller_cwd + no path → still bad_args.
+    QJsonObject bad; bad["op"] = "append_finding";
+    QJsonArray fs2; fs2.append(finding("x")); bad["findings"] = fs2;
+    EXPECT_EQ(rc.cmdFeedbackLog(bad).object().value("code").toString(),
+              "bad_args");
+}
+
+// ANTS-3376 / ANTS-2227 — the dry_run preview propagates path_derived from
+// the derived (omitted-path) resolution and writes nothing to disk.
+TEST(McpFeedbackLog, DryRunPreviewCarriesPathDerivedNoWrite) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    ASSERT_TRUE(QDir(root.path()).mkdir("RetroDB"));
+    const QString caller = root.path() + "/RetroDB";
+    const QString expect = root.path() + "/RetroDB_Ants_MCP_Feedback.md";
+
+    RemoteControl rc(nullptr);
+    QJsonObject req; req["caller_cwd"] = caller;   // no "path"
+    req["op"] = "append_finding"; req["date"] = "2026-06-30";
+    req["dry_run"] = true;
+    QJsonArray fs; fs.append(finding("Preview only")); req["findings"] = fs;
+
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_TRUE(env.value("dry_run").toBool());
+    EXPECT_TRUE(env.value("path_derived").toBool());   // flows into preview
+    EXPECT_TRUE(env.value("created").toBool());         // would-create
+    EXPECT_EQ(env.value("path").toString(), expect);
+    EXPECT_GT(env.value("bytes_appended").toInt(), 0);
+    EXPECT_FALSE(QFile::exists(expect));                // nothing written
 }

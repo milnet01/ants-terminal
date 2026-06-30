@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **feedback_log / feedback_query: derive the feedback-file path when `path` is omitted (ANTS-3376)**
+  Omit `path` and the verb derives <project-dir-leaf>_Ants_MCP_Feedback.md
+  at the shared root, so a first-time log no longer needs a filesystem hunt;
+  the reply carries path_derived:true. On a not-found, the candidate list now
+  floats your own project's file first, or flags that every candidate belongs
+  to another project. The canonical per-project filename rule is documented in
+  docs/standards/mcp-feedback-files.md (ANTS-3384).
+
 - **feedback_query can now report which of a session's past suggestions shipped.** (ANTS-3371)
   Pass include_tracking:true and the reply carries a compact tracking list (item, roadmap IDs, status, notes) pulled from the maintainer tables — so a contributor session sees what's done without re-reading the whole 100KB+ feedback file.
 

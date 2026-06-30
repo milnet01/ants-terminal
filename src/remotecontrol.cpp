@@ -9351,6 +9351,16 @@ QJsonObject fbErr(const QString &code, const QString &message) {
 // & name"). Checked on the resolved/canonical basename.
 constexpr char kFeedbackSuffix[] = "_Ants_MCP_Feedback.md";
 
+// ANTS-3376 — the caller's project leaf (the caller_cwd basename). Used to
+// (a) derive the conventional default path when `path` is omitted and
+// (b) rank the caller's own sibling first in a not_found candidate list.
+// Empty when caller_cwd is absent / unresolvable.
+QString feedbackCallerLeaf(const QJsonObject &req) {
+    const QString callerRaw =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    return QFileInfo(QFileInfo(callerRaw).canonicalFilePath()).fileName();
+}
+
 // ANTS-3366: a project whose leaf name collides with the convention suffix
 // (e.g. "DOOM_Ants" → "DOOM_Ants_Ants_MCP_Feedback.md") derives a path that
 // doesn't exist. Rather than leave the not_found envelope a dead end —
@@ -9370,11 +9380,44 @@ QJsonArray feedbackSiblingCandidates(const QString &candidatePath) {
 
 // ANTS-3366: augment a feedback not_found envelope with the sibling
 // candidate list (+ a one-line hint) when any exist.
-QJsonObject fbNotFound(const QString &message, const QString &resolved) {
+// ANTS-3376: when `callerLeaf` is known, float the caller's OWN file
+// (`<leaf>_Ants_MCP_Feedback.md`) to the front of `candidates` so the
+// obvious retry is first; if no candidate matches the leaf, the siblings
+// all belong to OTHER projects — say so (`all_other_projects`) rather than
+// implying one fits.
+QJsonObject fbNotFound(const QString &message, const QString &resolved,
+                       const QString &callerLeaf = QString()) {
     QJsonObject e = fbErr(QStringLiteral("not_found"), message);
-    const QJsonArray cands = feedbackSiblingCandidates(resolved);
-    if (!cands.isEmpty()) {
-        e["candidates"] = cands;
+    QJsonArray cands = feedbackSiblingCandidates(resolved);
+    if (cands.isEmpty())
+        return e;
+
+    bool ownMatch = false;
+    if (!callerLeaf.isEmpty()) {
+        const QString wanted = callerLeaf + QLatin1String(kFeedbackSuffix);
+        for (int i = 0; i < cands.size(); ++i) {
+            if (QFileInfo(cands.at(i).toString()).fileName() == wanted) {
+                if (i != 0)
+                    cands.prepend(cands.takeAt(i));
+                ownMatch = true;
+                break;
+            }
+        }
+    }
+
+    e["candidates"] = cands;
+    if (ownMatch) {
+        e["hint"] = QStringLiteral(
+            "no file at that path; this project's own %1 is listed "
+            "first under candidates").arg(callerLeaf
+            + QLatin1String(kFeedbackSuffix));
+    } else if (!callerLeaf.isEmpty()) {
+        e["all_other_projects"] = true;
+        e["hint"] = QStringLiteral(
+            "no file at that path; the %1 sibling *_Ants_MCP_Feedback.md "
+            "file(s) all belong to OTHER projects (none matches this "
+            "project's leaf \"%2\")").arg(cands.size()).arg(callerLeaf);
+    } else {
         e["hint"] = QStringLiteral(
             "no file at that path; %1 sibling *_Ants_MCP_Feedback.md "
             "file(s) exist in the same directory — see candidates")
@@ -9386,15 +9429,40 @@ QJsonObject fbNotFound(const QString &message, const QString &resolved) {
 // Resolve + validate the feedback-file `path` arg. On reject, fills
 // `err` and returns false. On success, `resolvedOut` is the absolute
 // path to read/write (which may not yet exist when `mustExist` is
-// false), and `existsOut` says whether it currently exists.
+// false), and `existsOut` says whether it currently exists. When
+// `derivedOut` is non-null it reports whether the path was auto-derived
+// from caller_cwd (ANTS-3376) rather than supplied by the caller.
 bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                          QString &resolvedOut, bool &existsOut,
-                         QJsonObject &err) {
+                         QJsonObject &err, bool *derivedOut = nullptr) {
+    if (derivedOut) *derivedOut = false;
     const QString rawPath = req.value(QStringLiteral("path")).toString();
     if (rawPath.isEmpty()) {
-        err = fbErr(QStringLiteral("bad_args"),
-                    toolName + QStringLiteral(": \"path\" is required"));
-        return false;
+        // ANTS-3376 — no explicit path: derive the conventional
+        // `<leaf>_Ants_MCP_Feedback.md` at the shared root (the parent of
+        // caller_cwd, where the corpus lives — mcp-feedback-files.md
+        // § "File location & name"), mirroring how roadmap_log /
+        // changelog_log anchor on caller_cwd. With no resolvable
+        // caller_cwd there is nothing to derive from — keep the original
+        // bad_args refusal.
+        const QString callerRaw =
+            req.value(QStringLiteral("caller_cwd")).toString();
+        const QString rootCanonical =
+            QFileInfo(callerRaw).canonicalFilePath();
+        const QString leaf = QFileInfo(rootCanonical).fileName();
+        if (rootCanonical.isEmpty() || leaf.isEmpty()) {
+            err = fbErr(QStringLiteral("bad_args"),
+                        toolName + QStringLiteral(": \"path\" is required "
+                        "(no resolvable caller_cwd to derive a default)"));
+            return false;
+        }
+        const QString derived = QDir::cleanPath(
+            QFileInfo(rootCanonical).absolutePath()
+            + QLatin1Char('/') + leaf + QLatin1String(kFeedbackSuffix));
+        resolvedOut = derived;
+        existsOut   = QFileInfo::exists(derived);
+        if (derivedOut) *derivedOut = true;
+        return true;
     }
     // Root for the relative case: the caller_cwd canonical dir. Absolute
     // paths bypass it (allowOutsideRoot=true lets the shared-root files,
@@ -9731,16 +9799,17 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     QString resolved;
     bool exists = false;
+    bool derived = false;
     QJsonObject err;
     if (!resolveFeedbackPath(req, QStringLiteral("feedback_query"),
-                             resolved, exists, err)) {
+                             resolved, exists, err, &derived)) {
         return QJsonDocument(err);
     }
     if (!exists) {
         return QJsonDocument(fbNotFound(
             QStringLiteral("feedback_query: \"%1\" does not exist")
                 .arg(resolved),
-            resolved));
+            resolved, feedbackCallerLeaf(req)));
     }
     QFile f(resolved);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -9782,6 +9851,7 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     QJsonObject out;
     out["ok"]                    = true;
     out["path"]                  = resolved;
+    if (derived) out["path_derived"] = true;  // ANTS-3376
     out["delta"]                 = delta;
     out["delta_present"]         = pr.deltaPresent;
     out["delta_line_count"]      = pr.deltaLineCount;
@@ -9827,9 +9897,10 @@ void RemoteControl::setForceFeedbackWriteFailForTest(bool on) {
 QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
     QString resolved;
     bool exists = false;
+    bool derived = false;
     QJsonObject err;
     if (!resolveFeedbackPath(req, QStringLiteral("feedback_log"),
-                             resolved, exists, err)) {
+                             resolved, exists, err, &derived)) {
         return QJsonDocument(err);
     }
 
@@ -9916,7 +9987,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             return QJsonDocument(fbNotFound(
                 QStringLiteral("feedback_log: append_tracking on an "
                                "absent file (nothing to triage)"),
-                resolved));
+                resolved, feedbackCallerLeaf(req)));
         }
         const QJsonArray rowsArr =
             req.value(QStringLiteral("rows")).toArray();
@@ -10012,6 +10083,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         out["bytes_appended"] = static_cast<qint64>(addedUtf8.size());
         out["date"]           = date;
         out["created"]        = created;   // would-create
+        if (derived) out["path_derived"] = true;  // ANTS-3376
         return QJsonDocument(out);
     }
 
@@ -10045,6 +10117,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
     out["bytes_appended"] = static_cast<qint64>(addedUtf8.size());
     out["date"]           = date;
     out["created"]        = created;
+    if (derived) out["path_derived"] = true;  // ANTS-3376
     return QJsonDocument(out);
 }
 

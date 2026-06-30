@@ -17595,11 +17595,12 @@ server build id so clients can self-diagnose this.
   Kind: feature.
   Source: cc-feedback-2026-06-30 (Vestige AX9).
 
-- 📋 [ANTS-3376] **feedback_log / feedback_query — derive a default <caller_cwd-leaf>_Ants_MCP_Feedback.md path when path is omitted.**
+- ✅ [ANTS-3376] **feedback_log / feedback_query — derive a default <caller_cwd-leaf>_Ants_MCP_Feedback.md path when path is omitted.**
   Ants Projects Hub: first-time log forces a find/ls hunt + naming guess; not_found candidates point at OTHER projects' files. Accept path omission → derive '<leaf>_Ants_MCP_Feedback.md' in the conventional dir (like roadmap_log/changelog_log anchor on caller_cwd); on not_found, rank a caller-name-matching candidate first or flag that all candidates belong to other projects.
   **Layman:** Logging feedback for a brand-new project shouldn't require hunting the filesystem for the right filename.
   Kind: feature.
   Source: cc-feedback-2026-06-30 (Ants Projects Hub).
+  Resolved (2026-06-30): feedback_query/feedback_log accept an omitted `path` and derive `<caller_cwd-leaf>_Ants_MCP_Feedback.md` at the shared root (parent of caller_cwd), echoing path_derived:true; a set-but-unresolvable caller_cwd still refuses bad_args (truly-empty is caught earlier by the CallerCwdContract gate). On not_found the candidate list floats the caller's own file to candidates[0], or sets all_other_projects:true when no sibling matches the leaf (a third no-leaf branch emits a generic hint). New feedbackCallerLeaf helper; fbNotFound + resolveFeedbackPath updated; both schemas drop `path` from required. Tests: DerivesDefaultPathFromCallerCwd, NotFoundFloatsOwnFileFirst, DerivesDefaultPathOnCreate, DryRunPreviewCarriesPathDerivedNoWrite. Specs ANTS-1961 INV-13/14 + T12/T13/T14, ANTS-1962 INV-15 + T9/T10. Full 4-loop cold-eyes pass (see those specs' §8). Suite 2377/2377 green.
 
 - 📋 [ANTS-3377] **Read-only git_diff verb — per-file hunk headers for a clean commit split.**
   git_state/get_git_status return only status+branch+ahead/behind. Add git_diff {path?, staged?, name_only?, context?} → {file, hunks:[{header, old_start, new_start, lines?}]}; name_only/header-only keeps it cheap. Mirrors git_state's read-only, caller_cwd-anchored posture.
@@ -17644,11 +17645,12 @@ server build id so clients can self-diagnose this.
   Source: cc-feedback-2026-06-30 (Ants Terminal in-session).
   Resolved (2026-06-30): caveat added to read_region / read_regions / file_outline descriptions in claudeintegration.cpp. Pushed a9f9e4d; 257 claude/MCP tests green.
 
-- 📋 [ANTS-3384] **Document the canonical per-project feedback-file basename rule (and have feedback_log echo it).**
+- ✅ [ANTS-3384] **Document the canonical per-project feedback-file basename rule (and have feedback_log echo it).**
   Ants Projects Hub: existing files use short brand names (RetroDB_, DOOM_, MAME_Curator_) that don't map 1:1 to project dirs, so a new project's basename is a guess → risk of duplicate/fragmented files. Document the rule in mcp-feedback-files.md (e.g. '<project-dir-leaf>_Ants_MCP_Feedback.md') and/or have feedback_log normalise/echo the expected basename.
   **Layman:** Spell out exactly what a project's feedback file should be named so two sessions don't create two differently-named files for the same project.
   Kind: doc.
   Source: cc-feedback-2026-06-30 (Ants Projects Hub).
+  Resolved (2026-06-30): mcp-feedback-files.md § "File location & name" now documents the canonical-basename rule (filename = project dir leaf + suffix), with a complete 8-row dir-leaf↔filename table and the DOOM leaf-mismatch exception (dir DOOM_Ants/, file DOOM_Ants_MCP_Feedback.md → must pass explicit path). feedback_log/feedback_query echo path_derived:true when they derive the basename (the "have feedback_log echo it" half). Cold-eyes caught that the original draft's example cited a non-existent Album_Builder/ dir; corrected to the real DOOM case. Shipped together with ANTS-3376.
 
 - 💭 [ANTS-3385] **settings-schema-bump advisor — given a new settings field + how it deserializes, advise whether a schema-version bump is needed.**
   Vestige (LOW/niche): additive + tolerant default ⟹ no bump; non-tolerant read ⟹ bump + migration arm. Settings-heavy projects only. Logged as considered.

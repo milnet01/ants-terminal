@@ -27,3 +27,7 @@ Invariants exercised (docs/specs/ANTS-1962.md §3 / §6):
   maintainer block (verified via parse placing it in the delta).
 - T8 — atomicity: the setForceFeedbackWriteFailForTest seam leaves the
   original byte-identical and returns write_failed.
+- T9 (ANTS-3376) — `path` omitted: append_finding derives
+  `<caller_cwd-leaf>_Ants_MCP_Feedback.md` at the shared root (parent of
+  caller_cwd), creates it, and echoes `path_derived:true`; omitting both
+  `path` and a resolvable caller_cwd still refuses `bad_args`.

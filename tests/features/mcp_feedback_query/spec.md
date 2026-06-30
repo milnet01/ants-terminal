@@ -19,11 +19,18 @@ Invariants exercised (see docs/specs/ANTS-1961.md §3 / §6):
 - T5 — an ANTS-NNNN cited in contributor prose below the watermark is NOT
   in `mapped_ids`; one inside a maintainer table IS.
 - T6 — `###`/deeper headings inside blocks are inert.
-- T7 — refusals: missing path → `bad_args`; non-feedback basename →
-  `not_feedback_file`; non-existent feedback file → `not_found`.
+- T7 — refusals: missing path **and** no resolvable caller_cwd →
+  `bad_args`; non-feedback basename → `not_feedback_file`; non-existent
+  feedback file → `not_found`.
 - ANTS-3366 — a `not_found` envelope lists sibling
   `*_Ants_MCP_Feedback.md` files in the same dir under `candidates` (+ a
   `hint`); a dir with no siblings yields no `candidates` key.
+- ANTS-3376 — `path` omitted derives
+  `<caller_cwd-leaf>_Ants_MCP_Feedback.md` at the shared root (parent of
+  caller_cwd); an existing default reads back with `path_derived:true`. A
+  `not_found` candidate list floats the caller's own file to
+  `candidates[0]`, or sets `all_other_projects:true` when every sibling
+  belongs to a different project.
 - T8 — byte cap: a delta larger than max_bytes returns the head,
   `truncated:true`, full `delta_line_count`.
 

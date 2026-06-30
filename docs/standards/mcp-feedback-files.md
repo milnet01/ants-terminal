@@ -3,25 +3,41 @@
 
 Format spec for the `*_Ants_MCP_Feedback.md` files that other Claude
 Code sessions use to report problems and ideas about the Ants MCP server
-back to the Ants Terminal maintainer session. The five current files
-(project alias → filename):
+back to the Ants Terminal maintainer session. The corpus is whatever
+matches the `*_Ants_MCP_Feedback.md` glob at the shared root — one file per
+contributing project; the glob, not any list here, is authoritative. Each
+filename is the project's **directory leaf** plus the suffix (the
+canonical-basename rule below); the human brand is informational only and
+never forms the filename. A snapshot (correct at time of writing):
 
-- Vestige 3D Engine → `3D_Engine_Ants_MCP_Feedback.md`
-- MAME Curator → `MAME_Curator_Ants_MCP_Feedback.md`
-- Album Builder → `Music_Production_Ants_MCP_Feedback.md`
-- RetroArch → `RetroArch_Ants_MCP_Feedback.md`
-- RetroDB → `RetroDB_Ants_MCP_Feedback.md`
+| Project dir (`…/<leaf>/`) | Feedback filename | Brand (informational) |
+|---|---|---|
+| `3D_Engine` | `3D_Engine_Ants_MCP_Feedback.md` | Vestige |
+| `MAME_Curator` | `MAME_Curator_Ants_MCP_Feedback.md` | MAME Curator |
+| `Music_Production` | `Music_Production_Ants_MCP_Feedback.md` | Album Builder |
+| `RetroArch` | `RetroArch_Ants_MCP_Feedback.md` | RetroArch |
+| `RetroDB` | `RetroDB_Ants_MCP_Feedback.md` | RetroDB |
+| `Ants_Projects_Hub_Website` | `Ants_Projects_Hub_Website_Ants_MCP_Feedback.md` | Ants Projects Hub |
+| `Ants_Terminal` | `Ants_Terminal_Ants_MCP_Feedback.md` | Ants Terminal |
+| `DOOM_Ants` | `DOOM_Ants_MCP_Feedback.md` ⚠ leaf-mismatch | DOOM |
+
+`DOOM_Ants/` is the sole exception: its file uses the brand token `DOOM`,
+not the dir leaf `DOOM_Ants`, so a session there must pass an explicit
+`path` (see the canonical-basename rule below).
 
 This is a *data-file format* spec (what a conforming feedback file must
 look like so tooling can parse it), like
 [roadmap-format.md](roadmap-format.md) — not a practitioner authoring
-guideline. It carries a `-spec` version marker for that reason.
+guideline. It carries a `-spec` version marker (`ants-mcp-feedback-format-spec`,
+line 1) for that reason — distinct from the `ants-mcp-feedback` marker the
+conforming *data files* carry (§ "File skeleton").
 
 The load-bearing reason it exists: the maintainer session reviews these
 files by reading only the **un-triaged tail** (everything a contributor
 appended since the last maintainer review). A regular format lets a tool
 return just that delta instead of the maintainer re-reading the whole
-file every week (the largest, 3D_Engine, is already ~2,500 lines) — the
+file every week (the largest, 3D_Engine, is already ~3,460 lines and
+growing) — the
 `feedback_query` MCP verb, ANTS-1961.
 
 ## Two roles, one file
@@ -42,6 +58,40 @@ un-triaged contributor input.
 - Named `<Project>_Ants_MCP_Feedback.md` (e.g.
   `RetroArch_Ants_MCP_Feedback.md`). Project token in `CamelCase` or
   `Snake_Case`, no spaces.
+- **Canonical basename = the project directory leaf (ANTS-3384).** A
+  contributing project lives in its own directory directly under the
+  shared root (`/mnt/Games/Scripts/Linux/<leaf>/`); its feedback file is
+  `<leaf>_Ants_MCP_Feedback.md` in that shared root — i.e. the project's
+  directory name, verbatim, plus the suffix. This is the rule a brand-new
+  project follows so two sessions can't create two differently-named files
+  for the same project, and it is what makes the omit-`path` derivation
+  (next bullet) land on the right file by construction. Most current files
+  already obey it (e.g. `RetroDB/`, `MAME_Curator/`, `Music_Production/`
+  each match their dir leaf). The one legacy exception is **DOOM**, whose
+  directory is `DOOM_Ants/` but whose file uses the brand token —
+  `DOOM_Ants_MCP_Feedback.md` (leaf `DOOM`, not the dir leaf `DOOM_Ants`):
+  such a project keeps its historical name and **must pass an explicit
+  `path`** (its derived default would be the doubled
+  `DOOM_Ants_Ants_MCP_Feedback.md`). Note the not_found candidate ranking
+  below does NOT rescue this case: because the file's leaf (`DOOM`) differs
+  from the dir leaf (`DOOM_Ants`), the omit-`path` miss matches no sibling
+  and reports `all_other_projects:true` even though `DOOM_Ants_MCP_Feedback.md`
+  is in fact DOOM's file — which is exactly why the explicit `path` is
+  mandatory, not merely advised, for a leaf-mismatch project. New files use
+  the dir-leaf basename and avoid the whole problem.
+- **Default-path derivation (ANTS-3376).** `feedback_query` and
+  `feedback_log` accept `path` being **omitted**: they derive
+  `<caller_cwd-leaf>_Ants_MCP_Feedback.md` at the shared root (which, for a
+  top-level project, is the parent of `caller_cwd`) and echo
+  `path_derived:true` in the reply, so a first-time log needs no filesystem
+  hunt. Derivation assumes `caller_cwd` is the project root itself; a
+  nested working directory would derive the wrong leaf, so pass an explicit
+  `path` then. A legacy project whose file uses a brand alias (DOOM) should
+  likewise pass its explicit `path` — the derived default won't match. On a
+  `not_found`, the candidate list floats the caller's own file first, or
+  sets `all_other_projects:true` when every sibling belongs to a different
+  project (so the divergence is visible, not silently fragmented into a new
+  file).
 - **Suffix guard (canonical home).** Tooling that reads/writes these files
   (`feedback_query` ANTS-1961, `feedback_log` ANTS-1962) guards on the
   exact, case-sensitive basename suffix `_Ants_MCP_Feedback.md`: a `path`
@@ -89,9 +139,11 @@ contributor's one-screen reminder of the rules — including the
 `feedback_query` / `feedback_log` verb names (ANTS-2226), so a contributor
 session discovers the read/write tools from the file itself rather than
 hand-editing. `FeedbackFile::skeleton()` emits this banner for every
-new file; the existing corpus files were back-filled with it under
-ANTS-2226. The banner is a blockquote, inert to the boundary-heading
-delta parser, so it never perturbs the un-triaged-tail computation.
+new file; most existing corpus files were back-filled with it under
+ANTS-2226 (the `DOOM` legacy file is a standing exception — it carries
+neither the banner nor the marker). The banner is a blockquote, inert to
+the boundary-heading delta parser, so it never perturbs the
+un-triaged-tail computation.
 
 ## Contributor block
 
@@ -172,8 +224,8 @@ that is fine — **the parser keys on `ANTS-[0-9]+` appearing anywhere in a
 cell, never on header text.** A row maps a finding to one or more
 `ANTS-NNNN` IDs; rows for not-tracked items legitimately carry a
 parenthetical or `n/a` instead (`(self-resolved)`, `(schema fix)`,
-`(no roadmap item)`, `n/a` — see `MAME_Curator…:761`), so a validator
-must not reject an ID-less row.
+`(no roadmap item)`, `n/a` — these forms recur in the corpus's maintainer
+tables), so a validator must not reject an ID-less row.
 
 Optionally end the block with a sentinel line as a human breadcrumb for
 where the triaged region stops (advisory only — the delta is computed
