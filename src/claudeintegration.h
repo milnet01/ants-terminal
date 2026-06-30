@@ -359,6 +359,16 @@ public:
     static QString wrapMcpData(const QString &toolName,
                                const QString &payload);
 
+    // ANTS-2218 — opt-in verbatim framing for content reads (raw:true).
+    // Unlike wrapMcpData, the payload is NOT scrubbed: it is emitted byte-for-
+    // byte inside an unforgeable per-call nonce frame, so an agent reading
+    // frame-sensitive source gets true bytes to Edit from. The default scrub
+    // stays intentionally lossy/irreversible (a reversible escape a good agent
+    // could invert, a hostile normalising tokeniser could invert too). See the
+    // .cpp and tests/features/mcp_raw_read.
+    static QString wrapMcpDataRaw(const QString &toolName,
+                                  const QString &payload);
+
     // ANTS-1499 — ETag "304 Not Modified" pattern for read tools.
     // isEtagSupportedTool gates the allowlist (project_layout,
     // roadmap_query, file_outline, last_audit_summary, get_environment,

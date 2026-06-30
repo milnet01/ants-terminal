@@ -30,6 +30,14 @@ bool isFieldProjectionTool(const QString &toolName);
 // (gated by the dispatch site, not here). See docs/specs/ANTS-2094.md.
 bool isOffloadEligible(const QString &toolName);
 
+// ANTS-2218 — read verbs that honour `raw:true`: return file/source bytes
+// VERBATIM inside an unforgeable nonce frame instead of the default lossy
+// tag-scrub, so an agent can Edit frame-sensitive source faithfully. Opt-in
+// per call; the default (scrub) path is unchanged. Gated at the dispatch site;
+// kept == the advertised `raw` schema set so the contract has no hidden
+// behaviour. See docs/standards/mcp-behavioural-notes.md.
+bool isRawEligible(const QString &toolName);
+
 // Return a compact JSON object carrying only the named top-level fields
 // of `responseText`. Contract:
 //   - `fields` empty                    -> responseText returned unchanged.

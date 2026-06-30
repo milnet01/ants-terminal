@@ -135,6 +135,21 @@ server-controllable beyond this per-tool hint.
   `Class::method` forms) from a project file via the pure
   `ReadRegion::extract` helper; ETag-304 free re-read + head-anchored
   incremental byte cap; caller_cwd-Required (ANTS-2021).
+- **`raw:true` (ANTS-2218)** — opt-in verbatim framing, honoured by
+  `read_region` / `read_regions` / `workspace_search`
+  (`mcp::isRawEligible`). The default frame neutralises any literal
+  `</ants_mcp_data>` close-tag and `<!--`/`-->` comment markers in the
+  returned bytes (lossy, to stop hostile content forging the response
+  frame — ANTS-1294/1670/1996). That corrupts an `Edit`/`apply_edits`
+  built from a file that *itself* contains those tokens (this MCP source,
+  a spec, HTML/markdown with comments). `raw:true` instead emits the bytes
+  byte-for-byte inside an **unforgeable nonce frame**
+  (`<ants_mcp_data_raw__<nonce> …>…</ants_mcp_data_raw__<nonce>>`, the
+  nonce a content-hash verified absent from the payload), and suppresses
+  the ANTS-2094 offload so the agent gets true bytes, not a head+pointer.
+  Set it when you will Edit from the output; omit otherwise. The default
+  scrub is deliberately NOT made reversible — any escaping a good agent
+  could invert, a hostile normalising tokeniser could invert too.
 - **`codebase_index`** — serves a pre-computed project structural map
   (symbols-per-file + lane→files) so a session stops re-deriving shape
   with grep / `file_outline` / CLAUDE.md reads. One verb, selectors

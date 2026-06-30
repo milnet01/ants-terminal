@@ -1209,6 +1209,8 @@ if(ANTS_TESTS)
                 # ANTS-1723 — workflow_state MCP tool.
                 tests/features/mcp_workflow_state/test_mcp_workflow_state.cpp
                 tests/features/mcp_output_sanitisation/test_mcp_output_sanitisation.cpp
+                # ANTS-2218 — opt-in raw (verbatim) framing for content reads.
+                tests/features/mcp_raw_read/test_mcp_raw_read.cpp
                 tests/features/mcp_path_anchor/test_mcp_path_anchor.cpp
                 # ANTS-1357 + ANTS-1346 MCP perf bundle.
                 tests/features/mcp_idempotent_read_cache/test_mcp_idempotent_read_cache.cpp

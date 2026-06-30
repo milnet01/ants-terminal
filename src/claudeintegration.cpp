@@ -1709,6 +1709,32 @@ void ClaudeIntegration::onMcpConnection() {
                     return p;
                 };
 
+                // ANTS-2218 — `raw` opt-in flag on the content-read verbs
+                // (read_region / read_regions / workspace_search). When true
+                // the body is returned VERBATIM inside an unforgeable nonce
+                // frame instead of the default scrub that neutralises literal
+                // </ants_mcp_data> and `<!--`/`-->` markers — so an agent
+                // reading frame-sensitive source (this file, a spec, an HTML/
+                // markdown file with comments) gets true bytes to Edit from.
+                auto makeRawProp = []{
+                    QJsonObject p;
+                    p["type"] = "boolean";
+                    p["default"] = false;
+                    p["description"] = QStringLiteral(
+                        "Optional (ANTS-2218). When true, return the file "
+                        "content VERBATIM. The default framing neutralises any "
+                        "literal MCP envelope close-tag and `<!--`/`-->` "
+                        "comment markers in the bytes (lossy, to protect the "
+                        "response frame) — which corrupts an Edit/apply_edits "
+                        "built from a file that itself contains those tokens "
+                        "(this MCP source, a spec, HTML/markdown with "
+                        "comments). Raw mode wraps the bytes in a unique "
+                        "per-call frame instead, so they round-trip unmodified. "
+                        "Set it when you will Edit from the output; omit "
+                        "otherwise.");
+                    return p;
+                };
+
                 // ANTS-2090 — `encoding` selector, declared on the
                 // list-shaped read verbs. "tabular" packs each eligible
                 // top-level array-of-objects into a columnar
@@ -3062,6 +3088,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["dedup"]             = dedupProp;
                     props["timeout_sec"]       = timeoutSecProp;
                     // ANTS-1391 — caller_cwd anchor.
+                    props["raw"]         = makeRawProp();        // ANTS-2218
                     props["caller_cwd"]  = makeCallerCwdReadProp();
                     props["encoding"]    = makeEncodingProp();   // ANTS-2090
                     schema["properties"] = props;
@@ -3359,6 +3386,7 @@ void ClaudeIntegration::onMcpConnection() {
                             "naming the pipeline driver function.");
                         props["call_sequence"] = p;
                     }
+                    props["raw"]        = makeRawProp();         // ANTS-2218
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     props["fields"]     = makeFieldsProp();      // ANTS-1720
@@ -3456,6 +3484,7 @@ void ClaudeIntegration::onMcpConnection() {
                           "(default 512 KiB, 4 MiB ceiling), consumed in item "
                           "order.");
                       props["max_bytes"] = p; }
+                    props["raw"]        = makeRawProp();         // ANTS-2218
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray required;
@@ -9595,6 +9624,16 @@ void ClaudeIntegration::onMcpConnection() {
                     responseText = mcp::tabularize(responseText);
                 }
 
+                // ANTS-2218 — raw (verbatim) framing for content reads. Read
+                // here, before the offload below, so it can suppress it: an
+                // agent that asked for true bytes must not be handed a
+                // head+pointer envelope instead. Honoured only for the
+                // isRawEligible read verbs (read_region/read_regions/
+                // workspace_search); see the wrap branch below.
+                const bool rawRequested =
+                    mcp::isRawEligible(toolName) &&
+                    argsObj.value(QStringLiteral("raw")).toBool();
+
                 // ANTS-2094 — proactive result offload (observation masking).
                 // After every token-trim transform (fields/compact/hints) and
                 // before the wrap: spill an over-threshold body to a
@@ -9603,7 +9642,7 @@ void ClaudeIntegration::onMcpConnection() {
                 // session default). The head guard (bodyBytes > head size)
                 // keeps offload a net saving; fail-open returns the body
                 // unchanged on any write failure. See docs/specs/ANTS-2094.md.
-                if (toolHandled && !etagUnchanged &&
+                if (toolHandled && !etagUnchanged && !rawRequested &&
                     mcp::isOffloadEligible(toolName) &&
                     mcp::offloadRequested(argsObj)) {
                     const qint64 bodyBytes = responseText.toUtf8().size();
@@ -9627,9 +9666,12 @@ void ClaudeIntegration::onMcpConnection() {
                          // tools), not user content. Bypass the wrap
                          // for the same reason get_session_info does.
                          toolName == QStringLiteral("tool_info"));
-                    const QString wrapped = isControlPlane
-                        ? responseText
-                        : wrapMcpData(toolName, responseText);
+                    // ANTS-2218 — raw verbatim frame (opt-in, read verbs) vs
+                    // the default lossy tag-scrub. Control-plane bypasses both.
+                    const QString wrapped =
+                        isControlPlane ? responseText
+                        : rawRequested ? wrapMcpDataRaw(toolName, responseText)
+                                       : wrapMcpData(toolName, responseText);
                     result["content"] = makeTextContent(wrapped);
                     // ANTS-1284 — record dispatch (token_usage +
                     // mcp_trace). ANTS-1402-INV-3: now teed through
@@ -9783,6 +9825,56 @@ QString ClaudeIntegration::wrapMcpData(const QString &toolName,
     safeTool.replace(QLatin1Char('"'),  QStringLiteral("&quot;"));
     return QStringLiteral("<ants_mcp_data tool=\"%1\">%2</ants_mcp_data>")
         .arg(safeTool, sanitised);
+}
+
+// --- ANTS-2218 — opt-in raw (verbatim) framing for content reads ---
+//
+// wrapMcpData (above) neutralises any literal </ants_mcp_data> (plus open-tag
+// and `<!--`/`-->` variants) in the payload. That scrub is DELIBERATELY lossy
+// and irreversible: a hostile file/scrollback must not be able to forge the
+// frame-close and have following bytes read as trusted prose, and any escaping
+// a good agent could invert a hostile normalising tokeniser could invert too —
+// reopening the ANTS-1294/1670/1996 breakout. The cost is that an agent reading
+// frame-sensitive SOURCE (e.g. this file, a spec, HTML/markdown with comments)
+// sees doctored bytes and would corrupt the file if it built an Edit from them
+// (ANTS-2218).
+//
+// Raw mode is the opt-in escape hatch: emit the payload VERBATIM so the agent
+// gets true bytes, made safe by an UNFORGEABLE delimiter instead of a scrub.
+// The frame tag carries a per-call nonce — a truncated SHA-256 of the payload,
+// verified absent from the payload — so </ants_mcp_data_raw__<nonce>> cannot
+// occur in the content and there is nothing reversible for a hostile consumer
+// to recover. Falls back to the safe scrub in the (infeasible) case that no
+// collision-free nonce is found. Honoured only for mcp::isRawEligible read
+// verbs at the dispatch site. See tests/features/mcp_raw_read.
+QString ClaudeIntegration::wrapMcpDataRaw(const QString &toolName,
+                                          const QString &payload) {
+    // Derive the nonce from the payload's own hash, then widen until it is
+    // absent from the payload. A payload that contains its own SHA-256 is a
+    // preimage problem (infeasible), but verify-and-widen keeps unforgeability
+    // a proof rather than an assumption.
+    const QByteArray digest =
+        QCryptographicHash::hash(payload.toUtf8(), QCryptographicHash::Sha256)
+            .toHex();
+    QString nonce;
+    for (int len = 16; len <= digest.size(); len += 8) {
+        nonce = QString::fromLatin1(digest.left(len));
+        if (!payload.contains(nonce)) break;
+    }
+    if (payload.contains(nonce)) {
+        // Unreachable in practice. Rather than emit a forgeable frame, fall
+        // back to the safe (lossy) scrub.
+        return wrapMcpData(toolName, payload);
+    }
+    // Tool-name attribute hardening (mirrors wrapMcpData).
+    QString safeTool = toolName;
+    safeTool.replace(QLatin1Char('&'), QStringLiteral("&amp;"));
+    safeTool.replace(QLatin1Char('<'), QStringLiteral("&lt;"));
+    safeTool.replace(QLatin1Char('>'), QStringLiteral("&gt;"));
+    safeTool.replace(QLatin1Char('"'), QStringLiteral("&quot;"));
+    return QStringLiteral(
+               "<ants_mcp_data_raw__%1 tool=\"%2\">%3</ants_mcp_data_raw__%1>")
+        .arg(nonce, safeTool, payload);
 }
 
 // --- ANTS-1404 — per-tool caller_cwd contract ---

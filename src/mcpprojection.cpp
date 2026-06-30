@@ -60,6 +60,16 @@ bool isOffloadEligible(const QString &toolName) {
         || toolName == QStringLiteral("project_query");
 }
 
+// ANTS-2218 — read verbs that honour `raw:true` (see header). The content
+// reads an agent edits from: a file slice (read_region / read_regions) or a
+// code search (workspace_search). Kept == the advertised `raw` schema set so
+// the contract has no hidden behaviour.
+bool isRawEligible(const QString &toolName) {
+    return toolName == QStringLiteral("read_region")
+        || toolName == QStringLiteral("read_regions")
+        || toolName == QStringLiteral("workspace_search");
+}
+
 QString projectFields(const QString &responseText, const QJsonArray &fields) {
     if (fields.isEmpty()) return responseText;
 

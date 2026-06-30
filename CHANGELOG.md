@@ -156,6 +156,17 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Ants MCP read verbs no longer return doctored bytes for frame-sensitive source (ANTS-2218)**
+  read_region / read_regions / workspace_search now accept `raw:true`,
+  returning file content byte-for-byte inside an unforgeable nonce frame
+  instead of the default lossy scrub that neutralises literal
+  `</ants_mcp_data>` close-tags and `<!--`/`-->` comment markers. Without
+  it, an agent reading a file that itself contains those tokens (the MCP
+  source, a spec, HTML/markdown with comments) and building an
+  Edit/apply_edits from the output would corrupt the file. The default
+  (scrub) framing is unchanged, so the ANTS-1294/1670/1996 breakout
+  protections are untouched.
+
 - **MCP `audit_run` description documents the client transport-cap + `last_audit_summary` fallback for long sweeps (ANTS-2183)** (ANTS-2183)
   A full-tree sweep can exceed the MCP client's ~60 s request timer (Claude Code's), surfacing `transport: timed out` outside the response even though the run completes server-side and writes its SARIF. The verb description now states this and points the caller at `last_audit_summary` (or the envelope's `cache_path`) to read the result, mirroring the two-tier-timeout note `verify_changes` already carries.
 
