@@ -37,13 +37,19 @@ without adding a second version string.
 
 ## Contract
 
-### Invariant 1 — Help menu exists and is last on the menubar
+### Invariant 1 — Help is last among the standard menus; Donate is the rightmost
 
-`MainWindow` adds a top-level `&Help` menu to `m_menuBar`. It is
-constructed **after** all other menus (File, Edit, View, Split,
-Tools, Settings) so Qt places it as the rightmost entry, matching
-the Linux desktop HIG and every terminal emulator users are
-already familiar with.
+`MainWindow` adds a top-level `&Help` menu to `m_menuBar`,
+constructed **after** all other *standard* menus (File, Edit,
+View, Split, Tools, Settings). The `&Donate` menu (user-requested
+2026-06-30) is then added **after** Help, making Donate the
+rightmost entry of all.
+
+Donate deliberately overrides the freedesktop HIG default of "Help
+is last": it is a call-to-action the user wants maximally visible,
+and the rightmost slot is the most prominent. Help therefore
+remains last among the standard menus, with Donate the single
+entry to its right.
 
 ### Invariant 2 — Help menu contains an About action
 
@@ -136,8 +142,10 @@ MainWindow is too heavy to instantiate under a feature test
 (wires PTY, tab bar, splitters, many dialogs). This test is
 source-grep on `src/mainwindow.cpp`:
 
-1. `m_menuBar->addMenu("&Help")` appears after every other
-   `addMenu` call (so Help is the last menu).
+1. `m_menuBar->addMenu("&Help")` appears after every *standard*
+   `addMenu` call (File…Settings), and `m_menuBar->addMenu(tr("&Donate"))`
+   appears after Help — so Help is last among the standard menus and
+   Donate is the rightmost menu of all.
 2. The Help menu's construction block contains
    `addAction("&About Ants Terminal...")` and
    `addAction("About &Qt...")`.

@@ -82,27 +82,42 @@ TEST(HelpAboutMenu, Main) {    auto loadFile = [](const QString &path) -> QStrin
     const QString aboutSrc = loadFile(QStringLiteral(SRC_ABOUTDIALOGS_PATH));
     if (aboutSrc.isEmpty()) FAIL();
 
-    // Invariant 1 — Help menu present, and it appears AFTER every other
-    // m_menuBar->addMenu(...) call (so Qt places it last).
+    // Invariant 1 — Help is the last of the STANDARD menus, and the
+    // Donate menu is the rightmost entry of all. Donate (user-requested
+    // 2026-06-30) is a deliberate call-to-action placed last for maximum
+    // visibility, overriding the freedesktop "Help is last" HIG default.
     const int helpIdx = src.indexOf(
         QStringLiteral("m_menuBar->addMenu(\"&Help\")"));
     expect(helpIdx > 0, "I1/help-menu-added");
 
-    // Collect every addMenu call index and assert the Help one is last.
-    int lastOtherAddMenu = -1;
+    const int donateIdx = src.indexOf(
+        QStringLiteral("m_menuBar->addMenu(tr(\"&Donate\"))"));
+    expect(donateIdx > 0, "I1/donate-menu-added");
+
+    // Donate is the rightmost menu — its addMenu call comes after Help's.
+    expect(donateIdx > helpIdx,
+           "I1/donate-menu-is-last",
+           QStringLiteral("Donate menu must be added after Help so it sits "
+                          "at the rightmost position for visibility; "
+                          "donateIdx=%1 helpIdx=%2").arg(donateIdx).arg(helpIdx));
+
+    // Help is last among the STANDARD menus — every addMenu call except
+    // the Donate one sits before Help.
+    int lastStdAddMenu = -1;
     int scan = 0;
     while (true) {
         const int next = src.indexOf(
             QStringLiteral("m_menuBar->addMenu("), scan);
         if (next < 0) break;
-        if (next != helpIdx && next > lastOtherAddMenu) lastOtherAddMenu = next;
+        if (next != helpIdx && next != donateIdx && next > lastStdAddMenu)
+            lastStdAddMenu = next;
         scan = next + 1;
     }
-    expect(helpIdx > lastOtherAddMenu,
-           "I1/help-menu-is-last",
-           QStringLiteral("Help menu must be added last on m_menuBar so "
-                          "it sits at the rightmost position; helpIdx=%1 "
-                          "lastOther=%2").arg(helpIdx).arg(lastOtherAddMenu));
+    expect(helpIdx > lastStdAddMenu,
+           "I1/help-menu-is-last-standard",
+           QStringLiteral("Help menu must be added after every standard menu "
+                          "(File…Settings); only Donate may follow it. "
+                          "helpIdx=%1 lastStd=%2").arg(helpIdx).arg(lastStdAddMenu));
 
     // Invariant 2 — About Ants Terminal action.
     expect(src.contains(
