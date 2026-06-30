@@ -17696,6 +17696,46 @@ server build id so clients can self-diagnose this.
   Kind: enhancement.
   Source: cc-feedback-2026-06-30 (RetroArch; also serves MAME keyword-find).
 
+- 📋 [ANTS-3393] **codebase_index + project_settings op:detect index/suggest vendored dirs (venv/, node_modules/) — skip vendor dirs + honor .gitignore in the source file-walk.**
+  Problem: on a flat-layout project with a committed venv/, project_settings op:detect suggested source_roots=["venv"] (reason: 'venv holds 2340 of 2354 files') and codebase_index with source_roots=["."] reported py=2350 — essentially all of venv/ — vs ~10 real modules. Both verbs share one root cause: the source file-walk counts/indexes vendored dirs and ignores .gitignore (venv/ is gitignored here).
+  Repro: in a flat-root Python project with a committed, gitignored venv/, call project_settings op:detect (suggests venv) and codebase_index (file_count≈2358).
+  Fix: in the shared file-walk, (a) honor .gitignore, and/or (b) skip well-known vendor dirs (venv, .venv, env, node_modules, .git, __pycache__, dist, build, target). Optionally support an excludes/ignore_globs key in .ants/project.json so source_roots=["."] can subtract venv/. Fix the walk once; both verbs benefit (refactor-shared-foundation-first).
+  **Layman:** On projects that keep a copy of their libraries in the folder (a venv), the code map mistakes those thousands of library files for the project's own code and becomes useless. Skip those vendored folders.
+  Kind: fix.
+  Source: cc-feedback-2026-06-30 (Contact_List).
+
+- 📋 [ANTS-3394] **audit_run scope:"full" sweeps build-output + scraped-media dirs (dist/, static/images/) — apply a default exclusion set + honor .gitignore.**
+  Problem: audit_run scope:"full" on a Flask app scanned dist/ (PyInstaller output) and static/images/ (scraped media): 132 of 134 findings were mypy noise inside dist/retrodb/_internal/skimage/*.pyi, and a trivy FATAL on a PNG. The real tools (ruff/semgrep/gitleaks) were drowned.
+  Repro: audit_run {scope:"full"} on a project with dist/ + static/images/.
+  Fix: apply the /audit-skill default exclusion set to scope:"full" (logs/ data/ database/ dist/ build/ __pycache__ .venv static/images static/videos) and/or honor .gitignore; let a caller opt back in. Shares the vendor/.gitignore-awareness theme with the codebase_index file-walk item.
+  **Layman:** When asked to check the whole project for bugs, the tool also scans the built app and downloaded images — junk that drowns the real findings. Skip those by default.
+  Kind: fix.
+  Source: cc-feedback-2026-06-30 (RetroDB).
+
+- 📋 [ANTS-3395] **audit_run mis-parses tool progress/stderr as findings (bandit progress bar, trivy FATAL line) — filter non-finding lines; surface tool aborts as incomplete_tools[].**
+  Problem: findings[] contained two non-findings: (1) bandit's progress bar — file="Working... ━━…100%", message="06", rule="bandit"; (2) a trivy FATAL on a PNG — file="2026-06-30T20" (ISO timestamp split on ':'), message="…FATAL\trun error: fs scan error…". Both are tool stdout/stderr the parser kept. The trivy FATAL also meant trivy aborted (no real scan) yet surfaced as a single warning.
+  Repro: run audit_run so bandit emits its rich progress bar to the captured stream and trivy hits an unscannable binary (a PNG).
+  Fix: parse only structured tool output (bandit: the JSON results array, not the progress bar); detect trivy FATAL/run-error lines and route them to incomplete_tools[] (ANTS-2032 envelope) rather than findings[].
+  **Layman:** The bug-checker sometimes turns a tool's progress bar or error message into a fake 'bug', so the count can't be trusted. Filter those out.
+  Kind: fix.
+  Source: cc-feedback-2026-06-30 (RetroDB).
+
+- 📋 [ANTS-3396] **audit_run MCP transport times out though the server completes + writes SARIF — make the timeout recoverable (result points at cache_path / partial envelope) and document last_audit_summary recovery.**
+  Problem: audit_run {scope:"full"} on a ~200-file project (and separately on a cold semgrep registry-rule fetch) returned 'MCP error -32000: Ants MCP transport: timed out' — but the server HAD completed and written a fresh SARIF + findings JSON to .audit_cache, recoverable via last_audit_summary. No envelope (incl. the documented partial/incomplete_tools fields) came back; the caller can't tell success from failure and re-runs an expensive sweep.
+  Repro: audit_run scope:"full" with a non-trivial tool set (mypy/trivy/semgrep cold cache) on a mid-size repo; the aggregate exceeds the MCP transport timeout while the server keeps going.
+  Fix: prefer an async job-handle + poll, OR on transport-deadline approach return a partial envelope pointing at the cache_path it already writes; at minimum document that a timed-out audit_run is recoverable via last_audit_summary / the .audit_cache SARIF. Consider pre-warming/caching semgrep registry rules.
+  **Layman:** On a big or slow scan the tool reports 'timed out' even though it actually finished and saved the results — the caller wrongly thinks it failed and re-runs it. Make a timed-out run recoverable.
+  Kind: enhancement.
+  Source: cc-feedback-2026-06-30 (Contact_List + RetroDB).
+
+- 📋 [ANTS-3397] **roadmap_log counter strategy refuses (counter_missing) on a fresh roadmap with no .roadmap-counter — auto-create the counter when there are no existing [PREFIX-NNNN] ids.**
+  Problem: on a project with a hand-authored ROADMAP.md but no .roadmap-counter, roadmap_log op:append_batch (counter strategy, id_prefix CL) refused with code:counter_missing — the message is clear ('touch the file with the current high-water mark') but requires a shell side-step (`printf '0' > .roadmap-counter`) that breaks the all-MCP workflow.
+  Repro: counter-strategy append on a roadmap with no .roadmap-counter and no existing [PREFIX-NNNN] ids.
+  Fix: when the counter strategy runs on a roadmap that has neither a .roadmap-counter nor any existing [PREFIX-NNNN] ids, auto-create the counter at 0 (greenfield is unambiguous), or expose a roadmap_log/project_settings op to initialize it. Keep refusing when ids exist but the counter is absent (that's a real desync worth surfacing).
+  **Layman:** Starting a brand-new roadmap, the tool refuses to add the first item until you create a hidden counter file by hand in the shell — a small speed-bump that breaks the otherwise all-in-app workflow.
+  Kind: enhancement.
+  Source: cc-feedback-2026-06-30 (Contact_List).
+
 ### 🔌 Ants-MCP feedback from CC sessions (DOOM 2026-06-28)
 
 DOOM-0009 step-6 SVGF denoiser sessions. Confirmed shipped: ANTS-2081 (ETag
