@@ -379,6 +379,40 @@ TEST(CodebaseIndex, CFamilyAdmittedAndEmptySignal) {
         << "ANTS-2148: file_count:0 must carry empty:true";
 }
 
+// ANTS-3393 — a flat-root project that declares source_roots=["."] must not
+// have its committed virtualenv / vendored / build trees indexed. The walk
+// shares isNoiseDir with op:detect, pruning venv/, node_modules/,
+// __pycache__/ and build*/ per directory component while the real root
+// module survives. (Contact_List saw codebase_index report 2350 vendored
+// files vs ~10 real ones, because source_roots=["."] is the only way to
+// capture flat-root modules.)
+TEST(CodebaseIndex, NoiseDirsPrunedUnderDotRoot) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/.ants/project.json",
+              QStringLiteral("{\"source_roots\":[\".\"]}"));
+    writeFile(dir.path() + "/app.cpp", cppWith("App", "run"));   // real root module
+    // Vendored / cache / build trees that must be pruned.
+    writeFile(dir.path() + "/venv/lib/dep.cpp", cppWith("Dep", "f"));
+    writeFile(dir.path() + "/node_modules/pkg/mod.cpp", cppWith("Mod", "f"));
+    writeFile(dir.path() + "/__pycache__/cached.cpp", cppWith("Cached", "f"));
+    writeFile(dir.path() + "/build/out.cpp", cppWith("Out", "f"));
+
+    Index idx = build(dir.path(), 1000);
+    QStringList paths;
+    for (const FileEntry &fe : idx.files) paths << fe.path;
+    bool sawApp = false;
+    for (const QString &p : paths)
+        if (p.endsWith(QStringLiteral("app.cpp"))) sawApp = true;
+    EXPECT_TRUE(sawApp) << "ANTS-3393: the real root-level module must still be indexed";
+    for (const QString &p : paths) {
+        const std::string ps = p.toStdString();
+        EXPECT_FALSE(p.contains(QStringLiteral("venv/")))         << ps;
+        EXPECT_FALSE(p.contains(QStringLiteral("node_modules/"))) << ps;
+        EXPECT_FALSE(p.contains(QStringLiteral("__pycache__/")))  << ps;
+        EXPECT_FALSE(p.contains(QStringLiteral("build/")))        << ps;
+    }
+}
+
 // INV-8/9/10 — wiring source-scrapes.
 TEST(CodebaseIndex, WiringRegistered) {
     const std::string ci = ants_test::slurpFile(srcPath("src/claudeintegration.cpp"));

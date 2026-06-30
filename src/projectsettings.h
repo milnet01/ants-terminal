@@ -37,6 +37,16 @@ struct Settings {
 // consumer.
 Settings load(const QString &rootCanonical);
 
+// ANTS-2161 / ANTS-3393 — true for a top-level directory name the source
+// walk should neither descend nor index: any dot-dir (.git/.ants/.venv),
+// build*, a *-deps / *-prefix staging dir, and the conventional vendored /
+// build-output / Python-virtualenv trees (node_modules, dist, target,
+// vendor, venv, env, __pycache__, …). The single source of truth shared by
+// op:detect (projectsettings.cpp) and codebase_index's walkSubtree
+// (codebaseindex.cpp) so both prune the same set — a committed virtualenv
+// no longer drowns a flat-root source_roots=["."] index.
+bool isNoiseDir(const QString &name);
+
 // ANTS-2161 — layout-suggestion detector. See docs/specs/ANTS-2161.md § 2.1.
 struct Suggestion {
     bool                       present = false;   // .ants/project.json already on disk

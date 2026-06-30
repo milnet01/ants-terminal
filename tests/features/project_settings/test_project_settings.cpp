@@ -307,6 +307,34 @@ TEST(ProjectSettings, DetectDiscountsVendoredDeps) {
     EXPECT_TRUE(s.sourceRoots->contains(QStringLiteral("linuxdoom")));
 }
 
+// ANTS-3393 — a committed Python virtualenv (`venv/`, NOT `.venv/`) + a
+// bytecode cache (`__pycache__/`) must be discounted exactly like the
+// vendored *-deps trees. The Contact_List session saw op:detect suggest
+// source_roots=["venv"] because the virtualenv held 2340 of 2354 files.
+// venv/env/__pycache__ are now in the isNoiseDir set.
+TEST(ProjectSettings, DetectDiscountsPythonVirtualenv) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    for (int i = 0; i < 40; ++i)
+        writeFile(root + QStringLiteral("/venv/lib/p%1.c").arg(i),
+                  cFile(QStringLiteral("vend%1").arg(i)));
+    for (int i = 0; i < 6; ++i)
+        writeFile(root + QStringLiteral("/__pycache__/c%1.c").arg(i),
+                  cFile(QStringLiteral("cache%1").arg(i)));
+    // First-party code in a real subdir, so a suggestion can still be made.
+    for (int i = 0; i < 5; ++i)
+        writeFile(root + QStringLiteral("/app/m%1.c").arg(i),
+                  cFile(QStringLiteral("route%1").arg(i)));
+
+    ProjectSettings::Suggestion s = ProjectSettings::detect(root);
+    EXPECT_EQ(s.totalSourceCount, 5);  // venv/ + __pycache__/ excluded from the total
+    EXPECT_TRUE(s.excluded.contains(QStringLiteral("venv")));
+    EXPECT_TRUE(s.excluded.contains(QStringLiteral("__pycache__")));
+    ASSERT_TRUE(s.sourceRoots.has_value());
+    EXPECT_FALSE(s.sourceRoots->contains(QStringLiteral("venv")));
+    EXPECT_TRUE(s.sourceRoots->contains(QStringLiteral("app")));
+}
+
 // Wiring — every consumer calls ProjectSettings::load.
 TEST(ProjectSettings, ConsumerWiring) {
     const std::string ci = ants_test::slurpFile(srcPath("src/codebaseindex.cpp"));

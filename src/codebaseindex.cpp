@@ -113,7 +113,22 @@ QStringList walkSubtree(const QString &rootCanonical, const QString &sub) {
     while (it.hasNext()) {
         it.next();
         if (!isIndexableSuffix(it.fileInfo().suffix().toLower())) continue;
-        out << it.filePath().mid(prefix);
+        const QString rel = it.filePath().mid(prefix);
+        // ANTS-3393 — prune vendored / build-output / virtualenv trees even
+        // under an explicit source_roots=["."]: a committed venv/ or
+        // node_modules/ otherwise drowns the index (2350 vendored files vs
+        // ~10 real ones on a flat-root Python project). isNoiseDir is the
+        // same predicate op:detect uses, checked per directory component
+        // (a "." / ".." segment from a "." root is not a real dir → skipped).
+        bool noise = false;
+        const QStringList parts = rel.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+        for (int i = 0; i + 1 < parts.size() && !noise; ++i) {
+            const QString &seg = parts.at(i);
+            if (seg == QLatin1String(".") || seg == QLatin1String("..")) continue;
+            if (ProjectSettings::isNoiseDir(seg)) noise = true;
+        }
+        if (noise) continue;
+        out << rel;
     }
     out.sort();
     return out;

@@ -86,27 +86,6 @@ constexpr double kMissRatio         = 0.5;    // default walk must miss > this
 // source subdirs (not a dominant-cover subset) so a low-count entry-point
 // dir + a spread src-less layout are both covered, not silently dropped.
 
-// Top-level dirs the detector never descends or suggests.
-bool isNoiseDir(const QString &name) {
-    if (name.startsWith(QLatin1Char('.'))) return true;      // .git, .ants, .cache, …
-    if (name.startsWith(QLatin1String("build"))) return true; // build/, build-fast/, …
-    // ANTS-3357 — discount well-known vendored / third-party trees so
-    // op:detect doesn't rank a bundled-dependency dir as the dominant
-    // source_root (DOOM bundles SDL2 + Vulkan-Headers under `mingw-deps/`,
-    // ~632 of 654 files). A *-deps / *-prefix suffix is the strongest
-    // signal for cross-compile dependency staging dirs; the exact names
-    // cover the conventional vendoring layouts. Belt-and-braces only —
-    // op:init still accepts explicit source_roots to override.
-    if (name.endsWith(QLatin1String("-deps")) ||
-        name.endsWith(QLatin1String("-prefix"))) return true; // mingw-deps, x-prefix
-    static const QStringList noise = {
-        QStringLiteral("node_modules"), QStringLiteral("dist"),
-        QStringLiteral("target"), QStringLiteral("vendor"), QStringLiteral("out"),
-        QStringLiteral("third_party"), QStringLiteral("third-party"),
-        QStringLiteral("deps"), QStringLiteral("external"), QStringLiteral("extern")};
-    return noise.contains(name);
-}
-
 // Admitted-suffix files under <root>/<sub> (recursive), capped at `budget`.
 int countSourceFiles(const QString &root, const QString &sub, int budget) {
     int n = 0;
@@ -129,6 +108,33 @@ bool validFileUnder(const QString &root, const QString &rel) {
 }
 
 }  // namespace
+
+// ANTS-2161 / ANTS-3393 — single source of truth for "is this a top-level
+// dir the source walk should neither descend nor index". Shared by
+// op:detect (below) and codebase_index's walkSubtree so both prune the
+// same vendored / build-output / Python-virtualenv trees; a committed venv
+// no longer drowns a flat-root source_roots=["."] index.
+bool isNoiseDir(const QString &name) {
+    if (name.startsWith(QLatin1Char('.'))) return true;      // .git, .ants, .cache, .venv …
+    if (name.startsWith(QLatin1String("build"))) return true; // build/, build-fast/, …
+    // ANTS-3357 — discount well-known vendored / third-party trees so the
+    // walk doesn't rank a bundled-dependency dir as a source_root (DOOM
+    // bundles SDL2 + Vulkan-Headers under `mingw-deps/`, ~632 of 654 files).
+    // A *-deps / *-prefix suffix is the strongest signal for cross-compile
+    // dependency staging dirs; the exact names cover the conventional
+    // vendoring + Python-virtualenv layouts. Belt-and-braces only — op:init
+    // still accepts explicit source_roots to override.
+    if (name.endsWith(QLatin1String("-deps")) ||
+        name.endsWith(QLatin1String("-prefix"))) return true; // mingw-deps, x-prefix
+    static const QStringList noise = {
+        QStringLiteral("node_modules"), QStringLiteral("dist"),
+        QStringLiteral("target"), QStringLiteral("vendor"), QStringLiteral("out"),
+        QStringLiteral("third_party"), QStringLiteral("third-party"),
+        QStringLiteral("deps"), QStringLiteral("external"), QStringLiteral("extern"),
+        QStringLiteral("venv"), QStringLiteral("env"),  // ANTS-3393: bare Python virtualenvs (.venv caught by the dot rule)
+        QStringLiteral("__pycache__")};                 // ANTS-3393: Python bytecode cache
+    return noise.contains(name);
+}
 
 Suggestion detect(const QString &rootCanonical) {
     Suggestion s;

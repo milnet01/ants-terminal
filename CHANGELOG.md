@@ -201,6 +201,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **codebase_index + project_settings no longer index a project's committed virtualenv (ANTS-3393)**
+  On a flat-layout project with a committed venv/, codebase_index (under source_roots=["."]) and project_settings op:detect both treated the vendored virtualenv as the project's source — indexing/suggesting thousands of library files instead of the ~10 real ones. The shared isNoiseDir skip-list now covers bare venv/env/__pycache__ (.venv was already skipped), and codebase_index's walk applies the same skip-list, so vendored / build / virtualenv trees are pruned even when "." is an explicit source root.
+
 - **roadmap_log op:flip locates GFM bullets by the canonical headline roadmap_query reports** (ANTS-3378)
   Flipping a GFM task-list bullet by headline now matches the de-marked-up bold span / post-em-dash prose / bold-ID label (the token roadmap_query echoes), not just the raw stored head — so the exact title copied from roadmap_query no longer returns bullet_not_found. On a genuine miss, suggestions rank by token overlap against the canonical headline and carry the bullet line.
 

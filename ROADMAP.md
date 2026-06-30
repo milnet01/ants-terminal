@@ -17696,13 +17696,14 @@ server build id so clients can self-diagnose this.
   Kind: enhancement.
   Source: cc-feedback-2026-06-30 (RetroArch; also serves MAME keyword-find).
 
-- 📋 [ANTS-3393] **codebase_index + project_settings op:detect index/suggest vendored dirs (venv/, node_modules/) — skip vendor dirs + honor .gitignore in the source file-walk.**
+- ✅ [ANTS-3393] **codebase_index + project_settings op:detect index/suggest vendored dirs (venv/, node_modules/) — skip vendor dirs + honor .gitignore in the source file-walk.**
   Problem: on a flat-layout project with a committed venv/, project_settings op:detect suggested source_roots=["venv"] (reason: 'venv holds 2340 of 2354 files') and codebase_index with source_roots=["."] reported py=2350 — essentially all of venv/ — vs ~10 real modules. Both verbs share one root cause: the source file-walk counts/indexes vendored dirs and ignores .gitignore (venv/ is gitignored here).
   Repro: in a flat-root Python project with a committed, gitignored venv/, call project_settings op:detect (suggests venv) and codebase_index (file_count≈2358).
   Fix: in the shared file-walk, (a) honor .gitignore, and/or (b) skip well-known vendor dirs (venv, .venv, env, node_modules, .git, __pycache__, dist, build, target). Optionally support an excludes/ignore_globs key in .ants/project.json so source_roots=["."] can subtract venv/. Fix the walk once; both verbs benefit (refactor-shared-foundation-first).
   **Layman:** On projects that keep a copy of their libraries in the folder (a venv), the code map mistakes those thousands of library files for the project's own code and becomes useless. Skip those vendored folders.
   Kind: fix.
   Source: cc-feedback-2026-06-30 (Contact_List).
+  Resolved (2026-06-30): promoted ProjectSettings::isNoiseDir out of the anon namespace into the public ProjectSettings namespace (projectsettings.h) and added the bare Python virtualenv / cache names venv/env/__pycache__ (.venv was already caught by the dot rule). codebase_index's walkSubtree (codebaseindex.cpp) now shares that single predicate, pruning vendored/build/virtualenv trees per directory component even under an explicit source_roots=["."] — so a flat-root project's committed venv/ no longer drowns the index. Regression tests: ProjectSettings.DetectDiscountsPythonVirtualenv + CodebaseIndex.NoiseDirsPrunedUnderDotRoot. Specs ANTS-2161 §2.1/INV-11 + ANTS-1637 synced. Full suite green (2387/2387).
 
 - 📋 [ANTS-3394] **audit_run scope:"full" sweeps build-output + scraped-media dirs (dist/, static/images/) — apply a default exclusion set + honor .gitignore.**
   Problem: audit_run scope:"full" on a Flask app scanned dist/ (PyInstaller output) and static/images/ (scraped media): 132 of 134 findings were mypy noise inside dist/retrodb/_internal/skimage/*.pyi, and a trivy FATAL on a PNG. The real tools (ruff/semgrep/gitleaks) were drowned.
