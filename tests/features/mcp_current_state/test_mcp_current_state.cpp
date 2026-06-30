@@ -219,3 +219,29 @@ TEST(McpCurrentState, WiringContract) {
         }
     }
 }
+
+// ANTS-3370 — current_state propagates last_audit_summary's always-on
+// `stale` signal (ANTS-2056) next to open_audit_findings_count, so a
+// session doesn't read a count captured against a PAST tree as HEAD's
+// current findings. Source-grep wiring: the behavioural path needs a live
+// repo + a cached SARIF older than HEAD (as with the ANTS-2056 staleness
+// test in the last_audit_summary bundle).
+TEST(McpCurrentState, Ants3370StalenessFlagPropagated) {
+    expect_reset();
+    const std::string rcCpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string body =
+        extractFunctionBody(rcCpp,
+            "QJsonDocument RemoteControl::cmdCurrentState(");
+    ASSERT_FALSE(body.empty());
+    expect(contains(body, "ANTS-3370"), "ANTS-3370",
+           "cmdCurrentState must carry an ANTS-3370 anchor");
+    expect(contains(body, "open_audit_findings_count_stale"), "ANTS-3370",
+           "cmdCurrentState must emit open_audit_findings_count_stale "
+           "next to the count");
+    // Propagate the upstream signal, don't recompute it: the flag is read
+    // from last_audit_summary's `stale` field (single source of truth).
+    expect(contains(body, "ls.value(QStringLiteral(\"stale\"))"), "ANTS-3370",
+           "stale flag must be propagated from last_audit_summary.stale, "
+           "not recomputed with a fresh git probe");
+    EXPECT_EQ(0, expect_failures());
+}

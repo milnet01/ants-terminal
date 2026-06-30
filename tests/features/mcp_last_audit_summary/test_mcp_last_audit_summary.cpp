@@ -156,6 +156,67 @@ TEST(McpLastAuditSummary, Ants2123SemgrepCountSuppressed) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-3372 — a scanner progress-bar line that leaks into the findings
+// stream (no real location, junk `file`) must be dropped before ranking so
+// it can't out-rank real findings as top_findings[0]. A legitimate
+// project-level finding at line 0 with a real path must survive (the filter
+// is conservative on purpose).
+TEST(McpLastAuditSummary, Ants3372DropsProgressBarArtifacts) {
+    expect_reset();
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString sarifPath = dir.path() + "/audit.sarif";
+    {
+        std::ofstream out(sarifPath.toStdString());
+        // ━ is a box-drawing glyph (progress-bar fill). The middle
+        // result mimics RetroDB's scraped "Working... ━━ 100% 0" artifact:
+        // level warning, ruleId empty, no location, junk file string.
+        out << R"sarif({
+          "version": "2.1.0",
+          "runs": [{
+            "tool": {"driver": {"name": "t", "rules": []}},
+            "results": [
+              {"level":"error","ruleId":"real-bug",
+               "message":{"text":"real finding"},
+               "locations":[{"physicalLocation":{
+                 "artifactLocation":{"uri":"src/real.cpp"},
+                 "region":{"startLine":42}}}]},
+              {"level":"warning","ruleId":"",
+               "message":{"text":"05"},
+               "locations":[{"physicalLocation":{
+                 "artifactLocation":{"uri":"Working... ━━ 100% 0"},
+                 "region":{"startLine":0}}}]},
+              {"level":"note","ruleId":"proj-level",
+               "message":{"text":"project-level finding"},
+               "locations":[{"physicalLocation":{
+                 "artifactLocation":{"uri":"src/projlevel.cpp"},
+                 "region":{"startLine":0}}}]}
+            ]
+          }]
+        })sarif";
+    }
+    auto s = AuditEngine::summariseSarif(sarifPath, 50, "note");
+    ASSERT_TRUE(s.has_value());
+    // Counts are unaffected — the filter runs after the level tally.
+    EXPECT_EQ(1, s->countError);
+    EXPECT_EQ(1, s->countWarning);
+    EXPECT_EQ(1, s->countNote);
+    bool sawArtifact = false, sawReal = false, sawProjLevel = false;
+    for (const auto &f : s->topFindings) {
+        if (f.file.contains(QStringLiteral("Working"))) sawArtifact = true;
+        if (f.file == QStringLiteral("src/real.cpp"))     sawReal = true;
+        if (f.file == QStringLiteral("src/projlevel.cpp")) sawProjLevel = true;
+    }
+    EXPECT_FALSE(sawArtifact)
+        << "ANTS-3372: progress-bar artifact must be filtered from top_findings";
+    EXPECT_TRUE(sawReal)
+        << "ANTS-3372: real finding must survive";
+    EXPECT_TRUE(sawProjLevel)
+        << "ANTS-3372: a legitimate line-0 finding with a real path must survive";
+    EXPECT_EQ(2, s->topFindings.size());
+    EXPECT_EQ(0, expect_failures());
+}
+
 TEST(McpLastAuditSummary, Inv7FilePassthroughNoRewrite) {
     expect_reset();
     auto s = AuditEngine::summariseSarif(

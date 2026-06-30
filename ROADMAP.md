@@ -17556,11 +17556,12 @@ server build id so clients can self-diagnose this.
   Source: cc-feedback-2026-06-30 (Vestige+Music+RetroDB, 4 reports).
   Resolved (2026-06-30): detect() now suggests ALL first-party source subdirs on a miss (retired the kDominanceRatio gate), always sets a non-empty reason, and echoes wouldUseRoots + excluded. Spec ANTS-2161.md amended through a 6-loop cold-eyes pass (zero verified findings at loop 6). 8 ProjectSettings tests + full suite 2369/2369 green.
 
-- 📋 [ANTS-3370] **session_orient / current_state — flag open_audit_findings_count as stale when the cached SARIF predates HEAD.**
+- ✅ [ANTS-3370] **session_orient / current_state — flag open_audit_findings_count as stale when the cached SARIF predates HEAD.**
   RetroDB: session_orient reported open_audit_findings_count:11 with no staleness qualifier while last_audit_summary (same repo) knew the SARIF was cached at 48bda56, 4+ commits behind HEAD. Propagate the signal: emit open_audit_findings_count_stale:true + last_audit_commit (mirror last_audit_summary.stale/stale_reason). Cheapest form: an audit_stale boolean next to the count.
   **Layman:** The session-start summary can show old audit warnings as if they were current, sending a session off to fix already-fixed problems.
   Kind: fix.
   Source: cc-feedback-2026-06-30 (RetroDB).
+  Resolved (2026-06-30): current_state (and session_orient, which nests it) now emit open_audit_findings_count_stale (+ _stale_reason) by propagating last_audit_summary's always-on ANTS-2056 stale signal — single source of truth, no extra git probe. Spec ANTS-1569 synced; tool description updated; wiring test Ants3370StalenessFlagPropagated added; full suite green. Commit pending.
 
 - 📋 [ANTS-3371] **feedback_query — opt-in include_tracking returns maintainer tracking rows [{item, ids, status, notes}].**
   DOOM: the recurring 'mark my prior suggestions that shipped' workflow needs per-item status, but feedback_query returns only mapped_ids[] (no status). Forces a full-file Read + hand-parse of tracking tables. Add include_tracking:true → compact rows array; tabular encoding keeps it tiny.
@@ -17568,11 +17569,12 @@ server build id so clients can self-diagnose this.
   Kind: feature.
   Source: cc-feedback-2026-06-30 (DOOM).
 
-- 📋 [ANTS-3372] **last_audit_summary — drop/de-rank SARIF parse-artifact findings (progress-bar lines, non-path file, line:0+confidence:-1).**
+- ✅ [ANTS-3372] **last_audit_summary — drop/de-rank SARIF parse-artifact findings (progress-bar lines, non-path file, line:0+confidence:-1).**
   RetroDB: top_findings[0] was {file:'Working... ━━ 100% 0', line:0, message:'05', confidence:-1}. Signature = file not under repo OR (line:0 AND confidence:-1 AND box-drawing/'Working...'/bare-percent chars). Drop or de-rank before ranking into top_findings.
   **Layman:** A garbage 'finding' scraped from a tool's progress bar was ranked #1 in the audit summary; filter those out.
   Kind: fix.
   Source: cc-feedback-2026-06-30 (RetroDB).
+  Resolved (2026-06-30): all four AuditEngine parsers (SARIF + cppcheck-xml + clang-tidy-text + semgrep-json) drop progress-bar parse-artifacts before ranking via a shared isLikelyParseArtifact guard (line 0 AND confidence -1 AND box-drawing/bare-% junk file). Counts unaffected (filter runs after the level tally). Spec ANTS-1254 INV-11 added; behavioural test Ants3372DropsProgressBarArtifacts added; full suite 2371/2371 green. Commit pending.
 
 - 📋 [ANTS-3373] **verify_changes — orphaned-source lint: warn on an added *.cpp not referenced by any CMakeLists / *.cmake.**
   Vestige hit this twice across two CMakeLists (AX11, AX9). Pure basename grep over CMakeLists.txt/*.cmake for each added *.cpp/*.cc in the working-tree diff; warn if unreferenced. Optionally flag the inverse (source-list entry pointing at a missing path).

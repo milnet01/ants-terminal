@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **The session-start summary now flags the audit-warning count as stale when the saved audit predates your latest commit.** (ANTS-3370)
+  current_state / session_orient now carry open_audit_findings_count_stale, mirroring last_audit_summary's staleness signal — so a session doesn't chase warnings that were already fixed after the audit was cached.
+
 - ****Donate** menu in the menu bar with GitHub Sponsors and Patreon links**
   A new Donate menu (just left of Help) opens the project's GitHub Sponsors and Patreon pages in your browser, so supporters can find them without leaving the terminal.
 
@@ -183,6 +186,9 @@ for security-relevant changes.
   header contract comments, and the orphaned Inv3 shape test.
 
 ### Fixed
+
+- **Audit summaries no longer rank a scanner's progress-bar text as the top finding.** (ANTS-3372)
+  Junk lines scraped from tool output (e.g. a "Working... 100%" progress bar) are now filtered out of every audit-summary parser before findings are ranked, so a real issue lands at the top instead of terminal noise.
 
 - **Ants MCP read verbs no longer return doctored bytes for frame-sensitive source (ANTS-2218)**
   read_region / read_regions / workspace_search now accept `raw:true`,

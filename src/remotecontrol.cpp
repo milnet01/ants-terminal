@@ -11931,20 +11931,38 @@ QJsonDocument RemoteControl::cmdCurrentState(const QJsonObject &req) {
     // cmdLastAuditSummary. Any non-ok envelope ⇒ 0 (INV-14 spec).
     // Suppressed findings excluded by definition (last_audit_summary
     // doesn't include them in counts.error/warning/note).
+    //
+    // ANTS-3370 — staleness flag. last_audit_summary already computes an
+    // always-on `stale` signal (ANTS-2056: artifact mtime < HEAD commit
+    // date ⇒ the count describes a PAST tree where already-fixed findings
+    // masquerade as live). Propagate it next to the count so a session
+    // doesn't read a drifted count as HEAD's current findings — mirror
+    // last_audit_summary.stale / stale_reason rather than recompute it
+    // (single source of truth, no extra git probe). Best-effort: when the
+    // upstream omitted `stale` (HEAD date unreadable) the flag defaults
+    // false. No audit (count 0) ⇒ not stale.
     {
         QJsonObject lsReq;
         lsReq[QStringLiteral("caller_cwd")] = rootCanonical;
         const QJsonDocument lsDoc = cmdLastAuditSummary(lsReq);
         const QJsonObject     ls    = lsDoc.object();
         int total = 0;
+        bool    stale = false;
+        QString staleReason;
         if (ls.value(QStringLiteral("ok")).toBool(false)) {
             const QJsonObject counts =
                 ls.value(QStringLiteral("counts")).toObject();
             total = counts.value(QStringLiteral("error")).toInt()
                   + counts.value(QStringLiteral("warning")).toInt()
                   + counts.value(QStringLiteral("note")).toInt();
+            stale       = ls.value(QStringLiteral("stale")).toBool(false);
+            staleReason = ls.value(QStringLiteral("stale_reason")).toString();
         }
         result[QStringLiteral("open_audit_findings_count")] = total;
+        result[QStringLiteral("open_audit_findings_count_stale")] = stale;
+        if (stale && !staleReason.isEmpty())
+            result[QStringLiteral("open_audit_findings_count_stale_reason")] =
+                staleReason;
     }
 
     // (5) spec_path — INV-10: present iff active_bullet has an id

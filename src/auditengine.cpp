@@ -543,6 +543,25 @@ QString severityFromLevel(const QString &level) {
     return QStringLiteral("MAJOR");
 }
 
+// ANTS-3372 — parse-artifact guard. Scanner output occasionally leaks a
+// progress-bar line ("Working... ━━ 100% 0") into the findings stream; it
+// parses as a finding with no real location (line 0, no confidence) whose
+// `file` field is a chunk of terminal chrome rather than a path, and it can
+// out-rank real findings as top_findings[0]. Drop these before ranking.
+// Conservative on purpose: requires BOTH the no-location signature (line 0
+// AND the default confidence -1) AND a junk-`file` signal — box-drawing
+// glyphs (U+2500..U+257F, progress-bar fill) or a bare percentage with no
+// path separator — so a genuine project-level finding at line 0 is never
+// dropped.
+bool isLikelyParseArtifact(const AuditSummaryFinding &f) {
+    if (f.line != 0 || f.confidence != -1) return false;
+    for (const QChar c : f.file) {
+        const char16_t u = c.unicode();
+        if (u >= 0x2500 && u <= 0x257F) return true;  // box-drawing (progress bars)
+    }
+    return f.file.contains(QLatin1Char('%')) && !f.file.contains(QLatin1Char('/'));
+}
+
 }  // namespace
 
 std::optional<AuditSummary> summariseSarif(
@@ -667,6 +686,9 @@ std::optional<AuditSummary> summariseSarif(
             pool.append(std::move(asf));
         }
     }
+
+    // ANTS-3372 — strip scanner progress-bar artifacts before ranking.
+    pool.removeIf(isLikelyParseArtifact);
 
     // Spec § 3.1 step 5 — sort: level desc → confidence desc →
     // file asc → line asc.
@@ -838,6 +860,9 @@ std::optional<AuditSummary> summariseCppcheckXml(
 
     if (xml.hasError() || !sawResults) return std::nullopt;
 
+    // ANTS-3372 — strip scanner progress-bar artifacts before ranking.
+    pool.removeIf(isLikelyParseArtifact);
+
     // Sort + clamp identically to summariseSarif (level desc →
     // confidence desc → file asc → line asc).
     std::sort(pool.begin(), pool.end(),
@@ -929,6 +954,9 @@ std::optional<AuditSummary> summariseClangTidyText(
     if (pool.isEmpty() && s.countError + s.countWarning + s.countNote == 0) {
         return std::nullopt;  // no parseable lines — likely wrong format
     }
+
+    // ANTS-3372 — strip scanner progress-bar artifacts before ranking.
+    pool.removeIf(isLikelyParseArtifact);
 
     std::sort(pool.begin(), pool.end(),
               [](const AuditSummaryFinding &a,
@@ -1032,6 +1060,9 @@ std::optional<AuditSummary> summariseSemgrepJson(
         asf.line     = lineNo;
         pool.append(std::move(asf));
     }
+
+    // ANTS-3372 — strip scanner progress-bar artifacts before ranking.
+    pool.removeIf(isLikelyParseArtifact);
 
     std::sort(pool.begin(), pool.end(),
               [](const AuditSummaryFinding &a,
