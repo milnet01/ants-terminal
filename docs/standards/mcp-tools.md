@@ -31,7 +31,10 @@ checklist below walks the full procedure; this is the at-a-glance map
   in `<ants_mcp_data tool="…">…</ants_mcp_data>` by
   `ClaudeIntegration::wrapMcpData`. Register normally and the dispatch
   site wraps; control-plane tools (`get_session_info`, `token_usage`,
-  `tool_info`) bypass.
+  `tool_info`) bypass. **Raw reads (ANTS-2218):** a content-read verb in
+  `mcp::isRawEligible` honours `raw:true` (declare `makeRawProp()`),
+  returning bytes verbatim in an unforgeable nonce frame via
+  `wrapMcpDataRaw` — for agents reading frame-sensitive source to Edit it.
 - **caller_cwd resolution (ANTS-1401).** Consume `caller_cwd` via
   `ants::resolveCallerCwdRoot` (`src/resolvedroot.h`) — never
   re-implement canonicalisation / tab-walks.
@@ -59,6 +62,18 @@ checklist below walks the full procedure; this is the at-a-glance map
   `session_memory` has no TTL. Storage
   `~/.cache/ants-terminal/mcp-state/<sha256(cwd)>.json`. See ANTS-1435
   §Limitations.
+- **`dry_run` preview (ANTS-2077 / 2136 / 2227).** Every *mutating* verb
+  takes a `dry_run` bool (default false). When true it computes the
+  would-be result envelope (carrying `dry_run:true`) and returns it
+  *before* any disk write — the preview path must share the exact code
+  that computes the write so it can't drift. Declare the schema prop via
+  the shared `makeDryRunProp()` factory (the pre-factory verbs roadmap_log
+  / changelog_log / spec_log keep tailored copies). Supported:
+  roadmap_log, changelog_log, spec_log, apply_edits, project_settings,
+  feedback_log, audit_falsepos_log. Not yet (ANTS-2227 part 2): the
+  ID-allocating fold-in family + debt_sweep_defer / debt_sweep_apply_fix.
+  Read-only verbs (`get_*`, `*_query`, `find_*`, `read_*`) are out of
+  scope.
 
 ---
 

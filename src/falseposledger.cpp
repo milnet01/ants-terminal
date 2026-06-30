@@ -309,7 +309,8 @@ QJsonArray formatForJsonArray(const QList<LedgerEntry> &entries,
 }
 
 // ANTS-2129 — write side. See docs/specs/ANTS-2129.md.
-AppendResult appendEntry(const QString &projectPath, const LedgerEntry &in) {
+AppendResult appendEntry(const QString &projectPath, const LedgerEntry &in,
+                         bool dryRun) {
     // On-disk record must stay under the Linux atomic-write(2) bound so the
     // O_APPEND of one record below this size is torn-write-free.
     constexpr int kMaxRecordBytes = 3584;  // 3.5 KiB
@@ -392,6 +393,16 @@ AppendResult appendEntry(const QString &projectPath, const LedgerEntry &in) {
         return r;
     }
     r.created = !exists;
+
+    // ANTS-2227 — dry_run: the record is fully built + bound-checked and the
+    // create/append decision is made; return the would-be result without the
+    // O_APPEND write.
+    if (dryRun) {
+        r.ok = true;
+        r.bytesAppended = record.size();
+        r.timestamp = e.timestamp;
+        return r;
+    }
 
     // True O_APPEND of the complete record — NOT a read-modify-write.
     QFile f(path);

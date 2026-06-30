@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **`dry_run:true` preview on four more mutating Ants MCP verbs (ANTS-2227)**
+  apply_edits, project_settings, feedback_log and audit_falsepos_log now
+  accept `dry_run:true`, returning the would-be result (carrying
+  `dry_run:true`) without writing to disk — so Claude can pre-flight a
+  multi-file edit (catching a no-match before any partial write) or any of
+  these appends before committing. Joins roadmap_log / changelog_log /
+  spec_log, which already supported it. Each preview shares the verb's real
+  write code so it can't drift from the actual result.
+
 - **Screen-reader support for the terminal area (AT-SPI / Orca).** (ANTS-1078)
   The terminal's content is now readable by assistive technology. A QAccessibleInterface adapter (role Terminal) with a text interface exposes the visible viewport as plain text, reports the caret, and fires a throttled change event as output arrives — so a blind user's screen reader can read the terminal, not just the window chrome. Costs nothing when no screen reader is running. Core slice of the H9 accessibility bundle; richer text attributes, command-boundary batching, and selection write-back are tracked separately (ANTS-3363). Also resolves the terminal-a11y gap in ANTS-2205 (4).
 

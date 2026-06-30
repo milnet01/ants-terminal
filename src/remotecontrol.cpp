@@ -9174,6 +9174,12 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
     }
     const QJsonArray edits = editsV.toArray();
 
+    // ANTS-2227 — dry_run preview: resolve + apply every edit IN MEMORY but
+    // skip the atomic write, returning the would-be applied/skipped tallies so
+    // a caller can pre-flight a multi-file edit (catch a no_match before any
+    // partial write) without touching disk.
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+
     const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
     const QString sentinelRoot = ants::expandGlobalConfigSentinel(callerRaw);
     const QString rootCanonical =
@@ -9276,7 +9282,12 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
         // + commit + fsyncParentDir). A whole-content substring replace, so
         // a trailing newline is preserved without split/rejoin.
         bool wrote = false;
-        {
+        if (dryRun) {
+            // ANTS-2227 — would-write: disk untouched. Every edit in this
+            // group was already resolved against `working` above, so the
+            // applied/skipped/replacements tallies below are the real ones.
+            wrote = true;
+        } else {
             QSaveFile sf(resolved);
             if (sf.open(QIODevice::WriteOnly)) {
                 const QByteArray bytes = working.toUtf8();
@@ -9299,6 +9310,7 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
 
     QJsonObject env;
     env["ok"]            = true;
+    if (dryRun) env["dry_run"] = true;   // ANTS-2227 — would-be result
     env["applied"]       = applied;
     env["skipped"]       = skipped;
     env["files_written"] = filesWritten;
@@ -9558,6 +9570,10 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
     const QString settingsPath =
         rootCanonical + QStringLiteral("/.ants/project.json");
 
+    // ANTS-2227 — dry_run preview for the write ops (init/set). `detect` is
+    // already read-only, so the flag is a no-op there.
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+
     // ---- detect (read-only) ----
     if (op == QLatin1String("detect")) {
         const ProjectSettings::Suggestion sug =
@@ -9587,7 +9603,20 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
         if (req.contains(k)) changes[k] = req.value(k);
 
     // Shared atomic writer: world-readable 0644 (NOT setOwnerOnlyPerms).
+    // ANTS-2227 — under dry_run, return the would-be settings + landing path
+    // without creating .ants/ or writing the file (shares the merged `obj` the
+    // real write would persist, so the preview can't drift).
     const auto writeOut = [&](const QJsonObject &obj) -> QJsonDocument {
+        if (dryRun) {
+            QJsonObject o;
+            o[QStringLiteral("ok")]          = true;
+            o[QStringLiteral("dry_run")]     = true;
+            o[QStringLiteral("written")]     = false;
+            o[QStringLiteral("would_write")] = true;
+            o[QStringLiteral("path")]        = settingsPath;
+            o[QStringLiteral("settings")]    = obj;
+            return QJsonDocument(o);
+        }
         QDir().mkpath(rootCanonical + QStringLiteral("/.ants"));
         QSaveFile sf(settingsPath);
         if (!sf.open(QIODevice::WriteOnly))
@@ -9785,6 +9814,10 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                            "or \"append_tracking\"")));
     }
 
+    // ANTS-2227 — dry_run preview: render the block + compute the would-be
+    // bytes/created, then return WITHOUT writing the file.
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+
     // date: default to today; an explicit value must match YYYY-MM-DD.
     QString date = req.value(QStringLiteral("date")).toString();
     if (date.isEmpty()) {
@@ -9941,6 +9974,18 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
 
     const QByteArray utf8 = full.toUtf8();
     const QByteArray addedUtf8 = rendered.toUtf8();
+
+    if (dryRun) {
+        QJsonObject out;
+        out["ok"]             = true;
+        out["dry_run"]        = true;
+        out["op"]             = op;
+        out["path"]           = resolved;
+        out["bytes_appended"] = static_cast<qint64>(addedUtf8.size());
+        out["date"]           = date;
+        out["created"]        = created;   // would-create
+        return QJsonDocument(out);
+    }
 
     QSaveFile sf(resolved);
     if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -10773,8 +10818,11 @@ QJsonDocument RemoteControl::cmdAuditFalseposLog(const QJsonObject &req) {
     if (e.loggedBy.isEmpty())
         e.loggedBy = QStringLiteral("cc-session");
 
+    // ANTS-2227 — dry_run: validate + build the record + decide create/append,
+    // return the would-be result without the O_APPEND write.
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
     const ants::falsepos::AppendResult r =
-        ants::falsepos::appendEntry(root, e);
+        ants::falsepos::appendEntry(root, e, dryRun);
     if (!r.ok) {
         return afErr(r.code,
             QStringLiteral("audit_falsepos_log: ") + r.message);
@@ -10782,6 +10830,7 @@ QJsonDocument RemoteControl::cmdAuditFalseposLog(const QJsonObject &req) {
 
     QJsonObject out;
     out["ok"]             = true;
+    if (dryRun) out["dry_run"] = true;
     out["path"]           =
         root + QStringLiteral("/.ants_review_falsepos.jsonl");
     out["bytes_appended"] = r.bytesAppended;

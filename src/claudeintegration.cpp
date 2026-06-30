@@ -1735,6 +1735,25 @@ void ClaudeIntegration::onMcpConnection() {
                     return p;
                 };
 
+                // ANTS-2227 — uniform `dry_run` flag for mutating verbs. When
+                // true the verb computes the would-be result envelope (carrying
+                // dry_run:true) WITHOUT writing to disk. The per-verb
+                // descriptions on roadmap_log / changelog_log / spec_log
+                // (ANTS-2077 / 2136) predate this factory and keep their
+                // tailored copies; new write verbs share this one.
+                auto makeDryRunProp = []{
+                    QJsonObject p;
+                    p["type"] = "boolean";
+                    p["default"] = false;
+                    p["description"] = QStringLiteral(
+                        "Optional (ANTS-2227). When true, return the would-be "
+                        "result (carrying `dry_run:true`) WITHOUT writing to "
+                        "disk — a free pre-flight that shares the real write "
+                        "path, so the preview can't drift from the actual "
+                        "result. Defaults false.");
+                    return p;
+                };
+
                 // ANTS-2090 — `encoding` selector, declared on the
                 // list-shaped read verbs. "tabular" packs each eligible
                 // top-level array-of-objects into a columnar
@@ -3603,6 +3622,7 @@ void ClaudeIntegration::onMcpConnection() {
                         items["required"] = ir;
                     editsProp["items"] = items;
                     props["edits"]      = editsProp;
+                    props["dry_run"]    = makeDryRunProp();      // ANTS-2227
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray required;
@@ -3783,6 +3803,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["specs_dir"]    = sdProp;
                     props["roadmap"]      = rmProp;
                     props["changelog"]    = clProp;
+                    props["dry_run"]      = makeDryRunProp();    // ANTS-2227
                     props["caller_cwd"]   = makeCallerCwdReadProp();
                     schema["properties"]  = props;
                     schema["required"]    = QJsonArray{QStringLiteral("op")};
@@ -4000,6 +4021,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["findings"]      = findingsProp;
                     props["rows"]          = rowsProp;
                     props["sentinel"]      = sentinelProp;
+                    props["dry_run"]       = makeDryRunProp();   // ANTS-2227
                     props["caller_cwd"]    = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray req;
@@ -4081,6 +4103,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["lane"]        = laneProp;
                     props["topic"]       = topicProp;
                     props["logged_by"]   = lbProp;
+                    props["dry_run"]     = makeDryRunProp();     // ANTS-2227
                     props["caller_cwd"]  = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray req;

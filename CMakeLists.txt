@@ -1183,6 +1183,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_spec_log/test_mcp_spec_log.cpp
                 # ANTS-2129 — audit_falsepos_log write verb.
                 tests/features/audit_falsepos_log/test_audit_falsepos_log.cpp
+                # ANTS-2227 — dry_run preview parity (part 1).
+                tests/features/mcp_dry_run_parity/test_mcp_dry_run_parity.cpp
                 # ANTS-1390 ~global / ~claude-config caller_cwd sentinel
                 # for path tools (workspace_search, file_outline).
                 tests/features/mcp_global_config_sentinel/test_mcp_global_config_sentinel.cpp

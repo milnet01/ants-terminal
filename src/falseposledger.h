@@ -95,7 +95,12 @@ struct AppendResult {
 // Never throws. `e.timestamp` empty ⇒ caller should default to today
 // before calling (the handler does); appendEntry validates whatever
 // it receives.
-AppendResult appendEntry(const QString &projectPath, const LedgerEntry &e);
+// ANTS-2227 — dryRun:true validates + builds + bound-checks the record and
+// makes the create/append decision exactly as a real append, then returns the
+// would-be AppendResult (ok / bytesAppended / created / timestamp) WITHOUT the
+// O_APPEND write. The preview shares the write path's code so it can't drift.
+AppendResult appendEntry(const QString &projectPath, const LedgerEntry &e,
+                         bool dryRun = false);
 
 }  // namespace falsepos
 }  // namespace ants
