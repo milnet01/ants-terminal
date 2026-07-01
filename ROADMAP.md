@@ -17621,11 +17621,12 @@ server build id so clients can self-diagnose this.
   Kind: fix.
   Source: cc-feedback-2026-06-30 (Vestige).
 
-- 📋 [ANTS-3380] **similar_code — down-weight trivial one-line/one-token signatures in ranking.**
+- ✅ [ANTS-3380] **similar_code — down-weight trivial one-line/one-token signatures in ranking.**
   Vestige: a prose-y shape query ranked a 0.0909 one-liner 'add' (tween.h) above the genuinely useful Settings struct (same score, #2). Token-set Jaccard rewards short signatures with incidental overlap. Down-weight trivial signatures or favour longer signature-token overlaps.
   **Layman:** The 'find code like this' search sometimes puts a tiny irrelevant one-liner at the top.
   Kind: fix.
   Source: cc-feedback-2026-06-30 (Vestige).
+  Resolved (2026-07-01): src/similarcode.cpp scanFile now halves the Jaccard score (kIncidentalOverlapPenalty=0.5) when a candidate signature shares exactly ONE token with the query (new anon-namespace sharedTokenCount helper). This demotes an incidental single-token overlap below any 2+-shared-token match without dropping it. Self-correcting: when the query itself is trivial (all candidates share one token) the penalty applies uniformly, leaving relative order unchanged — so it only bites the reported failure mode (a 1-token 'add' tying/outranking a richer struct). Public jaccard()/tokenize() API untouched. Test McpSimilarCode.Ants3380IncidentalOverlapPenalty (exact scores 0.125 halved vs 0.2222 unpenalised + ranking flip; fails pre-fix). Full test_claude 1342/1342 green.
 
 - 📋 [ANTS-3381] **changelog_log op:normalize — regroup stray prose/entries under canonical [Unreleased] category headings.**
   Vestige: changelog_log op:add correctly warns (cites the line) that ## [Unreleased] interleaves prose between ### category blocks, across ≥3 sessions, with no resolution path. Add op:normalize (or a --fix flag) that regroups stray prose + entries under canonical category headings in one atomic write.

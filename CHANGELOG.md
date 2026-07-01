@@ -222,6 +222,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **similar_code — down-weight trivial one-line/one-token signatures in ranking.** (ANTS-3380)
+  The 'find code like this' search sometimes puts a tiny irrelevant one-liner at the top.
+
 - **roadmap_query id/ids + roadmap_log flip/annotate return a silent miss (not bad_id_format) for a format-nonconforming bracket token that exists in the file.** (ANTS-3387)
   When a project uses an ID style Ants doesn't recognise, looking it up says 'not found' with no hint that the ID shape is the problem — so it looks like the item vanished.
 

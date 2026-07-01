@@ -24,6 +24,18 @@ constexpr int kMaxShapeLen     = 512;
 constexpr int kMinTokenLen     = 2;
 constexpr int kPerFileSymbols  = 1000;  // FileOutline's own cap ceiling
 
+// ANTS-3380 — a signature that shares exactly ONE token with the query is
+// an incidental match: token-set Jaccard rewards a short signature with a
+// single common word as highly as a genuinely richer signature (a
+// one-token `add` tied a 13-token `Settings` struct at 0.0909, then won the
+// (file,line) tiebreak). Halving the score on a single-token overlap
+// demotes it below any 2+-token-overlap match without dropping it. Note the
+// self-correcting property: when the QUERY itself is trivial (every
+// candidate shares exactly one token) the penalty applies uniformly, so
+// relative ranking is unchanged — it only bites when some candidates share
+// ≥2 tokens and others share 1.
+constexpr double kIncidentalOverlapPenalty = 0.5;
+
 bool isAsciiAlnum(QChar c) {
     const ushort u = c.unicode();
     return (u >= 'A' && u <= 'Z') || (u >= 'a' && u <= 'z') ||
@@ -49,6 +61,18 @@ FileOutline::Mode modeFor(Lang l) {
 const char *langStr(Lang l) { return (l == Lang::Py) ? "py" : "cpp"; }
 
 double roundScore(double x) { return std::round(x * 10000.0) / 10000.0; }
+
+// ANTS-3380 — count of tokens shared between two token lists (|a ∩ b| on
+// the deduped sets). Mirrors jaccard's intersection step; used to detect
+// the incidental single-token overlap that jaccard alone cannot punish.
+int sharedTokenCount(const QStringList &a, const QStringList &b) {
+    const QSet<QString> sa(a.begin(), a.end());
+    const QSet<QString> sb(b.begin(), b.end());
+    int inter = 0;
+    for (const QString &t : sa)
+        if (sb.contains(t)) ++inter;
+    return inter;
+}
 
 // Ranking order: higher score first, then (file, line) ascending.
 bool ranksBefore(const Match &a, const Match &b) {
@@ -96,8 +120,13 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
     for (const QJsonValue &v : syms) {
         const QJsonObject s = v.toObject();
         const QString sig = s.value(QStringLiteral("signature")).toString();
-        const double score = jaccard(st.queryTokens, tokenize(sig));
+        const QStringList sigTokens = tokenize(sig);
+        double score = jaccard(st.queryTokens, sigTokens);
         if (score <= 0.0) continue;
+        // ANTS-3380 — demote an incidental single-token overlap so a
+        // trivial signature can't tie/outrank a genuinely richer match.
+        if (sharedTokenCount(st.queryTokens, sigTokens) == 1)
+            score *= kIncidentalOverlapPenalty;
         Match m;
         m.file      = rel;
         m.line      = s.value(QStringLiteral("line")).toInt();

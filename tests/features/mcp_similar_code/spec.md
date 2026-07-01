@@ -25,6 +25,13 @@ Claude writes a new one.
   `(file, line)` ascending.
 - A `QDialog`-subclass query ranks `class … : public QDialog` lines
   above an unrelated `class` (distinctive token `qdialog` dominates).
+- **ANTS-3380 incidental-overlap penalty.** A candidate whose signature
+  shares exactly ONE token with the query has its score halved
+  (`kIncidentalOverlapPenalty = 0.5`), so a trivial single-token overlap
+  cannot tie/outrank a genuinely richer 2+-shared-token match. The
+  penalty is self-correcting: when the query itself is trivial (every
+  candidate shares one token) it applies uniformly and leaves relative
+  order unchanged.
 - `kind` / `lang` come from `FileOutline` (`class` / `func`, `cpp` /
   `py`); paths are project-relative.
 - Candidates with `score == 0` are excluded.

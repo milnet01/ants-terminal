@@ -221,6 +221,56 @@ TEST(McpSimilarCode, LiveBehaviour) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-3380 — an incidental single-token overlap must not tie/outrank a
+// genuinely richer (2+ shared token) signature. Pre-fix, token-set Jaccard
+// let a 1-token-overlap trivial signature score HIGHER than a 2-token
+// overlap and take the top slot; the ×0.5 single-token penalty flips it.
+TEST(McpSimilarCode, Ants3380IncidentalOverlapPenalty) {
+    expect_reset();
+
+    QTemporaryDir tmp;
+    expect(tmp.isValid(), "setup: QTemporaryDir valid");
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+
+    // Two member-function definitions (FileOutline kind "func"):
+    //  - Zeta::run()  shares only "run" with the query (1 token) →
+    //    raw Jaccard 1/4 = 0.25.
+    //  - Alpha::run(int cc, long dd, char ee) shares "alpha"+"run"
+    //    (2 tokens) but has 9 signature tokens → raw Jaccard 2/9 ≈ 0.2222.
+    // Pre-fix the trivial 0.25 outranks the rich 0.2222; post-fix the
+    // penalty drops the trivial to 0.125, below the rich 0.2222.
+    writeFile(root, QStringLiteral("src/trivial.cpp"),
+              QStringLiteral("void Zeta::run() {\n"
+                             "}\n"));
+    writeFile(root, QStringLiteral("src/rich.cpp"),
+              QStringLiteral("void Alpha::run(int cc, long dd, char ee) {\n"
+                             "}\n"));
+
+    SimilarCode::Options def;
+    const auto q = SimilarCode::findSimilar(
+        root, QStringLiteral("alpha run"), def);
+    expect(q.ok, "penalty: ok");
+
+    const auto *trivial = findByFile(q, QStringLiteral("src/trivial.cpp"));
+    const auto *rich    = findByFile(q, QStringLiteral("src/rich.cpp"));
+    expect(trivial != nullptr, "penalty: trivial candidate surfaced");
+    expect(rich != nullptr, "penalty: rich candidate surfaced");
+
+    // The single-token overlap is halved (0.25 → 0.125); the 2-token
+    // overlap keeps its raw score. Pre-fix these were 0.25 and 0.2222.
+    if (trivial) expect(std::abs(trivial->score - 0.125) < 1e-6,
+                        "penalty: single-token overlap halved to 0.125");
+    if (rich) expect(std::abs(rich->score - 0.2222) < 1e-4,
+                     "penalty: two-token overlap keeps ~0.2222 (unpenalised)");
+
+    // Ranking flips: the richer match is now first.
+    expect(!q.matches.isEmpty() &&
+               q.matches.first().file == QStringLiteral("src/rich.cpp"),
+           "penalty: richer 2-token overlap now ranks above the trivial one");
+
+    EXPECT_EQ(0, expect_failures());
+}
+
 TEST(McpSimilarCode, HardCapAndBadArgs) {
     expect_reset();
 
