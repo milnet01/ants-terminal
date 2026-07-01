@@ -107,6 +107,48 @@ TEST(ReadRegionCallSequence, OptInOnly) {
     EXPECT_FALSE(env.contains("accessors"));
 }
 
+// INV-4 (ANTS-3379) — comment prose and capitalised type constructions are
+// NOT listed as callees; real lowerCamelCase calls still are.
+TEST(ReadRegionCallSequence, CommentAndTypeCtorSuppressed) {
+    QTemporaryDir dir;
+    const QString root = QFileInfo(dir.path()).canonicalFilePath();
+    QDir().mkpath(root + "/src");
+    const QString path = root + "/src/build.cpp";
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write(
+        "void build() {\n"
+        "    // acquired (the lock) then triggers (an update)\n"
+        "    prepare();\n"
+        "    Engine(cfg);\n"                      // capitalised type ctor
+        "    auto s = QString(raw);\n"            // capitalised type ctor
+        "    /* block that mentions\n"
+        "       code (spanning lines) */\n"
+        "    finalize();\n"
+        "}\n");
+    f.close();
+
+    ReadRegion::Options opts;
+    opts.symbol = QStringLiteral("build");
+    opts.callSequence = true;
+    const QJsonObject env = ReadRegion::extract(path, opts);
+    ASSERT_TRUE(env.value("ok").toBool());
+
+    const QStringList seq = callees(env);
+    // Real calls survive, in order.
+    EXPECT_TRUE(seq.contains(QStringLiteral("prepare")));
+    EXPECT_TRUE(seq.contains(QStringLiteral("finalize")));
+    EXPECT_LT(seq.indexOf(QStringLiteral("prepare")),
+              seq.indexOf(QStringLiteral("finalize")));
+    // Comment prose (line + block) never registers as a call.
+    EXPECT_FALSE(seq.contains(QStringLiteral("acquired")));
+    EXPECT_FALSE(seq.contains(QStringLiteral("triggers")));
+    EXPECT_FALSE(seq.contains(QStringLiteral("code")));
+    // Capitalised type constructions / functional casts are suppressed.
+    EXPECT_FALSE(seq.contains(QStringLiteral("Engine")));
+    EXPECT_FALSE(seq.contains(QStringLiteral("QString")));
+}
+
 // INV-3 — wiring: cmdReadRegion threads call_sequence into Options and the
 // schema advertises it.
 TEST(ReadRegionCallSequence, Wiring) {

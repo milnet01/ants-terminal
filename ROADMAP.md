@@ -17615,11 +17615,12 @@ server build id so clients can self-diagnose this.
   Source: cc-feedback-2026-06-30 (Vestige, extends shipped ANTS-2075).
   Resolved (2026-06-30): GFM flip headline locator now matches the canonical headline roadmap_query reports (de-marked-up bold span / post-em-dash prose / bold-ID label), not just the raw stored head — rcGfmHeadlineMatchHashes + rcGfmCanonicalHeadline. Miss suggestions rank by token-overlap over the canonical headline and carry a `line`. Test: roadmap_log_flip_gfm_headline (4 behavioural, reproduced against pre-fix).
 
-- 📋 [ANTS-3379] **read_region call_sequence — suppress false-positive callees from comments and type constructors.**
+- ✅ [ANTS-3379] **read_region call_sequence — suppress false-positive callees from comments and type constructors.**
   Vestige: call_sequence on AudioSystem::update listed real stages but also 'code','triggers','acquired' (comment words) and 'vec3','Engine' (type ctors/qualifiers). Tighten extraction to actual call-expressions: skip comment tokens; treat capitalised single-word type ctors separately from function calls.
   **Layman:** The 'list the steps in this function' feature sometimes lists words from comments or type names as if they were function calls.
   Kind: fix.
   Source: cc-feedback-2026-06-30 (Vestige).
+  Resolved (2026-07-01): src/readregion.cpp call_sequence scan now (1) strips C/C++ comments per line before the callee regex via a new stripCommentsForScan helper that carries `/* … */` block state across the region (inBlockComment) — so comment prose ('acquired (the lock)', 'triggers (an update)', block-comment 'code (...)') no longer registers as a call or accessor; and (2) suppresses a leading-uppercase callee (Engine(...), QString(...), Q_ASSERT(...)) as a type construction / functional cast / macro rather than a pipeline stage (free functions/methods here are lowerCamelCase → high-precision). Residual documented: a lowercase type ctor like vec3(...) stays lexically indistinguishable from a call and is left in. Test ReadRegionCallSequence.CommentAndTypeCtorSuppressed (fails pre-fix; existing lowercase-stage test still green). Full suite 2429/2429 green.
 
 - ✅ [ANTS-3380] **similar_code — down-weight trivial one-line/one-token signatures in ranking.**
   Vestige: a prose-y shape query ranked a 0.0909 one-liner 'add' (tween.h) above the genuinely useful Settings struct (same score, #2). Token-set Jaccard rewards short signatures with incidental overlap. Down-weight trivial signatures or favour longer signature-token overlaps.

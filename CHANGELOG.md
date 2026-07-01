@@ -222,6 +222,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **read_region call_sequence — suppress false-positive callees from comments and type constructors.** (ANTS-3379)
+  The 'list the steps in this function' feature sometimes lists words from comments or type names as if they were function calls.
+
 - **similar_code — down-weight trivial one-line/one-token signatures in ranking.** (ANTS-3380)
   The 'find code like this' search sometimes puts a tiny irrelevant one-liner at the top.
 

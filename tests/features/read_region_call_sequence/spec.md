@@ -31,6 +31,15 @@ region `read_region` already slices.
   fields (back-compat).
 - **INV-3** — wiring: `cmdReadRegion` threads the option into
   `ReadRegion::Options`; the schema advertises it.
+- **INV-4 (ANTS-3379)** — comment prose (`//` line and `/* … */` block,
+  the latter tracked across region lines) and capitalised type
+  constructions / functional casts / macros (`Engine(...)`, `QString(...)`,
+  `Q_ASSERT(...)`) are NOT listed as callees; real lowerCamelCase calls
+  still are. **Residual:** a lowercase type ctor (`vec3(...)`) is lexically
+  indistinguishable from a call and is left in — the comment strip removes
+  the comment-sourced variant, and leading-uppercase covers the common
+  type case; a general lowercase-type filter would need type knowledge the
+  heuristic scan deliberately lacks.
 
 ## Out of scope (v1)
 

@@ -31,6 +31,42 @@ namespace {
 // computed incrementally — see ANTS-2021 § 2.5).
 int lineCost(const QByteArray &utf8) { return utf8.size() + 3; }
 
+// ANTS-3379 — strip C/C++ comments from a line before the call_sequence
+// scan so comment prose ("… acquired (the lock) …") doesn't register as a
+// call. Tracks `/* … */` block state across lines via `inBlock`. Heuristic:
+// NOT string-literal aware (a `//` inside a string is treated as a comment
+// start) — harmless for callee extraction, where a string's tail almost
+// never holds a real call and a spurious one would be a false positive
+// anyway. Matches the file_outline / call_sequence Karpathy-§2 posture.
+QString stripCommentsForScan(const QString &line, bool &inBlock) {
+    QString out;
+    out.reserve(line.size());
+    int i = 0;
+    const int n = line.size();
+    while (i < n) {
+        if (inBlock) {
+            const int close = line.indexOf(QStringLiteral("*/"), i);
+            if (close < 0) return out;           // rest of line is comment
+            i = close + 2;
+            inBlock = false;
+            continue;
+        }
+        if (i + 1 < n && line.at(i) == QLatin1Char('/') &&
+            line.at(i + 1) == QLatin1Char('/')) {
+            break;                               // line comment → drop tail
+        }
+        if (i + 1 < n && line.at(i) == QLatin1Char('/') &&
+            line.at(i + 1) == QLatin1Char('*')) {
+            inBlock = true;
+            i += 2;
+            continue;
+        }
+        out.append(line.at(i));
+        ++i;
+    }
+    return out;
+}
+
 // Resolve a symbol name to a 1-based inclusive [start, end] line range via
 // the flat file_outline (no nesting level exists). end is the line before
 // the next outline entry, or INT_MAX (to EOF) when the match is last.
@@ -455,8 +491,16 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
         constexpr int kMaxSeq = 300;
         QJsonArray seq;
         QSet<QString> accessors;
+        // ANTS-3379 — carry `/* … */` state across the region so a block
+        // comment opened on one line masks callees on the next.
+        bool inBlockComment = false;
         for (int i = 0; i < lines.size(); ++i) {
-            const QString ln = lines.at(i).toString();
+            // Scan the comment-stripped text: comment prose must not
+            // register as a call or an accessor. Stripped every line
+            // (even the signature / seq-full ones) to keep inBlockComment
+            // correct across the region.
+            const QString ln = stripCommentsForScan(
+                lines.at(i).toString(), inBlockComment);
             const int lineNum = startLine + i;
             const bool isSignatureLine = (hasSym && i == 0);
             if (!isSignatureLine && seq.size() < kMaxSeq) {
@@ -464,6 +508,15 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
                 while (it.hasNext() && seq.size() < kMaxSeq) {
                     const QString callee = it.next().captured(1);
                     if (kw.contains(callee)) continue;
+                    // ANTS-3379 — a leading-uppercase callee is
+                    // overwhelmingly a type construction / functional cast
+                    // / macro (Engine(...), QString(...), Q_ASSERT(...)),
+                    // not a pipeline stage. Suppress it — free functions
+                    // and methods in this codebase are lowerCamelCase, so
+                    // this is a high-precision heuristic (lowercase type
+                    // ctors like vec3(...) remain lexically ambiguous and
+                    // are left in; see spec residual note).
+                    if (callee.at(0).isUpper()) continue;
                     QJsonObject c;
                     c[QStringLiteral("line")]   = lineNum;
                     c[QStringLiteral("callee")] = callee;
