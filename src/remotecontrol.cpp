@@ -13270,6 +13270,17 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
         sb[QStringLiteral("build_date")]   = QStringLiteral(ANTS_BUILD_DATE);
         sb[QStringLiteral("build_time")]   = QStringLiteral(ANTS_BUILD_TIME);
         sb[QStringLiteral("build_type")]   = QStringLiteral(ANTS_BUILD_TYPE);
+        // ANTS-2152 — steer the reader away from the version-string trap:
+        // the version can be identical across the commit that shipped a fix
+        // and the older commit a client is still running (a deploy gap, not
+        // a regression). Before re-reporting a ✅/shipped item as still
+        // broken, compare build_commit / build_date against the fix's ship
+        // date — not `version`.
+        sb[QStringLiteral("stale_check_hint")] = QStringLiteral(
+            "Before re-reporting a shipped/✅ item as still broken, compare "
+            "build_commit + build_date against the fix's ship date — NOT the "
+            "version string (it can be identical across the pre- and post-fix "
+            "commits, so a stale binary looks current by version alone).");
         result[QStringLiteral("server_build")] = sb;
     }
 

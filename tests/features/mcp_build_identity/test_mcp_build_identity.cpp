@@ -134,6 +134,11 @@ TEST(mcp_build_identity, Inv5SessionOrientStampsServerBuild) {
                contains(region, "ANTS_BUILD_COMMIT") &&
                contains(region, "ANTS_VERSION"),
            "INV-5: session_orient adds server_build from ANTS_BUILD_* + version");
+    // ANTS-2152 — the block carries a stale_check_hint steering clients to
+    // compare build_commit/build_date (not version) before re-reporting a
+    // shipped item as still broken.
+    expect(contains(region, "stale_check_hint"),
+           "INV-5: server_build carries the ANTS-2152 stale_check_hint");
     EXPECT_EQ(0, expect_failures());
 }
 

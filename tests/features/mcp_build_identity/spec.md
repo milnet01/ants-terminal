@@ -48,7 +48,9 @@ a `server_build` block to both.
 - **INV-5.** `remotecontrol.cpp` `#include`s `build_info.h`, and
   `cmdSessionOrient` adds a `server_build` object carrying `version` +
   `build_commit` / `build_date` / `build_time` / `build_type` from the
-  `ANTS_BUILD_*` macros.
+  `ANTS_BUILD_*` macros, plus a `stale_check_hint` (ANTS-2152) steering
+  clients to compare `build_commit`/`build_date` — not `version` — against
+  a fix's ship date before re-reporting a shipped item as still broken.
 - **INV-6.** The `tool_info` catalog branch (`catalogMode`) stamps the
   same `server_build` block, so the once-per-session discovery call
   reveals the running binary's identity.
