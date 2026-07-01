@@ -9698,6 +9698,34 @@ indie-review finding.
   Kind: fix.
   Source: in-session-2026-06-28 (full-build warning sweep).
 
+- ✅ [ANTS-3410] **Extend tools/ci-parity.sh into a full pre-push CI mirror (--lints / --asan / --full).**
+  Today ci-parity.sh reproduces only the test-run half of CI's
+  `build-test` job (Release + Ninja + C.UTF-8 ctest). CI's other
+  gates are NOT reproduced locally, which is how ANTS-3391's 14 B
+  wire-budget overrun stayed CI-red across three commits
+  (ANTS-3391 → ANTS-2152 → ANTS-3408) before ANTS-3409 caught it.
+  Add opt-in phases mirroring the remaining reproducible gates:
+  - `--lints` — cppcheck (informational, --error-exitcode=0 like CI),
+    appstream metainfo validate, desktop-file-validate, groff -wall
+    man-page lint, packaging/check-version-drift.sh, and the
+    bash/zsh/fish completion parse checks.
+  - `--asan` — Debug + ANTS_SANITIZERS=ON build in an isolated
+    build-ci-parity-asan/ tree + full ctest under
+    ASAN_OPTIONS/UBSAN_OPTIONS + the --version/--help binary smoke.
+  - `--full` — both.
+  Gates accumulate (run all, report all failures at the end) rather
+  than stop-on-first. A gate whose tool is absent (zsh/fish not
+  installed on this openSUSE host) is SKIPPED with a loud warning and
+  listed in the summary, so a local "green" never silently masks a
+  gate CI will still run. The qt62-baseline job (ubuntu-22.04 / Qt
+  6.2) is intentionally NOT mirrored — it needs a different distro +
+  Qt than this host provides; documented as a known non-reproducible
+  gap.
+  **Layman:** Make one local command reproduce every check GitHub runs, so a broken build is caught in 30 seconds locally instead of after a push.
+  Kind: chore.
+  Source: in-session-2026-07-01 (CI-parity gap after ANTS-3391 shipped a 3-commit CI red streak unnoticed).
+  Resolved (2026-07-01): tools/ci-parity.sh gained --lints / --asan / --full phases mirroring CI's build-test lint gates and build-asan sanitized run; gates accumulate (run-all, report-all) and absent-tool gates SKIP loudly + list in the summary. Validated: shellcheck clean (fixed the SC2164 unguarded cd that removing `set -e` exposed); `--lints` end-to-end run green — cppcheck/appstream/desktop/groff/version-drift/bash-completion ✓, zsh+fish SKIPPED (not installed on this host) surfaced in the summary. qt62-baseline deliberately not mirrored (needs ubuntu-22.04/Qt6.2). Note: `--asan` phase not run this session (cold ASan build); syntax + shellcheck verified.
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested

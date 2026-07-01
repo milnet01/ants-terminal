@@ -127,6 +127,16 @@ for security-relevant changes.
 
 ### Changed
 
+- **tools/ci-parity.sh now mirrors every locally-reproducible CI gate (ANTS-3410)**
+  Added --lints (cppcheck / appstream / desktop / groff / version-drift
+  / bash+zsh+fish completions), --asan (Debug ASan/UBSan build + sanitized
+  ctest + --version/--help smoke) and --full phases. Gates accumulate and
+  report all failures at the end; a gate whose tool is absent is skipped
+  with a loud warning so a local "green" never masks a gate CI still runs.
+  The qt62-baseline job is intentionally not mirrored (needs a different
+  distro + Qt). Motivated by ANTS-3391's wire-budget overrun staying
+  CI-red for three commits before ANTS-3409 caught it.
+
 - **Document the Evidence: bullet field in roadmap-format.md § 3.5 (ANTS-3382 follow-up).** (ANTS-3386)
   The new Evidence line on roadmap items works and is documented in the live tool schema, but the human-facing roadmap-format standard doesn't list it yet.
 
