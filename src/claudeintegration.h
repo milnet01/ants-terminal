@@ -615,7 +615,48 @@ public:
                                   const QString &projectRoot);
     void   verbInFlightRelease(const QString &verb,
                                const QString &projectRoot);
+
+    // ANTS-3396 — opt-in async audit_run job registry. Bounded,
+    // mutex-guarded, process-lifetime (no persistence; a job_id minted
+    // before a restart resolves to `expired` after). Modelled on the
+    // in-flight gate above. The registry holds liveness + a cache path +
+    // compact counts only — the multi-MB SARIF stays on disk in
+    // `.audit_cache`. See docs/specs/ANTS-3396.md.
+    struct AuditJob {
+        QString     status;        // stored: "running" | "done" | "error"
+                                   // ("expired" is synthesised at poll time)
+        QString     root;          // canonical project root (in-flight key)
+        QString     cachePath;     // r.cachePath on done, else r.sarifPath
+        QString     code, error;   // set on error
+        qint64      startedMs = 0;
+        int         totalRaw = 0, totalActionable = 0;
+        bool        partial = false, noChanges = false;
+        QStringList incompleteTools;
+    };
+    // Register a new running job for `root`; returns its "audit-N" id, or
+    // an empty string when the bounded registry is saturated with running
+    // entries (caller emits `too_many_jobs`). Reaps stale entries and
+    // evicts the oldest terminal entry to make room (INV-4).
+    QString     auditJobRegister(const QString &root, qint64 startedMs);
+    // Flip a running job to its terminal state (done/error). No-op if the
+    // entry was already reaped/evicted (result stays durable on disk).
+    void        auditJobComplete(const QString &jobId, const AuditJob &result);
+    // Build the audit_poll envelope for `jobId`
+    // (running/done/error/expired). Never refuses; a registry miss is the
+    // terminal `expired` status (ok:true), not an error. `callerRoot` is the
+    // caller's canonical project root: a job registered under a DIFFERENT
+    // root reads as `expired` too (the process-global registry is scoped to
+    // the caller's own project — no cross-project cache_path leak, and the
+    // miss is indistinguishable from a genuine one so existence never leaks).
+    QJsonObject auditJobPollEnvelope(const QString &jobId,
+                                     const QString &callerRoot) const;
 private:
+    mutable QHash<QString /*job_id*/, AuditJob> m_auditJobs;
+    mutable QMutex                              m_auditJobsMutex;
+    quint64                 m_auditJobNextId  = 1;   // guarded by mutex
+    static constexpr int    kAuditJobsMax     = 16;
+    static constexpr qint64 kAuditJobReapMs   = 270'000;  // == kVerbInFlightReapMs
+
 
     // Private helpers — the test-only methods in the public section
     // delegate here, and the dispatch site at processTools uses them

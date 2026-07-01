@@ -6285,8 +6285,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "`cache_path`). To stay under the cap, narrow with "
                         "`scope` / `tools` / a smaller `cap_per_tool_seconds`; "
                         "otherwise expect the `last_audit_summary` fallback "
-                        "for full sweeps. "
-                        "See docs/specs/ANTS-1351.md + ANTS-1555.md.");
+                        "for full sweeps. ANTS-3396 — for a slow sweep, pass "
+                        "`async:true` to get a job handle back instantly and "
+                        "poll `audit_poll {job_id}`; the async path never "
+                        "trips the transport cap at all. "
+                        "See docs/specs/ANTS-1351.md + ANTS-1555.md + "
+                        "ANTS-3396.md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to run the static-analysis sweep without "
                         "leaving Ants. Pairs with last_audit_summary "
@@ -6384,6 +6388,21 @@ void ClaudeIntegration::onMcpConnection() {
                         "rather than silently ignore. Each entry "
                         "must match ^-?[A-Za-z0-9_*.,-]+$ "
                         "(length ≤ 128).");
+                    // ANTS-3396 — opt-in async mode.
+                    QJsonObject asyncProp;
+                    asyncProp["type"] = "boolean";
+                    asyncProp["description"] = QStringLiteral(
+                        "When true, start the sweep detached and return a "
+                        "job handle immediately ({async:true, job_id, "
+                        "status:\"running\", poll_with:\"audit_poll\"}) "
+                        "instead of blocking until it finishes. Poll "
+                        "audit_poll {job_id} for completion. Default "
+                        "false (synchronous, unchanged). Use it for "
+                        "scope:\"full\" or slow tool sets (cold semgrep / "
+                        "trivy / mypy) that can exceed the MCP client's "
+                        "~60 s request timer — the async path never trips "
+                        "the `transport: timed out` cap. Results are "
+                        "written to .audit_cache regardless.");
                     QJsonObject callerProp;
                     callerProp["type"] = "string";
                     callerProp["description"] = QStringLiteral(
@@ -6398,10 +6417,58 @@ void ClaudeIntegration::onMcpConnection() {
                     props["top_findings_count"]   = topProp;
                     props["paths"]                = pathsProp;
                     props["checks"]               = checksProp;
+                    props["async"]                = asyncProp;
                     props["caller_cwd"]           = callerProp;
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append("caller_cwd");
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                // ANTS-3396 — audit_poll (async audit_run companion).
+                {
+                    QJsonObject t;
+                    t["name"] = "audit_poll";
+                    t["description"] = QStringLiteral(
+                        "Poll an async audit_run job by its job_id (from an "
+                        "audit_run {async:true} call). Read-only, cheap, "
+                        "never blocks. Branch on `status`, not `ok` (ok "
+                        "reports whether the POLL succeeded): "
+                        "\"running\" (with elapsed_ms), \"done\" (with "
+                        "cache_path + total_raw/total_actionable/partial/"
+                        "incomplete_tools; no_changes on an empty changeset; "
+                        "read_full_with:last_audit_summary), \"error\" (the "
+                        "run's own code/error), or \"expired\" (job_id "
+                        "unknown or evicted from the bounded registry — the "
+                        "result is still on disk; read last_audit_summary). "
+                        "Prefer the done envelope's cache_path over "
+                        "last_audit_summary for this job's exact SARIF. "
+                        "Required: caller_cwd. See docs/specs/ANTS-3396.md.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use after audit_run {async:true} to check whether "
+                        "the detached sweep has finished.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject jobProp;
+                    jobProp["type"] = "string";
+                    jobProp["description"] = QStringLiteral(
+                        "The job_id returned by audit_run {async:true} "
+                        "(e.g. \"audit-7\"). Missing / non-string → "
+                        "bad_args.");
+                    QJsonObject callerProp;
+                    callerProp["type"] = "string";
+                    callerProp["description"] = QStringLiteral(
+                        "Your $PWD. Required (ANTS-1404 parity with "
+                        "audit_run).");
+                    QJsonObject props;
+                    props["job_id"]     = jobProp;
+                    props["caller_cwd"] = callerProp;
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append("caller_cwd");
+                    req.append("job_id");
                     schema["required"] = req;
                     schema["additionalProperties"] = false;
                     t["inputSchema"] = schema;
@@ -8767,6 +8834,8 @@ void ClaudeIntegration::onMcpConnection() {
                         return QStringLiteral("cold-eyes");
                     if (name == QLatin1String("audit_run") ||
                         name == QLatin1String("last_audit_summary") ||
+                        // ANTS-3396 — audit_poll: poll an async audit_run job.
+                        name == QLatin1String("audit_poll") ||
                         // ANTS-2129 — audit_falsepos_log: write side of the
                         // false-positive ledger, audit-family.
                         name == QLatin1String("audit_falsepos_log"))
@@ -10019,6 +10088,109 @@ void ClaudeIntegration::verbInFlightRelease(
     m_verbInFlight.remove(qMakePair(verb, projectRoot));
 }
 
+// ANTS-3396 — async audit_run job registry. Bounded/reaped/evicted so a
+// runaway or process-lifetime accumulation can never grow unbounded.
+QString ClaudeIntegration::auditJobRegister(
+        const QString &root, qint64 startedMs) {
+    QMutexLocker lk(&m_auditJobsMutex);
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    // (1) Reap entries older than the reap window (same as the in-flight
+    // gate). A stale running entry ages out too — its result stays durable
+    // on disk and the poll then reads `expired`.
+    for (auto it = m_auditJobs.begin(); it != m_auditJobs.end(); ) {
+        if (now - it.value().startedMs > kAuditJobReapMs)
+            it = m_auditJobs.erase(it);
+        else
+            ++it;
+    }
+    // (2) Still at the cap → evict the oldest TERMINAL entry (by startedMs
+    // — the only timestamp stored; a deliberate simplification, harmless on
+    // the 16-entry single-project cap). A running entry is never evicted.
+    if (m_auditJobs.size() >= kAuditJobsMax) {
+        QString victim;
+        qint64  oldest = 0;
+        bool    have = false;
+        for (auto it = m_auditJobs.constBegin();
+             it != m_auditJobs.constEnd(); ++it) {
+            const AuditJob &j = it.value();
+            if (j.status != QLatin1String("running")
+                && (!have || j.startedMs < oldest)) {
+                oldest = j.startedMs;
+                victim = it.key();
+                have   = true;
+            }
+        }
+        // (3) All entries running → no room; caller emits `too_many_jobs`.
+        if (!have) return QString();
+        m_auditJobs.remove(victim);
+    }
+    const QString jobId =
+        QStringLiteral("audit-") + QString::number(m_auditJobNextId++);
+    AuditJob j;
+    j.status    = QStringLiteral("running");
+    j.root      = root;
+    j.startedMs = startedMs;
+    m_auditJobs.insert(jobId, j);
+    return jobId;
+}
+
+void ClaudeIntegration::auditJobComplete(
+        const QString &jobId, const AuditJob &result) {
+    QMutexLocker lk(&m_auditJobsMutex);
+    auto it = m_auditJobs.find(jobId);
+    if (it == m_auditJobs.end())
+        return;  // reaped/evicted — the result is durable on disk.
+    // Overlay the terminal fields; keep the original start time + root.
+    AuditJob j     = result;
+    j.startedMs    = it.value().startedMs;
+    j.root         = it.value().root;
+    it.value()     = j;
+}
+
+QJsonObject ClaudeIntegration::auditJobPollEnvelope(
+        const QString &jobId, const QString &callerRoot) const {
+    QMutexLocker lk(&m_auditJobsMutex);
+    QJsonObject env;
+    env["ok"]     = true;
+    env["job_id"] = jobId;
+    auto it = m_auditJobs.constFind(jobId);
+    // A miss OR a job owned by a different project root both read as
+    // `expired` — the caller can only see its own project's jobs, and a
+    // cross-root probe is indistinguishable from a genuine miss.
+    if (it == m_auditJobs.constEnd() || it.value().root != callerRoot) {
+        // Registry miss — normal terminal poll status, NOT a refusal.
+        env["status"] = QStringLiteral("expired");
+        env["hint"]   = QStringLiteral(
+            "job not in registry (completed long ago or evicted); read the "
+            "latest result via last_audit_summary.");
+        return env;
+    }
+    const AuditJob &j = it.value();
+    env["status"] = j.status;
+    if (j.status == QLatin1String("running")) {
+        env["started_at_ms"] = j.startedMs;
+        env["elapsed_ms"]    =
+            QDateTime::currentMSecsSinceEpoch() - j.startedMs;
+    } else if (j.status == QLatin1String("error")) {
+        // Branch on `status`, not `ok` — the poll itself succeeded.
+        // `code` is job-scoped; omit when runAudit left it empty (error
+        // carries the detail). NOT a poll-level refusal code.
+        if (!j.code.isEmpty()) env["code"] = j.code;
+        env["error"] = j.error;
+    } else {  // "done"
+        if (!j.cachePath.isEmpty()) env["cache_path"] = j.cachePath;
+        env["total_raw"]        = j.totalRaw;
+        env["total_actionable"] = j.totalActionable;
+        env["partial"]          = j.partial;
+        QJsonArray inc;
+        for (const QString &t : j.incompleteTools) inc.append(t);
+        env["incomplete_tools"] = inc;
+        if (j.noChanges) env["no_changes"] = true;
+        env["read_full_with"]   = QStringLiteral("last_audit_summary");
+    }
+    return env;
+}
+
 ClaudeIntegration::CallerCwdContract
 ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     using C = CallerCwdContract;
@@ -10034,6 +10206,10 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // and consumes a worker-pool slot; Required gate refuses early
     // before any pool dispatch.
     if (toolName == QStringLiteral("audit_run"))          return C::Required;
+    // ANTS-3396 — audit_poll reads the async-audit job registry.
+    // Required for parity with audit_run (the dispatcher refuses
+    // caller_cwd_required before the read-only poll runs).
+    if (toolName == QStringLiteral("audit_poll"))         return C::Required;
     // ANTS-1430 — project_layout reads from the tenant-hashed
     // session_memory store. Joins session_memory in the gated
     // Required set (see ANTS-1336 INV-7 amendment).

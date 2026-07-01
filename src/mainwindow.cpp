@@ -4525,7 +4525,9 @@ void MainWindow::setupClaudeMcpProviders() {
             // RAII: release the in-flight slot on EVERY exit path (including
             // an exception or a future early return), honouring the header's
             // documented guard contract. indie-review-2026-05-21.
-            const auto inFlightGuard = qScopeGuard([this, &canon] {
+            // Non-const: the ANTS-3396 async branch calls dismiss() to hand
+            // the slot release to the completion slot.
+            auto inFlightGuard = qScopeGuard([this, &canon] {
                 m_claudeIntegration->verbInFlightRelease(
                     QStringLiteral("audit_run"), canon);
             });
@@ -4563,6 +4565,89 @@ void MainWindow::setupClaudeMcpProviders() {
                 QStringLiteral("checks")).toArray();
             for (const QJsonValue &v : checksArr)
                 req.checks.append(v.toString());
+            // ANTS-3396 — opt-in async mode: spawn the sweep detached,
+            // register a job, and return a handle immediately so the caller
+            // never blocks on the ~60 s MCP transport cap. Default false →
+            // the synchronous path below is byte-for-byte unchanged (INV-1).
+            if (args.value(QStringLiteral("async")).toBool()) {
+                const qint64 startedMs =
+                    QDateTime::currentMSecsSinceEpoch();
+                const QString jobId =
+                    m_claudeIntegration->auditJobRegister(canon, startedMs);
+                if (jobId.isEmpty()) {
+                    // Registry saturated (all entries running, none
+                    // evictable). The in-flight guard releases the slot on
+                    // return; the sync path stays available (INV-8).
+                    QJsonObject env;
+                    env["ok"]             = false;
+                    env["code"]           = QStringLiteral("too_many_jobs");
+                    env["error"]          = QStringLiteral(
+                        "audit_run: too many audit jobs in flight; retry "
+                        "shortly or run synchronously (async:false)");
+                    env["retry_after_ms"] = 5000;
+                    return QString::fromUtf8(
+                        QJsonDocument(env).toJson(QJsonDocument::Compact));
+                }
+                // The completion slot now owns the in-flight release
+                // (§2.4 / INV-5) — dismiss the sync scope-guard so the slot
+                // is NOT freed the moment this handler returns the handle.
+                inFlightGuard.dismiss();
+                auto result =
+                    std::make_shared<AuditRunner::RunResult>();
+                // Worker created on the main/dispatch thread → its thread
+                // affinity is the main thread, so deleteLater() in the
+                // completion slot is same-thread-safe. `req` copied by value
+                // (the handler's stack frame unwinds before the sweep ends).
+                QThread *worker = QThread::create(
+                    [req, result]() { *result = AuditRunner::runAudit(req); });
+                ClaudeIntegration *ci = m_claudeIntegration;
+                // Queued completion on the main thread. Context object = ci
+                // so the connection auto-severs if ci is destroyed at
+                // teardown (the QPointer-equivalent shutdown guard, §2.4):
+                // a still-running worker then fires into nothing rather than
+                // touching a freed owner. The worker touches only its own
+                // RunResult; the registry flip + slot release happen here on
+                // the main thread.
+                QObject::connect(worker, &QThread::finished, ci,
+                    [ci, worker, result, jobId, canon]() {
+                        ClaudeIntegration::AuditJob term;
+                        const AuditRunner::RunResult &r = *result;
+                        if (!r.ok) {
+                            term.status = QStringLiteral("error");
+                            term.code   = r.code;
+                            term.error  = r.error;
+                        } else {
+                            term.status = QStringLiteral("done");
+                            // cache-write failure → fall back to the /tmp
+                            // SARIF so the recovery path never breaks.
+                            term.cachePath = r.cachePath.isEmpty()
+                                ? r.sarifPath : r.cachePath;
+                            term.totalRaw        = r.totalRaw;
+                            term.totalActionable = r.totalActionable;
+                            term.partial         = r.partial;
+                            term.noChanges       = r.noChanges;
+                            term.incompleteTools = r.incompleteTools;
+                        }
+                        ci->auditJobComplete(jobId, term);
+                        ci->verbInFlightRelease(
+                            QStringLiteral("audit_run"), canon);
+                        worker->deleteLater();
+                    }, Qt::QueuedConnection);
+                worker->start();
+                QJsonObject env;
+                env["ok"]            = true;
+                env["async"]         = true;
+                env["job_id"]        = jobId;
+                env["status"]        = QStringLiteral("running");
+                env["started_at_ms"] = startedMs;
+                env["poll_with"]     = QStringLiteral("audit_poll");
+                env["note"]          = QStringLiteral(
+                    "Sweep running server-side; poll audit_poll {job_id} or "
+                    "read last_audit_summary when done. Results are written "
+                    "to .audit_cache regardless of poll.");
+                return QString::fromUtf8(
+                    QJsonDocument(env).toJson(QJsonDocument::Compact));
+            }
             // ANTS-2103 — run the audit on a worker thread so its internal
             // QEventLoop (auditrunner.cpp), which multiplexes the per-tool
             // QProcesses, lives OFF the main thread. Running it synchronously
@@ -4671,6 +4756,38 @@ void MainWindow::setupClaudeMcpProviders() {
                 env["delta_unavailable_reason"] = r.deltaUnavailableReason;
             if (r.findingsTruncated)
                 env["findings_truncated"] = true;
+            return QString::fromUtf8(
+                QJsonDocument(env).toJson(QJsonDocument::Compact));
+        });
+    // ANTS-3396 — audit_poll: read the in-memory async-audit job
+    // registry. Read-only, cheap, never blocks. Required caller_cwd for
+    // parity with audit_run (dispatcher refuses caller_cwd_required
+    // upstream); under the claude.mcp_enabled master gate.
+    m_claudeIntegration->registerToolProvider("audit_poll",
+        ClaudeIntegration::CallerCwdContract::Required,
+        [this](const QJsonObject &args) -> QString {
+            const QString jobId =
+                args.value(QStringLiteral("job_id")).toString();
+            if (jobId.isEmpty()) {
+                QJsonObject env;
+                env["ok"]    = false;
+                env["code"]  = QStringLiteral("bad_args");
+                env["error"] = QStringLiteral(
+                    "audit_poll: job_id (non-empty string) is required");
+                return QString::fromUtf8(
+                    QJsonDocument(env).toJson(QJsonDocument::Compact));
+            }
+            // Resolve caller_cwd to the same canonical root the async
+            // registration keyed on, so a poll only sees its own project's
+            // jobs (bad_cwd on an unresolvable root).
+            const QString callerCwd = args.value(
+                QStringLiteral("caller_cwd")).toString();
+            QString canon, badEnv;
+            if (!resolveInflightCallerCwd(callerCwd, "audit_poll",
+                                          &canon, &badEnv))
+                return badEnv;
+            const QJsonObject env =
+                m_claudeIntegration->auditJobPollEnvelope(jobId, canon);
             return QString::fromUtf8(
                 QJsonDocument(env).toJson(QJsonDocument::Compact));
         });

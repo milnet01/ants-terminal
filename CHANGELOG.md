@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Opt-in async mode for the `audit_run` MCP verb (ANTS-3396).** (ANTS-3396)
+  Pass `async:true` to start a slow sweep detached and get a job handle back instantly ({job_id, status:"running", poll_with:"audit_poll"}) instead of blocking on the ~60s MCP transport cap; poll the new `audit_poll {caller_cwd, job_id}` verb for completion (running/done/error/expired). The sync path is unchanged (default async:false). The job registry is bounded (16 entries, 270s reap) and root-scoped so a poll only sees its own project's jobs. Results are written to .audit_cache regardless of poll.
+
 - **roadmap_log append accepts optional evidence:[paths], echoed by roadmap_query** (ANTS-3382)
   op:append / append_batch take an evidence file-path array, rendered as an Evidence: line (dots in paths preserved) and echoed back by roadmap_query as an evidence array — so a bug logged from screenshots/logs records where the files are for a later session.
 
