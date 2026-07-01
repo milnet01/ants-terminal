@@ -35,7 +35,7 @@ bool contains(const std::string &hay, const char *needle) {
 }
 
 int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
     return 1;
 }
 
@@ -60,24 +60,24 @@ static int runMain() {
     // INV-2: clean drift script → ok:true, clean:true, exit 0.
     {
         QTemporaryDir tmp;
-        if (!tmp.isValid()) return fail("INV-2", "could not make tmp dir");
+        if (!tmp.isValid()) fail("INV-2", "could not make tmp dir");
         QDir(tmp.path()).mkpath(QStringLiteral("packaging"));
         const QString script = tmp.path() +
             QStringLiteral("/packaging/check-version-drift.sh");
         if (!writeScript(script,
                 QStringLiteral("#!/usr/bin/env bash\nexit 0\n")))
-            return fail("INV-2", "could not write fake drift script");
+            fail("INV-2", "could not write fake drift script");
 
         int exitCode = -1;
         const QJsonObject resp =
             AntsHelper::driftCheck({}, tmp.path(), &exitCode);
         if (!resp.value("ok").toBool())
-            return fail("INV-2", "expected ok:true on clean exit");
+            fail("INV-2", "expected ok:true on clean exit");
         const QJsonObject data = resp.value("data").toObject();
         if (!data.value("clean").toBool())
-            return fail("INV-2", "expected data.clean = true");
+            fail("INV-2", "expected data.clean = true");
         if (exitCode != 0)
-            return fail("INV-2", "expected *exitCode = 0");
+            fail("INV-2", "expected *exitCode = 0");
     }
 
     // INV-3 + INV-6: drift script with violations → ok:true,
@@ -85,7 +85,7 @@ static int runMain() {
     //   *exitCode = 3.
     {
         QTemporaryDir tmp;
-        if (!tmp.isValid()) return fail("INV-3", "could not make tmp dir");
+        if (!tmp.isValid()) fail("INV-3", "could not make tmp dir");
         QDir(tmp.path()).mkpath(QStringLiteral("packaging"));
         const QString script = tmp.path() +
             QStringLiteral("/packaging/check-version-drift.sh");
@@ -95,49 +95,49 @@ static int runMain() {
             "echo 'metainfo.xml:42: appstream version 0.7.0 drifts from CMake 0.7.58'\n"
             "exit 7\n");
         if (!writeScript(script, body))
-            return fail("INV-3", "could not write fake drift script");
+            fail("INV-3", "could not write fake drift script");
 
         int exitCode = -1;
         const QJsonObject resp =
             AntsHelper::driftCheck({}, tmp.path(), &exitCode);
         if (!resp.value("ok").toBool())
-            return fail("INV-3",
+            fail("INV-3",
                         "drift detected ≠ handler error — ok must remain true");
         const QJsonObject data = resp.value("data").toObject();
         if (data.value("clean").toBool())
-            return fail("INV-3", "data.clean must be false");
+            fail("INV-3", "data.clean must be false");
         const QJsonArray viol = data.value("violations").toArray();
         if (viol.size() != 2)
-            return fail("INV-3", "expected exactly 2 parsed violations");
+            fail("INV-3", "expected exactly 2 parsed violations");
         const QJsonObject v0 = viol[0].toObject();
         if (v0.value("file").toString() != QStringLiteral("foo.spec") ||
             v0.value("line").toInt() != 7)
-            return fail("INV-3", "violation[0] file/line mismatch");
+            fail("INV-3", "violation[0] file/line mismatch");
         if (!data.contains(QStringLiteral("raw")))
-            return fail("INV-6", "raw field missing");
+            fail("INV-6", "raw field missing");
         if (!data.contains(QStringLiteral("exit_code")))
-            return fail("INV-6", "exit_code field missing");
+            fail("INV-6", "exit_code field missing");
         if (data.value("exit_code").toInt() != 7)
-            return fail("INV-6", "exit_code must mirror the script's exit");
+            fail("INV-6", "exit_code must mirror the script's exit");
         if (exitCode != 3)
-            return fail("INV-3", "expected *exitCode = 3 on drift");
+            fail("INV-3", "expected *exitCode = 3 on drift");
     }
 
     // INV-4: missing script → ok:false, code:missing_script, exit 1.
     {
         QTemporaryDir tmp;
-        if (!tmp.isValid()) return fail("INV-4", "could not make tmp dir");
+        if (!tmp.isValid()) fail("INV-4", "could not make tmp dir");
         // No packaging/check-version-drift.sh.
         int exitCode = -1;
         const QJsonObject resp =
             AntsHelper::driftCheck({}, tmp.path(), &exitCode);
         if (resp.value("ok").toBool())
-            return fail("INV-4", "expected ok:false");
+            fail("INV-4", "expected ok:false");
         if (resp.value("code").toString() != QStringLiteral("missing_script"))
-            return fail("INV-4",
+            fail("INV-4",
                         "expected code = missing_script");
         if (exitCode != 1)
-            return fail("INV-4", "expected *exitCode = 1");
+            fail("INV-4", "expected *exitCode = 1");
     }
 
     // INV-5: bogus repo root → ok:false, code:missing_repo_root.
@@ -147,13 +147,13 @@ static int runMain() {
             {}, QStringLiteral("/this/path/does/not/exist/xyzzy"),
             &exitCode);
         if (resp.value("ok").toBool())
-            return fail("INV-5", "expected ok:false");
+            fail("INV-5", "expected ok:false");
         if (resp.value("code").toString() !=
             QStringLiteral("missing_repo_root"))
-            return fail("INV-5",
+            fail("INV-5",
                         "expected code = missing_repo_root");
         if (exitCode != 1)
-            return fail("INV-5", "expected *exitCode = 1");
+            fail("INV-5", "expected *exitCode = 1");
     }
 
     // INV-7: jsonToCompactString produces single-line UTF-8.
@@ -165,10 +165,10 @@ static int runMain() {
         probe.insert(QStringLiteral("data"), data);
         const QString s = AntsHelper::jsonToCompactString(probe);
         if (s.contains('\n'))
-            return fail("INV-7",
+            fail("INV-7",
                         "compact JSON output must not embed literal newlines");
         if (s.startsWith(QChar(0xFEFF)))
-            return fail("INV-7", "compact JSON output must not start with BOM");
+            fail("INV-7", "compact JSON output must not start with BOM");
     }
 
     // INV-11: list returns the unified {ok, data:{subcommands}} envelope
@@ -176,9 +176,9 @@ static int runMain() {
     {
         const QJsonObject resp = AntsHelper::listSubcommands();
         if (!resp.value("ok").toBool())
-            return fail("INV-11", "list expected ok:true");
+            fail("INV-11", "list expected ok:true");
         if (resp.contains(QStringLiteral("subcommands")))
-            return fail("INV-11",
+            fail("INV-11",
                         "subcommands must be nested under data, not top-level");
         const QJsonObject data = resp.value("data").toObject();
         const QJsonArray subs = data.value("subcommands").toArray();
@@ -186,21 +186,21 @@ static int runMain() {
         for (const QJsonValue &v : subs)
             if (v.toString() == QStringLiteral("drift-check")) hasDrift = true;
         if (!hasDrift)
-            return fail("INV-11", "data.subcommands must contain drift-check");
+            fail("INV-11", "data.subcommands must contain drift-check");
     }
 
     // INV-1 / INV-8: CMake gates the helper binary correctly.
     const std::string cmake = ants_test::slurpFile(SRC_CMAKELISTS);
     if (cmake.empty())
-        return fail("INV-1", "CMakeLists.txt not readable");
+        fail("INV-1", "CMakeLists.txt not readable");
     if (!contains(cmake, "option(ANTS_ENABLE_HELPER_CLI"))
-        return fail("INV-1",
+        fail("INV-1",
                     "CMakeLists.txt missing ANTS_ENABLE_HELPER_CLI option");
     if (!contains(cmake, "add_executable(ants-helper"))
-        return fail("INV-8",
+        fail("INV-8",
                     "CMakeLists.txt missing add_executable(ants-helper)");
     if (!contains(cmake, "if(ANTS_ENABLE_HELPER_CLI)"))
-        return fail("INV-8",
+        fail("INV-8",
                     "ants-helper target must be gated on the option");
 
     std::puts("OK local_subagent_framework: 9/9 invariants");

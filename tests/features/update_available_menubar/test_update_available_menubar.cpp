@@ -30,24 +30,24 @@ void fail(const char *label, const char *why) {
 TEST(UpdateAvailableMenubar, Main) {
     const std::string header = ants_test::slurpFile(MAINWINDOW_H);
     const std::string source = ants_test::slurpFile(MAINWINDOW_CPP);
-    if (header.empty()) return fail("setup", "mainwindow.h not readable");
-    if (source.empty()) return fail("setup", "mainwindow.cpp not readable");
+    if (header.empty()) fail("setup", "mainwindow.h not readable");
+    if (source.empty()) fail("setup", "mainwindow.cpp not readable");
 
     // INV-1: the QLabel member is gone from the header.
     if (contains(header, "QLabel *m_updateAvailableLabel"))
-        return fail("INV-1",
+        fail("INV-1",
             "stale QLabel *m_updateAvailableLabel still declared in mainwindow.h");
 
     // INV-2: the QAction member is declared.
     if (!contains(header, "QAction *m_updateAvailableAction"))
-        return fail("INV-2",
+        fail("INV-2",
             "QAction *m_updateAvailableAction not declared in mainwindow.h");
 
     // INV-3: no `m_updateAvailableLabel` identifier survives anywhere
     // in mainwindow.cpp. Broader than INV-1 — catches stray ->show()
     // / ->setText() calls that could outlive a partial rename.
     if (contains(source, "m_updateAvailableLabel"))
-        return fail("INV-3",
+        fail("INV-3",
             "stale m_updateAvailableLabel reference survives in mainwindow.cpp");
 
     // INV-4: action is added to the menu bar via add/insert. We
@@ -57,7 +57,7 @@ TEST(UpdateAvailableMenubar, Main) {
             "m_menuBar->addAction(m_updateAvailableAction)") &&
         !contains(source,
             "m_menuBar->insertAction(") /* + m_updateAvailableAction below */)
-        return fail("INV-4",
+        fail("INV-4",
             "m_updateAvailableAction not added/inserted on m_menuBar");
     // For the insert path, also require the action token in the
     // same call. We collapse runs of whitespace in the haystack
@@ -72,18 +72,18 @@ TEST(UpdateAvailableMenubar, Main) {
                 "m_menuBar->addAction(m_updateAvailableAction)") &&
             !contains(normalised,
                 "insertAction") /* tolerate either ordering of args */)
-            return fail("INV-4",
+            fail("INV-4",
                 "m_updateAvailableAction not wired into m_menuBar");
     }
 
     // INV-5 / INV-6: visibility toggles on the action.
     if (!contains(source,
             "m_updateAvailableAction->setVisible(true)"))
-        return fail("INV-5",
+        fail("INV-5",
             "m_updateAvailableAction->setVisible(true) missing");
     if (!contains(source,
             "m_updateAvailableAction->setVisible(false)"))
-        return fail("INV-6",
+        fail("INV-6",
             "m_updateAvailableAction->setVisible(false) missing");
 
     // INV-7: triggered signal is connected. We collapse whitespace
@@ -108,7 +108,7 @@ TEST(UpdateAvailableMenubar, Main) {
         }
         if (!contains(out, "connect(m_updateAvailableAction") ||
             !contains(out, "&QAction::triggered"))
-            return fail("INV-7",
+            fail("INV-7",
                 "QAction::triggered not connected on m_updateAvailableAction");
     }
 
@@ -119,7 +119,7 @@ TEST(UpdateAvailableMenubar, Main) {
             "m_updateAvailableAction->setVisible(false)") &&
         !contains(source,
             "m_updateAvailableAction->setVisible(false);"))
-        return fail("INV-8",
+        fail("INV-8",
             "m_updateAvailableAction does not start hidden");
 
     std::fprintf(stderr,

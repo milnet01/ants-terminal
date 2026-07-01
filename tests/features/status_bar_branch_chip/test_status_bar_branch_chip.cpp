@@ -37,29 +37,29 @@ void failAt(const char *file, int line, const char *label, const char *why) {
 TEST(StatusBarBranchChip, Main) {
     // INV-1..3: the three primary-branch names return true.
     if (!branchchip::isPrimaryBranch(QStringLiteral("main")))
-        return fail("INV-1", "main should be primary");
+        fail("INV-1", "main should be primary");
     if (!branchchip::isPrimaryBranch(QStringLiteral("master")))
-        return fail("INV-2", "master should be primary");
+        fail("INV-2", "master should be primary");
     if (!branchchip::isPrimaryBranch(QStringLiteral("trunk")))
-        return fail("INV-3", "trunk should be primary");
+        fail("INV-3", "trunk should be primary");
 
     // INV-4: a feature branch is not primary.
     if (branchchip::isPrimaryBranch(QStringLiteral("feature/foo")))
-        return fail("INV-4", "feature/foo should not be primary");
+        fail("INV-4", "feature/foo should not be primary");
 
     // INV-5: empty is not primary.
     if (branchchip::isPrimaryBranch(QStringLiteral("")))
-        return fail("INV-5", "empty branch should not be primary");
+        fail("INV-5", "empty branch should not be primary");
 
     // INV-6: case-sensitive match — MAIN is not the same as main.
     if (branchchip::isPrimaryBranch(QStringLiteral("MAIN")))
-        return fail("INV-6", "MAIN should not be primary (case-sensitive)");
+        fail("INV-6", "MAIN should not be primary (case-sensitive)");
 
     // INV-7: mainwindow.cpp consults the helper.
     const std::string source = ants_test::slurpFile(MAINWINDOW_CPP);
-    if (source.empty()) return fail("setup", "mainwindow.cpp not readable");
+    if (source.empty()) fail("setup", "mainwindow.cpp not readable");
     if (!contains(source, "branchchip::isPrimaryBranch"))
-        return fail("INV-7",
+        fail("INV-7",
             "mainwindow.cpp does not call branchchip::isPrimaryBranch");
 
     // INV-8: every branch-chip setStyleSheet site is wired off
@@ -83,18 +83,18 @@ TEST(StatusBarBranchChip, Main) {
             const std::string region = source.substr(windowStart,
                 pos - windowStart + 600);
             if (!contains(region, "branchchip::isPrimaryBranch"))
-                return fail("INV-8",
+                fail("INV-8",
                     "branch chip setStyleSheet site does not consult branchchip::isPrimaryBranch");
             if (!contains(region, "ansi[2]"))
-                return fail("INV-8",
+                fail("INV-8",
                     "branch chip setStyleSheet site does not reference theme.ansi[2] (primary green)");
             if (!contains(region, "ansi[3]"))
-                return fail("INV-8",
+                fail("INV-8",
                     "branch chip setStyleSheet site does not reference theme.ansi[3] (feature amber)");
             pos += needle.size();
         }
         if (sites < 2)
-            return fail("INV-8",
+            fail("INV-8",
                 "expected ≥ 2 branch-chip setStyleSheet sites (applyTheme + updateStatusBar restyle)");
     }
 

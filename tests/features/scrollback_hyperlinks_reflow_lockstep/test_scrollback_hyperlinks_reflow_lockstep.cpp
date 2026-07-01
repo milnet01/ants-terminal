@@ -88,7 +88,7 @@ TEST(ScrollbackHyperlinksReflowLockstep, Main) {
         Harness h;
         seedScrollback(h, 5);
         if (h.grid.scrollbackSize() < 1)
-            return fail("baseline seed",
+            fail("baseline seed",
                         "scrollback empty after seeding 5 hyperlinks");
         // At least one seeded row must carry a hyperlink so later
         // assertions can distinguish "spans dropped by reflow" from
@@ -100,11 +100,11 @@ TEST(ScrollbackHyperlinksReflowLockstep, Main) {
             }
         }
         if (!anyBaseline)
-            return fail("baseline span seed",
+            fail("baseline span seed",
                         "seedScrollback didn't actually land any "
                         "hyperlinks in scrollback");
         if (!dequesLockstep(h.grid))
-            return fail("baseline lockstep",
+            fail("baseline lockstep",
                         "scrollback hyperlinks deque not locked to "
                         "scrollback length");
     }
@@ -116,7 +116,7 @@ TEST(ScrollbackHyperlinksReflowLockstep, Main) {
         const int sbBefore = h.grid.scrollbackSize();
         h.grid.resize(kRows, 60);
         if (!dequesLockstep(h.grid))
-            return fail("INV-2 narrow lockstep",
+            fail("INV-2 narrow lockstep",
                         "deque drift after in-place narrow reflow");
         // Find any scrollback row whose hyperlinks vector is non-empty —
         // proves spans carried through. (Exact row count can differ
@@ -126,7 +126,7 @@ TEST(ScrollbackHyperlinksReflowLockstep, Main) {
             if (!h.grid.scrollbackHyperlinks(i).empty()) { anySpan = true; break; }
         }
         if (!anySpan)
-            return fail("INV-2 span survival",
+            fail("INV-2 span survival",
                         "no scrollback row carries a hyperlink span "
                         "after in-place narrow; INV-2 requires the "
                         "fast-path rows preserve theirs");
@@ -134,7 +134,7 @@ TEST(ScrollbackHyperlinksReflowLockstep, Main) {
         // (no doubling or zeroing).
         if (h.grid.scrollbackSize() < sbBefore / 2 ||
             h.grid.scrollbackSize() > sbBefore * 4)
-            return fail("INV-2 row count",
+            fail("INV-2 row count",
                         "post-reflow scrollback size wildly different "
                         "— suggests reflow path took an unexpected branch");
     }
@@ -145,14 +145,14 @@ TEST(ScrollbackHyperlinksReflowLockstep, Main) {
         seedScrollback(h, 5);
         h.grid.resize(kRows, 100);
         if (!dequesLockstep(h.grid))
-            return fail("INV-2 grow lockstep",
+            fail("INV-2 grow lockstep",
                         "deque drift after in-place grow reflow");
         bool anySpan = false;
         for (int i = 0; i < h.grid.scrollbackSize(); ++i) {
             if (!h.grid.scrollbackHyperlinks(i).empty()) { anySpan = true; break; }
         }
         if (!anySpan)
-            return fail("INV-2 grow span survival",
+            fail("INV-2 grow span survival",
                         "no scrollback row carries a hyperlink span "
                         "after in-place grow");
     }
@@ -163,7 +163,7 @@ TEST(ScrollbackHyperlinksReflowLockstep, Main) {
         seedScrollback(h, 5);
         h.grid.resize(kRows, 10);
         if (!dequesLockstep(h.grid))
-            return fail("INV-3 slow-path lockstep",
+            fail("INV-3 slow-path lockstep",
                         "deque drift after slow rewrap reflow");
         // Slow path drops spans (one empty vector per reflowed row).
         // We can't assert all rows are empty (cap-trim may have evicted
@@ -180,11 +180,11 @@ TEST(ScrollbackHyperlinksReflowLockstep, Main) {
         const int sbBefore = h.grid.scrollbackSize();
         h.grid.resize(12, kCols);
         if (!dequesLockstep(h.grid))
-            return fail("INV-4 overflow lockstep",
+            fail("INV-4 overflow lockstep",
                         "deque drift after screen→scrollback overflow push");
         // If anything overflowed, scrollback grew.
         if (h.grid.scrollbackSize() <= sbBefore && sbBefore > 0)
-            return fail("INV-4 overflow ran",
+            fail("INV-4 overflow ran",
                         "expected scrollback to grow on rows shrink");
     }
 

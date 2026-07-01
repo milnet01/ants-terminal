@@ -69,26 +69,26 @@ TEST(SyncOutputSnapshot, Main) {
     const std::string tw  = ants_test::slurpFile(SRC_TERMINALWIDGET_CPP_PATH);
     const std::string twH = ants_test::slurpFile(SRC_TERMINALWIDGET_H_PATH);
 
-    if (tw.empty())  return fail("setup", "terminalwidget.cpp not readable");
-    if (twH.empty()) return fail("setup", "terminalwidget.h not readable");
+    if (tw.empty())  fail("setup", "terminalwidget.cpp not readable");
+    if (twH.empty()) fail("setup", "terminalwidget.h not readable");
 
     // INV-1 — batchEntersSyncOutput helper present. Parameter
     // is named `b` (not `batch`) per the helper's own comment —
     // avoids tripping vtbatch_zero_copy's "stale batch.actions"
     // sentinel against the new helper's reference dot-access.
     if (!contains(tw, "bool batchEntersSyncOutput(const VtBatch &b)"))
-        return fail("INV-1",
+        fail("INV-1",
             "anonymous-namespace helper "
             "`bool batchEntersSyncOutput(const VtBatch &b)` missing");
     if (!contains(tw, "intermediate == \"?\""))
-        return fail("INV-1",
+        fail("INV-1",
             "batchEntersSyncOutput must check `intermediate == \"?\"`");
     if (!contains(tw, "finalChar == 'h'"))
-        return fail("INV-1",
+        fail("INV-1",
             "batchEntersSyncOutput must check `finalChar == 'h'` (BSU "
             "is `set` not `reset`; ESU at finalChar=='l' is the inverse)");
     if (!contains(tw, "p == 2026"))
-        return fail("INV-1",
+        fail("INV-1",
             "batchEntersSyncOutput must compare `p == 2026` against "
             "params (literal in-loop comparison; bare `2026` token would "
             "false-match doc comments and the spec ID)");
@@ -98,18 +98,18 @@ TEST(SyncOutputSnapshot, Main) {
         const std::string body = functionBody(tw,
             "void TerminalWidget::onVtBatch(VtBatchPtr batch)");
         if (body.empty())
-            return fail("INV-2", "could not locate onVtBatch body");
+            fail("INV-2", "could not locate onVtBatch body");
         const auto preScanPos = body.find("batchEntersSyncOutput(*batch)");
         const auto loopPos = body.find("for (const auto &action : batch->actions)");
         if (preScanPos == std::string::npos)
-            return fail("INV-2",
+            fail("INV-2",
                 "onVtBatch body does not call `batchEntersSyncOutput(*batch)`");
         if (loopPos == std::string::npos)
-            return fail("INV-2",
+            fail("INV-2",
                 "onVtBatch body does not contain the processAction loop "
                 "header `for (const auto &action : batch->actions)`");
         if (preScanPos >= loopPos)
-            return fail("INV-2",
+            fail("INV-2",
                 "pre-scan call must appear ABOVE the processAction loop "
                 "in onVtBatch (so the snapshot is captured before any "
                 "BSU action mutates the live grid)");
@@ -124,14 +124,14 @@ TEST(SyncOutputSnapshot, Main) {
         std::regex captureGuard(
             R"((m_syncOutputActive\s*\|\|\s*batchEntersSyncOutput|batchEntersSyncOutput.*?\|\|\s*m_syncOutputActive)[\s\S]{0,200}?captureScreenSnapshot\s*\()");
         if (!std::regex_search(body, captureGuard))
-            return fail("INV-3",
+            fail("INV-3",
                 "onVtBatch must capture the snapshot under the "
                 "disjunction `(m_syncOutputActive || batchEntersSyncOutput(*batch))` — "
                 "without it, sync straddling a resize / RIS leaves the "
                 "snapshot stranded and the rest of the sync block paints "
                 "the live mid-state");
         if (!contains(body, "m_frozenScreenRows.empty()"))
-            return fail("INV-3",
+            fail("INV-3",
                 "capture guard must include `m_frozenScreenRows.empty()` "
                 "to avoid clobbering the existing scroll-up snapshot");
     }
@@ -148,16 +148,16 @@ TEST(SyncOutputSnapshot, Main) {
         const std::string body = functionBody(tw,
             "void TerminalWidget::onVtBatch(VtBatchPtr batch)");
         if (!contains(body, "!m_syncOutputActive"))
-            return fail("INV-4",
+            fail("INV-4",
                 "post-loop block must check `!m_syncOutputActive`");
         if (!contains(body, "m_scrollOffset == 0 && !m_frozenScreenRows.empty()"))
-            return fail("INV-4",
+            fail("INV-4",
                 "cleanup guard must be exactly "
                 "`m_scrollOffset == 0 && !m_frozenScreenRows.empty()` — "
                 "covers same-batch BSU+ESU (cold-eyes C2) where "
                 "wasSync would falsely guard against the clear");
         if (!contains(body, "clearScreenSnapshot()"))
-            return fail("INV-4",
+            fail("INV-4",
                 "post-loop block must call clearScreenSnapshot()");
     }
 
@@ -173,9 +173,9 @@ TEST(SyncOutputSnapshot, Main) {
         const std::string body = functionBody(tw,
             "void TerminalWidget::updateScrollBar()");
         if (body.empty())
-            return fail("INV-4b", "updateScrollBar body missing");
+            fail("INV-4b", "updateScrollBar body missing");
         if (!contains(body, "(m_scrollOffset > 0) || m_syncOutputActive"))
-            return fail("INV-4b",
+            fail("INV-4b",
                 "updateScrollBar's wantFrozen predicate must include "
                 "`(m_scrollOffset > 0) || m_syncOutputActive` — without "
                 "the sync clause, scrolling back to bottom during BSU "
@@ -192,7 +192,7 @@ TEST(SyncOutputSnapshot, Main) {
         std::regex timerSlot(
             R"(m_syncOutputActive\s*=\s*false[\s\S]{0,500}?clearScreenSnapshot\s*\()");
         if (!std::regex_search(tw, timerSlot))
-            return fail("INV-5",
+            fail("INV-5",
                 "safety-timer slot must call clearScreenSnapshot() "
                 "when force-ending sync; otherwise the snapshot lingers "
                 "after a truncated escape sequence");
@@ -200,10 +200,10 @@ TEST(SyncOutputSnapshot, Main) {
 
     // INV-6 — frozen cursor members in the header.
     if (!contains(twH, "int m_frozenCursorRow"))
-        return fail("INV-6",
+        fail("INV-6",
             "terminalwidget.h missing `int m_frozenCursorRow` member");
     if (!contains(twH, "int m_frozenCursorCol"))
-        return fail("INV-6",
+        fail("INV-6",
             "terminalwidget.h missing `int m_frozenCursorCol` member");
 
     // INV-7 — captureScreenSnapshot stores the cursor.
@@ -211,13 +211,13 @@ TEST(SyncOutputSnapshot, Main) {
         const std::string body = functionBody(tw,
             "void TerminalWidget::captureScreenSnapshot()");
         if (body.empty())
-            return fail("INV-7", "captureScreenSnapshot body missing");
+            fail("INV-7", "captureScreenSnapshot body missing");
         if (!contains(body, "m_frozenCursorRow = m_grid->cursorRow()"))
-            return fail("INV-7",
+            fail("INV-7",
                 "captureScreenSnapshot must store "
                 "`m_frozenCursorRow = m_grid->cursorRow()`");
         if (!contains(body, "m_frozenCursorCol = m_grid->cursorCol()"))
-            return fail("INV-7",
+            fail("INV-7",
                 "captureScreenSnapshot must store "
                 "`m_frozenCursorCol = m_grid->cursorCol()`");
     }
@@ -227,13 +227,13 @@ TEST(SyncOutputSnapshot, Main) {
         const std::string body = functionBody(tw,
             "void TerminalWidget::clearScreenSnapshot()");
         if (body.empty())
-            return fail("INV-8", "clearScreenSnapshot body missing");
+            fail("INV-8", "clearScreenSnapshot body missing");
         if (!contains(body, "m_frozenCursorRow = 0"))
-            return fail("INV-8",
+            fail("INV-8",
                 "clearScreenSnapshot must reset "
                 "`m_frozenCursorRow = 0`");
         if (!contains(body, "m_frozenCursorCol = 0"))
-            return fail("INV-8",
+            fail("INV-8",
                 "clearScreenSnapshot must reset "
                 "`m_frozenCursorCol = 0`");
     }
@@ -246,11 +246,11 @@ TEST(SyncOutputSnapshot, Main) {
         const std::string colAcc =
             "int effectiveCursorCol() const { return m_frozenScreenRows.empty() ? m_grid->cursorCol() : m_frozenCursorCol; }";
         if (!contains(twH, rowAcc))
-            return fail("INV-9",
+            fail("INV-9",
                 "terminalwidget.h missing exact accessor body for "
                 "effectiveCursorRow()");
         if (!contains(twH, colAcc))
-            return fail("INV-9",
+            fail("INV-9",
                 "terminalwidget.h missing exact accessor body for "
                 "effectiveCursorCol()");
     }
@@ -260,7 +260,7 @@ TEST(SyncOutputSnapshot, Main) {
         const std::string body = functionBody(tw,
             "void TerminalWidget::paintEvent(QPaintEvent *)");
         if (body.empty())
-            return fail("INV-9", "paintEvent body missing");
+            fail("INV-9", "paintEvent body missing");
         const auto rowCalls = countOccurrences(body, "effectiveCursorRow()");
         const auto colCalls = countOccurrences(body, "effectiveCursorCol()");
         if (rowCalls < 3 || colCalls < 3) {
@@ -271,7 +271,7 @@ TEST(SyncOutputSnapshot, Main) {
         }
         if (contains(body, "m_grid->cursorRow()") ||
             contains(body, "m_grid->cursorCol()"))
-            return fail("INV-9",
+            fail("INV-9",
                 "paintEvent body still contains `m_grid->cursorRow()` "
                 "or `m_grid->cursorCol()` — every render-path read must "
                 "go through the accessor; otherwise the cursor leaks "
@@ -282,19 +282,19 @@ TEST(SyncOutputSnapshot, Main) {
         const std::string body = functionBody(tw,
             "void TerminalWidget::blinkCursor()");
         if (body.empty())
-            return fail("INV-9", "blinkCursor body missing");
+            fail("INV-9", "blinkCursor body missing");
         if (!contains(body, "effectiveCursorRow()"))
-            return fail("INV-9",
+            fail("INV-9",
                 "blinkCursor must use `effectiveCursorRow()` for the "
                 "partial-update rect; otherwise the rect won't cover "
                 "the cell paintEvent will draw during sync");
         if (!contains(body, "effectiveCursorCol()"))
-            return fail("INV-9",
+            fail("INV-9",
                 "blinkCursor must use `effectiveCursorCol()` for the "
                 "partial-update rect");
         if (contains(body, "m_grid->cursorRow()") ||
             contains(body, "m_grid->cursorCol()"))
-            return fail("INV-9",
+            fail("INV-9",
                 "blinkCursor body still contains direct cursor reads");
     }
 

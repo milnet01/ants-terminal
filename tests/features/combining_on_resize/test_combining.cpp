@@ -61,12 +61,12 @@ TEST(CombiningOnResize, Main) {
         Harness h;
         h.feed(kEAcuteNfd);  // writes to row 0, col 0
         if (!hasCombiningAt(h.grid.screenCombining(0), 0, 0x0301))
-            return fail("I1 baseline",
+            fail("I1 baseline",
                         "combining acute not recorded at (0,0) before resize");
 
         h.grid.resize(kRows, kCols + 20);
         if (!hasCombiningAt(h.grid.screenCombining(0), 0, 0x0301))
-            return fail("I1 after widening resize",
+            fail("I1 after widening resize",
                         "combining acute lost after resize(rows, cols+20)");
     }
 
@@ -76,14 +76,14 @@ TEST(CombiningOnResize, Main) {
         h.feed("\033[?1049h");  // enter alt screen
         h.feed(kEAcuteNfd);
         if (!h.grid.altScreenActive())
-            return fail("I2 setup", "alt screen did not activate on 1049h");
+            fail("I2 setup", "alt screen did not activate on 1049h");
         if (!hasCombiningAt(h.grid.screenCombining(0), 0, 0x0301))
-            return fail("I2 baseline",
+            fail("I2 baseline",
                         "combining acute not recorded on alt screen at (0,0)");
 
         h.grid.resize(kRows, kCols + 20);
         if (!hasCombiningAt(h.grid.screenCombining(0), 0, 0x0301))
-            return fail("I2 after widening resize",
+            fail("I2 after widening resize",
                         "combining acute lost on alt-screen after resize");
     }
 
@@ -94,20 +94,20 @@ TEST(CombiningOnResize, Main) {
         h.feed("          ");           // 10 spaces to position cursor
         h.feed(kEAcuteNfd);             // writes base+combining at col 10
         if (!hasCombiningAt(h.grid.screenCombining(0), 10, 0x0301))
-            return fail("I3 baseline",
+            fail("I3 baseline",
                         "combining not recorded at col 10 before shrink");
 
         // Shrink to 15 cols — col 10 is still in range.
         h.grid.resize(kRows, 15);
         if (!hasCombiningAt(h.grid.screenCombining(0), 10, 0x0301))
-            return fail("I3 after in-range shrink",
+            fail("I3 after in-range shrink",
                         "combining lost on shrink that kept col 10");
 
         // Shrink to 2 cols — col 10 is now out of range.
         h.grid.resize(kRows, 2);
         const auto &m = h.grid.screenCombining(0);
         if (m.find(10) != m.end())
-            return fail("I3 after out-of-range shrink",
+            fail("I3 after out-of-range shrink",
                         "combining at col 10 should have been evicted");
         for (const auto &kv : m) {
             if (kv.first >= 2) {

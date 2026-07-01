@@ -38,7 +38,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 }
 
 int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
     return 1;
 }
 
@@ -78,7 +78,7 @@ int meaningfulLoC(const std::string &body) {
 
 static int runMain() {
     const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
-    if (mw.empty()) return fail("setup", "mainwindow.cpp not readable");
+    if (mw.empty()) fail("setup", "mainwindow.cpp not readable");
 
     const std::string dvHeader = ants_test::slurpFile(SRC_DIFFVIEWER_H_PATH);
     const std::string dvImpl   = ants_test::slurpFile(SRC_DIFFVIEWER_CPP_PATH);
@@ -86,17 +86,17 @@ static int runMain() {
     // INV-1: exact signature in diffviewer.h. Locks parameter
     // order/types so a "minor cleanup" PR can't silently reorder.
     if (dvHeader.empty())
-        return fail("INV-1",
+        fail("INV-1",
             "src/diffviewer.h not present — extraction not done");
     if (!contains(dvHeader, "namespace diffviewer"))
-        return fail("INV-1",
+        fail("INV-1",
             "src/diffviewer.h missing `namespace diffviewer`");
     static const char *kSignature =
         "QDialog *show(QWidget *parent,\n"
         "              const QString &cwd,\n"
         "              const QString &themeName);";
     if (!contains(dvHeader, kSignature))
-        return fail("INV-1",
+        fail("INV-1",
             "src/diffviewer.h does not declare the exact signature "
             "`QDialog *show(QWidget *parent, const QString &cwd, "
             "const QString &themeName);` — refactor must preserve "
@@ -104,7 +104,7 @@ static int runMain() {
 
     // INV-2a: structural markers in diffviewer.cpp.
     if (dvImpl.empty())
-        return fail("INV-2a",
+        fail("INV-2a",
             "src/diffviewer.cpp not present — extraction not done");
     static const char *kStructMarkers[] = {
         "reviewChangesDialog",
@@ -167,7 +167,7 @@ static int runMain() {
     // INV-3a: MainWindow::showDiffViewer body ≤ 50 meaningful LoC.
     const std::string body = showDiffViewerBody(mw);
     if (body.empty())
-        return fail("INV-3a",
+        fail("INV-3a",
             "could not locate MainWindow::showDiffViewer body");
     const int loc = meaningfulLoC(body);
     if (loc > 50) {
@@ -180,7 +180,7 @@ static int runMain() {
 
     // INV-3b: post-extraction body delegates to diffviewer::show.
     if (!contains(body, "diffviewer::show("))
-        return fail("INV-3b",
+        fail("INV-3b",
             "MainWindow::showDiffViewer body does not call "
             "diffviewer::show( — delegation missing");
 

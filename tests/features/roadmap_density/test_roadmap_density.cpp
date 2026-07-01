@@ -34,7 +34,7 @@
 namespace {
 
 int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
     return 1;
 }
 
@@ -99,7 +99,7 @@ static int runMain() {
             RoadmapDialog::SortOrder::Document,
             QString(), {}, cozy);
         if (hDef != hCozy)
-            return fail("INV-1",
+            fail("INV-1",
                 "Default CardRenderOptions{} render is not byte-equal "
                 "to explicit Density::Cozy render — the default field "
                 "value drifted away from Cozy.");
@@ -113,15 +113,15 @@ static int runMain() {
 
         // INV-2a: pairwise distinct.
         if (hCompact == hCozy)
-            return fail("INV-2a",
+            fail("INV-2a",
                 "Compact and Cozy renders are byte-equal — the tier "
                 "substitution isn't reaching the CSS.");
         if (hCozy == hComfortable)
-            return fail("INV-2a",
+            fail("INV-2a",
                 "Cozy and Comfortable renders are byte-equal — "
                 "Comfortable substitution isn't firing.");
         if (hCompact == hComfortable)
-            return fail("INV-2a",
+            fail("INV-2a",
                 "Compact and Comfortable renders are byte-equal — "
                 "tier table degenerate.");
 
@@ -131,41 +131,41 @@ static int runMain() {
         // stable Compact-unique mark — Comfortable's 14px sizes are on h3/code,
         // not the h1 rule, so `h1{font-size:14px;}` is Compact-only.
         if (!hCompact.contains(QStringLiteral("h1{font-size:14px;}")))
-            return fail("INV-2b",
+            fail("INV-2b",
                 "Compact render missing `h1{font-size:14px;}` sentinel — "
                 "the Compact tier isn't reaching the CSS.");
         if (hCozy.contains(QStringLiteral("h1{font-size:14px;}")))
-            return fail("INV-2b",
+            fail("INV-2b",
                 "Cozy render contains `h1{font-size:14px;}` — sentinel "
                 "is not Compact-unique.");
         if (hComfortable.contains(QStringLiteral("h1{font-size:14px;}")))
-            return fail("INV-2b",
+            fail("INV-2b",
                 "Comfortable render contains `h1{font-size:14px;}` — "
                 "sentinel is not Compact-unique.");
         // Cozy uses 16px for h1 only.
         if (!hCozy.contains(QStringLiteral("font-size:16px")))
-            return fail("INV-2b",
+            fail("INV-2b",
                 "Cozy render missing `font-size:16px` sentinel — "
                 "h1 isn't being emitted at Cozy.");
         if (hCompact.contains(QStringLiteral("font-size:16px")))
-            return fail("INV-2b",
+            fail("INV-2b",
                 "Compact render contains `font-size:16px` — "
                 "sentinel is not Cozy-unique.");
         if (hComfortable.contains(QStringLiteral("font-size:16px")))
-            return fail("INV-2b",
+            fail("INV-2b",
                 "Comfortable render contains `font-size:16px` — "
                 "sentinel is not Cozy-unique.");
         // Comfortable uses 18px for h1.
         if (!hComfortable.contains(QStringLiteral("font-size:18px")))
-            return fail("INV-2b",
+            fail("INV-2b",
                 "Comfortable render missing `font-size:18px` "
                 "sentinel — h1 isn't being emitted at Comfortable.");
         if (hCompact.contains(QStringLiteral("font-size:18px")))
-            return fail("INV-2b",
+            fail("INV-2b",
                 "Compact render contains `font-size:18px` — "
                 "sentinel is not Comfortable-unique.");
         if (hCozy.contains(QStringLiteral("font-size:18px")))
-            return fail("INV-2b",
+            fail("INV-2b",
                 "Cozy render contains `font-size:18px` — sentinel "
                 "is not Comfortable-unique.");
 
@@ -201,11 +201,11 @@ static int runMain() {
         const QString sComfortable = stripStyleBlock(
             renderAt(RoadmapDialog::Density::Comfortable));
         if (sCompact != sCozy)
-            return fail("INV-6",
+            fail("INV-6",
                 "Compact and Cozy renders differ outside the <style> "
                 "block — density is leaking into card content.");
         if (sCozy != sComfortable)
-            return fail("INV-6",
+            fail("INV-6",
                 "Cozy and Comfortable renders differ outside the "
                 "<style> block — density is leaking into card "
                 "content.");
@@ -215,7 +215,7 @@ static int runMain() {
     // Redirect XDG_CONFIG_HOME so Config writes into a temp dir.
     QTemporaryDir tempCfg;
     if (!tempCfg.isValid())
-        return fail("INV-3", "could not create QTemporaryDir for Config");
+        fail("INV-3", "could not create QTemporaryDir for Config");
     // ANTS-2062 — guard restores XDG_CONFIG_HOME + test mode on scope exit
     // so neither leaks into sibling tests in this gtest bundle.
     ants_test::XdgGuard xdg;
@@ -226,7 +226,7 @@ static int runMain() {
         Config cfg;
         // Default before any write should be "cozy".
         if (cfg.roadmapDensity() != QStringLiteral("cozy"))
-            return fail("INV-4",
+            fail("INV-4",
                 "First-run Config::roadmapDensity() was not \"cozy\" — "
                 "default-value path is wrong.");
         // Round-trip each known value.
@@ -270,12 +270,12 @@ static int runMain() {
     // file watcher; point it at the fixture file.
     QTemporaryDir tempRoadmap;
     if (!tempRoadmap.isValid())
-        return fail("INV-7", "could not create QTemporaryDir for fixture");
+        fail("INV-7", "could not create QTemporaryDir for fixture");
     const QString roadmapPath = tempRoadmap.path() + QStringLiteral("/ROADMAP.md");
     {
         QFile f(roadmapPath);
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
-            return fail("INV-7", "could not write fixture roadmap");
+            fail("INV-7", "could not write fixture roadmap");
         f.write(fixtureMarkdown().toUtf8());
     }
     {
@@ -285,11 +285,11 @@ static int runMain() {
         QComboBox *combo = dlg.findChild<QComboBox *>(
             QStringLiteral("roadmap-density-combo"));
         if (!combo)
-            return fail("INV-7",
+            fail("INV-7",
                 "Density combo not found by objectName "
                 "\"roadmap-density-combo\" — ctor wiring is broken.");
         if (combo->accessibleName() != QStringLiteral("Roadmap card density"))
-            return fail("INV-7",
+            fail("INV-7",
                 "Density combo accessibleName drifted away from "
                 "\"Roadmap card density\".");
 
@@ -299,13 +299,13 @@ static int runMain() {
         QLineEdit *search = dlg.findChild<QLineEdit *>(
             QStringLiteral("roadmap-search-box"));
         if (!search)
-            return fail("INV-5", "search box not found");
+            fail("INV-5", "search box not found");
         search->setText(QStringLiteral("sample-density-probe"));
 
         QCheckBox *filterDone = dlg.findChild<QCheckBox *>(
             QStringLiteral("roadmap-filter-done"));
         if (!filterDone)
-            return fail("INV-5", "filter-done checkbox not found");
+            fail("INV-5", "filter-done checkbox not found");
         const bool doneBefore = filterDone->isChecked();
         filterDone->setChecked(!doneBefore);  // flip
         const bool doneSeed = filterDone->isChecked();
@@ -316,11 +316,11 @@ static int runMain() {
         combo->setCurrentIndex(newIdx);
 
         if (search->text() != QStringLiteral("sample-density-probe"))
-            return fail("INV-5",
+            fail("INV-5",
                 "search text was lost across a density change — "
                 "rebuild() is clobbering the search box.");
         if (filterDone->isChecked() != doneSeed)
-            return fail("INV-5",
+            fail("INV-5",
                 "filter-done checkbox state was lost across a "
                 "density change — rebuild() is resetting filters.");
     }
@@ -340,13 +340,13 @@ static int runMain() {
         const QString cfgPath = cfgDir
             + QStringLiteral("/config.json");
         if (!QFile::exists(cfgPath))
-            return fail("INV-9",
+            fail("INV-9",
                 "expected config.json under XDG_CONFIG_HOME does not "
                 "exist after a save() — Config wiring is broken.");
         // 0500 = read + execute owner, no write.
         if (!QFile::setPermissions(cfgDir,
                 QFileDevice::ReadOwner | QFileDevice::ExeOwner))
-            return fail("INV-9",
+            fail("INV-9",
                 "could not chmod parent dir to 0500 — test "
                 "environment doesn't support permission changes.");
         // Setter must not throw; in-memory advances; disk doesn't.
@@ -355,7 +355,7 @@ static int runMain() {
             // Restore perms even on failure so cleanup works.
             QFile::setPermissions(cfgDir, QFileDevice::ReadOwner
                 | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
-            return fail("INV-9",
+            fail("INV-9",
                 "in-memory roadmapDensity did not advance to "
                 "\"compact\" despite the read-only parent dir — "
                 "the live state should always reflect the setter.");

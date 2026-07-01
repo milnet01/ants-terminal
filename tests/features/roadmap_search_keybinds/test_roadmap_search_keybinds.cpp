@@ -27,7 +27,7 @@
 namespace {
 
 int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
     return 1;
 }
 
@@ -65,10 +65,10 @@ QString writeRoadmap(const QTemporaryDir &dir, const QString &markdown) {
 static int runMain() {
     QTemporaryDir tmp;
     if (!tmp.isValid())
-        return fail("Setup", "QTemporaryDir construction failed");
+        fail("Setup", "QTemporaryDir construction failed");
     const QString roadmapPath = writeRoadmap(tmp, fixtureMarkdown());
     if (roadmapPath.isEmpty())
-        return fail("Setup", "could not write fixture ROADMAP.md");
+        fail("Setup", "could not write fixture ROADMAP.md");
 
     // -----------------------------------------------------------------
     // Live-widget assertions: construct one dialog, run all keybind
@@ -82,7 +82,7 @@ static int runMain() {
     auto *searchBox = dialog.findChild<QLineEdit *>(
         QStringLiteral("roadmap-search-box"));
     if (!searchBox)
-        return fail("Setup",
+        fail("Setup",
             "could not locate roadmap-search-box — has its "
             "objectName drifted?");
 
@@ -97,12 +97,12 @@ static int runMain() {
         QTest::keyClick(&dialog, Qt::Key_Slash);
         QApplication::processEvents();
         if (!searchBox->hasFocus())
-            return fail("INV-1",
+            fail("INV-1",
                 "pressing `/` did NOT focus the search box — the "
                 "keyPressEvent extension didn't fire or the gate "
                 "swallowed it.");
         if (searchBox->selectedText() != QStringLiteral("preseed"))
-            return fail("INV-1",
+            fail("INV-1",
                 "selectAll() did not fire — next keystroke would "
                 "append rather than replace.");
         // Cleanup
@@ -120,7 +120,7 @@ static int runMain() {
         QTest::keyClick(searchBox, Qt::Key_Slash);
         QApplication::processEvents();
         if (searchBox->text() != QStringLiteral("/"))
-            return fail("INV-2",
+            fail("INV-2",
                 "`/` typed into a focused search box was swallowed "
                 "— the gate (`!m_searchBox->hasFocus()`) is broken.");
         // Cleanup
@@ -139,13 +139,13 @@ static int runMain() {
         QTest::keyClick(searchBox, Qt::Key_Escape);
         QApplication::processEvents();
         if (!searchBox->text().isEmpty())
-            return fail("INV-3",
+            fail("INV-3",
                 "Esc on focused search did NOT clear the predicate.");
         if (searchBox->hasFocus())
-            return fail("INV-3",
+            fail("INV-3",
                 "Esc on focused search did NOT remove focus.");
         if (!dialog.isVisible())
-            return fail("INV-3",
+            fail("INV-3",
                 "Esc on focused search closed the dialog — the "
                 "eventFilter override is not consuming the event "
                 "(QDialog::reject fired).");
@@ -163,7 +163,7 @@ static int runMain() {
         QTest::keyClick(&dialog, Qt::Key_Escape);
         QApplication::processEvents();
         if (dialog.isVisible())
-            return fail("INV-4",
+            fail("INV-4",
                 "Esc on dialog (search box not focused) did NOT "
                 "close the dialog — QDialog::reject path is broken.");
     }
@@ -200,12 +200,12 @@ static int runMain() {
             QStringLiteral("baz"),  // matches body of ANTS-9998 only
             {}, opts);
         if (!html.contains(QStringLiteral("<p class=\"rm-body-first\">")))
-            return fail("INV-5",
+            fail("INV-5",
                 "predicate 'baz' (body-only match) did NOT trigger "
                 "auto-expand — the rm-body-first body emission "
                 "is missing from the rendered HTML.");
         if (!opts.expandedItems.isEmpty())
-            return fail("INV-8",
+            fail("INV-8",
                 "renderCardsHtml mutated CardRenderOptions::expandedItems "
                 "— auto-expand must be render-time only.");
     }
@@ -221,7 +221,7 @@ static int runMain() {
             QStringLiteral("Shipped foo"),  // matches headline
             {}, opts);
         if (html.contains(QStringLiteral("<p class=\"rm-body-first\">")))
-            return fail("INV-6",
+            fail("INV-6",
                 "predicate matching the headline triggered "
                 "auto-expand — body-only guard is broken.");
     }
@@ -236,11 +236,11 @@ static int runMain() {
             QStringLiteral("id:9999"),
             {}, opts);
         if (!html.contains(QStringLiteral("<p class=\"rm-body-first\">")))
-            return fail("INV-7",
+            fail("INV-7",
                 "id:9999 predicate did NOT auto-expand the matched "
                 "card — idJumpToThisCard path is broken.");
         if (!opts.expandedItems.isEmpty())
-            return fail("INV-8",
+            fail("INV-8",
                 "id:NNNN auto-expand mutated expandedItems — must "
                 "be render-time only.");
     }

@@ -47,45 +47,45 @@ std::string functionBody(const std::string &src, const std::string &openSig) {
 
 TEST(ScrollSnapshotIntent, Main) {
     const std::string src = ants_test::slurpFile(TERMINALWIDGET_CPP);
-    if (src.empty()) return fail("setup", "terminalwidget.cpp not readable");
+    if (src.empty()) fail("setup", "terminalwidget.cpp not readable");
 
     const std::string wheelBody =
         functionBody(src, "void TerminalWidget::wheelEvent(QWheelEvent *event)");
     if (wheelBody.empty())
-        return fail("setup", "could not locate wheelEvent body");
+        fail("setup", "could not locate wheelEvent body");
 
     const std::string smoothBody =
         functionBody(src, "void TerminalWidget::smoothScrollStep()");
     if (smoothBody.empty())
-        return fail("setup", "could not locate smoothScrollStep body");
+        fail("setup", "could not locate smoothScrollStep body");
 
     // INV-1: wheelEvent body contains the intent-side snapshot trigger.
     // The fix calls captureScreenSnapshot() inside a branch that
     // mentions m_scrollOffset (== 0), m_smoothScrollTarget (> 0
     // or > 0.0), and m_frozenScreenRows (empty()).
     if (!contains(wheelBody, "captureScreenSnapshot()"))
-        return fail("INV-1",
+        fail("INV-1",
             "wheelEvent body does not call captureScreenSnapshot() — "
             "intent-side snapshot trigger missing (ANTS-1118)");
     if (!contains(wheelBody, "m_smoothScrollTarget"))
-        return fail("INV-1",
+        fail("INV-1",
             "wheelEvent does not gate snapshot on m_smoothScrollTarget "
             "(ANTS-1118 intent predicate)");
     if (!contains(wheelBody, "m_frozenScreenRows"))
-        return fail("INV-1",
+        fail("INV-1",
             "wheelEvent does not gate snapshot on m_frozenScreenRows "
             "(empty-snapshot guard missing)");
 
     // INV-2: same branch pauses scrollback insertion synchronously.
     if (!contains(wheelBody, "setScrollbackInsertPaused(true)"))
-        return fail("INV-2",
+        fail("INV-2",
             "wheelEvent body does not call "
             "m_grid->setScrollbackInsertPaused(true) on scroll intent");
 
     // INV-3: smoothScrollStep timer-stop branch cleans up stranded
     // snapshots by calling updateScrollBar.
     if (!contains(smoothBody, "updateScrollBar()"))
-        return fail("INV-3",
+        fail("INV-3",
             "smoothScrollStep does not call updateScrollBar() in the "
             "timer-stop branch — stranded snapshot cleanup missing");
     // The cleanup must be in the stop-branch (where target settles
@@ -95,14 +95,14 @@ TEST(ScrollSnapshotIntent, Main) {
         const size_t stopPos =
             smoothBody.find("m_smoothScrollTimer.stop()");
         if (stopPos == std::string::npos)
-            return fail("INV-3",
+            fail("INV-3",
                 "smoothScrollStep stop-branch not located");
         const size_t windowEnd =
             std::min(stopPos + 1200, smoothBody.size());
         const std::string window =
             smoothBody.substr(stopPos, windowEnd - stopPos);
         if (!contains(window, "updateScrollBar()"))
-            return fail("INV-3",
+            fail("INV-3",
                 "updateScrollBar() not in the smoothScrollStep "
                 "stop-branch window");
     }
@@ -111,7 +111,7 @@ TEST(ScrollSnapshotIntent, Main) {
     // setScrollbackInsertPaused call is preserved.
     if (!contains(src,
             "setScrollbackInsertPaused(m_scrollOffset > 0)"))
-        return fail("INV-4",
+        fail("INV-4",
             "regression: onVtBatch-side "
             "setScrollbackInsertPaused(m_scrollOffset > 0) lost");
 

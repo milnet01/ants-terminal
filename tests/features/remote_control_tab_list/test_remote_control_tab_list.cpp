@@ -37,7 +37,7 @@ bool contains(const std::string &hay, const char *needle) {
 }
 
 int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
     return 1;
 }
 
@@ -49,26 +49,26 @@ static int runMain() {
     const std::string mwHdr = ants_test::slurpFile(SRC_MAINWINDOW_H);
     const std::string mwSrc = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
 
-    if (rcHdr.empty()) return fail("INV-2", "remotecontrol.h not readable");
-    if (rcSrc.empty()) return fail("INV-2", "remotecontrol.cpp not readable");
-    if (mwHdr.empty()) return fail("INV-3", "mainwindow.h not readable");
-    if (mwSrc.empty()) return fail("INV-3", "mainwindow.cpp not readable");
+    if (rcHdr.empty()) fail("INV-2", "remotecontrol.h not readable");
+    if (rcSrc.empty()) fail("INV-2", "remotecontrol.cpp not readable");
+    if (mwHdr.empty()) fail("INV-3", "mainwindow.h not readable");
+    if (mwSrc.empty()) fail("INV-3", "mainwindow.cpp not readable");
 
     // INV-1: dispatch registers tab-list.
     if (!contains(rcSrc, "QLatin1String(\"tab-list\")"))
-        return fail("INV-1", "dispatch missing tab-list branch");
+        fail("INV-1", "dispatch missing tab-list branch");
 
     // INV-2: cmdTabList declared + defined.
     if (!contains(rcHdr, "cmdTabList"))
-        return fail("INV-2", "cmdTabList not declared in remotecontrol.h");
+        fail("INV-2", "cmdTabList not declared in remotecontrol.h");
     if (!contains(rcSrc, "RemoteControl::cmdTabList"))
-        return fail("INV-2", "cmdTabList handler body missing");
+        fail("INV-2", "cmdTabList handler body missing");
 
     // INV-3: tabsAsJson declared + defined.
     if (!contains(mwHdr, "tabsAsJson"))
-        return fail("INV-3", "tabsAsJson not declared in mainwindow.h");
+        fail("INV-3", "tabsAsJson not declared in mainwindow.h");
     if (!contains(mwSrc, "MainWindow::tabsAsJson"))
-        return fail("INV-3", "tabsAsJson body missing");
+        fail("INV-3", "tabsAsJson body missing");
 
     // INV-4: per-tab JSON includes the six expected keys.
     const char *expectedKeys[] = {
@@ -81,7 +81,7 @@ static int runMain() {
     };
     for (const char *k : expectedKeys) {
         if (!contains(mwSrc, k))
-            return fail("INV-4", k);
+            fail("INV-4", k);
     }
 
     // INV-5: claude_running consults ClaudeTabTracker::shellState(pid)
@@ -89,32 +89,32 @@ static int runMain() {
     // shape rather than the exact text, so a future style tweak that
     // splits the comparison across lines doesn't break the invariant.
     if (!contains(mwSrc, "m_claudeTabTracker->shellState"))
-        return fail("INV-5",
+        fail("INV-5",
                     "tabsAsJson must consult m_claudeTabTracker->shellState");
     if (!contains(mwSrc, "ClaudeState::NotRunning"))
-        return fail("INV-5",
+        fail("INV-5",
                     "tabsAsJson must compare against ClaudeState::NotRunning");
 
     // INV-8 (ANTS-1865): tabsAsJson also emits the per-tab Claude glyph
     // state so the dot/prompt state is programmatically verifiable.
     if (!contains(mwSrc, "\"claude_state\""))
-        return fail("INV-8", "tabsAsJson must emit claude_state");
+        fail("INV-8", "tabsAsJson must emit claude_state");
     if (!contains(mwSrc, "\"awaiting_input\""))
-        return fail("INV-8", "tabsAsJson must emit awaiting_input");
+        fail("INV-8", "tabsAsJson must emit awaiting_input");
 
     // INV-6: response envelope includes both ok:true and tabs.
     if (!contains(rcSrc, "out[\"tabs\"] = m_main->tabsAsJson()"))
-        return fail("INV-6",
+        fail("INV-6",
                     "cmdTabList must return tabs via tabsAsJson()");
     if (!contains(rcSrc, "out[\"ok\"] = true"))
-        return fail("INV-6", "cmdTabList must set ok:true");
+        fail("INV-6", "cmdTabList must set ok:true");
 
     // INV-7: tabListForRemote untouched (the existing ls surface).
     // We don't compare line-by-line; we just confirm the function still
     // exists in mainwindow.cpp — the regression we'd want to catch is
     // accidental deletion / merge into tabsAsJson.
     if (!contains(mwSrc, "MainWindow::tabListForRemote"))
-        return fail("INV-7",
+        fail("INV-7",
                     "tabListForRemote must remain (additive, not replacing)");
 
     std::puts("OK remote_control_tab_list: 8/8 invariants");

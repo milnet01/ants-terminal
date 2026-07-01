@@ -80,11 +80,11 @@ TEST(CombiningAtWideRightEdge, Main) {
         h.feed(utf8(kCJK));          // wide char: lead 78, cont 79, wrapNext=true
         h.feed(utf8(kAccent));       // combiner
         if (!combiningAt(h.grid, 0, kCols - 2, kAccent))
-            return fail("INV-1 lead attach",
+            fail("INV-1 lead attach",
                         "combiner did not attach to lead col cols-2 "
                         "after right-edge wide-char + combiner sequence");
         if (combiningAt(h.grid, 0, kCols - 1, kAccent))
-            return fail("INV-1 cont leak",
+            fail("INV-1 cont leak",
                         "combiner leaked onto continuation col cols-1");
     }
 
@@ -95,10 +95,10 @@ TEST(CombiningAtWideRightEdge, Main) {
         h.feed(utf8(kCJK));          // wide char: lead 10, cont 11
         h.feed(utf8(kAccent));
         if (!combiningAt(h.grid, 0, 10, kAccent))
-            return fail("INV-3 interior lead",
+            fail("INV-3 interior lead",
                         "interior combiner missing on lead col 10");
         if (combiningAt(h.grid, 0, 11, kAccent))
-            return fail("INV-3 interior cont leak",
+            fail("INV-3 interior cont leak",
                         "combiner leaked onto continuation col 11");
     }
 
@@ -111,7 +111,7 @@ TEST(CombiningAtWideRightEdge, Main) {
         h.feed("a");                 // narrow char at col 5
         h.feed(utf8(kAccent));       // combiner → col 5 (cursorCol-1)
         if (!combiningAt(h.grid, 0, 5, kAccent))
-            return fail("INV-3 non-wrapNext narrow",
+            fail("INV-3 non-wrapNext narrow",
                         "narrow-char combiner branch broken");
     }
 

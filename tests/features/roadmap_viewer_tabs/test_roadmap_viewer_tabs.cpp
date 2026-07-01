@@ -33,7 +33,7 @@ bool qcontains(const QString &hay, const char *needle) {
 }
 
 int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
     return 1;
 }
 
@@ -44,8 +44,8 @@ static int runMain() {
 
     const std::string source = ants_test::slurpFile(ROADMAPDIALOG_CPP);
     const std::string header = ants_test::slurpFile(ROADMAPDIALOG_H);
-    if (source.empty()) return fail("INV-1", "roadmapdialog.cpp not readable");
-    if (header.empty()) return fail("INV-1", "roadmapdialog.h not readable");
+    if (source.empty()) fail("INV-1", "roadmapdialog.cpp not readable");
+    if (header.empty()) fail("INV-1", "roadmapdialog.h not readable");
 
     using Preset = RoadmapDialog::Preset;
     using SortOrder = RoadmapDialog::SortOrder;
@@ -57,40 +57,40 @@ static int runMain() {
             RoadmapDialog::ShowInProgress | RoadmapDialog::ShowConsidered |
             RoadmapDialog::ShowCurrent;
         if (RoadmapDialog::filterFor(Preset::Full) != want)
-            return fail("INV-1", "Full preset should OR all five Show* bits");
+            fail("INV-1", "Full preset should OR all five Show* bits");
     }
 
     // INV-2: History preset = ShowDone only.
     if (RoadmapDialog::filterFor(Preset::History) != RoadmapDialog::ShowDone)
-        return fail("INV-2", "History preset should be ShowDone alone");
+        fail("INV-2", "History preset should be ShowDone alone");
 
     // INV-3: Current preset = ShowInProgress | ShowCurrent.
     {
         const unsigned want =
             RoadmapDialog::ShowInProgress | RoadmapDialog::ShowCurrent;
         if (RoadmapDialog::filterFor(Preset::Current) != want)
-            return fail("INV-3", "Current preset should be InProgress | Current");
+            fail("INV-3", "Current preset should be InProgress | Current");
     }
 
     // INV-4: Next preset = ShowPlanned only.
     if (RoadmapDialog::filterFor(Preset::Next) != RoadmapDialog::ShowPlanned)
-        return fail("INV-4", "Next preset should be ShowPlanned alone");
+        fail("INV-4", "Next preset should be ShowPlanned alone");
 
     // INV-5: FarFuture preset = ShowConsidered only.
     if (RoadmapDialog::filterFor(Preset::FarFuture) != RoadmapDialog::ShowConsidered)
-        return fail("INV-5", "FarFuture preset should be ShowConsidered alone");
+        fail("INV-5", "FarFuture preset should be ShowConsidered alone");
 
     // INV-6: sortFor(History) is descending chronological; the other
     // named presets are document order.
     if (RoadmapDialog::sortFor(Preset::History) !=
         SortOrder::DescendingChronological)
-        return fail("INV-6", "History sort should be DescendingChronological");
+        fail("INV-6", "History sort should be DescendingChronological");
     const Preset documentSorted[] = {
         Preset::Full, Preset::Current, Preset::Next, Preset::FarFuture
     };
     for (Preset p : documentSorted) {
         if (RoadmapDialog::sortFor(p) != SortOrder::Document)
-            return fail("INV-6", "non-history preset should be Document order");
+            fail("INV-6", "non-history preset should be Document order");
     }
 
     // INV-7: Tab bar is the first widget in the dialog's vertical
@@ -99,11 +99,11 @@ static int runMain() {
     const size_t tabsAdd = source.find("addWidget(m_tabs)");
     const size_t filterAdd = source.find("addLayout(filterRow)");
     if (tabsAdd == std::string::npos)
-        return fail("INV-7", "m_tabs not added to root layout");
+        fail("INV-7", "m_tabs not added to root layout");
     if (filterAdd == std::string::npos)
-        return fail("INV-7", "filterRow not added to root layout");
+        fail("INV-7", "filterRow not added to root layout");
     if (tabsAdd > filterAdd)
-        return fail("INV-7", "m_tabs must be added before filterRow");
+        fail("INV-7", "m_tabs must be added before filterRow");
 
     // INV-8: presetMatching returns Custom when filter+sort matches no
     // named preset. Use a deliberately weird combo: Done|Considered with
@@ -113,17 +113,17 @@ static int runMain() {
             RoadmapDialog::ShowDone | RoadmapDialog::ShowConsidered;
         if (RoadmapDialog::presetMatching(weird, SortOrder::Document) !=
             Preset::Custom)
-            return fail("INV-8", "weird filter combo should match Custom");
+            fail("INV-8", "weird filter combo should match Custom");
         // Sanity: the Full preset values DO map back to Full.
         const unsigned full = RoadmapDialog::filterFor(Preset::Full);
         if (RoadmapDialog::presetMatching(full, SortOrder::Document) !=
             Preset::Full)
-            return fail("INV-8", "Full filter+Document sort must round-trip");
+            fail("INV-8", "Full filter+Document sort must round-trip");
         // History must round-trip too.
         if (RoadmapDialog::presetMatching(
                 RoadmapDialog::filterFor(Preset::History),
                 RoadmapDialog::sortFor(Preset::History)) != Preset::History)
-            return fail("INV-8", "History filter+sort must round-trip");
+            fail("INV-8", "History filter+sort must round-trip");
     }
 
     // INV-9: DescendingChronological reverses top-level (`## `) section
@@ -145,9 +145,9 @@ static int runMain() {
         const int posOld = rendered.indexOf(QStringLiteral("Old item"));
         const int posNew = rendered.indexOf(QStringLiteral("New item"));
         if (posOld < 0 || posNew < 0)
-            return fail("INV-9", "expected both items rendered");
+            fail("INV-9", "expected both items rendered");
         if (posNew >= posOld)
-            return fail("INV-9",
+            fail("INV-9",
                         "DescendingChronological should put 0.7.0 before 0.5.0");
 
         // INV-9b (negative case per debt-sweep finding 2.1):
@@ -163,9 +163,9 @@ static int runMain() {
         const int posOldD = docOrdered.indexOf(QStringLiteral("Old item"));
         const int posNewD = docOrdered.indexOf(QStringLiteral("New item"));
         if (posOldD < 0 || posNewD < 0)
-            return fail("INV-9b", "expected both items rendered (Document)");
+            fail("INV-9b", "expected both items rendered (Document)");
         if (posOldD >= posNewD)
-            return fail("INV-9b",
+            fail("INV-9b",
                         "Document sort must preserve authored order");
     }
 
@@ -181,9 +181,9 @@ static int runMain() {
             doc, all, {}, QStringLiteral("default"),
             SortOrder::Document, QStringLiteral("OSC 8"));
         if (!qcontains(hit, "Hyperlink"))
-            return fail("INV-10", "matching bullet should remain rendered");
+            fail("INV-10", "matching bullet should remain rendered");
         if (qcontains(hit, "Quake"))
-            return fail("INV-10", "non-matching bullet should be filtered out");
+            fail("INV-10", "non-matching bullet should be filtered out");
     }
 
     // INV-11: id:NNNN shorthand matches the `[ANTS-NNNN]` bullet
@@ -198,9 +198,9 @@ static int runMain() {
             doc, all, {}, QStringLiteral("default"),
             SortOrder::Document, QStringLiteral("id:1042"));
         if (!qcontains(hit, "Tabbed roadmap"))
-            return fail("INV-11", "id:1042 should keep [ANTS-1042] bullet");
+            fail("INV-11", "id:1042 should keep [ANTS-1042] bullet");
         if (qcontains(hit, "Other thing"))
-            return fail("INV-11", "id:1042 should drop the [ANTS-9999] bullet");
+            fail("INV-11", "id:1042 should drop the [ANTS-9999] bullet");
     }
 
     // INV-12: Dialog default size ≥ 1100x720; geometry persistence wired.
@@ -212,7 +212,7 @@ static int runMain() {
         std::regex resizeRx(R"(resize\(\s*(\d+)\s*,\s*(\d+)\s*\))");
         std::smatch m;
         if (!std::regex_search(source, m, resizeRx))
-            return fail("INV-12",
+            fail("INV-12",
                         "no resize(W, H) call found in roadmapdialog.cpp");
         const int width = std::stoi(m[1].str());
         const int height = std::stoi(m[2].str());
@@ -228,12 +228,12 @@ static int runMain() {
     // dialog MUST NOT hand-roll the legacy saveGeometry/restoreGeometry
     // blob, which also stored window position and violated D4.
     if (!contains(source, "QStringLiteral(\"RoadmapDialog\")"))
-        return fail("INV-12",
+        fail("INV-12",
                     "DialogChrome \"RoadmapDialog\" sizeKey missing (D3)");
     if (contains(source, "saveGeometry") ||
         contains(source, "restoreGeometry") ||
         contains(source, "roadmapDialogGeometry"))
-        return fail("INV-12",
+        fail("INV-12",
                     "legacy geometry round-trip persists window position "
                     "(D4 violation) — must use DialogChrome sizeKey");
 
@@ -242,7 +242,7 @@ static int runMain() {
     // tab; it inherits document order so the dialog doesn't silently
     // re-sort when the user clicks a checkbox.
     if (RoadmapDialog::sortFor(Preset::Custom) != SortOrder::Document)
-        return fail("INV-13",
+        fail("INV-13",
                     "Custom preset must default to Document sort");
 
     std::puts("OK roadmap_viewer_tabs: 13/13 invariants");

@@ -27,7 +27,7 @@ bool contains(const std::string &hay, const char *needle) {
 }
 
 int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
     return 1;
 }
 
@@ -51,13 +51,13 @@ static int runMain() {
     const std::size_t methodPos =
         src.find("void ClaudeStatusBarController::refreshTasksButton");
     if (methodPos == std::string::npos)
-        return fail("setup", "refreshTasksButton definition not found");
+        fail("setup", "refreshTasksButton definition not found");
     const std::size_t sigPos = src.find("const QString sig =", methodPos);
     if (sigPos == std::string::npos)
-        return fail("setup", "tasks sig construction not found");
+        fail("setup", "tasks sig construction not found");
     const std::size_t sigEnd = src.find(';', sigPos);
     if (sigEnd == std::string::npos)
-        return fail("setup", "tasks sig statement has no terminator");
+        fail("setup", "tasks sig statement has no terminator");
     const std::string sigBlock = src.substr(sigPos, sigEnd - sigPos);
 
     // INV-1 — the dedup key excludes the transcript mtime.

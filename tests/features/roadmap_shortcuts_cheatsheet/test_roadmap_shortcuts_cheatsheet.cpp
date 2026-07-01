@@ -39,7 +39,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 }
 
 int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
     return 1;
 }
 
@@ -80,7 +80,7 @@ static int runMain() {
         const auto rows = roadmapShortcutRows();
         if (rows.size() != 10) {
             std::fprintf(stderr, "got rows.size() = %d\n", int(rows.size()));
-            return fail("INV-1/INV-8",
+            fail("INV-1/INV-8",
                 "roadmapShortcutRows() must return exactly 10 rows; a "
                 "shortcut addition without bumping the test is a build "
                 "failure (the source-of-truth contract).");
@@ -103,12 +103,12 @@ static int runMain() {
                     "row %d: got keys='%s', want '%s'\n",
                     i, rows[i].first.toUtf8().constData(),
                     expectedKeys[i].toUtf8().constData());
-                return fail("INV-2",
+                fail("INV-2",
                     "key column mismatch — order must match the "
                     "kRoadmapShortcuts declaration.");
             }
             if (rows[i].second.isEmpty()) {
-                return fail("INV-2",
+                fail("INV-2",
                     "action column must be non-empty (tr() of "
                     "QT_TR_NOOP body); empty hints the qualified "
                     "RoadmapDialog::tr() call is wired wrong.");
@@ -120,12 +120,12 @@ static int runMain() {
     {
         const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty())
-            return fail("Source-grep", "roadmapdialog.cpp not readable");
+            fail("Source-grep", "roadmapdialog.cpp not readable");
         if (!contains(src, "constexpr ShortcutRow kRoadmapShortcuts[]"))
-            return fail("INV-1",
+            fail("INV-1",
                 "kRoadmapShortcuts file-scope table missing");
         if (!contains(src, "static_assert(std::size(kRoadmapShortcuts) == 10"))
-            return fail("INV-1",
+            fail("INV-1",
                 "static_assert on kRoadmapShortcuts count missing — a "
                 "new shortcut could land silently without updating "
                 "the cheatsheet test.");
@@ -147,17 +147,17 @@ static int runMain() {
             if (!contains(src, prefix)) {
                 std::fprintf(stderr,
                     "missing prefix in roadmapdialog.cpp: %s\n", prefix);
-                return fail("INV-2",
+                fail("INV-2",
                     "expected literal key prefix not found");
             }
         }
         // keyPressEvent override on RoadmapDialog — verifies §3.d.
         if (!contains(src, "void RoadmapDialog::keyPressEvent("))
-            return fail("INV-3",
+            fail("INV-3",
                 "RoadmapDialog::keyPressEvent override missing — "
                 "without it `?` would never reach the cheatsheet.");
         if (!contains(src, "event->text() == QLatin1String(\"?\")"))
-            return fail("INV-3",
+            fail("INV-3",
                 "layout-robust `event->text() == \"?\"` match missing — "
                 "the spec rejects `Key_Question` because AltGr/dead-key "
                 "layouts won't hit it.");
@@ -167,18 +167,18 @@ static int runMain() {
     {
         const std::string srch = ants_test::slurpFile(ROADMAPSHORTCUTSDIALOG_H);
         if (srch.empty())
-            return fail("Source-grep",
+            fail("Source-grep",
                 "roadmapshortcutsdialog.h not readable");
         if (!contains(srch, "void keyPressEvent(QKeyEvent *event) override"))
-            return fail("INV-3",
+            fail("INV-3",
                 "RoadmapShortcutsDialog::keyPressEvent override missing "
                 "— `?` on the cheatsheet itself must toggle it closed.");
         const std::string srcc = ants_test::slurpFile(ROADMAPSHORTCUTSDIALOG_CPP);
         if (srcc.empty())
-            return fail("Source-grep",
+            fail("Source-grep",
                 "roadmapshortcutsdialog.cpp not readable");
         if (!contains(srcc, "event->text() == QLatin1String(\"?\")"))
-            return fail("INV-3",
+            fail("INV-3",
                 "RoadmapShortcutsDialog must also match by text() so "
                 "the toggle is layout-robust on AltGr/dead-key paths.");
     }
@@ -189,10 +189,10 @@ static int runMain() {
     // -----------------------------------------------------------------
     QTemporaryDir tmp;
     if (!tmp.isValid())
-        return fail("Setup", "QTemporaryDir construction failed");
+        fail("Setup", "QTemporaryDir construction failed");
     const QString roadmapPath = writeRoadmap(tmp, fixtureMarkdown());
     if (roadmapPath.isEmpty())
-        return fail("Setup", "could not write fixture ROADMAP.md");
+        fail("Setup", "could not write fixture ROADMAP.md");
 
     RoadmapDialog dialog(roadmapPath, QStringLiteral("light"));
     dialog.show();
@@ -205,11 +205,11 @@ static int runMain() {
         QApplication::processEvents();
         auto *cheat = dialog.findChild<RoadmapShortcutsDialog *>();
         if (!cheat)
-            return fail("INV-3",
+            fail("INV-3",
                 "pressing `?` on RoadmapDialog did NOT create a "
                 "RoadmapShortcutsDialog child.");
         if (!cheat->isVisible())
-            return fail("INV-3",
+            fail("INV-3",
                 "cheatsheet was created but is not visible — "
                 "show()/raise()/activateWindow() chain misfired.");
         const QString expectedTitle = RoadmapShortcutsDialog::tr(
@@ -219,7 +219,7 @@ static int runMain() {
                 "got title='%s', want '%s'\n",
                 cheat->windowTitle().toUtf8().constData(),
                 expectedTitle.toUtf8().constData());
-            return fail("INV-7",
+            fail("INV-7",
                 "window title must be tr(\"Roadmap Keyboard "
                 "Shortcuts\") so screen readers announce it.");
         }
@@ -229,22 +229,22 @@ static int runMain() {
     // contains `?` + the localised "Show this cheatsheet" string.
     {
         auto *cheat = dialog.findChild<RoadmapShortcutsDialog *>();
-        if (!cheat) return fail("INV-5", "cheatsheet child missing");
+        if (!cheat) fail("INV-5", "cheatsheet child missing");
         auto *table = cheat->findChild<QTableWidget *>();
         if (!table)
-            return fail("INV-5",
+            fail("INV-5",
                 "cheatsheet must host a QTableWidget (not a "
                 "QTextBrowser) — native widgets carry their own a11y "
                 "per ANTS-1235.");
         if (table->columnCount() != 2)
-            return fail("INV-5",
+            fail("INV-5",
                 "table must have exactly 2 columns (Shortcut, Action)");
         const int expectedRows = roadmapShortcutRows().size();
         if (table->rowCount() != expectedRows) {
             std::fprintf(stderr,
                 "got rowCount=%d, want %d\n",
                 table->rowCount(), expectedRows);
-            return fail("INV-5",
+            fail("INV-5",
                 "table row count must equal the data table size — "
                 "drift means the cheatsheet UI silently dropped a "
                 "shortcut.");
@@ -252,9 +252,9 @@ static int runMain() {
         auto *cellKeys   = table->item(0, 0);
         auto *cellAction = table->item(0, 1);
         if (!cellKeys || !cellAction)
-            return fail("INV-5", "row 0 has null cells");
+            fail("INV-5", "row 0 has null cells");
         if (cellKeys->text() != QStringLiteral("?"))
-            return fail("INV-5",
+            fail("INV-5",
                 "row 0 column 0 must be `?` (the cheatsheet trigger "
                 "documents itself).");
         const QString expectedAction = RoadmapDialog::tr(
@@ -264,7 +264,7 @@ static int runMain() {
                 "got action='%s', want '%s'\n",
                 cellAction->text().toUtf8().constData(),
                 expectedAction.toUtf8().constData());
-            return fail("INV-5",
+            fail("INV-5",
                 "action column must resolve through "
                 "RoadmapDialog::tr() — strings live in that "
                 "translation context (QT_TR_NOOP extraction in "
@@ -275,11 +275,11 @@ static int runMain() {
     // INV-3: pressing `?` on the cheatsheet closes it.
     {
         auto *cheat = dialog.findChild<RoadmapShortcutsDialog *>();
-        if (!cheat) return fail("INV-3", "cheatsheet child missing");
+        if (!cheat) fail("INV-3", "cheatsheet child missing");
         QTest::keyClick(cheat, Qt::Key_Question);
         QApplication::processEvents();
         if (cheat->isVisible())
-            return fail("INV-3",
+            fail("INV-3",
                 "pressing `?` on the cheatsheet did NOT close it — "
                 "the toggle contract is broken.");
     }
@@ -288,17 +288,17 @@ static int runMain() {
     {
         auto *firstInstance = dialog.findChild<RoadmapShortcutsDialog *>();
         if (!firstInstance)
-            return fail("INV-6", "no cheatsheet instance after close");
+            fail("INV-6", "no cheatsheet instance after close");
         QTest::keyClick(&dialog, Qt::Key_Question);
         QApplication::processEvents();
         auto *secondInstance = dialog.findChild<RoadmapShortcutsDialog *>();
         if (secondInstance != firstInstance)
-            return fail("INV-6",
+            fail("INV-6",
                 "second open created a new instance — the "
                 "QPointer-cached reuse contract is broken (lazy "
                 "construction guard misfired).");
         if (!secondInstance->isVisible())
-            return fail("INV-6",
+            fail("INV-6",
                 "reused cheatsheet not visible on re-open.");
         // Close again so the search-box test below starts clean.
         secondInstance->close();
@@ -311,7 +311,7 @@ static int runMain() {
         auto *searchBox = dialog.findChild<QLineEdit *>(
             QStringLiteral("roadmap-search-box"));
         if (!searchBox)
-            return fail("INV-4",
+            fail("INV-4",
                 "could not locate roadmap-search-box — has its "
                 "objectName drifted?");
         const QString before = searchBox->text();
@@ -322,13 +322,13 @@ static int runMain() {
         QApplication::processEvents();
         auto *cheat = dialog.findChild<RoadmapShortcutsDialog *>();
         if (cheat && cheat->isVisible())
-            return fail("INV-4",
+            fail("INV-4",
                 "pressing `?` while the search box was focused opened "
                 "the cheatsheet — the focus guard misfired and the "
                 "user can no longer type `?` into the substring "
                 "filter.");
         if (!searchBox->text().contains(QLatin1Char('?')))
-            return fail("INV-4",
+            fail("INV-4",
                 "QLineEdit did NOT receive `?` as a text character "
                 "— the focus path is broken even though the guard "
                 "held.");
@@ -338,7 +338,7 @@ static int runMain() {
                 "before='%s', after='%s'\n",
                 before.toUtf8().constData(),
                 searchBox->text().toUtf8().constData());
-            return fail("INV-4",
+            fail("INV-4",
                 "QLineEdit text did not append exactly one `?` — "
                 "something else swallowed the key.");
         }

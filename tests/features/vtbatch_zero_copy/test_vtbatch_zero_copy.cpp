@@ -47,53 +47,53 @@ TEST(VtbatchZeroCopy, Main) {
     const std::string twHeader = ants_test::slurpFile(TERMINALWIDGET_H);
     const std::string twSource = ants_test::slurpFile(TERMINALWIDGET_CPP);
 
-    if (vtsHeader.empty()) return fail("setup", "vtstream.h not readable");
-    if (vtsSource.empty()) return fail("setup", "vtstream.cpp not readable");
-    if (twHeader.empty()) return fail("setup", "terminalwidget.h not readable");
-    if (twSource.empty()) return fail("setup", "terminalwidget.cpp not readable");
+    if (vtsHeader.empty()) fail("setup", "vtstream.h not readable");
+    if (vtsSource.empty()) fail("setup", "vtstream.cpp not readable");
+    if (twHeader.empty()) fail("setup", "terminalwidget.h not readable");
+    if (twSource.empty()) fail("setup", "terminalwidget.cpp not readable");
 
     // I1 — Signal signature uses VtBatchPtr.
     if (!contains(vtsHeader, "void batchReady(VtBatchPtr batch)"))
-        return fail("I1", "signal does not take VtBatchPtr");
+        fail("I1", "signal does not take VtBatchPtr");
     if (contains(vtsHeader, "void batchReady(const VtBatch &"))
-        return fail("I1", "old `const VtBatch &` signal signature still present");
+        fail("I1", "old `const VtBatch &` signal signature still present");
 
     // I2 — Alias declaration + Q_DECLARE_METATYPE.
     if (!contains(vtsHeader, "using VtBatchPtr = std::shared_ptr<const VtBatch>"))
-        return fail("I2", "VtBatchPtr alias missing");
+        fail("I2", "VtBatchPtr alias missing");
     if (!contains(vtsHeader, "Q_DECLARE_METATYPE(VtBatchPtr)"))
-        return fail("I2", "Q_DECLARE_METATYPE(VtBatchPtr) missing");
+        fail("I2", "Q_DECLARE_METATYPE(VtBatchPtr) missing");
 
     // I3 — Emitters use make_shared. Two emit sites: flushBatch and
     // onPtyFinished. Each constructs via make_shared<VtBatch>() and
     // populates via b->.
     if (count(vtsSource, "std::make_shared<VtBatch>()") < 2)
-        return fail("I3", "expected ≥2 std::make_shared<VtBatch>() emit-site builders");
+        fail("I3", "expected ≥2 std::make_shared<VtBatch>() emit-site builders");
     if (!contains(vtsSource, "emit batchReady(b)"))
-        return fail("I3", "emit batchReady(b) call site missing");
+        fail("I3", "emit batchReady(b) call site missing");
     // No stack-allocated VtBatch survives in the emit path.
     if (contains(vtsSource, "VtBatch b;\n    b.actions"))
-        return fail("I3", "old stack-VtBatch emit path still present");
+        fail("I3", "old stack-VtBatch emit path still present");
 
     // I4 — Receiver dereferences via pointer.
     if (!contains(twHeader, "void onVtBatch(VtBatchPtr batch)"))
-        return fail("I4", "TerminalWidget::onVtBatch slot signature missing VtBatchPtr");
+        fail("I4", "TerminalWidget::onVtBatch slot signature missing VtBatchPtr");
     if (contains(twHeader, "void onVtBatch(const VtBatch &"))
-        return fail("I4", "old `const VtBatch &` slot signature still present");
+        fail("I4", "old `const VtBatch &` slot signature still present");
     if (!contains(twSource, "batch->actions"))
-        return fail("I4", "receiver does not dereference batch->actions");
+        fail("I4", "receiver does not dereference batch->actions");
     if (!contains(twSource, "batch->rawBytes"))
-        return fail("I4", "receiver does not dereference batch->rawBytes");
+        fail("I4", "receiver does not dereference batch->rawBytes");
     // Old dot-access pattern must be gone (was `batch.actions`,
     // `batch.rawBytes`, `batch.clearSelectionHint`, `batch.wallClockMs`).
     if (contains(twSource, "batch.actions"))
-        return fail("I4", "stale `batch.actions` dot access remains");
+        fail("I4", "stale `batch.actions` dot access remains");
     if (contains(twSource, "batch.rawBytes"))
-        return fail("I4", "stale `batch.rawBytes` dot access remains");
+        fail("I4", "stale `batch.rawBytes` dot access remains");
 
     // I6 — Metatype registered.
     if (!contains(vtsSource, "qRegisterMetaType<VtBatchPtr>(\"VtBatchPtr\")"))
-        return fail("I6", "qRegisterMetaType<VtBatchPtr>() missing");
+        fail("I6", "qRegisterMetaType<VtBatchPtr>() missing");
 
     std::puts("OK vtbatch_zero_copy: 5/5 invariants (I5 covered by threaded_parse_equivalence)");
     return;

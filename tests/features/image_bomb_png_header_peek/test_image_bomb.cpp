@@ -45,7 +45,7 @@ bool linePrecedingContainsQImageReader(const std::vector<std::string> &lines,
 }
 
 int fail(const char *label, const std::string &detail) {
-    std::fprintf(stderr, "FAIL [%s]: %s\n", label, detail.c_str());
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << detail;
     return 1;
 }
 
@@ -54,7 +54,7 @@ int fail(const char *label, const std::string &detail) {
 static int runMain() {
     const auto lines = readLines(SRC_TERMINALGRID_PATH);
     if (lines.empty())
-        return fail("setup",
+        fail("setup",
                     std::string("could not read ") + SRC_TERMINALGRID_PATH);
 
     int loadCalls = 0;
@@ -80,7 +80,7 @@ static int runMain() {
     }
 
     if (loadCalls == 0)
-        return fail("I1 coverage",
+        fail("I1 coverage",
                     "expected at least one loadFromData call in terminalgrid.cpp "
                     "(0 found — test invariant is meaningless without a guarded "
                     "call site; did the image-decode paths move?)");
@@ -104,9 +104,9 @@ static int runMain() {
         if (l.find("MAX_IMAGE_DIM") != std::string::npos) { dimUsed = true; break; }
     }
     if (!dimDefined)
-        return fail("I2", "MAX_IMAGE_DIM constant not defined in terminalgrid.h");
+        fail("I2", "MAX_IMAGE_DIM constant not defined in terminalgrid.h");
     if (!dimUsed)
-        return fail("I2", "MAX_IMAGE_DIM defined but never referenced in terminalgrid.cpp");
+        fail("I2", "MAX_IMAGE_DIM defined but never referenced in terminalgrid.cpp");
 
     std::printf("image_bomb_png_header_peek: %d loadFromData call%s guarded; "
                 "MAX_IMAGE_DIM defined and used\n",

@@ -54,7 +54,7 @@ TEST(SixelRasterHeaderPrebudget, Main) {
         h.feed(sixel("\"1;1;9999;1?"));  // tiny body, big declared dim
         const int after = static_cast<int>(h.grid.inlineImages().size());
         if (after != before)
-            return fail("INV-1 Ph reject",
+            fail("INV-1 Ph reject",
                         "over-cap Ph in raster header did not prevent "
                         "an image from being allocated");
     }
@@ -66,7 +66,7 @@ TEST(SixelRasterHeaderPrebudget, Main) {
         h.feed(sixel("\"1;1;1;9999?"));
         const int after = static_cast<int>(h.grid.inlineImages().size());
         if (after != before)
-            return fail("INV-1 Pv reject",
+            fail("INV-1 Pv reject",
                         "over-cap Pv in raster header did not prevent "
                         "an image from being allocated");
     }
@@ -80,7 +80,7 @@ TEST(SixelRasterHeaderPrebudget, Main) {
         h.feed(sixel("\"1;1;4;6~~~~"));
         const int after = static_cast<int>(h.grid.inlineImages().size());
         if (after <= before)
-            return fail("INV-3 valid renders",
+            fail("INV-3 valid renders",
                         "small valid Sixel did not produce an image — "
                         "pre-budget might be too aggressive");
     }

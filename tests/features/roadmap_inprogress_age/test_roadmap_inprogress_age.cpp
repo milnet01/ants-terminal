@@ -30,7 +30,7 @@
 namespace {
 
 int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
     return 1;
 }
 
@@ -117,7 +117,7 @@ static int runMain() {
             QString(), {}, opts);
         if (!html.contains(QStringLiteral(
                 "<span class=\"rm-date\">· Updated 3d ago</span>")))
-            return fail("INV-1",
+            fail("INV-1",
                 "🚧 card with lastTouchDates entry did NOT emit "
                 "the `· Updated 3d ago` span — the new emitCard "
                 "branch isn't firing.");
@@ -139,7 +139,7 @@ static int runMain() {
             RoadmapDialog::SortOrder::Document,
             QString(), {}, opts);
         if (html.contains(QStringLiteral("· Updated ")))
-            return fail("INV-2",
+            fail("INV-2",
                 "✅ card emitted a `· Updated` span — the status "
                 "gate (`rec.status == \"🚧\"`) is broken or the "
                 "branch is firing on the wrong status.");
@@ -155,7 +155,7 @@ static int runMain() {
             RoadmapDialog::SortOrder::Document,
             QString(), {}, opts);
         if (html.contains(QStringLiteral("· Updated ")))
-            return fail("INV-3",
+            fail("INV-3",
                 "🚧 card emitted a `· Updated` span despite empty "
                 "lastTouchDates — graceful-degradation path is "
                 "broken (likely a constFind / constEnd misuse).");
@@ -213,16 +213,16 @@ static int runMain() {
     // git blame fails with "not a git repository".
     {
         QTemporaryDir tmp;
-        if (!tmp.isValid()) return fail("INV-6", "QTemporaryDir failed");
+        if (!tmp.isValid()) fail("INV-6", "QTemporaryDir failed");
         const QString roadmapPath =
             writeFile(tmp.path() + QStringLiteral("/ROADMAP.md"),
                       fixtureMarkdown());
         if (roadmapPath.isEmpty())
-            return fail("INV-6", "could not write fixture");
+            fail("INV-6", "could not write fixture");
         const auto result =
             RoadmapDialog::parseLastTouchDates(roadmapPath);
         if (!result.isEmpty())
-            return fail("INV-6",
+            fail("INV-6",
                 "non-git directory returned non-empty hash — "
                 "graceful-degradation path is broken.");
     }
@@ -234,7 +234,7 @@ static int runMain() {
     // mention's commit).
     {
         QTemporaryDir tmp;
-        if (!tmp.isValid()) return fail("INV-7", "QTemporaryDir failed");
+        if (!tmp.isValid()) fail("INV-7", "QTemporaryDir failed");
         const QString dir = tmp.path();
         const QString roadmapPath = dir + QStringLiteral("/ROADMAP.md");
 
@@ -242,15 +242,15 @@ static int runMain() {
         // identity).
         if (!runGit(dir, {QStringLiteral("init"),
                           QStringLiteral("--initial-branch=main")}))
-            return fail("INV-7", "git init failed");
+            fail("INV-7", "git init failed");
         if (!runGit(dir, {QStringLiteral("config"),
                           QStringLiteral("user.name"),
                           QStringLiteral("test")}))
-            return fail("INV-7", "git config user.name failed");
+            fail("INV-7", "git config user.name failed");
         if (!runGit(dir, {QStringLiteral("config"),
                           QStringLiteral("user.email"),
                           QStringLiteral("test@example.com")}))
-            return fail("INV-7", "git config user.email failed");
+            fail("INV-7", "git config user.email failed");
 
         // Commit 1 — T_A = 2026-01-01T00:00:00Z = 1767225600.
         const QString T_A_iso = QStringLiteral("2026-01-01T00:00:00Z");
@@ -274,17 +274,17 @@ static int runMain() {
             "  Body continuation line.\n"
             "  Kind: implement.\n");
         if (writeFile(roadmapPath, fileV1).isEmpty())
-            return fail("INV-7", "could not write fixture v1");
+            fail("INV-7", "could not write fixture v1");
         if (!runGit(dir, {QStringLiteral("add"),
                           QStringLiteral("ROADMAP.md")}))
-            return fail("INV-7", "git add v1 failed");
+            fail("INV-7", "git add v1 failed");
         QProcessEnvironment envA = QProcessEnvironment::systemEnvironment();
         envA.insert(QStringLiteral("GIT_AUTHOR_DATE"), T_A_iso);
         envA.insert(QStringLiteral("GIT_COMMITTER_DATE"), T_A_iso);
         if (!runGit(dir, {QStringLiteral("commit"),
                           QStringLiteral("-m"),
                           QStringLiteral("add 9999")}, envA))
-            return fail("INV-7", "commit 1 failed");
+            fail("INV-7", "commit 1 failed");
 
         // Commit 2 — T_B = 2026-02-01T00:00:00Z = 1769904000.
         // Append the ✅ bullet with an audit-trail mention of
@@ -296,17 +296,17 @@ static int runMain() {
             "  Layman: shipped item (mentions ANTS-9999 in audit trail).\n"
             "  Kind: fix.\n");
         if (writeFile(roadmapPath, fileV2).isEmpty())
-            return fail("INV-7", "could not write fixture v2");
+            fail("INV-7", "could not write fixture v2");
         if (!runGit(dir, {QStringLiteral("add"),
                           QStringLiteral("ROADMAP.md")}))
-            return fail("INV-7", "git add v2 failed");
+            fail("INV-7", "git add v2 failed");
         QProcessEnvironment envB = QProcessEnvironment::systemEnvironment();
         envB.insert(QStringLiteral("GIT_AUTHOR_DATE"), T_B_iso);
         envB.insert(QStringLiteral("GIT_COMMITTER_DATE"), T_B_iso);
         if (!runGit(dir, {QStringLiteral("commit"),
                           QStringLiteral("-m"),
                           QStringLiteral("add 9998 audit-trail")}, envB))
-            return fail("INV-7", "commit 2 failed");
+            fail("INV-7", "commit 2 failed");
 
         // Run the parser; assert ANTS-9999 → T_A (not T_B).
         const auto result =
@@ -337,13 +337,13 @@ static int runMain() {
         dlg.refreshLastTouchDatesIfStale();
         const qint64 mtime1 = dlg.lastTouchDatesMtime();
         if (mtime1 < 0)
-            return fail("INV-5",
+            fail("INV-5",
                 "lastTouchDatesMtime() returned -1 after first refresh "
                 "— refreshLastTouchDatesIfStale isn't writing back.");
         // Second call without touching the file → mtime unchanged.
         dlg.refreshLastTouchDatesIfStale();
         if (dlg.lastTouchDatesMtime() != mtime1)
-            return fail("INV-5",
+            fail("INV-5",
                 "lastTouchDatesMtime() changed across two refresh "
                 "calls when the file was not touched — cache is "
                 "re-parsing on every call.");

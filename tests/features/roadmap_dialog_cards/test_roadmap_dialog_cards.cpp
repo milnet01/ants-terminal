@@ -30,7 +30,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 }
 
 int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
     return 1;
 }
 
@@ -140,18 +140,18 @@ static int runMain(int argc, char **argv) {
             if (b.id == QStringLiteral("ANTS-9001")) with = &b;
             else if (b.id == QStringLiteral("ANTS-9002")) without = &b;
         }
-        if (!with) return fail("INV-4", "ANTS-9001 not parsed");
+        if (!with) fail("INV-4", "ANTS-9001 not parsed");
         if (with->layman.isEmpty())
-            return fail("INV-4", "layman empty when Layman: line present");
+            fail("INV-4", "layman empty when Layman: line present");
         if (with->layman != QStringLiteral(
                 "A new widget that users have asked for")) {
             std::fprintf(stderr, "got layman='%s'\n",
                          with->layman.toUtf8().constData());
-            return fail("INV-4", "layman text doesn't match");
+            fail("INV-4", "layman text doesn't match");
         }
-        if (!without) return fail("INV-4", "ANTS-9002 not parsed");
+        if (!without) fail("INV-4", "ANTS-9002 not parsed");
         if (!without->layman.isEmpty())
-            return fail("INV-4", "layman set when no Layman: line");
+            fail("INV-4", "layman set when no Layman: line");
     }
 
     // INV-5 / parser: sectionSlug populated.
@@ -162,13 +162,13 @@ static int runMain(int argc, char **argv) {
                 if (b.sectionSlug != QStringLiteral("features")) {
                     std::fprintf(stderr, "got slug='%s'\n",
                                  b.sectionSlug.toUtf8().constData());
-                    return fail("INV-5",
+                    fail("INV-5",
                         "ANTS-9001 sectionSlug != 'features'");
                 }
             }
             if (b.id == QStringLiteral("ANTS-9004")) {
                 if (b.sectionSlug != QStringLiteral("considered"))
-                    return fail("INV-5",
+                    fail("INV-5",
                         "ANTS-9004 sectionSlug != 'considered'");
             }
         }
@@ -184,18 +184,18 @@ static int runMain(int argc, char **argv) {
             RD::SortOrder::Document, QString(), {}, opts);
         const std::string h = html.toStdString();
         if (!contains(h, "<div class=\"rm-card"))
-            return fail("INV-1", "no rm-card div emitted");
+            fail("INV-1", "no rm-card div emitted");
         if (!contains(h, "id=\"rm-ANTS-9001\""))
-            return fail("INV-1",
+            fail("INV-1",
                 "expected card id=\"rm-ANTS-9001\" not found");
         if (!contains(h, "class=\"rm-state\""))
-            return fail("INV-2", "rm-state span missing");
+            fail("INV-2", "rm-state span missing");
         if (!contains(h, "class=\"rm-summary\""))
-            return fail("INV-2", "rm-summary span missing");
+            fail("INV-2", "rm-summary span missing");
         if (!contains(h, "class=\"rm-toggle\""))
-            return fail("INV-2", "rm-toggle link missing");
+            fail("INV-2", "rm-toggle link missing");
         if (!contains(h, "ants://expand/ANTS-9001"))
-            return fail("INV-2", "ants://expand URL missing");
+            fail("INV-2", "ants://expand URL missing");
     }
 
     // INV-3 / renderer: layman beats headline.
@@ -209,12 +209,12 @@ static int runMain(int argc, char **argv) {
         const std::string h = html.toStdString();
         // The bullet with Layman: should show "A new widget...".
         if (!contains(h, "A new widget that users have asked for"))
-            return fail("INV-3", "layman text not in render output");
+            fail("INV-3", "layman text not in render output");
         // ANTS-9002 has no Layman, so the headline appears (minus
         // any leading ANTS-NNNN — token; the test headline has no
         // such prefix so the raw text appears).
         if (!contains(h, "In-progress refactor"))
-            return fail("INV-3", "headline fallback missing");
+            fail("INV-3", "headline fallback missing");
     }
 
     // INV-11 / renderer: History preset strips prose.
@@ -228,10 +228,10 @@ static int runMain(int argc, char **argv) {
             RD::SortOrder::Document, QString(), {}, opts);
         const std::string h = html.toStdString();
         if (contains(h, "Prose intro paragraph"))
-            return fail("INV-11",
+            fail("INV-11",
                 "prose narration rendered under History preset");
         if (contains(h, "Just prose. No actionable bullets"))
-            return fail("INV-11",
+            fail("INV-11",
                 "non-status section prose rendered under History");
     }
 
@@ -248,12 +248,12 @@ static int runMain(int argc, char **argv) {
         // "empty-section-only" has no ✅ bullets — its header MUST
         // be suppressed.
         if (contains(h, "empty-section-only"))
-            return fail("INV-12",
+            fail("INV-12",
                 "empty section header rendered under History");
         // 0.9.0 has only 💭, no ✅ — its header MUST also be
         // suppressed when filter is ShowDone only.
         if (contains(h, "0.9.0 — far-future"))
-            return fail("INV-12",
+            fail("INV-12",
                 "0.9.0 section header rendered when no ✅ inside");
     }
 
@@ -262,11 +262,11 @@ static int runMain(int argc, char **argv) {
     {
         const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty())
-            return fail("INV-1", "roadmapdialog.cpp not readable");
+            fail("INV-1", "roadmapdialog.cpp not readable");
         if (!contains(src, "// ANTS-1154-INV-1"))
-            return fail("INV-1", "// ANTS-1154-INV-1 anchor missing");
+            fail("INV-1", "// ANTS-1154-INV-1 anchor missing");
         if (!contains(src, "// ANTS-1154-INV-4"))
-            return fail("INV-4", "// ANTS-1154-INV-4 anchor missing");
+            fail("INV-4", "// ANTS-1154-INV-4 anchor missing");
         // Anchor proximity — INV-1 should be within ~200 chars of
         // the `<div class=\"rm-card` literal in the source file. The
         // slurped file contains the escaped form (backslash + quote
@@ -276,34 +276,34 @@ static int runMain(int argc, char **argv) {
         const auto literalPos = src.find("class=\\\"rm-card");
         if (anchorPos == std::string::npos ||
                 literalPos == std::string::npos)
-            return fail("INV-1", "could not locate both literals");
+            fail("INV-1", "could not locate both literals");
         const size_t gap =
             anchorPos < literalPos
                 ? literalPos - anchorPos
                 : anchorPos - literalPos;
         if (gap > 200)
-            return fail("INV-1",
+            fail("INV-1",
                 "anchor far from load-bearing rm-card emission");
     }
 
     // ShippedDates — parseShippedDates maps ✅ IDs to release dates.
     {
         QTemporaryFile tmp;
-        if (!tmp.open()) return fail("ShippedDates", "tmpfile failed");
+        if (!tmp.open()) fail("ShippedDates", "tmpfile failed");
         tmp.write(fixtureChangelog().toUtf8());
         tmp.flush();
         const auto dates = RD::parseShippedDates(tmp.fileName());
         if (dates.value(QStringLiteral("ANTS-9001"))
                 != QStringLiteral("2026-05-11"))
-            return fail("ShippedDates",
+            fail("ShippedDates",
                 "ANTS-9001 should map to 2026-05-11");
         if (dates.value(QStringLiteral("ANTS-9000"))
                 != QStringLiteral("2026-05-10"))
-            return fail("ShippedDates",
+            fail("ShippedDates",
                 "ANTS-9000 should map to 2026-05-10");
         // [Unreleased] section has no date — IDs in it must NOT map.
         if (dates.contains(QStringLiteral("ANTS-9999")))
-            return fail("ShippedDates",
+            fail("ShippedDates",
                 "ANTS-9999 from [Unreleased] should not appear");
     }
 
@@ -323,23 +323,23 @@ static int runMain(int argc, char **argv) {
             else if (b.id == QStringLiteral("ANTS-7003")) b3 = &b;
         }
         if (!b1 || !b2 || !b3)
-            return fail("UniqueSlugs", "missing one of ANTS-7001/02/03");
+            fail("UniqueSlugs", "missing one of ANTS-7001/02/03");
         if (b1->sectionSlug != QStringLiteral("performance")) {
             std::fprintf(stderr, "got slug1='%s'\n",
                          b1->sectionSlug.toUtf8().constData());
-            return fail("UniqueSlugs",
+            fail("UniqueSlugs",
                 "first Performance h3 slug != 'performance'");
         }
         if (b2->sectionSlug != QStringLiteral("performance-2")) {
             std::fprintf(stderr, "got slug2='%s'\n",
                          b2->sectionSlug.toUtf8().constData());
-            return fail("UniqueSlugs",
+            fail("UniqueSlugs",
                 "second Performance h3 slug != 'performance-2'");
         }
         if (b3->sectionSlug != QStringLiteral("performance-3")) {
             std::fprintf(stderr, "got slug3='%s'\n",
                          b3->sectionSlug.toUtf8().constData());
-            return fail("UniqueSlugs",
+            fail("UniqueSlugs",
                 "third Performance h3 slug != 'performance-3'");
         }
     }
@@ -355,22 +355,22 @@ static int runMain(int argc, char **argv) {
             RD::SortOrder::Document, QString(), {}, opts);
         const std::string h = html.toStdString();
         if (!contains(h, "ants://expand-section/performance\""))
-            return fail("UniqueSlugs",
+            fail("UniqueSlugs",
                 "missing expand URL for performance (1st)");
         if (!contains(h, "ants://collapse-section/performance-2\""))
-            return fail("UniqueSlugs",
+            fail("UniqueSlugs",
                 "missing collapse URL for performance-2 (the open one)");
         if (!contains(h, "ants://expand-section/performance-3\""))
-            return fail("UniqueSlugs",
+            fail("UniqueSlugs",
                 "missing expand URL for performance-3 (3rd)");
         if (!contains(h, "id=\"rm-ANTS-7002\""))
-            return fail("UniqueSlugs",
+            fail("UniqueSlugs",
                 "ANTS-7002 card not rendered when its slug expanded");
         if (contains(h, "id=\"rm-ANTS-7001\""))
-            return fail("UniqueSlugs",
+            fail("UniqueSlugs",
                 "ANTS-7001 (1st Perf) leaked into expanded view");
         if (contains(h, "id=\"rm-ANTS-7003\""))
-            return fail("UniqueSlugs",
+            fail("UniqueSlugs",
                 "ANTS-7003 (3rd Perf) leaked into expanded view");
     }
 
@@ -382,15 +382,15 @@ static int runMain(int argc, char **argv) {
     {
         const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty())
-            return fail("LinkColor", "roadmapdialog.cpp not readable");
+            fail("LinkColor", "roadmapdialog.cpp not readable");
         if (!contains(src, ".rm-section-title{color:%2;"))
-            return fail("LinkColor",
+            fail("LinkColor",
                 ".rm-section-title must set explicit color (not inherit)");
         if (!contains(src, ".rm-section-toggle{color:%2;"))
-            return fail("LinkColor",
+            fail("LinkColor",
                 ".rm-section-toggle must set explicit color");
         if (!contains(src, "QPalette::Link"))
-            return fail("LinkColor",
+            fail("LinkColor",
                 "viewer palette must set QPalette::Link from theme");
     }
 
@@ -402,27 +402,27 @@ static int runMain(int argc, char **argv) {
     {
         const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty())
-            return fail("DialogPalette", "roadmapdialog.cpp not readable");
+            fail("DialogPalette", "roadmapdialog.cpp not readable");
         // Dialog gets Window + Base from theme.
         if (!contains(src, "dp.setColor(QPalette::Window, th.bgPrimary)"))
-            return fail("DialogPalette",
+            fail("DialogPalette",
                 "dialog must set QPalette::Window from theme bgPrimary");
         if (!contains(src, "dp.setColor(QPalette::Base, th.bgPrimary)"))
-            return fail("DialogPalette",
+            fail("DialogPalette",
                 "dialog must set QPalette::Base from theme bgPrimary");
         // Viewer gets Base + Text from theme.
         if (!contains(src, "vp.setColor(QPalette::Base, th.bgPrimary)"))
-            return fail("DialogPalette",
+            fail("DialogPalette",
                 "m_viewer must set QPalette::Base from theme bgPrimary");
         if (!contains(src, "vp.setColor(QPalette::Text, th.textPrimary)"))
-            return fail("DialogPalette",
+            fail("DialogPalette",
                 "m_viewer must set QPalette::Text from theme textPrimary");
         // TOC gets Base + Highlight from theme.
         if (!contains(src, "tp.setColor(QPalette::Base, th.bgPrimary)"))
-            return fail("DialogPalette",
+            fail("DialogPalette",
                 "m_toc must set QPalette::Base from theme bgPrimary");
         if (!contains(src, "tp.setColor(QPalette::Highlight, th.accent)"))
-            return fail("DialogPalette",
+            fail("DialogPalette",
                 "m_toc must set QPalette::Highlight from theme accent");
     }
 
@@ -443,31 +443,31 @@ static int runMain(int argc, char **argv) {
         const std::string h = html.toStdString();
         // No nested wrapper div.
         if (contains(h, "<div class=\"rm-body\">"))
-            return fail("BodyFrame",
+            fail("BodyFrame",
                 "expanded card still wraps body in <div class=\"rm-body\">");
         // First body line carries rm-body-first class.
         if (!contains(h, "class=\"rm-body-first\""))
-            return fail("BodyFrame",
+            fail("BodyFrame",
                 "first body <p> missing rm-body-first class");
     }
     {
         const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty())
-            return fail("BodyFrame", "roadmapdialog.cpp not readable");
+            fail("BodyFrame", "roadmapdialog.cpp not readable");
         // ANTS-1238 parameterised the per-tier px values, so the
         // padding-top literal now reads `%21px` (cozy tier maps to
         // 4 via kDensityTable). Match the CSS rule prefix only;
         // the cozy `4px` value is locked by the renderer's tier
         // test (tests/features/roadmap_density/).
         if (!contains(src, ".rm-body-first{padding-top:"))
-            return fail("BodyFrame",
+            fail("BodyFrame",
                 ".rm-body-first CSS rule missing in renderer");
         if (!contains(src, ".rm-body-line{padding-left:20px;"))
-            return fail("BodyFrame",
+            fail("BodyFrame",
                 ".rm-body-line CSS rule missing in renderer");
         // The old wrapper rule MUST NOT regress back in.
         if (contains(src, ".rm-body{padding-top"))
-            return fail("BodyFrame",
+            fail("BodyFrame",
                 "old .rm-body{...} wrapper rule reappeared — Qt paints a "
                 "nested block frame over the card bg");
     }
@@ -496,11 +496,11 @@ static int runMain(int argc, char **argv) {
         const std::string h = html.toStdString();
         // No nested meta div.
         if (contains(h, "<div class=\"rm-meta\">"))
-            return fail("IdInline",
+            fail("IdInline",
                 "card still wraps id in <div class=\"rm-meta\">");
         // Inline rm-id span with #NNNN MUST be present for ANTS-9001.
         if (!contains(h, "<span class=\"rm-id\">#9001</span>"))
-            return fail("IdInline",
+            fail("IdInline",
                 "expected inline <span class=\"rm-id\">#9001</span> not found");
         // rm-id span MUST appear before rm-toggle anchor in the
         // stream (positioning it at the end of the summary line,
@@ -509,18 +509,18 @@ static int runMain(int argc, char **argv) {
         const auto togglePos = h.find("ants://expand/ANTS-9001");
         if (idPos == std::string::npos || togglePos == std::string::npos ||
             idPos >= togglePos)
-            return fail("IdInline",
+            fail("IdInline",
                 "rm-id span MUST precede the rm-toggle anchor for ANTS-9001");
         // Shipped date renders inline as well (ANTS-9001 is ✅ and
         // shippedDates was populated above).
         if (!contains(h, "<span class=\"rm-date\">· 2026-05-11</span>"))
-            return fail("IdInline",
+            fail("IdInline",
                 "expected inline <span class=\"rm-date\"> for shipped card");
     }
     {
         const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty())
-            return fail("IdInline", "roadmapdialog.cpp not readable");
+            fail("IdInline", "roadmapdialog.cpp not readable");
         // ANTS-1238 — `.rm-id` font-size was parameterised; the cozy
         // value (12px) is locked by the renderer-tier test
         // (tests/features/roadmap_density/, INV-1). Here we only
@@ -528,19 +528,19 @@ static int runMain(int argc, char **argv) {
         // a parameterised font-size placeholder pointing at the
         // codePx tier slot.
         if (!contains(src, ".rm-id{font-family:monospace;font-size:%15px;"))
-            return fail("IdInline",
+            fail("IdInline",
                 ".rm-id CSS rule must declare font-family:monospace + "
                 "font-size:%15px (codePx tier slot — cozy value 12px "
                 "lives in kDensityTable)");
         // Old meta wrapper rule MUST NOT regress.
         if (contains(src, ".rm-meta{font-size:10px"))
-            return fail("IdInline",
+            fail("IdInline",
                 "old .rm-meta{font-size:10px;...} rule reappeared — Qt "
                 "paints a nested block frame over the card bg");
         // The old `<div class="rm-meta">` emit site MUST NOT regress
         // back into the renderer source either.
         if (contains(src, "<div class=\\\"rm-meta\\\">"))
-            return fail("IdInline",
+            fail("IdInline",
                 "renderer still emits <div class=\"rm-meta\"> wrapper");
     }
 
@@ -576,7 +576,7 @@ static int runMain(int argc, char **argv) {
                 + "</span><span class=\"rm-state-label\">" + c.label
                 + "</span>";
             if (!contains(h, needle))
-                return fail("StateLabel",
+                fail("StateLabel",
                     (std::string("expected ") + needle + " not in rendered HTML").c_str());
         }
 
@@ -591,7 +591,7 @@ static int runMain(int argc, char **argv) {
             ++labelCount; pos += token.size();
         }
         if (labelCount != 4)
-            return fail("StateLabel",
+            fail("StateLabel",
                 (std::string("expected 4 rm-state-label spans (one per card), got ")
                  + std::to_string(labelCount)).c_str());
 
@@ -600,19 +600,19 @@ static int runMain(int argc, char **argv) {
         // text must contain all three labels (and NOT a trailing
         // ` · `).
         if (!contains(h, "✅ 1 shipped"))
-            return fail("ChipText",
+            fail("ChipText",
                 "section counts must include `✅ 1 shipped`");
         if (!contains(h, "🚧 1 in progress"))
-            return fail("ChipText",
+            fail("ChipText",
                 "section counts must include `🚧 1 in progress`");
         if (!contains(h, "📋 1 planned"))
-            return fail("ChipText",
+            fail("ChipText",
                 "section counts must include `📋 1 planned`");
         // Trailing separator must be stripped — the LAST chip in
         // any given count span must not end with ` · `. The chip
         // span is closed by </span>, so search for `· </span>`.
         if (contains(h, " · </span>"))
-            return fail("ChipText",
+            fail("ChipText",
                 "section count span ends with ` · </span>` — "
                 "chips.chop(3) didn't strip the trailing separator");
 
@@ -629,7 +629,7 @@ static int runMain(int argc, char **argv) {
         const auto posConsid  = plain.indexOf(QStringLiteral("considered"));
         if (posShipped < 0 || posInProg < 0 ||
             posPlanned < 0 || posConsid < 0)
-            return fail("PlainText",
+            fail("PlainText",
                 "QTextDocument.toPlainText() missing one of the "
                 "four status labels — Qt accessibility surface "
                 "won't see them either");
@@ -639,55 +639,55 @@ static int runMain(int argc, char **argv) {
     {
         const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty())
-            return fail("StateLabel", "roadmapdialog.cpp not readable");
+            fail("StateLabel", "roadmapdialog.cpp not readable");
         // ANTS-2012: collectCurrentBullets() caches its blocking git-log
         // result with a TTL so rebuild() (per search keystroke) doesn't
         // spawn `git log` each time — multi-second typing jank otherwise.
         if (!contains(src, "kExternalSignalsTtlMs"))
-            return fail("Ants2012",
+            fail("Ants2012",
                 "collectCurrentBullets must cache external signals "
                 "(kExternalSignalsTtlMs TTL) to avoid per-keystroke git jank");
         // INV-19: kStatusLabels table + static_assert.
         if (!contains(src, "constexpr StatusLabel kStatusLabels[]"))
-            return fail("StateLabel",
+            fail("StateLabel",
                 "kStatusLabels file-scope table missing");
         if (!contains(src, "static_assert(std::size(kStatusLabels) == 4"))
-            return fail("StateLabel",
+            fail("StateLabel",
                 "static_assert on kStatusLabels count missing — "
                 "a fifth status emoji could land without a label");
         // INV-22: filter accessibleName setters + visible label rename.
         if (!contains(src, "setAccessibleName(tr(\"Show shipped items\"))"))
-            return fail("FilterA11y",
+            fail("FilterA11y",
                 "m_filterDone->setAccessibleName(\"Show shipped items\") missing");
         if (!contains(src, "setAccessibleName(tr(\"Show planned items\"))"))
-            return fail("FilterA11y",
+            fail("FilterA11y",
                 "m_filterPlanned->setAccessibleName(\"Show planned items\") missing");
         if (!contains(src, "setAccessibleName(tr(\"Show in-progress items\"))"))
-            return fail("FilterA11y",
+            fail("FilterA11y",
                 "m_filterInProgress->setAccessibleName(\"Show in-progress items\") missing");
         if (!contains(src, "setAccessibleName(tr(\"Show considered items\"))"))
-            return fail("FilterA11y",
+            fail("FilterA11y",
                 "m_filterConsidered->setAccessibleName(\"Show considered items\") missing");
         // Visible label rename: ✅ Done → ✅ Shipped.
         if (contains(src, "tr(\"\\xe2\\x9c\\x85 Done\")") ||
             contains(src, "tr(\"✅ Done\")"))
-            return fail("FilterA11y",
+            fail("FilterA11y",
                 "m_filterDone still labelled \"✅ Done\" — should "
                 "be \"✅ Shipped\" per ANTS-1235");
         if (!contains(src, "tr(\"✅ Shipped\")"))
-            return fail("FilterA11y",
+            fail("FilterA11y",
                 "m_filterDone visible label must be \"✅ Shipped\"");
         // INV-23: CSS rule for rm-state-label + nowrap on section counts.
         // ANTS-1238 — `.rm-state-label` font-size was parameterised
         // to the labelPx tier slot (%20); cozy value (10px) lives in
         // kDensityTable and is locked by tests/features/roadmap_density/.
         if (!contains(src, ".rm-state-label{font-size:%20px;color:%6;"))
-            return fail("CssRule",
+            fail("CssRule",
                 ".rm-state-label CSS rule missing or wrong "
                 "(must declare font-size:%20px [labelPx tier slot — "
                 "cozy 10px lives in kDensityTable]; color:%6;)");
         if (!contains(src, "white-space:nowrap"))
-            return fail("CssRule",
+            fail("CssRule",
                 ".rm-section-counts must include white-space:nowrap "
                 "to prevent the labelled chip line from wrapping");
     }
@@ -699,27 +699,27 @@ static int runMain(int argc, char **argv) {
     {
         // Legitimate targets: roadmap item IDs + section slugs.
         if (!RD::isValidAnchorTarget(QStringLiteral("ANTS-1145")))
-            return fail("AnchorTarget", "valid item ID rejected");
+            fail("AnchorTarget", "valid item ID rejected");
         if (!RD::isValidAnchorTarget(QStringLiteral("MAME_CURATOR-7")))
-            return fail("AnchorTarget", "valid underscored ID rejected");
+            fail("AnchorTarget", "valid underscored ID rejected");
         if (!RD::isValidAnchorTarget(QStringLiteral(
                 "ants-mcp-improvements-from-running-audit-2026-05-14")))
-            return fail("AnchorTarget", "valid long slug rejected");
+            fail("AnchorTarget", "valid long slug rejected");
         // Hostile / malformed targets must be rejected.
         if (RD::isValidAnchorTarget(QStringLiteral("' OR 1=1 --")))
-            return fail("AnchorTarget", "SQL-ish injection accepted");
+            fail("AnchorTarget", "SQL-ish injection accepted");
         if (RD::isValidAnchorTarget(QStringLiteral("a/b")))
-            return fail("AnchorTarget", "path-separator target accepted");
+            fail("AnchorTarget", "path-separator target accepted");
         if (RD::isValidAnchorTarget(QStringLiteral("a b")))
-            return fail("AnchorTarget", "whitespace target accepted");
+            fail("AnchorTarget", "whitespace target accepted");
         if (RD::isValidAnchorTarget(QString()))
-            return fail("AnchorTarget", "empty target accepted");
+            fail("AnchorTarget", "empty target accepted");
         if (RD::isValidAnchorTarget(QString(201, QLatin1Char('a'))))
-            return fail("AnchorTarget", "over-long target accepted");
+            fail("AnchorTarget", "over-long target accepted");
         // Source guard: validation is actually wired into the handler.
         const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (!contains(src, "isValidAnchorTarget(target)"))
-            return fail("AnchorTarget",
+            fail("AnchorTarget",
                 "handleAnchorClicked must call isValidAnchorTarget(target) "
                 "before inserting into the expanded-state sets");
     }

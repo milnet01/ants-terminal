@@ -40,17 +40,17 @@ TEST(ClipboardRedaction, Main) {
     // surface from under us).
     {
         const std::string hdr = ants_test::slurpFile(CLIPBOARDGUARD_H);
-        if (hdr.empty()) return fail("INV-1", "clipboardguard.h not readable");
+        if (hdr.empty()) fail("INV-1", "clipboardguard.h not readable");
         if (!contains(hdr, "namespace clipboardguard"))
-            return fail("INV-1", "namespace clipboardguard missing in header");
+            fail("INV-1", "namespace clipboardguard missing in header");
         if (!contains(hdr, "enum class Source"))
-            return fail("INV-1", "enum class Source missing");
+            fail("INV-1", "enum class Source missing");
         if (!contains(hdr, "Trusted") ||
             !contains(hdr, "UntrustedPty") ||
             !contains(hdr, "UntrustedPlugin"))
-            return fail("INV-1", "Source enum missing one of Trusted / UntrustedPty / UntrustedPlugin");
+            fail("INV-1", "Source enum missing one of Trusted / UntrustedPty / UntrustedPlugin");
         if (!contains(hdr, "sanitize"))
-            return fail("INV-1", "sanitize free function missing");
+            fail("INV-1", "sanitize free function missing");
     }
 
     // INV-2: NUL stripping on Trusted.
@@ -63,7 +63,7 @@ TEST(ClipboardRedaction, Main) {
         in.append(QLatin1Char('c'));
         const QString out = clipboardguard::sanitize(in, clipboardguard::Source::Trusted);
         if (out != QStringLiteral("abc"))
-            return fail("INV-2",
+            fail("INV-2",
                 "Trusted sanitise should strip QChar(0) — expected \"abc\"");
     }
 
@@ -74,7 +74,7 @@ TEST(ClipboardRedaction, Main) {
         const QString out = clipboardguard::sanitize(
             in, clipboardguard::Source::UntrustedPty);
         if (out.size() != clipboardguard::kUntrustedMaxChars)
-            return fail("INV-3",
+            fail("INV-3",
                 "UntrustedPty sanitise should cap at 1 MiB");
     }
 
@@ -85,7 +85,7 @@ TEST(ClipboardRedaction, Main) {
         const QString out = clipboardguard::sanitize(
             in, clipboardguard::Source::UntrustedPlugin);
         if (out.size() != clipboardguard::kUntrustedMaxChars)
-            return fail("INV-4",
+            fail("INV-4",
                 "UntrustedPlugin sanitise should cap at 1 MiB");
     }
 
@@ -96,25 +96,25 @@ TEST(ClipboardRedaction, Main) {
         const QString out = clipboardguard::sanitize(
             in, clipboardguard::Source::Trusted);
         if (out.size() != twoMiB)
-            return fail("INV-5",
+            fail("INV-5",
                 "Trusted sanitise must pass large inputs through unchanged");
     }
 
     // INV-6: no raw clipboard writes survive in terminalwidget.cpp.
     {
         const std::string src = ants_test::slurpFile(TERMINALWIDGET_CPP);
-        if (src.empty()) return fail("INV-6", "terminalwidget.cpp not readable");
+        if (src.empty()) fail("INV-6", "terminalwidget.cpp not readable");
         if (contains(src, "QApplication::clipboard()->setText("))
-            return fail("INV-6",
+            fail("INV-6",
                 "raw QApplication::clipboard()->setText( still in terminalwidget.cpp");
     }
 
     // INV-7: no raw clipboard writes survive in mainwindow.cpp.
     {
         const std::string src = ants_test::slurpFile(MAINWINDOW_CPP);
-        if (src.empty()) return fail("INV-7", "mainwindow.cpp not readable");
+        if (src.empty()) fail("INV-7", "mainwindow.cpp not readable");
         if (contains(src, "QApplication::clipboard()->setText("))
-            return fail("INV-7",
+            fail("INV-7",
                 "raw QApplication::clipboard()->setText( still in mainwindow.cpp");
     }
 
@@ -123,10 +123,10 @@ TEST(ClipboardRedaction, Main) {
         const std::string tw = ants_test::slurpFile(TERMINALWIDGET_CPP);
         const std::string mw = ants_test::slurpFile(MAINWINDOW_CPP);
         if (!contains(tw, "Source::UntrustedPty"))
-            return fail("INV-8",
+            fail("INV-8",
                 "OSC 52 callback in terminalwidget.cpp does not classify as UntrustedPty");
         if (!contains(mw, "Source::UntrustedPlugin"))
-            return fail("INV-8",
+            fail("INV-8",
                 "Lua plugin clipboard glue in mainwindow.cpp does not classify as UntrustedPlugin");
     }
 

@@ -68,16 +68,16 @@ TEST(Osc8InsertDeleteLines, Main) {
         h.feed(cup(5, 0));
         h.feed(osc8Link("https://i1.example/", "link"));
         if (!rowHasUri(h.grid, 5, "https://i1.example/"))
-            return fail("I1 baseline",
+            fail("I1 baseline",
                         "span not committed at row 5 before Insert Line");
         // Cursor to row 2, insert 2 lines. Rows 5..(bottom-2) shift down
         // by 2; original row 5 is now at row 7.
         h.feed(cup(2, 0));
         h.feed("\033[2L");
         if (rowHasUri(h.grid, 5, "https://i1.example/"))
-            return fail("I1 old row", "span still at row 5 after CSI 2 L");
+            fail("I1 old row", "span still at row 5 after CSI 2 L");
         if (!rowHasUri(h.grid, 7, "https://i1.example/"))
-            return fail("I1 new row",
+            fail("I1 new row",
                         "span did not move to row 7 after CSI 2 L from row 2");
     }
 
@@ -87,14 +87,14 @@ TEST(Osc8InsertDeleteLines, Main) {
         h.feed(cup(5, 0));
         h.feed(osc8Link("https://i2.example/", "link"));
         if (!rowHasUri(h.grid, 5, "https://i2.example/"))
-            return fail("I2 baseline",
+            fail("I2 baseline",
                         "span not committed at row 5 before Delete Line");
         h.feed(cup(2, 0));
         h.feed("\033[2M");
         if (rowHasUri(h.grid, 5, "https://i2.example/"))
-            return fail("I2 old row", "span still at row 5 after CSI 2 M");
+            fail("I2 old row", "span still at row 5 after CSI 2 M");
         if (!rowHasUri(h.grid, 3, "https://i2.example/"))
-            return fail("I2 new row",
+            fail("I2 new row",
                         "span did not move to row 3 after CSI 2 M from row 2");
     }
 
@@ -106,11 +106,11 @@ TEST(Osc8InsertDeleteLines, Main) {
         h.feed(cup(0, 0));
         h.feed(osc8Link("https://i3.example/", "link"));
         if (!rowHasUri(h.grid, 0, "https://i3.example/"))
-            return fail("I3 baseline", "span not committed at row 0");
+            fail("I3 baseline", "span not committed at row 0");
         h.feed(cup(10, 0));
         h.feed("\033[1L");
         if (!rowHasUri(h.grid, 0, "https://i3.example/"))
-            return fail("I3 preservation",
+            fail("I3 preservation",
                         "span on row 0 disappeared after CSI 1 L at row 10");
     }
 

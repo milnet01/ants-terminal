@@ -71,9 +71,9 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
     // moved from a status-bar QLabel to a top-level menu-bar
     // QAction sitting to the right of &Help.
     if (!contains(h, "QLabel *m_repoVisibilityLabel"))
-        return fail("INV-1", "m_repoVisibilityLabel QLabel* member missing");
+        fail("INV-1", "m_repoVisibilityLabel QLabel* member missing");
     if (!contains(h, "QAction *m_updateAvailableAction"))
-        return fail("INV-1",
+        fail("INV-1",
             "m_updateAvailableAction QAction* member missing — see "
             "ANTS-1124 (the QLabel was retired in 0.7.62)");
 
@@ -87,59 +87,59 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
     // check the absence of the *old* QLabel surface, which is the
     // regression an earlier 0.7.x revert would re-introduce.
     if (!contains(s, "m_repoVisibilityLabel = new QLabel"))
-        return fail("INV-2", "m_repoVisibilityLabel not constructed");
+        fail("INV-2", "m_repoVisibilityLabel not constructed");
     if (!contains(s, "m_updateAvailableAction = new QAction"))
-        return fail("INV-2",
+        fail("INV-2",
             "m_updateAvailableAction not constructed");
     if (!contains(s, "addWidget(m_repoVisibilityLabel)"))
-        return fail("INV-2",
+        fail("INV-2",
             "m_repoVisibilityLabel must be on the LEFT side via "
             "addWidget — addPermanentWidget would put it on the right "
             "next to the Claude Code chrome (the 0.7.45 placement that "
             "0.7.49 moved per user feedback). It must sit next to the "
             "git-branch chip");
     if (!contains(s, "m_menuBar->addAction(m_updateAvailableAction)"))
-        return fail("INV-2",
+        fail("INV-2",
             "m_updateAvailableAction must be added to the menu bar via "
             "m_menuBar->addAction(...) — see ANTS-1124");
     if (!contains(s, "m_repoVisibilityLabel->hide()"))
-        return fail("INV-2", "m_repoVisibilityLabel not hidden by default");
+        fail("INV-2", "m_repoVisibilityLabel not hidden by default");
     if (!contains(s, "m_updateAvailableAction->setVisible(false)"))
-        return fail("INV-2",
+        fail("INV-2",
             "m_updateAvailableAction not hidden by default");
     // ObjectNames present (used for QSS targeting + test discovery).
     if (!contains(s, "\"repoVisibilityLabel\""))
-        return fail("INV-2", "repoVisibilityLabel objectName missing");
+        fail("INV-2", "repoVisibilityLabel objectName missing");
     if (!contains(s, "\"updateAvailableAction\""))
-        return fail("INV-2", "updateAvailableAction objectName missing");
+        fail("INV-2", "updateAvailableAction objectName missing");
     // Negative regression check: the old m_updateAvailableLabel
     // identifier must not survive — a partial revert that left it
     // around would silently re-add a status-bar QLabel.
     if (contains(s, "m_updateAvailableLabel") ||
         contains(h, "m_updateAvailableLabel"))
-        return fail("INV-2",
+        fail("INV-2",
             "stale m_updateAvailableLabel reference survives — see "
             "ANTS-1124 (0.7.62 migration)");
 
     // INV-3: pure helpers exist.
     if (!contains(s, "findGitRepoRoot"))
-        return fail("INV-3", "findGitRepoRoot helper missing");
+        fail("INV-3", "findGitRepoRoot helper missing");
     if (!contains(s, "parseGithubOriginSlug"))
-        return fail("INV-3", "parseGithubOriginSlug helper missing");
+        fail("INV-3", "parseGithubOriginSlug helper missing");
     if (!contains(s, "compareSemver"))
-        return fail("INV-3", "compareSemver helper missing");
+        fail("INV-3", "compareSemver helper missing");
 
     // INV-4: parseGithubOriginSlug handles both URL forms.
     {
         const std::string body = functionBody(s,
             "QString parseGithubOriginSlug");
         if (body.empty())
-            return fail("INV-4", "parseGithubOriginSlug body not found");
+            fail("INV-4", "parseGithubOriginSlug body not found");
         if (body.find("https://github.com/") == std::string::npos)
-            return fail("INV-4",
+            fail("INV-4",
                 "parseGithubOriginSlug must recognise the https URL form");
         if (body.find("git@github.com:") == std::string::npos)
-            return fail("INV-4",
+            fail("INV-4",
                 "parseGithubOriginSlug must recognise the SSH URL form");
     }
 
@@ -148,9 +148,9 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
         const std::string body = functionBody(s,
             "void MainWindow::refreshStatusBarForActiveTab");
         if (body.empty())
-            return fail("INV-5", "refreshStatusBarForActiveTab body not found");
+            fail("INV-5", "refreshStatusBarForActiveTab body not found");
         if (body.find("refreshRepoVisibility") == std::string::npos)
-            return fail("INV-5",
+            fail("INV-5",
                 "refreshStatusBarForActiveTab must call refreshRepoVisibility");
     }
 
@@ -162,7 +162,7 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
         const std::string body = functionBody(s,
             "void MainWindow::refreshRepoVisibility");
         if (body.empty())
-            return fail("INV-6", "refreshRepoVisibility body not found");
+            fail("INV-6", "refreshRepoVisibility body not found");
         size_t pos = 0, count = 0;
         const std::string needle = "m_repoVisibilityLabel->hide()";
         while ((pos = body.find(needle, pos)) != std::string::npos) {
@@ -170,23 +170,23 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
             pos += needle.size();
         }
         if (count < 4)
-            return fail("INV-6",
+            fail("INV-6",
                 "refreshRepoVisibility must hide() on every failure branch "
                 "(gh missing / no cwd / no .git / non-GitHub origin)");
     }
 
     // INV-7: 10-minute TTL on the repo-visibility cache.
     if (!contains(s, "10 * 60 * 1000"))
-        return fail("INV-7",
+        fail("INV-7",
             "10-minute TTL constant missing from refreshRepoVisibility");
 
     // INV-8: gh repo view invoked with --json visibility -q .visibility.
     if (!contains(s, "\"--json\""))
-        return fail("INV-8", "gh invocation must request only the visibility field");
+        fail("INV-8", "gh invocation must request only the visibility field");
     if (!contains(s, "\"visibility\""))
-        return fail("INV-8", "gh invocation must specify the visibility field");
+        fail("INV-8", "gh invocation must specify the visibility field");
     if (!contains(s, "\".visibility\""))
-        return fail("INV-8",
+        fail("INV-8",
             "gh invocation must use jq selector .visibility (-q .visibility)");
 
     // INV-9 (revised in 0.7.47): startup-only update check via 5 s
@@ -200,22 +200,22 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
     //   (c) helpCheckForUpdatesAction connected with bool true
     //       (user-initiated, surfaces "Up to date" / "Failed").
     if (contains(h, "m_updateCheckTimer"))
-        return fail("INV-9",
+        fail("INV-9",
             "0.7.47 retired the hourly update timer — m_updateCheckTimer "
             "member must NOT be present");
     if (!contains(s, "QTimer::singleShot(5000"))
-        return fail("INV-9",
+        fail("INV-9",
             "5 s singleShot for the startup check is required so the "
             "badge surfaces shortly after launch");
     if (!contains(s, "helpCheckForUpdatesAction"))
-        return fail("INV-9",
+        fail("INV-9",
             "Help menu must add a `Check for Updates` action with "
             "objectName `helpCheckForUpdatesAction` so a manual "
             "trigger exists alongside the startup probe");
     // The manual trigger must pass userInitiated=true. Source-grep
     // for the bool argument near the action's connect.
     if (!contains(s, "checkForUpdates(/*userInitiated=*/true)"))
-        return fail("INV-9",
+        fail("INV-9",
             "Help menu's Check for Updates action must invoke "
             "checkForUpdates(true) so the result lands as a status "
             "message ('Up to date' / 'Update check failed') instead "
@@ -226,13 +226,13 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
         const std::string body = functionBody(s,
             "void MainWindow::checkForUpdates");
         if (body.empty())
-            return fail("INV-10", "checkForUpdates body not found");
+            fail("INV-10", "checkForUpdates body not found");
         if (body.find("api.github.com/repos/milnet01/ants-terminal/releases/latest")
                 == std::string::npos)
-            return fail("INV-10",
+            fail("INV-10",
                 "checkForUpdates must hit the releases/latest endpoint");
         if (body.find("setRawHeader(\"User-Agent\"") == std::string::npos)
-            return fail("INV-10",
+            fail("INV-10",
                 "User-Agent raw header is required — GitHub 403s without one");
     }
 
@@ -244,7 +244,7 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
     // auto-open URLs; the lambda we connect *is* the routing.
     if (!contains(s, "&QAction::triggered") ||
             !contains(s, "handleUpdateClicked"))
-        return fail("INV-11",
+        fail("INV-11",
             "update action must connect QAction::triggered to "
             "handleUpdateClicked — see ANTS-1124");
 
@@ -265,13 +265,13 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
         const std::string body = functionBody(s,
             "int compareSemver");
         if (body.empty())
-            return fail("INV-12", "compareSemver body not found");
+            fail("INV-12", "compareSemver body not found");
         if (body.find("split('.')") == std::string::npos)
-            return fail("INV-12",
+            fail("INV-12",
                 "compareSemver must split on '.' to compare components "
                 "numerically");
         if (body.find("toInt") == std::string::npos)
-            return fail("INV-12",
+            fail("INV-12",
                 "compareSemver must compare components as integers, not "
                 "strings (or `0.10` would compare less than `0.9`)");
     }
@@ -282,7 +282,7 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
     // ships with no update metadata and AppImageUpdate refuses to
     // run against it.
     if (yml.find("UPDATE_INFORMATION:") == std::string::npos)
-        return fail("INV-13",
+        fail("INV-13",
             "release.yml must set UPDATE_INFORMATION env var on the "
             "linuxdeploy step");
     // ANTS-1318 INV-8: the channel field is now computed
@@ -290,21 +290,21 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
     // Stable builds still resolve to `latest`, set in the Resolve step.
     if (yml.find("gh-releases-zsync|milnet01|ants-terminal|") ==
             std::string::npos)
-        return fail("INV-13",
+        fail("INV-13",
             "UPDATE_INFORMATION must use the `gh-releases-zsync` schema "
             "anchored on milnet01/ants-terminal");
     if (yml.find("UPDATE_CHANNEL=\"latest\"") == std::string::npos)
-        return fail("INV-13",
+        fail("INV-13",
             "stable AppImage builds must keep the `latest` update "
             "channel (ANTS-1318 INV-8)");
     if (yml.find("Ants_Terminal-*-x86_64.AppImage.zsync") == std::string::npos)
-        return fail("INV-13",
+        fail("INV-13",
             "UPDATE_INFORMATION wildcard must point at the "
             "Ants_Terminal-*-x86_64.AppImage.zsync sidecar pattern");
 
     // INV-14: workflow uploads the .zsync sidecar alongside the AppImage.
     if (yml.find("\"${OUTPUT}.zsync\"") == std::string::npos)
-        return fail("INV-14",
+        fail("INV-14",
             "release.yml's gh release upload step must include the "
             "`${OUTPUT}.zsync` sidecar — without it, AppImageUpdate "
             "clients fall back to whole-file fetch (slow) or fail");
@@ -316,21 +316,21 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
         const std::string body = functionBody(s,
             "void MainWindow::handleUpdateClicked");
         if (body.empty())
-            return fail("INV-15", "handleUpdateClicked body not found");
+            fail("INV-15", "handleUpdateClicked body not found");
         if (body.find("AppImageUpdate") == std::string::npos)
-            return fail("INV-15",
+            fail("INV-15",
                 "handleUpdateClicked must probe for the AppImageUpdate GUI "
                 "binary before falling back");
         if (body.find("appimageupdatetool") == std::string::npos)
-            return fail("INV-15",
+            fail("INV-15",
                 "handleUpdateClicked must probe for the appimageupdatetool "
                 "CLI as the second-choice updater");
         if (body.find("APPIMAGE") == std::string::npos)
-            return fail("INV-15",
+            fail("INV-15",
                 "handleUpdateClicked must read the $APPIMAGE env var to "
                 "find the on-disk AppImage path the updater needs as arg");
         if (body.find("QDesktopServices::openUrl") == std::string::npos)
-            return fail("INV-15",
+            fail("INV-15",
                 "handleUpdateClicked must fall back to "
                 "QDesktopServices::openUrl when no updater is installed");
     }
@@ -338,7 +338,7 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
     // INV-16: detached spawn — the updater outlives this process so
     // the user can quit + restart while the download runs.
     if (!contains(s, "QProcess::startDetached"))
-        return fail("INV-16",
+        fail("INV-16",
             "handleUpdateClicked must use QProcess::startDetached — "
             "running the updater attached would block the parent on its "
             "lifetime and force a still-running terminal to wait on it");
@@ -358,7 +358,7 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
         const std::string body = functionBody(s,
             "void MainWindow::handleUpdateClicked");
         if (body.empty())
-            return fail("INV-17", "handleUpdateClicked body not found");
+            fail("INV-17", "handleUpdateClicked body not found");
         // Dialog must exist somewhere ahead of startDetached. New
         // shape: heap QDialog + WA_DeleteOnClose + plain QPushButton
         // wired to clicked()→close(). Old QMessageBox shape is now
@@ -368,25 +368,25 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
         const auto qdialogPos = body.find("new QDialog(this)");
         const auto detachPos  = body.find("QProcess::startDetached");
         if (qmsgPos != std::string::npos)
-            return fail("INV-17",
+            fail("INV-17",
                 "handleUpdateClicked must NOT use QMessageBox box(this) "
                 "+ box.exec() — that's the QTBUG-79126 modal-grab "
                 "click-drop shape the 0.7.50 About-dialog fix retired. "
                 "Use a heap QDialog + plain QPushButton instead.");
         if (qdialogPos == std::string::npos)
-            return fail("INV-17",
+            fail("INV-17",
                 "handleUpdateClicked must construct a non-modal QDialog "
                 "with `new QDialog(this)` so the user can confirm before "
                 "the updater is kicked");
         if (detachPos == std::string::npos)
-            return fail("INV-17",
+            fail("INV-17",
                 "handleUpdateClicked must still call "
                 "QProcess::startDetached on Update");
         // Update click must be wired to QDialog::close so the dialog
         // dismisses on a single click (matches About-dialog pattern).
         if (body.find("&QPushButton::clicked") == std::string::npos ||
                 body.find("&QDialog::close") == std::string::npos)
-            return fail("INV-17",
+            fail("INV-17",
                 "handleUpdateClicked must wire QPushButton::clicked to "
                 "QDialog::close on the dialog buttons (Wayland modal "
                 "fix per debug_wayland_modal_dialog.md memory)");
@@ -395,22 +395,22 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
         // load-bearing rather than a generic confirm prompt.
         if (body.find("quit and re-launch") == std::string::npos &&
                 body.find("quit and relaunch") == std::string::npos)
-            return fail("INV-17",
+            fail("INV-17",
                 "the dialog text must explicitly mention quitting + "
                 "re-launching as the next user step");
         if (body.find("Claude Code") == std::string::npos)
-            return fail("INV-17",
+            fail("INV-17",
                 "the dialog text must call out that Claude Code "
                 "sessions will be disconnected — that's the user's "
                 "primary concern per the 2026-04-27 feedback");
         if (body.find("reconnected") == std::string::npos)
-            return fail("INV-17",
+            fail("INV-17",
                 "the dialog text must say sessions need to be "
                 "reconnected — without that, the user might assume "
                 "the restart preserves session state");
         // Cancel branch must short-circuit (no detach).
         if (body.find("Update cancelled") == std::string::npos)
-            return fail("INV-17",
+            fail("INV-17",
                 "Cancel must surface a status-bar acknowledgement so "
                 "the user knows the click was registered but not acted "
                 "on (silent cancel feels like a bug)");

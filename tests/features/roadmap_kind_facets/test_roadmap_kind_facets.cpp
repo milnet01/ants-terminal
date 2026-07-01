@@ -31,7 +31,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 }
 
 int fail(const char *label, const char *why) {
-    std::fprintf(stderr, "[%s] FAIL: %s\n", label, why);
+    ADD_FAILURE_AT(__FILE__, __LINE__) << "[" << label << "] " << why;
     return 1;
 }
 
@@ -68,12 +68,12 @@ static int runMain() {
     // INV-1: renderHtml signature gained the kindFilter parameter.
     {
         const std::string hdr = ants_test::slurpFile(ROADMAPDIALOG_H);
-        if (hdr.empty()) return fail("INV-1", "roadmapdialog.h not readable");
+        if (hdr.empty()) fail("INV-1", "roadmapdialog.h not readable");
         if (!contains(hdr, "kindFilter"))
-            return fail("INV-1",
+            fail("INV-1",
                 "renderHtml signature missing kindFilter parameter");
         if (!contains(hdr, "QSet<QString>"))
-            return fail("INV-1",
+            fail("INV-1",
                 "kindFilter parameter type should be QSet<QString>");
     }
 
@@ -84,11 +84,11 @@ static int runMain() {
             QStringLiteral("default"),
             RoadmapDialog::SortOrder::Document, QString(), {});
         if (!html.contains(QStringLiteral("First implement bullet")))
-            return fail("INV-2", "implement bullet missing under empty filter");
+            fail("INV-2", "implement bullet missing under empty filter");
         if (!html.contains(QStringLiteral("Second fix bullet")))
-            return fail("INV-2", "fix bullet missing under empty filter");
+            fail("INV-2", "fix bullet missing under empty filter");
         if (!html.contains(QStringLiteral("Third doc bullet")))
-            return fail("INV-2", "doc bullet missing under empty filter");
+            fail("INV-2", "doc bullet missing under empty filter");
     }
 
     // INV-3: filter = {"implement"} — only the implement bullet survives.
@@ -99,11 +99,11 @@ static int runMain() {
             QStringLiteral("default"),
             RoadmapDialog::SortOrder::Document, QString(), kindFilter);
         if (!html.contains(QStringLiteral("First implement bullet")))
-            return fail("INV-3", "implement bullet should survive filter");
+            fail("INV-3", "implement bullet should survive filter");
         if (html.contains(QStringLiteral("Second fix bullet")))
-            return fail("INV-3", "fix bullet leaked through implement filter");
+            fail("INV-3", "fix bullet leaked through implement filter");
         if (html.contains(QStringLiteral("Third doc bullet")))
-            return fail("INV-3", "doc bullet leaked through implement filter");
+            fail("INV-3", "doc bullet leaked through implement filter");
     }
 
     // INV-4: filter = {"fix", "doc"} — fix + doc survive, implement dropped.
@@ -115,11 +115,11 @@ static int runMain() {
             QStringLiteral("default"),
             RoadmapDialog::SortOrder::Document, QString(), kindFilter);
         if (html.contains(QStringLiteral("First implement bullet")))
-            return fail("INV-4", "implement bullet leaked through {fix,doc}");
+            fail("INV-4", "implement bullet leaked through {fix,doc}");
         if (!html.contains(QStringLiteral("Second fix bullet")))
-            return fail("INV-4", "fix bullet should survive {fix,doc}");
+            fail("INV-4", "fix bullet should survive {fix,doc}");
         if (!html.contains(QStringLiteral("Third doc bullet")))
-            return fail("INV-4", "doc bullet should survive {fix,doc}");
+            fail("INV-4", "doc bullet should survive {fix,doc}");
     }
 
     // INV-5: bullet with no Kind: line is excluded under non-empty filter.
@@ -143,9 +143,9 @@ static int runMain() {
             QStringLiteral("default"),
             RoadmapDialog::SortOrder::Document, QString(), kindFilter);
         if (!html.contains(QStringLiteral("Classified")))
-            return fail("INV-5", "classified bullet should survive");
+            fail("INV-5", "classified bullet should survive");
         if (html.contains(QStringLiteral("Unclassified")))
-            return fail("INV-5",
+            fail("INV-5",
                 "unclassified bullet should be excluded under non-empty filter");
     }
 
@@ -153,17 +153,17 @@ static int runMain() {
     // checkboxes; each checkbox carries a stable objectName.
     {
         const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
-        if (src.empty()) return fail("INV-6", "roadmapdialog.cpp not readable");
+        if (src.empty()) fail("INV-6", "roadmapdialog.cpp not readable");
         if (!contains(src, "Kind:"))
-            return fail("INV-6", "Kind: row label missing in dialog setup");
+            fail("INV-6", "Kind: row label missing in dialog setup");
         if (!contains(src, "roadmap-filter-kind-implement"))
-            return fail("INV-7",
+            fail("INV-7",
                 "missing objectName roadmap-filter-kind-implement");
         if (!contains(src, "roadmap-filter-kind-fix"))
-            return fail("INV-7",
+            fail("INV-7",
                 "missing objectName roadmap-filter-kind-fix");
         if (!contains(src, "roadmap-filter-kind-doc"))
-            return fail("INV-7",
+            fail("INV-7",
                 "missing objectName roadmap-filter-kind-doc");
     }
 

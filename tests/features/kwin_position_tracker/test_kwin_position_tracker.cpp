@@ -91,11 +91,11 @@ TEST(KwinPositionTracker, Main) {
     const std::string cmake  = ants_test::slurpFile(cmakeLists.c_str());
     if (header.empty() || source.empty() || mwH.empty() ||
         mwCpp.empty() || cmake.empty())
-        return fail("INV-1", "one of the source files not readable");
+        fail("INV-1", "one of the source files not readable");
 
     // INV-1: class renamed.
     if (!contains(header, "class KWinPositionTracker"))
-        return fail("INV-1", "KWinPositionTracker class declaration missing");
+        fail("INV-1", "KWinPositionTracker class declaration missing");
 
     // INV-2: file renamed (header path itself proves the new name lives;
     // the old paths must NOT exist).
@@ -103,12 +103,12 @@ TEST(KwinPositionTracker, Main) {
         const std::string oldHdr = std::string(SRC_DIR) + "/xcbpositiontracker.h";
         const std::string oldCpp = std::string(SRC_DIR) + "/xcbpositiontracker.cpp";
         if (QFileInfo::exists(QString::fromStdString(oldHdr)))
-            return fail("INV-2", "old src/xcbpositiontracker.h still exists");
+            fail("INV-2", "old src/xcbpositiontracker.h still exists");
         if (QFileInfo::exists(QString::fromStdString(oldCpp)))
-            return fail("INV-2", "old src/xcbpositiontracker.cpp still exists");
+            fail("INV-2", "old src/xcbpositiontracker.cpp still exists");
         if (!QFileInfo::exists(QString::fromStdString(headerPath)) ||
             !QFileInfo::exists(QString::fromStdString(sourcePath)))
-            return fail("INV-2", "new kwinpositiontracker files missing");
+            fail("INV-2", "new kwinpositiontracker files missing");
     }
 
     // INV-3: no `XcbPositionTracker` references outside comments
@@ -145,33 +145,33 @@ TEST(KwinPositionTracker, Main) {
     // (b) setPosition() calls kwinPresent() before any
     // QTemporaryFile is constructed.
     if (!contains(header, "KDE_FULL_SESSION"))
-        return fail("INV-4",
+        fail("INV-4",
             "KDE_FULL_SESSION env-var check missing in kwinpositiontracker.h");
     if (!contains(header, "XDG_CURRENT_DESKTOP"))
-        return fail("INV-4",
+        fail("INV-4",
             "XDG_CURRENT_DESKTOP env-var check missing in kwinpositiontracker.h");
     if (!contains(header, "inline bool kwinPresent"))
-        return fail("INV-4",
+        fail("INV-4",
             "kwinPresent() helper missing in kwinpositiontracker.h "
             "(ANTS-1142 lift)");
     // Scope ordering checks to setPosition's body.
     const size_t fnStart = source.find("setPosition(int x, int y)");
     if (fnStart == std::string::npos)
-        return fail("INV-4", "setPosition() definition not found");
+        fail("INV-4", "setPosition() definition not found");
     const std::string fnBody = source.substr(fnStart);
     {
         const size_t firstGuard = fnBody.find("kwinPresent(");
         const std::regex tempCtor(R"(QTemporaryFile\s+\w+\()");
         std::smatch tempMatch;
         if (firstGuard == std::string::npos)
-            return fail("INV-4",
+            fail("INV-4",
                 "kwinPresent() not invoked in setPosition() — guard missing");
         if (!std::regex_search(fnBody, tempMatch, tempCtor))
-            return fail("INV-4",
+            fail("INV-4",
                 "no QTemporaryFile constructor call in setPosition()");
         const size_t firstTempCtor = static_cast<size_t>(tempMatch.position(0));
         if (firstGuard >= firstTempCtor)
-            return fail("INV-4",
+            fail("INV-4",
                 "kwinPresent() must appear before QTemporaryFile ctor (guard placement)");
     }
 
@@ -188,16 +188,16 @@ TEST(KwinPositionTracker, Main) {
         const QStringList after = tempEntriesByGlob(
             QStringLiteral("kwin_pos_ants_*"));
         if (after != before)
-            return fail("INV-4b",
+            fail("INV-4b",
                 "setPosition() wrote a temp file despite both env vars unset");
     }
 
     // INV-5: qScopeGuard reference + dismiss() in same function.
     if (!contains(source, "qScopeGuard") &&
         !contains(source, "QScopeGuard"))
-        return fail("INV-5", "qScopeGuard not used");
+        fail("INV-5", "qScopeGuard not used");
     if (!contains(source, "dismiss()"))
-        return fail("INV-5", "dismiss() not called");
+        fail("INV-5", "dismiss() not called");
 
     // INV-5b: qScopeGuard *call* line < first QTemporaryFile
     // *constructor* line (both scoped to the function body and
@@ -207,21 +207,21 @@ TEST(KwinPositionTracker, Main) {
         const std::regex tempCtor(R"(QTemporaryFile\s+\w+\()");
         std::smatch g, t;
         if (!std::regex_search(fnBody, g, guardCall))
-            return fail("INV-5b", "qScopeGuard call not found in setPosition()");
+            fail("INV-5b", "qScopeGuard call not found in setPosition()");
         if (!std::regex_search(fnBody, t, tempCtor))
-            return fail("INV-5b",
+            fail("INV-5b",
                 "QTemporaryFile constructor not found in setPosition()");
         if (static_cast<size_t>(g.position(0)) >=
             static_cast<size_t>(t.position(0)))
-            return fail("INV-5b",
+            fail("INV-5b",
                 "qScopeGuard must precede QTemporaryFile constructor (ordering)");
     }
 
     // INV-6: TOCTOU fix preserved + no hardcoded path regression.
     if (!contains(source, "QTemporaryFile"))
-        return fail("INV-6", "QTemporaryFile call removed (TOCTOU regression)");
+        fail("INV-6", "QTemporaryFile call removed (TOCTOU regression)");
     if (!contains(source, "setAutoRemove(false)"))
-        return fail("INV-6",
+        fail("INV-6",
             "setAutoRemove(false) call removed (cleanup contract regression)");
     // Negative literal-path check across src/.
     {

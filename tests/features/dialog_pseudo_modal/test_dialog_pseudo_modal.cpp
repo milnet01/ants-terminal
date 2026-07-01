@@ -67,13 +67,13 @@ QEvent *makeEvent(QEvent::Type t) {
 TEST(DialogPseudoModal, Main) {    const std::string focusHdr = ants_test::slurpFile(DIALOGFOCUS_H);
     const std::string source = ants_test::slurpFile(MAINWINDOW_CPP);
     if (focusHdr.empty() || source.empty())
-        return fail("INV-1", "source files not readable");
+        fail("INV-1", "source files not readable");
 
     // INV-1: helper signature exists in dialogfocus.h.
     if (!contains(focusHdr, "namespace dialogfocus") ||
         !contains(focusHdr,
             "shouldSuppressEventForDialog(QObject *watched, QEvent *event)"))
-        return fail("INV-1",
+        fail("INV-1",
             "shouldSuppressEventForDialog signature missing in dialogfocus.h");
 
     using dialogfocus::shouldSuppressEventForDialog;
@@ -125,10 +125,10 @@ TEST(DialogPseudoModal, Main) {    const std::string focusHdr = ants_test::slurp
         delete ev;
         delete dlg;  // also deletes child via QObject parent
         if (gotDlg)
-            return fail("INV-2h",
+            fail("INV-2h",
                 "watched IS the dialog should NOT suppress");
         if (gotChild)
-            return fail("INV-2b",
+            fail("INV-2b",
                 "watched is dialog's child should NOT suppress");
     }
 
@@ -142,7 +142,7 @@ TEST(DialogPseudoModal, Main) {    const std::string focusHdr = ants_test::slurp
         delete ev;
         delete outside;
         if (got)
-            return fail("INV-2c",
+            fail("INV-2c",
                 "no visible dialog should not suppress anything");
     }
 
@@ -198,13 +198,13 @@ TEST(DialogPseudoModal, Main) {    const std::string focusHdr = ants_test::slurp
         delete b;
         delete outside;
         if (onA)
-            return fail("INV-2e",
+            fail("INV-2e",
                 "stacked: click on dialog A itself should be allowed");
         if (onAChild)
-            return fail("INV-2e",
+            fail("INV-2e",
                 "stacked: click on dialog A's child should be allowed");
         if (!onOutside)
-            return fail("INV-2f",
+            fail("INV-2f",
                 "stacked: click outside both dialogs should suppress");
     }
 
@@ -217,14 +217,14 @@ TEST(DialogPseudoModal, Main) {    const std::string focusHdr = ants_test::slurp
     // assertion would silently no-op on CI. Source-grep matches the
     // pattern INV-1 uses for the helper signature.
     if (!contains(focusHdr, "activePopupWidget"))
-        return fail("INV-2i",
+        fail("INV-2i",
             "dialogfocus.h missing QApplication::activePopupWidget() "
             "short-circuit — combo dropdown clicks will be eaten by "
             "the pseudo-modal blocker (regression of the 0.7.85 "
             "RoadmapDialog density combo bug)");
     if (!contains(focusHdr, "popup->isAncestorOf(target)") &&
         !contains(focusHdr, "popup->isAncestorOf("))
-        return fail("INV-2i",
+        fail("INV-2i",
             "dialogfocus.h has activePopupWidget() reference but no "
             "ancestor check on the popup tree — popup descendants "
             "(QListView items inside a combo dropdown) won't be "
@@ -235,7 +235,7 @@ TEST(DialogPseudoModal, Main) {    const std::string focusHdr = ants_test::slurp
         QEvent *ev = makeEvent(QEvent::MouseButtonPress);
         if (shouldSuppressEventForDialog(nullptr, ev)) {
             delete ev;
-            return fail("INV-2g", "nullptr watched should not suppress");
+            fail("INV-2g", "nullptr watched should not suppress");
         }
         auto *w = new QWidget;
         w->show();
@@ -243,7 +243,7 @@ TEST(DialogPseudoModal, Main) {    const std::string focusHdr = ants_test::slurp
         if (shouldSuppressEventForDialog(w, nullptr)) {
             delete ev;
             delete w;
-            return fail("INV-2g", "nullptr event should not suppress");
+            fail("INV-2g", "nullptr event should not suppress");
         }
         delete ev;
         delete w;
@@ -251,16 +251,16 @@ TEST(DialogPseudoModal, Main) {    const std::string focusHdr = ants_test::slurp
 
     // INV-3: mouse/key suppression wired through eventFilter.
     if (!contains(source, "shouldSuppressEventForDialog"))
-        return fail("INV-3",
+        fail("INV-3",
             "eventFilter does not invoke shouldSuppressEventForDialog");
     if (!contains(source, "return true;"))
-        return fail("INV-3",
+        fail("INV-3",
             "eventFilter has no `return true` to swallow events");
 
     // INV-4: shared eventFilter — both helpers referenced in the
     // same TU.
     if (!contains(source, "shouldRefocusOnDialogClose"))
-        return fail("INV-4",
+        fail("INV-4",
             "eventFilter does not invoke shouldRefocusOnDialogClose (ANTS-1050)");
 
     // INV-5: mutual exclusivity is structural — shouldSuppressEventFor
