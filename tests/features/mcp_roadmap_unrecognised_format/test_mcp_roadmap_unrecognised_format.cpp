@@ -40,7 +40,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 std::string boundedBetween(const std::string &cpp,
                            const std::string &startSig,
                            const std::string &endSig,
-                           size_t kMaxBound = 72 * 1024) {
+                           size_t kMaxBound = 80 * 1024) {
     // ANTS-1436 bumped 28→32 KB: pagination args parse (~1.5 KB)
     // + PaginationEngine::pageBullets call + envelope augment at
     // each of the 2 emission sites (~600 B × 2). The pagination
@@ -69,6 +69,10 @@ std::string boundedBetween(const std::string &cpp,
     // the raw/id-only drop-predicate switch + the legacy_format/
     // raw_*_count envelope emission (~2 KB). Body is now ~66 KB —
     // the ceiling stays a meaningful runaway guard.
+    // ANTS-3400/3402 bumped 72→80 KB: the accepted-status-filter block +
+    // sectionFilter collapse + granular lifecycle predicate branches
+    // (ANTS-3400) and the max_body_bytes parse + rcCapBodyFields emission
+    // caps (ANTS-3402) add ~4 KB. Body is now ~70 KB.
     const auto startPos = cpp.find(startSig);
     if (startPos == std::string::npos) return {};
     const auto endPos = cpp.find(endSig, startPos + startSig.size());

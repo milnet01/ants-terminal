@@ -296,6 +296,103 @@ TEST(McpFileOutline, FreeFunctionCapture) {
            "mis-detected as a function symbol";
 }
 
+// ANTS-3399 (Vestige feedback 2026-06-30) — a C++ method whose return type is
+// itself namespace-qualified (`JPH::BodyID Class::method(...)`) must outline as
+// the bare qualified member name, NOT with the return type glued on. The old
+// heuristic located the space before the FIRST `::`, which fell inside the
+// qualified return type, so read_region symbol-mode couldn't resolve it.
+TEST(McpFileOutline, QualifiedReturnTypeMemberName) {
+    expect_reset();
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + QStringLiteral("/phys.cpp");
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+        f.write(
+            "bool PhysicsWorld::initialize() {\n"                        // unqualified return
+            "    return true;\n"
+            "}\n"
+            "JPH::BodyID PhysicsWorld::createStaticBody(int shape) {\n"  // qualified return
+            "    return {};\n"
+            "}\n"
+            "JPH::BodyInterface PhysicsWorld::getBodyInterface() {\n"    // qualified return
+            "    return {};\n"
+            "}\n");
+        f.close();
+    }
+    const QJsonObject out = FileOutline::compute(
+        path, FileOutline::Mode::Cpp, /*includeDocComment=*/false,
+        /*maxSymbols=*/100);
+    ASSERT_TRUE(out.value("ok").toBool());
+    const QJsonArray symbols = out.value("symbols").toArray();
+    auto hasName = [&](const char *n) {
+        for (const auto &v : symbols)
+            if (v.toObject().value("name").toString() == QLatin1String(n))
+                return true;
+        return false;
+    };
+    EXPECT_TRUE(hasName("PhysicsWorld::initialize"))
+        << "ANTS-3399: unqualified-return member regressed";
+    EXPECT_TRUE(hasName("PhysicsWorld::createStaticBody"))
+        << "ANTS-3399: qualified-return member glued the return type onto the name";
+    EXPECT_TRUE(hasName("PhysicsWorld::getBodyInterface"))
+        << "ANTS-3399: second qualified-return member not cleanly named";
+    // The return type must NOT survive in any symbol name.
+    for (const auto &v : symbols) {
+        const QString nm = v.toObject().value("name").toString();
+        EXPECT_FALSE(nm.startsWith(QLatin1String("JPH::")))
+            << "ANTS-3399: return type leaked into symbol name: "
+            << nm.toStdString();
+    }
+}
+
+// ANTS-3404 (Album Builder feedback 2026-06-30) — the Python outliner must emit
+// class methods qualified as `Class.method` (indented `def`), not only
+// top-level classes/functions, so read_region symbol-mode can address a method.
+TEST(McpFileOutline, PythonClassMethodQualified) {
+    expect_reset();
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + QStringLiteral("/play_queue.py");
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+        f.write(
+            "class RepeatMode:\n"
+            "    pass\n"
+            "\n"
+            "class PlayQueue:\n"
+            "    def __init__(self):\n"
+            "        self._i = 0\n"
+            "    def next(self):\n"
+            "        return self._i\n"
+            "\n"
+            "def module_level():\n"
+            "    return 1\n");
+        f.close();
+    }
+    const QJsonObject out = FileOutline::compute(
+        path, FileOutline::Mode::Py, /*includeDocComment=*/false,
+        /*maxSymbols=*/100);
+    ASSERT_TRUE(out.value("ok").toBool());
+    const QJsonArray symbols = out.value("symbols").toArray();
+    auto hasName = [&](const char *n) {
+        for (const auto &v : symbols)
+            if (v.toObject().value("name").toString() == QLatin1String(n))
+                return true;
+        return false;
+    };
+    EXPECT_TRUE(hasName("RepeatMode")) << "ANTS-3404: top-level class regressed";
+    EXPECT_TRUE(hasName("PlayQueue")) << "ANTS-3404: top-level class regressed";
+    EXPECT_TRUE(hasName("PlayQueue.next"))
+        << "ANTS-3404: class method not emitted as Class.method";
+    EXPECT_TRUE(hasName("PlayQueue.__init__"))
+        << "ANTS-3404: dunder method not qualified";
+    EXPECT_TRUE(hasName("module_level"))
+        << "ANTS-3404: top-level function regressed (should stay bare)";
+}
+
 // ANTS-2148 follow-up (DOOM_Ants feedback 2026-06-26) — a C/C++ function whose
 // PARAMETER LIST wraps across source lines (id-Software / K&R prototypes, e.g.
 // DOOM's emit_wall) must still be outlined, AND resolve to the header's START

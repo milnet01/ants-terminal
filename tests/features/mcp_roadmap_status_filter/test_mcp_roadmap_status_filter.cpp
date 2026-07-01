@@ -123,6 +123,50 @@ TEST(mcp_roadmap_status_filter, Inv8McpInputSchema) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-3400 — the read verb accepts roadmap_log's lifecycle vocabulary
+// (planned / in-progress / considered) as first-class status filters and
+// echoes the accepted set on refusal.
+TEST(mcp_roadmap_status_filter, Ants3400GranularLifecycleFilters) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "ANTS-3400"),
+           "ANTS-3400 anchor comment present");
+    expect(contains(cpp, "kAcceptedStatusFilters"),
+           "ANTS-3400: accepted-status list present");
+    expect(contains(cpp, "out[\"accepted\"]"),
+           "ANTS-3400: bad_status envelope echoes the accepted set");
+    expect(contains(cpp, "QLatin1String(\"in-progress\")"),
+           "ANTS-3400: in-progress granular filter branch present");
+    expect(contains(cpp, "consideredEmoji"),
+           "ANTS-3400: considered (💭) filter emoji present");
+    expect(contains(cpp, "sectionFilter"),
+           "ANTS-3400: section_index collapses granular names to aggregate");
+    // Schema surfaces the granular enum values + max_body_bytes (ANTS-3402).
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    expect(contains(ci, "statusEnum.append(\"planned\")"),
+           "ANTS-3400: inputSchema enum includes \"planned\"");
+    expect(contains(ci, "statusEnum.append(\"considered\")"),
+           "ANTS-3400: inputSchema enum includes \"considered\"");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3402 — targeted id/ids fetch may raise the body cap via
+// max_body_bytes; list emission stays at the 2000 cap.
+TEST(mcp_roadmap_status_filter, Ants3402TargetedBodyCap) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "kRoadmapQueryBodyStoreCap"),
+           "ANTS-3402: enlarged cache store cap present");
+    expect(contains(cpp, "rcCapBodyFields"),
+           "ANTS-3402: emission-time re-truncation helper present");
+    expect(contains(cpp, "idBodyCap"),
+           "ANTS-3402: id/ids path honours max_body_bytes");
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    expect(contains(ci, "max_body_bytes"),
+           "ANTS-3402: max_body_bytes schema property declared");
+    EXPECT_EQ(0, expect_failures());
+}
+
 TEST(mcp_roadmap_status_filter, Inv9McpDispatchExtractsStatus) {
     expect_reset();
     // Post-ANTS-1253: the per-tool dispatch extraction moved from

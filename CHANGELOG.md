@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_query` `max_body_bytes` raises the body cap for a targeted id/ids fetch** (ANTS-3402)
+  A single-bullet / id-set read can now return a large multi-phase epic body (clamp [2000, 16384]); list and section queries stay at the 2000 cap.
+
+- **`roadmap_query` accepts the granular lifecycle filters planned / in-progress / considered** (ANTS-3400)
+  The read verb now takes roadmap_log's own status vocabulary (planned=📋, in-progress=🚧, considered=💭) alongside active/shipped/all, and echoes an `accepted` list on an unknown value. section_index collapses the granular names to their aggregate.
+
 - **Opt-in async mode for the `audit_run` MCP verb (ANTS-3396).** (ANTS-3396)
   Pass `async:true` to start a slow sweep detached and get a job handle back instantly ({job_id, status:"running", poll_with:"audit_poll"}) instead of blocking on the ~60s MCP transport cap; poll the new `audit_poll {caller_cwd, job_id}` verb for completion (running/done/error/expired). The sync path is unchanged (default async:false). The job registry is bounded (16 entries, 270s reap) and root-scoped so a poll only sees its own project's jobs. Results are written to .audit_cache regardless of poll.
 
@@ -118,6 +124,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_log` documents that flip/annotate resolve top-level bullets only** (ANTS-3403)
+  Nested phase sub-bullets inside a narrator bullet's body are out of scope for the locators and need a direct Edit; the op descriptor now states this.
+
+- **`changelog_log` malformed-section advisory now names the alternative insert path** (ANTS-3401)
+  When a feature-grouped `[Unreleased]` layout is detected, the advisory suggests op:add_from_roadmap into a named subsection or a hand-edit.
+
 - **`roadmap_log` counter strategy auto-creates `.roadmap-counter` at 0 on a greenfield roadmap instead of refusing (ANTS-3397)**
   A counter-strategy op:append / op:append_batch on a roadmap that has no .roadmap-counter AND no existing bullet ids now auto-initialises the counter at 0 and proceeds (first id allocates as <prefix>-0001), rather than refusing with counter_missing and forcing a shell `echo 0 > .roadmap-counter` side-step that broke the all-MCP workflow. A roadmap that already carries ids but lost its counter file still refuses (counter_missing) — re-allocating from 0 would mint duplicate ids. Reported by the Contact_List CC session.
 
@@ -206,6 +218,15 @@ for security-relevant changes.
   header contract comments, and the orphaned Inv3 shape test.
 
 ### Fixed
+
+- **`workspace_search` returns a soft `rg_failed` envelope instead of a raw transport timeout on huge match streams** (ANTS-3405)
+  The JSON parse loop is now bounded by the wall budget (not just the rg process), so a whole-repo query over large data blobs no longer blows the client's transport timer with an un-catchable -32000.
+
+- **`file_outline` now emits Python class methods as `Class.method`** (ANTS-3404)
+  The Python outliner tracks enclosing classes by indentation, so `read_region` symbol mode can address a method (e.g. `PlayQueue.next`); top-level defs/classes stay bare.
+
+- **`file_outline` no longer glues a namespace-qualified C++ return type onto the symbol name** (ANTS-3399)
+  A method like `JPH::BodyID PhysicsWorld::createStaticBody(...)` now outlines as `PhysicsWorld::createStaticBody` (was the whole return-type-plus-name), so `read_region` symbol mode resolves it. `read_region` also gained an unambiguous qualified-suffix fallback so a bare method name resolves its qualified entry.
 
 - **audit_run no longer turns a tool's progress bar or fatal error into a fake finding** (ANTS-3395)
   JSON-emitting tools (ruff, bandit, semgrep, gitleaks, trivy, shellcheck) are now parsed strictly as JSON, so bandit's progress bar and trivy's FATAL log line stop being counted as findings. A trivy scan that aborts is reported as a crashed/incomplete tool instead of a single misleading finding.

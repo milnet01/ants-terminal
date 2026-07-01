@@ -176,6 +176,44 @@ TEST(McpReadRegion, SymbolBody) {
     EXPECT_TRUE(got.at(0).contains("Box::area"));
 }
 
+// ANTS-3399 / ANTS-3404 — a bare method name resolves an unambiguous
+// qualified outline entry via the suffix fallback (`area` → `Box::area`),
+// so a caller that knows only the method name need not spell the class.
+TEST(McpReadRegion, BareNameQualifiedSuffixMatch) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QStringList src = {
+        "struct Box {",                      // 1
+        "    int side;",                     // 2
+        "};",                                // 3
+        "",                                  // 4
+        "int Box::area() {",                 // 5  outline: Box::area
+        "    return side * side;",           // 6
+        "}",                                 // 7
+    };
+    const QString p = writeFile(dir, "s.cpp", src);
+    ReadRegion::Options o; o.symbol = "area";   // bare — no class qualifier
+    const QJsonObject env = ReadRegion::extract(p, o);
+    ASSERT_TRUE(env.value("ok").toBool())
+        << env.value("error").toString().toStdString();
+    EXPECT_EQ(env.value("start_line").toInt(), 5);
+}
+
+// ANTS-3399 / ANTS-3404 — an AMBIGUOUS bare name (two classes share a method
+// name) must NOT silently pick one; it falls through to symbol_not_found so
+// the caller re-queries with the qualified name.
+TEST(McpReadRegion, BareNameAmbiguousSuffixRejected) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QStringList src = {
+        "int A::run() { return 1; }",        // 1  outline: A::run
+        "int B::run() { return 2; }",        // 2  outline: B::run
+    };
+    const QString p = writeFile(dir, "s.cpp", src);
+    ReadRegion::Options o; o.symbol = "run";    // matches A::run AND B::run
+    const QJsonObject env = ReadRegion::extract(p, o);
+    EXPECT_FALSE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("code").toString(), "symbol_not_found");
+}
+
 // B4 — unknown symbol → symbol_not_found (INV-2).
 TEST(McpReadRegion, SymbolNotFound) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());

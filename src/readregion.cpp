@@ -99,21 +99,45 @@ SymRange resolveSymbol(const QString &absPath, const QString &name) {
     const QJsonArray syms = outline.value(QStringLiteral("symbols")).toArray();
     int firstIdx = -1;
     int defIdx   = -1;  // ANTS-3349 — first match that is a definition
-    for (int i = 0; i < syms.size(); ++i) {
-        const QJsonObject so = syms.at(i).toObject();
-        if (so.value(QStringLiteral("name")).toString() == name) {
+    // One matching pass over the flat outline. Prefer a definition over a
+    // forward declaration: a declaration signature ends with ';'
+    // (`void Foo();`); a definition's does not (`void Foo() {` /
+    // `void Foo()`). Mirrors find_definition's kind.
+    auto runPass = [&](auto namePred) {
+        firstIdx = -1; defIdx = -1; r.matchCount = 0;
+        for (int i = 0; i < syms.size(); ++i) {
+            const QJsonObject so = syms.at(i).toObject();
+            if (!namePred(so.value(QStringLiteral("name")).toString())) continue;
             if (firstIdx < 0) firstIdx = i;
             ++r.matchCount;
-            // Prefer the definition over a forward declaration: a declaration
-            // signature ends with ';' (`void Foo();`); a definition's does not
-            // (`void Foo() {` / `void Foo()`). Mirrors find_definition's kind.
             if (defIdx < 0) {
                 const QString s =
                     so.value(QStringLiteral("signature")).toString().trimmed();
                 if (!s.endsWith(QLatin1Char(';'))) defIdx = i;
             }
         }
+    };
+    runPass([&](const QString &n) { return n == name; });
+
+    // ANTS-3399 / ANTS-3404 — qualified-suffix fallback. When no symbol
+    // matches the bare name exactly, resolve a qualified outline entry the
+    // caller couldn't guess: a C++ member (`createStaticBody` →
+    // `PhysicsWorld::createStaticBody`) or a Python method (`next` →
+    // `PlayQueue.next`). Only an UNAMBIGUOUS hit is accepted (exactly one
+    // symbol ends with `::name` / `.name`); ties fall through to
+    // not-found so the caller re-queries with the qualified name rather
+    // than reading a wrong slice. Skipped when the caller already passed a
+    // qualified name (contains `::` or `.`).
+    if (firstIdx < 0 && !name.contains(QLatin1String("::"))
+                     && !name.contains(QLatin1Char('.'))) {
+        const QString cppSuffix = QStringLiteral("::") + name;
+        const QString pySuffix  = QLatin1Char('.') + name;
+        runPass([&](const QString &n) {
+            return n.endsWith(cppSuffix) || n.endsWith(pySuffix);
+        });
+        if (r.matchCount != 1) firstIdx = -1;   // ambiguous/none → not found
     }
+
     if (firstIdx < 0) return r;  // not found
     r.found = true;
     const int chosenIdx = (defIdx >= 0) ? defIdx : firstIdx;

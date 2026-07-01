@@ -292,19 +292,51 @@ QJsonDocument rcPassHeadingsWriteRefusal(const QString &path,
 // under the response soft cap". Callers needing the verbatim full
 // body should follow up with a targeted Read.
 constexpr int kRoadmapQueryBodyCap = 2000;
+// ANTS-3402 — the cache stores each body up to this larger ceiling so a
+// TARGETED single-bullet / id-set fetch can opt into more than the 2000
+// list default via `max_body_bytes` (a multi-phase epic narrator bullet
+// holds its whole phase plan in one ~5 KiB body — the 2000 cap truncated
+// it, forcing an awk fallback; Album Builder feedback). Aggregate memory
+// stays bounded by the file size: only the rare oversized body stores
+// more than 2000, and Σ bodies ≤ the roadmap file. List/section emission
+// still re-truncates to kRoadmapQueryBodyCap (rcCapBodyFields), so only
+// the opt-in id/ids path sees the larger body.
+constexpr int kRoadmapQueryBodyStoreCap = 16384;
 
 // Always populate body + body_truncated on every cached bullet
 // (regardless of the caller's include_body preference), so a later
 // call that DOES want include_body doesn't need to rebuild the cache.
 // rcStripBodyFields below removes them just before emission when
-// include_body is false. Trade: ~500 bullets × 2 KiB = ~1 MiB extra
-// in m_roadmapCacheBullets per cached roadmap (capped per-file).
-void rcSetBodyFields(QJsonObject &o, const QString &body) {
-    if (body.size() > kRoadmapQueryBodyCap) {
-        o["body"] = body.left(kRoadmapQueryBodyCap);
+// include_body is false. `cap` defaults to the 2000 list cap; the cache
+// builder passes kRoadmapQueryBodyStoreCap (ANTS-3402).
+void rcSetBodyFields(QJsonObject &o, const QString &body,
+                     int cap = kRoadmapQueryBodyCap) {
+    if (body.size() > cap) {
+        o["body"] = body.left(cap);
         o["body_truncated"] = true;
     } else {
         o["body"] = body;
+    }
+}
+
+// ANTS-3402 — re-truncate already-cached body fields to `cap` at emission.
+// The cache stores bodies up to kRoadmapQueryBodyStoreCap; every path that
+// emits from the cache (full-file list at 2000, id/ids at max_body_bytes)
+// runs this so the wire payload honours the effective cap. Preserves an
+// existing body_truncated:true (a body truncated at the store cap stays
+// flagged even if it now fits `cap` — it can't, since cap ≤ store cap,
+// but the OR keeps the flag monotonic).
+void rcCapBodyFields(QJsonArray &arr, int cap) {
+    for (int i = 0; i < arr.size(); ++i) {
+        QJsonObject o = arr.at(i).toObject();
+        const auto it = o.constFind(QStringLiteral("body"));
+        if (it == o.constEnd()) continue;
+        const QString body = it->toString();
+        if (body.size() > cap) {
+            o["body"] = body.left(cap);
+            o["body_truncated"] = true;
+            arr.replace(i, o);
+        }
     }
 }
 
@@ -2903,7 +2935,7 @@ static QJsonArray rcBuildBulletCacheArray(const QString &markdown) {
         o["headline"] = b.headline;
         o["headline_oneline"] = rcHeadlineOneline(b.headline);
         rcMaybeEmitHeadlineFull(o, b);
-        rcSetBodyFields(o, b.body);
+        rcSetBodyFields(o, b.body, kRoadmapQueryBodyStoreCap);  // ANTS-3402
         o["kind"] = b.kind;
         QJsonArray lanes;
         for (const QString &l : b.lanes) lanes.append(l);
@@ -3244,11 +3276,22 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     if (filter.isEmpty()) filter = QStringLiteral("all");
 
     // ANTS-1247-INV-5: unknown status → bad_status, cache untouched.
+    // ANTS-3400 — accept roadmap_log's lifecycle vocabulary
+    // (planned / in-progress / considered) as first-class status
+    // filters, not only the active/shipped/all aggregates. Two sessions
+    // (MAME Curator, Album Builder) passed the write-side enum to this
+    // read verb and hit bad_status with no accepted-set hint. The
+    // granular names map to a single emoji in the bullets predicate
+    // (planned→📋, in-progress→🚧, considered→💭); "active" stays the
+    // 📋∪🚧 aggregate. On refusal we now echo the accepted set so the
+    // caller self-corrects without guessing.
     // ANTS-1247-INV-11: <verbatim> echo capped at 64 bytes; bytes
     // < 0x20 replaced with '?' to prevent ANSI/control passthrough.
-    if (filter != QLatin1String("all") &&
-        filter != QLatin1String("active") &&
-        filter != QLatin1String("shipped")) {
+    static const QStringList kAcceptedStatusFilters = {
+        QStringLiteral("all"),         QStringLiteral("active"),
+        QStringLiteral("shipped"),     QStringLiteral("planned"),
+        QStringLiteral("in-progress"), QStringLiteral("considered") };
+    if (!kAcceptedStatusFilters.contains(filter)) {
         QString verbatim = req.value(QStringLiteral("status")).toString();
         if (verbatim.size() > 64) verbatim.truncate(64);
         for (int i = 0; i < verbatim.size(); ++i) {
@@ -3257,8 +3300,23 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["ok"] = false;
         out["error"] = QStringLiteral("unknown status filter: %1").arg(verbatim);
         out["code"] = QStringLiteral("bad_status");
+        out["accepted"] = QJsonArray::fromStringList(kAcceptedStatusFilters);
         return QJsonDocument(out);
     }
+
+    // ANTS-3400 — section_index mode tallies only active/shipped (there
+    // is no per-lifecycle SectionCounts field). Collapse the granular
+    // lifecycle names to their aggregate for section discovery so the
+    // fine-grained filter still applies on the bullets/section= path
+    // while section_index stays coarse: planned/in-progress → active;
+    // considered has no section tally, so it lists every section (a
+    // caller after 💭 items uses the bullets path, which does filter).
+    QString sectionFilter = filter;
+    if (sectionFilter == QLatin1String("planned") ||
+        sectionFilter == QLatin1String("in-progress"))
+        sectionFilter = QStringLiteral("active");
+    else if (sectionFilter == QLatin1String("considered"))
+        sectionFilter = QStringLiteral("all");
 
     // ANTS-1287-INV-1: optional `section` slug. Empty/missing → full-file
     // path (existing behaviour, INV-6).
@@ -3278,6 +3336,20 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     if (idArg.size() > 64) idArg.truncate(64);
     for (int i = 0; i < idArg.size(); ++i) {
         if (idArg.at(i).unicode() < 0x20) idArg[i] = QChar('?');
+    }
+
+    // ANTS-3402 — opt-in higher body cap for a TARGETED id/ids fetch. The
+    // list default stays kRoadmapQueryBodyCap (2000); a caller after a
+    // single large epic body raises it up to kRoadmapQueryBodyStoreCap
+    // (16 KiB). Clamped to [2000, 16384]; ignored on list/section/
+    // section_index paths (they always emit at the 2000 cap).
+    int idBodyCap = kRoadmapQueryBodyCap;
+    if (req.contains(QStringLiteral("max_body_bytes"))) {
+        int req_cap = req.value(QStringLiteral("max_body_bytes")).toInt(
+            kRoadmapQueryBodyCap);
+        if (req_cap < kRoadmapQueryBodyCap)      req_cap = kRoadmapQueryBodyCap;
+        if (req_cap > kRoadmapQueryBodyStoreCap) req_cap = kRoadmapQueryBodyStoreCap;
+        idBodyCap = req_cap;
     }
 
     // ANTS-1726 — optional `ids` plural-selector. Same intent as `id`
@@ -3825,17 +3897,17 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             rawShippedTotal += it.value().shipped;
         }
         bool useRawPredicate = false;
-        if (filter == QLatin1String("active") ||
-            filter == QLatin1String("shipped")) {
+        if (sectionFilter == QLatin1String("active") ||
+            sectionFilter == QLatin1String("shipped")) {
             int idOnlySurvivors = 0;
             for (const auto &sec : std::as_const(m_roadmapIndex)) {
                 const auto t = rolled.value(sec.slug,
                                             RoadmapIndex::SectionCounts{});
-                if ((filter == QLatin1String("active")  && t.activeWithId  > 0) ||
-                    (filter == QLatin1String("shipped") && t.shippedWithId > 0))
+                if ((sectionFilter == QLatin1String("active")  && t.activeWithId  > 0) ||
+                    (sectionFilter == QLatin1String("shipped") && t.shippedWithId > 0))
                     ++idOnlySurvivors;
             }
-            const int rawTotal = (filter == QLatin1String("active"))
+            const int rawTotal = (sectionFilter == QLatin1String("active"))
                                      ? rawActiveTotal : rawShippedTotal;
             useRawPredicate = (idOnlySurvivors == 0 && rawTotal > 0);
         }
@@ -3847,9 +3919,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             // ANTS-1848 — status filter drops zero-id-count sections.
             // ANTS-2052 — under the legacy fallback, drop by the raw emoji
             // count instead so an id-less roadmap still lists its sections.
-            const bool dropActive  = (filter == QLatin1String("active")) &&
+            const bool dropActive  = (sectionFilter == QLatin1String("active")) &&
                 (useRawPredicate ? t.active  == 0 : t.activeWithId  == 0);
-            const bool dropShipped = (filter == QLatin1String("shipped")) &&
+            const bool dropShipped = (sectionFilter == QLatin1String("shipped")) &&
                 (useRawPredicate ? t.shipped == 0 : t.shippedWithId == 0);
             if (dropActive || dropShipped) {
                 continue;
@@ -4169,14 +4241,18 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         if (filter == QLatin1String("all")) {
             filtered = sectionBullets;
         } else {
-            const QString plannedEmoji  = QString::fromUtf8("\xF0\x9F\x93\x8B");
-            const QString progressEmoji = QString::fromUtf8("\xF0\x9F\x9A\xA7");
-            const QString doneEmoji     = QString::fromUtf8("\xE2\x9C\x85");
+            const QString plannedEmoji    = QString::fromUtf8("\xF0\x9F\x93\x8B");
+            const QString progressEmoji   = QString::fromUtf8("\xF0\x9F\x9A\xA7");
+            const QString doneEmoji       = QString::fromUtf8("\xE2\x9C\x85");
+            const QString consideredEmoji = QString::fromUtf8("\xF0\x9F\x92\xAD"); // 💭 (ANTS-3400)
             for (const auto &v : std::as_const(sectionBullets)) {
                 const QString s = v.toObject().value(QStringLiteral("status")).toString();
                 const bool keep =
-                    (filter == QLatin1String("active")  && (s == plannedEmoji || s == progressEmoji)) ||
-                    (filter == QLatin1String("shipped") && (s == doneEmoji));
+                    (filter == QLatin1String("active")      && (s == plannedEmoji || s == progressEmoji)) ||
+                    (filter == QLatin1String("shipped")     && (s == doneEmoji)) ||
+                    (filter == QLatin1String("planned")     && (s == plannedEmoji)) ||
+                    (filter == QLatin1String("in-progress") && (s == progressEmoji)) ||
+                    (filter == QLatin1String("considered")  && (s == consideredEmoji));
                 if (keep) filtered.append(v);
             }
         }
@@ -4433,6 +4509,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             }
         }
         if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
+        else rcCapBodyFields(matches, idBodyCap);  // ANTS-3402
         // ANTS-1881 — id-branch projection (second emission surface;
         // INV-5 anchors the dual-surface requirement). Applied after
         // body-strip so the projected object inherits the same key
@@ -4479,6 +4556,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             }
         }
         if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
+        else rcCapBodyFields(matches, idBodyCap);  // ANTS-3402
         if (mode == QLatin1String("headline_only")) {
             rcProjectHeadlineOnly(matches);
         }
@@ -4515,9 +4593,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     if (filter == QLatin1String("all")) {
         filtered = m_roadmapCacheBullets;
     } else {
-        const QString plannedEmoji  = QString::fromUtf8("\xF0\x9F\x93\x8B"); // 📋
-        const QString progressEmoji = QString::fromUtf8("\xF0\x9F\x9A\xA7"); // 🚧
-        const QString doneEmoji     = QString::fromUtf8("\xE2\x9C\x85");     // ✅
+        const QString plannedEmoji    = QString::fromUtf8("\xF0\x9F\x93\x8B"); // 📋
+        const QString progressEmoji   = QString::fromUtf8("\xF0\x9F\x9A\xA7"); // 🚧
+        const QString doneEmoji       = QString::fromUtf8("\xE2\x9C\x85");     // ✅
+        const QString consideredEmoji = QString::fromUtf8("\xF0\x9F\x92\xAD"); // 💭 (ANTS-3400)
         for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
             const QString s = v.toObject().value(QStringLiteral("status")).toString();
             const bool keep =
@@ -4550,7 +4629,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             callerPassedOffset, callerPassedLimit, page.truncated);
 
     // ANTS-1517 — strip body fields when include_body is false.
+    // ANTS-3402 — else re-truncate to the 2000 list cap: this path emits
+    // from m_roadmapCacheBullets, whose bodies are now stored up to
+    // kRoadmapQueryBodyStoreCap; the larger body is reserved for the
+    // opt-in id/ids fetch, so a list stays at the 2000 cap.
     if (!includeBody) rcStripBodyFields(page.slice);
+    else              rcCapBodyFields(page.slice, kRoadmapQueryBodyCap);
     // ANTS-1881 — full-file projection (main emission surface).
     // INV-6: PaginationEngine already measured the unprojected
     // page above; projection happens here so the wire payload is
@@ -4765,6 +4849,32 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatchForTest(
     return cmdRoadmapLogAppendBatch(req);
 }
 
+// ANTS-2125 / ANTS-3401 — shared malformed-[Unreleased] advisory text.
+// Four emission sites (single add: dry_run + write; add_batch: dry_run +
+// write) differ only in singular/plural and tense, so build the string
+// once. ANTS-3401 (MAME Curator feedback): when the section deliberately
+// uses feature-grouped `### ` subsections instead of flat categories, the
+// canonical flat-category insert reads inconsistently — name the
+// alternative insert paths so the caller can choose before committing.
+static QString changelogMalformedAdvisory(int line, bool plural,
+                                          bool applied) {
+    const QString subject = plural ? QStringLiteral("entries")
+                                    : QStringLiteral("the entry");
+    const QString tense = applied
+        ? (plural ? QStringLiteral("were inserted")
+                  : QStringLiteral("was inserted"))
+        : QStringLiteral("would be inserted");
+    return QStringLiteral(
+        "changelog_log: `## [Unreleased]` interleaves non-heading prose "
+        "between its `### ` category blocks (first at line %1) — %2 %3 in "
+        "canonical order, but the section layout is malformed. If this "
+        "section deliberately uses feature-grouped `### ` subsections "
+        "(not flat Keep-a-Changelog categories), the flat-category insert "
+        "may read inconsistently; consider op:add_from_roadmap into a "
+        "named subsection or a hand-edit. Otherwise, consider tidying it.")
+        .arg(line).arg(subject, tense);
+}
+
 // ANTS-1548 — changelog_log. Renders one Keep-a-Changelog bullet and
 // splices it under the right category in `## [Unreleased]`. m_main-
 // independent (caller_cwd + filesystem only), same as the flip path.
@@ -4975,12 +5085,8 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         out["bullet"]           = bullet;
         if (!id.isEmpty()) out["id"] = id;
         if (res.malformed_section) {
-            out["advisory"] = QStringLiteral(
-                "changelog_log: `## [Unreleased]` interleaves non-heading "
-                "prose between its `### ` category blocks (first at line %1) "
-                "— the entry would be inserted in canonical order, but the "
-                "section layout is malformed; consider tidying it.")
-                    .arg(res.malformed_line);
+            out["advisory"] = changelogMalformedAdvisory(
+                res.malformed_line, /*plural=*/false, /*applied=*/false);
         }
         if (!scrubbed.isEmpty()) {
             QJsonArray dropped;
@@ -5018,12 +5124,8 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     // is malformed. Surface it (parity with roadmap_log possible_duplicates)
     // so the caller can tidy the section before the insert compounds it.
     if (res.malformed_section) {
-        out["advisory"] = QStringLiteral(
-            "changelog_log: `## [Unreleased]` interleaves non-heading "
-            "prose between its `### ` category blocks (first at line %1) "
-            "— the entry was inserted in canonical order, but the section "
-            "layout is malformed; consider tidying it.")
-                .arg(res.malformed_line);
+        out["advisory"] = changelogMalformedAdvisory(
+            res.malformed_line, /*plural=*/false, /*applied=*/true);
     }
     if (!scrubbed.isEmpty()) {
         QJsonArray dropped;
@@ -5301,12 +5403,8 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
             ? static_cast<qint64>(0)
             : static_cast<qint64>(markdown.toUtf8().size());
         if (malformedSection) {
-            out["advisory"] = QStringLiteral(
-                "changelog_log: `## [Unreleased]` interleaves non-heading "
-                "prose between its `### ` category blocks (first at line %1) "
-                "— entries would be inserted in canonical order, but the "
-                "section layout is malformed; consider tidying it.")
-                    .arg(malformedLine);
+            out["advisory"] = changelogMalformedAdvisory(
+                malformedLine, /*plural=*/true, /*applied=*/false);
         }
         return QJsonDocument(out);
     }
@@ -5338,12 +5436,8 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     out["skipped_count"] = skipped.size();
     out["bytes_written"] = bytesWritten;
     if (malformedSection) {
-        out["advisory"] = QStringLiteral(
-            "changelog_log: `## [Unreleased]` interleaves non-heading "
-            "prose between its `### ` category blocks (first at line %1) "
-            "— entries were inserted in canonical order, but the section "
-            "layout is malformed; consider tidying it.")
-                .arg(malformedLine);
+        out["advisory"] = changelogMalformedAdvisory(
+            malformedLine, /*plural=*/true, /*applied=*/true);
     }
     return QJsonDocument(out);
 }
@@ -8711,8 +8805,24 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     struct PendingCtx { int line; QString text; };
     QList<PendingCtx> pendingBefore;
     const QList<QByteArray> lines = stdoutBytes.split('\n');
+    // ANTS-3405 — bound the parse loop by the wall budget too, not just the
+    // rg process. rg --json over a repo with large data blobs (a ~1.2 MB
+    // YAML, per-locale files, *.mo binaries), made slower by --threads 1,
+    // can emit an enormous match stream; this loop iterates EVERY line
+    // regardless of max_results (to count seenMatchEvents), so a huge
+    // stream blew the client's ~60 s transport timer with a raw -32000 and
+    // no envelope (RetroDB feedback). Cap the total at rg-budget + an equal
+    // parse budget and return the same soft rg_failed envelope instead.
+    // Checked every 2048 events so the timer cost is negligible.
+    const qint64 totalBudgetMs = static_cast<qint64>(budgetMs) * 2;
+    bool parseBudgetExceeded = false;
+    int scanCounter = 0;
     for (const QByteArray &line : lines) {
         if (line.isEmpty()) continue;
+        if ((++scanCounter & 0x7FF) == 0 && wall.hasExpired(totalBudgetMs)) {
+            parseBudgetExceeded = true;
+            break;
+        }
         QJsonParseError perr{};
         const QJsonDocument doc = QJsonDocument::fromJson(line, &perr);
         if (perr.error != QJsonParseError::NoError || !doc.isObject()) continue;
@@ -8826,10 +8936,25 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             "(max 30), or fall back to `Bash rg` for one-off queries");
         return QJsonDocument(o);
     }
+    // ANTS-3405 — parse budget blown with no partial results: return the
+    // same soft rg_failed envelope (never a raw transport timeout). With
+    // partial results, fall through and flag truncated below.
+    if (parseBudgetExceeded && matches.isEmpty()) {
+        QJsonObject o = wsErr("rg_failed",
+            QStringLiteral("workspace-search: match stream too large to parse "
+                           "within %1 s wall budget").arg(budgetSec));
+        o["timeout_sec"] = budgetSec;
+        o["hint"] = QStringLiteral(
+            "the query matched too much to parse in time — narrow with a "
+            "lane= / glob= filter or a more specific pattern, exclude large "
+            "data blobs, raise timeout_sec (max 30), or fall back to `Bash rg`");
+        return QJsonDocument(o);
+    }
     // ANTS-1248-INV-4: post-cap detection — truncated iff we either
-    // saw more match events than max_results, or the hard kill cut
-    // us off mid-stream.
-    if (seenMatchEvents > matches.size() || hardKilled) truncated = true;
+    // saw more match events than max_results, or the hard kill / parse
+    // budget cut us off mid-stream (ANTS-3405).
+    if (seenMatchEvents > matches.size() || hardKilled || parseBudgetExceeded)
+        truncated = true;
 
     // ANTS-1501 — near-duplicate excerpt dedup. Broad queries that hit
     // a common code shape ("emit signalName", `connect(`, "qDebug() <<")

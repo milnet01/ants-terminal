@@ -17689,6 +17689,7 @@ server build id so clients can self-diagnose this.
   **Layman:** When you accept Ants' auto-detected project layout, files sitting loose at the top of the repo (often the most important ones) get silently left out of the code index.
   Kind: fix.
   Source: cc-feedback-2026-06-30 (RetroArch).
+  Corroborated 2026-06-30 (RetroArch): the subdir-only source_roots (11 entries, no repo root) leave retroarch.c (~9k LoC), configuration.c, runloop.c, command.c, dynamic.c invisible; session_orient.codebase_index reported lane_count:1 on a 2271-file tree. RetroArch is the high-impact reference case — suggest prioritising.
 
 - 📋 [ANTS-3391] **roadmap_query accepts a query arg but silently no-ops it (ignored_args) — add a keyword/text-filter mode or refuse with bad_args.**
   RetroArch: roadmap_query(query:"TIDY") returns the full active set with ignored_args:["query"] — the arg is parsed-but-discarded; the only filters are status/section/mode. Fix (preferred): add a case-insensitive text-filter mode matching the substring against headline+body, composing with the existing status/section filters (also serves MAME's by-keyword bullet lookup). Alternative: drop query from the accepted arg set so an unsupported filter is a self-documenting bad_args refusal rather than a silent no-op.
@@ -17833,6 +17834,77 @@ load) still open, no regression. New items below.
   Kind: enhancement.
   Source: DOOM-0091 feedback 2026-06-29.
   Resolved (2026-06-29): fbNotFound scans the resolved parent dir for sibling *_Ants_MCP_Feedback.md files, attaches candidates[] + hint to feedback_query / feedback_log append_tracking not_found envelopes. Tests: mcp_feedback_query NotFoundListsSiblingCandidates, mcp_feedback_log Refusals.
+
+### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
+
+Triage of the 2026-06-30 → 2026-07-01 un-triaged feedback tails from Vestige,
+MAME Curator, Album Builder, RetroArch, RetroDB, and finbreak.
+Confirmed-resolved this batch: ANTS-2052, ANTS-2059, ANTS-2073 (already ✅).
+ANTS-3390 corroborated by RetroArch as a high-impact case.
+
+- ✅ [ANTS-3399] **file_outline prepends a `::`-qualified C++ return type into the symbol name, breaking read_region symbol-mode lookups.**
+  For a C++ method whose return type is namespace-qualified on the definition line, the outliner emits name=`JPH::BodyID PhysicsWorld::createStaticBody` instead of `PhysicsWorld::createStaticBody`; unqualified return types (`bool PhysicsWorld::initialize`) parse correctly. The return-type-stripping heuristic stops at the first `::`. read_region symbol mode then fails for any such method (hit 2/2 this session) — the caller can't guess the mangled name and falls back to workspace_search + line-range read. Fix (either suffices): (1) in the C++ outliner strip the FULL leading return-type token including a `::`-qualified one (scan back from `(` to the method identifier, take the preceding `Class::`-qualified run, drop the whitespace-separated return type before it); (2) in read_region symbol matching, match on a trailing-component/suffix basis so `createStaticBody` and `PhysicsWorld::createStaticBody` both resolve, and on miss return a nearest-symbol hint (the ANTS-1950 file-stem-hint pattern applied to symbols).
+  **Layman:** When Ants lists the functions in a C++ file, a method that returns a namespaced type (like JPH::BodyID) gets that type glued onto its name, so "jump to this function" then can't find it.
+  Kind: fix.
+  Lanes: mcp-file-outline, remotecontrol.
+  Source: cc-feedback-2026-06-30 (Vestige).
+  Resolved (2026-07-01): fileoutline.cpp rxCppMember path now strips the FULL leading return-type token (last whitespace before the qualified name), so `JPH::BodyID PhysicsWorld::createStaticBody` outlines as `PhysicsWorld::createStaticBody`. read_region resolveSymbol also gained an unambiguous qualified-suffix fallback (bare `createStaticBody` → `PhysicsWorld::createStaticBody`). Tests: McpFileOutline.QualifiedReturnTypeMemberName, McpReadRegion.BareNameQualifiedSuffixMatch/AmbiguousSuffixRejected. Full suite 2408/2408.
+
+- ✅ [ANTS-3400] **roadmap_query `status` filter rejects roadmap_log's lifecycle vocabulary (planned/in-progress/considered) and lists no accepted values on bad_status.**
+  roadmap_log accepts status ∈ {planned, in-progress, shipped, considered} (the 📋🚧✅💭 words) but roadmap_query's `status` filter accepts only {active, shipped, considered?, all} — status:"planned" / "in-progress" / "considered" → {ok:false, code:bad_status} with NO accepted-set field. Reported independently by MAME Curator (planned) and Album Builder (considered/planned). Fix (ideally both): (1) accept planned/in-progress/considered as filter values mapping to their emoji (planned+in-progress = the current "active" pair); (2) on bad_status include the accepted set in the envelope (e.g. accepted:[...]) and name it in the tool description so the mismatch with roadmap_log's enum is self-correcting.
+  **Layman:** The read and write roadmap tools use different words for the same states, so asking to "show planned items" is refused with an error that doesn't say which words are allowed.
+  Kind: enhancement.
+  Lanes: mcp-roadmap-query, remotecontrol.
+  Source: cc-feedback-2026-06-30 (MAME Curator + Album Builder, 2 sessions).
+  Resolved (2026-07-01): roadmap_query status filter now accepts planned/in-progress/considered (map to 📋/🚧/💭) alongside active/shipped/all; bad_status echoes an `accepted` list. section_index collapses granular names to the aggregate (no per-lifecycle tally). Schema enum + descriptor updated. Test mcp_roadmap_status_filter.Ants3400GranularLifecycleFilters.
+
+- ✅ [ANTS-3401] **changelog_log feature-grouped-subsection advisory should name the alternative insert path.**
+  changelog_log op:add already DETECTS a feature-grouped [Unreleased] layout (advisory: "interleaves non-heading prose between its `### ` category blocks") but would still create a flat `### Fixed` heading at the section tail, reading inconsistently against the file's structure. Low impact — dry_run warns and still computes the right line. Fix (no behaviour change): when the advisory fires, have its text name the alternative — e.g. "this section uses feature-grouped subsections; consider op:add_from_roadmap into a named subsection or hand-edit" — so a caller knows the flat-category insert may look out of place before committing.
+  **Layman:** When a project's changelog is organised into feature sections instead of the standard flat categories, Ants correctly warns but doesn't suggest what to do instead.
+  Kind: enhancement.
+  Lanes: mcp-changelog-log, remotecontrol.
+  Source: cc-feedback-2026-06-30 (MAME Curator).
+  Resolved (2026-07-01): the malformed-[Unreleased] advisory now names the alternative insert path (op:add_from_roadmap into a named subsection / hand-edit) when a feature-grouped layout is detected. Extracted changelogMalformedAdvisory() to DRY the 4 emission sites.
+
+- ✅ [ANTS-3402] **roadmap_query include_body caps at ~2000 chars, truncating a large multi-phase epic narrator bullet; add an opt-in higher cap for single-bullet fetches.**
+  On a legacy id-less ants-v1 roadmap the whole music-player epic is ONE narrator bullet whose body holds the Phase A–G plan (~5 KB); roadmap_query include_body:true returns body_truncated:true at ~2000 chars, so the full phase breakdown isn't readable via MCP (fell back to awk). The 2000-char cap is right for dense-bundle sections but wrong for a single load-bearing epic body. Fix: honour an opt-in max_body_bytes (default keeps 2000, ceiling ~16 KB) on a TARGETED single-bullet fetch (id=/headline=, or section= with a single matching narrator bullet) — not on multi-bullet list queries. Note: read_region section= already reads the full untruncated body and is the recommended workaround (Album Builder 2026-07-01 confirmed); cross-reference it in the eventual fix note.
+  **Layman:** For a big roadmap entry that holds a whole multi-phase plan in its body, the summary tool cuts it off, forcing a raw file read.
+  Kind: enhancement.
+  Lanes: mcp-roadmap-query, remotecontrol.
+  Source: cc-feedback-2026-06-30 (Album Builder).
+  Resolved (2026-07-01): the bullet cache stores bodies up to a 16 KiB ceiling (Σ bounded by file size); a targeted id=/ids= fetch honours max_body_bytes (clamp [2000,16384]) while list/section emission re-truncates to the 2000 cap via rcCapBodyFields. read_region section= remains the recommended path for large section bodies. Test mcp_roadmap_status_filter.Ants3402TargetedBodyCap.
+
+- ✅ [ANTS-3403] **roadmap_log flip/annotate cannot resolve nested phase sub-bullets inside a narrator bullet's body on legacy ants-v1 roadmaps.**
+  Phase status lines live as nested list items inside the epic narrator bullet's body (`  - ✅ **Phase B — …**`). op:flip headline="Phase B — …" to_status:shipped → code:bullet_not_found, matched:0 (suggestions are unrelated TOP-level bullets). ANTS-2059 made flip resolve id-less TOP-level bullets by headline but walkAntsV1Bullets does not descend into a narrator bullet's nested sub-bullets, so per-phase flips on a multi-phase epic still need a hand-Edit (confirmed again 2026-07-01 closing Phase C). Fix: extend walkAntsV1Bullets to also yield nested list-item bullets (depth > 0) so headline/line_range locators can resolve a `  - **Phase X …**` sub-bullet; OR document explicitly that nested phase sub-bullets are out of scope for flip and the hand-Edit is expected. dry_run made this cheap to confirm without a stray write.
+  **Layman:** When a big roadmap entry tracks its phases as an indented checklist in its body, the mark-done tool can't tick off an individual phase — each phase close needs a manual edit.
+  Kind: enhancement.
+  Lanes: mcp-roadmap-log, remotecontrol.
+  Source: cc-feedback-2026-06-30 (Album Builder, 2 corroborations).
+  Resolved (2026-07-01) as a documented limitation (the contributor offered this as an acceptable resolution): flip/flip_batch/annotate locators resolve TOP-LEVEL bullets only; nested phase sub-bullets inside a narrator bullet's body are out of scope and need a direct Edit. The roadmap_log op descriptor now documents this explicitly. The walkAntsV1Bullets change was declined to avoid destabilising the write-path locator (ANTS-2059 history) with new ambiguity.
+
+- ✅ [ANTS-3404] **read_region symbol mode can't resolve Python class methods — the Python outliner emits only top-level classes/functions.**
+  read_region symbol mode resolves against file_outline's flat symbol list and its doc says it handles "function/method", but the Python outliner lists only top-level symbols — e.g. play_queue.py returns classes RepeatMode and PlayQueue, no methods. So read_region symbol="next" (PlayQueue.next) → symbol_not_found even though the def exists. C++ method bodies DO surface, so this reads as a Python-outliner gap. Fix: have the Python outliner emit class methods (qualified, e.g. `PlayQueue.next`) so read_region symbol mode can address them; OR, if intentionally out of scope, note it in the read_region doc so callers reach for line mode directly.
+  **Layman:** For Python files, asking Ants to show just one method of a class doesn't work — it only knows about the top-level classes, so you have to read the whole class.
+  Kind: fix.
+  Lanes: mcp-file-outline, remotecontrol.
+  Source: cc-feedback-2026-06-30 (Album Builder).
+  Resolved (2026-07-01): the Python outliner (rxPy) now matches indented def/class and tracks enclosing classes by indentation, emitting methods as `Class.method` (top-level defs/classes stay bare). read_region qualified-suffix fallback lets a bare `next` resolve `PlayQueue.next`. Test McpFileOutline.PythonClassMethodQualified.
+
+- ✅ [ANTS-3405] **workspace_search returns a raw -32000 transport timeout on a whole-repo regex over large data blobs; return a soft rg_failed-style envelope with a hint instead.**
+  A single workspace_search (regex=true, insensitive, a 4-alternation pattern, headline_only, whole-repo) returned `MCP error -32000: Ants MCP transport: timed out` — a hard transport error with no partial envelope; plain rg found 3 files in <1s. The repo carries a ~1.2 MB data/changelog.yaml + per-locale YAMLs + translations/*.mo binaries; scanning those blobs likely blew the timer. Second workspace_search reliability item (ANTS-2045 = empty-on-multiword, shipped). LOW (rg fallback is immediate). Fix: return a soft-timeout envelope (rg_failed-style with a `hint` to narrow scope) instead of raw -32000 when rg exceeds timeout_sec; optionally exclude large non-code blobs (*.mo, *.yaml/*.json over ~512 KB) from the default scan unless respect_gitignore=false, or auto-lower scope when the file set is dominated by big data files. Distinct from ANTS-1579/3396 (verify_changes/audit_run transport timeouts).
+  **Layman:** Searching the whole project for a pattern can silently time out with a low-level error and no advice, when a plain command-line search finishes instantly.
+  Kind: enhancement.
+  Lanes: mcp-workspace-search, remotecontrol.
+  Source: cc-feedback-2026-07-01 (RetroDB).
+  Resolved (2026-07-01): the workspace_search JSON parse loop is now bounded by the wall budget (rg budget + an equal parse budget), so a huge match stream returns the soft rg_failed envelope + hint instead of a raw -32000 transport timeout. The optional large-data-blob exclusion (*.mo / big yaml) remains a follow-up if it recurs.
+
+- 📋 [ANTS-3406] **roadmap_log op:"amend_body" — edit an existing bullet's continuation prose in place (dry_run + exact-match patch).**
+  roadmap_log offers append/append_batch/flip/flip_batch/annotate/create_section/bundle_row but none rewrites the continuation-prose body of an EXISTING bullet. annotate only appends a note; flip only changes status. To correct a stale phrase inside a body (finbreak: FIBR-0004 said "parameters pinned in the spec", needed "…in security-model.md INV-2" after the value moved) the session fell back to Edit on ROADMAP.md. Fix: add op:"amend_body" that locates a bullet by id/anchor/headline and replaces (or exact-match patches) its continuation prose, mirroring spec_log's structured-edit ops. Guard like the other write ops: dry_run preview + exact-match old→new (or full-body replace) so it can't silently clobber unrelated body text; headline/status/ID stay out of scope (already have verbs).
+  **Layman:** There's no dedicated tool to fix a stale sentence inside an existing roadmap entry's description — you have to drop back to raw text editing.
+  Kind: feature.
+  Lanes: mcp-roadmap-log, remotecontrol.
+  Source: cc-feedback-2026-07-01 (finbreak).
+  Deferred (2026-07-01) to a focused implementation pass. op:amend_body is a genuinely new dual-format (GFM + ants-v1) write-path verb — it needs locator reuse, a body-span exact-match patcher, dry_run, schema, and its own regression tests. Bolting it onto the tail of a large session risks the delicate flip/annotate write-path (ANTS-2059 history), so it is scoped as a standalone item. finbreak's generic-Edit workaround suffices meanwhile (contributor rated it "Minor"). The other 7 items from the 2026-07-01 cross-session triage (ANTS-3399..3405) shipped this session.
 
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 

@@ -97,7 +97,11 @@ TEST(roadmap_query_filter_section_headers, Inv4SchemaPropertyAdded) {
     // ANTS-2079 bumped 13→14 KiB: the description/detail split prepended
     // a ~570 B short `description` + comment ahead of the (now `detail`)
     // encyclopedic prose, pushing include_section_headers down by that much.
-    const std::string region = ci.substr(pos, 14000);
+    // ANTS-3400/3402 bumped 14→16 KiB: the `status` enum gained the granular
+    // lifecycle names + an expanded description, and a new `max_body_bytes`
+    // prop + expanded include_body description added ~1.5 KiB ahead of
+    // include_section_headers.
+    const std::string region = ci.substr(pos, 16000);
     expect(contains(region, "include_section_headers"),
            "INV-4: include_section_headers schema property must "
            "be declared on the roadmap_query tool descriptor");

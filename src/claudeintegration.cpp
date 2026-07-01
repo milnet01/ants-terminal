@@ -2108,10 +2108,20 @@ void ClaudeIntegration::onMcpConnection() {
                     statusEnum.append("all");
                     statusEnum.append("active");
                     statusEnum.append("shipped");
+                    statusEnum.append("planned");
+                    statusEnum.append("in-progress");
+                    statusEnum.append("considered");
                     statusProp["enum"] = statusEnum;
                     statusProp["description"] = QStringLiteral(
-                        "Filter by lifecycle. \"active\" = planned + "
-                        "in-progress (~7× smaller payload).");
+                        "Filter by lifecycle. Aggregates: \"active\" = "
+                        "planned + in-progress (📋+🚧, ~7× smaller payload), "
+                        "\"shipped\" = ✅, \"all\". ANTS-3400 — the granular "
+                        "roadmap_log lifecycle names are also accepted and "
+                        "map to a single emoji: \"planned\"=📋, "
+                        "\"in-progress\"=🚧, \"considered\"=💭 (bullets / "
+                        "section= path; section_index collapses granular "
+                        "names to their aggregate). An unknown value refuses "
+                        "with bad_status + an `accepted` list.");
                     props["status"] = statusProp;
                     // ANTS-1287 — `section` slug (optional). Unknown
                     // slug → ok:false with code=bad_section.
@@ -2215,8 +2225,24 @@ void ClaudeIntegration::onMcpConnection() {
                         "with `body_truncated:true` on truncation). "
                         "Default false. Use when triaging dense bundle "
                         "tables where the rationale lives in the body, "
-                        "not the headline (ANTS-1517).");
+                        "not the headline (ANTS-1517). ANTS-3402 — on a "
+                        "TARGETED id=/ids= fetch, raise the cap with "
+                        "`max_body_bytes` to read a large multi-phase epic "
+                        "body in one call (list queries stay at 2000). For "
+                        "a large section body, read_region section= is the "
+                        "recommended untruncated path.");
                     props["include_body"] = inclBodyProp;
+                    // ANTS-3402 — opt-in higher body cap for id/ids fetches.
+                    QJsonObject maxBodyProp;
+                    maxBodyProp["type"] = "integer";
+                    maxBodyProp["description"] = QStringLiteral(
+                        "Max body bytes for a TARGETED id=/ids= fetch "
+                        "(clamped [2000, 16384]; default 2000). Lets a "
+                        "single-bullet / id-set read return a large epic "
+                        "narrator body the 2000 list cap would truncate. "
+                        "Ignored on list / section / section_index paths, "
+                        "which always emit at the 2000 cap (ANTS-3402).");
+                    props["max_body_bytes"] = maxBodyProp;
                     // ANTS-1437 — mode arg. Default "bullets" (legacy).
                     // "section_index" returns a compact section index
                     // instead of bullets — use to discover slugs cheaply.
@@ -7664,6 +7690,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "{ok, id?, file, line, bytes_written, "
                         "note_appended?, note_line?, ...op-specific} "
                         "or {ok:false, error, code}. "
+                        "NESTED SUB-BULLETS (ANTS-3403): flip/flip_batch/"
+                        "annotate locators resolve TOP-LEVEL bullets only. "
+                        "A multi-phase epic that tracks phases as nested "
+                        "list items inside a narrator bullet's body "
+                        "(`  - ✅ **Phase B — …**`) is out of scope — the "
+                        "walker does not descend into a bullet's body, so a "
+                        "per-phase flip returns bullet_not_found. Edit "
+                        "ROADMAP.md directly to tick a nested phase line. "
                         "PASS-HEADINGS (ANTS-2126): on a `#### Pass N.M` "
                         "heading roadmap (RetroDB-style; reader synthesises "
                         "`PASS-N-M[-SUB]` ids), append/append_batch/flip/"

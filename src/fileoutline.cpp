@@ -219,8 +219,13 @@ int netBraceDelta(const QString &line, bool &inBlock, int *parenDeltaOut = nullp
     return delta;
 }
 const QRegularExpression &rxPy() {
+    // ANTS-3404 — capture leading indentation (group 1) so an indented
+    // `def`/`class` is matched too, not only a top-level `^def`. compute()
+    // uses the indent to qualify a class method as `Class.method` (so
+    // read_region symbol-mode can address it). Groups: 1=indent,
+    // 2=async?, 3=keyword, 4=name.
     static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(async\s+)?(def|class)\s+(\w+))"));
+        QRegularExpression r(QStringLiteral(R"(^(\s*)(async\s+)?(def|class)\s+(\w+))"));
         r.optimize();
         return r;
     }();
@@ -434,6 +439,12 @@ QJsonObject compute(const QString &absPath,
     // ANTS-2222's aggregate-body slice) resolve either.
     struct PendingTypedef { int startLine{}; QString tag; int depthAtOpen{}; };
     QVector<PendingTypedef> pendingTypedefs;
+    // ANTS-3404 — Python class-method qualification. Track enclosing
+    // classes by indentation so an indented `def` is emitted as
+    // `Class.method` (read_region symbol-mode can then address it); a
+    // top-level def/class stays bare. Each entry = (indent width, dotted
+    // class-name prefix so far). Nested classes chain (`Outer.Inner`).
+    QVector<QPair<int, QString>> pyClassStack;
 
     while (!f.atEnd()) {
         const QByteArray rawLine = f.readLine();
@@ -574,14 +585,24 @@ QJsonObject compute(const QString &absPath,
             } else if ((m = rxCppType().match(line)).hasMatch()) {
                 offer("class", m.captured(2), line);   // type/namespace body — never code
             } else if (!inFuncBody && (m = rxCppMember().match(line)).hasMatch()) {
+                // ANTS-3399 — the qualified member name (`Class::method`,
+                // possibly `NS::Class::method`) is the last whitespace-
+                // delimited token before '('. The old heuristic stripped
+                // the return type by locating the space before the FIRST
+                // `::`, which landed INSIDE a namespace-qualified return
+                // type (`JPH::BodyID Class::method`) — no space precedes
+                // that `::`, so the return type stayed glued onto the name
+                // and broke read_region symbol-mode lookups (Vestige
+                // feedback, 2/2 hits). rxCppMember guarantees a single-
+                // token return type + whitespace + the qualified name, so
+                // the name is simply the run after the last whitespace.
                 const int lparen = line.indexOf(QLatin1Char('('));
                 QString name = (lparen > 0) ? line.left(lparen).trimmed() : line;
-                const int firstColon = name.indexOf(QStringLiteral("::"));
-                if (firstColon > 0) {
-                    const int spaceBeforeName =
-                        name.lastIndexOf(QLatin1Char(' '), firstColon);
-                    if (spaceBeforeName > 0) name = name.mid(spaceBeforeName + 1);
+                int lastWs = -1;
+                for (int i = name.size() - 1; i >= 0; --i) {
+                    if (name.at(i).isSpace()) { lastWs = i; break; }
                 }
+                if (lastWs >= 0) name = name.mid(lastWs + 1);
                 offer("func", name, line);
                 funcDefOpensBody = !line.trimmed().endsWith(QLatin1Char(';'));
             } else if (!inFuncBody && (m = rxCppFunc().match(line)).hasMatch()) {
@@ -655,10 +676,27 @@ QJsonObject compute(const QString &absPath,
         } else if (effective == Mode::Py) {
             QRegularExpressionMatch m = rxPy().match(line);
             if (m.hasMatch()) {
-                const QString keyword = m.captured(2);
-                const QString name = m.captured(3);
-                offer(keyword == QLatin1String("class") ? "class" : "func",
-                      name, line);
+                const int indent      = m.captured(1).size();
+                const QString keyword = m.captured(3);
+                const QString name    = m.captured(4);
+                // Dedent: drop any enclosing class we've left. A sibling/
+                // outer def or class at ≤ the class's indent is no longer
+                // inside it.
+                while (!pyClassStack.isEmpty() &&
+                       pyClassStack.last().first >= indent) {
+                    pyClassStack.removeLast();
+                }
+                const QString prefix = pyClassStack.isEmpty()
+                    ? QString()
+                    : pyClassStack.last().second + QLatin1Char('.');
+                const QString qualified = prefix + name;
+                if (keyword == QLatin1String("class")) {
+                    offer("class", qualified, line);
+                    // A method (def at deeper indent) belongs to this class.
+                    pyClassStack.append(qMakePair(indent, qualified));
+                } else {
+                    offer("func", qualified, line);
+                }
             }
         } else if (effective == Mode::Md) {
             QRegularExpressionMatch m = rxMdHeading().match(line);
