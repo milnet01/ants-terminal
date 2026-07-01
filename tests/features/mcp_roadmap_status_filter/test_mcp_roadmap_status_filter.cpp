@@ -25,6 +25,14 @@ bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
 }
 
+int countOccurrences(const std::string &hay, const std::string &needle) {
+    int n = 0;
+    for (std::string::size_type p = hay.find(needle); p != std::string::npos;
+         p = hay.find(needle, p + needle.size()))
+        ++n;
+    return n;
+}
+
 }  // namespace
 
 TEST(mcp_roadmap_status_filter, Inv1BackCompatSignatureDefaulted) {
@@ -147,6 +155,31 @@ TEST(mcp_roadmap_status_filter, Ants3400GranularLifecycleFilters) {
            "ANTS-3400: inputSchema enum includes \"planned\"");
     expect(contains(ci, "statusEnum.append(\"considered\")"),
            "ANTS-3400: inputSchema enum includes \"considered\"");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3408 — the granular planned/in-progress/considered arms must live
+// in BOTH emission branches (section= and full-file/no-section). ANTS-3400
+// added them to the section branch only; the full-file branch iterating
+// m_roadmapCacheBullets silently returned 0 for a granular filter without a
+// `section` arg (Contact_List feedback 2026-07-01). A whole-file `contains`
+// check can't tell the two branches apart, so this is count-based: the
+// planned arm literal must appear at least twice.
+TEST(mcp_roadmap_status_filter, Ants3408GranularFiltersInBothBranches) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    // Both the section= and full-file predicates must carry the planned arm.
+    expect(countOccurrences(
+               cpp, "QLatin1String(\"planned\")     && (s == plannedEmoji)") >= 2,
+           "ANTS-3408: planned granular arm present in both emission branches");
+    expect(countOccurrences(
+               cpp, "QLatin1String(\"in-progress\") && (s == progressEmoji)") >= 2,
+           "ANTS-3408: in-progress granular arm present in both branches");
+    expect(countOccurrences(
+               cpp, "QLatin1String(\"considered\")  && (s == consideredEmoji)") >= 2,
+           "ANTS-3408: considered granular arm present in both branches");
+    expect(contains(cpp, "ANTS-3408"),
+           "ANTS-3408 anchor comment present");
     EXPECT_EQ(0, expect_failures());
 }
 

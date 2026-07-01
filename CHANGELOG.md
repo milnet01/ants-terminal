@@ -225,6 +225,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_query` granular status filters now work without a `section` arg (ANTS-3408)**
+  status="planned" / "in-progress" / "considered" silently returned 0 on
+  the full-file (no-section) query path — ANTS-3400 added those arms to the
+  section= branch only. The full-file predicate now mirrors them. Root
+  cause was section-path vs full-file-path divergence, not the roadmap
+  format. Reported by the Contact_List CC session.
+
 - **read_region call_sequence — suppress false-positive callees from comments and type constructors.** (ANTS-3379)
   The 'list the steps in this function' feature sometimes lists words from comments or type names as if they were function calls.
 

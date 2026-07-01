@@ -4764,9 +4764,19 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         const QString consideredEmoji = QString::fromUtf8("\xF0\x9F\x92\xAD"); // 💭 (ANTS-3400)
         for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
             const QString s = v.toObject().value(QStringLiteral("status")).toString();
+            // ANTS-3408 — mirror the section= branch's granular arms.
+            // ANTS-3400 added planned/in-progress/considered to the
+            // section path only; this full-file (no `section` arg) path
+            // kept just active/shipped, so a granular filter without a
+            // section fell through the else and returned 0 with no error
+            // (Contact_List feedback 2026-07-01). Root cause was path
+            // divergence, not the ants-v1/GFM roadmap format.
             const bool keep =
-                (filter == QLatin1String("active")  && (s == plannedEmoji || s == progressEmoji)) ||
-                (filter == QLatin1String("shipped") && (s == doneEmoji));
+                (filter == QLatin1String("active")      && (s == plannedEmoji || s == progressEmoji)) ||
+                (filter == QLatin1String("shipped")     && (s == doneEmoji)) ||
+                (filter == QLatin1String("planned")     && (s == plannedEmoji)) ||
+                (filter == QLatin1String("in-progress") && (s == progressEmoji)) ||
+                (filter == QLatin1String("considered")  && (s == consideredEmoji));
             if (keep) filtered.append(v);
         }
     }

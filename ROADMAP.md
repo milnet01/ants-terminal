@@ -8820,6 +8820,21 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: refactor.
   Source: in-session-2026-06-30 (ANTS-2182 follow-up).
 
+- 📋 [ANTS-3409] **roadmap_query one-line MCP description exceeds the 800 B wire budget (814 B) — mcp_tool_detail_field.Inv5WireBudgetUnder800 red on main.**
+  Pre-existing failure (NOT caused by ANTS-3408, which only edited
+  remotecontrol.cpp; this test source-greps claudeintegration.cpp). The
+  roadmap_query short description reconstructs to 814 B on the wire, 14 B
+  over the 800 B budget in tests/features/mcp_tool_detail_field
+  Inv5WireBudgetUnder800 — successive additions (ANTS-3400/3391/3402 etc.)
+  kept appending to it. Fix: trim ~15+ B of redundancy from the
+  roadmap_query description in claudeintegration.cpp (the per-op detail is
+  already offloaded to tool_info {name:"roadmap_query"}, so the one-liner
+  can drop the densest clause) and re-run the test. Watch the source-scrape
+  byte-window tests when editing the description block.
+  **Layman:** One of Ants' tool descriptions grew a bit too long; trim it so the built-in size check passes again.
+  Kind: fix.
+  Source: in-session-2026-07-01 (found while fixing ANTS-3408).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
@@ -17921,6 +17936,26 @@ ANTS-3390 corroborated by RetroArch as a high-impact case.
   Source: cc-feedback-2026-07-01 (finbreak).
   Deferred (2026-07-01) to a focused implementation pass. op:amend_body is a genuinely new dual-format (GFM + ants-v1) write-path verb — it needs locator reuse, a body-span exact-match patcher, dry_run, schema, and its own regression tests. Bolting it onto the tail of a large session risks the delicate flip/annotate write-path (ANTS-2059 history), so it is scoped as a standalone item. finbreak's generic-Edit workaround suffices meanwhile (contributor rated it "Minor"). The other 7 items from the 2026-07-01 cross-session triage (ANTS-3399..3405) shipped this session.
   Shipped 2026-07-01: op:amend_body implemented as a standalone cmdRoadmapLogAmendBody (reuses the walk/scrub/write helpers; flip/annotate write-path untouched per the ANTS-2059 caution). Exact single-line old_text→new_text patch, unique-match guarded (body_match_not_found / body_match_ambiguous so it can't clobber unrelated prose), dry_run, GFM + ants-v1, pass-headings→unsupported_format, fenced→anchor_unsafe_context. new_text scrubbed via rcScrubLeakedToolXml. 11 feature tests (tests/features/roadmap_log_amend_body). Full-body-replace deliberately scoped out (YAGNI + the internal-blank-line ambiguity the explore pass flagged); addable later under a new_body arg. Suite 2421/2421 green. Relaunch Ants to deploy (running server still 9f54ba1).
+
+- ✅ [ANTS-3408] **roadmap_query granular status filters (planned/in-progress/considered) silently return 0 on the full-file (no-section) path.**
+  Root cause is NOT the ants-v1 vs GFM format the reporter guessed — it
+  is section= path vs full-file path. ANTS-3400 added the granular
+  planned→📋 / in-progress→🚧 / considered→💭 predicate arms to the
+  section= emission branch (remotecontrol.cpp cmdRoadmapQuery) only; the
+  full-file (no `section` arg) branch iterating m_roadmapCacheBullets kept
+  just the active/shipped arms, so any granular filter without a section
+  fell through the else and returned 0 with no error. Contact_List tested
+  the no-section path. Fix: mirror the three granular arms into the
+  full-file predicate. The ANTS-3400 source-grep test passed because it
+  greps whole-file for the arm literal (matched the section copy) and
+  could not tell the two branches apart; added a count-based regression
+  (the granular arm must appear in BOTH branches). Duplicated predicate is
+  a pre-existing drift smell — consolidation into one shared helper
+  tracked separately.
+  **Layman:** Asking the roadmap tool for just the "planned" (or in-progress / considered) items gave back nothing unless you also named a section — now it works everywhere.
+  Kind: fix.
+  Source: Contact_List feedback 2026-07-01.
+  Resolved (2026-07-01): mirrored the section= branch's granular arms (planned→📋, in-progress→🚧, considered→💭) into the full-file predicate in cmdRoadmapQuery (remotecontrol.cpp). Count-based regression added to mcp_roadmap_status_filter (granular arm must appear in both emission branches; pre-fix count was 1). Full suite green.
 
 ### 🧪 End-to-end user-level test harness (user request 2026-06-10)
 
