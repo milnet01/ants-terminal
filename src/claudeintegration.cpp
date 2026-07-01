@@ -1980,6 +1980,11 @@ void ClaudeIntegration::onMcpConnection() {
                 // ANTS-1287 — `section` arg added. Description cites
                 // the partial-query saving so Claude prefers section
                 // slices when only one block is needed.
+                // ANTS-3409 — the wire one-liner overran its 800 B budget
+                // (mcp_tool_detail_field INV-5) by 14 B; the `bundles` mode
+                // gloss said "bundle" twice, so its redundant middle was
+                // trimmed (full per-op detail is in `detail` below / via
+                // tool_info {name:"roadmap_query"}).
                 roadmapTool["description"] = QStringLiteral(
                     "Query ROADMAP.md as structured bullets {id, status, "
                     "headline, headline_oneline, kind, lanes}. Filters: "
@@ -1988,8 +1993,8 @@ void ClaudeIntegration::onMcpConnection() {
                     "substring), id / "
                     "ids[] (single/bundle fetch by [PROJ-NNNN]). mode: "
                     "bullets (default) | section_index (slug discovery) | "
-                    "headline_only (~10x smaller) | bundles (group active "
-                    "items into thematic work-bundles). Opt-in: include_body, "
+                    "headline_only (~10x smaller) | bundles (thematic "
+                    "work-bundles). Opt-in: include_body, "
                     "compact, fields, etag_match. Refusals: bad_case, "
                     "bad_section, bad_mode_combo. caller_cwd Required.");
                 // ANTS-2079 — full per-op reference lives in `detail`,

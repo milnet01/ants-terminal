@@ -225,6 +225,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query MCP one-line description back under its 800 B wire budget (ANTS-3409)**
+  Trimmed the redundant `bundles` mode gloss so the reconstructed
+  wire description is 790 B (was 814), restoring the
+  mcp_tool_detail_field INV-5 budget. Full per-op detail is
+  unchanged — still served via tool_info {name:"roadmap_query"}.
+
 - **`roadmap_query` granular status filters now work without a `section` arg (ANTS-3408)**
   status="planned" / "in-progress" / "considered" silently returned 0 on
   the full-file (no-section) query path — ANTS-3400 added those arms to the

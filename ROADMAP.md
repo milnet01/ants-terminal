@@ -8820,7 +8820,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: refactor.
   Source: in-session-2026-06-30 (ANTS-2182 follow-up).
 
-- 📋 [ANTS-3409] **roadmap_query one-line MCP description exceeds the 800 B wire budget (814 B) — mcp_tool_detail_field.Inv5WireBudgetUnder800 red on main.**
+- ✅ [ANTS-3409] **roadmap_query one-line MCP description exceeds the 800 B wire budget (814 B) — mcp_tool_detail_field.Inv5WireBudgetUnder800 red on main.**
   Pre-existing failure (NOT caused by ANTS-3408, which only edited
   remotecontrol.cpp; this test source-greps claudeintegration.cpp). The
   roadmap_query short description reconstructs to 814 B on the wire, 14 B
@@ -8834,6 +8834,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** One of Ants' tool descriptions grew a bit too long; trim it so the built-in size check passes again.
   Kind: fix.
   Source: in-session-2026-07-01 (found while fixing ANTS-3408).
+  Resolved (2026-07-01): trimmed the redundant `bundles` mode gloss ("group active items into thematic work-bundles" → "thematic work-bundles", −24 B) in the roadmap_query wire one-liner in claudeintegration.cpp. Reconstructed wire description now 790 B (was 814), back under the 800 B INV-5 budget with margin. mcp_tool_detail_field 7/7 green; no anchor tokens dropped (INV-3). Full per-op detail stays in `detail` / tool_info {name:"roadmap_query"}.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
