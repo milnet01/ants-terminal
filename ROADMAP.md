@@ -11719,17 +11719,19 @@ gets one CHANGELOG section + one drift cycle + one push.
   Kind: enhancement.
   Source: in-session-2026-06-26 /indie-review #8 cost analysis.
 
-- 📋 [ANTS-2208] **Make `/indie-review` cheaper: two-tier model routing — cheap-model breadth pass across all lanes, escalate only finding-bearing lanes to the strong model.**
+- ✅ [ANTS-2208] **Make `/indie-review` cheaper: two-tier model routing — cheap-model breadth pass across all lanes, escalate only finding-bearing lanes to the strong model.**
   11 of 13 lanes this run returned 0 CRITICAL/0 HIGH — yet each paid full strong-model cost. Skill change: Phase-2 dispatch a cheap-model shallow pass (severity-floor MEDIUM, breadth-only); re-dispatch ONLY lanes that surfaced >=1 MEDIUM+ to the strong model for the deep adversarial read. Pairs with corroboration-driven depth (next).
   **Layman:** Run a cheaper, faster model over every subsystem first to find the suspicious spots, then only spend the expensive model on the subsystems that actually flagged something. Most subsystems are clean, so you pay the cheap rate for them.
   Kind: enhancement.
   Source: in-session-2026-06-26 /indie-review #8 cost analysis.
+  Resolved 2026-07-01. Rewrote Phase 2 of the global /indie-review skill (~/.claude/skills/indie-review/SKILL.md) into a two-tier dispatch: 2a cheap-model (Haiku) breadth pass over ALL lanes at a MEDIUM severity floor, breadth-only; 2c strong-model deep adversarial read over ONLY the escalation set (lanes with >=1 MEDIUM+). Clean lanes keep their cheap-pass result and are not re-dispatched. Budget/Phase-3/parent-rules updated; ~70% strong-tier cut on a clean sweep, degrading gracefully to single-tier cost when every lane flags. Change is in the global skill file (outside this repo).
 
-- 📋 [ANTS-2209] **Make `/indie-review` cheaper: corroboration-driven depth — shallow-scan all lanes, deep-verify only findings cited by ≥2 lanes or above a severity floor.**
+- ✅ [ANTS-2209] **Make `/indie-review` cheaper: corroboration-driven depth — shallow-scan all lanes, deep-verify only findings cited by ≥2 lanes or above a severity floor.**
   indie_review_corroborate already finds (file,line) cited by >=N lanes server-side. Restructure the skill: Phase 2 = cheap breadth scan; Phase 3 = corroborate; Phase 4 = a focused deep-verify pass ONLY on corroborated or HIGH+ findings. Also auto-apply indie_review_partition's suggested_merges (this run flagged luaengine+pluginmanager and claudetasklist+claudebgtasks as identical-summary merges) to cut near-duplicate agent dispatches; and cache per-lane file_outline server-side so big-file lanes (remotecontrol 16k LoC) skip the outline round-trip.
   **Layman:** Instead of every reviewer going deep on everything, do a quick scan everywhere and only spend the expensive deep-analysis on issues that more than one reviewer independently flagged (the gold-signal shared blind spots). Avoids paying deep-review cost on every line.
   Kind: enhancement.
   Source: in-session-2026-06-26 /indie-review #8 cost analysis.
+  Resolved 2026-07-01. Same Phase 2 rewrite adds corroboration-driven depth: 2b runs indie_review_corroborate to flag (file,line) cited by >=2 lanes; the escalation set includes every corroborated or HIGH+ finding regardless of lane, and corroborated findings get the deepest scrutiny in 2c. Step 2.0 auto-applies indie_review_partition suggested_merges (collapse identical-summary lanes) and caches per-lane file_outline server-side so big-file lanes skip the outline round-trip on both passes. Global skill file (outside this repo).
 
 ### 🟡 False positives logged (`.ants_review_falsepos.jsonl` entries appended 2026-05-19)
 
