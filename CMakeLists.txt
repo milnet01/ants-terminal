@@ -1325,6 +1325,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_flip_idless_antsv1/test_roadmap_log_flip_idless_antsv1.cpp
                 # ANTS-3378 roadmap_log flip GFM headline locator (canonical headline match).
                 tests/features/roadmap_log_flip_gfm_headline/test_roadmap_log_flip_gfm_headline.cpp
+                # ANTS-3387 bad_id_format guard for nonconforming bracket-token ids.
+                tests/features/roadmap_id_format_guard/test_roadmap_id_format_guard.cpp
                 # ANTS-3382 roadmap_log evidence:[paths] append + roadmap_query echo.
                 tests/features/roadmap_log_evidence/test_roadmap_log_evidence.cpp
                 # ANTS-2058 parseBullets inline `Kind: . Lanes: .` lanes extraction.

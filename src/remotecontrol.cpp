@@ -1121,6 +1121,28 @@ QString rcNormaliseHeadline(const QString &raw) {
     return out;
 }
 
+// ANTS-3387 — classify a roadmap id/locator token that is bracket-token
+// SHAPED (a `<prefix>-<digits>` id, as authored in `[PREFIX-NNNN]`) but
+// fails the canonical PROJ-NNNN gate — the letter-led
+// `[A-Za-z][A-Za-z0-9_-]*-\d+` of roadmap-format.md § 3.5.1 (ANTS-1405
+// INV-4). A token like `3D_E-0022` (digit-leading prefix) never parses as
+// a project id, so the parser assigns that bullet a synthetic content-hash
+// id and the authored token is unaddressable on BOTH the read (id/ids) and
+// write (flip/annotate) locator paths. Returning a bare found:false /
+// bullet_not_found reads as "the item vanished"; callers use this to emit
+// a targeted bad_id_format that names the real cause. Returns true iff the
+// token is id-ISH but non-canonical (the only divergence from the gate is a
+// non-letter lead char), so a genuinely-absent conforming id (INV-4) and a
+// non-id-shaped string both correctly return false.
+bool rcIsNonconformingIdToken(const QString &tok) {
+    static const QRegularExpression kIdIsh(
+        QStringLiteral("^[A-Za-z0-9][A-Za-z0-9_-]*-\\d+$"));
+    static const QRegularExpression kCanonical(
+        QStringLiteral("^[A-Za-z][A-Za-z0-9_-]*-\\d+$"));
+    return kIdIsh.match(tok).hasMatch() &&
+           !kCanonical.match(tok).hasMatch();
+}
+
 // ANTS-1922 — token-Jaccard ratio of two already-tokenised headlines,
 // or -1.0 when fewer than `minShared` tokens overlap (the stop-word
 // floor: a sub-floor pair returns -1.0, which fails every caller's
@@ -4542,6 +4564,30 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 out["canonical_id"] = canonical;
                 return QJsonDocument(out);
             }
+            // ANTS-3387 — an id-token-SHAPED locator that fails the
+            // canonical PROJ-NNNN gate (e.g. a digit-leading prefix like
+            // "3D_E-0022") is never adopted as a bullet id, so a bare
+            // found:false reads as "the item vanished". Name the real
+            // cause: bad_id_format + the canonical-form hint. Placed after
+            // the case-mismatch check so a conforming wrong-case id still
+            // gets the friendlier bad_case.
+            if (rcIsNonconformingIdToken(idArg)) {
+                out["ok"]    = false;
+                out["code"]  = QStringLiteral("bad_id_format");
+                out["error"] = QStringLiteral(
+                    "id \"%1\" is id-shaped but not a canonical "
+                    "[PROJ-NNNN] token (roadmap-format.md § 3.5.1 requires "
+                    "a letter-leading prefix); a bullet authored with such "
+                    "a token is addressable only by its headline.")
+                        .arg(idArg);
+                out["id"]   = idArg;
+                out["hint"] = QStringLiteral(
+                    "Canonical ids are letter-led "
+                    "(<LETTER><alnum/_/->*-<N>, e.g. ANTS-1234). A "
+                    "digit-leading prefix never parses as a project id — "
+                    "re-target this bullet by `headline`.");
+                return QJsonDocument(out);
+            }
         }
         if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
         else rcCapBodyFields(matches, idBodyCap);  // ANTS-3402
@@ -4579,6 +4625,30 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // and missing_ids[] so a caller can spot stale/typoed ids
     // without diffing the input array against bullets[].id.
     if (!idsArg.isEmpty()) {
+        // ANTS-3387 — refuse the whole batch if any requested id is
+        // id-token SHAPED but non-canonical (see rcIsNonconformingIdToken):
+        // such a token can never resolve, so letting it fall silently into
+        // missing_ids is exactly the "vanished item" trap this guards
+        // against. Name it with bad_id_format instead.
+        QJsonArray badFormatIds;
+        for (const QString &id : std::as_const(idsArgInputOrder)) {
+            if (rcIsNonconformingIdToken(id)) badFormatIds.append(id);
+        }
+        if (!badFormatIds.isEmpty()) {
+            out["ok"]             = false;
+            out["code"]           = QStringLiteral("bad_id_format");
+            out["error"]          = QStringLiteral(
+                "ids[] contains %1 id-shaped token(s) that are not "
+                "canonical [PROJ-NNNN] ids (roadmap-format.md § 3.5.1 "
+                "requires a letter-leading prefix).")
+                    .arg(badFormatIds.size());
+            out["bad_format_ids"] = badFormatIds;
+            out["hint"]           = QStringLiteral(
+                "Canonical ids are letter-led (e.g. ANTS-1234); a "
+                "digit-leading prefix never parses as a project id. "
+                "Re-target those bullets by `headline`.");
+            return QJsonDocument(out);
+        }
         const QSet<QString> wanted(idsArg.cbegin(), idsArg.cend());
         QSet<QString> seen;
         QJsonArray matches;
@@ -6280,6 +6350,24 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             QStringLiteral("roadmap_log: headline locator is not "
                            "permitted alongside id or anchor — pick "
                            "the canonical handle when one exists"));
+    }
+    // ANTS-3387 — an `id` locator that is id-token SHAPED but fails the
+    // canonical PROJ-NNNN gate (e.g. a digit-leading prefix like
+    // "3D_E-0022") is never adopted as a bullet id, so it can never match
+    // on EITHER the GFM boldId path or the ants-v1 native path (which
+    // refuses first with bullet_not_found — hence this format-independent
+    // early guard, not a per-branch one). A bare bullet_not_found reads as
+    // "the item vanished"; name the real cause. Shape-only, so a
+    // conforming-but-absent id (INV-4) still gets the ordinary
+    // bullet_not_found.
+    if (rcIsNonconformingIdToken(locId)) {
+        return rlErr(QStringLiteral("bad_id_format"),
+            QStringLiteral("roadmap_log: \"%1\" is id-shaped but not a "
+                           "canonical [PROJ-NNNN] token (roadmap-format.md "
+                           "§ 3.5.1 requires a letter-leading prefix); it "
+                           "can never match a bullet id — re-target by "
+                           "`headline` (exact text) or `anchor`.")
+                .arg(locId));
     }
 
     // 4. Resolve caller_cwd → ROADMAP.md path. Same logic as append.

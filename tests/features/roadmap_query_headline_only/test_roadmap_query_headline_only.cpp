@@ -179,12 +179,14 @@ TEST(roadmap_query_headline_only, Inv5IdSelectorProjected) {
     expect(idBranchPos != std::string::npos,
            "INV-5: id-branch site (matches.append) present");
     if (idBranchPos != std::string::npos) {
-        // Look within ~2000 chars after matches.append for the
+        // Look within ~3500 chars after matches.append for the
         // projection / headline_only reference (projection lives
         // after body-strip + envelope assembly so the window must
-        // cover the full id-branch tail).
+        // cover the full id-branch tail). Widened from 2000 → 3500 by
+        // ANTS-3387, which inserted a bad_id_format guard inside the
+        // not-found branch between matches.append and the projection.
         const std::string window = cpp.substr(idBranchPos,
-            std::min<size_t>(2000, cpp.size() - idBranchPos));
+            std::min<size_t>(3500, cpp.size() - idBranchPos));
         expect(contains(window, "headline_only") ||
                contains(window, "rcProjectHeadlineOnly") ||
                contains(window, "projectHeadlineOnly"),

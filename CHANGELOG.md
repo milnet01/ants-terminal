@@ -222,6 +222,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query id/ids + roadmap_log flip/annotate return a silent miss (not bad_id_format) for a format-nonconforming bracket token that exists in the file.** (ANTS-3387)
+  When a project uses an ID style Ants doesn't recognise, looking it up says 'not found' with no hint that the ID shape is the problem — so it looks like the item vanished.
+
 - **token_usage now credits the read/search verbs for the tokens they save (ANTS-3361)**
   file_outline, read_region(s), workspace_search, codebase_index, find_definition/sources/caller and build_status previously reported ~0 tokens saved despite replacing a full-file Read or a grep. They now carry conservative per-call baselines (deliberately under-estimated and floored at 0 so the headline never over-claims).
 
