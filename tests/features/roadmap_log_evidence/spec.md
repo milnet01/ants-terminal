@@ -20,6 +20,13 @@ rendered as an `Evidence: path1, path2` body line and echoed by
   unchanged).
 - **INV-4** — a path containing a comma or newline is folded to spaces so
   the single-line `Evidence:` field shape is preserved.
+- **INV-5** (ANTS-3407) — the `^`-anchored metadata labels tolerate any
+  case: a hand-edited lowercase `kind:` / `evidence:` line parses the same
+  as the canonical capitalised form the writer emits (parity with the
+  long-standing `Layman:` tolerance). The un-anchored `Lanes:` label
+  deliberately stays case-SENSITIVE — case-insensitivity there would
+  mis-capture a lowercase `"lanes:"` occurring mid-prose — so a lowercase
+  `lanes:` is left unparsed.
 
 ## Test
 `tests/features/roadmap_log_evidence/` (label `features;fast`), driving

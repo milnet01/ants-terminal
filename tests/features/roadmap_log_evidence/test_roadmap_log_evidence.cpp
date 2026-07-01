@@ -148,3 +148,32 @@ TEST(roadmap_log_evidence, Inv4CommaInPathFolded) {
     ASSERT_EQ(b.evidence.size(), 1);
     EXPECT_EQ(b.evidence.at(0), QStringLiteral("a/x y.png"));
 }
+
+// INV-5 (ANTS-3407) — hand-edited lowercase `kind:` / `evidence:` labels
+// parse case-insensitively (parity with the long-standing `Layman:`
+// tolerance), while the un-anchored `Lanes:` stays case-SENSITIVE so it
+// can't mis-capture a lowercase "lanes:" occurring mid-prose. Drives
+// parseBullets directly on hand-typed markdown (no writer round-trip).
+TEST(roadmap_log_evidence, Inv5HandEditedLabelCase) {
+    const QString md = QString::fromUtf8(
+        "# Hand-edited Roadmap\n"
+        "\n"
+        "## Backlog\n"
+        "\n"
+        "- \xF0\x9F\x93\x8B [ANTS-9002] **A hand-typed bullet.**\n"
+        "  kind: fix.\n"
+        "  lanes: backend, tests.\n"
+        "  evidence: photos/IMG_7.jpg, logs/out.txt.\n"
+        "\n");
+    const auto b = findBullet(md, QStringLiteral("hand-typed bullet"));
+
+    // Anchored labels tolerate any case (ANTS-3407).
+    EXPECT_EQ(b.kind, QStringLiteral("fix"));
+    ASSERT_EQ(b.evidence.size(), 2);
+    EXPECT_EQ(b.evidence.at(0), QStringLiteral("photos/IMG_7.jpg"));
+    EXPECT_EQ(b.evidence.at(1), QStringLiteral("logs/out.txt"));
+
+    // Un-anchored `Lanes:` deliberately stays case-sensitive, so the
+    // lowercase form is left unparsed (guards the ANTS-3407 divergence).
+    EXPECT_TRUE(b.lanes.isEmpty());
+}

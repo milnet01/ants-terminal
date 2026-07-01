@@ -956,9 +956,15 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
     // MultilineOption so `^` anchors at the start of any line within
     // the bullet body — Kind: / Lanes: / Layman: live as continuation
     // lines, not at the start of the string.
+    // ANTS-3407 — CaseInsensitiveOption: the `^`-anchored metadata labels
+    // (Kind:/Layman:/Evidence:) all tolerate any case, so a hand-edited
+    // ROADMAP.md parses `kind:`/`KIND:` identically to the canonical
+    // capital form the MCP writer emits. (Lanes: is the deliberate
+    // exception — see its note below.)
     static const QRegularExpression rxKind(
         QStringLiteral("^\\s*Kind:\\s*([^\\.\\n]+?)\\s*[\\.\\n]"),
-        QRegularExpression::MultilineOption);
+        QRegularExpression::MultilineOption |
+        QRegularExpression::CaseInsensitiveOption);
     // ANTS-2058 — no `^` anchor. Bullets routinely write their metadata
     // inline as one prose sentence (`Kind: refactor. Lanes: backend tests.
     // Source: …`), so `Lanes:` lands mid-line, not at a line start. The
@@ -966,6 +972,11 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
     // lanes:[] for every inline bullet — while rxKind worked purely because
     // `Kind:` happened to sit first. Match `Lanes:` anywhere; the non-greedy
     // capture still stops at the first period/newline.
+    // ANTS-3407 — deliberately NOT CaseInsensitive (unlike the anchored
+    // Kind:/Layman:/Evidence: labels). Because this pattern is un-anchored,
+    // case-insensitivity would match a lowercase "lanes:" occurring mid-prose
+    // (e.g. "split the review lanes: audit, tests.") and mis-extract it as
+    // metadata. Canonical `Lanes:` is the only form the writer emits.
     static const QRegularExpression rxLanes(
         QStringLiteral("Lanes:\\s*(.+?)\\s*[\\.\\n]"),
         QRegularExpression::MultilineOption);
@@ -985,9 +996,13 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
     // Lanes:, the capture runs to end-of-line (NOT to the first period):
     // evidence paths routinely contain dots (`photos/IMG_2031.jpg`), so a
     // `[^\\.\\n]` stop would truncate at the extension.
+    // ANTS-3407 — CaseInsensitiveOption for parity with rxLayman/rxKind, so a
+    // hand-edited `evidence:`/`EVIDENCE:` label is still recognised. The MCP
+    // writer always emits capital `Evidence:`, so the round-trip is unchanged.
     static const QRegularExpression rxEvidence(
         QStringLiteral("^\\s*Evidence:\\s*([^\\n]+)"),
-        QRegularExpression::MultilineOption);
+        QRegularExpression::MultilineOption |
+        QRegularExpression::CaseInsensitiveOption);
 
     const QStringList lines = markdownText.split('\n');
     // ANTS-1428 — format detection runs once per parse. On
