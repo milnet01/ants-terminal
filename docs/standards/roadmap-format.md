@@ -142,6 +142,16 @@ Optional pieces:
   headline still appears when the card is expanded. Falls back
   to the bold headline if absent. Sits after the body prose,
   before `Kind:` / `Lanes:` / `Source:`. Case-insensitive label.
+- **`Evidence: <path1>, <path2>`** — optional file paths (screenshots,
+  logs, repros) that evidence the item — e.g. a bug diagnosed from a
+  screenshot. Comma-separated; a comma or newline *inside* a path is
+  folded to a space so one path can't break the single-line field.
+  Rendered WITHOUT a trailing period (paths contain dots, so a sentence
+  period would read as part of the last path). Written by `roadmap_log
+  op:append` / `op:append_batch` via their `evidence: […]` arg and
+  echoed by `roadmap_query` as an `evidence` array (omitted when the
+  bullet has none) so a later session can re-locate the files.
+  Case-sensitive label (ANTS-3382).
 - **Sub-bullets** — for parametrised work (e.g. "implement for X
   / Y / Z").
 

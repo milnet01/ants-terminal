@@ -127,6 +127,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Document the Evidence: bullet field in roadmap-format.md § 3.5 (ANTS-3382 follow-up).** (ANTS-3386)
+  The new Evidence line on roadmap items works and is documented in the live tool schema, but the human-facing roadmap-format standard doesn't list it yet.
+
 - **`roadmap_log` documents that flip/annotate resolve top-level bullets only** (ANTS-3403)
   Nested phase sub-bullets inside a narrator bullet's body are out of scope for the locators and need a direct Edit; the op descriptor now states this.
 
