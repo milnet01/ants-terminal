@@ -24102,7 +24102,7 @@ contributors don't duplicate research.
 
 ---
 
-- 📋 [ANTS-1693] **RoadmapDialog section-count chips use flat counts, not RoadmapIndex rollup counts.**
+- ✅ [ANTS-1693] **RoadmapDialog section-count chips use flat counts, not RoadmapIndex rollup counts.**
   The MCP `roadmap_query` section_index uses `RoadmapIndex::rollupCounts`
   (level-2 parents sum their descendants) and exposes the `*_id_only`
   parallels (ANTS-1622). The dialog computes its own *flat* per-section
@@ -24115,8 +24115,9 @@ contributors don't duplicate research.
   **Layman:** The little count badges on each Roadmap section header in the app can disagree with the numbers the Claude MCP tool reports for the same section, because the app counts differently.
   Kind: enhancement.
   Source: in-session-2026-05-20 (roadmap MCP-vs-dialog parity audit).
+  Resolved 2026-07-01. Generalised RoadmapIndex::rollupCounts into a header-only template (Counts only needs operator+=); RoadmapDialog::renderCardsHtml now feeds its per-slug flat chip tallies through the identical tree-walk the MCP section_index uses, so parent (level-2) chips sum self + descendants and no longer disagree with roadmap_query's active_count. Rollup runs on the filtered counts (chips reflect what's shown); the flat countsBySection is retained for the INV-12 section-suppression predicate. Files: src/roadmapindex.{h,cpp}, src/roadmapdialog.cpp.
 
-- 📋 [ANTS-1694] **RoadmapDialog does not surface duplicate [PROJ-NNNN] IDs the MCP detects.**
+- ✅ [ANTS-1694] **RoadmapDialog does not surface duplicate [PROJ-NNNN] IDs the MCP detects.**
   The MCP `roadmap_query` surfaces `duplicate_ids[]` via
   `rcComputeDuplicateIds` (ANTS-1646) when the same `[PROJ-NNNN]` id
   appears on more than one bullet. The dialog has no visual surfacing —
@@ -24127,6 +24128,7 @@ contributors don't duplicate research.
   **Layman:** If the roadmap accidentally has the same ID twice, the Claude MCP tool warns about it but the app just shows both as normal cards with no warning.
   Kind: enhancement.
   Source: in-session-2026-05-20 (roadmap MCP-vs-dialog parity audit).
+  Resolved 2026-07-01. RoadmapDialog::renderCardsHtml now detects duplicate [PROJ-NNNN] IDs over all parsed bullets using the same RoadmapIndex::isCanonicalId predicate the MCP's rcComputeDuplicateIds keys on, and emits a ⚠ warning banner (accent border + secondary bg, inline-styled to avoid renumbering the density-tier placeholder chain) at the top of the cards body. Display-only. Files: src/roadmapdialog.cpp.
 
 - 📋 [ANTS-1695] **RoadmapDialog has no unrecognised-format / header-inventory fallback for zero-bullet roadmaps.**
   When `parseBullets` yields zero bullets but headings exist (e.g. a

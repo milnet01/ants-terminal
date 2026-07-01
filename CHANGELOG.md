@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **RoadmapDialog surfaces a duplicate-ID warning banner** (ANTS-1694)
+  When the roadmap accidentally carries the same [PROJ-NNNN] id on more than one bullet — which roadmap_query already flags — the cards view now shows a warning banner at the top, using the same canonical-ID predicate as the MCP detector.
+
 - **roadmap_log op:"amend_body" — patch a bullet's body prose in place (ANTS-3406)**
   Locate a bullet by id/anchor/headline, then replace an exact single-line substring of its continuation body (old_text→new_text) with a unique-match guard, dry_run preview, and leaked-XML scrubbing. Works on GFM and ants-v1 roadmaps. Fixes the cross-session gap where correcting a stale phrase in a roadmap entry meant a raw text edit.
 
@@ -234,6 +237,9 @@ for security-relevant changes.
   header contract comments, and the orphaned Inv3 shape test.
 
 ### Fixed
+
+- **RoadmapDialog section chips now roll up descendant counts, matching the MCP** (ANTS-1693)
+  Parent (level-2) section chips previously showed only their direct bullets, so they could disagree with roadmap_query's section_index active_count for the same slug. RoadmapIndex::rollupCounts is now a shared template that both the dialog and the MCP use, so a parent chip sums self + descendants.
 
 - **roadmap_query MCP one-line description back under its 800 B wire budget (ANTS-3409)**
   Trimmed the redundant `bundles` mode gloss so the reconstructed

@@ -1841,6 +1841,17 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     struct SectionCounts {
         int done = 0, planned = 0, inProgress = 0, considered = 0;
         int visible = 0;
+        // ANTS-1693 — lets RoadmapIndex::rollupCounts bubble a child
+        // section's tally into its ancestors (same tree-walk the MCP
+        // section_index uses), so a parent chip sums its descendants.
+        SectionCounts &operator+=(const SectionCounts &o) {
+            done += o.done;
+            planned += o.planned;
+            inProgress += o.inProgress;
+            considered += o.considered;
+            visible += o.visible;
+            return *this;
+        }
     };
     QHash<QString, SectionCounts> countsBySection;
     for (const BulletRecord &rec : allBullets) {
@@ -1853,6 +1864,44 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         else if (rec.status == QStringLiteral("📋")) c.planned++;
         else if (rec.status == QStringLiteral("🚧")) c.inProgress++;
         else if (rec.status == QStringLiteral("💭")) c.considered++;
+    }
+
+    // ANTS-1693 — parent (level-2) chips previously showed only their
+    // *direct* bullets, so a parent count disagreed with the MCP
+    // `roadmap_query` section_index `active_count` for the same slug
+    // (which rolls descendants up via RoadmapIndex::rollupCounts). Feed
+    // the dialog's per-slug flat tallies through the identical tree-walk
+    // so parent chips sum self + descendants. Leaf (h3) sections have no
+    // descendants, so their chips are unchanged. Rollup runs on the
+    // *filtered* counts, matching the dialog's "chips reflect what's
+    // shown" model; in the default (unfiltered) view this reproduces the
+    // MCP's rollup exactly. The flat `countsBySection` is kept for the
+    // INV-12 section-suppression predicate (a parent with no *direct*
+    // visible bullets must still collapse on non-Full presets).
+    const QVector<RoadmapIndex::Section> sectionIndex =
+        RoadmapIndex::buildIndex(sourceText);
+    const QHash<QString, SectionCounts> rolledCounts =
+        RoadmapIndex::rollupCounts(sectionIndex, countsBySection);
+
+    // ANTS-1694 — surface duplicate [PROJ-NNNN] IDs the MCP already
+    // flags (roadmap_query's rcComputeDuplicateIds). A collision is
+    // display-harmless (each card's own data is correct) but makes
+    // roadmap_log flip/annotate locators ambiguous, so warn. Detected
+    // over ALL bullets — a duplicate is independent of the active
+    // status filter — keyed on the same canonical-ID predicate the MCP
+    // uses (anchors / hash nonces / hyphen-less legacy IDs can't
+    // collide). First-seen order keeps the banner stable across renders.
+    QStringList duplicateIds;
+    {
+        QHash<QString, int> idCounts;
+        QStringList firstSeen;
+        for (const BulletRecord &rec : allBullets) {
+            if (!RoadmapIndex::isCanonicalId(rec.id)) continue;
+            if (!idCounts.contains(rec.id)) firstSeen.append(rec.id);
+            ++idCounts[rec.id];
+        }
+        for (const QString &id : firstSeen)
+            if (idCounts.value(id) >= 2) duplicateIds.append(id);
     }
 
     // Build the HTML.
@@ -2161,6 +2210,23 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         return j - 1;
     };
 
+    // ANTS-1694 — duplicate-ID warning banner leads the body so it is
+    // seen before any card. Inline style (not the shared stylesheet
+    // block above) so we don't have to renumber its density-tier %N
+    // placeholder chain. Reuses the accent border + secondary
+    // background for theme consistency; the ⚠ glyph carries the warning
+    // semantics without needing a bespoke error colour.
+    if (!duplicateIds.isEmpty()) {
+        html += QStringLiteral(
+            "<div style=\"margin:8px 0;padding:6px 10px;"
+            "border-left:3px solid %1;background:%2;color:%3;"
+            "font-weight:bold;\">⚠ Duplicate roadmap IDs: %4</div>")
+            .arg(currentColor,
+                 th.bgSecondary.name(),
+                 th.textPrimary.name(),
+                 htmlEscape(duplicateIds.join(QStringLiteral(", "))));
+    }
+
     // ANTS-1662 — bullets that appear before the first ##/### heading have an
     // empty section slug, so the heading-driven walk below never emits them and
     // they vanish from the cards view (v1 renderHtml shows them). Emit the
@@ -2207,11 +2273,15 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             }
             currentSlug = slug;
             sectionExpanded = opts.expandedSections.contains(slug);
-            const SectionCounts c = countsBySection.value(slug);
+            const SectionCounts flat = countsBySection.value(slug);
+            // ANTS-1693 — chips show the rolled-up (self + descendants)
+            // tally to match the MCP; suppression keys on the *direct*
+            // count so an empty parent still collapses on non-Full.
+            const SectionCounts rolled = rolledCounts.value(slug);
             // INV-12: on non-Full, suppress sections with 0 visible bullets.
-            sectionVisible = (opts.activePreset == Preset::Full) || c.visible > 0;
+            sectionVisible = (opts.activePreset == Preset::Full) || flat.visible > 0;
             if (sectionVisible) {
-                emitSectionHeader(level, hText, slug, c,
+                emitSectionHeader(level, hText, slug, rolled,
                                   level == 3 ? currentH2Text : QString());
                 // If expanded, emit its bullets as cards.
                 if (sectionExpanded) {

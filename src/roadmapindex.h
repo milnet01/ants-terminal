@@ -9,6 +9,8 @@
 #include <QString>
 #include <QVector>
 
+#include <algorithm>
+
 namespace RoadmapIndex {
 
 struct Section {
@@ -68,6 +70,19 @@ struct SectionCounts {
     int activeWithId  = 0;
     int shippedWithId = 0;
     int totalWithId   = 0;
+
+    // ANTS-1693 — field-wise accumulate so the generic `rollupCounts`
+    // tree-walk (below) can bubble a child section's tally into its
+    // ancestors without a bespoke `addInto`.
+    SectionCounts &operator+=(const SectionCounts &o) {
+        active        += o.active;
+        shipped       += o.shipped;
+        total         += o.total;
+        activeWithId  += o.activeWithId;
+        shippedWithId += o.shippedWithId;
+        totalWithId   += o.totalWithId;
+        return *this;
+    }
 };
 
 // ANTS-1442 — given direct per-slug tallies (bullets keyed by their
@@ -80,8 +95,62 @@ struct SectionCounts {
 // ANTS-1813 — implemented as a single linear stack pass over the
 // section list (ANTS-1783), NOT the original O(n²) all-pairs
 // containment scan; the header previously mis-described the cost.
-QHash<QString, SectionCounts> rollupCounts(
+//
+// ANTS-1693 — generic over the count shape. The tree-walk (the
+// load-bearing part) is identical whatever the tally struct; only the
+// per-field sum differs, so `Counts` need only supply
+// `Counts &operator+=(const Counts &)`. roadmap_query passes
+// RoadmapIndex::SectionCounts; RoadmapDialog passes its own
+// per-lifecycle chip tally — one algorithm, so the dialog's parent
+// chips can no longer drift from the MCP's rollup.
+template <class Counts>
+QHash<QString, Counts> rollupCounts(
     const QVector<Section> &index,
-    const QHash<QString, SectionCounts> &direct);
+    const QHash<QString, Counts> &direct) {
+    QHash<QString, Counts> out;
+    out.reserve(index.size());
+
+    // Sections form a tree by [lineStart, lineEnd] containment; walking
+    // them in lineStart order with a stack of open ancestors lets each
+    // section's direct counts bubble up to every ancestor in amortised
+    // O(1). A copy is sorted first so we don't depend on buildIndex's
+    // emission order.
+    QVector<const Section *> ordered;
+    ordered.reserve(index.size());
+    for (const auto &s : index) ordered.append(&s);
+    std::sort(ordered.begin(), ordered.end(),
+              [](const Section *a, const Section *b) {
+                  if (a->lineStart != b->lineStart)
+                      return a->lineStart < b->lineStart;
+                  // Wider span first on a tie so a parent is pushed
+                  // before a same-start child.
+                  return a->lineEnd > b->lineEnd;
+              });
+
+    struct Frame { const Section *sec{}; Counts agg{}; };
+    QVector<Frame> stack;
+    auto closeFrame = [&](const Frame &f) {
+        out.insert(f.sec->slug, f.agg);
+        if (!stack.isEmpty()) stack.last().agg += f.agg;
+    };
+
+    for (const Section *s : ordered) {
+        // Pop ancestors that end at or before this section begins —
+        // their subtree is complete. lineEnd is EXCLUSIVE, so a sibling
+        // whose lineStart equals the previous section's lineEnd (e.g.
+        // [10,50) then [50,100)) is NOT nested: pop on `<=`, not `<`.
+        while (!stack.isEmpty() &&
+               stack.last().sec->lineEnd <= s->lineStart) {
+            closeFrame(stack.takeLast());
+        }
+        // Seed with the section's own direct counts (covers "self").
+        Counts seed{};
+        const auto it = direct.constFind(s->slug);
+        if (it != direct.cend()) seed = it.value();
+        stack.append(Frame{s, seed});
+    }
+    while (!stack.isEmpty()) closeFrame(stack.takeLast());
+    return out;
+}
 
 }  // namespace RoadmapIndex
