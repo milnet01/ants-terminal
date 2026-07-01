@@ -19,6 +19,28 @@ const QHash<QString, qint64> &baselineTable() {
         {QStringLiteral("roadmap_query"),  594000},   // ROADMAP.md size
         {QStringLiteral("verify_changes"),   8192},   // skill 4.1 KiB + ~4 KiB bash overhead
         {QStringLiteral("plan_template"),    8192},   // skill 6.0 KiB + ~2 KiB template echo
+        // ANTS-3361 — the read/search verbs each REPLACE a full-file Read
+        // or a grep, so they carry a real saving the meter previously
+        // credited at ~0 (no baseline → estTokensSaved 0). Unlike
+        // roadmap_query's exact file size, these are DELIBERATELY
+        // CONSERVATIVE per-call estimates of the naive alternative's cost
+        // (a modest source file / grep output) — a rough order-of-magnitude
+        // model, matching the metric's existing precision. Under-shooting is
+        // intentional: the estTokensSaved floor-at-0 (see buildReport)
+        // means a call whose own output exceeds the baseline credits 0
+        // rather than over-claiming, so we bias low and never inflate the
+        // "tokens saved" headline. A precise per-call baseline (file size
+        // threaded from each verb) is the larger cross-verb estimation task
+        // tracked separately; these constants are the proportionate fix.
+        {QStringLiteral("file_outline"),     8192},   // vs a full-file Read
+        {QStringLiteral("read_region"),      8192},   // vs Read-ing the file to slice it
+        {QStringLiteral("read_regions"),    12288},   // multiple slices / files
+        {QStringLiteral("workspace_search"), 4096},   // vs grep -r output
+        {QStringLiteral("codebase_index"),  12288},   // vs a project-wide grep/find
+        {QStringLiteral("find_definition"),  4096},   // vs multi-grep for a def
+        {QStringLiteral("find_sources"),     4096},   // vs multi-grep for callers
+        {QStringLiteral("find_caller"),      4096},   // vs multi-grep for callers
+        {QStringLiteral("build_status"),     3072},   // vs reading build-log tail
     };
     return kBaselines;
 }

@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log op:"amend_body" — patch a bullet's body prose in place (ANTS-3406)**
+  Locate a bullet by id/anchor/headline, then replace an exact single-line substring of its continuation body (old_text→new_text) with a unique-match guard, dry_run preview, and leaked-XML scrubbing. Works on GFM and ants-v1 roadmaps. Fixes the cross-session gap where correcting a stale phrase in a roadmap entry meant a raw text edit.
+
 - **`roadmap_query` `max_body_bytes` raises the body cap for a targeted id/ids fetch** (ANTS-3402)
   A single-bullet / id-set read can now return a large multi-phase epic body (clamp [2000, 16384]); list and section queries stay at the 2000 cap.
 
@@ -218,6 +221,9 @@ for security-relevant changes.
   header contract comments, and the orphaned Inv3 shape test.
 
 ### Fixed
+
+- **token_usage now credits the read/search verbs for the tokens they save (ANTS-3361)**
+  file_outline, read_region(s), workspace_search, codebase_index, find_definition/sources/caller and build_status previously reported ~0 tokens saved despite replacing a full-file Read or a grep. They now carry conservative per-call baselines (deliberately under-estimated and floored at 0 so the headline never over-claims).
 
 - **`workspace_search` returns a soft `rg_failed` envelope instead of a raw transport timeout on huge match streams** (ANTS-3405)
   The JSON parse loop is now bounded by the wall budget (not just the rg process), so a whole-repo query over large data blobs no longer blows the client's transport timer with an un-catchable -32000.

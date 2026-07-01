@@ -1317,6 +1317,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_roadmap_log_pass_writer/test_mcp_roadmap_log_pass_writer.cpp
                 # ANTS-1717/1793 roadmap_log note append (annotate + flip-note).
                 tests/features/roadmap_log_annotate/test_roadmap_log_annotate.cpp
+                # ANTS-3406 roadmap_log op:amend_body (exact single-line body patch).
+                tests/features/roadmap_log_amend_body/test_roadmap_log_amend_body.cpp
                 # ANTS-1690 roadmap_log op:flip_batch (N bullets, one commit).
                 tests/features/roadmap_log_flip_batch/test_roadmap_log_flip_batch.cpp
                 # ANTS-2059 roadmap_log flip/flip_batch on fully id-less ants-v1 bullets.

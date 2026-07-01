@@ -7864,6 +7864,7 @@ void ClaudeIntegration::onMcpConnection() {
                     opEnum.append("flip");
                     opEnum.append("flip_batch");
                     opEnum.append("annotate");
+                    opEnum.append("amend_body");   // ANTS-3406
                     opEnum.append("create_section");
                     opEnum.append("bundle_row");
                     opProp["enum"] = opEnum;
@@ -7907,7 +7908,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "(\"end\" default) and `sort_col` (keep the table "
                         "sorted by a column). Pipe-escapes each cell and "
                         "folds newlines to <br>, so a bundle-tracking table "
-                        "no longer needs a hand-edit / sed.");
+                        "no longer needs a hand-edit / sed. "
+                        "\"amend_body\" (ANTS-3406) patches a bullet's "
+                        "continuation prose in place — locate by "
+                        "id/anchor/headline, then replace the EXACT "
+                        "single-line `old_text` with `new_text` (unique-match "
+                        "guarded; status/headline out of scope; dry_run "
+                        "previewable). Use it to fix a stale phrase inside an "
+                        "existing bullet's body without a raw text edit.");
                     QJsonObject toStatusProp;
                     toStatusProp["type"] = "string";
                     QJsonArray toStatusEnum;
@@ -7957,6 +7965,31 @@ void ClaudeIntegration::onMcpConnection() {
                         "the resolution note while flipping in one "
                         "call). Scrubbed of leaked tool-call XML like "
                         "op:\"append\"'s body; pre-wrap to ~70 columns.");
+
+                    // ANTS-3406 — op:"amend_body" operands: replace an
+                    // exact single-line substring of the located bullet's
+                    // continuation body.
+                    QJsonObject oldTextProp;
+                    oldTextProp["type"]      = "string";
+                    oldTextProp["maxLength"] = 4000;
+                    oldTextProp["description"] = QStringLiteral(
+                        "op:\"amend_body\" (ANTS-3406) — the EXACT substring "
+                        "to replace inside the located bullet's continuation "
+                        "body. Must occur on exactly one body line (0 → "
+                        "body_match_not_found, >1 → body_match_ambiguous, so "
+                        "it can't silently clobber unrelated prose). "
+                        "Case-sensitive; single-line (a phrase spanning a "
+                        "line break won't match). The headline is out of "
+                        "scope — amend_body edits body prose only.");
+                    QJsonObject newTextProp;
+                    newTextProp["type"]      = "string";
+                    newTextProp["maxLength"] = 4000;
+                    newTextProp["description"] = QStringLiteral(
+                        "op:\"amend_body\" (ANTS-3406) — replacement text for "
+                        "the unique `old_text` match. Required (the key must "
+                        "be present); an empty string deletes the matched "
+                        "phrase. Scrubbed of leaked tool-call XML like a "
+                        "`note`.");
 
                     // ANTS-1690 — flip_batch locators array. Each item
                     // carries one locator (id|anchor|headline|line_range)
@@ -8260,6 +8293,8 @@ void ClaudeIntegration::onMcpConnection() {
                     props["anchor"]        = anchorProp;
                     props["prefix_hint"]   = prefixHintProp;
                     props["note"]          = noteProp;
+                    props["old_text"]      = oldTextProp;     // ANTS-3406
+                    props["new_text"]      = newTextProp;     // ANTS-3406
                     props["id_strategy"]   = idStrategyProp;  // ANTS-1905
                     props["stable_id"]     = stableIdProp;    // ANTS-1905
                     props["id_prefix"]     = idPrefixProp;    // ANTS-2076

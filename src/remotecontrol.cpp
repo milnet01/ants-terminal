@@ -999,6 +999,41 @@ int appendBodyNote(QStringList &lines, int headlineLine,
     return insertAt;
 }
 
+// ANTS-3406 — replace an exact single-line substring `oldText` with
+// `newText` inside the continuation body of the bullet whose headline
+// sits at `headlineLine`. The body span is the same contiguous indented
+// run appendBodyNote() targets (blank line / column-0 line / EOF
+// terminated), so a match can never leak into a sibling bullet or touch
+// the headline. Requires exactly one occurrence across the span's lines:
+// returns the total count found; only on a unique match (count == 1) is
+// the replacement applied in place and *matchedLine set to the 0-based
+// edited line index. On a 0- or multi-match `lines` is left untouched so
+// the caller can refuse without a rollback. `oldText` must be non-empty
+// (the caller enforces this) and is matched verbatim (case-sensitive);
+// a phrase spanning a line boundary won't match any single line and is
+// reported as not-found by design (the exact-match patch is single-line).
+int amendBodyExact(QStringList &lines, int headlineLine,
+                   const QString &oldText, const QString &newText,
+                   int *matchedLine) {
+    int spanEnd = headlineLine + 1;
+    while (spanEnd < lines.size()) {
+        const QString &ln = lines.at(spanEnd);
+        if (ln.isEmpty() || !ln.at(0).isSpace()) break;
+        ++spanEnd;
+    }
+    int total   = 0;
+    int hitLine  = -1;
+    for (int i = headlineLine + 1; i < spanEnd; ++i) {
+        const int c = lines.at(i).count(oldText);
+        if (c > 0 && hitLine < 0) hitLine = i;
+        total += c;
+    }
+    if (total != 1) return total;   // 0 → not found, >1 → ambiguous
+    lines[hitLine].replace(oldText, newText);
+    if (matchedLine) *matchedLine = hitLine;
+    return 1;
+}
+
 // ANTS-1462 — render a header-inventory envelope from a built
 // RoadmapIndex. Used by cmdRoadmapQuery as a fall-through when the
 // bullet parser yields zero entries but the file still has ##/###
@@ -4760,6 +4795,12 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
         op == QStringLiteral("annotate")) {
         return cmdRoadmapLogFlip(req);
     }
+    // ANTS-3406 — op:"amend_body": patch a bullet's body prose in place
+    // (exact single-line old_text→new_text). Standalone handler,
+    // m_main-independent (caller_cwd + filesystem only).
+    if (op == QStringLiteral("amend_body")) {
+        return cmdRoadmapLogAmendBody(req);
+    }
     // ANTS-1690 — batch flip: N bullets, one read + one commit.
     if (op == QStringLiteral("flip_batch")) {
         return cmdRoadmapLogFlipBatch(req);
@@ -4785,7 +4826,7 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
             QStringLiteral("roadmap_log: unknown op \"%1\" — expected "
                            "\"append\" (default), \"append_batch\", "
                            "\"flip\", \"flip_batch\", \"annotate\", "
-                           "\"bundle_row\", or "
+                           "\"amend_body\", \"bundle_row\", or "
                            "\"create_section\"").arg(op));
     }
 
@@ -4828,6 +4869,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendForTest(
 QJsonDocument RemoteControl::cmdRoadmapLogFlipForTest(
         const QJsonObject &req) {
     return cmdRoadmapLogFlip(req);
+}
+
+// ANTS-3406 — test seam for the amend_body path (m_main-independent:
+// caller_cwd + filesystem only). See
+// tests/features/roadmap_log_amend_body/spec.md.
+QJsonDocument RemoteControl::cmdRoadmapLogAmendBodyForTest(
+        const QJsonObject &req) {
+    return cmdRoadmapLogAmendBody(req);
 }
 
 // ANTS-1690 — test seam for the batch-flip path (m_main-independent).
@@ -6793,6 +6842,302 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             target.headline) };
     }
     return QJsonDocument(out);
+}
+
+// ANTS-3406 — roadmap_log op:"amend_body". Locate a bullet (id > anchor
+// > headline, same rules as flip) and replace an exact single-line
+// substring of its continuation body (`old_text` → `new_text`), guarded
+// by amendBodyExact's single-occurrence uniqueness check so it can never
+// silently clobber unrelated prose. Standalone handler — deliberately NOT
+// threaded into the delicate flip/annotate path (ANTS-2059 history); it
+// reuses the free walk/scrub/write helpers so flip/annotate stay
+// untouched. Exact-match patch only this pass; full-body-replace is out
+// of scope (see tests/features/roadmap_log_amend_body/spec.md).
+// m_main-independent (caller_cwd + filesystem only).
+QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
+    auto rlErr = [](const QString &code, const QString &message) {
+        QJsonObject env;
+        env["ok"]    = false;
+        env["code"]  = code;
+        env["error"] = message;
+        return QJsonDocument(env);
+    };
+    auto rlSugErr = [](const QString &code, const QString &message,
+                       int matched) {
+        QJsonObject env;
+        env["ok"]      = false;
+        env["code"]    = code;
+        env["error"]   = message;
+        env["matched"] = matched;
+        return QJsonDocument(env);
+    };
+
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+
+    // 1. caller_cwd + amend-specific fields.
+    const QString callerRaw =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    if (callerRaw.isEmpty()) {
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: caller_cwd is required"));
+    }
+    // to_status / id_hint are meaningless for amend_body (status is
+    // preserved; no anchor injection, so the counter is never consumed).
+    if (!req.value(QStringLiteral("to_status")).toString().isEmpty()) {
+        return rlErr(QStringLiteral("bad_op_combo"),
+            QStringLiteral("roadmap_log: to_status is not accepted under "
+                           "op:\"amend_body\" — it edits body prose only and "
+                           "leaves status unchanged; use op:\"flip\" to "
+                           "change status"));
+    }
+    if (req.contains(QStringLiteral("id_hint"))) {
+        return rlErr(QStringLiteral("bad_op_combo"),
+            QStringLiteral("roadmap_log: id_hint is not accepted under "
+                           "op:\"amend_body\""));
+    }
+    const QString oldText = req.value(QStringLiteral("old_text")).toString();
+    if (oldText.isEmpty()) {
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: op:\"amend_body\" requires a "
+                           "non-empty `old_text` — the exact substring to "
+                           "replace inside the located bullet's body"));
+    }
+    if (!req.contains(QStringLiteral("new_text"))) {
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: op:\"amend_body\" requires "
+                           "`new_text` (may be an empty string to delete the "
+                           "matched phrase)"));
+    }
+    QString newText = req.value(QStringLiteral("new_text")).toString();
+    // ANTS-1995 — cap both operands. old_text is matched with a linear
+    // QString::count (no regex → no ReDoS) but is capped for sanity;
+    // new_text is routed through rcScrubLeakedToolXml's backtracking scrub.
+    if (oldText.size() > kRcMaxNoteChars ||
+        newText.size() > kRcMaxNoteChars) {
+        return rlErr(QStringLiteral("too_large"),
+            QStringLiteral("roadmap_log: old_text / new_text exceeds %1-char "
+                           "cap").arg(kRcMaxNoteChars));
+    }
+    QStringList newTextScrubbedNames;
+    rcScrubLeakedToolXml(newText, newTextScrubbedNames);
+
+    // 2. Locator (id > anchor > headline) — same rules as flip.
+    const QString locId       = req.value(QStringLiteral("id")).toString();
+    const QString locAnchor   = req.value(QStringLiteral("anchor")).toString();
+    const QString locHeadline =
+        req.value(QStringLiteral("headline")).toString();
+    if (locId.isEmpty() && locAnchor.isEmpty() && locHeadline.isEmpty()) {
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: op:\"amend_body\" needs at least one "
+                           "locator — `id`, `anchor`, or `headline`"));
+    }
+    if (!locHeadline.isEmpty() &&
+        (!locId.isEmpty() || !locAnchor.isEmpty())) {
+        return rlErr(QStringLiteral("bad_op_combo"),
+            QStringLiteral("roadmap_log: headline locator is not permitted "
+                           "alongside id or anchor"));
+    }
+
+    // 3. Resolve caller_cwd → ROADMAP.md.
+    const QString callerCanonical =
+        QFileInfo(callerRaw).canonicalFilePath();
+    if (callerCanonical.isEmpty()) {
+        return rlErr(QStringLiteral("no_roadmap"),
+            QStringLiteral("roadmap_log: caller_cwd \"%1\" does not "
+                           "canonicalise to an existing directory")
+                .arg(callerRaw));
+    }
+    const QString roadmapPath = findRoadmapUnder(callerCanonical);
+    if (roadmapPath.isEmpty()) {
+        return rlErr(QStringLiteral("no_roadmap"),
+            QStringLiteral("roadmap_log: no ROADMAP.md under \"%1\"")
+                .arg(callerCanonical));
+    }
+
+    // 4. Read markdown.
+    QFile rf(roadmapPath);
+    if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return rlErr(QStringLiteral("roadmap_read_failed"),
+            QStringLiteral("roadmap_log: could not read \"%1\"")
+                .arg(roadmapPath));
+    }
+    const QString markdown = QString::fromUtf8(rf.readAll());
+    rf.close();
+    const qint64 markdownBytes = markdown.toUtf8().size();
+
+    // Pass-headings roadmaps store bodies under #### Pass headings, not
+    // indented bullet continuation lines — refuse clearly rather than
+    // mis-edit (parity with the ANTS-2031 format gate).
+    if (rcBulletsArePassHeadings(RoadmapDialog::parseBullets(markdown))) {
+        return rlErr(QStringLiteral("unsupported_format"),
+            QStringLiteral("roadmap_log: op:\"amend_body\" is not supported "
+                           "on pass-headings roadmaps — edit the body with a "
+                           "text edit"));
+    }
+
+    QStringList lines = markdown.split(QChar('\n'));
+
+    // 5. Locate the target's headline line (body span anchor) + the
+    //    1-based bullet line + id. GFM first; fall through to ants-v1 for
+    //    a big-enough file (mirrors cmdRoadmapLogFlip's format detection).
+    int     bodyAnchorLine = -1;
+    int     reportLine     = -1;
+    QString matchedId;
+    QString format;
+
+    const QVector<GfmBullet> bullets = walkGfmBullets(lines);
+    if (!bullets.isEmpty()) {
+        format = QStringLiteral("gfm");
+        const quint64 need = rcFnv1a64(rcNormaliseHeadline(locHeadline));
+        QVector<int> m;
+        if (!locId.isEmpty()) {
+            for (int i = 0; i < bullets.size(); ++i)
+                if (bullets.at(i).boldId == locId) m.append(i);
+        } else if (!locAnchor.isEmpty()) {
+            for (int i = 0; i < bullets.size(); ++i)
+                if (bullets.at(i).anchor == locAnchor) m.append(i);
+        } else {
+            for (int i = 0; i < bullets.size(); ++i)
+                if (rcGfmHeadlineMatchHashes(bullets.at(i).headline,
+                                             bullets.at(i).boldId)
+                        .contains(need)) m.append(i);
+        }
+        if (m.size() != 1) {
+            return rlSugErr(m.isEmpty()
+                    ? QStringLiteral("bullet_not_found")
+                    : QStringLiteral("bullet_ambiguous"),
+                m.isEmpty()
+                    ? QStringLiteral("roadmap_log: locator matched zero GFM "
+                                     "bullets")
+                    : QStringLiteral("roadmap_log: locator matched %1 GFM "
+                                     "bullets — narrow with id/anchor")
+                        .arg(m.size()),
+                m.size());
+        }
+        const GfmBullet &t = bullets.at(m.first());
+        if (t.insideFenced) {
+            return rlErr(QStringLiteral("anchor_unsafe_context"),
+                QStringLiteral("roadmap_log: located bullet is inside a "
+                               "fenced code block — refusing to edit"));
+        }
+        // Anchor the body span at firstLine (the checkbox line), NOT
+        // headlineLine: walkGfmBullets advances headlineLine past
+        // indented non-metadata continuation lines (they count as
+        // "headline content" for anchor placement), but for amend_body
+        // those lines ARE part of the searchable body. firstLine+1 is the
+        // true body start; the headline line itself is excluded from the
+        // search (amendBodyExact starts at bodyAnchorLine+1).
+        bodyAnchorLine = t.firstLine;
+        reportLine     = t.firstLine + 1;
+        matchedId      = t.boldId;
+    } else if (markdownBytes > kRoadmapMinParseableSize) {
+        const QVector<AntsV1Bullet> v1 = walkAntsV1Bullets(lines);
+        if (v1.isEmpty()) {
+            return rlErr(QStringLiteral("unrecognised_format"),
+                QStringLiteral("roadmap_log: \"%1\" parsed zero bullets "
+                               "(neither GFM-task-list nor ants-v1 native "
+                               "format)").arg(roadmapPath));
+        }
+        format = QStringLiteral("ants-v1");
+        if (!locAnchor.isEmpty()) {
+            return rlErr(QStringLiteral("bad_op_combo"),
+                QStringLiteral("roadmap_log: anchor locator is not supported "
+                               "on ants-v1 native format — use `id` or "
+                               "`headline`"));
+        }
+        QVector<int> m;
+        if (!locId.isEmpty()) {
+            for (int i = 0; i < v1.size(); ++i)
+                if (v1.at(i).id == locId) m.append(i);
+        } else {
+            const quint64 need = rcFnv1a64(rcNormaliseHeadline(locHeadline));
+            for (int i = 0; i < v1.size(); ++i)
+                if (rcFnv1a64(rcNormaliseHeadline(v1.at(i).headline)) == need)
+                    m.append(i);
+        }
+        if (m.size() != 1) {
+            return rlSugErr(m.isEmpty()
+                    ? QStringLiteral("bullet_not_found")
+                    : QStringLiteral("bullet_ambiguous"),
+                m.isEmpty()
+                    ? QStringLiteral("roadmap_log: locator matched zero "
+                                     "ants-v1 bullets")
+                    : QStringLiteral("roadmap_log: locator matched %1 ants-v1 "
+                                     "bullets — narrow with id").arg(m.size()),
+                m.size());
+        }
+        const AntsV1Bullet &t = v1.at(m.first());
+        if (t.insideFenced) {
+            return rlErr(QStringLiteral("anchor_unsafe_context"),
+                QStringLiteral("roadmap_log: located bullet is inside a "
+                               "fenced code block — refusing to edit"));
+        }
+        bodyAnchorLine = t.firstLine;
+        reportLine     = t.firstLine + 1;
+        matchedId      = t.id;
+    } else {
+        return rlErr(QStringLiteral("unrecognised_format"),
+            QStringLiteral("roadmap_log: \"%1\" parsed zero bullets (neither "
+                           "GFM-task-list nor ants-v1 native format)")
+                .arg(roadmapPath));
+    }
+
+    // 6. Patch the body span (single-occurrence uniqueness enforced).
+    int editedLine = -1;
+    const int hits =
+        amendBodyExact(lines, bodyAnchorLine, oldText, newText, &editedLine);
+    if (hits == 0) {
+        return rlErr(QStringLiteral("body_match_not_found"),
+            QStringLiteral("roadmap_log: `old_text` not found in the body of "
+                           "the located bullet"));
+    }
+    if (hits > 1) {
+        return rlErr(QStringLiteral("body_match_ambiguous"),
+            QStringLiteral("roadmap_log: `old_text` occurs %1 times in the "
+                           "body — narrow it to a unique substring")
+                .arg(hits));
+    }
+
+    const QString updated = lines.join(QChar('\n'));
+
+    // 7. dry_run preview / atomic write + envelope.
+    auto buildEnvelope = [&](bool preview, qint64 byteCount) {
+        QJsonObject out;
+        out["ok"]        = true;
+        out["op"]        = QStringLiteral("amend_body");
+        out["format"]    = format;
+        out["file"]      = QStringLiteral("ROADMAP.md");
+        out["line"]      = reportLine;
+        out["body_line"] = editedLine + 1;
+        out["amended"]   = true;
+        if (preview) { out["dry_run"] = true; out["bytes"] = byteCount; }
+        else         { out["bytes_written"] = byteCount; }
+        if (!matchedId.isEmpty()) out["id"] = matchedId;
+        if (!newTextScrubbedNames.isEmpty()) {
+            QJsonArray dropped;
+            for (const QString &n : newTextScrubbedNames) dropped.append(n);
+            out["note_scrubbed_params"] = dropped;
+        }
+        return QJsonDocument(out);
+    };
+
+    if (dryRun) {
+        return buildEnvelope(true,
+            static_cast<qint64>(updated.toUtf8().size()));
+    }
+    QSaveFile rw(roadmapPath);
+    if (!rw.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        return rlErr(QStringLiteral("roadmap_write_failed"),
+            QStringLiteral("roadmap_log: could not open \"%1\" for writing")
+                .arg(roadmapPath));
+    }
+    const QByteArray utf8 = updated.toUtf8();
+    if (rw.write(utf8) != utf8.size() || !rw.commit()) {
+        return rlErr(QStringLiteral("roadmap_write_failed"),
+            QStringLiteral("roadmap_log: atomic write of \"%1\" failed")
+                .arg(roadmapPath));
+    }
+    return buildEnvelope(false, static_cast<qint64>(utf8.size()));
 }
 
 // ANTS-1690 — roadmap_log op:"flip_batch". Flip N bullets to one

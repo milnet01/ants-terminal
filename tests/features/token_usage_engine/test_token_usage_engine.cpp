@@ -294,3 +294,37 @@ TEST(TokenUsageEngine, V2DefaultedCallMatchesV1Behavior) {
     EXPECT_EQ(snap.calls[0].durationUsMean, qint64(0));
     EXPECT_EQ(snap.totalWrapBytes,          qint64(0));
 }
+
+// ANTS-3361 — the read/search verbs now carry a (conservative) baseline,
+// so a call with a modest response credits a non-zero est_tokens_saved
+// instead of the pre-3361 flat 0. Fixes the DOOM report that token_usage
+// attributed the whole saving to roadmap_query and credited the read
+// verbs ~0.
+TEST(TokenUsageEngine, Ants3361ReadVerbsCredited) {
+    Tracker t;
+    // file_outline replacing a full-file Read: baseline 8192, tiny
+    // outline response → clearly > 0 saved.
+    t.recordCall("file_outline",     30, 1500);
+    t.recordCall("read_region",      30, 1500);
+    t.recordCall("workspace_search", 30, 1200);
+    t.recordCall("codebase_index",   30, 2000);
+    t.recordCall("find_definition",  30,  400);
+    auto snap = t.buildReport(/*includeZero=*/true);
+    for (const auto &r : snap.calls) {
+        EXPECT_GT(r.estTokensSaved, qint64(0))
+            << r.tool.toStdString() << " must credit a non-zero saving";
+    }
+    EXPECT_GT(snap.totalSaved, qint64(0));
+}
+
+// ANTS-3361 — over-claim guard: a read verb whose OWN output exceeds its
+// baseline credits 0 (floor), never a negative or inflated figure.
+TEST(TokenUsageEngine, Ants3361ConservativeFloorNoOverClaim) {
+    Tracker t;
+    // build_status baseline is 3072; a 9000-byte response exceeds it.
+    t.recordCall("build_status", 100, 9000);
+    auto snap = t.buildReport(/*includeZero=*/true);
+    ASSERT_EQ(snap.calls.size(), 1);
+    EXPECT_EQ(snap.calls[0].estTokensSaved, qint64(0))
+        << "output exceeding the baseline must floor at 0, not over-claim";
+}
