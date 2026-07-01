@@ -1983,7 +1983,9 @@ void ClaudeIntegration::onMcpConnection() {
                 roadmapTool["description"] = QStringLiteral(
                     "Query ROADMAP.md as structured bullets {id, status, "
                     "headline, headline_oneline, kind, lanes}. Filters: "
-                    "status (all|active|shipped), section=<slug>, id / "
+                    "status (all|active|shipped), section=<slug>, "
+                    "query=<keyword> (case-insensitive headline+body "
+                    "substring), id / "
                     "ids[] (single/bundle fetch by [PROJ-NNNN]). mode: "
                     "bullets (default) | section_index (slug discovery) | "
                     "headline_only (~10x smaller) | bundles (group active "
@@ -2243,6 +2245,24 @@ void ClaudeIntegration::onMcpConnection() {
                         "Ignored on list / section / section_index paths, "
                         "which always emit at the 2000 cap (ANTS-3402).");
                     props["max_body_bytes"] = maxBodyProp;
+                    // ANTS-3391 — `query` keyword text-filter.
+                    QJsonObject queryProp;
+                    queryProp["type"] = "string";
+                    queryProp["description"] = QStringLiteral(
+                        "Case-insensitive keyword filter (substring). "
+                        "Narrows the list to bullets whose headline (or "
+                        "headline_full) OR body contains this text, "
+                        "composing with the status + section= filters — the "
+                        "one-call \"find roadmap items mentioning X\". The "
+                        "echoed `query` confirms it applied. Matches against "
+                        "the same ~2000-char-capped body the list emits, so a "
+                        "keyword only in a longer body's tail may be missed; "
+                        "for an exact item use id / ids instead. Does NOT "
+                        "combine with id / ids / mode:section_index / "
+                        "mode:bundles (bad_mode_combo — those are targeted or "
+                        "aggregate surfaces with no per-bullet list to "
+                        "filter).");
+                    props["query"] = queryProp;
                     // ANTS-1437 — mode arg. Default "bullets" (legacy).
                     // "section_index" returns a compact section index
                     // instead of bullets — use to discover slugs cheaply.

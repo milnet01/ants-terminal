@@ -1868,6 +1868,11 @@ if(ANTS_TESTS)
                 # mcp::ignoredArgs is in ants_core_lib (linked); the dispatch
                 # wiring INVs source-scrape claudeintegration.cpp.
                 tests/features/mcp_ignored_args/test_mcp_ignored_args.cpp
+                # ANTS-3391 — roadmap_query `query` keyword filter.
+                # mcp::bulletMatchesQuery is in ants_core_lib (linked); the
+                # handler + schema wiring INVs source-scrape remotecontrol.cpp
+                # (SRC_RC_CPP) + claudeintegration.cpp.
+                tests/features/roadmap_query_keyword_filter/test_roadmap_query_keyword_filter.cpp
                 # ANTS-1727 — ai_review_concurrency config clamp (INV-14).
                 tests/features/config_ai_review_concurrency/test_config_ai_review_concurrency.cpp
                 # ANTS-1764 — tab_title_format fixed-enum getter/setter validation.

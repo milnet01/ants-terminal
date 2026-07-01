@@ -131,4 +131,13 @@ bool terseDefault();
 // universal key is reported (matches a verb that declares no properties).
 QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known);
 
+// ANTS-3391 — true when the roadmap bullet object `bullet` contains `needle`
+// as a case-insensitive substring of its headline, headline_full, or body
+// field (the three text surfaces roadmap_query emits). Powers the
+// roadmap_query `query` keyword filter. Pure (mirrors ignoredArgs) so the
+// cmdRoadmapQuery list path and the feature test share one matcher. Empty
+// needle → true (an empty substring is contained in everything; the caller
+// gates on non-empty so the filter is a no-op, not a match-all-then-drop).
+bool bulletMatchesQuery(const QJsonObject &bullet, const QString &needle);
+
 }  // namespace mcp

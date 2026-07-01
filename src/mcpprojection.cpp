@@ -374,4 +374,18 @@ QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known) {
     return out;
 }
 
+bool bulletMatchesQuery(const QJsonObject &bullet, const QString &needle) {
+    const QString needleLower = needle.toLower();
+    // headline + headline_full + body — the text surfaces the list emits.
+    // headline_full is present only when a long headline was capped; absent
+    // keys stringify to "" and drop out harmlessly. body is present at the
+    // pre-pagination filter point (rcStripBodyFields runs post-slice), so
+    // the match works even when include_body is false.
+    const QString hay =
+        (bullet.value(QStringLiteral("headline")).toString() + QChar('\n') +
+         bullet.value(QStringLiteral("headline_full")).toString() + QChar('\n') +
+         bullet.value(QStringLiteral("body")).toString()).toLower();
+    return hay.contains(needleLower);
+}
+
 }  // namespace mcp

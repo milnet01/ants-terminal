@@ -22,6 +22,7 @@
 #include "indiereviewdispatcher.h"
 #include "indiereviewengine.h"
 #include "mainwindow.h"
+#include "mcpprojection.h"
 #include "paginationengine.h"
 #include "pathvalidation.h"
 #include "projectsettings.h"    // ANTS-2160 — .ants/project.json overrides
@@ -3379,6 +3380,34 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // path (existing behaviour, INV-6).
     const QString section = req.value(QStringLiteral("section")).toString();
 
+    // ANTS-3391 — optional `query` case-insensitive keyword filter. A
+    // list-path filter: it narrows the status/section-filtered bullets to
+    // those whose headline (or headline_full) OR body contains the needle
+    // (substring, case-folded), composing with status= and section=. It is
+    // NOT a targeted selector, so it refuses to combine with id / ids /
+    // mode:section_index / mode:bundles (guards below) rather than silently
+    // no-op'ing the arg. Needle capped at 200 chars + C0 control bytes
+    // scrubbed, matching the bad_status / id echo hygiene. The match runs
+    // pre-pagination while the `body` field is still present
+    // (rcStripBodyFields runs post-slice), so it works even when
+    // include_body is false — but the body it sees is the same 2000-char-
+    // capped list text, so a keyword living only in a longer body's tail
+    // won't match (documented in the schema).
+    QString queryArg = req.value(QStringLiteral("query")).toString().trimmed();
+    if (queryArg.size() > 200) queryArg.truncate(200);
+    for (int i = 0; i < queryArg.size(); ++i) {
+        if (queryArg.at(i).unicode() < 0x20) queryArg[i] = QChar('?');
+    }
+    auto applyQueryFilter = [&queryArg](QJsonArray &arr) {
+        if (queryArg.isEmpty()) return;  // no filter → keep all, skip iteration
+        QJsonArray kept;
+        for (const auto &v : std::as_const(arr)) {
+            if (mcp::bulletMatchesQuery(v.toObject(), queryArg))
+                kept.append(v);
+        }
+        arr = kept;
+    };
+
     // ANTS-1856 — optional `id` single-item selector. When set, the
     // query returns just the bullet(s) whose id equals this value,
     // bypassing the status filter + pagination so a caller after one
@@ -3608,6 +3637,33 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             "ids selector does not combine with mode:bundles");
         out["code"] = QStringLiteral("bad_mode_combo");
         return QJsonDocument(out);
+    }
+    // ANTS-3391 — `query` is a list-path keyword filter; it composes with
+    // status + section= but not with the targeted id/ids selectors (which
+    // fetch specific bullets, bypassing the list) nor the aggregate
+    // section_index / bundles modes (which emit no per-bullet text to
+    // match). Refuse loudly rather than silently drop the arg — same stance
+    // as the id / ids / bundles combos above.
+    if (!queryArg.isEmpty()) {
+        QString why;
+        if (mode == QLatin1String("section_index"))
+            why = QStringLiteral("query keyword filter does not combine "
+                                 "with mode:section_index");
+        else if (mode == QLatin1String("bundles"))
+            why = QStringLiteral("query keyword filter does not combine "
+                                 "with mode:bundles");
+        else if (!idArg.isEmpty())
+            why = QStringLiteral("query keyword filter does not combine "
+                                 "with the id selector");
+        else if (!idsArg.isEmpty())
+            why = QStringLiteral("query keyword filter does not combine "
+                                 "with the ids selector");
+        if (!why.isEmpty()) {
+            out["ok"] = false;
+            out["error"] = why;
+            out["code"] = QStringLiteral("bad_mode_combo");
+            return QJsonDocument(out);
+        }
     }
 
     // ANTS-1398-INV-1: `include_section_headers` opt-in. Default false
@@ -4329,6 +4385,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             }
             filtered = pruned;
         }
+        // ANTS-3391 — keyword filter composes after status + section, before
+        // pagination (so count / next_offset reflect the narrowed set).
+        applyQueryFilter(filtered);
         // ANTS-1436-INV-11 — pagination via PaginationEngine helper.
         // One call site per emission branch (section + full-file).
         auto page = PaginationEngine::pageBullets(
@@ -4349,6 +4408,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["path"] = path;
         out["count"] = page.slice.size();
         out["filter"] = filter;
+        if (!queryArg.isEmpty()) out["query"] = queryArg;  // ANTS-3391
         out["section"] = sec->slug;
         // ANTS-1907 — always echo the section's etag on a section=
         // response so the caller can hand it back as section_etag_match
@@ -4722,6 +4782,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         }
         filtered = pruned;
     }
+    // ANTS-3391 — keyword filter composes after status, before pagination
+    // (so count / next_offset reflect the narrowed set).
+    applyQueryFilter(filtered);
 
     // ANTS-1436-INV-11 — pagination via PaginationEngine helper.
     // Second of two call sites (the other is in the section-mode
@@ -4756,6 +4819,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     out["count"] = page.slice.size();
     // ANTS-1247-INV-7: filter echo (canonicalised lowercase).
     out["filter"] = filter;
+    if (!queryArg.isEmpty()) out["query"] = queryArg;  // ANTS-3391
     if (emitPagination) {
         out["offset"]    = page.offset;
         out["limit"]     = page.limit;
