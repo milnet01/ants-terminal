@@ -48,7 +48,7 @@ seed_repo() {                       # $1 = repo dir
 }
 write_cmake()  { printf 'project(ants-terminal VERSION %s LANGUAGES CXX)\n' "$2" > "$1/CMakeLists.txt"; }
 write_metainfo() {                  # $1 dir $2 ver $3 body
-    cat > "$1/packaging/linux/org.ants.Terminal.metainfo.xml" <<EOF
+    cat > "$1/packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml" <<EOF
 <component>
   <releases>
     <release version="$2" date="2026-06-24">
@@ -140,7 +140,7 @@ if [ "$RC" -eq 0 ]; then
     [ "$(git -C "$D" rev-parse v0.7.98^{commit})" = "$RC_COMMIT" ] \
         && ok "INV-6 public tags frozen RC commit (main ahead)" || bad "INV-6 wrong commit"
     grep -q "## \[0.7.98\] — ${TODAY}" "$D/CHANGELOG.md" && ok "INV-3 CHANGELOG stamped" || bad "INV-3 CHANGELOG"
-    grep -q "version=\"0.7.98\" date=\"${TODAY}\"" "$D/packaging/linux/org.ants.Terminal.metainfo.xml" \
+    grep -q "version=\"0.7.98\" date=\"${TODAY}\"" "$D/packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml" \
         && ok "INV-3 metainfo stamped" || bad "INV-3 metainfo"
     RFCDAY=$(date -R -d "$TODAY" | sed 's/[+-][0-9]*$//')
     awk '/^ants-terminal \(0.7.98-/{f=1} f&&/^ -- /{print;exit}' "$D/packaging/debian/changelog" \

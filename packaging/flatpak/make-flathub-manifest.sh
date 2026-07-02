@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Generate a Flathub-ready manifest from the development manifest.
 #
-# The dev manifest (packaging/flatpak/org.ants.Terminal.yml) uses
+# The dev manifest (packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml) uses
 #     - type: dir
 #       path: ../..
 # so local flatpak-builder runs pick up the working tree. The Flathub
@@ -24,7 +24,7 @@ set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
-dev="$here/org.ants.Terminal.yml"
+dev="$here/za.co.antsprojectshub.AntsTerminal.yml"
 
 version="${1:-}"
 if [[ -z "$version" ]]; then
@@ -38,9 +38,9 @@ fi
 cat <<HEADER
 # GENERATED FILE — do not edit directly.
 #
-# Source:   packaging/flatpak/org.ants.Terminal.yml
+# Source:   packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml
 # Generator: packaging/flatpak/make-flathub-manifest.sh
-# Regenerate: make-flathub-manifest.sh ${version} > <flathub-repo>/org.ants.Terminal.yml
+# Regenerate: make-flathub-manifest.sh ${version} > <flathub-repo>/za.co.antsprojectshub.AntsTerminal.yml
 #
 # The only difference from the dev manifest is the ants-terminal
 # source block: dev uses a local working-tree checkout, Flathub

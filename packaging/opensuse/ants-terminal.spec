@@ -114,8 +114,8 @@ export.
 %license LICENSE
 %doc README.md CHANGELOG.md ROADMAP.md
 %{_bindir}/%{name}
-%{_datadir}/applications/org.ants.Terminal.desktop
-%{_datadir}/metainfo/org.ants.Terminal.metainfo.xml
+%{_datadir}/applications/za.co.antsprojectshub.AntsTerminal.desktop
+%{_datadir}/metainfo/za.co.antsprojectshub.AntsTerminal.metainfo.xml
 %{_datadir}/icons/hicolor/16x16/apps/%{name}.png
 %{_datadir}/icons/hicolor/32x32/apps/%{name}.png
 %{_datadir}/icons/hicolor/48x48/apps/%{name}.png

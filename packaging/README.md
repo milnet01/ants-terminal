@@ -29,11 +29,11 @@ packaging/
 │   ├── copyright                  # DEP-5 copyright (MIT)
 │   └── source/format              # 3.0 (quilt)
 ├── flatpak/
-│   ├── org.ants.Terminal.yml      # Flathub submission manifest
+│   ├── za.co.antsprojectshub.AntsTerminal.yml      # Flathub submission manifest
 │   └── README.md                  # Flatpak build + host-shell wiring notes
 ├── linux/                         # Shared freedesktop.org artefacts
-│   ├── org.ants.Terminal.desktop
-│   ├── org.ants.Terminal.metainfo.xml
+│   ├── za.co.antsprojectshub.AntsTerminal.desktop
+│   ├── za.co.antsprojectshub.AntsTerminal.metainfo.xml
 │   └── ants-terminal.1
 ├── completions/                   # Shell completions
 │   ├── ants-terminal.bash
@@ -186,7 +186,7 @@ Reference §5.1 for the full workflow.
 
 ---
 
-## Flatpak — `org.ants.Terminal.yml`
+## Flatpak — `za.co.antsprojectshub.AntsTerminal.yml`
 
 The Flatpak track is the **cross-distro sandboxed route** — one
 artifact runs on every distro that ships `flatpak`. The manifest
@@ -202,9 +202,9 @@ flatpak install --user flathub org.kde.Platform//6.7 org.kde.Sdk//6.7 \
                                org.flatpak.Builder
 
 flatpak-builder --install --user --force-clean \
-    build-flatpak packaging/flatpak/org.ants.Terminal.yml
+    build-flatpak packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml
 
-flatpak run org.ants.Terminal
+flatpak run za.co.antsprojectshub.AntsTerminal
 ```
 
 ### Submitting to Flathub
@@ -212,7 +212,7 @@ flatpak run org.ants.Terminal
 Flathub's submission flow is a PR against
 [flathub/flathub](https://github.com/flathub/flathub); once merged
 Flathub mints an
-[`org.ants.Terminal`](https://github.com/flathub/org.ants.Terminal)
+[`za.co.antsprojectshub.AntsTerminal`](https://github.com/flathub/za.co.antsprojectshub.AntsTerminal)
 repo and CI rebuilds from each tagged release. See
 `flatpak/README.md` for the tag-source manifest body (differs from
 the in-tree `type: dir` by pinning

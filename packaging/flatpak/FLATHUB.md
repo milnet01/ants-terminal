@@ -15,8 +15,8 @@ Before opening the submission PR, all of the following must be true:
    #   flatpak install flathub org.flatpak.Builder
    # (A system `flatpak-builder` binary works identically if you have one.)
    flatpak run org.flatpak.Builder --user --install --force-clean \
-       build-flatpak packaging/flatpak/org.ants.Terminal.yml
-   flatpak run org.ants.Terminal
+       build-flatpak packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml
+   flatpak run za.co.antsprojectshub.AntsTerminal
    ```
    Inside the running Flatpak, confirm:
    - Host shell launches (bash/zsh/fish via `flatpak-spawn --host`).
@@ -27,13 +27,13 @@ Before opening the submission PR, all of the following must be true:
 2. **Manifest lint is clean.**
    ```bash
    flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
-       manifest packaging/flatpak/org.ants.Terminal.yml
+       manifest packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml
    ```
 
 3. **Metainfo validates online.** (The `raw.githubusercontent.com`
    screenshot URLs must already be live on the `main` branch.)
    ```bash
-   appstreamcli validate packaging/linux/org.ants.Terminal.metainfo.xml
+   appstreamcli validate packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml
    ```
 
 4. **The full feature suite passes.**
@@ -56,28 +56,28 @@ Before opening the submission PR, all of the following must be true:
 2. **Generate the Flathub-shaped manifest:**
    ```bash
    packaging/flatpak/make-flathub-manifest.sh \
-       > /path/to/flathub-fork/org.ants.Terminal/org.ants.Terminal.yml
+       > /path/to/flathub-fork/za.co.antsprojectshub.AntsTerminal/za.co.antsprojectshub.AntsTerminal.yml
    ```
    (Version auto-detected from `CMakeLists.txt`; pass an explicit
    `<version>` argument to override.)
 
 3. **Copy the metainfo + desktop files** into the same subdirectory:
    ```bash
-   cp packaging/linux/org.ants.Terminal.metainfo.xml \
-      /path/to/flathub-fork/org.ants.Terminal/
-   cp packaging/linux/org.ants.Terminal.desktop \
-      /path/to/flathub-fork/org.ants.Terminal/
+   cp packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml \
+      /path/to/flathub-fork/za.co.antsprojectshub.AntsTerminal/
+   cp packaging/linux/za.co.antsprojectshub.AntsTerminal.desktop \
+      /path/to/flathub-fork/za.co.antsprojectshub.AntsTerminal/
    cp assets/ants-terminal-256.png \
-      /path/to/flathub-fork/org.ants.Terminal/org.ants.Terminal.png
+      /path/to/flathub-fork/za.co.antsprojectshub.AntsTerminal/za.co.antsprojectshub.AntsTerminal.png
    ```
 
 4. **Open the PR** against the `new-pr` branch of `flathub/flathub`
-   with subject `Add org.ants.Terminal` and a body describing the app
+   with subject `Add za.co.antsprojectshub.AntsTerminal` and a body describing the app
    in one paragraph. Flathub CI runs a build in the PR; iterate on
    failures until green.
 
 5. **After merge:** Flathub provisions a new repo at
-   `flathub/org.ants.Terminal` with the submitted files. Future
+   `flathub/za.co.antsprojectshub.AntsTerminal` with the submitted files. Future
    version bumps + Lua tarball refreshes go there, not here —
    `flatpak-external-data-checker` opens those PRs automatically.
 
@@ -86,11 +86,11 @@ Before opening the submission PR, all of the following must be true:
 For each `v<VERSION>` tag after the initial Flathub landing:
 
 1. Push the tag on this repo.
-2. Clone the downstream `flathub/org.ants.Terminal` repo.
+2. Clone the downstream `flathub/za.co.antsprojectshub.AntsTerminal` repo.
 3. Regenerate the manifest body:
    ```bash
    packaging/flatpak/make-flathub-manifest.sh \
-       > /path/to/flathub-repo/org.ants.Terminal.yml
+       > /path/to/flathub-repo/za.co.antsprojectshub.AntsTerminal.yml
    ```
 4. Re-copy the metainfo XML (release notes for the new version).
 5. Open a PR against `master` in the Flathub repo. CI rebuilds; on
@@ -99,7 +99,7 @@ For each `v<VERSION>` tag after the initial Flathub landing:
 ## Flip the ROADMAP on landing
 
 Once the first `flathub/flathub` PR merges and the build shows up at
-`flathub.org/apps/org.ants.Terminal`:
+`flathub.org/apps/za.co.antsprojectshub.AntsTerminal`:
 
 - Flip `H6.2` in `ROADMAP.md` from 📋 to ✅.
 - Flip the "gating item 1: no distro packages anywhere" entry in the
@@ -107,7 +107,7 @@ Once the first `flathub/flathub` PR merges and the build shows up at
   "unblocked".
 - Add a `## [<NEXT>]` section to `CHANGELOG.md` announcing the
   Flathub landing (user-facing: one-command install via
-  `flatpak install flathub org.ants.Terminal`).
+  `flatpak install flathub za.co.antsprojectshub.AntsTerminal`).
 
 ## Regression safety
 

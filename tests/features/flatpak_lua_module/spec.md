@@ -2,7 +2,7 @@
 
 ## Contract
 
-The Flatpak manifest at `packaging/flatpak/org.ants.Terminal.yml` must
+The Flatpak manifest at `packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml` must
 build Lua 5.4 in-manifest so `PluginManager` has the same plugin
 surface inside the sandbox as the native packages. `org.kde.Sdk//6.10`
 does not ship `lua54-devel` and `flathub/shared-modules` has no Lua

@@ -77,7 +77,7 @@ check packaging/linux/ants-terminal.1 \
 # AppStream metainfo lists <release version="X.Y.Z"> entries newest-first;
 # head -1 after the grep captures the latest declared release. Added in
 # 0.6.25 after the ninth audit noted the metainfo drift the rule missed.
-check packaging/linux/org.ants.Terminal.metainfo.xml \
+check packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml \
       '<release version="[0-9]+\.[0-9]+\.[0-9]+"' \
       'AppStream metainfo'
 

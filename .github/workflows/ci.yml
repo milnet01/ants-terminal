@@ -117,11 +117,11 @@ jobs:
       - name: Validate AppStream metainfo
         run: |
           appstreamcli validate --explain \
-            packaging/linux/org.ants.Terminal.metainfo.xml
+            packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml
 
       - name: Validate desktop entry
         run: |
-          desktop-file-validate packaging/linux/org.ants.Terminal.desktop
+          desktop-file-validate packaging/linux/za.co.antsprojectshub.AntsTerminal.desktop
 
       # Man page lint (H3 — distribution readiness). `-wall` upgrades all
       # groff_man warnings to a non-zero exit so missing macros / broken

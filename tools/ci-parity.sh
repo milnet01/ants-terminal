@@ -131,9 +131,9 @@ if [[ "$do_lints" == 1 ]]; then
                  --error-exitcode=0 \
                  -I src src/
     gate "appstream metainfo" \
-        appstreamcli validate --explain packaging/linux/org.ants.Terminal.metainfo.xml
+        appstreamcli validate --explain packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml
     gate "desktop entry" \
-        desktop-file-validate packaging/linux/org.ants.Terminal.desktop
+        desktop-file-validate packaging/linux/za.co.antsprojectshub.AntsTerminal.desktop
     gate "man page (groff -wall)" man_lint
     gate "packaging version drift" bash packaging/check-version-drift.sh
     gate "completion: bash" bash -n packaging/completions/ants-terminal.bash

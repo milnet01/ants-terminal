@@ -2,12 +2,12 @@
 #
 # Build locally:
 #     flatpak-builder --install --user --force-clean \
-#         build-flatpak packaging/flatpak/org.ants.Terminal.yml
+#         build-flatpak packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml
 # Run:
-#     flatpak run org.ants.Terminal
+#     flatpak run za.co.antsprojectshub.AntsTerminal
 # Lint:
 #     flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
-#         manifest packaging/flatpak/org.ants.Terminal.yml
+#         manifest packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml
 #
 # Targets org.kde.Platform//6.10 — the KDE SDK brings cmake, ninja, and all
 # Qt6 components the build needs (Core, Gui, Widgets, Network, OpenGL,
@@ -35,7 +35,7 @@
 # automatically on each Lua 5.4.x point release — no manual hash
 # churn per bump.
 
-id: org.ants.Terminal
+id: za.co.antsprojectshub.AntsTerminal
 
 runtime: org.kde.Platform
 runtime-version: '6.10'
@@ -62,13 +62,12 @@ finish-args:
   # AI endpoint (HTTPS), SSH bookmarks (outgoing), URL handling (OSC 8).
   - --share=network
   # ── Storage ─────────────────────────────────────────────────────────
-  # Config + data live under standard XDG paths. `:create` ensures the
-  # directories exist on first launch.
-  - --filesystem=xdg-config/ants-terminal:create
-  - --filesystem=xdg-data/ants-terminal:create
   # Host $HOME: session restore needs to read the files the user
   # opens/saves in the terminal, and `flatpak-spawn --host` inherits
-  # the host's cwd view. Required for a functional terminal.
+  # the host's cwd view. Required for a functional terminal. This also
+  # covers the app's own XDG config/data dirs (~/.config/ants-terminal,
+  # ~/.local/share/ants-terminal) — so explicit xdg-config/xdg-data
+  # grants would be redundant (flatpak-builder-lint flags them).
   - --filesystem=home
 
 modules:

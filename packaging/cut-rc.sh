@@ -181,7 +181,7 @@ release_notes() {
 # ---- ANTS-2164 cadence-hardening helpers -----------------------------
 
 CHANGELOG_FILE="CHANGELOG.md"
-METAINFO_FILE="packaging/linux/org.ants.Terminal.metainfo.xml"
+METAINFO_FILE="packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml"
 DEBIAN_CHANGELOG_FILE="packaging/debian/changelog"
 
 # True (exit 0) if the "## [Unreleased]" section has ≥1 real entry — a

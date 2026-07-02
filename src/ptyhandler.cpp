@@ -380,7 +380,7 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         // std::vector allocation between forkpty and execvp.
         // If flatpak-spawn is missing we _exit(127) the same way a
         // missing shell would, matching the direct-exec fallback's
-        // failure shape. See packaging/flatpak/org.ants.Terminal.yml.
+        // failure shape. See packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml.
         if (inFlatpak) {
             // Stack-allocated argv pointer table. Slots filled
             // unconditionally with stable string literals or with

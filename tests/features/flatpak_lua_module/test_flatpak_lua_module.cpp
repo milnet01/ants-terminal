@@ -1,7 +1,7 @@
 // Flatpak Lua module — source-grep regression test.
 // See spec.md for the full contract.
 //
-// Pins the shape of the `lua` module in packaging/flatpak/org.ants.Terminal.yml.
+// Pins the shape of the `lua` module in packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml.
 // A regression that strips the module, removes -fPIC, forgets to
 // pin a sha256, reorders the module after ants-terminal, or drops
 // the x-checker-data block fails at ctest time.

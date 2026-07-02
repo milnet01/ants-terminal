@@ -662,14 +662,14 @@ install(TARGETS ants-terminal RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # ---------------------------------------------------------------------------
 # Desktop integration — freedesktop.org spec + AppStream metainfo
 # ---------------------------------------------------------------------------
-# Reverse-DNS naming (org.ants.Terminal) is what AppStream and .desktop both
+# Reverse-DNS naming (za.co.antsprojectshub.AntsTerminal) is what AppStream and .desktop both
 # expect — `launchable` in the metainfo ties the two files together by the
 # shared stem. Installed under share/ so distro packagers can override with
 # DESTDIR for split-staging builds.
-install(FILES packaging/linux/org.ants.Terminal.desktop
+install(FILES packaging/linux/za.co.antsprojectshub.AntsTerminal.desktop
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
 
-install(FILES packaging/linux/org.ants.Terminal.metainfo.xml
+install(FILES packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/metainfo)
 
 # Hicolor icon theme — six sizes. Install each under the matching
@@ -1932,7 +1932,7 @@ if(ANTS_TESTS)
         SRC_MODELAUTOSWITCH_H_PATH="${CMAKE_SOURCE_DIR}/src/modelautoswitch.h"
         SRC_MAIN_CPP="${CMAKE_SOURCE_DIR}/src/main.cpp"
         SRC_CMAKELISTS="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
-        FLATPAK_MANIFEST_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/org.ants.Terminal.yml"
+        FLATPAK_MANIFEST_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml"
         TRANSFORMER_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/make-flathub-manifest.sh"
         # ANTS-1450 — test_audit pattern/dimension drift guard.
         TEST_AUDIT_PATTERNS_JSON="${CMAKE_SOURCE_DIR}/docs/standards/test-audit-grep-patterns.json"

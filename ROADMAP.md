@@ -22616,6 +22616,12 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   Kind: package.
   Source: user-request-2026-06-25 (Flatpak must ride the RC→public→new-RC cadence)..
 
+- ✅ [ANTS-3424] **Rename Flatpak/AppStream app-ID org.ants.Terminal → za.co.antsprojectshub.AntsTerminal (Flathub prerequisite — the old ID implied ownership of the unregistered ants.org).**
+  Flathub's linter (appid-url-not-reachable) requires the reverse-DNS app-ID prefix to be a domain the author controls; org.ants.Terminal → ants.org, which does not resolve. Switched to the user's live domain antsprojectshub.co.za (HTTP 200, GitHub Pages) → app-ID za.co.antsprojectshub.AntsTerminal. Scope: renamed the 3 packaging files (metainfo/desktop/manifest), updated the metainfo <id>/<launchable>, the Flatpak app-id, CMake install FILES paths, make-flathub-manifest.sh, CI (ci.yml/ci-parity.sh/cut-rc.sh/check-version-drift/bump.json), the opensuse spec, the flatpak/flathub tests, and the living packaging docs (README/FLATHUB.md). NO runtime code change — the app-ID is packaging-only here: the binary/.desktop/icons all key on the name `ants-terminal` (icon lookup, Exec, WMClass, config path ~/.config/ants-terminal all unchanged), and ptyhandler's only hit was a comment. Historical records (shipped metainfo/debian release notes, past ROADMAP/ADR entries) deliberately left as-is. Also cleared the redundant xdg-config/xdg-data:create finish-args (--filesystem=home covers them). Verified: appstreamcli validate clean, desktop-file-validate clean, build green, 2443/2443 feature tests pass, flathub-manifest-transform + flatpak-lua-module + flatpak-host-shell all green; re-lint cleared appid-url + filename + xdg errors. Remaining lint items (flatpak-spawn/home/portal-wildcard permissions + commit-pin) are Flathub PR-review negotiation, not blockers. Pairs with H6.2. Local Flatpak build shakedown next.
+  **Layman:** Flathub requires the app's ID to use a web domain you actually own. The old ID (org.ants.Terminal) implied you owned ants.org, which isn't registered — Flathub would reject it. Switched to your live domain antsprojectshub.co.za, so the ID is now za.co.antsprojectshub.AntsTerminal.
+  Kind: refactor.
+  Source: user-request-2026-07-02 (Flathub submission prep).
+
 ### 🔌 Plugins — marketplace
 
 - 📋 [ANTS-1073] **Signed plugin packaging**: Ed25519 sig over a tarball containing

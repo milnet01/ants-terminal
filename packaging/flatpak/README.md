@@ -1,7 +1,7 @@
 # Flatpak packaging — Ants Terminal
 
 One artifact that runs on every distro. The manifest at
-`org.ants.Terminal.yml` is ready to submit to Flathub once the first
+`za.co.antsprojectshub.AntsTerminal.yml` is ready to submit to Flathub once the first
 tagged release is green through CI.
 
 ## Local build
@@ -13,9 +13,9 @@ flatpak install --user flathub org.kde.Platform//6.10 org.kde.Sdk//6.10 \
 
 # From the project root (manifest is aware of its relative `../..`):
 flatpak-builder --install --user --force-clean \
-    build-flatpak packaging/flatpak/org.ants.Terminal.yml
+    build-flatpak packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml
 
-flatpak run org.ants.Terminal
+flatpak run za.co.antsprojectshub.AntsTerminal
 ```
 
 `--install --user` drops the built app under `~/.local/share/flatpak/app/`.
@@ -23,7 +23,7 @@ Reproduce the Flathub CI lint with:
 
 ```bash
 flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
-    manifest packaging/flatpak/org.ants.Terminal.yml
+    manifest packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml
 ```
 
 ## Host shell wiring
@@ -77,7 +77,7 @@ PR against the Flathub repo with the new URL + sha256 on each point
 bump. No manual hash churn.
 
 **Success criterion:** a fresh `flatpak-builder --install --user`
-build loads a plugin under `~/.var/app/org.ants.Terminal/config/ants-terminal/plugins/`
+build loads a plugin under `~/.var/app/za.co.antsprojectshub.AntsTerminal/config/ants-terminal/plugins/`
 the same way the native-package build loads
 `~/.config/ants-terminal/plugins/`. CMake's configure log prints
 `Lua 5.4 found — plugin system enabled` instead of the
@@ -86,9 +86,9 @@ the same way the native-package build loads
 ## Submitting to Flathub
 
 1. Create a GitHub repo under the [flathub](https://github.com/flathub)
-   org named `org.ants.Terminal` (Flathub mints it after the
+   org named `za.co.antsprojectshub.AntsTerminal` (Flathub mints it after the
    new-submission PR at `flathub/flathub` is merged).
-2. The repo's `org.ants.Terminal.yml` is a copy of this file with
+2. The repo's `za.co.antsprojectshub.AntsTerminal.yml` is a copy of this file with
    `sources[].type: dir / path: ../..` replaced by `type: git /
    url: https://github.com/milnet01/ants-terminal / tag: v<version>`.
 3. Every release updates that `tag:` line. Flathub CI rebuilds

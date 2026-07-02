@@ -1,6 +1,6 @@
 # Screenshots
 
-UI captures referenced by `packaging/linux/org.ants.Terminal.metainfo.xml`
+UI captures referenced by `packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml`
 and rendered by GNOME Software / KDE Discover / Flathub's store tile.
 
 ## Current set
