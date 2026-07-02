@@ -10753,11 +10753,163 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
 
     const QString op = req.value(QStringLiteral("op")).toString();
     if (op != QStringLiteral("append_finding") &&
-        op != QStringLiteral("append_tracking")) {
+        op != QStringLiteral("append_tracking") &&
+        op != QStringLiteral("compact_shipped")) {
         return QJsonDocument(fbErr(
             QStringLiteral("bad_mode"),
-            QStringLiteral("feedback_log: op must be \"append_finding\" "
-                           "or \"append_tracking\"")));
+            QStringLiteral("feedback_log: op must be \"append_finding\", "
+                           "\"append_tracking\" or \"compact_shipped\"")));
+    }
+
+    // ANTS-3421 — maintainer compaction: collapse confirmed-shipped
+    // contributor blocks to a one-line stub. Distinct request shape (targets[]
+    // + batch outcomes + in-place rewrite), so it returns early before the
+    // append-specific date/render path below.
+    if (op == QStringLiteral("compact_shipped")) {
+        if (!exists) {
+            return QJsonDocument(fbNotFound(
+                QStringLiteral("feedback_log: compact_shipped on an absent "
+                               "file (nothing to compact)"),
+                resolved, feedbackCallerLeaf(req)));
+        }
+        const QJsonArray targetsArr =
+            req.value(QStringLiteral("targets")).toArray();
+        if (targetsArr.isEmpty()) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("feedback_log: compact_shipped requires a "
+                               "non-empty \"targets\" array")));
+        }
+        // Project token (basename minus suffix) — the per-target `session`
+        // default; today for `date`.
+        QString projectToken = QFileInfo(resolved).fileName();
+        projectToken.chop(static_cast<int>(qstrlen(kFeedbackSuffix)));
+        const QString today =
+            QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
+        static const QRegularExpression compactIdRe(
+            QStringLiteral("^ANTS-[0-9]+$"));
+        static const QRegularExpression compactDateRe(
+            QStringLiteral("^\\d{4}-\\d{2}-\\d{2}$"));
+        QVector<FeedbackFile::CompactTarget> targets;
+        for (const QJsonValue &v : targetsArr) {
+            const QJsonObject to = v.toObject();
+            FeedbackFile::CompactTarget tg;
+            tg.heading = to.value(QStringLiteral("heading")).toString();
+            if (tg.heading.trimmed().isEmpty()) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("bad_args"),
+                    QStringLiteral("feedback_log: every target needs a "
+                                   "non-empty \"heading\"")));
+            }
+            tg.id = to.value(QStringLiteral("id")).toString();
+            if (!compactIdRe.match(tg.id).hasMatch()) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("bad_args"),
+                    QStringLiteral("feedback_log: each target \"id\" must "
+                                   "match ANTS-NNNN (got \"%1\")").arg(tg.id)));
+            }
+            if (to.contains(QStringLiteral("heading_line")))
+                tg.headingLine =
+                    to.value(QStringLiteral("heading_line")).toInt(-1);
+            tg.session =
+                to.value(QStringLiteral("session")).toString(projectToken);
+            if (tg.session.isEmpty()) tg.session = projectToken;
+            tg.date = to.value(QStringLiteral("date")).toString(today);
+            if (tg.date.isEmpty()) tg.date = today;
+            if (!compactDateRe.match(tg.date).hasMatch()) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("bad_args"),
+                    QStringLiteral("feedback_log: target \"date\" must be "
+                                   "YYYY-MM-DD (got \"%1\")").arg(tg.date)));
+            }
+            targets.append(tg);
+        }
+
+        QFile rf(resolved);
+        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("read_failed"),
+                QStringLiteral("feedback_log: cannot open \"%1\"")
+                    .arg(resolved)));
+        }
+        const QString content = QString::fromUtf8(rf.readAll());
+        rf.close();
+
+        const FeedbackFile::CompactResult cr =
+            FeedbackFile::compactShipped(content, targets);
+        const bool dryRunC = req.value(QStringLiteral("dry_run")).toBool();
+
+        QJsonArray outcomes;
+        QJsonArray skipped;
+        int appliedCount = 0;
+        for (const FeedbackFile::CompactOutcome &o : cr.results) {
+            if (o.applied) {
+                ++appliedCount;
+                QJsonObject e;
+                e[QStringLiteral("heading")]      = o.heading;
+                e[QStringLiteral("id")]           = o.id;
+                e[QStringLiteral("applied")]      = true;
+                e[QStringLiteral("start_line")]   = o.startLine;
+                e[QStringLiteral("end_line")]     = o.endLine;
+                e[QStringLiteral("bytes_before")] = o.bytesBefore;
+                e[QStringLiteral("bytes_after")]  = o.bytesAfter;
+                e[QStringLiteral("bytes_saved")]  =
+                    o.bytesBefore - o.bytesAfter;
+                outcomes.append(e);
+            } else {
+                QJsonObject e;
+                e[QStringLiteral("heading")] = o.heading;
+                e[QStringLiteral("id")]      = o.id;
+                e[QStringLiteral("code")]    = o.code;
+                e[QStringLiteral("reason")]  = o.reason;
+                if (!o.candidates.isEmpty()) {
+                    QJsonArray cands;
+                    for (int c : o.candidates) cands.append(c);
+                    e[QStringLiteral("candidates")] = cands;
+                }
+                skipped.append(e);
+            }
+        }
+
+        // Only write when something applied and this is not a dry run.
+        if (!dryRunC && appliedCount > 0) {
+            const QByteArray utf8 = cr.newContent.toUtf8();
+            QSaveFile sf(resolved);
+            if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("write_failed"),
+                    QStringLiteral("feedback_log: cannot open \"%1\" for "
+                                   "writing").arg(resolved)));
+            }
+            bool committed = (sf.write(utf8) == utf8.size());
+            if (committed) {
+                if (g_forceFeedbackWriteFail) {
+                    sf.cancelWriting();
+                    committed = false;
+                } else {
+                    committed = sf.commit();
+                }
+            }
+            if (!committed) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("write_failed"),
+                    QStringLiteral("feedback_log: atomic write of \"%1\" "
+                                   "failed").arg(resolved)));
+            }
+        }
+
+        QJsonObject out;
+        out[QStringLiteral("ok")]            = true;
+        out[QStringLiteral("op")]            = op;
+        out[QStringLiteral("path")]          = resolved;
+        out[QStringLiteral("dry_run")]       = dryRunC;
+        out[QStringLiteral("applied_count")] = appliedCount;
+        out[QStringLiteral("bytes_saved")]   =
+            static_cast<qint64>(cr.bytesSaved);
+        out[QStringLiteral("outcomes")]      = outcomes;
+        out[QStringLiteral("skipped")]       = skipped;
+        if (derived) out[QStringLiteral("path_derived")] = true;  // ANTS-3376
+        return QJsonDocument(out);
     }
 
     // ANTS-2227 — dry_run preview: render the block + compute the would-be

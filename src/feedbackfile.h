@@ -87,4 +87,41 @@ QString renderTrackingBlock(const QString &date, const QString &note,
 // derived `# <projectTitle> …` H1 + the contributor-pointer blockquote.
 QString skeleton(const QString &projectTitle);
 
+// ---- ANTS-3421: maintainer compaction (compact_shipped) -------------
+//
+// Collapse a confirmed-shipped contributor finding write-up to a
+// one-line stub, keeping the boundary heading verbatim so the parser's
+// maintainer/contributor classification is unchanged. See
+// docs/specs/ANTS-3421.md for the full contract (gates + invariants).
+
+struct CompactTarget {
+    QString heading;         // verbatim boundary heading (trailing ws trimmed)
+    int     headingLine = -1;// optional 1-based locator / disambiguator
+    QString id;              // ANTS-NNNN this block shipped as
+    QString session;         // stub breadcrumb author (caller-resolved default)
+    QString date;            // stub breadcrumb date  (caller-resolved default)
+};
+
+struct CompactOutcome {
+    QString heading, id;
+    bool    applied = false;
+    QString code, reason;               // code == "" on success
+    int     startLine = -1, endLine = -1;   // 1-based block range (heading..last body line)
+    int     bytesBefore = 0, bytesAfter = 0;
+    QVector<int> candidates;            // target_ambiguous only: colliding heading lines
+};
+
+struct CompactResult {
+    QString newContent;                 // full file after all applied collapses
+    QVector<CompactOutcome> results;    // one per input target, input order
+    long    bytesSaved = 0;             // signed Σ(bytesBefore − bytesAfter) over applied
+};
+
+// Pure. Runs parse(content) internally for the watermark + tracking rows,
+// resolves + gates each target (§2.3), and collapses applied blocks
+// bottom-up in one pass. Targets are assumed request-shape-valid (non-empty
+// heading, id matching ANTS-NNNN) — the wrapper enforces that (bad_args).
+CompactResult compactShipped(const QString &content,
+                             const QVector<CompactTarget> &targets);
+
 }  // namespace FeedbackFile

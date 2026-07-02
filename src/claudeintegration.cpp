@@ -4050,7 +4050,13 @@ void ClaudeIntegration::onMcpConnection() {
                         "(includes no path AND no resolvable caller_cwd), "
                         "`bad_status` (row status outside 📋🚧✅💭🔄❓), "
                         "`not_feedback_file`, `bad_path`, `not_found`, "
-                        "`write_failed`. caller_cwd required.");
+                        "`write_failed`. ANTS-3421: op:\"compact_shipped\" "
+                        "(maintainer) collapses confirmed-shipped contributor "
+                        "blocks named in `targets` to a one-line stub (heading "
+                        "kept; gated ✅-shipped + above-watermark + "
+                        "single-finding + idempotent; batch, atomic, dry_run "
+                        "byte report; per-target refusals in skipped[]). "
+                        "caller_cwd required.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to add feedback to a shared "
                         "*_Ants_MCP_Feedback.md file (or stamp a "
@@ -4069,10 +4075,17 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject opProp; opProp["type"] = "string";
                         { QJsonArray e; e.append(QStringLiteral("append_finding"));
                           e.append(QStringLiteral("append_tracking"));
+                          e.append(QStringLiteral("compact_shipped"));
                           opProp["enum"] = e; }
                         opProp["description"] = QStringLiteral(
                             "Required. \"append_finding\" (contributor) "
-                            "or \"append_tracking\" (maintainer).");
+                            "or \"append_tracking\" (maintainer). ANTS-3421 — "
+                            "\"compact_shipped\" (maintainer) collapses each "
+                            "confirmed-shipped contributor block named in "
+                            "`targets` to a one-line \"→ shipped …\" stub "
+                            "(heading kept verbatim; gated on the id being ✅ "
+                            "in a tracking row + above the watermark; dry_run "
+                            "previews the byte savings).");
                     QJsonObject dateProp; dateProp["type"] = "string";
                         dateProp["description"] = QStringLiteral(
                             "Optional YYYY-MM-DD; defaults to today.");
@@ -4120,6 +4133,23 @@ void ClaudeIntegration::onMcpConnection() {
                         sentinelProp["description"] = QStringLiteral(
                             "append_tracking: emit the trailing \"End of "
                             "…\" breadcrumb (default true).");
+                    QJsonObject targetsProp; targetsProp["type"] = "array";
+                        { QJsonObject it; it["type"] = "object";
+                          QJsonObject tp;
+                          QJsonObject s; s["type"] = "string";
+                          QJsonObject i; i["type"] = "integer";
+                          tp["heading"] = s; tp["heading_line"] = i;
+                          tp["id"] = s; tp["session"] = s; tp["date"] = s;
+                          it["properties"] = tp;
+                          targetsProp["items"] = it; }
+                        targetsProp["description"] = QStringLiteral(
+                            "compact_shipped: ≥1 target block to collapse. "
+                            "Each: heading (required — the block's verbatim "
+                            "`#`/`## ` heading line), id (required — the "
+                            "ANTS-NNNN it shipped as, gated ✅), optional "
+                            "heading_line (1-based, disambiguates a repeated "
+                            "heading), optional session/date for the stub "
+                            "breadcrumb.");
                     props["path"]          = pathProp;
                     props["op"]            = opProp;
                     props["date"]          = dateProp;
@@ -4129,6 +4159,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["findings"]      = findingsProp;
                     props["rows"]          = rowsProp;
                     props["sentinel"]      = sentinelProp;
+                    props["targets"]       = targetsProp;        // ANTS-3421
                     props["dry_run"]       = makeDryRunProp();   // ANTS-2227
                     props["caller_cwd"]    = makeCallerCwdReadProp();
                     schema["properties"] = props;

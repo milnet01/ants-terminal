@@ -317,3 +317,45 @@ emoji-bearing values (📋 🚧 ✅ 💭 🔄 ❓) are the machine-readable set.
   append at the end of the file.
 - Don't delete prior findings — a confirmed-fixed item is reported via a
   status table, not by removing the original.
+
+## Maintainer compaction (`compact_shipped`) — ANTS-3421
+
+These files grow without bound: every contributor finding stays at full
+verbosity forever, even after its `ANTS-NNNN` ships and the originating
+session confirms the fix. `feedback_log op:"compact_shipped"` is the **one
+sanctioned maintainer exception** to "never delete prior findings" — it
+*collapses with provenance*, it never deletes. The full write-up survives in
+git history and under its `ANTS-NNNN`; the file keeps a one-line stub.
+
+For each maintainer-named target block it replaces the body (every line
+after the boundary heading up to the next `#`/`## ` boundary) with a single
+breadcrumb, leaving the heading **verbatim** so the parser's
+maintainer/contributor classification and the un-triaged delta are
+unchanged:
+
+```markdown
+## 2. roadmap_log op:flip can't parse the ants-v1 emoji roadmap
+
+→ shipped ANTS-3351, confirmed MAME 2026-07-01 (write-up compacted, ANTS-3421)
+```
+
+It is maintainer-only and deterministically gated — a target is collapsed
+only when **all** hold (else it lands in `skipped[]` with a `code`, bytes
+untouched):
+
+1. the `heading` resolves to exactly one boundary (`heading_line`
+   disambiguates a repeated heading);
+2. it is not the H1 title / contributor banner (`title_block`);
+3. it is not a maintainer tracking block (`maintainer_block`);
+4. it sits **above** the watermark — never the un-triaged tail (`in_delta` /
+   `not_triaged`);
+5. its `id` is ✅ in an effective (last-wins) tracking row (`not_shipped`);
+6. the block holds at most one `###` finding (`multi_finding` — never erase
+   an un-shipped sibling);
+7. it is not already a stub (`already_compacted`, idempotent).
+
+Always preview with `dry_run:true` first — it returns every `outcomes[]` /
+`skipped[]` entry plus a signed `bytes_saved` and writes nothing. v1
+compacts only **ID-tracked, single-finding** blocks; id-less closures
+(`(self-resolved)` …) and multi-finding sessions are out of scope
+(docs/specs/ANTS-3421.md § 5).

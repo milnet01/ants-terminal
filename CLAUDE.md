@@ -306,6 +306,11 @@ Reviewing feedback efficiently (don't re-read the whole file):
   mapping table with roadmap IDs. Append-only at EOF (creates the file with
   a conforming skeleton on first `append_finding`). The `path` basename
   must end in `_Ants_MCP_Feedback.md` (else `not_feedback_file`).
+  `op:"compact_shipped"` (ANTS-3421, maintainer) collapses a
+  confirmed-shipped contributor block to a one-line `→ shipped …` stub
+  (heading kept; gated ✅-shipped + above-watermark + single-finding +
+  idempotent; batch, atomic, `dry_run` byte report) — the sanctioned way to
+  reclaim bytes as these files grow, without a raw hand-edit.
 
 Triage flow: `feedback_query` the tail → assign IDs via `roadmap_log
 op:append` → `feedback_log op:"append_tracking"` to stamp the mapping

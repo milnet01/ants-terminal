@@ -3,8 +3,11 @@
 
 #include "feedbackfile.h"
 
+#include <QHash>
 #include <QRegularExpression>
 #include <QSet>
+
+#include <algorithm>
 
 namespace FeedbackFile {
 
@@ -55,6 +58,36 @@ QChar fenceOpenerChar(const QString &line) {
     return m.captured(1).at(0);
 }
 
+// ANTS-3421 — single-source fence-aware boundary scan. One `#`/`## `
+// heading outside a fenced region is a boundary; `###`+ are inert body
+// lines. Both parse() (below) and compactShipped() call this so the
+// parser contract has exactly one implementation (CLAUDE.md §3). Returns
+// one Boundary per heading in document order.
+struct Boundary {
+    int     line0;         // 0-based line index of the heading
+    QString text;          // the heading line, verbatim
+    bool    isMaintainer;  // matches the maintainer anchor regex
+};
+
+QVector<Boundary> scanBoundaries(const QStringList &lines) {
+    QVector<Boundary> out;
+    QChar openFence;  // null when not inside a fence
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString &line = lines.at(i);
+        if (!openFence.isNull()) {
+            // Inside a fence — only the matching closer ends it.
+            const QChar c = fenceOpenerChar(line);
+            if (!c.isNull() && c == openFence) openFence = QChar();
+            continue;
+        }
+        const QChar opener = fenceOpenerChar(line);
+        if (!opener.isNull()) { openFence = opener; continue; }
+        if (!isBoundaryHeading(line)) continue;
+        out.append({i, line, isMaintainerHeading(line)});
+    }
+    return out;
+}
+
 }  // namespace
 
 ParseResult parse(const QString &fileContent) {
@@ -67,35 +100,19 @@ ParseResult parse(const QString &fileContent) {
     const QStringList lines =
         fileContent.split(QLatin1Char('\n'));
 
-    // Pass 1 — classify every non-fenced boundary heading. Track the
-    // greatest-position maintainer heading and, separately, the index of
-    // the first contributor heading after it (the delta start).
-    QChar openFence;  // null when not inside a fence
+    // Pass 1 — classify every non-fenced boundary heading via the shared
+    // scanner (ANTS-3421 extraction). Track the greatest-position
+    // maintainer heading and, separately, the index of the first
+    // contributor heading after it (the delta start).
     int lastMaintainerIdx = -1;          // 0-based line index
-    // For each line index that is a maintainer heading, remember it so we
-    // can find the first contributor heading strictly after the max one.
     QVector<int> maintainerIdx;
     QVector<int> contributorIdx;
-
-    for (int i = 0; i < lines.size(); ++i) {
-        const QString &line = lines.at(i);
-        if (!openFence.isNull()) {
-            // Inside a fence — only the matching closer ends it.
-            const QChar c = fenceOpenerChar(line);
-            if (!c.isNull() && c == openFence) openFence = QChar();
-            continue;
-        }
-        const QChar opener = fenceOpenerChar(line);
-        if (!opener.isNull()) {
-            openFence = opener;
-            continue;
-        }
-        if (!isBoundaryHeading(line)) continue;
-        if (isMaintainerHeading(line)) {
-            maintainerIdx.append(i);
-            lastMaintainerIdx = i;
+    for (const Boundary &b : scanBoundaries(lines)) {
+        if (b.isMaintainer) {
+            maintainerIdx.append(b.line0);
+            lastMaintainerIdx = b.line0;
         } else {
-            contributorIdx.append(i);
+            contributorIdx.append(b.line0);
         }
     }
 
@@ -313,6 +330,222 @@ QString skeleton(const QString &projectTitle) {
         "edit a\n"
         "> maintainer table; never assign ANTS-NNNN IDs.\n");
     return out;
+}
+
+// ANTS-3421 — collapse confirmed-shipped contributor blocks to a one-line
+// stub. Pure; the wrapper (cmdFeedbackLog) handles path + request-shape
+// validation and the atomic write. Gates + invariants: docs/specs/ANTS-3421.md.
+CompactResult compactShipped(const QString &content,
+                             const QVector<CompactTarget> &targets) {
+    CompactResult res;
+    const QStringList lines = content.split(QLatin1Char('\n'));
+    const QVector<Boundary> boundaries = scanBoundaries(lines);
+    const ParseResult pr = parse(content);
+
+    // "→ shipped ANTS-" idempotency sentinel (gate 7) and the ✅ leading
+    // token (gate 5).
+    static const QString kStubPrefix =
+        QString::fromUtf8("\xE2\x86\x92 shipped ANTS-");
+    static const QChar   kCheckMark = QChar(0x2705);  // ✅
+
+    // Block end (0-based, exclusive) = next boundary of EITHER level, or EOF
+    // — byte-identical to parse()'s block-end rule.
+    auto blockEndFor = [&](int bi) -> int {
+        return (bi + 1 < boundaries.size()) ? boundaries.at(bi + 1).line0
+                                            : lines.size();
+    };
+    // Fence-aware count of `### ` finding sub-headings in [start,end) (gate 6).
+    auto findingHeadingCount = [&](int start, int end) -> int {
+        int n = 0;
+        QChar openFence;
+        for (int li = start; li < end && li < lines.size(); ++li) {
+            const QString &l = lines.at(li);
+            if (!openFence.isNull()) {
+                const QChar c = fenceOpenerChar(l);
+                if (!c.isNull() && c == openFence) openFence = QChar();
+                continue;
+            }
+            const QChar opener = fenceOpenerChar(l);
+            if (!opener.isNull()) { openFence = opener; continue; }
+            if (l.startsWith(QStringLiteral("### "))) ++n;
+        }
+        return n;
+    };
+    // First non-blank body line in [start,end) (gate 7).
+    auto firstNonBlank = [&](int start, int end) -> QString {
+        for (int li = start; li < end && li < lines.size(); ++li)
+            if (!lines.at(li).trimmed().isEmpty()) return lines.at(li);
+        return QString();
+    };
+    // Whole-block byte size over [start0,end0) of a line list.
+    auto blockBytes = [](const QStringList &src, int start0, int end0) -> int {
+        QStringList seg;
+        for (int li = start0; li < end0 && li < src.size(); ++li)
+            seg.append(src.at(li));
+        return seg.join(QLatin1Char('\n')).toUtf8().size();
+    };
+
+    res.results.resize(targets.size());
+    QVector<int> resolvedBi(targets.size(), -1);  // gate-1 resolved boundary idx
+
+    // Phase A — gate 1: resolve each target's heading to one boundary.
+    for (int t = 0; t < targets.size(); ++t) {
+        const CompactTarget &tg = targets.at(t);
+        CompactOutcome &o = res.results[t];
+        o.heading = tg.heading;
+        o.id      = tg.id;
+        const QString want = tg.heading.trimmed();
+        if (tg.headingLine > 0) {
+            const int wantLine0 = tg.headingLine - 1;
+            int bi = -1;
+            for (int k = 0; k < boundaries.size(); ++k)
+                if (boundaries.at(k).line0 == wantLine0) { bi = k; break; }
+            if (bi < 0) {
+                o.code = QStringLiteral("target_not_found");
+                o.reason = QStringLiteral("heading_line %1 is not a boundary "
+                                          "heading").arg(tg.headingLine);
+                continue;
+            }
+            if (!want.isEmpty() && boundaries.at(bi).text.trimmed() != want) {
+                o.code = QStringLiteral("target_not_found");
+                o.reason = QStringLiteral("heading disagrees with heading_line "
+                                          "%1").arg(tg.headingLine);
+                continue;
+            }
+            resolvedBi[t] = bi;
+        } else {
+            QVector<int> matches;
+            for (int bi = 0; bi < boundaries.size(); ++bi)
+                if (boundaries.at(bi).text.trimmed() == want) matches.append(bi);
+            if (matches.isEmpty()) {
+                o.code = QStringLiteral("target_not_found");
+                o.reason = QStringLiteral("no boundary heading matches");
+                continue;
+            }
+            if (matches.size() > 1) {
+                o.code = QStringLiteral("target_ambiguous");
+                o.reason = QStringLiteral("%1 headings match; pass heading_line")
+                               .arg(matches.size());
+                for (int bi : matches) o.candidates.append(boundaries.at(bi).line0 + 1);
+                continue;
+            }
+            resolvedBi[t] = matches.first();
+        }
+    }
+
+    // Phase B — cross-target duplicate: two targets on the same block are
+    // both refused duplicate_target (precedes gates 2–7, follows gate 1).
+    QHash<int, int> biCount;
+    for (int t = 0; t < targets.size(); ++t)
+        if (resolvedBi[t] >= 0) biCount[resolvedBi[t]]++;
+    for (int t = 0; t < targets.size(); ++t) {
+        if (resolvedBi[t] >= 0 && biCount.value(resolvedBi[t]) > 1) {
+            res.results[t].code = QStringLiteral("duplicate_target");
+            res.results[t].reason =
+                QStringLiteral("another target names the same block");
+        }
+    }
+
+    // Phase C — gates 2–7 (top-to-bottom, first failure wins) for the
+    // targets that resolved and are not duplicate-collisions.
+    for (int t = 0; t < targets.size(); ++t) {
+        if (resolvedBi[t] < 0 || !res.results[t].code.isEmpty()) continue;
+        const int bi = resolvedBi[t];
+        const Boundary &b = boundaries.at(bi);
+        CompactOutcome &o = res.results[t];
+        const int end = blockEndFor(bi);       // 0-based exclusive
+        const int hdrLine1 = b.line0 + 1;       // 1-based heading line
+
+        if (bi == 0) {                          // gate 2
+            o.code = QStringLiteral("title_block");
+            o.reason = QStringLiteral("the H1 title / contributor banner block");
+            continue;
+        }
+        if (b.isMaintainer) {                   // gate 3
+            o.code = QStringLiteral("maintainer_block");
+            o.reason = QStringLiteral("a maintainer tracking watermark");
+            continue;
+        }
+        if (pr.lastMaintainerLine < 0) {        // gate 4 (no watermark)
+            o.code = QStringLiteral("not_triaged");
+            o.reason = QStringLiteral("file has zero maintainer blocks");
+            continue;
+        }
+        if (hdrLine1 >= pr.lastMaintainerLine) {  // gate 4 (below watermark)
+            o.code = QStringLiteral("in_delta");
+            o.reason = QStringLiteral("heading is below the watermark");
+            continue;
+        }
+        // gate 5 — effective (last document-order) tracking row for `id`
+        // must have a status cell beginning with ✅.
+        QString effStatus;
+        bool haveRow = false;
+        for (const TrackingRow &tr : pr.trackingRows)
+            if (tr.ids.contains(o.id)) { effStatus = tr.status; haveRow = true; }
+        if (!haveRow) {
+            o.code = QStringLiteral("not_shipped");
+            o.reason = QStringLiteral("no tracking row");
+            continue;
+        }
+        if (!effStatus.trimmed().startsWith(kCheckMark)) {
+            o.code = QStringLiteral("not_shipped");
+            o.reason = QStringLiteral("effective status ") + effStatus.trimmed();
+            continue;
+        }
+        const int fh = findingHeadingCount(b.line0 + 1, end);  // gate 6
+        if (fh >= 2) {
+            o.code = QStringLiteral("multi_finding");
+            o.reason = QStringLiteral("%1 finding sub-headings").arg(fh);
+            continue;
+        }
+        const QString fnb = firstNonBlank(b.line0 + 1, end);   // gate 7
+        if (fnb.trimmed().startsWith(kStubPrefix)) {
+            o.code = QStringLiteral("already_compacted");
+            o.reason = QStringLiteral("already a compacted stub");
+            continue;
+        }
+
+        o.applied     = true;
+        o.startLine   = hdrLine1;
+        o.endLine     = end;  // 1-based last body line (0-based end-1 → +1)
+        o.bytesBefore = blockBytes(lines, b.line0, end);
+    }
+
+    // Apply bottom-up so an earlier collapse never shifts a later target's
+    // resolved line positions.
+    QStringList outLines = lines;
+    QVector<int> appliedT;
+    for (int t = 0; t < targets.size(); ++t)
+        if (res.results[t].applied) appliedT.append(t);
+    std::sort(appliedT.begin(), appliedT.end(), [&](int a, int c) {
+        return boundaries.at(resolvedBi[a]).line0 >
+               boundaries.at(resolvedBi[c]).line0;
+    });
+    for (int t : appliedT) {
+        const CompactTarget &tg = targets.at(t);
+        CompactOutcome &o = res.results[t];
+        const int bi = resolvedBi[t];
+        const int start0 = boundaries.at(bi).line0 + 1;  // first body line
+        const int end0   = blockEndFor(bi);              // exclusive
+        const QString breadcrumb =
+            QString::fromUtf8("\xE2\x86\x92 shipped ") + tg.id +
+            QStringLiteral(", confirmed ") + tg.session + QLatin1Char(' ') +
+            tg.date + QStringLiteral(" (write-up compacted, ANTS-3421)");
+        // Uniform replacement body: a blank line, the breadcrumb, a trailing
+        // blank — one blank before the next boundary, or a single trailing
+        // newline when this is the file's last block.
+        const QStringList newBody = { QString(), breadcrumb, QString() };
+        for (int k = end0 - 1; k >= start0; --k) outLines.removeAt(k);
+        for (int k = newBody.size() - 1; k >= 0; --k)
+            outLines.insert(start0, newBody.at(k));
+        // bytes_after over the new whole block [heading .. trailing blank].
+        QStringList afterBlock = { boundaries.at(bi).text };
+        afterBlock += newBody;
+        o.bytesAfter = afterBlock.join(QLatin1Char('\n')).toUtf8().size();
+        res.bytesSaved += (o.bytesBefore - o.bytesAfter);
+    }
+    res.newContent = outLines.join(QLatin1Char('\n'));
+    return res;
 }
 
 }  // namespace FeedbackFile

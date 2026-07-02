@@ -12,6 +12,11 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **feedback_log: compact-shipped op to trim confirmed-implemented findings in *_Ants_MCP_Feedback.md (keep a stub, not a delete).** (ANTS-3421)
+  The cross-session feedback files keep growing; once a suggestion is built and the other session confirms it works, its long write-up should shrink to a one-line stub so the file stays small.
+
 ### Changed
 
 - **changelog_log refuses a feature-grouped `[Unreleased]` (dated `### ` topics + `**Bold**` category runs) with `feature_grouped_section` instead of inserting a mis-ordered flat category.** (ANTS-3416)
