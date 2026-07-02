@@ -12,6 +12,7 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.98] — unreleased (Patron RC preview)
 ### Added
 
 - **`subsystem` `op:map` accepts an optional `name` filter** (ANTS-3414)
@@ -489,14 +490,6 @@ for security-relevant changes.
 
 - **Harden several input boundaries (indie-review #8 sweep).**
   Secret-redaction now covers GitLab personal-access tokens (glpat-) and Slack app-level tokens (xapp-) before context is sent to an LLM. The repo-visibility `gh repo view` call now passes a `--` end-of-options sentinel so a hostile clone's `-`-prefixed origin slug can't be parsed as a flag, and the roadmap-card HTML escaper now escapes `"` so a quote in a ROADMAP bold-ID can't break out of an HTML attribute (CWE-79).
-
-## [0.7.98] — unreleased (Patron RC preview)
-
-**Theme:** Rolling Patron preview of the next release. Fixes and features land
-in this section as they ship during the freeze window; the section gets its
-public date when 0.7.98 is promoted to a stable release.
-
-_No changes yet beyond 0.7.97 — this entry opens the 0.7.98 preview channel._
 
 ## [0.7.97] — 2026-06-24
 
