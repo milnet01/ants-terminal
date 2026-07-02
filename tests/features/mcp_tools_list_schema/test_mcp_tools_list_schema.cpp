@@ -170,12 +170,14 @@ TEST(McpToolsListSchema, RegistryLambdasForwardCallerCwd) {
     expect_reset();
     const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
 
-    // ANTS-1393 — roadmap_query lambda forwards caller_cwd into req.
-    expect(contains(mw, "req[\"caller_cwd\"] = callerCwd"),
-           "ANTS-1393",
-           "roadmap_query registry lambda must forward caller_cwd "
-           "to req — otherwise cmdRoadmapQuery never sees the field "
-           "and the ANTS-1391 fix has no effect");
+    // ANTS-1393 / ANTS-3422 — roadmap_query forwards caller_cwd to
+    // cmdRoadmapQuery. The provider was migrated to a verbatim rcDelegate
+    // forward (ANTS-3422), so caller_cwd (and every arg) reaches the
+    // handler without a per-arg line — the ANTS-1391 fix still applies.
+    expect(contains(mw, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+           "ANTS-3422",
+           "roadmap_query registered via the verbatim rcDelegate forward, "
+           "so caller_cwd reaches cmdRoadmapQuery");
 
     // ANTS-1392 — MainWindow::terminalForCaller exists. The five
     // terminal-state lambdas (get_scrollback / get_last_command /

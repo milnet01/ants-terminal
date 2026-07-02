@@ -131,10 +131,12 @@ TEST(McpRoadmapSectionSlice, CacheMembersDeclaredInHeader) {
 TEST(McpRoadmapSectionSlice, ProviderLambdaForwardsSection) {
     const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     ASSERT_FALSE(mw.empty());
-    // The lambda extracts `args.value("section")` with an isString()
-    // gate (parity with the status arg) and forwards via req["section"].
-    EXPECT_NE(mw.find("args.value(\"section\")"), std::string::npos)
-        << "provider lambda does not extract section arg";
-    EXPECT_NE(mw.find("req[\"section\"]"), std::string::npos)
-        << "provider lambda does not forward section into req";
+    // ANTS-3422 — the roadmap_query provider forwards args VERBATIM via
+    // rcDelegate(&RemoteControl::cmdRoadmapQuery), so `section` reaches the
+    // handler by construction (no per-arg extract/forward line).
+    EXPECT_NE(mw.find("rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+              std::string::npos)
+        << "roadmap_query not registered via the verbatim rcDelegate forward";
+    EXPECT_NE(mw.find("ANTS-3422"), std::string::npos)
+        << "ANTS-3422 verbatim-forward anchor missing";
 }

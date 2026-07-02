@@ -202,16 +202,17 @@ TEST(mcp_roadmap_status_filter, Ants3402TargetedBodyCap) {
 
 TEST(mcp_roadmap_status_filter, Inv9McpDispatchExtractsStatus) {
     expect_reset();
-    // Post-ANTS-1253: the per-tool dispatch extraction moved from
-    // claudeintegration.cpp into the registerToolProvider lambda
-    // body in mainwindow.cpp. INV-9 is now asserted there.
+    // ANTS-3422 — the roadmap_query provider was migrated from a
+    // hand-maintained per-arg forward lambda to a verbatim rcDelegate
+    // forward that passes the whole args object to cmdRoadmapQuery, so
+    // `status` (INV-9) reaches the handler by construction.
     const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     expect(contains(mw, "registerToolProvider(\"roadmap_query\""),
            "ANTS-1253: roadmap_query registered via registerToolProvider");
-    expect(contains(mw, "args.value(\"status\")"),
-           "INV-9: roadmap_query lambda extracts args.status");
-    expect(contains(mw, "statusVal.isString()"),
-           "INV-9: roadmap_query lambda gates on isString()");
+    expect(contains(mw, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+           "ANTS-3422: roadmap_query forwards status (and every arg) verbatim");
+    expect(contains(mw, "ANTS-3422"),
+           "INV-9: ANTS-3422 verbatim-forward anchor present");
     EXPECT_EQ(0, expect_failures());
 }
 
@@ -246,15 +247,15 @@ TEST(mcp_roadmap_status_filter, Inv11ErrorMessageHygiene) {
 TEST(mcp_roadmap_status_filter, ProviderLambdaWidened) {
     expect_reset();
     const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
-    // The roadmap_query lambda registered via registerToolProvider
-    // (ANTS-1253) must thread `status` through to cmdRoadmapQuery(req).
+    // ANTS-3422 — the roadmap_query provider forwards args VERBATIM via
+    // rcDelegate(&RemoteControl::cmdRoadmapQuery), so `status` threads
+    // through to cmdRoadmapQuery without a per-arg forward line.
     expect(contains(mw, "registerToolProvider(\"roadmap_query\""),
            "MainWindow registers roadmap_query (ANTS-1253)");
-    expect(contains(mw, "args.value(\"status\")"),
-           "Provider lambda extracts args.status (ANTS-1253 widened sig)");
-    expect(contains(mw, "req[\"status\"] = status"),
-           "Provider lambda forwards status to req[\"status\"]");
-    expect(contains(mw, "cmdRoadmapQuery(req)"),
-           "Provider lambda calls cmdRoadmapQuery with req");
+    expect(contains(mw, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+           "ANTS-3422: provider forwards status (and every arg) verbatim "
+           "to cmdRoadmapQuery");
+    expect(contains(mw, "ANTS-3422"),
+           "ANTS-3422 verbatim-forward anchor present");
     EXPECT_EQ(0, expect_failures());
 }
