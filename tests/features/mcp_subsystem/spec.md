@@ -39,6 +39,16 @@ current `CLAUDE.md` Module map clears the spec's ≥ 15 lane floor
 12. The current `CLAUDE.md`'s `## Module map (src/)` parses to
     ≥ 15 unique lanes including `"vtparser"` (spec § 10 floor).
 
+**ANTS-3414** — `op:map` honours an optional `name` substring filter.
+The `subsystem` inputSchema declares a `name` property (so a passed
+`name` is a real param, not flagged in `ignored_args`), and the
+`op:map` branch of `cmdSubsystem` narrows the returned `lanes[]` to
+lanes whose name contains the needle (`Qt::CaseInsensitive`) and echoes
+`name` back. Empty/missing → the full map (back-compat). A needle
+matching nothing yields an empty `lanes[]`, not an error — `op:map`
+lists, it does not validate a lane the way `files` / `recent_changes`
+do. Vestige feedback 2026-07-02.
+
 ## Why source-grep, not behavioural
 
 A behavioural test would need to spawn `git`, fixture a Module map,

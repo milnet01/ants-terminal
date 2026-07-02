@@ -97,8 +97,23 @@ const QRegularExpression &rxCppFunc() {
     // funcs because the enclosing function never opened a scope. DOOM's
     // r_vulkan.cpp (RB_VulkanProbe + the RB_Vulkan_* entry points). The
     // prefix is shared by rxCppFuncOpen / rxCppFuncHeaderOpen.
+    //
+    // ANTS-3412: two coupled arg-list / tail defects (Vestige job_system.h).
+    //  (a) the old `\([^)]*\)` arg matcher closed on the FIRST ')', so a
+    //      parameter whose type carries an inner paren pair — the empty
+    //      `std::function<void()>` or the populated `std::function<void(
+    //      uint32_t,uint32_t)>` — ended the arg list early and the trailing
+    //      `>` broke the tail, dropping the whole method. Replaced with a
+    //      one-level-nested paren matcher `\((?:[^()]++|\([^()]*+\))*+\)`
+    //      (all-possessive → still a single linear scan, INV-8), which
+    //      balances one level of parens inside the declarator list.
+    //  (b) the old `\)\s*[{;]` tail forbade any qualifier between ')' and
+    //      the body, so an inline `T f() const { … }` accessor never
+    //      matched. An optional cv/ref/noexcept/spec qualifier run is now
+    //      allowed before the `[{;]` terminator. The qualifier group is
+    //      shared verbatim with rxCppFuncOpen.
     static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(?:extern\s*"[^"]*"\s*)?(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else)\b)(?:[\w:<>]+[\s*&]+)++(\w+)\s*\([^)]*\)\s*[{;])"));
+        QRegularExpression r(QStringLiteral(R"(^(?:extern\s*"[^"]*"\s*)?(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else)\b)(?:[\w:<>]+[\s*&]+)++(\w+)\s*\((?:[^()]++|\([^()]*+\))*+\)(?:\s*(?:const|volatile|noexcept\s*\((?:[^()]++|\([^()]*+\))*+\)|noexcept|override|final|mutable|&&|&|=\s*(?:0|default|delete)))*+\s*[{;])"));
         r.optimize();
         return r;
     }();
@@ -118,7 +133,11 @@ const QRegularExpression &rxCppQt() {
 // (id-Software / GNU brace style). Control keywords are rejected up front.
 const QRegularExpression &rxCppFuncOpen() {
     static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(?:extern\s*"[^"]*"\s*)?(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else|if|for|while|switch|do|catch)\b)(?:[\w:<>]+[\s*&]+)++(\w+)\s*\([^)]*\)\s*$)"));
+        // ANTS-3412 — same nested-paren arg matcher + tail-qualifier run as
+        // rxCppFunc, with the terminator relaxed to end-of-line (body `{` on
+        // the next line). So a `ReturnType name(std::function<void()> cb) const`
+        // whose brace sits below is still detected.
+        QRegularExpression r(QStringLiteral(R"(^(?:extern\s*"[^"]*"\s*)?(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else|if|for|while|switch|do|catch)\b)(?:[\w:<>]+[\s*&]+)++(\w+)\s*\((?:[^()]++|\([^()]*+\))*+\)(?:\s*(?:const|volatile|noexcept\s*\((?:[^()]++|\([^()]*+\))*+\)|noexcept|override|final|mutable|&&|&|=\s*(?:0|default|delete)))*+\s*$)"));
         r.optimize();
         return r;
     }();

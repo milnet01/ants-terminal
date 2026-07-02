@@ -38,12 +38,26 @@ definition whose return type and/or `{` sit on adjacent lines.
   `extern "C"` definition went undetected and its interior locals leaked
   as file-scope funcs (DOOM's `r_vulkan.cpp` — `RB_VulkanProbe` +
   `RB_Vulkan_*` entry points, with `devs`/`exts` leaking).
+- **INV-9** (ANTS-3412 defect a) — a method whose parameter type carries
+  an inner paren pair (`std::function<void()>`, `std::function<void(
+  uint32_t,uint32_t)>`) is detected. The `\([^)]*\)` arg matcher closed on
+  the first `)`, truncating the arg list inside the template argument and
+  breaking the tail; the fix balances one level of nested parens. Vestige's
+  `job_system.h` — `submit` / `runOnMainThread` went missing.
+- **INV-10** (ANTS-3412 defect b) — a one-line inline accessor with a
+  trailing cv/ref/noexcept qualifier between `)` and `{`
+  (`int workerCount() const { … }`, `bool f() const noexcept { … }`) is
+  detected. The `\)\s*[{;]` tail forbade any qualifier; an optional
+  qualifier run is now allowed before the terminator. Vestige's
+  `workerCount` / `isSynchronous`.
 
 ## Pre-fix check
 
 Against pre-fix code INV-1/2/3/4 FAIL (locals/case-labels tagged func;
 old-style/brace-next-line defs missed) and INV-8 FAILS (`extern "C"`
-defs undetected; their locals leak). INV-5/6 pass before and after
-(regression guard). Verified before the fix.
+defs undetected; their locals leak). INV-9/10 FAIL against pre-ANTS-3412
+code (nested-paren params + inline const accessors dropped — confirmed
+red 2026-07-02). INV-5/6 pass before and after (regression guard).
+Verified before the fix.
 
 Label: `features;fast`.

@@ -4461,6 +4461,36 @@ void MainWindow::setupClaudeMcpProviders() {
             // INV-8.
             if (args.contains("offset")) req["offset"] = args.value("offset");
             if (args.contains("limit"))  req["limit"]  = args.value("limit");
+            // ANTS-3420 — forward `query`, the ANTS-3391 keyword filter.
+            // The filter + schema landed but this hand-maintained forward
+            // list never gained a `query` line, so the arg was silently
+            // dropped at the MCP boundary and the filter was inert
+            // end-to-end (verified live, build ddb6fe2). Same silent-drop
+            // class as 1856 id / 1398 include_section_headers / 1437 mode
+            // / 1586 include_body. isString() gate matches status/section.
+            const QJsonValue queryVal = args.value("query");
+            if (queryVal.isString()) {
+                const QString q = queryVal.toString();
+                if (!q.isEmpty()) req["query"] = q;
+            }
+            // ANTS-3420 companion — three more verb-specific args the
+            // handler reads (remotecontrol.cpp) but this lambda never
+            // forwarded, so each was likewise inert over MCP:
+            //  • max_body_bytes (ANTS-3402, id/ids body-cap) — verbatim so
+            //    the handler clamps + emits bad_args on non-numeric.
+            //  • include_section_etags + section_etag_match (ANTS-1907,
+            //    per-section ETag 304s) — isBool()/isString() gated like
+            //    the sibling include_* / *_match forwards.
+            if (args.contains("max_body_bytes"))
+                req["max_body_bytes"] = args.value("max_body_bytes");
+            const QJsonValue inclSecEtagsVal = args.value("include_section_etags");
+            if (inclSecEtagsVal.isBool())
+                req["include_section_etags"] = inclSecEtagsVal.toBool();
+            const QJsonValue secEtagMatchVal = args.value("section_etag_match");
+            if (secEtagMatchVal.isString()) {
+                const QString s = secEtagMatchVal.toString();
+                if (!s.isEmpty()) req["section_etag_match"] = s;
+            }
             return QString::fromUtf8(
                 m_remoteControl->cmdRoadmapQuery(req).toJson(QJsonDocument::Compact));
         });

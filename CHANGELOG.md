@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`subsystem` `op:map` accepts an optional `name` filter** (ANTS-3414)
+  Pass `name` to narrow the returned lane list to subsystems whose name contains that substring (case-insensitive); omit it for the full map. Previously `name` was ignored on `op:map`.
+
 - **RoadmapDialog surfaces a duplicate-ID warning banner** (ANTS-1694)
   When the roadmap accidentally carries the same [PROJ-NNNN] id on more than one bullet — which roadmap_query already flags — the cards view now shows a warning banner at the top, using the same canonical-ID predicate as the MCP detector.
 
@@ -130,6 +133,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **Read/write MCP verbs point you at the right tool for a feedback-file path** (ANTS-3419)
+  A `bad_path` refusal on a `*_Ants_MCP_Feedback.md` path (which lives above the project root) now carries a hint redirecting to feedback_query / feedback_log — the verbs that do serve it — instead of a bare error.
+
+- **`find_sources` accepts `symbol` as an alias for `topic`** (ANTS-3415)
+  The 'who uses X' verb now takes `symbol` (filled in only when `topic` is absent), so copying an identifier between find_sources and find_caller no longer fails the first time.
+
 - **tools/ci-parity.sh now mirrors every locally-reproducible CI gate (ANTS-3410)**
   Added --lints (cppcheck / appstream / desktop / groff / version-drift
   / bash+zsh+fish completions), --asan (Debug ASan/UBSan build + sanitized
@@ -237,6 +246,15 @@ for security-relevant changes.
   header contract comments, and the orphaned Inv3 shape test.
 
 ### Fixed
+
+- **`roadmap_log` / `changelog_log` output is now pre-commit-clean** (ANTS-3417)
+  Emitted continuation lines are right-stripped, so the ubiquitous trim-trailing-whitespace pre-commit hook no longer rewrites the file and aborts the commit after a roadmap/changelog append.
+
+- **`file_outline` no longer drops methods with `std::function<void()>` params or inline `const` accessors** (ANTS-3412)
+  The C++ scanner's argument matcher stopped at the first `)`, so a parameter whose type carried inner parentheses (e.g. `std::function<void()>`) truncated the match and the whole method vanished from the outline; and a trailing `const`/`noexcept` on a one-line accessor (`int workerCount() const { ... }`) also hid it. Both are now recognised.
+
+- **`roadmap_query`'s `query` keyword filter now actually filters** (ANTS-3420)
+  The keyword search shipped in a prior release but was silently inert: the MCP dispatch layer never forwarded the `query` argument to the handler, so a search returned the whole roadmap instead of the matching items. The same audit fixed three sibling arguments that were also being dropped over MCP — `max_body_bytes` (large-body id fetch) and the per-section ETag args (`include_section_etags`, `section_etag_match`).
 
 - **`file_outline` now detects `extern "C"` function definitions (ANTS-3351)** (ANTS-3351)
   The C++ outliner skipped any function with an `extern "C"` linkage prefix, so its interior local variables were mislabelled as top-level functions. Reported against DOOM's r_vulkan.cpp (the RB_Vulkan_* entry points were missing and `devs`/`exts` locals showed up as functions).

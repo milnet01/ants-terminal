@@ -153,9 +153,12 @@ static int runMain() {
             // since_cursor handling (~3 KiB), 48→64 KiB after
             // ANTS-1897 added the qputenv + mcp_orientation::install
             // block right after startMcpServer (~1 KiB) which pushed
+            // get_text past the old window. 64→80 KiB after ANTS-3420
+            // added the query/max_body_bytes/section-etag forward block
+            // (~1.4 KiB) to the roadmap_query lambda, again pushing
             // get_text past the old window. The window is a heuristic
             // body-cap; raise as new providers slot in.
-            : mwCpp.substr(braceOpen, 64 * 1024);
+            : mwCpp.substr(braceOpen, 80 * 1024);
         inv(6, contains(body, "registerToolProvider(\"roadmap_query\""),
             "setupClaudeMcpProviders does not register roadmap_query");
         inv(6, contains(body, "registerToolProvider(\"tab_list\""),

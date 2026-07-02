@@ -181,3 +181,40 @@ TEST(FileOutlineCppScanner, ExternCLinkageFunctionDetected) {
     EXPECT_FALSE(fns.contains(QStringLiteral("devs")));   // MVP local, not a func
     EXPECT_FALSE(fns.contains(QStringLiteral("exts")));   // MVP local, not a func
 }
+
+// INV-9 (ANTS-3412 defect a) — a method whose parameter type carries an
+// EMPTY inner paren pair (`std::function<void()>`) must still be detected.
+// The `\([^)]*\)` arg matcher closed on the FIRST ')' — the inner `void()`
+// ended the arg list early, then the trailing `>` broke the `[{;]`/`$`
+// tail, so the whole line failed to match. A populated inner list
+// (`std::function<void(uint32_t,uint32_t)>`) hit the same truncation.
+// Vestige's job_system.h: submit / runOnMainThread went missing.
+TEST(FileOutlineCppScanner, FunctionalParamEmptyInnerParens) {
+    QTemporaryDir dir;
+    const QString path = writeCpp(dir, QStringLiteral(
+        "void submit(std::function<void()> job) {\n"
+        "    job();\n"
+        "}\n"
+        "void runOnMainThread(std::function<void(uint32_t,uint32_t)> cb);\n"
+        "int plain(int n) { return n; }\n"));
+    const QStringList fns = funcNames(path);
+    EXPECT_TRUE(fns.contains(QStringLiteral("submit")));
+    EXPECT_TRUE(fns.contains(QStringLiteral("runOnMainThread")));
+    EXPECT_TRUE(fns.contains(QStringLiteral("plain")));   // positive control
+}
+
+// INV-10 (ANTS-3412 defect b) — a one-line inline accessor with a trailing
+// cv/ref/noexcept qualifier between ')' and '{' (`T f() const { ... }`)
+// must be detected. The `\)\s*[{;]` tail forbade any qualifier, so const
+// accessors were silently dropped. Vestige's workerCount / isSynchronous.
+TEST(FileOutlineCppScanner, InlineConstAccessorDetected) {
+    QTemporaryDir dir;
+    const QString path = writeCpp(dir, QStringLiteral(
+        "int workerCount() const { return n_; }\n"
+        "bool isSynchronous() const noexcept { return sync_; }\n"
+        "int mutableOne() { return 1; }\n"));   // positive control (no qualifier)
+    const QStringList fns = funcNames(path);
+    EXPECT_TRUE(fns.contains(QStringLiteral("workerCount")));
+    EXPECT_TRUE(fns.contains(QStringLiteral("isSynchronous")));
+    EXPECT_TRUE(fns.contains(QStringLiteral("mutableOne")));
+}

@@ -17913,12 +17913,13 @@ MAME Curator, and Fin Break contributor files. DOOM's 2026-07-01 roadmap_query
 granular-status finding was already resolved by ANTS-3400 (verified live) and is
 not re-filed here.
 
-- 📋 [ANTS-3412] **file_outline (.cpp) drops methods whose parameter has empty inner parens (std::function<void()>) and one-line inline-bodied accessors.**
+- ✅ [ANTS-3412] **file_outline (.cpp) drops methods whose parameter has empty inner parens (std::function<void()>) and one-line inline-bodied accessors.**
   Vestige repro on engine/core/job_system.h: file_outline OMITS four public methods — submit / runOnMainThread (params of type std::function<void()>) and workerCount / isSynchronous (one-line `T f() const { ... }` accessors), while std::function<void(uint32_t,uint32_t)> params survive. Two coupled defects in the single-line rxCppFunc: (a) the `\([^)]*\)` arg-matcher closes on the FIRST ')' — the empty inner `void()` inside the template arg ends it early, so the real declarator parens never match; (b) a trailing qualifier between ')' and '{' (`const`) isn't allowed by the `\)\s*[{;]` tail, so inline const accessors don't match. Fix: skip parens nested inside <...> template args when locating the declarator arg list, and allow cv/ref/noexcept qualifiers before the body brace. Reproduce-first with header fixtures; guard against ANTS-2159 scope regressions.
   **Layman:** The file-structure overview silently hides some real functions, so the assistant can't see part of a class's API.
   Kind: fix.
   Lanes: fileoutline.
   Source: 3D_Engine (Vestige) feedback 2026-07-01/02.
+  Resolved (2026-07-02): fixed rxCppFunc + rxCppFuncOpen in fileoutline.cpp. (a) arg matcher \([^)]*\) -> one-level-nested \((?:[^()]++|\([^()]*+\))*+\) so a std::function<void()> param's inner parens no longer truncate the match; (b) allow an optional cv/ref/noexcept/spec qualifier run before the [{;]/$ tail so inline `T f() const {..}` accessors match. All-possessive -> linear scan preserved (INV-8). Reproduce-first: fileoutline_cpp_scanner INV-9/INV-10 confirmed red pre-fix, green post-fix; INV-1..8 unchanged. rxCppFuncHeaderOpen (wrapped args) left as-is (distinct rarer case).
 
 - ✅ [ANTS-3413] **roadmap_query: add a headline/keyword text-search filter (free-text `query` is currently reported ignored).**
   roadmap_query filters by id/status/section only; a free-text `query` arg is (correctly) surfaced in ignored_args but returns a full unfiltered page that reads like a wrong result set. Add an optional case-insensitive `headline`/`text` substring-or-token filter matched against headline_full, returning matching bullets with line + id + section_slug so a caller can locate then flip/annotate a bullet without grep. Minimum viable: when `query` is passed, return count:0 + a hint pointing at the headline= filter rather than an unfiltered page.
@@ -17928,19 +17929,21 @@ not re-filed here.
   Source: 3D_Engine (Vestige) feedback 2026-07-02.
   Duplicate of ANTS-3391 (shipped 2026-07-01), which already added the case-insensitive `query` keyword filter over headline/headline_full/body — mcp::bulletMatchesQuery in mcpprojection.cpp + cmdRoadmapQuery. Filed in error (I created this before checking existing roadmap; Vestige's finding predated their build carrying the fix). NOTE: the ANTS-3391 feature is currently INERT end-to-end — tracked as the fix item ANTS-3420. So the feature exists (this request satisfied) but needs the ANTS-3420 defect fixed to actually work.
 
-- 📋 [ANTS-3414] **subsystem op:map honours (or loudly rejects) the `name` arg instead of silently ignoring it.**
+- ✅ [ANTS-3414] **subsystem op:map honours (or loudly rejects) the `name` arg instead of silently ignoring it.**
   subsystem {op:map, name:'audio'} returns the whole map with ignored_args:['name']. Low priority (already loud via ignored_args). Either honour `name` as a section filter on op:map (return just that subsystem's slice) or drop it from the accepted-arg set so it errors loudly. Same accepted-but-ignored UX class as the roadmap_query `query` case.
   **Layman:** When you ask the subsystem map for one specific area by name, it currently returns everything and just notes the name was ignored.
   Kind: enhancement.
   Lanes: subsystem.
   Source: 3D_Engine (Vestige) feedback 2026-07-02.
+  Resolved (2026-07-02): subsystem op:map now honours an optional `name` case-insensitive substring filter over lane names — declared in the inputSchema (so no longer flagged in ignored_args), echoed back, empty/missing -> full map. Regression: mcp_subsystem ANTS-3414 schema + handler scrapes.
 
-- 📋 [ANTS-3415] **find_sources: accept `symbol` as an alias for `topic` (disambiguate vs find_caller for the 'who calls X' hint).**
+- ✅ [ANTS-3415] **find_sources: accept `symbol` as an alias for `topic` (disambiguate vs find_caller for the 'who calls X' hint).**
   The catalog hint documents find_sources -> 'who calls bar?', but find_sources takes `topic` and refuses `symbol` (bad_args), while a separate find_caller exists. Accept `symbol` as an alias for `topic` on find_sources (canonical name stays `topic`; alias fills in only when absent — the ANTS-2149 query/pattern idiom), and/or retarget the 'who calls X' catalog hint to find_caller so the two verbs are distinguishable from the one-liner.
   **Layman:** Two similar 'find where this is used' tools name their input differently; copying it from one to the other fails the first time.
   Kind: enhancement.
   Lanes: remotecontrol.
   Source: MAME Curator feedback 2026-07-02.
+  Resolved (2026-07-02, commit 7d1ddb2): find_sources accepts `symbol` as an alias for `topic` (fills in only when topic absent); schema prop added. Regression: mcp_find_sources INV-12.
 
 - 📋 [ANTS-3416] **changelog_log: handle a feature-grouped [Unreleased] (refuse feature_grouped_section, or insert a topic subsection at the top) instead of a flat mis-ordered category.**
   Extends ANTS-3401 (advisory). On a [Unreleased] whose direct children are `### <topic>` + **Bold** category blocks, op:add still writes a flat `### Fixed` at the section's category-region END (oldest position), so it needs a manual delete + re-add at the top. When the same feature-grouped signal that fires the advisory is detected, prefer a refusal with a feature_grouped_section code (so the caller hand-edits from the start), or insert a `### <summary>` topic subsection at the SECTION TOP (newest-first).
@@ -17949,12 +17952,13 @@ not re-filed here.
   Lanes: changelog.
   Source: MAME Curator feedback 2026-07-02.
 
-- 📋 [ANTS-3417] **roadmap_log / changelog_log: right-strip emitted lines so append/flip output is pre-commit-clean (no trailing whitespace).**
+- ✅ [ANTS-3417] **roadmap_log / changelog_log: right-strip emitted lines so append/flip output is pre-commit-clean (no trailing whitespace).**
   After roadmap_log op:append and op:flip (with note), written ROADMAP.md lines carried trailing whitespace; the ubiquitous pre-commit trim-trailing-whitespace hook then auto-fixes the file but aborts the commit, forcing a re-add + re-commit (hit twice in one session). changelog_log may share it. Fix: right-strip each emitted bullet/note line (and blank continuation lines) before writing so output is clean by construction. Add a test asserting no emitted line ends in whitespace.
   **Layman:** After the helper edits the roadmap, the standard 'trim trailing whitespace' commit check fails and the commit has to be redone.
   Kind: fix.
   Lanes: roadmap, changelog.
   Source: MAME Curator feedback 2026-07-02.
+  Resolved (2026-07-02, commit 7d1ddb2): roadmap_log/changelog_log right-strip emitted continuation lines so append/annotate/flip-note output is pre-commit-clean. Regression: roadmap_log_trailing_whitespace.
 
 - 📋 [ANTS-3418] **audit_run: mypy runs in a deps-less env → 28-31 import-not-found/untyped false positives on every full sweep.**
   Every scope:full audit_run on a project importing fastapi/pyyaml emits 0 errors but 28-31 mypy warnings, ALL 'Cannot find implementation or library stub' [import-not-found] + 'Library stubs not installed for yaml' [import-untyped] — pure tool-env artifacts (the project's real `uv run mypy` with deps installed is clean). They dominate every sweep's raw count and force a re-triage each /close-phase. Fix options: uv-sync / pip-install the project's declared deps + type stubs into the audit runner before invoking mypy; OR drop mypy from the default auto-detected tool set (CI + pre-commit already run the real deps-installed mypy); OR tag import-not-found/import-untyped as low-confidence so they sort below real findings.
@@ -17963,19 +17967,35 @@ not re-filed here.
   Lanes: audit.
   Source: MAME Curator feedback 2026-07-02.
 
-- 📋 [ANTS-3419] **Read/write verbs: on a *_Ants_MCP_Feedback.md path, add a hint redirecting to feedback_query/feedback_log instead of a bare bad_path.**
+- ✅ [ANTS-3419] **Read/write verbs: on a *_Ants_MCP_Feedback.md path, add a hint redirecting to feedback_query/feedback_log instead of a bare bad_path.**
   The feedback file sits one level above the project root, so read_region / file_outline / read_regions / workspace_search / apply_edits correctly refuse it with bad_path ('escapes project root') — but feedback_query/feedback_log DO serve it by absolute path. When the refused path's basename matches *_Ants_MCP_Feedback.md, add a `hint` field (like find_definition file_stem_hint / feedback_query not_found candidates) redirecting to feedback_query/feedback_log. Keeps the refusal (correct scoping) but saves the discovery round-trip.
   **Layman:** Asking the normal read tools for the feedback file fails with a plain error; it should point you at the special tool that does handle that file.
   Kind: enhancement.
   Lanes: remotecontrol.
   Source: Fin Break + 3D_Engine (Vestige) feedback 2026-07-01/02.
+  Resolved (2026-07-02, commit 7d1ddb2): a bad_path refusal on a *_Ants_MCP_Feedback.md path now carries a `hint` redirecting to feedback_query/feedback_log. Single pathvalidation chokepoint -> all read/write verbs benefit. Regression: mcp_path_anchor.
 
-- 📋 [ANTS-3420] **roadmap_query `query` keyword filter (ANTS-3391) is inert end-to-end — the arg is received but never applied.**
+- ✅ [ANTS-3420] **roadmap_query `query` keyword filter (ANTS-3391) is inert end-to-end — the arg is received but never applied.**
   VERIFIED live against the running server (build ddb6fe2): roadmap_query{query:"qqzzxxnonexistent", status:"active"} returns the FULL active set (total 189) with NO `query` echo; query:"Sponsors" likewise returns unrelated bullets (total 1261). The filter is completely inert. Evidence chain: (1) mcp_trace shows the server RECEIVED the `query` key on those calls (records id 40/43/44/50, arg_keys include "query":"string") — the client sent it; (2) the tool's live inputSchema advertises `query` (not flagged in ignored_args); (3) the applyQueryFilter call site (commit 0ee2b03, ANTS-3391) IS an ancestor of the running binary ddb6fe2 — code present and called. Yet the lambda's `if (queryArg.isEmpty()) return;` guard fires, so queryArg (read at remotecontrol.cpp:3416 req.value("query")) is EMPTY at the handler despite the arg being received — points at an arg-plumbing/normalisation layer between MCP receipt and the handler req dropping `query` before cmdRoadmapQuery sees it. The pure mcp::bulletMatchesQuery matcher works (unit-tested); the roadmap_query_keyword_filter feature test covers only the pure matcher + a source-scrape, so NO end-to-end dispatch test caught this. Fix: (a) trace where `query` is dropped between dispatch and req (compare vs a working arg like `status`, which DOES reach the handler); (b) add an end-to-end regression test driving cmdRoadmapQuery with a real `query` arg asserting the narrowed count + echo. Supersedes the duplicate ANTS-3413. HIGH — a shipped feature is silently non-functional.
   **Layman:** The roadmap keyword search was built and marked done, but it doesn't actually filter anything — searching returns the whole list.
   Kind: fix.
   Lanes: remotecontrol, mcpprojection.
   Source: in-session-2026-07-02 (verified while triaging Vestige's duplicate request).
+  Resolved (2026-07-02): root cause was the mainwindow.cpp roadmap_query dispatch lambda's hand-maintained arg allowlist — it never forwarded `query`, so the arg was dropped before cmdRoadmapQuery read it (the ANTS-3391 handler + schema were correct all along). Added the forward; also fixed 3 sibling drops in the same lambda: max_body_bytes (ANTS-3402), include_section_etags + section_etag_match (ANTS-1907), each inert over MCP until now. Regression: roadmap_query_keyword_filter INV-7 (dispatch source-scrape — the gap ANTS-3391's coverage missed). Full suite green. Goes live on next relaunch (home-copy).
+
+- 📋 [ANTS-3421] **feedback_log: compact-shipped op to trim confirmed-implemented findings in *_Ants_MCP_Feedback.md (keep a stub, not a delete).**
+  The *_Ants_MCP_Feedback.md files grow unbounded — every contributor finding stays at full verbosity forever, even after it ships and the originating CC session confirms the fix works. Add a maintainer-side compaction op (feedback_log op:"compact_shipped" or similar) that, for a finding whose mapping-table row is marked shipped/confirmed, collapses its multi-paragraph block down to a one-line stub (id + headline + "→ shipped ANTS-NNNN, confirmed <session> <date>") WITHOUT deleting it — provenance is preserved, byte-size drops. Gate on the maintainer tracking table already recording the ANTS-NNNN mapping + a confirmation marker (extend mcp-feedback-files.md format if needed). Never trim un-triaged or open findings. Keep append-only semantics for new findings; compaction only rewrites already-tracked, already-confirmed blocks. Also consider a dry_run preview + a per-file byte-savings report. Motivation: the shared-root feedback files are read by session_orient's feedback_pending scan and by feedback_query; a smaller file is cheaper to parse and keeps the un-triaged delta easy to spot.
+  **Layman:** The cross-session feedback files keep growing; once a suggestion is built and the other session confirms it works, its long write-up should shrink to a one-line stub so the file stays small.
+  Kind: enhancement.
+  Lanes: remotecontrol, feedback.
+  Source: user-request-2026-07-02.
+
+- 📋 [ANTS-3422] **roadmap_query MCP dispatch lambda: replace the hand-maintained arg allowlist with a verbatim/schema-driven forward to kill the silent-drop bug class.**
+  The mainwindow.cpp roadmap_query provider lambda builds the handler `req` by hand-forwarding a fixed allowlist of args (status/section/id/ids/mode/include_*/offset/limit + the ANTS-3420 additions). Any verb-specific arg the handler reads but that isn't hand-added here is silently dropped at the MCP boundary. This is now the FIFTH occurrence of the exact same bug: ANTS-1856 (id), ANTS-1398 (include_section_headers), ANTS-1437 (mode), ANTS-1586 (include_body), ANTS-3420 (query + the three siblings max_body_bytes/include_section_etags/section_etag_match found in the same audit). Durable fix options: (a) forward `args` verbatim into `req` (`QJsonObject req = args`) and let cmdRoadmapQuery own all validation — simplest, net line reduction, but requires rewriting the DispatchForwards* source-scrape tests (roadmap_query_section_index / roadmap_query_pagination) that assert per-arg forward lines; (b) schema-driven forward: copy exactly the args declared in the tool's inputSchema.properties (minus the cross-cutting wrapper-consumed ones), so adding a schema prop auto-forwards it. Prefer (a) for simplicity; migrate the affected dispatch tests to assert end-to-end arg arrival rather than a specific line. Audit the OTHER provider lambdas for the same pattern while here (several use rcDelegate which forwards the whole req — those are already safe; only the hand-built ones like roadmap_query are at risk). Add a single end-to-end test that drives each list-verb through the provider with an exotic arg and asserts it reaches the handler.
+  **Layman:** Every time we add a new option to the roadmap search tool, we also have to remember to add one line copying it across an internal boundary; forgetting silently breaks the option. This keeps happening — make it copy everything automatically so the bug can't recur.
+  Kind: refactor.
+  Lanes: remotecontrol, mcpprojection.
+  Source: in-session-2026-07-02 (root-cause of ANTS-3420).
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 

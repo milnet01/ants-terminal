@@ -28,11 +28,21 @@ It is a list-path filter, not a targeted selector.
 - **INV-6** — `roadmap_query`'s inputSchema declares the `query` property
   (so the dispatch layer recognises it and no longer flags it in
   `ignored_args`).
+- **INV-7** (ANTS-3420) — the `mainwindow.cpp` MCP dispatch lambda FORWARDS
+  `query` into the `cmdRoadmapQuery` req. INV-5/INV-6 proved the handler
+  and schema were correct, but the hand-maintained forward list omitted
+  `query`, so the arg was dropped at the MCP boundary and the filter was
+  inert end-to-end. The same audit fixed three sibling drops in that
+  lambda — `max_body_bytes` (ANTS-3402) and `include_section_etags` /
+  `section_etag_match` (ANTS-1907) — each of which was likewise inert over
+  the MCP transport until forwarded.
 
 ## Test
 `tests/features/roadmap_query_keyword_filter/` (label `features`), in the
 `test_core` bundle. INV-1..4 drive the pure `mcp::bulletMatchesQuery`
 (Qt6::Core, in `ants_core_lib`); INV-5/INV-6 source-scrape
 `remotecontrol.cpp` (`SRC_RC_CPP`) and `claudeintegration.cpp`
-(`SRC_CLAUDE_INTEGRATION_CPP_PATH`) for the wiring. Verify INV-1..4 fail
-against pre-ANTS-3391 source (the matcher did not exist).
+(`SRC_CLAUDE_INTEGRATION_CPP_PATH`) for the wiring; INV-7 source-scrapes
+`mainwindow.cpp` (`SRC_MAINWINDOW_CPP`) for the dispatch forward. Verify
+INV-1..4 fail against pre-ANTS-3391 source (the matcher did not exist) and
+INV-7 fails against pre-ANTS-3420 source (the forward line was absent).

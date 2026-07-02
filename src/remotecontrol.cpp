@@ -12038,7 +12038,26 @@ QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
         }
         ok["source"] = srcLabel.isEmpty() ? QStringLiteral("CLAUDE.md")
                                           : srcLabel;
-        ok["lanes"]  = lanesAsJson(lanes).value("lanes");
+        // ANTS-3414 — optional `name` substring filter: narrow the lane
+        // list to lanes whose name contains `name` (case-insensitive), so a
+        // caller after one subsystem gets just its slice instead of the whole
+        // map. Empty/missing → the full list (back-compat). Echoed back so
+        // the caller sees the filter applied; a needle matching nothing
+        // yields an empty lanes[] (not an error — op:map lists, it doesn't
+        // validate a lane the way files / recent_changes do).
+        QJsonArray lanesJson = lanesAsJson(lanes).value("lanes").toArray();
+        const QString nameFilter = req.value("name").toString().trimmed();
+        if (!nameFilter.isEmpty()) {
+            QJsonArray filtered;
+            for (const QJsonValue &v : std::as_const(lanesJson)) {
+                if (v.toObject().value("name").toString()
+                        .contains(nameFilter, Qt::CaseInsensitive))
+                    filtered.append(v);
+            }
+            lanesJson  = filtered;
+            ok["name"] = nameFilter;
+        }
+        ok["lanes"]  = lanesJson;
         return QJsonDocument(ok);
     }
 

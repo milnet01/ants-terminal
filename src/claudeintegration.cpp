@@ -4319,8 +4319,9 @@ void ClaudeIntegration::onMcpConnection() {
                     "files (per-lane file list), recent_changes "
                     "(per-lane git log). Required: op. lane required "
                     "for files / recent_changes. n: recent_changes "
-                    "only (default 10, cap 100). Saves ~24 K tokens "
-                    "per /indie-review run.");
+                    "only (default 10, cap 100). name: map only — "
+                    "case-insensitive substring filter over lane names "
+                    "(ANTS-3414). Saves ~24 K tokens per /indie-review run.");
                 ssTool["selection_hint"] = QStringLiteral(
                     "Use as the first call on a 'where does feature "
                     "X live?' question — walks the docs/subsystems.md "
@@ -4344,9 +4345,20 @@ void ClaudeIntegration::onMcpConnection() {
                                             nProp["maximum"]  = 100;
                                             nProp["description"] =
                         QStringLiteral("recent_changes only");
+                    // ANTS-3414 — op:map optional `name` substring filter.
+                    // Narrows the returned lane list to lanes whose name
+                    // contains this needle (case-insensitive); empty/missing
+                    // → the full map. Declared here so it is a real param
+                    // (no longer flagged in ignored_args) — Vestige feedback.
+                    QJsonObject nameProp;   nameProp["type"] = "string";
+                                            nameProp["description"] =
+                        QStringLiteral("op:map only — return only lanes whose "
+                                       "name contains this substring "
+                                       "(case-insensitive); omit for all lanes");
                     props["op"]   = opProp;
                     props["lane"] = laneProp;
                     props["n"]    = nProp;
+                    props["name"] = nameProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499

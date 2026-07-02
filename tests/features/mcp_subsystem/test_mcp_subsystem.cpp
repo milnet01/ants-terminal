@@ -246,6 +246,26 @@ TEST(McpSubsystem, WiringContract) {
            "resolveSource must return the CLAUDE.md path unchanged when no "
            "docs/subsystems.md sibling exists (back-compat fallback)");
 
+    // ANTS-3414 — op:map honours an optional `name` substring filter.
+    // The schema declares a `name` property (so it is no longer flagged in
+    // ignored_args), and the op:map branch filters lanesJson by
+    // name.contains(nameFilter, Qt::CaseInsensitive) and echoes `name`.
+    expect(contains(ciCpp, "props[\"name\"] = nameProp"),
+           "ANTS-3414/schema",
+           "subsystem inputSchema does not declare the op:map `name` prop");
+    {
+        const size_t pos = rcCpp.find("RemoteControl::cmdSubsystem");
+        bool ok = false;
+        if (pos != std::string::npos) {
+            const std::string window = rcCpp.substr(pos);
+            ok = contains(window, "req.value(\"name\")") &&
+                 contains(window, "Qt::CaseInsensitive");
+        }
+        expect(ok, "ANTS-3414/handler",
+               "cmdSubsystem op:map does not apply the case-insensitive "
+               "`name` substring filter");
+    }
+
     EXPECT_EQ(0, expect_failures()) << expect_failures() << " ANTS-1251/ANTS-1292 invariant(s) failed";
 }
 
