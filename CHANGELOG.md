@@ -19,6 +19,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query by-id: max_body_bytes (ANTS-3402) is inert — a single-bullet fetch truncates the body at the 2000 default regardless of the requested cap.** (ANTS-3425)
+  Asking the roadmap tool for one item's full text still cuts it off at ~2000 characters even when you ask for more, so the important tail (like a decision paragraph) is lost and you have to read the whole 2 MB file instead.
+
 - **audit_run no longer auto-runs mypy in its deps-less sweep (it emitted 28-31 spurious import-not-found/import-untyped warnings on every full run); mypy stays available on explicit `tools:["mypy"]`.** (ANTS-3418)
   The built-in bug-scanner stopped falsely reporting dozens of 'missing library' problems on Python projects every time it ran; CI and pre-commit still run the real, fully-installed type check.
 

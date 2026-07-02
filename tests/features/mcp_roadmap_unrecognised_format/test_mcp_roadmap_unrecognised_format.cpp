@@ -40,7 +40,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 std::string boundedBetween(const std::string &cpp,
                            const std::string &startSig,
                            const std::string &endSig,
-                           size_t kMaxBound = 80 * 1024) {
+                           size_t kMaxBound = 88 * 1024) {
     // ANTS-1436 bumped 28→32 KB: pagination args parse (~1.5 KB)
     // + PaginationEngine::pageBullets call + envelope augment at
     // each of the 2 emission sites (~600 B × 2). The pagination
@@ -72,7 +72,13 @@ std::string boundedBetween(const std::string &cpp,
     // ANTS-3400/3402 bumped 72→80 KB: the accepted-status-filter block +
     // sectionFilter collapse + granular lifecycle predicate branches
     // (ANTS-3400) and the max_body_bytes parse + rcCapBodyFields emission
-    // caps (ANTS-3402) add ~4 KB. Body is now ~70 KB.
+    // caps (ANTS-3402) add ~4 KB.
+    // ANTS-3425 bumped 80→88 KB: the three m_roadmapCacheBullets builders
+    // now pass kRoadmapQueryBodyStoreCap + carry the rationale comment so
+    // an id/ids max_body_bytes fetch is no longer inert (~0.5 KB). The
+    // measured body sat at ~79.5 KB before this change (the earlier
+    // "~70 KB" note was stale), so it had crept to the ceiling; the
+    // guard stays meaningful and still flags a genuine new-mode addition.
     const auto startPos = cpp.find(startSig);
     if (startPos == std::string::npos) return {};
     const auto endPos = cpp.find(endSig, startPos + startSig.size());

@@ -3822,8 +3822,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 rcMaybeEmitHeadlineFull(o, b);  // ANTS-2075
                 // ANTS-1517 — body (truncated). Always cached; the
                 // strip pass at emission removes when include_body
-                // is false.
-                rcSetBodyFields(o, b.body);
+                // is false. ANTS-3425 — store at the larger cap so an
+                // id/ids max_body_bytes fetch can emit past 2000
+                // (list/section emission still re-caps to 2000).
+                rcSetBodyFields(o, b.body, kRoadmapQueryBodyStoreCap);
                 o["kind"] = b.kind;
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);
@@ -3885,8 +3887,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                     // ANTS-1521 — single-line headline companion.
                     o["headline_oneline"] = rcHeadlineOneline(b.headline);
                     rcMaybeEmitHeadlineFull(o, b);  // ANTS-2075
-                    // ANTS-1517 — body (truncated).
-                    rcSetBodyFields(o, b.body);
+                    // ANTS-1517 — body (truncated). ANTS-3425 — store at
+                    // the larger cap so an id/ids max_body_bytes fetch sees
+                    // it (list/section emission still re-caps to 2000).
+                    rcSetBodyFields(o, b.body, kRoadmapQueryBodyStoreCap);
                     o["kind"] = b.kind;
                     o["section_slug"] = b.sectionSlug;
                     QJsonArray lanes;
@@ -4529,8 +4533,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 // ANTS-1521 — single-line headline companion.
                 o["headline_oneline"] = rcHeadlineOneline(b.headline);
                 rcMaybeEmitHeadlineFull(o, b);  // ANTS-2075
-                // ANTS-1517 — body (truncated).
-                rcSetBodyFields(o, b.body);
+                // ANTS-1517 — body (truncated). ANTS-3425 — store at the
+                // larger cap so an id/ids max_body_bytes fetch sees it
+                // (list/section emission still re-caps to 2000).
+                rcSetBodyFields(o, b.body, kRoadmapQueryBodyStoreCap);
                 o["kind"] = b.kind;
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);
