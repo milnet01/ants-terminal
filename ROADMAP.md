@@ -137,8 +137,9 @@ the Flathub repo name.
    (https://docs.flathub.org/docs/for-app-authors/submission/).
 4. **Populate the repo** with the generated manifest, a copy of
    `org.ants.Terminal.metainfo.xml` (from `packaging/linux/`), and
-   a copy of `org.ants.Terminal.desktop`. Pin `branch: stable` in the
-   manifest so Flathub CI builds against our stable branch.
+   a copy of `org.ants.Terminal.desktop`. The generated manifest already
+   pins `tag: v<version>` (a reproducible tagged revision — Flathub's
+   preferred form), so no branch pinning is needed.
 5. **Open a PR** from `flathub/org.ants.Terminal` against
    `flathub/flathub` with the repo URL in the PR body. Flathub CI
    rebuilds on each push.

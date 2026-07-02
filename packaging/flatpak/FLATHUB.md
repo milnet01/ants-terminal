@@ -10,7 +10,11 @@ Before opening the submission PR, all of the following must be true:
 1. **Latest release builds locally as a Flatpak**, with Lua plugins
    loading inside the sandbox. From repo root:
    ```bash
-   flatpak-builder --install --user --force-clean \
+   # Uses the org.flatpak.Builder flatpak — Flathub's official build tool,
+   # the same one the lint step below uses. Install once with:
+   #   flatpak install flathub org.flatpak.Builder
+   # (A system `flatpak-builder` binary works identically if you have one.)
+   flatpak run org.flatpak.Builder --user --install --force-clean \
        build-flatpak packaging/flatpak/org.ants.Terminal.yml
    flatpak run org.ants.Terminal
    ```
@@ -32,16 +36,16 @@ Before opening the submission PR, all of the following must be true:
    appstreamcli validate packaging/linux/org.ants.Terminal.metainfo.xml
    ```
 
-4. **All 32 feature tests pass.**
+4. **The full feature suite passes.**
    ```bash
-   cd build && ctest --output-on-failure
+   ctest --test-dir build -L features --output-on-failure
    ```
 
-5. **Tag is pushed.** The Flathub manifest pins `tag: v<VERSION>`; the
-   tag must exist on GitHub before the PR goes in or CI cannot check
-   out the source.
+5. **Tag is pushed.** The Flathub manifest pins `tag: v<VERSION>` (the
+   latest **stable** release — never an `-rcN` prerelease); the tag must
+   exist on GitHub before the PR goes in or CI cannot check out the source.
    ```bash
-   git tag v0.7.3 && git push origin v0.7.3
+   git tag v<VERSION> && git push origin v<VERSION>   # e.g. the current stable v0.7.97
    ```
 
 ## Opening the Flathub PR
