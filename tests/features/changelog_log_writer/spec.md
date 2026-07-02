@@ -45,9 +45,10 @@ Unreleased section, and `created_category` is reported.
 ### INV-5 — refusals
 
 `not_unreleased` when there is no `## [Unreleased]` heading;
-`bad_category` for a non-canonical category. The `changelog_log`
-handler adds `no_changelog`, `id_not_in_roadmap` (add_from_roadmap),
-`missing_field`, and `bad_op_combo`.
+`bad_category` for a non-canonical category;
+`feature_grouped_section` (INV-11) when the section is feature-grouped.
+The `changelog_log` handler adds `no_changelog`, `id_not_in_roadmap`
+(add_from_roadmap), `missing_field`, and `bad_op_combo`.
 
 ### INV-6 — op:"add" end to end
 
@@ -102,6 +103,27 @@ untruncated headline (`BulletRecord.headlineFull`, ANTS-2075), not the
 than 120 chars renders in full in the CHANGELOG with no `…` ellipsis
 leaked into the bold span. Applies to both the single op and the
 `add_batch` per-entry path.
+
+### INV-11 — feature-grouped section refusal (ANTS-3416)
+
+When the `## [Unreleased]` section is **feature-grouped** — its direct
+`### ` children are dated topic headings (`### <id> — <topic> (<date>)`,
+newest-first, the MAME Curator house style) with `**Bold**` category runs
+(`**Fixed**`, inline `**Security:**`) beneath, rather than flat
+Keep-a-Changelog `### <category>` blocks — `insertUnreleasedEntry` refuses
+with `feature_grouped_section` (no rewritten body) rather than inserting a
+flat `### <category>` block that would land mis-ordered at the section end.
+The refusal message names the first dated-topic heading line so the caller
+can hand-edit. `cmdChangelogLog` / `add_batch` propagate the refusal (single
+op returns it; batch routes each entry to `skipped[]`) and leave
+CHANGELOG.md untouched.
+
+Detection requires all three signals, to keep the refusal precise (never
+block a legitimate insert): ≥1 `### ` heading, NONE of them a canonical
+category word (a single canonical heading → flat layout, handled by the
+normal insert + the INV-9 advisory), and ≥1 flush-left `**Bold**` run line.
+A normal bullet `- **summary**` trims to a leading `-`, so it never trips
+the bold-run signal.
 
 ## Test plan
 

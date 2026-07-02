@@ -1379,6 +1379,8 @@ if(ANTS_TESTS)
                 tests/features/audit_run_partial_envelope/test_audit_run_partial_envelope.cpp
                 # ANTS-3396 opt-in async audit_run + audit_poll job registry.
                 tests/features/mcp_audit_run_async/test_mcp_audit_run_async.cpp
+                # ANTS-3418 audit_run drops mypy from the auto-detect default.
+                tests/features/audit_run_default_tools/test_audit_run_default_tools.cpp
                 # ANTS-1561 parseBullets multi-line bold headline span.
                 tests/features/roadmap_parser_multiline_bold_headline/test_roadmap_parser_multiline_bold_headline.cpp
                 # ANTS-2035 pass-heading sub-pass ID distinctness.

@@ -82,6 +82,47 @@ int firstInterleavedProseLine(const QStringList &lines,
     }
     return -1;
 }
+
+// ANTS-3416 — detect a FEATURE-GROUPED `## [Unreleased]` section: one whose
+// direct `### ` children are dated topic headings
+// (`### <id> — <topic> (<date>)`, newest-first) with `**Bold**` category
+// runs (`**Fixed**`, `**Security:**`) beneath them — the MAME Curator house
+// style — rather than flat Keep-a-Changelog `### <category>` blocks.
+// changelog_log models `### ` as the category slot, so a flat-category
+// insert here lands the entry as a sibling of the dated topics at the
+// section END, breaking the every-heading-is-a-dated-topic invariant (it
+// then has to be hand-deleted). Returns the 1-based line of the first
+// dated-topic heading (for the refusal message), or -1 for a normal layout.
+//
+// All three signals are required, to keep this a precise refusal (a false
+// positive would block a legitimate insert):
+//   (1) ≥1 `### ` heading in the section;
+//   (2) NONE of the `### ` headings is a canonical category word — a single
+//       canonical heading means it is a flat (possibly messy) category
+//       layout, handled by the normal insert + the ANTS-2125 advisory, not
+//       feature-grouped;
+//   (3) ≥1 flush-left `**Bold**` run line (the category runs sit one level
+//       BELOW the topic heading). A normal bullet `- **summary**` trims to a
+//       leading `-`, not `**`, so it never trips this.
+int firstFeatureGroupedTopicLine(const QStringList &lines,
+                                 int sectionStart, int sectionEnd) {
+    int firstTopic = -1;
+    int headingCount = 0;
+    bool sawBoldRun = false;
+    for (int i = sectionStart; i < sectionEnd && i < lines.size(); ++i) {
+        const QString t = lines.at(i).trimmed();
+        if (t.startsWith(QStringLiteral("### "))) {
+            ++headingCount;
+            const QString name = t.mid(4).trimmed();
+            if (canonicalCategories().contains(name, Qt::CaseInsensitive))
+                return -1;  // a real category heading → not feature-grouped
+            if (firstTopic < 0) firstTopic = i + 1;  // 1-based, for humans
+        } else if (t.startsWith(QStringLiteral("**"))) {
+            sawBoldRun = true;
+        }
+    }
+    return (headingCount >= 1 && sawBoldRun) ? firstTopic : -1;
+}
 }  // namespace
 
 QString formatBullet(const QString &summary, const QString &body,
@@ -143,6 +184,27 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
             sectionEnd = i;
             break;
         }
+    }
+
+    // ANTS-3416 — refuse a FEATURE-GROUPED section (dated `### ` topics +
+    // `**Bold**` category runs, not flat Keep-a-Changelog categories). A
+    // flat-category insert would land the entry as a sibling of the dated
+    // topics at the section END, breaking the house style — so refuse and
+    // let the caller hand-edit from the start rather than delete + re-add.
+    const int topicLine =
+        firstFeatureGroupedTopicLine(lines, unrel + 1, sectionEnd);
+    if (topicLine > 0) {
+        r.code = QStringLiteral("feature_grouped_section");
+        r.error = QStringLiteral(
+            "changelog_log: `## [Unreleased]` is feature-grouped — its "
+            "`### ` subsections are dated topics (first at line %1), not "
+            "Keep-a-Changelog categories, with `**Bold**` category runs "
+            "beneath. A flat `### %2` insert would land as a sibling of the "
+            "dated topics at the section end, breaking the house style. "
+            "Hand-edit CHANGELOG.md: add the note under a new or existing "
+            "`### <id> — <topic> (<date>)` subsection.")
+            .arg(topicLine).arg(category);
+        return r;
     }
 
     // ANTS-2125 — flag a pre-existing malformed section (non-heading

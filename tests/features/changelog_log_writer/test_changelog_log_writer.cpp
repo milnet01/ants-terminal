@@ -52,6 +52,24 @@ const char *kMalformedChangelog =
     "## [0.1.0] - 2026-01-01\n\n"
     "- old.\n";
 
+// ANTS-3416 — a FEATURE-GROUPED `## [Unreleased]`: its direct `### `
+// children are dated topic headings (MAME Curator house style) with
+// `**Bold**` category runs (`**Fixed**` / inline `**Security:**`) beneath
+// — NOT flat Keep-a-Changelog category words. `### ` is not the category
+// slot here, so a flat-category insert would mis-order; the writer refuses.
+// The first dated topic heading sits on line 5 (1-based). The `\xE2\x80\x94`
+// is an em-dash.
+const char *kFeatureGroupedChangelog =
+    "# Changelog\n\n"                                          // 1, 2
+    "## [Unreleased]\n\n"                                      // 3, 4
+    "### MAME-0042 \xE2\x80\x94 curator dedup (2026-07-02)\n\n" // 5, 6
+    "Intro paragraph about the topic.\n\n"                     // 7, 8
+    "**Fixed**\n\n"                                            // 9, 10
+    "- Something got fixed.\n\n"                               // 11, 12
+    "**Security:** a note.\n\n"                                // 13, 14
+    "## [0.1.0] - 2026-01-01\n\n"
+    "- old.\n";
+
 // ants-v1 roadmap with one bullet carrying a Layman + Kind line.
 QByteArray roadmapBody() {
     return QByteArray(
@@ -422,6 +440,58 @@ TEST(changelog_log_writer, Ants2125MalformedSectionAdvisoryHandler) {
     ASSERT_TRUE(cleanResp.value(QStringLiteral("ok")).toBool());
     EXPECT_FALSE(cleanResp.contains(QStringLiteral("advisory")))
         << "a clean section must not carry an advisory";
+}
+
+// ANTS-3416 — a feature-grouped `## [Unreleased]` (dated `### ` topics +
+// `**Bold**` category runs) is REFUSED at the pure helper with
+// `feature_grouped_section`, while a flat category layout (clean OR the
+// ANTS-2125 messy shape, both carrying canonical `### ` headings) is not.
+TEST(changelog_log_writer, Ants3416FeatureGroupedRefusalHelper) {
+    const auto grouped = ChangelogLog::insertUnreleasedEntry(
+        QString::fromUtf8(kFeatureGroupedChangelog), QStringLiteral("Fixed"),
+        QStringLiteral("- **New one.** (ANTS-9)"));
+    EXPECT_FALSE(grouped.ok) << "a feature-grouped section must be refused";
+    EXPECT_EQ(grouped.code, QStringLiteral("feature_grouped_section"));
+    EXPECT_TRUE(contains(grouped.error.toStdString(), "line 5"))
+        << "the refusal names the first dated-topic heading line";
+    EXPECT_TRUE(grouped.markdown.isEmpty())
+        << "a refusal must not produce a rewritten body";
+
+    const auto flat = ChangelogLog::insertUnreleasedEntry(
+        QString::fromUtf8(kChangelog), QStringLiteral("Fixed"),
+        QStringLiteral("- **New one.** (ANTS-9)"));
+    EXPECT_TRUE(flat.ok) << flat.error.toStdString();
+
+    // A flat-but-messy section (canonical `### ` headings + stray prose)
+    // stays the ANTS-2125 non-blocking advisory, NOT a refusal.
+    const auto malformed = ChangelogLog::insertUnreleasedEntry(
+        QString::fromUtf8(kMalformedChangelog), QStringLiteral("Added"),
+        QStringLiteral("- **New one.** (ANTS-9)"));
+    EXPECT_TRUE(malformed.ok)
+        << "a flat category layout must never be mistaken for feature-grouped";
+    EXPECT_TRUE(malformed.malformed_section);
+}
+
+// ANTS-3416 — the handler propagates the refusal and leaves CHANGELOG.md
+// byte-for-byte untouched (the write is skipped on !res.ok).
+TEST(changelog_log_writer, Ants3416FeatureGroupedRefusalHandler) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()),
+                          QByteArray(kFeatureGroupedChangelog)));
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("add");
+    req[QStringLiteral("summary")]    = QStringLiteral("Fresh entry.");
+    req[QStringLiteral("kind")]       = QStringLiteral("fix");
+    const QJsonObject resp = rc.cmdChangelogLog(req).object();
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("feature_grouped_section"));
+    EXPECT_EQ(readFileStd(clPath(tmp.path())),
+              std::string(kFeatureGroupedChangelog))
+        << "a refused write must not touch the file";
 }
 
 // ANTS-2127 — op:add_from_roadmap must reuse the UNTRUNCATED headline

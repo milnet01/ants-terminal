@@ -6380,10 +6380,13 @@ void ClaudeIntegration::onMcpConnection() {
                         "Subset of {cppcheck, clazy, clang-tidy, ruff, "
                         "bandit, semgrep, gitleaks, trivy, shellcheck, "
                         "mypy}. Empty / omitted = auto-detect all "
-                        "runnable. clang-tidy is opt-in (no default "
-                        "argv beyond `-p build/`); pair it with "
-                        "`paths` + `checks` for the scoped sweep "
-                        "pattern (ANTS-1512).");
+                        "runnable EXCEPT clang-tidy and mypy, which are "
+                        "opt-in. clang-tidy needs `-p build/` (pair it "
+                        "with `paths` + `checks` for the scoped sweep, "
+                        "ANTS-1512); mypy runs deps-less here so a "
+                        "full-sweep mypy is import-not-found noise — CI / "
+                        "pre-commit run the real deps-installed mypy "
+                        "(ANTS-3418). Request either explicitly to run it.");
                     QJsonObject scopeProp;
                     scopeProp["type"] = "string";
                     scopeProp["description"] = QStringLiteral(

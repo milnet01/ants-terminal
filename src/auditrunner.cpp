@@ -208,6 +208,23 @@ const QStringList &kKnownTools() {
     return v;
 }
 
+// ANTS-3418 — tools auto-selected when the caller omits `tools`. This is
+// kKnownTools() MINUS mypy: the audit runner invokes tools deps-less (no
+// `uv sync` / venv), so a full-sweep mypy emits dozens of import-not-found /
+// import-untyped false positives on any project that imports third-party
+// libraries (the project's REAL deps-installed `uv run mypy`, run in CI and
+// pre-commit, is clean). A deps-less mypy adds no signal, only noise that
+// dominates every sweep's raw count. mypy stays a KNOWN tool — an explicit
+// `tools:["mypy"]` still runs — it is just no longer auto-detected.
+const QStringList &kAutoDetectTools() {
+    static const QStringList v = [] {
+        QStringList t = kKnownTools();
+        t.removeAll(QStringLiteral("mypy"));
+        return t;
+    }();
+    return v;
+}
+
 // ANTS-1512 — tools that honour the `checks` filter. Other tools that
 // receive `checks` refuse with `bad_args` rather than silently ignore
 // them — silent-ignore is a footgun (caller assumes their narrow scope
@@ -1524,7 +1541,7 @@ RunResult runAudit(const RunRequest &req) {
 
     // ── INV-10 / resolve absolute paths for the requested tool list.
     QStringList wantedTools = req.tools;
-    if (wantedTools.isEmpty()) wantedTools = kKnownTools();
+    if (wantedTools.isEmpty()) wantedTools = kAutoDetectTools();  // ANTS-3418
     for (const QString &t : wantedTools) {
         if (!kKnownTools().contains(t)) {
             r.ok = false;
