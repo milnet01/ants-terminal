@@ -2867,6 +2867,20 @@ void ClaudeIntegration::onMcpConnection() {
                         props["topic"] = p;
                     }
                     {
+                        // ANTS-3415 — `symbol` alias for `topic`. A session
+                        // reaching for the "who defines/uses X" verb by
+                        // symbol name (natural from the catalog one-liner)
+                        // was refused bad_args; accept it as an alias so the
+                        // call succeeds. `topic` wins when both are set. For
+                        // call-sites of a known symbol, prefer find_caller.
+                        QJsonObject p; p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Alias for `topic` (ANTS-3415). `topic` takes "
+                            "precedence when both are present. To list the "
+                            "call-sites of a known symbol, prefer find_caller.");
+                        props["symbol"] = p;
+                    }
+                    {
                         QJsonObject p; p["type"] = "integer";
                         p["default"] = 20;
                         p["description"] = QStringLiteral(

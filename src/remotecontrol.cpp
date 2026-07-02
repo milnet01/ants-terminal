@@ -965,6 +965,17 @@ void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames) {
     while (text.endsWith(QChar('\n'))) text.chop(1);
 }
 
+// ANTS-3417 — strip trailing spaces/tabs from an emitted roadmap line so
+// the writer's output is pre-commit-clean by construction. Without it, an
+// empty body/note continuation line renders as the bare 2-space hang indent
+// ("  ") — trailing whitespace that the ubiquitous trim-trailing-whitespace
+// pre-commit hook rejects, forcing a re-stage + re-commit after every write.
+static QString rcRightStrip(QString s) {
+    while (s.endsWith(QLatin1Char(' ')) || s.endsWith(QLatin1Char('\t')))
+        s.chop(1);
+    return s;
+}
+
 // ANTS-1717/1793 — append `note` as indented continuation line(s) at
 // the end of the body of the bullet whose headline sits at
 // `headlineLine`. Format-agnostic: the body of both ants-v1 and
@@ -994,8 +1005,12 @@ int appendBodyNote(QStringList &lines, int headlineLine,
     const QStringList noteLines = note.split(QChar('\n'));
     for (int k = 0; k < noteLines.size(); ++k) {
         const QString &nl = noteLines.at(k);
+        // ANTS-3417 — a whitespace-only note line collapses to "" (no dangling
+        // indent); a real line is right-stripped so no trailing whitespace
+        // reaches ROADMAP.md.
         lines.insert(insertAt + k,
-                     nl.isEmpty() ? QString() : indent + nl);
+                     nl.trimmed().isEmpty() ? QString()
+                                            : rcRightStrip(indent + nl));
     }
     return insertAt;
 }
@@ -2194,11 +2209,16 @@ QJsonDocument RemoteControl::cmdLastSelection(const QJsonObject &req) {
 // ANTS-1636 — find_sources. Project-scoped topic-to-files discovery.
 QJsonDocument RemoteControl::cmdFindSources(const QJsonObject &req) {
     QJsonObject out;
-    const QString topic = req.value(QStringLiteral("topic")).toString().trimmed();
+    // ANTS-3415 — accept `symbol` as an alias for `topic` (fills in only
+    // when `topic` is absent), mirroring the file_outline path/file_path
+    // and workspace_search query/pattern idioms. `topic` stays canonical.
+    QString topic = req.value(QStringLiteral("topic")).toString().trimmed();
+    if (topic.isEmpty())
+        topic = req.value(QStringLiteral("symbol")).toString().trimmed();
     if (topic.isEmpty()) {
         out[QStringLiteral("ok")]    = false;
         out[QStringLiteral("error")] = QStringLiteral(
-            "find_sources: missing or empty \"topic\"");
+            "find_sources: missing or empty \"topic\" (alias: \"symbol\")");
         out[QStringLiteral("code")]  = QStringLiteral("bad_args");
         return QJsonDocument(out);
     }
@@ -7817,7 +7837,9 @@ QString RemoteControl::formatRoadmapBullet(
     if (!body.isEmpty()) {
         const QStringList lines = body.split(QChar('\n'));
         for (const QString &ln : lines)
-            bullet += QStringLiteral("  ") + ln + QChar('\n');
+            // ANTS-3417 — right-strip so an empty/space-only body line doesn't
+            // emit the bare "  " hang indent as trailing whitespace.
+            bullet += rcRightStrip(QStringLiteral("  ") + ln) + QChar('\n');
     }
     const QString layman =
         bulletReq.value(QStringLiteral("layman")).toString();

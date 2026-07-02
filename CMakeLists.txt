@@ -1329,6 +1329,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_id_format_guard/test_roadmap_id_format_guard.cpp
                 # ANTS-3382 roadmap_log evidence:[paths] append + roadmap_query echo.
                 tests/features/roadmap_log_evidence/test_roadmap_log_evidence.cpp
+                # ANTS-3417 roadmap_log writers emit no trailing whitespace.
+                tests/features/roadmap_log_trailing_whitespace/test_roadmap_log_trailing_whitespace.cpp
                 # ANTS-2058 parseBullets inline `Kind: . Lanes: .` lanes extraction.
                 tests/features/roadmap_query_inline_lanes/test_roadmap_query_inline_lanes.cpp
                 # ANTS-1878 roadmap_log op:create_section.

@@ -32,6 +32,24 @@ QJsonObject makeErr(const QString &toolName, const QString &paramName,
     return o;
 }
 
+// ANTS-3419 — the conventional cross-session feedback file lives one level
+// ABOVE the project root (<shared>/<proj>_Ants_MCP_Feedback.md), so every
+// project-scoped read/write verb (read_region, file_outline, read_regions,
+// workspace_search, apply_edits) correctly refuses it with bad_path. Redirect
+// the caller to feedback_query / feedback_log — which serve exactly that file
+// by absolute path — instead of leaving them a round-trip to rediscover the
+// verb. Mirrors the find_definition file_stem_hint / feedback_query candidates
+// hint pattern (keep the refusal; add a redirecting `hint`).
+void addFeedbackHintIfApplicable(QJsonObject &err, const QString &rawPath) {
+    if (QFileInfo(rawPath).fileName().endsWith(
+            QStringLiteral("_Ants_MCP_Feedback.md"))) {
+        err[QStringLiteral("hint")] = QStringLiteral(
+            "this is a cross-session feedback file (it lives above the "
+            "project root); use feedback_query / feedback_log — they accept "
+            "its absolute path");
+    }
+}
+
 // ANTS-1837 — NFC-insensitive anchor test. Both arguments are expected to
 // be canonical or cleaned absolute paths. Normalise BOTH sides to NFC
 // before comparing: `validatePath` already NFC-normalises its input, so
@@ -97,6 +115,7 @@ Check validatePath(const QString &rawPath,
                 pc.bad = true;
                 pc.err = makeErr(toolName, paramName,
                     QStringLiteral("escapes project root"));
+                addFeedbackHintIfApplicable(pc.err, rawPath);   // ANTS-3419
                 return pc;
             }
             pc.resolved = resolved;
@@ -106,6 +125,7 @@ Check validatePath(const QString &rawPath,
                 pc.bad = true;
                 pc.err = makeErr(toolName, paramName,
                     QStringLiteral("escapes project root"));
+                addFeedbackHintIfApplicable(pc.err, rawPath);   // ANTS-3419
                 return pc;
             }
         }

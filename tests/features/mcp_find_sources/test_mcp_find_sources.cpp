@@ -221,5 +221,12 @@ TEST(McpFindSources, WiringContract) {
                "return C::Required;") != std::string::npos,
            "INV-11: callerCwdContractFor Required branch");
 
+    // ANTS-3415 — `symbol` accepted as an alias for `topic` (handler
+    // fallback + schema prop so it isn't flagged in ignored_args).
+    expect(contains(rcCpp, "req.value(QStringLiteral(\"symbol\"))"),
+           "INV-12: handler reads the `symbol` alias for `topic`");
+    expect(contains(ciCpp, "props[\"symbol\"]"),
+           "INV-12: schema declares the `symbol` alias prop");
+
     EXPECT_EQ(0, expect_failures());
 }
