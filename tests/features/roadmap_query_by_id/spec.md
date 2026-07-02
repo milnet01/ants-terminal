@@ -46,7 +46,11 @@ item], count, path, id, found}`. Body included by default. Bypasses the
 - **INV-7 / schema advertises id.** The roadmap_query tool descriptor
   registers an `id` property. Source anchor: `props["id"]` +
   `ANTS-1856` in `claudeintegration.cpp`.
-- **INV-8 / dispatch forwards id.** The mainwindow dispatch lambda
-  forwards `id` into `req` (same silent-drop hazard ANTS-1586 fixed
-  for include_body). Source anchor: `req["id"] = idArg` + `ANTS-1856`
-  in `mainwindow.cpp`.
+- **INV-8 / dispatch forwards id.** The mainwindow `roadmap_query`
+  provider forwards `id` to `cmdRoadmapQuery`. ANTS-3422 retired the
+  hand-maintained per-arg forward (whose repeated omissions were the
+  silent-drop hazard ANTS-1586/ANTS-1856 kept re-fixing) in favour of a
+  verbatim `rcDelegate(&RemoteControl::cmdRoadmapQuery)` forward that
+  passes the whole args object through, so `id` reaches the handler by
+  construction. Source anchor: `rcDelegate(&RemoteControl::cmdRoadmapQuery)`
+  + `ANTS-3422` in `mainwindow.cpp`.

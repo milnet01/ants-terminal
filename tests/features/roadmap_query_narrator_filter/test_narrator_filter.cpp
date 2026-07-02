@@ -74,15 +74,18 @@ TEST(roadmap_query_narrator_filter, Inv4SchemaAdvertises) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// INV-5 — dispatch forwards the arg.
+// INV-5 — dispatch forwards the arg. ANTS-3422 replaced the per-arg
+// forward with a verbatim `rcDelegate` forward that passes the whole
+// args object to cmdRoadmapQuery, so include_narrator_bullets reaches
+// the handler by construction.
 TEST(roadmap_query_narrator_filter, Inv5DispatchForwards) {
     expect_reset();
     const std::string cpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
-    expect(contains(cpp, "include_narrator_bullets"),
-           "INV-5: mainwindow's roadmap_query lambda forwards "
-           "include_narrator_bullets from args into req");
-    expect(contains(cpp, "ANTS-1425"),
-           "INV-5: dispatch-side ANTS-1425 anchor present");
+    expect(contains(cpp, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+           "INV-5: roadmap_query registered via the verbatim rcDelegate "
+           "forward, so include_narrator_bullets reaches the handler");
+    expect(contains(cpp, "ANTS-3422"),
+           "INV-5: ANTS-3422 verbatim-forward anchor present");
     EXPECT_EQ(0, expect_failures());
 }
 

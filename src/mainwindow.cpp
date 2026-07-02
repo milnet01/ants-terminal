@@ -4397,103 +4397,23 @@ void MainWindow::setupClaudeMcpProviders() {
 
     // ANTS-1244 surface — the next 7 tools delegate to RemoteControl
     // cmd handlers so the IPC and MCP transports share verb logic.
-    // ANTS-1247: roadmap_query threads the status filter through.
+    // ANTS-3422 — roadmap_query forwards `args` VERBATIM via the
+    // shared rcDelegate factory (which passes the whole args object
+    // straight to the cmd handler). This retires the hand-maintained
+    // per-arg forward allowlist that silently dropped any new
+    // verb-specific arg at the MCP boundary — the exact bug that
+    // recurred five times (ANTS-1856 id / ANTS-1398
+    // include_section_headers / ANTS-1437 mode / ANTS-1586
+    // include_body / ANTS-3420 query + max_body_bytes /
+    // include_section_etags / section_etag_match). cmdRoadmapQuery
+    // already owns every arg's validation and reads each key
+    // defensively (empty status→"all", empty section→full-file path,
+    // empty/absent id/ids→list path, non-numeric offset/limit→bad_args),
+    // so a verbatim forward is behaviour-preserving and no future
+    // schema arg can be dropped here again.
     m_claudeIntegration->registerToolProvider("roadmap_query",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            const QJsonValue statusVal = args.value("status");
-            const QString status = statusVal.isString() ? statusVal.toString() : QString();
-            // ANTS-1287 — optional `section` slug. isString() gate
-            // matches the ANTS-1247 INV-9 pattern for `status`.
-            const QJsonValue sectionVal = args.value("section");
-            const QString section = sectionVal.isString() ? sectionVal.toString() : QString();
-            // ANTS-1856 — optional `id` single-item selector. Same
-            // isString() gate as status/section; empty/missing → the
-            // handler takes its existing list path.
-            const QJsonValue idVal = args.value("id");
-            const QString idArg = idVal.isString() ? idVal.toString() : QString();
-            // ANTS-1726 — optional `ids` plural-selector. Forwarded
-            // VERBATIM as a JSON array (not type-coerced here) so the
-            // handler can emit bad_args on malformed input. Same
-            // silent-drop hazard ANTS-1856 fixed for the singular id.
-            const QJsonValue idsVal = args.value("ids");
-            const QJsonArray idsArg = idsVal.isArray() ? idsVal.toArray() : QJsonArray();
-            // ANTS-1393 — forward caller_cwd so cmdRoadmapQuery's
-            // per-project ROADMAP.md resolution at
-            // remotecontrol.cpp:738 sees it. Without this the selective
-            // rebuild silently dropped the field and the ANTS-1391
-            // fix had no effect on roadmap_query.
-            const QJsonValue cwdVal = args.value("caller_cwd");
-            const QString callerCwd = cwdVal.isString() ? cwdVal.toString() : QString();
-            QJsonObject req;
-            if (!status.isEmpty()) req["status"] = status;
-            if (!section.isEmpty()) req["section"] = section;
-            if (!idArg.isEmpty()) req["id"] = idArg;
-            if (!idsArg.isEmpty()) req["ids"] = idsArg;
-            if (!callerCwd.isEmpty()) req["caller_cwd"] = callerCwd;
-            // ANTS-1437 — forward `mode` so section_index dispatch
-            // sees it. Same isString() gate as status/section. Empty
-            // / missing → cmdRoadmapQuery defaults to "bullets".
-            const QJsonValue modeVal = args.value("mode");
-            if (modeVal.isString()) {
-                const QString mode = modeVal.toString();
-                if (!mode.isEmpty()) req["mode"] = mode;
-            }
-            // ANTS-1398 forward-fix — `include_section_headers` was
-            // also dropped here. Caught while landing ANTS-1437.
-            const QJsonValue inclVal = args.value("include_section_headers");
-            if (inclVal.isBool()) req["include_section_headers"] = inclVal.toBool();
-            // ANTS-1425 — forward `include_narrator_bullets` opt-in.
-            const QJsonValue inclNarVal = args.value("include_narrator_bullets");
-            if (inclNarVal.isBool()) req["include_narrator_bullets"] = inclNarVal.toBool();
-            // ANTS-1586 — forward `include_body` opt-in. Was silently
-            // dropped here, so `cmdRoadmapQuery` always read the
-            // default-false branch and stripped the body field at
-            // emission. Same isBool() gate as the other include_*
-            // forwards.
-            const QJsonValue inclBodyVal = args.value("include_body");
-            if (inclBodyVal.isBool()) req["include_body"] = inclBodyVal.toBool();
-            // ANTS-1436 — forward offset/limit VERBATIM (not
-            // type-gated) so the handler can emit bad_args on
-            // non-numeric. The only roadmap_query dispatch lambda
-            // that breaks the silent-drop pattern; deliberate per
-            // INV-8.
-            if (args.contains("offset")) req["offset"] = args.value("offset");
-            if (args.contains("limit"))  req["limit"]  = args.value("limit");
-            // ANTS-3420 — forward `query`, the ANTS-3391 keyword filter.
-            // The filter + schema landed but this hand-maintained forward
-            // list never gained a `query` line, so the arg was silently
-            // dropped at the MCP boundary and the filter was inert
-            // end-to-end (verified live, build ddb6fe2). Same silent-drop
-            // class as 1856 id / 1398 include_section_headers / 1437 mode
-            // / 1586 include_body. isString() gate matches status/section.
-            const QJsonValue queryVal = args.value("query");
-            if (queryVal.isString()) {
-                const QString q = queryVal.toString();
-                if (!q.isEmpty()) req["query"] = q;
-            }
-            // ANTS-3420 companion — three more verb-specific args the
-            // handler reads (remotecontrol.cpp) but this lambda never
-            // forwarded, so each was likewise inert over MCP:
-            //  • max_body_bytes (ANTS-3402, id/ids body-cap) — verbatim so
-            //    the handler clamps + emits bad_args on non-numeric.
-            //  • include_section_etags + section_etag_match (ANTS-1907,
-            //    per-section ETag 304s) — isBool()/isString() gated like
-            //    the sibling include_* / *_match forwards.
-            if (args.contains("max_body_bytes"))
-                req["max_body_bytes"] = args.value("max_body_bytes");
-            const QJsonValue inclSecEtagsVal = args.value("include_section_etags");
-            if (inclSecEtagsVal.isBool())
-                req["include_section_etags"] = inclSecEtagsVal.toBool();
-            const QJsonValue secEtagMatchVal = args.value("section_etag_match");
-            if (secEtagMatchVal.isString()) {
-                const QString s = secEtagMatchVal.toString();
-                if (!s.isEmpty()) req["section_etag_match"] = s;
-            }
-            return QString::fromUtf8(
-                m_remoteControl->cmdRoadmapQuery(req).toJson(QJsonDocument::Compact));
-        });
+        rcDelegate(&RemoteControl::cmdRoadmapQuery));
     m_claudeIntegration->registerToolProvider("tab_list",
         ClaudeIntegration::CallerCwdContract::ProcessGlobal,
         [this](const QJsonObject &) -> QString {

@@ -35,10 +35,13 @@ mirrors the v1 `include_section_headers` design.
   `src/claudeintegration.cpp` declares the new boolean property
   with a `default: false` and a description referencing ANTS-1425.
 - **INV-5 / dispatch forwards the flag.** `mainwindow.cpp`'s
-  `roadmap_query` lambda forwards `include_narrator_bullets` from
-  MCP args into `req` so the handler sees it (otherwise schema
-  advertises an arg the dispatcher silently drops — same bug class
-  as the ANTS-1437 forward-fix).
+  `roadmap_query` provider forwards `include_narrator_bullets` to the
+  handler. ANTS-3422 replaced the per-arg forward (whose omissions were
+  the silent-drop bug class the ANTS-1437 forward-fix belonged to) with a
+  verbatim `rcDelegate(&RemoteControl::cmdRoadmapQuery)` forward that
+  passes the whole args object through, so the flag reaches the handler by
+  construction. Source anchor: `rcDelegate(&RemoteControl::cmdRoadmapQuery)`
+  + `ANTS-3422`.
 - **INV-6 / echo-only-when-set discipline.** Envelope only carries
   `include_narrator_bullets` when the caller explicitly passed
   it — mirrors `include_section_headers`. Keeps the default

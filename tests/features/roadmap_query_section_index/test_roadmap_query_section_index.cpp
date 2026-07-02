@@ -445,44 +445,38 @@ TEST(roadmap_query_section_index, Inv13PerSectionLegacyFlag) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// Dispatch — mainwindow's MCP→cmdRoadmapQuery lambda forwards the
+// Dispatch — mainwindow's roadmap_query provider must forward the
 // `mode` arg (and `include_section_headers`, caught during 1437
-// live-test). Without this, the schema advertises args the
-// dispatcher silently drops at the MCP boundary. Regression
-// test for the bug found while live-testing ANTS-1437.
+// live-test) to cmdRoadmapQuery. ANTS-3422 retired the hand-maintained
+// per-arg forward allowlist (which repeatedly dropped new args at the
+// MCP boundary) in favour of a verbatim `rcDelegate` forward that passes
+// the whole args object through — so `mode` (and every arg) reaches the
+// handler by construction. This scrape now asserts the verbatim forward
+// rather than a per-arg line; a regression back to a selective forward
+// would remove the rcDelegate registration and fail here.
 TEST(roadmap_query_section_index, DispatchForwardsModeArg) {
     expect_reset();
     const std::string cpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
-    expect(contains(cpp, "ANTS-1437 — forward `mode`"),
-           "dispatch: mainwindow lambda forwards mode arg "
-           "(anchor present)");
-    expect(contains(cpp, "args.value(\"mode\")"),
-           "dispatch: lambda reads mode from args");
-    expect(contains(cpp, "req[\"mode\"]"),
-           "dispatch: lambda writes mode into the cmdRoadmapQuery req");
-    // ANTS-1398 forward-fix companion — caught while landing 1437.
-    expect(contains(cpp, "ANTS-1398 forward-fix"),
-           "dispatch: include_section_headers forward-fix anchor present");
-    expect(contains(cpp, "args.value(\"include_section_headers\")"),
-           "dispatch: lambda reads include_section_headers from args");
+    expect(contains(cpp, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+           "dispatch: roadmap_query registered via the verbatim rcDelegate "
+           "forward, so mode + include_section_headers reach the handler");
+    expect(contains(cpp, "ANTS-3422"),
+           "dispatch: ANTS-3422 verbatim-forward anchor present");
     EXPECT_EQ(0, expect_failures());
 }
 
-// ANTS-1586 — regression test for the same dispatch-forward bug
-// pattern as ANTS-1437/ANTS-1398: the mainwindow lambda has to
-// forward `include_body` to cmdRoadmapQuery or callers passing
-// include_body:true never see the `body` field on returned bullets.
-// Pre-fix the lambda dropped the arg silently and the schema
-// advertised a parameter the dispatcher ignored.
+// ANTS-1586 — `include_body` must reach cmdRoadmapQuery or callers
+// passing include_body:true never see the `body` field. Under ANTS-3422
+// the whole args object is forwarded verbatim via rcDelegate, so the arg
+// arrives by construction — assert the verbatim forward is in place.
 TEST(roadmap_query_section_index, DispatchForwardsIncludeBody) {
     expect_reset();
     const std::string cpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
-    expect(contains(cpp, "ANTS-1586 — forward `include_body`"),
-           "dispatch: include_body forward anchor present");
-    expect(contains(cpp, "args.value(\"include_body\")"),
-           "dispatch: lambda reads include_body from args");
-    expect(contains(cpp, "req[\"include_body\"]"),
-           "dispatch: lambda writes include_body into cmdRoadmapQuery req");
+    expect(contains(cpp, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+           "dispatch: roadmap_query registered via the verbatim rcDelegate "
+           "forward, so include_body reaches the handler");
+    expect(contains(cpp, "ANTS-3422"),
+           "dispatch: ANTS-3422 verbatim-forward anchor present");
     EXPECT_EQ(0, expect_failures());
 }
 

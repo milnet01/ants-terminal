@@ -101,28 +101,21 @@ TEST(RoadmapQueryKeywordFilter, Inv6SchemaDeclaresQuery) {
         << "roadmap_query inputSchema must declare the query property";
 }
 
-// INV-7 (ANTS-3420) — the mainwindow dispatch lambda must FORWARD `query`
-// into the cmdRoadmapQuery req. This is the gap the ANTS-3391 coverage
-// missed: the handler wiring (INV-5) + schema (INV-6) were present, but
-// the arg was dropped at the MCP boundary before the handler saw it, so
-// the filter was inert end-to-end. Mirrors the sibling DispatchForwards*
-// scrapes (ANTS-1437 mode / ANTS-1586 include_body). Guards against a
-// regression that re-drops the arg from the hand-maintained forward list.
+// INV-7 (ANTS-3420) — `query` (and the ANTS-3402 / ANTS-1907 companions)
+// must reach cmdRoadmapQuery. ANTS-3422 replaced the hand-maintained
+// per-arg forward — whose repeated omissions dropped `query` and its
+// companions at the MCP boundary — with a verbatim `rcDelegate` forward
+// that passes the whole args object through, so every arg (present and
+// future) arrives by construction. Guards against a regression back to a
+// selective forward that could re-drop an arg.
 TEST(RoadmapQueryKeywordFilter, Inv7DispatchForwardsQuery) {
     const QString mw = readSource(SRC_MAINWINDOW_CPP);
     ASSERT_FALSE(mw.isEmpty());
-    EXPECT_TRUE(mw.contains(QStringLiteral("ANTS-3420 — forward `query`")))
-        << "dispatch: ANTS-3420 query-forward anchor present";
-    EXPECT_TRUE(mw.contains(QStringLiteral("args.value(\"query\")")))
-        << "dispatch: lambda reads query from args";
-    EXPECT_TRUE(mw.contains(QStringLiteral("req[\"query\"]")))
-        << "dispatch: lambda writes query into the cmdRoadmapQuery req";
-    // Companion drops fixed alongside (ANTS-3402 / ANTS-1907): each must
-    // reach the handler too, or its feature stays inert over MCP.
-    EXPECT_TRUE(mw.contains(QStringLiteral("req[\"max_body_bytes\"]")))
-        << "dispatch: lambda forwards max_body_bytes (ANTS-3402)";
-    EXPECT_TRUE(mw.contains(QStringLiteral("req[\"include_section_etags\"]")))
-        << "dispatch: lambda forwards include_section_etags (ANTS-1907)";
-    EXPECT_TRUE(mw.contains(QStringLiteral("req[\"section_etag_match\"]")))
-        << "dispatch: lambda forwards section_etag_match (ANTS-1907)";
+    EXPECT_TRUE(mw.contains(
+        QStringLiteral("rcDelegate(&RemoteControl::cmdRoadmapQuery)")))
+        << "dispatch: roadmap_query registered via the verbatim rcDelegate "
+           "forward, so query + max_body_bytes + include_section_etags + "
+           "section_etag_match all reach the handler";
+    EXPECT_TRUE(mw.contains(QStringLiteral("ANTS-3422")))
+        << "dispatch: ANTS-3422 verbatim-forward anchor present";
 }

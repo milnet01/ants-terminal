@@ -134,13 +134,17 @@ TEST(roadmap_query_by_id, Inv7SchemaAdvertisesId) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// INV-8 — dispatch lambda forwards id into req.
+// INV-8 — dispatch forwards id to the handler. ANTS-3422 replaced the
+// per-arg forward with a verbatim `rcDelegate` forward that passes the
+// whole args object to cmdRoadmapQuery, so `id` reaches the handler by
+// construction (it takes the list path on an empty/absent id).
 TEST(roadmap_query_by_id, Inv8DispatchForwardsId) {
     expect_reset();
     const std::string cpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
-    expect(contains(cpp, "req[\"id\"] = idArg"),
-           "INV-8: id forwarded into req (not silently dropped)");
-    expect(contains(cpp, "ANTS-1856"),
-           "INV-8: ANTS-1856 anchor in dispatch lambda");
+    expect(contains(cpp, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+           "INV-8: roadmap_query registered via the verbatim rcDelegate "
+           "forward, so id reaches the handler (not silently dropped)");
+    expect(contains(cpp, "ANTS-3422"),
+           "INV-8: ANTS-3422 verbatim-forward anchor present");
     EXPECT_EQ(0, expect_failures());
 }

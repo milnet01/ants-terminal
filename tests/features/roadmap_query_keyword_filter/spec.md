@@ -28,14 +28,16 @@ It is a list-path filter, not a targeted selector.
 - **INV-6** — `roadmap_query`'s inputSchema declares the `query` property
   (so the dispatch layer recognises it and no longer flags it in
   `ignored_args`).
-- **INV-7** (ANTS-3420) — the `mainwindow.cpp` MCP dispatch lambda FORWARDS
-  `query` into the `cmdRoadmapQuery` req. INV-5/INV-6 proved the handler
-  and schema were correct, but the hand-maintained forward list omitted
-  `query`, so the arg was dropped at the MCP boundary and the filter was
-  inert end-to-end. The same audit fixed three sibling drops in that
-  lambda — `max_body_bytes` (ANTS-3402) and `include_section_etags` /
-  `section_etag_match` (ANTS-1907) — each of which was likewise inert over
-  the MCP transport until forwarded.
+- **INV-7** (ANTS-3420 → ANTS-3422) — the `mainwindow.cpp` `roadmap_query`
+  provider forwards `query` (and the ANTS-3402 `max_body_bytes` /
+  ANTS-1907 `include_section_etags` / `section_etag_match` companions) to
+  `cmdRoadmapQuery`. INV-5/INV-6 proved the handler and schema were
+  correct, but the hand-maintained forward list omitted these args, so
+  each was dropped at the MCP boundary and inert end-to-end. ANTS-3422
+  retired that allowlist for a verbatim
+  `rcDelegate(&RemoteControl::cmdRoadmapQuery)` forward that passes the
+  whole args object through — so every arg (present and future) reaches
+  the handler by construction and the drop bug-class cannot recur.
 
 ## Test
 `tests/features/roadmap_query_keyword_filter/` (label `features`), in the
@@ -45,4 +47,6 @@ It is a list-path filter, not a targeted selector.
 (`SRC_CLAUDE_INTEGRATION_CPP_PATH`) for the wiring; INV-7 source-scrapes
 `mainwindow.cpp` (`SRC_MAINWINDOW_CPP`) for the dispatch forward. Verify
 INV-1..4 fail against pre-ANTS-3391 source (the matcher did not exist) and
-INV-7 fails against pre-ANTS-3420 source (the forward line was absent).
+INV-7 fails against pre-ANTS-3422 source (the verbatim `rcDelegate`
+forward was absent — the provider still used the hand-maintained per-arg
+lambda).

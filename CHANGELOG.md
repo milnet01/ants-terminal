@@ -133,6 +133,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_query MCP provider now forwards args verbatim (rcDelegate), retiring the hand-maintained per-arg allowlist that silently dropped new options.** (ANTS-3422)
+  The mainwindow provider that bridges the roadmap_query MCP verb to its handler used to copy each option across the boundary by hand; forgetting a line silently disabled that option (it happened five times). It now forwards the whole request, so every current and future option reaches the handler automatically.
+
 - **Read/write MCP verbs point you at the right tool for a feedback-file path** (ANTS-3419)
   A `bad_path` refusal on a `*_Ants_MCP_Feedback.md` path (which lives above the project root) now carries a hint redirecting to feedback_query / feedback_log — the verbs that do serve it — instead of a bare error.
 

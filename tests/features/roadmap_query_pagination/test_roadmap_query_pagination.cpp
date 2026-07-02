@@ -196,17 +196,19 @@ TEST(roadmap_query_pagination, Inv11HelperCallSiteCount) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// Dispatch forward — offset/limit forwarded verbatim from
-// mainwindow.cpp lambda (not type-gated; handler does the check).
+// Dispatch forward — offset/limit reach cmdRoadmapQuery. ANTS-3422
+// replaced the hand-maintained per-arg forward with a verbatim
+// `rcDelegate` forward that passes the whole args object through, so
+// offset/limit (and every other arg) arrive un-gated and the handler
+// still owns the bad_args check on non-numeric input.
 TEST(roadmap_query_pagination, DispatchForwardsVerbatim) {
     expect_reset();
     const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
-    expect(contains(mw, "ANTS-1436 — forward offset/limit"),
-           "dispatch: ANTS-1436 anchor present");
-    expect(contains(mw, "if (args.contains(\"offset\"))"),
-           "dispatch: offset forwarded verbatim (not type-gated)");
-    expect(contains(mw, "if (args.contains(\"limit\"))"),
-           "dispatch: limit forwarded verbatim (not type-gated)");
+    expect(contains(mw, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+           "dispatch: roadmap_query registered via the verbatim rcDelegate "
+           "forward, so offset/limit reach the handler un-gated");
+    expect(contains(mw, "ANTS-3422"),
+           "dispatch: ANTS-3422 verbatim-forward anchor present");
     EXPECT_EQ(0, expect_failures());
 }
 

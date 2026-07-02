@@ -50,10 +50,14 @@ matched_ids, missing_ids}`. Body included by default. Bypasses the
   descriptor registers an `ids` property of type array with item type
   string. Source anchor: `props["ids"]` + `ANTS-1726` in
   `claudeintegration.cpp`.
-- **INV-7 / dispatch forwards ids.** The mainwindow dispatch lambda
-  forwards `ids` into `req` (same silent-drop hazard ANTS-1586 +
-  ANTS-1856 fixed for include_body / id). Source anchor:
-  `req["ids"] = idsArg` + `ANTS-1726` in `mainwindow.cpp`.
+- **INV-7 / dispatch forwards ids.** The mainwindow `roadmap_query`
+  provider forwards `ids` to `cmdRoadmapQuery`. ANTS-3422 retired the
+  hand-maintained per-arg forward (the silent-drop hazard ANTS-1586 +
+  ANTS-1856 kept re-fixing) in favour of a verbatim
+  `rcDelegate(&RemoteControl::cmdRoadmapQuery)` forward that passes the
+  whole args object through, so `ids` reaches the handler by
+  construction. Source anchor: `rcDelegate(&RemoteControl::cmdRoadmapQuery)`
+  + `ANTS-3422` in `mainwindow.cpp`.
 - **INV-8 / unknown ids stay non-error.** A request whose every id is
   unknown is `{ok:true, count:0, bullets:[], missing_ids:[all],
   matched_ids:[]}` — mirrors the singular `id` INV-4 contract.
