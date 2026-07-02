@@ -154,3 +154,30 @@ TEST(FileOutlineCppScanner, PrototypeDoesNotOpenBody) {
     EXPECT_TRUE(fns.contains(QStringLiteral("proto")));
     EXPECT_TRUE(fns.contains(QStringLiteral("gamma")));
 }
+
+// INV-8 (ANTS-3351) — an `extern "C"` linkage-specifier prefix on a function
+// definition must not hide it: the `"C"` string literal was breaking the
+// return-type match, so the whole function went undetected and its interior
+// most-vexing-parse locals leaked as file-scope funcs. Reproduces DOOM's
+// r_vulkan.cpp:108/141 (`RB_VulkanProbe` + `devs`/`exts`).
+TEST(FileOutlineCppScanner, ExternCLinkageFunctionDetected) {
+    QTemporaryDir dir;
+    const QString path = writeCpp(dir, QStringLiteral(
+        "extern \"C\" int RB_VulkanProbe(void)\n"
+        "{\n"
+        "    uint32_t ndev = 0;\n"
+        "    std::vector<VkPhysicalDevice> devs(ndev);\n"
+        "    (void)devs;\n"
+        "    return 0;\n"
+        "}\n"
+        "extern \"C\" void RB_Vulkan_Init(void)\n"
+        "{\n"
+        "    std::vector<int> exts(4);\n"
+        "    (void)exts;\n"
+        "}\n"));
+    const QStringList fns = funcNames(path);
+    EXPECT_TRUE(fns.contains(QStringLiteral("RB_VulkanProbe")));
+    EXPECT_TRUE(fns.contains(QStringLiteral("RB_Vulkan_Init")));
+    EXPECT_FALSE(fns.contains(QStringLiteral("devs")));   // MVP local, not a func
+    EXPECT_FALSE(fns.contains(QStringLiteral("exts")));   // MVP local, not a func
+}

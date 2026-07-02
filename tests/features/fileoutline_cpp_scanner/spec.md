@@ -31,11 +31,19 @@ definition whose return type and/or `{` sit on adjacent lines.
   qualified member definition (`Foo::bar`), class-member declaration.
 - **INV-6** — a file-scope prototype (`int proto(int a);`) is detected and
   does NOT open a body (the next file-scope line is still scanned).
+- **INV-8** (ANTS-3351) — an `extern "C"` (or `extern "C++"`) linkage
+  specifier on a function definition does not hide it: the function is
+  detected AND its body's most-vexing-parse locals are suppressed. The
+  `"C"` string literal previously broke the return-type match, so every
+  `extern "C"` definition went undetected and its interior locals leaked
+  as file-scope funcs (DOOM's `r_vulkan.cpp` — `RB_VulkanProbe` +
+  `RB_Vulkan_*` entry points, with `devs`/`exts` leaking).
 
 ## Pre-fix check
 
 Against pre-fix code INV-1/2/3/4 FAIL (locals/case-labels tagged func;
-old-style/brace-next-line defs missed). INV-5/6 pass before and after
+old-style/brace-next-line defs missed) and INV-8 FAILS (`extern "C"`
+defs undetected; their locals leak). INV-5/6 pass before and after
 (regression guard). Verified before the fix.
 
 Label: `features;fast`.

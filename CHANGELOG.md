@@ -238,6 +238,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`file_outline` now detects `extern "C"` function definitions (ANTS-3351)** (ANTS-3351)
+  The C++ outliner skipped any function with an `extern "C"` linkage prefix, so its interior local variables were mislabelled as top-level functions. Reported against DOOM's r_vulkan.cpp (the RB_Vulkan_* entry points were missing and `devs`/`exts` locals showed up as functions).
+
 - **RoadmapDialog section chips now roll up descendant counts, matching the MCP** (ANTS-1693)
   Parent (level-2) section chips previously showed only their direct bullets, so they could disagree with roadmap_query's section_index active_count for the same slug. RoadmapIndex::rollupCounts is now a shared template that both the dialog and the MCP use, so a parent chip sums self + descendants.
 

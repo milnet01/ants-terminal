@@ -87,8 +87,18 @@ const QRegularExpression &rxCppFunc() {
     // negative lookahead rejects an expression-introducing reserved
     // keyword as the first token — a keyword is never a return type, so
     // no real definition is lost. Mirrors the symbolquery.cpp guard.
+    //
+    // ANTS-3351: an optional leading `extern "C"` (or `extern "C++"`)
+    // linkage specifier is consumed by the non-capturing prefix. The `"C"`
+    // string literal is not a `[\w:<>]` token, so without this the
+    // return-type group stopped after `extern ` and the name capture
+    // failed — every `extern "C"` function definition went undetected,
+    // and (worse) its body's most-vexing-parse locals leaked as file-scope
+    // funcs because the enclosing function never opened a scope. DOOM's
+    // r_vulkan.cpp (RB_VulkanProbe + the RB_Vulkan_* entry points). The
+    // prefix is shared by rxCppFuncOpen / rxCppFuncHeaderOpen.
     static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else)\b)(?:[\w:<>]+[\s*&]+)++(\w+)\s*\([^)]*\)\s*[{;])"));
+        QRegularExpression r(QStringLiteral(R"(^(?:extern\s*"[^"]*"\s*)?(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else)\b)(?:[\w:<>]+[\s*&]+)++(\w+)\s*\([^)]*\)\s*[{;])"));
         r.optimize();
         return r;
     }();
@@ -108,7 +118,7 @@ const QRegularExpression &rxCppQt() {
 // (id-Software / GNU brace style). Control keywords are rejected up front.
 const QRegularExpression &rxCppFuncOpen() {
     static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else|if|for|while|switch|do|catch)\b)(?:[\w:<>]+[\s*&]+)++(\w+)\s*\([^)]*\)\s*$)"));
+        QRegularExpression r(QStringLiteral(R"(^(?:extern\s*"[^"]*"\s*)?(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else|if|for|while|switch|do|catch)\b)(?:[\w:<>]+[\s*&]+)++(\w+)\s*\([^)]*\)\s*$)"));
         r.optimize();
         return r;
     }();
@@ -133,7 +143,7 @@ const QRegularExpression &rxCppNameArgs() {
 // 2-3 lines down. Control keywords are rejected up front as in the siblings.
 const QRegularExpression &rxCppFuncHeaderOpen() {
     static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else|if|for|while|switch|do|catch)\b)(?:[\w:<>]+[\s*&]+)++(\w+)\s*\([^)]*$)"));
+        QRegularExpression r(QStringLiteral(R"(^(?:extern\s*"[^"]*"\s*)?(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else|if|for|while|switch|do|catch)\b)(?:[\w:<>]+[\s*&]+)++(\w+)\s*\([^)]*$)"));
         r.optimize();
         return r;
     }();
