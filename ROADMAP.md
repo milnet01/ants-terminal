@@ -17841,13 +17841,14 @@ load) still open, no regression. New items below.
   Source: DOOM-2026-06-28.
   Resolved 2026-06-28: findRoadmapUnder/findChangelogUnder walk up to the .git repo boundary; append counter resolves next to the resolved roadmap. caller_cwd==root is byte-identical to before. Scrape test extended in McpLastAuditSummary.Ants1459FindRoadmapUnderWidens.
 
-- 📋 [ANTS-3351] **file_outline (.cpp): most-vexing-parse locals still mis-tagged as functions (ANTS-2159 residual).**
+- ✅ [ANTS-3351] **file_outline (.cpp): most-vexing-parse locals still mis-tagged as functions (ANTS-2159 residual).**
   ANTS-2159's false-negative (real functions omitted) is fixed, but the false-positive half lingers: `std::vector<…> name(n);` declarations inside a function body are still classified kind:"func". Fix: require namespace/file scope or a `{`-body (not a trailing `;`) before classifying `Type name(args)` as a function.
   **Layman:** The file-structure overview occasionally lists a local variable as if it were a function.
   Kind: fix.
   Source: DOOM-2026-06-28.
   Root cause (2026-06-28, verified vs DOOM r_vulkan.cpp:107/121): the locals leak because the ENCLOSING function (e.g. RB_VulkanProbe) is not registered as a function body — funcOpenAtDepth stays <0, so its interior is treated as file scope where `std::vector<…> name(n);` matches the free-function regex. Same class as ANTS-2159's false-negative (undetected function). Fix must make the enclosing function detected (so !inFuncBody suppresses the locals), NOT add a new local-filter heuristic — that would risk regressing the working ANTS-2159 scope logic. Deferred pending the exact reason that function header is missed; needs the repro file. LOW (drowned out by correct entries).
   Re-reported by DOOM 2026-06-28 (step 6-d) with the same r_vulkan.cpp:107/121 examples. Narrowing experiment (2026-06-28): built a synthetic repro — `static void RB_VulkanProbe(void) { ...; std::vector<VkPhysicalDevice> devs(ndev); std::vector<VkExtensionProperties> exts(next); ... }` — and ran file_outline on it: the enclosing function IS detected (kind:func) and BOTH MVP locals are correctly suppressed. So the bug is NOT a general MVP-local failure; it is triggered by something EARLIER in the 4117-line r_vulkan.cpp that desyncs the literal/comment/raw-string-aware brace counter before line 107, leaving funcOpenAtDepth<0 inside RB_VulkanProbe. Likely culprits to check once the repro lands: a Vulkan struct/designated-initializer with nested braces, a function-like macro body, or a char/string literal containing an unbalanced brace the scanner mis-handles. STILL DEFERRED pending a minimal repro: the ~20 lines of r_vulkan.cpp immediately before line 107 (esp. the nearest preceding brace-bearing initializer/macro/raw-string).
+  Resolved 2026-07-02: the deferred "brace-counter desync" hypothesis was wrong. Root cause found by reading DOOM's r_vulkan.cpp directly: the C++ scanner's function-detection regexes (rxCppFunc / rxCppFuncOpen / rxCppFuncHeaderOpen) could not consume an `extern "C"` linkage-specifier prefix — the `"C"` string literal is not a `[\w:<>]` token, so the return-type group stopped after `extern ` and the name capture failed. Every `extern "C"` function definition went undetected (all 9 RB_Vulkan_* entry points were missing from the outline), and (the reported symptom) each such body's most-vexing-parse locals (devs:108, exts:141) leaked as file-scope funcs because the enclosing function never opened a scope. Fix: prepend an optional non-capturing `(?:extern\s*"[^"]*"\s*)?` to the three regexes (group numbers preserved). Reproduce-first regression test INV-8 (fileoutline_cpp_scanner ExternCLinkageFunctionDetected) — confirmed RED pre-fix, GREEN post-fix; all 8 scanner tests + the ANTS-2159 guards pass.
 
 - ✅ [ANTS-3352] **session_orient: nudge `project_settings op:init` when a project_settings_suggestion is present.**
   session_orient returns project_settings_suggestion (source_roots, reason, write_via) for non-src layouts — add an inline next-step nudge ('run project_settings op:init to index these roots') so the suggestion is one obvious call away. LOW / optional.
@@ -17904,6 +17905,69 @@ load) still open, no regression. New items below.
   Kind: enhancement.
   Source: DOOM-0091 feedback 2026-06-29.
   Resolved (2026-06-29): fbNotFound scans the resolved parent dir for sibling *_Ants_MCP_Feedback.md files, attaches candidates[] + hint to feedback_query / feedback_log append_tracking not_found envelopes. Tests: mcp_feedback_query NotFoundListsSiblingCandidates, mcp_feedback_log Refusals.
+
+### 🔌 Ants-MCP feedback from CC sessions (2026-07-02 triage)
+
+Cross-session Ants-MCP feedback triaged 2026-07-02 from the Vestige (3D_Engine),
+MAME Curator, and Fin Break contributor files. DOOM's 2026-07-01 roadmap_query
+granular-status finding was already resolved by ANTS-3400 (verified live) and is
+not re-filed here.
+
+- 📋 [ANTS-3412] **file_outline (.cpp) drops methods whose parameter has empty inner parens (std::function<void()>) and one-line inline-bodied accessors.**
+  Vestige repro on engine/core/job_system.h: file_outline OMITS four public methods — submit / runOnMainThread (params of type std::function<void()>) and workerCount / isSynchronous (one-line `T f() const { ... }` accessors), while std::function<void(uint32_t,uint32_t)> params survive. Two coupled defects in the single-line rxCppFunc: (a) the `\([^)]*\)` arg-matcher closes on the FIRST ')' — the empty inner `void()` inside the template arg ends it early, so the real declarator parens never match; (b) a trailing qualifier between ')' and '{' (`const`) isn't allowed by the `\)\s*[{;]` tail, so inline const accessors don't match. Fix: skip parens nested inside <...> template args when locating the declarator arg list, and allow cv/ref/noexcept qualifiers before the body brace. Reproduce-first with header fixtures; guard against ANTS-2159 scope regressions.
+  **Layman:** The file-structure overview silently hides some real functions, so the assistant can't see part of a class's API.
+  Kind: fix.
+  Lanes: fileoutline.
+  Source: 3D_Engine (Vestige) feedback 2026-07-01/02.
+
+- 📋 [ANTS-3413] **roadmap_query: add a headline/keyword text-search filter (free-text `query` is currently reported ignored).**
+  roadmap_query filters by id/status/section only; a free-text `query` arg is (correctly) surfaced in ignored_args but returns a full unfiltered page that reads like a wrong result set. Add an optional case-insensitive `headline`/`text` substring-or-token filter matched against headline_full, returning matching bullets with line + id + section_slug so a caller can locate then flip/annotate a bullet without grep. Minimum viable: when `query` is passed, return count:0 + a hint pointing at the headline= filter rather than an unfiltered page.
+  **Layman:** Let the assistant find a roadmap item by typing a few words from its title, instead of needing its exact ID or grepping the file.
+  Kind: enhancement.
+  Lanes: remotecontrol, roadmap.
+  Source: 3D_Engine (Vestige) feedback 2026-07-02.
+
+- 📋 [ANTS-3414] **subsystem op:map honours (or loudly rejects) the `name` arg instead of silently ignoring it.**
+  subsystem {op:map, name:'audio'} returns the whole map with ignored_args:['name']. Low priority (already loud via ignored_args). Either honour `name` as a section filter on op:map (return just that subsystem's slice) or drop it from the accepted-arg set so it errors loudly. Same accepted-but-ignored UX class as the roadmap_query `query` case.
+  **Layman:** When you ask the subsystem map for one specific area by name, it currently returns everything and just notes the name was ignored.
+  Kind: enhancement.
+  Lanes: subsystem.
+  Source: 3D_Engine (Vestige) feedback 2026-07-02.
+
+- 📋 [ANTS-3415] **find_sources: accept `symbol` as an alias for `topic` (disambiguate vs find_caller for the 'who calls X' hint).**
+  The catalog hint documents find_sources -> 'who calls bar?', but find_sources takes `topic` and refuses `symbol` (bad_args), while a separate find_caller exists. Accept `symbol` as an alias for `topic` on find_sources (canonical name stays `topic`; alias fills in only when absent — the ANTS-2149 query/pattern idiom), and/or retarget the 'who calls X' catalog hint to find_caller so the two verbs are distinguishable from the one-liner.
+  **Layman:** Two similar 'find where this is used' tools name their input differently; copying it from one to the other fails the first time.
+  Kind: enhancement.
+  Lanes: remotecontrol.
+  Source: MAME Curator feedback 2026-07-02.
+
+- 📋 [ANTS-3416] **changelog_log: handle a feature-grouped [Unreleased] (refuse feature_grouped_section, or insert a topic subsection at the top) instead of a flat mis-ordered category.**
+  Extends ANTS-3401 (advisory). On a [Unreleased] whose direct children are `### <topic>` + **Bold** category blocks, op:add still writes a flat `### Fixed` at the section's category-region END (oldest position), so it needs a manual delete + re-add at the top. When the same feature-grouped signal that fires the advisory is detected, prefer a refusal with a feature_grouped_section code (so the caller hand-edits from the start), or insert a `### <summary>` topic subsection at the SECTION TOP (newest-first).
+  **Layman:** On changelogs that group notes by feature (newest first), the helper adds a plainly-styled entry at the bottom that has to be moved by hand.
+  Kind: enhancement.
+  Lanes: changelog.
+  Source: MAME Curator feedback 2026-07-02.
+
+- 📋 [ANTS-3417] **roadmap_log / changelog_log: right-strip emitted lines so append/flip output is pre-commit-clean (no trailing whitespace).**
+  After roadmap_log op:append and op:flip (with note), written ROADMAP.md lines carried trailing whitespace; the ubiquitous pre-commit trim-trailing-whitespace hook then auto-fixes the file but aborts the commit, forcing a re-add + re-commit (hit twice in one session). changelog_log may share it. Fix: right-strip each emitted bullet/note line (and blank continuation lines) before writing so output is clean by construction. Add a test asserting no emitted line ends in whitespace.
+  **Layman:** After the helper edits the roadmap, the standard 'trim trailing whitespace' commit check fails and the commit has to be redone.
+  Kind: fix.
+  Lanes: roadmap, changelog.
+  Source: MAME Curator feedback 2026-07-02.
+
+- 📋 [ANTS-3418] **audit_run: mypy runs in a deps-less env → 28-31 import-not-found/untyped false positives on every full sweep.**
+  Every scope:full audit_run on a project importing fastapi/pyyaml emits 0 errors but 28-31 mypy warnings, ALL 'Cannot find implementation or library stub' [import-not-found] + 'Library stubs not installed for yaml' [import-untyped] — pure tool-env artifacts (the project's real `uv run mypy` with deps installed is clean). They dominate every sweep's raw count and force a re-triage each /close-phase. Fix options: uv-sync / pip-install the project's declared deps + type stubs into the audit runner before invoking mypy; OR drop mypy from the default auto-detected tool set (CI + pre-commit already run the real deps-installed mypy); OR tag import-not-found/import-untyped as low-confidence so they sort below real findings.
+  **Layman:** The bug-scanner runs a Python type check without the project's libraries installed, so it wrongly reports dozens of 'missing library' problems every time.
+  Kind: fix.
+  Lanes: audit.
+  Source: MAME Curator feedback 2026-07-02.
+
+- 📋 [ANTS-3419] **Read/write verbs: on a *_Ants_MCP_Feedback.md path, add a hint redirecting to feedback_query/feedback_log instead of a bare bad_path.**
+  The feedback file sits one level above the project root, so read_region / file_outline / read_regions / workspace_search / apply_edits correctly refuse it with bad_path ('escapes project root') — but feedback_query/feedback_log DO serve it by absolute path. When the refused path's basename matches *_Ants_MCP_Feedback.md, add a `hint` field (like find_definition file_stem_hint / feedback_query not_found candidates) redirecting to feedback_query/feedback_log. Keeps the refusal (correct scoping) but saves the discovery round-trip.
+  **Layman:** Asking the normal read tools for the feedback file fails with a plain error; it should point you at the special tool that does handle that file.
+  Kind: enhancement.
+  Lanes: remotecontrol.
+  Source: Fin Break + 3D_Engine (Vestige) feedback 2026-07-01/02.
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
