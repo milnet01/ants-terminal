@@ -61,14 +61,17 @@ Before opening the submission PR, all of the following must be true:
    (Version auto-detected from `CMakeLists.txt`; pass an explicit
    `<version>` argument to override.)
 
-3. **Copy the metainfo + desktop files** into the same subdirectory:
+3. **Generate the metainfo (preview placeholder stripped) + copy the
+   desktop and icon** into the same subdirectory:
    ```bash
-   cp packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml \
-      /path/to/flathub-fork/za.co.antsprojectshub.AntsTerminal/
-   cp packaging/linux/za.co.antsprojectshub.AntsTerminal.desktop \
-      /path/to/flathub-fork/za.co.antsprojectshub.AntsTerminal/
+   D=/path/to/flathub-fork/za.co.antsprojectshub.AntsTerminal
+   # metainfo via the generator so the unreleased "Patron RC preview"
+   # <release> placeholder is stripped (shipped stable leads the list):
+   packaging/flatpak/make-flathub-manifest.sh --metainfo \
+       > "$D/za.co.antsprojectshub.AntsTerminal.metainfo.xml"
+   cp packaging/linux/za.co.antsprojectshub.AntsTerminal.desktop "$D/"
    cp assets/ants-terminal-256.png \
-      /path/to/flathub-fork/za.co.antsprojectshub.AntsTerminal/za.co.antsprojectshub.AntsTerminal.png
+      "$D/za.co.antsprojectshub.AntsTerminal.png"
    ```
 
 4. **Open the PR** against the `new-pr` branch of `flathub/flathub`

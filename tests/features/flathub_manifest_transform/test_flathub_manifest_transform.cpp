@@ -153,6 +153,24 @@ static int runMain() {
         }
     }
 
+    // INV-7 — `--metainfo` mode emits the release metainfo with the
+    // unreleased "Patron RC preview" channel-opener <release> placeholder
+    // stripped (so the shipped stable leads the Flathub <releases> list).
+    {
+        std::string mout;
+        int rc3 = runCapture(script + " --metainfo", mout);
+        if (rc3 != 0) {
+            fail("INV-7: `--metainfo` mode must exit 0");
+        }
+        if (mout.find("<component") == std::string::npos) {
+            fail("INV-7: `--metainfo` output must be a metainfo <component>");
+        }
+        if (mout.find("preview channel") != std::string::npos) {
+            fail("INV-7: `--metainfo` must strip the channel-opener "
+                 "'preview channel' placeholder <release>");
+        }
+    }
+
     if (failures) {
         std::fprintf(stderr,
             "flathub_manifest_transform: %d assertion(s) failed\n", failures);
