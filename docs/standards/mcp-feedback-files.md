@@ -36,7 +36,7 @@ The load-bearing reason it exists: the maintainer session reviews these
 files by reading only the **un-triaged tail** (everything a contributor
 appended since the last maintainer review). A regular format lets a tool
 return just that delta instead of the maintainer re-reading the whole
-file every week (the largest, 3D_Engine, is already ~3,460 lines and
+file every week (the largest, 3D_Engine, is already ~3,671 lines and
 growing) — the
 `feedback_query` MCP verb, ANTS-1961.
 
