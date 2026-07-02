@@ -18373,6 +18373,12 @@ starts 2026-05-27.
   Kind: process + tooling.
   Source: user-request-2026-05-13.
 
+- ✅ [ANTS-3423] **cut-rc.sh roll_unreleased: bullet-detect regex `^[ \t]*[-*]` false-matched the `**Theme:**` placeholder, silently skipping the [Unreleased]→[X.Y.Z] roll so every RC shipped with empty channel-opener notes.**
+  ROOT CAUSE of the recurring empty-RC symptom. roll_unreleased()'s "does the target [X.Y.Z] section already have real content?" guard (treal, and the sibling hasc / unreleased_has_content checks) matched a changelog bullet with `/^[ \t]*[-*]/`. That regex also matches a `**Theme:**` line (starts with `*`), so the channel-opener placeholder body was read as real content → treal=1 → the roll no-op'd (INV: idempotent-when-target-has-content). Result: [Unreleased] never drained into [0.7.98]; the RC tag's CHANGELOG kept the placeholder; the published prerelease notes read "opens the preview channel / no changes yet" even though the RC binary contained the full week's work. Fix: require whitespace after the bullet marker — `/^[ \t]*[-*][ \t]/` — at all three sites (lines 196/260/267), so `**bold**` prose is no longer mistaken for a list item. Verified: fixed roll drains [Unreleased] (132→0) and populates [0.7.98] (0→132) on a copy. Distinct from the other empty-RC cause (cutting when [Unreleased] is genuinely empty, guarded by INV-1).
+  **Layman:** The weekly release script kept mistaking the placeholder heading for real content, so it never moved the week's notes into the release — that's why RCs kept coming out looking empty. Fixed so it only treats a real bullet (dash/star + space) as content.
+  Kind: fix.
+  Source: user-report-2026-07-02 (recurring empty-RC frustration).
+
 ### 🔌 MCP — general Claude Code workflows (2026-05-13)
 
 The MCP work shipped so far targets three power-user workflows

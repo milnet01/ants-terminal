@@ -193,7 +193,7 @@ unreleased_has_content() {
     awk '
         /^## \[Unreleased\]/ { inseg=1; next }
         inseg && /^## \[/ { exit }
-        inseg && /^[ \t]*[-*]/ { found=1 }
+        inseg && /^[ \t]*[-*][ \t]/ { found=1 }
         inseg && /^### (Added|Changed|Deprecated|Removed|Fixed|Security)/ { found=1 }
         END { exit (found ? 0 : 1) }
     ' "$CHANGELOG_FILE"
@@ -257,14 +257,14 @@ roll_unreleased() {
             while (ubn>0 && ub[ubn] ~ /^[ \t]*$/) ubn--
             hasc=0
             for (i=1;i<=ubn;i++)
-                if (ub[i] ~ /^[ \t]*[-*]/ || ub[i] ~ /^### (Added|Changed|Deprecated|Removed|Fixed|Security)/) hasc=1
+                if (ub[i] ~ /^[ \t]*[-*][ \t]/ || ub[i] ~ /^### (Added|Changed|Deprecated|Removed|Fixed|Security)/) hasc=1
             if (!hasc) { for(i=1;i<=n;i++) print lines[i]; exit 0 }
             if (target>0) {
                 te=n+1
                 for (i=target+1;i<=n;i++) if (lines[i] ~ /^## \[/) { te=i; break }
                 treal=0
                 for (i=target+1;i<te;i++)
-                    if (lines[i] ~ /^[ \t]*[-*]/ || lines[i] ~ /^### (Added|Changed|Deprecated|Removed|Fixed|Security)/) treal=1
+                    if (lines[i] ~ /^[ \t]*[-*][ \t]/ || lines[i] ~ /^### (Added|Changed|Deprecated|Removed|Fixed|Security)/) treal=1
                 if (treal) { for(i=1;i<=n;i++) print lines[i]; exit 0 }
             }
             for (i=1;i<=n;i++) {
