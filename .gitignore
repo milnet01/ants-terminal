@@ -133,3 +133,7 @@ RoadMap_Design/
 
 # Investigation scratch (untracked working notes)
 INVESTIGATION_tab_close_x.md
+
+# Generated Flathub submission carriers (reproduce via make-flathub-manifest.sh)
+packaging/flatpak/flathub-submission/
+.flatpak-builder/
