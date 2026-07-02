@@ -183,11 +183,22 @@ static int runMain(int argc, char **argv) {
             fixtureMarkdown(), kAllOn, {}, QStringLiteral("light"),
             RD::SortOrder::Document, QString(), {}, opts);
         const std::string h = html.toStdString();
-        if (!contains(h, "<div class=\"rm-card"))
-            fail("INV-1", "no rm-card div emitted");
+        // ANTS-3392 — cards are `<tr class="rm-card">` rows inside a
+        // per-section `<table class="rm-cards">`, one bullet per row.
+        if (!contains(h, "<table class=\"rm-cards\">"))
+            fail("INV-1", "no rm-cards table emitted");
+        if (!contains(h, "<tr class=\"rm-card"))
+            fail("INV-1", "no rm-card row emitted");
         if (!contains(h, "id=\"rm-ANTS-9001\""))
             fail("INV-1",
                 "expected card id=\"rm-ANTS-9001\" not found");
+        // INV-2 — the four aligned column cells + the inner spans.
+        for (const char *cls : {"rm-col-state", "rm-col-kind",
+                                "rm-col-summary", "rm-col-meta"}) {
+            if (!contains(h, std::string("class=\"") + cls))
+                fail("INV-2",
+                    (std::string("missing cell class ") + cls).c_str());
+        }
         if (!contains(h, "class=\"rm-state\""))
             fail("INV-2", "rm-state span missing");
         if (!contains(h, "class=\"rm-summary\""))
@@ -268,10 +279,10 @@ static int runMain(int argc, char **argv) {
         if (!contains(src, "// ANTS-1154-INV-4"))
             fail("INV-4", "// ANTS-1154-INV-4 anchor missing");
         // Anchor proximity — INV-1 should be within ~200 chars of
-        // the `<div class=\"rm-card` literal in the source file. The
+        // the `<tr class=\"rm-card` literal in the source file. The
         // slurped file contains the escaped form (backslash + quote
-        // pair) because the renderer uses `QStringLiteral("<div
-        // class=\"rm-card...\"")`.
+        // pair) because the renderer uses `QStringLiteral("<tr
+        // class=\"rm-card%1...\"")` (ANTS-3392; was a `<div>`).
         const auto anchorPos = src.find("// ANTS-1154-INV-1");
         const auto literalPos = src.find("class=\\\"rm-card");
         if (anchorPos == std::string::npos ||
@@ -449,6 +460,14 @@ static int runMain(int argc, char **argv) {
         if (!contains(h, "class=\"rm-body-first\""))
             fail("BodyFrame",
                 "first body <p> missing rm-body-first class");
+        // ANTS-3392 — the expanded body is a full-width row beneath the
+        // summary row: <tr class="rm-card-body"><td colspan="4"> … </td>.
+        if (!contains(h, "<tr class=\"rm-card-body\">"))
+            fail("BodyFrame",
+                "expanded body missing rm-card-body row (ANTS-3392)");
+        if (!contains(h, "colspan=\"4\""))
+            fail("BodyFrame",
+                "expanded body cell missing colspan=\"4\" (ANTS-3392)");
     }
     {
         const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);

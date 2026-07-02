@@ -130,9 +130,12 @@ public:
     // Cozy preserves the pre-1238 byte-equal output. Spec:
     // docs/specs/ANTS-1238.md § 2.f.
     enum class Density {
-        Compact,      // 9/10/11/14 px tier; -2 px vs cozy w/ 9 floor
-        Cozy,         // 10/11/12/13/16 px — current default
-        Comfortable,  // 12/13/14/15/18 px tier; +2 px vs cozy
+        // Per-tier px live in kDensityTable (roadmapdialog.cpp:157);
+        // ANTS-2211 floored the Compact/Cozy meta+label rows at 11/12px
+        // (was a 9px floor). Values below are body/h1 landmarks only.
+        Compact,      // -2px tier; body 11 / h1 14; meta+label floor 11px
+        Cozy,         // current default; body 13 / h1 16; meta+label 12px
+        Comfortable,  // +2px tier; body 15 / h1 18; label held at 12px
     };
 
     // Pure helpers — preset → mask + preset → sort. `presetMatching`

@@ -52,7 +52,10 @@ TEST(AdapterRenderGfm, OneCardPerBullet) {
         "- [ ] **Ed1.** Editor work goes here\n"
         "- [ ] Headline without bold-id\n");
     const QString html = render(md);
-    EXPECT_EQ(countSubstr(html, QStringLiteral("class=\"rm-card")), 3)
+    // ANTS-3392 — cards are `<tr class="rm-card">` rows. Match the row
+    // opening tag, not the bare `class="rm-card"` substring, which now
+    // also collides with the section's `<table class="rm-cards">` tag.
+    EXPECT_EQ(countSubstr(html, QStringLiteral("<tr class=\"rm-card")), 3)
         << html.toUtf8().constData();
 }
 
@@ -80,46 +83,46 @@ TEST(AdapterRenderGfm, InlineEmojiOverride) {
 }
 
 // INV-10 — synthetic-ID cards carry rm-card-synthetic class on
-// the card div (not just the CSS stylesheet rule).
+// the card row (not just the CSS stylesheet rule). ANTS-3392: the
+// card container is a `<tr>`, not a `<div>`.
 TEST(AdapterRenderGfm, SyntheticCardCarriesClass) {
     const QString md = QStringLiteral(
         "## Section\n"
         "- [ ] Headline without bold-id\n");
     const QString html = render(md);
     EXPECT_GE(countSubstr(html, QStringLiteral(
-        "<div class=\"rm-card rm-card-synthetic")), 1)
+        "<tr class=\"rm-card rm-card-synthetic")), 1)
         << html.toUtf8().constData();
 }
 
 // INV-10 — bold-ID cards do NOT carry rm-card-synthetic on the
-// card div. The CSS rule itself appears once in the stylesheet
-// (`.rm-card.rm-card-synthetic{...}`), so we assert no `<div
-// class="...rm-card-synthetic...">` appears — i.e. the inline
-// class attribute isn't decorated. Source-shape match on the
-// card-div opening tag is unambiguous.
+// card row. ANTS-3392: the container is a `<tr>`; the synthetic
+// accent moved to a `.rm-col-syn` first-cell class, but the row
+// still carries the `rm-card-synthetic` marker class for synthetic
+// bullets only. Assert no decorated row appears, and the bare
+// `<tr class="rm-card">` row appears once.
 TEST(AdapterRenderGfm, BoldIdCardLacksSyntheticClass) {
     const QString md = QStringLiteral(
         "## Section\n"
         "- [ ] **Sh4.** Bold-ID bullet\n");
     const QString html = render(md);
     EXPECT_EQ(countSubstr(html, QStringLiteral(
-        "<div class=\"rm-card rm-card-synthetic")), 0)
+        "<tr class=\"rm-card rm-card-synthetic")), 0)
         << html.toUtf8().constData();
-    // And the bare card-div tag must appear once (no synthetic
-    // marker means the card is rendered with the default class).
     EXPECT_GE(countSubstr(html, QStringLiteral(
-        "<div class=\"rm-card\"")), 1)
+        "<tr class=\"rm-card\"")), 1)
         << html.toUtf8().constData();
 }
 
-// INV-10 — CSS rule for rm-card-synthetic is emitted in the
-// stylesheet.
+// INV-10 — the dashed-border CSS rule for synthetic cards is emitted
+// in the stylesheet. ANTS-3392 moved the accent to the first cell:
+// `.rm-col-syn{border-left-style:dashed;}`.
 TEST(AdapterRenderGfm, SyntheticCssRulePresent) {
     const QString md = QStringLiteral(
         "## Section\n"
         "- [ ] Some bullet\n");
     const QString html = render(md);
-    EXPECT_TRUE(html.contains(QStringLiteral(".rm-card.rm-card-synthetic")))
+    EXPECT_TRUE(html.contains(QStringLiteral(".rm-col-syn")))
         << html.toUtf8().constData();
     EXPECT_TRUE(html.contains(QStringLiteral("border-left-style:dashed")))
         << html.toUtf8().constData();

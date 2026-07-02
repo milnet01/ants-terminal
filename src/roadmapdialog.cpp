@@ -1936,14 +1936,31 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         ".rm-section-title:hover{text-decoration:underline;}"
         ".rm-section-counts{font-weight:normal;font-size:%16px;color:%6;padding-right:10px;white-space:nowrap;}"
         ".rm-parent{font-weight:normal;font-size:%16px;color:%6;padding-left:8px;}"
-        ".rm-card{margin:%17px 0;padding:%18px %19px;border-left:3px solid %5;background:%3;}"
-        ".rm-card.rm-current{border-left-color:%4;background:rgba(229,194,74,0.08);}"
-        // ANTS-1428 INV-10 — synthetic-ID cards (GFM bullets with no
-        // bold-ID) carry a dashed left border so hand-authored and
-        // auto-anchored bullets are visually distinguishable at a
-        // glance. Dashed (vs solid fill) so a missing-stylesheet
-        // fallback still reads as a card, just without the marker.
-        ".rm-card.rm-card-synthetic{border-left-style:dashed;}"
+        // ANTS-3392 — each section's cards are one `<table class="rm-cards">`
+        // (one `<tr class="rm-card">` per bullet, four `<td class="rm-col-*">`
+        // cells) so state / kind / summary / meta line up in aligned columns
+        // instead of fusing inline. Qt's rich-text engine paints cell — not
+        // row — backgrounds/borders reliably, so the card background lives on
+        // the bare `td` rule (the cards path emits no other table, so a bare
+        // `td` selector == card cell) and the left accent lives on the first
+        // cell (.rm-col-state). Density scales the cell padding (%18/%19) via
+        // this <style> block only, so ANTS-1238 INV-6 (non-<style> HTML byte-
+        // identical across tiers) still holds.
+        "table.rm-cards{border-collapse:collapse;margin:%17px 0;width:100%;}"
+        "td{border:none;padding:%18px %19px;vertical-align:top;background:%3;}"
+        ".rm-col-state{border-left:3px solid %5;white-space:nowrap;}"
+        ".rm-col-kind{white-space:nowrap;}"
+        ".rm-col-meta{text-align:right;white-space:nowrap;}"
+        // Expanded body row's colspan cell: the <p>s carry their own
+        // rm-body-first/line spacing, so drop the cell's top padding.
+        ".rm-col-body{padding-top:0;}"
+        // rm-current: tint every cell of the row (class beats the bare `td`
+        // background by specificity) + swap the first cell's accent to the
+        // current-work colour. rm-card-synthetic: dashed first-cell border
+        // (ANTS-1428 INV-10 — GFM bullets with a content-hash ID).
+        ".rm-cur{background:rgba(229,194,74,0.08);}"
+        ".rm-col-cur{border-left-color:%4;}"
+        ".rm-col-syn{border-left-style:dashed;}"
         ".rm-state{font-size:%7px;padding-right:6px;}"
         ".rm-state-label{font-size:%20px;color:%6;padding-right:6px;}"
         ".rm-kind{font-size:%16px;color:%6;padding-right:6px;}"
@@ -1968,8 +1985,6 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // padding; `rm-body-line` is plain indent only.
         ".rm-body-first{padding-top:%21px;padding-left:20px;border-top:1px dotted %5;margin-top:%22px;font-size:%7px;}"
         ".rm-body-line{padding-left:20px;font-size:%7px;}"
-        "table{border-collapse:collapse;}"
-        "td,th{border:1px solid %5;padding:2px 6px;font-size:%15px;}"
         "</style></head><body>")
         .arg(th.textPrimary.name(),         // %1
              th.textPrimary.name(),         // %2
@@ -2045,6 +2060,13 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             html += QStringLiteral(
                 "<span class=\"rm-section-counts\">%1</span>")
                 .arg(chips);
+            // ANTS-3392 — Qt's rich-text engine is unreliable about
+            // `padding-right` on an inline <span>, so the count chip
+            // fused into the section title ("7 plannedPlanned Features").
+            // A hard non-breaking-space pair renders regardless of CSS
+            // padding support; the `.rm-section-counts` padding stays as
+            // a belt-and-braces on Qt versions that do honour it.
+            html += QStringLiteral("&#160;&#160;");
         }
         // Title is also a toggle target — clicking the heading text
         // toggles expand/collapse, not just the chevron. Same href as
@@ -2088,58 +2110,69 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             : QStringLiteral("expand");
         const QString chevron = expanded
             ? QStringLiteral("▴") : QStringLiteral("▾");
-        // ANTS-1428 INV-10 — append rm-card-synthetic for GFM
-        // bullets that received a content-hash ID (no bold-ID
-        // token in source). Native parses leave rec.synthetic
-        // false, so existing cards are unchanged.
-        QString cardClasses;
-        if (isCurrent(rec.body)) cardClasses += QStringLiteral(" rm-current");
-        if (rec.synthetic)       cardClasses += QStringLiteral(" rm-card-synthetic");
+        // ANTS-3392 — each card is a `<tr class="rm-card">` of four
+        // `<td class="rm-col-*">` cells inside the section's
+        // `<table class="rm-cards">`. rm-current / rm-card-synthetic
+        // (ANTS-1428 INV-10 — GFM bullets with a content-hash ID) go on
+        // the <tr> for semantics + the INV-1 grep, AND on the cells for
+        // the accent/tint Qt paints reliably (cell-level, not row-level).
+        const bool current = isCurrent(rec.body);
+        QString rowClasses;
+        if (current)       rowClasses += QStringLiteral(" rm-current");
+        if (rec.synthetic) rowClasses += QStringLiteral(" rm-card-synthetic");
+        const QString curCell =
+            current ? QStringLiteral(" rm-cur") : QString();
+        QString stateAccent;
+        if (current)       stateAccent += QStringLiteral(" rm-col-cur");
+        if (rec.synthetic) stateAccent += QStringLiteral(" rm-col-syn");
         // ANTS-1154-INV-1
-        html += QStringLiteral("<div class=\"rm-card%1\" id=\"rm-%2\">")
-                    .arg(cardClasses, htmlEscape(rec.id));
-        // Row 1
+        html += QStringLiteral("<tr class=\"rm-card%1\" id=\"rm-%2\">")
+                    .arg(rowClasses, htmlEscape(rec.id));
+
+        // Col 1 (state) — status emoji + ANTS-1235 screen-reader label.
+        // The label is empty for non-status bullets (statusAccessibleLabel
+        // returns empty); skip the span rather than emit an empty one.
+        html += QStringLiteral("<td class=\"rm-col-state%1%2\">")
+                    .arg(curCell, stateAccent);
         html += QStringLiteral("<span class=\"rm-state\">%1</span>")
                     .arg(rec.status);
-        // ANTS-1235 — screen-reader label next to the status glyph.
-        // Empty for non-status bullets (rec.status is empty in that
-        // case, so statusAccessibleLabel returns empty); skip the
-        // span entirely rather than emitting an empty one.
         const QString stateLabel = statusAccessibleLabel(rec.status);
         if (!stateLabel.isEmpty()) {
             html += QStringLiteral("<span class=\"rm-state-label\">%1</span>")
                         .arg(htmlEscape(stateLabel));
         }
+        html += QStringLiteral("</td>");
+
+        // Col 2 (kind) — Kind chip; empty cell when there's no Kind: line.
+        html += QStringLiteral("<td class=\"rm-col-kind%1\">").arg(curCell);
         if (!rec.kind.isEmpty()) {
             const QString glyph = kindGlyph(rec.kind);
-            // CWE-79: rec.kind is captured from user-supplied ROADMAP.md
-            // by rxKind ([^\.\n]+?), which admits <, >, &, ". Escape
-            // before emitting into HTML.
+            // CWE-79: rec.kind is user-supplied ROADMAP.md text (rxKind
+            // [^\.\n]+? admits <, >, &, "); escape before emitting.
             html += QStringLiteral("<span class=\"rm-kind\">%1 %2</span>")
                         .arg(glyph, htmlEscape(rec.kind));
         }
-        // Summary: layman if set, else headline with leading "ANTS-NNNN — " stripped
+        html += QStringLiteral("</td>");
+
+        // Col 3 (summary) — layman if set, else headline with a leading
+        // <prefix>-NNNN — token stripped (the ID lives in the meta cell).
+        // ANTS-1660 — match any project-ID prefix, not just ANTS-.
         QString summary = rec.layman;
         if (summary.isEmpty()) {
             summary = rec.headline;
-            // Strip leading <prefix>-NNNN — token (the ID is shown
-            // separately on the meta row). ANTS-1660 — match any project-ID
-            // prefix, not just ANTS-.
             static const QRegularExpression rxLeadId(
                 QStringLiteral("^[A-Za-z][A-Za-z0-9_-]*-\\d+\\s*[—-]\\s*"));
             summary.remove(rxLeadId);
         }
-        html += QStringLiteral("<span class=\"rm-summary\">%1</span>")
-                    .arg(htmlEscape(summary));
-        // ANTS-1241 — id + shipped date inline on the summary row
-        // (was a separate `<div class="rm-meta">` below the row,
-        // which painted a different bg under dark themes for the
-        // same reason ANTS-1240 hit on rm-body). Larger 12 px font
-        // so the number is scannable at a glance.
-        // ANTS abbreviates to #NNNN (the local prefix); foreign project-ID
-        // prefixes show in full (#VEST-0042) to disambiguate. This already
-        // handles multi-prefix correctly — see AdapterRenderGfm.
-        // BoldIdRenderedInIdSlot.
+        html += QStringLiteral("<td class=\"rm-col-summary%1\">"
+                               "<span class=\"rm-summary\">%2</span></td>")
+                    .arg(curCell, htmlEscape(summary));
+
+        // Col 4 (meta, right-aligned) — #id + optional date + toggle.
+        // ANTS-1241 — inline spans, NOT a `<div class="rm-meta">` wrapper
+        // (which painted a QPalette::Base band on dark themes). ANTS
+        // abbreviates to #NNNN; foreign prefixes show in full (#VEST-0042).
+        html += QStringLiteral("<td class=\"rm-col-meta%1\">").arg(curCell);
         const QString hashedId = rec.id.startsWith(QStringLiteral("ANTS-"))
             ? QStringLiteral("#") + rec.id.mid(5)
             : QStringLiteral("#") + rec.id;
@@ -2152,34 +2185,30 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
                     "<span class=\"rm-date\">· %1</span>").arg(date);
             }
         } else if (rec.status == QStringLiteral("🚧")) {
-            // ANTS-1237 — "Updated Nd ago" on 🚧 cards. Reuses
-            // .rm-date CSS for visual consistency; the "Updated "
-            // prefix carries the semantic distinction. Span only
-            // emitted when lastTouchDates has an entry — graceful
-            // degradation on non-git checkouts.
+            // ANTS-1237 — "Updated Nd ago" on 🚧 cards; only when git
+            // last-touch data is present (graceful on non-git checkouts).
             const auto it = opts.lastTouchDates.constFind(rec.id);
             if (it != opts.lastTouchDates.constEnd()) {
-                const qint64 nowSec =
-                    QDateTime::currentSecsSinceEpoch();
-                const qint64 age = nowSec - *it;
-                html += QStringLiteral(
-                    "<span class=\"rm-date\">· %1</span>")
+                const qint64 age =
+                    QDateTime::currentSecsSinceEpoch() - *it;
+                html += QStringLiteral("<span class=\"rm-date\">· %1</span>")
                     .arg(tr("Updated %1").arg(humanAge(age)));
             }
         }
         html += QStringLiteral(
             "<a class=\"rm-toggle\" href=\"ants://%1/%2\">[%3]</a>")
             .arg(verb, htmlEscape(rec.id), chevron);
-        // Body (expanded only). ANTS-1240 — no `<div class="rm-body">`
-        // wrapper: Qt's text engine renders nested <div> blocks with
-        // their own QPalette::Base background frame, so the body
-        // showed a different colour than the parent card. Emitting
-        // <p> elements directly into the card lets each paragraph
-        // paint over the card's bgSecondary, preserving the visual
-        // continuity. First non-empty <p> carries `rm-body-first`
-        // (dotted divider + padding-top); subsequent lines carry
-        // `rm-body-line` (indent only).
+        html += QStringLiteral("</td></tr>");
+
+        // Expanded body — a full-width row beneath the summary row.
+        // ANTS-1240 — body <p>s are direct children of the colspan cell
+        // (no `<div class="rm-body">` wrapper, which painted a nested
+        // QPalette::Base frame over the card bg). rm-body-first carries the
+        // dotted divider + top padding; rm-body-line is indent only.
         if (expanded) {
+            html += QStringLiteral(
+                "<tr class=\"rm-card-body\"><td colspan=\"4\" "
+                "class=\"rm-col-body%1\">").arg(curCell);
             const QStringList bodyLines = rec.body.split('\n');
             bool firstP = true;
             for (int bi = 0; bi < bodyLines.size(); ++bi) {
@@ -2191,8 +2220,8 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
                             .arg(cls, applyInline(bodyLines[bi]));
                 firstP = false;
             }
+            html += QStringLiteral("</td></tr>");
         }
-        html += QStringLiteral("</div>");  // rm-card
     };
 
     auto skipBulletBlockAt = [&](int i) -> int {
@@ -2235,8 +2264,12 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     {
         const QVector<const BulletRecord *> &unsectioned =
             bySection.value(QString());
-        for (const BulletRecord *rec : unsectioned)
-            emitCard(*rec);
+        if (!unsectioned.isEmpty()) {
+            html += QStringLiteral("<table class=\"rm-cards\">");
+            for (const BulletRecord *rec : unsectioned)
+                emitCard(*rec);
+            html += QStringLiteral("</table>");
+        }
     }
 
     for (int i = 0; i < lines.size(); ++i) {
@@ -2286,8 +2319,12 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
                 // If expanded, emit its bullets as cards.
                 if (sectionExpanded) {
                     const QVector<const BulletRecord *> &bullets = bySection.value(slug);
-                    for (const BulletRecord *rec : bullets) {
-                        emitCard(*rec);
+                    if (!bullets.isEmpty()) {
+                        html += QStringLiteral("<table class=\"rm-cards\">");
+                        for (const BulletRecord *rec : bullets) {
+                            emitCard(*rec);
+                        }
+                        html += QStringLiteral("</table>");
                     }
                 }
             }
