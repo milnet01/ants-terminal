@@ -17920,12 +17920,13 @@ not re-filed here.
   Lanes: fileoutline.
   Source: 3D_Engine (Vestige) feedback 2026-07-01/02.
 
-- 📋 [ANTS-3413] **roadmap_query: add a headline/keyword text-search filter (free-text `query` is currently reported ignored).**
+- ✅ [ANTS-3413] **roadmap_query: add a headline/keyword text-search filter (free-text `query` is currently reported ignored).**
   roadmap_query filters by id/status/section only; a free-text `query` arg is (correctly) surfaced in ignored_args but returns a full unfiltered page that reads like a wrong result set. Add an optional case-insensitive `headline`/`text` substring-or-token filter matched against headline_full, returning matching bullets with line + id + section_slug so a caller can locate then flip/annotate a bullet without grep. Minimum viable: when `query` is passed, return count:0 + a hint pointing at the headline= filter rather than an unfiltered page.
   **Layman:** Let the assistant find a roadmap item by typing a few words from its title, instead of needing its exact ID or grepping the file.
   Kind: enhancement.
   Lanes: remotecontrol, roadmap.
   Source: 3D_Engine (Vestige) feedback 2026-07-02.
+  Duplicate of ANTS-3391 (shipped 2026-07-01), which already added the case-insensitive `query` keyword filter over headline/headline_full/body — mcp::bulletMatchesQuery in mcpprojection.cpp + cmdRoadmapQuery. Filed in error (I created this before checking existing roadmap; Vestige's finding predated their build carrying the fix). NOTE: the ANTS-3391 feature is currently INERT end-to-end — tracked as the fix item ANTS-3420. So the feature exists (this request satisfied) but needs the ANTS-3420 defect fixed to actually work.
 
 - 📋 [ANTS-3414] **subsystem op:map honours (or loudly rejects) the `name` arg instead of silently ignoring it.**
   subsystem {op:map, name:'audio'} returns the whole map with ignored_args:['name']. Low priority (already loud via ignored_args). Either honour `name` as a section filter on op:map (return just that subsystem's slice) or drop it from the accepted-arg set so it errors loudly. Same accepted-but-ignored UX class as the roadmap_query `query` case.
@@ -17968,6 +17969,13 @@ not re-filed here.
   Kind: enhancement.
   Lanes: remotecontrol.
   Source: Fin Break + 3D_Engine (Vestige) feedback 2026-07-01/02.
+
+- 📋 [ANTS-3420] **roadmap_query `query` keyword filter (ANTS-3391) is inert end-to-end — the arg is received but never applied.**
+  VERIFIED live against the running server (build ddb6fe2): roadmap_query{query:"qqzzxxnonexistent", status:"active"} returns the FULL active set (total 189) with NO `query` echo; query:"Sponsors" likewise returns unrelated bullets (total 1261). The filter is completely inert. Evidence chain: (1) mcp_trace shows the server RECEIVED the `query` key on those calls (records id 40/43/44/50, arg_keys include "query":"string") — the client sent it; (2) the tool's live inputSchema advertises `query` (not flagged in ignored_args); (3) the applyQueryFilter call site (commit 0ee2b03, ANTS-3391) IS an ancestor of the running binary ddb6fe2 — code present and called. Yet the lambda's `if (queryArg.isEmpty()) return;` guard fires, so queryArg (read at remotecontrol.cpp:3416 req.value("query")) is EMPTY at the handler despite the arg being received — points at an arg-plumbing/normalisation layer between MCP receipt and the handler req dropping `query` before cmdRoadmapQuery sees it. The pure mcp::bulletMatchesQuery matcher works (unit-tested); the roadmap_query_keyword_filter feature test covers only the pure matcher + a source-scrape, so NO end-to-end dispatch test caught this. Fix: (a) trace where `query` is dropped between dispatch and req (compare vs a working arg like `status`, which DOES reach the handler); (b) add an end-to-end regression test driving cmdRoadmapQuery with a real `query` arg asserting the narrowed count + echo. Supersedes the duplicate ANTS-3413. HIGH — a shipped feature is silently non-functional.
+  **Layman:** The roadmap keyword search was built and marked done, but it doesn't actually filter anything — searching returns the whole list.
+  Kind: fix.
+  Lanes: remotecontrol, mcpprojection.
+  Source: in-session-2026-07-02 (verified while triaging Vestige's duplicate request).
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
