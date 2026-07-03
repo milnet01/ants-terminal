@@ -19,6 +19,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **Roadmap dialog: items now lay out in aligned columns instead of a cramped inline run.** (ANTS-3392)
+  Each roadmap item's status, type, summary and ID line up in neat
+  columns (the dialog renders each section as a table) instead of
+  running together into a wall of text, and section-heading counts no
+  longer fuse into the section title.
+
 - **changelog_log refuses a feature-grouped `[Unreleased]` (dated `### ` topics + `**Bold**` category runs) with `feature_grouped_section` instead of inserting a mis-ordered flat category.** (ANTS-3416)
   On changelogs that group notes by feature (newest-first), the writer now stops and asks you to hand-edit, instead of adding an entry at the wrong place that you then have to move.
 

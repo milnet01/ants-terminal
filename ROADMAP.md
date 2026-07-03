@@ -24296,7 +24296,7 @@ contributors don't duplicate research.
   Kind: ux.
   Source: user-request-2026-06-27 (deferred: "much later").
 
-- 🚧 [ANTS-3392] **Lay roadmap bullets out in aligned columns instead of a cramped inline run.**
+- ✅ [ANTS-3392] **Lay roadmap bullets out in aligned columns instead of a cramped inline run.**
   Problem: renderCardsHtml (src/roadmapdialog.cpp:1716) emits each bullet
   as five consecutive inline <span>s (rm-state, rm-state-label, rm-kind,
   rm-summary, rm-id) into a single QTextBrowser. rm-summary has zero
@@ -24338,6 +24338,7 @@ contributors don't duplicate research.
   Kind: ux.
   Source: user-request-2026-06-30.
   Progress (2026-07-02): specs cold-eyes-clean (5 loops) + committed. Implementing renderCardsHtml table/column layout next.
+  Shipped 2026-07-03. renderCardsHtml now emits each bullet as a `<tr class="rm-card">` of four `<td class="rm-col-*">` cells inside a per-section `<table class="rm-cards">` (state / kind / summary / right-aligned meta), so items line up in aligned columns; expanded body is a `colspan="4"` row. Section-heading count-chip / title fusing fixed via a hard `&#160;&#160;` (Qt ignores inline `padding-right`). Shipped renderer uses a bare `td` selector (cards path emits no other table). Specs ANTS-1154 + ANTS-1238 reconciled to as-shipped code (the earlier "target — NOT yet in code" caveats were stale; code had caught up). Tests RoadmapDialogCards + RoadmapDensity green at HEAD.
 
 ## How to propose a roadmap item
 
