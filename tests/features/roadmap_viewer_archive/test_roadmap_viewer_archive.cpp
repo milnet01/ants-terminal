@@ -358,10 +358,11 @@ static int runMain() {
                 (std::string(SRC_DIR) + "/" + name.toStdString()).c_str());
             if (contains(body, "archiveDirFor") ||
                 contains(body, "historyArchiveDir")) {
-                std::fprintf(stderr,
-                    "[INV-12] FAIL: archive helper leaked into %s\n",
-                    name.toUtf8().constData());
-                return 1;
+                // Non-aborting so every leaking file is reported in one run
+                // (ANTS-1467/2065 — loop-internal abort removal).
+                ADD_FAILURE_AT(__FILE__, __LINE__)
+                    << "[INV-12] archive helper leaked into "
+                    << name.toStdString();
             }
         }
     }

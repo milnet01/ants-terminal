@@ -116,12 +116,12 @@ static int runMain() {
         "lastHtml",
     };
     for (const char *m : kStructMarkers) {
-        if (!contains(dvImpl, m)) {
-            std::fprintf(stderr,
-                "[INV-2a] FAIL: diffviewer.cpp missing structural "
-                "marker `%s`\n", m);
-            return 1;
-        }
+        if (!contains(dvImpl, m))
+            // Non-aborting so every missing marker is reported in one run
+            // (ANTS-1467/2065 — loop-internal abort removal).
+            ADD_FAILURE_AT(__FILE__, __LINE__)
+                << "[INV-2a] diffviewer.cpp missing structural marker `"
+                << m << "`";
     }
 
     // INV-2b: user-visible strings preserved byte-identical.
@@ -140,13 +140,11 @@ static int runMain() {
         "No status, diff, or unpushed commits",
     };
     for (const char *s : kUserStrings) {
-        if (!contains(dvImpl, s)) {
-            std::fprintf(stderr,
-                "[INV-2b] FAIL: diffviewer.cpp missing user-visible "
-                "string `%s` — drive-by reformat broke a UI label "
-                "or section header\n", s);
-            return 1;
-        }
+        if (!contains(dvImpl, s))
+            ADD_FAILURE_AT(__FILE__, __LINE__)
+                << "[INV-2b] diffviewer.cpp missing user-visible string `"
+                << s << "` — drive-by reformat broke a UI label or section "
+                   "header";
     }
 
     // INV-2c: sub-object names preserved.
@@ -155,13 +153,11 @@ static int runMain() {
         "reviewRefreshBtn",
     };
     for (const char *n : kObjectNames) {
-        if (!contains(dvImpl, n)) {
-            std::fprintf(stderr,
-                "[INV-2c] FAIL: diffviewer.cpp missing sub-object "
-                "name `%s` — feature-coverage QA helpers won't "
-                "find this widget\n", n);
-            return 1;
-        }
+        if (!contains(dvImpl, n))
+            ADD_FAILURE_AT(__FILE__, __LINE__)
+                << "[INV-2c] diffviewer.cpp missing sub-object name `"
+                << n << "` — feature-coverage QA helpers won't find this "
+                   "widget";
     }
 
     // INV-3a: MainWindow::showDiffViewer body ≤ 50 meaningful LoC.
@@ -170,13 +166,12 @@ static int runMain() {
         fail("INV-3a",
             "could not locate MainWindow::showDiffViewer body");
     const int loc = meaningfulLoC(body);
-    if (loc > 50) {
-        std::fprintf(stderr,
-            "[INV-3a] FAIL: MainWindow::showDiffViewer body is %d "
-            "meaningful LoC; cap is 50 (per spec — guard against "
-            "accidental re-inlining of the dialog body)\n", loc);
-        return 1;
-    }
+    if (loc > 50)
+        // Non-aborting so INV-3b + INV-4 still run (ANTS-1467/2065).
+        ADD_FAILURE_AT(__FILE__, __LINE__)
+            << "[INV-3a] MainWindow::showDiffViewer body is " << loc
+            << " meaningful LoC; cap is 50 (per spec — guard against "
+               "accidental re-inlining of the dialog body)";
 
     // INV-3b: post-extraction body delegates to diffviewer::show.
     if (!contains(body, "diffviewer::show("))
@@ -192,12 +187,10 @@ static int runMain() {
         "reviewChangesDialog",
     };
     for (const char *m : kMigratedMarkers) {
-        if (contains(mw, m)) {
-            std::fprintf(stderr,
-                "[INV-4] FAIL: mainwindow.cpp still contains "
-                "migrated marker `%s` — extraction incomplete\n", m);
-            return 1;
-        }
+        if (contains(mw, m))
+            ADD_FAILURE_AT(__FILE__, __LINE__)
+                << "[INV-4] mainwindow.cpp still contains migrated marker `"
+                << m << "` — extraction incomplete";
     }
 
     std::fprintf(stderr,

@@ -187,13 +187,13 @@ static int runMain() {
         };
         for (const auto &c : cases) {
             const QString got = humanAge(c.age);
-            if (got != QString::fromUtf8(c.expected)) {
-                std::fprintf(stderr,
-                    "[INV-4] FAIL: humanAge(%lld) = \"%s\", expected \"%s\"\n",
-                    static_cast<long long>(c.age),
-                    got.toUtf8().constData(), c.expected);
-                return 1;
-            }
+            if (got != QString::fromUtf8(c.expected))
+                // Non-aborting so every boundary case reports in one run
+                // (ANTS-1467/2065 — loop-internal abort removal).
+                ADD_FAILURE_AT(__FILE__, __LINE__)
+                    << "[INV-4] humanAge(" << static_cast<long long>(c.age)
+                    << ") = \"" << got.toStdString() << "\", expected \""
+                    << c.expected << "\"";
         }
     }
 
@@ -256,14 +256,11 @@ static int runMain() {
         const QString T_A_iso = QStringLiteral("2026-01-01T00:00:00Z");
         const qint64 T_A = QDateTime::fromString(T_A_iso, Qt::ISODate)
                                .toSecsSinceEpoch();
-        if (T_A != 1767225600) {
-            std::fprintf(stderr,
-                "[INV-7] FAIL: QDateTime epoch for %s = %lld; expected "
-                "1767225600 — Qt::ISODate parser drifted?\n",
-                T_A_iso.toUtf8().constData(),
-                static_cast<long long>(T_A));
-            return 1;
-        }
+        if (T_A != 1767225600)
+            ADD_FAILURE_AT(__FILE__, __LINE__)
+                << "[INV-7] QDateTime epoch for " << T_A_iso.toStdString()
+                << " = " << static_cast<long long>(T_A)
+                << "; expected 1767225600 — Qt::ISODate parser drifted?";
         const QString fileV1 = QStringLiteral(
             "# Sample Roadmap\n"
             "\n"
@@ -311,24 +308,20 @@ static int runMain() {
         // Run the parser; assert ANTS-9999 → T_A (not T_B).
         const auto result =
             RoadmapDialog::parseLastTouchDates(roadmapPath);
-        if (!result.contains(QStringLiteral("ANTS-9999"))) {
-            std::fprintf(stderr,
-                "[INV-7] FAIL: parseLastTouchDates did NOT return "
-                "ANTS-9999. Hash size = %lld.\n",
-                static_cast<long long>(result.size()));
-            return 1;
-        }
+        if (!result.contains(QStringLiteral("ANTS-9999")))
+            ADD_FAILURE_AT(__FILE__, __LINE__)
+                << "[INV-7] parseLastTouchDates did NOT return ANTS-9999. "
+                   "Hash size = " << static_cast<long long>(result.size())
+                << ".";
         const qint64 got = result.value(QStringLiteral("ANTS-9999"));
-        if (got != T_A) {
-            std::fprintf(stderr,
-                "[INV-7/8] FAIL: ANTS-9999 timestamp = %lld; "
-                "expected T_A = %lld (NOT T_B = 1769904000). "
-                "Either block-walk over-runs (INV-7) or audit-trail "
-                "mention contributes (INV-8).\n",
-                static_cast<long long>(got),
-                static_cast<long long>(T_A));
-            return 1;
-        }
+        if (got != T_A)
+            // Non-aborting so INV-5 (cache mtime) still runs (ANTS-1467/2065).
+            ADD_FAILURE_AT(__FILE__, __LINE__)
+                << "[INV-7/8] ANTS-9999 timestamp = "
+                << static_cast<long long>(got) << "; expected T_A = "
+                << static_cast<long long>(T_A)
+                << " (NOT T_B = 1769904000). Either block-walk over-runs "
+                   "(INV-7) or audit-trail mention contributes (INV-8).";
 
         // ANTS-1237-INV-5: cache mtime accessor.
         // Build a RoadmapDialog and verify the cache mtime

@@ -70,12 +70,13 @@ static int runMain() {
         bool hasMarker = l.find("// image-peek-ok") != std::string::npos;
         bool hasPeek = linePrecedingContainsQImageReader(lines, i, 10);
         if (!hasMarker && !hasPeek) {
-            std::fprintf(stderr,
-                "FAIL [I1]: loadFromData call at %s:%zu has no "
-                "QImageReader peek in the preceding 10 lines and no "
-                "// image-peek-ok marker.\n  line: %s\n",
-                SRC_TERMINALGRID_PATH, i + 1, l.c_str());
-            return 1;
+            // Non-aborting so a second unguarded call site is also reported
+            // in one run (ANTS-1467/2065 — loop-internal abort removal).
+            ADD_FAILURE_AT(__FILE__, __LINE__)
+                << "[I1] loadFromData call at " << SRC_TERMINALGRID_PATH
+                << ":" << (i + 1) << " has no QImageReader peek in the "
+                   "preceding 10 lines and no // image-peek-ok marker. line: "
+                << l;
         }
     }
 

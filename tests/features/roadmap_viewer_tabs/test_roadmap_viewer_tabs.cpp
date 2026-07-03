@@ -216,12 +216,12 @@ static int runMain() {
                         "no resize(W, H) call found in roadmapdialog.cpp");
         const int width = std::stoi(m[1].str());
         const int height = std::stoi(m[2].str());
-        if (width < 1100 || height < 720) {
-            std::fprintf(stderr,
-                         "[INV-12] resize=%dx%d below 1100x720 floor\n",
-                         width, height);
-            return 1;
-        }
+        if (width < 1100 || height < 720)
+            // Non-aborting so INV-12's persistence checks + INV-13 still run
+            // (ANTS-1467/2065 — mid-run abort removal).
+            ADD_FAILURE_AT(__FILE__, __LINE__)
+                << "[INV-12] resize=" << width << "x" << height
+                << " below 1100x720 floor";
     }
     // ANTS-2012 — size persistence is delegated to DialogChrome's
     // "RoadmapDialog" sizeKey (dialogs.md D3, width/height only). The

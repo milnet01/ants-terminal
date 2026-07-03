@@ -172,24 +172,21 @@ static int runMain() {
         // INV-8: 9px floor — no tier emits font-size below 9.
         static const QRegularExpression rxPx(
             QStringLiteral("font-size:([0-9]+)px"));
-        auto checkFloor = [&](const QString &html,
-                              const char *tier) -> int {
+        // Non-aborting: report every below-floor px across every tier in
+        // one run (ANTS-1467/2065 — loop-internal abort removal).
+        auto checkFloor = [&](const QString &html, const char *tier) {
             auto it = rxPx.globalMatch(html);
             while (it.hasNext()) {
                 const int px = it.next().captured(1).toInt();
-                if (px < 9) {
-                    std::fprintf(stderr,
-                        "[INV-8] FAIL: %s render emitted "
-                        "font-size:%dpx — below the 9px floor.\n",
-                        tier, px);
-                    return 1;
-                }
+                if (px < 9)
+                    ADD_FAILURE_AT(__FILE__, __LINE__)
+                        << "[INV-8] " << tier << " render emitted font-size:"
+                        << px << "px — below the 9px floor.";
             }
-            return 0;
         };
-        if (checkFloor(hCompact,     "Compact"))     return 1;
-        if (checkFloor(hCozy,        "Cozy"))        return 1;
-        if (checkFloor(hComfortable, "Comfortable")) return 1;
+        checkFloor(hCompact,     "Compact");
+        checkFloor(hCozy,        "Cozy");
+        checkFloor(hComfortable, "Comfortable");
     }
 
     // ----- INV-6: content unaffected (strip <style>, compare rest) -----
@@ -234,14 +231,11 @@ static int runMain() {
                                      QStringLiteral("cozy"),
                                      QStringLiteral("comfortable")}) {
             cfg.setRoadmapDensity(name);
-            if (cfg.roadmapDensity() != name) {
-                std::fprintf(stderr,
-                    "[INV-3] FAIL: round-trip for \"%s\" returned "
-                    "\"%s\".\n",
-                    qUtf8Printable(name),
-                    qUtf8Printable(cfg.roadmapDensity()));
-                return 1;
-            }
+            if (cfg.roadmapDensity() != name)
+                ADD_FAILURE_AT(__FILE__, __LINE__)
+                    << "[INV-3] round-trip for \"" << name.toStdString()
+                    << "\" returned \"" << cfg.roadmapDensity().toStdString()
+                    << "\".";
         }
         // Reset to "cozy" so the unknown-value tests below start
         // from a known baseline.
@@ -253,14 +247,12 @@ static int runMain() {
                                     QStringLiteral("💀"),
                                     QStringLiteral("COMPACT")}) {
             cfg.setRoadmapDensity(bad);
-            if (cfg.roadmapDensity() != QStringLiteral("cozy")) {
-                std::fprintf(stderr,
-                    "[INV-4] FAIL: writing \"%s\" then reading "
-                    "returned \"%s\" — expected \"cozy\".\n",
-                    qUtf8Printable(bad),
-                    qUtf8Printable(cfg.roadmapDensity()));
-                return 1;
-            }
+            if (cfg.roadmapDensity() != QStringLiteral("cozy"))
+                ADD_FAILURE_AT(__FILE__, __LINE__)
+                    << "[INV-4] writing \"" << bad.toStdString()
+                    << "\" then reading returned \""
+                    << cfg.roadmapDensity().toStdString()
+                    << "\" — expected \"cozy\".";
         }
     }
 
@@ -369,14 +361,12 @@ static int runMain() {
                 const QString got = cfg2.roadmapDensity();
                 QFile::setPermissions(cfgDir, QFileDevice::ReadOwner
                     | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
-                std::fprintf(stderr,
-                    "[INV-9] FAIL: a fresh Config instance read "
-                    "roadmapDensity = \"%s\"; expected \"cozy\" "
-                    "(the last successful pre-chmod write). The "
-                    "read-only-dir save() either silently wrote "
-                    "anyway or corrupted the on-disk JSON.\n",
-                    qUtf8Printable(got));
-                return 1;
+                ADD_FAILURE_AT(__FILE__, __LINE__)
+                    << "[INV-9] a fresh Config instance read roadmapDensity = \""
+                    << got.toStdString() << "\"; expected \"cozy\" (the last "
+                       "successful pre-chmod write). The read-only-dir save() "
+                       "either silently wrote anyway or corrupted the on-disk "
+                       "JSON.";
             }
         }
         // Restore write perms so subsequent test runs + the
