@@ -43,6 +43,14 @@ Spec source: `docs/specs/ANTS-1295.md`.
   `new_dir/new_file` that doesn't exist yet but resolves inside
   root accepts (used by git pathspec for deleted files).
 
+- **PV-13 feedback file allowed outside root (ANTS-3430).** A path
+  whose basename ends in `_Ants_MCP_Feedback.md` is permitted to
+  escape the project root (the shared corpus lives one level above
+  it): an existing such file → `bad=false` with `resolved` set; a
+  non-existent one → `bad=false` with `resolved==""`. Supersedes the
+  ANTS-3419 refuse-with-hint behaviour; a non-feedback escape (PV-5)
+  still refuses and carries no `hint`.
+
 ## Wiring (source-grep)
 
 - **WI-1** `src/pathvalidation.h` exists; declares

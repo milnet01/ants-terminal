@@ -32,22 +32,17 @@ QJsonObject makeErr(const QString &toolName, const QString &paramName,
     return o;
 }
 
-// ANTS-3419 — the conventional cross-session feedback file lives one level
-// ABOVE the project root (<shared>/<proj>_Ants_MCP_Feedback.md), so every
-// project-scoped read/write verb (read_region, file_outline, read_regions,
-// workspace_search, apply_edits) correctly refuses it with bad_path. Redirect
-// the caller to feedback_query / feedback_log — which serve exactly that file
-// by absolute path — instead of leaving them a round-trip to rediscover the
-// verb. Mirrors the find_definition file_stem_hint / feedback_query candidates
-// hint pattern (keep the refusal; add a redirecting `hint`).
-void addFeedbackHintIfApplicable(QJsonObject &err, const QString &rawPath) {
-    if (QFileInfo(rawPath).fileName().endsWith(
-            QStringLiteral("_Ants_MCP_Feedback.md"))) {
-        err[QStringLiteral("hint")] = QStringLiteral(
-            "this is a cross-session feedback file (it lives above the "
-            "project root); use feedback_query / feedback_log — they accept "
-            "its absolute path");
-    }
+// ANTS-3430 — the conventional cross-session feedback file lives one level
+// ABOVE the project root (<shared>/<proj>_Ants_MCP_Feedback.md). It is a
+// world-readable shared coordination file that legitimately lives outside
+// every project dir, so the general project-scoped verbs (read_region,
+// file_outline, read_regions, workspace_search, apply_edits) are permitted
+// to reach it — the basename suffix is the SOLE, deliberate boundary of the
+// out-of-root relaxation. Supersedes ANTS-3419, which kept the bad_path
+// refusal and only added a redirecting hint to feedback_query / feedback_log.
+bool isFeedbackFile(const QString &rawPath) {
+    return QFileInfo(rawPath).fileName().endsWith(
+        QStringLiteral("_Ants_MCP_Feedback.md"));
 }
 
 // ANTS-1837 — NFC-insensitive anchor test. Both arguments are expected to
@@ -110,22 +105,25 @@ Check validatePath(const QString &rawPath,
         // caught. If it doesn't canonicalise (e.g. a git pathspec for a
         // deleted file), apply the lexical fallback so non-existent
         // escapes still reject.
+        // ANTS-3430 — a cross-session feedback file may escape the root
+        // (it lives one level above it by convention); permit exactly that
+        // suffix and nothing else.
         if (!resolved.isEmpty()) {
-            if (!anchoredUnder(resolved, rootCanonical)) {
+            if (!anchoredUnder(resolved, rootCanonical)
+                && !isFeedbackFile(rawPath)) {
                 pc.bad = true;
                 pc.err = makeErr(toolName, paramName,
                     QStringLiteral("escapes project root"));
-                addFeedbackHintIfApplicable(pc.err, rawPath);   // ANTS-3419
                 return pc;
             }
             pc.resolved = resolved;
         } else {
             const QString cleaned = QDir::cleanPath(joined);
-            if (!anchoredUnder(cleaned, rootCanonical)) {
+            if (!anchoredUnder(cleaned, rootCanonical)
+                && !isFeedbackFile(rawPath)) {
                 pc.bad = true;
                 pc.err = makeErr(toolName, paramName,
                     QStringLiteral("escapes project root"));
-                addFeedbackHintIfApplicable(pc.err, rawPath);   // ANTS-3419
                 return pc;
             }
         }

@@ -30,6 +30,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **General read/write verbs must reach `*_Ants_MCP_Feedback.md` outside the project root (supersede ANTS-3419 hint-only decision).** (ANTS-3430)
+  The shared feedback files live one folder ABOVE every project, so the normal read/edit tools refuse to touch them. Let those tools reach feedback files directly instead of only pointing at the special feedback commands.
+
 - **roadmap_query by-id: max_body_bytes (ANTS-3402) is inert — a single-bullet fetch truncates the body at the 2000 default regardless of the requested cap.** (ANTS-3425)
   Asking the roadmap tool for one item's full text still cuts it off at ~2000 characters even when you ask for more, so the important tail (like a decision paragraph) is lost and you have to read the whole 2 MB file instead.
 

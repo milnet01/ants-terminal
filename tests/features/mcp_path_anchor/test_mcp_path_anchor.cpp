@@ -132,27 +132,47 @@ TEST(McpPathAnchor, AbsoluteOutsideRootRejects) {
     const QString errText = check.err.value(QStringLiteral("error")).toString();
     EXPECT_TRUE(errText.contains(QStringLiteral("debt_sweep_apply_fix")));
     EXPECT_TRUE(errText.contains(QStringLiteral("\"file\"")));
-    // ANTS-3419 — a non-feedback outside-root path carries NO redirect hint.
+    // ANTS-3430 — a non-feedback outside-root path is still refused; hints
+    // were retired (feedback files are now allowed, not hinted-at).
     EXPECT_FALSE(check.err.contains(QStringLiteral("hint")));
 }
 
-// ANTS-3419 — a *_Ants_MCP_Feedback.md path (which by convention lives above
-// the project root, so it always escapes) is still refused bad_path, but the
-// refusal carries a `hint` redirecting to feedback_query / feedback_log.
-TEST(McpPathAnchor, FeedbackFilePathGetsRedirectHint) {
+// ANTS-3430 — a *_Ants_MCP_Feedback.md path lives one level ABOVE the project
+// root by convention (the shared corpus dir), so it always "escapes" the root.
+// The general project-scoped verbs are now permitted to reach it directly
+// (superseding ANTS-3419, which refused with a redirect hint). Only this exact
+// basename suffix may escape; a non-feedback escape (PV-5) still refuses.
+TEST(McpPathAnchor, FeedbackFileAllowedOutsideRoot) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
-    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    // Real layout: <shared>/proj is the project root; the feedback file lives
+    // at <shared>/Demo_Ants_MCP_Feedback.md — one level above.
+    const QString shared = QFileInfo(tmp.path()).canonicalFilePath();
+    const QString root = shared + QStringLiteral("/proj");
+    ASSERT_TRUE(QDir().mkpath(root));
+    const QString fb = shared + QStringLiteral("/Demo_Ants_MCP_Feedback.md");
+    QFile f(fb);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("# placeholder\n");
+    f.close();
 
+    // Existing feedback file above the root → allowed, canonical resolved set.
     const auto check = PathValidation::validatePath(
+        fb, root, QStringLiteral("read_region"), QStringLiteral("path"));
+    EXPECT_FALSE(check.bad)
+        << "feedback file above root must be allowed (ANTS-3430); err="
+        << check.err.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(check.resolved, QFileInfo(fb).canonicalFilePath());
+    EXPECT_FALSE(check.err.contains(QStringLiteral("hint")));
+
+    // A not-yet-existing feedback path is likewise allowed (won't canonicalise,
+    // so resolved stays empty — the writer reconstructs it).
+    const auto check2 = PathValidation::validatePath(
         QStringLiteral("/nonexistent/DOOM_Ants_MCP_Feedback.md"), root,
-        QStringLiteral("read_region"), QStringLiteral("path"));
-    EXPECT_TRUE(check.bad);
-    EXPECT_EQ(check.err.value(QStringLiteral("code")).toString(),
-              QStringLiteral("bad_path"));
-    const QString hint = check.err.value(QStringLiteral("hint")).toString();
-    EXPECT_TRUE(hint.contains(QStringLiteral("feedback_query")));
-    EXPECT_TRUE(hint.contains(QStringLiteral("feedback_log")));
+        QStringLiteral("apply_edits"), QStringLiteral("path"));
+    EXPECT_FALSE(check2.bad)
+        << "non-existent feedback path must be allowed (ANTS-3430)";
+    EXPECT_TRUE(check2.resolved.isEmpty());
 }
 
 // PV-6: control character in path rejects.
