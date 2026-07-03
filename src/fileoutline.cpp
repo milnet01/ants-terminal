@@ -273,12 +273,19 @@ const QRegularExpression &rxMdHeading() {
 // cover the top-level declaration surface shared across Rust / Go / JS / TS /
 // Java / C# / Kotlin / Swift / Scala / PHP. Possessive quantifiers (`*+`,
 // `++`) + the per-line byte cap bound backtracking (INV-8), same as the C++ set.
+// Ruby (`.rb`) folds in here too: `def`/`class`/`module` are already in the
+// keyword alternation, and `end`-blocks are irrelevant to a line-oriented
+// outline. rxGenericDecl carries an optional `self.` receiver (`def self.x`
+// singleton methods) and an optional trailing `?`/`!` (Ruby predicate/bang
+// names) — both no-ops for the brace-family languages. Ruby's `#`-comment
+// header_doc is not extracted (Mode::Generic's marker is `//`); symbols still
+// extract fully.
 
 // (1) keyword declarations: optional modifiers, a declaration keyword, an
 // optional Go receiver `(s *T)`, then the name. Captures kw=group1, name=group2.
 const QRegularExpression &rxGenericDecl() {
     static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^\s*(?:(?:pub|export|default|public|private|protected|internal|static|final|abstract|sealed|async|open|override|suspend|inline|const|unsafe|extern|data)\s++)*+(fn|fun|func|function|def|class|struct|enum|trait|impl|interface|type|module|object|protocol|extension|namespace|record)\b(?:\s++\([^)]*\))?\s++([A-Za-z_$][\w$]*))"));
+        QRegularExpression r(QStringLiteral(R"(^\s*(?:(?:pub|export|default|public|private|protected|internal|static|final|abstract|sealed|async|open|override|suspend|inline|const|unsafe|extern|data)\s++)*+(fn|fun|func|function|def|class|struct|enum|trait|impl|interface|type|module|object|protocol|extension|namespace|record)\b(?:\s++\([^)]*\))?\s++(?:self\.)?([A-Za-z_$][\w$]*[?!]?))"));
         r.optimize();
         return r;
     }();
@@ -326,6 +333,7 @@ QString genericLangName(const QString &ext) {
     if (ext == QLatin1String("scala") || ext == QLatin1String("sc"))
         return QStringLiteral("scala");
     if (ext == QLatin1String("php"))   return QStringLiteral("php");
+    if (ext == QLatin1String("rb"))    return QStringLiteral("ruby");  // ANTS-2150
     return QString();
 }
 

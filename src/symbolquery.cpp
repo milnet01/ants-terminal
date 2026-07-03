@@ -50,8 +50,11 @@ Lang langForExt(const QString &ext) {
     if (ext == QLatin1String("py") || ext == QLatin1String("pyi")) return Lang::Py;
     if (ext == QLatin1String("lua")) return Lang::Lua;
     if (ext == QLatin1String("sh") || ext == QLatin1String("bash")) return Lang::Sh;
-    // ANTS-2150 — brace family (kept in step with FileOutline::genericLangName
-    // + CodebaseIndex::isIndexableSuffix so count → outline → symbol query agree).
+    // ANTS-2150 — brace family + Ruby (kept in step with
+    // FileOutline::genericLangName + CodebaseIndex::isIndexableSuffix so
+    // count → outline → symbol query agree). Ruby (`.rb`) reuses Lang::Generic:
+    // `def`/`class`/`module` are in the keyword alternation; the Generic def
+    // anchor carries an optional `self.` receiver for singleton methods.
     if (ext == QLatin1String("rs")  || ext == QLatin1String("go")  ||
         ext == QLatin1String("js")  || ext == QLatin1String("jsx") ||
         ext == QLatin1String("mjs") || ext == QLatin1String("cjs") ||
@@ -59,7 +62,8 @@ Lang langForExt(const QString &ext) {
         ext == QLatin1String("java")|| ext == QLatin1String("cs")  ||
         ext == QLatin1String("kt")  || ext == QLatin1String("kts") ||
         ext == QLatin1String("swift")|| ext == QLatin1String("scala") ||
-        ext == QLatin1String("sc")  || ext == QLatin1String("php")) {
+        ext == QLatin1String("sc")  || ext == QLatin1String("php") ||
+        ext == QLatin1String("rb")) {
         return Lang::Generic;
     }
     return Lang::Auto;
@@ -130,8 +134,9 @@ Anchors buildAnchors(Lang lang, const QString &s) {
         case Lang::Generic:
             // ANTS-2150 — mirror FileOutline's three brace-family patterns,
             // spliced around the (escaped) query symbol `s`:
-            // (1) keyword declaration (`pub fn s`, `class s`, `func (r R) s`),
-            add(QStringLiteral("^\\s*(?:(?:pub|export|default|public|private|protected|internal|static|final|abstract|sealed|async|open|override|suspend|inline|const|unsafe|extern|data)\\s+)*(?:fn|fun|func|function|def|class|struct|enum|trait|impl|interface|type|module|object|protocol|extension|namespace|record)\\b(?:\\s+\\([^)]*\\))?\\s+") + s + QStringLiteral("\\b"));
+            // (1) keyword declaration (`pub fn s`, `class s`, `func (r R) s`,
+            //     `def self.s` Ruby singleton — ANTS-2150 optional receiver),
+            add(QStringLiteral("^\\s*(?:(?:pub|export|default|public|private|protected|internal|static|final|abstract|sealed|async|open|override|suspend|inline|const|unsafe|extern|data)\\s+)*(?:fn|fun|func|function|def|class|struct|enum|trait|impl|interface|type|module|object|protocol|extension|namespace|record)\\b(?:\\s+\\([^)]*\\))?\\s+(?:self\\.)?") + s + QStringLiteral("\\b"));
             // (2) C-style method definition (`private void s(...) {`),
             add(QStringLiteral("^\\s*(?!(?:return|if|for|while|switch|catch|else|throw|new|await|do|in|of)\\b)(?:[A-Za-z_$<>\\[\\].]+[\\s*&]+)+") + s + QStringLiteral("\\s*\\([^;{]*\\)\\s*(?:->\\s*[\\w$<>\\[\\].?]+\\s*|:\\s*[\\w$<>\\[\\].?]+\\s*)?\\{"));
             // (3) JS/TS arrow-function assignment (`const s = (...) =>`).

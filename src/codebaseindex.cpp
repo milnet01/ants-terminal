@@ -34,10 +34,10 @@ bool isIndexableSuffix(const QString &suffixLower) {
     // step with SymbolQuery::langForExt so count → outline → symbol query
     // cover the same files.
     // ANTS-2150 — also admit the brace family (Rust/Go/JS/TS/Java/C#/Kotlin/
-    // Swift/Scala/PHP), kept in step with FileOutline::genericLangName +
-    // SymbolQuery::langForExt so count → outline → symbol query agree. (The
-    // candidates() walk still only descends src/ + tests/; a non-src layout
-    // is a separate follow-on.)
+    // Swift/Scala/PHP) + Ruby (`.rb`), kept in step with
+    // FileOutline::genericLangName + SymbolQuery::langForExt so
+    // count → outline → symbol query agree. (The candidates() walk still only
+    // descends src/ + tests/; a non-src layout is a separate follow-on.)
     return suffixLower == QLatin1String("cpp") || suffixLower == QLatin1String("cc")
         || suffixLower == QLatin1String("cxx") || suffixLower == QLatin1String("c")
         || suffixLower == QLatin1String("h")   || suffixLower == QLatin1String("hpp")
@@ -50,7 +50,8 @@ bool isIndexableSuffix(const QString &suffixLower) {
         || suffixLower == QLatin1String("java")|| suffixLower == QLatin1String("cs")
         || suffixLower == QLatin1String("kt")  || suffixLower == QLatin1String("kts")
         || suffixLower == QLatin1String("swift")|| suffixLower == QLatin1String("scala")
-        || suffixLower == QLatin1String("sc")  || suffixLower == QLatin1String("php");
+        || suffixLower == QLatin1String("sc")  || suffixLower == QLatin1String("php")
+        || suffixLower == QLatin1String("rb");
 }
 
 namespace {

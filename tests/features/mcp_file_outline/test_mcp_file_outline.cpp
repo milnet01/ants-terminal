@@ -492,6 +492,27 @@ TEST(McpFileOutline, BraceFamilyGenericOutline) {
     EXPECT_EQ(ts.value("language").toString().toStdString(), "typescript");
     EXPECT_TRUE(hasName(ts, "TsService")) << "ts class not outlined";
     EXPECT_TRUE(hasName(ts, "tsHandler")) << "ts arrow assignment not outlined";
+
+    // Ruby (ANTS-2150) — folds into Mode::Generic: def/class/module are in the
+    // keyword alternation; the optional `self.` receiver captures singleton
+    // methods, and the optional trailing `?`/`!` captures predicate/bang names.
+    const QJsonObject rb = outlineOf("thing.rb",
+        "module RubyMod\n"
+        "  class RubyThing\n"
+        "    def ruby_instance\n"
+        "    end\n"
+        "    def self.ruby_singleton\n"
+        "    end\n"
+        "    def valid?\n"
+        "    end\n"
+        "  end\n"
+        "end\n");
+    EXPECT_EQ(rb.value("language").toString().toStdString(), "ruby");
+    EXPECT_TRUE(hasName(rb, "RubyMod"))        << "ruby module not outlined";
+    EXPECT_TRUE(hasName(rb, "RubyThing"))      << "ruby class not outlined";
+    EXPECT_TRUE(hasName(rb, "ruby_instance"))  << "ruby def not outlined";
+    EXPECT_TRUE(hasName(rb, "ruby_singleton")) << "ruby `def self.` singleton not outlined";
+    EXPECT_TRUE(hasName(rb, "valid?"))         << "ruby predicate-method name not outlined";
 }
 
 // INV-10 — non-existent path returns the not_found code without

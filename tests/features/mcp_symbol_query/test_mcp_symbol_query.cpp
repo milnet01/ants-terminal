@@ -325,6 +325,21 @@ TEST(McpSymbolQuery, BraceFamilyLanguages) {
                              "        helper();\n"
                              "    }\n"
                              "}\n"));
+    // Ruby (ANTS-2150) — folds into Lang::Generic: def/class/module + a
+    // `def self.x` singleton (exercises the optional `self.` receiver in the
+    // Generic def anchor). Paren-less Ruby calls aren't matched by the shared
+    // Generic call anchor, so this pass covers definitions/outline, not callers.
+    writeFile(root, QStringLiteral("src/thing.rb"),
+              QStringLiteral("module RubyMod\n"
+                             "  class RubyThing\n"
+                             "    def ruby_instance\n"
+                             "      true\n"
+                             "    end\n"
+                             "    def self.ruby_singleton\n"
+                             "      RubyThing.new\n"
+                             "    end\n"
+                             "  end\n"
+                             "end\n"));
 
     SymbolQuery::Options def;
 
@@ -346,6 +361,11 @@ TEST(McpSymbolQuery, BraceFamilyLanguages) {
     // Java
     expect(defFound("JavaAccount"), "java: class def found");
     expect(defFound("javaDoStuff"), "java: C-style method def found");
+    // Ruby (folded into Lang::Generic — ANTS-2150)
+    expect(defFound("RubyMod"),        "ruby: module def found");
+    expect(defFound("RubyThing"),      "ruby: class def found");
+    expect(defFound("ruby_instance"),  "ruby: instance def found");
+    expect(defFound("ruby_singleton"), "ruby: `def self.` singleton def found");
 
     // Callers fire across the family.
     expect(SymbolQuery::findCaller(root, QStringLiteral("rustParse"), def)
