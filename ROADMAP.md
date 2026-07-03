@@ -9751,6 +9751,13 @@ indie-review finding.
   Kind: audit-fix.
   Source: cold-eyes-2026-07-03 (ANTS-3427 dependencies.md review, INFO-1).
 
+- ✅ [ANTS-3429] **Move the MCP config-key reference out of the CLAUDE.md preamble into docs/standards/mcp-config-keys.md.**
+  Relocated ~85 lines of MCP config-key reference (master gate ANTS-1901, autonomous model-switcher keys ANTS-1735, result-offload keys ANTS-2094, tabular encoding ANTS-2090, project_query keys ANTS-2093) from the project CLAUDE.md preamble into docs/standards/mcp-config-keys.md, leaving a one-line pointer — following the ANTS-1292 (module map → docs/subsystems.md) and ANTS-2088 (behavioural notes) pattern. Zero content loss (pure relocation; verified every key present in the new doc). Also lightly tightened the live-binary home-copy prose. Registered the new doc in the CLAUDE.md standards list. Net: project CLAUDE.md 431 → ~340 lines, cutting always-loaded session-preamble token cost.
+  Lanes: docs/standards, claudemd.
+  **Layman:** Shrink the always-loaded project instructions file by moving a long block of rarely-needed settings-key reference into a separate doc that's read only when needed — same trick used before for the module map and behavioural notes. Every key is preserved, just relocated.
+  Kind: doc.
+  Source: user-request-2026-07-03 (claude-tidy CLAUDE.md compression).
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested
