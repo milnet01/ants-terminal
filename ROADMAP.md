@@ -8171,7 +8171,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: auditrunner, auditengine, auditdialog.
   Source: deferred from ANTS-1351 v1 (in-session 2026-05-17).
 
-- 🚧 [ANTS-1450] **`test_audit_*` v2 — JSON pattern resource + recursive mtime + drift-guard test.**
+- ✅ [ANTS-1450] **`test_audit_*` v2 — JSON pattern resource + recursive mtime + drift-guard test.**
   **In progress.** Shipped 2026-05-20 (Pull 46): the in-tree
   source-of-truth resource `docs/standards/test-audit-grep-patterns.json`
   (17 patterns + 18 dimensions) plus a drift-guard feature test
@@ -8215,6 +8215,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: implement.
   Lanes: testauditengine.
   Source: deferred from ANTS-1397 v1 (in-session 2026-05-17).
+  Resolved 2026-07-03. All concrete v2 deliverables shipped; nothing left to code. (1) JSON pattern source-of-truth (docs/standards/test-audit-grep-patterns.json) + drift-guard test (tests/features/test_audit_pattern_drift/, INV-D1..D4) shipped Pull 46 — both verified present on disk. (2) Envelope byte-cap for pre_pass_findings_by_chunk shipped via ANTS-2070 (24 KiB inline cap → omit-and-flag with pre_pass_omitted/_bytes + per-chunk test_audit_brief fallback; map stays in partition cache) and ANTS-2096 (pagination keeps the cached map for brief). (3) Recursive mtime recheck + pre-pass token recompute in brief/synth: subsumed by ANTS-1447 (✅), which resolved the deep-tree mtime gap as accept-the-gap (documented in ANTS-1397 INV-15 — bounded shallow recheck over top-level test_globs roots + 5 s rate-limit; never a wrong answer, only a stale set missing a just-added deep file). Not building speculative inotify / recursive-mtime infra absent a reported stale-brief bug (CLAUDE.md §2/§9). Revisit if feedback flags one.
 
 - ✅ [ANTS-1646] **`roadmap_log` duplicate-ID guard +
   `.roadmap-counter` drift detector.** Shipped 2026-05-19 (Pull
