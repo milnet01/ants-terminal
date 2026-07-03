@@ -9734,6 +9734,23 @@ indie-review finding.
   Kind: test.
   Source: in-session-2026-07-01 (build warnings spotted during ANTS-1467/2065 sweep).
 
+- ✅ [ANTS-3427] **Dependency version standard — latest-by-default + documented-downgrade ledger + version-break re-test triggers.**
+  Standing rule from the user: every dependency (runtime lib, build tool, test framework, CI action, runner image, container base) tracks the LATEST stable release — for features AND security. An older version is allowed ONLY when a newer one explicitly breaks a feature/build/test AND there is no reasonable workaround; every such downgrade must be documented (the breaking version + symptom + a re-test trigger so a later > broken-version release gets re-tested and the pin removed if fixed).
+  Deliverable: new docs/standards/dependencies.md (policy + Downgrade Ledger table + minimum-supported floors vs pins distinction + sweep posture + version-location map), registered in the project CLAUDE.md standards list, cold-eyes-looped. Cross-refs global CLAUDE.md §5/§5a/§5b/§5c.
+  Current posture (from a HEAD sweep): latest-tracking with floors — Qt6 (floor 6.2, CMakeLists:60), Lua 5.4, C++20, CMake≥3.20; pinned tags/SHAs — GoogleTest v1.15.2 (CMakeLists:750, FetchContent fallback), CI action SHAs (checkout v6.0.3 / cache v5.0.5 / cache-apt-pkgs v1.6.1). No active documented-downgrade pins (ledger starts empty). Sweep candidate flagged: GoogleTest v1.15.2 (2024) is likely behind latest — verify + bump under a follow-up if tests stay green. actions/cache@v5.0.5 already carries an in-file bump-when-newer note.
+  Lanes: docs/standards, dependencies, ci, cmake.
+  **Layman:** Write a rule (and keep a running list) so we always build on the newest, most secure versions of our tools and libraries. If we ever have to stay on an older one because a newer one breaks something, we record exactly which version broke it and re-check when an even newer one ships.
+  Kind: doc.
+  Source: user-request-2026-07-03.
+  Shipped 2026-07-03. docs/standards/dependencies.md written + registered in the project CLAUDE.md standards list. Codifies: latest-stable-by-default (features + security); a below-latest pin allowed only with a Downgrade Ledger row (breaking version + symptom + a re-test trigger keyed off the latest-tested version so it advances); minimum-supported floors (Qt 6.2, Lua 5.4 optional, C++20, CMake 3.20, GoogleTest 1.13) kept distinct from downgrades; sweep posture + a version-location map. Cold-eyes: 6 loops, ~14 verified findings fixed (2 HIGH, 6 MEDIUM, ~6 LOW), none recurred, core verified clean every pass. Automation of the "undocumented pin is a defect" check split out as ANTS-3428. Current sweep candidate flagged in §7: GoogleTest v1.15.2.
+
+- 📋 [ANTS-3428] **Audit rule: flag a below-latest dependency pin that carries no Downgrade Ledger row (automate dependencies.md §2).**
+  docs/standards/dependencies.md §2 declares "an undocumented below-latest pin is a defect", but enforcement is manual today (the §5 sweep + code review). Add an audit/CI guard that asserts every dependency held below its latest release carries a Downgrade Ledger row — analogous to the existing packaging_version_drift gate (ci.yml). Scope: parse the pinned versions from CMakeLists.txt (Qt/Lua/GTest FetchContent tag), ci.yml (action SHAs + `# vX.Y.Z`), and tools/ci-parity.sh (container base); cross-check against latest-upstream (best-effort / cached) and against the ledger table. Non-trivial (needs an upstream-latest source); may start as a reminder-only lint. Follow-on to ANTS-3427.
+  Lanes: audit, ci, docs/standards, dependencies.
+  **Layman:** Right now the rule "if you hold an old version, you must write down why" is only enforced by people remembering to check. This adds an automatic check so an undocumented old-version pin gets flagged, the way the packaging-version-drift check already works.
+  Kind: audit-fix.
+  Source: cold-eyes-2026-07-03 (ANTS-3427 dependencies.md review, INFO-1).
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested

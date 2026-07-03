@@ -349,6 +349,12 @@ Shared v1 standards in `docs/standards/` (from the `/start-app` template):
   convention.
 - [`test-audit-resume.md`](docs/standards/test-audit-resume.md)
   (ANTS-1580) — `partition_token` save/resume recipe via `session_memory`.
+- [`dependencies.md`](docs/standards/dependencies.md) (ANTS-3427) —
+  dependency-version policy: latest stable by default (features + security);
+  a below-latest pin is allowed only with a **Downgrade Ledger** row naming
+  the breaking version + a re-test trigger; minimum-supported floors (Qt 6.2,
+  Lua 5.4, C++20) are distinct from pins. The project mechanism for global
+  `~/.claude/CLAUDE.md` §5.
 
 Project-local additions: `coding.md` adds the `setOwnerOnlyPerms()` note
 (§5.2); `documentation.md` adds §7 Accessibility (ANTS-1235);
