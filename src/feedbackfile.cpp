@@ -148,6 +148,9 @@ ParseResult parse(const QString &fileContent) {
     // only governs boundary detection, not ID extraction; an ID pasted
     // inside a maintainer-block fence is still a mapped ID.
     static const QRegularExpression idRe(QStringLiteral("ANTS-[0-9]+"));
+    // ANTS-3445 — anchored whole-token id test for the tracking-row ID column
+    // (a cell holds only a real id, never an id embedded in prose).
+    static const QRegularExpression idCellRe(QStringLiteral("^ANTS-[0-9]+$"));
     // ANTS-3371 — separator row of a GFM table (`|---|:--:|` etc.).
     static const QRegularExpression sepCellRe(QStringLiteral("^:?-{1,}:?$"));
     QSet<QString> idSet;
@@ -190,13 +193,16 @@ ParseResult parse(const QString &fileContent) {
             tr.line = li + 1;   // ANTS-3442: 1-based source line
             tr.item = cells.at(0);
             const QString idCell = cells.at(1);
-            if (idCell.compare(QStringLiteral("n/a"),
-                               Qt::CaseInsensitive) != 0) {
-                const QStringList parts = idCell.split(QLatin1Char(','));
-                for (const QString &p : parts) {
-                    const QString id = p.trimmed();
-                    if (!id.isEmpty()) tr.ids.append(id);
-                }
+            // ANTS-3445 — only a real ANTS-NNNN token is an id. A non-id
+            // id-column value (a closure like `(schema fix)` / `(self-resolved)`
+            // / `n/a`, or a bare local counter) must NOT populate tr.ids, or
+            // pruneTracking treats the shared pseudo-id as "superseded" and drops
+            // the earlier of two unrelated closure rows (confirmed data loss on
+            // MAME_Curator #4). The explicit `n/a` skip is now subsumed — it
+            // simply fails the id-shape test, like every other non-id token.
+            for (const QString &p : idCell.split(QLatin1Char(','))) {
+                const QString id = p.trimmed();
+                if (idCellRe.match(id).hasMatch()) tr.ids.append(id);
             }
             tr.status = cells.at(2);
             if (cells.size() >= 4) tr.notes = cells.at(3);

@@ -18174,7 +18174,7 @@ their feedback-file tracking tables needed stamping.
   Source: user-request-2026-07-04.
   Progress (2026-07-04, 1c98e74): part (b) CLIENT interim guard shipped — mcp-bridge.py READ_TIMEOUT_S 5s->60s (+ $ANTS_MCP_READ_TIMEOUT_S / $ANTS_MCP_CONNECT_TIMEOUT_S overrides, safe fallback on bad value), CONNECT 2s->5s. Stops the spurious -32000 (reply now lands). Takes effect on next bridge respawn (new CC session / MCP reconnect); the long-lived bridge process does not hot-reload. STILL OPEN: part (a) server-side latency — find_sources 52s / spec_query 14s must actually get fast (bounded/indexed scan, warm caches at connect off the request thread). 60s is a ceiling that prevents failure, not an acceptable response time.
 
-- 📋 [ANTS-3445] **prune_tracking wrongly drops distinct id-less closure rows sharing a non-ANTS id-column token (e.g. `(schema fix)`) — confirmed data loss.**
+- ✅ [ANTS-3445] **prune_tracking wrongly drops distinct id-less closure rows sharing a non-ANTS id-column token (e.g. `(schema fix)`) — confirmed data loss.**
   Confirmed data-loss bug (cold-eyes 2026-07-04, ANTS-3443 review): prune_tracking wrongly removes a distinct id-less closure row when two unrelated rows share a non-ANTS id-column token (`(schema fix)`, `(self-resolved)`, `(no roadmap item)`).
   Root cause: feedbackfile.cpp parse() (~:193) special-cases ONLY an exact `n/a` id cell as id-less; every other non-ANTS cell is carried as a literal `ids` token. pruneTracking Stage 1 then sees that pseudo-id 'duplicated' across two unrelated rows and marks the earlier superseded; Stage 2 removes it (no real ANTS token to pin it, so the 'every ANTS token survives' guard is vacuously true).
   Observed: the 2026-07-04 bulk prune dropped MAME_Curator's `#4 — test_audit_partition chunk_size default invisible | (schema fix) | ✅` (shared `(schema fix)` with #5). Row manually restored from backup this session; blast radius across all 10 files was this single row.
@@ -18182,6 +18182,7 @@ their feedback-file tracking tables needed stamping.
   **Layman:** The tool that de-duplicates feedback-file bookkeeping rows can delete a real row by mistake when two unrelated rows are labelled the same non-ID tag. Fix it so only real ANTS-IDs count for de-duplication.
   Kind: fix.
   Source: cold-eyes-2026-07-04 (ANTS-3443 review).
+  Resolved ✅ (2026-07-04): root-caused in FeedbackFile::parse() — only anchored ANTS-NNNN tokens (^ANTS-[0-9]+$, new idCellRe) now populate TrackingRow::ids; a closure/counter id-column token (`(schema fix)` / `(self-resolved)` / `n/a`) no longer becomes a pseudo-id that drives pruneTracking's supersede dedup. Reproducer test Ants3445ClosureTokenNotDeduped (fails pre-fix). Full suite 2499/2499 green. Live on next relaunch.
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 

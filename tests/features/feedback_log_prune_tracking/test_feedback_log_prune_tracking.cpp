@@ -155,6 +155,41 @@ TEST(FeedbackPruneTracking, Inv2bNotesCellPinPreservesMappedId) {
     EXPECT_EQ(before, after);
 }
 
+// ANTS-3445 — two UNRELATED rows sharing a non-ANTS closure token in the id
+// column (`(schema fix)`, `(self-resolved)`) must BOTH survive: a closure token
+// is not an id and must not drive the supersede dedup. Regression: prune
+// treated the pseudo-id as duplicated and dropped the earlier of each pair
+// (confirmed data loss on MAME_Curator #4, 2026-07-04).
+TEST(FeedbackPruneTracking, Ants3445ClosureTokenNotDeduped) {
+    const char *fixture =
+        "<!-- ants-mcp-feedback: 1 -->\n"
+        "# Ants MCP Feedback TEST\n"
+        "\n"
+        "## \xF0\x9F\x93\x8B Ants Terminal roadmap tracking update "
+        "(2026-06-01, maintainer)\n"
+        "\n"
+        "| Item | IDs | Status |\n"
+        "|---|---|---|\n"
+        "| Alpha finding | (schema fix) | \xE2\x9C\x85 |\n"
+        "| Beta finding | (schema fix) | \xE2\x9C\x85 |\n"
+        "| Gamma | (self-resolved) | \xE2\x9C\x85 |\n"
+        "| Delta | (self-resolved) | \xE2\x9C\x85 |\n";
+    const FeedbackFile::PruneResult r =
+        FeedbackFile::pruneTracking(QString::fromUtf8(fixture), {});
+    EXPECT_EQ(r.removed.size(), 0);   // a non-id token never drives dedup
+    EXPECT_TRUE(r.newContent.contains(QStringLiteral("| Alpha finding |")));
+    EXPECT_TRUE(r.newContent.contains(QStringLiteral("| Beta finding |")));
+    EXPECT_TRUE(r.newContent.contains(QStringLiteral("| Gamma |")));
+    EXPECT_TRUE(r.newContent.contains(QStringLiteral("| Delta |")));
+    // parse() must not surface a closure token as an id either.
+    const FeedbackFile::ParseResult pr =
+        FeedbackFile::parse(QString::fromUtf8(fixture));
+    for (const FeedbackFile::TrackingRow &tr : pr.trackingRows)
+        EXPECT_TRUE(tr.ids.isEmpty())
+            << "closure-token row leaked a pseudo-id: "
+            << tr.ids.join(QLatin1Char(',')).toStdString();
+}
+
 // INV-5 — every maintainer heading survives.
 TEST(FeedbackPruneTracking, Inv5HeadingsKept) {
     const FeedbackFile::PruneResult r =

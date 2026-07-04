@@ -36,6 +36,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **prune_tracking wrongly drops distinct id-less closure rows sharing a non-ANTS id-column token (e.g. `(schema fix)`) — confirmed data loss.** (ANTS-3445)
+  The tool that de-duplicates feedback-file bookkeeping rows can delete a real row by mistake when two unrelated rows are labelled the same non-ID tag. Fix it so only real ANTS-IDs count for de-duplication.
+
 - **feedback path derivation tolerates checkout-leaf vs package-name case/separator mismatch** (ANTS-3439)
   A Fin_Break checkout resolves finbreak_Ants_MCP_Feedback.md via a normalized compare; a normalized-equal sibling is floated to candidates[0] without a false all_other_projects.
 
