@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "roadmapdialog.h"   // ANTS-3437 — parseBullets precondition test
 
 #include <string>
 
@@ -452,6 +453,64 @@ TEST(mcp_roadmap_branch_drift, Inv4ReachabilityRuntime) {
         << "INV-4: all-zero fabricated SHA must NOT exist in git";
 
     EXPECT_EQ(0, expect_failures());
+}
+
+// ============================================================
+// INV-14 (ANTS-3437) — legacy no-id roadmap enumeration. A ants-v1
+// roadmap with no [PREFIX-NNNN] ids must NOT be skipped wholesale at the
+// id-less guard (which exists only to drop modern narrator bullets); the
+// handler detects the no-id case, keeps scanning, identifies each bullet
+// by a headline slug, and marks the envelope with roadmap_format.
+// ============================================================
+TEST(mcp_roadmap_branch_drift, Inv14LegacyNoIdEnumerated) {
+    expect_reset();
+    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string body = ants_test::slurpFunctionBody(
+        rcc, "RemoteControl::cmdRoadmapBranchDrift");
+    ASSERT_FALSE(body.empty())
+        << "cmdRoadmapBranchDrift body not extractable";
+    // Detects the legacy no-id case.
+    expect(contains(body, "legacyNoId"),
+        "INV-14: handler must detect a legacy no-id roadmap");
+    // The id-less skip is conditional on NOT being legacy (so a legacy
+    // roadmap keeps scanning). Both the drift loop and the mis_branched
+    // loop must carry the guard.
+    expect(contains(body, "bul.id.isEmpty() && !legacyNoId"),
+        "INV-14: drift loop must skip id-less bullets only in a modern "
+        "roadmap");
+    expect(contains(body, "bulletIdFor(bul)"),
+        "INV-14: bullet_id must come from bulletIdFor (headline slug in "
+        "the legacy path)");
+    // Envelope marks the legacy enumeration path.
+    expect(contains(body, "env[\"roadmap_format\"]"),
+        "INV-14: envelope must flag the legacy enumeration via "
+        "roadmap_format");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ============================================================
+// INV-14b (ANTS-3437) — precondition: a legacy ants-v1 ✅ bullet parses
+// with an EMPTY id, which is exactly what tripped the id-less skip. This
+// documents (and locks) the parse-side fact the fix depends on.
+// ============================================================
+TEST(mcp_roadmap_branch_drift, Inv14bLegacyBulletParsesWithoutId) {
+    expect_reset();
+    // A minimal legacy ants-v1 roadmap: emoji-prefixed bold bullet, no
+    // [PREFIX-NNNN] token, citing a fix SHA in the body.
+    const QString md = QStringLiteral(
+        "# Roadmap\n\n"
+        "## Fixes\n\n"
+        "- ✅ **Wall-clip regression resolved.**\n"
+        "  Fixed 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b\n");
+    const auto bullets = RoadmapDialog::parseBullets(md);
+    bool sawShippedNoId = false;
+    for (const auto &b : bullets) {
+        if (b.status == QStringLiteral("✅") && b.id.isEmpty())
+            sawShippedNoId = true;
+    }
+    EXPECT_TRUE(sawShippedNoId)
+        << "INV-14b: a legacy ✅ bullet must parse with an empty id (the "
+           "precondition the ANTS-3437 legacy path handles)";
 }
 
 // ============================================================

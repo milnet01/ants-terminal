@@ -198,6 +198,39 @@ TEST(McpReadRegion, BareNameQualifiedSuffixMatch) {
     EXPECT_EQ(env.value("start_line").toInt(), 5);
 }
 
+// ANTS-3434 (verification) — read_region symbol-mode via a BARE method name
+// on a member whose out-of-line definition carries a TWO-WORD return type
+// (`unsigned int Grid::cellCount`). Before ANTS-3433 that member was dropped
+// from the outline entirely, so no name — bare or qualified — could resolve
+// it and read_region returned symbol_not_found (the ANTS-3434 symptom). With
+// ANTS-3433 keeping the outline entry, the ANTS-3399 suffix fallback resolves
+// the bare name. This locks the two fixes together end-to-end.
+TEST(McpReadRegion, BareNameTwoWordReturnTypeMember) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QStringList src = {
+        "struct Grid {",                              // 1
+        "    int rows;",                              // 2
+        "};",                                         // 3
+        "",                                           // 4
+        "unsigned int Grid::cellCount() const {",     // 5  outline: Grid::cellCount
+        "    return rows * rows;",                     // 6
+        "}",                                          // 7
+    };
+    const QString p = writeFile(dir, "g.cpp", src);
+    // Qualified name resolves...
+    ReadRegion::Options oq; oq.symbol = "Grid::cellCount";
+    const QJsonObject envq = ReadRegion::extract(p, oq);
+    ASSERT_TRUE(envq.value("ok").toBool())
+        << envq.value("error").toString().toStdString();
+    EXPECT_EQ(envq.value("start_line").toInt(), 5);
+    // ...and so does the BARE name via the suffix fallback.
+    ReadRegion::Options ob; ob.symbol = "cellCount";
+    const QJsonObject envb = ReadRegion::extract(p, ob);
+    ASSERT_TRUE(envb.value("ok").toBool())
+        << envb.value("error").toString().toStdString();
+    EXPECT_EQ(envb.value("start_line").toInt(), 5);
+}
+
 // ANTS-3399 / ANTS-3404 — an AMBIGUOUS bare name (two classes share a method
 // name) must NOT silently pick one; it falls through to symbol_not_found so
 // the caller re-queries with the qualified name.

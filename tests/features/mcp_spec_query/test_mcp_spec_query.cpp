@@ -163,6 +163,19 @@ TEST(McpSpecQuery, WiringContract) {
            "INV-10b",
            "generalised id routing must carry an ANTS-3356 anchor");
 
+    // INV-11 — ANTS-3436: isValidSpecId accepts the numeric `NN` / `NN-topic`
+    // ids that list mode (specListEnvelope) emits as the file stem, so the
+    // read surface accepts the identifiers it hands out (a project named
+    // `17-emission-model.md` no longer gets bad_id on `id=17-emission-model`).
+    // The numeric-led arm keeps the `[A-Za-z0-9_-]` char class (no `/`/`.`),
+    // so routing to `docs/specs/<id>.md` cannot traverse out.
+    expect(contains(rcCpp, "[0-9]+(?:-[A-Za-z0-9_-]+)*"),
+           "INV-11a",
+           "isValidSpecId must include the numeric NN-topic arm (ANTS-3436)");
+    expect(contains(rcCpp, "ANTS-3436"),
+           "INV-11b",
+           "numeric-id arm must carry an ANTS-3436 anchor");
+
     // The INVs above are counted by expect(); enforce them here so a
     // regression actually fails the test (previously omitted — the
     // source-grep INVs were toothless).

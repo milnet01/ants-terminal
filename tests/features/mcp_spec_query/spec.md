@@ -23,6 +23,7 @@ behaviour is exercised indirectly through `invariant_check`
 | 8 | `callerCwdContractFor` in `src/claudeintegration.cpp` classifies `"spec_query"` as `Required` (explicit branch). |
 | 9 | ANTS-3360 list mode: `cmdSpecQuery` delegates the no-`id`/no-`path` case to the `specListEnvelope` helper; the list-mode code carries an `ANTS-3360` anchor. |
 | 10 | ANTS-3356 generalised id routing: any `<PREFIX>-NNNN` id resolves via the shared `resolveSpecRelForId` helper (exact `<id>.md`, then a `<id>-*.md` glob for topic-suffixed specs); carries an `ANTS-3356` anchor. |
+| 11 | ANTS-3436: `isValidSpecId` accepts the numeric `NN` / `NN-topic` ids that list mode emits as the file stem (`17-emission-model`), so the read surface accepts the identifiers it hands out; the numeric arm keeps the `[A-Za-z0-9_-]` char class (no traversal). Carries an `ANTS-3436` anchor. |
 
 ## Acceptance
 

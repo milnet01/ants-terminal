@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **find_sources emits a redirect hint on an empty result** (ANTS-3435)
+  An empty files[] now points at workspace_search / find_definition / find_caller so a symbol-led query is not mistaken for genuine absence.
+
 - **`feedback_log op:"prune_tracking"` — dedup superseded maintainer tracking rows (ANTS-3442)**
   Removes superseded duplicate maintainer tracking-table rows from the cross-session *_Ants_MCP_Feedback.md files, keeping each id's authoritative last-per-id row plus every heading/header/separator. Two-stage pass preserves mappedIds (a notes-cell-only id pins its row); idempotent, atomic, dry_run preview, optional scope_ids. The deduplication complement to compact_shipped's write-up collapse.
 
@@ -32,6 +35,21 @@ for security-relevant changes.
   On changelogs that group notes by feature (newest-first), the writer now stops and asks you to hand-edit, instead of adding an entry at the wrong place that you then have to move.
 
 ### Fixed
+
+- **feedback path derivation tolerates checkout-leaf vs package-name case/separator mismatch** (ANTS-3439)
+  A Fin_Break checkout resolves finbreak_Ants_MCP_Feedback.md via a normalized compare; a normalized-equal sibling is floated to candidates[0] without a false all_other_projects.
+
+- **roadmap_branch_drift scans legacy no-ID ants-v1 roadmaps** (ANTS-3437)
+  No more false scanned_bullets:0 all-clear; id-less bullets are identified by headline slug and the envelope flags roadmap_format.
+
+- **spec_query / spec_log accept the numeric NN-topic ids that spec list mode emits** (ANTS-3436)
+  e.g. id=17-emission-model no longer refuses bad_id; the read surface accepts the identifiers it hands out.
+
+- **read_region bare-name symbol-mode confirmed for two-word-return-type members** (ANTS-3434)
+  Verified as a downstream effect of the file_outline drop; a bare method name resolves the qualified member via the existing suffix fallback once it is kept in the outline.
+
+- **file_outline no longer drops out-of-line C++ members with two-word return types** (ANTS-3433)
+  unsigned int / long long / unsigned char / const T& return types on a Class::method definition are outlined again (and so resolvable via read_region symbol-mode).
 
 - **`roadmap_log op:bundle_row` now works end-to-end (ANTS-3432)**
   The bundle_row op (ANTS-1691) advertised cells/header/position/sort_col but never declared them as schema properties, so with additionalProperties:false the MCP client stripped the args and every call refused missing_field. Declared the four properties; the existing handler is now reachable. Regression-locked with a schema source-grep invariant.

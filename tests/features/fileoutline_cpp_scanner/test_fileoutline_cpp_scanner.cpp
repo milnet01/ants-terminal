@@ -218,3 +218,29 @@ TEST(FileOutlineCppScanner, InlineConstAccessorDetected) {
     EXPECT_TRUE(fns.contains(QStringLiteral("isSynchronous")));
     EXPECT_TRUE(fns.contains(QStringLiteral("mutableOne")));
 }
+
+// INV-11 (ANTS-3433) — an out-of-line member definition whose return type is
+// a two-word builtin (`unsigned int`, `long long`, `unsigned char`) or a
+// `const T&` — with the ref glued to EITHER the type or the name — must be
+// detected and emitted as the bare qualified `Class::method` (so read_region
+// symbol-mode resolves it). The old single-token return-type regex dropped
+// every one of these. Vestige feedback (2026-07-04).
+TEST(FileOutlineCppScanner, TwoWordReturnTypeMemberDetected) {
+    QTemporaryDir dir;
+    const QString path = writeCpp(dir, QStringLiteral(
+        "unsigned int Grid::cellCount(int row) const {\n"
+        "    return row;\n"
+        "}\n"
+        "long long Grid::checksum() {\n"
+        "    return 0;\n"
+        "}\n"
+        "unsigned char Grid::flags() const { return 0; }\n"
+        "const std::string& Grid::name() const { return name_; }\n"
+        "std::string &Grid::mutableName() { return name_; }\n"));
+    const QStringList fns = funcNames(path);
+    EXPECT_TRUE(fns.contains(QStringLiteral("Grid::cellCount")));
+    EXPECT_TRUE(fns.contains(QStringLiteral("Grid::checksum")));
+    EXPECT_TRUE(fns.contains(QStringLiteral("Grid::flags")));
+    EXPECT_TRUE(fns.contains(QStringLiteral("Grid::name")));       // & glued to type
+    EXPECT_TRUE(fns.contains(QStringLiteral("Grid::mutableName")));  // & glued to name
+}

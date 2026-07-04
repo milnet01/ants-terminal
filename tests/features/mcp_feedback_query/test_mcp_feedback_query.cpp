@@ -353,6 +353,54 @@ TEST(McpFeedbackQuery, NotFoundFloatsOwnFileFirst) {
     EXPECT_FALSE(e.value("all_other_projects").toBool());
 }
 
+// ANTS-3439 — the checkout-dir leaf need not equal the feedback file's
+// package-name stem (`Fin_Break` vs `finbreak`). With `path` omitted, a
+// normalized-equal sibling (lowercase, strip `_`/`-`) is adopted as the
+// derived default and reads back ok:true, path_derived:true.
+TEST(McpFeedbackQuery, DerivesDefaultAcrossLeafPackageMismatch) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    ASSERT_TRUE(QDir(root.path()).mkdir("Fin_Break"));
+    const QString caller = root.path() + "/Fin_Break";
+    // The file ships under the package name, not the checkout-dir leaf.
+    const QString derived =
+        writeFeedback(root, "finbreak_Ants_MCP_Feedback.md",
+                      "<!-- ants-mcp-feedback: 1 -->\n# x\n\n"
+                      "## 2026-07-04 — s\n\n- **What:** mismatch resolved.\n");
+    ASSERT_FALSE(derived.isEmpty());
+
+    RemoteControl rc(nullptr);
+    QJsonObject req; req["caller_cwd"] = caller;   // no "path"
+    const QJsonObject e = rc.cmdFeedbackQuery(req).object();
+    ASSERT_TRUE(e.value("ok").toBool());
+    EXPECT_EQ(QFileInfo(e.value("path").toString()).fileName(),
+              "finbreak_Ants_MCP_Feedback.md");
+    EXPECT_TRUE(e.value("path_derived").toBool());
+    EXPECT_TRUE(e.value("delta").toString().contains("mismatch resolved."));
+}
+
+// ANTS-3439 — a not_found envelope floats the normalized-equal sibling to
+// candidates[0] and does NOT flag all_other_projects (the checkout-dir leaf
+// `Fin_Break` and the file stem `finbreak` differ only by case/separators).
+TEST(McpFeedbackQuery, NotFoundNormalizedOwnMatch) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    ASSERT_TRUE(QDir(dir.path()).mkdir("Fin_Break"));
+    writeFeedback(dir, "AAA_Ants_MCP_Feedback.md", "# a\n");
+    const QString own =
+        writeFeedback(dir, "finbreak_Ants_MCP_Feedback.md", "# f\n");
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["path"] = dir.path() + "/Wrong_Ants_MCP_Feedback.md";  // 404s
+    req["caller_cwd"] = dir.path() + "/Fin_Break";
+    const QJsonObject e = rc.cmdFeedbackQuery(req).object();
+    EXPECT_EQ(e.value("code").toString(), "not_found");
+    const QJsonArray cands = e.value("candidates").toArray();
+    ASSERT_EQ(cands.size(), 2);
+    EXPECT_EQ(cands.at(0).toString(), own);          // normalized own file first
+    EXPECT_FALSE(e.value("all_other_projects").toBool());
+    EXPECT_TRUE(e.value("hint").toString().contains("normalizes"));
+}
+
 // T8 — byte cap: head kept, truncated true, full line count reported.
 TEST(McpFeedbackQuery, ByteCapKeepsHead) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());

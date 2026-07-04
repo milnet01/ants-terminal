@@ -19,6 +19,10 @@ via source-grep + a small runtime classifier check.
 | INV-9  | spec § 3 | Envelope emits integer-typed `scanned_bullets` / `with_sha` / `drift_count`. |
 | INV-10 | spec § 3 | Handler reuses `collectGitSnapshot(` rather than forking a fresh `rev-parse HEAD`. |
 | INV-11 | spec § 3 | `no_git_state` error code is listed in `docs/standards/mcp-error-codes.md`. |
+| INV-12 | ANTS-2057 | `against_refs` / `mis_branched` cross-branch surface (schema + envelope + HEAD-reachability gate). |
+| INV-13 | ANTS-2057 | Runtime cross-branch reachability — a commit on HEAD but absent from a sibling ref is `mis_branched`. |
+| INV-14 | ANTS-3437 | Legacy no-id enumeration: the id-less skip is disabled when NO bullet has an id (`bul.id.isEmpty() && !legacyNoId`); `bullet_id` comes from `bulletIdFor` (headline slug); envelope emits `roadmap_format`. |
+| INV-14b | ANTS-3437 | Precondition — a legacy ants-v1 ✅ bullet parses with an empty id (`parseBullets`), which is what tripped the wholesale skip. |
 
 ## Strategy
 

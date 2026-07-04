@@ -29,7 +29,17 @@ constexpr int kHeaderDocMaxLines = 30;
 
 const QRegularExpression &rxCppMember() {
     static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^[\w:]+\s+[\w:]+::[\w~]+\s*\()"));
+        // ANTS-3433 — the return type is one-or-more `[\w:<>]+` tokens each
+        // followed by a real separator `[\s*&]+` (the same shape as
+        // rxCppFunc's ANTS-2028 group). The old single `[\w:]+` return-type
+        // token dropped every out-of-line member whose return type is a
+        // space-separated builtin — `unsigned int`, `long long`, `unsigned
+        // char`, `const T&` — because the second word had no `::` and the
+        // qualified-name matcher never reached the real `Class::method`.
+        // The leading keyword lookahead rejects a col-0 `return Foo::bar(`
+        // statement (mirrors rxCppFunc's ANTS-2147 guard); the qualified
+        // name still starts at the run after the last return-type token.
+        QRegularExpression r(QStringLiteral(R"(^(?!(?:return|co_return|co_await|co_yield|throw|else)\b)(?:[\w:<>]+[\s*&]+)++[\w:]+::[\w~]+\s*\()"));
         r.optimize();
         return r;
     }();
@@ -630,9 +640,10 @@ QJsonObject compute(const QString &absPath,
                 // type (`JPH::BodyID Class::method`) — no space precedes
                 // that `::`, so the return type stayed glued onto the name
                 // and broke read_region symbol-mode lookups (Vestige
-                // feedback, 2/2 hits). rxCppMember guarantees a single-
-                // token return type + whitespace + the qualified name, so
-                // the name is simply the run after the last whitespace.
+                // feedback, 2/2 hits). rxCppMember's return type may now be
+                // multiple tokens (ANTS-3433, `unsigned int Class::method`),
+                // but the qualified name is still the run after the LAST
+                // whitespace, so the extraction is unchanged.
                 const int lparen = line.indexOf(QLatin1Char('('));
                 QString name = (lparen > 0) ? line.left(lparen).trimmed() : line;
                 int lastWs = -1;
@@ -640,6 +651,13 @@ QJsonObject compute(const QString &absPath,
                     if (name.at(i).isSpace()) { lastWs = i; break; }
                 }
                 if (lastWs >= 0) name = name.mid(lastWs + 1);
+                // ANTS-3433 — a `T &Class::method` / `T *Class::method` form
+                // glues the ref/ptr onto the name token; strip it so the
+                // emitted symbol is the bare `Class::method` read_region wants.
+                while (!name.isEmpty() && (name.at(0) == QLatin1Char('&') ||
+                                          name.at(0) == QLatin1Char('*'))) {
+                    name = name.mid(1);
+                }
                 offer("func", name, line);
                 funcDefOpensBody = !line.trimmed().endsWith(QLatin1Char(';'));
             } else if (!inFuncBody && (m = rxCppFunc().match(line)).hasMatch()) {

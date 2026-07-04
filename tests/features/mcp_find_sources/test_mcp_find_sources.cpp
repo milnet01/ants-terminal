@@ -228,5 +228,18 @@ TEST(McpFindSources, WiringContract) {
     expect(contains(ciCpp, "props[\"symbol\"]"),
            "INV-12: schema declares the `symbol` alias prop");
 
+    // INV-13 (ANTS-3435) — an empty result carries a redirect `hint` so a
+    // caller doesn't read files_count:0 as a genuine "no such code". The
+    // hint names the exact-match verbs (workspace_search / find_definition /
+    // find_caller) find_sources' filename/keyword ranking can't substitute for.
+    expect(contains(rcCpp, "if (files.isEmpty())") &&
+               contains(rcCpp, "out[QStringLiteral(\"hint\")]"),
+           "INV-13: cmdFindSources emits a hint on an empty result");
+    expect(contains(rcCpp, "ANTS-3435"),
+           "INV-13: empty-result hint carries an ANTS-3435 anchor");
+    expect(contains(rcCpp, "workspace_search") &&
+               contains(rcCpp, "find_caller"),
+           "INV-13: hint redirects to workspace_search / find_caller");
+
     EXPECT_EQ(0, expect_failures());
 }

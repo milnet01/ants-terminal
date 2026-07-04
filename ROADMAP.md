@@ -18078,35 +18078,40 @@ their feedback-file tracking tables needed stamping.
   Source: RetroArch-feedback-2026-07-03 (Bundle 88).
   Resolved (2026-07-04): declared cells/header/position/sort_col in the roadmap_log inputSchema (claudeintegration.cpp) so additionalProperties:false no longer strips the bundle_row args before the handler. Added regression INV-13 (source-grep the schema declares all four props — the handler test-seam bypassed the schema, which is why the ANTS-1691 gap shipped invisibly) + widened the mcp_roadmap_log_verb scrape window 40→44 KiB. test_claude 1381/1381 green. Live server needs a relaunch to expose the new schema.
 
-- 📋 [ANTS-3433] **file_outline (.cpp) silently drops every member function whose return type is the two-word builtin `unsigned int` (also long long / unsigned char / const T&), breaking read_region symbol-mode for them.**
+- ✅ [ANTS-3433] **file_outline (.cpp) silently drops every member function whose return type is the two-word builtin `unsigned int` (also long long / unsigned char / const T&), breaking read_region symbol-mode for them.**
   Repro (build cb468d5): file_outline engine/audio/audio_engine.cpp omits loadBuffer/acquireSource/all playSound* overloads/playSynth/loadReverbIr (all `unsigned int AudioEngine::X(...)`), while void/bool/float/std::string siblings on the same class are present. Same declarator-parser class as ANTS-3412/3399 but triggered by the space inside a multi-token builtin return type. Fix: treat multi-token builtin/cv/ref return types like a single-token return type when locating the declarator. Regression corpus: `unsigned int Foo::bar(...)`, `long long Foo::baz(...)`, `unsigned int Foo::qux() const`.
   **Layman:** The file-outline tool skips methods that return certain multi-word types, so you can't look them up by name.
   Kind: fix.
   Source: Vestige-feedback-2026-07-03 (AX2-R2).
+  Resolved (2026-07-04): rxCppMember now accepts a multi-token return type (mirrors rxCppFunc's ANTS-2028 group) + a leading keyword lookahead; extraction strips a leading &/* on the name. Two-word builtin return types (unsigned int / long long / unsigned char / const T&) on out-of-line members are outlined again. Test: FileOutlineCppScanner.TwoWordReturnTypeMemberDetected.
 
-- 📋 [ANTS-3434] **read_region symbol-mode requires the qualified outline name (Class::method); a bare method name returns symbol_not_found for a non-dropped method — verify ANTS-3399 suffix-fallback covers the qualified-only case.**
+- ✅ [ANTS-3434] **read_region symbol-mode requires the qualified outline name (Class::method); a bare method name returns symbol_not_found for a non-dropped method — verify ANTS-3399 suffix-fallback covers the qualified-only case.**
   ANTS-3399 shipped a bare-name suffix fallback (bare createStaticBody -> PhysicsWorld::createStaticBody). Vestige on build cb468d5 reports bare `setReverbWetGain` still returns symbol_not_found for a present (void-returning) method. Confirm whether the suffix fallback reaches this case or has a gap; if a gap, extend it (unambiguous ::<name> suffix match; on ambiguity return candidate qualified names, not bare not-found). LOW/UX.
   **Layman:** You have to type the full ClassName::method to look a method up; the short name should work too.
   Kind: investigate.
   Source: Vestige-feedback-2026-07-03 (AX2-R2).
+  Resolved (2026-07-04): verified this was a downstream symptom of ANTS-3433 — the member's outline entry was dropped, so no name could resolve it. The ANTS-3399 suffix-fallback already covers a bare method name for an unambiguous non-dropped member. Locked end-to-end by McpReadRegion.BareNameTwoWordReturnTypeMember (bare + qualified both resolve a two-word-return member).
 
-- 📋 [ANTS-3435] **find_sources returns files_scanned:0 + all-unmatched (not a genuine no-match) when the topic leads with a symbol name mixed with prose; no hint to redirect to workspace_search/find_caller.**
+- ✅ [ANTS-3435] **find_sources returns files_scanned:0 + all-unmatched (not a genuine no-match) when the topic leads with a symbol name mixed with prose; no hint to redirect to workspace_search/find_caller.**
   Repro: find_sources(topic="build_registry caller composition root app state media registry startup") -> {files:[], files_scanned:0, unmatched_terms:[all 10]}. workspace_search over the same intent found both call-sites. files_scanned:0 on a non-empty project reads like an early-bail. Fix: when the token set is non-empty but files_scanned:0, emit a hint ('topic led with a symbol name — try find_caller/find_definition or workspace_search for an exact symbol'), or scan+score even when a leading token is a known symbol. LOW.
   **Layman:** When you search for who-calls-X using a descriptive phrase, the tool quietly scans nothing instead of saying why.
   Kind: enhancement.
   Source: MAME-Curator-feedback-2026-07-03 (mame-curator-1081).
+  Resolved (2026-07-04): cmdFindSources emits a redirect hint on an empty result (files[]==[]) → workspace_search / find_definition / find_caller, so files_count:0 no longer reads as genuine absence. Test: McpFindSources INV-13.
 
-- 📋 [ANTS-3436] **spec_query id= rejects the `NN-topic` spec ids that its OWN list mode emits (bad_id); only path= works — the read surface should accept the identifiers it hands out.**
+- ✅ [ANTS-3436] **spec_query id= rejects the `NN-topic` spec ids that its OWN list mode emits (bad_id); only path= works — the read surface should accept the identifiers it hands out.**
   Repro: spec_query (no id/path) list mode returns id:"17-saved-playlists"; spec_query id="17-saved-playlists" -> bad_id; spec_query path="docs/specs/17-saved-playlists.md" works. Same round-trip-mismatch class as ANTS-3400. NN-topic.md is a common spec-naming convention. Fix: id router recognises the leading-number NN / NN-topic shape (route to docs/specs/<id>.md, same resolver list mode uses), in addition to <PREFIX>-NNNN / phase_<NN>_<topic>; or on bad_id whose value matches an existing docs/specs/*.md basename return a file_stem_hint (like find_definition).
   **Layman:** The spec tool lists specs with a short name but won't accept that same short name to open one.
   Kind: fix.
   Source: Album-Builder-feedback-2026-07-03 (Spec 17 Phase D).
+  Resolved (2026-07-04): isValidSpecId gained a numeric-led arm ([0-9]+(?:-[A-Za-z0-9_-]+)*), so spec_query/spec_log id= accepts the NN-topic ids list mode emits (e.g. 17-emission-model); char class stays traversal-safe. Error messages updated. Test: McpSpecQuery INV-11.
 
-- 📋 [ANTS-3437] **roadmap_branch_drift returns scanned_bullets:0 (false 'no drift' all-clear) on a legacy no-ID ants-v1 roadmap — inherits the [PROJ-NNNN] bullet filter ANTS-1622/2059 already fixed elsewhere.**
+- ✅ [ANTS-3437] **roadmap_branch_drift returns scanned_bullets:0 (false 'no drift' all-clear) on a legacy no-ID ants-v1 roadmap — inherits the [PROJ-NNNN] bullet filter ANTS-1622/2059 already fixed elsewhere.**
   Repro: roadmap_branch_drift(caller_cwd=RetroArch, against_refs=[local/fixes-2026-04]) -> scanned_bullets:0, drift:[], drift_count:0, while the roadmap cites 93 unique fix SHAs in `Fixed <sha>` form. The SHA detector is fine; the gap is upstream at bullet enumeration. Fix: apply the ANTS-2059 walkAntsV1Bullets path (or ANTS-1622 include_narrator_bullets fallback) to the drift enumeration; at minimum emit a legacy_format_hint when scanned_bullets:0 on a non-empty file so the clean verdict isn't mistaken for 'nothing drifted'.
   **Layman:** The 'are my fixes on the right branch' check silently checks nothing on older roadmaps and reports all-clear.
   Kind: fix.
   Source: RetroArch-feedback-2026-07-03 (Bundle 89).
+  Resolved (2026-07-04): roadmap_branch_drift detects a legacy no-ID roadmap (no bullet has an id) and disables the id-less narrator skip in both the drift and mis_branched loops, identifying bullets by headline slug via bulletIdFor and flagging roadmap_format:ants-v1-legacy-noid. No more false scanned_bullets:0. Tests: mcp_roadmap_branch_drift INV-14 / INV-14b.
 
 - 📋 [ANTS-3438] **codebase_index returns counts-only (file_count/roles/languages), not the symbols/lanes/files map the SessionStart hint advertises ('query before grep') — callers fall back to Bash find.**
   Repro (build cb468d5): codebase_index returns {file_count, roles, languages, lane_count, lanes, cache_path} with no files array and no symbols; the hint's 'query before grep' leaves no queryable map. Fix option A: add opt-in include_files:true (+ include_symbols:true) emitting the file list (+per-file role/language) and a symbol digest when cheap. Option B: if metadata-only by design, reword the SessionStart hint to name the verb that returns the map and describe codebase_index as index-freshness/counts. MEDIUM.
@@ -18114,11 +18119,12 @@ their feedback-file tracking tables needed stamping.
   Kind: enhancement.
   Source: Fin-Break-feedback-2026-07-02/03 (FIBR-0006/0007).
 
-- 📋 [ANTS-3439] **feedback_query/feedback_log path derivation misses a checkout-dir-leaf<->package-name mismatch (Fin_Break vs finbreak) and sets all_other_projects:true even when a normalized-equal sibling is in candidates[].**
+- ✅ [ANTS-3439] **feedback_query/feedback_log path derivation misses a checkout-dir-leaf<->package-name mismatch (Fin_Break vs finbreak) and sets all_other_projects:true even when a normalized-equal sibling is in candidates[].**
   Repro: from /mnt/Games/Scripts/Linux/Fin_Break, feedback_query with no path -> not_found, all_other_projects:true, candidates includes finbreak_Ants_MCP_Feedback.md, hint 'none matches leaf Fin_Break'. Complements ANTS-3426 (trailing _Ants) and ANTS-3366 (candidates). Fix: compare a NORMALIZED leaf (casefold + fold [-_ ]) against candidate basenames; if a normalized-equal candidate exists, do NOT set all_other_projects:true and float it as the primary hint ('did you mean finbreak_...?'). Auto-resolve optional (risk of wrong-file write) — maintainer's call. LOW.
   **Layman:** When a project folder and its package name differ only by capitals or dashes, the tool wrongly says 'no feedback file for you'.
   Kind: fix.
   Source: Fin-Break-feedback-2026-07-03 (FIBR-0007).
+  Resolved (2026-07-04): feedback path derivation + fbNotFound own-match fall back to a normalized compare (normalizeFeedbackStem: lowercase, strip non-alphanumerics), so a Fin_Break checkout resolves finbreak_Ants_MCP_Feedback.md and a normalized-equal sibling is floated to candidates[0] without all_other_projects. Tests: McpFeedbackQuery.DerivesDefaultAcrossLeafPackageMismatch / NotFoundNormalizedOwnMatch.
 
 - 📋 [ANTS-3440] **roadmap_log op:flip returns an MCP -32000 transport timeout even though the write committed to disk — false-failure risks a non-idempotent double-apply on retry.**
   Repro (build cb468d5): roadmap_log op:flip id=CL-0043 to_status=shipped note=<sentences> on an ants-v1 roadmap returned -32000 transport timeout; a follow-up roadmap_query showed the flip APPLIED (status ✅, note present). changelog_log op:add in the same batched call returned normally, so it's specific to flip. Same transport-deadline class as ANTS-3396 but on a fast local write, worse because non-idempotent. Fix: return before the transport deadline (defer/async the post-write indexing/etag recompute); if the deadline is hit after the durable write, surface a distinct 'write committed, response deadline exceeded' signal; consider deduping an identical trailing resolution note so a retry is safe. MEDIUM/HIGH.

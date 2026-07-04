@@ -2267,6 +2267,18 @@ QJsonDocument RemoteControl::cmdFindSources(const QJsonObject &req) {
     out[QStringLiteral("unmatched_terms")] = unmatched;
     out[QStringLiteral("files_scanned")]   = res.filesScanned;
     out[QStringLiteral("truncated")]       = res.truncated;
+    // ANTS-3435 — an empty result must not read as a genuine "no such code".
+    // find_sources ranks by FILENAME + keyword frequency, so a topic that
+    // leads with a bare symbol name (e.g. "FooBar does X and Y") often
+    // matches nothing here even though the symbol exists. Redirect the caller
+    // to the exact-match verbs rather than letting them conclude absence.
+    if (files.isEmpty()) {
+        out[QStringLiteral("hint")] = QStringLiteral(
+            "no files matched by filename/keyword ranking — for a specific "
+            "symbol, try workspace_search (exact string/regex), "
+            "find_definition (where it's defined), or find_caller (call "
+            "sites); find_sources is best for a topical/prose description");
+    }
     return QJsonDocument(out);
 }
 
@@ -10225,6 +10237,27 @@ QJsonArray feedbackSiblingCandidates(const QString &candidatePath) {
     return out;
 }
 
+// ANTS-3439 — normalize a feedback-file stem (or a checkout-dir leaf) to a
+// case- and separator-insensitive token, so a checkout named `Fin_Break`
+// matches the `finbreak_Ants_MCP_Feedback.md` its package ships under. Lower-
+// cases and drops every non-alphanumeric char (`_`, `-`, spaces, `.`).
+QString normalizeFeedbackStem(const QString &s) {
+    QString out;
+    out.reserve(s.size());
+    for (const QChar &c : s)
+        if (c.isLetterOrNumber()) out.append(c.toLower());
+    return out;
+}
+
+// Strip the trailing kFeedbackSuffix from a feedback filename → its stem.
+// (`sizeof - 1` = suffix length without the NUL.)
+QString feedbackStemOf(const QString &fileName) {
+    QString stem = fileName;
+    if (stem.endsWith(QLatin1String(kFeedbackSuffix)))
+        stem.chop(static_cast<int>(sizeof(kFeedbackSuffix)) - 1);
+    return stem;
+}
+
 // ANTS-3366: augment a feedback not_found envelope with the sibling
 // candidate list (+ a one-line hint) when any exist.
 // ANTS-3376: when `callerLeaf` is known, float the caller's OWN file
@@ -10240,6 +10273,7 @@ QJsonObject fbNotFound(const QString &message, const QString &resolved,
         return e;
 
     bool ownMatch = false;
+    bool normMatch = false;   // ANTS-3439 — leaf<->package normalized match
     if (!callerLeaf.isEmpty()) {
         const QString wanted = callerLeaf + QLatin1String(kFeedbackSuffix);
         for (int i = 0; i < cands.size(); ++i) {
@@ -10250,6 +10284,23 @@ QJsonObject fbNotFound(const QString &message, const QString &resolved,
                 break;
             }
         }
+        if (!ownMatch) {
+            // ANTS-3439 — the checkout-dir leaf need not equal the file's
+            // package-name stem (`Fin_Break` vs `finbreak`). Fall back to a
+            // normalized comparison so a normalized-equal sibling is treated
+            // as this project's own file, not an "other project".
+            const QString normLeaf = normalizeFeedbackStem(callerLeaf);
+            for (int i = 0; i < cands.size(); ++i) {
+                const QString base =
+                    QFileInfo(cands.at(i).toString()).fileName();
+                if (normalizeFeedbackStem(feedbackStemOf(base)) == normLeaf) {
+                    if (i != 0)
+                        cands.prepend(cands.takeAt(i));
+                    normMatch = true;
+                    break;
+                }
+            }
+        }
     }
 
     e["candidates"] = cands;
@@ -10258,6 +10309,12 @@ QJsonObject fbNotFound(const QString &message, const QString &resolved,
             "no file at that path; this project's own %1 is listed "
             "first under candidates").arg(callerLeaf
             + QLatin1String(kFeedbackSuffix));
+    } else if (normMatch) {
+        e["hint"] = QStringLiteral(
+            "no file at that path; this project's own feedback file is "
+            "listed first under candidates — its basename normalizes to the "
+            "caller leaf \"%1\" (the checkout-dir name and the file's "
+            "package-name stem differ; ANTS-3439)").arg(callerLeaf);
     } else if (!callerLeaf.isEmpty()) {
         e["all_other_projects"] = true;
         e["hint"] = QStringLiteral(
@@ -10303,11 +10360,31 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                         "(no resolvable caller_cwd to derive a default)"));
             return false;
         }
+        const QString sharedRoot = QFileInfo(rootCanonical).absolutePath();
         const QString derived = QDir::cleanPath(
-            QFileInfo(rootCanonical).absolutePath()
-            + QLatin1Char('/') + leaf + QLatin1String(kFeedbackSuffix));
+            sharedRoot + QLatin1Char('/') + leaf
+            + QLatin1String(kFeedbackSuffix));
         resolvedOut = derived;
         existsOut   = QFileInfo::exists(derived);
+        if (!existsOut) {
+            // ANTS-3439 — the checkout-dir leaf may not equal the feedback
+            // file's package-name stem (`Fin_Break` vs `finbreak`). If a
+            // sibling's stem normalizes (lowercase, strip non-alphanumerics)
+            // to the same token as the leaf, adopt that sibling as the derived
+            // default rather than pointing at a name that will never exist.
+            const QString normLeaf = normalizeFeedbackStem(leaf);
+            const QDir sdir(sharedRoot);
+            const QStringList sibs = sdir.entryList(
+                {QLatin1String("*") + QLatin1String(kFeedbackSuffix)},
+                QDir::Files, QDir::Name);
+            for (const QString &n : sibs) {
+                if (normalizeFeedbackStem(feedbackStemOf(n)) == normLeaf) {
+                    resolvedOut = sdir.absoluteFilePath(n);
+                    existsOut   = true;
+                    break;
+                }
+            }
+        }
         if (derivedOut) *derivedOut = true;
         return true;
     }
@@ -11256,8 +11333,9 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
     if (!id.isEmpty() && pathArg.isEmpty() && !isValidSpecId(id)) {
         return slErr(QStringLiteral("bad_id"),
                      QStringLiteral("spec_log: id must match <PREFIX>-NNNN "
-                                    "(e.g. ANTS-1963, DOOM-0009) or "
-                                    "phase_<NN>_<topic>"));
+                                    "(e.g. ANTS-1963, DOOM-0009), "
+                                    "phase_<NN>_<topic>, or a numeric "
+                                    "<NN>-<topic> (e.g. 17-emission-model)"));
     }
 
     // Root: caller_cwd canonical (m_main-independent, mirrors
@@ -13758,9 +13836,18 @@ bool isValidSpecId(const QString &id) {
     // routed to docs/specs/ and resolved by resolveSpecRelForId (exact
     // `<id>.md`, then a `<id>-*.md` glob for topic-suffixed files);
     // `path` stays the explicit override.
+    // ANTS-3436 — arm 3: a numeric-led `NN` / `NN-topic` id. list mode
+    // (`specListEnvelope`) emits `id` = the file stem, so a project whose
+    // specs are named `17-emission-model.md` (Album Builder) got `id:
+    // "17-emission-model"` back, then had that exact id REJECTED by this
+    // guard (arm 1 needs a leading letter; arm 2 needs `phase_`). The read
+    // surface must accept the identifiers its own list mode hands out. The
+    // char class stays `[A-Za-z0-9_-]` (no `/`/`.`), so routing to
+    // `docs/specs/<id>.md` cannot traverse out of the specs dir.
     static const QRegularExpression re(
         QStringLiteral("^([A-Za-z][A-Za-z0-9_-]*-[0-9]+"
-                       "|phase_[0-9]+_[A-Za-z0-9_-]+)$"));
+                       "|phase_[0-9]+_[A-Za-z0-9_-]+"
+                       "|[0-9]+(?:-[A-Za-z0-9_-]+)*)$"));
     return re.match(id).hasMatch();
 }
 
@@ -13980,8 +14067,9 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
         return QJsonDocument(sqErr(
             QStringLiteral("bad_id"),
             QStringLiteral("spec_query: id must match <PREFIX>-NNNN "
-                           "(e.g. ANTS-1963, DOOM-0009) or "
-                           "phase_<NN>_<topic>, or pass an explicit "
+                           "(e.g. ANTS-1963, DOOM-0009), "
+                           "phase_<NN>_<topic>, a numeric <NN>-<topic> "
+                           "(e.g. 17-emission-model), or pass an explicit "
                            "`path` (ANTS-1906)")));
     }
     const QString rootCanonical = resolveRootCanonical(m_main, req);
@@ -18206,6 +18294,29 @@ QJsonDocument RemoteControl::cmdRoadmapBranchDrift(const QJsonObject &req) {
         return (p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0);
     };
 
+    // ANTS-3437 — a legacy ants-v1 roadmap carries no [PREFIX-NNNN] ids, so
+    // EVERY ✅ bullet has an empty `id` and the id-less guard below would
+    // skip the whole file, reporting a false scanned_bullets:0 / "no drift"
+    // all-clear even when the roadmap cites dozens of fix SHAs (RetroArch /
+    // Album-Builder feedback). The id-less skip exists only to drop
+    // narrator / rollup bullets in a MODERN roadmap. Detect the legacy case:
+    // when NO bullet in the file has an id, disable the skip and identify
+    // each bullet by a short headline slug instead. (A modern GFM roadmap
+    // never reaches the empty-id branch — its adapter assigns a
+    // content-hash id — so this only engages for native no-id ants-v1.)
+    bool anyBulletHasId = false;
+    for (const auto &b : bullets) {
+        if (!b.id.isEmpty()) { anyBulletHasId = true; break; }
+    }
+    const bool legacyNoId = !anyBulletHasId && !bullets.isEmpty();
+    auto bulletIdFor = [&](const auto &bul) -> QString {
+        if (!bul.id.isEmpty()) return bul.id;
+        QString slug = bul.headlineFull.isEmpty() ? bul.headline
+                                                  : bul.headlineFull;
+        slug = slug.trimmed().left(60);
+        return slug.isEmpty() ? QStringLiteral("(untitled)") : slug;
+    };
+
     // Walk ✅ bullets; tally drift. The loop variable is renamed `bul`
     // (not the conventional `b`) so it doesn't trip the source-grep
     // tripwire in tests/features/roadmap_query_section_index/ that
@@ -18218,7 +18329,9 @@ QJsonDocument RemoteControl::cmdRoadmapBranchDrift(const QJsonObject &req) {
     bool driftTruncated = false;
     for (const auto &bul : bullets) {
         if (bul.status != QStringLiteral("✅")) continue;
-        if (bul.id.isEmpty()) continue;  // narrator / rollup bullets
+        // ANTS-3437 — skip id-less narrator bullets only in a modern roadmap;
+        // a legacy no-id roadmap scans them all (identified by headline slug).
+        if (bul.id.isEmpty() && !legacyNoId) continue;
         ++scannedBullets;
 
         const QString joined = bul.headline + QChar('\n') + bul.body;
@@ -18239,7 +18352,7 @@ QJsonDocument RemoteControl::cmdRoadmapBranchDrift(const QJsonObject &req) {
         for (const QString &sha : shas) {
             if (isReachable(sha)) continue;
             QJsonObject o;
-            o["bullet_id"]  = bul.id;
+            o["bullet_id"]  = bulletIdFor(bul);
             o["cited_sha"]  = sha;
             o["reason"]     = existsInGit(sha)
                 ? QStringLiteral("sha_not_in_HEAD")
@@ -18307,7 +18420,8 @@ QJsonDocument RemoteControl::cmdRoadmapBranchDrift(const QJsonObject &req) {
             return false;
         };
         for (const auto &bul : bullets) {
-            if (bul.status != QStringLiteral("✅") || bul.id.isEmpty())
+            if (bul.status != QStringLiteral("✅") ||
+                (bul.id.isEmpty() && !legacyNoId))   // ANTS-3437 — legacy no-id
                 continue;
             const QString joined = bul.headline + QChar('\n') + bul.body;
             QStringList shas;
@@ -18327,7 +18441,7 @@ QJsonDocument RemoteControl::cmdRoadmapBranchDrift(const QJsonObject &req) {
                         missingFrom.append(ref);
                 if (missingFrom.isEmpty()) continue;
                 QJsonObject o;
-                o["bullet_id"]    = bul.id;
+                o["bullet_id"]    = bulletIdFor(bul);
                 o["cited_sha"]    = sha;
                 o["headline"]     = bul.headline;
                 o["missing_from"] = missingFrom;
@@ -18350,6 +18464,10 @@ QJsonDocument RemoteControl::cmdRoadmapBranchDrift(const QJsonObject &req) {
     env["drift_count"]      = drift.size();
     env["drift"]            = drift;
     env["path"]             = QFileInfo(roadmapPath).absoluteFilePath();
+    // ANTS-3437 — flag the legacy no-id enumeration path so a caller does not
+    // mistake bullet_id headline-slugs for real ids (and so a scanned_bullets
+    // count on a no-id roadmap is understood as "scanned via slug", not empty).
+    if (legacyNoId)        env["roadmap_format"]     = QStringLiteral("ants-v1-legacy-noid");
     if (driftTruncated)    env["drift_truncated"]    = true;
     if (truncatedHistory)  env["truncated_history"]  = true;
     // ANTS-2057 — only present when against_refs[] was supplied, so the

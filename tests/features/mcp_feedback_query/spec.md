@@ -31,6 +31,13 @@ Invariants exercised (see docs/specs/ANTS-1961.md §3 / §6):
   `not_found` candidate list floats the caller's own file to
   `candidates[0]`, or sets `all_other_projects:true` when every sibling
   belongs to a different project.
+- ANTS-3439 — the checkout-dir leaf need not equal the file's
+  package-name stem (`Fin_Break` vs `finbreak`). Derivation and the
+  `not_found` own-match both fall back to a normalized comparison
+  (lowercase, strip non-alphanumerics): a normalized-equal sibling is
+  adopted as the derived default (reads back `path_derived:true`) and is
+  floated to `candidates[0]` without `all_other_projects` (`hint` notes
+  the normalization).
 - T8 — byte cap: a delta larger than max_bytes returns the head,
   `truncated:true`, full `delta_line_count`.
 
