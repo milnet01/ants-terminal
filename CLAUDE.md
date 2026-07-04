@@ -214,6 +214,13 @@ RetroDB) write MCP observations to `*_Ants_MCP_Feedback.md` files under
 `/mnt/Games/Scripts/Linux/`. Format spec:
 [`docs/standards/mcp-feedback-files.md`](docs/standards/mcp-feedback-files.md).
 
+> **v2 redesign in flight (ANTS-3443, 2026-07-04):** the format spec above is
+> moving to an inline-ID model — the maintainer fills each finding's
+> `**Proposed ID:**` slot in place and status is derived live from the roadmap,
+> so there are **no tracking tables**. The `op:append_tracking` flow described
+> below is the **current v1** behaviour and stays valid until the v2 verbs
+> (`assign_id` / `compact_resolved` / `migrate_v2`) ship.
+
 At session start, `session_orient` surfaces a `feedback_pending` block
 (ANTS-1964) — a per-file count of un-triaged contributor addenda across the
 shared-root files, so you see which need triage without one `feedback_query`
@@ -235,6 +242,10 @@ Reviewing feedback efficiently (don't re-read the whole file):
   (heading kept; gated ✅-shipped + above-watermark + single-finding +
   idempotent; batch, atomic, `dry_run` byte report) — the sanctioned way to
   reclaim bytes as these files grow, without a raw hand-edit.
+  `op:"prune_tracking"` (ANTS-3442, maintainer, shipped 2026-07-04) removes
+  superseded duplicate tracking-table rows, keeping each id's last-per-id row
+  (idempotent, atomic, `dry_run`). Both are v1-table ops — under the ANTS-3443
+  v2 redesign (see the pointer above) they become legacy.
 
 Triage flow: `feedback_query` the tail → assign IDs via `roadmap_log
 op:append` → `feedback_log op:"append_tracking"` to stamp the mapping
