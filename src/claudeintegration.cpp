@@ -8381,9 +8381,69 @@ void ClaudeIntegration::onMcpConnection() {
                         "roadmap_query). \"default\" (omitted) keeps the "
                         "lean envelope (ANTS-2080 append; ANTS-2089 flip).");
 
+                    // ANTS-3432 — op:"bundle_row" params. The handler
+                    // (cmdRoadmapLogBundleRow) has always read these, but
+                    // they were never declared here, so with
+                    // additionalProperties:false the client stripped them
+                    // and `cells` reached the handler empty → missing_field.
+                    // Declaring them completes the ANTS-1691 wiring.
+                    QJsonObject cellsProp;
+                    cellsProp["type"] = "array";
+                    {
+                        QJsonObject item;
+                        item["type"] = "string";
+                        cellsProp["items"] = item;
+                    }
+                    cellsProp["description"] = QStringLiteral(
+                        "op:\"bundle_row\" — the row's cells, one string per "
+                        "column (non-empty). Must match the table's column "
+                        "count (or `header`'s length when creating the "
+                        "table), else column_mismatch. Each cell is "
+                        "pipe-escaped and its newlines folded to <br> so a "
+                        "`|` inside a cell can't corrupt the column count.");
+
+                    QJsonObject headerProp;
+                    headerProp["type"] = "array";
+                    {
+                        QJsonObject item;
+                        item["type"] = "string";
+                        headerProp["items"] = item;
+                    }
+                    headerProp["description"] = QStringLiteral(
+                        "op:\"bundle_row\" — optional column names. When the "
+                        "section has no Markdown table yet, `header` creates "
+                        "one (header row + separator + the first data row); "
+                        "when a table exists it is validated against the "
+                        "column count. Omit to append to an existing table.");
+
+                    QJsonObject positionProp;
+                    positionProp["type"] = "string";
+                    {
+                        QJsonArray e;
+                        e.append("end");
+                        e.append("sorted");
+                        positionProp["enum"] = e;
+                    }
+                    positionProp["description"] = QStringLiteral(
+                        "op:\"bundle_row\" — where to insert the new row. "
+                        "\"end\" (default) appends after the last data row; "
+                        "\"sorted\" inserts in ascending order by `sort_col` "
+                        "(numeric-aware collation) to keep the table sorted.");
+
+                    QJsonObject sortColProp;
+                    sortColProp["type"]    = "integer";
+                    sortColProp["minimum"] = 0;
+                    sortColProp["description"] = QStringLiteral(
+                        "op:\"bundle_row\" — 0-based column index used when "
+                        "`position` is \"sorted\". Ignored otherwise.");
+
                     QJsonObject props;
                     props["caller_cwd"]    = callerProp;
                     props["op"]            = opProp;
+                    props["cells"]         = cellsProp;     // ANTS-3432
+                    props["header"]        = headerProp;    // ANTS-3432
+                    props["position"]      = positionProp;  // ANTS-3432
+                    props["sort_col"]      = sortColProp;   // ANTS-3432
                     props["locators"]      = locatorsProp;
                     props["bullets"]       = bulletsProp;
                     props["section"]       = sectionProp;

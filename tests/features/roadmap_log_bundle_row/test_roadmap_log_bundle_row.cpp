@@ -296,3 +296,27 @@ TEST(RoadmapLogBundleRow, Inv12EnvelopeShape) {
     EXPECT_TRUE(out.contains("row_index"));
     EXPECT_GT(out["bytes_written"].toInt(), 0);
 }
+
+// INV-13 (ANTS-3432) — the roadmap_log inputSchema must DECLARE the
+// bundle_row params. The handler has always read cells/header/position/
+// sort_col, but they were never registered in the schema `properties`;
+// with additionalProperties:false the MCP client stripped them, so `cells`
+// reached the handler empty and every real bundle_row call refused
+// missing_field. Every INV above exercises the handler test-seam, which
+// bypasses the schema — hence the gap shipped invisibly. This source-grep
+// locks the schema declaration so the op stays reachable end-to-end.
+#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
+#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#endif
+TEST(RoadmapLogBundleRow, Inv13SchemaDeclaresBundleRowParams) {
+    const std::string ci =
+        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    ASSERT_FALSE(ci.empty());
+    for (const char *key : {"props[\"cells\"]", "props[\"header\"]",
+                            "props[\"position\"]", "props[\"sort_col\"]"}) {
+        EXPECT_NE(ci.find(key), std::string::npos)
+            << "roadmap_log inputSchema does not declare " << key
+            << " — bundle_row args will be stripped by "
+               "additionalProperties:false";
+    }
+}

@@ -30,6 +30,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_log op:bundle_row` now works end-to-end (ANTS-3432)**
+  The bundle_row op (ANTS-1691) advertised cells/header/position/sort_col but never declared them as schema properties, so with additionalProperties:false the MCP client stripped the args and every call refused missing_field. Declared the four properties; the existing handler is now reachable. Regression-locked with a schema source-grep invariant.
+
 - **Bulk debt-sweep defer now warns before dumping a whole scan into the roadmap.** (ANTS-3346)
   The Project Audit "Defer all to ROADMAP" button (and the `debt_sweep_defer` MCP verb) used to fold every finding of a scan — real, false-positive, and mechanical alike — straight in as tracked items; that is how 1,106 false positives once landed there. Deferring more than 25 findings at once now asks for confirmation in the dialog (pointing you at "Triage with AI" first) and is refused by the MCP verb unless it passes `triaged:true`. The guard keys on how many findings you defer, not on whether they look auto-fixable — a scan that is mostly auto-fixable can still be mostly false positives.
 

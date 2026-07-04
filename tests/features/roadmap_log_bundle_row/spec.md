@@ -64,6 +64,14 @@ so it lives only here (no `docs/specs/ANTS-1691.md`).
 - **INV-12** success envelope — `{ok:true, file:"ROADMAP.md", section,
   row_index (1-based among data rows), columns, created_table,
   bytes_written>0}`.
+- **INV-13** (ANTS-3432) schema wiring — source-grep
+  `src/claudeintegration.cpp`: the roadmap_log inputSchema `properties`
+  DECLARES `cells`, `header`, `position`, `sort_col`. Without this, the
+  schema's `additionalProperties:false` makes the MCP client strip the
+  bundle_row args, so `cells` reaches the handler empty and every real
+  call refuses `missing_field` (the ANTS-1691 ship-vs-reality gap: the
+  INV-1…12 handler seam bypassed the schema, so the wiring gap shipped
+  invisibly).
 
 ## Method
 
