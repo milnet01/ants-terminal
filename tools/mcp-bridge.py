@@ -22,8 +22,26 @@ import socket
 import sys
 
 SOCK_GLOB = "/tmp/ants-terminal-mcp-*"
-CONNECT_TIMEOUT_S = 2.0
-READ_TIMEOUT_S = 5.0
+
+
+def _env_float(name: str, default: float) -> float:
+    # A typo'd override must not take the bridge down at import — fall back.
+    try:
+        return float(os.environ[name])
+    except (KeyError, ValueError):
+        return default
+
+
+# ANTS-3444 — heavy verbs (find_sources ~52s, spec_query list ~14s measured
+# on a cold/loaded host just after relaunch) blow past a 5s read budget, so
+# the client saw a spurious -32000 "transport: timed out" even though the
+# server replied fine — the dominant cause of flaky first-minutes-after-launch
+# UX. Default raised to 60s so the reply lands; connect slack raised to 5s for
+# the post-relaunch socket-settling window. Both overridable via env. The real
+# fix — making those verbs fast — is tracked under ANTS-3444; this is the
+# interim client-side guard.
+CONNECT_TIMEOUT_S = _env_float("ANTS_MCP_CONNECT_TIMEOUT_S", 5.0)
+READ_TIMEOUT_S = _env_float("ANTS_MCP_READ_TIMEOUT_S", 60.0)
 MAX_REPLY_BYTES = 10 * 1024 * 1024  # match the server-side ceiling
 
 
