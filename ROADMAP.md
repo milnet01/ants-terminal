@@ -17546,7 +17546,7 @@ server build id so clients can self-diagnose this.
   Source: cross-session-2026-06-16 (DOOM Ants, renderer session).
   Resolved (2026-06-17): file_outline accepts `file_path` as an alias for `path`; codebase_index accepts `path` as an alias for `file_path` (canonical name stays source of truth; alias fills in only when absent — same idiom as workspace_search query/pattern). Wiring source-scraped in the codebase_index feature test.
 
-- 🚧 [ANTS-2150] **codebase_index should cover as many programming languages as possible.**
+- 📋 [ANTS-2150] **codebase_index should cover as many programming languages as possible.**
   Follow-on to ANTS-2148 (which widened the index to the full C family + a soft empty-signal). The index is still C/C++/Python-only because both gates are narrow: codebaseindex.cpp admittedSuffix() and FileOutline::pickModeByExt only know the C/C++/Py families, and FileOutline only has a Cpp/Py/Md/Json regex mode set. A session opening a Rust/Go/JS/TS/Java/C#/Ruby/Kotlin/Swift project gets file_count:0 (now at least flagged empty:true).\nGoal: broaden language coverage as far as is practical with the regex-scanner approach. Work items: (1) extend admittedSuffix + pickModeByExt with the common suffixes (rs, go, js/jsx/ts/tsx, java, cs, rb, kt, swift, php, scala, lua, sh, …); (2) add a FileOutline Mode + a per-language symbol regex (fn/func/def/class/type/impl/struct/interface per language) for each — lean on the existing possessive-quantifier + per-line byte-cap discipline (INV-8); (3) keep SymbolQuery::langForExt in step so find_definition/find_caller cover the same set; (4) a per-language feature-test fixture asserting at least one symbol per added language. Consider a small data-driven table (suffix -> Mode -> {symbol regexes}) instead of hand-rolled if/else chains as the set grows (Rule of Three). Scope/sequence is the maintainer's call — likely several passes, one language-family per pass. RAM/perf: regex set is compiled once per process (static const), so each added language is a fixed small cost; the per-file scan stays linear.
   **Layman:** Make the project code-map understand far more languages (Rust, Go, JS/TS, Java, C#, Ruby, Kotlin, Swift, …), not just C/C++/Python — so every kind of project a Claude session opens gets a useful map.
   Kind: enhancement.
@@ -17554,6 +17554,7 @@ server build id so clients can self-diagnose this.
   Source: user-request-2026-06-17 (follow-on to ANTS-2148).
   Progress (2026-06-20) — first pass shipped (commit 1f15662): one shared brace-family "generic" mode added across the three named gates (FileOutline Mode::Generic + 3 regexes, SymbolQuery Lang::Generic mirrored anchors, CodebaseIndex::admittedSuffix), covering Rust, Go, JS/TS, Java, C#, Kotlin, Swift, Scala, PHP. file_outline reports the precise language name (rust/go/typescript...) not "generic". Regexes validated vs positive+negative samples; possessive quantifiers + per-line byte cap bound backtracking (INV-8). Tests: McpSymbolQuery.BraceFamilyLanguages + McpFileOutline.BraceFamilyGenericOutline; test_claude 1153/1153, test_core 329/329 green. REMAINING follow-ons: (1) Ruby (#-comment + end-block; def/class match the keyword regex but module + header_doc don't); (2) the codebase_index candidates() walk only descends src/ + tests/, so a non-src layout (Go root pkgs, JS root) still yields file_count:0 even with the suffix admitted — widen the walk roots; (3) mirror the mapping into SimilarCode::langForExt; (4) optionally surface lang:"generic" in the find_definition/find_caller/file_outline schema enums (auto-detection already covers it).
   Progress (2026-07-03) — Ruby (.rb) pass shipped (follow-on 1). Folded into the existing Lang::Generic / Mode::Generic rather than a parallel Ruby mode (reuse): `def`/`class`/`module` were already in the keyword alternation, and `end`-blocks are irrelevant to a line-oriented outline. Two safe tweaks to the shared decl regex (fileoutline rxGenericDecl + symbolquery Generic def anchor): an optional `self.` receiver (`def self.x` singleton methods) and an optional trailing `?`/`!` (Ruby predicate/bang names) — both no-ops for the brace-family languages (verified: existing BraceFamily tests still green). `.rb` admitted at the three gates (FileOutline::genericLangName→"ruby", SymbolQuery::langForExt, CodebaseIndex::isIndexableSuffix). file_outline reports language "ruby". Tests: McpFileOutline.BraceFamilyGenericOutline + McpSymbolQuery.BraceFamilyLanguages extended with a Ruby fixture (module/class/def + `def self.` singleton + `valid?`); all green, no regression. Known minor gaps (noted, not blocking): Ruby `#`-comment header_doc isn't extracted (Generic marker is `//`); paren-less Ruby calls aren't matched by the Generic call anchor (findCaller partial — definitions/outline are the primary surface); `def valid?` is findable via query "valid" (the anchor's trailing `\b`), not "valid?". REMAINING follow-ons: (2) widen the candidates() walk beyond src/+tests/ for non-src layouts (Go root pkgs, JS root) — real design surface (exclusions/perf), the higher-impact next pass; (3) SimilarCode::langForExt still only covers cpp/py (not even the brace family) — mirror the full set there; (4) optionally surface lang:"generic" in the find_definition/find_caller/file_outline schema enums (auto-detection already covers it).
+  Reverted 🚧→📋 (2026-07-04): no implementation started — body describes the C/C++/Py-only gap only, no partial work. Status drifted from a prior session; genuinely planned, not in progress.
 
 - ✅ [ANTS-2156] **Exemplar-retrieval-for-codegen MCP verb — return 1–3 canonical full function/class bodies for a concept, not match lines.**
   Vestige Obs #16. Before writing a new GPU subsystem the agent did ~13 read/grep round-trips; the expensive half (6 reads) was "show me this codebase's canonical example of pattern X" to mirror an idiom faithfully. similar_code / workspace_search return MATCH LINES (pointers to where a pattern lives); to copy an idiom the agent needs the COMPLETE idiom, so it opens the whole file anyway. Proposed verb (distinct from search): given a concept ("compute-shader dispatch", "3D texture creation", "headless GL parity test") return the 1–3 best exemplars in-repo as FULL function/class bodies, ranked by canonical-ness (call-count, recency, proximity to conventions), each with a one-line "this is the idiom" gloss. Alternative: a similar_code "return full enclosing definition + rank by canonical-ness" mode. One call would have replaced the 6 reads.
@@ -18512,7 +18513,7 @@ window. Last ad-hoc release: 0.7.91 (2026-05-13). Bootstrap week
 2026-05-20 cuts only the first RC; public cadence steady-state
 starts 2026-05-27.
 
-- 🚧 [ANTS-1318] **Weekly Wednesday release cadence + Patron-tier
+- ✅ [ANTS-1318] **Weekly Wednesday release cadence + Patron-tier
   frozen-RC pipeline.**
   In progress 2026-05-20 (RC pipeline bootstrap): tooling shipped — `release.yml`
   RC-aware AppImage channel split (INV-8) + prerelease backstop
@@ -18546,6 +18547,7 @@ starts 2026-05-27.
   public.
   Kind: process + tooling.
   Source: user-request-2026-05-13.
+  Resolved ✅ (2026-07-04): the sole 'Remaining for ✅' gate — the W+2 (2026-05-27) promote-public + cut-next-RC cadence cycle end-to-end (spec §10 step 5) — is long met. Tags confirm ~7 weeks of the frozen-RC cadence: v0.7.92-rc1→0.7.92, 0.7.93-rc1/2/3→0.7.93, 0.7.94-rc1→0.7.94, …, 0.7.97-rc1→0.7.97, 0.7.98-rc1 in flight (now at 0.7.98). Cadence since hardened by ANTS-2164 (guarded cut-rc.sh cycle). Status had drifted; should have closed weeks ago.
 
 - ✅ [ANTS-3423] **cut-rc.sh roll_unreleased: bullet-detect regex `^[ \t]*[-*]` false-matched the `**Theme:**` placeholder, silently skipping the [Unreleased]→[X.Y.Z] roll so every RC shipped with empty channel-opener notes.**
   ROOT CAUSE of the recurring empty-RC symptom. roll_unreleased()'s "does the target [X.Y.Z] section already have real content?" guard (treal, and the sibling hasc / unreleased_has_content checks) matched a changelog bullet with `/^[ \t]*[-*]/`. That regex also matches a `**Theme:**` line (starts with `*`), so the channel-opener placeholder body was read as real content → treal=1 → the roll no-op'd (INV: idempotent-when-target-has-content). Result: [Unreleased] never drained into [0.7.98]; the RC tag's CHANGELOG kept the placeholder; the published prerelease notes read "opens the preview channel / no changes yet" even though the RC binary contained the full week's work. Fix: require whitespace after the bullet marker — `/^[ \t]*[-*][ \t]/` — at all three sites (lines 196/260/267), so `**bold**` prose is no longer mistaken for a list item. Verified: fixed roll drains [Unreleased] (132→0) and populates [0.7.98] (0→132) on a copy. Distinct from the other empty-RC cause (cutting when [Unreleased] is genuinely empty, guarded by INV-1).
@@ -20145,6 +20147,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Kind: feature/fix. Source: user-2026-05-07.
   Lanes: roadmapdialog, roadmapstatuswidgets, remotecontrol,
   docs/standards/roadmap-format.md.
+  Status review (2026-07-04): kept 🚧 — NOT ✅. Real remaining work: P3 (parser carve-out + roadmap IPC verbs) is 📋 unshipped; P1 partial (TASK-NNNN ids, 3 new Kinds, v2 format-pragma deferred); P5/P6 are unstarted sketches; P4's scroll-anchor capture sub-piece unwired. Shipped: P2 (0.7.78) + P4 card dialog (ANTS-1154, the live dialog). The remaining phases are DEFERRED pending a consumer, so this reads as 'actively in progress' when it's really 'core shipped, remainder parked'. Recommend: split P3/P5/P6 into their own 📋 bullets and close this ✅ — surfaced for the maintainer's call.
 
 ### 🔢 Tasks chip — progress semantics (user feedback 2026-05-12)
 
@@ -22259,7 +22262,7 @@ a modern terminal" release.
 
 ### ⚡ Performance
 
-- 🚧 [ANTS-1059] **Terminal throughput slowdowns** (user report 2026-04-20).
+- 📋 [ANTS-1059] **Terminal throughput slowdowns** (user report 2026-04-20).
   Intermittent stalls observed during normal use. Investigation items:
   (a) profile `onVtBatch()` under heavy-output workloads — `yes`,
   `dd`, `find /`, build logs — and identify hotspots;
@@ -22280,6 +22283,7 @@ a modern terminal" release.
     `ctest -L perf --verbose` or directly; `ANTS_PERF_MB=64
     ./bench_vt_throughput` for a heavier sweep. **Baseline
     2026-04-20 on the dev laptop (4 MB per corpus):**
+  Reverted 🚧→📋 (2026-07-04): investigation checklist (a–e) unstarted; 0.8.0 future work. Status drifted; genuinely planned, not in progress.
 
     | Corpus | MB/s | Actions/s | Note |
     |--------|-----:|----------:|------|
