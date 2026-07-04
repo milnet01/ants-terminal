@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`feedback_log op:"prune_tracking"` — dedup superseded maintainer tracking rows (ANTS-3442)**
+  Removes superseded duplicate maintainer tracking-table rows from the cross-session *_Ants_MCP_Feedback.md files, keeping each id's authoritative last-per-id row plus every heading/header/separator. Two-stage pass preserves mappedIds (a notes-cell-only id pins its row); idempotent, atomic, dry_run preview, optional scope_ids. The deduplication complement to compact_shipped's write-up collapse.
+
 - **feedback_log: compact-shipped op to trim confirmed-implemented findings in *_Ants_MCP_Feedback.md (keep a stub, not a delete).** (ANTS-3421)
   The cross-session feedback files keep growing; once a suggestion is built and the other session confirms it works, its long write-up should shrink to a one-line stub so the file stays small.
 

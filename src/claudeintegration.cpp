@@ -4076,6 +4076,7 @@ void ClaudeIntegration::onMcpConnection() {
                         { QJsonArray e; e.append(QStringLiteral("append_finding"));
                           e.append(QStringLiteral("append_tracking"));
                           e.append(QStringLiteral("compact_shipped"));
+                          e.append(QStringLiteral("prune_tracking"));
                           opProp["enum"] = e; }
                         opProp["description"] = QStringLiteral(
                             "Required. \"append_finding\" (contributor) "
@@ -4085,7 +4086,15 @@ void ClaudeIntegration::onMcpConnection() {
                             "`targets` to a one-line \"→ shipped …\" stub "
                             "(heading kept verbatim; gated on the id being ✅ "
                             "in a tracking row + above the watermark; dry_run "
-                            "previews the byte savings).");
+                            "previews the byte savings). ANTS-3442 — "
+                            "\"prune_tracking\" (maintainer) removes superseded "
+                            "DUPLICATE maintainer tracking-table rows, keeping "
+                            "each id's authoritative last row + every heading/"
+                            "header/separator (dedup of the repeated rows an id "
+                            "accrues 📋→🚧→✅ across tables). Optional "
+                            "`scope_ids` restricts to given ids; `dry_run` "
+                            "previews `rows_removed`/`bytes_saved`. Idempotent; "
+                            "atomic.");
                     QJsonObject dateProp; dateProp["type"] = "string";
                         dateProp["description"] = QStringLiteral(
                             "Optional YYYY-MM-DD; defaults to today.");
@@ -4160,6 +4169,16 @@ void ClaudeIntegration::onMcpConnection() {
                     props["rows"]          = rowsProp;
                     props["sentinel"]      = sentinelProp;
                     props["targets"]       = targetsProp;        // ANTS-3421
+                    QJsonObject scopeIdsProp; scopeIdsProp["type"] = "array";
+                        { QJsonObject idIt; idIt["type"] = "string";
+                          scopeIdsProp["items"] = idIt; }
+                        scopeIdsProp["description"] = QStringLiteral(
+                            "prune_tracking (ANTS-3442): optional ANTS-NNNN ids "
+                            "to restrict pruning to. OMIT to prune every "
+                            "superseded row; an explicitly EMPTY array is "
+                            "bad_args (restrict-to-nothing is a no-op you almost "
+                            "never mean).");
+                    props["scope_ids"]     = scopeIdsProp;        // ANTS-3442
                     props["dry_run"]       = makeDryRunProp();   // ANTS-2227
                     props["caller_cwd"]    = makeCallerCwdReadProp();
                     schema["properties"] = props;

@@ -1182,6 +1182,7 @@ if(ANTS_TESTS)
                 tests/features/mcp_feedback_log/test_mcp_feedback_log.cpp
                 # ANTS-3421 feedback_log op:compact_shipped (maintainer compaction).
                 tests/features/feedback_log_compact_shipped/test_feedback_log_compact_shipped.cpp
+                tests/features/feedback_log_prune_tracking/test_feedback_log_prune_tracking.cpp
                 tests/features/mcp_spec_log/test_mcp_spec_log.cpp
                 # ANTS-2129 — audit_falsepos_log write verb.
                 tests/features/audit_falsepos_log/test_audit_falsepos_log.cpp

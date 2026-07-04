@@ -10754,11 +10754,13 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
     const QString op = req.value(QStringLiteral("op")).toString();
     if (op != QStringLiteral("append_finding") &&
         op != QStringLiteral("append_tracking") &&
-        op != QStringLiteral("compact_shipped")) {
+        op != QStringLiteral("compact_shipped") &&
+        op != QStringLiteral("prune_tracking")) {
         return QJsonDocument(fbErr(
             QStringLiteral("bad_mode"),
             QStringLiteral("feedback_log: op must be \"append_finding\", "
-                           "\"append_tracking\" or \"compact_shipped\"")));
+                           "\"append_tracking\", \"compact_shipped\" or "
+                           "\"prune_tracking\"")));
     }
 
     // ANTS-3421 — maintainer compaction: collapse confirmed-shipped
@@ -10908,6 +10910,115 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             static_cast<qint64>(cr.bytesSaved);
         out[QStringLiteral("outcomes")]      = outcomes;
         out[QStringLiteral("skipped")]       = skipped;
+        if (derived) out[QStringLiteral("path_derived")] = true;  // ANTS-3376
+        return QJsonDocument(out);
+    }
+
+    // ANTS-3442 — maintainer row-dedup: remove superseded duplicate tracking
+    // rows (keep the authoritative last-per-id row). Distinct request shape
+    // (scope_ids + removed[] + in-place rewrite), returns early like
+    // compact_shipped.
+    if (op == QStringLiteral("prune_tracking")) {
+        if (!exists) {
+            return QJsonDocument(fbNotFound(
+                QStringLiteral("feedback_log: prune_tracking on an absent "
+                               "file (nothing to prune)"),
+                resolved, feedbackCallerLeaf(req)));
+        }
+        FeedbackFile::PruneOptions opts;
+        static const QRegularExpression pruneIdRe(
+            QStringLiteral("^ANTS-[0-9]+$"));
+        if (req.contains(QStringLiteral("scope_ids"))) {
+            const QJsonArray sc =
+                req.value(QStringLiteral("scope_ids")).toArray();
+            if (sc.isEmpty()) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("bad_args"),
+                    QStringLiteral("feedback_log: prune_tracking \"scope_ids\" "
+                                   "must be non-empty (omit it to prune every "
+                                   "superseded row)")));
+            }
+            for (const QJsonValue &v : sc) {
+                const QString id = v.toString();
+                if (!pruneIdRe.match(id).hasMatch()) {
+                    return QJsonDocument(fbErr(
+                        QStringLiteral("bad_args"),
+                        QStringLiteral("feedback_log: prune_tracking scope_ids "
+                                       "element must match ANTS-NNNN (got "
+                                       "\"%1\")").arg(id)));
+                }
+                opts.scopeIds.append(id);
+            }
+        }
+
+        QFile rf(resolved);
+        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("read_failed"),
+                QStringLiteral("feedback_log: cannot open \"%1\"")
+                    .arg(resolved)));
+        }
+        const QString content = QString::fromUtf8(rf.readAll());
+        rf.close();
+
+        const FeedbackFile::PruneResult prn =
+            FeedbackFile::pruneTracking(content, opts);
+        const bool dryRunP = req.value(QStringLiteral("dry_run")).toBool();
+
+        QJsonArray removed;
+        for (const FeedbackFile::PrunedRow &r : prn.removed) {
+            QJsonObject e;
+            QJsonArray ids;
+            for (const QString &id : r.ids) ids.append(id);
+            e[QStringLiteral("ids")]    = ids;
+            e[QStringLiteral("status")] = r.status;
+            e[QStringLiteral("line")]   = r.line;
+            removed.append(e);
+        }
+        const int rowsRemoved = static_cast<int>(prn.removed.size());
+
+        if (!dryRunP && rowsRemoved > 0) {
+            const QByteArray utf8 = prn.newContent.toUtf8();
+            QSaveFile sf(resolved);
+            if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("write_failed"),
+                    QStringLiteral("feedback_log: cannot open \"%1\" for "
+                                   "writing").arg(resolved)));
+            }
+            bool committed = (sf.write(utf8) == utf8.size());
+            if (committed) {
+                if (g_forceFeedbackWriteFail) {
+                    sf.cancelWriting();
+                    committed = false;
+                } else {
+                    committed = sf.commit();
+                }
+            }
+            if (!committed) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("write_failed"),
+                    QStringLiteral("feedback_log: atomic write of \"%1\" "
+                                   "failed").arg(resolved)));
+            }
+        }
+
+        QJsonObject out;
+        out[QStringLiteral("ok")]           = true;
+        out[QStringLiteral("op")]           = op;
+        out[QStringLiteral("path")]         = resolved;
+        out[QStringLiteral("dry_run")]      = dryRunP;
+        out[QStringLiteral("rows_removed")] = rowsRemoved;
+        out[QStringLiteral("bytes_saved")]  =
+            static_cast<qint64>(prn.bytesSaved);
+        out[QStringLiteral("removed")]      = removed;
+        if (!opts.scopeIds.isEmpty()) {
+            QJsonArray sc;
+            for (const QString &id : opts.scopeIds) sc.append(id);
+            out[QStringLiteral("scope_ids")] = sc;
+        } else {
+            out[QStringLiteral("scope_ids")] = QJsonValue(QJsonValue::Null);
+        }
         if (derived) out[QStringLiteral("path_derived")] = true;  // ANTS-3376
         return QJsonDocument(out);
     }

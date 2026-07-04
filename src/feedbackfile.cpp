@@ -187,6 +187,7 @@ ParseResult parse(const QString &fileContent) {
             if (sepCellRe.match(cells.at(0)).hasMatch())
                 continue;  // |---| separator row
             TrackingRow tr;
+            tr.line = li + 1;   // ANTS-3442: 1-based source line
             tr.item = cells.at(0);
             const QString idCell = cells.at(1);
             if (idCell.compare(QStringLiteral("n/a"),
@@ -545,6 +546,101 @@ CompactResult compactShipped(const QString &content,
         res.bytesSaved += (o.bytesBefore - o.bytesAfter);
     }
     res.newContent = outLines.join(QLatin1Char('\n'));
+    return res;
+}
+
+// ANTS-3442 — prune_tracking. Remove superseded duplicate maintainer
+// tracking rows, keeping the authoritative last-per-id row. Two-stage pass
+// (docs/specs/ANTS-3442.md § 2.3): Stage 1 marks id-column-superseded rows;
+// Stage 2 removes a marked row only when every ANTS-NNNN token anywhere in
+// its line still appears in a surviving line, so parse().mappedIds is
+// preserved (INV-2b). Pure; single bottom-up rewrite.
+PruneResult pruneTracking(const QString &content, const PruneOptions &opts) {
+    PruneResult res;
+    const QStringList lines = content.split(QLatin1Char('\n'));
+    const ParseResult pr = parse(content);
+    static const QRegularExpression idRe(QStringLiteral("ANTS-[0-9]+"));
+
+    const QSet<QString> scope(opts.scopeIds.begin(), opts.scopeIds.end());
+
+    // Maintainer-block line indices (0-based): every line from a maintainer
+    // heading to the next boundary of either level. parse() builds mappedIds
+    // from exactly these lines, so the surviving-token accounting matches.
+    const QVector<Boundary> boundaries = scanBoundaries(lines);
+    QSet<int> maintainerLines;
+    for (int bi = 0; bi < boundaries.size(); ++bi) {
+        if (!boundaries.at(bi).isMaintainer) continue;
+        const int start = boundaries.at(bi).line0;
+        const int end = (bi + 1 < boundaries.size())
+                            ? boundaries.at(bi + 1).line0 : lines.size();
+        for (int i = start; i < end && i < lines.size(); ++i)
+            maintainerLines.insert(i);
+    }
+
+    // Stage 1 — mark id-column-superseded rows. lastLineForId[id] = greatest
+    // source line among tracking rows citing id; a row is marked iff every one
+    // of its ids has a later duplicate (and, when scoped, is in scope).
+    QHash<QString, int> lastLineForId;
+    for (const TrackingRow &tr : pr.trackingRows)
+        for (const QString &id : tr.ids)
+            lastLineForId[id] = qMax(lastLineForId.value(id, -1), tr.line);
+
+    QSet<int> markedLines;                 // 1-based lines of marked data rows
+    QVector<const TrackingRow *> marked;   // document order
+    for (const TrackingRow &tr : pr.trackingRows) {
+        if (tr.ids.isEmpty()) continue;    // clause 1 — never mark an n/a row
+        bool superseded = true;
+        for (const QString &id : tr.ids)
+            if (lastLineForId.value(id, -1) <= tr.line) { superseded = false; break; }
+        if (!superseded) continue;         // clause 2 — last-of-any-id survives
+        if (!scope.isEmpty()) {            // clause 3 — ID-column scope
+            bool allIn = true;
+            for (const QString &id : tr.ids)
+                if (!scope.contains(id)) { allIn = false; break; }
+            if (!allIn) continue;
+        }
+        markedLines.insert(tr.line);
+        marked.append(&tr);
+    }
+
+    // Stage 2 — surviving-token set = ANTS-NNNN over maintainer-block lines
+    // that are NOT marked data-row lines (fixed before any removal). A marked
+    // row is removed iff every token in its line still appears in a surviving
+    // line; otherwise it is pinned (its notes/prose id lives only on marked
+    // rows).
+    QSet<QString> survivingTokens;
+    for (int i : maintainerLines) {
+        if (markedLines.contains(i + 1)) continue;
+        auto it = idRe.globalMatch(lines.at(i));
+        while (it.hasNext()) survivingTokens.insert(it.next().captured(0));
+    }
+
+    QVector<int> removeLines;   // 1-based
+    for (const TrackingRow *tr : marked) {
+        const QString &rowLine = lines.at(tr->line - 1);
+        bool safe = true;
+        auto it = idRe.globalMatch(rowLine);
+        while (it.hasNext())
+            if (!survivingTokens.contains(it.next().captured(0))) { safe = false; break; }
+        if (!safe) continue;    // pinned — keep
+        removeLines.append(tr->line);
+        PrunedRow row;
+        row.ids    = tr->ids;
+        row.status = tr->status;
+        row.line   = tr->line;
+        res.removed.append(row);   // document order (marked is in order)
+    }
+
+    // Rewrite — remove chosen lines bottom-up so earlier removals don't shift
+    // not-yet-removed indices. Headings / header / separator are never in
+    // removeLines (parse() never emits them as tracking rows), so INV-5 holds.
+    QStringList out = lines;
+    std::sort(removeLines.begin(), removeLines.end(), std::greater<int>());
+    for (int ln : removeLines)
+        if (ln >= 1 && ln <= out.size()) out.removeAt(ln - 1);
+    res.newContent = out.join(QLatin1Char('\n'));
+    res.bytesSaved = static_cast<long>(content.toUtf8().size())
+                   - static_cast<long>(res.newContent.toUtf8().size());
     return res;
 }
 

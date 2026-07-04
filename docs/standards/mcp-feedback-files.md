@@ -322,10 +322,11 @@ emoji-bearing values (📋 🚧 ✅ 💭 🔄 ❓) are the machine-readable set.
 
 These files grow without bound: every contributor finding stays at full
 verbosity forever, even after its `ANTS-NNNN` ships and the originating
-session confirms the fix. `feedback_log op:"compact_shipped"` is the **one
-sanctioned maintainer exception** to "never delete prior findings" — it
-*collapses with provenance*, it never deletes. The full write-up survives in
-git history and under its `ANTS-NNNN`; the file keeps a one-line stub.
+session confirms the fix. `feedback_log op:"compact_shipped"` is the first of
+**two sanctioned maintainer exceptions** to "never delete prior findings"
+(the second is `prune_tracking`, below) — it *collapses with provenance*, it
+never deletes. The full write-up survives in git history and under its
+`ANTS-NNNN`; the file keeps a one-line stub.
 
 For each maintainer-named target block it replaces the body (every line
 after the boundary heading up to the next `#`/`## ` boundary) with a single
@@ -359,3 +360,28 @@ Always preview with `dry_run:true` first — it returns every `outcomes[]` /
 compacts only **ID-tracked, single-finding** blocks; id-less closures
 (`(self-resolved)` …) and multi-finding sessions are out of scope
 (docs/specs/ANTS-3421.md § 5).
+
+## Maintainer row-dedup (`prune_tracking`) — ANTS-3442
+
+The second sanctioned maintainer edit. As an id progresses 📋→🚧→✅ across
+sessions it accrues a fresh **tracking-table row in table after table**;
+`compact_shipped` shortens contributor *write-ups* but never these repeated
+rows. `feedback_log op:"prune_tracking"` removes the **superseded duplicate
+rows**, keeping each id's authoritative *last-per-id* row (ANTS-3371's
+"later supersedes earlier" rule) plus **every heading, header row, and
+`|---|` separator** — so the watermark ledger (the maintainer headings + each
+id's final status) and the un-triaged delta are intact. It narrows the ledger
+to headings + last-per-id status; the intermediate 📋/🚧 rows are intentionally
+dropped (that history is in git + the ROADMAP bullet). It never touches
+contributor content — the contributor "don'ts" above are unchanged;
+`prune_tracking` is maintainer-only.
+
+Two-stage, per `docs/specs/ANTS-3442.md` § 2.3: Stage 1 marks a row whose
+**every ID-column id** has a later duplicate (optionally restricted by
+`scope_ids`); Stage 2 removes a marked row only when **every `ANTS-NNNN` token
+anywhere in its line** (ID column *or* notes/prose) still appears in a
+surviving line, so `mappedIds` is preserved (a notes-cell id with no other
+occurrence *pins* its row). Idempotent, atomic, `dry_run` previews
+`rows_removed` / `bytes_saved`. An empty `scope_ids:[]` is `bad_args`; an
+absent file is `not_found`. Multi-finding-block collapse is a deferred
+sibling (§5).

@@ -30,6 +30,9 @@ struct TrackingRow {
     QStringList ids;     // ANTS-NNNN strings; empty → renders `n/a`
     QString     status;  // an emoji from the machine-readable set
     QString     notes;   // optional; triggers the 4th column when any row has it
+    int         line = -1;  // ANTS-3442: 1-based source line of this data row
+                            // (populated by parse(); used by pruneTracking to
+                            // locate the row for removal)
 };
 
 struct ParseResult {
@@ -123,5 +126,35 @@ struct CompactResult {
 // heading, id matching ANTS-NNNN) — the wrapper enforces that (bad_args).
 CompactResult compactShipped(const QString &content,
                              const QVector<CompactTarget> &targets);
+
+// ---- ANTS-3442: maintainer row-dedup (prune_tracking) ---------------
+//
+// Remove superseded duplicate maintainer tracking-table rows, keeping the
+// authoritative last-per-id row. Two-stage pass (docs/specs/ANTS-3442.md
+// § 2.3): Stage 1 marks id-column-superseded rows; Stage 2 removes a marked
+// row only when every ANTS-NNNN token anywhere in its line still appears in
+// a surviving line, so parse().mappedIds is preserved.
+
+struct PruneOptions {
+    QStringList scopeIds;      // restrict to these ANTS-NNNN ids; empty ⟹ all
+};
+
+struct PrunedRow {
+    QStringList ids;           // the removed row's id column
+    QString     status;
+    int         line = -1;     // original 1-based line
+};
+
+struct PruneResult {
+    QString            newContent;   // full file after removals
+    QVector<PrunedRow> removed;      // in original document order
+    long               bytesSaved = 0;
+};
+
+// Pure. Runs parse(content) internally, applies the two-stage selection, and
+// removes the chosen rows bottom-up in one pass. scopeIds are assumed
+// request-shape-valid (each matches ANTS-NNNN) — the wrapper enforces that
+// (bad_args) and the absent-file / path plumbing.
+PruneResult pruneTracking(const QString &content, const PruneOptions &opts);
 
 }  // namespace FeedbackFile
