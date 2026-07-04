@@ -1236,4 +1236,29 @@ QString triagePrompt(const QList<Finding> &llmShaped) {
     return out;
 }
 
+// ANTS-3346 — see header. Non-auto-fixable findings are the FP-prone
+// judgment-required subset; a bulk un-triaged defer of them is the class that
+// once dumped 1106 raw findings into ROADMAP.md. Auto-fixable findings never
+// count toward the gate (a mechanical fix is high-confidence). `triaged=true`
+// is the caller's reviewed-this-batch assertion and always passes.
+TriageGateVerdict evaluateTriageGate(const QList<Finding> &deferred,
+                                     bool triaged) {
+    TriageGateVerdict v;
+    v.total     = deferred.size();
+    v.threshold = kBulkDeferTriageThreshold;
+    for (const auto &f : deferred) {
+        if (!f.autoFixable) ++v.nonAutoFixable;
+    }
+    if (triaged) return v;   // reviewed: allowed regardless of size
+    if (v.nonAutoFixable > v.threshold) {
+        v.allowed = false;
+        v.reason = QStringLiteral(
+            "%1 non-auto-fixable (judgment-required) findings exceed the "
+            "un-triaged bulk-defer threshold of %2. These are FP-prone "
+            "detector outputs — review them and pass triaged:true, or defer "
+            "a reviewed subset.").arg(v.nonAutoFixable).arg(v.threshold);
+    }
+    return v;
+}
+
 }  // namespace DebtSweepEngine

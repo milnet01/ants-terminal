@@ -1481,6 +1481,8 @@ if(ANTS_TESTS)
         SRC_BGDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.h"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
         SRC_REMOTECONTROL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"
+        # ANTS-3345 — debt_sweep_scan offload-eligibility source-grep lock.
+        SRC_MCPPROJECTION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mcpprojection.cpp"
         # ANTS-1880 — phases-layout source-grep paths.
         SRC_PROJECTLAYOUTENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/projectlayoutengine.cpp"
         SRC_PROJECTLAYOUTENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/projectlayoutengine.h"

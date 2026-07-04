@@ -30,6 +30,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **debt_sweep_defer must triage before folding — never dump raw scan output.** (ANTS-3346)
+  A previous run wrote 1,106 false-positive findings straight into the roadmap as real items.
+
+- **debt_sweep_scan produces unbounded output — transport timeout + token overflow.** (ANTS-3345)
+  Running the scan on a real release-sized diff either times out or returns a 130k+ character blob the assistant can't read.
+
 - **General read/write verbs must reach `*_Ants_MCP_Feedback.md` outside the project root (supersede ANTS-3419 hint-only decision).** (ANTS-3430)
   The shared feedback files live one folder ABOVE every project, so the normal read/edit tools refuse to touch them. Let those tools reach feedback files directly instead of only pointing at the special feedback commands.
 

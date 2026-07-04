@@ -58,3 +58,16 @@ detector-expansion addendum.
 - **INV-19.** `detectStaleTodos` (git-backed) flags a TODO whose blame
   committer-time predates the threshold, not auto-fixable; returns
   empty when `staleTodoMaxAgeDays <= 0`.
+
+## ANTS-3346 bulk-defer triage gate
+
+- **INV-20.** `evaluateTriageGate(deferred, triaged)` is a pure
+  predicate over the deferred set:
+  - Counts only non-auto-fixable (judgment-required) findings toward
+    the gate; auto-fixable findings never trip it regardless of count.
+  - Exactly `kBulkDeferTriageThreshold` non-auto-fixable findings is
+    allowed (refusal is strictly greater-than); one more is refused
+    (`allowed:false`, non-empty `reason`).
+  - `triaged:true` always allows, regardless of size.
+  - Echoes `total`, `nonAutoFixable`, `threshold` for the caller's
+    refusal envelope.

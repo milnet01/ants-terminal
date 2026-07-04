@@ -6060,7 +6060,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "Replaces the file-reading subagent in the "
                         "/debt-sweep skill for Ants-managed projects. "
                         "Optional: since (git ref, default = most-recent "
-                        "tag or HEAD~10), categories (subset of the four).");
+                        "tag or HEAD~10), categories (subset of the four), "
+                        "limit/offset (page the findings array — default "
+                        "limit 100, max 500; by_category always counts the "
+                        "full scan). Envelope carries total_findings, "
+                        "returned, has_more, next_offset (ANTS-3345).");
                     t["selection_hint"] = QStringLiteral(
                         "Use when planning a debt-sweep pass. Returns "
                         "triaged findings + suggested fixes; pairs "
@@ -6076,9 +6080,21 @@ void ClaudeIntegration::onMcpConnection() {
                     catProp["description"] = QStringLiteral(
                         "Subset of {code_drift, test_coverage, "
                         "doc_drift, packaging_drift}. Omit for all.");
+                    // ANTS-3345 — pagination over the findings array.
+                    QJsonObject limitProp; limitProp["type"] = "integer";
+                    limitProp["description"] = QStringLiteral(
+                        "Max findings to return in this page. Default 100, "
+                        "clamped to [1,500]. by_category still counts the "
+                        "full scan.");
+                    QJsonObject offsetProp; offsetProp["type"] = "integer";
+                    offsetProp["description"] = QStringLiteral(
+                        "0-based index into the full finding list. Page with "
+                        "next_offset from the prior response. Default 0.");
                     QJsonObject props;
                     props["since"]      = sinceProp;
                     props["categories"] = catProp;
+                    props["limit"]      = limitProp;
+                    props["offset"]     = offsetProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
@@ -6147,9 +6163,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "ROADMAP block from a list of deferred findings. "
                         "Allocates IDs from .roadmap-counter and, if a "
                         "release-block heading is found, atomically "
-                        "inserts the block into ROADMAP.md. Required: "
-                        "deferred (array), caller_cwd (string — your "
-                        "$PWD; ANTS-1372).");
+                        "inserts the block into ROADMAP.md. Refuses "
+                        "(needs_triage) a bulk batch of >25 non-auto-fixable "
+                        "findings unless triaged:true — these are FP-prone "
+                        "detector outputs that must be reviewed, not dumped "
+                        "(ANTS-3346). Required: deferred (array), caller_cwd "
+                        "(string — your $PWD; ANTS-1372).");
                     t["selection_hint"] = QStringLiteral(
                         "Use to defer (not action) a debt-sweep "
                         "finding set so it doesn't re-surface every "
@@ -6167,6 +6186,14 @@ void ClaudeIntegration::onMcpConnection() {
                     hdrProp["description"] = QStringLiteral(
                         "Optional explicit `## ` heading. Defaults to "
                         "RoadmapFoldIn::findActiveReleaseHeading.");
+                    // ANTS-3346 — triage gate override.
+                    QJsonObject triagedProp; triagedProp["type"] = "boolean";
+                    triagedProp["description"] = QStringLiteral(
+                        "Assert this batch was reviewed. Required to defer "
+                        ">25 non-auto-fixable (judgment-required) findings; "
+                        "without it such a batch is refused (needs_triage) to "
+                        "prevent dumping raw scan output into ROADMAP. "
+                        "Defaults to false.");
                     // ANTS-1389 — caller_cwd schema surfacing.
                     QJsonObject callerProp;
                     callerProp["type"] = "string";
@@ -6177,6 +6204,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["deferred"]              = dProp;
                     props["date_iso"]              = dateProp;
                     props["release_block_heading"] = hdrProp;
+                    props["triaged"]               = triagedProp;   // ANTS-3346
                     props["dry_run"]               = makeDryRunProp();   // ANTS-2227
                     props["caller_cwd"]            = callerProp;
                     schema["properties"] = props;

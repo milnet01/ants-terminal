@@ -22,6 +22,9 @@
 #ifndef SRC_REMOTECONTROL_CPP_PATH
 #error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
 #endif
+#ifndef SRC_MCPPROJECTION_CPP_PATH
+#error "SRC_MCPPROJECTION_CPP_PATH compile definition required"
+#endif
 
 namespace {
 
@@ -107,4 +110,59 @@ TEST(McpDebtSweepTools, Inv12eAllSchemasUseAdditionalPropertiesFalse) {
         ++pos;
     }
     EXPECT_EQ(count, 4) << "expected 4 additionalProperties=false (one per tool)";
+}
+
+// Returns one tool's registration block: from its `t["name"] = "<tool>"`
+// anchor to that block's own `tools.append(t);`. Anchoring on the name
+// assignment (not a bare tool-name substring) avoids matching a mention of
+// the tool inside a *sibling* tool's description/selection_hint; terminating
+// at the block's own append is the same robust boundary INV-12e uses.
+static std::string schemaBlock(const std::string &ci, const char *tool) {
+    const auto start =
+        ci.find(std::string("t[\"name\"] = \"") + tool + "\"");
+    if (start == std::string::npos) return {};
+    auto end = ci.find("tools.append(t);", start);
+    if (end == std::string::npos) end = ci.size();
+    return ci.substr(start, end - start);
+}
+
+TEST(McpDebtSweepTools, Ants3345ScanPaginationSchema) {
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    ASSERT_FALSE(ci.empty());
+    const std::string scan = schemaBlock(ci, "debt_sweep_scan");
+    ASSERT_FALSE(scan.empty());
+    EXPECT_NE(scan.find("\"limit\""), std::string::npos)
+        << "scan schema missing limit prop (ANTS-3345)";
+    EXPECT_NE(scan.find("\"offset\""), std::string::npos)
+        << "scan schema missing offset prop (ANTS-3345)";
+}
+
+TEST(McpDebtSweepTools, Ants3345ScanEmitsPaginationEnvelope) {
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    ASSERT_FALSE(rc.empty());
+    // The cmdDebtSweepScan envelope now carries the pagination fields.
+    EXPECT_NE(rc.find("has_more"), std::string::npos);
+    EXPECT_NE(rc.find("next_offset"), std::string::npos);
+}
+
+TEST(McpDebtSweepTools, Ants3345ScanIsOffloadEligible) {
+    const std::string mp = ants_test::slurpFile(SRC_MCPPROJECTION_CPP_PATH);
+    ASSERT_FALSE(mp.empty());
+    EXPECT_NE(mp.find("debt_sweep_scan"), std::string::npos)
+        << "debt_sweep_scan not in isOffloadEligible allowlist (ANTS-3345)";
+}
+
+TEST(McpDebtSweepTools, Ants3346DeferTriageGate) {
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    ASSERT_FALSE(ci.empty());
+    ASSERT_FALSE(rc.empty());
+    const std::string defer = schemaBlock(ci, "debt_sweep_defer");
+    ASSERT_FALSE(defer.empty());
+    EXPECT_NE(defer.find("\"triaged\""), std::string::npos)
+        << "defer schema missing triaged prop (ANTS-3346)";
+    EXPECT_NE(rc.find("needs_triage"), std::string::npos)
+        << "cmdDebtSweepDefer missing needs_triage refusal (ANTS-3346)";
+    EXPECT_NE(rc.find("evaluateTriageGate"), std::string::npos)
+        << "cmdDebtSweepDefer does not call evaluateTriageGate (ANTS-3346)";
 }

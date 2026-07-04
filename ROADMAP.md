@@ -8786,17 +8786,19 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: debt-sweep-2026-06-28.
 
-- 📋 [ANTS-3345] **debt_sweep_scan produces unbounded output — transport timeout + token overflow.**
+- ✅ [ANTS-3345] **debt_sweep_scan produces unbounded output — transport timeout + token overflow.**
   153-file diff times out the MCP transport; even a 10-file scope returns ~134k chars on one line (1000+ findings), bypassing the offload path and blowing the token cap. Needs result cap + pagination + offload (claude.mcp_offload_large_results) and benefits from the detector-FP fixes above that shrink volume.
   **Layman:** Running the scan on a real release-sized diff either times out or returns a 130k+ character blob the assistant can't read.
   Kind: fix.
   Source: debt-sweep-2026-06-28.
+  Shipped 2026-07-04 — limit/offset pagination (default 100, max 500) over the findings array + debt_sweep_scan added to isOffloadEligible so a full page spills instead of inlining. by_category still counts the full scan; envelope carries total_findings/returned/offset/limit/has_more/next_offset. Tests: mcp_debt_sweep_tools INV-13a/13b.
 
-- 📋 [ANTS-3346] **debt_sweep_defer must triage before folding — never dump raw scan output.**
+- ✅ [ANTS-3346] **debt_sweep_defer must triage before folding — never dump raw scan output.**
   The `debt-sweep-fold-in-2026-06-28` section holds 1106 raw FP findings (ANTS-2235..~3340) from a `debt_sweep_defer` on un-triaged output, inflating the active count and burning ~1106 counter IDs. Guard the verb against bulk-deferring auto_fixable=false detector noise; require a triage gate.
   **Layman:** A previous run wrote 1,106 false-positive findings straight into the roadmap as real items.
   Kind: fix.
   Source: debt-sweep-2026-06-28.
+  Shipped 2026-07-04 — pure DebtSweepEngine::evaluateTriageGate + needs_triage refusal when >25 non-auto-fixable (judgment-required) findings are bulk-deferred un-triaged; triaged:true overrides. Guards the class that once folded 1106 raw FPs into ROADMAP. Tests: debt_sweep_engine INV-20 + mcp_debt_sweep_tools INV-13c.
 
 - 📋 [ANTS-3347] **-Wshadow: `tmp` shadows in test_roadmap_viewer_archive.cpp:69.**
   Build emits a -Wshadow warning at tests/features/roadmap_viewer_archive/test_roadmap_viewer_archive.cpp:69 (`tmp` shadows an outer declaration). Rename the inner.
@@ -18053,6 +18055,12 @@ not re-filed here.
   **Layman:** When a project folder's name already ends in "_Ants", the feedback tool guesses the wrong filename and can't find the notes file until you spell out the path by hand.
   Kind: fix.
   Source: DOOM-Ants-feedback-2026-07-02.
+
+- 📋 [ANTS-3431] **compact_shipped v2: collapse id-less self-resolved closures and multi-finding session blocks.**
+  v1 (ANTS-3421) only compacts a block that is BOTH a single finding AND shipped under an explicit ANTS-NNNN marked ✅. A survey of all 10 *_Ants_MCP_Feedback.md files (2026-07-03) found this qualifies for almost nothing: the dominant closed forms are (a) id-less closures — `(self-resolved)`, `(schema fix)`, empty resolution — and (b) multi-finding dated session blocks (`## Addendum: <date>` wrapping several `### Issue #N`). Both are out of v1 scope by design, so compact_shipped reclaims near-zero bytes on the real corpus. v2 must handle: (1) id-less closures that are otherwise confirmed-shipped (gate on a maintainer tracking-row mapping the heading to a shipped ANTS id, since the block itself carries no id); (2) multi-finding session blocks where EVERY child finding is confirmed-shipped (collapse the whole block to a one-line stub; refuse if any child is still open — the v1 multi_finding gate stays for mixed blocks). Keep the v1 safety posture: verbatim-heading match, ✅-gated, above-watermark, idempotent, batch + atomic + dry_run byte report. Spec: docs/specs/ANTS-3421.md §5 (deferred scope) is the starting contract.
+  **Layman:** The trim feature only tidies a tiny slice of these shared notes files today; almost every closed note is written in a form it refuses to touch, so it reclaims very little.
+  Kind: enhancement.
+  Source: in-session-2026-07-03.
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 

@@ -54,6 +54,11 @@ bool isOffloadEligible(const QString &toolName) {
         || toolName == QStringLiteral("codebase_index")
         || toolName == QStringLiteral("docs_index")
         || toolName == QStringLiteral("find_sources")
+        // ANTS-3345 — debt_sweep_scan: a release-sized diff yields 1000+
+        // findings (~130k chars on one line) that bypass the token cap.
+        // Pagination (limit/offset) bounds the default page; spilling the
+        // page like any other read body keeps even a full page off the wire.
+        || toolName == QStringLiteral("debt_sweep_scan")
         || toolName == QStringLiteral("roadmap_query")
         // ANTS-2093 — project_query: a large snippet result spills like any
         // other read body (INV-9), re-read verbatim via read_spill.

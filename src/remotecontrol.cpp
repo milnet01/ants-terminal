@@ -15879,21 +15879,47 @@ QJsonDocument RemoteControl::cmdDebtSweepScan(const QJsonObject &req) {
 
     const auto findings = DebtSweepEngine::scanAll(root, opt);
 
-    QJsonArray arr;
+    // ANTS-3345 — page the finding array. A release-sized scan yields 1000+
+    // findings (~130k chars on one line) that time out the transport / blow
+    // the token cap. `by_category` is still counted over the FULL set (the
+    // caller needs true per-category totals to plan triage); only the emitted
+    // `findings` array is the [offset, offset+limit) window. The verb is
+    // offload-eligible (mcpprojection.cpp) so even a full page spills to a
+    // read_spill pointer rather than inlining.
+    int limit = 100;
+    if (req.contains(QStringLiteral("limit")))
+        limit = req.value(QStringLiteral("limit")).toInt(100);
+    if (limit < 1)   limit = 1;
+    if (limit > 500) limit = 500;
+    int offset = req.value(QStringLiteral("offset")).toInt(0);
+    if (offset < 0) offset = 0;
+
     QJsonObject by;
     by["code_drift"]       = 0;
     by["test_coverage"]    = 0;
     by["doc_drift"]        = 0;
     by["packaging_drift"]  = 0;
-    for (const auto &f : findings) {
-        arr.append(dsFindingToJson(f));
+    for (const auto &f : findings)
         by[f.category] = by.value(f.category).toInt() + 1;
-    }
+
+    const int total = findings.size();
+    int end = offset + limit;
+    if (end > total) end = total;
+    QJsonArray arr;
+    for (int i = offset; i < end; ++i)
+        arr.append(dsFindingToJson(findings[i]));
+    const int returned = arr.size();
+    const bool hasMore = offset + returned < total;
 
     QJsonObject env;
     env["ok"]              = true;
     env["findings"]        = arr;
-    env["total_findings"]  = arr.size();
+    env["total_findings"]  = total;
+    env["returned"]        = returned;
+    env["offset"]          = offset;
+    env["limit"]           = limit;
+    env["has_more"]        = hasMore;
+    if (hasMore) env["next_offset"] = offset + returned;
     env["by_category"]     = by;
     // Resolve since for response transparency.
     QString sinceRes = opt.sinceRef;
@@ -16014,6 +16040,20 @@ QJsonDocument RemoteControl::cmdDebtSweepDefer(const QJsonObject &req) {
     if (deferred.isEmpty()) return QJsonDocument(dsErr(
         QStringLiteral("bad_args"),
         QStringLiteral("debt_sweep_defer: no valid deferred entries")));
+
+    // ANTS-3346 — refuse a bulk un-triaged defer of FP-prone (non-auto-fixable)
+    // findings. A prior run folded 1106 raw scan findings straight into
+    // ROADMAP; the gate stops that class without blocking a reviewed batch
+    // (triaged:true) or a small one. Pure predicate lives in DebtSweepEngine.
+    const bool triaged = req.value(QStringLiteral("triaged")).toBool();
+    const auto verdict = DebtSweepEngine::evaluateTriageGate(deferred, triaged);
+    if (!verdict.allowed) {
+        QJsonObject e = dsErr(QStringLiteral("needs_triage"), verdict.reason);
+        e[QStringLiteral("total")]            = verdict.total;
+        e[QStringLiteral("non_auto_fixable")] = verdict.nonAutoFixable;
+        e[QStringLiteral("threshold")]        = verdict.threshold;
+        return QJsonDocument(e);
+    }
 
     QString dateIso = req.value(QStringLiteral("date_iso")).toString();
     if (dateIso.isEmpty()) {

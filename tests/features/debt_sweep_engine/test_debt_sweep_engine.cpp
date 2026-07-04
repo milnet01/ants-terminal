@@ -590,3 +590,69 @@ TEST(DebtSweepEngine, Inv19StaleTodoFlagsOldMarker) {
     opt.staleTodoMaxAgeDays = 1000000;
     EXPECT_EQ(DebtSweepEngine::detectStaleTodos(dir, opt).size(), 0);
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-3346 — evaluateTriageGate (bulk un-triaged defer guard)
+// ---------------------------------------------------------------------------
+
+namespace {
+QList<DebtSweepEngine::Finding> makeFindings(int count, bool autoFixable) {
+    QList<DebtSweepEngine::Finding> out;
+    for (int i = 0; i < count; ++i) {
+        DebtSweepEngine::Finding f;
+        f.category    = "code_drift";
+        f.detectorId  = "added_todo";
+        f.file        = QStringLiteral("src/f%1.cpp").arg(i);
+        f.line        = i + 1;
+        f.message     = "m";
+        f.autoFixable = autoFixable;
+        out.append(f);
+    }
+    return out;
+}
+}  // namespace
+
+TEST(DebtSweepEngine, TriageGateAtThresholdAllowed) {
+    // Exactly threshold non-auto-fixable → allowed (refusal is strictly >).
+    const auto batch = makeFindings(
+        DebtSweepEngine::kBulkDeferTriageThreshold, /*autoFixable=*/false);
+    const auto v = DebtSweepEngine::evaluateTriageGate(batch, /*triaged=*/false);
+    EXPECT_TRUE(v.allowed);
+    EXPECT_EQ(v.nonAutoFixable, DebtSweepEngine::kBulkDeferTriageThreshold);
+    EXPECT_EQ(v.total, DebtSweepEngine::kBulkDeferTriageThreshold);
+    EXPECT_EQ(v.threshold, DebtSweepEngine::kBulkDeferTriageThreshold);
+    EXPECT_TRUE(v.reason.isEmpty());
+}
+
+TEST(DebtSweepEngine, TriageGateBulkNonFixableRefused) {
+    const int n = DebtSweepEngine::kBulkDeferTriageThreshold + 1;
+    const auto batch = makeFindings(n, /*autoFixable=*/false);
+    const auto v = DebtSweepEngine::evaluateTriageGate(batch, /*triaged=*/false);
+    EXPECT_FALSE(v.allowed);
+    EXPECT_EQ(v.total, n);
+    EXPECT_EQ(v.nonAutoFixable, n);
+    EXPECT_EQ(v.threshold, DebtSweepEngine::kBulkDeferTriageThreshold);
+    EXPECT_FALSE(v.reason.isEmpty());
+}
+
+TEST(DebtSweepEngine, TriageGateTriagedOverridesBulk) {
+    const int n = DebtSweepEngine::kBulkDeferTriageThreshold + 50;
+    const auto batch = makeFindings(n, /*autoFixable=*/false);
+    const auto v = DebtSweepEngine::evaluateTriageGate(batch, /*triaged=*/true);
+    EXPECT_TRUE(v.allowed);
+    EXPECT_EQ(v.nonAutoFixable, n);
+    EXPECT_TRUE(v.reason.isEmpty());
+}
+
+TEST(DebtSweepEngine, TriageGateAutoFixableExempt) {
+    // A large auto-fixable batch never trips the gate (mechanical fixes are
+    // high-confidence); only the non-auto-fixable count is measured.
+    QList<DebtSweepEngine::Finding> batch =
+        makeFindings(DebtSweepEngine::kBulkDeferTriageThreshold + 100,
+                     /*autoFixable=*/true);
+    batch.append(makeFindings(1, /*autoFixable=*/false));
+    const auto v = DebtSweepEngine::evaluateTriageGate(batch, /*triaged=*/false);
+    EXPECT_TRUE(v.allowed);
+    EXPECT_EQ(v.nonAutoFixable, 1);
+    EXPECT_EQ(v.total, DebtSweepEngine::kBulkDeferTriageThreshold + 101);
+}
