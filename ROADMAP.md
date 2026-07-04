@@ -531,6 +531,10 @@ for the rotation contract.
 
 ### ⚡ Performance
 
+| Item | Note | Owner |
+| --- | --- | --- |
+| _probe_ | live-test | n/a |
+
 - ✅ **SIMD VT-parser scan**. Shipped in 0.6.23. Ground-state hot path
   now scans 16 bytes at a time via SSE2 (x86_64) / NEON (ARM64) for
   the next non-printable-ASCII byte, then bulk-emits `Print` actions
@@ -18131,6 +18135,7 @@ their feedback-file tracking tables needed stamping.
   **Layman:** Marking a task done sometimes reports a timeout error even though it actually worked, so a retry could duplicate the note.
   Kind: fix.
   Source: Contact-List-feedback-2026-07-04 (CL-0043).
+  Related: ANTS-3444 (2026-07-04) is the perf umbrella — measured find_sources 52s / spec_query 14s vs the bridge's 5s read-timeout is the same -32000 the user hits post-launch. Fix the latency + bridge timeout there; keep this item for the flip write-idempotency angle (a committed write must not surface as a transport error).
 
 - ✅ [ANTS-3441] **Recurring chore: compact confirmed-shipped blocks in the *_Ants_MCP_Feedback.md files (run feedback_log op:compact_shipped each triage pass) to keep them from growing unbounded.**
   The tool exists (ANTS-3421, feedback_log op:compact_shipped, ✅). This item tracks the maintenance PRACTICE: on each cross-session triage, after stamping tracking rows, run compact_shipped (dry_run first) on eligible single-finding, ✅-tracked, above-watermark contributor blocks to reclaim bytes. Files are large (3D_Engine ~3670 lines, DOOM/MAME/RetroArch/RetroDB 1500-2600). First pass done 2026-07-04 alongside the ANTS-3432..3440 triage. Multi-finding-block compaction remains out of scope (ANTS-3421 §5) — a future op could handle those.
@@ -18151,6 +18156,21 @@ their feedback-file tracking tables needed stamping.
   **Layman:** Extend the write-up shrinker so it can also collapse a session block that reported several findings once all of them have shipped, not just single-finding blocks.
   Kind: enhancement.
   Source: user-request-2026-07-04 (ANTS-3442 split).
+
+- 📋 [ANTS-3444] **MCP verb latency + post-launch cold cliff: find_sources 52s / spec_query 14s exceed the bridge 5s read-timeout — investigate and significantly improve.**
+  Post-relaunch, heavy MCP verbs are pathologically slow and routinely exceed the mcp-bridge.py 5s READ_TIMEOUT_S, so the client sees an MCP -32000 "transport: timed out" even though the C++ server later replies. This is the dominant cause of the flaky first-minutes-after-launch UX (sibling of ANTS-3440).
+  Measured 2026-07-04 (direct-socket probe, bypassing the bridge timeout, loaded 32GiB host, cold caches just after relaunch):
+    - find_sources (no-match topic)  = 52.3s  (WORST — full-tree content scan per token variant)
+    - spec_query list-mode           = 13.7s  (parses every spec fully to enumerate)
+    - workspace_search (simple regex) =  1.45s (ripgrep-backed, fine)
+    - git_state                       =  0.014s (fine)
+  Two-pronged fix wanted:
+    (a) SERVER perf — profile + significantly cut find_sources & spec_query latency; likely they read full file bodies where a bounded/indexed scan or the codebase_index would do. Target: heaviest verb < ~3s warm, and no cold cliff (warm the relevant caches at MCP-connect, off the request thread).
+    (b) CLIENT — mcp-bridge.py READ_TIMEOUT_S=5s is guaranteed to fail a 52s verb; raise to a generous default (~60s), make it env-configurable ($ANTS_MCP_READ_TIMEOUT_S), and consider per-verb budgets.
+  User priority: "significant improvement" — treat as a headline perf item.
+  **Layman:** Right after the terminal restarts, some of Claude's helper tools take 15-50 seconds and time out. Make them fast.
+  Kind: perf.
+  Source: user-request-2026-07-04.
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
