@@ -18171,6 +18171,7 @@ their feedback-file tracking tables needed stamping.
   **Layman:** Right after the terminal restarts, some of Claude's helper tools take 15-50 seconds and time out. Make them fast.
   Kind: perf.
   Source: user-request-2026-07-04.
+  Progress (2026-07-04, 1c98e74): part (b) CLIENT interim guard shipped — mcp-bridge.py READ_TIMEOUT_S 5s->60s (+ $ANTS_MCP_READ_TIMEOUT_S / $ANTS_MCP_CONNECT_TIMEOUT_S overrides, safe fallback on bad value), CONNECT 2s->5s. Stops the spurious -32000 (reply now lands). Takes effect on next bridge respawn (new CC session / MCP reconnect); the long-lived bridge process does not hot-reload. STILL OPEN: part (a) server-side latency — find_sources 52s / spec_query 14s must actually get fast (bounded/indexed scan, warm caches at connect off the request thread). 60s is a ceiling that prevents failure, not an acceptable response time.
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
