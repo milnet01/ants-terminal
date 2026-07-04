@@ -226,25 +226,27 @@ QString templateDebtSweepFoldInBlock(
 // findings (those without a mechanical fix). See spec § 3.11.
 QString triagePrompt(const QList<Finding> &llmShaped);
 
-// ANTS-3346 — bulk-defer triage gate. A prior debt_sweep_defer folded 1106
-// un-triaged false-positive findings straight into ROADMAP.md, burning that
-// many counter IDs. Non-auto-fixable findings are the judgment-required
-// (FP-prone) subset; deferring a large batch of them without review is the
-// failure mode. This pure predicate lets cmdDebtSweepDefer refuse such a
-// batch unless the caller asserts `triaged`. No IO — unit-tests cleanly.
+// ANTS-3346 — bulk-defer triage gate. The Project Audit "Defer all to ROADMAP"
+// button (and the debt_sweep_defer MCP verb) once folded a whole 700-1100
+// finding scan straight into ROADMAP.md as tracked items, burning that many
+// counter IDs on un-reviewed false positives. The gate fires on the TOTAL
+// deferred count: a raw scan mixes real, FP-prone, and mechanical findings, so
+// bulk size — not auto-fixability — is the honest "this is un-reviewed scan
+// output" signal. This pure predicate lets both callers refuse (MCP) / confirm
+// (GUI) such a batch unless the caller asserts `triaged`. No IO — tests cleanly.
 constexpr int kBulkDeferTriageThreshold = 25;
 
 struct TriageGateVerdict {
-    bool    allowed = true;          // false → refuse the defer
-    int     total = 0;               // total deferred findings
-    int     nonAutoFixable = 0;      // the FP-prone (judgment-required) subset
+    bool    allowed = true;          // false → gate the defer (refuse / confirm)
+    int     total = 0;               // total deferred findings (the gate signal)
+    int     nonAutoFixable = 0;      // judgment-required subset (message only)
     int     threshold = 0;           // kBulkDeferTriageThreshold, echoed back
     QString reason;                  // human-readable, set only when blocked
 };
 
 // `triaged` is the caller's explicit assertion that the batch was reviewed
-// (always allowed). Otherwise a batch whose non-auto-fixable count exceeds
-// kBulkDeferTriageThreshold is refused.
+// (always allowed). Otherwise a batch whose total size exceeds
+// kBulkDeferTriageThreshold is gated.
 TriageGateVerdict evaluateTriageGate(const QList<Finding> &deferred,
                                      bool triaged);
 

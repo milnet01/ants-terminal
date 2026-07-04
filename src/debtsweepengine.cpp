@@ -1236,11 +1236,15 @@ QString triagePrompt(const QList<Finding> &llmShaped) {
     return out;
 }
 
-// ANTS-3346 — see header. Non-auto-fixable findings are the FP-prone
-// judgment-required subset; a bulk un-triaged defer of them is the class that
-// once dumped 1106 raw findings into ROADMAP.md. Auto-fixable findings never
-// count toward the gate (a mechanical fix is high-confidence). `triaged=true`
-// is the caller's reviewed-this-batch assertion and always passes.
+// ANTS-3346 — see header. The gate fires on the TOTAL deferred count, not
+// composition: a raw scan is a mix of auto-fixable, FP-prone, and real
+// findings, and deferring the whole lot writes every one as a tracked ROADMAP
+// item. Auto-fixability is NOT a safety signal — a fixture's deliberate
+// `Q_UNUSED(w)` in good.cpp is a false positive yet auto-fixable — so bulk
+// size is the honest measure of "raw scan output dumped un-reviewed" (the
+// class that once folded 1106 findings into ROADMAP.md). `nonAutoFixable` is
+// carried for the caller's message only. `triaged=true` is the reviewed-this-
+// batch assertion and always passes.
 TriageGateVerdict evaluateTriageGate(const QList<Finding> &deferred,
                                      bool triaged) {
     TriageGateVerdict v;
@@ -1250,13 +1254,15 @@ TriageGateVerdict evaluateTriageGate(const QList<Finding> &deferred,
         if (!f.autoFixable) ++v.nonAutoFixable;
     }
     if (triaged) return v;   // reviewed: allowed regardless of size
-    if (v.nonAutoFixable > v.threshold) {
+    if (v.total > v.threshold) {
         v.allowed = false;
         v.reason = QStringLiteral(
-            "%1 non-auto-fixable (judgment-required) findings exceed the "
-            "un-triaged bulk-defer threshold of %2. These are FP-prone "
-            "detector outputs — review them and pass triaged:true, or defer "
-            "a reviewed subset.").arg(v.nonAutoFixable).arg(v.threshold);
+            "%1 findings exceed the un-triaged bulk-defer threshold of %2 "
+            "(%3 of them judgment-required). A raw scan is a mix of real, "
+            "FP-prone, and mechanical findings — review it (Triage with AI) "
+            "and pass triaged:true, or defer a reviewed subset, rather than "
+            "folding the whole scan into ROADMAP.")
+            .arg(v.total).arg(v.threshold).arg(v.nonAutoFixable);
     }
     return v;
 }

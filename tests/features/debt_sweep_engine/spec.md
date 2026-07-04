@@ -63,11 +63,12 @@ detector-expansion addendum.
 
 - **INV-20.** `evaluateTriageGate(deferred, triaged)` is a pure
   predicate over the deferred set:
-  - Counts only non-auto-fixable (judgment-required) findings toward
-    the gate; auto-fixable findings never trip it regardless of count.
-  - Exactly `kBulkDeferTriageThreshold` non-auto-fixable findings is
-    allowed (refusal is strictly greater-than); one more is refused
-    (`allowed:false`, non-empty `reason`).
+  - Gates on TOTAL deferred count, not composition — auto-fixability is
+    not a safety signal, so a large all-auto-fixable batch is gated too
+    (the mostly-`[fix]` 708-finding "Defer all" case).
+  - Exactly `kBulkDeferTriageThreshold` findings is allowed (refusal is
+    strictly greater-than); one more is refused (`allowed:false`,
+    non-empty `reason`).
   - `triaged:true` always allows, regardless of size.
-  - Echoes `total`, `nonAutoFixable`, `threshold` for the caller's
-    refusal envelope.
+  - Echoes `total`, `nonAutoFixable` (message only), `threshold` for the
+    caller's refusal envelope.

@@ -1705,6 +1705,8 @@ if(ANTS_TESTS)
                 # ANTS-1842 — DialogChrome D2–D4 affordances.
                 tests/features/dialog_chrome_affordances/test_dialog_chrome_affordances.cpp)
     target_compile_definitions(test_dialogs PRIVATE
+        # ANTS-3346 — debt-sweep bulk-defer gate source-grep lock.
+        SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
         SRC_SETTINGSDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
         # ANTS-1843 — review-dialog interaction source-scrape (INV-17/18).

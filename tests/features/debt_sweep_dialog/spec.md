@@ -42,6 +42,14 @@ Testable seams on `AuditDialog` (protected; driven via a test subclass):
 - **INV-D4** — `debtAllow(f, reason)` writes a matching
   `.audit_allowlist.json` entry; after the implicit reload,
   `allowlisted(debtToAuditFinding(f))` is true.
+- **INV-D5 (ANTS-3346)** — the bulk **Defer all to ROADMAP** handler
+  gates on `DebtSweepEngine::evaluateTriageGate` before folding: a scan
+  larger than the bulk threshold (25) raises a confirmation warning
+  (pointing at Triage with AI) that the user must accept, so a raw scan
+  can't be dumped into ROADMAP as tracked items with one click. The gate
+  keys on total bulk size, not auto-fixability. Source-grep locks the
+  wiring; the gate logic is covered behaviourally by the
+  `DebtSweepEngine.TriageGate*` tests.
 
 ## Test notes
 

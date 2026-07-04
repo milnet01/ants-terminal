@@ -6164,11 +6164,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "Allocates IDs from .roadmap-counter and, if a "
                         "release-block heading is found, atomically "
                         "inserts the block into ROADMAP.md. Refuses "
-                        "(needs_triage) a bulk batch of >25 non-auto-fixable "
-                        "findings unless triaged:true — these are FP-prone "
-                        "detector outputs that must be reviewed, not dumped "
-                        "(ANTS-3346). Required: deferred (array), caller_cwd "
-                        "(string — your $PWD; ANTS-1372).");
+                        "(needs_triage) a bulk batch of >25 findings unless "
+                        "triaged:true — a raw scan is a mix of real, FP-prone, "
+                        "and mechanical findings that must be reviewed, not "
+                        "dumped (ANTS-3346). Required: deferred (array), "
+                        "caller_cwd (string — your $PWD; ANTS-1372).");
                     t["selection_hint"] = QStringLiteral(
                         "Use to defer (not action) a debt-sweep "
                         "finding set so it doesn't re-surface every "
@@ -6190,10 +6190,9 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject triagedProp; triagedProp["type"] = "boolean";
                     triagedProp["description"] = QStringLiteral(
                         "Assert this batch was reviewed. Required to defer "
-                        ">25 non-auto-fixable (judgment-required) findings; "
-                        "without it such a batch is refused (needs_triage) to "
-                        "prevent dumping raw scan output into ROADMAP. "
-                        "Defaults to false.");
+                        ">25 findings at once; without it such a batch is "
+                        "refused (needs_triage) to prevent dumping raw scan "
+                        "output into ROADMAP. Defaults to false.");
                     // ANTS-1389 — caller_cwd schema surfacing.
                     QJsonObject callerProp;
                     callerProp["type"] = "string";

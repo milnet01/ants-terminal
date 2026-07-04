@@ -19,6 +19,13 @@
 #include <QString>
 #include <QTemporaryDir>
 
+#include <fstream>
+#include <sstream>
+
+#ifndef SRC_AUDITDIALOG_CPP_PATH
+#error "SRC_AUDITDIALOG_CPP_PATH compile definition required"
+#endif
+
 namespace {
 
 class Dlg : public AuditDialog {
@@ -133,6 +140,27 @@ TEST(DebtSweepDialog, INVD4_DebtAllowRoundTrip) {
     // A different detector/file is not matched.
     EXPECT_FALSE(dlg.allowlisted(Dlg::debtToAuditFinding(
         mkDebt("code_drift", "added_todo", "src/other.cpp", 1, "x", false))));
+}
+
+// INV-D5 (ANTS-3346) — the bulk "Defer all to ROADMAP" button gates on the
+// shared triage verdict before folding. Source-grep: the defer-all handler
+// region references evaluateTriageGate (the modal confirmation itself is not
+// unit-tested — button-lambda modals aren't, by precedent here; the gate
+// LOGIC is covered behaviourally by DebtSweepEngine.TriageGate* in the
+// debt_sweep_engine suite).
+TEST(DebtSweepDialog, INVD5_BulkDeferGatedByTriageVerdict) {
+    std::ifstream in(SRC_AUDITDIALOG_CPP_PATH);
+    ASSERT_TRUE(in.good());
+    std::stringstream ss; ss << in.rdbuf();
+    const std::string src = ss.str();
+    const auto btn = src.find("Defer all to ROADMAP");
+    ASSERT_NE(btn, std::string::npos);
+    // The connect() lambda's evaluateTriageGate call lands within the button's
+    // construction/wiring region (well under 2000 chars of the label).
+    const auto gate = src.find("evaluateTriageGate", btn);
+    ASSERT_NE(gate, std::string::npos)
+        << "Defer-all handler does not call evaluateTriageGate (ANTS-3346)";
+    EXPECT_LT(gate - btn, static_cast<size_t>(2000));
 }
 
 // Smoke — the dialog constructs with the Debt Sweep tab present.

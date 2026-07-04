@@ -613,24 +613,22 @@ QList<DebtSweepEngine::Finding> makeFindings(int count, bool autoFixable) {
 }  // namespace
 
 TEST(DebtSweepEngine, TriageGateAtThresholdAllowed) {
-    // Exactly threshold non-auto-fixable → allowed (refusal is strictly >).
+    // Exactly threshold total → allowed (refusal is strictly greater-than).
     const auto batch = makeFindings(
         DebtSweepEngine::kBulkDeferTriageThreshold, /*autoFixable=*/false);
     const auto v = DebtSweepEngine::evaluateTriageGate(batch, /*triaged=*/false);
     EXPECT_TRUE(v.allowed);
-    EXPECT_EQ(v.nonAutoFixable, DebtSweepEngine::kBulkDeferTriageThreshold);
     EXPECT_EQ(v.total, DebtSweepEngine::kBulkDeferTriageThreshold);
     EXPECT_EQ(v.threshold, DebtSweepEngine::kBulkDeferTriageThreshold);
     EXPECT_TRUE(v.reason.isEmpty());
 }
 
-TEST(DebtSweepEngine, TriageGateBulkNonFixableRefused) {
+TEST(DebtSweepEngine, TriageGateBulkRefused) {
     const int n = DebtSweepEngine::kBulkDeferTriageThreshold + 1;
     const auto batch = makeFindings(n, /*autoFixable=*/false);
     const auto v = DebtSweepEngine::evaluateTriageGate(batch, /*triaged=*/false);
     EXPECT_FALSE(v.allowed);
     EXPECT_EQ(v.total, n);
-    EXPECT_EQ(v.nonAutoFixable, n);
     EXPECT_EQ(v.threshold, DebtSweepEngine::kBulkDeferTriageThreshold);
     EXPECT_FALSE(v.reason.isEmpty());
 }
@@ -640,19 +638,19 @@ TEST(DebtSweepEngine, TriageGateTriagedOverridesBulk) {
     const auto batch = makeFindings(n, /*autoFixable=*/false);
     const auto v = DebtSweepEngine::evaluateTriageGate(batch, /*triaged=*/true);
     EXPECT_TRUE(v.allowed);
-    EXPECT_EQ(v.nonAutoFixable, n);
     EXPECT_TRUE(v.reason.isEmpty());
 }
 
-TEST(DebtSweepEngine, TriageGateAutoFixableExempt) {
-    // A large auto-fixable batch never trips the gate (mechanical fixes are
-    // high-confidence); only the non-auto-fixable count is measured.
-    QList<DebtSweepEngine::Finding> batch =
-        makeFindings(DebtSweepEngine::kBulkDeferTriageThreshold + 100,
-                     /*autoFixable=*/true);
-    batch.append(makeFindings(1, /*autoFixable=*/false));
+TEST(DebtSweepEngine, TriageGateGatesLargeAutoFixableBatch) {
+    // The gate keys on TOTAL bulk, not composition: auto-fixability is not a
+    // safety signal (a fixture's deliberate Q_UNUSED is auto-fixable yet a
+    // false positive). A big all-auto-fixable scan must still be gated — this
+    // is the mostly-[fix] 708-finding "Defer all" case that motivated the fix.
+    const int n = DebtSweepEngine::kBulkDeferTriageThreshold + 100;
+    const auto batch = makeFindings(n, /*autoFixable=*/true);
     const auto v = DebtSweepEngine::evaluateTriageGate(batch, /*triaged=*/false);
-    EXPECT_TRUE(v.allowed);
-    EXPECT_EQ(v.nonAutoFixable, 1);
-    EXPECT_EQ(v.total, DebtSweepEngine::kBulkDeferTriageThreshold + 101);
+    EXPECT_FALSE(v.allowed);
+    EXPECT_EQ(v.total, n);
+    EXPECT_EQ(v.nonAutoFixable, 0);   // carried for the message; not the gate
+    EXPECT_FALSE(v.reason.isEmpty());
 }

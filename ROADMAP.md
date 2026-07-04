@@ -8799,6 +8799,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: debt-sweep-2026-06-28.
   Shipped 2026-07-04 — pure DebtSweepEngine::evaluateTriageGate + needs_triage refusal when >25 non-auto-fixable (judgment-required) findings are bulk-deferred un-triaged; triaged:true overrides. Guards the class that once folded 1106 raw FPs into ROADMAP. Tests: debt_sweep_engine INV-20 + mcp_debt_sweep_tools INV-13c.
+  Correction (2026-07-04): the actual incident was the Project Audit GUI "📌 Defer all to ROADMAP" button (auditdialog.cpp), not the MCP verb — Triage with AI was never pressed. Two follow-ups: (1) the gate now keys on TOTAL deferred count, not non-auto-fixable — the 708-finding scan was mostly auto-fixable ([fix]) yet full of fixture false positives, so composition is not a safety signal; (2) the GUI button now shows a confirmation warning (points at Triage with AI) via the same evaluateTriageGate verdict, while the MCP verb hard-refuses (needs_triage). Test: debt_sweep_dialog INV-D5 + updated DebtSweepEngine.TriageGate* (total-count).
 
 - 📋 [ANTS-3347] **-Wshadow: `tmp` shadows in test_roadmap_viewer_archive.cpp:69.**
   Build emits a -Wshadow warning at tests/features/roadmap_viewer_archive/test_roadmap_viewer_archive.cpp:69 (`tmp` shadows an outer declaration). Rename the inner.

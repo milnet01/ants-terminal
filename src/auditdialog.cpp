@@ -2896,6 +2896,27 @@ void AuditDialog::buildDebtSweepTab() {
         "Fold every listed finding into ROADMAP.md as a dated debt-sweep block.");
     connect(m_debtDeferAllBtn, &QPushButton::clicked, this, [this]() {
         if (m_debtFindings.isEmpty()) return;
+        // ANTS-3346 — a raw scan is a mix of real, FP-prone, and mechanical
+        // findings; folding the whole lot into ROADMAP writes every one as a
+        // tracked item (this is how 1106 false positives once landed there).
+        // A human is present, so gate with a confirmation (not a hard refuse)
+        // that points at Triage with AI. Shares the pure verdict with the MCP
+        // verb; the total-count threshold naturally exempts a single [defer].
+        const auto verdict = DebtSweepEngine::evaluateTriageGate(
+            m_debtFindings, /*triaged=*/false);
+        if (!verdict.allowed) {
+            const auto reply = QMessageBox::warning(this,
+                "Defer all to ROADMAP",
+                QString("%1 findings would be written into ROADMAP.md as "
+                        "tracked items — %2 of them are judgment-required "
+                        "(not mechanical auto-fixes) and haven't been "
+                        "triaged.\n\nDeferring the whole scan folds its false "
+                        "positives in too. Consider \"🧠 Triage with AI\" "
+                        "first to drop them.\n\nDefer all %1 anyway?")
+                    .arg(verdict.total).arg(verdict.nonAutoFixable),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+            if (reply != QMessageBox::Yes) return;
+        }
         QString heading = RoadmapFoldIn::findActiveReleaseHeading(m_projectPath);
         bool ok = false;
         heading = QInputDialog::getText(this, "Defer all to ROADMAP",
