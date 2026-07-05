@@ -84,9 +84,11 @@ specs pending, §"Tooling"):
   `**Proposed ID:**` line is still the blank placeholder is un-triaged; that
   set is the maintainer's work-list (§"The un-triaged delta").
 - **Compaction is roadmap-driven.** Once an assigned id is ✅ in the roadmap,
-  the finding's write-up collapses to a one-line `→ shipped ANTS-NNNN` stub
-  (`compact_resolved`, §"Maintainer compaction"). Nothing goes stale because
-  nothing is stored to go stale.
+  the finding's write-up collapses to a `→ shipped ✅ (write-up compacted,
+  ANTS-3443)` stub that keeps the `**Proposed ID:**` line above it (the id lives
+  in that retained line, not the breadcrumb — see §"Maintainer compaction" for
+  the canonical form; `compact_resolved`). Nothing goes stale because nothing is
+  stored to go stale.
 
 **Marker + back-compat.** A v2 file carries `<!-- ants-mcp-feedback: 2 -->`.
 Tooling MUST still read v1 files: the delta parser (§"The un-triaged delta")
@@ -194,7 +196,9 @@ the block headings below are structural.
 There is **no maintainer tracking table** in a v2 file. Triage happens in
 place: the maintainer replaces the `_(maintainer to assign)_` placeholder with
 `ANTS-NNNN` (the finding is now triaged), and once that id ships the whole
-finding body collapses to a `→ shipped ANTS-NNNN` stub. Status is never written
+finding body collapses to a `→ shipped ✅ (write-up compacted, ANTS-3443)` stub
+that retains the `**Proposed ID:**` line (the canonical form is in
+§"Maintainer compaction"). Status is never written
 here — a reader resolves it live from `ROADMAP.md`.
 
 The first-line HTML comment marks the format version: `<!-- ants-mcp-feedback:
@@ -469,9 +473,10 @@ It is **auto-discovery** (no target list) and **roadmap-driven**. The
 `ROADMAP.md`; the pure helper replaces the finding's body — every line after the
 `### ` heading up to the next `#`/`## `/`### ` boundary **except the
 `**Proposed ID:**` line** — with a one-line breadcrumb, keeping the heading AND
-the id line **verbatim**. The canonical stub order is fixed: **heading → the
-retained `**Proposed ID:**` line → the breadcrumb** (the id line is lifted to
-just under the heading regardless of where it sat in the original body):
+the id line **verbatim**. The canonical stub order is fixed: **heading → blank →
+the retained `**Proposed ID:**` line → the breadcrumb → trailing blank** (the id
+line is lifted to just under the heading regardless of where it sat in the
+original body):
 
 ```markdown
 ### Issue #1 — verify_changes timed out
@@ -489,19 +494,28 @@ retained `**Proposed ID:**` line above. Unlike the v1 stub, the breadcrumb
 carries no `confirmed <session> <date>` — the v2 gate is roadmap-✅, not
 contributor-confirmation, so there is no confirming session to name.)
 
-A finding is collapsed only when **all** hold (else it is left untouched and
+Only a `### ` block that carries a `**Proposed ID:**` line is a *finding* and a
+candidate; an id-less `### ` block is non-finding prose (a note) — never
+enumerated, never in `skipped[]`. A candidate is collapsed only when **all**
+hold, evaluated first-failure-wins in this order (else it is left untouched and
 reported in `skipped[]` with a `code`):
 
-1. it is triaged — its `**Proposed ID:**` holds ≥ 1 `ANTS-[0-9]+` id
-   (`untriaged`);
-2. **every** assigned id is ✅ in the live roadmap (`has_open_id`, open ids
-   surfaced); an id absent from the roadmap counts as not-shipped
-   (`roadmap_unresolved_ids`);
-3. its body does not already carry a `→ shipped` breadcrumb line
-   (`already_compacted`, idempotent). NB the v2 sentinel differs from v1's
-   "first non-blank body line begins `→ shipped ANTS-`": the v2 stub keeps the
+1. it has a **shippable id** — its first `**Proposed ID:**` value holds ≥ 1
+   `ANTS-[0-9]+` id **and is not an `n/a` closure** (`no_shippable_id`). A value
+   beginning `n/a` (case-insensitive, `n/a\b`) is a closure and fails **even when
+   it also names an `ANTS-NNNN`** — the incidental id does not make it
+   collapsible.
+2. its body does not already carry a `→ shipped` breadcrumb line
+   (`already_compacted`, idempotent) — checked **before** the roadmap gates, so
+   an already-collapsed finding stays collapsed regardless of later roadmap churn
+   (idempotency under a reopened id). NB the v2 sentinel differs from v1's "first
+   non-blank body line begins `→ shipped ANTS-`": the v2 stub keeps the
    `**Proposed ID:**` line *above* the breadcrumb, so the probe is "**any** body
-   line begins `→ shipped`", not the first line.
+   line (outside fences) begins `→ shipped`", not the first line.
+3. **every** id is ✅ in the live roadmap, unresolved checked before open: an id
+   absent from the roadmap (e.g. archive-rotated) fails `roadmap_unresolved_ids`
+   (unresolved ids surfaced), and otherwise an id present-but-open fails
+   `has_open_id` (open ids surfaced).
 
 A `drop_prose` option to also collapse id-less procedural notes ("Positive
 note", "What worked well") is **deferred to the pending spec**: an id-less note
@@ -512,10 +526,10 @@ It is NOT part of this standard's normative contract.
 
 Always preview with `dry_run:true` — it returns every `collapsed[]` /
 `skipped[]` entry plus a signed `bytes_saved` and writes nothing. Full contract:
-`docs/specs/ANTS-3443.md` **(spec pending — authored + cold-eyes'd before the op
-is implemented, per CLAUDE.md §14; ANTS-3443 scopes `compact_resolved` only —
-`assign_id` and `migrate_v2` each get their own spec id; the `skipped[]` codes
-above are provisional until it lands)**.
+`docs/specs/ANTS-3443.md` **(spec authored + cold-eyes reviewed; op to be
+implemented per CLAUDE.md §14. ANTS-3443 scopes `compact_resolved` only —
+`assign_id` and `migrate_v2` each get their own spec id. The gate list +
+`skipped[]` codes above are the spec's normative contract, not provisional.)**
 
 ## v1 legacy compaction ops (un-migrated files only)
 
