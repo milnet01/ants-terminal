@@ -650,4 +650,186 @@ PruneResult pruneTracking(const QString &content, const PruneOptions &opts) {
     return res;
 }
 
+// ANTS-3443 — fence-aware `### `-block enumerator. Shared scanner for the
+// v2 consumers (compact_resolved here; feedback_query delta + migrate_v2
+// pending). A block runs from its `### ` heading to the next
+// `#`/`## `/`### ` boundary (or EOF), fences skipped; idLine0/idValue carry
+// the block's FIRST `**Proposed ID:**` line (the standard's canonical
+// id-line regex, first-line-wins). Classification (finding vs prose) is the
+// caller's, not the scanner's.
+QVector<FindingBlock> enumerateFindingBlocks(const QStringList &lines) {
+    // Canonical id-line regex — mcp-feedback-files.md § "Maintainer triage".
+    // The `[ *:]+` run swallows the `:**`/`**:` separator in either order.
+    static const QRegularExpression idLineRe(
+        QStringLiteral("^ *(?:[-*] +)?\\*{0,2} *proposed id[ *:]+(.*)$"),
+        QRegularExpression::CaseInsensitiveOption);
+    // 1–3 hash boundary (`# `/`## `/`### `); a `### ` also terminates a block,
+    // unlike the v1 scanBoundaries (which treats `### ` as inert).
+    static const QRegularExpression boundaryRe(QStringLiteral("^#{1,3} "));
+
+    // Pass 1 — every boundary heading outside a fence, in document order.
+    struct B { int line0; bool isSub; };   // isSub ⟹ a `### ` heading
+    QVector<B> bounds;
+    QChar openFence;
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString &l = lines.at(i);
+        if (!openFence.isNull()) {
+            const QChar c = fenceOpenerChar(l);
+            if (!c.isNull() && c == openFence) openFence = QChar();
+            continue;
+        }
+        const QChar opener = fenceOpenerChar(l);
+        if (!opener.isNull()) { openFence = opener; continue; }
+        if (boundaryRe.match(l).hasMatch())
+            bounds.append({ i, l.startsWith(QStringLiteral("### ")) });
+    }
+
+    // Pass 2 — for each `### ` boundary emit a block; extent = next boundary
+    // of any level (or EOF). Every `### ` boundary is guaranteed outside a
+    // fence (Pass 1), so the body scan restarts fence tracking cleanly.
+    QVector<FindingBlock> out;
+    for (int bi = 0; bi < bounds.size(); ++bi) {
+        if (!bounds.at(bi).isSub) continue;
+        FindingBlock fb;
+        fb.headingLine0 = bounds.at(bi).line0;
+        fb.heading      = lines.at(fb.headingLine0);
+        fb.extentEnd0   = (bi + 1 < bounds.size()) ? bounds.at(bi + 1).line0
+                                                   : lines.size();
+        QChar bodyFence;
+        for (int li = fb.headingLine0 + 1; li < fb.extentEnd0; ++li) {
+            const QString &bl = lines.at(li);
+            if (!bodyFence.isNull()) {
+                const QChar c = fenceOpenerChar(bl);
+                if (!c.isNull() && c == bodyFence) bodyFence = QChar();
+                continue;
+            }
+            const QChar opener = fenceOpenerChar(bl);
+            if (!opener.isNull()) { bodyFence = opener; continue; }
+            const auto m = idLineRe.match(bl);
+            if (m.hasMatch()) {
+                fb.idLine0 = li;
+                QString v = m.captured(1).trimmed();
+                while (v.startsWith(QLatin1Char('*'))) v.remove(0, 1);
+                while (v.endsWith(QLatin1Char('*')))   v.chop(1);
+                fb.idValue = v.trimmed();
+                break;   // first matching line wins
+            }
+        }
+        out.append(fb);
+    }
+    return out;
+}
+
+// ANTS-3443 — compact_resolved. Collapse each shipped v2 finding's write-up
+// to a `→ shipped ✅ (write-up compacted, ANTS-3443)` stub that retains the
+// heading + the first `**Proposed ID:**` line. Gated per-finding on the
+// injected roadmap sets (spec § 2.5, first-failure-wins); id-less `### `
+// prose blocks are not findings and are neither collapsed nor reported.
+// Pure; single bottom-up rewrite.
+ResolveResult compactResolved(const QString &content, const ResolveOptions &opts) {
+    ResolveResult res;
+    const QStringList lines = content.split(QLatin1Char('\n'));
+    const QVector<FindingBlock> blocks = enumerateFindingBlocks(lines);
+
+    static const QRegularExpression idTokRe(QStringLiteral("ANTS-[0-9]+"));
+    // `n/a` closure: value begins the literal n/a followed by a word boundary
+    // (whitespace, dash, em-dash, or EOL) — so `n/architecture` is NOT one.
+    static const QRegularExpression closureRe(
+        QStringLiteral("^n/a\\b"), QRegularExpression::CaseInsensitiveOption);
+    static const QString kShippedProbe = QString::fromUtf8("\xE2\x86\x92 shipped");
+    static const QString kBreadcrumb = QString::fromUtf8(
+        "\xE2\x86\x92 shipped \xE2\x9C\x85 (write-up compacted, ANTS-3443)");
+
+    auto blockBytes = [&](int start0, int end0) -> int {
+        QStringList seg;
+        for (int li = start0; li < end0 && li < lines.size(); ++li)
+            seg.append(lines.at(li));
+        return seg.join(QLatin1Char('\n')).toUtf8().size();
+    };
+    // gate 2 — any body line (fences skipped) begins "→ shipped" ⟹ already a
+    // stub. NB it is "any" body line, not the first: the v2 stub keeps the
+    // `**Proposed ID:**` line above the breadcrumb.
+    auto hasStub = [&](int start0, int end0) -> bool {
+        QChar openFence;
+        for (int li = start0; li < end0 && li < lines.size(); ++li) {
+            const QString &l = lines.at(li);
+            if (!openFence.isNull()) {
+                const QChar c = fenceOpenerChar(l);
+                if (!c.isNull() && c == openFence) openFence = QChar();
+                continue;
+            }
+            const QChar opener = fenceOpenerChar(l);
+            if (!opener.isNull()) { openFence = opener; continue; }
+            if (l.trimmed().startsWith(kShippedProbe)) return true;
+        }
+        return false;
+    };
+
+    // Gate each finding (id-less prose blocks omitted entirely).
+    struct Plan { int headingLine0, extentEnd0, idLine0, fIdx; };
+    QVector<Plan> toCollapse;
+    for (const FindingBlock &fb : blocks) {
+        if (fb.idLine0 < 0) continue;   // non-finding prose — not a finding
+        ResolvedFinding f;
+        f.heading = fb.heading;
+        f.line    = fb.headingLine0 + 1;
+        auto it = idTokRe.globalMatch(fb.idValue);
+        while (it.hasNext()) f.ids.append(it.next().captured(0));
+
+        const bool closure = closureRe.match(fb.idValue.trimmed()).hasMatch();
+        if (closure || f.ids.isEmpty()) {                       // gate 1
+            f.code = QStringLiteral("no_shippable_id");
+        } else if (hasStub(fb.headingLine0 + 1, fb.extentEnd0)) { // gate 2
+            f.code = QStringLiteral("already_compacted");
+        } else {
+            QStringList unresolved, open;
+            for (const QString &id : f.ids) {
+                if (!opts.roadmapIds.contains(id)) unresolved.append(id);
+                else if (!opts.shippedIds.contains(id)) open.append(id);
+            }
+            if (!unresolved.isEmpty()) {                        // gate 3
+                f.code = QStringLiteral("roadmap_unresolved_ids");
+                f.unresolvedIds = unresolved;
+            } else if (!open.isEmpty()) {                       // gate 4
+                f.code = QStringLiteral("has_open_id");
+                f.openIds = open;
+            } else {                                            // all ✅
+                f.collapsed   = true;
+                f.bytesBefore = blockBytes(fb.headingLine0, fb.extentEnd0);
+            }
+        }
+        const int fIdx = res.findings.size();
+        res.findings.append(f);
+        if (f.collapsed)
+            toCollapse.append({ fb.headingLine0, fb.extentEnd0, fb.idLine0, fIdx });
+    }
+
+    // Apply bottom-up so an earlier collapse never shifts a later finding's
+    // line positions (parity with compactShipped).
+    QStringList outLines = lines;
+    std::sort(toCollapse.begin(), toCollapse.end(),
+              [](const Plan &a, const Plan &b) {
+                  return a.headingLine0 > b.headingLine0;
+              });
+    for (const Plan &p : toCollapse) {
+        ResolvedFinding &f = res.findings[p.fIdx];
+        const QString idLineVerbatim = lines.at(p.idLine0);
+        const int start0 = p.headingLine0 + 1;   // first body line
+        const int end0   = p.extentEnd0;          // exclusive
+        // Stub order: heading (untouched) → blank → retained id line →
+        // breadcrumb → trailing blank.
+        const QStringList newBody = { QString(), idLineVerbatim,
+                                      kBreadcrumb, QString() };
+        for (int k = end0 - 1; k >= start0; --k) outLines.removeAt(k);
+        for (int k = newBody.size() - 1; k >= 0; --k)
+            outLines.insert(start0, newBody.at(k));
+        QStringList afterBlock = { lines.at(p.headingLine0) };
+        afterBlock += newBody;
+        f.bytesAfter = afterBlock.join(QLatin1Char('\n')).toUtf8().size();
+        res.bytesSaved += (f.bytesBefore - f.bytesAfter);
+    }
+    res.newContent = outLines.join(QLatin1Char('\n'));
+    return res;
+}
+
 }  // namespace FeedbackFile

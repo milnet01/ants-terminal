@@ -10832,12 +10832,13 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
     if (op != QStringLiteral("append_finding") &&
         op != QStringLiteral("append_tracking") &&
         op != QStringLiteral("compact_shipped") &&
-        op != QStringLiteral("prune_tracking")) {
+        op != QStringLiteral("prune_tracking") &&
+        op != QStringLiteral("compact_resolved")) {
         return QJsonDocument(fbErr(
             QStringLiteral("bad_mode"),
             QStringLiteral("feedback_log: op must be \"append_finding\", "
-                           "\"append_tracking\", \"compact_shipped\" or "
-                           "\"prune_tracking\"")));
+                           "\"append_tracking\", \"compact_shipped\", "
+                           "\"prune_tracking\" or \"compact_resolved\"")));
     }
 
     // ANTS-3421 — maintainer compaction: collapse confirmed-shipped
@@ -11096,6 +11097,153 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         } else {
             out[QStringLiteral("scope_ids")] = QJsonValue(QJsonValue::Null);
         }
+        if (derived) out[QStringLiteral("path_derived")] = true;  // ANTS-3376
+        return QJsonDocument(out);
+    }
+
+    // ANTS-3443 — maintainer v2 compaction: collapse each shipped finding's
+    // write-up to a roadmap-driven stub. Distinct request shape (auto-discovery
+    // + collapsed[]/skipped[] + in-place rewrite), returns early like the two
+    // v1 compaction ops above. It additionally reads ROADMAP.md (via the caller
+    // project) to resolve each finding's assigned id to its live status.
+    if (op == QStringLiteral("compact_resolved")) {
+        if (!exists) {
+            return QJsonDocument(fbNotFound(
+                QStringLiteral("feedback_log: compact_resolved on an absent "
+                               "file (nothing to compact)"),
+                resolved, feedbackCallerLeaf(req)));
+        }
+        QFile rf(resolved);
+        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("read_failed"),
+                QStringLiteral("feedback_log: cannot open \"%1\"")
+                    .arg(resolved)));
+        }
+        const QString content = QString::fromUtf8(rf.readAll());
+        rf.close();
+
+        // Version gate — v2 only (spec § 2.4). A v1 file's findings predate the
+        // structural `**Proposed ID:**` line, so none would be recognised as a
+        // finding; refuse and direct the caller to op:migrate_v2.
+        static const QRegularExpression markerRe(
+            QStringLiteral("<!--\\s*ants-mcp-feedback:\\s*([0-9]+)\\s*-->"));
+        const auto mm = markerRe.match(content);
+        const int ver = mm.hasMatch() ? mm.captured(1).toInt() : 0;
+        if (ver != 2) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("not_v2"),
+                QStringLiteral("feedback_log: compact_resolved requires a v2 "
+                               "file (<!-- ants-mcp-feedback: 2 -->); this file "
+                               "is v%1 — run op:migrate_v2 first").arg(ver)));
+        }
+
+        // Roadmap resolution (spec § 2.3): build shippedIds (status ✅) +
+        // roadmapIds (every canonical id, any status) from the caller
+        // project's ROADMAP.md. Absent/unreadable roadmap ⟹ roadmap_unavailable
+        // (an unknowable "is it ✅?"); a readable-but-empty roadmap is fine
+        // (every finding then reads roadmap_unresolved_ids — the safe no-op).
+        const QString callerRaw =
+            req.value(QStringLiteral("caller_cwd")).toString();
+        const QString callerCanonical = callerRaw.isEmpty()
+            ? QString() : QFileInfo(callerRaw).canonicalFilePath();
+        const QString roadmapPath = callerCanonical.isEmpty()
+            ? QString() : findRoadmapUnder(callerCanonical);
+        if (roadmapPath.isEmpty()) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("roadmap_unavailable"),
+                QStringLiteral("feedback_log: compact_resolved could not locate "
+                               "ROADMAP.md under the caller project")));
+        }
+        QFile rmf(roadmapPath);
+        if (!rmf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("roadmap_unavailable"),
+                QStringLiteral("feedback_log: compact_resolved cannot open "
+                               "\"%1\"").arg(roadmapPath)));
+        }
+        const QString rmMarkdown = QString::fromUtf8(rmf.readAll());
+        rmf.close();
+
+        FeedbackFile::ResolveOptions ropts;
+        static const QString kCheck = QString::fromUtf8("\xE2\x9C\x85");  // ✅
+        for (const auto &b : RoadmapDialog::parseBullets(rmMarkdown)) {
+            if (b.id.isEmpty() || !RoadmapIndex::isCanonicalId(b.id)) continue;
+            ropts.roadmapIds.insert(b.id);
+            if (b.status == kCheck) ropts.shippedIds.insert(b.id);
+        }
+
+        const FeedbackFile::ResolveResult rr =
+            FeedbackFile::compactResolved(content, ropts);
+        const bool dryRunR = req.value(QStringLiteral("dry_run")).toBool();
+
+        QJsonArray collapsed, skipped;
+        int collapsedCount = 0;
+        for (const FeedbackFile::ResolvedFinding &f : rr.findings) {
+            if (f.collapsed) {
+                ++collapsedCount;
+                QJsonObject e;
+                e[QStringLiteral("heading")]      = f.heading;
+                e[QStringLiteral("ids")]          =
+                    QJsonArray::fromStringList(f.ids);
+                e[QStringLiteral("line")]         = f.line;
+                e[QStringLiteral("bytes_before")] = f.bytesBefore;
+                e[QStringLiteral("bytes_after")]  = f.bytesAfter;
+                e[QStringLiteral("bytes_saved")]  = f.bytesBefore - f.bytesAfter;
+                collapsed.append(e);
+            } else {
+                QJsonObject e;
+                e[QStringLiteral("heading")] = f.heading;
+                e[QStringLiteral("line")]    = f.line;
+                e[QStringLiteral("code")]    = f.code;
+                e[QStringLiteral("ids")]     =
+                    QJsonArray::fromStringList(f.ids);
+                if (!f.openIds.isEmpty())
+                    e[QStringLiteral("open_ids")] =
+                        QJsonArray::fromStringList(f.openIds);
+                if (!f.unresolvedIds.isEmpty())
+                    e[QStringLiteral("unresolved_ids")] =
+                        QJsonArray::fromStringList(f.unresolvedIds);
+                skipped.append(e);
+            }
+        }
+
+        if (!dryRunR && collapsedCount > 0) {
+            const QByteArray utf8 = rr.newContent.toUtf8();
+            QSaveFile sf(resolved);
+            if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("write_failed"),
+                    QStringLiteral("feedback_log: cannot open \"%1\" for "
+                                   "writing").arg(resolved)));
+            }
+            bool committed = (sf.write(utf8) == utf8.size());
+            if (committed) {
+                if (g_forceFeedbackWriteFail) {
+                    sf.cancelWriting();
+                    committed = false;
+                } else {
+                    committed = sf.commit();
+                }
+            }
+            if (!committed) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("write_failed"),
+                    QStringLiteral("feedback_log: atomic write of \"%1\" "
+                                   "failed").arg(resolved)));
+            }
+        }
+
+        QJsonObject out;
+        out[QStringLiteral("ok")]                 = true;
+        out[QStringLiteral("op")]                 = op;
+        out[QStringLiteral("path")]               = resolved;
+        out[QStringLiteral("dry_run")]            = dryRunR;
+        out[QStringLiteral("findings_collapsed")] = collapsedCount;
+        out[QStringLiteral("bytes_saved")]        =
+            static_cast<qint64>(rr.bytesSaved);
+        out[QStringLiteral("collapsed")]          = collapsed;
+        out[QStringLiteral("skipped")]            = skipped;
         if (derived) out[QStringLiteral("path_derived")] = true;  // ANTS-3376
         return QJsonDocument(out);
     }

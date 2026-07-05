@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`feedback_log op:compact_resolved` — collapse a shipped v2 finding's write-up to a roadmap-driven stub (ANTS-3443)**
+  Maintainer, v2 files only. Auto-discovers every `### ` finding and collapses each whose inline `**Proposed ID:**` id(s) are all ✅ in the live ROADMAP.md to a one-line `→ shipped ✅ (write-up compacted, ANTS-3443)` stub that keeps the heading + the id line — never deletes (the write-up survives in git + under its ANTS-NNNN). Per-finding, idempotent, atomic, `dry_run` byte report; per-finding skips (no_shippable_id / already_compacted / roadmap_unresolved_ids / has_open_id) in skipped[]. Refuses not_v2 on a v1 file (run migrate_v2 first) and roadmap_unavailable when no ROADMAP.md resolves. Introduces the shared fence-aware `### `-block enumerator the pending v2 feedback_query/migrate_v2 verbs will reuse.
+
 - **find_sources emits a redirect hint on an empty result** (ANTS-3435)
   An empty files[] now points at workspace_search / find_definition / find_caller so a symbol-led query is not mistaken for genuine absence.
 

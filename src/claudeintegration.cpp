@@ -4056,6 +4056,9 @@ void ClaudeIntegration::onMcpConnection() {
                         "kept; gated ✅-shipped + above-watermark + "
                         "single-finding + idempotent; batch, atomic, dry_run "
                         "byte report; per-target refusals in skipped[]). "
+                        "ANTS-3443: op:\"compact_resolved\" (maintainer, v2 "
+                        "files) auto-collapses shipped findings' write-ups, "
+                        "gated on the live ROADMAP.md status. "
                         "caller_cwd required.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to add feedback to a shared "
@@ -4077,6 +4080,7 @@ void ClaudeIntegration::onMcpConnection() {
                           e.append(QStringLiteral("append_tracking"));
                           e.append(QStringLiteral("compact_shipped"));
                           e.append(QStringLiteral("prune_tracking"));
+                          e.append(QStringLiteral("compact_resolved"));
                           opProp["enum"] = e; }
                         opProp["description"] = QStringLiteral(
                             "Required. \"append_finding\" (contributor) "
@@ -4094,7 +4098,20 @@ void ClaudeIntegration::onMcpConnection() {
                             "accrues 📋→🚧→✅ across tables). Optional "
                             "`scope_ids` restricts to given ids; `dry_run` "
                             "previews `rows_removed`/`bytes_saved`. Idempotent; "
-                            "atomic.");
+                            "atomic. ANTS-3443 — \"compact_resolved\" "
+                            "(maintainer, v2 files only) auto-collapses every "
+                            "shipped finding's write-up to a \"→ shipped ✅ "
+                            "(write-up compacted, ANTS-3443)\" stub that keeps "
+                            "the heading + its `**Proposed ID:**` line; gated "
+                            "per-finding on the id(s) being ✅ in the live "
+                            "ROADMAP.md (resolved from caller_cwd). No targets — "
+                            "auto-discovery; `dry_run` previews "
+                            "`findings_collapsed`/`bytes_saved`; per-finding "
+                            "skips (no_shippable_id / already_compacted / "
+                            "roadmap_unresolved_ids / has_open_id) in skipped[]. "
+                            "Idempotent; atomic. Refuses `not_v2` on a v1 file "
+                            "(run migrate_v2 first), `roadmap_unavailable` when "
+                            "ROADMAP.md is unreadable.");
                     QJsonObject dateProp; dateProp["type"] = "string";
                         dateProp["description"] = QStringLiteral(
                             "Optional YYYY-MM-DD; defaults to today.");

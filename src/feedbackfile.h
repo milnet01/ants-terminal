@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -156,5 +157,74 @@ struct PruneResult {
 // request-shape-valid (each matches ANTS-NNNN) — the wrapper enforces that
 // (bad_args) and the absent-file / path plumbing.
 PruneResult pruneTracking(const QString &content, const PruneOptions &opts);
+
+// ---- ANTS-3443: maintainer v2 compaction (compact_resolved) ---------
+//
+// Collapse a shipped v2 finding's write-up to a roadmap-driven stub,
+// keeping the `### ` heading AND the finding's first `**Proposed ID:**`
+// line verbatim. The roadmap truth is injected pre-resolved (two id sets)
+// so the helper stays MainWindow-free and unit-testable over synthetic
+// content — the same posture as pruneTracking. See docs/specs/ANTS-3443.md
+// for the full contract (gates + invariants).
+
+// A `### ` finding sub-block located by the fence-aware enumerator
+// (enumerateFindingBlocks). Shared with the pending v2 feedback_query
+// delta parser + op:migrate_v2 (spec § 2.6 — one scanner, so consumers
+// never drift on block extents or on which line is the authoritative id
+// line). idLine0 < 0 ⟹ the block carries no `**Proposed ID:**` line: it is
+// non-finding prose, not a finding. Each consumer layers its own
+// classification (feedback_query flags a line-less finding-shaped block as
+// suspected_untagged; compact_resolved treats it as inert prose).
+struct FindingBlock {
+    int     headingLine0 = -1;  // 0-based index of the `### ` heading line
+    QString heading;            // the heading line, verbatim
+    int     extentEnd0 = -1;    // 0-based exclusive end: next `#`/`## `/`### `
+                                // boundary (or EOF), fences skipped
+    int     idLine0 = -1;       // 0-based index of the FIRST `**Proposed ID:**`
+                                // line in the body, or -1 when absent
+    QString idValue;            // that line's capture-group-1 value, trimmed of
+                                // whitespace + stray `*`; "" when idLine0 < 0
+};
+
+// Enumerate every `### ` finding sub-block outside fenced regions, in
+// document order. Uses the standard's canonical id-line regex
+// (mcp-feedback-files.md § "Maintainer triage") to find each block's first
+// `**Proposed ID:**` line; the classification (finding vs prose) is left to
+// the caller (idLine0 >= 0 ⟹ the block has an id line).
+QVector<FindingBlock> enumerateFindingBlocks(const QStringList &lines);
+
+struct ResolveOptions {
+    QSet<QString> shippedIds;   // canonical ids whose live roadmap status is ✅
+    QSet<QString> roadmapIds;   // every canonical id present in the roadmap
+                                // (any status) — an id absent from this set is
+                                // "unresolved" (archive-rotated / unknown)
+};
+
+struct ResolvedFinding {
+    QString     heading;
+    QStringList ids;            // ANTS-NNNN tokens from the first Proposed-ID line
+    bool        collapsed = false;
+    QString     code;           // "" when collapsed; else the first-failing skip
+                                // code (no_shippable_id / already_compacted /
+                                // roadmap_unresolved_ids / has_open_id)
+    QStringList openIds;        // has_open_id: the present-but-not-✅ subset
+    QStringList unresolvedIds;  // roadmap_unresolved_ids: the not-in-roadmap subset
+    int         line = -1;      // 1-based heading line
+    int         bytesBefore = 0, bytesAfter = 0;  // populated on collapse
+};
+
+struct ResolveResult {
+    QString newContent;                    // full file after all collapses
+    QVector<ResolvedFinding> findings;     // real findings only, in document
+                                           // order; id-less prose blocks omitted
+    long    bytesSaved = 0;                // signed Σ(bytesBefore − bytesAfter)
+};
+
+// Pure. Enumerate findings, gate each on the injected roadmap sets
+// (spec § 2.5, first-failure-wins), and collapse the all-✅ findings
+// bottom-up in one pass. shippedIds/roadmapIds are assumed pre-resolved by
+// the wrapper (RoadmapDialog::parseBullets); the wrapper also owns the
+// version gate, the roadmap read, and the atomic write.
+ResolveResult compactResolved(const QString &content, const ResolveOptions &opts);
 
 }  // namespace FeedbackFile

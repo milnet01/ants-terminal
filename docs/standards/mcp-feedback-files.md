@@ -46,17 +46,18 @@ growing) — the
 contributor's write-up and the roadmap ID it became. It never persists a
 finding's *status*; status is resolved live from `ROADMAP.md` on read.**
 
-> **Implementation status (2026-07-04): v2 is target design, not yet built.**
-> The shipped code and the entire existing corpus are v1: `feedbackfile.cpp`
-> `parse()` implements only the v1 watermark rule, `skeleton()` still emits
-> `<!-- ants-mcp-feedback: 1 -->` with the v1 contributor banner, and the
-> `feedback_log` handler accepts only `append_finding` / `append_tracking` /
-> `compact_shipped` / `prune_tracking`. The v2 verbs (`assign_id`,
-> `compact_resolved`, `migrate_v2`) and the v2 parser changes do **not** exist
-> yet. This section is the **contract they will be built to**, spec-first per
-> CLAUDE.md §14 — read every v2 "MUST"/"is"/"does" below as normative-target,
-> not as current runtime behaviour. Until a file is migrated it stays v1 and
-> every v1 rule in this doc still governs it.
+> **Implementation status (2026-07-05): v2 is landing incrementally.**
+> `compact_resolved` (ANTS-3443) **is built** — `FeedbackFile::compactResolved`
+> + the fence-aware `### `-block enumerator (`enumerateFindingBlocks`, the shared
+> v2 scanner) + `cmdFeedbackLog op:compact_resolved`. Still **not built**:
+> `op:assign_id`, `op:migrate_v2`, and the v2 delta changes to `feedback_query` /
+> `session_orient feedback_pending` (those read paths still apply the v1
+> watermark rule). `feedbackfile.cpp` `skeleton()` still emits
+> `<!-- ants-mcp-feedback: 1 -->`, and **the entire existing corpus is still
+> `: 1`** — so `compact_resolved` refuses `not_v2` on every current file until
+> `migrate_v2` converts it. Read every not-yet-built v2 "MUST"/"is"/"does" below
+> as normative-target; until a file is migrated it stays v1 and every v1 rule in
+> this doc still governs it.
 
 v1 (the legacy corpus) recorded triage as an appended maintainer *tracking
 table* (`finding → ID → status`) every review cycle. That duplicated the
@@ -67,8 +68,8 @@ roadmap moved on — real corpus tables froze their status at triage time
 table, so the largest file reached 267 KB. `compact_shipped` (ANTS-3421) and
 `prune_tracking` (ANTS-3442) existed only to fight that self-inflicted bloat.
 
-v2 removes the tracking table entirely (via `migrate_v2` + `compact_resolved`;
-specs pending, §"Tooling"):
+v2 removes the tracking table entirely (via `migrate_v2` — spec pending — plus
+the now-shipped `compact_resolved`, §"Tooling"):
 
 - **Triage is inline.** The maintainer records `finding → id` by filling the
   finding's own `**Proposed ID:**` slot (already part of the finding template,
@@ -526,10 +527,11 @@ It is NOT part of this standard's normative contract.
 
 Always preview with `dry_run:true` — it returns every `collapsed[]` /
 `skipped[]` entry plus a signed `bytes_saved` and writes nothing. Full contract:
-`docs/specs/ANTS-3443.md` **(spec authored + cold-eyes reviewed; op to be
-implemented per CLAUDE.md §14. ANTS-3443 scopes `compact_resolved` only —
-`assign_id` and `migrate_v2` each get their own spec id. The gate list +
-`skipped[]` codes above are the spec's normative contract, not provisional.)**
+`docs/specs/ANTS-3443.md` **(implemented — `FeedbackFile::compactResolved` +
+`cmdFeedbackLog op:compact_resolved`, `tests/features/feedback_log_compact_resolved/`;
+the gate list + `skipped[]` codes above are the normative contract. ANTS-3443
+scopes `compact_resolved` only — `assign_id` and `migrate_v2` each get their own
+spec id.)**
 
 ## v1 legacy compaction ops (un-migrated files only)
 
@@ -659,7 +661,7 @@ v1 code path until a file is migrated):
 | `session_orient` `feedback_pending` (ANTS-1964) | The per-file un-triaged **count** shares `FeedbackFile::parse`'s delta path, so it MUST adopt the v2 unfilled-`Proposed ID` rule on a `: 2` file (a `: 2` file has no table, so the v1 "after last table" count would be wrong). |
 | `feedback_log op:append_finding` (ANTS-1962) | Already emits the `**Proposed ID:**` placeholder — now **structural**; no behavioural change beyond guaranteeing the line. |
 | `feedback_log op:assign_id` **(new; spec id TBA)** | The v2 triage write: fill one finding's `**Proposed ID:**` slot in place with the id(s) or a `n/a — <reason>` closure. Locates the finding by heading, **inheriting `compact_shipped`'s heading-resolution gates** (ANTS-3421: `heading_line` disambiguation + `target_ambiguous`/`duplicate_target`, since a "still broken" recheck often reuses a `### ` title). Replaces `op:append_tracking` for v2 files. |
-| `feedback_log op:compact_resolved` **(new, ANTS-3443)** | Auto-collapse shipped findings' write-ups; gates on live roadmap ✅. (A `drop_prose` option is **deferred** — see §"Maintainer compaction"; NOT in ANTS-3443 scope.) |
+| `feedback_log op:compact_resolved` **(shipped, ANTS-3443)** | Auto-collapse shipped findings' write-ups; gates on live roadmap ✅. Refuses `not_v2` on a v1 file. (A `drop_prose` option is **deferred** — see §"Maintainer compaction"; NOT in ANTS-3443 scope.) |
 | `feedback_log op:migrate_v2` **(new; spec id TBA)** | One-shot v1→v2 migration (§"Migration from v1"); owns the finding-token-matching + closure-normalisation contract. |
 | `feedback_log op:append_tracking` | **Deprecated once `assign_id` ships** — until then it remains the only working triage-write op (writes a v1 table). Not used on v2 files. |
 | `feedback_log op:compact_shipped` (ANTS-3421) / `op:prune_tracking` (ANTS-3442) | **Legacy** — operate on v1 tables; used only to clean up / migrate un-migrated files. |
