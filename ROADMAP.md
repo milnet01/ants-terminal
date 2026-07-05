@@ -18198,6 +18198,11 @@ their feedback-file tracking tables needed stamping.
   Kind: enhancement.
   Source: in-session-2026-07-05 (v2 feedback-file redesign; the triage-write verb that replaces op:append_tracking for v2 files).
 
+- 📋 [ANTS-3448] **v2 un-triaged delta rule in feedback_query + session_orient feedback_pending — marker-aware parse() reads a : 2 file's delta as its unfilled-Proposed-ID findings, not the v1 after-last-table region.**
+  **Layman:** Teaches the two read tools to understand the new inline-ID feedback format, so a migrated file's to-do list is computed from the findings that still lack an ID instead of the old table position.
+  Kind: enhancement.
+  Source: in-session-2026-07-05 (v2 feedback-file redesign; the read-side change that completes the v2 chain — the shipped readers are marker-blind today).
+
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
 Triage of the 2026-06-30 → 2026-07-01 un-triaged feedback tails from Vestige,
