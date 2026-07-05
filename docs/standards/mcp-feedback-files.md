@@ -684,7 +684,7 @@ v1 code path until a file is migrated):
 | `feedback_query` (ANTS-1961) | Delta = un-triaged findings (unfilled `**Proposed ID:**`), not "after the last table". Resolves + returns each assigned id's **live roadmap status**, and can render an on-demand status view. Surfaces `suspected_untagged[]` (§"The un-triaged delta" step 4). Keeps the v1 "after last watermark" path for un-migrated files. |
 | `session_orient` `feedback_pending` (ANTS-1964) | The per-file un-triaged **count** shares `FeedbackFile::parse`'s delta path, so it MUST adopt the v2 unfilled-`Proposed ID` rule on a `: 2` file (a v2 file tracks triage inline, so the v1 "after last table" count would miscount — including on a **migrated** file, which retains its v1 tables in place yet triages via `**Proposed ID:**`). |
 | `feedback_log op:append_finding` (ANTS-1962) | Already emits the `**Proposed ID:**` placeholder — now **structural**; no behavioural change beyond guaranteeing the line. |
-| `feedback_log op:assign_id` **(new; spec id TBA)** | The v2 triage write: fill one finding's `**Proposed ID:**` slot in place with the id(s) or a `n/a — <reason>` closure. Locates the finding by heading, **inheriting `compact_shipped`'s heading-resolution gates** (ANTS-3421: `heading_line` disambiguation + `target_ambiguous`/`duplicate_target`, since a "still broken" recheck often reuses a `### ` title). Replaces `op:append_tracking` for v2 files. |
+| `feedback_log op:assign_id` **(new, ANTS-3447)** | The v2 triage write: fill one finding's `**Proposed ID:**` slot in place with the id(s) or a `n/a — <reason>` closure. Locates the finding by heading over the `### ` enumerator, **inheriting `compact_shipped`'s heading-resolution gate _shape_** (ANTS-3421: `heading_line` disambiguation + `target_ambiguous`+`candidates[]` when a "still broken" recheck reuses a `### ` title). Single-target (batch deferred), so no cross-target `duplicate_target`. Replaces `op:append_tracking` for v2 files. |
 | `feedback_log op:compact_resolved` **(shipped, ANTS-3443)** | Auto-collapse shipped findings' write-ups; gates on live roadmap ✅. Refuses `not_v2` on a v1 file. (A `drop_prose` option is **deferred** — see §"Maintainer compaction"; NOT in ANTS-3443 scope.) |
 | `feedback_log op:migrate_v2` **(shipped, ANTS-3446)** | One-shot **mechanical** v1→v2 migration (§"Migration from v1"): bumps the marker + stamps blank `**Proposed ID:**` placeholders on un-triaged findings; reports `orphans[]`/`unclassified[]`. Leaves the v1 tables **in place** (no move/collapse) and reads no table id content. |
 | `feedback_log op:append_tracking` | **Deprecated once `assign_id` ships** — until then it remains the only working triage-write op (writes a v1 table). Not used on v2 files. |
@@ -692,6 +692,5 @@ v1 code path until a file is migrated):
 
 Each new/changed verb ships spec-first with its own `docs/specs/ANTS-NNNN.md`
 and a `tests/features/` conformance test, per the project standards. Spec ids:
-`compact_resolved` = **ANTS-3443**, `migrate_v2` = **ANTS-3446**; `assign_id`
-gets its own id, **allocated when authored** (marked TBA above so the blank is
-deliberate, not a lost link).
+`compact_resolved` = **ANTS-3443**, `migrate_v2` = **ANTS-3446**,
+`assign_id` = **ANTS-3447** (spec drafted; implementation pending).

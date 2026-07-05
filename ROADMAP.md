@@ -18193,6 +18193,11 @@ their feedback-file tracking tables needed stamping.
   Source: in-session-2026-07-05 (v2 feedback-file redesign; the verb that unlocks compact_resolved on the all-v1 corpus).
   Resolved (2026-07-05): shipped as MECHANICAL-ONLY + LEAVE-TABLES-IN-PLACE (the headline's "collapse the tables" was the abandoned relocate design — cold-eyes found relocating tables to EOF empties the shipped v1 delta until the v2 reader lands). Ships: FeedbackFile::migrateV2 (marker bump + blank Proposed-ID stamp on finding-shaped below-watermark blocks; orphans[]/unclassified[] surfaced; no table moved) + cmdFeedbackLog op:migrate_v2 + schema. 17 tests green, full suite 2531 pass. §7 ten-item standard reconciliation in mcp-feedback-files.md landed same commit. Spec docs/specs/ANTS-3446.md → Implemented.
 
+- 📋 [ANTS-3447] **feedback_log op:assign_id — v2 inline triage write: fill a finding's Proposed-ID slot in place with the assigned id(s) or an n/a closure.**
+  **Layman:** The maintainer's one-tap way to record which roadmap ticket a piece of feedback became, written straight onto the finding instead of into a separate table.
+  Kind: enhancement.
+  Source: in-session-2026-07-05 (v2 feedback-file redesign; the triage-write verb that replaces op:append_tracking for v2 files).
+
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
 Triage of the 2026-06-30 → 2026-07-01 un-triaged feedback tails from Vestige,
