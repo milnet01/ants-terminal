@@ -1185,6 +1185,8 @@ if(ANTS_TESTS)
                 tests/features/feedback_log_prune_tracking/test_feedback_log_prune_tracking.cpp
                 # ANTS-3443 feedback_log op:compact_resolved (v2 write-up shrinker).
                 tests/features/feedback_log_compact_resolved/test_feedback_log_compact_resolved.cpp
+                # ANTS-3446 feedback_log op:migrate_v2 (mechanical v1→v2 migration).
+                tests/features/feedback_log_migrate_v2/test_feedback_log_migrate_v2.cpp
                 tests/features/mcp_spec_log/test_mcp_spec_log.cpp
                 # ANTS-2129 — audit_falsepos_log write verb.
                 tests/features/audit_falsepos_log/test_audit_falsepos_log.cpp

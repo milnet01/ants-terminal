@@ -832,4 +832,132 @@ ResolveResult compactResolved(const QString &content, const ResolveOptions &opts
     return res;
 }
 
+// ANTS-3446 — migrate_v2. Mechanical v1→v2: bump the version marker to `: 2`
+// and stamp a blank `**Proposed ID:**` placeholder on each finding-shaped,
+// below-watermark `### ` block that lacks one. Leaves the v1 tracking tables
+// in place, so the v1 watermark/delta is preserved (spec § 1.1 / INV-4).
+// Pure; single bottom-up apply of the stamp inserts, then the marker bump.
+MigrateResult migrateV2(const QString &content) {
+    MigrateResult res;
+    const QStringList lines = content.split(QLatin1Char('\n'));
+
+    // Version marker — digit-optional (`[0-9]*`) so a malformed
+    // `<!-- ants-mcp-feedback: -->` is repaired, not left as junk beside an
+    // inserted one (spec § 2.2 pass 1). Deliberately more lenient than the
+    // sibling compact_resolved gate's digit-required `([0-9]+)`. First match
+    // wins (conventionally line 1); ParseResult carries no version, so this is
+    // the helper's own scan.
+    static const QRegularExpression markerRe(
+        QStringLiteral("<!--\\s*ants-mcp-feedback:\\s*([0-9]*)\\s*-->"));
+    bool markerPresent = false;
+    int  ver = 0;  // absent / malformed ⟹ 0 (< 2)
+    for (int i = 0; i < lines.size(); ++i) {
+        const auto m = markerRe.match(lines.at(i));
+        if (m.hasMatch()) {
+            markerPresent = true;
+            ver = m.captured(1).isEmpty() ? 0 : m.captured(1).toInt();
+            break;
+        }
+    }
+    // Idempotency short-circuit (spec § 2.7 / INV-6): a marker ≥ 2 is left
+    // untouched — `>= 2` (not `== 2`) so a future `: 3` file is not downgraded.
+    if (ver >= 2) {
+        res.alreadyV2 = true;
+        res.newContent = content;
+        return res;
+    }
+
+    const int watermark = parse(content).lastMaintainerLine;  // 1-based; -1 none
+    const QVector<FindingBlock> blocks = enumerateFindingBlocks(lines);
+
+    // §2.4 finding-shaped discriminators. Heading arm (migrate_v2-specific
+    // superset) OR body-bullet arm (shared with the standard's suspected-untagged
+    // definition; the `[:*]` class matches both `**What:**` and `**What**:`).
+    static const QRegularExpression headingArmRe(
+        QStringLiteral("\\b(issue|observation)\\b"),
+        QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression bulletArmRe(
+        QStringLiteral("^ *[-*] +\\*\\*(what|repro|impact)[:*]"),
+        QRegularExpression::CaseInsensitiveOption);
+    // Byte-identical to renderFindingBlock's placeholder + matches
+    // enumerateFindingBlocks's id-line regex (so a re-run detects it as
+    // already-stamped — spec § 2.7).
+    static const QString kStamp =
+        QStringLiteral("- **Proposed ID:** _(maintainer to assign)_");
+
+    // A `### ` block is finding-shaped iff its heading names issue/observation,
+    // or its body (fences skipped) carries a `- **What/Repro/Impact:**` bullet.
+    auto isFindingShaped = [&](const FindingBlock &fb) -> bool {
+        if (headingArmRe.match(fb.heading).hasMatch()) return true;
+        QChar bodyFence;
+        for (int li = fb.headingLine0 + 1;
+             li < fb.extentEnd0 && li < lines.size(); ++li) {
+            const QString &bl = lines.at(li);
+            if (!bodyFence.isNull()) {
+                const QChar c = fenceOpenerChar(bl);
+                if (!c.isNull() && c == bodyFence) bodyFence = QChar();
+                continue;
+            }
+            const QChar opener = fenceOpenerChar(bl);
+            if (!opener.isNull()) { bodyFence = opener; continue; }
+            if (bulletArmRe.match(bl).hasMatch()) return true;
+        }
+        return false;
+    };
+
+    // Classify each line-less block (§2.4) and record the stamp insert points.
+    // Reported `line` values are input coordinates (§2.6): the 1-based heading
+    // line in the ORIGINAL file.
+    QVector<int> insertAt0;  // 0-based indices in the original line list
+    for (const FindingBlock &fb : blocks) {
+        if (fb.idLine0 >= 0) continue;  // already has a Proposed-ID line — untouched
+        const int line1  = fb.headingLine0 + 1;
+        const bool below = (watermark < 0) || (line1 > watermark);
+        const bool shaped = isFindingShaped(fb);
+        if (shaped && below) {
+            res.stamped.append({ fb.heading, line1 });
+            // Insertion point: directly under the heading, or — when the line
+            // directly after it is blank — after that blank (preserve the
+            // heading → blank → bullets layout, spec § 2.2 pass 2).
+            int at0 = fb.headingLine0 + 1;
+            if (at0 < lines.size() && lines.at(at0).trimmed().isEmpty()) ++at0;
+            insertAt0.append(at0);
+        } else if (shaped && !below) {
+            res.orphans.append({ fb.heading, line1,
+                QStringLiteral("finding_shaped_above_watermark") });
+        } else if (!shaped && below) {
+            res.unclassified.append({ fb.heading, line1 });
+        }
+        // not-shaped & above → expected already-reviewed prose: not reported.
+    }
+
+    // Apply bottom-up so an earlier insert never shifts a later index (parity
+    // with compactResolved). Stamps are disjoint (one per finding).
+    QStringList outLines = lines;
+    std::sort(insertAt0.begin(), insertAt0.end(),
+              [](int a, int b) { return a > b; });
+    for (int at0 : insertAt0) outLines.insert(at0, kStamp);
+
+    // Marker bump (pass 1), applied last. Re-locate the first marker line in
+    // the stamped output (robust to a mis-placed marker that a below-it stamp
+    // shifted) and replace it; insert a canonical line 1 when absent.
+    static const QString kMarker =
+        QStringLiteral("<!-- ants-mcp-feedback: 2 -->");
+    if (markerPresent) {
+        for (int i = 0; i < outLines.size(); ++i) {
+            if (markerRe.match(outLines.at(i)).hasMatch()) {
+                outLines[i] = kMarker;
+                break;
+            }
+        }
+    } else {
+        outLines.insert(0, kMarker);
+    }
+
+    res.newContent = outLines.join(QLatin1Char('\n'));
+    res.bytesDelta = static_cast<long>(res.newContent.toUtf8().size())
+                   - static_cast<long>(content.toUtf8().size());
+    return res;
+}
+
 }  // namespace FeedbackFile

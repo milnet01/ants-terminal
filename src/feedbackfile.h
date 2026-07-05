@@ -227,4 +227,44 @@ struct ResolveResult {
 // version gate, the roadmap read, and the atomic write.
 ResolveResult compactResolved(const QString &content, const ResolveOptions &opts);
 
+// ---- ANTS-3446: one-shot v1→v2 migration (migrate_v2) ---------------
+//
+// Mechanical, leave-tables-in-place v1→v2 converter: bump the version
+// marker to `: 2` and stamp a blank `**Proposed ID:** _(maintainer to
+// assign)_` line on every finding-shaped, below-watermark `### ` block
+// that lacks one. The v1 tracking tables are NOT moved / collapsed /
+// deleted, so the v1 watermark — and thus the shipped un-triaged delta —
+// is preserved (spec § 1.1 / INV-4). Pure; no roadmap, no filesystem —
+// same posture as compactResolved / pruneTracking. See
+// docs/specs/ANTS-3446.md for the full contract.
+
+struct MigrateStamp {
+    QString heading;      // the `### ` heading line, verbatim
+    int     line = -1;    // 1-based heading line in the ORIGINAL file
+};
+
+struct MigrateOrphan {
+    QString heading;
+    int     line = -1;    // 1-based heading line in the ORIGINAL file
+    QString reason;       // "finding_shaped_above_watermark" (the only class)
+};
+
+struct MigrateResult {
+    QString newContent;                  // file after marker bump + stamps
+    bool    alreadyV2 = false;           // marker ≥ 2 ⟹ clean byte-identical no-op
+    QVector<MigrateStamp>  stamped;      // findings given a blank Proposed-ID line
+    QVector<MigrateOrphan> orphans;      // finding-shaped, above the watermark
+    QVector<MigrateStamp>  unclassified; // below-watermark `### ` block, not finding-shaped
+    long    bytesDelta = 0;              // signed Σ (newContent − content) sizes
+};
+
+// Pure. Runs parse() for the watermark (lastMaintainerLine) and
+// enumerateFindingBlocks() for the `### ` blocks, classifies each line-less
+// block by (finding-shaped × position) per spec § 2.4, stamps the
+// below-watermark findings bottom-up, then bumps the marker. A marker ≥ 2
+// short-circuits to a byte-identical no-op (alreadyV2). No table is moved
+// (INV-4). The wrapper (cmdFeedbackLog) owns path resolution, the suffix
+// guard, dry_run, and the atomic write — there is no roadmap read.
+MigrateResult migrateV2(const QString &content);
+
 }  // namespace FeedbackFile

@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **`feedback_log op:"migrate_v2"` — one-shot mechanical v1→v2 feedback-file migration.** (ANTS-3446)
+  Bumps the version marker to `<!-- ants-mcp-feedback: 2 -->` and stamps a
+  blank `- **Proposed ID:** _(maintainer to assign)_` line on every
+  finding-shaped, below-watermark `### ` block that lacks one. Leaves the v1
+  tracking tables in place (no move/collapse), so the v1 watermark and the
+  shipped un-triaged delta are preserved. Reports `stamped`/`orphans`/
+  `unclassified`; `already_v2` no-op on a v2 file; `dry_run` previews;
+  idempotent, atomic. This is the converter that lets `compact_resolved`
+  (ANTS-3443) act on the all-v1 corpus.
+
 - **`feedback_log op:compact_resolved` — collapse a shipped v2 finding's write-up to a roadmap-driven stub (ANTS-3443)**
   Maintainer, v2 files only. Auto-discovers every `### ` finding and collapses each whose inline `**Proposed ID:**` id(s) are all ✅ in the live ROADMAP.md to a one-line `→ shipped ✅ (write-up compacted, ANTS-3443)` stub that keeps the heading + the id line — never deletes (the write-up survives in git + under its ANTS-NNNN). Per-finding, idempotent, atomic, `dry_run` byte report; per-finding skips (no_shippable_id / already_compacted / roadmap_unresolved_ids / has_open_id) in skipped[]. Refuses not_v2 on a v1 file (run migrate_v2 first) and roadmap_unavailable when no ROADMAP.md resolves. Introduces the shared fence-aware `### `-block enumerator the pending v2 feedback_query/migrate_v2 verbs will reuse.
 

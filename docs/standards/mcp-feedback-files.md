@@ -47,12 +47,17 @@ contributor's write-up and the roadmap ID it became. It never persists a
 finding's *status*; status is resolved live from `ROADMAP.md` on read.**
 
 > **Implementation status (2026-07-05): v2 is landing incrementally.**
-> `compact_resolved` (ANTS-3443) **is built** — `FeedbackFile::compactResolved`
-> + the fence-aware `### `-block enumerator (`enumerateFindingBlocks`, the shared
-> v2 scanner) + `cmdFeedbackLog op:compact_resolved`. Still **not built**:
-> `op:assign_id`, `op:migrate_v2`, and the v2 delta changes to `feedback_query` /
-> `session_orient feedback_pending` (those read paths still apply the v1
-> watermark rule). `feedbackfile.cpp` `skeleton()` still emits
+> `compact_resolved` (ANTS-3443) and `migrate_v2` (ANTS-3446) **are built** —
+> `FeedbackFile::compactResolved` + `FeedbackFile::migrateV2` + the fence-aware
+> `### `-block enumerator (`enumerateFindingBlocks`, the shared v2 scanner) +
+> `cmdFeedbackLog op:compact_resolved` / `op:migrate_v2`. `migrate_v2` is
+> **mechanical-only + leave-tables-in-place** (§"Migration from v1"): it bumps
+> the marker and stamps blank `**Proposed ID:**` placeholders on un-triaged
+> findings, but does **not** move/collapse the v1 tables and does **not** fill
+> ids. Still **not built**: `op:assign_id` and the v2 delta changes to
+> `feedback_query` / `session_orient feedback_pending` (those read paths still
+> apply the v1 watermark rule — which is why leaving the tables in place is safe,
+> §"Migration from v1"). `feedbackfile.cpp` `skeleton()` still emits
 > `<!-- ants-mcp-feedback: 1 -->`, and **the entire existing corpus is still
 > `: 1`** — so `compact_resolved` refuses `not_v2` on every current file until
 > `migrate_v2` converts it. Read every not-yet-built v2 "MUST"/"is"/"does" below
@@ -68,8 +73,11 @@ roadmap moved on — real corpus tables froze their status at triage time
 table, so the largest file reached 267 KB. `compact_shipped` (ANTS-3421) and
 `prune_tracking` (ANTS-3442) existed only to fight that self-inflicted bloat.
 
-v2 removes the tracking table entirely (via `migrate_v2` — spec pending — plus
-the now-shipped `compact_resolved`, §"Tooling"):
+v2 stops **writing** tracking tables; status is derived from `ROADMAP.md`
+instead (§"Tooling"). Migration (`migrate_v2`, ANTS-3446) leaves any existing v1
+tables **in place** — it converts a file to `: 2` without moving or collapsing
+them (§"Migration from v1"); the byte shrink comes later from the now-shipped
+`compact_resolved`:
 
 - **Triage is inline.** The maintainer records `finding → id` by filling the
   finding's own `**Proposed ID:**` slot (already part of the finding template,
@@ -95,8 +103,9 @@ the now-shipped `compact_resolved`, §"Tooling"):
 Tooling MUST still read v1 files: the delta parser (§"The un-triaged delta")
 recognises **both** the v1 "after the last maintainer tracking table" rule and
 the v2 "unfilled `Proposed ID`" rule, and a v1 file is migrated to v2 **lazily**
-(§"Migration from v1") — its table mappings stamped onto the findings and the
-tables collapsed — never in a flag-day rewrite.
+(§"Migration from v1") — blank `**Proposed ID:**` placeholders stamped on the
+un-triaged findings and the v1 tables left in place — never in a flag-day
+rewrite.
 
 ## Two roles, one file
 
@@ -194,8 +203,12 @@ the block headings below are structural.
 - **Proposed ID:** _(maintainer to assign)_     ← blank ⟹ un-triaged (the tail)
 ```
 
-There is **no maintainer tracking table** in a v2 file. Triage happens in
-place: the maintainer replaces the `_(maintainer to assign)_` placeholder with
+A v2 file writes **no new maintainer tracking table** — a **migrated** file
+retains its v1 tables in place (`migrate_v2` does not move or collapse them;
+their `## 📋 …` headings still match `maintainerAnchorRe`, so the v1
+watermark/delta keep working — the reason leave-in-place is safe). Triage
+happens in place: the maintainer replaces the `_(maintainer to assign)_`
+placeholder with
 `ANTS-NNNN` (the finding is now triaged), and once that id ships the whole
 finding body collapses to a `→ shipped ✅ (write-up compacted, ANTS-3443)` stub
 that retains the `**Proposed ID:**` line (the canonical form is in
@@ -316,7 +329,9 @@ canonical). The finding is *triaged* iff that value either contains an
 whitespace, a dash, or end-of-value (`n/a\b` — so `n/architecture` is NOT a
 false closure) — a **closure**. Any other free-text value (`won't fix`, a bare `(self-resolved)`)
 reads as **un-triaged**, so a closure SHOULD be written `n/a — <reason>` (the
-reason is advisory; migration normalises the v1 `(self-resolved)` idiom to it).
+reason is advisory). A maintainer writes a v2 closure inline via `assign_id`
+when they triage the finding; mechanical `migrate_v2` does **not** normalise the
+v1 `(self-resolved)` idiom (that closure history stays in the in-place v1 table).
 The placeholder `_(maintainer to assign)_` and any empty value are un-triaged.
 
 A value beginning `n/a` is a **closure regardless of any `ANTS-NNNN` it also
@@ -340,10 +355,11 @@ parser still recognises it so legacy files read correctly until migrated
 `ANTS-[0-9]+` in any cell (headers vary: `Item`/`Observation`; `ID`/`ID(s)`).
 Note the shipped parser (`feedbackfile.cpp` `parse()`) flags **only an exact
 `n/a` id cell** as id-less; any other non-`ANTS` cell (`(self-resolved)`,
-`(schema fix)`) is carried as a **literal `ids` token**, not an empty list — so
-`migrate_v2` must itself recognise those as closures (it cannot assume the row
-arrived id-less). **Do not author new tracking tables** — they are read-only
-history under v2.
+`(schema fix)`) is carried as a **literal `ids` token**, not an empty list. This
+only matters to the v1 row consumers (`prune_tracking`); mechanical `migrate_v2`
+reads **none** of a table's id/closure content — it calls `parse()` solely for
+the watermark line (§"Migration from v1"). **Do not author new tracking
+tables** — they are read-only history under v2.
 
 ## The un-triaged delta (parser contract)
 
@@ -362,7 +378,8 @@ list-nested fences) and close it at the same fence character.
 **Version selection.** A file uses the **v2 rule iff it carries
 `<!-- ants-mcp-feedback: 2 -->`**; every other file — a `: 1` marker, a
 malformed/absent marker — uses the **v1 rule** until `op:migrate_v2` converts it
-(stamping the id lines and bumping the marker, §"Migration from v1"). Gating on
+(stamping **blank** `**Proposed ID:**` placeholders on the un-triaged findings
+and bumping the marker — no id is filled, §"Migration from v1"). Gating on
 the marker — **not** on watermark-absence — is deliberate: a legacy file whose
 findings predate the structural `**Proposed ID:**` line (most of the corpus)
 must NOT be read under v2, or those line-less findings would be misclassified as
@@ -530,15 +547,16 @@ Always preview with `dry_run:true` — it returns every `collapsed[]` /
 `docs/specs/ANTS-3443.md` **(implemented — `FeedbackFile::compactResolved` +
 `cmdFeedbackLog op:compact_resolved`, `tests/features/feedback_log_compact_resolved/`;
 the gate list + `skipped[]` codes above are the normative contract. ANTS-3443
-scopes `compact_resolved` only — `assign_id` and `migrate_v2` each get their own
-spec id.)**
+scopes `compact_resolved` only — `migrate_v2` is **ANTS-3446** and `assign_id`
+gets its own spec id.)**
 
 ## v1 legacy compaction ops (un-migrated files only)
 
-The two ops below act on the **v1 tracking table**, which v2 files don't have.
-They remain only to clean up / migrate legacy files (`op:migrate_v2` reuses the
-shared ANTS-3371 tracking-row *parser*, not `prune_tracking`'s row-removal
-logic); do not reach for them on a v2 file.
+The two ops below act on the **v1 tracking table**, which v2 files don't newly
+write (a migrated file retains its v1 tables in place). They remain only to clean
+up legacy files; do not reach for them on a freshly-authored v2 file. (Mechanical
+`migrate_v2` uses **none** of their row logic — it calls `parse()` only for the
+watermark line, §"Migration from v1".)
 
 ### `compact_shipped` — ANTS-3421
 
@@ -609,46 +627,52 @@ sibling (§5).
 
 ## Migration from v1
 
-A v1 file becomes v2 **lazily**, never in a flag-day rewrite. Crucially, most
-legacy `### ` findings **carry no `**Proposed ID:**` line at all** (the corpus
-predates the structural line — as of 2026-07-04, `3D_Engine…` has ~167 `### `
-blocks and ~42 id lines), so migration cannot rely on a "blank slot" existing.
-`feedback_log op:"migrate_v2"` does it in one pass:
+A v1 file becomes v2 **lazily**, never in a flag-day rewrite. Migration is
+**mechanical-only and leaves the v1 tracking tables in place** (ANTS-3446): it
+does the unambiguous, lossless work and defers the fuzzy finding→id triage to
+`assign_id`. Crucially, most legacy `### ` findings **carry no `**Proposed ID:**`
+line at all** (the corpus predates the structural line — as of 2026-07-05,
+`3D_Engine…` has ~167 `### ` blocks and ~37 id lines; reproduce with
+`grep -cE '\*\*Proposed ID' <file>`), so migration stamps a **blank** placeholder
+on the un-triaged ones. `feedback_log op:"migrate_v2"` does it in **two
+mechanical passes**:
 
-1. Parse every v1 tracking table into `finding-recap → id(s)` rows (the existing
-   ANTS-3371 row parser), and locate the v1 watermark (last tracking table).
-2. Classify each `### ` block and add a `**Proposed ID:**` line **only where it
-   makes the block a finding** — never onto a prose note, or migration would
-   flood the delta with "Positive note"/"What worked well" blocks:
-   - **maps to a tracking row** (its `Issue #N`/`Observation #N` token matches a
-     row) → stamp `**Proposed ID:** <ids>` (it is a triaged finding);
-   - **no row, but below the v1 watermark** (the un-triaged tail) → add
-     `**Proposed ID:** _(maintainer to assign)_` (a real, still-un-triaged
-     finding that needs an id);
-   - **no row, above the watermark** → leave it **line-less** → it stays
-     non-finding prose under v2 (already-closed / a praise note), correctly out
-     of the delta and eligible for a future `drop_prose`. This inherits v1's
-     "above the last table = already reviewed" semantic; the rare case it
-     mis-handles — a genuinely un-triaged finding stranded above a *later* table
-     added for other findings — is surfaced in the step-4 report (not silently
-     dropped), so the maintainer can stamp it by hand.
-   Token matching is the hard part; it (and the `n/a` closure normalisation
-   below) is owned by **`migrate_v2`'s own spec (pending)** — ANTS-3443 scopes
-   only `compact_resolved`.
-3. Normalise any v1 closure token the row carried (`(self-resolved)`,
-   `(schema fix)` — which the parser hands over as a literal `ids` token, not an
-   empty list) to the v2 `n/a — <reason>` form when stamping, so the closure
-   reads as triaged (the parser recognises only a leading `n/a`).
-4. Collapse the now-redundant tracking tables. **The response surfaces two
-   orphan channels — never silently dropped — so nothing is lost:** (a) any
-   table id that mapped to no `### ` block (a recap the token match couldn't
-   place), and (b) any finding-shaped block left line-less above the watermark
-   (the stranded-finding case from step 2). Both are re-triaged by hand.
-5. Flip the file marker to `<!-- ants-mcp-feedback: 2 -->`.
+1. **Marker bump.** Replace the first `<!-- ants-mcp-feedback: N -->` line (the
+   version digits are optional, so a malformed marker is *repaired*) with the
+   canonical `<!-- ants-mcp-feedback: 2 -->`, or insert one as line 1 when
+   absent. A marker already ≥ 2 short-circuits to a byte-identical no-op
+   (`already_v2:true`).
+2. **Stamp un-triaged findings.** For each `### ` block **below the v1 watermark**
+   (`parse().lastMaintainerLine` — the last canonical `## 📋 …` tracking heading;
+   -1 ⟹ every block is below) that is **finding-shaped** and has **no**
+   `**Proposed ID:**` line, insert `- **Proposed ID:** _(maintainer to assign)_`
+   as the finding's first body bullet. *Finding-shaped* = its heading names
+   `issue`/`observation`, **or** its body carries a `- **What/Repro/Impact:**`
+   bullet — never a bare prose note (`### Positive note`), or migration would
+   flood the delta. A block that already has the line, a prose block, or a
+   finding-shaped block *above* the watermark is left byte-identical.
 
-`dry_run:true` previews the synthesized lines + stamps + collapses + orphan ids
-+ `bytes_saved`. After migration, `compact_resolved` collapses the shipped
-findings; the file is pure v2.
+The classification reports two channels so **nothing below the watermark is
+silently dropped**: `orphans[]` (a finding-shaped block *above* the watermark —
+under v1 it read as already-reviewed, but the inference can be wrong) and
+`unclassified[]` (a below-watermark `### ` block left line-less because it is not
+finding-shaped — the mechanical heuristic can't tell a freeform finding from a
+prose note, so the maintainer eyeballs it). Above-watermark prose is neither
+stamped nor reported.
+
+Migration never reads a table's *id* content (no finding→id auto-stamp, no
+closure normalisation) and **never moves, collapses, or deletes the v1 tables** —
+they stay in place, so the v1 watermark (and thus the shipped un-triaged delta)
+is unperturbed and there is **no ordering dependency** on the not-yet-built v2
+reader. The fuzzy finding→id triage is `assign_id`'s job; the byte *shrink*
+comes later from `compact_resolved`.
+
+`dry_run:true` previews `stamped[]` / `orphans[]` / `unclassified[]` +
+`bytes_delta` and writes nothing. After migration the file is `: 2` with its v1
+tables **retained in place**; `assign_id` then fills the placeholders and, once
+an id ships, `compact_resolved` collapses that finding's write-up. Full contract:
+`docs/specs/ANTS-3446.md` (implemented — `FeedbackFile::migrateV2` +
+`cmdFeedbackLog op:migrate_v2`, `tests/features/feedback_log_migrate_v2/`).
 
 ## Tooling (verbs) under v2
 
@@ -658,16 +682,16 @@ v1 code path until a file is migrated):
 | Verb | v2 change |
 |---|---|
 | `feedback_query` (ANTS-1961) | Delta = un-triaged findings (unfilled `**Proposed ID:**`), not "after the last table". Resolves + returns each assigned id's **live roadmap status**, and can render an on-demand status view. Surfaces `suspected_untagged[]` (§"The un-triaged delta" step 4). Keeps the v1 "after last watermark" path for un-migrated files. |
-| `session_orient` `feedback_pending` (ANTS-1964) | The per-file un-triaged **count** shares `FeedbackFile::parse`'s delta path, so it MUST adopt the v2 unfilled-`Proposed ID` rule on a `: 2` file (a `: 2` file has no table, so the v1 "after last table" count would be wrong). |
+| `session_orient` `feedback_pending` (ANTS-1964) | The per-file un-triaged **count** shares `FeedbackFile::parse`'s delta path, so it MUST adopt the v2 unfilled-`Proposed ID` rule on a `: 2` file (a v2 file tracks triage inline, so the v1 "after last table" count would miscount — including on a **migrated** file, which retains its v1 tables in place yet triages via `**Proposed ID:**`). |
 | `feedback_log op:append_finding` (ANTS-1962) | Already emits the `**Proposed ID:**` placeholder — now **structural**; no behavioural change beyond guaranteeing the line. |
 | `feedback_log op:assign_id` **(new; spec id TBA)** | The v2 triage write: fill one finding's `**Proposed ID:**` slot in place with the id(s) or a `n/a — <reason>` closure. Locates the finding by heading, **inheriting `compact_shipped`'s heading-resolution gates** (ANTS-3421: `heading_line` disambiguation + `target_ambiguous`/`duplicate_target`, since a "still broken" recheck often reuses a `### ` title). Replaces `op:append_tracking` for v2 files. |
 | `feedback_log op:compact_resolved` **(shipped, ANTS-3443)** | Auto-collapse shipped findings' write-ups; gates on live roadmap ✅. Refuses `not_v2` on a v1 file. (A `drop_prose` option is **deferred** — see §"Maintainer compaction"; NOT in ANTS-3443 scope.) |
-| `feedback_log op:migrate_v2` **(new; spec id TBA)** | One-shot v1→v2 migration (§"Migration from v1"); owns the finding-token-matching + closure-normalisation contract. |
+| `feedback_log op:migrate_v2` **(shipped, ANTS-3446)** | One-shot **mechanical** v1→v2 migration (§"Migration from v1"): bumps the marker + stamps blank `**Proposed ID:**` placeholders on un-triaged findings; reports `orphans[]`/`unclassified[]`. Leaves the v1 tables **in place** (no move/collapse) and reads no table id content. |
 | `feedback_log op:append_tracking` | **Deprecated once `assign_id` ships** — until then it remains the only working triage-write op (writes a v1 table). Not used on v2 files. |
 | `feedback_log op:compact_shipped` (ANTS-3421) / `op:prune_tracking` (ANTS-3442) | **Legacy** — operate on v1 tables; used only to clean up / migrate un-migrated files. |
 
 Each new/changed verb ships spec-first with its own `docs/specs/ANTS-NNNN.md`
 and a `tests/features/` conformance test, per the project standards. Spec ids:
-`compact_resolved` = **ANTS-3443**; `assign_id` and `migrate_v2` get their own
-ids, **allocated when each is authored** (marked TBA above so the blank is
+`compact_resolved` = **ANTS-3443**, `migrate_v2` = **ANTS-3446**; `assign_id`
+gets its own id, **allocated when authored** (marked TBA above so the blank is
 deliberate, not a lost link).

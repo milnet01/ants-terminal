@@ -4058,7 +4058,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "byte report; per-target refusals in skipped[]). "
                         "ANTS-3443: op:\"compact_resolved\" (maintainer, v2 "
                         "files) auto-collapses shipped findings' write-ups, "
-                        "gated on the live ROADMAP.md status. "
+                        "gated on the live ROADMAP.md status. ANTS-3446: "
+                        "op:\"migrate_v2\" (maintainer) mechanically converts a "
+                        "v1 file to v2 — bumps the version marker and stamps "
+                        "blank \"**Proposed ID:**\" placeholders on un-triaged "
+                        "findings; leaves the v1 tracking tables in place. "
                         "caller_cwd required.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to add feedback to a shared "
@@ -4081,6 +4085,7 @@ void ClaudeIntegration::onMcpConnection() {
                           e.append(QStringLiteral("compact_shipped"));
                           e.append(QStringLiteral("prune_tracking"));
                           e.append(QStringLiteral("compact_resolved"));
+                          e.append(QStringLiteral("migrate_v2"));
                           opProp["enum"] = e; }
                         opProp["description"] = QStringLiteral(
                             "Required. \"append_finding\" (contributor) "
@@ -4111,7 +4116,18 @@ void ClaudeIntegration::onMcpConnection() {
                             "roadmap_unresolved_ids / has_open_id) in skipped[]. "
                             "Idempotent; atomic. Refuses `not_v2` on a v1 file "
                             "(run migrate_v2 first), `roadmap_unavailable` when "
-                            "ROADMAP.md is unreadable.");
+                            "ROADMAP.md is unreadable. ANTS-3446 — "
+                            "\"migrate_v2\" (maintainer) one-shot mechanical "
+                            "v1→v2 conversion: bumps the version marker to "
+                            "\"<!-- ants-mcp-feedback: 2 -->\" and stamps a "
+                            "blank \"- **Proposed ID:** _(maintainer to "
+                            "assign)_\" line on each finding-shaped, "
+                            "below-watermark `### ` block that lacks one; the "
+                            "v1 tracking tables are LEFT IN PLACE (not moved/"
+                            "collapsed). No roadmap read. Reports "
+                            "`stamped`/`orphans`/`unclassified`; `already_v2` "
+                            "true (byte-identical no-op) on a v2 file; `dry_run` "
+                            "previews. Idempotent; atomic.");
                     QJsonObject dateProp; dateProp["type"] = "string";
                         dateProp["description"] = QStringLiteral(
                             "Optional YYYY-MM-DD; defaults to today.");

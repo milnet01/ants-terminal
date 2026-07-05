@@ -18187,10 +18187,11 @@ their feedback-file tracking tables needed stamping.
   Source: cold-eyes-2026-07-04 (ANTS-3443 review).
   Resolved ✅ (2026-07-04): root-caused in FeedbackFile::parse() — only anchored ANTS-NNNN tokens (^ANTS-[0-9]+$, new idCellRe) now populate TrackingRow::ids; a closure/counter id-column token (`(schema fix)` / `(self-resolved)` / `n/a`) no longer becomes a pseudo-id that drives pruneTracking's supersede dedup. Reproducer test Ants3445ClosureTokenNotDeduped (fails pre-fix). Full suite 2499/2499 green. Live on next relaunch.
 
-- 📋 [ANTS-3446] **feedback_log op:migrate_v2 — one-shot lazy v1→v2 feedback-file migration (stamp inline Proposed-ID lines from the legacy tracking tables, collapse the tables, bump the marker; surfaces orphan channels for hand-triage).**
+- ✅ [ANTS-3446] **feedback_log op:migrate_v2 — one-shot lazy v1→v2 feedback-file migration (stamp inline Proposed-ID lines from the legacy tracking tables, collapse the tables, bump the marker; surfaces orphan channels for hand-triage).**
   **Layman:** The one-time converter that upgrades each shared feedback file to the new inline-ID format so the write-up shrinker can actually run on it.
   Kind: enhancement.
   Source: in-session-2026-07-05 (v2 feedback-file redesign; the verb that unlocks compact_resolved on the all-v1 corpus).
+  Resolved (2026-07-05): shipped as MECHANICAL-ONLY + LEAVE-TABLES-IN-PLACE (the headline's "collapse the tables" was the abandoned relocate design — cold-eyes found relocating tables to EOF empties the shipped v1 delta until the v2 reader lands). Ships: FeedbackFile::migrateV2 (marker bump + blank Proposed-ID stamp on finding-shaped below-watermark blocks; orphans[]/unclassified[] surfaced; no table moved) + cmdFeedbackLog op:migrate_v2 + schema. 17 tests green, full suite 2531 pass. §7 ten-item standard reconciliation in mcp-feedback-files.md landed same commit. Spec docs/specs/ANTS-3446.md → Implemented.
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 

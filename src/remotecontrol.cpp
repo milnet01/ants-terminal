@@ -10833,12 +10833,14 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         op != QStringLiteral("append_tracking") &&
         op != QStringLiteral("compact_shipped") &&
         op != QStringLiteral("prune_tracking") &&
-        op != QStringLiteral("compact_resolved")) {
+        op != QStringLiteral("compact_resolved") &&
+        op != QStringLiteral("migrate_v2")) {
         return QJsonDocument(fbErr(
             QStringLiteral("bad_mode"),
             QStringLiteral("feedback_log: op must be \"append_finding\", "
                            "\"append_tracking\", \"compact_shipped\", "
-                           "\"prune_tracking\" or \"compact_resolved\"")));
+                           "\"prune_tracking\", \"compact_resolved\" or "
+                           "\"migrate_v2\"")));
     }
 
     // ANTS-3421 — maintainer compaction: collapse confirmed-shipped
@@ -11244,6 +11246,95 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             static_cast<qint64>(rr.bytesSaved);
         out[QStringLiteral("collapsed")]          = collapsed;
         out[QStringLiteral("skipped")]            = skipped;
+        if (derived) out[QStringLiteral("path_derived")] = true;  // ANTS-3376
+        return QJsonDocument(out);
+    }
+
+    // ANTS-3446 — migrate_v2: one-shot mechanical v1→v2 migration. Bumps the
+    // version marker and stamps blank `**Proposed ID:**` placeholders on
+    // finding-shaped, below-watermark `### ` blocks; leaves the v1 tracking
+    // tables in place (spec § 1.1). Distinct whole-file request shape (no
+    // targets, no roadmap read), returns early like the sibling compaction ops.
+    if (op == QStringLiteral("migrate_v2")) {
+        if (!exists) {
+            return QJsonDocument(fbNotFound(
+                QStringLiteral("feedback_log: migrate_v2 on an absent file "
+                               "(nothing to migrate)"),
+                resolved, feedbackCallerLeaf(req)));
+        }
+        QFile rf(resolved);
+        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("read_failed"),
+                QStringLiteral("feedback_log: cannot open \"%1\"")
+                    .arg(resolved)));
+        }
+        const QString content = QString::fromUtf8(rf.readAll());
+        rf.close();
+
+        const FeedbackFile::MigrateResult mr =
+            FeedbackFile::migrateV2(content);
+        const bool dryRunM = req.value(QStringLiteral("dry_run")).toBool();
+
+        auto stampArr = [](const QVector<FeedbackFile::MigrateStamp> &v) {
+            QJsonArray a;
+            for (const auto &s : v) {
+                QJsonObject e;
+                e[QStringLiteral("heading")] = s.heading;
+                e[QStringLiteral("line")]    = s.line;
+                a.append(e);
+            }
+            return a;
+        };
+        QJsonArray orphans;
+        for (const auto &o : mr.orphans) {
+            QJsonObject e;
+            e[QStringLiteral("heading")] = o.heading;
+            e[QStringLiteral("line")]    = o.line;
+            e[QStringLiteral("reason")]  = o.reason;
+            orphans.append(e);
+        }
+
+        // Write only when there is something to change (marker bump and/or a
+        // stamp). An already-v2 file is a clean no-op — never re-written.
+        if (!dryRunM && !mr.alreadyV2) {
+            const QByteArray utf8 = mr.newContent.toUtf8();
+            QSaveFile sf(resolved);
+            if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("write_failed"),
+                    QStringLiteral("feedback_log: cannot open \"%1\" for "
+                                   "writing").arg(resolved)));
+            }
+            bool committed = (sf.write(utf8) == utf8.size());
+            if (committed) {
+                if (g_forceFeedbackWriteFail) {
+                    sf.cancelWriting();
+                    committed = false;
+                } else {
+                    committed = sf.commit();
+                }
+            }
+            if (!committed) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("write_failed"),
+                    QStringLiteral("feedback_log: atomic write of \"%1\" "
+                                   "failed").arg(resolved)));
+            }
+        }
+
+        QJsonObject out;
+        out[QStringLiteral("ok")]            = true;
+        out[QStringLiteral("op")]            = op;
+        out[QStringLiteral("path")]          = resolved;
+        out[QStringLiteral("dry_run")]       = dryRunM;
+        out[QStringLiteral("already_v2")]    = mr.alreadyV2;
+        out[QStringLiteral("stamped_count")] = mr.stamped.size();
+        out[QStringLiteral("bytes_delta")]   =
+            static_cast<qint64>(mr.bytesDelta);
+        out[QStringLiteral("stamped")]       = stampArr(mr.stamped);
+        out[QStringLiteral("orphans")]       = orphans;
+        out[QStringLiteral("unclassified")]  = stampArr(mr.unclassified);
         if (derived) out[QStringLiteral("path_derived")] = true;  // ANTS-3376
         return QJsonDocument(out);
     }
