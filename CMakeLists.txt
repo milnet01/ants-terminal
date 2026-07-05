@@ -1187,6 +1187,10 @@ if(ANTS_TESTS)
                 tests/features/feedback_log_compact_resolved/test_feedback_log_compact_resolved.cpp
                 # ANTS-3446 feedback_log op:migrate_v2 (mechanical v1→v2 migration).
                 tests/features/feedback_log_migrate_v2/test_feedback_log_migrate_v2.cpp
+                # ANTS-3447 feedback_log op:assign_id (v2 inline triage write).
+                tests/features/feedback_log_assign_id/test_feedback_log_assign_id.cpp
+                # ANTS-3448 feedback_query marker-aware v2 un-triaged delta.
+                tests/features/feedback_query_v2_delta/test_feedback_query_v2_delta.cpp
                 tests/features/mcp_spec_log/test_mcp_spec_log.cpp
                 # ANTS-2129 — audit_falsepos_log write verb.
                 tests/features/audit_falsepos_log/test_audit_falsepos_log.cpp

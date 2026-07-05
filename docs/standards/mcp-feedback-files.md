@@ -46,23 +46,25 @@ growing) — the
 contributor's write-up and the roadmap ID it became. It never persists a
 finding's *status*; status is resolved live from `ROADMAP.md` on read.**
 
-> **Implementation status (2026-07-05): v2 is landing incrementally.**
-> `compact_resolved` (ANTS-3443) and `migrate_v2` (ANTS-3446) **are built** —
-> `FeedbackFile::compactResolved` + `FeedbackFile::migrateV2` + the fence-aware
+> **Implementation status (2026-07-05): the v2 verb chain is built.**
+> `compact_resolved` (ANTS-3443), `migrate_v2` (ANTS-3446), `assign_id`
+> (ANTS-3447), and the marker-aware v2 delta (ANTS-3448) **are all built** —
+> `FeedbackFile::compactResolved` / `migrateV2` / `assignId` + the fence-aware
 > `### `-block enumerator (`enumerateFindingBlocks`, the shared v2 scanner) +
-> `cmdFeedbackLog op:compact_resolved` / `op:migrate_v2`. `migrate_v2` is
-> **mechanical-only + leave-tables-in-place** (§"Migration from v1"): it bumps
+> `cmdFeedbackLog op:compact_resolved` / `op:migrate_v2` / `op:assign_id`, and a
+> **marker-aware `FeedbackFile::parse()`** (a `: 2`+ file's delta / `mapped_ids`
+> / `suspected_untagged` follow the v2 inline-`**Proposed ID:**` rule). `migrate_v2`
+> is **mechanical-only + leave-tables-in-place** (§"Migration from v1"): it bumps
 > the marker and stamps blank `**Proposed ID:**` placeholders on un-triaged
 > findings, but does **not** move/collapse the v1 tables and does **not** fill
-> ids. Still **not built**: `op:assign_id` and the v2 delta changes to
-> `feedback_query` / `session_orient feedback_pending` (those read paths still
-> apply the v1 watermark rule — which is why leaving the tables in place is safe,
-> §"Migration from v1"). `feedbackfile.cpp` `skeleton()` still emits
-> `<!-- ants-mcp-feedback: 1 -->`, and **the entire existing corpus is still
-> `: 1`** — so `compact_resolved` refuses `not_v2` on every current file until
-> `migrate_v2` converts it. Read every not-yet-built v2 "MUST"/"is"/"does" below
-> as normative-target; until a file is migrated it stays v1 and every v1 rule in
-> this doc still governs it.
+> ids; `assign_id` fills one finding's slot; the v2 delta reader
+> (`feedback_query` + `session_orient feedback_pending`, ANTS-3448) makes an
+> assigned id shrink the un-triaged list. `feedbackfile.cpp` `skeleton()` still
+> emits `<!-- ants-mcp-feedback: 1 -->`, and **the entire existing corpus is
+> still `: 1`** — so `compact_resolved` refuses `not_v2` on every current file
+> until `migrate_v2` converts it, and every file reads under the v1 rule until
+> then. The v2 verbs go live only after the next Ants relaunch (MCP-server
+> change).
 
 v1 (the legacy corpus) recorded triage as an appended maintainer *tracking
 table* (`finding → ID → status`) every review cycle. That duplicated the
@@ -375,11 +377,17 @@ scanning for finding boundaries or id lines. Match the fence opener as
 `^ {0,3}(```|~~~)` (CommonMark allows up to 3 *spaces* of indent — the corpus has
 list-nested fences) and close it at the same fence character.
 
-**Version selection.** A file uses the **v2 rule iff it carries
-`<!-- ants-mcp-feedback: 2 -->`**; every other file — a `: 1` marker, a
-malformed/absent marker — uses the **v1 rule** until `op:migrate_v2` converts it
-(stamping **blank** `**Proposed ID:**` placeholders on the un-triaged findings
-and bumping the marker — no id is filled, §"Migration from v1"). Gating on
+**Version selection.** A file uses the **v2 rule iff its marker version is
+`>= 2`** — `<!-- ants-mcp-feedback: 2 -->` or higher, so a future `: 3` file
+also reads under v2 (the reader *degrades forward*, never silently back to v1;
+this matches `migrate_v2`'s `>= 2` idempotency short-circuit, ANTS-3446/3448).
+Every file with a `: 1`, malformed, or absent marker uses the **v1 rule** until
+`op:migrate_v2` converts it (stamping **blank** `**Proposed ID:**` placeholders
+on the un-triaged findings and bumping the marker — no id is filled,
+§"Migration from v1"). (The *compactor* `op:compact_resolved` deliberately keeps
+a stricter exact-`== 2` gate — a compactor must refuse to mutate an unrecognised
+future format, whereas a *reader* degrades forward. Reader `>= 2`, compactor
+`== 2` is intentional, not drift.) Gating on
 the marker — **not** on watermark-absence — is deliberate: a legacy file whose
 findings predate the structural `**Proposed ID:**` line (most of the corpus)
 must NOT be read under v2, or those line-less findings would be misclassified as
@@ -401,12 +409,14 @@ carries the `**Proposed ID:**` line.
    a `### ` block without one is non-finding prose (a note) and is never part of
    the delta. (This "no line ⇒ prose" reclassification is why a v1 file, whose
    findings may lack the line, must use the v1 rule until migrated.)
-2. A finding is **un-triaged** iff its `**Proposed ID:**` value is empty or the
-   `_(maintainer to assign)_` placeholder; it is **triaged** iff the value
-   holds an `ANTS-[0-9]+` id or begins `n/a`. The **delta** is the ordered list
-   of un-triaged findings (heading + body), wherever they sit — position is
-   irrelevant, so no watermark is moved and a contributor can append anywhere at
-   EOF without disturbing it.
+2. A finding is **triaged** iff its `**Proposed ID:**` value holds an
+   `ANTS-[0-9]+` id **or** begins `n/a` (a closure); it is **un-triaged**
+   otherwise — the empty value, the `_(maintainer to assign)_` placeholder, **and
+   any other non-id, non-`n/a` free text** (the authoritative value rule from
+   §"Maintainer triage"; the empty/placeholder pair is just its two common
+   cases). The **delta** is the ordered list of un-triaged findings (heading +
+   body), wherever they sit — position is irrelevant, so no watermark is moved
+   and a contributor can append anywhere at EOF without disturbing it.
 3. The **assigned-id set** = the union of `ANTS-[0-9]+` across all findings'
    first non-`n/a` `**Proposed ID:**` lines only — NOT a whole-body scan (a
    finding may cite other ids in its prose, as the `RetroArch…` corpus does).
@@ -681,13 +691,13 @@ v1 code path until a file is migrated):
 
 | Verb | v2 change |
 |---|---|
-| `feedback_query` (ANTS-1961) | Delta = un-triaged findings (unfilled `**Proposed ID:**`), not "after the last table". Resolves + returns each assigned id's **live roadmap status**, and can render an on-demand status view. Surfaces `suspected_untagged[]` (§"The un-triaged delta" step 4). Keeps the v1 "after last watermark" path for un-migrated files. |
-| `session_orient` `feedback_pending` (ANTS-1964) | The per-file un-triaged **count** shares `FeedbackFile::parse`'s delta path, so it MUST adopt the v2 unfilled-`Proposed ID` rule on a `: 2` file (a v2 file tracks triage inline, so the v1 "after last table" count would miscount — including on a **migrated** file, which retains its v1 tables in place yet triages via `**Proposed ID:**`). |
+| `feedback_query` (ANTS-1961) **(marker-aware, ANTS-3448)** | On a `: 2`+ file the delta = un-triaged findings (unfilled `**Proposed ID:**`), not "after the last table"; emits `format_version` + `suspected_untagged[]` (§"The un-triaged delta" step 4) and `mapped_ids` = the inline assigned ids. **Built** — `FeedbackFile::parse()` is marker-aware; the v1 "after last watermark" path is retained for un-migrated files. (Rendering each id's **live roadmap status** is a deferred follow-up — it needs a roadmap read the delta rule does not, §"Out of scope" of ANTS-3448.) |
+| `session_orient` `feedback_pending` (ANTS-1964) **(ANTS-3448, no code change)** | The per-file un-triaged **count** shares `FeedbackFile::parse`'s delta path, so it now follows the v2 unfilled-`Proposed ID` rule on a `: 2` file **for free** (a v2 file tracks triage inline, so the v1 "after last table" count would miscount — including on a **migrated** file, which retains its v1 tables in place yet triages via `**Proposed ID:**`). No code change on this path — the marker-aware `parse()` supplies the version-correct `deltaPresent`/`deltaLineCount`. |
 | `feedback_log op:append_finding` (ANTS-1962) | Already emits the `**Proposed ID:**` placeholder — now **structural**; no behavioural change beyond guaranteeing the line. |
-| `feedback_log op:assign_id` **(new, ANTS-3447)** | The v2 triage write: fill one finding's `**Proposed ID:**` slot in place with the id(s) or a `n/a — <reason>` closure. Locates the finding by heading over the `### ` enumerator, **inheriting `compact_shipped`'s heading-resolution gate _shape_** (ANTS-3421: `heading_line` disambiguation + `target_ambiguous`+`candidates[]` when a "still broken" recheck reuses a `### ` title). Single-target (batch deferred), so no cross-target `duplicate_target`. Replaces `op:append_tracking` for v2 files. |
+| `feedback_log op:assign_id` **(shipped, ANTS-3447)** | The v2 triage write: fill one finding's `**Proposed ID:**` slot in place with the id(s) or a `n/a — <reason>` closure. Locates the finding by heading over the `### ` enumerator, **inheriting `compact_shipped`'s heading-resolution gate _shape_** (ANTS-3421: `heading_line` disambiguation + `target_ambiguous`+`candidates[]` when a "still broken" recheck reuses a `### ` title). Single-target (batch deferred), so no cross-target `duplicate_target`. Replaces `op:append_tracking` for v2 files. |
 | `feedback_log op:compact_resolved` **(shipped, ANTS-3443)** | Auto-collapse shipped findings' write-ups; gates on live roadmap ✅. Refuses `not_v2` on a v1 file. (A `drop_prose` option is **deferred** — see §"Maintainer compaction"; NOT in ANTS-3443 scope.) |
 | `feedback_log op:migrate_v2` **(shipped, ANTS-3446)** | One-shot **mechanical** v1→v2 migration (§"Migration from v1"): bumps the marker + stamps blank `**Proposed ID:**` placeholders on un-triaged findings; reports `orphans[]`/`unclassified[]`. Leaves the v1 tables **in place** (no move/collapse) and reads no table id content. |
-| `feedback_log op:append_tracking` | **Deprecated once `assign_id` ships** — until then it remains the only working triage-write op (writes a v1 table). Not used on v2 files. |
+| `feedback_log op:append_tracking` | **Superseded by `assign_id`** (shipped, ANTS-3447) for v2 files — it remains the v1 triage-write op (writes a v1 table) for un-migrated files. The actual deprecation (a refusal/warning) is a follow-up. Not used on v2 files. |
 | `feedback_log op:compact_shipped` (ANTS-3421) / `op:prune_tracking` (ANTS-3442) | **Legacy** — operate on v1 tables; used only to clean up / migrate un-migrated files. |
 
 Each new/changed verb ships spec-first with its own `docs/specs/ANTS-NNNN.md`

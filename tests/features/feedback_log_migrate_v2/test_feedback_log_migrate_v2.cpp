@@ -259,8 +259,13 @@ TEST(FeedbackMigrateV2, TablesUntouchedWatermarkStable) {
     EXPECT_TRUE(r.newContent.contains(QStringLiteral("|---|---|---|")));
 }
 
-// INV-4 — v1 delta preserved: a `## <date>` session heading below the watermark
-// makes the `#`/`## `-keyed v1 delta non-empty; the delta start is unchanged.
+// INV-4 — migrate_v2 leaves the v1 tables/watermark in place. The v1 watermark
+// (lastMaintainerLine) is byte-stable across migration; the stamped finding is
+// surfaced in the migrated file's delta. NOTE: after ANTS-3448 the migrated
+// `: 2` file reads under the marker-aware v2 rule, so `after.delta` is the
+// un-triaged inline findings (Issue #5's stamped block) — NOT the v1 after-table
+// region. The migrate invariant is the watermark preservation, not delta-start
+// identity across the version boundary.
 TEST(FeedbackMigrateV2, V1DeltaPreserved) {
     const char *fix =
         "<!-- ants-mcp-feedback: 1 -->\n"
@@ -283,14 +288,19 @@ TEST(FeedbackMigrateV2, V1DeltaPreserved) {
     const FeedbackFile::ParseResult after = FeedbackFile::parse(r.newContent);
     ASSERT_TRUE(before.deltaPresent);
     EXPECT_TRUE(after.deltaPresent);
-    // Delta start heading line-text is the same session heading.
+    // The v1 watermark heading text is byte-stable (the table was not moved —
+    // the real INV-4 property; no stamp was inserted above it in this fixture).
+    ASSERT_GE(before.lastMaintainerLine, 0);
     const QStringList bl = in.split(QLatin1Char('\n'));
     const QStringList al = r.newContent.split(QLatin1Char('\n'));
-    EXPECT_EQ(al.at(after.deltaStartLine - 1),
-              bl.at(before.deltaStartLine - 1));
-    // The below-watermark finding was stamped inside the delta.
+    EXPECT_EQ(al.at(after.lastMaintainerLine - 1),
+              bl.at(before.lastMaintainerLine - 1));
+    // The below-watermark finding was stamped; the migrated file now reads under
+    // v2, so its delta is Issue #5's stamped block.
     EXPECT_EQ(r.stamped.size(), 1);
+    EXPECT_EQ(after.formatVersion, 2);
     EXPECT_TRUE(after.delta.contains(kStamp));
+    EXPECT_TRUE(after.delta.contains(QStringLiteral("Issue #5")));
 }
 
 // INV-2 — a legacy file with NO marker gets one inserted as line 1.

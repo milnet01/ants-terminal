@@ -3946,14 +3946,27 @@ void ClaudeIntegration::onMcpConnection() {
                     t["name"] = "feedback_query";
                     t["description"] = QStringLiteral(
                         "Read only the UN-TRIAGED tail of a cross-session "
-                        "*_Ants_MCP_Feedback.md file — everything a "
-                        "contributor appended after the last maintainer "
-                        "tracking block — instead of Read-ing the whole "
-                        "file. Returns {ok, path, delta, delta_present, "
+                        "*_Ants_MCP_Feedback.md file instead of Read-ing the "
+                        "whole file. The un-triaged rule is VERSION-DEPENDENT "
+                        "(ANTS-3448): on a v1 file the delta is everything a "
+                        "contributor appended after the last maintainer tracking "
+                        "block; on a v2 file (`<!-- ants-mcp-feedback: 2 -->` or "
+                        "higher) it is the findings whose inline "
+                        "`**Proposed ID:**` line is still unfilled (no id, no n/a "
+                        "closure). Returns {ok, path, delta, delta_present, "
                         "delta_line_count, delta_start_line, mapped_ids, "
+                        "format_version, suspected_untagged, "
                         "maintainer_block_count, last_maintainer_line, "
-                        "truncated, etag}. `mapped_ids` are the ANTS-NNNN "
-                        "ids already cited in maintainer blocks. "
+                        "truncated, etag}. `mapped_ids` are the assigned inline "
+                        "`**Proposed ID:**` ids on a v2 file, or the ANTS-NNNN "
+                        "ids cited in maintainer blocks on v1. `format_version` "
+                        "is the detected marker version (0/1/2/…). "
+                        "`suspected_untagged` (v2 only) lists {heading, line} for "
+                        "`### ` finding-shaped blocks a hand editor left with no "
+                        "`**Proposed ID:**` line (empty on v1 / a clean v2 file). "
+                        "Under v2 `delta` is a concatenation of (possibly "
+                        "non-contiguous) findings — treat it as opaque text, do "
+                        "NOT re-slice the file from `delta_start_line`. "
                         "include_tracking:true (ANTS-3371) adds `tracking` "
                         "— every maintainer tracking-table row "
                         "[{item, ids, status, notes?}] in document order "
@@ -4063,7 +4076,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "v1 file to v2 — bumps the version marker and stamps "
                         "blank \"**Proposed ID:**\" placeholders on un-triaged "
                         "findings; leaves the v1 tracking tables in place. "
-                        "caller_cwd required.");
+                        "ANTS-3447: op:\"assign_id\" (maintainer, v2 triage) "
+                        "fills ONE finding's \"**Proposed ID:**\" line in place "
+                        "with the assigned ids or an n/a closure — the inline "
+                        "replacement for append_tracking. caller_cwd required.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to add feedback to a shared "
                         "*_Ants_MCP_Feedback.md file (or stamp a "
@@ -4086,6 +4102,7 @@ void ClaudeIntegration::onMcpConnection() {
                           e.append(QStringLiteral("prune_tracking"));
                           e.append(QStringLiteral("compact_resolved"));
                           e.append(QStringLiteral("migrate_v2"));
+                          e.append(QStringLiteral("assign_id"));
                           opProp["enum"] = e; }
                         opProp["description"] = QStringLiteral(
                             "Required. \"append_finding\" (contributor) "
@@ -4127,7 +4144,21 @@ void ClaudeIntegration::onMcpConnection() {
                             "collapsed). No roadmap read. Reports "
                             "`stamped`/`orphans`/`unclassified`; `already_v2` "
                             "true (byte-identical no-op) on a v2 file; `dry_run` "
-                            "previews. Idempotent; atomic.");
+                            "previews. Idempotent; atomic. ANTS-3447 — "
+                            "\"assign_id\" (maintainer, v2 triage) fills ONE "
+                            "`### ` finding's `**Proposed ID:**` line: pass "
+                            "`heading` (the verbatim `### ` line, + optional "
+                            "`heading_line` to disambiguate a repeat) and "
+                            "exactly one of `ids` (an ANTS-NNNN array → "
+                            "comma-joined) OR `closure` (a reason string → "
+                            "`n/a — <reason>`, or bare `n/a` when empty). "
+                            "Replaces the existing / placeholder id line, or "
+                            "inserts one when absent. No roadmap read. Reports "
+                            "`value`/`inserted`/`changed`/`bytes_delta`; "
+                            "idempotent (a re-assign of the same value is a "
+                            "byte-identical no-op); `dry_run` previews. Refuses "
+                            "`target_not_found` / `target_ambiguous` (+ "
+                            "`candidates`).");
                     QJsonObject dateProp; dateProp["type"] = "string";
                         dateProp["description"] = QStringLiteral(
                             "Optional YYYY-MM-DD; defaults to today.");
@@ -4212,6 +4243,33 @@ void ClaudeIntegration::onMcpConnection() {
                             "bad_args (restrict-to-nothing is a no-op you almost "
                             "never mean).");
                     props["scope_ids"]     = scopeIdsProp;        // ANTS-3442
+                    // ANTS-3447 — assign_id top-level fields.
+                    QJsonObject headingProp; headingProp["type"] = "string";
+                        headingProp["description"] = QStringLiteral(
+                            "assign_id (ANTS-3447): the target finding's verbatim "
+                            "`### ` heading line, including the `### ` prefix "
+                            "(trimmed-matched against the finding headings).");
+                    QJsonObject headingLineProp; headingLineProp["type"] = "integer";
+                        headingLineProp["description"] = QStringLiteral(
+                            "assign_id: optional 1-based line of the `### ` "
+                            "heading — disambiguates a repeated heading "
+                            "(target_ambiguous otherwise).");
+                    QJsonObject idsProp; idsProp["type"] = "array";
+                        { QJsonObject idIt; idIt["type"] = "string";
+                          idsProp["items"] = idIt; }
+                        idsProp["description"] = QStringLiteral(
+                            "assign_id: the ANTS-NNNN ids to assign (each "
+                            "^ANTS-[0-9]+$; rendered comma-joined, de-duplicated). "
+                            "Supply EITHER ids OR closure, never both.");
+                    QJsonObject closureProp; closureProp["type"] = "string";
+                        closureProp["description"] = QStringLiteral(
+                            "assign_id: a closure reason → writes "
+                            "`n/a — <reason>` (empty string → bare `n/a`). "
+                            "Supply EITHER ids OR closure, never both.");
+                    props["heading"]       = headingProp;         // ANTS-3447
+                    props["heading_line"]  = headingLineProp;     // ANTS-3447
+                    props["ids"]           = idsProp;             // ANTS-3447
+                    props["closure"]       = closureProp;         // ANTS-3447
                     props["dry_run"]       = makeDryRunProp();   // ANTS-2227
                     props["caller_cwd"]    = makeCallerCwdReadProp();
                     schema["properties"] = props;

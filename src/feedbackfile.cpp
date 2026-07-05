@@ -88,7 +88,50 @@ QVector<Boundary> scanBoundaries(const QStringList &lines) {
     return out;
 }
 
+// ANTS-3448 — version marker regex, digit-optional (`[0-9]*`) so a malformed
+// `<!-- ants-mcp-feedback: -->` captures "" (→ version 0), not a parse error.
+// Shared by markerVersion() (read side) and migrateV2()'s presence/line scan
+// (write side) so both sides recognise the marker identically (INV-12).
+const QRegularExpression &markerRe() {
+    static const QRegularExpression re(
+        QStringLiteral("<!--\\s*ants-mcp-feedback:\\s*([0-9]*)\\s*-->"));
+    return re;
+}
+
+// ANTS-3448 — closure regex: a `**Proposed ID:**` value beginning the literal
+// `n/a` followed by a word boundary (whitespace, dash, em-dash, or EOL) — so
+// `n/architecture` is NOT a closure. Hoisted from compactResolved's
+// function-local static so compactResolved() and parse()'s v2 branch share one
+// definition and cannot drift on the closure classification (spec § 2.2 / §7).
+const QRegularExpression &closureRe() {
+    static const QRegularExpression re(
+        QStringLiteral("^n/a\\b"), QRegularExpression::CaseInsensitiveOption);
+    return re;
+}
+
+// ANTS-3448 — finding-bullet arm: a `- **What/Repro/Impact:**` (or `**What**:`)
+// body bullet. Hoisted from migrateV2's function-local static so migrateV2()'s
+// finding-shaped discriminator and parse()'s suspected_untagged scan share one
+// definition (spec § 2.2 step 5 / §7). Narrower than migrate_v2's full
+// discriminator, which also has a heading arm.
+const QRegularExpression &bulletArmRe() {
+    static const QRegularExpression re(
+        QStringLiteral("^ *[-*] +\\*\\*(what|repro|impact)[:*]"),
+        QRegularExpression::CaseInsensitiveOption);
+    return re;
+}
+
 }  // namespace
+
+int markerVersion(const QString &content) {
+    const QStringList lines = content.split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        const auto m = markerRe().match(line);
+        if (m.hasMatch())
+            return m.captured(1).isEmpty() ? 0 : m.captured(1).toInt();
+    }
+    return 0;  // absent or malformed (no digits) ⟹ 0 (< 2, the v1 rule)
+}
 
 ParseResult parse(const QString &fileContent) {
     ParseResult r;
@@ -99,6 +142,13 @@ ParseResult parse(const QString &fileContent) {
     // is harmless (it is never a heading).
     const QStringList lines =
         fileContent.split(QLatin1Char('\n'));
+
+    // ANTS-3448 — format version from the marker. >= 2 selects the v2
+    // inline-`**Proposed ID:**` delta rule (§2.2); < 2 keeps the v1 rule. The
+    // v1 boundary scan below runs on BOTH versions (INV-6) — only the delta /
+    // mappedIds / suspectedUntagged fields branch on the version.
+    r.formatVersion = markerVersion(fileContent);
+    const bool v2 = r.formatVersion >= 2;
 
     // Pass 1 — classify every non-fenced boundary heading via the shared
     // scanner (ANTS-3421 extraction). Track the greatest-position
@@ -212,6 +262,80 @@ ParseResult parse(const QString &fileContent) {
     r.mappedIds = QStringList(idSet.begin(), idSet.end());
     r.mappedIds.sort();
 
+    // ANTS-3448 — the delta / mappedIds / suspectedUntagged fields branch on
+    // the format version. The v1 boundary scan above (lastMaintainerLine /
+    // maintainerBlockCount / trackingRows) already ran on both versions (INV-6).
+    if (v2) {
+        // --- v2 rule (spec § 2.2): the un-triaged delta is the ordered
+        // concatenation of every `### ` finding whose first `**Proposed ID:**`
+        // value is neither an ANTS-NNNN id nor an `n/a` closure. ------------
+        const QVector<FindingBlock> blocks = enumerateFindingBlocks(lines);
+
+        // Fence-aware body scan: does this line-less block carry a finding
+        // bullet (`- **What/Repro/Impact:**`)? → suspected_untagged (§2.2/5).
+        auto bodyHasFindingBullet = [&](const FindingBlock &fb) -> bool {
+            QChar bodyFence;
+            for (int li = fb.headingLine0 + 1;
+                 li < fb.extentEnd0 && li < lines.size(); ++li) {
+                const QString &bl = lines.at(li);
+                if (!bodyFence.isNull()) {
+                    const QChar c = fenceOpenerChar(bl);
+                    if (!c.isNull() && c == bodyFence) bodyFence = QChar();
+                    continue;
+                }
+                const QChar opener = fenceOpenerChar(bl);
+                if (!opener.isNull()) { bodyFence = opener; continue; }
+                if (bulletArmRe().match(bl).hasMatch()) return true;
+            }
+            return false;
+        };
+
+        QSet<QString> v2ids;
+        QStringList deltaBlocks;     // one `\n`-joined block per un-triaged finding
+        int deltaLineTotal = 0;
+        for (const FindingBlock &fb : blocks) {
+            if (fb.idLine0 < 0) {
+                // No id line → not a finding. A finding-shaped one is a
+                // hand-editor silent-loss risk (suspected_untagged); bare prose
+                // is ignored.
+                if (bodyHasFindingBullet(fb))
+                    r.suspectedUntagged.append({ fb.heading, fb.headingLine0 + 1 });
+                continue;
+            }
+            const QString val = fb.idValue.trimmed();
+            const bool isClosure = closureRe().match(val).hasMatch();
+            const bool hasId = idRe.match(val).hasMatch();
+            if (!isClosure && hasId) {
+                // Triaged with real id(s): contribute them to mappedIds.
+                auto it = idRe.globalMatch(val);
+                while (it.hasNext()) v2ids.insert(it.next().captured(0));
+                continue;   // triaged → not in the delta
+            }
+            if (isClosure) continue;  // closure → triaged, contributes no ids
+            // Un-triaged (empty / placeholder / any non-id, non-n/a text): the
+            // finding's block, all trailing blank lines stripped per block.
+            int end0 = fb.extentEnd0;
+            while (end0 > fb.headingLine0 + 1 &&
+                   lines.at(end0 - 1).trimmed().isEmpty())
+                --end0;
+            QStringList blk;
+            for (int li = fb.headingLine0; li < end0 && li < lines.size(); ++li)
+                blk.append(lines.at(li));
+            if (r.deltaStartLine < 0) r.deltaStartLine = fb.headingLine0 + 1;
+            deltaLineTotal += blk.size();
+            deltaBlocks.append(blk.join(QLatin1Char('\n')));
+        }
+        r.mappedIds = QStringList(v2ids.begin(), v2ids.end());
+        r.mappedIds.sort();
+        if (!deltaBlocks.isEmpty()) {
+            r.delta = deltaBlocks.join(QLatin1Char('\n'));
+            r.deltaPresent = true;
+            r.deltaLineCount = deltaLineTotal;
+        }
+        return r;
+    }
+
+    // --- v1 rule (formatVersion < 2): the current boundary-watermark delta ---
     // Build the delta text + line count.
     if (deltaStartIdx >= 0 && deltaStartIdx < lines.size()) {
         // Trim leading blank lines so a zero-maintainer file whose title
@@ -732,10 +856,6 @@ ResolveResult compactResolved(const QString &content, const ResolveOptions &opts
     const QVector<FindingBlock> blocks = enumerateFindingBlocks(lines);
 
     static const QRegularExpression idTokRe(QStringLiteral("ANTS-[0-9]+"));
-    // `n/a` closure: value begins the literal n/a followed by a word boundary
-    // (whitespace, dash, em-dash, or EOL) — so `n/architecture` is NOT one.
-    static const QRegularExpression closureRe(
-        QStringLiteral("^n/a\\b"), QRegularExpression::CaseInsensitiveOption);
     static const QString kShippedProbe = QString::fromUtf8("\xE2\x86\x92 shipped");
     static const QString kBreadcrumb = QString::fromUtf8(
         "\xE2\x86\x92 shipped \xE2\x9C\x85 (write-up compacted, ANTS-3443)");
@@ -776,7 +896,7 @@ ResolveResult compactResolved(const QString &content, const ResolveOptions &opts
         auto it = idTokRe.globalMatch(fb.idValue);
         while (it.hasNext()) f.ids.append(it.next().captured(0));
 
-        const bool closure = closureRe.match(fb.idValue.trimmed()).hasMatch();
+        const bool closure = closureRe().match(fb.idValue.trimmed()).hasMatch();
         if (closure || f.ids.isEmpty()) {                       // gate 1
             f.code = QStringLiteral("no_shippable_id");
         } else if (hasStub(fb.headingLine0 + 1, fb.extentEnd0)) { // gate 2
@@ -841,23 +961,15 @@ MigrateResult migrateV2(const QString &content) {
     MigrateResult res;
     const QStringList lines = content.split(QLatin1Char('\n'));
 
-    // Version marker — digit-optional (`[0-9]*`) so a malformed
-    // `<!-- ants-mcp-feedback: -->` is repaired, not left as junk beside an
-    // inserted one (spec § 2.2 pass 1). Deliberately more lenient than the
-    // sibling compact_resolved gate's digit-required `([0-9]+)`. First match
-    // wins (conventionally line 1); ParseResult carries no version, so this is
-    // the helper's own scan.
-    static const QRegularExpression markerRe(
-        QStringLiteral("<!--\\s*ants-mcp-feedback:\\s*([0-9]*)\\s*-->"));
+    // Version via the shared markerVersion() helper (ANTS-3448 / INV-12) so the
+    // read and write sides extract the version identically. migrate_v2 keeps its
+    // OWN marker *presence* scan (via the same shared markerRe()) because the
+    // helper cannot distinguish present-but-malformed (→ 0) from absent (→ 0),
+    // and the insert-vs-repair branch below needs that bit.
+    const int ver = markerVersion(content);
     bool markerPresent = false;
-    int  ver = 0;  // absent / malformed ⟹ 0 (< 2)
-    for (int i = 0; i < lines.size(); ++i) {
-        const auto m = markerRe.match(lines.at(i));
-        if (m.hasMatch()) {
-            markerPresent = true;
-            ver = m.captured(1).isEmpty() ? 0 : m.captured(1).toInt();
-            break;
-        }
+    for (const QString &line : lines) {
+        if (markerRe().match(line).hasMatch()) { markerPresent = true; break; }
     }
     // Idempotency short-circuit (spec § 2.7 / INV-6): a marker ≥ 2 is left
     // untouched — `>= 2` (not `== 2`) so a future `: 3` file is not downgraded.
@@ -876,9 +988,7 @@ MigrateResult migrateV2(const QString &content) {
     static const QRegularExpression headingArmRe(
         QStringLiteral("\\b(issue|observation)\\b"),
         QRegularExpression::CaseInsensitiveOption);
-    static const QRegularExpression bulletArmRe(
-        QStringLiteral("^ *[-*] +\\*\\*(what|repro|impact)[:*]"),
-        QRegularExpression::CaseInsensitiveOption);
+    // Body-bullet arm shared with parse()'s suspected_untagged scan (ANTS-3448).
     // Byte-identical to renderFindingBlock's placeholder + matches
     // enumerateFindingBlocks's id-line regex (so a re-run detects it as
     // already-stamped — spec § 2.7).
@@ -900,7 +1010,7 @@ MigrateResult migrateV2(const QString &content) {
             }
             const QChar opener = fenceOpenerChar(bl);
             if (!opener.isNull()) { bodyFence = opener; continue; }
-            if (bulletArmRe.match(bl).hasMatch()) return true;
+            if (bulletArmRe().match(bl).hasMatch()) return true;
         }
         return false;
     };
@@ -945,13 +1055,103 @@ MigrateResult migrateV2(const QString &content) {
         QStringLiteral("<!-- ants-mcp-feedback: 2 -->");
     if (markerPresent) {
         for (int i = 0; i < outLines.size(); ++i) {
-            if (markerRe.match(outLines.at(i)).hasMatch()) {
+            if (markerRe().match(outLines.at(i)).hasMatch()) {
                 outLines[i] = kMarker;
                 break;
             }
         }
     } else {
         outLines.insert(0, kMarker);
+    }
+
+    res.newContent = outLines.join(QLatin1Char('\n'));
+    res.bytesDelta = static_cast<long>(res.newContent.toUtf8().size())
+                   - static_cast<long>(content.toUtf8().size());
+    return res;
+}
+
+// ANTS-3447 — assign_id. Fill ONE `### ` finding's `**Proposed ID:**` line:
+// replace it (or its `_(maintainer to assign)_` placeholder / an existing id)
+// with `- **Proposed ID:** <value>`, or insert that line as the finding's first
+// body bullet when absent. Pure; single line replace or insert; no roadmap, no
+// marker touch. The wrapper (cmdFeedbackLog) validates the request shape
+// (hasIds XOR hasClosure, ^ANTS-[0-9]+$ ids, newline-folded closure) and owns
+// the atomic write. Gates + invariants: docs/specs/ANTS-3447.md.
+AssignResult assignId(const QString &content, const AssignTarget &target) {
+    AssignResult res;
+    const QStringList lines = content.split(QLatin1Char('\n'));
+    const QVector<FindingBlock> blocks = enumerateFindingBlocks(lines);
+
+    // Resolve the target `### ` finding — compact_shipped's gate SHAPE
+    // (ANTS-3421 § 2.3) over the `### ` enumerator (spec § 2.2 step 1 / INV-4):
+    // heading_line pins a repeated heading; a bare heading matching > 1 block is
+    // target_ambiguous (+ candidates); 0 matches is target_not_found.
+    const QString want = target.heading.trimmed();
+    int idx = -1;   // index into `blocks`
+    if (target.headingLine > 0) {
+        const int wantLine0 = target.headingLine - 1;
+        for (int k = 0; k < blocks.size(); ++k)
+            if (blocks.at(k).headingLine0 == wantLine0) { idx = k; break; }
+        // heading_line must name a `### ` heading equal to `heading`.
+        if (idx < 0 ||
+            (!want.isEmpty() && blocks.at(idx).heading.trimmed() != want)) {
+            res.code = QStringLiteral("target_not_found");
+            res.newContent = content;
+            return res;
+        }
+    } else {
+        QVector<int> matches;
+        for (int k = 0; k < blocks.size(); ++k)
+            if (blocks.at(k).heading.trimmed() == want) matches.append(k);
+        if (matches.isEmpty()) {
+            res.code = QStringLiteral("target_not_found");
+            res.newContent = content;
+            return res;
+        }
+        if (matches.size() > 1) {
+            res.code = QStringLiteral("target_ambiguous");
+            for (int k : matches)
+                res.candidates.append(blocks.at(k).headingLine0 + 1);
+            res.newContent = content;
+            return res;
+        }
+        idx = matches.first();
+    }
+
+    const FindingBlock &fb = blocks.at(idx);
+    res.heading = fb.heading;
+    res.line    = fb.headingLine0 + 1;   // input coordinate (INV-2)
+    res.value   = target.value;
+
+    // Canonical form — byte-identical prefix to renderFindingBlock's, so the
+    // enumerator + compact_resolved recognise the line (INV-3).
+    const QString canonical =
+        QStringLiteral("- **Proposed ID:** ") + target.value;
+
+    QStringList outLines = lines;
+    if (fb.idLine0 >= 0) {
+        // Replace the finding's FIRST `**Proposed ID:**` line in place (any
+        // stray second one is left as-is).
+        res.inserted = false;
+        if (lines.at(fb.idLine0) == canonical) {
+            // Byte-identical no-op — skip the write so the mtime/ETag is
+            // untouched (idempotency, §2.5 / INV-6/8).
+            res.changed = false;
+            res.newContent = content;
+            return res;
+        }
+        outLines[fb.idLine0] = canonical;
+        res.changed = true;
+    } else {
+        // No id line — insert as the first body bullet: directly under the
+        // heading, or after a single blank line following it (preserve the
+        // heading → blank → bullets layout, parity with migrate_v2 § 2.2 pass 2).
+        // No finding-shaped gate: the maintainer named this block explicitly.
+        res.inserted = true;
+        res.changed  = true;
+        int at0 = fb.headingLine0 + 1;
+        if (at0 < lines.size() && lines.at(at0).trimmed().isEmpty()) ++at0;
+        outLines.insert(at0, canonical);
     }
 
     res.newContent = outLines.join(QLatin1Char('\n'));

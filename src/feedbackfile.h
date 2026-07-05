@@ -36,15 +36,46 @@ struct TrackingRow {
                             // locate the row for removal)
 };
 
+// ANTS-3448 — a `### ` finding-shaped block a hand editor left with NO
+// `**Proposed ID:**` line (a silent-loss risk). Recorded only under the v2
+// rule so feedback_query can surface it rather than let it vanish as prose.
+struct SuspectedFinding {
+    QString heading;      // the `### ` heading line, verbatim
+    int     line = -1;    // 1-based heading line
+};
+
 struct ParseResult {
-    QString     delta;               // text from the first contributor heading
-                                     // after the last maintainer heading to EOF
+    QString     delta;               // v1: text from the first contributor
+                                     // heading after the last maintainer
+                                     // heading to EOF. v2 (ANTS-3448): the
+                                     // ordered concatenation of every un-triaged
+                                     // finding's block, `\n`-joined — NOT a
+                                     // contiguous file slice (INV-11).
     bool        deltaPresent = false;
-    int         deltaStartLine = -1; // 1-based line of the FIRST contributor
-                                     // heading of the delta; -1 when empty
-    int         deltaLineCount = 0;  // lines in the full (pre-cap) delta
-    QStringList mappedIds;           // unique, sorted; ANTS-[0-9]+ from
-                                     // maintainer-block bodies only
+    int         deltaStartLine = -1; // 1-based line of the FIRST delta line.
+                                     // v1: the delta's first line. v2: the first
+                                     // un-triaged finding's heading line —
+                                     // informational, NOT a slice anchor (the
+                                     // v2 delta is a concatenation; do not
+                                     // re-derive `delta` from it — INV-11). -1
+                                     // when empty.
+    int         deltaLineCount = 0;  // lines in the full (pre-cap) delta text.
+                                     // v1: a contiguous slice count; v2: the
+                                     // summed line count of the concatenated
+                                     // un-triaged findings (INV-11).
+    QStringList mappedIds;           // unique, sorted. v1: ANTS-[0-9]+ from
+                                     // maintainer-block bodies. v2 (ANTS-3448):
+                                     // the union of ANTS-[0-9]+ from each
+                                     // finding's first `**Proposed ID:**` value
+                                     // (n/a closures contribute none); the
+                                     // retained v1 tables are not counted.
+    int         formatVersion = 0;   // ANTS-3448: version from the first
+                                     // `<!-- ants-mcp-feedback: N -->` marker
+                                     // (0 when absent/malformed). >= 2 ⟹ the v2
+                                     // delta rule was applied.
+    QVector<SuspectedFinding> suspectedUntagged;  // ANTS-3448: v2-only; `### `
+                                     // finding-shaped blocks with no id line.
+                                     // Always empty under v1.
     int         maintainerBlockCount = 0;
     int         lastMaintainerLine = -1; // 1-based; -1 when none
     QVector<TrackingRow> trackingRows;   // ANTS-3371: every maintainer
@@ -59,8 +90,20 @@ struct ParseResult {
 // Parse the full file content per mcp-feedback-files.md § "The
 // un-triaged delta (parser contract)": fenced regions skipped, only
 // `^# `/`^## ` (one or two hashes) outside fences are boundaries,
-// maintainer headings identified by the anchor regex.
+// maintainer headings identified by the anchor regex. ANTS-3448:
+// marker-aware — a `<!-- ants-mcp-feedback: 2 -->` (or higher) file's delta /
+// mappedIds / suspectedUntagged follow the v2 inline-`**Proposed ID:**` rule;
+// the v1 boundary scan (lastMaintainerLine / maintainerBlockCount /
+// trackingRows) runs unchanged on both versions.
 ParseResult parse(const QString &fileContent);
+
+// ANTS-3448 — version int from the first `<!-- ants-mcp-feedback: N -->`
+// marker (the digit-optional regex migrate_v2 uses); 0 when the marker is
+// absent or carries no digits. Shared by parse() (read side) and migrateV2()
+// (write side) so both extract the version identically (INV-12). Returns the
+// version only — migrateV2 keeps its own marker presence + line-index scan for
+// its insert-vs-repair branch.
+int markerVersion(const QString &content);
 
 // ---- ANTS-1962: write side (block renderers) ------------------------
 
@@ -266,5 +309,45 @@ struct MigrateResult {
 // (INV-4). The wrapper (cmdFeedbackLog) owns path resolution, the suffix
 // guard, dry_run, and the atomic write — there is no roadmap read.
 MigrateResult migrateV2(const QString &content);
+
+// ---- ANTS-3447: v2 inline triage write (assign_id) ------------------
+//
+// Fill one `### ` finding's `**Proposed ID:**` line in place: replace an
+// existing / placeholder line, or insert one as the first body bullet when
+// absent. Records the maintainer's assigned id(s) or an `n/a — <reason>`
+// closure. Pure; no roadmap, no filesystem — the wrapper (cmdFeedbackLog)
+// owns path resolution, the suffix guard, dry_run, and the atomic write.
+// See docs/specs/ANTS-3447.md for the full contract.
+
+struct AssignTarget {
+    QString heading;          // the target `### ` heading, verbatim (trimmed match)
+    int     headingLine = -1; // optional 1-based `### ` line disambiguator
+    QString value;            // the composed id-line value the wrapper built
+                              // ("ANTS-1525, ANTS-1526" or "n/a — <reason>" / "n/a")
+    bool    isClosure = false;// wrapper sets true when `value` is an n/a closure
+                              // (informational; not load-bearing in the helper)
+};
+
+struct AssignResult {
+    QString newContent;       // full file after the replace/insert
+    QString heading;          // the resolved `### ` heading, verbatim
+    int     line = -1;        // 1-based `### ` heading line in the ORIGINAL file
+    QString value;            // the id-line value written (echoes target.value)
+    bool    inserted = false; // true ⟹ the finding had no id line (inserted)
+    bool    changed = false;  // false ⟹ the line already held `value` (no-op)
+    long    bytesDelta = 0;   // signed size change
+    QString code;             // "" on success; else target_not_found /
+                              // target_ambiguous
+    QVector<int> candidates;  // target_ambiguous only: colliding 1-based `### ` lines
+};
+
+// Pure. Enumerate `### ` findings (enumerateFindingBlocks), resolve
+// target.heading (+ optional headingLine) to exactly one block
+// (target_not_found / target_ambiguous), then replace its first
+// `**Proposed ID:**` line with `- **Proposed ID:** <value>` or insert that
+// line as the first body bullet when absent. Request-shape validity
+// (hasIds XOR hasClosure, ^ANTS-[0-9]+$ ids, newline-folded closure) is the
+// wrapper's job — the helper trusts target.value.
+AssignResult assignId(const QString &content, const AssignTarget &target);
 
 }  // namespace FeedbackFile

@@ -18193,15 +18193,17 @@ their feedback-file tracking tables needed stamping.
   Source: in-session-2026-07-05 (v2 feedback-file redesign; the verb that unlocks compact_resolved on the all-v1 corpus).
   Resolved (2026-07-05): shipped as MECHANICAL-ONLY + LEAVE-TABLES-IN-PLACE (the headline's "collapse the tables" was the abandoned relocate design — cold-eyes found relocating tables to EOF empties the shipped v1 delta until the v2 reader lands). Ships: FeedbackFile::migrateV2 (marker bump + blank Proposed-ID stamp on finding-shaped below-watermark blocks; orphans[]/unclassified[] surfaced; no table moved) + cmdFeedbackLog op:migrate_v2 + schema. 17 tests green, full suite 2531 pass. §7 ten-item standard reconciliation in mcp-feedback-files.md landed same commit. Spec docs/specs/ANTS-3446.md → Implemented.
 
-- 📋 [ANTS-3447] **feedback_log op:assign_id — v2 inline triage write: fill a finding's Proposed-ID slot in place with the assigned id(s) or an n/a closure.**
+- ✅ [ANTS-3447] **feedback_log op:assign_id — v2 inline triage write: fill a finding's Proposed-ID slot in place with the assigned id(s) or an n/a closure.**
   **Layman:** The maintainer's one-tap way to record which roadmap ticket a piece of feedback became, written straight onto the finding instead of into a separate table.
   Kind: enhancement.
   Source: in-session-2026-07-05 (v2 feedback-file redesign; the triage-write verb that replaces op:append_tracking for v2 files).
+  Resolved (2026-07-05): FeedbackFile::assignId + cmdFeedbackLog op:assign_id + schema + 20 feature tests. Goes live on next Ants relaunch (MCP-server change).
 
-- 📋 [ANTS-3448] **v2 un-triaged delta rule in feedback_query + session_orient feedback_pending — marker-aware parse() reads a : 2 file's delta as its unfilled-Proposed-ID findings, not the v1 after-last-table region.**
+- ✅ [ANTS-3448] **v2 un-triaged delta rule in feedback_query + session_orient feedback_pending — marker-aware parse() reads a : 2 file's delta as its unfilled-Proposed-ID findings, not the v1 after-last-table region.**
   **Layman:** Teaches the two read tools to understand the new inline-ID feedback format, so a migrated file's to-do list is computed from the findings that still lack an ID instead of the old table position.
   Kind: enhancement.
   Source: in-session-2026-07-05 (v2 feedback-file redesign; the read-side change that completes the v2 chain — the shipped readers are marker-blind today).
+  Resolved (2026-07-05): marker-aware FeedbackFile::parse() (shared markerVersion + hoisted closureRe/bulletArmRe) + feedback_query format_version/suspected_untagged + 3 standard amendments + feature tests. feedback_pending needed no code change. Goes live on next Ants relaunch.
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 

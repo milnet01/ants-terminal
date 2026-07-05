@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **feedback_log op:"assign_id" — v2 inline triage write** (ANTS-3447)
+  Fills one `### ` finding's `**Proposed ID:**` line in a shared *_Ants_MCP_Feedback.md file with the assigned ANTS-NNNN id(s) or an `n/a — <reason>` closure — the inline replacement for the v1 op:append_tracking table. Locates the finding over the fence-aware `### ` enumerator (target_not_found / target_ambiguous+candidates), replaces the placeholder/existing line or inserts one when absent, idempotent, atomic, dry_run-previewable. No roadmap read.
+
 - **`feedback_log op:"migrate_v2"` — one-shot mechanical v1→v2 feedback-file migration.** (ANTS-3446)
   Bumps the version marker to `<!-- ants-mcp-feedback: 2 -->` and stamps a
   blank `- **Proposed ID:** _(maintainer to assign)_` line on every
@@ -37,6 +40,9 @@ for security-relevant changes.
   The cross-session feedback files keep growing; once a suggestion is built and the other session confirms it works, its long write-up should shrink to a one-line stub so the file stays small.
 
 ### Changed
+
+- **feedback_query / feedback_pending honour the v2 marker (marker-aware un-triaged delta)** (ANTS-3448)
+  On a `<!-- ants-mcp-feedback: 2 -->` (or higher) file the un-triaged delta is now the findings whose inline `**Proposed ID:**` is still unfilled, not the region after the last v1 tracking table. feedback_query gains format_version + suspected_untagged[]; session_orient feedback_pending picks up the v2 count with no code change. The v1 rule is retained verbatim for un-migrated files.
 
 - **Roadmap dialog: items now lay out in aligned columns instead of a cramped inline run.** (ANTS-3392)
   Each roadmap item's status, type, summary and ID line up in neat

@@ -10785,6 +10785,20 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     out["last_maintainer_line"]  = pr.lastMaintainerLine;
     out["truncated"]             = truncated;
 
+    // ANTS-3448 — marker-aware v2 delta. `format_version` (0/1/2/…) lets a
+    // caller see which rule produced the delta; `suspected_untagged[]` lists
+    // v2 `### ` finding-shaped blocks a hand editor left with no
+    // `**Proposed ID:**` line (empty on v1 / a clean v2 file). Both additive.
+    out["format_version"]        = pr.formatVersion;
+    QJsonArray suspected;
+    for (const FeedbackFile::SuspectedFinding &sf : pr.suspectedUntagged) {
+        QJsonObject o;
+        o[QStringLiteral("heading")] = sf.heading;
+        o[QStringLiteral("line")]    = sf.line;
+        suspected.append(o);
+    }
+    out["suspected_untagged"]    = suspected;
+
     // ANTS-3371 — opt-in maintainer tracking rows. The recurring
     // "mark my prior suggestions that shipped" workflow needs per-item
     // status, which `mapped_ids` (a flat ID list) can't give. When
@@ -10834,13 +10848,14 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         op != QStringLiteral("compact_shipped") &&
         op != QStringLiteral("prune_tracking") &&
         op != QStringLiteral("compact_resolved") &&
-        op != QStringLiteral("migrate_v2")) {
+        op != QStringLiteral("migrate_v2") &&
+        op != QStringLiteral("assign_id")) {
         return QJsonDocument(fbErr(
             QStringLiteral("bad_mode"),
             QStringLiteral("feedback_log: op must be \"append_finding\", "
                            "\"append_tracking\", \"compact_shipped\", "
-                           "\"prune_tracking\", \"compact_resolved\" or "
-                           "\"migrate_v2\"")));
+                           "\"prune_tracking\", \"compact_resolved\", "
+                           "\"migrate_v2\" or \"assign_id\"")));
     }
 
     // ANTS-3421 — maintainer compaction: collapse confirmed-shipped
@@ -11335,6 +11350,152 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         out[QStringLiteral("stamped")]       = stampArr(mr.stamped);
         out[QStringLiteral("orphans")]       = orphans;
         out[QStringLiteral("unclassified")]  = stampArr(mr.unclassified);
+        if (derived) out[QStringLiteral("path_derived")] = true;  // ANTS-3376
+        return QJsonDocument(out);
+    }
+
+    // ANTS-3447 — assign_id: v2 inline triage write. Fill ONE `### ` finding's
+    // `**Proposed ID:**` line with the maintainer's assigned id(s) or an
+    // `n/a — <reason>` closure. Distinct request shape (heading + ids|closure,
+    // no roadmap read); returns early like the sibling compaction ops.
+    if (op == QStringLiteral("assign_id")) {
+        const QString heading =
+            req.value(QStringLiteral("heading")).toString();
+        if (heading.trimmed().isEmpty()) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("feedback_log: assign_id requires a non-empty "
+                               "\"heading\" (the target `### ` finding line)")));
+        }
+
+        // hasIds XOR hasClosure (spec § 2.1): hasIds = a non-empty `ids` array;
+        // hasClosure = a `closure` key with a STRING value (any string, incl "").
+        const QJsonArray idsArr = req.value(QStringLiteral("ids")).toArray();
+        const bool hasIds = !idsArr.isEmpty();
+        const bool hasClosure = req.contains(QStringLiteral("closure")) &&
+                                req.value(QStringLiteral("closure")).isString();
+        if (hasIds == hasClosure) {   // neither, or both → invalid
+            return QJsonDocument(fbErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("feedback_log: assign_id needs exactly one of a "
+                               "non-empty \"ids\" array OR a \"closure\" string "
+                               "(hasIds XOR hasClosure)")));
+        }
+
+        // Compose the id-line value the helper will write.
+        QString value;
+        if (hasIds) {
+            static const QRegularExpression idOkRe(
+                QStringLiteral("^ANTS-[0-9]+$"));
+            QStringList idList;   // de-duplicated, keeping first occurrence
+            for (const QJsonValue &v : idsArr) {
+                const QString id = v.toString().trimmed();
+                if (!idOkRe.match(id).hasMatch()) {
+                    return QJsonDocument(fbErr(
+                        QStringLiteral("bad_args"),
+                        QStringLiteral("feedback_log: assign_id \"ids\" entries "
+                                       "must match ^ANTS-[0-9]+$ (got \"%1\")")
+                            .arg(id)));
+                }
+                if (!idList.contains(id)) idList.append(id);
+            }
+            value = idList.join(QStringLiteral(", "));
+        } else {
+            // Closure: fold any newline / control char to a space so the written
+            // line stays single-line (spec § 2.2 step 2 / INV-3), then compose
+            // `n/a — <reason>` (bare `n/a` when the reason is empty).
+            QString reason = req.value(QStringLiteral("closure")).toString();
+            static const QRegularExpression ctrlRe(
+                QStringLiteral("[\\x00-\\x1F]"));
+            reason.replace(ctrlRe, QStringLiteral(" "));
+            reason = reason.trimmed();
+            value = reason.isEmpty()
+                        ? QStringLiteral("n/a")
+                        : QString::fromUtf8("n/a \xE2\x80\x94 ") + reason;
+        }
+
+        if (!exists) {
+            return QJsonDocument(fbNotFound(
+                QStringLiteral("feedback_log: assign_id on an absent file"),
+                resolved, feedbackCallerLeaf(req)));
+        }
+        QFile rf(resolved);
+        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("read_failed"),
+                QStringLiteral("feedback_log: cannot open \"%1\"")
+                    .arg(resolved)));
+        }
+        const QString content = QString::fromUtf8(rf.readAll());
+        rf.close();
+
+        FeedbackFile::AssignTarget tgt;
+        tgt.heading     = heading;
+        tgt.headingLine =
+            req.value(QStringLiteral("heading_line")).toInt(-1);
+        tgt.value       = value;
+        tgt.isClosure   = hasClosure;
+        const FeedbackFile::AssignResult ar =
+            FeedbackFile::assignId(content, tgt);
+
+        if (!ar.code.isEmpty()) {   // target_not_found / target_ambiguous
+            QJsonObject e = fbErr(
+                ar.code,
+                ar.code == QStringLiteral("target_ambiguous")
+                    ? QStringLiteral("feedback_log: assign_id heading matches "
+                                     "%1 `### ` blocks; pass heading_line")
+                          .arg(ar.candidates.size())
+                    : QStringLiteral("feedback_log: assign_id found no `### ` "
+                                     "finding matching \"%1\"").arg(heading));
+            if (!ar.candidates.isEmpty()) {
+                QJsonArray cand;
+                for (int c : ar.candidates) cand.append(c);
+                e[QStringLiteral("candidates")] = cand;
+            }
+            return QJsonDocument(e);
+        }
+
+        const bool dryRunA = req.value(QStringLiteral("dry_run")).toBool();
+        // Write only on a real change (skip the byte-identical no-op so the
+        // mtime/ETag is untouched — INV-8).
+        if (!dryRunA && ar.changed) {
+            const QByteArray utf8 = ar.newContent.toUtf8();
+            QSaveFile sf(resolved);
+            if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("write_failed"),
+                    QStringLiteral("feedback_log: cannot open \"%1\" for "
+                                   "writing").arg(resolved)));
+            }
+            bool committed = (sf.write(utf8) == utf8.size());
+            if (committed) {
+                if (g_forceFeedbackWriteFail) {
+                    sf.cancelWriting();
+                    committed = false;
+                } else {
+                    committed = sf.commit();
+                }
+            }
+            if (!committed) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("write_failed"),
+                    QStringLiteral("feedback_log: atomic write of \"%1\" "
+                                   "failed").arg(resolved)));
+            }
+        }
+
+        QJsonObject out;
+        out[QStringLiteral("ok")]          = true;
+        out[QStringLiteral("op")]          = op;
+        out[QStringLiteral("path")]        = resolved;
+        out[QStringLiteral("dry_run")]     = dryRunA;
+        out[QStringLiteral("heading")]     = ar.heading;
+        out[QStringLiteral("line")]        = ar.line;
+        out[QStringLiteral("value")]       = ar.value;
+        out[QStringLiteral("inserted")]    = ar.inserted;
+        out[QStringLiteral("changed")]     = ar.changed;
+        out[QStringLiteral("bytes_delta")] =
+            static_cast<qint64>(ar.bytesDelta);
         if (derived) out[QStringLiteral("path_derived")] = true;  // ANTS-3376
         return QJsonDocument(out);
     }
