@@ -872,6 +872,45 @@ if(ANTS_TESTS)
         LABELS "perf"
         TIMEOUT 60)
 
+    # bench_paint_throughput — shaping + draw throughput for the QPainter /
+    # QTextLayout text path paintEvent runs per frame (ANTS-3462, the
+    # baseline for the ANTS-3453 shaped-run cache). Pure Qt micro-benchmark:
+    # no Ants sources, needs Qt6::Gui + the offscreen platform for the font
+    # database. `perf` label — excluded from the default suite. Scale with
+    # `ANTS_PERF_FRAMES=200 ./bench_paint_throughput`.
+    add_executable(bench_paint_throughput
+        tests/perf/bench_paint_throughput.cpp
+    )
+    target_link_libraries(bench_paint_throughput PRIVATE
+        Qt6::Core
+        Qt6::Gui
+    )
+    target_compile_options(bench_paint_throughput PRIVATE
+        -Wall -Wextra -Wpedantic -O2
+    )
+    add_test(NAME paint_throughput COMMAND bench_paint_throughput)
+    set_tests_properties(paint_throughput PROPERTIES
+        LABELS "perf"
+        TIMEOUT 60)
+
+    # bench_search_throughput — scrollback scan (performSearch) + per-cell
+    # match lookup (isCellSearchMatch) throughput (ANTS-3462, baseline for
+    # ANTS-1115 rows 3/7). Reproduces the algorithmic core with Qt6::Core
+    # only — no widget. Scale with `ANTS_PERF_LINES=500000`.
+    add_executable(bench_search_throughput
+        tests/perf/bench_search_throughput.cpp
+    )
+    target_link_libraries(bench_search_throughput PRIVATE
+        Qt6::Core
+    )
+    target_compile_options(bench_search_throughput PRIVATE
+        -Wall -Wextra -Wpedantic -O2
+    )
+    add_test(NAME search_throughput COMMAND bench_search_throughput)
+    set_tests_properties(search_throughput PROPERTIES
+        LABELS "perf"
+        TIMEOUT 60)
+
     # ----------------------------------------------------------------------
     # ANTS-1217 Phase 2 — test_vt bundle.
     # 27 standalone test executables for vtparser/terminalgrid/themes
