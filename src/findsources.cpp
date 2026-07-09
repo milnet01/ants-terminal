@@ -14,6 +14,22 @@ namespace FindSources {
 
 namespace {
 
+// ANTS-3444 — ASCII-lowercase a byte buffer in place. find_sources
+// matches identifier/keyword needles that are ASCII, so folding the
+// haystack bytes (A-Z -> a-z) and searching with QByteArray::indexOf
+// avoids the full UTF-16 decode + lowercased-copy that dominated the
+// per-file cost. UTF-8 continuation bytes are 0x80-0xBF, so an ASCII
+// needle can never straddle a multibyte boundary; the byte search is
+// exact for the ASCII domain.
+void asciiLowerInPlace(QByteArray &b) {
+    char *const d = b.data();
+    const int n = b.size();
+    for (int i = 0; i < n; ++i) {
+        const char c = d[i];
+        if (c >= 'A' && c <= 'Z') d[i] = static_cast<char>(c - 'A' + 'a');
+    }
+}
+
 bool looksLikeRoadmapId(const QString &t) {
     // INV-1 — drop bare ANTS-NNNN tokens. Including them in the regex
     // matches roadmap-id text that almost never lives in source code,
@@ -183,6 +199,24 @@ Result findSources(const QString &topic,
         variantsPerToken.append(variantsForToken(t));
     }
 
+    // ANTS-3444 — ASCII-lowercased needle bytes per variant, computed
+    // once (was a per-file `v.toLower()` inside the content loop). Kept
+    // index-aligned with variantsPerToken so the original variant string
+    // is still available for the evidence lines. variantsForToken never
+    // yields an empty variant, so the two arrays stay 1:1.
+    QVector<QVector<QByteArray>> needlesPerToken;
+    needlesPerToken.reserve(tokens.size());
+    for (const QStringList &variants : variantsPerToken) {
+        QVector<QByteArray> needles;
+        needles.reserve(variants.size());
+        for (const QString &v : variants) {
+            QByteArray nb = v.toUtf8();
+            asciiLowerInPlace(nb);
+            needles.append(nb);
+        }
+        needlesPerToken.append(needles);
+    }
+
     // Walk src/ + tests/ — find_sources is for source code.
     QVector<QString> candidates;
     candidates.reserve(512);
@@ -232,24 +266,28 @@ Result findSources(const QString &topic,
         QStringList contentEvidence;
         QFile f(rootCanonical + QLatin1Char('/') + rel);
         if (f.open(QIODevice::ReadOnly)) {
-            const QByteArray data = f.read(opts.contentByteCap);
-            const QString text = QString::fromUtf8(data).toLower();
+            // ANTS-3444 — fold the raw bytes to lowercase ASCII in place
+            // and search with QByteArray::indexOf, skipping the UTF-16
+            // decode + lowercased QString copy that dominated the scan.
+            QByteArray data = f.read(opts.contentByteCap);
+            asciiLowerInPlace(data);
             for (int i = 0; i < tokens.size(); ++i) {
                 int tokenLocalHits = 0;
                 QString matchedVariant;
-                for (const QString &v : variantsPerToken.at(i)) {
-                    const QString needle = v.toLower();
+                const QVector<QByteArray> &needles = needlesPerToken.at(i);
+                for (int vi = 0; vi < needles.size(); ++vi) {
+                    const QByteArray &needle = needles.at(vi);
                     if (needle.isEmpty()) continue;
                     int from = 0;
                     while (true) {
-                        const int at = text.indexOf(needle, from);
+                        const int at = data.indexOf(needle, from);
                         if (at < 0) break;
                         ++tokenLocalHits;
                         from = at + needle.size();
                         if (tokenLocalHits > 50) break;  // per-token cap
                     }
                     if (tokenLocalHits > 0 && matchedVariant.isEmpty()) {
-                        matchedVariant = v;
+                        matchedVariant = variantsPerToken.at(i).at(vi);
                     }
                 }
                 if (tokenLocalHits > 0) {

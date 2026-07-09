@@ -14422,8 +14422,13 @@ QJsonObject specListEnvelope(const QString &rootCanonical) {
             e["mtime_ms"]   = fi.lastModified().toMSecsSinceEpoch();
             QFile f(fi.absoluteFilePath());
             if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                // ANTS-3444 — list mode emits only title + status, and the
+                // spec standard fixes both in the first lines (measured max
+                // Status offset across the corpus: 124 bytes). Read a bounded
+                // head instead of the whole body (specs run to ~85 KB) so the
+                // full-tree list stops paying a full parseSpecBody per spec.
                 const QJsonObject parsed =
-                    parseSpecBody(QString::fromUtf8(f.readAll()));
+                    parseSpecBody(QString::fromUtf8(f.read(8192)));
                 f.close();
                 e["title"]  = parsed.value(QStringLiteral("title")).toString();
                 e["status"] = parsed.value(QStringLiteral("status")).toString();

@@ -12,6 +12,16 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Changed
+
+- **MCP server-side latency: `find_sources` and `spec_query` list mode are dramatically faster (ANTS-3444)**
+  find_sources now ASCII-folds file bytes in place and searches with
+  QByteArray::indexOf instead of decoding every file to a lowercased
+  UTF-16 string — ~5× faster warm (106 ms → 21 ms on the full tree),
+  identical results. spec_query list mode reads an 8 KiB header per
+  spec instead of the whole body (title/status always sit in the
+  first ~124 bytes), skipping the wasted full-body invariant parse.
+
 ## [0.7.99] — unreleased (Patron RC preview)
 ### Added
 

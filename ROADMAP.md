@@ -18191,6 +18191,27 @@ their feedback-file tracking tables needed stamping.
   Kind: perf.
   Source: user-request-2026-07-04.
   Progress (2026-07-04, 1c98e74): part (b) CLIENT interim guard shipped — mcp-bridge.py READ_TIMEOUT_S 5s->60s (+ $ANTS_MCP_READ_TIMEOUT_S / $ANTS_MCP_CONNECT_TIMEOUT_S overrides, safe fallback on bad value), CONNECT 2s->5s. Stops the spurious -32000 (reply now lands). Takes effect on next bridge respawn (new CC session / MCP reconnect); the long-lived bridge process does not hot-reload. STILL OPEN: part (a) server-side latency — find_sources 52s / spec_query 14s must actually get fast (bounded/indexed scan, warm caches at connect off the request thread). 60s is a ceiling that prevents failure, not an acceptable response time.
+  Progress (2026-07-09): part (a) SERVER latency — the two heaviest
+  verbs cut at the source. (1) find_sources: the per-file content
+  scan no longer does QString::fromUtf8(data).toLower() (a full
+  UTF-16 decode + lowercased copy of up to 256 KiB per file across
+  ~705 candidates); it now ASCII-folds the raw bytes in place and
+  searches with QByteArray::indexOf. Measured on the real tree,
+  no-match topic (worst case): 106 ms -> 21 ms warm, ~5x, identical
+  20-hit result (output-preserving; McpFindSources golden-path test
+  green). ASCII needles can't straddle a UTF-8 multibyte boundary so
+  the byte search is exact for the identifier domain. (2) spec_query
+  list mode: specListEnvelope ran the full parseSpecBody (7 regexes
+  incl. two invariant globalMatch loops) on every spec (198 specs /
+  4.3 MB, up to 85 KB each) only to read title + status — both of
+  which sit in the first 124 bytes (measured max across the corpus).
+  Now reads a bounded 8 KiB head; verified 0/198 specs have their
+  H1 or Status beyond 8 KiB, so title/status are unchanged.
+  Remaining: the cold-cliff sub-goal — pre-warm the relevant caches
+  at MCP-connect off the request thread — is NOT yet done; the fixes
+  above cut the CPU/allocation half, disk I/O still dominates the
+  first post-relaunch access. Kept 📋 for that pre-warm work.
+  Files: src/findsources.cpp, src/remotecontrol.cpp.
 
 - ✅ [ANTS-3445] **prune_tracking wrongly drops distinct id-less closure rows sharing a non-ANTS id-column token (e.g. `(schema fix)`) — confirmed data loss.**
   Confirmed data-loss bug (cold-eyes 2026-07-04, ANTS-3443 review): prune_tracking wrongly removes a distinct id-less closure row when two unrelated rows share a non-ANTS id-column token (`(schema fix)`, `(self-resolved)`, `(no roadmap item)`).
