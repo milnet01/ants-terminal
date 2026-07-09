@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Changed
 
+- ****Lower idle CPU — a blinking cursor (and hover/expose repaints) no longer redraw the whole terminal.****
+  paintEvent now honours the damage rectangle (ANTS-3454): it redraws only
+  the screen rows the update actually touches. The cursor blink invalidates
+  just its own cell, so instead of re-shaping all 40 rows every 550 ms it
+  now repaints a single row. Full-screen updates (heavy output, resize,
+  theme change) are unchanged, so there is no risk to normal rendering.
+
 - ****Faster text rendering under heavy output — the terminal no longer re-computes the shape of every letter on every redraw.****
   A new shaped-run cache (ANTS-3453) remembers the glyph layout of each
   run of text keyed by its content and style, so an unchanged run is

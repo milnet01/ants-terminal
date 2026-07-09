@@ -4337,11 +4337,12 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
   Source: user-request-2026-07-09.
   Shipped 2026-07-09 (commit a3da4c6d). ShapedRunCache (src/shapedruncache.{h,cpp}) caches shaped QTextLayouts keyed by (run text, font variant); paintEvent now draws unchanged runs from cache with no HarfBuzz re-shape. Generational two-map eviction (~8 MB worst case at 4096 cap), cleared on font change. Byte-identical draw (cached ANTS-2100 baselineOff). Measured 1.6-1.9x on the shape+draw path at ~100% hit rate (bench_paint_throughput) — cache removes shaping; glyph rasterisation remains, so this is the shaping fraction (~40%) not a total-repaint win. Compounds with shipped frame-pacing + pending dirty-row (ANTS-3454, the larger typing-freeze lever). 5 ShapedRunCache unit tests; full suite 2575/2575 green, no warnings. Visual parity pending user relaunch confirmation.
 
-- 📋 [ANTS-3454] **Dirty-row / damage-rect painting — honor QPaintEvent rect + screenLineDirty(r) to bound the cell walk.**
+- ✅ [ANTS-3454] **Dirty-row / damage-rect painting — honor QPaintEvent rect + screenLineDirty(r) to bound the cell walk.**
   paintEvent ignores the QPaintEvent damage rect (param unnamed, terminalwidget.cpp:684), fills rect() wholesale (:709) and walks all rows×cols (:770,:826) unconditionally. The grid already tracks screenLineDirty(r) (used only for cache eviction). Use the damage rect + dirty flags to bound the fillRect and the row loop to changed rows. Multiplies the savings from the frame-pacing, span-cache, and glyph-cache fixes.
   **Layman:** Right now a single blinking cursor redraws the entire screen; this makes it only redraw the lines that actually changed.
   Kind: perf.
   Source: user-request-2026-07-09.
+  Shipped 2026-07-09 (commit b7fdf1fc) — the "honour QPaintEvent rect" half. paintEvent now bounds the background fill + per-row shape/draw loop to event->rect()'s row band. blinkCursor (the ONLY partial update(rect) caller, :2494, invalidates exactly the cursor cell) now repaints one row per 550ms tick instead of re-shaping all 40; hover / OS partial exposes benefit too. Strict no-op for full update() repaints (full-widget damage → [0,rows-1]), so zero regression — the audit confirmed no other partial-update caller exists to un-mask. Guarded by terminalwidget_hotpath_perf Inv5; suite 2576/2576. The screenLineDirty-driven OUTPUT-path narrowing (repaint only changed rows during active typing/output) is the higher-risk half — deferred to ANTS-3464 with its correctness matrix.
 
 - ✅ [ANTS-3455] **updateSuggestion — skip the O(history) scan when the input line is unchanged / during output.**
   updateSuggestion() (terminalwidget.cpp:5453) runs on every VT batch: linear scan of m_historyEntries. Already early-returns in alt-screen (so the Claude-TUI freeze case is unaffected — minor priority), but the plain-shell bulk-output case re-scans per batch. Add an early-out when the trimmed input line is unchanged since the last computation. Implementing 2026-07-09.
@@ -4393,6 +4394,36 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
   Kind: test.
   Source: user-request-2026-07-09.
   Shipped 2026-07-09 (commit 1f7820f0). bench_paint_throughput (QTextLayout shape+draw over styled run corpora, offscreen QImage) + bench_search_throughput (performSearch scan + isCellSearchMatch lower_bound, Core-only), both perf-labelled. Baseline this host: paint repeated_frame 210k runs/s (475ms/100k re-shapes — the streaming case ANTS-3453 targets), cjk 87k runs/s; search 50k-line scan ~7ms + per-cell lookup 0.05ms (confirms search is NOT a freeze contributor at realistic depth — the per-frame re-shape is). Baselines guard ANTS-3453/3454 against regression.
+
+- 📋 [ANTS-3464] **Output-path dirty-row repaint — narrow onVtBatch update() to changed rows + cursor damage (ANTS-3454 follow-up).**
+  ANTS-3454 shipped the safe half (paintEvent honours event->rect()), but
+  the output path (onVtBatch -> scheduleCoalescedUpdate -> update() FULL)
+  still repaints the whole grid on every batch, so active typing during
+  output re-shapes all rows even when 1-2 changed. The remaining win is
+  producer-side: compute a damage rect from the grid's per-line dirty bits
+  (screenLineDirty) and call update(damageRect) instead of update().
+
+  Deferred as its own spec (NOT folded into ANTS-3454) because the
+  correctness surface is real, verified 2026-07-09:
+    (1) pure cursor MOVES don't mark any line dirty (setCursorPosition only
+        sets m_cursorRow/Col), so a naive dirty-row damage leaves cursor
+        trails — must union the previous + current cursor rows into the
+        damage every frame.
+    (2) the dirty bits are already consumed + cleared by
+        invalidateSpanCaches() (clearAllScreenDirty, terminalwidget.cpp:3852),
+        so onVtBatch must snapshot the dirty set BEFORE that clear.
+    (3) scroll / most CSI ops call markAllScreenDirty() (full) — correct but
+        yields no narrowing during scrolling output (the common heavy case),
+        so the win is mainly typing-at-a-prompt, not streaming.
+    (4) selection drag / performSearch / smoothScroll use their own full
+        update() paths and must stay correct.
+  Needs a regression matrix (cursor move in vim, selection drag, search
+  highlight, alt-screen, scroll) + a feature test before it can ship.
+  Kind: perf.
+  Source: in-session-2026-07-09.
+  **Layman:** Make active typing during heavy output redraw only the lines that changed, not the whole screen — the deeper, riskier half of the dirty-row work.
+  Kind: perf.
+  Source: in-session-2026-07-09.
 
 ### ⚡ Local-subagent framework — Claude offloads to the local machine (user request 2026-04-30)
 
