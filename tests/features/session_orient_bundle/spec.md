@@ -16,6 +16,7 @@ ETag-eligible verbs into one envelope.
 | 7   | `Inv7TokenCostBucketRegistered`   | `tokenCostFor` table carries an entry for `session_orient`. |
 | 8   | `Inv8CodebaseIndexRefreshTrimmed` | bundle invokes `cmdCodebaseIndex` under a `codebase_index` key (eager refresh at session start) AND strips volatile `generated_at_ms`/`refreshed_files` to keep the ETag stable (ANTS-2140). |
 | 9   | `Inv9FeedbackPendingScan`         | bundle surfaces the cross-session feedback backlog under a `feedback_pending` key, reusing `FeedbackFile::parse`, gated to the maintainer project by `docs/standards/mcp-feedback-files.md`, surfacing only files with an un-triaged `deltaPresent` (ANTS-1964). |
+| 10  | `Inv10CodebaseIndexLaneDigest`    | bundle passes `lane_files:true` into `cmdCodebaseIndex` so the embedded map carries the per-lane `source_files` digest (navigable, not counts-only); deterministic digest keeps the ETag stable (ANTS-3468). |
 
 ## Pre-fix verification
 

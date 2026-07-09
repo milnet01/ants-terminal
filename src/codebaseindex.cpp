@@ -399,11 +399,43 @@ QJsonObject query(const Index &idx, const QueryParams &params,
             langCounts[fe.language.isEmpty() ? QStringLiteral("unknown") : fe.language]++;
             roleCounts[fe.role]++;
         }
+        // ANTS-3468 — opt-in compact lane→source-file digest. The counts-only
+        // summary couldn't answer "where does subsystem X live", so the
+        // session_orient bundle's map still forced a grep. When laneFiles is
+        // set, each lane gains a `source_files` array of its NON-test paths
+        // (test files are the bulk and low-signal for "where is the code");
+        // symbol-level "where is X" stays a standalone codebase_index symbol=
+        // call, too big for an always-on first call. Deterministic (sorted
+        // lanes + sorted paths) so it does not perturb session_orient's 304
+        // ETag; globally capped so a huge tree can't bloat the bundle.
+        QMap<QString, QStringList> laneSource;   // lane → sorted non-test paths
+        if (params.laneFiles) {
+            for (const FileEntry &fe : idx.files)
+                if (!fe.lane.isEmpty() && fe.role != QLatin1String("test"))
+                    laneSource[fe.lane] << fe.path;
+            for (auto it = laneSource.begin(); it != laneSource.end(); ++it)
+                it.value().sort();
+        }
+        int  digestEmitted   = 0;
+        bool digestTruncated = false;
+
         QJsonArray lanes;
         for (auto it = laneCounts.cbegin(); it != laneCounts.cend(); ++it) {
             QJsonObject l;
             l[QStringLiteral("lane")]       = it.key();
             l[QStringLiteral("file_count")] = it.value();
+            if (params.laneFiles) {
+                QJsonArray files;
+                for (const QString &p : laneSource.value(it.key())) {
+                    if (digestEmitted >= opts.maxLaneDigestFiles) {
+                        digestTruncated = true;
+                        break;
+                    }
+                    files.append(p);
+                    ++digestEmitted;
+                }
+                l[QStringLiteral("source_files")] = files;
+            }
             lanes.append(l);
         }
         QJsonObject langs, roles;
@@ -422,6 +454,10 @@ QJsonObject query(const Index &idx, const QueryParams &params,
         // flag is stable while the tree is unchanged (it does not perturb
         // session_orient's 304 ETag, unlike generated_at_ms).
         env[QStringLiteral("empty")] = idx.files.isEmpty();
+        // ANTS-3468 — surface the digest cap only when the digest was emitted
+        // (keeps the counts-only summary shape byte-identical when opt-out).
+        if (params.laneFiles)
+            env[QStringLiteral("lane_digest_truncated")] = digestTruncated;
     } else if (!params.symbol.isEmpty()) {
         QJsonArray matches;
         for (const FileEntry &fe : idx.files)

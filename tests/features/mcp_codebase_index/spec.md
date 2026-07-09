@@ -38,6 +38,13 @@ source-scrapes the MCP wiring sites. It maps to the spec invariants:
   `path`, and `codebase_index` accepts `path` as an alias for `file_path`
   (canonical name stays the source of truth; alias fills in only when absent —
   source-scraped in remotecontrol.cpp).
+- **INV-19** — (ANTS-3468) `lane_files:true` on the no-selector summary
+  augments each lane with a sorted `source_files` array of its NON-test paths
+  and emits a `lane_digest_truncated` flag (global cap `kMaxLaneDigestFiles`);
+  the default (opt-out) summary stays counts-only and byte-identical. The
+  digest is deterministic (sorted lanes + sorted paths) so it keeps a warm
+  re-serve byte-identical (304-stable). The `session_orient` bundle passes
+  `lane_files:true` so its embedded map is navigable, not counts-only.
 
 The test must fail against pre-implementation source (no `codebaseindex.*`,
 no `codebase_index` wiring) and pass after the feature lands.

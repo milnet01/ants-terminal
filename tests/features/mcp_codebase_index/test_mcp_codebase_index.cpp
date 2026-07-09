@@ -413,6 +413,58 @@ TEST(CodebaseIndex, NoiseDirsPrunedUnderDotRoot) {
     }
 }
 
+// ANTS-3468 — opt-in lane→source-file digest. params.laneFiles augments each
+// summary lane with a sorted `source_files` array of its NON-test paths so the
+// session_orient bundle's first-call map is navigable; the default (opt-out)
+// summary stays counts-only (no source_files / no lane_digest_truncated).
+// Deterministic → keeps session_orient's 304 ETag stable; globally capped.
+TEST(CodebaseIndex, LaneDigestOptIn) {
+    QTemporaryDir dir;
+    // A module-map lane "bar" so a tests/ file (bar_extra.cpp) also resolves to
+    // it — proving the role==test exclusion, not just a no-lane skip.
+    writeFile(dir.path() + "/CLAUDE.md",
+              QStringLiteral("## Module map (src/)\n- `bar` — the bar unit.\n"));
+    writeFile(dir.path() + "/src/bar.cpp", cppWith("Bar", "run"));
+    writeFile(dir.path() + "/src/bar.h",
+              QStringLiteral("class Bar { void run(); };\n"));
+    writeFile(dir.path() + "/tests/bar_extra.cpp", cppWith("BarExtra", "run"));
+    Index idx = build(dir.path(), 1000);
+    ASSERT_TRUE(idx.laneToFiles.contains(QStringLiteral("bar")));
+
+    // Opt-out default: counts-only, no digest fields.
+    QJsonObject plain = query(idx, summaryQ(), 0, QStringLiteral("/c"));
+    for (const QJsonValue &v : plain.value("lanes").toArray())
+        EXPECT_FALSE(v.toObject().contains("source_files"));
+    EXPECT_FALSE(plain.contains("lane_digest_truncated"));
+
+    // Opt-in: lane "bar" lists its non-test source (cpp + h), excludes the test.
+    QueryParams q; q.laneFiles = true;
+    QJsonObject env = query(idx, q, 0, QStringLiteral("/c"));
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_TRUE(env.contains("lane_digest_truncated"));
+    QStringList barFiles;
+    for (const QJsonValue &v : env.value("lanes").toArray()) {
+        const QJsonObject l = v.toObject();
+        ASSERT_TRUE(l.contains("source_files"));
+        if (l.value("lane").toString() == QStringLiteral("bar"))
+            for (const QJsonValue &s : l.value("source_files").toArray())
+                barFiles << s.toString();
+    }
+    EXPECT_TRUE(barFiles.contains(QStringLiteral("src/bar.cpp")));
+    EXPECT_TRUE(barFiles.contains(QStringLiteral("src/bar.h")));
+    EXPECT_FALSE(barFiles.contains(QStringLiteral("tests/bar_extra.cpp")));
+
+    // Deterministic → stable ETag: two opt-in queries are byte-identical.
+    QJsonObject env2 = query(idx, q, 0, QStringLiteral("/c"));
+    EXPECT_EQ(QJsonDocument(env).toJson(QJsonDocument::Compact),
+              QJsonDocument(env2).toJson(QJsonDocument::Compact));
+
+    // Global cap: a tiny cap truncates the digest and flags it (no silent cap).
+    Options o; o.maxLaneDigestFiles = 1;
+    QJsonObject capped = query(idx, q, 0, QStringLiteral("/c"), o);
+    EXPECT_TRUE(capped.value("lane_digest_truncated").toBool());
+}
+
 // INV-8/9/10 — wiring source-scrapes.
 TEST(CodebaseIndex, WiringRegistered) {
     const std::string ci = ants_test::slurpFile(srcPath("src/claudeintegration.cpp"));

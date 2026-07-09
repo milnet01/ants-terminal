@@ -171,6 +171,26 @@ TEST(session_orient_bundle, Inv8CodebaseIndexRefreshTrimmed) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-3468 — the embedded codebase_index rides the opt-in lane→source-file
+// digest so the first-call map is navigable (jump to file_outline/read_region)
+// rather than counts-only: the bundle passes lane_files:true into
+// cmdCodebaseIndex. Deterministic digest → the dispatch-layer ETag stays stable.
+TEST(session_orient_bundle, Inv10CodebaseIndexLaneDigest) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const auto pos = cpp.find("cmdSessionOrient");
+    if (pos == std::string::npos) {
+        expect(false, "INV-10: cmdSessionOrient body not found");
+    } else {
+        const std::string body =
+            ants_test::slurpFunctionBody(cpp, "cmdSessionOrient");
+        expect(contains(body, "\"lane_files\""),
+               "INV-10: bundle passes lane_files into the embedded "
+               "codebase_index (ANTS-3468 navigable digest)");
+    }
+    EXPECT_EQ(0, expect_failures());
+}
+
 // INV-9 (ANTS-1964) — the bundle surfaces the cross-session feedback
 // backlog under a `feedback_pending` key, reusing the canonical
 // FeedbackFile::parse (no bash reimplementation), gated to the

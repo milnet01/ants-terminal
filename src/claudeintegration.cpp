@@ -3715,7 +3715,9 @@ void ClaudeIntegration::onMcpConnection() {
                 ciTool["description"] = QStringLiteral(
                     "Pre-computed project structural map, cached + lazily "
                     "refreshed. No selector → a summary "
-                    "(file_count / lanes / languages / roles). symbol=Foo::bar "
+                    "(file_count / lanes / languages / roles); add "
+                    "lane_files:true for a compact per-lane source_files digest "
+                    "(navigable lane→file map). symbol=Foo::bar "
                     "→ every {path,line,kind} defining it (pre-indexed "
                     "find_definition, no re-grep). lane=<name> → that lane's "
                     "files + their symbols. file_path=<rel> → one file's cached "
@@ -3744,9 +3746,18 @@ void ClaudeIntegration::onMcpConnection() {
                         fpProp["description"] = QStringLiteral(
                             "Project file path (under caller_cwd). Mutually "
                             "exclusive with symbol / lane.");
+                    QJsonObject laneFilesProp; laneFilesProp["type"] = "boolean";
+                        laneFilesProp["description"] = QStringLiteral(
+                            "Summary-only opt-in: also emit a compact per-lane "
+                            "source_files digest (each lane's non-test paths, "
+                            "sorted, globally capped; lane_digest_truncated "
+                            "flags a cap hit) — a navigable lane→file map "
+                            "without a per-lane call. Ignored under a selector. "
+                            "(ANTS-3468)");
                     props["symbol"]     = symProp;
                     props["lane"]       = laneProp;
                     props["file_path"]  = fpProp;
+                    props["lane_files"] = laneFilesProp;   // ANTS-3468
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     props["fields"]     = makeFieldsProp();      // ANTS-1720

@@ -24,6 +24,7 @@ constexpr int    kIndexVersion    = 1;
 constexpr int    kMaxIndexFiles   = 5000;             // INV-11 file-count ceiling
 constexpr qint64 kMaxCacheBytes   = 16 * 1024 * 1024; // INV-15 hard cache/heap ceiling
 constexpr int    kMaxQuerySymbols = 2000;             // INV-14 lane= response cap
+constexpr int    kMaxLaneDigestFiles = 400;           // ANTS-3468 lane-digest global cap
 
 // A subset of FileOutline's symbol entry (signature dropped — INV/§2.1).
 struct Symbol {
@@ -53,9 +54,10 @@ struct Index {
 };
 
 struct Options {
-    int    maxIndexFiles   = kMaxIndexFiles;
-    qint64 maxCacheBytes   = kMaxCacheBytes;
-    int    maxQuerySymbols = kMaxQuerySymbols;
+    int    maxIndexFiles      = kMaxIndexFiles;
+    qint64 maxCacheBytes      = kMaxCacheBytes;
+    int    maxQuerySymbols    = kMaxQuerySymbols;
+    int    maxLaneDigestFiles = kMaxLaneDigestFiles;  // ANTS-3468
 };
 
 // At most one member non-empty: that one picks the filter; none → summary;
@@ -64,6 +66,10 @@ struct QueryParams {
     QString symbol;
     QString lane;
     QString filePath;   // project-relative (validated by the handler)
+    // ANTS-3468 — summary-only opt-in: emit a compact per-lane `source_files`
+    // digest (non-test paths, sorted, globally capped) so the session_orient
+    // bundle's first-call map is navigable. Ignored under a selector.
+    bool    laneFiles = false;
 };
 
 struct StaleSet {

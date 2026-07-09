@@ -12,6 +12,11 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **session_orient's embedded codebase_index sub-object is still counts-only — extend the ANTS-3438 symbol/lane/file selectors (or a compact digest) to the first-call orientation surface.** (ANTS-3468)
+  session_orient's embedded codebase map now carries a compact per-lane source_files digest (each subsystem's non-test source paths, sorted, capped) so the first-call "query before grep" map is navigable — a session can jump straight to file_outline/read_region instead of grepping. Opt-in on the standalone codebase_index too via lane_files:true; deterministic, so it keeps the bundle's ETag-304 stable.
+
 ### Changed
 
 - ****Lower idle CPU — a blinking cursor (and hover/expose repaints) no longer redraw the whole terminal.****

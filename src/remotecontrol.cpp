@@ -10636,6 +10636,11 @@ QJsonDocument RemoteControl::cmdCodebaseIndex(const QJsonObject &req) {
     CodebaseIndex::QueryParams params;
     params.symbol = req.value(QStringLiteral("symbol")).toString();
     params.lane   = req.value(QStringLiteral("lane")).toString();
+    // ANTS-3468 — summary-only opt-in: a per-lane source-file digest so the
+    // caller (notably the session_orient bundle) gets a navigable map, not
+    // just counts. Ignored when a selector is set (query() emits it only in
+    // the n==0 summary branch).
+    params.laneFiles = req.value(QStringLiteral("lane_files")).toBool();
 
     // ANTS-2149 — accept `path` as an alias for `file_path`, mirroring the
     // sibling file_outline verb (which keys on `path`). `file_path` stays
@@ -14270,6 +14275,11 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
     {
         QJsonObject ciReq;
         ciReq[QStringLiteral("caller_cwd")] = rootCanonical;
+        // ANTS-3468 — ride the compact lane→source-file digest on the bundle
+        // so the first-call map answers "where does subsystem X live" (jump to
+        // file_outline/read_region) instead of only totals. Deterministic, so
+        // it keeps this bundle's dispatch-layer 304 ETag stable (below).
+        ciReq[QStringLiteral("lane_files")] = true;
         QJsonObject ci = cmdCodebaseIndex(ciReq).object();
         ci.remove(QStringLiteral("generated_at_ms"));
         ci.remove(QStringLiteral("refreshed_files"));
