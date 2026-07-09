@@ -1,8 +1,24 @@
 ants-terminal (0.7.98-1) unstable; urgency=medium
 
-  * Patron RC preview — opens the 0.7.98 preview channel. No changes yet
-    beyond 0.7.97; fixes land here during the freeze window before the
-    stable release.
+  * Screen-reader support for the terminal area (AT-SPI / Orca): a blind
+    user's assistive technology can now read the visible terminal output
+    and caret, not just the window chrome. Costs nothing when no screen
+    reader is running. (ANTS-1078)
+  * New Donate menu (just left of Help) with GitHub Sponsors and Patreon
+    links, so supporters can find them without leaving the terminal.
+  * Roadmap dialog shows a duplicate-ID warning banner when the same
+    [PROJ-NNNN] id appears on more than one item. (ANTS-1694)
+  * Changed: Roadmap dialog items now lay out in aligned columns (status,
+    type, summary, id) instead of a cramped inline run. (ANTS-3392)
+  * Changed: the status bar no longer polls while the window is in the
+    background, saving battery and scheduler wakeups on laptops. (ANTS-1363)
+  * Fixed: terminal query-responses (DA/CPR/DSR) are now rate-limited so a
+    runaway program spamming \e[6n cannot flood the reply channel. (ANTS-2192)
+  * Hundreds of under-the-hood improvements to the built-in Claude Code
+    integration and developer tooling — async audit sweeps, sandboxed
+    read-only project queries, smaller columnar replies, multi-file read
+    batching, cross-session feedback workflows, and many code-navigation
+    accuracy fixes.
 
  -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 24 Jun 2026 12:00:00 +0200
 
