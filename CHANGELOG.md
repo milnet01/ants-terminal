@@ -51,6 +51,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **feedback_log op:append_tracking does not pipe-escape `|` in item/notes cells — a pipe in the text corrupts the markdown table row.** (ANTS-3469)
+  When the triage tool writes a tracking row containing a pipe character in its text, the table row breaks, and a later cleanup step can't read the row's status.
+
 - **roadmap_log op:amend_body now reaches body text on blank-line-separated nested sub-bullets, and its body_match_not_found refusal hints when old_text sits outside the bullet or spans a hard-wrapped line break.** (ANTS-3467)
 
 - **workspace_search now hints 'did you mean regex:true?' when a regex:false pattern carrying regex metacharacters (e.g. A|B|C) returns zero matches, so an empty result isn't mistaken for 'symbol absent'.** (ANTS-3466)

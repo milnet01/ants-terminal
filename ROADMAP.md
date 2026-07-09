@@ -18402,26 +18402,29 @@ Triage of the un-triaged tails across the 10 cross-session
 re-confirmations or corroboration of already-tracked items
 (ANTS-3417/3419/3426/3438/3440); the actionable-new findings are filed below.
 
-- 📋 [ANTS-3465] **find_definition misses type definitions (struct / class / union / enum) — returns 0 for a real type name.**
+- ✅ [ANTS-3465] **find_definition misses type definitions (struct / class / union / enum) — returns 0 for a real type name.**
   The C++ buildAnchors (symbolquery.cpp) has only a return-type+name+'(' pattern and an out-of-line ctor/dtor pattern; neither matches a `struct|class|union|enum[ class] <name>` type definition, so a pure type (no same-named constructor) returns definitions_count:0. A type WITH a same-named ctor (e.g. ShapedRunCache) returns only the ctor, not the `class` line. Fix: add a C++ type-definition anchor `^\s*(?:template<...>)?(?:typedef )?(?:struct|class|union|enum[ class]) <name>\b`; existing scanFile kind logic tags `{`->definition, `;`->declaration with no schema change. Python/Generic already cover types; only Cpp needs it.
   **Layman:** Asking "where is type Foo defined?" comes back empty for structs and enums, even though the tool found them a moment ago by a plain text search.
   Kind: fix.
   Lanes: symbolquery.
   Source: 3D_Engine (Vestige) feedback 2026-07-04; reproduced on Ants (find_definition PaintTextRun -> 0 though struct at terminalwidget.h:698).
+  Resolved (2026-07-09, commit fbfecd78): C++ type-definition anchor added in symbolquery.cpp buildAnchors; struct/class/union/enum[ class] resolve. +5 regression assertions in mcp_symbol_query.
 
-- 📋 [ANTS-3466] **workspace_search regex:false + a pattern with unescaped regex metacharacters (e.g. `a|b|c`) silently returns 0 matches with no advisory.**
+- ✅ [ANTS-3466] **workspace_search regex:false + a pattern with unescaped regex metacharacters (e.g. `a|b|c`) silently returns 0 matches with no advisory.**
   ANTS-2045 shipped a 0-match advisory only for whitespace-split multi-term queries; a metacharacter-bearing single token (pipe/paren/bracket, no whitespace) with regex:false is treated literally, matches nothing, and returns no hint — an LLM caller reads it as 'symbol absent'. Fix: when regex:false AND 0 matches AND the pattern contains an unescaped regex metacharacter (| ( ) [ ] .* + ?), append an advisory hint like 'pattern contains regex metacharacters but regex:false — did you mean regex:true?'. Single branch alongside the existing ANTS-2045 hint.
   **Layman:** If you search with a pipe-separated pattern but forget to turn on regex mode, the search finds nothing and gives no hint that regex mode was what you needed — easy to mistake for "the code isn't there."
   Kind: fix.
   Lanes: workspace_search.
   Source: Music_Production (Album Builder) feedback 2026-07-04 (NowPlayingTitle|NowPlayingCover matched 0 with regex:false, all 5 with regex:true).
+  Resolved (2026-07-09, commit fbfecd78): metachar 0-match advisory (rcLooksLikeRegexButLiteral) hints regex:true. +1 source-scrape test.
 
-- 📋 [ANTS-3467] **roadmap_log op:amend_body match region is too narrow — misses nested sub-bullet lines and hard-wrap-spanning phrases; body_match_not_found reads as 'text absent'.**
+- ✅ [ANTS-3467] **roadmap_log op:amend_body match region is too narrow — misses nested sub-bullet lines and hard-wrap-spanning phrases; body_match_not_found reads as 'text absent'.**
   Two sub-cases of the same amend_body matching gap: (a) old_text on a 4/6-space nested sub-bullet continuation line refuses body_match_not_found because the considered body region covers only the bullet's own ~2-space continuations; (b) a natural phrase that straddles the append verbs' ~70-col hard wrap can't match the single-line constraint. Fix options: widen the body region through nested sub-bullets up to the next sibling bullet; AND/OR when old_text IS present in the file but outside the region, return a distinct code/hint (found_outside_body, with line) so the caller widens scope rather than concluding absence; optionally an opt-in whitespace-folded match mode for wrapped phrases (keep exact single-line as the safe default).
   **Layman:** The tool that patches a to-do item's notes can't reach text on indented sub-points or text that wraps across two lines, and its error makes it look like the text isn't there at all.
   Kind: enhancement.
   Lanes: roadmap.
   Source: finbreak feedback 2026-07-09 (FIBR-0055 nested Scope sub-bullets) + Contact_List feedback 2026-07-04 (phrase spanning a ~70-col hard wrap).
+  Resolved (2026-07-09, commit fbfecd78): amendBodyExact body span spans blank-line-separated nested sub-bullets; body_match_not_found hints found-outside-body / wrap-span. +3 behavioural tests.
 
 - 📋 [ANTS-3468] **session_orient's embedded codebase_index sub-object is still counts-only — extend the ANTS-3438 symbol/lane/file selectors (or a compact digest) to the first-call orientation surface.**
   ANTS-3438 shipped Option A on the top-level codebase_index verb (symbol/lane/file_path selectors — verified this session: codebase_index symbol=ShapedRunCache -> {kind:class, line:39}). The SessionStart 'query before grep' hint targets session_orient's BUNDLED codebase_index sub-object, which still returns only file_count/roles/languages/lane_count (no files[]/symbols[]). Follow-up: expose the selectors, or embed a compact symbol/lane digest, in the session_orient bundle so the first-call surface satisfies its own hint. Keep the bundle ETag stable (strip volatile fields as today).
@@ -18429,6 +18432,14 @@ re-confirmations or corroboration of already-tracked items
   Kind: enhancement.
   Lanes: mcpprojection, remotecontrol.
   Source: finbreak feedback 2026-07-09 (ANTS-3438 second half); top-level codebase_index selectors verified working on live build 9373a1bb.
+
+- ✅ [ANTS-3469] **feedback_log op:append_tracking does not pipe-escape `|` in item/notes cells — a pipe in the text corrupts the markdown table row.**
+  roadmap_log op:bundle_row already pipe-escapes each cell + folds newlines to <br> (ANTS-1691). feedback_log op:append_tracking writes item/notes/status/ids cells verbatim, so a literal `|` in the item or notes shifts the column count — the row's Status cell is mis-parsed and downstream readers (compact_shipped's ✅-gate; feedback_query tracking parse) can't map the id → status. Fix: pipe-escape (`\|`) and newline-fold every cell in the append_tracking renderer, mirroring bundle_row's helper. Add a regression: an append_tracking row whose notes contain a pipe round-trips through the tracking parser with the right status.
+  **Layman:** When the triage tool writes a tracking row containing a pipe character in its text, the table row breaks, and a later cleanup step can't read the row's status.
+  Kind: fix.
+  Lanes: feedbackfile.
+  Source: in-session-2026-07-09: an append_tracking row for ANTS-3466 whose text contained literal `|` corrupted the table; compact_shipped then reported not_shipped/no tracking row for that id..
+  Resolved (2026-07-09, commit pending): feedback_log op:append_tracking now pipe-escapes (`\|`) + newline-folds (<br>) every table cell via escapeTrackingCell, mirroring bundle_row's escapeCell. Discovered live this session (an ANTS-3466 tracking row whose text held literal `|` corrupted the table → compact_shipped not_shipped). Regression: McpFeedbackLog.TrackingCellEscapesPipeAndNewline.
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
