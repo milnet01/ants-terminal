@@ -5989,28 +5989,32 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                     env["follow_up"] = QStringLiteral("ANTS-1905");
                     return QJsonDocument(env);
                 }
-                // ANTS-3397 — greenfield auto-init. No counter file AND
-                // no existing bullet ids of any kind is an unambiguous
-                // fresh roadmap: create .roadmap-counter at 0 so the
-                // first id allocates as <prefix>-0001, rather than
-                // forcing a shell `echo 0 > .roadmap-counter` side-step
-                // that breaks the all-MCP workflow. If the roadmap
-                // already carries ids (counter-style ANTS-NNNN slipped
-                // past the stable sniff above), the high-water mark is
-                // genuinely lost — keep refusing with counter_missing
-                // (a real desync worth surfacing).
-                if (rlRoadmapHasAnyBulletId(rmText)) {
+                // ANTS-3450 — `.roadmap-counter` is a derived, gitignored
+                // cache; on a fresh clone it is simply absent. Recover the
+                // high-water mark from the committed corpus (ROADMAP +
+                // CHANGELOG + docs/roadmap/*.md) and seed the counter to it,
+                // rather than refusing. corpusHighWater sniffs the project
+                // prefix and returns 0 both for a truly greenfield roadmap
+                // (→ first id allocates as <prefix>-0001, the ANTS-3397
+                // behaviour) AND for a stable-string-id project with no
+                // counter-style ids to recover — in that second case a
+                // roadmap that DOES carry ids is a genuine desync we still
+                // surface (rlRoadmapHasAnyBulletId discriminates the two).
+                const qint64 seed = RoadmapFoldIn::corpusHighWater(
+                    QFileInfo(counterPath).absolutePath());
+                if (seed == 0 && rlRoadmapHasAnyBulletId(rmText)) {
                     return rlErr(QStringLiteral("counter_missing"),
-                        QStringLiteral("roadmap_log: .roadmap-counter "
-                                       "does not exist at \"%1\" but the "
-                                       "roadmap already carries ids — the "
-                                       "high-water mark is lost; restore "
-                                       "it with: echo <highest-id> > %1")
-                            .arg(counterPath));
+                        QStringLiteral("roadmap_log: .roadmap-counter does "
+                                       "not exist at \"%1\" and no "
+                                       "counter-style ids were found to "
+                                       "recover a high-water mark from — "
+                                       "restore it with: echo <highest-id> "
+                                       "> %1").arg(counterPath));
                 }
                 QSaveFile init(counterPath);
+                const QByteArray seedBytes = QByteArray::number(seed) + '\n';
                 if (!init.open(QIODevice::WriteOnly | QIODevice::Text) ||
-                    init.write(QByteArrayLiteral("0\n")) != 2 ||
+                    init.write(seedBytes) != seedBytes.size() ||
                     !init.commit()) {
                     return rlErr(QStringLiteral("counter_write_failed"),
                         QStringLiteral("roadmap_log: could not "
@@ -6170,8 +6174,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         // ANTS-2179 — reconcile newId against the file's true max id for
         // this prefix so a stale .roadmap-counter can't reissue a live id.
         // preflightBullets is already in hand, so the scan is free.
-        const qint64 maxFileId =
+        // ANTS-3450 — also floor to ids that have migrated OUT of ROADMAP.md
+        // (shipped → CHANGELOG, closed minors → docs/roadmap/*.md); with the
+        // counter now an untracked cache, this committed-corpus floor is what
+        // keeps a recovered/absent counter from reissuing a shipped id.
+        qint64 maxFileId =
             rlMaxExistingIdForPrefix(preflightBullets, pfx);
+        maxFileId = std::max(maxFileId, RoadmapFoldIn::corpusHighWater(
+            QFileInfo(counterPath).absolutePath(), pfx));
         if (req.contains(QStringLiteral("id_hint"))) {
             // An explicit hint already cleared the counter (above); also
             // refuse when it collides with a live id the lagging counter
@@ -8629,26 +8639,31 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                     QStringLiteral("roadmap_log: could not read "
                                    ".roadmap-counter at \"%1\"")
                         .arg(counterPath));
-            // ANTS-3397 — greenfield auto-init (parity with the
-            // single-bullet append path). No counter file AND no
-            // existing bullet ids is an unambiguous fresh roadmap:
-            // create .roadmap-counter at 0 rather than forcing a shell
-            // side-step. If ids already exist, the high-water mark is
-            // lost — keep refusing with counter_missing.
+            // ANTS-3450 — parity with the single-bullet append path:
+            // `.roadmap-counter` is a derived, gitignored cache, so an
+            // absent counter on a fresh clone recovers the high-water mark
+            // from the committed corpus (ROADMAP + CHANGELOG +
+            // docs/roadmap/*.md) instead of refusing. corpusHighWater
+            // returns 0 for a greenfield roadmap (→ ids from <prefix>-0001)
+            // and for a stable-string-id project; in the latter, a roadmap
+            // that carries ids is still a genuine desync we surface.
             QFile rmf(roadmapPath);
             QString rmText;
             if (rmf.open(QIODevice::ReadOnly | QIODevice::Text))
                 rmText = QString::fromUtf8(rmf.readAll());
-            if (rlRoadmapHasAnyBulletId(rmText))
+            const qint64 seed = RoadmapFoldIn::corpusHighWater(
+                QFileInfo(counterPath).absolutePath());
+            if (seed == 0 && rlRoadmapHasAnyBulletId(rmText))
                 return rlErr(QStringLiteral("counter_missing"),
-                    QStringLiteral("roadmap_log: .roadmap-counter does "
-                                   "not exist at \"%1\" but the roadmap "
-                                   "already carries ids — the high-water "
-                                   "mark is lost; restore it with: echo "
+                    QStringLiteral("roadmap_log: .roadmap-counter does not "
+                                   "exist at \"%1\" and no counter-style "
+                                   "ids were found to recover a high-water "
+                                   "mark from — restore it with: echo "
                                    "<highest-id> > %1").arg(counterPath));
             QSaveFile init(counterPath);
+            const QByteArray seedBytes = QByteArray::number(seed) + '\n';
             if (!init.open(QIODevice::WriteOnly | QIODevice::Text) ||
-                init.write(QByteArrayLiteral("0\n")) != 2 ||
+                init.write(seedBytes) != seedBytes.size() ||
                 !init.commit())
                 return rlErr(QStringLiteral("counter_write_failed"),
                     QStringLiteral("roadmap_log: could not auto-create "
@@ -8784,8 +8799,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     // allocation and any id_hint must clear; preflightBullets is in hand so
     // the scan is free. stable_prefix bypasses the counter entirely, so the
     // reconcile flag never fires there.
-    const qint64 maxFileId =
+    // ANTS-3450 — also floor to ids migrated out of ROADMAP.md (CHANGELOG +
+    // docs/roadmap/*.md), so the now-untracked counter can't reissue a
+    // shipped id after a fresh-clone recovery.
+    qint64 maxFileId =
         rlMaxExistingIdForPrefix(preflightBullets, counterPfx);
+    maxFileId = std::max(maxFileId, RoadmapFoldIn::corpusHighWater(
+        QFileInfo(counterPath).absolutePath(), counterPfx));
     const qint64 effCounter = std::max(counter, maxFileId);
     const bool counterReconciled = !useStablePrefix && effCounter > counter;
 

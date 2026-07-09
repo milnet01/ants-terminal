@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Roadmap ID counter (`.roadmap-counter`) is now a derived, gitignored cache instead of committed state (ANTS-3450)**
+  The next roadmap ID is now floored to the true high-water mark computed from the committed corpus (ROADMAP.md + CHANGELOG.md + docs/roadmap/ archives), so a stale, wiped, or fresh-clone-absent counter can never reissue a live or migrated ID. This removes the recurring "counter bump left out of the commit" drift entirely — git can't drift a file it no longer tracks.
+
 - **find_sources no longer stalls on the first call after a restart (ANTS-3444)**
   session_orient now warms the find_sources file set into the OS cache on a background thread, so the first find_sources of a session reads fast instead of paying a one-time cold-disk penalty. Completes ANTS-3444 alongside the earlier CPU cut and the 60s bridge-timeout guard.
 

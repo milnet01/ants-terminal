@@ -176,8 +176,18 @@ The high-water mark lives in `.roadmap-counter` at the project
 root — a one-line file with the highest assigned integer. New
 IDs increment this counter atomically. Concurrent sessions
 read-modify-write under a brief flock so collisions are
-impossible. The counter file is checked into git so the next
-session starts from the right number.
+impossible.
+
+**The counter is a derived, per-machine cache — NOT source (ANTS-3450).**
+It is `.gitignore`d, not committed. Its true value is the highest
+`PROJ-NNNN` id across the committed roadmap corpus — `ROADMAP.md` +
+`CHANGELOG.md` + `docs/roadmap/*.md` (the archives that shipped/rotated
+bullets migrate into). Every allocation *floors* to that committed
+high-water mark (`RoadmapFoldIn::corpusHighWater`), so a stale, wiped, or
+fresh-clone-absent counter can never reissue a live or migrated id — it is
+recovered from committed content on first use. This removes a whole class
+of "the counter bump got left out of the commit" drift: git can't drift a
+file it doesn't track.
 
 ```bash
 # Allocate the next ID:

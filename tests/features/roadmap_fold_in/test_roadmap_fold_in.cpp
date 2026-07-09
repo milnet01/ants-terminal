@@ -99,6 +99,51 @@ TEST(RoadmapFoldIn, AllocateZeroOrNegativeReturnsEmpty) {
     EXPECT_TRUE(RoadmapFoldIn::allocateIds(tmp.path(), -1).isEmpty());
 }
 
+// ---- ANTS-3450: corpusHighWater + allocateIds floor ----------------
+
+// Build a project whose highest allocated id lives in each of the three
+// committed corpus files, above a deliberately-stale counter. Proves the
+// scan reaches all three and that allocateIds floors past the stale counter
+// so the untracked cache can never make the batch path reissue a live id.
+TEST(RoadmapFoldIn, CorpusHighWaterAcrossSources) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    ASSERT_TRUE(QDir(root).mkpath(QStringLiteral("docs/roadmap")));
+
+    // Live bullet (also the prefix-sniff source), a migrated CHANGELOG id,
+    // and an archived id — the archive holds the true high-water (250).
+    writeFile(root, "ROADMAP.md",
+              "# Roadmap\n\n## To Do\n\n"
+              "- [ANTS-0150] **Live item.**\n");
+    writeFile(root, "CHANGELOG.md",
+              "## [0.7.0] - 2026-07-01\n### Fixed\n- Shipped (ANTS-0200)\n");
+    writeFile(root, "docs/roadmap/0.6.md",
+              "## 0.6.0 — 2026-06\n- [ANTS-0250] **Archived item.**\n");
+    writeFile(root, ".roadmap-counter", "100\n");  // stale-low
+
+    // Sniffed prefix and explicit prefix agree; the max spans all sources.
+    EXPECT_EQ(RoadmapFoldIn::corpusHighWater(root), 250);
+    EXPECT_EQ(RoadmapFoldIn::corpusHighWater(root, QStringLiteral("ANTS")),
+              250);
+    // A prefix with no ids present → 0 (no false positives from other ids).
+    EXPECT_EQ(RoadmapFoldIn::corpusHighWater(root, QStringLiteral("ZZZ")), 0);
+    // Bad root → 0, no crash.
+    EXPECT_EQ(RoadmapFoldIn::corpusHighWater(
+                  QStringLiteral("/nonexistent/path/xyz")), 0);
+
+    // allocateIds floors past the stale counter to corpus-max, so it never
+    // reissues 101..103 (which collide with nothing here, but WOULD collide
+    // with the archived 150/200/250 in a real project).
+    auto ids = RoadmapFoldIn::allocateIds(root, 3);
+    ASSERT_EQ(ids.size(), 3);
+    EXPECT_EQ(ids[0], 251);
+    EXPECT_EQ(ids[1], 252);
+    EXPECT_EQ(ids[2], 253);
+    EXPECT_EQ(slurp(QDir(root).filePath(".roadmap-counter")).trimmed(),
+              QByteArray("253")) << "counter self-heals up to corpus+N";
+}
+
 // ANTS-1618 — empty (or freshly-created) `.roadmap-counter` is a valid
 // initial state. Pre-1618 the allocate failed with `id_counter_failed`
 // and a misleading "stale .lock sibling" hint; post-1618 the engine

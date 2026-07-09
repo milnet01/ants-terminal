@@ -137,3 +137,9 @@ INVESTIGATION_tab_close_x.md
 # Generated Flathub submission carriers (reproduce via make-flathub-manifest.sh)
 packaging/flatpak/flathub-submission/
 .flatpak-builder/
+
+# ANTS-3450 — .roadmap-counter is a derived, per-machine ID-allocation cache,
+# not source. Its value is recomputed from the committed roadmap corpus
+# (ROADMAP.md + CHANGELOG.md + docs/roadmap/*.md) by RoadmapFoldIn::corpusHighWater,
+# so it never needs to be committed and can no longer drift out of a commit.
+.roadmap-counter

@@ -29,8 +29,10 @@ const char *kGreenfieldRoadmap =
     "- \xF0\x9F\x93\x8B **Set up the build.**\n"
     "- \xF0\x9F\x93\x8B **Write the README.**\n";
 
-// A roadmap that already carries counter-style ids (but, in the test,
-// no .roadmap-counter) — a real desync that must keep refusing.
+// A roadmap that already carries counter-style ids but (in the test) no
+// .roadmap-counter — the fresh-clone state now that the counter is an
+// untracked cache. ANTS-3450: the high-water mark is RECOVERED from these
+// committed ids rather than refused.
 const char *kIdBearingRoadmap =
     "# My Project Roadmap\n"
     "\n"
@@ -59,7 +61,10 @@ qint64 readCounter(const QString &root) {
     return QString::fromUtf8(f.readAll().trimmed()).toLongLong();
 }
 
-QJsonObject appendReq(const QString &root) {
+// prefix empty → omit id_prefix so the verb sniffs the roadmap's own prefix
+// (used by the ANTS-3450 recovery cases to get a natural <sniffed>-NNNN id).
+QJsonObject appendReq(const QString &root,
+                      const QString &prefix = QStringLiteral("CL")) {
     QJsonObject o;
     o[QStringLiteral("caller_cwd")] = root;
     o[QStringLiteral("section")]    = QStringLiteral("to-do");
@@ -67,11 +72,13 @@ QJsonObject appendReq(const QString &root) {
     o[QStringLiteral("headline")]   = QStringLiteral("First real item.");
     o[QStringLiteral("kind")]       = QStringLiteral("chore");
     o[QStringLiteral("source")]     = QStringLiteral("ants-3397-test");
-    o[QStringLiteral("id_prefix")]  = QStringLiteral("CL");
+    if (!prefix.isEmpty())
+        o[QStringLiteral("id_prefix")] = prefix;
     return o;
 }
 
-QJsonObject batchReq(const QString &root) {
+QJsonObject batchReq(const QString &root,
+                     const QString &prefix = QStringLiteral("CL")) {
     QJsonObject b1;
     b1[QStringLiteral("headline")] = QStringLiteral("Batch item one.");
     b1[QStringLiteral("status")]   = QStringLiteral("planned");
@@ -91,7 +98,8 @@ QJsonObject batchReq(const QString &root) {
     o[QStringLiteral("op")]         = QStringLiteral("append_batch");
     o[QStringLiteral("section")]    = QStringLiteral("to-do");
     o[QStringLiteral("bullets")]    = bullets;
-    o[QStringLiteral("id_prefix")]  = QStringLiteral("CL");
+    if (!prefix.isEmpty())
+        o[QStringLiteral("id_prefix")] = prefix;
     return o;
 }
 
@@ -139,9 +147,11 @@ TEST(RoadmapLogGreenfieldCounter, Inv2BatchGreenfieldAutoInit) {
         << "two bullets must consume ids 1 and 2";
 }
 
-// INV-3 — a roadmap with existing ids but no counter file is a real
-// desync and must keep refusing on both paths.
-TEST(RoadmapLogGreenfieldCounter, Inv3ExistingIdsNoCounterStillRefuses) {
+// INV-3 (ANTS-3450) — a roadmap with counter-style ids but no counter file
+// is the normal fresh-clone state now that the counter is an untracked
+// cache. The high-water mark is RECOVERED from the committed corpus and the
+// append proceeds above it, never reissuing a live id.
+TEST(RoadmapLogGreenfieldCounter, Inv3ExistingIdsNoCounterRecovers) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
     ASSERT_TRUE(writeFile(roadmapPath(tmp.path()),
@@ -149,20 +159,39 @@ TEST(RoadmapLogGreenfieldCounter, Inv3ExistingIdsNoCounterStillRefuses) {
     ASSERT_FALSE(QFile::exists(counterPath(tmp.path())));
 
     RemoteControl rc(nullptr);
+    // No id_prefix → the verb sniffs "ANTS" from [ANTS-9001] and allocates
+    // the next id above the recovered high-water mark (9001 → 9002).
     const QJsonObject single =
-        rc.cmdRoadmapLogAppendForTest(appendReq(tmp.path())).object();
-    EXPECT_FALSE(single.value(QStringLiteral("ok")).toBool());
-    EXPECT_EQ(single.value(QStringLiteral("code")).toString(),
-              QStringLiteral("counter_missing"));
+        rc.cmdRoadmapLogAppendForTest(
+            appendReq(tmp.path(), QString())).object();
+    ASSERT_TRUE(single.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(single).toJson().toStdString();
+    EXPECT_EQ(single.value(QStringLiteral("id")).toString(),
+              QStringLiteral("ANTS-9002"))
+        << "must allocate above the recovered high-water, not reissue 9001";
+    EXPECT_TRUE(QFile::exists(counterPath(tmp.path())))
+        << "recovery seeds the counter from the committed corpus";
+    EXPECT_EQ(readCounter(tmp.path()), 9002);
+}
 
+// INV-3b — batch path recovers identically and allocates contiguously above
+// the recovered high-water mark.
+TEST(RoadmapLogGreenfieldCounter, Inv3bExistingIdsNoCounterRecoversBatch) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()),
+                          QByteArray(kIdBearingRoadmap)));
+    ASSERT_FALSE(QFile::exists(counterPath(tmp.path())));
+
+    RemoteControl rc(nullptr);
     const QJsonObject batch =
-        rc.cmdRoadmapLogAppendBatchForTest(batchReq(tmp.path())).object();
-    EXPECT_FALSE(batch.value(QStringLiteral("ok")).toBool());
-    EXPECT_EQ(batch.value(QStringLiteral("code")).toString(),
-              QStringLiteral("counter_missing"));
-
-    EXPECT_FALSE(QFile::exists(counterPath(tmp.path())))
-        << "a refused desync must NOT create the counter file";
+        rc.cmdRoadmapLogAppendBatchForTest(
+            batchReq(tmp.path(), QString())).object();
+    ASSERT_TRUE(batch.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(batch).toJson().toStdString();
+    EXPECT_TRUE(QFile::exists(counterPath(tmp.path())));
+    EXPECT_EQ(readCounter(tmp.path()), 9003)
+        << "two bullets consume 9002 and 9003 above the recovered mark";
 }
 
 // INV-4 — the greenfield discriminator helper is present in source.

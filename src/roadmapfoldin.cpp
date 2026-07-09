@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QScopeGuard>
@@ -193,6 +194,63 @@ QString counterFilePath(const QString &projectPath) {
     return canon + QStringLiteral("/.roadmap-counter");
 }
 
+// ANTS-3450 — see the doc-comment in roadmapfoldin.h. The counter is now a
+// derived cache; this recomputes the true high-water mark from committed
+// content so allocation never trusts a stale/absent counter blindly.
+qint64 corpusHighWater(const QString &projectPath, const QString &prefix) {
+    const QString root = QFileInfo(projectPath).canonicalFilePath();
+    if (root.isEmpty()) return 0;
+
+    auto readFile = [](const QString &path) -> QString {
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
+        return QString::fromUtf8(f.readAll());
+    };
+    const QString roadmap = readFile(root + QStringLiteral("/ROADMAP.md"));
+
+    // Resolve the prefix: sniff the dominant bracketed counter-style id
+    // (e.g. "[ANTS-3450]" → "ANTS") from ROADMAP.md when the caller didn't
+    // pin one. Dominance-by-count shrugs off stray tokens like "[UTF-8]".
+    QString pfx = prefix;
+    if (pfx.isEmpty()) {
+        static const QRegularExpression sniffRe(
+            QStringLiteral("\\[([A-Za-z][A-Za-z0-9_-]*)-[0-9]{1,8}\\]"));
+        QHash<QString, int> counts;
+        int best = 0;
+        auto it = sniffRe.globalMatch(roadmap);
+        while (it.hasNext()) {
+            const QString p = it.next().captured(1);
+            const int n = ++counts[p];
+            if (n > best) { best = n; pfx = p; }
+        }
+        if (pfx.isEmpty()) return 0;  // no counter-style ids anywhere
+    }
+
+    // Max numeric suffix of `pfx-NNNN` across the corpus.
+    const QRegularExpression idRe(
+        QStringLiteral("\\b") + QRegularExpression::escape(pfx) +
+        QStringLiteral("-([0-9]{1,8})\\b"));
+    qint64 maxN = 0;
+    auto scan = [&](const QString &text) {
+        auto it = idRe.globalMatch(text);
+        while (it.hasNext()) {
+            bool ok = false;
+            const qint64 n = it.next().captured(1).toLongLong(&ok);
+            if (ok && n > maxN) maxN = n;
+        }
+    };
+    scan(roadmap);
+    scan(readFile(root + QStringLiteral("/CHANGELOG.md")));
+    QDir archive(root + QStringLiteral("/docs/roadmap"));
+    if (archive.exists()) {
+        const auto entries =
+            archive.entryList({QStringLiteral("*.md")}, QDir::Files);
+        for (const QString &e : entries)
+            scan(readFile(archive.absoluteFilePath(e)));
+    }
+    return maxN;
+}
+
 // ANTS-1618 — post-failure inspection. Callers invoke this AFTER
 // allocateIds has returned an empty list so they can compose a
 // state-specific error message instead of the generic "flock/IO
@@ -274,6 +332,15 @@ QList<int> allocateIds(const QString &projectPath, int n) {
         }
     }
 
+    // ANTS-3450 — floor to the committed high-water mark. The counter is
+    // now an untracked cache; a stale-low (or fresh-clone absent → 0) value
+    // must never let the batch path reissue a live id. corpusHighWater
+    // scans ROADMAP + CHANGELOG + docs/roadmap/*.md, so it also respects ids
+    // that have already migrated out of ROADMAP.md. Sniffs the project
+    // prefix itself, so callers need not thread one through.
+    current = static_cast<int>(
+        qMax<qint64>(current, corpusHighWater(projectPath)));
+
     QList<int> ids;
     ids.reserve(n);
     for (int i = 1; i <= n; ++i) ids.append(current + i);
@@ -307,9 +374,14 @@ QList<int> peekIds(const QString &projectPath, int n) {
     // refusal so the caller's counter_failed path fires identically.
     if (insp.state != CounterState::Ok &&
         insp.state != CounterState::EmptyOrAbsent) return {};
+    // ANTS-3450 — floor to the committed high-water mark, exactly as
+    // allocateIds does, so a dry_run preview reports the same first id the
+    // real allocate would hand out (mcp_dry_run_parity).
+    const int base = static_cast<int>(
+        qMax<qint64>(insp.value, corpusHighWater(projectPath)));
     QList<int> ids;
     ids.reserve(n);
-    for (int i = 1; i <= n; ++i) ids.append(insp.value + i);
+    for (int i = 1; i <= n; ++i) ids.append(base + i);
     return ids;
 }
 

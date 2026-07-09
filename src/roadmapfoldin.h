@@ -54,6 +54,23 @@ QList<int> peekIds(const QString &projectPath, int n);
 // "/.roadmap-counter"); empty when projectPath fails to canonicalise.
 QString counterFilePath(const QString &projectPath);
 
+// ANTS-3450 — the project's true ID high-water mark, derived from the
+// committed roadmap corpus rather than the `.roadmap-counter` cache.
+// Scans, for `prefix`-NNNN ids, the three committed files that between
+// them retain every allocated id even after bullets migrate out of
+// ROADMAP.md:
+//   • ROADMAP.md          — live bullets
+//   • CHANGELOG.md        — shipped items folded out of the roadmap
+//   • docs/roadmap/*.md   — whole minors rotated out (rotate-roadmap.sh)
+// This lets `.roadmap-counter` be a pure, untracked local cache:
+// allocation floors to this value, so a stale/absent/wiped counter can
+// never reissue a live id. When `prefix` is empty the project's dominant
+// counter-style prefix is sniffed from ROADMAP.md; returns 0 when nothing
+// matches (a truly greenfield roadmap). projectPath is canonicalised;
+// missing corpus files are skipped. Read-only.
+qint64 corpusHighWater(const QString &projectPath,
+                       const QString &prefix = {});
+
 // ANTS-1618 — post-failure inspection helper. allocateIds returns an
 // empty QList on every failure mode (flock contention, corrupt int,
 // permission, symlink-escape); callers want a state-specific message.
