@@ -1,11 +1,13 @@
 #pragma once
 
 #include <QByteArray>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QString>
 #include <QStringList>
 #include <QtGlobal>
 #include <mutex>
+#include <utility>
 
 // DebugLog — centralized debug logging for Ants Terminal.
 //
@@ -77,6 +79,54 @@ private:
     static QFile s_file;
     static quint32 s_active;
     static bool s_alsoStderr;
+};
+
+// StallGuard — RAII wall-clock guard for UI-thread handlers (ANTS-3461).
+//
+// When DebugLog::Perf is active, measures the enclosing scope and logs a
+// "STALL" line (at Perf level) if it runs at least thresholdMs. Zero-cost
+// when Perf is off: the QElapsedTimer is never started, so construction is
+// a single bit-test and destruction an isValid() check — no clock read, no
+// formatting. Exists to catch the multi-second paintEvent / onVtBatch
+// freezes that could not be reproduced interactively, and to confirm which
+// fix removed them.
+//
+//   StallGuard g("paintEvent");
+//   if (g.armed()) g.setContext(QByteArray::asprintf(" grid=%dx%d", r, c));
+//
+class StallGuard {
+public:
+    explicit StallGuard(const char *label, int thresholdMs = 50)
+        : m_label(label), m_thresholdMs(thresholdMs) {
+        if (DebugLog::enabled(DebugLog::Perf)) m_timer.start();
+    }
+    ~StallGuard() {
+        if (!m_timer.isValid()) return;  // Perf off — nothing was measured
+        const qint64 ms = m_timer.elapsed();
+        if (ms >= m_thresholdMs) {
+            DebugLog::write(DebugLog::Perf,
+                QString::asprintf("STALL %s took %lld ms%s", m_label,
+                    static_cast<long long>(ms),
+                    m_context.isEmpty() ? "" : m_context.constData()));
+        }
+    }
+
+    // True only while Perf logging is armed. Guard context building with it
+    // so the QByteArray::asprintf never runs when Perf is off.
+    bool armed() const { return m_timer.isValid(); }
+
+    // Attach caller context appended verbatim to the STALL line (include a
+    // leading space, e.g. " actions=42 grid=40x160").
+    void setContext(QByteArray ctx) { m_context = std::move(ctx); }
+
+    StallGuard(const StallGuard &) = delete;
+    StallGuard &operator=(const StallGuard &) = delete;
+
+private:
+    const char *m_label;
+    int m_thresholdMs;
+    QElapsedTimer m_timer;  // invalid until start(); isValid() == armed
+    QByteArray m_context;
 };
 
 // Single-point macro so sites are zero-cost when the category is off.

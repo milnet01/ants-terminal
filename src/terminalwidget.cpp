@@ -697,6 +697,13 @@ bool TerminalWidget::event(QEvent *event) {
 }
 
 void TerminalWidget::paintEvent(QPaintEvent *) {
+    // ANTS-3461 — catch multi-second paint stalls (debug-gated, zero-cost off).
+    StallGuard stallGuard("paintEvent");
+    if (stallGuard.armed())
+        stallGuard.setContext(QString::asprintf(
+            " grid=%dx%d scrollOff=%d", m_grid->rows(), m_grid->cols(),
+            m_scrollOffset).toUtf8());
+
     QPainter p(this);
     p.setFont(m_font);
 
@@ -2292,6 +2299,14 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
     // of calling directly. Failing this rule re-introduces the
     // re-entrancy class.
     if (!batch) return;
+
+    // ANTS-3461 — catch multi-second batch-apply stalls (debug-gated).
+    StallGuard stallGuard("onVtBatch");
+    if (stallGuard.armed())
+        stallGuard.setContext(QString::asprintf(
+            " actions=%zu bytes=%lld", batch->actions.size(),
+            static_cast<long long>(batch->rawBytes.size())).toUtf8());
+
     m_spanCacheDirty = true;
 
     if (batch->clearSelectionHint) {
