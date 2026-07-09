@@ -38,6 +38,15 @@ Invariants exercised (see docs/specs/ANTS-1961.md §3 / §6):
   adopted as the derived default (reads back `path_derived:true`) and is
   floated to `candidates[0]` without `all_other_projects` (`hint` notes
   the normalization).
+- ANTS-3426 — a checkout leaf that already ends in `_Ants` (a fork like
+  `DOOM_Ants`) would double the token when the suffix is appended
+  (`DOOM_Ants_Ants_MCP_Feedback.md`, which never exists). Derivation tries
+  the de-doubled convention first (`DOOM_Ants_MCP_Feedback.md` — leaf minus
+  the trailing `_Ants`, plus the suffix) and adopts it; the `not_found`
+  own-match accepts that de-doubled sibling as the caller's own file
+  (floated to `candidates[0]`, no `all_other_projects`, `hint` names the
+  real basename). Deterministic exact candidate — distinct from ANTS-3439's
+  normalized fallback, which misses this case (`doomants` ≠ stem `doom`).
 - T8 — byte cap: a delta larger than max_bytes returns the head,
   `truncated:true`, full `delta_line_count`.
 

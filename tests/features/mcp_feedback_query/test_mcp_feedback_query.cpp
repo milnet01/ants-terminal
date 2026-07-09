@@ -401,6 +401,57 @@ TEST(McpFeedbackQuery, NotFoundNormalizedOwnMatch) {
     EXPECT_TRUE(e.value("hint").toString().contains("normalizes"));
 }
 
+// ANTS-3426 — a checkout leaf that already ends in "_Ants" (fork naming like
+// "DOOM_Ants") would double the token when the suffix is appended
+// ("DOOM_Ants_Ants_MCP_Feedback.md"), which never exists. With `path` omitted
+// the derivation drops the redundant "_Ants" and adopts the real
+// "DOOM_Ants_MCP_Feedback.md". Deterministic — the leaf normalizes to
+// "doomants" while the file stem is "doom", so ANTS-3439's normalized scan
+// cannot catch it; this is an exact second candidate, not a fuzzy accept.
+TEST(McpFeedbackQuery, DerivesDefaultDeDoublesTrailingAnts) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    ASSERT_TRUE(QDir(root.path()).mkdir("DOOM_Ants"));
+    const QString caller = root.path() + "/DOOM_Ants";
+    const QString real =
+        writeFeedback(root, "DOOM_Ants_MCP_Feedback.md",
+                      "<!-- ants-mcp-feedback: 1 -->\n# x\n\n"
+                      "## 2026-07-09 — s\n\n- **What:** de-doubled.\n");
+    ASSERT_FALSE(real.isEmpty());
+
+    RemoteControl rc(nullptr);
+    QJsonObject req; req["caller_cwd"] = caller;   // no "path"
+    const QJsonObject e = rc.cmdFeedbackQuery(req).object();
+    ASSERT_TRUE(e.value("ok").toBool());
+    EXPECT_EQ(QFileInfo(e.value("path").toString()).fileName(),
+              "DOOM_Ants_MCP_Feedback.md");        // NOT the doubled token
+    EXPECT_TRUE(e.value("path_derived").toBool());
+    EXPECT_TRUE(e.value("delta").toString().contains("de-doubled."));
+}
+
+// ANTS-3426 — a not_found envelope for an "_Ants"-suffixed leaf recognises the
+// de-doubled sibling as the caller's OWN file (floated first, no
+// all_other_projects, hint names the real de-doubled basename) rather than
+// mislabelling it as another project's file.
+TEST(McpFeedbackQuery, NotFoundDeDoubledOwnMatch) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    ASSERT_TRUE(QDir(dir.path()).mkdir("DOOM_Ants"));
+    writeFeedback(dir, "AAA_Ants_MCP_Feedback.md", "# a\n");
+    const QString own =
+        writeFeedback(dir, "DOOM_Ants_MCP_Feedback.md", "# d\n");
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["path"] = dir.path() + "/Wrong_Ants_MCP_Feedback.md";  // 404s
+    req["caller_cwd"] = dir.path() + "/DOOM_Ants";
+    const QJsonObject e = rc.cmdFeedbackQuery(req).object();
+    EXPECT_EQ(e.value("code").toString(), "not_found");
+    const QJsonArray cands = e.value("candidates").toArray();
+    ASSERT_EQ(cands.size(), 2);
+    EXPECT_EQ(cands.at(0).toString(), own);          // de-doubled own file first
+    EXPECT_FALSE(e.value("all_other_projects").toBool());
+    EXPECT_TRUE(e.value("hint").toString().contains("DOOM_Ants_MCP_Feedback.md"));
+}
+
 // T8 — byte cap: head kept, truncated true, full line count reported.
 TEST(McpFeedbackQuery, ByteCapKeepsHead) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());

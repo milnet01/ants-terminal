@@ -10393,6 +10393,28 @@ QString feedbackStemOf(const QString &fileName) {
     return stem;
 }
 
+// ANTS-3426 — the conventional feedback basename(s) for a project leaf, most
+// preferred first. Normally just "<leaf>_Ants_MCP_Feedback.md". When the leaf
+// already ends in "_Ants" (a fork checkout like "DOOM_Ants") that naive form
+// DOUBLES the token → "DOOM_Ants_Ants_MCP_Feedback.md", which never exists;
+// the real file drops the redundant "_Ants" → "DOOM_Ants_MCP_Feedback.md"
+// (the fork's project name is the leaf minus "_Ants"). Return the de-doubled
+// name first so it wins on both the read (adopt the existing file) and the
+// fresh-create (correct name, no forked history) paths. Deterministic — an
+// exact second candidate, not a fuzzy match, so ANTS-3366's "no silent
+// fuzzy-accept" non-goal is preserved. (ANTS-3439's normalized scan can't
+// catch this: the leaf normalizes to "doomants" but the file stem to "doom".)
+QStringList feedbackConventionalNames(const QString &leaf) {
+    QStringList names;
+    if (leaf.endsWith(QLatin1String("_Ants"), Qt::CaseInsensitive)) {
+        QString stem = leaf;
+        stem.chop(5);  // strip the trailing "_Ants"
+        names << stem + QLatin1String(kFeedbackSuffix);
+    }
+    names << leaf + QLatin1String(kFeedbackSuffix);
+    return names;
+}
+
 // ANTS-3366: augment a feedback not_found envelope with the sibling
 // candidate list (+ a one-line hint) when any exist.
 // ANTS-3376: when `callerLeaf` is known, float the caller's OWN file
@@ -10409,13 +10431,20 @@ QJsonObject fbNotFound(const QString &message, const QString &resolved,
 
     bool ownMatch = false;
     bool normMatch = false;   // ANTS-3439 — leaf<->package normalized match
+    QString ownName;          // ANTS-3426 — the matched own basename, for the hint
     if (!callerLeaf.isEmpty()) {
-        const QString wanted = callerLeaf + QLatin1String(kFeedbackSuffix);
+        // ANTS-3376 — the caller's own file is "<leaf>_Ants_MCP_Feedback.md".
+        // ANTS-3426 — an "_Ants"-suffixed leaf's real file drops the doubled
+        // token, so accept the de-doubled convention as the caller's own too
+        // (feedbackConventionalNames returns both forms, preferred first).
+        const QStringList wantedNames = feedbackConventionalNames(callerLeaf);
         for (int i = 0; i < cands.size(); ++i) {
-            if (QFileInfo(cands.at(i).toString()).fileName() == wanted) {
+            const QString base = QFileInfo(cands.at(i).toString()).fileName();
+            if (wantedNames.contains(base)) {
                 if (i != 0)
                     cands.prepend(cands.takeAt(i));
                 ownMatch = true;
+                ownName  = base;
                 break;
             }
         }
@@ -10442,8 +10471,7 @@ QJsonObject fbNotFound(const QString &message, const QString &resolved,
     if (ownMatch) {
         e["hint"] = QStringLiteral(
             "no file at that path; this project's own %1 is listed "
-            "first under candidates").arg(callerLeaf
-            + QLatin1String(kFeedbackSuffix));
+            "first under candidates").arg(ownName);
     } else if (normMatch) {
         e["hint"] = QStringLiteral(
             "no file at that path; this project's own feedback file is "
@@ -10496,11 +10524,21 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
             return false;
         }
         const QString sharedRoot = QFileInfo(rootCanonical).absolutePath();
-        const QString derived = QDir::cleanPath(
-            sharedRoot + QLatin1Char('/') + leaf
-            + QLatin1String(kFeedbackSuffix));
+        // ANTS-3376 default is "<leaf>_Ants_MCP_Feedback.md". ANTS-3426 — a
+        // leaf already ending in "_Ants" doubles the token, so try the
+        // de-doubled convention first (see feedbackConventionalNames). Adopt
+        // the first candidate that exists; when none exist, default to the
+        // most-preferred name so a fresh feedback_log create uses the correct
+        // (de-doubled) basename rather than forking history into a doubled one.
+        QString derived;
+        existsOut = false;
+        for (const QString &name : feedbackConventionalNames(leaf)) {
+            const QString cand = QDir::cleanPath(
+                sharedRoot + QLatin1Char('/') + name);
+            if (derived.isEmpty()) derived = cand;   // preferred create-default
+            if (QFileInfo::exists(cand)) { derived = cand; existsOut = true; break; }
+        }
         resolvedOut = derived;
-        existsOut   = QFileInfo::exists(derived);
         if (!existsOut) {
             // ANTS-3439 — the checkout-dir leaf may not equal the feedback
             // file's package-name stem (`Fin_Break` vs `finbreak`). If a

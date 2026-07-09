@@ -51,6 +51,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **feedback_query/feedback_log path auto-derivation doubles a trailing '_Ants' in the project leaf.** (ANTS-3426)
+  feedback_query/feedback_log no longer double a trailing "_Ants" in the auto-derived filename (fork checkouts like DOOM_Ants now resolve DOOM_Ants_MCP_Feedback.md instead of the never-existing DOOM_Ants_Ants_MCP_Feedback.md), so a path-omitted call reads the real file and cannot fork history into a wrong-named duplicate.
+
 - **feedback_log op:append_tracking does not pipe-escape `|` in item/notes cells — a pipe in the text corrupts the markdown table row.** (ANTS-3469)
   When the triage tool writes a tracking row containing a pipe character in its text, the table row breaks, and a later cleanup step can't read the row's status.
 

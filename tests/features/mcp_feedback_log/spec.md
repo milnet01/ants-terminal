@@ -31,3 +31,8 @@ Invariants exercised (docs/specs/ANTS-1962.md §3 / §6):
   `<caller_cwd-leaf>_Ants_MCP_Feedback.md` at the shared root (parent of
   caller_cwd), creates it, and echoes `path_derived:true`; omitting both
   `path` and a resolvable caller_cwd still refuses `bad_args`.
+- ANTS-3426 — when the caller leaf already ends in `_Ants` (a fork like
+  `DOOM_Ants`), a `path`-omitted append_finding creates the de-doubled
+  convention `DOOM_Ants_MCP_Feedback.md`, NOT the doubled
+  `DOOM_Ants_Ants_MCP_Feedback.md` — so a naive append can't fork the
+  feedback history into a wrong-named file.

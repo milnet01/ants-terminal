@@ -9,6 +9,7 @@
 #include <QByteArray>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QIODevice>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -162,6 +163,31 @@ TEST(McpFeedbackLog, CreatesSkeleton) {
     EXPECT_TRUE(on.contains("# Ants MCP Feedback — Proj"));  // derived H1
     EXPECT_TRUE(on.contains("Format: docs/standards/mcp-feedback-files.md"));
     EXPECT_TRUE(on.contains("### Title"));
+}
+
+// ANTS-3426 — a fresh "_Ants"-suffixed project (fork checkout "DOOM_Ants")
+// logging with `path` omitted must CREATE the de-doubled conventional file
+// "DOOM_Ants_MCP_Feedback.md", NOT the doubled "DOOM_Ants_Ants_MCP_Feedback.md"
+// — otherwise a naive append forks the feedback history into a wrong-named file.
+TEST(McpFeedbackLog, CreatesDeDoubledNameForAntsLeaf) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    ASSERT_TRUE(QDir(root.path()).mkdir("DOOM_Ants"));
+    const QString caller = root.path() + "/DOOM_Ants";
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = caller;            // no "path" → derive at shared root
+    req["op"] = "append_finding"; req["date"] = "2026-07-09";
+    QJsonArray fs; fs.append(finding("Title", "what"));
+    req["findings"] = fs;
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+    ASSERT_TRUE(env.value("ok").toBool()) << "create should succeed";
+    EXPECT_TRUE(env.value("created").toBool());
+    EXPECT_TRUE(env.value("path_derived").toBool());
+    // The de-doubled convention is created; the doubled fork must not appear.
+    EXPECT_TRUE(QFileInfo::exists(root.path() + "/DOOM_Ants_MCP_Feedback.md"));
+    EXPECT_FALSE(QFileInfo::exists(
+        root.path() + "/DOOM_Ants_Ants_MCP_Feedback.md"));
 }
 
 // T7 — append-at-end below a maintainer block (verified via parse).
