@@ -2,6 +2,7 @@
 
 #include "terminalgrid.h"
 #include "vtstream.h"
+#include "shapedruncache.h"
 
 #include <QWidget>
 #include <QFont>
@@ -677,14 +678,14 @@ private:
     bool m_coalescedUpdatePending = false;
     void scheduleCoalescedUpdate();
 
-    // ANTS-1149 — paint-cycle QTextLayout reuse. Pre-fix code
-    // constructed a fresh QTextLayout per text run inside the
-    // inner paint loop; Claude Code's heavily-styled output
-    // produces dozens of runs per row, so the impl-alloc cost
-    // was a real hot spot. Reusing one layout via setText/setFont
-    // amortises the alloc across all runs per paint. Mutable so
-    // paintEvent's const-correctness is preserved.
-    mutable QTextLayout m_paintLayout;
+    // ANTS-3453 — shaped-run cache. Supersedes the ANTS-1149 single-layout
+    // reuse (one m_paintLayout re-shaped per run every frame): the HarfBuzz
+    // shape pass, not the impl-alloc, was the dominant per-frame cost behind
+    // the multi-second typing freeze. The cache keys shaped layouts by (run
+    // text, font variant) so an unchanged run is drawn straight from a cached
+    // layout with no re-shape. Cleared on font change (updateFontMetrics).
+    // Mutable so paintEvent's const-correctness is preserved.
+    mutable ShapedRunCache m_shapedRunCache;
 
     // ANTS-1779 — paint-cycle run buffers hoisted to members. Pre-fix
     // code declared `std::vector<TextRun> runs` (each TextRun owning a

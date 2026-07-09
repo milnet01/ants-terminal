@@ -356,6 +356,7 @@ add_library(ants_vt_lib STATIC
     src/terminalwidget.cpp
     src/terminalaccessible.cpp
     src/themes.cpp
+    src/shapedruncache.cpp
 )
 target_link_libraries(ants_vt_lib
     PUBLIC  ants_core_lib Qt6::OpenGL Qt6::OpenGLWidgets
@@ -880,11 +881,13 @@ if(ANTS_TESTS)
     # `ANTS_PERF_FRAMES=200 ./bench_paint_throughput`.
     add_executable(bench_paint_throughput
         tests/perf/bench_paint_throughput.cpp
+        src/shapedruncache.cpp
     )
     target_link_libraries(bench_paint_throughput PRIVATE
         Qt6::Core
         Qt6::Gui
     )
+    target_include_directories(bench_paint_throughput PRIVATE src)
     target_compile_options(bench_paint_throughput PRIVATE
         -Wall -Wextra -Wpedantic -O2
     )
@@ -964,7 +967,9 @@ if(ANTS_TESTS)
                 # ANTS-1841 — terminalwidget hot-path hygiene (source-scrape).
                 tests/features/terminalwidget_hotpath_perf/test_terminalwidget_hotpath_perf.cpp
                 # ANTS-2024 — theme-change DeferredDelete flush ordering guard.
-                tests/features/theme_change_deferred_delete_flush/test_theme_change_deferred_delete_flush.cpp)
+                tests/features/theme_change_deferred_delete_flush/test_theme_change_deferred_delete_flush.cpp
+                # ANTS-3453 — shaped-run cache (hit/miss, eviction, clear).
+                tests/features/shaped_run_cache/test_shaped_run_cache.cpp)
     # scrollback_frozen_view test reads terminalwidget.cpp source via grep —
     # the path must be passed as a compile definition same as the standalone
     # had it. Apply target-wide so any future bundle source can reuse.

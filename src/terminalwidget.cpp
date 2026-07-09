@@ -496,6 +496,11 @@ void TerminalWidget::updateFontMetrics() {
     m_perfFont = m_font;
     m_perfFont.setPointSize(9);
     m_perfFont.setKerning(false);
+
+    // ANTS-3453 — the shaped-run cache holds layouts shaped in the previous
+    // font/ascent; a family or size change makes every cached glyph run and
+    // its baseline offset stale, so drop them all.
+    m_shapedRunCache.clear();
 }
 
 void TerminalWidget::setFontSize(int size) {
@@ -1098,20 +1103,14 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         // Draw all text runs using QTextLayout for proper ligature shaping.
         // Build the QString from accumulated codepoints once per run.
         //
-        // ANTS-1149 (0.7.72) — single QTextLayout reused across runs
-        // via setText/setFont instead of constructing a fresh
-        // QTextLayout per run. Pre-fix code's `QTextLayout layout(...)`
-        // inside the inner loop allocated the layout's private impl,
-        // format-range vector, and run cache on every text run — and
-        // Claude Code's heavily-styled output produces dozens of runs
-        // per row × N visible rows × 60 fps. Re-using setText/setFont
-        // amortises the impl alloc across all runs in a paint
-        // (HarfBuzz shape pass still runs per unique text, but that's
-        // load-bearing for ligature support and cannot be skipped
-        // without a row-content-fingerprint cache — separate
-        // optimisation, deferred). m_paintLayout is a mutable member
-        // so paintEvent's const-correctness is preserved.
-        const QFont *lastFont = nullptr;
+        // ANTS-3453 — shaped runs are cached (m_shapedRunCache) keyed by
+        // (run text, font variant), so a run whose text is unchanged
+        // frame-to-frame draws straight from its cached layout with no
+        // HarfBuzz re-shape. That shape pass — not the per-run impl alloc
+        // that ANTS-1149 (0.7.72) amortised via one reused layout — was the
+        // dominant per-frame cost behind the multi-second typing freeze under
+        // heavy Claude Code output. Colour + position are applied at draw
+        // time, so a single cached layout serves the run in any colour.
         for (const auto &run : m_paintRuns) {
             const QFont *drawFont = &m_font;
             if (run.bold && run.italic) drawFont = &m_fontBoldItalic;
@@ -1140,50 +1139,18 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
             } else {
                 runText = QString::fromUcs4(cps, n);
             }
-            // ANTS-1205 — m_paintLayout is reused across runs and
-            // across paint events. setText() resets the layout's
-            // glyph state but not its additional-format ranges.
-            // Today no caller installs formats (so this is a no-op
-            // in practice), but any future addition that calls
-            // setFormats({...}) once would leak that formatting
-            // into every subsequent run for the lifetime of the
-            // widget. Defensive clear here pre-empts that class
-            // of bug invisible to tests. Indie-review #3 Lane C H2.
-            m_paintLayout.clearFormats();
-            m_paintLayout.setText(runText);
-            if (drawFont != lastFont) {
-                m_paintLayout.setFont(*drawFont);
-                lastFont = drawFont;
-            }
-            m_paintLayout.beginLayout();
-            QTextLine tline = m_paintLayout.createLine();
-            if (tline.isValid()) {
-                // ANTS-1211 — pre-fix used `runText.length() * m_cellWidth * 2`
-                // which conflates UTF-16 code units with glyph cells (CJK is 1
-                // unit / 2 cells; emoji surrogate pair is 2 units / 1 cell)
-                // and overshoots for ASCII. The * 2 was a fudge to mask both.
-                // Setting to qreal max-int directly says "do not break this
-                // run on width" — which is what monospace cell-grid rendering
-                // wants regardless of run length.
-                tline.setLineWidth(static_cast<qreal>(INT_MAX));
-                tline.setPosition(QPointF(0, 0));
-            }
-            m_paintLayout.endLayout();
-            // ANTS-2100 — anchor every run to the shared cell baseline.
-            // draw() positions the line by its TOP at px_y, so the text
-            // baseline lands at px_y + tline.ascent(). When a run shapes
-            // in a font whose line ascent differs from the regular face
-            // (synthesised bold/italic falling back to another family, or
-            // Qt's per-line glyph ascent), that word sits on a different
-            // baseline than its neighbours — the "first word lower than
-            // the rest" artifact. A cell grid requires one baseline per
-            // row, so offset the draw by (m_fontAscent − line ascent):
-            // baseline becomes px_y + m_fontAscent for every run. No-op
-            // for runs in the regular font (the common case).
-            qreal baselineOff = tline.isValid()
-                ? (static_cast<qreal>(m_fontAscent) - tline.ascent())
-                : 0;
-            m_paintLayout.draw(&p, QPointF(px_x, px_y + baselineOff));
+            // ANTS-3453 — resolve the shaped layout from the cache. A hit
+            // skips beginLayout/endLayout (the HarfBuzz pass); a miss shapes
+            // once (unbounded line width so a monospace run never wraps) and
+            // stores. The cached baselineOff reproduces the ANTS-2100 per-run
+            // baseline correction (m_fontAscent − line.ascent()), which pins
+            // every run to the shared cell baseline, so the draw is identical
+            // to the pre-cache path.
+            const int variant = (run.bold ? 1 : 0) | (run.italic ? 2 : 0);
+            qreal baselineOff = 0;
+            QTextLayout *layout = m_shapedRunCache.layoutFor(
+                runText, variant, *drawFont, m_fontAscent, baselineOff);
+            layout->draw(&p, QPointF(px_x, px_y + baselineOff));
         }
     }
 
