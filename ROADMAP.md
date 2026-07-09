@@ -8573,6 +8573,21 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** On a version bump, the README's "Version X" line isn't auto-updated anymore — the updater searches for old wording. Fix the wording it looks for.
   Kind: fix.
   Source: in-session-2026-06-24 (0.7.97 release).
+  Recurred at the 0.7.99 RC cut (2026-07-09) — and the same
+  silent-skip affects a SECOND file beyond the README banner:
+  ROADMAP.md's `> **Current version:** {VER}` line (line 4). bump.json's
+  ROADMAP rule targets `**Current version:** {OLD}`, but the line had
+  already drifted (read 0.7.97 while 0.7.98 was public), so the pattern
+  no-matched and the 0.7.98 bump skipped it — leaving it TWO releases
+  stale. Hand-corrected to 0.7.99 this session. check-version-drift.sh
+  does not cover this line either (its README check pattern
+  `Current version:.*` also fails to match README's actual
+  `Version <strong>X</strong>` text). Scope extension for the fix:
+  (1) realign BOTH bump.json patterns (README banner + ROADMAP
+  current-version line) to the files' current text; (2) extend
+  check-version-drift.sh to validate BOTH lines so neither drifts
+  silently again. Third recurrence class (README @0.7.97, ROADMAP
+  @0.7.98, both @0.7.99).
 
 - ✅ [ANTS-2164] **Harden the RC→release→new-RC cadence into one guarded `cut-rc.sh cycle` command (extends ANTS-1318).**
   Recurring releases problems trace to the cadence being a multi-step manual
