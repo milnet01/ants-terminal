@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Changed
 
+- ****Faster text rendering under heavy output — the terminal no longer re-computes the shape of every letter on every redraw.****
+  A new shaped-run cache (ANTS-3453) remembers the glyph layout of each
+  run of text keyed by its content and style, so an unchanged run is
+  redrawn without re-running the (expensive) text-shaping step. Measured
+  1.6-1.9x on the shape-and-draw path at a ~100% hit rate; it eases the
+  per-frame cost behind the typing freeze during heavy Claude Code output.
+  Cache is bounded (~8 MB worst case) and cleared on font change.
+
 - **Skip the shell-history autosuggestion scan when the input line is unchanged, cutting per-batch work during output.** (ANTS-3455)
 
 - **Preserve URL/highlight span caches across streaming frames — only the changed scrollback band is invalidated instead of a full wipe on every push.** (ANTS-3452)
