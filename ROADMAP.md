@@ -4240,6 +4240,7 @@ minor tag (next: pre-0.8.0).
   feasibility. Each row is its own feature-test'able lane so
   the sweep can ship one fix at a time with a perf benchmark
   guard.
+  Cross-ref (2026-07-09): row 3 (glyph/shaped-run cache) re-filed as freeze-critical under ANTS-3453 in the 2026-07-09 freeze sweep — it is the dominant per-frame cost behind the user's multi-second typing stall and should be promoted ahead of the rest of this 0.8.x table. The benchmark-baseline prerequisite this item asks for is now tracked as ANTS-3462 (bench_paint_throughput / bench_search_throughput).
 
   | # | Hot path | Current cost | Proposed change | Expected win |
   |---|----------|--------------|-----------------|--------------|
@@ -4302,6 +4303,93 @@ minor tag (next: pre-0.8.0).
   Lanes: VtParser, TerminalGrid, TerminalWidget,
   AuditDialog, RoadmapDialog, MainWindow, ptyhandler,
   build/CMake.
+
+### ⚡ Freeze-focused hot-path sweep (user request 2026-07-09)
+
+User reports the terminal freezing for 1–2 s (occasionally several seconds)
+while typing during heavy Claude Code output; keypresses are buffered so nothing
+is lost, but the UI stalls. Investigation 2026-07-09 confirmed the freeze is
+UI-thread work, NOT throughput (VT parsing is already off-thread via ANTS-1208
+with drainAck back-pressure). Painting cannot move off the GUI thread (QPainter
+is main-thread-only), so the fix is to stop redoing per-frame work (caching +
+dirty-region + frame pacing), not to add threads. This section indexes the full
+idea set from that sweep. Cross-refs: ANTS-1115 (SIMD/CSI/glyph-cache table,
+deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
+
+- ✅ [ANTS-3451] **Frame pacing — coalesce output-driven repaints to ~60 fps instead of one paint per VT batch.**
+  onVtBatch calls update() once per VT batch (terminalwidget.cpp ~2426). Under streaming that is a full-screen repaint per ~16 KB of output. Add a single-shot pace timer (~16 ms): first batch paints immediately + starts the timer; further batches within the window fold into one deferred paint; pacing stops when output settles. Decouples paint frequency from batch rate → frees the event loop for key events. Lowest-risk, highest-ROI freeze fix. Implementing 2026-07-09.
+  **Layman:** Stops the terminal from redrawing the whole screen dozens of times a second during heavy output, which is what starves your keystrokes and causes the freeze.
+  Kind: perf.
+  Source: user-request-2026-07-09.
+  Resolved (2026-07-09): added m_paintPacer (16 ms single-shot) + scheduleCoalescedUpdate(); onVtBatch's output-driven repaint now paces to ~60 fps instead of one paint per VT batch. User-interaction repaints stay immediate. Full suite green (2571/2571).
+
+- ✅ [ANTS-3452] **Span-cache: erase only the transitional band on scrollback push, not a wholesale clear.**
+  invalidateSpanCaches() (terminalwidget.cpp:3799) does m_urlSpanCache.clear()+m_hlSpanCache.clear() on ANY scrollback push because keys are the volatile globalLine int. During streaming that is every frame → detectUrls (2 regexes) + a full-line QString rebuild for every visible row. Fix: when no eviction (newSize == oldSize + pushDelta, self-correcting — any discrepancy falls back to wholesale clear), preserve the immutable scrollback entries and erase only the [oldSize, newSize+rows) band. Overlaps ANTS-1781 (span-cache half); implementing that half 2026-07-09.
+  **Layman:** Keeps the terminal from re-scanning every visible line for links on every frame during output.
+  Kind: perf.
+  Source: user-request-2026-07-09.
+  Resolved (2026-07-09): invalidateSpanCaches() now erases only the [oldSize, newSize+rows) band on a pure append (self-correcting identity newSize == oldSize + pushDelta; kSpanCacheBandCap=4096 and any eviction/reflow fall back to the wholesale clear). Preserves immutable scrollback URL/highlight entries across streaming frames. Suite green. Closes the span-cache half of ANTS-1781.
+
+- 📋 [ANTS-3453] **Glyph / shaped-run cache — skip HarfBuzz re-shaping of unchanged runs across frames (freeze-critical).**
+  paintEvent re-shapes every text run every frame (terminalwidget.cpp:1087-1149); m_paintLayout reuse only amortises the impl-alloc, the HarfBuzz shape pass still runs per unique run. Cache QGlyphRun/shaped output keyed by a per-run fingerprint (runText + font-variant + attrs) or per-line content hash; LRU-evict. This is ANTS-1115 row 3 (deferred 0.8.x) but it is the dominant cause of the multi-second stall — promote it into this sweep and guard with bench_paint_throughput. See ANTS-1115.
+  **Layman:** The single biggest per-frame cost: the terminal re-computes the shape of every letter every time it redraws, even when the text did not change.
+  Kind: perf.
+  Source: user-request-2026-07-09.
+
+- 📋 [ANTS-3454] **Dirty-row / damage-rect painting — honor QPaintEvent rect + screenLineDirty(r) to bound the cell walk.**
+  paintEvent ignores the QPaintEvent damage rect (param unnamed, terminalwidget.cpp:684), fills rect() wholesale (:709) and walks all rows×cols (:770,:826) unconditionally. The grid already tracks screenLineDirty(r) (used only for cache eviction). Use the damage rect + dirty flags to bound the fillRect and the row loop to changed rows. Multiplies the savings from the frame-pacing, span-cache, and glyph-cache fixes.
+  **Layman:** Right now a single blinking cursor redraws the entire screen; this makes it only redraw the lines that actually changed.
+  Kind: perf.
+  Source: user-request-2026-07-09.
+
+- ✅ [ANTS-3455] **updateSuggestion — skip the O(history) scan when the input line is unchanged / during output.**
+  updateSuggestion() (terminalwidget.cpp:5453) runs on every VT batch: linear scan of m_historyEntries. Already early-returns in alt-screen (so the Claude-TUI freeze case is unaffected — minor priority), but the plain-shell bulk-output case re-scans per batch. Add an early-out when the trimmed input line is unchanged since the last computation. Implementing 2026-07-09.
+  **Layman:** Stops the shell autosuggestion from re-scanning your whole command history on every burst of program output.
+  Kind: perf.
+  Source: user-request-2026-07-09.
+  Resolved (2026-07-09): updateSuggestion() early-outs when the trimmed input line is unchanged since last call (m_lastSuggestionInput), skipping the O(history) scan on output batches. Suite green. (Minor for the Claude-TUI freeze — alt-screen already skipped it — helps the plain-shell case.)
+
+- 📋 [ANTS-3456] **Resize reflow — make TerminalGrid::resize soft-wrap reflow incremental / bounded for large scrollback.**
+  TerminalGrid::resize (terminalgrid.cpp:2491) joins + re-wraps the entire scrollback (default 50k, max 1M lines) on the GUI thread → seconds-class on large buffers. Combined with the resize BlockingQueuedConnection to the parse worker (terminalwidget.cpp:576,:3027 — ANTS-1781) this is the worst multi-second spike, and interactive window-drag fires it repeatedly. Options: chunk/defer the reflow, cap reflowed history, or compute off-thread. Pairs with the ANTS-1781 BlockingQueuedConnection removal.
+  **Layman:** Resizing the window while there is a lot of scrollback can hang for seconds; this makes that reflow not block.
+  Kind: perf.
+  Source: user-request-2026-07-09.
+
+- 📋 [ANTS-3457] **Per-cell search-match std::lower_bound → precompute per-row match ranges once per frame.**
+  isCellSearchMatch / isCellCurrentMatch (terminalwidget.cpp:4276) do a std::lower_bound per cell (:864,:868) → O(cols×rows×log matches) per frame during an active find. Correctly short-circuits when no search is active, so low priority. Precompute the matching column spans per visible row once per frame instead of per cell.
+  **Layman:** A small speedup that only matters while the find bar is open.
+  Kind: perf.
+  Source: user-request-2026-07-09.
+
+- 📋 [ANTS-3458] **promptRegions iterated up to 3× per paint (O(#commands), unbounded by viewport) — cache/bound to visible range.**
+  Command timestamps (terminalwidget.cpp:1186), sticky-command header (:1477) and the command-mark gutter (:1596) each loop ALL prompt regions every paint — grows with session length, not viewport. Bound the scan to regions intersecting the visible range, or cache the per-frame result.
+  **Layman:** In a long session with many commands, some on-screen decorations get slower to draw each frame.
+  Kind: perf.
+  Source: user-request-2026-07-09.
+
+- 📋 [ANTS-3459] **Per-cell linear scan over URL/highlight spans → index spans by column.**
+  paintEvent scans urlSpans (:837) and hlSpans (:849) per cell → O(cols×spans) nested in the full cell walk. Usually few spans/line so low impact; if it shows up, build a per-row column→span lookup once per line.
+  **Layman:** Minor drawing speedup on lines with many links or highlights.
+  Kind: perf.
+  Source: user-request-2026-07-09.
+
+- 📋 [ANTS-3460] **Hoist per-frame QFontMetrics constructions in the paint overlays.**
+  Overlays construct QFontMetrics once per frame each at terminalwidget.cpp:1184,:1386,:1434,:1526,:1556. Not per-cell so low priority; hoist to a per-frame local or member.
+  **Layman:** Tiny cleanup — avoids rebuilding a font-measurement helper several times per frame.
+  Kind: perf.
+  Source: user-request-2026-07-09.
+
+- 📋 [ANTS-3461] **UI-thread stall detector — log any paintEvent / onVtBatch exceeding a threshold (debug-gated).**
+  The multi-second stall could not be reproduced in-session (user-reported). Add a debug-flag-gated wall-clock guard around paintEvent and onVtBatch that logs when either exceeds e.g. 50 ms, with the batch action count / viewport size. Confirms root cause and verifies the fixes. Reuses the DebugLog facility.
+  **Layman:** An instrument to catch the actual freeze in the act, so we can prove which fix removed it.
+  Kind: investigate.
+  Source: user-request-2026-07-09.
+
+- 📋 [ANTS-3462] **Add bench_paint_throughput.cpp + bench_search_throughput.cpp (ANTS-1115 baseline scaffolding).**
+  ANTS-1115 explicitly blocks its sweep on a benchmark baseline (the table's 'Expected win' column is unmeasured conjecture). Land bench_paint_throughput.cpp and bench_search_throughput.cpp alongside the existing bench_vt_throughput, take baselines, then guard the glyph-cache / dirty-row / frame-pacing fixes against regression. See ANTS-1115.
+  **Layman:** Benchmarks so a speed improvement is measured, not guessed.
+  Kind: test.
+  Source: user-request-2026-07-09.
 
 ### ⚡ Local-subagent framework — Claude offloads to the local machine (user request 2026-04-30)
 
@@ -5747,6 +5835,7 @@ larger than a one-loop fix. Tiered: 🔒 security/data-loss · ⚡ hardening
   Fixed (2026-05-22): `inputMethodEvent` now stores `event->preeditString()` in `m_preeditString` (cleared on commit via the IME's final empty-preedit event) and triggers `update()` on change; `paintEvent` renders it inline at the cursor with a background fill + underline (uncommitted-composition convention), clamped to the right padding edge. Baseline render only — per-segment IME format attributes (highlighted clause) are not honoured (enhancement). Visual confirmation with a live CJK IME not performed in this session; logic mirrors the existing autocomplete-ghost render path. `terminalwidget.{h,cpp}`.
 - 📋 [ANTS-1781] **`detectUrls` URL/highlight caches wiped on every scrollback push + resize uses `BlockingQueuedConnection`.** `terminalwidget.cpp:3528`/`:2911` — re-runs two regexes per visible line each frame under high output, and blocks the GUI thread per resize step. Shift-reindex the cache; coalesce resize.
   Deferred (verified 2026-05-22): both confirmed present — wholesale `m_urlSpanCache.clear()` + `m_hlSpanCache.clear()` on any `scrollbackPushed()` advance (`terminalwidget.cpp:3540`), and the `Qt::BlockingQueuedConnection` resize hops to `m_vtStream` (`:555`/`:568`/`:2903`). NOT a bounded fix: the wholesale-clear is currently CORRECT (a scrollback push re-keys every cached `globalLine`); shift-reindexing it risks stale URL/highlight spans landing on the wrong line (a visible correctness bug) and needs the eviction/shift direction proven against the ring-buffer indexing. The `BlockingQueuedConnection` is load-bearing (resize must complete on the VT worker before the next paint reads the resized grid). Coalescing resize + a correct shift-reindex is its own perf spec with a regression test.
+  Progress (2026-07-09): folded into the freeze-focused hot-path sweep (user-request-2026-07-09). Span-cache half being implemented as ANTS-3452 (band-erase instead of wholesale clear on scrollback push). Resize BlockingQueuedConnection half stays here; the reflow-cost sibling is ANTS-3456.
 - ✅ [ANTS-1782] **`setupClaudeMcpProviders()` is a 1000-line method registering ~45 byte-identical RC-delegate shims.** `mainwindow.cpp:3751` — add `registerRcDelegate(name, contract, &RemoteControl::cmdX)` to collapse them.
   Deferred (verified 2026-05-22): confirmed the method spans `mainwindow.cpp:3689`–`4775` (1087 lines) with 58 `registerToolProvider` calls. A `registerRcDelegate` helper would collapse the RC-delegate subset cleanly, but the method also holds many non-delegate inline lambdas (e.g. `get_git_status`, `get_environment`, `roadmap_query`'s arg-forwarding) that don't fit the shim shape — so the refactor is a careful per-call triage, not a mechanical sweep. Structural; touches a high-traffic registration site that every MCP tool depends on (regression surface = all ~58 tools), so it warrants its own focused change + a tools/call smoke pass.
   Resolved (2026-05-22): collapsed the 40 pure RC-delegate shims via a local `rcDelegate(&RemoteControl::cmd*)` factory that builds the `ToolHandler` (the `if (!m_remoteControl)` guard + `cmd(args).toJson()` body now lives once). Method shrank 1087→944 lines. Chose the handler-builder shape over the note's literal `registerRcDelegate(name, contract, &cmd)` deliberately: ~30 feature tests source-grep the `registerToolProvider("<name>", …Contract…)` call shape, so keeping that shape intact (only the handler arg changes to `rcDelegate(...)`) preserved them. The 18 non-shim tools (terminal-state reads, `audit_run`/`indie_review_dispatch` in-flight gates, `roadmap_query`/`get_text` selective forwarding, the no-arg `tab_list`, multi-arg `token_usage`, non-RC `mcp_trace`/`caller_cwd_info`) keep their inline lambdas. Test updates: `mcp_call_site_contract` (regex + count guard accept both handler forms), `mcp_dispatch_forward_completeness` (`rcDelegate(` is pass-through), `mcp_session_memory` + `mcp_cold_eyes` (assert verb reference, not the old `cmd(args)` shape). Full suite 1386/1386 green; verified via the comprehensive MCP dispatch test set rather than a live tools/call (behavior-neutral: same name/contract/verb/args).

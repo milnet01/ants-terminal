@@ -653,7 +653,29 @@ private:
     // highlight spans could paint at the wrong column ranges on
     // scrolled-back lines after high-throughput output.
     mutable uint64_t m_lastScrollbackPushed = 0;
+    // ANTS-3452 — scrollback size at the last cache invalidation. Lets
+    // invalidateSpanCaches() tell a pure append (no ring eviction:
+    // newSize == oldSize + pushDelta) from an eviction/reflow, so the
+    // common append case erases only the small transitional key band
+    // and preserves the immutable scrollback entries instead of a
+    // wholesale clear() that re-runs detectUrls over the whole viewport
+    // every streaming frame. Any discrepancy in the equality falls back
+    // to the wholesale clear, so it is self-correcting.
+    mutable int m_lastScrollbackSize = 0;
     void invalidateSpanCaches() const;
+
+    // ANTS-3451 — output-driven repaint pacing. onVtBatch used to call
+    // update() once per VT batch; under streaming that is a full-screen
+    // repaint per ~16 KB of output, saturating the event loop so queued
+    // keystrokes stall (the user-reported typing freeze). scheduleCoalescedUpdate()
+    // caps output repaints to ~60 fps: the first batch paints immediately
+    // and arms the pacer; further batches within the window fold into one
+    // deferred paint; pacing stops when output settles. User-interaction
+    // repaints (blink, scroll, resize, selection) keep calling update()
+    // directly so they stay immediate.
+    QTimer m_paintPacer;
+    bool m_coalescedUpdatePending = false;
+    void scheduleCoalescedUpdate();
 
     // ANTS-1149 — paint-cycle QTextLayout reuse. Pre-fix code
     // constructed a fresh QTextLayout per text run inside the
@@ -720,6 +742,11 @@ private:
     QStringList m_historyEntries;
     QString m_currentSuggestion;
     bool m_historyLoaded = false;
+    // ANTS-3455 — last input line updateSuggestion() computed against.
+    // The suggestion is a pure function of the trimmed input line, so
+    // when the line is unchanged since the last call the O(history)
+    // linear scan can be skipped (it fires on every VT batch otherwise).
+    QString m_lastSuggestionInput;
     void loadHistory();
     void updateSuggestion();
 

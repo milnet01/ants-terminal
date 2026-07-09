@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **Skip the shell-history autosuggestion scan when the input line is unchanged, cutting per-batch work during output.** (ANTS-3455)
+
+- **Preserve URL/highlight span caches across streaming frames — only the changed scrollback band is invalidated instead of a full wipe on every push.** (ANTS-3452)
+
+- **Frame-pace output-driven repaints to ~60 fps so heavy terminal output no longer starves keystrokes (typing-freeze relief).** (ANTS-3451)
+
 - **Roadmap ID counter (`.roadmap-counter`) is now a derived, gitignored cache instead of committed state (ANTS-3450)**
   The next roadmap ID is now floored to the true high-water mark computed from the committed corpus (ROADMAP.md + CHANGELOG.md + docs/roadmap/ archives), so a stale, wiped, or fresh-clone-absent counter can never reissue a live or migrated ID. This removes the recurring "counter bump left out of the commit" drift entirely — git can't drift a file it no longer tracks.
 

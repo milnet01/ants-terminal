@@ -178,6 +178,21 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     // output signal. notifyAccessibilityChanged() no-ops when no AT runs.
     connect(this, &TerminalWidget::outputReceived, this, &TerminalWidget::notifyAccessibilityChanged);
 
+    // ANTS-3451 — output-driven repaint pacer (~60 fps). See
+    // scheduleCoalescedUpdate(); this only paces repaints triggered by
+    // incoming PTY output, not user-interaction repaints.
+    m_paintPacer.setSingleShot(true);
+    m_paintPacer.setInterval(16);
+    connect(&m_paintPacer, &QTimer::timeout, this, [this]() {
+        if (m_coalescedUpdatePending) {
+            m_coalescedUpdatePending = false;
+            update();
+            m_paintPacer.start();  // keep pacing while output keeps arriving
+        }
+        // else: output settled — let the pacer stay idle so the next
+        // batch paints immediately with no added latency.
+    });
+
     // Sync output safety timeout — if sync mode stays on for >500ms
     // (e.g. truncated sequence), force a repaint so the screen isn't frozen
     m_syncTimer.setSingleShot(true);
@@ -2244,6 +2259,20 @@ void TerminalWidget::onPtyFinished(int exitCode) {
     emit shellExited(exitCode);
 }
 
+void TerminalWidget::scheduleCoalescedUpdate() {
+    // ANTS-3451 — frame pacer for output-driven repaints. When the pacer
+    // is idle, paint now and arm it; when it is already running, fold this
+    // request into the pending flag so the burst collapses to one paint at
+    // the next ~16 ms tick. The pacer stops itself once a tick finds no
+    // pending request, so isolated output keeps zero added latency.
+    if (m_paintPacer.isActive()) {
+        m_coalescedUpdatePending = true;
+        return;
+    }
+    update();
+    m_paintPacer.start();
+}
+
 void TerminalWidget::onVtBatch(VtBatchPtr batch) {
     // Mirror of onPtyData, but the parse work is already done on the
     // worker. We apply the pre-built VtAction stream to the grid and run
@@ -2423,7 +2452,11 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
         if (m_scrollOffset == 0 && !m_frozenScreenRows.empty()) {
             clearScreenSnapshot();
         }
-        update();
+        // ANTS-3451 — pace this output-driven repaint to ~60 fps instead
+        // of painting once per VT batch. Coalescing a burst of batches
+        // into one frame is what stops the event loop from starving
+        // queued keystrokes during heavy Claude Code output.
+        scheduleCoalescedUpdate();
         m_syncTimer.stop();
     } else if (!wasSync) {
         // BSU just arrived this batch; pre-scan above already
@@ -3792,17 +3825,47 @@ void TerminalWidget::invalidateSpanCaches() const {
     // did nothing. Real scrollback-shift handling lives below in
     // the m_lastScrollbackPushed check.)
     (void)anyDirty;
-    // ANTS-1134 — when scrollback grows (push count increased
-    // since last paint), every existing scrollback-line entry is
-    // potentially mis-keyed: the same globalLine integer now
-    // refers to a different historical line. Drop both caches
-    // wholesale on any push — cheap (regex sweep on next paint
-    // re-fills incrementally) and the only correct invariant.
+    // ANTS-1134 / ANTS-3452 — when scrollback grows (push count
+    // increased since last paint), scrollback entries keyed by the
+    // volatile globalLine integer can re-alias a different historical
+    // line. The original fix dropped BOTH caches wholesale on any push;
+    // correct, but during streaming that fires every frame and forces
+    // detectUrls (2 regexes + a full-line QString) to re-run over the
+    // whole viewport each paint.
+    //
+    // ANTS-3452 refinement: a *pure append* (no ring eviction, no
+    // reflow) leaves every existing scrollback index content-stable —
+    // only the band [oldSize, newSize+rows) can alias different content
+    // (the rows that just scrolled from screen into scrollback, plus the
+    // fresh screen rows). Detect the pure-append case with the exact
+    // identity newSize == oldSize + pushDelta: any eviction or reflow
+    // breaks the equality and falls through to the wholesale clear, so
+    // the optimisation is self-correcting. In that case erase only the
+    // band and keep the immutable scrollback entries cached. A large
+    // between-paint jump (bandWidth > kSpanCacheBandCap) also falls back
+    // to the wholesale clear so the band loop can't run away.
+    static constexpr int kSpanCacheBandCap = 4096;
     const uint64_t pushedNow = m_grid->scrollbackPushed();
     if (pushedNow != m_lastScrollbackPushed) {
-        m_urlSpanCache.clear();
-        m_hlSpanCache.clear();
+        const uint64_t pushDelta = pushedNow - m_lastScrollbackPushed;
+        const int oldSize = m_lastScrollbackSize;
+        const bool pureAppend =
+            oldSize >= 0 &&
+            static_cast<uint64_t>(scrollbackSize) ==
+                static_cast<uint64_t>(oldSize) + pushDelta;
+        const long bandWidth =
+            static_cast<long>(scrollbackSize) + rows - oldSize;
+        if (pureAppend && bandWidth >= 0 && bandWidth <= kSpanCacheBandCap) {
+            for (int gl = oldSize; gl < scrollbackSize + rows; ++gl) {
+                m_urlSpanCache.erase(gl);
+                m_hlSpanCache.erase(gl);
+            }
+        } else {
+            m_urlSpanCache.clear();
+            m_hlSpanCache.clear();
+        }
         m_lastScrollbackPushed = pushedNow;
+        m_lastScrollbackSize = scrollbackSize;
     }
     m_grid->clearAllScreenDirty();
     m_spanCacheDirty = false;
@@ -5452,15 +5515,28 @@ void TerminalWidget::loadHistory() {
 
 void TerminalWidget::updateSuggestion() {
     if (!m_historyLoaded) loadHistory();
-    m_currentSuggestion.clear();
 
     // Don't suggest in alt screen (vim, htop, etc.)
-    if (m_grid->altScreenActive()) return;
+    if (m_grid->altScreenActive()) {
+        m_currentSuggestion.clear();
+        m_lastSuggestionInput.clear();
+        return;
+    }
 
     // Get current input line (text after last prompt)
     int scrollbackSize = m_grid->scrollbackSize();
     int cursorLine = scrollbackSize + m_grid->cursorRow();
     QString currentLine = lineText(cursorLine).trimmed();
+
+    // ANTS-3455 — the suggestion is a pure function of the trimmed input
+    // line, so when the line is unchanged since the last computation the
+    // O(history) scan below is redundant. updateSuggestion() runs on
+    // every VT batch, so this skips the scan on the output batches that
+    // don't touch the input line (keeping the current suggestion intact).
+    if (currentLine == m_lastSuggestionInput) return;
+    m_lastSuggestionInput = currentLine;
+
+    m_currentSuggestion.clear();
 
     if (currentLine.length() < 2) return;
 
