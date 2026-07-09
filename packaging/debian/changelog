@@ -1,3 +1,27 @@
+ants-terminal (0.7.99-1) unstable; urgency=medium
+
+  * Internal infrastructure and developer-tooling release — no new
+    user-facing features; every change is under-the-hood work on the
+    built-in Claude Code / MCP integration.
+  * Feedback-file workflow v2: five new feedback_log operations —
+    assign_id, migrate_v2, compact_resolved, prune_tracking,
+    compact_shipped — for cross-session feedback, mechanical v1->v2
+    migration, write-up compaction, and tracking-row deduplication,
+    plus v2 marker support, path normalisation, and a data-loss fix.
+    (ANTS-3421, 3442-3448)
+  * Code-navigation accuracy: file_outline handles C++ members with
+    multi-word return types; read_region resolves qualified symbols;
+    spec_query accepts numeric spec ids; roadmap_branch_drift detects
+    legacy no-ID roadmaps. (ANTS-3433-3437, 3439)
+  * MCP verb robustness: roadmap_query max_body_bytes respected;
+    roadmap_log op:bundle_row schema completed; changelog_log validates
+    feature-grouped sections; read/write verbs reach feedback files
+    outside the project root; debt_sweep warns before deferring bulk
+    findings; audit_run no longer auto-runs mypy. (ANTS-3416, 3425,
+    3430, 3432, 3435, 3346, 3345, 3418, 3445)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 09 Jul 2026 08:58:14 +0200
+
 ants-terminal (0.7.98-1) unstable; urgency=medium
 
   * Screen-reader support for the terminal area (AT-SPI / Orca): a blind

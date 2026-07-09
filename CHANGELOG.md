@@ -44,12 +44,6 @@ for security-relevant changes.
 - **feedback_query / feedback_pending honour the v2 marker (marker-aware un-triaged delta)** (ANTS-3448)
   On a `<!-- ants-mcp-feedback: 2 -->` (or higher) file the un-triaged delta is now the findings whose inline `**Proposed ID:**` is still unfilled, not the region after the last v1 tracking table. feedback_query gains format_version + suspected_untagged[]; session_orient feedback_pending picks up the v2 count with no code change. The v1 rule is retained verbatim for un-migrated files.
 
-- **Roadmap dialog: items now lay out in aligned columns instead of a cramped inline run.** (ANTS-3392)
-  Each roadmap item's status, type, summary and ID line up in neat
-  columns (the dialog renders each section as a table) instead of
-  running together into a wall of text, and section-heading counts no
-  longer fuse into the section title.
-
 - **changelog_log refuses a feature-grouped `[Unreleased]` (dated `### ` topics + `**Bold**` category runs) with `feature_grouped_section` instead of inserting a mis-ordered flat category.** (ANTS-3416)
   On changelogs that group notes by feature (newest-first), the writer now stops and asks you to hand-edit, instead of adding an entry at the wrong place that you then have to move.
 
@@ -212,6 +206,12 @@ for security-relevant changes.
   Two phases around a `/bump` that ship the latest public release plus a cherry-picked fix as the next public patch (and roll any in-flight RC up one number), for an urgent bug that can't wait for the next Wednesday.
 
 ### Changed
+
+- **Roadmap dialog: items now lay out in aligned columns instead of a cramped inline run.** (ANTS-3392)
+  Each roadmap item's status, type, summary and ID line up in neat
+  columns (the dialog renders each section as a table) instead of
+  running together into a wall of text, and section-heading counts no
+  longer fuse into the section title.
 
 - **roadmap_query MCP provider now forwards args verbatim (rcDelegate), retiring the hand-maintained per-arg allowlist that silently dropped new options.** (ANTS-3422)
   The mainwindow provider that bridges the roadmap_query MCP verb to its handler used to copy each option across the boundary by hand; forgetting a line silently disabled that option (it happened five times). It now forwards the whole request, so every current and future option reaches the handler automatically.

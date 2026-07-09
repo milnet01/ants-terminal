@@ -103,6 +103,16 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.99" date="2026-07-09">
+      <description>
+        <p>Internal infrastructure and developer-tooling release — no new user-facing features. Every change here is under-the-hood work on the built-in Claude Code / MCP integration.</p>
+        <ul>
+          <li><em>Added:</em> Feedback-file workflow v2 — five new <code>feedback_log</code> operations for cross-session feedback: inline triage-ID assignment, mechanical v1→v2 migration, shipped-write-up compaction, and tracking-row deduplication. (ANTS-3421, 3442–3448)</li>
+          <li><em>Fixed:</em> Code-navigation accuracy — multi-word C++ return types in outlines, qualified symbol resolution, numeric spec-id discovery, legacy roadmap-format detection, and feedback-file path normalisation. (ANTS-3433–3437, 3439)</li>
+          <li><em>Fixed:</em> MCP verb robustness — <code>roadmap_query</code> body-size cap, <code>roadmap_log op:bundle_row</code> schema completion, <code>changelog_log</code> feature-grouped-section guard, feedback-file access outside the project root, and debt-sweep safeguards. (ANTS-3425, 3430, 3432, 3416, 3435, 3346, 3345, 3418, 3445)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.98" date="2026-07-09">
       <description>
         <p>User-facing polish to the Roadmap dialog and menus, a new accessibility milestone, and a very large under-the-hood sweep of the built-in Claude Code integration. Screen readers can now read the terminal's contents, the Roadmap dialog lays its items out in aligned columns and warns about duplicate IDs, and a new Donate menu surfaces the project's sponsor links.</p>
