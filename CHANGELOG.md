@@ -12,6 +12,7 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.99] — unreleased (Patron RC preview)
 ### Added
 
 - **feedback_log op:"assign_id" — v2 inline triage write** (ANTS-3447)
