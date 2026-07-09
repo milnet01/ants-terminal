@@ -405,6 +405,21 @@ QString renderFindingBlock(const QString &date, const QString &sessionLabel,
     return out;
 }
 
+// ANTS-3469 — a GFM table cell must not carry a raw `|` (splits the column,
+// mis-aligning Status/Notes) or a newline (breaks the row). Escape both so an
+// item/notes string containing a pipe (e.g. a regex `a|b`) round-trips with
+// the right column count. Mirrors roadmap_log op:bundle_row's escapeCell
+// (remotecontrol.cpp, ANTS-1691); IDs/status carry no pipes but escaping them
+// uniformly is harmless and keeps the renderer trivially correct.
+static QString escapeTrackingCell(const QString &raw) {
+    QString s = raw;
+    s.replace(QStringLiteral("|"), QStringLiteral("\\|"));
+    s.replace(QStringLiteral("\r\n"), QStringLiteral("<br>"));
+    s.replace(QChar('\n'), QStringLiteral("<br>"));
+    s.replace(QChar('\r'), QStringLiteral("<br>"));
+    return s.trimmed();
+}
+
 QString renderTrackingBlock(const QString &date, const QString &note,
                             const QVector<TrackingRow> &rows, bool sentinel) {
     QString out;
@@ -430,10 +445,11 @@ QString renderTrackingBlock(const QString &date, const QString &note,
         const QString idCell =
             row.ids.isEmpty() ? QStringLiteral("n/a")
                               : row.ids.join(QStringLiteral(", "));
-        out += QStringLiteral("| ") + row.item + QStringLiteral(" | ") +
-               idCell + QStringLiteral(" | ") + row.status;
+        out += QStringLiteral("| ") + escapeTrackingCell(row.item) +
+               QStringLiteral(" | ") + escapeTrackingCell(idCell) +
+               QStringLiteral(" | ") + escapeTrackingCell(row.status);
         if (anyNotes)
-            out += QStringLiteral(" | ") + row.notes;
+            out += QStringLiteral(" | ") + escapeTrackingCell(row.notes);
         out += QStringLiteral(" |\n");
     }
     if (sentinel)

@@ -109,6 +109,40 @@ TEST(McpFeedbackLog, TrackingTableShapes) {
     EXPECT_TRUE(withNotes.contains("some note |"));
 }
 
+// ANTS-3469 — a `|` or newline in item/notes is escaped so the table row
+// keeps its column count. A raw pipe splits the cell, mis-aligning
+// Status/Notes and breaking compact_shipped's ✅-row detection. Mirrors
+// roadmap_log op:bundle_row's cell escaping.
+TEST(McpFeedbackLog, TrackingCellEscapesPipeAndNewline) {
+    QVector<FeedbackFile::TrackingRow> rows;
+    FeedbackFile::TrackingRow r;
+    r.item   = "regex a|b|c fails";
+    r.ids    = {"ANTS-3466"};
+    r.status = QString::fromUtf8(kClip);
+    r.notes  = "bearing | / .*\nsecond line";
+    rows.append(r);
+    const QString out = FeedbackFile::renderTrackingBlock(
+        "2026-07-09", QString(), rows, false);
+
+    EXPECT_TRUE(out.contains("regex a\\|b\\|c fails"));
+    EXPECT_TRUE(out.contains("bearing \\| / .*"));
+    EXPECT_TRUE(out.contains(".*<br>second line"));   // newline folded
+    EXPECT_FALSE(out.contains("bearing | /"));         // no bare pipe survives
+
+    // The data row keeps exactly 5 structural pipes (`| item | ids | status
+    // | notes |`) — escaped pipes (preceded by `\`) don't count.
+    QString rowLine;
+    for (const QString &ln : out.split(QChar('\n')))
+        if (ln.contains("ANTS-3466")) { rowLine = ln; break; }
+    ASSERT_FALSE(rowLine.isEmpty());
+    int barePipes = 0;
+    for (int i = 0; i < rowLine.size(); ++i)
+        if (rowLine.at(i) == QChar('|') &&
+            (i == 0 || rowLine.at(i - 1) != QChar('\\')))
+            ++barePipes;
+    EXPECT_EQ(barePipes, 5) << rowLine.toStdString();
+}
+
 // T6 — absent file + append_finding creates a skeleton; created:true.
 TEST(McpFeedbackLog, CreatesSkeleton) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
