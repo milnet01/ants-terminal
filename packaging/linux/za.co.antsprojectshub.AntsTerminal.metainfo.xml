@@ -103,7 +103,7 @@
   </screenshots>
 
   <releases>
-    <release version="0.7.98" date="2026-06-24">
+    <release version="0.7.98" date="2026-07-09">
       <description>
         <p>User-facing polish to the Roadmap dialog and menus, a new accessibility milestone, and a very large under-the-hood sweep of the built-in Claude Code integration. Screen readers can now read the terminal's contents, the Roadmap dialog lays its items out in aligned columns and warns about duplicate IDs, and a new Donate menu surfaces the project's sponsor links.</p>
         <ul>

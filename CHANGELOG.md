@@ -91,7 +91,7 @@ for security-relevant changes.
 - **audit_run no longer auto-runs mypy in its deps-less sweep (it emitted 28-31 spurious import-not-found/import-untyped warnings on every full run); mypy stays available on explicit `tools:["mypy"]`.** (ANTS-3418)
   The built-in bug-scanner stopped falsely reporting dozens of 'missing library' problems on Python projects every time it ran; CI and pre-commit still run the real, fully-installed type check.
 
-## [0.7.98] — unreleased (Patron RC preview)
+## [0.7.98] — 2026-07-09
 ### Added
 
 - **`subsystem` `op:map` accepts an optional `name` filter** (ANTS-3414)

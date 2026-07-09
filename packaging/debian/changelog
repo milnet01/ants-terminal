@@ -20,7 +20,7 @@ ants-terminal (0.7.98-1) unstable; urgency=medium
     batching, cross-session feedback workflows, and many code-navigation
     accuracy fixes.
 
- -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 24 Jun 2026 12:00:00 +0200
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 09 Jul 2026 00:00:00 +0200
 
 ants-terminal (0.7.97-1) unstable; urgency=medium
 
