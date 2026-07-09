@@ -21,6 +21,7 @@
 #include <QMimeData>
 #include <QInputMethodEvent>
 #include <QMouseEvent>
+#include <QPaintEvent>
 #include <QLabel>
 #include <QHBoxLayout>
 #include <QPushButton>
@@ -701,7 +702,7 @@ bool TerminalWidget::event(QEvent *event) {
     return QWidget::event(event);
 }
 
-void TerminalWidget::paintEvent(QPaintEvent *) {
+void TerminalWidget::paintEvent(QPaintEvent *event) {
     // ANTS-3461 — catch multi-second paint stalls (debug-gated, zero-cost off).
     StallGuard stallGuard("paintEvent");
     if (stallGuard.armed())
@@ -732,8 +733,15 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
     int effectiveAlpha = static_cast<int>(255 * m_windowOpacity);
     if (effectiveAlpha < 255)
         bgFill.setAlpha(effectiveAlpha);
+    // ANTS-3454 — honour the damage rect. blinkCursor (the only partial
+    // update(rect) caller) invalidates just the cursor cell; Qt already clips
+    // the pixels, but filling the whole widget and shaping every row below is
+    // wasted work. Fill only the damaged region and, further down, walk only
+    // the rows it touches. A full update() sends a full-widget rect, so this is
+    // a no-op for output-driven and every other full repaint.
+    const QRect damage = event->rect();
     p.setCompositionMode(QPainter::CompositionMode_Source);
-    p.fillRect(rect(), bgFill);
+    p.fillRect(damage, bgFill);
     p.setCompositionMode(QPainter::CompositionMode_SourceOver);
 
     // Background image (rendered behind all content)
@@ -794,7 +802,20 @@ void TerminalWidget::paintEvent(QPaintEvent *) {
         return true;
     };
 
-    for (int vr = 0; vr < rows; ++vr) {
+    // ANTS-3454 — bound the per-row shape+draw to the rows the damage rect
+    // touches (see the damage-bounded fill above). Floor-divide the damage
+    // top/bottom into row indices; a full-height damage yields [0, rows-1]
+    // unchanged, so full repaints are untouched. relBot < 0 (damage entirely
+    // in the top padding) gives lastRow = -1 and the loop is skipped.
+    int firstRow = 0;
+    int lastRow = rows - 1;
+    if (m_cellHeight > 0) {
+        const int relTop = damage.top() - m_padding;
+        const int relBot = damage.bottom() - m_padding;
+        firstRow = relTop > 0 ? std::min(rows - 1, relTop / m_cellHeight) : 0;
+        lastRow = relBot >= 0 ? std::min(rows - 1, relBot / m_cellHeight) : -1;
+    }
+    for (int vr = firstRow; vr <= lastRow; ++vr) {
         int globalLine = viewStart + vr;
         int px_y = m_padding + vr * m_cellHeight;
 

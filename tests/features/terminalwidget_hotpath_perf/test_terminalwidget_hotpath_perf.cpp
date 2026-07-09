@@ -97,3 +97,20 @@ TEST(TerminalWidgetHotPathPerf, Inv4SearchMatchComputedOncePerCell) {
            "per painted cell — colour + opacity decisions must share one "
            "result";
 }
+
+// INV-5 — paintEvent honors the QPaintEvent damage rect: it reads
+// event->rect() and bounds the per-row shape+draw loop to the damaged band,
+// so a partial update (the cursor blink invalidates one cell) no longer
+// re-shapes all rows (ANTS-3454).
+TEST(TerminalWidgetHotPathPerf, Inv5PaintHonorsDamageRect) {
+    const QString body = functionBody(
+        tw(), QStringLiteral("void TerminalWidget::paintEvent("));
+    ASSERT_FALSE(body.isEmpty()) << "paintEvent not found";
+    EXPECT_TRUE(body.contains(QStringLiteral("event->rect()")))
+        << "paintEvent must read the QPaintEvent damage rect";
+    EXPECT_TRUE(body.contains(QStringLiteral("vr = firstRow")))
+        << "the per-row loop must start at the first damaged row";
+    EXPECT_FALSE(body.contains(QStringLiteral("for (int vr = 0; vr < rows")))
+        << "paintEvent still walks all rows unconditionally — the damage rect "
+           "is ignored, so a cursor blink re-shapes the whole grid";
+}

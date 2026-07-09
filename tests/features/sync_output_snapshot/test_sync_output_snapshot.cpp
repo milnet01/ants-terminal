@@ -257,8 +257,11 @@ TEST(SyncOutputSnapshot, Main) {
     {
         // paintEvent: ≥ 3 calls to each accessor; zero direct
         // m_grid->cursorRow()/Col() reads in the body.
+        // Match the param-name-agnostic prefix (ANTS-3454 named the
+        // QPaintEvent param `event`) — same robust form the hotpath-perf
+        // source-scrape uses.
         const std::string body = functionBody(tw,
-            "void TerminalWidget::paintEvent(QPaintEvent *)");
+            "void TerminalWidget::paintEvent(");
         if (body.empty())
             fail("INV-9", "paintEvent body missing");
         const auto rowCalls = countOccurrences(body, "effectiveCursorRow()");
