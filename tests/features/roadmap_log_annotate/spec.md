@@ -78,6 +78,22 @@ The `roadmap_log` descriptor names `op:"annotate"` and the `note`
 param; the schema `op` enum includes `"annotate"` and the properties
 include `note`.
 
+### INV-10 — retried note append is idempotent (ANTS-3440)
+
+A flip/annotate can commit its ROADMAP.md write but still surface to the
+caller as a *client-side* transport timeout (mcp-bridge read-timeout);
+the caller then retries. The status flip is naturally idempotent
+(emoji→same emoji), but a second `appendBodyNote` would duplicate the
+resolution note. `appendBodyNote` therefore dedups: when the exact
+rendered note already occupies the trailing body lines immediately
+before the insertion point, the append is skipped. The compare is
+byte-exact and bounded to the located bullet's body, so a legitimately
+different note (new date, reworded) never false-dedups. The retry's
+success envelope carries `note_already_present:true` and
+`note_appended:false`; the note appears in the file exactly once. This
+holds for every note path — flip (GFM + ants-v1), annotate, and
+flip_batch — because they share the one `appendBodyNote` primitive.
+
 ## Test plan
 
 INV-1, INV-2, INV-5, INV-6, INV-7 are verified behaviourally by driving
@@ -85,3 +101,6 @@ INV-1, INV-2, INV-5, INV-6, INV-7 are verified behaviourally by driving
 the resulting file content + envelope. INV-3, INV-4 are negative-path
 envelope assertions. INV-8 (scrub) is asserted behaviourally; the
 fenced refusal + INV-9 descriptor/schema are source-grep assertions.
+INV-10 is behavioural: two identical flips against a seeded ROADMAP,
+asserting the note appears once and the retry envelope flags
+`note_already_present`.

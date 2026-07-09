@@ -101,6 +101,16 @@ bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
 }
 
+int countOccurrences(const std::string &hay, const std::string &needle) {
+    int n = 0;
+    for (std::string::size_type p = hay.find(needle);
+         p != std::string::npos;
+         p = hay.find(needle, p + needle.size())) {
+        ++n;
+    }
+    return n;
+}
+
 }  // namespace
 
 // INV-2 + INV-7 — annotate appends a note, leaves status unchanged, and
@@ -268,6 +278,51 @@ TEST(roadmap_log_annotate, Inv6FlipWithoutNoteBackCompat) {
     EXPECT_FALSE(resp.contains(QStringLiteral("note_appended")))
         << "no note ⇒ no note_appended field (back-compat shape)";
     const std::string md = readFile(roadmapPath(tmp.path())).toStdString();
+    EXPECT_TRUE(contains(md,
+        "- \xE2\x9C\x85 [ANTS-0042] **Seed bullet headline.**"));
+}
+
+// INV-10 (ANTS-3440) — a retried flip with an identical trailing note is
+// idempotent: the note is NOT duplicated, and the retry reports
+// note_already_present:true / note_appended:false. This is the
+// retry-safety half of ANTS-3440 — a committed flip that surfaces to the
+// caller as a transport timeout gets retried, and the retry must not
+// double-append the resolution note.
+TEST(roadmap_log_annotate, Inv10RetryDedupesIdenticalNote) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedV1()));
+
+    RemoteControl rc(nullptr);
+    auto flip = [&] {
+        QJsonObject r = req(tmp.path(), QStringLiteral("flip"));
+        r[QStringLiteral("id")]        = QStringLiteral("ANTS-0042");
+        r[QStringLiteral("to_status")] = QStringLiteral("shipped");
+        r[QStringLiteral("note")]      =
+            QStringLiteral("Resolved 2026-07-09: fixed the flaky transport.");
+        return rc.cmdRoadmapLogFlipForTest(r).object();
+    };
+
+    const QJsonObject first = flip();
+    EXPECT_TRUE(first.value(QStringLiteral("ok")).toBool());
+    EXPECT_TRUE(first.value(QStringLiteral("note_appended")).toBool());
+    EXPECT_FALSE(first.contains(QStringLiteral("note_already_present")))
+        << "first flip genuinely appends — no already-present signal";
+
+    // Retry (caller saw a false transport timeout on the first call).
+    const QJsonObject second = flip();
+    EXPECT_TRUE(second.value(QStringLiteral("ok")).toBool())
+        << "retry must still succeed (idempotent)";
+    EXPECT_TRUE(second.value(QStringLiteral("note_already_present")).toBool())
+        << "retry must flag the note as already present";
+    EXPECT_FALSE(second.value(QStringLiteral("note_appended")).toBool())
+        << "retry must not claim a fresh append";
+
+    const std::string md = readFile(roadmapPath(tmp.path())).toStdString();
+    EXPECT_EQ(1, countOccurrences(md,
+        "Resolved 2026-07-09: fixed the flaky transport."))
+        << "the resolution note must appear exactly once after a retry";
+    // Status still shipped (the flip half is naturally idempotent).
     EXPECT_TRUE(contains(md,
         "- \xE2\x9C\x85 [ANTS-0042] **Seed bullet headline.**"));
 }

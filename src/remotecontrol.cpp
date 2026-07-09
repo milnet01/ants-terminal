@@ -986,8 +986,15 @@ static QString rcRightStrip(QString s) {
 // (matching op:"append"'s body treatment). Blank lines inside a
 // multi-line note stay blank (no trailing-space lint). Returns the
 // 0-based index of the first inserted line.
+//
+// ANTS-3440 — retry idempotency: when the exact rendered note already
+// occupies the trailing body lines immediately before the insertion
+// point, the append is skipped and `*alreadyPresent` (when supplied) is
+// set true; the return value then points at the first line of the
+// existing copy. See the dedup rationale block below.
 int appendBodyNote(QStringList &lines, int headlineLine,
-                   const QString &note) {
+                   const QString &note, bool *alreadyPresent = nullptr) {
+    if (alreadyPresent) *alreadyPresent = false;
     int insertAt = headlineLine + 1;
     QString indent = QStringLiteral("  ");
     bool sawBody = false;
@@ -1003,14 +1010,44 @@ int appendBodyNote(QStringList &lines, int headlineLine,
         ++insertAt;
     }
     const QStringList noteLines = note.split(QChar('\n'));
-    for (int k = 0; k < noteLines.size(); ++k) {
-        const QString &nl = noteLines.at(k);
-        // ANTS-3417 — a whitespace-only note line collapses to "" (no dangling
-        // indent); a real line is right-stripped so no trailing whitespace
-        // reaches ROADMAP.md.
-        lines.insert(insertAt + k,
-                     nl.trimmed().isEmpty() ? QString()
-                                            : rcRightStrip(indent + nl));
+    // Render each note line exactly as it will be written, so the dedup
+    // compare below is byte-exact against a previously-appended copy.
+    // ANTS-3417 — a whitespace-only note line collapses to "" (no dangling
+    // indent); a real line is right-stripped so no trailing whitespace
+    // reaches ROADMAP.md.
+    QStringList rendered;
+    rendered.reserve(noteLines.size());
+    for (const QString &nl : noteLines) {
+        rendered.append(nl.trimmed().isEmpty()
+                            ? QString()
+                            : rcRightStrip(indent + nl));
+    }
+    // ANTS-3440 — retry idempotency. A flip/annotate that committed to
+    // disk but surfaced to the caller as a (client-side) transport
+    // timeout gets retried; the status flip is naturally idempotent
+    // (emoji→same emoji) but a second note append is not. If the exact
+    // rendered note already occupies the trailing body lines immediately
+    // before the insertion point, this IS that retry — skip the insert
+    // and report it, so the resolution note is never duplicated. The
+    // compare is byte-exact and bounded to this bullet's body (blockStart
+    // must stay at/after the first body line), so a legitimately different
+    // note (new date, reworded) never false-dedups.
+    const int blockStart = insertAt - static_cast<int>(rendered.size());
+    if (blockStart >= headlineLine + 1) {
+        bool identical = true;
+        for (int k = 0; k < rendered.size(); ++k) {
+            if (lines.at(blockStart + k) != rendered.at(k)) {
+                identical = false;
+                break;
+            }
+        }
+        if (identical) {
+            if (alreadyPresent) *alreadyPresent = true;
+            return blockStart;
+        }
+    }
+    for (int k = 0; k < rendered.size(); ++k) {
+        lines.insert(insertAt + k, rendered.at(k));
     }
     return insertAt;
 }
@@ -6629,8 +6666,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 applyAntsV1Flip(lines, v1target, targetEmoji);
             }
             int noteLine = -1;
+            bool noteAlreadyPresent = false;
             if (!note.isEmpty()) {
-                noteLine = appendBodyNote(lines, v1target.firstLine, note);
+                noteLine = appendBodyNote(lines, v1target.firstLine, note,
+                                          &noteAlreadyPresent);
             }
             const QString updated = lines.join(QChar('\n'));
             // ANTS-2136 — dry_run preview (ants-v1 path): the locator
@@ -6654,8 +6693,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 out["anchor_injected"] = false;
                 out["id"]              = v1target.id;
                 if (!note.isEmpty()) {
-                    out["note_appended"] = true;
+                    out["note_appended"] = !noteAlreadyPresent;
                     out["note_line"]     = noteLine + 1;
+                    if (noteAlreadyPresent)
+                        out["note_already_present"] = true;
                 }
                 return QJsonDocument(out);
             }
@@ -6686,8 +6727,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             out["anchor_injected"] = false;
             out["id"]              = v1target.id;
             if (!note.isEmpty()) {
-                out["note_appended"] = true;
+                out["note_appended"] = !noteAlreadyPresent;
                 out["note_line"]     = noteLine + 1;
+                if (noteAlreadyPresent)
+                    out["note_already_present"] = true;
             }
             if (!noteScrubbedNames.isEmpty()) {
                 QJsonArray dropped;
@@ -6946,8 +6989,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         applyGfmFlip(lines, target, targetEmoji, anchorToInject);
     }
     int noteLine = -1;
+    bool noteAlreadyPresent = false;
     if (!note.isEmpty()) {
-        noteLine = appendBodyNote(lines, target.headlineLine, note);
+        noteLine = appendBodyNote(lines, target.headlineLine, note,
+                                  &noteAlreadyPresent);
     }
     const QString updated = lines.join(QChar('\n'));
 
@@ -6973,8 +7018,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         if (!target.boldId.isEmpty()) out["id"] = target.boldId;
         if (needInjection && newCounter >= 0) out["counter"] = newCounter;
         if (!note.isEmpty()) {
-            out["note_appended"] = true;
+            out["note_appended"] = !noteAlreadyPresent;
             out["note_line"]     = noteLine + 1;
+            if (noteAlreadyPresent) out["note_already_present"] = true;
         }
         return QJsonDocument(out);
     }
@@ -7026,8 +7072,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     if (needInjection && newCounter >= 0)
         out["counter"] = newCounter;
     if (!note.isEmpty()) {
-        out["note_appended"] = true;
+        out["note_appended"] = !noteAlreadyPresent;
         out["note_line"]     = noteLine + 1;
+        if (noteAlreadyPresent) out["note_already_present"] = true;
     }
     if (!noteScrubbedNames.isEmpty()) {
         QJsonArray dropped;
@@ -7703,8 +7750,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         }
         headlineByFirstLine.insert(t.firstLine, hlText);
         int noteLine = -1;
+        bool noteAlreadyPresent = false;
         if (!t.note.isEmpty())
-            noteLine = appendBodyNote(lines, t.headlineLine, t.note);
+            noteLine = appendBodyNote(lines, t.headlineLine, t.note,
+                                      &noteAlreadyPresent);
 
         QJsonObject r;
         r["line"]        = t.firstLine + 1;
@@ -7717,8 +7766,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             r["anchor"]          = t.anchorToInject;
         }
         if (!t.note.isEmpty()) {
-            r["note_appended"] = true;
+            r["note_appended"] = !noteAlreadyPresent;
             r["note_line"]     = noteLine + 1;
+            if (noteAlreadyPresent) r["note_already_present"] = true;
         }
         if (!t.noteScrubbed.isEmpty()) {
             QJsonArray dropped;

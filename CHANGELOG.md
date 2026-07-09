@@ -22,6 +22,16 @@ for security-relevant changes.
   spec instead of the whole body (title/status always sit in the
   first ~124 bytes), skipping the wasted full-body invariant parse.
 
+### Fixed
+
+- **roadmap_log note append is now retry-idempotent (ANTS-3440)**
+  A roadmap_log op:flip/annotate that committed its ROADMAP.md write but
+  surfaced to the caller as a transport timeout used to duplicate the
+  resolution note when retried. appendBodyNote now dedups a byte-identical
+  trailing note, skipping the second append and reporting
+  note_already_present:true. Applies to flip (GFM + ants-v1), annotate,
+  and flip_batch (shared primitive).
+
 ## [0.7.99] — unreleased (Patron RC preview)
 ### Added
 
