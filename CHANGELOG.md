@@ -51,6 +51,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log op:amend_body now reaches body text on blank-line-separated nested sub-bullets, and its body_match_not_found refusal hints when old_text sits outside the bullet or spans a hard-wrapped line break.** (ANTS-3467)
+
+- **workspace_search now hints 'did you mean regex:true?' when a regex:false pattern carrying regex metacharacters (e.g. A|B|C) returns zero matches, so an empty result isn't mistaken for 'symbol absent'.** (ANTS-3466)
+
+- **find_definition now resolves C++ type definitions (struct / class / union / enum) — a pure type with no same-named constructor previously returned zero definitions.** (ANTS-3465)
+
 - **roadmap_log note append is now retry-idempotent (ANTS-3440)**
   A roadmap_log op:flip/annotate that committed its ROADMAP.md write but
   surfaced to the caller as a transport timeout used to duplicate the

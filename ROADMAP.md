@@ -18258,11 +18258,12 @@ their feedback-file tracking tables needed stamping.
   Source: RetroArch-feedback-2026-07-03 (Bundle 89).
   Resolved (2026-07-04): roadmap_branch_drift detects a legacy no-ID roadmap (no bullet has an id) and disables the id-less narrator skip in both the drift and mis_branched loops, identifying bullets by headline slug via bulletIdFor and flagging roadmap_format:ants-v1-legacy-noid. No more false scanned_bullets:0. Tests: mcp_roadmap_branch_drift INV-14 / INV-14b.
 
-- 📋 [ANTS-3438] **codebase_index returns counts-only (file_count/roles/languages), not the symbols/lanes/files map the SessionStart hint advertises ('query before grep') — callers fall back to Bash find.**
+- ✅ [ANTS-3438] **codebase_index returns counts-only (file_count/roles/languages), not the symbols/lanes/files map the SessionStart hint advertises ('query before grep') — callers fall back to Bash find.**
   Repro (build cb468d5): codebase_index returns {file_count, roles, languages, lane_count, lanes, cache_path} with no files array and no symbols; the hint's 'query before grep' leaves no queryable map. Fix option A: add opt-in include_files:true (+ include_symbols:true) emitting the file list (+per-file role/language) and a symbol digest when cheap. Option B: if metadata-only by design, reword the SessionStart hint to name the verb that returns the map and describe codebase_index as index-freshness/counts. MEDIUM.
   **Layman:** The tool that's supposed to hand you a map of the code only returns totals, so you still have to go searching.
   Kind: enhancement.
   Source: Fin-Break-feedback-2026-07-02/03 (FIBR-0006/0007).
+  Resolved (2026-07-09): Option A shipped on the top-level codebase_index verb — symbol/lane/file_path selectors. Verified live this session: codebase_index symbol=ShapedRunCache -> {kind:class, line:39, path:src/shapedruncache.h}; lane/file_path selectors likewise. The remaining half — session_orient's BUNDLED codebase_index sub-object still returns counts-only — is split out as ANTS-3468 (first-call orientation surface).
 
 - ✅ [ANTS-3439] **feedback_query/feedback_log path derivation misses a checkout-dir-leaf<->package-name mismatch (Fin_Break vs finbreak) and sets all_other_projects:true even when a normalized-equal sibling is in candidates[].**
   Repro: from /mnt/Games/Scripts/Linux/Fin_Break, feedback_query with no path -> not_found, all_other_projects:true, candidates includes finbreak_Ants_MCP_Feedback.md, hint 'none matches leaf Fin_Break'. Complements ANTS-3426 (trailing _Ants) and ANTS-3366 (candidates). Fix: compare a NORMALIZED leaf (casefold + fold [-_ ]) against candidate basenames; if a normalized-equal candidate exists, do NOT set all_other_projects:true and float it as the primary hint ('did you mean finbreak_...?'). Auto-resolve optional (risk of wrong-file write) — maintainer's call. LOW.
@@ -18393,6 +18394,41 @@ their feedback-file tracking tables needed stamping.
   Kind: fix.
   Source: in-session-2026-07-09.
   Resolved 2026-07-09: .roadmap-counter is now a derived, gitignored per-machine cache — not committed source. New RoadmapFoldIn::corpusHighWater(projectPath[, prefix]) computes the true high-water mark from the committed corpus (ROADMAP.md + CHANGELOG.md + docs/roadmap/*.md), so allocation floors to it on every path: allocateIds/peekIds (fold-in + dry_run) and both op:append / op:append_batch reconciliations. A stale/wiped/fresh-clone-absent counter can no longer reissue a live or migrated id — the missing-counter branch now RECOVERS the mark from the corpus instead of refusing (greenfield still seeds 0; an id-bearing roadmap with no recoverable counter-style ids still refuses counter_missing). git rm --cached + .gitignore: drift is structurally impossible now (git can't drift an untracked file), no per-machine hook needed. Chose untrack+derive over a pre-commit hook (user-approved 2026-07-09) — enforced by the binary, no install footgun. Tests: RoadmapFoldIn.CorpusHighWaterAcrossSources (3-source scan + floor), RoadmapLogGreenfieldCounter.Inv3/Inv3b (recovery); all 62 affected feature tests green. Docs: roadmap-format.md §3.5.1 + the two feature specs. VERIFY-AFTER-RELAUNCH: the running MCP server still uses the pre-change allocator; the new floor/recovery goes live on relaunch.
+
+### 🔌 Ants-MCP feedback from CC sessions — 2026-07-09 triage
+
+Triage of the un-triaged tails across the 10 cross-session
+*_Ants_MCP_Feedback.md files on 2026-07-09. Most deltas were positive
+re-confirmations or corroboration of already-tracked items
+(ANTS-3417/3419/3426/3438/3440); the actionable-new findings are filed below.
+
+- 📋 [ANTS-3465] **find_definition misses type definitions (struct / class / union / enum) — returns 0 for a real type name.**
+  The C++ buildAnchors (symbolquery.cpp) has only a return-type+name+'(' pattern and an out-of-line ctor/dtor pattern; neither matches a `struct|class|union|enum[ class] <name>` type definition, so a pure type (no same-named constructor) returns definitions_count:0. A type WITH a same-named ctor (e.g. ShapedRunCache) returns only the ctor, not the `class` line. Fix: add a C++ type-definition anchor `^\s*(?:template<...>)?(?:typedef )?(?:struct|class|union|enum[ class]) <name>\b`; existing scanFile kind logic tags `{`->definition, `;`->declaration with no schema change. Python/Generic already cover types; only Cpp needs it.
+  **Layman:** Asking "where is type Foo defined?" comes back empty for structs and enums, even though the tool found them a moment ago by a plain text search.
+  Kind: fix.
+  Lanes: symbolquery.
+  Source: 3D_Engine (Vestige) feedback 2026-07-04; reproduced on Ants (find_definition PaintTextRun -> 0 though struct at terminalwidget.h:698).
+
+- 📋 [ANTS-3466] **workspace_search regex:false + a pattern with unescaped regex metacharacters (e.g. `a|b|c`) silently returns 0 matches with no advisory.**
+  ANTS-2045 shipped a 0-match advisory only for whitespace-split multi-term queries; a metacharacter-bearing single token (pipe/paren/bracket, no whitespace) with regex:false is treated literally, matches nothing, and returns no hint — an LLM caller reads it as 'symbol absent'. Fix: when regex:false AND 0 matches AND the pattern contains an unescaped regex metacharacter (| ( ) [ ] .* + ?), append an advisory hint like 'pattern contains regex metacharacters but regex:false — did you mean regex:true?'. Single branch alongside the existing ANTS-2045 hint.
+  **Layman:** If you search with a pipe-separated pattern but forget to turn on regex mode, the search finds nothing and gives no hint that regex mode was what you needed — easy to mistake for "the code isn't there."
+  Kind: fix.
+  Lanes: workspace_search.
+  Source: Music_Production (Album Builder) feedback 2026-07-04 (NowPlayingTitle|NowPlayingCover matched 0 with regex:false, all 5 with regex:true).
+
+- 📋 [ANTS-3467] **roadmap_log op:amend_body match region is too narrow — misses nested sub-bullet lines and hard-wrap-spanning phrases; body_match_not_found reads as 'text absent'.**
+  Two sub-cases of the same amend_body matching gap: (a) old_text on a 4/6-space nested sub-bullet continuation line refuses body_match_not_found because the considered body region covers only the bullet's own ~2-space continuations; (b) a natural phrase that straddles the append verbs' ~70-col hard wrap can't match the single-line constraint. Fix options: widen the body region through nested sub-bullets up to the next sibling bullet; AND/OR when old_text IS present in the file but outside the region, return a distinct code/hint (found_outside_body, with line) so the caller widens scope rather than concluding absence; optionally an opt-in whitespace-folded match mode for wrapped phrases (keep exact single-line as the safe default).
+  **Layman:** The tool that patches a to-do item's notes can't reach text on indented sub-points or text that wraps across two lines, and its error makes it look like the text isn't there at all.
+  Kind: enhancement.
+  Lanes: roadmap.
+  Source: finbreak feedback 2026-07-09 (FIBR-0055 nested Scope sub-bullets) + Contact_List feedback 2026-07-04 (phrase spanning a ~70-col hard wrap).
+
+- 📋 [ANTS-3468] **session_orient's embedded codebase_index sub-object is still counts-only — extend the ANTS-3438 symbol/lane/file selectors (or a compact digest) to the first-call orientation surface.**
+  ANTS-3438 shipped Option A on the top-level codebase_index verb (symbol/lane/file_path selectors — verified this session: codebase_index symbol=ShapedRunCache -> {kind:class, line:39}). The SessionStart 'query before grep' hint targets session_orient's BUNDLED codebase_index sub-object, which still returns only file_count/roles/languages/lane_count (no files[]/symbols[]). Follow-up: expose the selectors, or embed a compact symbol/lane digest, in the session_orient bundle so the first-call surface satisfies its own hint. Keep the bundle ETag stable (strip volatile fields as today).
+  **Layman:** The one-call session opener includes a code map that only shows totals, so you still can't answer "where is X" from it — the standalone tool was fixed but the bundled copy wasn't.
+  Kind: enhancement.
+  Lanes: mcpprojection, remotecontrol.
+  Source: finbreak feedback 2026-07-09 (ANTS-3438 second half); top-level codebase_index selectors verified working on live build 9373a1bb.
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
