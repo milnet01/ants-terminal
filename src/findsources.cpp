@@ -126,6 +126,30 @@ void maybeAddSource(QVector<QString> *out, const QString &relPath) {
     out->append(relPath);
 }
 
+// Enumerate the source-file candidate set under a canonical project
+// root: the O(files) walk over <root>/src/ + <root>/tests/, filtered by
+// maybeAddSource. Shared by findSources() (the query) and prewarm() (the
+// page-cache warm) so the two can never scan a different set (ANTS-3444a).
+QVector<QString> collectCandidates(const QString &rootCanonical) {
+    QVector<QString> candidates;
+    candidates.reserve(512);
+    for (const QString &subdir : {QStringLiteral("src"),
+                                  QStringLiteral("tests")}) {
+        QDir dir(rootCanonical + QLatin1Char('/') + subdir);
+        if (!dir.exists()) continue;
+        QDirIterator it(dir.absolutePath(),
+                        QDir::Files | QDir::Readable,
+                        QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString abs = it.next();
+            QString rel = abs.mid(rootCanonical.size());
+            if (rel.startsWith(QLatin1Char('/'))) rel.remove(0, 1);
+            maybeAddSource(&candidates, rel);
+        }
+    }
+    return candidates;
+}
+
 }  // namespace
 
 QStringList tokenise(const QString &topic) {
@@ -218,22 +242,7 @@ Result findSources(const QString &topic,
     }
 
     // Walk src/ + tests/ — find_sources is for source code.
-    QVector<QString> candidates;
-    candidates.reserve(512);
-    for (const QString &subdir : {QStringLiteral("src"),
-                                  QStringLiteral("tests")}) {
-        QDir dir(rootCanonical + QLatin1Char('/') + subdir);
-        if (!dir.exists()) continue;
-        QDirIterator it(dir.absolutePath(),
-                        QDir::Files | QDir::Readable,
-                        QDirIterator::Subdirectories);
-        while (it.hasNext()) {
-            const QString abs = it.next();
-            QString rel = abs.mid(rootCanonical.size());
-            if (rel.startsWith(QLatin1Char('/'))) rel.remove(0, 1);
-            maybeAddSource(&candidates, rel);
-        }
-    }
+    const QVector<QString> candidates = collectCandidates(rootCanonical);
     r.filesScanned = candidates.size();
 
     QVector<int> tokenHitCount(tokens.size(), 0);
@@ -338,6 +347,30 @@ Result findSources(const QString &topic,
     }
 
     return r;
+}
+
+int prewarm(const QString &projectRoot) {
+    QFileInfo rootInfo(projectRoot);
+    if (!rootInfo.isDir()) return 0;
+    const QString rootCanonical = rootInfo.canonicalFilePath();
+    if (rootCanonical.isEmpty()) return 0;
+
+    const QVector<QString> candidates = collectCandidates(rootCanonical);
+
+    // Mirror Options::contentByteCap — findSources reads at most this many
+    // bytes per file, so warming exactly that prefix (no more) is enough to
+    // make its first read hit the page cache without wasting I/O.
+    constexpr qint64 kContentByteCap = 256 * 1024;
+    QByteArray scratch;  // reused; holds one file's prefix at a time
+    for (const QString &rel : candidates) {
+        QFile f(rootCanonical + QLatin1Char('/') + rel);
+        if (f.open(QIODevice::ReadOnly)) {
+            // The read pulls the file's leading pages into the OS cache;
+            // the returned bytes are discarded on the next iteration.
+            scratch = f.read(kContentByteCap);
+        }
+    }
+    return candidates.size();
 }
 
 }  // namespace FindSources

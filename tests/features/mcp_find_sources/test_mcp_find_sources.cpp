@@ -184,6 +184,32 @@ TEST(McpFindSources, FindSourcesBadRoot) {
     EXPECT_EQ(0, expect_failures());
 }
 
+TEST(McpFindSources, PrewarmParity) {
+    expect_reset();
+
+    Sandbox s;
+    s.build();
+    expect(s.ok, "sandbox set up");
+
+    // INV-14 — prewarm() shares collectCandidates() with findSources(), so
+    // it warms EXACTLY the query's candidate set: its touched-file count
+    // equals findSources().filesScanned for the same root.
+    const int warmed  = FindSources::prewarm(s.root);
+    const int scanned =
+        FindSources::findSources(QStringLiteral("audit run"), s.root)
+            .filesScanned;
+    expect(warmed == scanned,
+           "INV-14: prewarm touches the find_sources candidate set");
+    expect(warmed > 0, "INV-14: prewarm warms a non-empty tree");
+
+    // INV-14 — bad root warms nothing, no crash (parity with BadRoot).
+    expect(FindSources::prewarm(
+               QStringLiteral("/nonexistent/path/that/does/not/exist")) == 0,
+           "INV-14: prewarm(bad root) == 0");
+
+    EXPECT_EQ(0, expect_failures());
+}
+
 TEST(McpFindSources, WiringContract) {
     expect_reset();
 

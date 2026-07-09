@@ -40,5 +40,24 @@ Contract for the `FindSources` pure-function unit + its MCP wiring.
 - **INV-11** — `claudeintegration.cpp` carries the tool descriptor,
   the token-cost entry, the `"workspace"` `kindForName` bucket
   membership, and the `Required` `callerCwdContractFor` branch.
+- **INV-12** (ANTS-3415) — `symbol` is accepted as an alias for
+  `topic`: the handler falls back to `req.value("symbol")`, and the
+  schema declares a `symbol` prop so it isn't flagged in
+  `ignored_args`.
+- **INV-13** (ANTS-3435) — an empty result (`files.isEmpty()`) carries
+  a redirect `hint` (anchored to ANTS-3435) that names the exact-match
+  verbs — `workspace_search` / `find_definition` / `find_caller` — so a
+  caller doesn't read `files_count:0` as a genuine "no such code".
+
+**Pre-warm** (ANTS-3444a):
+
+- **INV-14** — `FindSources::prewarm(root)` warms the OS page cache for
+  exactly the `findSources` candidate set: it shares the
+  `collectCandidates` walk with `findSources`, so the count it touches
+  equals `findSources(root).filesScanned` for the same root, is `> 0`
+  for a real tree, and is `0` for a bad/rootless path (no crash). It
+  reads only (one reused buffer, no in-process cache), so its sole
+  residency is the OS page cache. `session_orient` launches it on a
+  background thread once per project root per session.
 
 Exit 0 = every invariant holds.

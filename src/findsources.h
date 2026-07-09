@@ -62,6 +62,19 @@ Result findSources(const QString &topic,
                    const QString &projectRoot,
                    const Options &opts = {});
 
+// ANTS-3444a — pre-warm the OS page cache for the find_sources candidate
+// set. Walks the SAME src/+tests/ tree as findSources() and reads each
+// candidate's first contentByteCap bytes into a throwaway buffer, pulling
+// those pages into the OS cache so the session's first findSources() call
+// reads warm instead of paying the ~50 s cold-disk cliff after a relaunch
+// (52 s measured 2026-07-04). Reads only — no in-process cache, one reused
+// buffer, so the page cache is the sole residency (OS-managed +
+// self-evicting; zero process-heap budget). Returns the number of
+// candidate files touched (== findSources().filesScanned for the same
+// root); 0 for a bad/rootless tree. Touches no shared state, so it is
+// safe to run off the request thread.
+int prewarm(const QString &projectRoot);
+
 }  // namespace FindSources
 
 #endif

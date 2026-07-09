@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **find_sources no longer stalls on the first call after a restart (ANTS-3444)**
+  session_orient now warms the find_sources file set into the OS cache on a background thread, so the first find_sources of a session reads fast instead of paying a one-time cold-disk penalty. Completes ANTS-3444 alongside the earlier CPU cut and the 60s bridge-timeout guard.
+
 - **MCP server-side latency: `find_sources` and `spec_query` list mode are dramatically faster (ANTS-3444)**
   find_sources now ASCII-folds file bytes in place and searches with
   QByteArray::indexOf instead of decoding every file to a lowercased

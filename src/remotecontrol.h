@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QSet>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -901,4 +902,9 @@ private:
     mutable AuditEngine::AuditSummary m_auditSummaryCache;
     mutable int      m_auditSummaryCachedTopN = -1;
     mutable QString  m_auditSummaryCachedFloor;
+
+    // ANTS-3444a — project roots whose find_sources candidate files have
+    // already been page-cache-warmed this session (see cmdSessionOrient).
+    // Accessed only on the MCP request thread, so it needs no lock.
+    QSet<QString> m_prewarmedRoots;
 };

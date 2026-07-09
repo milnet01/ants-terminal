@@ -70,6 +70,7 @@
 #include <QSet>
 #include <QStandardPaths>
 #include <QTabWidget>
+#include <QThread>
 #include <cmath>
 
 #include <sys/socket.h>
@@ -14185,6 +14186,28 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
                 result[QStringLiteral("project_settings_suggestion")] = sg;
             }
         }
+    }
+
+    // --- find_sources cold-cache pre-warm (ANTS-3444a) ---
+    // find_sources reads up to 256 KiB from each of ~700 src/+tests/ files
+    // on every call. Warm that's ~20 ms, but the FIRST call after a
+    // relaunch pays the cold-disk cliff (52 s measured 2026-07-04) — the
+    // dominant "flaky first-minute" UX. Pull those same file bodies into
+    // the OS page cache on a background thread now, riding this blessed
+    // first call, so the session's first find_sources reads warm. Page
+    // cache only (one reused buffer, no in-process cache) → OS-managed +
+    // self-evicting, zero process-heap budget. The worker captures only a
+    // QString by value and touches no `this` state, so its lifetime is
+    // independent of the server. Fires once per project root per session;
+    // a project without src/+tests/ warms 0 files and costs nothing.
+    if (!m_prewarmedRoots.contains(rootCanonical)) {
+        m_prewarmedRoots.insert(rootCanonical);
+        const QString warmRoot = rootCanonical;
+        QThread *warm = QThread::create([warmRoot]() {
+            FindSources::prewarm(warmRoot);
+        });
+        connect(warm, &QThread::finished, warm, &QObject::deleteLater);
+        warm->start();
     }
 
     // --- feedback_pending (ANTS-1964, ANTS-1961 follow-on "b") ---
