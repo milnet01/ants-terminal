@@ -56,6 +56,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **focused_test returns an MCP -32000 transport timeout when a broad changed-file (e.g. remotecontrol.cpp) maps to a large ctest set that outruns the transport deadline.** (ANTS-3449)
+  focused_test now runs ctest in parallel (-j, capped at 4 / host cores), so a broad change that falls back to the full suite finishes in ~26s instead of ~78s and no longer trips the MCP transport timeout (spurious -32000) while the tests were still running fine underneath.
+
 - **feedback_query/feedback_log path auto-derivation doubles a trailing '_Ants' in the project leaf.** (ANTS-3426)
   feedback_query/feedback_log no longer double a trailing "_Ants" in the auto-derived filename (fork checkouts like DOOM_Ants now resolve DOOM_Ants_MCP_Feedback.md instead of the never-existing DOOM_Ants_Ants_MCP_Feedback.md), so a path-omitted call reads the real file and cannot fork history into a wrong-named duplicate.
 

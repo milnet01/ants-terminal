@@ -15472,6 +15472,17 @@ QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
         QStringList argv;
         argv << QStringLiteral("--test-dir") << buildRel
              << QStringLiteral("--output-on-failure");
+        // ANTS-3449 — run ctest in parallel. A broad change (e.g.
+        // remotecontrol.cpp) resolves to a heuristic that matches 0 tests, so
+        // the 0-match safety net re-runs the FULL suite; serially that is ~78 s
+        // and outran the MCP transport read-timeout, surfacing as a spurious
+        // -32000 even while ctest kept running. -j (capped at 4 — the CLAUDE.md
+        // cap tuned for this 32 GiB / earlyoom host, and at the host core count
+        // so a smaller machine isn't oversubscribed) brings the full suite to
+        // ~19 s, comfortably inside the (ANTS-3444) 60 s bridge budget. Output
+        // parsing is line-based, so interleaved parallel output is unaffected.
+        const int jobs = qBound(1, QThread::idealThreadCount(), 4);
+        argv << QStringLiteral("-j") << QString::number(jobs);
         if (!regex.isEmpty()) argv << QStringLiteral("-R") << regex;
         QProcess p;
         p.setWorkingDirectory(root);

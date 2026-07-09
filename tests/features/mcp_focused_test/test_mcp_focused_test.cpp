@@ -199,6 +199,11 @@ TEST(McpFocusedTest, WiringContract) {
     EXPECT_TRUE(has(rcCpp, "no_build_dir"));
     EXPECT_TRUE(has(rcCpp, "downgraded_to_full"));
     EXPECT_TRUE(has(rcCpp, "TestResCache::parseCtestOutput"));
+    // ANTS-3449 — ctest runs in parallel (-j, capped) so a broad-change
+    // full-suite downgrade finishes inside the MCP transport budget instead
+    // of surfacing as a spurious -32000 timeout.
+    EXPECT_TRUE(has(rcCpp, "ANTS-3449"));
+    EXPECT_TRUE(has(rcCpp, "idealThreadCount"));
 
     // INV-11
     EXPECT_TRUE(has(mwCpp, "registerToolProvider(\"focused_test\""));

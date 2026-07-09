@@ -45,6 +45,12 @@ constraint as `verify_changes` / the other run-a-subprocess tools).
   `selection_hint`. (INV-19/20/21.)
 - **INV-13**: the shipped `tests/coverage-map.json` is valid
   `schema_version:1` and `loadCoverageMap` accepts it. (drift guard.)
+- **INV-14** (ANTS-3449): `cmdFocusedTest`'s ctest invocation runs in
+  parallel (`-j`, capped at 4 and the host core count via
+  `QThread::idealThreadCount`) so a broad change whose selection downgrades
+  to the full suite finishes within the MCP transport read-timeout instead
+  of surfacing as a spurious `-32000`; source-scraped in `remotecontrol.cpp`
+  (`ANTS-3449` anchor + `idealThreadCount`).
 
 ## Out of scope
 
