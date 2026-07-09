@@ -1069,10 +1069,21 @@ int appendBodyNote(QStringList &lines, int headlineLine,
 int amendBodyExact(QStringList &lines, int headlineLine,
                    const QString &oldText, const QString &newText,
                    int *matchedLine) {
+    // ANTS-3467 — the body block is the headline line's full indented
+    // continuation: every following line up to (not including) the next
+    // non-indented, non-empty line (the next top-level bullet / heading /
+    // `---`, all of which start at column 0). Blank lines INSIDE the block
+    // are spanned, not treated as terminators. Previously the walk also
+    // broke on the first blank line, which truncated the block before a
+    // blank-line-separated nested sub-list (a common ROADMAP "Scope:"
+    // shape) — so old_text on a nested sub-bullet refused
+    // body_match_not_found though it was present. Blank lines hold no
+    // oldText, so spanning them is safe; the non-indented break still
+    // protects sibling bullets.
     int spanEnd = headlineLine + 1;
     while (spanEnd < lines.size()) {
         const QString &ln = lines.at(spanEnd);
-        if (ln.isEmpty() || !ln.at(0).isSpace()) break;
+        if (!ln.isEmpty() && !ln.at(0).isSpace()) break;
         ++spanEnd;
     }
     int total   = 0;
@@ -7345,9 +7356,33 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
     const int hits =
         amendBodyExact(lines, bodyAnchorLine, oldText, newText, &editedLine);
     if (hits == 0) {
-        return rlErr(QStringLiteral("body_match_not_found"),
+        // ANTS-3467 — distinguish the two common failure modes so the caller
+        // self-corrects instead of concluding the text is absent: (a) the
+        // phrase exists in ROADMAP.md but outside this bullet's block (wrong
+        // bullet targeted); (b) the phrase spans a hard-wrapped line break
+        // (bodies wrap at ~70 cols) so no single physical line contains it.
+        QJsonObject env;
+        env[QStringLiteral("ok")]    = false;
+        env[QStringLiteral("code")]  = QStringLiteral("body_match_not_found");
+        env[QStringLiteral("error")] =
             QStringLiteral("roadmap_log: `old_text` not found in the body of "
-                           "the located bullet"));
+                           "the located bullet");
+        const QString foldedOld = oldText.simplified();
+        if (markdown.contains(oldText)) {
+            env[QStringLiteral("hint")] =
+                QStringLiteral("`old_text` occurs in ROADMAP.md but outside "
+                               "the located bullet's body block (bullet at "
+                               "line %1) — verify you targeted the right "
+                               "bullet").arg(reportLine);
+        } else if (!foldedOld.isEmpty() &&
+                   markdown.simplified().contains(foldedOld)) {
+            env[QStringLiteral("hint")] =
+                QStringLiteral("`old_text` appears to span a hard-wrapped "
+                               "line break (bodies wrap at ~70 cols); "
+                               "amend_body matches within one physical line — "
+                               "pass a substring that fits on a single line");
+        }
+        return QJsonDocument(env);
     }
     if (hits > 1) {
         return rlErr(QStringLiteral("body_match_ambiguous"),
@@ -9175,6 +9210,23 @@ static QStringList rcShortBareAltTerms(const QString &pattern) {
     return terms;
 }
 
+// ANTS-3466 — high-precision "you probably meant regex:true" detector for a
+// regex:false pattern that returned zero matches. Deliberately narrow: only
+// the metacharacters that signal a deliberately-constructed regex and are
+// rare/meaningless as a literal search — alternation `|`, wildcard `.*`/`.+`,
+// a `[...]` character class, and `\d \w \s \b` escape-classes. A lone `.`,
+// `(`, `+` or `?` is EXCLUDED (ubiquitous in literal code searches like
+// `cfg.get(` — flagging them would cry wolf and dilute the hint).
+static bool rcLooksLikeRegexButLiteral(const QString &pattern) {
+    if (pattern.contains(QChar('|'))) return true;              // alternation
+    if (pattern.contains(QStringLiteral(".*")) ||
+        pattern.contains(QStringLiteral(".+"))) return true;    // wildcard
+    if (pattern.contains(QChar('[')) && pattern.contains(QChar(']')))
+        return true;                                            // char class
+    static const QRegularExpression escClass(QStringLiteral("\\\\[dwsbDWSB]"));
+    return escClass.match(pattern).hasMatch();                  // \d \w \s \b …
+}
+
 QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     QElapsedTimer wall;
     wall.start();
@@ -9688,6 +9740,18 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             : QStringLiteral("query matched as one literal phrase, not as "
                 "separate words; pass a single token, or set regex:true and "
                 "join terms with .* to AND them");
+    }
+    // ANTS-3466 — companion to ANTS-2045 for the no-whitespace case: a
+    // metacharacter-bearing single token (e.g. `A|B|C`) with regex:false is
+    // matched literally, finds nothing, and previously returned no hint — an
+    // LLM caller misreads that as "symbol absent". Only fires when the phrase
+    // hint above did not (no whitespace), so `hint` is never double-set.
+    else if (matches.isEmpty() && !isRegex
+             && rcLooksLikeRegexButLiteral(pattern)) {
+        out["hint"] = QStringLiteral(
+            "pattern contains regex metacharacters (e.g. |, .*, [ ]) but "
+            "regex:false, so it was matched literally and found nothing — "
+            "did you mean regex:true?");
     }
     // ANTS-2181 — complementary advisory: a regex alternation carrying very
     // short bare terms substring-matches inside longer words (the "tan in

@@ -47,3 +47,28 @@ TEST(WorkspaceSearchPhraseHint, Ants2181RegexShortBareTermAdvisory) {
     EXPECT_TRUE(has(src, "anchor "))   // the \\b suggestion text
         << "the advisory must suggest anchoring with \\b";
 }
+
+// ANTS-3466 — companion to ANTS-2045 for the no-whitespace case: a
+// regex:false pattern bearing regex metacharacters (e.g. `A|B|C`) that
+// returns zero matches gets a "did you mean regex:true?" hint. Source-scrape
+// (envelope builder is GUI-bound), mirroring the ANTS-2045 scrape above.
+TEST(WorkspaceSearchPhraseHint, Ants3466MetacharRegexFalseHint) {
+    const std::string src = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    ASSERT_FALSE(src.empty());
+    // The high-precision metachar detector helper exists.
+    EXPECT_TRUE(has(src, "rcLooksLikeRegexButLiteral"))
+        << "the metacharacter-intent detector must exist";
+    // It fires only on the no-whitespace, regex:false, zero-match path (an
+    // else-if off the ANTS-2045 whitespace branch so `hint` is never
+    // double-set).
+    EXPECT_TRUE(has(src, "rcLooksLikeRegexButLiteral(pattern))"))
+        << "hint must gate on the metachar detector";
+    EXPECT_TRUE(has(src, "matches.isEmpty() && !isRegex"))
+        << "hint must gate on zero matches + regex:false";
+    // The hint steers the caller to regex:true.
+    EXPECT_TRUE(has(src, "did you mean regex:true?"))
+        << "the advisory must suggest regex:true";
+    // Detector is deliberately narrow — alternation is the canonical signal.
+    EXPECT_TRUE(has(src, "pattern.contains(QChar('|'))"))
+        << "alternation must be a detected metacharacter";
+}

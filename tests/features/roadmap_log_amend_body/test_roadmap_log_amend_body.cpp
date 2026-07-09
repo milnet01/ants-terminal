@@ -69,6 +69,25 @@ QByteArray seedGfm() {
         "\n");
 }
 
+// ANTS-3467 seed — reuses seedV1's padding, then adds a bullet whose body
+// carries a blank-line-separated nested "Scope:" sub-list (a common ROADMAP
+// shape). "1/5/10/30 min" sits on a 4-space nested sub-bullet line AFTER a
+// blank line; "make it user-configurable" straddles a hard-wrapped line
+// break. Both cases the old blank-line-truncated span could not reach.
+QByteArray seedV1Nested() {
+    QByteArray b = seedV1();
+    b.append(
+        "- \xF0\x9F\x93\x8B [ANTS-0043] **Settings screen with scope list.**\n"
+        "  Layman: direct body line here.\n"
+        "\n"
+        "  Scope:\n"
+        "  - **Auto-lock timeout (the priority):** make it\n"
+        "    user-configurable (e.g. 1/5/10/30 min) so users tune it.\n"
+        "    - Theme: the toggle can live in this settings pane.\n"
+        "\n");
+    return b;
+}
+
 bool writeFile(const QString &path, const QByteArray &body) {
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
@@ -335,6 +354,78 @@ TEST(roadmap_log_amend_body, MissingIdBulletNotFound) {
     EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
     EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
               QStringLiteral("bullet_not_found"));
+}
+
+// ANTS-3467 — old_text on a blank-line-separated NESTED sub-bullet line is
+// reached and patched (the body span spans internal blank lines up to the
+// next top-level bullet). Reproduced the finbreak FIBR-0055 failure before
+// the span-widen fix: previously body_match_not_found.
+TEST(roadmap_log_amend_body, Ants3467NestedSubBulletAcrossBlankLine) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedV1Nested()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = req(tmp.path());
+    r[QStringLiteral("id")]       = QStringLiteral("ANTS-0043");
+    r[QStringLiteral("old_text")] = QStringLiteral("1/5/10/30 min");
+    r[QStringLiteral("new_text")] = QStringLiteral("1/5/10/15/30 min");
+    const QJsonObject resp = rc.cmdRoadmapLogAmendBodyForTest(r).object();
+
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << "amend on a blank-line-separated nested sub-bullet must succeed";
+    const std::string md = readFile(roadmapPath(tmp.path())).toStdString();
+    EXPECT_TRUE(contains(md, "(e.g. 1/5/10/15/30 min)"));
+    EXPECT_FALSE(contains(md, "1/5/10/30 min"));
+}
+
+// ANTS-3467 — a phrase that spans a hard-wrapped line break can't match a
+// single physical line, but body_match_not_found now carries a hint naming
+// the wrap so the caller self-corrects rather than reading "text absent".
+TEST(roadmap_log_amend_body, Ants3467WrapSpanHint) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedV1Nested()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = req(tmp.path());
+    r[QStringLiteral("id")]       = QStringLiteral("ANTS-0043");
+    // "make it user-configurable" straddles the wrap (…make it\n…user-config…).
+    r[QStringLiteral("old_text")] = QStringLiteral("make it user-configurable");
+    r[QStringLiteral("new_text")] = QStringLiteral("x");
+    const QJsonObject resp = rc.cmdRoadmapLogAmendBodyForTest(r).object();
+
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("body_match_not_found"));
+    EXPECT_TRUE(contains(resp.value(QStringLiteral("hint"))
+                             .toString().toStdString(),
+                         "hard-wrapped"))
+        << "wrap-spanning failure must hint at the line break";
+}
+
+// ANTS-3467 — old_text present in the file but outside the located bullet's
+// block returns a distinct found-outside-body hint (wrong bullet targeted).
+TEST(roadmap_log_amend_body, Ants3467FoundOutsideBodyHint) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedV1Nested()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = req(tmp.path());
+    // Target ANTS-0042, but the phrase lives in ANTS-0043's body.
+    r[QStringLiteral("id")]       = QStringLiteral("ANTS-0042");
+    r[QStringLiteral("old_text")] = QStringLiteral("direct body line here");
+    r[QStringLiteral("new_text")] = QStringLiteral("x");
+    const QJsonObject resp = rc.cmdRoadmapLogAmendBodyForTest(r).object();
+
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("body_match_not_found"));
+    EXPECT_TRUE(contains(resp.value(QStringLiteral("hint"))
+                             .toString().toStdString(),
+                         "outside"))
+        << "a phrase in another bullet must hint found-outside-body";
 }
 
 // INV-8 arms + INV-9 — source surface: schema enum/props/descriptor +

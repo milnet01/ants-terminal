@@ -114,6 +114,15 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             // (In-class ctor *declarations* — `Foo(` with no qualifier —
             // are indistinguishable from a call and intentionally left out.)
             add(QStringLiteral("^[ \\t]*") + s + QStringLiteral("::~?") + s + QStringLiteral("\\s*\\("));
+            // ANTS-3465 — a type definition (`struct|class|union|enum[ class]
+            // Foo`) carries no return type and no `(`, so neither pattern
+            // above matched it: a pure type (no same-named ctor) returned
+            // definitions_count:0. Match the keyword-led form, allowing an
+            // optional `template<…>` / `typedef` prefix and one optional
+            // ALL-CAPS export-macro token (`class QT_EXPORT Foo`). scanFile's
+            // existing kind logic tags `Foo {` → definition, `Foo;` (forward
+            // decl) → declaration, with no schema change.
+            add(QStringLiteral("^[ \\t]*(?:template\\s*<[^>]*>\\s*)?(?:typedef\\s+)?(?:struct|class|union|enum(?:\\s+class|\\s+struct)?)\\s+(?:[A-Z_][A-Z0-9_]*\\s+)?") + s + QStringLiteral("\\b"));
             a.call = QRegularExpression(QStringLiteral("\\b") + s + QStringLiteral("\\s*\\("));
             a.cppKind = true;
             break;

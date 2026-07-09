@@ -107,6 +107,28 @@ TEST(McpSymbolQuery, LiveBehaviour) {
                              "    return slurpBody(p);\n"         // ANTS-2146: return-position call — NOT a def
                              "}\n"));
 
+    // --- ANTS-3465: C++ type definitions (struct/class/union/enum) -----
+    // Opening brace on the keyword line → kind "definition"; a trailing `;`
+    // forward declaration → kind "declaration". None have a same-named
+    // constructor, so pre-fix these returned definitions_count:0.
+    writeFile(root, QStringLiteral("src/types.h"),
+              QStringLiteral("struct PlainStruct {\n"
+                             "    int x;\n"
+                             "};\n"
+                             "class PlainClass {\n"
+                             "public:\n"
+                             "    int y;\n"
+                             "};\n"
+                             "enum class Color {\n"
+                             "    Red,\n"
+                             "    Green\n"
+                             "};\n"
+                             "union Wrap {\n"
+                             "    int i;\n"
+                             "    float f;\n"
+                             "};\n"
+                             "struct FwdOnly;\n"));
+
     // --- Python ------------------------------------------------------
     writeFile(root, QStringLiteral("app.py"),
               QStringLiteral("def compute(x):\n"
@@ -186,6 +208,25 @@ TEST(McpSymbolQuery, LiveBehaviour) {
                .callers.size() >= 1, "INV-3: python caller found");
     expect(SymbolQuery::findCaller(root, QStringLiteral("deploy"), def)
                .callers.size() >= 1, "INV-3: shell caller found");
+
+    // ANTS-3465 — C++ type definitions resolve (struct/class/union/enum),
+    // not just functions. A brace-on-keyword-line is a definition; a
+    // trailing-`;` forward decl is a declaration.
+    expect(hasDef(SymbolQuery::findDefinition(root, QStringLiteral("PlainStruct"), def),
+                  QStringLiteral("src/types.h"), QStringLiteral("definition")),
+           "ANTS-3465: struct definition found");
+    expect(hasDef(SymbolQuery::findDefinition(root, QStringLiteral("PlainClass"), def),
+                  QStringLiteral("src/types.h"), QStringLiteral("definition")),
+           "ANTS-3465: class definition found");
+    expect(hasDef(SymbolQuery::findDefinition(root, QStringLiteral("Color"), def),
+                  QStringLiteral("src/types.h"), QStringLiteral("definition")),
+           "ANTS-3465: enum class definition found");
+    expect(hasDef(SymbolQuery::findDefinition(root, QStringLiteral("Wrap"), def),
+                  QStringLiteral("src/types.h"), QStringLiteral("definition")),
+           "ANTS-3465: union definition found");
+    expect(hasDef(SymbolQuery::findDefinition(root, QStringLiteral("FwdOnly"), def),
+                  QStringLiteral("src/types.h"), QStringLiteral("declaration")),
+           "ANTS-3465: forward declaration tagged as declaration");
 
     // INV-4 — build* / node_modules / dot-dirs skipped.
     const auto skip = SymbolQuery::findDefinition(root, QStringLiteral("skipMe"), def);
