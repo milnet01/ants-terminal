@@ -18260,6 +18260,13 @@ their feedback-file tracking tables needed stamping.
   Kind: fix.
   Source: in-session-2026-07-09 (ANTS-3444 perf work).
 
+- 📋 [ANTS-3450] **.roadmap-counter bump is written by roadmap_log but silently left out of the ROADMAP commit, causing recurring drift + ID-reissue risk.**
+  roadmap_log op:append writes .roadmap-counter to disk as a side-effect of allocating the next [ANTS-NNNN] id, but the git commit of ROADMAP.md is a separate manual step. Result: the counter bump is repeatedly left uncommitted (observed 2026-07-09: HEAD .roadmap-counter=3448 while ROADMAP.md already contained the committed ANTS-3449; commit 30f0b092 that filed ANTS-3449 didn't stage the counter). The next append then reads the stale 3448 and would re-issue 3449 — an ID collision. This has recurred; it is a workflow-hygiene gap, not a one-off. Options: (a) a pre-commit hook that auto-stages .roadmap-counter whenever ROADMAP.md is staged (cheapest, deterministic); (b) roadmap_log's append envelope surfaces a "counter bumped to N — stage .roadmap-counter with your ROADMAP commit" reminder; (c) fold the counter into ROADMAP.md front-matter so it can never drift from the bullets it numbers (larger). Prefer (a). LOW/MEDIUM.
+  Related: fixed-in-passing in commit 61bc5776 (ANTS-3440) by staging the 3448->3449 bump, but the recurrence mechanism remains.
+  **Layman:** When Claude files a roadmap item, a little counter file ticks up — but it's easy to forget to save that counter alongside the roadmap, so the next item can grab a number that's already taken.
+  Kind: fix.
+  Source: in-session-2026-07-09.
+
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
 Triage of the 2026-06-30 → 2026-07-01 un-triaged feedback tails from Vestige,
