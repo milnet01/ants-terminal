@@ -18241,6 +18241,24 @@ their feedback-file tracking tables needed stamping.
   Source: in-session-2026-07-05 (v2 feedback-file redesign; the read-side change that completes the v2 chain — the shipped readers are marker-blind today).
   Resolved (2026-07-05): marker-aware FeedbackFile::parse() (shared markerVersion + hoisted closureRe/bulletArmRe) + feedback_query format_version/suspected_untagged + 3 standard amendments + feature tests. feedback_pending needed no code change. Goes live on next Ants relaunch.
 
+- 📋 [ANTS-3449] **focused_test returns an MCP -32000 transport timeout when a broad changed-file (e.g. remotecontrol.cpp) maps to a large ctest set that outruns the transport deadline.**
+  Hit 2026-07-09: focused_test({changed_files:["src/findsources.cpp",
+  "src/remotecontrol.cpp"], timeout_sec:600}) returned -32000 "Ants MCP
+  transport: timed out". remotecontrol.cpp maps to a very large ctest
+  selection; the run outran the client transport deadline even with the
+  generous timeout_sec (that arg bounds the server-side ctest wall clock,
+  not the MCP transport). Same false-timeout class as ANTS-2183 (audit_run
+  full-tree) / ANTS-3440 (flip) — a long-running verb should not surface as
+  a transport failure. Options: (a) result-offload a job-handle + poll verb
+  for long focused_test runs; (b) when the mapped selection exceeds a size
+  threshold, return early with the ctest filter + a "run this yourself"
+  hint rather than blocking; (c) cap/segment the selection. Workaround used:
+  ran `ctest -R <pattern> -j4` directly in Bash. Related: ANTS-3444 (b) bumped
+  the bridge read-timeout to 60s, but a full ctest set can still exceed that.
+  **Layman:** The "run just the affected tests" helper times out when a change touches a widely-used file, because that maps to hundreds of tests and the run takes longer than the link between Claude and Ants waits — even though the tests are still running fine underneath.
+  Kind: fix.
+  Source: in-session-2026-07-09 (ANTS-3444 perf work).
+
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
 Triage of the 2026-06-30 → 2026-07-01 un-triaged feedback tails from Vestige,
