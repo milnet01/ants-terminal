@@ -18527,6 +18527,127 @@ build).
   Lanes: docs.
   Source: in-session-2026-07-10 (cold-eyes L2 — flagged for a later trim, not a defect).
 
+- 📋 [ANTS-3480] **Fold-in verbs emit un-zero-padded IDs (FIBR-82 not FIBR-0082) + inconsistent allocated_ids type — ANTS-3473 residual.**
+  ANTS-3473 fixed the prefix (fold-in verbs now sniff FIBR- not the ANTS default; cold_eyes_fold_in + indie_review_fold_in cross-checked clean), but the finbreak tester found a residual on build c57e16b6: RoadmapFoldIn::allocateIds emits the NUMBER without the roadmap's zero-padding — test_audit_fold_in/cold_eyes_fold_in/indie_review_fold_in all produce `[FIBR-82]` while roadmap_log op:append (same .roadmap-counter=81) renders `[FIBR-0082]`, matching every existing bullet. Any tooling matching /FIBR-\\d{4}/ or lexicographic sort misses/misorders the un-padded ids. Two more inconsistencies: (a) allocated_ids TYPE differs across verbs — test_audit_fold_in returned [\"FIBR-82\"] (string) while cold_eyes/indie_review returned [82] (bare int); (b) the requested id_prefix steering param (parity with roadmap_log op:append id_prefix) was NOT added to any of the three fold-in verbs. Fix: in RoadmapFoldIn::allocateIds detect the digit-width of the sniffed prefix's existing ids (reuse roadmap_log's append-path renderer, which gets it right) and zero-pad to match; return allocated_ids as the rendered string form ('FIBR-0082') uniformly across all three verbs; add the id_prefix param. Source-scrape window watch (the fold-in render tests). Evidence: finbreak_Ants_MCP_Feedback.md finding 'ANTS-3473 PARTIALLY FIXED on c57e16b6'.
+  **Layman:** The auto-ID feature I added today gets the project's ID prefix right but drops the leading zeros (writes FIBR-82 where every other ID reads FIBR-0082), so the IDs sort and match wrong.
+  Kind: fix.
+  Lanes: roadmapfoldin.
+  Source: finbreak-feedback-2026-07-10 (tester verified ANTS-3473 on build c57e16b6).
+
+- 📋 [ANTS-3481] **indie_review_orchestrate returns no_lanes when a ## Module map is present-but-unparseable (misleading "heading absent" error).**
+  indie_review_orchestrate refuses {ok:false, code:no_lanes, error:'partition resolved empty (no ## Module map in docs/subsystems.md or CLAUDE.md, no override)'} even though the project CLAUDE.md HAS a `## Module map` heading (finbreak: line 155) — the map is a plain `- path — description` bullet list, not the subsystem-partition shape the verb parses. The error reads as 'heading absent' when it is present-but-unparseable, so a session concludes it has no map and either gives up or hand-builds the partition (the work the verb was meant to save). Fix: distinguish 'heading absent' from 'heading present but no extractable lanes' (e.g. code `module_map_unparseable` + a one-line note on the expected shape); document the exact `## Module map` format indie_review_orchestrate parses in tool_info; verify it reads the project-root CLAUDE.md (not only a global/other one). Evidence: finbreak_Ants_MCP_Feedback.md 'indie_review_orchestrate returns no_lanes' + its c57e16b6 re-verification.
+  **Layman:** The auto-reviewer says "you have no module map" even when the project DOES have one — it just can't read that particular list format. The error should say so instead of claiming it's missing.
+  Kind: fix.
+  Lanes: indiereview.
+  Source: finbreak-feedback-2026-07-10 (reproduced on builds edbc3163 + c57e16b6).
+
+- 📋 [ANTS-3482] **roadmap_query status filter (planned/in-progress/considered) returns 0 on an ants-v1 emoji roadmap — ANTS-3400 fix format-incomplete.**
+  ANTS-3400 made roadmap_query accept the granular status values (planned/in-progress/considered → 📋/🚧/💭), but the mapping is applied only on the GFM task-list code path, NOT the ants-v1 emoji format. On Contact_List's ROADMAP.md (project_layout: format ants-v1, ants_v1_emoji_hit:true), the unfiltered query returns 📋 bullets (CL-0022..CL-0026, CL-0033) but status=\"planned\" (also in-progress/considered) returns count:0 — a SILENT wrong answer (no bad_status), reading as 'no planned work'. So an ants-v1 roadmap can't be filtered by lifecycle at all. Fix: apply the planned/in-progress/shipped/considered → 📋/🚧/✅/💭 filter mapping on the ants-v1 emoji code path too; regression: an ants-v1 emoji roadmap with a 📋 bullet must return it for status=\"planned\". Recurs across other emoji-format projects (Music_Production/RetroArch also report status-filter gaps). Evidence: Contact_List_Ants_MCP_Feedback.md.
+  **Layman:** The roadmap status filter I fixed earlier still returns nothing on the older emoji-style roadmaps that several other projects use — the fix only landed for the newer checkbox style.
+  Kind: fix.
+  Lanes: remotecontrol.
+  Source: Contact_List-feedback-2026-07-10 (ants-v1 emoji roadmap).
+
+- ✅ [ANTS-3483] **project_settings op:detect + codebase_index index vendored dirs (venv/node_modules) — honor .gitignore / skip vendor dirs.**
+  Recurring across projects: project_settings op:detect suggests a vendored dir as source_roots purely because it holds the most files (Contact_List: source_roots=[\"venv\"] with 2340 venv files vs ~10 real; MAME: a node_modules-inflated root that also drops the backend), and codebase_index with source_roots=[\".\"] then indexes the vendored tree (Contact_List: file_count 2358, py 2350 — essentially all of venv/). The index becomes unusable; find_sources/codebase_index drown in library files. Root cause: neither honors .gitignore nor skips well-known vendor dirs. Fix: during detect's file-count + during codebase_index's walk, honor .gitignore and/or skip venv/.venv/env/node_modules/.git/__pycache__/dist/build; optionally add an excludes/ignore_globs key to .ants/project.json so a flat-root project can declare source_roots=[\".\"] minus venv/. Evidence: Contact_List_/MAME_Curator_/RetroArch_Ants_MCP_Feedback.md.
+  **Layman:** The auto-indexer gets fooled by a project's downloaded-libraries folder (venv, node_modules) and indexes thousands of third-party files instead of the ~10 real ones — it should skip those.
+  Kind: fix.
+  Lanes: projectsettings, codebaseindex.
+  Source: Contact_List/MAME_Curator/RetroArch-feedback-2026-07-10 (recurring).
+  Duplicate of ANTS-3393 (vendor-dir / .gitignore-aware file-walk for project_settings detect + codebase_index), which shipped and is confirmed working on Contact_List (2026-07-01: codebase_index returned 25 files not 2350). Filed in error 2026-07-10 during the feedback condense; closing as already-done. If MAME node_modules still repros, re-verify against ANTS-3393.
+
+- 📋 [ANTS-3484] **roadmap_log op:append/append_batch writes a literal backslash before every double-quote in body prose.**
+  A body containing a double-quote is written to ROADMAP.md with a literal backslash before each quote. Verified via python repr on the raw file: ANTS-3482 (line 18545) and ANTS-3483 (line 18552) both show a DOUBLED backslash before each quote in repr — a real backslash byte. A pre-existing bullet (line 14705, a roadmap_query call with a quoted arg) is clean, so this is NEW this session — likely a double-escape in the current build write path (possibly related to the known large-append serialization issues). Affects every body append this session that contained a double-quote (ANTS-3475 through 3483). Impact: cosmetic corruption of body prose only — headline / id / status / list parsing are all unaffected — but it accumulates and reads badly. Fix: drop the extra escaping in the op:append body writer; add a regression asserting a body containing a double-quote round-trips with no backslash. Optionally a one-off sweep to strip existing backslash-before-quote occurrences from ROADMAP.md.
+  **Layman:** When a roadmap item's description contains quote marks, they come out with a stray backslash in front, making the text look messy.
+  Kind: fix.
+  Lanes: roadmaplog.
+  Source: in-session-2026-07-10 (self-observed on my own appends).
+
+- 💭 [ANTS-3485] **workspace_search returns a raw -32000 transport timeout on a whole-repo regex over large data blobs — return a soft rg_failed envelope instead.**
+  A single workspace_search (regex, whole-repo, a 4-alternation pattern, headline_only) returned MCP error -32000 (Ants MCP transport timed out) with no partial envelope, on RetroDB — a repo carrying a large data/changelog.yaml (~1.2 MB) + per-locale changelog YAMLs + translations/*.mo binaries. A plain rg of the same pattern finished in under 1s and found 3 files, so the rg scan of the big blobs blows the default timeout. Impact LOW (rg fallback is immediate) but it is the second workspace_search reliability item (ANTS-2045 covers empty-on-multiword) and gives the caller no partial result and no in-tool retry hint. Fix: when the underlying rg exceeds timeout_sec, return the documented soft rg_failed-shaped envelope with a hint (retry with a narrower scope / raise timeout_sec) instead of a raw -32000; optionally exclude large non-code blobs (.mo, and .yaml/.json over ~512 KB) from the default scan unless respect_gitignore is false, or auto-narrow scope when big data files dominate the set. Distinct from ANTS-2045 and from ANTS-3396 (audit_run timeout). Evidence: RetroDB_Ants_MCP_Feedback.md.
+  **Layman:** The code-search tool sometimes hard-errors (no result at all) when a project has big data files, instead of gracefully saying it timed out so the caller can narrow the search.
+  Kind: fix.
+  Lanes: remotecontrol.
+  Source: RetroDB-feedback-2026-07-10.
+  Duplicate of ANTS-3405 (same workspace_search -32000 transport-timeout-on-large-blobs issue, RetroDB). Filed in error 2026-07-10 during the feedback condense; roadmap_log possible_duplicates flagged it. Track under ANTS-3405.
+
+- 📋 [ANTS-3486] **file_outline / read_region symbol-mode do not register C typedef-struct aggregates (typedef struct NAME_s {} NAME_t) — only forward decls survive.**
+  On DOOM linuxdoom-1.10/r_defs.h (detected cpp), file_outline returns exactly ONE symbol: a forward declaration line_s (struct line_s;). The header actually defines ~12 core engine aggregates in the dominant C idiom typedef struct NAME_s { body } NAME_t; (vertex_t, degenmobj_t, sector_t, line_t, subsector_t, seg_t, node_t, ...). None are registered, neither by tag (subsector_s) nor by typedef alias (subsector_t); read_region symbol:subsector_t returns symbol_not_found, and find_definition resolves none (they are not functions). So the extractor catches struct X; forward decls but skips typedef struct X_s { body } X_t; definitions, and ANTS-2222 aggregate-body read is unreachable for C structs — the only fallback is a whole-header Read, exactly the cost the outline layer exists to remove. Distinct from ANTS-2159 (cpp FUNCTION extraction) — this is the STRUCT/typedef path on a C header. Fix: register typedef struct TAG_s { } ALIAS_t and anonymous typedef struct { } ALIAS_t as aggregate symbols keyed by BOTH tag and alias so read_region symbol-mode resolves either; ANTS-2222 brace-matched slice does the rest. Evidence: DOOM_Ants_MCP_Feedback.md.
+  **Layman:** The code-outline tool can't see C structs written in the standard typedef form, so you can't pull one up by name — you have to read the whole header file instead.
+  Kind: fix.
+  Lanes: codebaseindex.
+  Source: DOOM-feedback-2026-07-10.
+
+- 📋 [ANTS-3487] **roadmap_log op:append/op:flip leave trailing whitespace, tripping the pre-commit trailing-whitespace hook (forces a re-stage + re-commit).**
+  After roadmap_log op:append (fold-in bullets) and op:flip (status flips with a note), the written ROADMAP.md line(s) carry trailing whitespace. The next git commit fails at the ubiquitous trim-trailing-whitespace pre-commit hook, which auto-fixes ROADMAP.md but aborts the commit, so every roadmap_log write immediately followed by a commit needs a second git add + git commit cycle. Hit twice in one MAME session, same pattern. changelog_log may share it (not isolated). Fix: right-strip each emitted line (at least the appended bullet/note lines) before writing so roadmap_log output is pre-commit-clean by construction. Evidence: MAME_Curator_Ants_MCP_Feedback.md.
+  **Layman:** When I add or update a roadmap item, the line comes out with invisible trailing spaces, which makes the commit fail on the standard whitespace check — so it needs redoing.
+  Kind: fix.
+  Lanes: roadmaplog.
+  Source: MAME_Curator-feedback-2026-07-10.
+
+- 📋 [ANTS-3488] **audit_run runs mypy in a scrubbed env without project deps, manufacturing 28-31 import-not-found false positives on every full sweep.**
+  Every audit_run scope:full emits 0 errors but 28-31 mypy warnings, ALL Cannot find implementation or library stub for module named fastapi/... [import-not-found] + Library stubs not installed for yaml [import-untyped], across api/filter/cli. Root cause: the audit runner invokes mypy without uv-syncing (or pip-installing) the project's declared deps + type stubs, so mypy cannot resolve them; the project's real uv run mypy (deps installed) is clean (0 errors, 203 files) in pre-commit + CI. Pure tool-env artifacts that dominate every sweep raw count and force a re-triage each close, and could hide a real finding in the count. Fix: either uv-sync / pip-install the project deps + stubs into the audit runner before invoking mypy, OR drop mypy from the default auto-detected tool set (CI + pre-commit already run the real deps-installed mypy); if kept, tag import-not-found/import-untyped as low-confidence so they sort below real findings. Distinct from ANTS-3472 (mypy NOTE-severity). Evidence: MAME_Curator_Ants_MCP_Feedback.md.
+  **Layman:** The bug-checker runs the Python type checker without installing the project's libraries, so it wrongly reports dozens of missing-import errors that do not exist when run properly.
+  Kind: fix.
+  Lanes: auditrunner.
+  Source: MAME_Curator-feedback-2026-07-10 (recurring).
+
+- 📋 [ANTS-3489] **find_sources returns files_scanned:0 (early-bail) for a valid multi-word topic that leads with a symbol name.**
+  find_sources(topic with ~10 words leading with a symbol like build_registry caller composition root app state ...) returned files:[], files_count:0, files_scanned:0, unmatched_terms=[all tokens] on a non-empty project. files_scanned:0 is the tell — it scanned nothing rather than scanning and scoring zero. A workspace_search regex over the same intent immediately surfaced the two call-sites. Impact LOW (workspace_search is the fallback) but files_scanned:0 on a non-empty project reads like an early-bail, and the caller cannot tell an empty index from all-tokens-filtered. Fix: when the effective token set is non-empty but files_scanned:0, surface a hint (topic led with a symbol name — try find_caller/find_definition, or workspace_search for an exact symbol); or scan+score even when a leading token is a known symbol. Evidence: MAME_Curator_Ants_MCP_Feedback.md.
+  **Layman:** The who-uses-this search sometimes scans nothing and returns no results for a reasonable query, when a plain search finds the answer instantly.
+  Kind: fix.
+  Lanes: codebaseindex.
+  Source: MAME_Curator-feedback-2026-07-10.
+
+- 📋 [ANTS-3490] **roadmap_query/session_orient mis-parse no-ID GFM task bullets with a TRAILING bold span: fabricated+colliding id + headline taken from the trailing bold.**
+  Distinct from ANTS-1987 (which was LEADING bracket-IDs, now shipped). Here 7 plain GFM task bullets carry NO authored id and each ends with a trailing bold deferral span (Vestige ROADMAP.md 186-192, Phase 9C audio: - [ ] Ambient soundscapes ... deferred to Phase 10.). roadmap_query section=... status:active and session_orient active_bullets return all 7 as byte-identical {id:35ra39wbn1, headline_oneline:deferred to Phase 10.}. Defect A: 35ra39wbn1 is SYNTHESIZED (appears 0x in the file) and the SAME synthesized id is given to all 7 siblings, so they are non-addressable and roadmap_log op:flip mis-routes. Defect B: the headline is taken from the TRAILING bold span, dropping the real leading item text (Ambient soundscapes / Music system / ...), so every row collapses to the same useless string. Fix: (1) extract a GFM task bullet headline from its LEADING item text, treating a bold span as id/headline source only when head-anchored (consistent with the ANTS-1987 leading-bracket rule; check that fix did not extend bold-grabbing to trailing spans); (2) synthesize an id UNIQUE per bullet (hash of section-slug+line+leading text), never a constant shared across siblings. Evidence: 3D_Engine_Ants_MCP_Feedback.md.
+  **Layman:** A group of to-do lines that each end with a bold note all come back looking identical and unaddressable, because the parser grabs the bold note as the title and gives them all the same made-up ID.
+  Kind: fix.
+  Lanes: roadmapindex.
+  Source: 3D_Engine/Vestige-feedback-2026-07-10.
+
+- 📋 [ANTS-3491] **file_outline C++ outliner drops methods in several declarator cases (empty-parens template param, inline-bodied accessors, multi-token builtin return type).**
+  Three distinct whole-symbol DROPS in the C++ outliner (each makes read_region symbol-mode unusable for the method + hides API surface), distinct from ANTS-3399 (which glued a ::-qualified return type INTO a name): (1) methods whose PARAMETER type contains empty inner parens std::function<void()> are dropped (job_system.h submit, runOnMainThread) while std::function<void(uint32_t,uint32_t)> parallelFor survives -- the inner () inside the template arg likely confuses the paren-matcher; (2) inline-DEFINED accessors T foo() const { ... } on one line are dropped (workerCount, isSynchronous, JobHandle isValid/isComplete); (3) methods whose return type is a multi-token builtin unsigned int are dropped (audio_engine.cpp loadBuffer, acquireSource, the whole playSound* family, loadReverbIr) while single-token returns (void/bool/std::string) survive -- the space between unsigned and int makes the declarator matcher bail. Fix: in the return-type/declarator stripper, (a) ignore parens inside <...> template args when locating the declarator arg list, (b) include inline-bodied member functions, (c) treat multi-token builtins (unsigned int, long long, unsigned char, const T&) like single-token returns. Regression corpus in the finding. Check interaction with the ANTS-3399 return-type change. Evidence: 3D_Engine_Ants_MCP_Feedback.md.
+  **Layman:** The code-outline tool silently leaves out some C++ methods, so you cannot pull them up by name and the class looks like it has fewer methods than it does.
+  Kind: fix.
+  Lanes: codebaseindex.
+  Source: 3D_Engine/Vestige-feedback-2026-07-10.
+
+- 📋 [ANTS-3492] **roadmap_query id/ids cannot locate a bullet whose ID prefix is digit-leading (e.g. [3D_E-NNNN]) — the whole project ID scheme is invisible to id-lookup.**
+  roadmap_query id/ids cannot locate any [3D_E-NNNN] bullet on the Vestige/3D_Engine roadmap; the id-detection regex appears to require a letter-leading prefix, so a digit-leading (or digit-containing-leading) prefix like 3D_E is not recognised as an id token, and the project entire canonical ID scheme is invisible to id-lookup (HIGH for that project -- items can't be fetched or flipped by id). Fix: widen the [PROJ-NNNN] id recogniser to accept a prefix that starts with or contains a digit (3D_E-0042), not only ^[A-Za-z]. Cross-check the sniffIdPrefix / corpusHighWater regexes (ANTS-3473 area) and the roadmap_query id path use the same widened pattern. Evidence: 3D_Engine_Ants_MCP_Feedback.md.
+  **Layman:** For a project whose IDs start with a number, the roadmap lookup by ID finds nothing at all — none of its items can be fetched or flipped by ID.
+  Kind: fix.
+  Lanes: roadmapindex.
+  Source: 3D_Engine/Vestige-feedback-2026-07-10.
+
+- 📋 [ANTS-3493] **No Ants broker for a Rule-8 cold-eyes review of a dependency bump / code diff — the cold_eyes_* verb family is doc-only.**
+  The cold_eyes_* MCP verb family (cold_eyes_partition/brief/single_doc/cross_doc_diff/fold_in) is documentation-only -- there is no broker for a Rule-8 style cold-eyes review of a CODE diff or a dependency bump. A session that wants an independent cold review of a code change has no Ants verb for it and falls back to a manual Agent dispatch. Enhancement: a cold_eyes (or indie_review) broker that takes a diff / commit range / dependency change and returns a partition + briefs for a cold code review, mirroring the doc-side cold_eyes flow. Evidence: 3D_Engine_Ants_MCP_Feedback.md.
+  **Layman:** There is a helper for cold-reviewing documents but not for cold-reviewing a code change or a library upgrade, which is a common review task.
+  Kind: enhancement.
+  Lanes: coldeyes.
+  Source: 3D_Engine/Vestige-feedback-2026-07-10.
+
+- 📋 [ANTS-3494] **project_settings op:detect misses a low-file-count entry-point dir (app/) and returns misleading zeroed counts when a settings file already exists.**
+  Two related op:detect nits on Vestige. (1) detect suggested source_roots [tools, engine] (234 of 3855 indexed; tools+engine hold 3620) but OMITTED app/, which holds the real entry point app/main.cpp -- the heuristic skips a top-level dir with few files even though an entry-point dir is high-signal. Fix: include any top-level dir containing >=1 compiled source even if its file count is small. (2) With a populated .ants/project.json already present, op:detect returns {present:true, suggestion:{default_source_count:0, total_source_count:0, reason:}} -- the zeroed counts + empty reason read like detection failure rather than already-declared. Fix: when present:true, omit the suggestion block or echo the declared source_roots with reason=settings file present; N source_roots already declared. Evidence: 3D_Engine_Ants_MCP_Feedback.md.
+  **Layman:** The project layout auto-detector skips the folder holding the program entry point just because it has few files, and shows confusing zeros when a layout is already saved.
+  Kind: fix.
+  Lanes: projectsettings.
+  Source: 3D_Engine/Vestige-feedback-2026-07-10.
+
+- 📋 [ANTS-3495] **changelog_log's malformed-[Unreleased] advisory has no companion fix — add an op:normalize to canonicalise the section.**
+  changelog_log op:add correctly fires a non-blocking advisory when [Unreleased] is malformed (interleaved prose between ### category blocks) but there is no companion op to FIX the layout -- the caller is left to hand-normalise. Enhancement: add changelog_log op:normalize that canonicalises a malformed [Unreleased] (order categories, strip interleaved prose into the right blocks, dry_run preview + byte report), so the advisory has a one-call remedy. Low/cheap. Evidence: 3D_Engine_Ants_MCP_Feedback.md.
+  **Layman:** When the changelog's Unreleased section is laid out oddly, the tool warns you but offers no one-click way to tidy it.
+  Kind: enhancement.
+  Lanes: changeloglog.
+  Source: 3D_Engine/Vestige-feedback-2026-07-10.
+
+- 📋 [ANTS-3496] **similar_code ranks a trivial one-token signature as the top hit for a prose-y shape query (token-set Jaccard rewards short signatures).**
+  similar_code for the shape [add audio setting field ImGui combo widget settings panel HRTF] returned a 0.0909-score one-liner add (tween.h) as the TOP match; the genuinely useful Settings struct was #2 at the same score. include_bodies still delivered the useful body so impact is LOW, but the #1 slot was noise -- token-set Jaccard rewards short signatures with incidental token overlap. Fix: down-weight trivial one-line/one-token signatures, or favour longer signature-token overlaps, when ranking. Evidence: 3D_Engine_Ants_MCP_Feedback.md.
+  **Layman:** The find-similar-code tool sometimes puts a tiny irrelevant match at the top of the list because short snippets score high by accident.
+  Kind: fix.
+  Lanes: codebaseindex.
+  Source: 3D_Engine/Vestige-feedback-2026-07-10.
+
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
 Triage of the 2026-06-30 → 2026-07-01 un-triaged feedback tails from Vestige,
