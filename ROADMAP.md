@@ -18654,19 +18654,21 @@ build).
   Lanes: codebaseindex.
   Source: 3D_Engine/Vestige-feedback-2026-07-10.
 
-- 📋 [ANTS-3497] **debt_sweep_defer renders [ANTS-<n>] hardcoded + un-padded — misses the ANTS-3473/3480 fold-in ID treatment.**
+- ✅ [ANTS-3497] **debt_sweep_defer renders [ANTS-<n>] hardcoded + un-padded — misses the ANTS-3473/3480 fold-in ID treatment.**
   DebtSweepEngine::templateDebtSweepFoldInBlock (debtsweepengine.cpp ~1170) hardcodes "- 📋 [ANTS-" + QString::number(id) — so a debt_sweep_defer into a non-Ants project stamps the wrong prefix (the ANTS-3473 bug, which never covered debt-sweep — its template takes no idPrefix param) AND drops the min-4 zero-pad (the ANTS-3480 bug, e.g. [ANTS-82] not [ANTS-0082]). debt_sweep_defer's allocated_ids also still echoes bare ints, unlike the ANTS-3480-fixed trio. Fix: give templateDebtSweepFoldInBlock a trailing idPrefix param (default "ANTS", parity with the cold-eyes/indie-review templates), have cmdDebtSweepDefer sniff RoadmapFoldIn::sniffIdPrefix(root) + render via RoadmapFoldIn::renderId, and echo allocated_ids as padded strings. Kept out of ANTS-3480 (which was scoped to the three reported verbs) to stay surgical. Deferred because debt-sweep is low-traffic + ~94% FP (per prior triage).
   **Layman:** One of the auto-ID tools (debt-sweep) still writes the fixed 'ANTS' prefix without leading zeros, unlike its siblings which were fixed.
   Kind: fix.
   Lanes: debtsweepengine.
   Source: in-session-2026-07-10 (ANTS-3480 sibling).
+  Resolved (2026-07-10): templateDebtSweepFoldInBlock gained a trailing idPrefix param; debt_sweep_defer + the GUI debt-sweep dialog now sniff the project prefix and render via RoadmapFoldIn::renderId (padded), and allocated_ids echoes padded strings. Commit b38e2a85.
 
-- 📋 [ANTS-3498] **Add id_prefix override param to the three fold-in verbs (test_audit/cold_eyes/indie_review_fold_in) — parity with roadmap_log op:append.**
+- ✅ [ANTS-3498] **Add id_prefix override param to the three fold-in verbs (test_audit/cold_eyes/indie_review_fold_in) — parity with roadmap_log op:append.**
   ANTS-3473 deferred an explicit id_prefix request-param override (sniffing makes the correct prefix the default, and for a fold-in the target roadmap always exists so the sniff always resolves — near-dead surface). ANTS-3480's reporter re-raised it as item 3. Still low-value for fold-in specifically, so tracked standalone rather than bundled. If implemented: read req["id_prefix"], validate against kIdPrefixShape, use over sniffIdPrefix when non-empty; add the prop to the three verbs' schemas in claudeintegration.cpp (mind the source-scrape byte-window per project_source_scrape_test_windows). Low priority.
   **Layman:** Let a caller force a specific ID prefix on the review fold-in tools, the way the roadmap-append tool already allows.
   Kind: enhancement.
   Lanes: roadmapfoldin, remotecontrol.
   Source: in-session-2026-07-10 (ANTS-3473-deferred, re-raised by ANTS-3480).
+  Resolved (2026-07-10): the three fold-in verbs (test_audit/cold_eyes/indie_review_fold_in) accept an optional id_prefix override (parity with roadmap_log op:append), validated via the new single-sourced RoadmapFoldIn::isValidIdPrefix before allocateIds. Schema prop exposed on all three. Commit b38e2a85.
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 

@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Add id_prefix override param to the three fold-in verbs (test_audit/cold_eyes/indie_review_fold_in) — parity with roadmap_log op:append.** (ANTS-3498)
+  Let a caller force a specific ID prefix on the review fold-in tools, the way the roadmap-append tool already allows.
+
 - **`feedback_log op:migrate_v2` gains `backfill_from_tracking` — carry inline Proposed-IDs over from the v1 tracking tables (ANTS-3474)**
   Confidence-gated token match (heading↔tracking-item, per-id overlap-coefficient with a margin) replaces each finding's blank Proposed-ID placeholder with its already-assigned ANTS-NNNN; ambiguous/folded matches stay blank (never a wrong id). Reports backfilled[] {heading, line, id, confidence_pct}; dry_run previews. Unblocks per-finding compact_resolved on migrated files.
 
@@ -64,6 +67,9 @@ for security-relevant changes.
   first ~124 bytes), skipping the wasted full-body invariant parse.
 
 ### Fixed
+
+- **debt_sweep_defer renders [ANTS-<n>] hardcoded + un-padded — misses the ANTS-3473/3480 fold-in ID treatment.** (ANTS-3497)
+  One of the auto-ID tools (debt-sweep) still writes the fixed 'ANTS' prefix without leading zeros, unlike its siblings which were fixed.
 
 - **roadmap_query id/ids cannot locate a bullet whose ID prefix is digit-leading (e.g. [3D_E-NNNN]) — the whole project ID scheme is invisible to id-lookup.** (ANTS-3492)
   For a project whose IDs start with a number, the roadmap lookup by ID finds nothing at all — none of its items can be fetched or flipped by ID.
