@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`feedback_log op:migrate_v2` gains `backfill_from_tracking` — carry inline Proposed-IDs over from the v1 tracking tables (ANTS-3474)**
+  Confidence-gated token match (heading↔tracking-item, per-id overlap-coefficient with a margin) replaces each finding's blank Proposed-ID placeholder with its already-assigned ANTS-NNNN; ambiguous/folded matches stay blank (never a wrong id). Reports backfilled[] {heading, line, id, confidence_pct}; dry_run previews. Unblocks per-finding compact_resolved on migrated files.
+
 - **`git_state op:diff` hunk-header mode for clean commit splits (ANTS-3377)**
   hunks=true returns per-file @@ hunk headers {path, hunks:[{header, old_start, old_count, new_start, new_count, lines?}]} instead of --numstat counts; staged=true diffs the index vs HEAD; include_lines attaches hunk bodies; context sets the unified-context width. Backed by the pure GitWrap::parseDiffHunks helper.
 

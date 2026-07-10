@@ -454,3 +454,46 @@ TEST(FeedbackMigrateV2, DispatchWired) {
               std::string::npos);
     EXPECT_NE(rc.find("FeedbackFile::migrateV2("), std::string::npos);
 }
+
+// ANTS-3474 — backfill inline Proposed-IDs from the file's own v1 tracking
+// tables. Two findings, each carrying a BLANK placeholder (the append_finding
+// default); a canonical tracking table maps one to ANTS-3400, the other
+// (audio) matches nothing → stays blank (precision over recall).
+TEST(FeedbackMigrateV2, Ants3474BackfillFromTracking) {
+    const QString v1 = QString::fromUtf8(
+        "<!-- ants-mcp-feedback: 1 -->\n"
+        "# Feedback TEST\n"
+        "\n"
+        "### roadmap_query rejects status planned vocabulary mismatch\n"
+        "- **What:** the query verb refused status=planned.\n"
+        "- **Proposed ID:** _(maintainer to assign)_\n"
+        "\n"
+        "### audio buffer underruns cause playback glitches\n"
+        "- **What:** the ring buffer drains.\n"
+        "- **Proposed ID:** _(maintainer to assign)_\n"
+        "\n"
+        "## \xF0\x9F\x93\x8B Ants Terminal roadmap tracking "
+        "(2026-07-01, maintainer)\n"
+        "\n"
+        "| Item | ID(s) | Status | Notes |\n"
+        "|------|-------|--------|-------|\n"
+        "| roadmap_query rejects status planned read write vocabulary "
+        "mismatch | ANTS-3400 | \xE2\x9C\x85 | shipped |\n");
+
+    // Backfill ON — the roadmap_query finding gets ANTS-3400 inline; the
+    // unrelated audio finding keeps its blank placeholder.
+    const FeedbackFile::MigrateResult on = FeedbackFile::migrateV2(v1, true);
+    ASSERT_EQ(on.backfilled.size(), 1);
+    EXPECT_EQ(on.backfilled.at(0).id, QStringLiteral("ANTS-3400"));
+    EXPECT_GE(on.backfilled.at(0).confidencePct, 66);
+    EXPECT_TRUE(on.newContent.contains(
+        QStringLiteral("- **Proposed ID:** ANTS-3400")));
+    EXPECT_EQ(on.newContent.count(kStamp), 1);   // only audio left blank
+
+    // Backfill OFF (default) — no id carried in; both placeholders survive.
+    const FeedbackFile::MigrateResult off = FeedbackFile::migrateV2(v1, false);
+    EXPECT_EQ(off.backfilled.size(), 0);
+    EXPECT_FALSE(off.newContent.contains(
+        QStringLiteral("- **Proposed ID:** ANTS-3400")));
+    EXPECT_EQ(off.newContent.count(kStamp), 2);
+}

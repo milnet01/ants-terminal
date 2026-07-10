@@ -292,10 +292,20 @@ struct MigrateOrphan {
     QString reason;       // "finding_shaped_above_watermark" (the only class)
 };
 
+// ANTS-3474 — a finding whose inline Proposed-ID was backfilled from the v1
+// tracking tables during migrate_v2 (instead of stamped blank).
+struct MigrateBackfill {
+    QString heading;         // the `### ` heading line, verbatim
+    int     line = -1;       // 1-based heading line in the ORIGINAL file
+    QString id;              // the ANTS-NNNN(s) stamped inline (row's ids joined)
+    int     confidencePct = 0;  // heading↔item overlap-coefficient, 0..100
+};
+
 struct MigrateResult {
     QString newContent;                  // file after marker bump + stamps
     bool    alreadyV2 = false;           // marker ≥ 2 ⟹ clean byte-identical no-op
     QVector<MigrateStamp>  stamped;      // findings given a blank Proposed-ID line
+    QVector<MigrateBackfill> backfilled; // ANTS-3474 — findings given a tracking-table id
     QVector<MigrateOrphan> orphans;      // finding-shaped, above the watermark
     QVector<MigrateStamp>  unclassified; // below-watermark `### ` block, not finding-shaped
     long    bytesDelta = 0;              // signed Σ (newContent − content) sizes
@@ -308,7 +318,15 @@ struct MigrateResult {
 // short-circuits to a byte-identical no-op (alreadyV2). No table is moved
 // (INV-4). The wrapper (cmdFeedbackLog) owns path resolution, the suffix
 // guard, dry_run, and the atomic write — there is no roadmap read.
-MigrateResult migrateV2(const QString &content);
+//
+// ANTS-3474 — when `backfillFromTracking` is true, each finding that would be
+// stamped blank is first token-matched (heading ↔ tracking-row `item`) against
+// the file's own v1 tracking rows; a single id clearing a high confidence
+// threshold with a clear margin is stamped INLINE (recorded in `backfilled`)
+// instead of blank. Ambiguous / low-confidence findings stay blank (never a
+// wrong id) — precision over recall, misses fall to manual assign_id.
+MigrateResult migrateV2(const QString &content,
+                        bool backfillFromTracking = false);
 
 // ---- ANTS-3447: v2 inline triage write (assign_id) ------------------
 //

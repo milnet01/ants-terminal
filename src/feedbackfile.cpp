@@ -973,7 +973,35 @@ ResolveResult compactResolved(const QString &content, const ResolveOptions &opts
 // below-watermark `### ` block that lacks one. Leaves the v1 tracking tables
 // in place, so the v1 watermark/delta is preserved (spec § 1.1 / INV-4).
 // Pure; single bottom-up apply of the stamp inserts, then the marker bump.
-MigrateResult migrateV2(const QString &content) {
+// ANTS-3474 — tokenise a heading / tracking-item for backfill matching:
+// lowercase, split on non-[a-z0-9_], keep tokens length ≥ 3, drop stopwords
+// and the `ants` / bare-number meta tokens that pollute a maintainer summary
+// (e.g. "ANTS-3393", "verified"). Underscores are kept so `roadmap_query` /
+// `codebase_index` survive as single distinctive tokens.
+static QSet<QString> backfillTokens(const QString &s) {
+    static const QSet<QString> stop = {
+        QStringLiteral("the"), QStringLiteral("and"), QStringLiteral("for"),
+        QStringLiteral("with"), QStringLiteral("not"), QStringLiteral("but"),
+        QStringLiteral("its"), QStringLiteral("was"), QStringLiteral("are"),
+        QStringLiteral("that"), QStringLiteral("this"), QStringLiteral("when"),
+        QStringLiteral("from"), QStringLiteral("into"), QStringLiteral("has"),
+        QStringLiteral("had"), QStringLiteral("via"), QStringLiteral("per"),
+        QStringLiteral("ants")};
+    static const QRegularExpression splitRe(QStringLiteral("[^a-z0-9_]+"));
+    static const QRegularExpression numRe(QStringLiteral("^[0-9]+$"));
+    QSet<QString> out;
+    const QStringList toks =
+        s.toLower().split(splitRe, Qt::SkipEmptyParts);
+    for (const QString &t : toks) {
+        if (t.size() < 3) continue;
+        if (stop.contains(t)) continue;
+        if (numRe.match(t).hasMatch()) continue;  // bare numbers incl. NNNN
+        out.insert(t);
+    }
+    return out;
+}
+
+MigrateResult migrateV2(const QString &content, bool backfillFromTracking) {
     MigrateResult res;
     const QStringList lines = content.split(QLatin1Char('\n'));
 
@@ -995,8 +1023,45 @@ MigrateResult migrateV2(const QString &content) {
         return res;
     }
 
-    const int watermark = parse(content).lastMaintainerLine;  // 1-based; -1 none
+    // ANTS-3474 — one parse() feeds both the watermark and (opt-in) the
+    // tracking rows the backfill matcher reads.
+    const ParseResult pr = parse(content);
+    const int watermark = pr.lastMaintainerLine;  // 1-based; -1 none
+    const QVector<TrackingRow> &trackingRows = pr.trackingRows;
     const QVector<FindingBlock> blocks = enumerateFindingBlocks(lines);
+
+    // ANTS-3474 — match a finding heading to a single tracking-table id.
+    // Overlap-coefficient (|H∩R| / min(|H|,|R|)) grouped PER ID so the same id
+    // recurring across triage tables can't defeat the uniqueness margin. Returns
+    // an empty id when no id clears the confidence floor with a clear margin —
+    // ambiguous / folded / paraphrased rows stay blank (precision over recall).
+    struct BackfillMatch { QString id; int conf = 0; };
+    auto matchId = [&](const QString &heading) -> BackfillMatch {
+        const QSet<QString> H = backfillTokens(heading);
+        if (H.isEmpty()) return {};
+        QHash<QString, double> bestPerId;   // joined-id → best overlap score
+        for (const TrackingRow &tr : trackingRows) {
+            if (tr.ids.isEmpty()) continue;         // n/a row — no id to carry
+            const QSet<QString> R = backfillTokens(tr.item);
+            const int denom = qMin(H.size(), R.size());
+            if (denom == 0) continue;
+            int inter = 0;
+            for (const QString &t : R) if (H.contains(t)) ++inter;
+            if (inter < 3) continue;                // floor: ≥3 shared tokens
+            const double score = double(inter) / denom;
+            const QString idKey = tr.ids.join(QStringLiteral(", "));
+            bestPerId[idKey] = qMax(bestPerId.value(idKey, 0.0), score);
+        }
+        QString bestId;
+        double best = 0.0, second = 0.0;
+        for (auto it = bestPerId.constBegin(); it != bestPerId.constEnd(); ++it) {
+            if (it.value() > best) { second = best; best = it.value(); bestId = it.key(); }
+            else if (it.value() > second) { second = it.value(); }
+        }
+        if (best >= 0.66 && (best - second) >= 0.20)
+            return { bestId, static_cast<int>(best * 100 + 0.5) };
+        return {};
+    };
 
     // §2.4 finding-shaped discriminators. Heading arm (migrate_v2-specific
     // superset) OR body-bullet arm (shared with the standard's suspected-untagged
@@ -1036,7 +1101,7 @@ MigrateResult migrateV2(const QString &content) {
     // line in the ORIGINAL file.
     QVector<int> insertAt0;  // 0-based indices in the original line list
     for (const FindingBlock &fb : blocks) {
-        if (fb.idLine0 >= 0) continue;  // already has a Proposed-ID line — untouched
+        if (fb.idLine0 >= 0) continue;  // has a Proposed-ID line — backfill pass
         const int line1  = fb.headingLine0 + 1;
         const bool below = (watermark < 0) || (line1 > watermark);
         const bool shaped = isFindingShaped(fb);
@@ -1060,6 +1125,29 @@ MigrateResult migrateV2(const QString &content) {
     // Apply bottom-up so an earlier insert never shifts a later index (parity
     // with compactResolved). Stamps are disjoint (one per finding).
     QStringList outLines = lines;
+
+    // ANTS-3474 — backfill pass. A finding that ALREADY carries a BLANK
+    // Proposed-ID line (the append_finding placeholder) gets it replaced in
+    // place with a confident tracking-table id. Runs BEFORE the stamp inserts
+    // so the idLine0 indices (from the original line list) stay valid — an
+    // in-place replacement shifts nothing; the inserts below do.
+    if (backfillFromTracking) {
+        for (const FindingBlock &fb : blocks) {
+            if (fb.idLine0 < 0) continue;               // no id line — stamp path
+            const QString v = fb.idValue.trimmed();
+            const bool blank = v.isEmpty()
+                || v.contains(QStringLiteral("maintainer to assign"),
+                              Qt::CaseInsensitive);
+            if (!blank) continue;                       // already a real id
+            const BackfillMatch m = matchId(fb.heading);
+            if (m.id.isEmpty()) continue;               // no confident match
+            outLines[fb.idLine0] =
+                QStringLiteral("- **Proposed ID:** ") + m.id;
+            res.backfilled.append(
+                { fb.heading, fb.headingLine0 + 1, m.id, m.conf });
+        }
+    }
+
     std::sort(insertAt0.begin(), insertAt0.end(),
               [](int a, int b) { return a > b; });
     for (int at0 : insertAt0) outLines.insert(at0, kStamp);

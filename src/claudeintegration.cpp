@@ -4155,7 +4155,12 @@ void ClaudeIntegration::onMcpConnection() {
                             "collapsed). No roadmap read. Reports "
                             "`stamped`/`orphans`/`unclassified`; `already_v2` "
                             "true (byte-identical no-op) on a v2 file; `dry_run` "
-                            "previews. Idempotent; atomic. ANTS-3447 — "
+                            "previews. Idempotent; atomic. ANTS-3474 — pass "
+                            "`backfill_from_tracking:true` to carry each "
+                            "finding's id in from the file's own v1 tracking "
+                            "tables (confidence-gated; `backfilled[]` in the "
+                            "reply, blank on any uncertainty) instead of a blank "
+                            "stamp. ANTS-3447 — "
                             "\"assign_id\" (maintainer, v2 triage) fills ONE "
                             "`### ` finding's `**Proposed ID:**` line: pass "
                             "`heading` (the verbatim `### ` line, + optional "
@@ -4281,6 +4286,20 @@ void ClaudeIntegration::onMcpConnection() {
                     props["heading_line"]  = headingLineProp;     // ANTS-3447
                     props["ids"]           = idsProp;             // ANTS-3447
                     props["closure"]       = closureProp;         // ANTS-3447
+                    // ANTS-3474 — migrate_v2 tracking-table backfill opt-in.
+                    QJsonObject backfillProp; backfillProp["type"] = "boolean";
+                        backfillProp["default"] = false;
+                        backfillProp["description"] = QStringLiteral(
+                            "migrate_v2 (ANTS-3474): when true, backfill each "
+                            "migrated finding's inline `**Proposed ID:**` from "
+                            "the file's own v1 tracking rows (token-match "
+                            "heading↔item; a single id clearing the confidence "
+                            "threshold with a clear margin is stamped inline, "
+                            "else left blank — never a wrong id). The reply's "
+                            "`backfilled[]` lists each {heading, line, id, "
+                            "confidence_pct}; `dry_run` previews them for review. "
+                            "Default false = the mechanical blank-stamp migrate.");
+                    props["backfill_from_tracking"] = backfillProp;  // ANTS-3474
                     props["dry_run"]       = makeDryRunProp();   // ANTS-2227
                     props["caller_cwd"]    = makeCallerCwdReadProp();
                     schema["properties"] = props;

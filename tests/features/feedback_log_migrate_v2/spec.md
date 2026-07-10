@@ -20,6 +20,22 @@ tracking tables in place**:
 Nothing else changes: no tracking table is moved, collapsed, or deleted, so the
 v1 watermark — and thus the shipped un-triaged delta — is preserved.
 
+**Optional (ANTS-3474) — `backfill_from_tracking:true`.** Real files' findings
+already carry a **blank** `- **Proposed ID:** _(maintainer to assign)_` line
+(the `append_finding` default), so the stamp pass above rarely fires; their
+already-assigned `ANTS-NNNN`s live only in the v1 tracking tables. With this
+flag, a third pass replaces each **blank** Proposed-ID line **in place** with a
+confident tracking-table id: the finding heading is token-matched against every
+tracking row's `item` (overlap-coefficient grouped **per id**), and a single id
+that clears a high threshold with a clear margin over the runner-up is stamped
+inline; anything ambiguous / folded / low-overlap stays blank (**precision over
+recall — never a wrong id**; misses fall to manual `assign_id`). The pass is
+position-agnostic (the *match*, not the watermark, gates it) and runs before the
+stamp inserts so the original id-line indices stay valid. `backfilled[]` reports
+each `{heading, line, id, confidence_pct}`; `dry_run` previews them for review.
+Default (flag absent/false) is the mechanical blank-stamp migrate — byte-for-byte
+the pre-ANTS-3474 behaviour.
+
 ## Invariants under test (⇢ docs/specs/ANTS-3446.md)
 
 - **INV-2** — when migration runs, the output marker is exactly
@@ -41,6 +57,11 @@ v1 watermark — and thus the shipped un-triaged delta — is preserved.
 - **INV-10** — fenced `### `/table/`**Proposed ID:**` lines are inert.
 - **INV-11** — `bytes_delta` is the signed size change (adds stamp lines; the
   op never shrinks content).
+- **INV-12 (ANTS-3474)** — with `backfill_from_tracking:true`, a finding whose
+  blank Proposed-ID line's heading confidently + uniquely matches a tracking
+  row's `item` gets that row's id stamped inline (recorded in `backfilled[]`);
+  an unrelated finding stays blank. Flag absent/false → both stay blank
+  (byte-identical to the plain migrate). Never assigns a wrong id.
 
 ## Pass / fail
 

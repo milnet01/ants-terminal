@@ -11465,8 +11465,12 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         const QString content = QString::fromUtf8(rf.readAll());
         rf.close();
 
+        // ANTS-3474 — opt-in: backfill inline Proposed-IDs from the file's own
+        // v1 tracking tables (confidence-gated; blank on any uncertainty).
+        const bool backfill =
+            req.value(QStringLiteral("backfill_from_tracking")).toBool();
         const FeedbackFile::MigrateResult mr =
-            FeedbackFile::migrateV2(content);
+            FeedbackFile::migrateV2(content, backfill);
         const bool dryRunM = req.value(QStringLiteral("dry_run")).toBool();
 
         auto stampArr = [](const QVector<FeedbackFile::MigrateStamp> &v) {
@@ -11486,6 +11490,16 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             e[QStringLiteral("line")]    = o.line;
             e[QStringLiteral("reason")]  = o.reason;
             orphans.append(e);
+        }
+        // ANTS-3474 — findings whose id was carried in from the tracking tables.
+        QJsonArray backfilled;
+        for (const auto &b : mr.backfilled) {
+            QJsonObject e;
+            e[QStringLiteral("heading")]       = b.heading;
+            e[QStringLiteral("line")]          = b.line;
+            e[QStringLiteral("id")]            = b.id;
+            e[QStringLiteral("confidence_pct")] = b.confidencePct;
+            backfilled.append(e);
         }
 
         // Write only when there is something to change (marker bump and/or a
@@ -11523,9 +11537,11 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         out[QStringLiteral("dry_run")]       = dryRunM;
         out[QStringLiteral("already_v2")]    = mr.alreadyV2;
         out[QStringLiteral("stamped_count")] = mr.stamped.size();
+        out[QStringLiteral("backfilled_count")] = mr.backfilled.size();  // ANTS-3474
         out[QStringLiteral("bytes_delta")]   =
             static_cast<qint64>(mr.bytesDelta);
         out[QStringLiteral("stamped")]       = stampArr(mr.stamped);
+        out[QStringLiteral("backfilled")]    = backfilled;               // ANTS-3474
         out[QStringLiteral("orphans")]       = orphans;
         out[QStringLiteral("unclassified")]  = stampArr(mr.unclassified);
         if (derived) out[QStringLiteral("path_derived")] = true;  // ANTS-3376
