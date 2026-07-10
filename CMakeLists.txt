@@ -1631,6 +1631,8 @@ if(ANTS_TESTS)
                 tests/features/indie_review_engine/test_indie_review_engine.cpp
                 tests/features/debt_sweep_engine/test_debt_sweep_engine.cpp
                 tests/features/verify_changes_engine/test_verify_changes_engine.cpp
+                # ANTS-3473 — fold-in ID prefix sniffing.
+                tests/features/foldin_id_prefix/test_foldin_id_prefix.cpp
                 tests/features/plan_template_engine/test_plan_template_engine.cpp
                 tests/features/token_usage_engine/test_token_usage_engine.cpp
                 # ANTS-1432 — failed-call accumulator on TokenUsageEngine.
