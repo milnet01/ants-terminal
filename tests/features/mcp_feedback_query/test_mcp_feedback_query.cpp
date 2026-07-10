@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QIODevice>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -575,4 +576,68 @@ TEST(McpFeedbackQuery, IncludeTrackingEnvelope) {
         EXPECT_EQ(ids.at(0).toString(), "ANTS-9001");
         EXPECT_EQ(row.value("status").toString(), QString::fromUtf8(kCheck));
     }
+}
+
+// ANTS-3478 — feedback_query resolves each mapped id's LIVE status from the
+// caller project's ROADMAP.md into `mapped_id_status` [{id, status}]: a
+// triaged id renders 📋/🚧/✅, an id absent from the live roadmap renders
+// "unknown" (never silently ✅). Present only when mapped_ids is non-empty.
+TEST(McpFeedbackQuery, MappedIdStatusResolvesLiveRoadmap) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    // v2 file: three findings with FILLED Proposed IDs → three mapped_ids.
+    const QString body = QStringLiteral(
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "# Ants MCP Feedback — Test\n\n"
+        "## 2026-07-10 — s\n\n"
+        "### Finding A\n\n- **What:** a.\n- **Proposed ID:** ANTS-3100\n\n"
+        "### Finding B\n\n- **What:** b.\n- **Proposed ID:** ANTS-3200\n\n"
+        "### Finding C\n\n- **What:** c.\n- **Proposed ID:** ANTS-3999\n");
+    const QString p = writeFeedback(dir, "Live_Ants_MCP_Feedback.md", body);
+    ASSERT_FALSE(p.isEmpty());
+    // ROADMAP.md in the caller project: ANTS-100 shipped, ANTS-200 planned,
+    // ANTS-999 absent (never appears).
+    QFile rm(dir.path() + "/ROADMAP.md");
+    ASSERT_TRUE(rm.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    // Emoji as literal UTF-8 glyphs — a `\x..` escape inside QStringLiteral
+    // would be mis-read as separate UTF-16 units (see the file header note).
+    rm.write(QString::fromUtf8(
+        "# ROADMAP\n\n"
+        "- \xE2\x9C\x85 [ANTS-3100] **Shipped one.**\n"
+        "- \xF0\x9F\x93\x8B [ANTS-3200] **Planned one.**\n").toUtf8());
+    rm.close();
+
+    RemoteControl rc(nullptr);
+    QJsonObject req; req["path"] = p; req["caller_cwd"] = dir.path();
+    const QJsonObject env = rc.cmdFeedbackQuery(req).object();
+    ASSERT_TRUE(env.value("ok").toBool());
+    ASSERT_TRUE(env.contains("mapped_id_status"));
+
+    QHash<QString, QString> got;
+    for (const auto &v : env.value("mapped_id_status").toArray()) {
+        const QJsonObject o = v.toObject();
+        got.insert(o.value("id").toString(), o.value("status").toString());
+    }
+    EXPECT_EQ(got.value("ANTS-3100"), QString::fromUtf8(kCheck));   // ✅ live
+    EXPECT_EQ(got.value("ANTS-3200"), QString::fromUtf8(kClip));    // 📋 live
+    EXPECT_EQ(got.value("ANTS-3999"), QStringLiteral("unknown"));   // absent
+}
+
+// ANTS-3478 — a fresh / untriaged file (no filled Proposed IDs → empty
+// mapped_ids) omits mapped_id_status entirely (no roadmap read cost).
+TEST(McpFeedbackQuery, MappedIdStatusAbsentWhenNoMappedIds) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString body = QStringLiteral(
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "# Ants MCP Feedback — Test\n\n"
+        "## 2026-07-10 — s\n\n"
+        "### Untriaged\n\n- **What:** x.\n"
+        "- **Proposed ID:** _(maintainer to assign)_\n");
+    const QString p = writeFeedback(dir, "Fresh_Ants_MCP_Feedback.md", body);
+    ASSERT_FALSE(p.isEmpty());
+    RemoteControl rc(nullptr);
+    QJsonObject req; req["path"] = p; req["caller_cwd"] = dir.path();
+    const QJsonObject env = rc.cmdFeedbackQuery(req).object();
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_TRUE(env.value("mapped_ids").toArray().isEmpty());
+    EXPECT_FALSE(env.contains("mapped_id_status"));
 }

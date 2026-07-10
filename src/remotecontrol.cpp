@@ -10995,6 +10995,46 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     out["last_maintainer_line"]  = pr.lastMaintainerLine;
     out["truncated"]             = truncated;
 
+    // ANTS-3478 — resolve each mapped id's LIVE status from the caller
+    // project's ROADMAP.md, so the triager sees at a glance which assigned
+    // findings are 📋 / 🚧 / ✅ without a second roadmap_query per id. Cost-
+    // gated on a non-empty mapped_ids (a fresh / untriaged file reads nothing);
+    // parsed ONCE into an id→status map (not one parse per id). An id absent
+    // from the live roadmap renders "unknown" (it may have archived to
+    // CHANGELOG / docs/roadmap) — never silently "shipped". Best-effort: an
+    // absent/unreadable roadmap leaves every id "unknown" rather than failing
+    // the read.
+    if (!pr.mappedIds.isEmpty()) {
+        QHash<QString, QString> idToStatus;
+        const QString callerRaw =
+            req.value(QStringLiteral("caller_cwd")).toString();
+        const QString callerCanonical = callerRaw.isEmpty()
+            ? QString() : QFileInfo(callerRaw).canonicalFilePath();
+        const QString roadmapPath = callerCanonical.isEmpty()
+            ? QString() : findRoadmapUnder(callerCanonical);
+        if (!roadmapPath.isEmpty()) {
+            QFile rmf(roadmapPath);
+            if (rmf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                const QString rmMarkdown = QString::fromUtf8(rmf.readAll());
+                rmf.close();
+                for (const auto &b : RoadmapDialog::parseBullets(rmMarkdown)) {
+                    if (b.id.isEmpty() || !RoadmapIndex::isCanonicalId(b.id))
+                        continue;
+                    idToStatus.insert(b.id, b.status);  // later wins (live row)
+                }
+            }
+        }
+        QJsonArray statusArr;
+        for (const QString &id : pr.mappedIds) {
+            QJsonObject o;
+            o[QStringLiteral("id")]     = id;
+            o[QStringLiteral("status")] =
+                idToStatus.value(id, QStringLiteral("unknown"));
+            statusArr.append(o);
+        }
+        out["mapped_id_status"] = statusArr;
+    }
+
     // ANTS-3448 — marker-aware v2 delta. `format_version` (0/1/2/…) lets a
     // caller see which rule produced the delta; `suspected_untagged[]` lists
     // v2 `### ` finding-shaped blocks a hand editor left with no

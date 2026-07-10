@@ -86,9 +86,9 @@ them (§"Migration from v1"); the byte shrink comes later from the now-shipped
   (`n/a — <reason>`). No separate table to write, migrate, or dedup.
 - **Status is derived, never stored.** A reader resolves each assigned id's
   current status from `ROADMAP.md`; a reader's status view is always current,
-  never persisted. (The at-a-glance status *render* is a deferred ANTS-3448
-  follow-up — today `feedback_query` returns the mapped ids, not their live
-  status; see §"Tooling".) The
+  never persisted. (`feedback_query` renders this at-a-glance as
+  `mapped_id_status` — [{id, status}] resolved live from `ROADMAP.md` — as of
+  ANTS-3478; see §"Tooling".) The
   resolve reuses the cached `roadmap_query` path (100 ms-TTL parsed-bullet
   cache, ANTS-1117), so a render costs one roadmap parse, not one per id, and
   adds no new persistent state.
@@ -314,8 +314,8 @@ appending a block. For each finding in the un-triaged tail:
    is un-triaged.)
 
 2. **Do not write a status.** A finding's current status (📋/🚧/✅) is resolved
-   live from `ROADMAP.md` by whoever reads the file (rendering each id's live
-   status via `feedback_query` is a deferred ANTS-3448 follow-up — see §"Tooling").
+   live from `ROADMAP.md` by whoever reads the file (`feedback_query` renders
+   each id's live status as `mapped_id_status` as of ANTS-3478 — see §"Tooling").
    The file records *which id*, never *what state*. If an assigned id
    is **absent** from `ROADMAP.md` (e.g. archive-rotated per roadmap-format.md),
    the reader renders it `archived/unknown` and surfaces it — it is never
@@ -457,8 +457,8 @@ nothing else.
 **v2 scope:** status is no longer *stored* in a feedback file (it's derived live
 from the roadmap), so this set is now **advisory prose only** — the vocabulary a
 contributor may use when *describing* a recheck ("still broken 🔄"), and the set
-`feedback_query` *would* map a resolved roadmap status onto once its deferred
-on-demand status render lands (§"Tooling"). It is **not** a machine-readable field of the file under v2. (v1
+`feedback_query` maps a resolved roadmap status onto via its `mapped_id_status`
+render (ANTS-3478, §"Tooling"). It is **not** a machine-readable field of the file under v2. (v1
 tracking tables used the first four as the parsed `Status` column — legacy.)
 
 Extends the [roadmap-format.md](roadmap-format.md) set (📋 🚧 ✅ 💭) with
@@ -721,7 +721,7 @@ v1 code path until a file is migrated):
 
 | Verb | v2 change |
 |---|---|
-| `feedback_query` (ANTS-1961) **(marker-aware, ANTS-3448)** | On a `: 2`+ file the delta = un-triaged findings (unfilled `**Proposed ID:**`), not "after the last table"; emits `format_version` + `suspected_untagged[]` (§"The un-triaged delta" step 4) and `mapped_ids` = the inline assigned ids. **Built** — `FeedbackFile::parse()` is marker-aware; the v1 "after last watermark" path is retained for un-migrated files. (Rendering each id's **live roadmap status** is a deferred follow-up, **ANTS-3478** — it needs a roadmap read the delta rule does not, §"Out of scope" of ANTS-3448.) |
+| `feedback_query` (ANTS-1961) **(marker-aware, ANTS-3448)** | On a `: 2`+ file the delta = un-triaged findings (unfilled `**Proposed ID:**`), not "after the last table"; emits `format_version` + `suspected_untagged[]` (§"The un-triaged delta" step 4) and `mapped_ids` = the inline assigned ids. **Built** — `FeedbackFile::parse()` is marker-aware; the v1 "after last watermark" path is retained for un-migrated files. Rendering each id's **live roadmap status** is **shipped (ANTS-3478)**: `mapped_id_status` = [{id, status}] resolved from the caller project's `ROADMAP.md` (present only when `mapped_ids` is non-empty; an absent id → `"unknown"`, never silently ✅). |
 | `session_orient` `feedback_pending` (ANTS-1964) **(ANTS-3448, no code change)** | The per-file un-triaged **count** shares `FeedbackFile::parse`'s delta path, so it now follows the v2 unfilled-`Proposed ID` rule on a `: 2` file **for free** (a v2 file tracks triage inline, so the v1 "after last table" count would miscount — including on a **migrated** file, which retains its v1 tables in place yet triages via `**Proposed ID:**`). No code change on this path — the marker-aware `parse()` supplies the version-correct `deltaPresent`/`deltaLineCount`. |
 | `feedback_log op:append_finding` (ANTS-1962) | Already emits the `**Proposed ID:**` placeholder — now **structural**; no behavioural change beyond guaranteeing the line. |
 | `feedback_log op:assign_id` **(shipped, ANTS-3447)** | The v2 triage write: fill one finding's `**Proposed ID:**` slot in place with the id(s) or a `n/a — <reason>` closure. Locates the finding by heading over the `### ` enumerator, **inheriting `compact_shipped`'s heading-resolution gate _shape_** (ANTS-3421: `heading_line` disambiguation + `target_ambiguous`+`candidates[]` when a "still broken" recheck reuses a `### ` title). Single-target (batch deferred), so no cross-target `duplicate_target`. Replaces `op:append_tracking` for v2 files. |
