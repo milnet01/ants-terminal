@@ -18468,19 +18468,21 @@ genuinely-new findings; the re-verification block confirmed ANTS-3467 shipped
 and ANTS-3468 already resolved-as-designed (the tester re-checked a pre-fix
 build).
 
-- 📋 [ANTS-3472] **audit_run — exclude mypy NOTE-severity (annotation-unchecked) lines from total_actionable / findings so a clean tree can't manufacture a fix-pass.**
+- ✅ [ANTS-3472] **audit_run — exclude mypy NOTE-severity (annotation-unchecked) lines from total_actionable / findings so a clean tree can't manufacture a fix-pass.**
   Vestige/finbreak: a deps-less mypy run under audit_run emitted 6 `note: ... [annotation-unchecked]` lines (severity UNKNOWN, pre-existing untyped pytest helpers). The envelope counted all 6 in by_tool.mypy.after_filter_count AND top-level total_actionable/total_raw, while the deps-installed gated `mypy src tests` reports 'Success: no issues found'. A /close-phase flow branching on total_actionable>0 mis-routes to a phantom fix-pass. Repro: audit_run scope=since-tag tools=[ruff,bandit,semgrep,mypy] -> total_actionable:6, all 6 top_findings severity UNKNOWN message 'note: ... [annotation-unchecked]'. Fix: drop mypy `note:`-only lines (incl. [annotation-unchecked] / the check-untyped-defs hint) from total_actionable — bucket them under an informational/notes count, or drop them from the deps-less mypy path entirely so a clean gated tree reads 0 actionable.
   **Layman:** The code-audit tool counts harmless mypy 'note' lines (like 'untyped function bodies not checked') as real problems, which can trick an automated cleanup into thinking there's work to do on already-clean code.
   Kind: fix.
   Lanes: auditengine.
   Source: finbreak feedback 2026-07-10 (FIBR-0010 close).
+  Resolved (2026-07-10): parseToolOutput's line-based parser now skips mypy `note:` lines (case-insensitive) before they count toward `located`/rawCount, so [annotation-unchecked] / check-untyped-defs / "see here" context no longer inflates total_actionable. The paired error: line (if any) still counts. Regression: mcp_audit_run.Ants3472MypyNoteSeverityExcluded (source-grep bounded to the line-based section). Full suite 2599 green.
 
-- 📋 [ANTS-3473] **test_audit_fold_in (and sibling fold-in verbs) allocate ANTS-NNNN IDs instead of sniffing the project's roadmap prefix / .roadmap-counter; add an id_prefix param.**
+- ✅ [ANTS-3473] **test_audit_fold_in (and sibling fold-in verbs) allocate ANTS-NNNN IDs instead of sniffing the project's roadmap prefix / .roadmap-counter; add an id_prefix param.**
   finbreak (stable FIBR-NNNN IDs, .roadmap-counter present, last FIBR-0061): test_audit_fold_in dry_run allocated ANTS-62/63/64; roadmap_log op:append_batch on the same section in the same session correctly sniffed FIBR and allocated FIBR-0062/63/64. test_audit_fold_in exposes no id_prefix param and falls back to the ANTS default rather than sniffing the existing bullet-ID prefix / .roadmap-counter — risking wrong-prefix bullets and a collision against the real Ants roadmap's own ANTS-62/63/64. Fix: make RoadmapFoldIn::allocateIds sniff the project's existing prefix (as roadmap_log's append path does) and/or honour the .roadmap-counter prefix; add an id_prefix param (parity with roadmap_log op:append). ANTS default only when no prefix can be sniffed. Cross-check the siblings cold_eyes_fold_in / indie_review_fold_in for the same gap.
   **Layman:** When filing test-review items into another project's roadmap, the tool stamps them with 'ANTS-' IDs instead of that project's own prefix (e.g. FIBR-), risking ID clashes and a broken counter.
   Kind: fix.
   Lanes: roadmapfoldin.
   Source: finbreak feedback 2026-07-10 (test-audit).
+  Resolved (2026-07-10): new RoadmapFoldIn::sniffIdPrefix(projectPath, fallback="ANTS") returns the dominant [PREFIX-NNNN] prefix from ROADMAP.md (shared sniffPrefixFromText core, reused by corpusHighWater — single read each). Threaded into all four render sites: test_audit_fold_in + plan_template (render %1-%2 with the sniffed prefix); cold_eyes_fold_in + indie_review_fold_in (template*FoldInBlock gained a trailing idPrefix param, default "ANTS" so existing 3-arg callers/tests stay byte-identical; the remotecontrol call sites pass sniffIdPrefix(root)). A fold-in into a FIBR-NNNN roadmap now allocates FIBR-, matching roadmap_log op:append. Deferred: an explicit id_prefix request-param override (sniffing already fixes the reported bug). Regression: tests/features/foldin_id_prefix (4 cases: dominant-sniff over stray [UTF-8], fallback, cold-eyes + indie-review prefix render + ANTS default). Full suite 2599 green.
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
