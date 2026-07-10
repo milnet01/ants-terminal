@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **feedback_log op:append_tracking should refuse (or warn) on a :2 file, pointing at assign_id.** (ANTS-3477)
+  The old way of recording IDs (a tracking table) is retired; if someone tries to use it on a new-format file, it should politely refuse and point at the new way.
+
 - **Add id_prefix override param to the three fold-in verbs (test_audit/cold_eyes/indie_review_fold_in) — parity with roadmap_log op:append.** (ANTS-3498)
   Let a caller force a specific ID prefix on the review fold-in tools, the way the roadmap-append tool already allows.
 
