@@ -68,6 +68,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **find_sources returns files_scanned:0 (early-bail) for a valid multi-word topic that leads with a symbol name.** (ANTS-3489)
+  The who-uses-this search sometimes scans nothing and returns no results for a reasonable query, when a plain search finds the answer instantly.
+
 - **debt_sweep_defer renders [ANTS-<n>] hardcoded + un-padded — misses the ANTS-3473/3480 fold-in ID treatment.** (ANTS-3497)
   One of the auto-ID tools (debt-sweep) still writes the fixed 'ANTS' prefix without leading zeros, unlike its siblings which were fixed.
 
