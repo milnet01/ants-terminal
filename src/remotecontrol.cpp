@@ -511,6 +511,9 @@ QString rlDetectCounterPrefix(const QString &markdown) {
 // mixed-case project prefix (e.g. "mame-curator", "DOOM").
 // ANTS-3492 — prefix may be digit-led if it contains ≥1 letter (3D_E);
 // a letter-free prefix (2026) is still rejected. {0,15} cap unchanged.
+// ANTS-3498 — the same grammar is single-sourced as
+// RoadmapFoldIn::isValidIdPrefix (used by the three fold-in verbs); keep the
+// two literals in sync (both carry the ANTS-3492 letter-lookahead).
 static const QRegularExpression kIdPrefixShape(
     QStringLiteral("^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]{0,15}$"));
 
@@ -16495,6 +16498,17 @@ QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
         QStringLiteral("indie_review_fold_in: no active release heading to insert "
                        "under (pass release_block_heading explicitly)")));
 
+    // ANTS-3498 — optional id_prefix override (parity with roadmap_log
+    // op:append). Validate BEFORE allocateIds so a bad prefix can't burn
+    // counter IDs on a fold-in that never runs.
+    const QString idPrefixArg = req.value(QStringLiteral("id_prefix")).toString();
+    if (!idPrefixArg.isEmpty() && !RoadmapFoldIn::isValidIdPrefix(idPrefixArg)) {
+        return QJsonDocument(irErr(QStringLiteral("bad_args"),
+            QStringLiteral("indie_review_fold_in: id_prefix \"%1\" must contain "
+                           "a letter and be 1-16 chars of [A-Za-z0-9_-] "
+                           "(e.g. ANTS, 3D_E) — ANTS-3492").arg(idPrefixArg)));
+    }
+
     // ANTS-2227 — dry_run: peek the would-be IDs (no counter bump), render the
     // same block, and skip the insert.
     const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
@@ -16508,7 +16522,9 @@ QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
     // ANTS-3480 — sniff once; the block render and the allocated_ids echo
     // must agree, and both zero-pad via RoadmapFoldIn::renderId so the ids
     // read back match op:append's [PREFIX-NNNN] width byte-for-byte.
-    const QString idPrefix = RoadmapFoldIn::sniffIdPrefix(root);
+    // ANTS-3498 — the explicit override wins over the sniff.
+    const QString idPrefix = idPrefixArg.isEmpty()
+        ? RoadmapFoldIn::sniffIdPrefix(root) : idPrefixArg;
     const QString block = IndieReviewEngine::templateIndieReviewFoldInBlock(
         actionable, ids, dateIso, idPrefix);
 
@@ -17005,8 +17021,13 @@ QJsonDocument RemoteControl::cmdDebtSweepDefer(const QJsonObject &req) {
         QStringLiteral("counter_failed"),
         QStringLiteral("debt_sweep_defer: could not allocate IDs")));
 
+    // ANTS-3497 — sniff the project's own ID prefix so the fold-in block +
+    // allocated_ids carry the project scheme, zero-padded (mirrors the
+    // ANTS-3480 cold-eyes/indie/test-audit fold-in treatment), not a
+    // hardcoded un-padded `ANTS-<n>`.
+    const QString idPrefix = RoadmapFoldIn::sniffIdPrefix(root);
     const QString block = DebtSweepEngine::templateDebtSweepFoldInBlock(
-        deferred, ids, dateIso);
+        deferred, ids, dateIso, idPrefix);
 
     const bool written = dryRun
         ? false : RoadmapFoldIn::insertBlock(root, heading, block);
@@ -17016,7 +17037,7 @@ QJsonDocument RemoteControl::cmdDebtSweepDefer(const QJsonObject &req) {
     if (dryRun) env["dry_run"] = true;
     env["block"]         = block;
     QJsonArray idsArr;
-    for (int id : ids) idsArr.append(id);
+    for (int id : ids) idsArr.append(RoadmapFoldIn::renderId(idPrefix, id));
     env["allocated_ids"] = idsArr;
     env["written"]       = written;
     if (!heading.isEmpty()) env["release_block_heading"] = heading;
@@ -18251,6 +18272,16 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
     }
     const bool skipAlloc = (idAllocMode == QStringLiteral("skip"));
 
+    // ANTS-3498 — optional id_prefix override (parity with roadmap_log
+    // op:append). Validate before any counter touch.
+    const QString idPrefixArg = req.value(QStringLiteral("id_prefix")).toString();
+    if (!idPrefixArg.isEmpty() && !RoadmapFoldIn::isValidIdPrefix(idPrefixArg)) {
+        return QJsonDocument(ceErr(QStringLiteral("bad_args"),
+            QStringLiteral("cold_eyes_fold_in: id_prefix \"%1\" must contain a "
+                           "letter and be 1-16 chars of [A-Za-z0-9_-] "
+                           "(e.g. ANTS, 3D_E) — ANTS-3492").arg(idPrefixArg)));
+    }
+
     QString heading = req.value(QStringLiteral("release_block_heading"))
                           .toString();
     if (heading.isEmpty()) heading =
@@ -18278,7 +18309,9 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
     // ANTS-3480 — sniff once; block render + allocated_ids echo agree and
     // zero-pad via RoadmapFoldIn::renderId (freeform: ids is empty, so the
     // echo is []). Sniffing in the freeform arm is a cheap harmless read.
-    const QString idPrefix = RoadmapFoldIn::sniffIdPrefix(root);
+    // ANTS-3498 — the explicit override wins over the sniff.
+    const QString idPrefix = idPrefixArg.isEmpty()
+        ? RoadmapFoldIn::sniffIdPrefix(root) : idPrefixArg;
     const QString block = skipAlloc
         ? ColdEyesEngine::templateColdEyesFoldInBlockFreeform(
               actionable, dateIso)

@@ -319,6 +319,15 @@ QString renderId(const QString &prefix, int n) {
     return QStringLiteral("%1-%2").arg(prefix).arg(n, 4, 10, QLatin1Char('0'));
 }
 
+bool isValidIdPrefix(const QString &prefix) {
+    // ANTS-3498 / ANTS-3492 — canonical id_prefix shape, single-sourced here
+    // and reused by roadmap_log op:append + the three fold-in verbs. Digit-led
+    // is fine iff a letter is present (3D_E ✓, 2026 ✗); 1-16 chars total.
+    static const QRegularExpression kShape(QStringLiteral(
+        "^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]{0,15}$"));
+    return kShape.match(prefix).hasMatch();
+}
+
 QList<int> allocateIds(const QString &projectPath, int n) {
     if (n <= 0) return {};
     const QString path = counterPath(projectPath);

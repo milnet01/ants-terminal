@@ -7,6 +7,7 @@
 #include "debtsweepengine.h"
 
 #include "featurecoverage.h"
+#include "roadmapfoldin.h"  // ANTS-3497 — shared renderId() for padded, project-prefixed IDs
 
 #include <QByteArray>
 #include <QChar>
@@ -1153,7 +1154,8 @@ ApplyVerdict applyMechanicalFix(
 QString templateDebtSweepFoldInBlock(
     const QList<Finding> &deferred,
     const QList<int> &allocatedIds,
-    const QString &dateIso) {
+    const QString &dateIso,
+    const QString &idPrefix) {
     if (deferred.isEmpty() || deferred.size() != allocatedIds.size()) {
         return {};
     }
@@ -1167,8 +1169,8 @@ QString templateDebtSweepFoldInBlock(
     for (int i = 0; i < deferred.size(); ++i) {
         const Finding &f = deferred.at(i);
         const int id = allocatedIds.at(i);
-        out += QStringLiteral("- 📋 [ANTS-");
-        out += QString::number(id);
+        out += QStringLiteral("- 📋 [");
+        out += RoadmapFoldIn::renderId(idPrefix, id);
         out += QStringLiteral("] **");
         out += f.message;
         out += QStringLiteral("** at ");

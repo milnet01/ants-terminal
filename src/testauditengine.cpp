@@ -1728,6 +1728,17 @@ FoldInResult foldIn(const FoldInRequest &req) {
             "test_audit_fold_in: caller_cwd does not canonicalise");
         return r;
     }
+    // ANTS-3498 — a non-empty id_prefix override must match the canonical
+    // prefix grammar (ANTS-3492) or the fold-in would stamp non-canonical ids.
+    // Refuse early (before any counter touch), consistent with roadmap_log.
+    if (!req.idPrefix.isEmpty() && !RoadmapFoldIn::isValidIdPrefix(req.idPrefix)) {
+        r.ok = false; r.code = QStringLiteral("bad_args");
+        r.error = QStringLiteral(
+            "test_audit_fold_in: id_prefix \"%1\" must contain a letter and be "
+            "1-16 chars of [A-Za-z0-9_-] (e.g. ANTS, 3D_E) — ANTS-3492")
+                .arg(req.idPrefix);
+        return r;
+    }
     // ANTS-1635 — narrative-mode short-circuit. Caller supplies pre-
     // rendered markdown under the `### 🧪 Test Audit YYYY-MM-DD`
     // heading; engine inserts it verbatim, skipping ID allocation and
@@ -1891,7 +1902,11 @@ FoldInResult foldIn(const FoldInRequest &req) {
     // not a hardcoded "ANTS", so a fold-in into e.g. a FIBR-NNNN roadmap
     // allocates FIBR-<n>, matching what roadmap_log op:append does in the same
     // project. Falls back to "ANTS" on a greenfield/absent roadmap.
-    const QString idPrefix = RoadmapFoldIn::sniffIdPrefix(canon);
+    // ANTS-3498 — an explicit, pre-validated id_prefix override wins over the
+    // sniff (parity with roadmap_log op:append).
+    const QString idPrefix = req.idPrefix.isEmpty()
+        ? RoadmapFoldIn::sniffIdPrefix(canon)
+        : req.idPrefix;
     QStringList allocated;
     for (int v : allocatedInts) {
         allocated.append(RoadmapFoldIn::renderId(idPrefix, v));

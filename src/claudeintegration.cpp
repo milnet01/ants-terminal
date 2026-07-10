@@ -1754,6 +1754,27 @@ void ClaudeIntegration::onMcpConnection() {
                     return p;
                 };
 
+                // ANTS-3498 — optional id_prefix override for the three
+                // fold-in verbs (test_audit / cold_eyes / indie_review_fold_in),
+                // parity with roadmap_log op:append's id_prefix. Same grammar
+                // (RoadmapFoldIn::isValidIdPrefix / ANTS-3492): 1-16 chars of
+                // [A-Za-z0-9_-] containing ≥1 letter.
+                auto makeFoldInIdPrefixProp = []{
+                    QJsonObject p;
+                    p["type"] = "string";
+                    p["pattern"] =
+                        "^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]{0,15}$";
+                    p["description"] = QStringLiteral(
+                        "Optional (ANTS-3498). Pin the ID prefix used for the "
+                        "folded-in bullets instead of sniffing it from the "
+                        "target ROADMAP.md — parity with roadmap_log op:append. "
+                        "Must contain a letter and be 1-16 chars of "
+                        "[A-Za-z0-9_-] (e.g. ANTS, 3D_E). When omitted, the "
+                        "project's dominant [PREFIX-NNNN] prefix is sniffed "
+                        "(fallback \"ANTS\" on a greenfield roadmap).");
+                    return p;
+                };
+
                 // ANTS-2090 — `encoding` selector, declared on the
                 // list-shaped read verbs. "tabular" packs each eligible
                 // top-level array-of-objects into a columnar
@@ -6079,6 +6100,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["narrative_mode"]         = nmProp;
                     props["narrative_md"]           = nmdProp;
                     props["dry_run"]                = makeDryRunProp();  // ANTS-2227
+                    props["id_prefix"]              = makeFoldInIdPrefixProp();  // ANTS-3498
                     props["caller_cwd"]             = callerProp;
                     schema["properties"] = props;
                     // ANTS-1644 — `actionable` dropped from required.
@@ -7132,6 +7154,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["narrative_md"]    = nmdP;
                     props["caller_cwd"]      = ccwd;
                     props["dry_run"]         = makeDryRunProp();  // ANTS-2227
+                    props["id_prefix"]       = makeFoldInIdPrefixProp();  // ANTS-3498
                     schema["properties"] = props;
                     // ANTS-1635 — `actionable` is no longer strictly
                     // required at the schema level; the engine refuses
@@ -7735,6 +7758,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["narrative_mode"]        = nmProp;
                     props["narrative_md"]          = nmdProp;
                     props["dry_run"]               = makeDryRunProp();  // ANTS-2227
+                    props["id_prefix"]             = makeFoldInIdPrefixProp();  // ANTS-3498
                     props["caller_cwd"]            = callerProp;
                     schema["properties"] = props;
                     // ANTS-1644 — `actionable` dropped from required.

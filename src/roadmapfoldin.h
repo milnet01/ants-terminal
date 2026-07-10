@@ -91,6 +91,16 @@ QString sniffIdPrefix(const QString &projectPath,
 // written into the block. A suffix already ≥4 digits is emitted verbatim.
 QString renderId(const QString &prefix, int n);
 
+// ANTS-3498 — validate a caller-supplied `id_prefix` override against the
+// canonical prefix grammar (ANTS-3492): 1-16 chars of [A-Za-z0-9_-] that
+// contain at least one ASCII letter (so `3D_E` is accepted but a letter-free
+// `2026` is rejected). Single sources the shape shared by roadmap_log
+// op:append and the three fold-in verbs (test_audit / cold_eyes /
+// indie_review), so the digit-led-prefix rule can never drift between them.
+// An empty string is NOT valid here — callers treat empty as "no override,
+// fall back to sniffIdPrefix" and never pass it in for validation.
+bool isValidIdPrefix(const QString &prefix);
+
 // ANTS-1618 — post-failure inspection helper. allocateIds returns an
 // empty QList on every failure mode (flock contention, corrupt int,
 // permission, symlink-escape); callers want a state-specific message.

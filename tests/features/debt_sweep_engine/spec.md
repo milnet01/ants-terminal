@@ -23,9 +23,14 @@ detector-expansion addendum.
   errorCode:"not_fixable", …}` and file unchanged.
 - **INV-10.** `templateDebtSweepFoldInBlock` first line is
   `### 🧹 Debt-sweep fold-in (<dateIso>)`; first bullet starts
-  with `- 📋 [ANTS-<id>]`; bullet contains `Kind: chore.` and
+  with `- 📋 [<prefix>-<id>]`; bullet contains `Kind: chore.` and
   `Source: debt-sweep-<dateIso>.`; the `<dateIso>` token is
-  byte-identical between heading and Source.
+  byte-identical between heading and Source. (ANTS-3497) The
+  `<prefix>` is the caller-supplied `idPrefix` arg (the project's
+  sniffed scheme), and `<id>` is zero-padded to the op:append min-4
+  width via `RoadmapFoldIn::renderId` — NOT a hardcoded, un-padded
+  `ANTS-<n>`. Verified by `Inv10ProjectPrefixAndPadding`
+  (`[DOOM-0007]` from prefix `DOOM` + id `7`).
 - **INV-11.** `triagePrompt` emits a prompt containing one
   `[<category> / <detector_id>] <file>:<line>` block per input
   Finding.

@@ -195,6 +195,11 @@ struct FoldInRequest {
     // Music Production /test-audit 2026-05-18.
     bool        narrativeMode = false;
     QString     narrativeMd;
+    // ANTS-3498 — optional id_prefix override (validated by the verb layer
+    // against RoadmapFoldIn::isValidIdPrefix before this is populated). When
+    // non-empty it wins over the ROADMAP-sniffed prefix; empty = sniff as
+    // before. Parity with roadmap_log op:append's id_prefix.
+    QString     idPrefix;
     // ANTS-2227 — dry_run preview: peek the would-be IDs (no
     // `.roadmap-counter` bump) and skip every ROADMAP.md insert (both
     // the narrative and structured paths). The block is still rendered

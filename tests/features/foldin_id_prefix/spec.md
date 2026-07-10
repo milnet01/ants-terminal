@@ -56,16 +56,36 @@ into the block, uniformly as a padded string.
 - **INV-5** (ANTS-3480) — `renderId` zero-pads the numeric suffix to a
   minimum of four digits (`FIBR-0082`, `ANTS-0001`); a suffix already ≥4
   digits is emitted verbatim (`ANTS-12345`, never truncated).
+- **INV-6** (ANTS-3498) — `RoadmapFoldIn::isValidIdPrefix` accepts the
+  canonical prefix grammar (ANTS-3492): 1-16 chars of `[A-Za-z0-9_-]`
+  containing ≥1 letter. Digit-led is fine iff a letter is present
+  (`3D_E` ✓); a letter-free (`2026`), empty, over-16, or whitespace-bearing
+  prefix is rejected. Single-sources the shape shared with `roadmap_log`
+  op:append's `kIdPrefixShape`.
+- **INV-7** (ANTS-3498) — `TestAuditEngine::foldIn` honours an explicit
+  `idPrefix` override (winning over the ROADMAP sniff), and refuses a
+  letter-free override with `bad_args` *before* any `.roadmap-counter`
+  touch. (The `cold_eyes_fold_in` / `indie_review_fold_in` verbs carry the
+  same `id_prefix` request-param + validation in `remotecontrol.cpp`,
+  validated before `allocateIds` for the same reason.)
+
+## ANTS-3497 / ANTS-3498 residuals — closed
+
+Two ANTS-3480 "out of scope" items were later implemented:
+
+- **ANTS-3497** — `debt_sweep_defer` (and the GUI debt-sweep dialog) now
+  thread the sniffed, padded prefix through `templateDebtSweepFoldInBlock`
+  (which gained a trailing `idPrefix` param), and its `allocated_ids` echo
+  routes through `renderId` — so it matches the other three fold-in verbs
+  instead of hardcoding `[ANTS-<n>]` un-padded.
+- **ANTS-3498** — the three fold-in verbs (`test_audit` / `cold_eyes` /
+  `indie_review_fold_in`) gained an optional `id_prefix` request-param
+  override (parity with `roadmap_log` op:append), validated against the
+  shared `isValidIdPrefix`. Empty = sniff as before; non-empty wins.
+  `debt_sweep_defer` was intentionally left sniff-only (outside the
+  three-verb ANTS-3498 scope).
 
 ## Out of scope
 
-- An explicit `id_prefix` request-param override (the finding's third
-  ask, first deferred by ANTS-3473): sniffing already makes the correct
-  prefix the default for a fold-in (the target roadmap always exists, so
-  the sniff always resolves), so the override is near-dead surface. Tracked
-  as a standalone low-priority follow-up rather than added here.
-- `debt_sweep_defer` still hardcodes `[ANTS-<n>]` (un-padded, no prefix
-  sniff) — a distinct ANTS-3473-class gap that ANTS-3473 never covered;
-  tracked separately, not folded into this change.
 - The `.roadmap-counter` numeric allocation is unchanged (`corpusHighWater`
   already floored correctly); only the rendered id *string* was wrong.

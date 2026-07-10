@@ -2851,8 +2851,10 @@ bool AuditDialog::debtDeferToRoadmap(
         RoadmapFoldIn::allocateIds(m_projectPath, deferred.size());
     if (ids.size() != deferred.size()) return false;
 
+    // ANTS-3497 — stamp the project's own sniffed prefix (padded), not ANTS.
     const QString block = DebtSweepEngine::templateDebtSweepFoldInBlock(
-        deferred, ids, QDate::currentDate().toString(Qt::ISODate));
+        deferred, ids, QDate::currentDate().toString(Qt::ISODate),
+        RoadmapFoldIn::sniffIdPrefix(m_projectPath));
     return RoadmapFoldIn::insertBlock(m_projectPath, needle, block);
 }
 

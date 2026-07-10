@@ -9,11 +9,14 @@
 #include "roadmapfoldin.h"
 #include "coldeyesengine.h"
 #include "indiereviewengine.h"
+#include "testauditengine.h"
 
 #include <gtest/gtest.h>
 
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QTemporaryDir>
 
 namespace {
@@ -108,4 +111,62 @@ TEST(FoldInIdPrefix, RenderIdZeroPadsToFour) {
               QStringLiteral("ANTS-3480"));
     EXPECT_EQ(RoadmapFoldIn::renderId(QStringLiteral("ANTS"), 12345),
               QStringLiteral("ANTS-12345"));
+}
+
+// INV-6 (ANTS-3498) — isValidIdPrefix accepts the canonical prefix grammar
+// (ANTS-3492): 1-16 chars of [A-Za-z0-9_-] containing ≥1 letter. Digit-led is
+// fine iff a letter is present; a letter-free or over-long prefix is rejected.
+TEST(FoldInIdPrefix, IsValidIdPrefixGrammar) {
+    // Accepted.
+    EXPECT_TRUE(RoadmapFoldIn::isValidIdPrefix(QStringLiteral("ANTS")));
+    EXPECT_TRUE(RoadmapFoldIn::isValidIdPrefix(QStringLiteral("3D_E")));   // digit-led + letter
+    EXPECT_TRUE(RoadmapFoldIn::isValidIdPrefix(QStringLiteral("mame-curator")));
+    EXPECT_TRUE(RoadmapFoldIn::isValidIdPrefix(QStringLiteral("A")));
+    // Rejected.
+    EXPECT_FALSE(RoadmapFoldIn::isValidIdPrefix(QString()));               // empty
+    EXPECT_FALSE(RoadmapFoldIn::isValidIdPrefix(QStringLiteral("2026")));  // letter-free
+    EXPECT_FALSE(RoadmapFoldIn::isValidIdPrefix(QStringLiteral("12-34")));  // letter-free
+    EXPECT_FALSE(RoadmapFoldIn::isValidIdPrefix(QStringLiteral("has space")));
+    EXPECT_FALSE(RoadmapFoldIn::isValidIdPrefix(
+        QStringLiteral("ABCDEFGHIJKLMNOPQR")));                            // 18 chars > 16
+}
+
+// INV-7 (ANTS-3498) — TestAuditEngine::foldIn honours an explicit id_prefix
+// override (winning over the ROADMAP sniff), and refuses a letter-free one
+// with bad_args before any counter touch. Uses dry_run so no ROADMAP write is
+// needed; the block still renders for inspection.
+TEST(FoldInIdPrefix, TestAuditFoldInHonoursIdPrefixOverride) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    // A FIBR-NNNN roadmap: the sniff would say "FIBR", but the override wins.
+    writeRoadmap(tmp.path(),
+        "# ROADMAP\n\n## 9.9.9 — active (target: 2026-07)\n\n"
+        "- [FIBR-0001] seed\n");
+
+    QJsonObject finding;
+    finding["dimension"] = "coverage";
+    finding["severity"]  = "MEDIUM";
+    finding["file"]      = "tests/foo.cpp";
+    finding["line"]      = 10;
+    finding["summary"]   = "uncovered branch";
+
+    TestAuditEngine::FoldInRequest req;
+    req.callerCwd  = tmp.path();
+    req.actionable = QJsonArray{finding};
+    req.dryRun     = true;                         // preview, no write
+    req.idPrefix   = QStringLiteral("ZOOM");       // explicit override
+
+    const auto r = TestAuditEngine::foldIn(req);
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+    EXPECT_TRUE(r.block.contains(QStringLiteral("[ZOOM-")))
+        << "override must win over the FIBR sniff; got: "
+        << r.block.toStdString();
+    EXPECT_FALSE(r.block.contains(QStringLiteral("[FIBR-")));
+
+    // A letter-free override is refused with bad_args, no write.
+    TestAuditEngine::FoldInRequest bad = req;
+    bad.idPrefix = QStringLiteral("2026");
+    const auto rb = TestAuditEngine::foldIn(bad);
+    EXPECT_FALSE(rb.ok);
+    EXPECT_EQ(rb.code, QStringLiteral("bad_args"));
 }

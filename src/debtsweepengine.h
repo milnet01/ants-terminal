@@ -212,15 +212,19 @@ ApplyVerdict applyMechanicalFix(
 
 // Fold-into-roadmap block template per spec § 3.10.
 //   Heading:  `### 🧹 Debt-sweep fold-in (<dateIso>)`
-//   Bullet:   `- 📋 [ANTS-<id>] **<message>** at <file>:<line>.\n`
+//   Bullet:   `- 📋 [<prefix>-<id>] **<message>** at <file>:<line>.\n`
 //             `  Kind: chore.\n  Source: debt-sweep-<dateIso>.\n`
-// Caller pre-allocates IDs via RoadmapFoldIn::allocateIds.
+// Caller pre-allocates IDs via RoadmapFoldIn::allocateIds and passes the
+// project's sniffed prefix (RoadmapFoldIn::sniffIdPrefix) so the block
+// carries the project's own ID scheme, zero-padded — NOT a hardcoded
+// `ANTS` (ANTS-3497, mirrors the ANTS-3473/3480 fold-in treatment).
 // dateIso MUST be YYYY-MM-DD (no time component).
 // Empty input → empty QString.
 QString templateDebtSweepFoldInBlock(
     const QList<Finding> &deferred,
     const QList<int> &allocatedIds,
-    const QString &dateIso);
+    const QString &dateIso,
+    const QString &idPrefix);
 
 // Pure string templating of an LLM triage prompt for the LLM-shaped
 // findings (those without a mechanical fix). See spec § 3.11.

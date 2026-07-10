@@ -286,7 +286,7 @@ TEST(DebtSweepEngine, Inv10TemplateHeadingAndBullets) {
     f2.message    = "ANTS-9999 is ✅ but no commit mentions it";
 
     const QString block = DebtSweepEngine::templateDebtSweepFoldInBlock(
-        {f1, f2}, {1259, 1260}, "2026-05-13");
+        {f1, f2}, {1259, 1260}, "2026-05-13", "ANTS");
 
     // Heading.
     EXPECT_TRUE(block.startsWith("### 🧹 Debt-sweep fold-in (2026-05-13)\n"));
@@ -300,6 +300,28 @@ TEST(DebtSweepEngine, Inv10TemplateHeadingAndBullets) {
     EXPECT_TRUE(block.contains("[ANTS-1260]"));
 }
 
+// ANTS-3497 — the block carries the project's own sniffed prefix, zero-padded
+// to the op:append width (mirrors the ANTS-3480 fold-in treatment), NOT a
+// hardcoded un-padded `ANTS-<n>`.
+TEST(DebtSweepEngine, Inv10ProjectPrefixAndPadding) {
+    DebtSweepEngine::Finding f;
+    f.category   = "code_drift";
+    f.detectorId = "added_todo";
+    f.file       = "src/z.cpp";
+    f.line       = 3;
+    f.message    = "TODO: z";
+
+    const QString block = DebtSweepEngine::templateDebtSweepFoldInBlock(
+        {f}, {7}, "2026-07-10", "DOOM");
+
+    EXPECT_TRUE(block.contains("- 📋 [DOOM-0007] **TODO: z** at src/z.cpp:3."))
+        << block.toStdString();
+    EXPECT_FALSE(block.contains("ANTS"))
+        << "the block must not hardcode the ANTS prefix";
+    EXPECT_FALSE(block.contains("[DOOM-7]"))
+        << "the id must be zero-padded to the op:append min-4 width";
+}
+
 TEST(DebtSweepEngine, Inv10DateIsoByteIdentical) {
     DebtSweepEngine::Finding f;
     f.category   = "code_drift";
@@ -309,7 +331,7 @@ TEST(DebtSweepEngine, Inv10DateIsoByteIdentical) {
     f.message    = "msg";
 
     const QString block = DebtSweepEngine::templateDebtSweepFoldInBlock(
-        {f}, {1300}, "2026-05-13");
+        {f}, {1300}, "2026-05-13", "ANTS");
 
     // Pull the heading date and the bullet's Source: date; require equality.
     QRegularExpression headingRe("### 🧹 Debt-sweep fold-in \\((\\d{4}-\\d{2}-\\d{2})\\)");
@@ -325,10 +347,10 @@ TEST(DebtSweepEngine, Inv13bTemplateEmptyOnMismatch) {
     DebtSweepEngine::Finding f;
     f.file = "x";
     EXPECT_EQ(DebtSweepEngine::templateDebtSweepFoldInBlock(
-                  {f, f}, {1}, "2026-05-13"),
+                  {f, f}, {1}, "2026-05-13", "ANTS"),
               QString());
     EXPECT_EQ(DebtSweepEngine::templateDebtSweepFoldInBlock(
-                  {}, {}, "2026-05-13"),
+                  {}, {}, "2026-05-13", "ANTS"),
               QString());
 }
 

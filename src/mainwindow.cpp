@@ -4921,6 +4921,8 @@ void MainWindow::setupClaudeMcpProviders() {
             req.narrativeMd   = args.value(QStringLiteral("narrative_md")).toString();
             // ANTS-2227 — dry_run preview (no counter bump, no ROADMAP write).
             req.dryRun        = args.value(QStringLiteral("dry_run")).toBool();
+            // ANTS-3498 — optional id_prefix override (validated in the engine).
+            req.idPrefix      = args.value(QStringLiteral("id_prefix")).toString();
             const auto r = TestAuditEngine::foldIn(req);
             QJsonObject env;
             if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;
