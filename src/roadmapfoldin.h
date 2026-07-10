@@ -81,6 +81,16 @@ qint64 corpusHighWater(const QString &projectPath,
 QString sniffIdPrefix(const QString &projectPath,
                       const QString &fallback = QStringLiteral("ANTS"));
 
+// ANTS-3480 — canonical fold-in ID renderer. Zero-pads the numeric suffix
+// to a minimum of 4 digits, exactly matching roadmap_log op:append's render
+// (remotecontrol.cpp cmdRoadmapLogAppend: `.arg(n, 4, 10, QLatin1Char('0'))`),
+// so a fold-in bullet's `[PREFIX-NNNN]` token is byte-identical in width to
+// every hand- and append-written bullet and therefore sorts / regex-matches
+// (`/PREFIX-\d{4}/`) the same. Used by all three fold-in block renderers AND
+// their `allocated_ids` echo, so the id a caller reads back equals the id
+// written into the block. A suffix already ≥4 digits is emitted verbatim.
+QString renderId(const QString &prefix, int n);
+
 // ANTS-1618 — post-failure inspection helper. allocateIds returns an
 // empty QList on every failure mode (flock contention, corrupt int,
 // permission, symlink-escape); callers want a state-specific message.

@@ -71,11 +71,13 @@ TEST(FoldInIdPrefix, ColdEyesRendersPrefix) {
     const QList<int> ids = {77};
     const QString custom = ColdEyesEngine::templateColdEyesFoldInBlock(
         fs, ids, QStringLiteral("2026-07-10"), QStringLiteral("FIBR"));
-    EXPECT_TRUE(custom.contains(QStringLiteral("[FIBR-77]")));
+    // ANTS-3480 — zero-padded to min-4 digits, matching op:append.
+    EXPECT_TRUE(custom.contains(QStringLiteral("[FIBR-0077]")));
+    EXPECT_FALSE(custom.contains(QStringLiteral("[FIBR-77]")));
     EXPECT_FALSE(custom.contains(QStringLiteral("[ANTS-")));
     const QString deflt = ColdEyesEngine::templateColdEyesFoldInBlock(
         fs, ids, QStringLiteral("2026-07-10"));
-    EXPECT_TRUE(deflt.contains(QStringLiteral("[ANTS-77]")));
+    EXPECT_TRUE(deflt.contains(QStringLiteral("[ANTS-0077]")));
 }
 
 // INV-4 — the indie-review fold-in renderer stamps the passed prefix.
@@ -84,9 +86,26 @@ TEST(FoldInIdPrefix, IndieReviewRendersPrefix) {
     const QList<int> ids = {88};
     const QString custom = IndieReviewEngine::templateIndieReviewFoldInBlock(
         fs, ids, QStringLiteral("2026-07-10"), QStringLiteral("FIBR"));
-    EXPECT_TRUE(custom.contains(QStringLiteral("[FIBR-88]")));
+    // ANTS-3480 — zero-padded to min-4 digits, matching op:append.
+    EXPECT_TRUE(custom.contains(QStringLiteral("[FIBR-0088]")));
+    EXPECT_FALSE(custom.contains(QStringLiteral("[FIBR-88]")));
     EXPECT_FALSE(custom.contains(QStringLiteral("[ANTS-")));
     const QString deflt = IndieReviewEngine::templateIndieReviewFoldInBlock(
         fs, ids, QStringLiteral("2026-07-10"));
-    EXPECT_TRUE(deflt.contains(QStringLiteral("[ANTS-88]")));
+    EXPECT_TRUE(deflt.contains(QStringLiteral("[ANTS-0088]")));
+}
+
+// INV-5 (ANTS-3480) — renderId zero-pads the numeric suffix to a minimum of
+// four digits, matching roadmap_log op:append; a suffix already ≥4 digits is
+// emitted verbatim (no truncation, no over-pad).
+TEST(FoldInIdPrefix, RenderIdZeroPadsToFour) {
+    EXPECT_EQ(RoadmapFoldIn::renderId(QStringLiteral("FIBR"), 82),
+              QStringLiteral("FIBR-0082"));
+    EXPECT_EQ(RoadmapFoldIn::renderId(QStringLiteral("ANTS"), 1),
+              QStringLiteral("ANTS-0001"));
+    // ≥4 digits: untouched (never truncated).
+    EXPECT_EQ(RoadmapFoldIn::renderId(QStringLiteral("ANTS"), 3480),
+              QStringLiteral("ANTS-3480"));
+    EXPECT_EQ(RoadmapFoldIn::renderId(QStringLiteral("ANTS"), 12345),
+              QStringLiteral("ANTS-12345"));
 }

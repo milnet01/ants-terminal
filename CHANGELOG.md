@@ -65,6 +65,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Fold-in verbs emit un-zero-padded IDs (FIBR-82 not FIBR-0082) + inconsistent allocated_ids type — ANTS-3473 residual.** (ANTS-3480)
+  The auto-ID feature I added today gets the project's ID prefix right but drops the leading zeros (writes FIBR-82 where every other ID reads FIBR-0082), so the IDs sort and match wrong.
+
 - **fold-in verbs stamp the project's own roadmap ID prefix instead of a hardcoded ANTS- (ANTS-3473)**
   test_audit_fold_in / cold_eyes_fold_in / indie_review_fold_in / plan_template now sniff the dominant [PREFIX-NNNN] prefix from the project's ROADMAP.md (new RoadmapFoldIn::sniffIdPrefix), so a fold-in into e.g. a FIBR-NNNN roadmap allocates FIBR- and no longer collides with the Ants roadmap's own IDs.
 

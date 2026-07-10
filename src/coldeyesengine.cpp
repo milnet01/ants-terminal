@@ -3,6 +3,7 @@
 #include "falseposledger.h"
 #include "indiereviewengine.h"
 #include "pathvalidation.h"
+#include "roadmapfoldin.h"
 
 #include <QChar>
 #include <QDateTime>
@@ -1184,8 +1185,8 @@ QString templateColdEyesFoldInBlock(
             if (j) lanesJoined += QStringLiteral(", ");
             lanesJoined += f.citingLanes[j];
         }
-        out += QStringLiteral("- 📋 [%1-%2] **Cold-eyes finding:** ")
-                   .arg(idPrefix).arg(id);
+        out += QStringLiteral("- 📋 [%1] **Cold-eyes finding:** ")
+                   .arg(RoadmapFoldIn::renderId(idPrefix, id));
         out += f.file;
         if (f.line > 0) {
             out += QChar(':');

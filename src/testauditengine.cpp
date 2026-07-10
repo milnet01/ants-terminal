@@ -1894,7 +1894,7 @@ FoldInResult foldIn(const FoldInRequest &req) {
     const QString idPrefix = RoadmapFoldIn::sniffIdPrefix(canon);
     QStringList allocated;
     for (int v : allocatedInts) {
-        allocated.append(QStringLiteral("%1-%2").arg(idPrefix).arg(v));
+        allocated.append(RoadmapFoldIn::renderId(idPrefix, v));
     }
     r.allocatedIds = allocated;
     // Render per-finding bullets (headlines validated above, pre-allocation).

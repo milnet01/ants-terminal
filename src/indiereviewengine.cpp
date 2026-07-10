@@ -3,6 +3,7 @@
 #include "briefdispatch.h"
 #include "falseposledger.h"
 #include "pathvalidation.h"
+#include "roadmapfoldin.h"
 #include "subsystemmap.h"
 
 #include <QChar>
@@ -736,9 +737,7 @@ QString templateIndieReviewFoldInBlock(
         const QString lane = laneFromPath(f.file);
 
         out += QStringLiteral("- 📋 [");
-        out += idPrefix;
-        out += QChar('-');
-        out += QString::number(id);
+        out += RoadmapFoldIn::renderId(idPrefix, id);
         out += QStringLiteral("] ");
         // ANTS-1278 — rich-card shape when the caller supplied a
         // title; otherwise a LOUD `**TODO: describe this finding (…)**`

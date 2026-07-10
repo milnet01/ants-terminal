@@ -16489,8 +16489,12 @@ QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
         QStringLiteral("counter_failed"),
         QStringLiteral("indie_review_fold_in: could not allocate IDs")));
 
+    // ANTS-3480 — sniff once; the block render and the allocated_ids echo
+    // must agree, and both zero-pad via RoadmapFoldIn::renderId so the ids
+    // read back match op:append's [PREFIX-NNNN] width byte-for-byte.
+    const QString idPrefix = RoadmapFoldIn::sniffIdPrefix(root);
     const QString block = IndieReviewEngine::templateIndieReviewFoldInBlock(
-        actionable, ids, dateIso, RoadmapFoldIn::sniffIdPrefix(root));
+        actionable, ids, dateIso, idPrefix);
 
     const bool written = dryRun
         ? false : RoadmapFoldIn::insertBlock(root, heading, block);
@@ -16500,7 +16504,7 @@ QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
     if (dryRun) env["dry_run"] = true;
     env["block"]         = block;
     QJsonArray idsArr;
-    for (int id : ids) idsArr.append(id);
+    for (int id : ids) idsArr.append(RoadmapFoldIn::renderId(idPrefix, id));
     env["allocated_ids"] = idsArr;
     env["written"]       = written;
     if (!heading.isEmpty()) env["release_block_heading"] = heading;
@@ -18255,11 +18259,15 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
             QStringLiteral("cold_eyes_fold_in: could not allocate IDs")));
     }
 
+    // ANTS-3480 — sniff once; block render + allocated_ids echo agree and
+    // zero-pad via RoadmapFoldIn::renderId (freeform: ids is empty, so the
+    // echo is []). Sniffing in the freeform arm is a cheap harmless read.
+    const QString idPrefix = RoadmapFoldIn::sniffIdPrefix(root);
     const QString block = skipAlloc
         ? ColdEyesEngine::templateColdEyesFoldInBlockFreeform(
               actionable, dateIso)
         : ColdEyesEngine::templateColdEyesFoldInBlock(
-              actionable, ids, dateIso, RoadmapFoldIn::sniffIdPrefix(root));
+              actionable, ids, dateIso, idPrefix);
 
     bool written = false;
     if (!dryRun && !heading.isEmpty()) {
@@ -18271,7 +18279,7 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
     if (dryRun) env["dry_run"] = true;
     env["block"]         = block;
     QJsonArray idsArr;
-    for (int id : ids) idsArr.append(id);
+    for (int id : ids) idsArr.append(RoadmapFoldIn::renderId(idPrefix, id));
     env["allocated_ids"] = idsArr;
     env["id_allocation"] = idAllocMode;
     env["written"]       = written;

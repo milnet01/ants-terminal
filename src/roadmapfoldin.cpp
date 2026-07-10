@@ -311,6 +311,11 @@ CounterInspection inspectCounter(const QString &projectPath) {
     return ins;
 }
 
+QString renderId(const QString &prefix, int n) {
+    // ANTS-3480 — width matches roadmap_log op:append (fixed min-4 pad).
+    return QStringLiteral("%1-%2").arg(prefix).arg(n, 4, 10, QLatin1Char('0'));
+}
+
 QList<int> allocateIds(const QString &projectPath, int n) {
     if (n <= 0) return {};
     const QString path = counterPath(projectPath);
