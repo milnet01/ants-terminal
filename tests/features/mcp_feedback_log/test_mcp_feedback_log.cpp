@@ -159,9 +159,16 @@ TEST(McpFeedbackLog, CreatesSkeleton) {
     ASSERT_TRUE(env.value("ok").toBool()) << "create should succeed";
     EXPECT_TRUE(env.value("created").toBool());
     const QByteArray on = readAll(p);
-    EXPECT_TRUE(on.contains("<!-- ants-mcp-feedback: 1 -->"));
+    // ANTS-3476 — a brand-new file is born v2 (inline-ID), not v1.
+    EXPECT_TRUE(on.contains("<!-- ants-mcp-feedback: 2 -->"));
+    EXPECT_FALSE(on.contains("<!-- ants-mcp-feedback: 1 -->"));
     EXPECT_TRUE(on.contains("# Ants MCP Feedback — Proj"));  // derived H1
     EXPECT_TRUE(on.contains("Format: docs/standards/mcp-feedback-files.md"));
+    // v2 banner: names op:append_finding + the blank Proposed-ID rule; the v1
+    // append_tracking / maintainer-table language is gone.
+    EXPECT_TRUE(on.contains("op:append_finding"));
+    EXPECT_TRUE(on.contains("**Proposed ID:**"));
+    EXPECT_FALSE(on.contains("op:append_tracking"));
     EXPECT_TRUE(on.contains("### Title"));
 }
 

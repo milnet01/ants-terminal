@@ -182,9 +182,9 @@ still never rewrites a contributor's *description*.
 
 The H1 title is **free-form** (the legacy corpus varies it freely, e.g.
 `# Ants MCP — Feedback from /test-audit …`); only the marker comment and
-the block headings below are structural. (This shows the **target** `: 2` form;
-`FeedbackFile::skeleton()` still emits the `: 1` marker + a v1 banner for a
-brand-new file until ANTS-3476 — see the version-marker note below.)
+the block headings below are structural. (`FeedbackFile::skeleton()` emits
+exactly this `: 2` marker + v2 banner for a brand-new file as of ANTS-3476, so
+a fresh file is born v2 and never needs `migrate_v2`.)
 
 ```markdown
 <!-- ants-mcp-feedback: 2 -->
@@ -228,9 +228,9 @@ legacy corpus predates it, so a parser MUST NOT *require* a marker: identify
 feedback files by the filename glob `*_Ants_MCP_Feedback.md`, and when the
 marker is absent fall back to content (a v1 tracking table ⟹ v1) per
 §"The un-triaged delta". A new file SHOULD carry `: 2`; `op:migrate_v2` bumps a
-`: 1` file to `: 2`. (The whole corpus was migrated to `: 2` on 2026-07-10;
-`FeedbackFile::skeleton()` still emits `: 1` for a brand-new file — tracked by
-**ANTS-3476** to be born `: 2` with the v2 banner.) The blockquote header pointer is the
+`: 1` file to `: 2`. (The whole corpus was migrated to `: 2` on 2026-07-10, and
+`FeedbackFile::skeleton()` emits `: 2` for a brand-new file as of ANTS-3476, so
+a fresh file is born v2.) The blockquote header pointer is the
 contributor's one-screen reminder of the rules — including the
 `feedback_query` / `feedback_log` verb names (ANTS-2226), so a contributor
 session discovers the read/write tools from the file itself rather than

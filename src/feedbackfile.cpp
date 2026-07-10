@@ -459,23 +459,27 @@ QString renderTrackingBlock(const QString &date, const QString &note,
 }
 
 QString skeleton(const QString &projectTitle) {
+    // ANTS-3476 — a brand-new file is born v2 (inline-ID): the `: 2` marker +
+    // the v2 banner verbatim from docs/standards/mcp-feedback-files.md
+    // §"File skeleton". No migrate_v2 is ever needed on a fresh file. The v1
+    // marker + append_tracking banner are retained only on legacy/un-migrated
+    // corpus files.
     QString out;
-    out += QStringLiteral("<!-- ants-mcp-feedback: 1 -->\n");
+    out += QStringLiteral("<!-- ants-mcp-feedback: 2 -->\n");
     out += QStringLiteral("# Ants MCP Feedback — ") + projectTitle +
            QStringLiteral("\n\n");
     out += QStringLiteral(
         "> Format: docs/standards/mcp-feedback-files.md in the Ants "
         "Terminal repo.\n"
         "> **Contributors (ANTS-2226):** read new items with the "
-        "`feedback_query` Ants-MCP\n"
-        "> verb (the un-triaged tail) and append findings with `feedback_log "
-        "op:append_finding`\n"
-        "> — don't hand-edit, that keeps the read-the-tail watermark intact. "
-        "The maintainer\n"
-        "> stamps roadmap IDs via `feedback_log op:append_tracking`.\n"
-        "> Contributors append below the last maintainer block; never "
-        "edit a\n"
-        "> maintainer table; never assign ANTS-NNNN IDs.\n");
+        "`feedback_query`\n"
+        "> Ants-MCP verb (the un-triaged tail) and append findings with "
+        "`feedback_log\n"
+        "> op:append_finding` — don't hand-edit. Each finding carries a "
+        "blank\n"
+        "> `**Proposed ID:**` line; leave it blank — the maintainer fills "
+        "it. Never\n"
+        "> assign an ANTS-NNNN id yourself.\n");
     return out;
 }
 
