@@ -181,8 +181,9 @@ Suggestion detect(const QString &rootCanonical) {
     }
     s.excluded = excludedDirs;
 
-    // Files directly at the repo root (depth 0) — counted toward the total
-    // but never suggestable (subdirs only, INV-12).
+    // Files directly at the repo root (depth 0) — counted toward the total;
+    // on a miss, rootLevel>0 drives a whole-root ["."] suggestion so they are
+    // covered (ANTS-3390, INV-12/INV-17).
     int rootLevel = 0;
     if (budget > 0) {
         const QFileInfoList files =
@@ -217,35 +218,54 @@ Suggestion detect(const QString &rootCanonical) {
         return s;
     }
 
-    // A miss — suggest ALL first-party source subdirs (every counted dir
-    // except the tests default), sorted count desc / name asc (ANTS-3369:
-    // no dominant-cover gate, so a low-count entry-point dir + a spread
-    // layout are both covered). Root-level source is never suggestable.
+    // A miss with source loose AT the repo root (ANTS-3390) — suggest the
+    // whole-root walk ["."], which walkSubtree noise-prunes exactly as it does
+    // src/ (ANTS-3393). It covers BOTH the depth-0 entrypoint/orchestration
+    // files (RetroArch's retroarch.c etc.) and every first-party subdir in one
+    // entry. A subdirs-only suggestion can't reach root files, and source_roots
+    // REPLACES the src/ default, so dropping them from the suggestion drops
+    // them from the index. This is the rootLevel>0 half of the miss-space;
+    // rootLevel==0 falls through to the subdir list (INV-14/INV-17).
+    if (rootLevel > 0) {
+        s.sourceRoots = QStringList{QStringLiteral(".")};
+        s.reason = QStringLiteral(
+            "default src/+tests/ walk indexed %1 of %2 source files; %3 file(s) "
+            "sit loose at the repo root — suggesting the whole-root walk (\".\") "
+            "so they are covered (vendored/build dirs auto-pruned)")
+            .arg(s.defaultSourceCount).arg(total).arg(rootLevel);
+        return s;
+    }
+
+    // A miss with all uncovered source in subdirs — suggest ALL first-party
+    // source subdirs (every counted dir except the tests default), sorted
+    // count desc / name asc (ANTS-3369: no dominant-cover gate, so a low-count
+    // entry-point dir + a spread layout are both covered).
     QList<QPair<QString, int>> cands;
     for (const auto &p : dirCounts)
         if (p.first != QLatin1String("tests")) cands.append(p);
     std::sort(cands.begin(), cands.end(), [](const auto &a, const auto &b) {
         return a.second != b.second ? a.second > b.second : a.first < b.first;
     });
-    if (cands.isEmpty()) {                          // missed source all at root / in tests
+    if (cands.isEmpty()) {
+        // Defensive fallback (ANTS-3390): rootLevel==0 here — a miss WITH root
+        // source returned ["."] above — and no first-party source subdir, so
+        // all admitted source is under tests/. Near-unreachable via the miss
+        // path (that layout has defaultSourceCount==total, so it is not a
+        // miss), but keep a non-empty reason (INV-15) rather than fall through.
         s.reason = QStringLiteral(
-            "default src/+tests/ walk indexed %1 of %2 source files; the "
-            "remaining source sits at the repo root and is not suggestable "
-            "— declare source_roots manually").arg(s.defaultSourceCount).arg(total);
+            "default src/+tests/ walk indexed %1 of %2 source files; no "
+            "first-party source subdir to suggest — declare source_roots "
+            "manually").arg(s.defaultSourceCount).arg(total);
         return s;
     }
     QStringList chosen;
     int covered = 0;
     for (const auto &p : cands) { chosen << p.first; covered += p.second; }
     s.sourceRoots = chosen;
-    QString reason = QStringLiteral(
+    s.reason = QStringLiteral(
         "default src/+tests/ walk indexed %1 of %2 source files; %3 hold(s) %4")
         .arg(s.defaultSourceCount).arg(total)
         .arg(chosen.join(QStringLiteral(", "))).arg(covered);
-    if (rootLevel > 0)
-        reason += QStringLiteral("; %1 file(s) at the repo root are not suggestable")
-            .arg(rootLevel);
-    s.reason = reason;
     return s;
 }
 

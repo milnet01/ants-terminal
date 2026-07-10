@@ -413,6 +413,34 @@ TEST(CodebaseIndex, NoiseDirsPrunedUnderDotRoot) {
     }
 }
 
+// ANTS-3390 (INV-18) — a "." source_root must key files by their bare
+// repo-relative path (`app.cpp`), NOT `./app.cpp`. The walk base `<root>/.`
+// makes QDirIterator yield `./`-prefixed paths; walkSubtree strips the single
+// leading `./`. Without the strip, findFile's exact `fe.path == rel` match
+// (the file_path lookup) returns found:false for a bare `app.cpp` query — the
+// exact RetroArch-class gap ANTS-3390 closes — and roleFor/tests/ detection
+// misses a `./tests/…` path. Retroactively repairs shipped ANTS-3393 keys.
+TEST(CodebaseIndex, DotRootKeysBareRelativePath) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    writeFile(dir.path() + "/.ants/project.json",
+              QStringLiteral("{\"source_roots\":[\".\"]}"));
+    writeFile(dir.path() + "/app.cpp", cppWith("App", "run"));       // root file
+    writeFile(dir.path() + "/sub/lib.cpp", cppWith("Lib", "f"));     // subdir file
+
+    Index idx = build(dir.path(), 1000);
+    bool exactRoot = false, exactSub = false, anyDotPrefixed = false;
+    for (const FileEntry &fe : idx.files) {
+        if (fe.path == QStringLiteral("app.cpp"))     exactRoot = true;
+        if (fe.path == QStringLiteral("sub/lib.cpp")) exactSub = true;
+        if (fe.path.startsWith(QStringLiteral("./"))) anyDotPrefixed = true;
+    }
+    EXPECT_TRUE(exactRoot)
+        << "root file must key as 'app.cpp' (findFile is exact-match), not './app.cpp'";
+    EXPECT_TRUE(exactSub)  << "subdir file must key as 'sub/lib.cpp'";
+    EXPECT_FALSE(anyDotPrefixed) << "no './'-prefixed keys under a '.' source_root";
+}
+
 // ANTS-3468 — opt-in lane→source-file digest. params.laneFiles augments each
 // summary lane with a sorted `source_files` array of its NON-test paths so the
 // session_orient bundle's first-call map is navigable; the default (opt-out)

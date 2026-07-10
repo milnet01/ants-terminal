@@ -30,9 +30,15 @@ the ANTS-2160 suite used for its consumer-wiring check.
   `bad_path`; wrong shape (non-array) → `bad_args`; never writes on fail.
 - **INV-11** — noise dirs (`node_modules/` …) skipped: neither suggested
   nor counted in the total.
-- **INV-12** — source at the repo root (no subdir) → no suggestion.
-- **INV-14** — dominance gate: a miss with no subdir set reaching the bar
-  (half the source at the repo root) → no suggestion.
+- **INV-12** (amended ANTS-3390) — source at the repo root, no subdir →
+  whole-root `source_roots:["."]` suggestion (was: no suggestion), so
+  codebase_index can reach the depth-0 files.
+- **INV-14** (ANTS-3369) — a miss with NO root source (`rootLevel==0`) →
+  suggests ALL first-party source subdirs, count desc / name asc
+  (`app/a.c`+`engine/b.c` → `["app","engine"]`, total 2).
+- **INV-17** (ANTS-3390) — a miss with source loose AT the repo root
+  (`rootLevel>0`) → whole-root `source_roots:["."]` (subsumes the depth-0
+  files + subdirs); `retroarch.c`+`libretro-common/x.c` → `["."]`, total 2.
 - **INV-5/6/10/13 (wiring)** — `project_settings` registered
   `CallerCwdContract::Required` in `claudeintegration.cpp`'s
   `callerCwdContractFor()` + `registerToolProvider`; the handler writes

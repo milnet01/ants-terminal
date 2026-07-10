@@ -56,6 +56,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **codebase_index now covers repo-root source files on non-standard layouts (ANTS-3390)** (ANTS-3390)
+  project_settings op:detect now suggests source_roots:["."] when a project's source sits loose at the repo root (RetroArch's retroarch.c, configuration.c, runloop.c … ~9k LoC), instead of a subdirs-only suggestion that silently dropped those files from the index. The whole-root walk also had its keys normalised — a "." source_root previously stored "./retroarch.c", so codebase_index(file_path:"retroarch.c") returned found:false; it now keys the bare repo-relative path, which also repairs flat-root ["."] projects (ANTS-3393) whose file_path lookups and tests/ role-detection were silently broken.
+
 - **focused_test returns an MCP -32000 transport timeout when a broad changed-file (e.g. remotecontrol.cpp) maps to a large ctest set that outruns the transport deadline.** (ANTS-3449)
   focused_test now runs ctest in parallel (-j, capped at 4 / host cores), so a broad change that falls back to the full suite finishes in ~26s instead of ~78s and no longer trips the MCP transport timeout (spurious -32000) while the tests were still running fine underneath.
 

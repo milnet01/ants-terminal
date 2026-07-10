@@ -45,6 +45,14 @@ source-scrapes the MCP wiring sites. It maps to the spec invariants:
   digest is deterministic (sorted lanes + sorted paths) so it keeps a warm
   re-serve byte-identical (304-stable). The `session_orient` bundle passes
   `lane_files:true` so its embedded map is navigable, not counts-only.
+- **INV-20** — (ANTS-3390) a `source_roots:["."]` walk keys files by their
+  bare repo-relative path (`app.cpp`, `sub/lib.cpp`), NOT `./app.cpp`. The
+  walk base `<root>/.` makes `QDirIterator` yield `./`-prefixed `rel`, so
+  `walkSubtree` strips a single leading `./`; without it, `findFile`'s exact
+  `fe.path == rel` match (the `file_path` lookup) returns `found:false` for a
+  bare query — the RetroArch-class gap ANTS-3390 closes — and `roleFor`'s
+  `tests/`-prefix detection misses a `./tests/…` path. Retroactively repairs
+  shipped ANTS-3393's `["."]` keys.
 
 The test must fail against pre-implementation source (no `codebaseindex.*`,
 no `codebase_index` wiring) and pass after the feature lands.

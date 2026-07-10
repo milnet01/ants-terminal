@@ -229,31 +229,56 @@ TEST(ProjectSettingsVerb, NoiseDirsSkipped) {
     EXPECT_EQ(s.totalSourceCount, 1);   // node_modules excluded from the total
 }
 
-// INV-12 — source at the repo root (no subdir) → no suggestion (subdirs only).
-TEST(ProjectSettingsVerb, RepoRootSourceNoSuggestion) {
+// INV-12 (amended ANTS-3390) — source at the repo root with NO subdir now
+// yields a whole-root ["."] suggestion (was: no suggestion). ["."] is the
+// degenerate rootLevel>0 case of INV-17; it lets codebase_index reach the
+// depth-0 files that a subdirs-only suggestion could never index.
+TEST(ProjectSettingsVerb, RepoRootSourceSuggestsWholeRoot) {
     QTemporaryDir dir;
     const QString root = canon(dir);
     writeFile(root + "/a.c", cFile("a"));
     writeFile(root + "/b.c", cFile("b"));
 
     const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
-    EXPECT_FALSE(s.sourceRoots.has_value());
+    ASSERT_TRUE(s.sourceRoots.has_value());
+    EXPECT_EQ(*s.sourceRoots, QStringList{QStringLiteral(".")});
+    EXPECT_EQ(s.totalSourceCount, 2);
+    EXPECT_FALSE(s.reason.isEmpty());
 }
 
-// INV-14 — ANTS-3369: on a miss, suggest ALL first-party source subdirs
-// (not a dominant-cover subset). Half the source at the repo root → the one
-// source subdir is STILL suggested (was nullopt pre-3369); the root files
-// are the un-suggestable remainder noted in `reason`.
+// INV-14 — ANTS-3369: on a miss with NO root source (rootLevel==0), suggest
+// ALL first-party source subdirs (not a dominant-cover subset), sorted count
+// desc / name asc. Pure-subdir spread here (no root file) so the rootLevel==0
+// branch is exercised — a miss WITH root source is INV-17's ["."] case.
 TEST(ProjectSettingsVerb, MissSuggestsAllSourceSubdirs) {
     QTemporaryDir dir;
     const QString root = canon(dir);
-    writeFile(root + "/a.c", cFile("a"));          // 50% at root (not suggestable)
-    writeFile(root + "/engine/b.c", cFile("b"));   // 50% in engine/
+    writeFile(root + "/app/a.c", cFile("a"));      // subdir (no root file)
+    writeFile(root + "/engine/b.c", cFile("b"));   // subdir
 
     const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
     EXPECT_EQ(s.defaultSourceCount, 0);   // a miss …
-    ASSERT_TRUE(s.sourceRoots.has_value());  // … now suggested, not dropped
-    EXPECT_EQ(*s.sourceRoots, QStringList{QStringLiteral("engine")});
+    ASSERT_TRUE(s.sourceRoots.has_value());  // … all subdirs suggested
+    EXPECT_EQ(*s.sourceRoots,
+              (QStringList{QStringLiteral("app"), QStringLiteral("engine")}));
+    EXPECT_EQ(s.totalSourceCount, 2);
+    EXPECT_FALSE(s.reason.isEmpty());
+}
+
+// INV-17 (ANTS-3390) — a miss with source loose AT the repo root (rootLevel>0)
+// suggests the whole-root ["."] walk, which subsumes both the depth-0 files
+// and the subdir library in one entry (the RetroArch-class layout). Takes the
+// rootLevel>0 branch, mutually exclusive with INV-14's subdir list.
+TEST(ProjectSettingsVerb, MissWithRootSourceSuggestsWholeRoot) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/retroarch.c", cFile("retroarch"));    // loose at the root
+    writeFile(root + "/libretro-common/x.c", cFile("x"));    // subdir library
+
+    const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
+    EXPECT_EQ(s.defaultSourceCount, 0);   // a miss
+    ASSERT_TRUE(s.sourceRoots.has_value());
+    EXPECT_EQ(*s.sourceRoots, QStringList{QStringLiteral(".")});
     EXPECT_EQ(s.totalSourceCount, 2);
     EXPECT_FALSE(s.reason.isEmpty());
 }

@@ -114,7 +114,16 @@ QStringList walkSubtree(const QString &rootCanonical, const QString &sub) {
     while (it.hasNext()) {
         it.next();
         if (!isIndexableSuffix(it.fileInfo().suffix().toLower())) continue;
-        const QString rel = it.filePath().mid(prefix);
+        QString rel = it.filePath().mid(prefix);
+        // ANTS-3390 — a "." source_root (ANTS-3393 flat-root layouts, and the
+        // ANTS-3390 op:detect suggestion for repo-root source) makes the walk
+        // base "<root>/.", so QDirIterator yields "./"-prefixed paths
+        // ("./retroarch.c"). Strip the single leading "./" so keys match the
+        // src/-relative convention: findFile (the file_path lookup) is an exact
+        // fe.path==rel match with no normalisation, and roleFor's tests/-prefix
+        // detection would miss a "./tests/…" path. Only the base carries the
+        // trailing ".", so the artifact is always exactly at the front.
+        if (rel.startsWith(QLatin1String("./"))) rel = rel.mid(2);
         // ANTS-3393 — prune vendored / build-output / virtualenv trees even
         // under an explicit source_roots=["."]: a committed venv/ or
         // node_modules/ otherwise drowns the index (2350 vendored files vs
