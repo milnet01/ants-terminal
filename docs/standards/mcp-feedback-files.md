@@ -494,10 +494,13 @@ they are never parsed *from the feedback file itself* (per the scope note above)
 ## Maintainer compaction (v2 — `compact_resolved`) — ANTS-3443
 
 Even with inline triage, a *shipped* finding's full write-up stays at full
-verbosity forever — yet its detail now lives in the roadmap bullet, the
-CHANGELOG, and git. `feedback_log op:"compact_resolved"` collapses it. Like its
-v1 predecessors it *collapses with provenance*, never deletes: the write-up
-survives in git and under its `ANTS-NNNN`; the file keeps a one-line stub.
+verbosity forever — yet its detail now lives in the git-tracked ROADMAP bullet +
+CHANGELOG (and any spec). `feedback_log op:"compact_resolved"` collapses it.
+**Note — these feedback files are not git-tracked** (they live at the shared
+root, outside any repo), so "collapse with provenance" means the finding's
+substance survives under its `ANTS-NNNN` in those git-tracked artifacts — *not*
+that the feedback file's verbatim write-up is recoverable; a collapsed or
+stripped write-up is gone from the file. The op keeps a one-line stub.
 
 (The near-identical name to the v1 `compact_shipped` is deliberate — same
 "collapse a shipped write-up" job, different gate: `compact_shipped` reads a v1
@@ -582,8 +585,8 @@ These files grow without bound: every contributor finding stays at full
 verbosity forever, even after its `ANTS-NNNN` ships and the originating
 session confirms the fix. `feedback_log op:"compact_shipped"` is the first of
 the **two v1 delete-prohibition exceptions** (the second is `prune_tracking`,
-below) — it *collapses with provenance*, it never deletes. The full write-up survives in git history and under its
-`ANTS-NNNN`; the file keeps a one-line stub.
+below) — it *collapses with provenance*, it never deletes. The finding's substance survives under its
+`ANTS-NNNN` (the git-tracked ROADMAP bullet + CHANGELOG); the file keeps a one-line stub.
 
 For each maintainer-named target block it replaces the body (every line
 after the boundary heading up to the next `#`/`## ` boundary) with a single
@@ -629,7 +632,7 @@ rows**, keeping each id's authoritative *last-per-id* row (ANTS-3371's
 `|---|` separator** — so the watermark ledger (the maintainer headings + each
 id's final status) and the un-triaged delta are intact. It narrows the ledger
 to headings + last-per-id status; the intermediate 📋/🚧 rows are intentionally
-dropped (that history is in git + the ROADMAP bullet). It never touches
+dropped (only the current status is authoritative — the ROADMAP bullet's; the superseded per-session snapshots are not preserved elsewhere). It never touches
 contributor content — the contributor "don'ts" above are unchanged;
 `prune_tracking` is maintainer-only.
 
@@ -703,8 +706,10 @@ for the marker-aware reader — the reason there was no hard ordering dependency
 (above). Now that ANTS-3448 has shipped and a
 `: 2` file's delta no longer depends on the tables, **removing the retained
 tables from a migrated file is unblocked** and is the planned final declutter
-step: the canonical v2 file carries no tracking table, and that history survives
-in git + the ROADMAP. Full contract:
+step: the canonical v2 file carries no tracking table — the finding→id mapping
+lives inline (the backfilled `**Proposed ID:**` lines) and status comes from the
+ROADMAP. Because these files are **not git-tracked**, a strip must snapshot them
+first (the tables' notes are otherwise unrecoverable). Full contract:
 `docs/specs/ANTS-3446.md` (implemented — `FeedbackFile::migrateV2` +
 `cmdFeedbackLog op:migrate_v2`, `tests/features/feedback_log_migrate_v2/`).
 
