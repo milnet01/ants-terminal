@@ -18654,12 +18654,13 @@ build).
   Lanes: changeloglog.
   Source: 3D_Engine/Vestige-feedback-2026-07-10.
 
-- 📋 [ANTS-3496] **similar_code ranks a trivial one-token signature as the top hit for a prose-y shape query (token-set Jaccard rewards short signatures).**
+- ✅ [ANTS-3496] **similar_code ranks a trivial one-token signature as the top hit for a prose-y shape query (token-set Jaccard rewards short signatures).**
   similar_code for the shape [add audio setting field ImGui combo widget settings panel HRTF] returned a 0.0909-score one-liner add (tween.h) as the TOP match; the genuinely useful Settings struct was #2 at the same score. include_bodies still delivered the useful body so impact is LOW, but the #1 slot was noise -- token-set Jaccard rewards short signatures with incidental token overlap. Fix: down-weight trivial one-line/one-token signatures, or favour longer signature-token overlaps, when ranking. Evidence: 3D_Engine_Ants_MCP_Feedback.md.
   **Layman:** The find-similar-code tool sometimes puts a tiny irrelevant match at the top of the list because short snippets score high by accident.
   Kind: fix.
   Lanes: codebaseindex.
   Source: 3D_Engine/Vestige-feedback-2026-07-10.
+  Resolved (2026-07-10): DUPLICATE of the already-shipped ANTS-3380 ("similar_code — down-weight trivial one-line/one-token signatures in ranking"), whose fix cites the identical repro (a one-token `add` tying a 13-token `Settings` at 0.0909 then winning the tiebreak). similarcode.cpp:37 defines kIncidentalOverlapPenalty=0.5 and :128-129 applies it — halving the score of a single-token overlap so it sits below any 2+-token match. Live in the current binary. The 3D_Engine/Vestige reporter was on a build predating ANTS-3380 — 6th stale-binary re-report in this triage batch (cf. ANTS-3499).
 
 - ✅ [ANTS-3497] **debt_sweep_defer renders [ANTS-<n>] hardcoded + un-padded — misses the ANTS-3473/3480 fold-in ID treatment.**
   DebtSweepEngine::templateDebtSweepFoldInBlock (debtsweepengine.cpp ~1170) hardcodes "- 📋 [ANTS-" + QString::number(id) — so a debt_sweep_defer into a non-Ants project stamps the wrong prefix (the ANTS-3473 bug, which never covered debt-sweep — its template takes no idPrefix param) AND drops the min-4 zero-pad (the ANTS-3480 bug, e.g. [ANTS-82] not [ANTS-0082]). debt_sweep_defer's allocated_ids also still echoes bare ints, unlike the ANTS-3480-fixed trio. Fix: give templateDebtSweepFoldInBlock a trailing idPrefix param (default "ANTS", parity with the cold-eyes/indie-review templates), have cmdDebtSweepDefer sniff RoadmapFoldIn::sniffIdPrefix(root) + render via RoadmapFoldIn::renderId, and echo allocated_ids as padded strings. Kept out of ANTS-3480 (which was scoped to the three reported verbs) to stay surgical. Deferred because debt-sweep is low-traffic + ~94% FP (per prior triage).
@@ -18684,6 +18685,7 @@ build).
   Lanes: remotecontrol.
   Source: in-session-2026-07-10 (triage of ANTS-3490).
   Update (2026-07-10): the stale-report count for this triage batch rose to FIVE — add ANTS-3486 (dup of ANTS-2228) and ANTS-3491 (dup of ANTS-3412/3433) to the original three (3482/3487/3490). Five already-shipped fixes re-reported by sessions on old binaries in one batch strengthens the case for an active behind-HEAD staleness flag.
+  Update (2026-07-10): stale-report count for this triage batch rose to SIX — add ANTS-3496 (dup of shipped ANTS-3380, similar_code single-token penalty). Running list: 3482→3408, 3487→3417, 3490→2046, 3486→2228, 3491→3412/3433, 3496→3380. Six already-shipped fixes re-reported by sessions on old binaries in one batch.
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
