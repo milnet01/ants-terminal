@@ -18641,12 +18641,13 @@ build).
   Lanes: coldeyes.
   Source: 3D_Engine/Vestige-feedback-2026-07-10.
 
-- 📋 [ANTS-3494] **project_settings op:detect misses a low-file-count entry-point dir (app/) and returns misleading zeroed counts when a settings file already exists.**
+- ✅ [ANTS-3494] **project_settings op:detect misses a low-file-count entry-point dir (app/) and returns misleading zeroed counts when a settings file already exists.**
   Two related op:detect nits on Vestige. (1) detect suggested source_roots [tools, engine] (234 of 3855 indexed; tools+engine hold 3620) but OMITTED app/, which holds the real entry point app/main.cpp -- the heuristic skips a top-level dir with few files even though an entry-point dir is high-signal. Fix: include any top-level dir containing >=1 compiled source even if its file count is small. (2) With a populated .ants/project.json already present, op:detect returns {present:true, suggestion:{default_source_count:0, total_source_count:0, reason:}} -- the zeroed counts + empty reason read like detection failure rather than already-declared. Fix: when present:true, omit the suggestion block or echo the declared source_roots with reason=settings file present; N source_roots already declared. Evidence: 3D_Engine_Ants_MCP_Feedback.md.
   **Layman:** The project layout auto-detector skips the folder holding the program entry point just because it has few files, and shows confusing zeros when a layout is already saved.
   Kind: fix.
   Lanes: projectsettings.
   Source: 3D_Engine/Vestige-feedback-2026-07-10.
+  Resolved (2026-07-10): DUPLICATE of the already-shipped ANTS-3369 ("project_settings op:detect — populate source_roots + non-empty reason on non-standard/src-less layouts"). Nit (1) app/ omitted: fixed — detect() dropped the dominant-cover gate, so `cands` (projectsettings.cpp:243-263) now includes EVERY first-party source subdir incl. a 1-file entry-point dir; test spec INV-14 pins the exact app/+engine/ case (["app","engine"]). Nit (2): the present:true branch (149-159) already echoes the declared source_roots + a non-empty reason ("settings file present; N source_roots already declared") — the finding's own accepted alternative — tested by INV-15/INV-16. The 3D_Engine/Vestige reporter was on a build predating ANTS-3369. 7th stale-binary re-report in this triage batch (cf. ANTS-3499).
 
 - 📋 [ANTS-3495] **changelog_log's malformed-[Unreleased] advisory has no companion fix — add an op:normalize to canonicalise the section.**
   changelog_log op:add correctly fires a non-blocking advisory when [Unreleased] is malformed (interleaved prose between ### category blocks) but there is no companion op to FIX the layout -- the caller is left to hand-normalise. Enhancement: add changelog_log op:normalize that canonicalises a malformed [Unreleased] (order categories, strip interleaved prose into the right blocks, dry_run preview + byte report), so the advisory has a one-call remedy. Low/cheap. Evidence: 3D_Engine_Ants_MCP_Feedback.md.
@@ -18687,6 +18688,7 @@ build).
   Source: in-session-2026-07-10 (triage of ANTS-3490).
   Update (2026-07-10): the stale-report count for this triage batch rose to FIVE — add ANTS-3486 (dup of ANTS-2228) and ANTS-3491 (dup of ANTS-3412/3433) to the original three (3482/3487/3490). Five already-shipped fixes re-reported by sessions on old binaries in one batch strengthens the case for an active behind-HEAD staleness flag.
   Update (2026-07-10): stale-report count for this triage batch rose to SIX — add ANTS-3496 (dup of shipped ANTS-3380, similar_code single-token penalty). Running list: 3482→3408, 3487→3417, 3490→2046, 3486→2228, 3491→3412/3433, 3496→3380. Six already-shipped fixes re-reported by sessions on old binaries in one batch.
+  Update (2026-07-10): stale-report count rose to SEVEN — add ANTS-3494 (dup of shipped ANTS-3369, project_settings op:detect all-subdirs + present echo). Running list: 3482→3408, 3487→3417, 3490→2046, 3486→2228, 3491→3412/3433, 3496→3380, 3494→3369. Seven already-shipped fixes re-reported by sessions on old binaries in a single triage batch — this is the dominant cost in the 2026-07-10 corpus and the strongest signal yet for the active behind-HEAD staleness flag.
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
