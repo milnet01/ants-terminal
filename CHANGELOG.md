@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **feedback_query — render each assigned id's live ROADMAP status (the deferred ANTS-3448 follow-up).** (ANTS-3478)
+  Make the feedback reader show, at a glance, whether each finding's assigned task is planned / in-progress / shipped — pulled live from the roadmap — instead of just listing the IDs.
+
 - **feedback_log op:append_tracking should refuse (or warn) on a :2 file, pointing at assign_id.** (ANTS-3477)
   The old way of recording IDs (a tracking table) is retired; if someone tries to use it on a new-format file, it should politely refuse and point at the new way.
 
