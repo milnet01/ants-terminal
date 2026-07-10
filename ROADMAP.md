@@ -18617,12 +18617,13 @@ build).
   Lanes: codebaseindex.
   Source: 3D_Engine/Vestige-feedback-2026-07-10.
 
-- 📋 [ANTS-3492] **roadmap_query id/ids cannot locate a bullet whose ID prefix is digit-leading (e.g. [3D_E-NNNN]) — the whole project ID scheme is invisible to id-lookup.**
+- 🚧 [ANTS-3492] **roadmap_query id/ids cannot locate a bullet whose ID prefix is digit-leading (e.g. [3D_E-NNNN]) — the whole project ID scheme is invisible to id-lookup.**
   roadmap_query id/ids cannot locate any [3D_E-NNNN] bullet on the Vestige/3D_Engine roadmap; the id-detection regex appears to require a letter-leading prefix, so a digit-leading (or digit-containing-leading) prefix like 3D_E is not recognised as an id token, and the project entire canonical ID scheme is invisible to id-lookup (HIGH for that project -- items can't be fetched or flipped by id). Fix: widen the [PROJ-NNNN] id recogniser to accept a prefix that starts with or contains a digit (3D_E-0042), not only ^[A-Za-z]. Cross-check the sniffIdPrefix / corpusHighWater regexes (ANTS-3473 area) and the roadmap_query id path use the same widened pattern. Evidence: 3D_Engine_Ants_MCP_Feedback.md.
   **Layman:** For a project whose IDs start with a number, the roadmap lookup by ID finds nothing at all — none of its items can be fetched or flipped by ID.
   Kind: fix.
   Lanes: roadmapindex.
   Source: 3D_Engine/Vestige-feedback-2026-07-10.
+  Design accepted (user, 2026-07-10): relax the ID prefix rule from "starts with a letter" to "contains at least one letter" — accepts 3D_E-0042 while still rejecting pure-numeric/date tokens like [2026-07]. Preserves every project's existing IDs (no rename). Spec-first per §14 (roadmap-format.md §3.5.1 is a contract) → docs/specs/ANTS-3492.md → cold-eyes → implement across ~20 recogniser sites.
 
 - 📋 [ANTS-3493] **No Ants broker for a Rule-8 cold-eyes review of a dependency bump / code diff — the cold_eyes_* verb family is doc-only.**
   The cold_eyes_* MCP verb family (cold_eyes_partition/brief/single_doc/cross_doc_diff/fold_in) is documentation-only -- there is no broker for a Rule-8 style cold-eyes review of a CODE diff or a dependency bump. A session that wants an independent cold review of a code change has no Ants verb for it and falls back to a manual Agent dispatch. Enhancement: a cold_eyes (or indie_review) broker that takes a diff / commit range / dependency change and returns a partition + briefs for a cold code review, mirroring the doc-side cold_eyes flow. Evidence: 3D_Engine_Ants_MCP_Feedback.md.
