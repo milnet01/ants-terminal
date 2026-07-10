@@ -74,6 +74,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **indie_review_orchestrate returns no_lanes when a ## Module map is present-but-unparseable (misleading "heading absent" error).** (ANTS-3481)
+  The auto-reviewer says "you have no module map" even when the project DOES have one — it just can't read that particular list format. The error should say so instead of claiming it's missing.
+
 - **FeedbackFile::skeleton() still births new feedback files as v1 (marker :1 + append_tracking banner).** (ANTS-3476)
   When a brand-new project logs its first feedback, we still create the file in the OLD format with old instructions — new files should be born in the new format.
 
