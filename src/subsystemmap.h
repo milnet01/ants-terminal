@@ -42,6 +42,14 @@ QVector<Lane> cachedLanes(const QString &sourcePath);
 // empty out.
 QString resolveSource(const QString &claudeMdPath);
 
+// ANTS-3481 — true iff `sourcePath` exists, is readable, and contains a
+// `## Module map` H2 heading — the same heading `parse()` keys on. Lets a
+// caller distinguish "no module map at all" from "heading present but no
+// parseable lanes" (a `- <name> — <summary>` bullet-shape mismatch, or lanes
+// that resolve to no source files), so an empty partition can be reported
+// with an honest cause. Non-existent / unreadable file → false.
+bool sourceHasModuleMap(const QString &sourcePath);
+
 // Test-only: clear the cache so a fixture run starts clean.
 void clearCacheForTests();
 

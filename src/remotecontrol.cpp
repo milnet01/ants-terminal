@@ -16230,11 +16230,35 @@ QJsonDocument RemoteControl::cmdIndieReviewOrchestrate(const QJsonObject &req) {
         QStringLiteral("indie_review_orchestrate: no focused project")));
 
     const auto lanes = IndieReviewEngine::derivePartition(root);
-    if (lanes.isEmpty()) return QJsonDocument(irErr(
-        QStringLiteral("no_lanes"),
-        QStringLiteral("indie_review_orchestrate: partition resolved empty "
-                       "(no ## Module map in docs/subsystems.md or "
-                       "CLAUDE.md, no override)")));
+    if (lanes.isEmpty()) {
+        // ANTS-3481 — distinguish "no ## Module map heading anywhere" from
+        // "heading IS present but no reviewable lanes could be derived" (its
+        // bullets aren't the `- <name> — <summary>` shape the parser reads, or
+        // the named subsystems resolve to no source files). The old flat
+        // no_lanes message ("no ## Module map …") mis-reads as "heading
+        // absent" when a project (e.g. finbreak's `- path — description` list)
+        // HAS the heading, so a session wrongly concludes it has no map.
+        const QString src =
+            SubsystemMap::resolveSource(root + QStringLiteral("/CLAUDE.md"));
+        if (SubsystemMap::sourceHasModuleMap(src)) {
+            return QJsonDocument(irErr(
+                QStringLiteral("module_map_unparseable"),
+                QStringLiteral(
+                    "indie_review_orchestrate: a \"## Module map\" heading was "
+                    "found (%1) but no reviewable lanes could be derived — its "
+                    "bullets must be `- <subsystem-name> — <summary>` (a "
+                    "code-identifier name token, an em-dash/hyphen separator, "
+                    "then a summary), and each named subsystem must resolve to "
+                    "≥1 source file. A `- <path> — <description>` file list is "
+                    "not parsed. Pass a .cold-eyes/partition.json override to "
+                    "hand-author the lanes.").arg(src)));
+        }
+        return QJsonDocument(irErr(
+            QStringLiteral("no_lanes"),
+            QStringLiteral("indie_review_orchestrate: partition resolved empty "
+                           "(no ## Module map in docs/subsystems.md or "
+                           "CLAUDE.md, no override)")));
+    }
 
     // include_briefs (default true): when false, return the skeleton
     // (names / source paths / report paths) without the per-lane brief

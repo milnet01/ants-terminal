@@ -13,8 +13,10 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
+#include <QFile>
 #include <QString>
 #include <QStringList>
+#include <QTemporaryDir>
 #include <QVector>
 
 #include "../../_support/expect.h"
@@ -316,4 +318,60 @@ TEST(McpSubsystem, ParenQualifierLibNameNotHarvested) {
 
     EXPECT_EQ(0, expect_failures()) << expect_failures()
         << " ANTS-1796 invariant(s) failed";
+}
+
+// ANTS-3481 — sourceHasModuleMap distinguishes "heading present" from
+// "heading absent", so indie_review_orchestrate can report an empty partition
+// with an honest cause (module_map_unparseable vs no_lanes).
+TEST(McpSubsystem, SourceHasModuleMapDetectsHeading) {
+    expect_reset();
+    SubsystemMap::clearCacheForTests();
+
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    auto put = [&](const QString &rel, const QByteArray &body) -> QString {
+        const QString p = dir.path() + QLatin1Char('/') + rel;
+        QFile f(p);
+        EXPECT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(body);
+        f.close();
+        return p;
+    };
+
+    // A finbreak-style CLAUDE.md: HAS `## Module map` but as a `- path —
+    // description` list the lane parser can't harvest → present, 0 lanes.
+    const QString finbreak = put(QStringLiteral("CLAUDE.md"),
+        "# finbreak\n\n## Module map\n\n"
+        "- src/api/main.py — FastAPI entry point.\n"
+        "- src/filter/rules.py — rule engine.\n");
+    expect(SubsystemMap::sourceHasModuleMap(finbreak),
+           "ANTS-3481/present",
+           "sourceHasModuleMap must return true when the heading exists");
+    expect(SubsystemMap::cachedLanes(finbreak).isEmpty(),
+           "ANTS-3481/unparseable",
+           "the path-list bullets must derive zero lanes (the repro)");
+
+    // A doc with NO module-map heading → absent.
+    const QString noMap = put(QStringLiteral("nomap.md"),
+        "# proj\n\n## Build\n\nsome text.\n");
+    expect(!SubsystemMap::sourceHasModuleMap(noMap),
+           "ANTS-3481/absent",
+           "sourceHasModuleMap must return false with no heading");
+    // A non-existent path → false, no crash.
+    expect(!SubsystemMap::sourceHasModuleMap(dir.path() + "/nope.md"),
+           "ANTS-3481/missing-file",
+           "sourceHasModuleMap must return false for a missing file");
+
+    // Wiring: cmdIndieReviewOrchestrate branches on sourceHasModuleMap and
+    // emits the distinct module_map_unparseable code.
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(rc.find("module_map_unparseable") != std::string::npos,
+           "ANTS-3481/wiring-code",
+           "cmdIndieReviewOrchestrate must emit module_map_unparseable");
+    expect(rc.find("SubsystemMap::sourceHasModuleMap") != std::string::npos,
+           "ANTS-3481/wiring-call",
+           "orchestrate must call SubsystemMap::sourceHasModuleMap");
+
+    EXPECT_EQ(0, expect_failures()) << expect_failures()
+        << " ANTS-3481 invariant(s) failed";
 }

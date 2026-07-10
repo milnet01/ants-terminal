@@ -94,7 +94,9 @@ TEST(McpIndieReviewTools, Ants1279OrchestrateComposesManifest) {
     ASSERT_FALSE(rc.empty());
     const auto p = rc.find("RemoteControl::cmdIndieReviewOrchestrate");
     ASSERT_NE(p, std::string::npos);
-    const std::string body = rc.substr(p, 3500);
+    // ANTS-3481 widened 3500→4800: the module_map_unparseable branch added
+    // ~1 KB to the handler head, pushing the later literals past the window.
+    const std::string body = rc.substr(p, 4800);
     EXPECT_NE(body.find("derivePartition"), std::string::npos)
         << "orchestrate must derive the partition";
     EXPECT_NE(body.find("assembleBriefManifest"), std::string::npos)

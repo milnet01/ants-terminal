@@ -180,6 +180,19 @@ QString resolveSource(const QString &claudeMdPath) {
     return claudeMdPath;
 }
 
+bool sourceHasModuleMap(const QString &sourcePath) {
+    if (sourcePath.isEmpty()) return false;
+    QFile f(sourcePath);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return false;
+    const QString body = QString::fromUtf8(f.readAll());
+    f.close();
+    // Same anchor parse() keys on: a line beginning `## Module map`.
+    const QStringList lines = body.split(QLatin1Char('\n'));
+    for (const QString &ln : lines)
+        if (ln.startsWith(QStringLiteral("## Module map"))) return true;
+    return false;
+}
+
 void clearCacheForTests() {
     cache().clear();
 }
