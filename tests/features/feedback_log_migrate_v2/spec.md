@@ -55,8 +55,12 @@ the pre-ANTS-3474 behaviour.
 - **INV-9** — wrapper refusals: `bad_mode`, `not_found`; a real write yields a
   `: 2` file. No `not_v2` (already-v2 is a success no-op).
 - **INV-10** — fenced `### `/table/`**Proposed ID:**` lines are inert.
-- **INV-11** — `bytes_delta` is the signed size change (adds stamp lines; the
-  op never shrinks content).
+- **INV-11** — `bytes_delta` is the signed size change. The default
+  (blank-stamp) migrate only *adds* stamp lines, so `bytes_delta ≥ 0` and the
+  op never shrinks content — the shrink is `compact_resolved`'s job.
+  **Exception (ANTS-3474):** under `backfill_from_tracking:true`, replacing a
+  `_(maintainer to assign)_` placeholder with a shorter id makes `bytes_delta`
+  go negative (INV-12); backfill is the one migrate path that can shrink.
 - **INV-12 (ANTS-3474)** — with `backfill_from_tracking:true`, a finding whose
   blank Proposed-ID line's heading confidently + uniquely matches a tracking
   row's `item` gets that row's id stamped inline (recorded in `backfilled[]`);
