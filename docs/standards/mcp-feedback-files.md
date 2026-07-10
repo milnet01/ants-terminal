@@ -58,11 +58,12 @@ finding's *status*; status is resolved live from `ROADMAP.md` on read.**
 > each finding's id in from its own v1 tracking table) and then compacted
 > (`compact_resolved` collapsed 60 shipped findings, ~69.5 KB reclaimed). So
 > **every corpus file now reads under the v2 rule** — the delta is the findings
-> whose `**Proposed ID:**` is still unfilled. Follow-ups remain:
-> `FeedbackFile::skeleton()` still births a *new* file as `: 1` with a v1 banner
-> (**ANTS-3476**); enforcing the `append_tracking` deprecation on a `: 2` file is
-> **ANTS-3477**; and the retained v1 tracking tables are pending a strip/declutter
-> pass now that the marker-aware reader no longer gates a `: 2` file's delta on them.
+> whose `**Proposed ID:**` is still unfilled. `FeedbackFile::skeleton()` now
+> births a *new* file as `: 2` with the v2 banner (**ANTS-3476**), and
+> `op:append_tracking` is refused (`not_v1`) on a `: 2` file, pointing at
+> `assign_id` (**ANTS-3477**). Remaining follow-up: the retained v1 tracking
+> tables are pending a strip/declutter pass now that the marker-aware reader no
+> longer gates a `: 2` file's delta on them.
 
 v1 (the legacy corpus) recorded triage as an appended maintainer *tracking
 table* (`finding → ID → status`) every review cycle. That duplicated the
@@ -726,7 +727,7 @@ v1 code path until a file is migrated):
 | `feedback_log op:assign_id` **(shipped, ANTS-3447)** | The v2 triage write: fill one finding's `**Proposed ID:**` slot in place with the id(s) or a `n/a — <reason>` closure. Locates the finding by heading over the `### ` enumerator, **inheriting `compact_shipped`'s heading-resolution gate _shape_** (ANTS-3421: `heading_line` disambiguation + `target_ambiguous`+`candidates[]` when a "still broken" recheck reuses a `### ` title). Single-target (batch deferred), so no cross-target `duplicate_target`. Replaces `op:append_tracking` for v2 files. |
 | `feedback_log op:compact_resolved` **(shipped, ANTS-3443)** | Auto-collapse shipped findings' write-ups; gates on live roadmap ✅. Refuses `not_v2` on a v1 file. (A `drop_prose` option is **deferred** — see §"Maintainer compaction"; NOT in ANTS-3443 scope.) |
 | `feedback_log op:migrate_v2` **(shipped, ANTS-3446)** | One-shot **mechanical** v1→v2 migration (§"Migration from v1"): bumps the marker + stamps blank `**Proposed ID:**` placeholders on un-triaged findings; reports `orphans[]`/`unclassified[]`. Leaves the v1 tables **in place** (no move/collapse); the default path reads no table id content (the `backfill_from_tracking:true` opt-in reads the rows to carry ids inline — ANTS-3474). |
-| `feedback_log op:append_tracking` | **Superseded by `assign_id`** (shipped, ANTS-3447) for v2 files — it remains the v1 triage-write op (writes a v1 table) for un-migrated files. Enforcing the deprecation (refuse/warn on a `: 2` file, point at `assign_id`) is **ANTS-3477**. Not used on v2 files. |
+| `feedback_log op:append_tracking` | **Superseded by `assign_id`** (shipped, ANTS-3447) for v2 files — it remains the v1 triage-write op (writes a v1 table) for un-migrated files. On a `: 2` file it now **refuses `not_v1`** (shipped, ANTS-3477) pointing at `assign_id`; on a v1 / un-migrated file it stays valid. |
 | `feedback_log op:compact_shipped` (ANTS-3421) / `op:prune_tracking` (ANTS-3442) | **Legacy** — operate on v1 tables; used only to clean up / migrate un-migrated files. |
 
 Each new/changed verb ships spec-first with its own `docs/specs/ANTS-NNNN.md`

@@ -172,6 +172,70 @@ TEST(McpFeedbackLog, CreatesSkeleton) {
     EXPECT_TRUE(on.contains("### Title"));
 }
 
+namespace {
+// Write a feedback file with a chosen version marker + minimal body.
+QString writeMarked(const QString &dir, const QString &basename, int ver) {
+    const QString p = dir + QLatin1Char('/') + basename;
+    QFile f(p);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
+    f.write(QStringLiteral("<!-- ants-mcp-feedback: %1 -->\n"
+                           "# Ants MCP Feedback — Proj\n\n"
+                           "intro.\n").arg(ver).toUtf8());
+    f.close();
+    return p;
+}
+QJsonObject trackingRow() {
+    QJsonObject r;
+    r["item"]   = "an item";
+    r["status"] = QString::fromUtf8("\xF0\x9F\x93\x8B");  // 📋
+    QJsonArray ids; ids.append("ANTS-1962");
+    r["ids"] = ids;
+    return r;
+}
+}  // namespace
+
+// ANTS-3477 — op:append_tracking is the retired v1 tracking-table write. On a
+// v2 (inline-ID) file it must refuse with `not_v1` and point at op:assign_id,
+// so a v2 file can't re-grow a maintainer table.
+TEST(McpFeedbackLog, AppendTrackingRefusedOnV2File) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = writeMarked(dir.path(), "Proj_Ants_MCP_Feedback.md", 2);
+    ASSERT_FALSE(p.isEmpty());
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["path"] = p; req["caller_cwd"] = dir.path();
+    req["op"] = "append_tracking"; req["date"] = "2026-07-10";
+    QJsonArray rows; rows.append(trackingRow());
+    req["rows"] = rows;
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+
+    EXPECT_FALSE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("code").toString().toStdString(), "not_v1");
+    // The file is not mutated — no tracking table appended.
+    EXPECT_FALSE(readAll(p).contains("roadmap tracking"));
+}
+
+// ANTS-3477 regression — a v1 / un-migrated file still accepts append_tracking
+// (the guard keys on marker >= 2, so v1 stays the legacy triage-write path).
+TEST(McpFeedbackLog, AppendTrackingStillValidOnV1File) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = writeMarked(dir.path(), "Proj_Ants_MCP_Feedback.md", 1);
+    ASSERT_FALSE(p.isEmpty());
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["path"] = p; req["caller_cwd"] = dir.path();
+    req["op"] = "append_tracking"; req["date"] = "2026-07-10";
+    QJsonArray rows; rows.append(trackingRow());
+    req["rows"] = rows;
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+
+    EXPECT_TRUE(env.value("ok").toBool())
+        << env.value("error").toString().toStdString();
+    EXPECT_TRUE(readAll(p).contains("| an item | ANTS-1962 |"));
+}
+
 // ANTS-3426 — a fresh "_Ants"-suffixed project (fork checkout "DOOM_Ants")
 // logging with `path` omitted must CREATE the de-doubled conventional file
 // "DOOM_Ants_MCP_Feedback.md", NOT the doubled "DOOM_Ants_Ants_MCP_Feedback.md"

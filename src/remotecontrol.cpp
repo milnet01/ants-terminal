@@ -11802,6 +11802,28 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                                "absent file (nothing to triage)"),
                 resolved, feedbackCallerLeaf(req)));
         }
+        // ANTS-3477 — append_tracking is the v1 (tracking-table) triage write.
+        // On a v2 (inline-ID) file it must not re-grow a maintainer table:
+        // refuse and point at op:assign_id (the v2 triage write that fills each
+        // finding's `**Proposed ID:**` line in place). A v1 / un-migrated file
+        // (`markerVersion < 2`, incl. an absent marker) stays valid.
+        {
+            QFile vf(resolved);
+            if (vf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                const QString vcontent = QString::fromUtf8(vf.readAll());
+                vf.close();
+                if (FeedbackFile::markerVersion(vcontent) >= 2) {
+                    return QJsonDocument(fbErr(
+                        QStringLiteral("not_v1"),
+                        QStringLiteral(
+                            "feedback_log: append_tracking is the v1 "
+                            "tracking-table write and is retired on a v2 "
+                            "(<!-- ants-mcp-feedback: 2 -->) file — use "
+                            "op:assign_id to fill each finding's "
+                            "\"**Proposed ID:**\" line in place")));
+                }
+            }
+        }
         const QJsonArray rowsArr =
             req.value(QStringLiteral("rows")).toArray();
         if (rowsArr.isEmpty()) {
