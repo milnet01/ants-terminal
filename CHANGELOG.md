@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`git_state op:diff` hunk-header mode for clean commit splits (ANTS-3377)**
+  hunks=true returns per-file @@ hunk headers {path, hunks:[{header, old_start, old_count, new_start, new_count, lines?}]} instead of --numstat counts; staged=true diffs the index vs HEAD; include_lines attaches hunk bodies; context sets the unified-context width. Backed by the pure GitWrap::parseDiffHunks helper.
+
 - **`verify_changes` orphaned-source lint (ANTS-3373)**
   Warns when a source file added in the working tree (`.cpp/.cc/.cxx/.c++/.c`) is referenced by no CMakeLists.txt / *.cmake — it compiles in isolation but is silently never built. Surfaced as an advisory `orphaned_sources[]` array (does not fail the build gate; emitted only when non-empty). Build/vendor dirs are pruned so a generated build-tree CMakeLists never masks a real orphan.
 

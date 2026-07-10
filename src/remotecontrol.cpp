@@ -12534,12 +12534,22 @@ QJsonObject runDiffOp(MainWindow *main, const QJsonObject &req) {
             QStringLiteral("git_state: project root does not exist"));
     }
     const QString range = req.value("range").toString();
-    // ANTS-2074: range omitted → default to the working-tree diff (unstaged
-    // changes vs the index), matching bare `git diff`. This is the single most
-    // common "what have I changed so far" call, so it should need no args.
-    const bool worktreeDiff = range.isEmpty();
+    // ANTS-3377 — staged: diff the index vs HEAD (`git diff --cached`) so a
+    // commit split can verify what has been staged. A cached diff of an
+    // explicit range is nonsensical, so refuse the combination rather than
+    // silently picking one.
+    const bool staged = req.value("staged").toBool();
+    if (staged && !range.isEmpty()) {
+        return gitErr("bad_args",
+            QStringLiteral("git_state: \"staged\" and \"range\" are "
+                           "mutually exclusive"));
+    }
+    // ANTS-2074: range omitted (and not staged) → the working-tree diff
+    // (unstaged changes vs the index), matching bare `git diff`. This is the
+    // single most common "what have I changed so far" call, so it needs no args.
+    const bool worktreeDiff = range.isEmpty() && !staged;
     // ANTS-1250-INV-4: strict regex; first char excludes `-`.
-    if (!worktreeDiff && !isValidRange(range)) {
+    if (!range.isEmpty() && !isValidRange(range)) {
         return gitErr("bad_range",
             QStringLiteral("git_state: \"range\" failed validation"));
     }
@@ -12548,11 +12558,24 @@ QJsonObject runDiffOp(MainWindow *main, const QJsonObject &req) {
         QStringLiteral("git_state"), QStringLiteral("path"));
     if (pc.bad) return pc.err;
 
+    // ANTS-3377 — hunks: emit per-file `@@` hunk headers (for a clean commit
+    // split) instead of the --numstat line counts. include_lines attaches the
+    // raw hunk body; context sets the unified-context width (default 3,
+    // clamped 0..10).
+    const bool hunks        = req.value("hunks").toBool();
+    const bool includeLines = req.value("include_lines").toBool();
+    int context = req.contains(QStringLiteral("context"))
+                      ? req.value("context").toInt(3) : 3;
+    if (context < 0)  context = 0;
+    if (context > 10) context = 10;
+
     QStringList argv;
     argv << QStringLiteral("diff")
-         << QStringLiteral("--no-color")
-         << QStringLiteral("--numstat");
-    if (!worktreeDiff) argv << range;
+         << QStringLiteral("--no-color");
+    if (hunks) argv << QStringLiteral("--unified=%1").arg(context);
+    else       argv << QStringLiteral("--numstat");
+    if (staged)           argv << QStringLiteral("--cached");
+    if (!range.isEmpty()) argv << range;
     argv << QStringLiteral("--");
     if (!pc.argvForm.isEmpty()) argv << pc.argvForm;
 
@@ -12589,6 +12612,49 @@ QJsonObject runDiffOp(MainWindow *main, const QJsonObject &req) {
         return gitErr("git_failed",
             QStringLiteral("git_state: git diff exit %1").arg(g.exitCode),
             g.stderrTail);
+    }
+
+    // ANTS-3377 — hunk-header mode: parse the unified diff into per-file
+    // `@@` headers via the pure GitWrap helper (git-free, unit-tested).
+    if (hunks) {
+        const QVector<GitWrap::DiffFile> parsed =
+            GitWrap::parseDiffHunks(g.stdoutBytes, includeLines);
+        QJsonArray hfiles;
+        for (const GitWrap::DiffFile &df : parsed) {
+            QJsonObject f;
+            f["path"] = df.path;
+            QJsonArray hs;
+            for (const GitWrap::DiffHunk &h : df.hunks) {
+                QJsonObject ho;
+                ho["header"]    = h.header;
+                ho["old_start"] = h.oldStart;
+                ho["old_count"] = h.oldCount;
+                ho["new_start"] = h.newStart;
+                ho["new_count"] = h.newCount;
+                if (includeLines) {
+                    QJsonArray ls;
+                    for (const QString &l : h.lines) ls.append(l);
+                    ho["lines"] = ls;
+                }
+                hs.append(ho);
+            }
+            f["hunks"] = hs;
+            hfiles.append(f);
+        }
+        QJsonObject out;
+        out["ok"] = true;
+        out["op"] = QStringLiteral("diff");
+        if (staged)            out["staged"]   = true;
+        else if (worktreeDiff) out["worktree"] = true;
+        else                   out["range"]    = range;
+        out["files"] = hfiles;
+        QJsonObject totals;
+        totals["files"] = hfiles.size();
+        out["totals"] = totals;
+        // ANTS-1839 — flag a diff that hit the 1 MiB stdout cap (the parsed
+        // tail may be incomplete).
+        if (g.stdoutTruncated) out["truncated"] = true;
+        return out;
     }
 
     QJsonArray files;
@@ -12631,8 +12697,11 @@ QJsonObject runDiffOp(MainWindow *main, const QJsonObject &req) {
     out["ok"]     = true;
     out["op"]     = QStringLiteral("diff");
     // ANTS-2074: echo the explicit range when given; otherwise flag the
-    // working-tree default so the caller knows which diff it received.
-    if (worktreeDiff) {
+    // working-tree (or ANTS-3377 staged) default so the caller knows which
+    // diff it received.
+    if (staged) {
+        out["staged"] = true;
+    } else if (worktreeDiff) {
         out["worktree"] = true;
     } else {
         out["range"] = range;

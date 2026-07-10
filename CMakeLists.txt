@@ -1248,6 +1248,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_git_state/test_mcp_git_state.cpp
                 # ANTS-1839 — GitWrap per-caller stdout budget.
                 tests/features/gitwrap_stdout_cap/test_gitwrap_stdout_cap.cpp
+                # ANTS-3377 — git_state op:diff hunk-header parser.
+                tests/features/git_diff_hunks/test_git_diff_hunks.cpp
                 tests/features/mcp_subsystem/test_mcp_subsystem.cpp
                 tests/features/mcp_provider_registry/test_mcp_provider_registry.cpp
                 tests/features/mcp_last_audit_summary/test_mcp_last_audit_summary.cpp

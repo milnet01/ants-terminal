@@ -4401,7 +4401,13 @@ void ClaudeIntegration::onMcpConnection() {
                     "`index:\"?\"` + `worktree:\"?\"` for `git status "
                     "--porcelain` parity — one array, one shape. "
                     "`untracked[]` (DEPRECATED) is still emitted in "
-                    "parallel for one release; removed in 0.7.93.");
+                    "parallel for one release; removed in 0.7.93. "
+                    "op=\"diff\" (ANTS-3377): hunks=true emits per-file @@ "
+                    "hunk headers {path, hunks:[{header, old_start, "
+                    "old_count, new_start, new_count, lines?}]} for a clean "
+                    "commit split (include_lines attaches hunk bodies, "
+                    "context sets the -U width); staged=true diffs the index "
+                    "vs HEAD.");
                 gsTool["selection_hint"] = QStringLiteral(
                     "Use for git status/log/diff in one structured "
                     "call (vs three Bash invocations). Pairs with "
@@ -4438,11 +4444,41 @@ void ClaudeIntegration::onMcpConnection() {
                                             bodyProp["default"] = false;
                                             bodyProp["description"] =
                         QStringLiteral("log: include commit body");
+                    // ANTS-3377 — diff hunk-header mode + staged/index diff.
+                    QJsonObject hunksProp;  hunksProp["type"] = "boolean";
+                                            hunksProp["default"] = false;
+                                            hunksProp["description"] =
+                        QStringLiteral("diff: emit per-file @@ hunk headers "
+                                       "{path, hunks:[{header, old_start, "
+                                       "old_count, new_start, new_count, "
+                                       "lines?}]} for a clean commit split, "
+                                       "instead of the --numstat line counts");
+                    QJsonObject stagedProp; stagedProp["type"] = "boolean";
+                                            stagedProp["default"] = false;
+                                            stagedProp["description"] =
+                        QStringLiteral("diff: diff the index vs HEAD "
+                                       "(git diff --cached); mutually "
+                                       "exclusive with range");
+                    QJsonObject incLProp;   incLProp["type"] = "boolean";
+                                            incLProp["default"] = false;
+                                            incLProp["description"] =
+                        QStringLiteral("diff+hunks: attach each hunk's raw "
+                                       "body lines");
+                    QJsonObject ctxProp;    ctxProp["type"] = "integer";
+                                            ctxProp["default"] = 3;
+                                            ctxProp["minimum"] = 0;
+                                            ctxProp["maximum"] = 10;
+                                            ctxProp["description"] =
+                        QStringLiteral("diff+hunks: unified-context width");
                     props["op"]    = opProp;
                     props["n"]     = nProp;
                     props["path"]  = pathProp;
                     props["range"] = rangeProp;
                     props["body"]  = bodyProp;
+                    props["hunks"]         = hunksProp;
+                    props["staged"]        = stagedProp;
+                    props["include_lines"] = incLProp;
+                    props["context"]       = ctxProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499

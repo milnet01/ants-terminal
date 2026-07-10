@@ -17,6 +17,7 @@
 #include <QByteArray>
 #include <QString>
 #include <QStringList>
+#include <QVector>
 
 namespace GitWrap {
 
@@ -47,6 +48,28 @@ constexpr int kStdoutCapBytes = 1 * 1024 * 1024;  // 1 MiB
 // budget for a caller with different size expectations.
 Result run(const QString &workingDir, const QStringList &argv,
            int maxStdoutBytes = kStdoutCapBytes);
+
+// ANTS-3377 — parse `git diff --no-color -U<n>` output into per-file
+// hunk headers, for splitting a messy working tree into clean commits.
+// Pure: takes the diff bytes, forks nothing, returns plain structs (this
+// helper stays JSON-free per the header contract above — the MCP caller
+// maps it to the git_state envelope). Files carrying no `@@` hunk (a pure
+// rename / mode change) are omitted. When `includeLines` is true each hunk
+// also carries its raw body lines (context / `+` / `-`, marker included).
+struct DiffHunk {
+    QString     header;         // full "@@ -a,b +c,d @@ <section>" line
+    int         oldStart = 0;   // pre-image start line
+    int         oldCount = 1;   // pre-image line span (1 when omitted)
+    int         newStart = 0;   // post-image start line
+    int         newCount = 1;   // post-image line span (1 when omitted)
+    QStringList lines;          // body lines, empty unless includeLines
+};
+struct DiffFile {
+    QString            path;    // repo-relative post-image path
+    QVector<DiffHunk>  hunks;
+};
+QVector<DiffFile> parseDiffHunks(const QByteArray &unifiedDiff,
+                                 bool includeLines);
 
 }  // namespace GitWrap
 

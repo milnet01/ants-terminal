@@ -128,12 +128,14 @@ TEST(McpGitState, WiringContract) {
            "INV-6a",
            "tools/list missing \"git_state\" name registration");
     {
-        // Window widened to 4800 (ANTS-3365 lengthened the description +
-        // opProp); a fixed scrape window must outrun added schema text.
+        // Window widened to 6400 (ANTS-3365 lengthened the description +
+        // opProp; ANTS-3377 added hunks/staged/include_lines/context props
+        // ahead of the `props["op"]` assignment); a fixed scrape window must
+        // outrun added schema text.
         const size_t pos = ciCpp.find("\"git_state\"");
         bool ok = false;
         if (pos != std::string::npos) {
-            const size_t windowEnd = std::min(ciCpp.size(), pos + 4800);
+            const size_t windowEnd = std::min(ciCpp.size(), pos + 6400);
             const std::string window = ciCpp.substr(pos, windowEnd - pos);
             ok = contains(window, "\"status\"") &&
                  contains(window, "\"log\"") &&
