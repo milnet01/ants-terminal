@@ -210,6 +210,80 @@ TEST(McpFindSources, PrewarmParity) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-3489 — collectCandidates honours .ants/project.json source_roots so a
+// C/C++ project laid out beyond src/ + tests/ is actually scanned, instead of
+// yielding files_scanned:0 (which reads as "every token unmatched" — an empty
+// index indistinguishable from "scanned but no hit").
+TEST(McpFindSources, HonoursProjectSettingsRoots) {
+    expect_reset();
+
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    // C++ source under a non-default `engine/` root — no src/ or tests/.
+    ASSERT_TRUE(QDir(root).mkpath(QStringLiteral("engine")));
+    auto put = [&](const QString &rel, const QByteArray &body) {
+        QFile f(root + QLatin1Char('/') + rel);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(body);
+    };
+    put(QStringLiteral("engine/widgetregistry.cpp"),
+        "void WidgetRegistry::registerWidget() {}\n");
+
+    // Without a project.json, the src/+tests/ default misses engine/ entirely:
+    // files_scanned:0 — the exact ANTS-3489 symptom.
+    const auto before =
+        FindSources::findSources(QStringLiteral("widget registry"), root);
+    expect(before.filesScanned == 0,
+           "ANTS-3489: default src/+tests/ walk scans 0 on an engine/ layout");
+    expect(before.files.isEmpty(), "ANTS-3489: and returns no files");
+
+    // Declare source_roots:["engine"] — now the walk reaches it.
+    ASSERT_TRUE(QDir(root).mkpath(QStringLiteral(".ants")));
+    put(QStringLiteral(".ants/project.json"),
+        "{\"source_roots\": [\"engine\"]}\n");
+    const auto after =
+        FindSources::findSources(QStringLiteral("widget registry"), root);
+    expect(after.filesScanned > 0,
+           "ANTS-3489: declared source_roots make the walk scan the tree");
+    bool found = false;
+    for (const auto &h : after.files)
+        if (h.path.contains(QStringLiteral("widgetregistry"))) found = true;
+    expect(found, "ANTS-3489: the engine/ source file is now found");
+
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3489 — a committed virtualenv / node_modules under a flat-root
+// source_roots=["."] must not drag vendored C/C++ into the candidate set.
+TEST(McpFindSources, PrunesNoiseDirsUnderFlatRoot) {
+    expect_reset();
+
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    auto put = [&](const QString &rel, const QByteArray &body) {
+        QFile f(root + QLatin1Char('/') + rel);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(body);
+    };
+    ASSERT_TRUE(QDir(root).mkpath(QStringLiteral("node_modules/pkg")));
+    ASSERT_TRUE(QDir(root).mkpath(QStringLiteral(".ants")));
+    put(QStringLiteral("app.cpp"), "void appMain() { /* widget */ }\n");
+    put(QStringLiteral("node_modules/pkg/vendor.h"),
+        "// widget widget widget vendored noise\n");
+    put(QStringLiteral(".ants/project.json"),
+        "{\"source_roots\": [\".\"]}\n");
+
+    const auto r = FindSources::findSources(QStringLiteral("widget"), root);
+    bool sawVendor = false;
+    for (const auto &h : r.files)
+        if (h.path.contains(QStringLiteral("node_modules"))) sawVendor = true;
+    expect(!sawVendor, "ANTS-3489: vendored node_modules/ tree is pruned");
+
+    EXPECT_EQ(0, expect_failures());
+}
+
 TEST(McpFindSources, WiringContract) {
     expect_reset();
 
@@ -266,6 +340,15 @@ TEST(McpFindSources, WiringContract) {
     expect(contains(rcCpp, "workspace_search") &&
                contains(rcCpp, "find_caller"),
            "INV-13: hint redirects to workspace_search / find_caller");
+
+    // INV-15 (ANTS-3489) — a DISTINCT hint fires when the candidate set was
+    // empty (files_scanned:0), naming the empty-index cause (non-C/C++ project
+    // or an undeclared source_root) rather than the generic no-match redirect.
+    expect(contains(rcCpp, "res.filesScanned == 0"),
+           "INV-15: cmdFindSources branches on an empty candidate set");
+    expect(contains(rcCpp, "scanned 0 files") &&
+               contains(rcCpp, "source_roots"),
+           "INV-15: files_scanned:0 hint names the empty-index cause + source_roots");
 
     EXPECT_EQ(0, expect_failures());
 }

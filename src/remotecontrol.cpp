@@ -2338,7 +2338,20 @@ QJsonDocument RemoteControl::cmdFindSources(const QJsonObject &req) {
     // leads with a bare symbol name (e.g. "FooBar does X and Y") often
     // matches nothing here even though the symbol exists. Redirect the caller
     // to the exact-match verbs rather than letting them conclude absence.
-    if (files.isEmpty()) {
+    // ANTS-3489 — distinguish an EMPTY CANDIDATE SET (files_scanned:0 — no
+    // C/C++ source under the resolved roots) from "scanned but nothing
+    // scored". The former means find_sources is the wrong tool for this
+    // project (a non-C/C++ layout, or code under an undeclared root), not
+    // that the code is absent — so the hint names that cause explicitly.
+    if (files.isEmpty() && res.filesScanned == 0) {
+        out[QStringLiteral("hint")] = QStringLiteral(
+            "scanned 0 files: no C/C++ source found under the project's "
+            "source roots. find_sources ranks C/C++ only — for a Python or "
+            "other-language project use codebase_index / workspace_search. "
+            "If this IS a C/C++ project laid out beyond src/ + tests/, "
+            "declare its source_roots in .ants/project.json "
+            "(project_settings op:init) so the walk can reach it.");
+    } else if (files.isEmpty()) {
         out[QStringLiteral("hint")] = QStringLiteral(
             "no files matched by filename/keyword ranking — for a specific "
             "symbol, try workspace_search (exact string/regex), "

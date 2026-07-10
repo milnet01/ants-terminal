@@ -1,6 +1,7 @@
 // ANTS-1636 — find_sources implementation. See header for contract.
 
 #include "findsources.h"
+#include "projectsettings.h"   // ANTS-3489 — source_roots / test_roots override
 
 #include <QDir>
 #include <QDirIterator>
@@ -127,14 +128,36 @@ void maybeAddSource(QVector<QString> *out, const QString &relPath) {
 }
 
 // Enumerate the source-file candidate set under a canonical project
-// root: the O(files) walk over <root>/src/ + <root>/tests/, filtered by
-// maybeAddSource. Shared by findSources() (the query) and prewarm() (the
-// page-cache warm) so the two can never scan a different set (ANTS-3444a).
+// root, filtered by maybeAddSource. Shared by findSources() (the query)
+// and prewarm() (the page-cache warm) so the two can never scan a
+// different set (ANTS-3444a).
+//
+// ANTS-3489 — the walked roots honour .ants/project.json
+// source_roots / test_roots (ANTS-2160), falling back to the src/ + tests/
+// default. A C/C++ project laid out under a non-src/ root (declared in
+// project.json) is now scanned instead of silently yielding zero candidates
+// (files_scanned:0 → every token "unmatched", indistinguishable from
+// "scanned but no hit"). Mirrors codebaseindex.cpp::candidates. Vendored /
+// build-output / virtualenv trees are pruned via ProjectSettings::isNoiseDir
+// so a flat-root source_roots=["."] can't drag a committed venv into the set.
 QVector<QString> collectCandidates(const QString &rootCanonical) {
     QVector<QString> candidates;
     candidates.reserve(512);
-    for (const QString &subdir : {QStringLiteral("src"),
-                                  QStringLiteral("tests")}) {
+    const ProjectSettings::Settings settings =
+        ProjectSettings::load(rootCanonical);
+    const auto resolve = [&](const std::optional<QStringList> &declared,
+                             const QString &def) -> QStringList {
+        if (!declared) return {def};
+        QStringList dirs;
+        for (const QString &r : *declared)
+            if (QDir(rootCanonical + QLatin1Char('/') + r).exists()) dirs << r;
+        return dirs.isEmpty() ? QStringList{def} : dirs;   // all dropped → default
+    };
+    QStringList roots = resolve(settings.sourceRoots, QStringLiteral("src"));
+    roots += resolve(settings.testRoots, QStringLiteral("tests"));
+    roots.removeDuplicates();
+
+    for (const QString &subdir : roots) {
         QDir dir(rootCanonical + QLatin1Char('/') + subdir);
         if (!dir.exists()) continue;
         QDirIterator it(dir.absolutePath(),
@@ -144,9 +167,18 @@ QVector<QString> collectCandidates(const QString &rootCanonical) {
             const QString abs = it.next();
             QString rel = abs.mid(rootCanonical.size());
             if (rel.startsWith(QLatin1Char('/'))) rel.remove(0, 1);
-            maybeAddSource(&candidates, rel);
+            // Skip files under any vendored / build / virtualenv dir.
+            bool noisy = false;
+            for (const QString &comp : rel.split(QLatin1Char('/')))
+                if (ProjectSettings::isNoiseDir(comp)) { noisy = true; break; }
+            if (!noisy) maybeAddSource(&candidates, rel);
         }
     }
+    // Declared roots may nest (source_roots=["."] contains the tests default);
+    // dedup so a file isn't scanned twice.
+    std::sort(candidates.begin(), candidates.end());
+    candidates.erase(std::unique(candidates.begin(), candidates.end()),
+                     candidates.end());
     return candidates;
 }
 
