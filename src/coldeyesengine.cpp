@@ -1170,7 +1170,8 @@ crossDocDiffFromReports(const QString &projectPath,
 QString templateColdEyesFoldInBlock(
     const QList<IndieReviewEngine::CorroboratedFinding> &actionable,
     const QList<int> &allocatedIds,
-    const QString &dateIso) {
+    const QString &dateIso,
+    const QString &idPrefix) {
     QString out;
     out += QStringLiteral("### 📝 Cold-eyes ") + dateIso + QChar('\n');
     out += QChar('\n');
@@ -1183,8 +1184,8 @@ QString templateColdEyesFoldInBlock(
             if (j) lanesJoined += QStringLiteral(", ");
             lanesJoined += f.citingLanes[j];
         }
-        out += QStringLiteral("- 📋 [ANTS-%1] **Cold-eyes finding:** ")
-                   .arg(id);
+        out += QStringLiteral("- 📋 [%1-%2] **Cold-eyes finding:** ")
+                   .arg(idPrefix).arg(id);
         out += f.file;
         if (f.line > 0) {
             out += QChar(':');

@@ -16474,7 +16474,7 @@ QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
         QStringLiteral("indie_review_fold_in: could not allocate IDs")));
 
     const QString block = IndieReviewEngine::templateIndieReviewFoldInBlock(
-        actionable, ids, dateIso);
+        actionable, ids, dateIso, RoadmapFoldIn::sniffIdPrefix(root));
 
     const bool written = dryRun
         ? false : RoadmapFoldIn::insertBlock(root, heading, block);
@@ -18243,7 +18243,7 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
         ? ColdEyesEngine::templateColdEyesFoldInBlockFreeform(
               actionable, dateIso)
         : ColdEyesEngine::templateColdEyesFoldInBlock(
-              actionable, ids, dateIso);
+              actionable, ids, dateIso, RoadmapFoldIn::sniffIdPrefix(root));
 
     bool written = false;
     if (!dryRun && !heading.isEmpty()) {

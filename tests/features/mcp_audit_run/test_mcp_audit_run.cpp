@@ -287,6 +287,29 @@ TEST(mcp_audit_run, Ants2188RawOutputSecretScrubbed) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-3472 — mypy `note:` lines (informational: [annotation-unchecked],
+// the check-untyped-defs hint, "see here" context) must NOT be counted as
+// findings by the line-based parser. A deps-less mypy over untyped helpers
+// emits them alone; counting them inflates total_actionable and can
+// mis-route a /close-phase triage into a phantom fix-pass on a tree the
+// gated `mypy` reports clean. Bounded to parseToolOutput's line-based
+// section so the guard can't be satisfied by the tool-config `mypy` string.
+TEST(mcp_audit_run, Ants3472MypyNoteSeverityExcluded) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
+    const auto pos = cpp.find("Line-based fallback for plain-text tools");
+    ASSERT_NE(pos, std::string::npos);
+    const auto blockEnd = cpp.find("out.rawCount = located;", pos);
+    ASSERT_NE(blockEnd, std::string::npos);
+    const std::string body = cpp.substr(pos, blockEnd - pos);
+    expect(contains(body, "ANTS-3472"),
+           "INV: parseToolOutput carries the ANTS-3472 mypy-note anchor");
+    expect(contains(body, "QLatin1String(\"mypy\")") &&
+           contains(body, "startsWith(QLatin1String(\"note:\")"),
+           "INV: parseToolOutput skips mypy `note:` lines before `located`");
+    EXPECT_EQ(0, expect_failures());
+}
+
 // ANTS-2185 INV-18 — scoped positionals are guarded against argv
 // option-injection: no tool branch may append the raw scopedPaths; every
 // scoped path goes through the ./-guard first. A file named `-rf.cpp` in

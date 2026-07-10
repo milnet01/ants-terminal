@@ -703,7 +703,8 @@ QString synthesisPrompt(const QHash<QString, QString> &reports,
 QString templateIndieReviewFoldInBlock(
     const QList<CorroboratedFinding> &actionable,
     const QList<int> &allocatedIds,
-    const QString &dateIso) {
+    const QString &dateIso,
+    const QString &idPrefix) {
     if (actionable.isEmpty() || actionable.size() != allocatedIds.size()) {
         return {};
     }
@@ -734,7 +735,9 @@ QString templateIndieReviewFoldInBlock(
         const int id = allocatedIds.at(i);
         const QString lane = laneFromPath(f.file);
 
-        out += QStringLiteral("- 📋 [ANTS-");
+        out += QStringLiteral("- 📋 [");
+        out += idPrefix;
+        out += QChar('-');
         out += QString::number(id);
         out += QStringLiteral("] ");
         // ANTS-1278 — rich-card shape when the caller supplied a

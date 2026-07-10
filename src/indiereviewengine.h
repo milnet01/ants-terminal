@@ -174,7 +174,11 @@ QString synthesisPrompt(
 QString templateIndieReviewFoldInBlock(
     const QList<CorroboratedFinding> &actionable,
     const QList<int> &allocatedIds,
-    const QString &dateIso);
+    const QString &dateIso,
+    // ANTS-3473 — ID prefix (sniffed from the project's ROADMAP.md by
+    // the caller). Default keeps the Ants render + existing tests
+    // byte-identical.
+    const QString &idPrefix = QStringLiteral("ANTS"));
 
 // MCP-handler-side helper: read CLAUDE.md + SECURITY.md + .semgrep.yml
 // from `projectPath` and concatenate with separator markers per the

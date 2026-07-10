@@ -261,7 +261,11 @@ PlanResult buildPlan(const QString &projectRoot, const PlanOptions &opts) {
             r.antsIdSource = AntsIdSource::None;
             antsIdLabel = QStringLiteral("<ANTS-ID>");
         } else {
-            r.antsId = QStringLiteral("ANTS-%1").arg(ids.at(0));
+            // ANTS-3473 — the project's own sniffed prefix, not a hardcoded
+            // "ANTS", so a plan for a FIBR-NNNN project reads FIBR-<n>.
+            r.antsId = QStringLiteral("%1-%2")
+                           .arg(RoadmapFoldIn::sniffIdPrefix(projectRoot))
+                           .arg(ids.at(0));
             r.antsIdSource = AntsIdSource::Allocated;
             antsIdLabel = r.antsId;
         }

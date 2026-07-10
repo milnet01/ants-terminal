@@ -197,6 +197,33 @@ QString counterFilePath(const QString &projectPath) {
 // ANTS-3450 — see the doc-comment in roadmapfoldin.h. The counter is now a
 // derived cache; this recomputes the true high-water mark from committed
 // content so allocation never trusts a stale/absent counter blindly.
+// ANTS-3473 — dominant `[PREFIX-NNNN]` prefix in a roadmap's text (the
+// most frequent bracketed counter-style token; dominance-by-count shrugs
+// off strays like "[UTF-8]"). Returns `fallback` when none is found.
+static QString sniffPrefixFromText(const QString &roadmap,
+                                   const QString &fallback) {
+    static const QRegularExpression sniffRe(
+        QStringLiteral("\\[([A-Za-z][A-Za-z0-9_-]*)-[0-9]{1,8}\\]"));
+    QHash<QString, int> counts;
+    int best = 0;
+    QString pfx;
+    auto it = sniffRe.globalMatch(roadmap);
+    while (it.hasNext()) {
+        const QString p = it.next().captured(1);
+        const int c = ++counts[p];
+        if (c > best) { best = c; pfx = p; }
+    }
+    return pfx.isEmpty() ? fallback : pfx;
+}
+
+QString sniffIdPrefix(const QString &projectPath, const QString &fallback) {
+    const QString root = QFileInfo(projectPath).canonicalFilePath();
+    if (root.isEmpty()) return fallback;
+    QFile f(root + QStringLiteral("/ROADMAP.md"));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return fallback;
+    return sniffPrefixFromText(QString::fromUtf8(f.readAll()), fallback);
+}
+
 qint64 corpusHighWater(const QString &projectPath, const QString &prefix) {
     const QString root = QFileInfo(projectPath).canonicalFilePath();
     if (root.isEmpty()) return 0;
@@ -211,18 +238,11 @@ qint64 corpusHighWater(const QString &projectPath, const QString &prefix) {
     // Resolve the prefix: sniff the dominant bracketed counter-style id
     // (e.g. "[ANTS-3450]" → "ANTS") from ROADMAP.md when the caller didn't
     // pin one. Dominance-by-count shrugs off stray tokens like "[UTF-8]".
+    // ANTS-3473 — reuse the shared text-sniff (empty fallback → "" when the
+    // roadmap has no counter-style id, preserving the "return 0" contract).
     QString pfx = prefix;
     if (pfx.isEmpty()) {
-        static const QRegularExpression sniffRe(
-            QStringLiteral("\\[([A-Za-z][A-Za-z0-9_-]*)-[0-9]{1,8}\\]"));
-        QHash<QString, int> counts;
-        int best = 0;
-        auto it = sniffRe.globalMatch(roadmap);
-        while (it.hasNext()) {
-            const QString p = it.next().captured(1);
-            const int n = ++counts[p];
-            if (n > best) { best = n; pfx = p; }
-        }
+        pfx = sniffPrefixFromText(roadmap, QString());
         if (pfx.isEmpty()) return 0;  // no counter-style ids anywhere
     }
 

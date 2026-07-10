@@ -177,7 +177,11 @@ QList<IndieReviewEngine::CorroboratedFinding>
 QString         templateColdEyesFoldInBlock(
                     const QList<IndieReviewEngine::CorroboratedFinding> &actionable,
                     const QList<int> &allocatedIds,
-                    const QString &dateIso);
+                    const QString &dateIso,
+                    // ANTS-3473 — ID prefix (sniffed from the project's
+                    // ROADMAP.md by the caller). Default keeps the Ants
+                    // render + existing tests byte-identical.
+                    const QString &idPrefix = QStringLiteral("ANTS"));
 
 // ANTS-1510 — freeform overload. Renders one bullet per finding without
 // a `[PROJ-NNNN]` ID prefix, for projects whose roadmap doesn't use the

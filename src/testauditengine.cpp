@@ -1887,9 +1887,14 @@ FoldInResult foldIn(const FoldInRequest &req) {
                 .arg(counterPathOrUnknown).arg(stateHint);
         return r;
     }
+    // ANTS-3473 — stamp the project's own ID prefix (sniffed from ROADMAP.md),
+    // not a hardcoded "ANTS", so a fold-in into e.g. a FIBR-NNNN roadmap
+    // allocates FIBR-<n>, matching what roadmap_log op:append does in the same
+    // project. Falls back to "ANTS" on a greenfield/absent roadmap.
+    const QString idPrefix = RoadmapFoldIn::sniffIdPrefix(canon);
     QStringList allocated;
     for (int v : allocatedInts) {
-        allocated.append(QStringLiteral("ANTS-%1").arg(v));
+        allocated.append(QStringLiteral("%1-%2").arg(idPrefix).arg(v));
     }
     r.allocatedIds = allocated;
     // Render per-finding bullets (headlines validated above, pre-allocation).

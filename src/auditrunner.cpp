@@ -841,9 +841,21 @@ ParsedOutput parseToolOutput(const QString &tool,
     for (int i = 0; i < lines.size(); ++i) {
         const QRegularExpressionMatch m = rxFileLine.match(lines.at(i));
         if (!m.hasMatch()) continue;
-        ++located;  // rawCount keeps the raw total, learned FPs included
         const QString fileStr = m.captured(1);
         const QString msg     = m.captured(3);
+        // ANTS-3472 — mypy `note:` lines (the [annotation-unchecked] /
+        // check-untyped-defs hints, and the "see here" context under an
+        // error) are informational, never a standalone finding. A deps-less
+        // mypy over untyped helpers emits them alone, so counting them
+        // inflates rawCount / total_actionable and can mis-route a
+        // /close-phase triage into a phantom fix-pass on a tree the gated
+        // `mypy` reports clean. Drop them before `located`; the paired
+        // `error:` line (if any) still counts.
+        if (tool == QLatin1String("mypy")
+            && msg.startsWith(QLatin1String("note:"), Qt::CaseInsensitive)) {
+            continue;
+        }
+        ++located;  // rawCount keeps the raw total, learned FPs included
         // ANTS-1820 — the line-based tools (cppcheck/clazy/mypy/shellcheck)
         // key the ledger by tool name, matching the GUI's Finding::checkId,
         // so learned FPs recorded in the dialog suppress here too.

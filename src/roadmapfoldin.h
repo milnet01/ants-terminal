@@ -71,6 +71,16 @@ QString counterFilePath(const QString &projectPath);
 qint64 corpusHighWater(const QString &projectPath,
                        const QString &prefix = {});
 
+// ANTS-3473 — the project's dominant counter-style ID prefix, sniffed
+// from <projectPath>/ROADMAP.md (the most frequent `[PREFIX-NNNN]`
+// bracketed token, e.g. "FIBR" for a finbreak roadmap; dominance-by-count
+// shrugs off strays like "[UTF-8]"). The fold-in ID renderers use this so
+// a fold-in into a non-Ants project stamps that project's prefix instead
+// of a hardcoded "ANTS". Returns `fallback` when ROADMAP.md is
+// absent/unreadable or carries no counter-style id. Read-only.
+QString sniffIdPrefix(const QString &projectPath,
+                      const QString &fallback = QStringLiteral("ANTS"));
+
 // ANTS-1618 — post-failure inspection helper. allocateIds returns an
 // empty QList on every failure mode (flock contention, corrupt int,
 // permission, symlink-escape); callers want a state-specific message.

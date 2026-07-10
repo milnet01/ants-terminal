@@ -62,6 +62,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **fold-in verbs stamp the project's own roadmap ID prefix instead of a hardcoded ANTS- (ANTS-3473)**
+  test_audit_fold_in / cold_eyes_fold_in / indie_review_fold_in / plan_template now sniff the dominant [PREFIX-NNNN] prefix from the project's ROADMAP.md (new RoadmapFoldIn::sniffIdPrefix), so a fold-in into e.g. a FIBR-NNNN roadmap allocates FIBR- and no longer collides with the Ants roadmap's own IDs.
+
+- **audit_run no longer counts mypy `note:` (annotation-unchecked) lines as actionable findings (ANTS-3472)**
+  A deps-less mypy run over untyped helpers emitted informational note: lines that inflated total_actionable, misleading /close-phase triage into a phantom fix-pass on a tree the gated mypy reports clean. Note lines are now dropped before the finding count.
+
 - **codebase_index now covers repo-root source files on non-standard layouts (ANTS-3390)** (ANTS-3390)
   project_settings op:detect now suggests source_roots:["."] when a project's source sits loose at the repo root (RetroArch's retroarch.c, configuration.c, runloop.c … ~9k LoC), instead of a subdirs-only suggestion that silently dropped those files from the index. The whole-root walk also had its keys normalised — a "." source_root previously stored "./retroarch.c", so codebase_index(file_path:"retroarch.c") returned found:false; it now keys the bare repo-relative path, which also repairs flat-root ["."] projects (ANTS-3393) whose file_path lookups and tests/ role-detection were silently broken.
 
