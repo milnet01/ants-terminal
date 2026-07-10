@@ -16997,6 +16997,10 @@ struct VerifyGitSnapshot {
     bool    valid = false;
     QString head;            // 40-hex commit SHA
     QString statusSha;       // SHA256-hex16 of `git status --porcelain=v1 -z`
+    // ANTS-3373 — repo-relative source files newly added in the working
+    // tree (index-add `A` or untracked `??`), parsed out of the same
+    // porcelain output. Feeds VerifyEngine::findUnreferencedSources.
+    QStringList addedSources;
 };
 
 // Run `git -C <root> <argv...>` and return stdout on exit 0 or {} on
@@ -17040,6 +17044,33 @@ VerifyGitSnapshot collectGitSnapshot(const QString &root) {
     s.statusSha = QString::fromUtf8(
         QCryptographicHash::hash(statusRaw, QCryptographicHash::Sha256)
             .toHex().left(16));
+
+    // ANTS-3373 — pull added/untracked source files out of the same
+    // porcelain output (no extra git call). Entries are NUL-separated
+    // `XY <path>`; a rename/copy (`R`/`C`) carries its old path in the
+    // NEXT token, which we skip. "Added" = index-add (`A`) or untracked
+    // (`??`). Only translation units count (headers aren't compiled).
+    static const QStringList kSrcExt = {
+        QStringLiteral(".cpp"), QStringLiteral(".cc"),
+        QStringLiteral(".cxx"), QStringLiteral(".c++"),
+        QStringLiteral(".c")};
+    const QList<QByteArray> toks = statusRaw.split('\0');
+    for (int i = 0; i < toks.size(); ++i) {
+        const QByteArray &t = toks.at(i);
+        if (t.size() < 4) continue;               // "XY p" minimum
+        const char x = t.at(0), y = t.at(1);
+        if (x == 'R' || x == 'C') ++i;            // consume paired old-path
+        const bool added = (x == 'A' || y == 'A' || (x == '?' && y == '?'));
+        if (!added) continue;
+        const QString path = QString::fromUtf8(t.mid(3));
+        for (const QString &ext : kSrcExt) {
+            if (path.endsWith(ext, Qt::CaseInsensitive)) {
+                s.addedSources.append(path);
+                break;
+            }
+        }
+    }
+
     s.valid = true;
     return s;
 }
@@ -17357,6 +17388,24 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
     env[QStringLiteral("wall_clock_ms")] = static_cast<qint64>(wall.elapsed());
     env[QStringLiteral("pre_gate_ms")]   = preGateMs;
     env[QStringLiteral("gate_ms")]       = gateMs;
+
+    // ANTS-3373 — orphaned-source lint. Advisory only: a source file added
+    // in the working tree but referenced by no CMakeLists.txt / *.cmake
+    // compiles in isolation yet is silently never built. Surfaced as a
+    // warning array (emitted only when non-empty, so the default envelope
+    // stays byte-identical / 304-stable); it does NOT flip all_passed —
+    // the build genuinely passed, the file just isn't in it.
+    const QStringList orphans = VerifyEngine::findUnreferencedSources(
+        root, preSnapshot.addedSources);
+    if (!orphans.isEmpty()) {
+        QJsonArray arr;
+        for (const QString &p : orphans) arr.append(p);
+        env[QStringLiteral("orphaned_sources")] = arr;
+        env[QStringLiteral("orphaned_sources_hint")] = QStringLiteral(
+            "These added source files are referenced by no CMakeLists.txt / "
+            "*.cmake and will not be compiled — add each to a target's "
+            "source list.");
+    }
 
     // Step 10b — post-run snapshot + exclusion-list gate (§ 2.5).
     const VerifyGitSnapshot postSnapshot =

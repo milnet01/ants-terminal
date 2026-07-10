@@ -17817,11 +17817,12 @@ server build id so clients can self-diagnose this.
   Source: cc-feedback-2026-06-30 (RetroDB).
   Resolved (2026-06-30): all four AuditEngine parsers (SARIF + cppcheck-xml + clang-tidy-text + semgrep-json) drop progress-bar parse-artifacts before ranking via a shared isLikelyParseArtifact guard (line 0 AND confidence -1 AND box-drawing/bare-% junk file). Counts unaffected (filter runs after the level tally). Spec ANTS-1254 INV-11 added; behavioural test Ants3372DropsProgressBarArtifacts added; full suite 2371/2371 green. Commit pending.
 
-- 📋 [ANTS-3373] **verify_changes — orphaned-source lint: warn on an added *.cpp not referenced by any CMakeLists / *.cmake.**
+- ✅ [ANTS-3373] **verify_changes — orphaned-source lint: warn on an added *.cpp not referenced by any CMakeLists / *.cmake.**
   Vestige hit this twice across two CMakeLists (AX11, AX9). Pure basename grep over CMakeLists.txt/*.cmake for each added *.cpp/*.cc in the working-tree diff; warn if unreferenced. Optionally flag the inverse (source-list entry pointing at a missing path).
   **Layman:** Catches a new code file you forgot to add to the build — it compiles fine but is silently never built, so the work just doesn't run.
   Kind: feature.
   Source: cc-feedback-2026-06-30 (Vestige Sug-B, 2 days running).
+  Resolved (2026-07-10): VerifyEngine::findUnreferencedSources (pure basename grep over CMakeLists.txt/*.cmake, build/vendor dirs pruned via isNoiseDir) + caller-side git-added-source parse in collectGitSnapshot; surfaced as advisory orphaned_sources[] in verify_changes (does not flip all_passed, emitted only when non-empty). Engine spec INV-10 + test Inv10OrphanedSourceLint. Inverse check (dead source-list entry) deferred — out-of-scope in the engine spec. Full suite 2589/2589.
 
 - 📋 [ANTS-3374] **recent_errors / build_status — attach likely_fix add_include for "'X' has not been declared" diagnostics.**
   Vestige: 'DeviceHotSwapMode has not been declared' etc. On a 'X has not been declared'/'unknown type name X' diagnostic, auto-run find_definition(X) and attach likely_fix:{add_include:'<header>', defines:'X', at:'<failing file>'}. Stitches the existing 2-verb diagnose→fix loop.

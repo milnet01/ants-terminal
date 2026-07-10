@@ -30,8 +30,28 @@ Pairs with docs/specs/ANTS-1289.md.
 - **INV-9 (PATH inheritance)** — documented, not asserted (v1
   carries the same env-inheritance model as the rest of the MCP
   surface).
+- **INV-10 (orphaned-source lint, ANTS-3373)** —
+  `findUnreferencedSources(root, addedSourcePaths)` returns those
+  added source paths whose basename appears in NO CMakeLists.txt /
+  *.cmake under `root`. A basename referenced in a nested `*.cmake`
+  counts as referenced; one referenced only inside a pruned
+  build/vendor dir (`isNoiseDir`) does NOT — so a generated build-tree
+  CMakeLists can't mask a real orphan. Empty input short-circuits to
+  empty (no tree walk). Input order/duplicates preserved. The MCP
+  layer (`cmdVerifyChangesImpl`) parses the added `.cpp/.cc/.cxx/.c++/.c`
+  files from the working-tree `git status --porcelain` snapshot and
+  surfaces the result as an advisory `orphaned_sources[]` array — it
+  does NOT flip `all_passed` (the build passed; the file just isn't in
+  it), and is emitted only when non-empty so the default envelope stays
+  byte-identical.
 
 ## Out of scope
+
+- **Inverse check** (a CMake source-list entry pointing at a
+  now-missing path) — the roadmap's "Optionally" half. Deferred: it
+  needs real CMake source-list parsing (extracting quoted paths from
+  `add_executable` / `target_sources`), a larger surface than the
+  basename grep. Filed as a follow-up if it recurs.
 
 - ctest-via-actual-ctest invocation (covered by the project's
   existing `ctest --preset=default` harness).

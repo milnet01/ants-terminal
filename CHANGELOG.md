@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`verify_changes` orphaned-source lint (ANTS-3373)**
+  Warns when a source file added in the working tree (`.cpp/.cc/.cxx/.c++/.c`) is referenced by no CMakeLists.txt / *.cmake — it compiles in isolation but is silently never built. Surfaced as an advisory `orphaned_sources[]` array (does not fail the build gate; emitted only when non-empty). Build/vendor dirs are pruned so a generated build-tree CMakeLists never masks a real orphan.
+
 - **session_orient's embedded codebase_index sub-object is still counts-only — extend the ANTS-3438 symbol/lane/file selectors (or a compact digest) to the first-call orientation surface.** (ANTS-3468)
   session_orient's embedded codebase map now carries a compact per-lane source_files digest (each subsystem's non-test source paths, sorted, capped) so the first-call "query before grep" map is navigable — a session can jump straight to file_outline/read_region instead of grepping. Opt-in on the standalone codebase_index too via lane_files:true; deterministic, so it keeps the bundle's ETag-304 stable.
 

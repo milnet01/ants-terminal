@@ -116,4 +116,18 @@ QList<GateConfig> loadGateConfig(const QString &projectPath,
 VerifyReport runVerify(const QString &projectPath,
                        const VerifyOptions &opts);
 
+// ANTS-3373 — orphaned-source lint. Given `addedSourcePaths` (the
+// repo-relative source files the caller found newly added in the
+// working-tree diff), return those whose basename appears in NO
+// CMakeLists.txt / *.cmake under `projectPath`. A returned path is a
+// file that compiles in isolation but is silently never built — the
+// author forgot to add it to a target's source list. Pure basename
+// grep (a literal `contains`); build/vendor dirs are pruned via
+// ProjectSettings::isNoiseDir so a generated build-tree CMakeLists
+// never masks a real orphan. Git parsing stays caller-side, so this
+// helper is git-free and unit-testable. Order and duplicates of the
+// input are preserved in the output.
+QStringList findUnreferencedSources(const QString &projectPath,
+                                    const QStringList &addedSourcePaths);
+
 }  // namespace VerifyEngine

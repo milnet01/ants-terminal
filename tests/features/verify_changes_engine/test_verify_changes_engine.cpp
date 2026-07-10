@@ -291,6 +291,37 @@ TEST(VerifyEngine, Inv6TestsRunWhenBuildPasses) {
 }
 
 // ---------------------------------------------------------------------------
+// INV-10 (ANTS-3373) — orphaned-source lint. A basename referenced in any
+// CMakeLists.txt / *.cmake is not orphaned; one that isn't, is. Build/vendor
+// dirs are pruned, so a generated build-tree CMakeLists never masks a real
+// orphan.
+// ---------------------------------------------------------------------------
+TEST(VerifyEngine, Inv10OrphanedSourceLint) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+
+    // Top-level list references foo.cpp; a nested *.cmake references baz.cc.
+    writeFile(root, "CMakeLists.txt", "add_executable(app foo.cpp)\n");
+    writeFile(root, "cmake/extra.cmake", "target_sources(app PRIVATE baz.cc)\n");
+    // A pruned build tree references bar.cpp — must NOT count as a reference.
+    writeFile(root, "build/CMakeLists.txt", "add_executable(x bar.cpp)\n");
+
+    const QStringList added = {
+        QStringLiteral("src/foo.cpp"),   // referenced   → not orphaned
+        QStringLiteral("src/bar.cpp"),   // only in build/ (pruned) → orphaned
+        QStringLiteral("baz.cc"),        // referenced in .cmake → not orphaned
+        QStringLiteral("qux.cpp")};      // nowhere      → orphaned
+    const QStringList orphans =
+        VerifyEngine::findUnreferencedSources(root, added);
+    EXPECT_EQ(orphans, (QStringList{QStringLiteral("src/bar.cpp"),
+                                    QStringLiteral("qux.cpp")}));
+
+    // Empty input → empty (fast path, no tree walk).
+    EXPECT_TRUE(VerifyEngine::findUnreferencedSources(root, {}).isEmpty());
+}
+
+// ---------------------------------------------------------------------------
 // Smoke: gateKey() helper maps to the documented strings.
 // ---------------------------------------------------------------------------
 TEST(VerifyEngine, GateKeyMapsToCanonicalStrings) {

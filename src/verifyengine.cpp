@@ -2,6 +2,7 @@
 
 #include "verifyengine.h"
 #include "verifytrust.h"
+#include "projectsettings.h"   // ANTS-3373 — isNoiseDir for orphan-lint pruning
 
 #include <QDir>
 #include <QElapsedTimer>
@@ -531,6 +532,46 @@ VerifyReport runVerify(const QString &projectPath,
     // there was just nothing to verify.
     if (!anyRan) rep.allPassed = true;
     return rep;
+}
+
+// ANTS-3373 — recursively slurp every CMakeLists.txt / *.cmake under
+// `dir` into `out`, pruning build/vendor dirs at the directory level
+// (never descends an isNoiseDir) so a generated build-tree CMakeLists
+// can't mask a real orphan.
+static void collectCmakeText(const QString &dir, QString &out) {
+    const QFileInfoList entries = QDir(dir).entryInfoList(
+        QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QFileInfo &fi : entries) {
+        if (fi.isDir()) {
+            if (ProjectSettings::isNoiseDir(fi.fileName())) continue;
+            collectCmakeText(fi.absoluteFilePath(), out);
+        } else if (fi.fileName() == QLatin1String("CMakeLists.txt")
+                   || fi.fileName().endsWith(QLatin1String(".cmake"))) {
+            QFile f(fi.absoluteFilePath());
+            if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                out += QString::fromUtf8(f.readAll());
+                out += QLatin1Char('\n');
+            }
+        }
+    }
+}
+
+QStringList findUnreferencedSources(const QString &projectPath,
+                                    const QStringList &addedSourcePaths) {
+    if (addedSourcePaths.isEmpty()) return {};
+
+    QString cmakeText;
+    collectCmakeText(projectPath, cmakeText);
+
+    QStringList orphaned;
+    for (const QString &p : addedSourcePaths) {
+        const QString base = QFileInfo(p).fileName();
+        // A literal basename grep — matches the roadmap contract. A file
+        // whose basename never appears in any CMake text is unreferenced.
+        if (!base.isEmpty() && !cmakeText.contains(base))
+            orphaned.append(p);
+    }
+    return orphaned;
 }
 
 }  // namespace VerifyEngine
