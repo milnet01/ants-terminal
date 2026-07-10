@@ -210,16 +210,17 @@ columnar arg (ANTS-2090), and `project_query` keys (ANTS-2093) — read on deman
 ## Cross-session MCP feedback
 
 Other CC sessions (Vestige, MAME Curator, Album Builder, RetroArch,
-RetroDB) write MCP observations to `*_Ants_MCP_Feedback.md` files under
+RetroDB, and others) write MCP observations to `*_Ants_MCP_Feedback.md` files under
 `/mnt/Games/Scripts/Linux/`. Format spec:
 [`docs/standards/mcp-feedback-files.md`](docs/standards/mcp-feedback-files.md).
 
-> **v2 redesign in flight (ANTS-3443, 2026-07-04):** the format spec above is
-> moving to an inline-ID model — the maintainer fills each finding's
-> `**Proposed ID:**` slot in place and status is derived live from the roadmap,
-> so there are **no tracking tables**. The `op:append_tracking` flow described
-> below is the **current v1** behaviour and stays valid until the v2 verbs
-> (`assign_id` / `compact_resolved` / `migrate_v2`) ship.
+> **v2 is live (2026-07-10).** The format moved to an inline-ID model — the
+> maintainer fills each finding's `**Proposed ID:**` slot in place
+> (`op:assign_id`) and status is derived live from the ROADMAP, so v2 **stops
+> writing tracking tables**. All ten corpus files are migrated to `: 2` (their old
+> v1 tables are retained in place pending a declutter pass). `op:append_tracking` and
+> the v1 table-compaction ops below are **legacy** (un-migrated files only); the
+> canonical v2 flow is `migrate_v2` → `assign_id` → `compact_resolved`.
 
 At session start, `session_orient` surfaces a `feedback_pending` block
 (ANTS-1964) — a per-file count of un-triaged contributor addenda across the
@@ -229,28 +230,24 @@ per file. Only the Ants maintainer project gets it (gated on shipping
 
 Reviewing feedback efficiently (don't re-read the whole file):
 - **`feedback_query`** (ANTS-1961) — pass the feedback file's `path`;
-  returns the un-triaged tail (contributor blocks after the last maintainer
-  tracking block) + already-mapped `ANTS-NNNN` IDs; saves ~60k tokens vs. a
-  full read. Read-only, ETag-aware.
-- **`feedback_log`** (ANTS-1962) — write side; `op:"append_finding"` for
-  contributors, `op:"append_tracking"` for the maintainer to stamp a
-  mapping table with roadmap IDs. Append-only at EOF (creates the file with
-  a conforming skeleton on first `append_finding`). The `path` basename
-  must end in `_Ants_MCP_Feedback.md` (else `not_feedback_file`).
-  `op:"compact_shipped"` (ANTS-3421, maintainer) collapses a
-  confirmed-shipped contributor block to a one-line `→ shipped …` stub
-  (heading kept; gated ✅-shipped + above-watermark + single-finding +
-  idempotent; batch, atomic, `dry_run` byte report) — the sanctioned way to
-  reclaim bytes as these files grow, without a raw hand-edit.
-  `op:"prune_tracking"` (ANTS-3442, maintainer, shipped 2026-07-04) removes
-  superseded duplicate tracking-table rows, keeping each id's last-per-id row
-  (idempotent, atomic, `dry_run`). Both are v1-table ops — under the ANTS-3443
-  v2 redesign (see the pointer above) they become legacy.
+  returns the un-triaged tail + already-mapped `ANTS-NNNN` IDs; saves ~60k
+  tokens vs. a full read. Version-aware (ANTS-3448): on a `: 2` file the tail is
+  the findings whose `**Proposed ID:**` is still unfilled; on a v1 file it's the
+  contributor blocks after the last maintainer tracking table. Read-only, ETag-aware.
+- **`feedback_log`** (ANTS-1962) — write side (`path` basename must end in
+  `_Ants_MCP_Feedback.md`). Contributor: `op:"append_finding"` (append-only at
+  EOF; creates the skeleton first time; stamps a blank `**Proposed ID:**` line).
+  Maintainer v2 triage: `op:"assign_id"` (ANTS-3447, fill the id/closure slot),
+  `op:"compact_resolved"` (ANTS-3443, collapse shipped write-ups),
+  `op:"migrate_v2"` (ANTS-3446, +`backfill_from_tracking` ANTS-3474, convert a v1
+  file). **Legacy (v1 only):** `op:"append_tracking"`, `op:"compact_shipped"`
+  (ANTS-3421), `op:"prune_tracking"` (ANTS-3442). Per-op detail: the standard's §Tooling.
 
-Triage flow: `feedback_query` the tail → assign IDs via `roadmap_log
-op:append` → `feedback_log op:"append_tracking"` to stamp the mapping
-table (which advances the watermark, emptying the next `feedback_query`
-delta).
+Triage flow (v2): `feedback_query` the tail → allocate IDs via `roadmap_log
+op:append` → `feedback_log op:"assign_id"` to fill each finding's
+`**Proposed ID:**` slot (or an `n/a — <reason>` closure) → once an ID ships,
+`op:"compact_resolved"` collapses the write-up. Filling the slot removes that
+finding from the next `feedback_query` delta (no watermark to advance).
 
 ## Project standards
 

@@ -791,8 +791,8 @@ PruneResult pruneTracking(const QString &content, const PruneOptions &opts) {
 }
 
 // ANTS-3443 — fence-aware `### `-block enumerator. Shared scanner for the
-// v2 consumers (compact_resolved here; feedback_query delta + migrate_v2
-// pending). A block runs from its `### ` heading to the next
+// v2 consumers (compact_resolved here; feedback_query delta + migrate_v2,
+// all shipped). A block runs from its `### ` heading to the next
 // `#`/`## `/`### ` boundary (or EOF), fences skipped; idLine0/idValue carry
 // the block's FIRST `**Proposed ID:**` line (the standard's canonical
 // id-line regex, first-line-wins). Classification (finding vs prose) is the

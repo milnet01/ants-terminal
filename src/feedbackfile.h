@@ -211,8 +211,8 @@ PruneResult pruneTracking(const QString &content, const PruneOptions &opts);
 // for the full contract (gates + invariants).
 
 // A `### ` finding sub-block located by the fence-aware enumerator
-// (enumerateFindingBlocks). Shared with the pending v2 feedback_query
-// delta parser + op:migrate_v2 (spec § 2.6 — one scanner, so consumers
+// (enumerateFindingBlocks). Shared with the v2 feedback_query
+// delta parser + op:migrate_v2 (both shipped; spec § 2.6 — one scanner, so consumers
 // never drift on block extents or on which line is the authoritative id
 // line). idLine0 < 0 ⟹ the block carries no `**Proposed ID:**` line: it is
 // non-finding prose, not a finding. Each consumer layers its own

@@ -18312,7 +18312,7 @@ their feedback-file tracking tables needed stamping.
   Progress (2026-07-04): the row-dedup half SHIPPED as feedback_log op:prune_tracking — FeedbackFile::pruneTracking (two-stage pass: Stage-1 marks ID-column-superseded rows, Stage-2 removes only when every ANTS-NNNN token also survives elsewhere, preserving mappedIds) + cmdFeedbackLog wrapper (scope_ids/dry_run/atomic; empty scope_ids→bad_args, absent→not_found) + schema (op enum + scope_ids prop) + TrackingRow.line. Spec docs/specs/ANTS-3442.md cold-eyes converged (6 loops). 13-INV feature test green; test_claude 1394/1394. Live after Ants relaunch. Remaining: multi-finding-block collapse half → ANTS-3443.
   Shipped 2026-07-04 (commit 8b40477): feedback_log op:prune_tracking — row-dedup half of the bulk-cleanup gap. The sibling multi-finding-block-collapse half is tracked separately as ANTS-3443 (compact_resolved), so this bullet's own scope is complete.
 
-- ✅ [ANTS-3443] **feedback_log: collapse a fully-shipped MULTI-finding ## session block (every ### finding maps to a ✅ tracking row) to a per-id stub — the deferred sibling half of ANTS-3442.**
+- ✅ [ANTS-3443] **feedback_log op:compact_resolved — collapse a shipped v2 finding's write-up to a stub, gated on its inline Proposed-ID being ✅ in the live ROADMAP (the deferred sibling half of ANTS-3442; the v1 "tracking row" phrasing is superseded — v2 has no tables).**
   ANTS-3421 compact_shipped refuses multi_finding blocks (§5); ANTS-3442 shipped the row-dedup half. This is the remaining half: collapse a ## block with ≥2 ### findings when EVERY finding's id is ✅ in a tracking row, to a stub keeping the heading + one per-id shipped line; gate each finding independently and skip the whole block if any is still open. Spec-first + cold-eyes.
   **Layman:** Extend the write-up shrinker so it can also collapse a session block that reported several findings once all of them have shipped, not just single-finding blocks.
   Kind: enhancement.
@@ -18368,7 +18368,7 @@ their feedback-file tracking tables needed stamping.
   Source: cold-eyes-2026-07-04 (ANTS-3443 review).
   Resolved ✅ (2026-07-04): root-caused in FeedbackFile::parse() — only anchored ANTS-NNNN tokens (^ANTS-[0-9]+$, new idCellRe) now populate TrackingRow::ids; a closure/counter id-column token (`(schema fix)` / `(self-resolved)` / `n/a`) no longer becomes a pseudo-id that drives pruneTracking's supersede dedup. Reproducer test Ants3445ClosureTokenNotDeduped (fails pre-fix). Full suite 2499/2499 green. Live on next relaunch.
 
-- ✅ [ANTS-3446] **feedback_log op:migrate_v2 — one-shot lazy v1→v2 feedback-file migration (stamp inline Proposed-ID lines from the legacy tracking tables, collapse the tables, bump the marker; surfaces orphan channels for hand-triage).**
+- ✅ [ANTS-3446] **feedback_log op:migrate_v2 — one-shot lazy v1→v2 feedback-file migration (bump the marker + stamp blank inline Proposed-ID placeholders on finding-shaped blocks, leaving the v1 tables in place; surfaces orphan channels for hand-triage).**
   **Layman:** The one-time converter that upgrades each shared feedback file to the new inline-ID format so the write-up shrinker can actually run on it.
   Kind: enhancement.
   Source: in-session-2026-07-05 (v2 feedback-file redesign; the verb that unlocks compact_resolved on the all-v1 corpus).
@@ -18498,6 +18498,34 @@ build).
   Kind: doc-fix.
   Lanes: feedbackfile, docs.
   Source: in-session-2026-07-10 (compaction sweep — doc-drift found while validating ANTS-3474 live).
+
+- 📋 [ANTS-3476] **FeedbackFile::skeleton() still births new feedback files as v1 (marker :1 + append_tracking banner).**
+  src/feedbackfile.cpp skeleton() emits `<!-- ants-mcp-feedback: 1 -->` and a contributor banner that still reads "The maintainer stamps roadmap IDs via `feedback_log op:append_tracking`" + "never edit a maintainer table" — pure v1 language. The standard (docs/standards/mcp-feedback-files.md §File skeleton) says a new file SHOULD carry `: 2` and gives the v2 banner (read via feedback_query / append via op:append_finding, blank Proposed-ID line, maintainer fills it). Fix: skeleton() emits `: 2` + the v2 banner verbatim from the standard. Guard: check tests/features/* + any feedbackfile unit test that asserts the `:1` marker or the old banner text (source-scrape byte-window trap) and update in lockstep. Small, foundational — makes every future contributor file born-v2 so no migrate_v2 is ever needed on a fresh file.
+  **Layman:** When a brand-new project logs its first feedback, we still create the file in the OLD format with old instructions — new files should be born in the new format.
+  Kind: fix.
+  Lanes: feedbackfile.
+  Source: in-session-2026-07-10 (v2 standard reconciliation — code-vs-standard divergence).
+
+- 📋 [ANTS-3477] **feedback_log op:append_tracking should refuse (or warn) on a :2 file, pointing at assign_id.**
+  The standard's §Tooling row for op:append_tracking says "Superseded by assign_id (ANTS-3447) for v2 files... The actual deprecation (a refusal/warning) is a follow-up. Not used on v2 files." Implement that follow-up: on a marker `>= 2` file, cmdFeedbackLog op:append_tracking refuses with a new/dedicated code (e.g. `use_assign_id` or reuse `not_v2`-style) whose message names op:assign_id as the v2 triage write; on a v1 (`< 2`) file it stays valid (legacy triage write). Keeps the v1 path working for any un-migrated file while preventing a v2 file from re-growing a tracking table. Register the refusal code in docs/standards/mcp-error-codes.md. Spec-first per §14 if it warrants a docs/specs entry.
+  **Layman:** The old way of recording IDs (a tracking table) is retired; if someone tries to use it on a new-format file, it should politely refuse and point at the new way.
+  Kind: enhancement.
+  Lanes: feedbackfile.
+  Source: in-session-2026-07-10 (v2 standard reconciliation — append_tracking retirement).
+
+- 📋 [ANTS-3478] **feedback_query — render each assigned id's live ROADMAP status (the deferred ANTS-3448 follow-up).**
+  ANTS-3448 (marker-aware v2 delta reader) shipped but explicitly scoped OUT the live per-id status render (it emits mapped_ids only, not each id's resolved 📋/🚧/✅). docs/standards/mcp-feedback-files.md references this render in four places as 'a deferred ANTS-3448 follow-up' but — unlike every sibling deferral (ANTS-3475/3476/3477) — it had no tracking id. This is that id. Scope: feedback_query (and/or a new render mode) resolves each finding's inline Proposed-ID against the live ROADMAP.md (reuse the roadmap_query 100ms-TTL parsed-bullet cache, ANTS-1117 — one parse, not one-per-id) and returns a status field per mapped id, rendering an at-a-glance triage view; an id absent from the roadmap renders archived/unknown, never silently shipped. Update the standard's four deferral citations to point here once built.
+  **Layman:** Make the feedback reader show, at a glance, whether each finding's assigned task is planned / in-progress / shipped — pulled live from the roadmap — instead of just listing the IDs.
+  Kind: enhancement.
+  Lanes: feedbackfile.
+  Source: in-session-2026-07-10 (cold-eyes of the v2 standard — the deferred render had no tracking id).
+
+- 📋 [ANTS-3479] **mcp-feedback-files.md spec-hygiene trim — consolidate repeated rules + dense parentheticals.**
+  Cold-eyes (2026-07-10, loop 5) flagged the standard restates the `n/a\b` closure rule ~4× (§v2-principle, §Maintainer-triage, §parser-contract, §un-triaged-delta, §compaction) and 'v1 tables retained in place' ~8×, with several 2–3-deep nested parentheticals — an estimated ~25–30% shrink is available by stating each rule once canonically and back-referencing. NON-normative: must not change any contract, only consolidate wording. Run /cold-eyes after (contract doc, §14). Lower priority than the code follow-ups (ANTS-3476/3477); do when next touching the file.
+  **Layman:** Tidy the feedback-format spec: it repeats a couple of rules many times over and stacks nested asides; state each once and cross-reference, so it's shorter and easier to read.
+  Kind: doc-fix.
+  Lanes: docs.
+  Source: in-session-2026-07-10 (cold-eyes L2 — flagged for a later trim, not a defect).
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
