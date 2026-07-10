@@ -65,6 +65,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query id/ids cannot locate a bullet whose ID prefix is digit-leading (e.g. [3D_E-NNNN]) — the whole project ID scheme is invisible to id-lookup.** (ANTS-3492)
+  For a project whose IDs start with a number, the roadmap lookup by ID finds nothing at all — none of its items can be fetched or flipped by ID.
+
 - **Fold-in verbs emit un-zero-padded IDs (FIBR-82 not FIBR-0082) + inconsistent allocated_ids type — ANTS-3473 residual.** (ANTS-3480)
   The auto-ID feature I added today gets the project's ID prefix right but drops the leading zeros (writes FIBR-82 where every other ID reads FIBR-0082), so the IDs sort and match wrong.
 
