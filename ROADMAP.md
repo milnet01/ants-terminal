@@ -17843,11 +17843,12 @@ server build id so clients can self-diagnose this.
   Source: cc-feedback-2026-06-30 (Ants Projects Hub).
   Resolved (2026-06-30): feedback_query/feedback_log accept an omitted `path` and derive `<caller_cwd-leaf>_Ants_MCP_Feedback.md` at the shared root (parent of caller_cwd), echoing path_derived:true; a set-but-unresolvable caller_cwd still refuses bad_args (truly-empty is caught earlier by the CallerCwdContract gate). On not_found the candidate list floats the caller's own file to candidates[0], or sets all_other_projects:true when no sibling matches the leaf (a third no-leaf branch emits a generic hint). New feedbackCallerLeaf helper; fbNotFound + resolveFeedbackPath updated; both schemas drop `path` from required. Tests: DerivesDefaultPathFromCallerCwd, NotFoundFloatsOwnFileFirst, DerivesDefaultPathOnCreate, DryRunPreviewCarriesPathDerivedNoWrite. Specs ANTS-1961 INV-13/14 + T12/T13/T14, ANTS-1962 INV-15 + T9/T10. Full 4-loop cold-eyes pass (see those specs' §8). Suite 2377/2377 green.
 
-- 📋 [ANTS-3377] **Read-only git_diff verb — per-file hunk headers for a clean commit split.**
+- ✅ [ANTS-3377] **Read-only git_diff verb — per-file hunk headers for a clean commit split.**
   git_state/get_git_status return only status+branch+ahead/behind. Add git_diff {path?, staged?, name_only?, context?} → {file, hunks:[{header, old_start, new_start, lines?}]}; name_only/header-only keeps it cheap. Mirrors git_state's read-only, caller_cwd-anchored posture.
   **Layman:** Gives a cheap way to see which lines changed in a file so unrelated edits can be committed separately — today that needs raw git the hook discourages.
   Kind: feature.
   Source: cc-feedback-2026-06-30 (Ants Terminal in-session).
+  Resolved (2026-07-10): folded into git_state op:diff (reuse over a parallel git_diff verb per CLAUDE.md §3). hunks=true emits per-file @@ headers {path, hunks:[{header, old_start, old_count, new_start, new_count, lines?}]} via the pure git-free GitWrap::parseDiffHunks helper; staged=true diffs the index vs HEAD (--cached, mutually exclusive with range → bad_args); include_lines attaches hunk bodies; context (0..10, default 3) sets --unified. Unit-tested by tests/features/git_diff_hunks (6 cases: parse, omitted-count→1, added/deleted /dev/null, +++ body ambiguity, pure-rename omitted, empty). numstat default path byte-unchanged. Note: the bullet's premise ("git_state returns only status+branch+ahead/behind") was stale — op:diff already existed (numstat); this adds the missing hunk boundaries.
 
 - ✅ [ANTS-3378] **roadmap_log op:flip headline locator — match the bold-span headline only + ANTS-2053-style targeted refusal.**
   Vestige: op:flip headline:'AX11. Audio device hot-swap...' (exact untruncated bold-span of line 414) → bullet_not_found + 3 unrelated suggestions. Matcher appears to key on the full bullet LINE (bold span + ' — tail') not the bold-span headline. Fix: (a) match bold-span text only, case/whitespace-normalized (same token roadmap_query reports as headline); (b) on miss, return nearest-by-edit-distance candidates + bullet line, not section-wide suggestions. Beyond what closed ANTS-2075 (which was the synthetic_id refusal text).
@@ -18458,6 +18459,28 @@ re-confirmations or corroboration of already-tracked items
   Lanes: feedbackfile.
   Source: in-session-2026-07-09: an append_tracking row for ANTS-3466 whose text contained literal `|` corrupted the table; compact_shipped then reported not_shipped/no tracking row for that id..
   Resolved (2026-07-09, commit pending): feedback_log op:append_tracking now pipe-escapes (`\|`) + newline-folds (<br>) every table cell via escapeTrackingCell, mirroring bundle_row's escapeCell. Discovered live this session (an ANTS-3466 tracking row whose text held literal `|` corrupted the table → compact_shipped not_shipped). Regression: McpFeedbackLog.TrackingCellEscapesPipeAndNewline.
+
+### Ants-MCP feedback from CC sessions — 2026-07-10 triage
+
+Cross-session feedback sweep 2026-07-10. Only finbreak carried an un-triaged
+delta (the other 9 shared-root files were clean). Items below are the
+genuinely-new findings; the re-verification block confirmed ANTS-3467 shipped
+and ANTS-3468 already resolved-as-designed (the tester re-checked a pre-fix
+build).
+
+- 📋 [ANTS-3472] **audit_run — exclude mypy NOTE-severity (annotation-unchecked) lines from total_actionable / findings so a clean tree can't manufacture a fix-pass.**
+  Vestige/finbreak: a deps-less mypy run under audit_run emitted 6 `note: ... [annotation-unchecked]` lines (severity UNKNOWN, pre-existing untyped pytest helpers). The envelope counted all 6 in by_tool.mypy.after_filter_count AND top-level total_actionable/total_raw, while the deps-installed gated `mypy src tests` reports 'Success: no issues found'. A /close-phase flow branching on total_actionable>0 mis-routes to a phantom fix-pass. Repro: audit_run scope=since-tag tools=[ruff,bandit,semgrep,mypy] -> total_actionable:6, all 6 top_findings severity UNKNOWN message 'note: ... [annotation-unchecked]'. Fix: drop mypy `note:`-only lines (incl. [annotation-unchecked] / the check-untyped-defs hint) from total_actionable — bucket them under an informational/notes count, or drop them from the deps-less mypy path entirely so a clean gated tree reads 0 actionable.
+  **Layman:** The code-audit tool counts harmless mypy 'note' lines (like 'untyped function bodies not checked') as real problems, which can trick an automated cleanup into thinking there's work to do on already-clean code.
+  Kind: fix.
+  Lanes: auditengine.
+  Source: finbreak feedback 2026-07-10 (FIBR-0010 close).
+
+- 📋 [ANTS-3473] **test_audit_fold_in (and sibling fold-in verbs) allocate ANTS-NNNN IDs instead of sniffing the project's roadmap prefix / .roadmap-counter; add an id_prefix param.**
+  finbreak (stable FIBR-NNNN IDs, .roadmap-counter present, last FIBR-0061): test_audit_fold_in dry_run allocated ANTS-62/63/64; roadmap_log op:append_batch on the same section in the same session correctly sniffed FIBR and allocated FIBR-0062/63/64. test_audit_fold_in exposes no id_prefix param and falls back to the ANTS default rather than sniffing the existing bullet-ID prefix / .roadmap-counter — risking wrong-prefix bullets and a collision against the real Ants roadmap's own ANTS-62/63/64. Fix: make RoadmapFoldIn::allocateIds sniff the project's existing prefix (as roadmap_log's append path does) and/or honour the .roadmap-counter prefix; add an id_prefix param (parity with roadmap_log op:append). ANTS default only when no prefix can be sniffed. Cross-check the siblings cold_eyes_fold_in / indie_review_fold_in for the same gap.
+  **Layman:** When filing test-review items into another project's roadmap, the tool stamps them with 'ANTS-' IDs instead of that project's own prefix (e.g. FIBR-), risking ID clashes and a broken counter.
+  Kind: fix.
+  Lanes: roadmapfoldin.
+  Source: finbreak feedback 2026-07-10 (test-audit).
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
