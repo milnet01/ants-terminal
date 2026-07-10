@@ -147,7 +147,9 @@ TEST(roadmap_log_prefix, Inv3BadPrefixRefuses) {
     ASSERT_FALSE(dir.isEmpty());
     RemoteControl rc(nullptr);
     QJsonObject req = appendReq(dir, QStringLiteral("Should not land."));
-    req["id_prefix"] = QStringLiteral("1bad");  // leading digit
+    // ANTS-3492 — a digit-led prefix is fine IF it contains a letter
+    // (3D_E); a LETTER-FREE prefix is the invalid case.
+    req["id_prefix"] = QStringLiteral("1234");  // letter-free → invalid
     const QJsonObject out = rc.cmdRoadmapLogAppendForTest(req).object();
     EXPECT_FALSE(out["ok"].toBool());
     EXPECT_EQ(out["code"].toString(), QStringLiteral("bad_args"));

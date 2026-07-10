@@ -31,14 +31,14 @@ TEST(roadmap_log_flip_ants_v1, Inv1WalkerAnchors) {
            "INV-1: walkAntsV1Bullets helper defined");
     expect(contains(cpp, "rxAntsV1IdBracket"),
            "INV-1: bracket-ID regex compiled");
-    // ANTS-2051 — the leading letter is now case-insensitive so the write
-    // parser recognises lowercase project prefixes (`[mame-curator-1065]`)
-    // exactly like the read path's idTokenPattern(). The old `[A-Z]…` form
-    // rejected them, leaving markerless ants-v1 roadmaps read-only to
-    // roadmap_log.
-    expect(contains(cpp, "[A-Za-z][A-Za-z0-9_-]*-\\\\d{1,8}"),
-           "INV-1: regex matches PREFIX-NNNN id shape, case-insensitive lead "
-           "(ANTS-2051 — mirrors the read path's idTokenPattern)");
+    // ANTS-2051 — the leading letter is case-insensitive so the write
+    // parser recognises lowercase project prefixes (`[mame-curator-1065]`).
+    // ANTS-3492 — the lead is now alphanumeric: a digit-led prefix that
+    // contains a letter (`[3D_E-0042]`) is recognised, gated by a
+    // contains-a-letter lookahead so `[2026-07]` is still not an id.
+    expect(contains(cpp, "[A-Za-z0-9][A-Za-z0-9_-]*-\\\\d{1,8}"),
+           "INV-1: regex matches PREFIX-NNNN id shape, alphanumeric lead "
+           "(ANTS-2051 lowercase; ANTS-3492 digit-led-if-letter-containing)");
     expect(!contains(cpp, "[A-Z][A-Z0-9_-]*-\\\\d{1,8}"),
            "INV-1: the old uppercase-only lead is gone (regression guard for "
            "the lowercase-id refusal)");

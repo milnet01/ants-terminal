@@ -485,7 +485,10 @@ bool rlRoadmapHasAnyBulletId(const QString &markdown) {
 // → "mame-curator" and "ANTS-2057" → "ANTS".
 QString rlDetectCounterPrefix(const QString &markdown) {
     static const QRegularExpression counterRe(
-        QStringLiteral("^([A-Za-z][A-Za-z0-9_-]*)-([0-9]{1,8})$"));
+        // ANTS-3492 — digit-led-but-letter-containing prefix (3D_E-0042).
+        QStringLiteral(
+            "^((?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*)"
+            "-([0-9]{1,8})$"));
     const auto bullets = RoadmapDialog::parseBullets(markdown);
     constexpr int kSniffCap = 50;
     const int upTo = std::min<int>(bullets.size(), kSniffCap);
@@ -506,8 +509,10 @@ QString rlDetectCounterPrefix(const QString &markdown) {
 // ANTS-2076 — id_prefix arg shape. Looser than op:flip's prefix_hint
 // (which is uppercase-only) so a caller can pin a lowercase or
 // mixed-case project prefix (e.g. "mame-curator", "DOOM").
+// ANTS-3492 — prefix may be digit-led if it contains ≥1 letter (3D_E);
+// a letter-free prefix (2026) is still rejected. {0,15} cap unchanged.
 static const QRegularExpression kIdPrefixShape(
-    QStringLiteral("^[A-Za-z][A-Za-z0-9_-]{0,15}$"));
+    QStringLiteral("^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]{0,15}$"));
 
 // ANTS-2076 — project-default counter-ID prefix derived from the
 // caller's leaf directory (uppercase first 4 chars) — the same source
@@ -550,7 +555,10 @@ qint64 rlMaxExistingIdForPrefix(
         const QVector<RoadmapDialog::BulletRecord> &bullets,
         const QString &pfx) {
     static const QRegularExpression idRe(
-        QStringLiteral("^([A-Za-z][A-Za-z0-9_-]*)-([0-9]{1,8})$"));
+        // ANTS-3492 — digit-led-but-letter-containing prefix (3D_E-0042).
+        QStringLiteral(
+            "^((?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*)"
+            "-([0-9]{1,8})$"));
     qint64 maxN = 0;
     for (const auto &b : bullets) {
         if (b.id.isEmpty()) continue;
@@ -1202,8 +1210,13 @@ QString rcNormaliseHeadline(const QString &raw) {
 bool rcIsNonconformingIdToken(const QString &tok) {
     static const QRegularExpression kIdIsh(
         QStringLiteral("^[A-Za-z0-9][A-Za-z0-9_-]*-\\d+$"));
+    // ANTS-3492 — kCanonical widens to "contains a letter" (3D_E-0042 is
+    // canonical); kIdIsh above stays digit-permissive — do NOT widen it, or
+    // this guard collapses to X && !X ≡ always-false. A letter-free id-shaped
+    // token (2026-07) stays non-canonical → bad_id_format, as before.
     static const QRegularExpression kCanonical(
-        QStringLiteral("^[A-Za-z][A-Za-z0-9_-]*-\\d+$"));
+        QStringLiteral(
+            "^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-\\d+$"));
     return kIdIsh.match(tok).hasMatch() &&
            !kCanonical.match(tok).hasMatch();
 }
@@ -1583,7 +1596,8 @@ struct AntsV1Bullet {
 // roadmap_query reads fine (MAME Curator HIGH, cross-session 2026-06-10).
 // Keep the {1,8} digit bound as a sanity ceiling.
 static const QRegularExpression rxAntsV1IdBracket(
-    QStringLiteral("\\[([A-Za-z][A-Za-z0-9_-]*-\\d{1,8})\\]"));
+    // ANTS-3492 — digit-led-but-letter-containing prefix (3D_E-0042).
+    QStringLiteral("\\[((?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-\\d{1,8})\\]"));
 
 QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
     QVector<AntsV1Bullet> out;
@@ -5895,8 +5909,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     if (!idPrefixArg.isEmpty() &&
         !kIdPrefixShape.match(idPrefixArg).hasMatch()) {
         return rlErr(QStringLiteral("bad_args"),
-            QStringLiteral("roadmap_log: id_prefix \"%1\" does not match "
-                           "^[A-Za-z][A-Za-z0-9_-]{0,15}$").arg(idPrefixArg));
+            QStringLiteral("roadmap_log: id_prefix \"%1\" must contain a "
+                           "letter and be 1-16 chars of [A-Za-z0-9_-] "
+                           "(e.g. ANTS, 3D_E) — ANTS-3492").arg(idPrefixArg));
     }
     const bool dryRun =
         req.value(QStringLiteral("dry_run")).toBool();
@@ -8619,8 +8634,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     if (!idPrefixArg.isEmpty() &&
         !kIdPrefixShape.match(idPrefixArg).hasMatch()) {
         return rlErr(QStringLiteral("bad_args"),
-            QStringLiteral("roadmap_log: id_prefix \"%1\" does not match "
-                           "^[A-Za-z][A-Za-z0-9_-]{0,15}$").arg(idPrefixArg));
+            QStringLiteral("roadmap_log: id_prefix \"%1\" must contain a "
+                           "letter and be 1-16 chars of [A-Za-z0-9_-] "
+                           "(e.g. ANTS, 3D_E) — ANTS-3492").arg(idPrefixArg));
     }
     const bool dryRun =
         req.value(QStringLiteral("dry_run")).toBool();

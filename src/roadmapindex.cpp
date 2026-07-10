@@ -56,7 +56,10 @@ QString slugifyHeading(const QString &heading) {
 // pattern compiles once.
 bool isCanonicalId(const QString &id) {
     static const QRegularExpression rxCanonicalId = [] {
-        QRegularExpression re(QStringLiteral("^[A-Za-z][A-Za-z0-9_-]*-[0-9]+$"));
+        // ANTS-3492 — prefix may be digit-led if it contains ≥1 letter
+        // (3D_E-0042); a letter-free token (2026-07) is still rejected.
+        QRegularExpression re(QStringLiteral(
+            "^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-[0-9]+$"));
         re.optimize();
         return re;
     }();

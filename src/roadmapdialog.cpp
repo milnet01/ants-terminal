@@ -609,7 +609,11 @@ bool extractBoldId(const QString &lineHead, QString *id) {
 // prose). Both derive from this so the accepted ID shape can't drift
 // between the two parsers.
 static QString idTokenPattern() {
-    return QStringLiteral("[A-Za-z][A-Za-z0-9_-]*-\\d+");
+    // ANTS-3492 — prefix may be digit-led if it contains ≥1 letter
+    // (3D_E-0042). Bare, unanchored fragment shared by parseBullets
+    // (bracket-anchored) and parseShippedDates (\b-anchored); the leading
+    // lookahead splices safely into both.
+    return QStringLiteral("(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-\\d+");
 }
 
 // ANTS-1811 — truncate to maxChars + "…" without splitting a UTF-16 surrogate
@@ -2161,7 +2165,9 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         if (summary.isEmpty()) {
             summary = rec.headline;
             static const QRegularExpression rxLeadId(
-                QStringLiteral("^[A-Za-z][A-Za-z0-9_-]*-\\d+\\s*[—-]\\s*"));
+                // ANTS-3492 — digit-led-but-letter-containing prefix.
+                QStringLiteral("^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9]"
+                               "[A-Za-z0-9_-]*-\\d+\\s*[—-]\\s*"));
             summary.remove(rxLeadId);
         }
         html += QStringLiteral("<td class=\"rm-col-summary%1\">"
@@ -2537,7 +2543,9 @@ RoadmapDialog::parseLastTouchDates(const QString &roadmapPath) {
     const QList<QByteArray> mdLines = body.split('\n');
     // ANTS-1660 — match any project-ID prefix, not just ANTS-.
     static const QRegularExpression rxInProgress(
-        QStringLiteral("^- 🚧 \\[([A-Za-z][A-Za-z0-9_-]*-\\d+)\\]"));
+        // ANTS-3492 — digit-led-but-letter-containing prefix.
+        QStringLiteral("^- 🚧 \\[((?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9]"
+                       "[A-Za-z0-9_-]*-\\d+)\\]"));
     for (int i = 0; i < mdLines.size(); ++i) {
         const QString line = QString::fromUtf8(mdLines.at(i));
         const auto m = rxInProgress.match(line);

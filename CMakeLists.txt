@@ -1633,6 +1633,8 @@ if(ANTS_TESTS)
                 tests/features/verify_changes_engine/test_verify_changes_engine.cpp
                 # ANTS-3473 — fold-in ID prefix sniffing.
                 tests/features/foldin_id_prefix/test_foldin_id_prefix.cpp
+                # ANTS-3492 — digit-led (letter-containing) ID prefixes.
+                tests/features/roadmap_id_digit_led_prefix/test_roadmap_id_digit_led_prefix.cpp
                 tests/features/plan_template_engine/test_plan_template_engine.cpp
                 tests/features/token_usage_engine/test_token_usage_engine.cpp
                 # ANTS-1432 — failed-call accumulator on TokenUsageEngine.

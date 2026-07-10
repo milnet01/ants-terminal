@@ -16,8 +16,10 @@ got `ANTS-0001` instead of a project-shaped prefix) + idea B (`dry_run`).
 - **INV-2** — An explicit `id_prefix` overrides the prefix that would
   otherwise be sniffed from existing IDs: a roadmap full of `ANTS-NNNN`
   with `id_prefix:"ZOOM"` and counter `9100` yields `ZOOM-9101`.
-- **INV-3** — A malformed `id_prefix` (e.g. `"1bad"`) refuses with
-  `code:"bad_args"` and writes nothing (counter unchanged).
+- **INV-3** — A malformed `id_prefix` (e.g. `"1234"`, letter-free) refuses
+  with `code:"bad_args"` and writes nothing (counter unchanged). Per
+  ANTS-3492 a digit-led prefix is fine *if* it contains a letter (`3D_E`);
+  only a letter-free prefix is rejected.
 - **INV-4** — `dry_run:true` on `op:append` returns
   `{ok:true, dry_run:true, id, bullet, line}` and leaves ROADMAP.md and
   `.roadmap-counter` byte-for-byte unchanged.

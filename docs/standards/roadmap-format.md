@@ -159,12 +159,16 @@ Optional pieces:
 
 The ID is a project-prefixed monotonic integer:
 
-- **Prefix** — 4–6 ASCII letters, all caps. One per project.
-  Pick something short and grep-friendly. Examples: `ANTS`,
-  `MYPRJ`, `ENGINE`, `RETRO`. Multi-prefix repos (e.g. `Sh-`,
-  `Ed-`, `Phase-`) are permitted under § 3.10.4; the
-  `\[[A-Z][A-Z0-9_-]+-\d+\]` regex accepts any
-  letter-led, dash-then-digit token.
+- **Prefix** — a short project tag of `[A-Za-z0-9_-]` that
+  **contains at least one ASCII letter**. All-caps 4–6 letters is the
+  convention (`ANTS`, `MYPRJ`, `ENGINE`, `RETRO`); a digit-led,
+  letter-containing prefix is also accepted (`3D_E`), so a project whose
+  scheme starts with a digit can be fetched/flipped by ID (ANTS-3492). A
+  letter-free prefix (`2026`) is NOT an ID — that keeps a date/version
+  bracket like `[2026-07]` from being mistaken for one. Multi-prefix repos
+  (e.g. `Sh-`, `Ed-`, `Phase-`) are permitted under § 3.10.4; the
+  `\[(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-\d+\]` regex
+  accepts any letter-containing, dash-then-digit token.
 - **Number** — zero-padded to 4 digits minimum (`0001`, `0042`,
   `1234`). Pad wider once a project crosses 9999.
 - **Append-only** — once assigned, an ID never changes. It

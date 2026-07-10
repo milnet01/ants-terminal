@@ -203,7 +203,10 @@ QString counterFilePath(const QString &projectPath) {
 static QString sniffPrefixFromText(const QString &roadmap,
                                    const QString &fallback) {
     static const QRegularExpression sniffRe(
-        QStringLiteral("\\[([A-Za-z][A-Za-z0-9_-]*)-[0-9]{1,8}\\]"));
+        // ANTS-3492 — digit-led-but-letter-containing prefix (3D_E-0042).
+        QStringLiteral(
+            "\\[((?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*)"
+            "-[0-9]{1,8}\\]"));
     QHash<QString, int> counts;
     int best = 0;
     QString pfx;

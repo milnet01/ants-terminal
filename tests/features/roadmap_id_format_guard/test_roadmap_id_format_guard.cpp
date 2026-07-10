@@ -1,10 +1,13 @@
-// ANTS-3387 — feature-conformance test: an `id`/`ids`/flip/annotate locator
-// that is id-token SHAPED (`<prefix>-<digits>`) but fails the canonical
-// PROJ-NNNN gate (letter-leading prefix, roadmap-format.md § 3.5.1) must be
-// refused with a NAMED bad_id_format, not a silent found:false /
-// bullet_not_found. The Vestige repro was `3D_E-0022` (digit-leading prefix)
-// — a real bullet the parser gives a synthetic content-hash, so the authored
-// token is unaddressable on both read and write paths.
+// ANTS-3387 / ANTS-3492 — feature-conformance test: an `id`/`ids`/flip/annotate
+// locator that is id-token SHAPED (`<prefix>-<digits>`) but fails the canonical
+// gate must be refused with a NAMED bad_id_format, not a silent found:false /
+// bullet_not_found.
+//
+// ANTS-3492 RELAXED the canonical gate from "letter-leading prefix" to
+// "prefix contains ≥1 letter": the original Vestige repro `3D_E-0022` is now
+// CANONICAL (digit-led but letter-containing), so it resolves + flips
+// normally (Inv7). The guard now fires only on a LETTER-FREE id-shaped token
+// (e.g. a date bracket `2026-07`), which is still non-canonical (Inv2/Inv3).
 //
 // Write path drives the *ForTest seam behaviourally; the read (roadmap_query)
 // path has no test seam (mirrors roadmap_query_by_id), so its two branches are
@@ -55,15 +58,16 @@ const char *kPad =
     "voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed\n"
     "quia consequuntur magni dolores eos qui ratione voluptatem sequi.\n";
 
-// An ants-v1 roadmap with one canonical bullet + the digit-leading
-// `[3D_E-0022]` bullet (the exact Vestige shape). 📋 = U+1F4CB.
+// An ants-v1 roadmap with a letter-led canonical bullet + the digit-led
+// `[3D_E-0022]` bullet (the Vestige shape — canonical since ANTS-3492).
+// 📋 = U+1F4CB.
 QByteArray seed() {
     QByteArray b = "# Test Roadmap\n\n";
     b += kPad;
     b += "\n## Work Items\n\n"
          "- \xF0\x9F\x93\x8B [ANTS-0042] **Canonical bullet.**\n"
          "  Source: seed.\n"
-         "- \xF0\x9F\x93\x8B [3D_E-0022] **Digit-leading-prefix bullet.**\n"
+         "- \xF0\x9F\x93\x8B [3D_E-0022] **Digit-led-prefix bullet.**\n"
          "  Source: seed.\n\n";
     return b;
 }
@@ -86,8 +90,9 @@ bool contains(const std::string &hay, const std::string &needle) {
 
 }  // namespace
 
-// INV-2 — op:flip with a nonconforming `id` → bad_id_format (the token that
-// looks "vanished" to a plain lookup is named as the real cause).
+// INV-2 — op:flip with a nonconforming `id` (letter-FREE id-shaped token,
+// ANTS-3492) → bad_id_format (the token that looks "vanished" to a plain
+// lookup is named as the real cause).
 TEST(roadmap_id_format_guard, Inv2FlipNonconformingIdBadFormat) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
@@ -98,13 +103,13 @@ TEST(roadmap_id_format_guard, Inv2FlipNonconformingIdBadFormat) {
     req[QStringLiteral("caller_cwd")] = tmp.path();
     req[QStringLiteral("op")]         = QStringLiteral("flip");
     req[QStringLiteral("to_status")]  = QStringLiteral("shipped");
-    req[QStringLiteral("id")]         = QStringLiteral("3D_E-0022");
+    req[QStringLiteral("id")]         = QStringLiteral("2026-07");
     const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(req).object();
 
     EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
     EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
               QStringLiteral("bad_id_format"))
-        << "a digit-leading id-shaped locator must be named, not a silent "
+        << "a letter-free id-shaped locator must be named, not a silent "
            "bullet_not_found";
 }
 
@@ -118,7 +123,7 @@ TEST(roadmap_id_format_guard, Inv3AnnotateNonconformingIdBadFormat) {
     QJsonObject req;
     req[QStringLiteral("caller_cwd")] = tmp.path();
     req[QStringLiteral("op")]         = QStringLiteral("annotate");
-    req[QStringLiteral("id")]         = QStringLiteral("3D_E-0022");
+    req[QStringLiteral("id")]         = QStringLiteral("2026-07");
     req[QStringLiteral("note")]       = QStringLiteral("Progress note.");
     const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(req).object();
 
@@ -170,6 +175,29 @@ TEST(roadmap_id_format_guard, Inv5CanonicalIdStillFlips) {
         << "canonical letter-led id must resolve and flip normally";
 }
 
+// INV-7 (ANTS-3492) — the digit-led, letter-containing `[3D_E-0022]` bullet is
+// now CANONICAL: it resolves and flips normally (the original Vestige repro
+// that ANTS-3387 used to refuse). This is the end-to-end write-path proof that
+// a `3D_E-NNNN` project is addressable by id.
+TEST(roadmap_id_format_guard, Inv7DigitLedLetterContainingFlips) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seed()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("flip");
+    req[QStringLiteral("to_status")]  = QStringLiteral("shipped");
+    req[QStringLiteral("id")]         = QStringLiteral("3D_E-0022");
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(req).object();
+
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << "a digit-led, letter-containing id must resolve and flip "
+           "normally (ANTS-3492); got code="
+        << resp.value(QStringLiteral("code")).toString().toStdString();
+}
+
 // INV-1 — the classifier helper is present with BOTH the loose id-ish and
 // canonical regexes (a shape-only, non-letter-lead divergence).
 TEST(roadmap_id_format_guard, Inv1ClassifierPresent) {
@@ -178,9 +206,10 @@ TEST(roadmap_id_format_guard, Inv1ClassifierPresent) {
     expect(contains(cpp, "rcIsNonconformingIdToken"),
            "INV-1: classifier helper defined");
     expect(contains(cpp, "^[A-Za-z0-9][A-Za-z0-9_-]*-"),
-           "INV-1: loose id-ish regex present");
-    expect(contains(cpp, "^[A-Za-z][A-Za-z0-9_-]*-"),
-           "INV-1: canonical PROJ-NNNN regex present");
+           "INV-1: loose id-ish (kIdIsh) regex present");
+    // ANTS-3492 — canonical gate now carries the contains-a-letter lookahead.
+    expect(contains(cpp, "(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-"),
+           "INV-1: canonical (letter-containing) regex present");
     EXPECT_EQ(0, expect_failures());
 }
 

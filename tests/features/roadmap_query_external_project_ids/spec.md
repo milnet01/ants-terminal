@@ -25,8 +25,10 @@ populates the field.
 - **INV-3 / lowercase external.** `[mame-curator-7]` yields
   `rec.id == "mame-curator-7"`. Tolerant of real-world lowercase
   projects.
-- **INV-4 / reject digit-leading.** `[42-bad-1]` does not match.
-  `rec.id` stays empty (or falls back to `boldId` path).
+- **INV-4 / digit-led, letter-containing (ANTS-3492).** A letter-free
+  bracket `[2026-07]` does not match — `rec.id` stays empty (a date/version
+  is not an id). A digit-led prefix that *contains* a letter `[3D_E-0042]`
+  now matches — `rec.id == "3D_E-0042"`.
 - **INV-5 / no-dash bracket id is adopted (superseded by ANTS-1987).**
   `[FOO123]` is not matched by the body-wide `rxId` (no `-<digits>`
   tail), but the ANTS-1987 head-anchored extractor adopts an ID-shaped

@@ -8497,7 +8497,9 @@ void ClaudeIntegration::onMcpConnection() {
                     // ANTS-2076 — explicit counter-ID prefix override.
                     QJsonObject idPrefixProp;
                     idPrefixProp["type"]    = "string";
-                    idPrefixProp["pattern"] = "^[A-Za-z][A-Za-z0-9_-]{0,15}$";
+                    // ANTS-3492 — prefix may be digit-led if letter-containing.
+                    idPrefixProp["pattern"] =
+                        "^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]{0,15}$";
                     idPrefixProp["description"] = QStringLiteral(
                         "Optional counter-ID prefix for op:\"append\" / "
                         "\"append_batch\" (counter strategy). Overrides "

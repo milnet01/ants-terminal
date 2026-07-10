@@ -58,14 +58,22 @@ TEST(roadmap_query_external_project_ids, Inv3LowercaseExternal) {
 
 // INV-4 — digit-leading reject. [42-bad-1] starts with a digit and
 // fails the [A-Za-z] anchor; id stays empty.
-TEST(roadmap_query_external_project_ids, Inv4RejectDigitLeading) {
-    const QString md = QStringLiteral(
+// ANTS-3492 — the ID grammar accepts a digit-led prefix that CONTAINS a
+// letter (3D_E-0042); only a LETTER-FREE token stays a non-id (a date /
+// version bracket like [2026-07] is never mistaken for one).
+TEST(roadmap_query_external_project_ids, Inv4DigitLedLetterContaining) {
+    // Letter-free bracket → still not an id.
+    const auto dateRec = parseOne(QStringLiteral(
         "## Section\n"
-        "- 📋 [42-bad-1] **Should not parse as an ID.** body.\n");
-    const auto rec = parseOne(md);
-    EXPECT_TRUE(rec.id.isEmpty())
-        << "digit-leading bracket must not match; got id="
-        << rec.id.toStdString();
+        "- 📋 [2026-07] **A date, not an ID.** body.\n"));
+    EXPECT_TRUE(dateRec.id.isEmpty())
+        << "letter-free bracket must not match; got id="
+        << dateRec.id.toStdString();
+    // Digit-led but letter-containing → now a valid id.
+    const auto idRec = parseOne(QStringLiteral(
+        "## Section\n"
+        "- 📋 [3D_E-0042] **Digit-led project ID.** body.\n"));
+    EXPECT_EQ(idRec.id, QStringLiteral("3D_E-0042"));
 }
 
 // INV-5 — no-dash bracket id is ADOPTED (superseded by ANTS-1987).

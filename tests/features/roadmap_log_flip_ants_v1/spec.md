@@ -13,10 +13,13 @@ project's own roadmap.
   `walkAntsV1Bullets` accepts lines matching
   `^- (✅|📋|🚧|💭) \[<prefix-NNNN>\] <headline>...` and skips
   fenced code blocks. ANTS-2051 — the bracket-ID leading letter is
-  case-insensitive (`[A-Za-z][A-Za-z0-9_-]*-\d{1,8}`), mirroring the
-  read path's shared `idTokenPattern()`, so lowercase project prefixes
-  like `[mame-curator-1065]` are recognised and flippable. The prior
-  uppercase-only `[A-Z]…` form left markerless ants-v1 roadmaps that
+  case-insensitive; ANTS-3492 — the lead is alphanumeric with a
+  contains-a-letter lookahead
+  (`(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-\d{1,8}`),
+  mirroring the read path's shared `idTokenPattern()`, so lowercase
+  prefixes like `[mame-curator-1065]` and digit-led ones like `[3D_E-0042]`
+  are recognised and flippable (while `[2026-07]` stays a non-id). The
+  prior uppercase-only `[A-Z]…` form left markerless ants-v1 roadmaps that
   `roadmap_query` reads fine effectively read-only to `roadmap_log`
   (MAME Curator HIGH, cross-session report 2026-06-10).
 - **INV-2 / flip is GFM-first, ants-v1 fallback.** When
