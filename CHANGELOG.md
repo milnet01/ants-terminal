@@ -68,6 +68,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **FeedbackFile::skeleton() still births new feedback files as v1 (marker :1 + append_tracking banner).** (ANTS-3476)
+  When a brand-new project logs its first feedback, we still create the file in the OLD format with old instructions — new files should be born in the new format.
+
 - **find_sources returns files_scanned:0 (early-bail) for a valid multi-word topic that leads with a symbol name.** (ANTS-3489)
   The who-uses-this search sometimes scans nothing and returns no results for a reasonable query, when a plain search finds the answer instantly.
 

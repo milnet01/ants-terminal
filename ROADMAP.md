@@ -18499,12 +18499,13 @@ build).
   Lanes: feedbackfile, docs.
   Source: in-session-2026-07-10 (compaction sweep — doc-drift found while validating ANTS-3474 live).
 
-- 📋 [ANTS-3476] **FeedbackFile::skeleton() still births new feedback files as v1 (marker :1 + append_tracking banner).**
+- ✅ [ANTS-3476] **FeedbackFile::skeleton() still births new feedback files as v1 (marker :1 + append_tracking banner).**
   src/feedbackfile.cpp skeleton() emits `<!-- ants-mcp-feedback: 1 -->` and a contributor banner that still reads "The maintainer stamps roadmap IDs via `feedback_log op:append_tracking`" + "never edit a maintainer table" — pure v1 language. The standard (docs/standards/mcp-feedback-files.md §File skeleton) says a new file SHOULD carry `: 2` and gives the v2 banner (read via feedback_query / append via op:append_finding, blank Proposed-ID line, maintainer fills it). Fix: skeleton() emits `: 2` + the v2 banner verbatim from the standard. Guard: check tests/features/* + any feedbackfile unit test that asserts the `:1` marker or the old banner text (source-scrape byte-window trap) and update in lockstep. Small, foundational — makes every future contributor file born-v2 so no migrate_v2 is ever needed on a fresh file.
   **Layman:** When a brand-new project logs its first feedback, we still create the file in the OLD format with old instructions — new files should be born in the new format.
   Kind: fix.
   Lanes: feedbackfile.
   Source: in-session-2026-07-10 (v2 standard reconciliation — code-vs-standard divergence).
+  Resolved (2026-07-10): skeleton() emits the `: 2` marker + v2 banner (feedback_query / op:append_finding / blank Proposed-ID) verbatim from the standard; a fresh file is born v2 and never needs migrate_v2. Reconciled the standard's two ANTS-3476 forward-references. Test mcp_feedback_log asserts the v2 marker/banner + absence of the v1 append_tracking language; v1/migration fixtures keep their `:1` markers deliberately. Commit 8e3a5cff.
 
 - 📋 [ANTS-3477] **feedback_log op:append_tracking should refuse (or warn) on a :2 file, pointing at assign_id.**
   The standard's §Tooling row for op:append_tracking says "Superseded by assign_id (ANTS-3447) for v2 files... The actual deprecation (a refusal/warning) is a follow-up. Not used on v2 files." Implement that follow-up: on a marker `>= 2` file, cmdFeedbackLog op:append_tracking refuses with a new/dedicated code (e.g. `use_assign_id` or reuse `not_v2`-style) whose message names op:assign_id as the v2 triage write; on a v1 (`< 2`) file it stays valid (legacy triage write). Keeps the v1 path working for any un-migrated file while preventing a v2 file from re-growing a tracking table. Register the refusal code in docs/standards/mcp-error-codes.md. Spec-first per §14 if it warrants a docs/specs entry.
