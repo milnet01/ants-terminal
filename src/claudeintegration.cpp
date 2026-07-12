@@ -3535,7 +3535,8 @@ void ClaudeIntegration::onMcpConnection() {
                     "interesting symbols\" from 7 calls to 2. NOTE (ANTS-3383): "
                     "reading via this verb does NOT satisfy the native Edit "
                     "tool's read-precondition — do a native Read before editing "
-                    "a file you intend to modify.");
+                    "a file you intend to modify. ANTS-3500: `requests` / "
+                    "`paths` / `regions` are accepted as aliases for `items`.");
                 rrsTool["selection_hint"] = QStringLiteral(
                     "Use when one file_outline/find_definition pass surfaced "
                     "several symbols/sections to read together — batch them "
@@ -3774,7 +3775,10 @@ void ClaudeIntegration::onMcpConnection() {
                             "sorted, globally capped; lane_digest_truncated "
                             "flags a cap hit) — a navigable lane→file map "
                             "without a per-lane call. Ignored under a selector. "
-                            "(ANTS-3468)");
+                            "(ANTS-3468) ANTS-3503: a project with no parseable "
+                            "`## Module map` (empty lane digest) instead gets a "
+                            "flat top-level `source_files` digest (same cap/flag) "
+                            "so lane-less repos still get a first-call code map.");
                     props["symbol"]     = symProp;
                     props["lane"]       = laneProp;
                     props["file_path"]  = fpProp;

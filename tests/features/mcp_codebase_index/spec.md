@@ -45,6 +45,12 @@ source-scrapes the MCP wiring sites. It maps to the spec invariants:
   digest is deterministic (sorted lanes + sorted paths) so it keeps a warm
   re-serve byte-identical (304-stable). The `session_orient` bundle passes
   `lane_files:true` so its embedded map is navigable, not counts-only.
+  (ANTS-3503) When the lane digest is empty because the project has no
+  parseable `## Module map` (no file carries a lane), `lane_files:true`
+  instead emits a flat top-level `source_files` digest (sorted non-test
+  paths, same `kMaxLaneDigestFiles` cap + `lane_digest_truncated` flag) so a
+  lane-less repo still gets a first-call code map; the field is present only
+  when the fallback fires (the has-lanes shape is unchanged).
 - **INV-20** — (ANTS-3390) a `source_roots:["."]` walk keys files by their
   bare repo-relative path (`app.cpp`, `sub/lib.cpp`), NOT `./app.cpp`. The
   walk base `<root>/.` makes `QDirIterator` yield `./`-prefixed `rel`, so

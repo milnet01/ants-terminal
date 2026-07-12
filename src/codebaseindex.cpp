@@ -447,6 +447,31 @@ QJsonObject query(const Index &idx, const QueryParams &params,
             }
             lanes.append(l);
         }
+        // ANTS-3503 — no-module-map fallback. When the lane digest is requested
+        // but nothing was emitted (no file carries a lane → the project has no
+        // parseable `## Module map` to partition on, e.g. finbreak), the summary
+        // still can't answer "where is the code". Emit a flat, capped, sorted
+        // non-test file-path digest so lane-less repos get a navigable first-call
+        // map too. Deterministic (sorted) → keeps session_orient's 304 ETag
+        // stable; shares the kMaxLaneDigestFiles cap + the lane_digest_truncated
+        // flag. Only present when the fallback fires, so the lane-digest shape is
+        // byte-identical for a project that does have lanes.
+        if (params.laneFiles && digestEmitted == 0) {
+            QStringList flat;
+            for (const FileEntry &fe : idx.files)
+                if (fe.role != QLatin1String("test"))
+                    flat << fe.path;
+            flat.sort();
+            QJsonArray files;
+            for (const QString &p : flat) {
+                if (files.size() >= opts.maxLaneDigestFiles) {
+                    digestTruncated = true;
+                    break;
+                }
+                files.append(p);
+            }
+            env[QStringLiteral("source_files")] = files;
+        }
         QJsonObject langs, roles;
         for (auto it = langCounts.cbegin(); it != langCounts.cend(); ++it)
             langs[it.key()] = it.value();

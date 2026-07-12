@@ -10131,8 +10131,20 @@ QJsonDocument RemoteControl::cmdReadRegions(const QJsonObject &req) {
         o["code"]  = QStringLiteral("bad_path");
         return QJsonDocument(o);
     }
+    // ANTS-3500 — accept `requests`/`paths`/`regions` as aliases for the
+    // `items` batch key (natural first-guesses for the array of slice
+    // selectors). Canonical `items` wins; otherwise the first array-valued
+    // alias in preference order. If none is an array, pass `items` through so
+    // extractBatch emits its precise "items array is required" bad_args error.
+    QJsonValue itemsVal = req.value(QStringLiteral("items"));
+    if (!itemsVal.isArray()) {
+        for (const char *alias : {"requests", "paths", "regions"}) {
+            const QJsonValue v = req.value(QLatin1String(alias));
+            if (v.isArray()) { itemsVal = v; break; }
+        }
+    }
     return QJsonDocument(ReadRegion::extractBatch(
-        rootCanonical, req.value(QStringLiteral("items")),
+        rootCanonical, itemsVal,
         req.value(QStringLiteral("max_bytes")).toInt(0)));
 }
 

@@ -206,3 +206,23 @@ TEST(ReadRegions, WiringContract) {
     EXPECT_EQ(0, expect_failures())
         << expect_failures() << " ANTS-2219 wiring invariant(s) failed";
 }
+
+// RR-7 — ANTS-3500: cmdReadRegions accepts requests/paths/regions as aliases
+// for the `items` batch key. Windowed source-grep (the alias fallback lives in
+// the remotecontrol wrapper, not the pure extractBatch core RR-1..RR-5 drive),
+// so dropping the fallback fails here.
+TEST(ReadRegions, ItemsKeyAliases) {
+    expect_reset();
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const auto p = rc.find("RemoteControl::cmdReadRegions");
+    ASSERT_NE(p, std::string::npos);
+    const std::string body = rc.substr(p, 1500);
+    expect(body.find("\"requests\"") != std::string::npos, "RR-7a",
+           "cmdReadRegions missing `requests` alias for items");
+    expect(body.find("\"paths\"") != std::string::npos, "RR-7b",
+           "cmdReadRegions missing `paths` alias for items");
+    expect(body.find("\"regions\"") != std::string::npos, "RR-7c",
+           "cmdReadRegions missing `regions` alias for items");
+    EXPECT_EQ(0, expect_failures())
+        << expect_failures() << " ANTS-3500 alias wiring invariant(s) failed";
+}

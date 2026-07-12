@@ -493,6 +493,50 @@ TEST(CodebaseIndex, LaneDigestOptIn) {
     EXPECT_TRUE(capped.value("lane_digest_truncated").toBool());
 }
 
+// ANTS-3503 — no-module-map fallback. A project with no parseable `## Module
+// map` yields an empty lane digest; laneFiles:true then emits a flat top-level
+// `source_files` digest (sorted, non-test, same cap/flag) so lane-less repos
+// still get a navigable first-call map instead of a bare counts blob.
+TEST(CodebaseIndex, NoModuleMapFallbackDigest) {
+    QTemporaryDir dir;
+    // No CLAUDE.md module map → no file resolves to a lane (the finbreak shape).
+    writeFile(dir.path() + "/src/beta.cpp", cppWith("Beta", "run"));
+    writeFile(dir.path() + "/src/alpha.cpp", cppWith("Alpha", "run"));
+    writeFile(dir.path() + "/tests/alpha_test.cpp", cppWith("AlphaTest", "run"));
+    Index idx = build(dir.path(), 1000);
+    ASSERT_TRUE(idx.laneToFiles.isEmpty());
+
+    // Opt-out default: no top-level source_files digest (shape unchanged).
+    QJsonObject plain = query(idx, summaryQ(), 0, QStringLiteral("/c"));
+    EXPECT_FALSE(plain.contains("source_files"));
+
+    // Opt-in fallback: flat non-test digest, sorted; the test file is excluded.
+    QueryParams q; q.laneFiles = true;
+    QJsonObject env = query(idx, q, 0, QStringLiteral("/c"));
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("lane_count").toInt(), 0);
+    ASSERT_TRUE(env.contains("source_files"));
+    QStringList files;
+    for (const QJsonValue &v : env.value("source_files").toArray())
+        files << v.toString();
+    EXPECT_TRUE(files.contains(QStringLiteral("src/alpha.cpp")));
+    EXPECT_TRUE(files.contains(QStringLiteral("src/beta.cpp")));
+    EXPECT_FALSE(files.contains(QStringLiteral("tests/alpha_test.cpp")));
+    QStringList sorted = files; sorted.sort();
+    EXPECT_EQ(files, sorted) << "fallback digest must be sorted (304-stable)";
+
+    // Deterministic → stable ETag: two opt-in queries are byte-identical.
+    QJsonObject env2 = query(idx, q, 0, QStringLiteral("/c"));
+    EXPECT_EQ(QJsonDocument(env).toJson(QJsonDocument::Compact),
+              QJsonDocument(env2).toJson(QJsonDocument::Compact));
+
+    // Global cap: a tiny cap truncates the flat digest and flags it.
+    Options o; o.maxLaneDigestFiles = 1;
+    QJsonObject capped = query(idx, q, 0, QStringLiteral("/c"), o);
+    EXPECT_EQ(capped.value("source_files").toArray().size(), 1);
+    EXPECT_TRUE(capped.value("lane_digest_truncated").toBool());
+}
+
 // INV-8/9/10 — wiring source-scrapes.
 TEST(CodebaseIndex, WiringRegistered) {
     const std::string ci = ants_test::slurpFile(srcPath("src/claudeintegration.cpp"));

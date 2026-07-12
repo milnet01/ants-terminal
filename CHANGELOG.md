@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **session_orient codebase_index lane digest is empty for repos with no `## Module map` — add a capped file-path fallback digest.** (ANTS-3503)
+  The one-call session opener's code map is blank for projects that don't declare a module map, so those projects still get no 'where is the code' hint on the first call — even though the tool already knows the file list.
+
+- **read_regions should accept `requests`/`paths`/`regions` as aliases for the `items` batch key.** (ANTS-3500)
+  The batch file-reader only accepts one exact spelling for its list of things to read; a natural guess gets rejected. Accept the obvious synonyms too.
+
 - **feedback_query — render each assigned id's live ROADMAP status (the deferred ANTS-3448 follow-up).** (ANTS-3478)
   Make the feedback reader show, at a glance, whether each finding's assigned task is planned / in-progress / shipped — pulled live from the roadmap — instead of just listing the IDs.
 
