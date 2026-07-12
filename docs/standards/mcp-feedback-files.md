@@ -87,10 +87,9 @@ them (§"Migration from v1"); the byte shrink comes later from the now-shipped
 - **Status is derived, never stored.** A reader resolves each assigned id's
   current status from `ROADMAP.md`; a reader's status view is always current,
   never persisted. (`feedback_query` renders this at-a-glance as
-  `mapped_id_status` — [{id, status, shipped_date?}] resolved live from
-  `ROADMAP.md` — as of ANTS-3478, with `shipped_date` on ✅ ids added by
-  ANTS-3504 (pending); see §"Tooling" and §"Stale-binary
-  self-check".) The
+  `mapped_id_status` — [{id, status}] resolved live from `ROADMAP.md` (as of
+  ANTS-3478), gaining an optional `shipped_date` on ✅ ids under ANTS-3504
+  (pending); see §"Tooling" and §"Stale-binary self-check".) The
   resolve reuses the cached `roadmap_query` path (100 ms-TTL parsed-bullet
   cache, ANTS-1117), so a render costs one roadmap parse, not one per id, and
   adds no new persistent state.
@@ -534,9 +533,10 @@ original body):
 
 That dateless breadcrumb is the **current shipped output**. **ANTS-3504
 (pending — `docs/specs/ANTS-3504.md`)** will stamp the fix's ship-date into it —
-`→ shipped ✅ 2026-07-12 (write-up compacted, ANTS-3443)` — using the **latest**
-`Resolved` date (parentheses optional) among the finding's ✅ ids, keeping the
-dateless form as the fallback when none is parseable. See §"Stale-binary
+`→ shipped ✅ 2026-07-12 (write-up compacted, ANTS-3443)` — each id's
+positionally-last `Resolved` date (parentheses optional), then the **max** of
+those across the finding's ✅ ids, keeping the dateless form as the fallback when
+none is parseable. See §"Stale-binary
 self-check" for the exact extraction rule, the date-not-version/commit rationale,
 and the contributor self-check convention.
 
