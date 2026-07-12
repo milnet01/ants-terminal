@@ -18692,12 +18692,13 @@ build).
   Update (2026-07-10): stale-report count rose to SEVEN — add ANTS-3494 (dup of shipped ANTS-3369, project_settings op:detect all-subdirs + present echo). Running list: 3482→3408, 3487→3417, 3490→2046, 3486→2228, 3491→3412/3433, 3496→3380, 3494→3369. Seven already-shipped fixes re-reported by sessions on old binaries in a single triage batch — this is the dominant cost in the 2026-07-10 corpus and the strongest signal yet for the active behind-HEAD staleness flag.
   Update (2026-07-10): stale-report count rose to EIGHT — add ANTS-3488 (dup of shipped ANTS-3418, audit_run deps-less mypy auto-detect drop). Running list: 3482→3408, 3487→3417, 3490→2046, 3486→2228, 3491→3412/3433, 3496→3380, 3494→3369, 3488→3418. EIGHT of the ~14 external-reported findings in this single triage batch were already-shipped fixes re-reported by sessions on stale binaries — the dominant failure mode of the 2026-07-10 corpus. This is now the highest-leverage MCP improvement available: an active behind-HEAD staleness flag would have pre-empted 8 wasted re-reports in one batch.
 
-- 📋 [ANTS-3500] **read_regions should accept `requests`/`paths`/`regions` as aliases for the `items` batch key.**
+- ✅ [ANTS-3500] **read_regions should accept `requests`/`paths`/`regions` as aliases for the `items` batch key.**
   read_regions requires the batch array under key `items`; the intuitive `requests` (mirrors the read_region-plural mental model) refuses bad_args 'items array is required'. Friction not a bug — error is precise, recovery instant. Fix: accept `requests`/`paths`/`regions` as aliases for `items` (first non-empty wins). Low priority.
   **Layman:** The batch file-reader only accepts one exact spelling for its list of things to read; a natural guess gets rejected. Accept the obvious synonyms too.
   Kind: enhancement.
   Lanes: remotecontrol.
   Source: finbreak-feedback-2026-07-12.
+  Resolved (2026-07-12): cmdReadRegions (remotecontrol.cpp) now falls back to the first array-valued `requests`/`paths`/`regions` key when `items` is absent (canonical `items` still wins); if none is an array, `items` passes through so extractBatch emits its precise bad_args. Schema description documents the aliases. Test: ReadRegions.ItemsKeyAliases (RR-7, windowed source-grep). Full suite green (2619).
 
 - 📋 [ANTS-3501] **workspace_search: multi-alternation regex + enclosing_symbol may drop the transport (Errno 104) instead of a graceful envelope — investigate.**
   One workspace_search call (regex 3-alternation 'A|B|C', context:2, enclosing_symbol:true) returned 'transport: [Errno 104] Connection reset by peer'; immediate retry with a single-token pattern succeeded; not reproduced again all session. Likely transient. Investigate whether multi-alternation regex + per-file enclosing_symbol outline scans can exceed a response/time budget and drop the socket rather than emitting rg_failed/truncated. No action if not reproducible.
@@ -18706,19 +18707,21 @@ build).
   Lanes: remotecontrol.
   Source: finbreak-feedback-2026-07-12.
 
-- 📋 [ANTS-3502] **Fold-in verbs need a dry_run/preview returning would-be allocated_ids without writing ROADMAP (ANTS-3480 testability gap).**
+- ✅ [ANTS-3502] **Fold-in verbs need a dry_run/preview returning would-be allocated_ids without writing ROADMAP (ANTS-3480 testability gap).**
   cold_eyes_fold_in / indie_review_fold_in / test_audit_fold_in each ALLOCATE live ROADMAP ids (bump .roadmap-counter + append), so there is no read-only path to observe rendered allocated_ids — the ANTS-3480 zero-pad fix could not be re-verified without mutating ROADMAP. Add dry_run:true to the three fold-in verbs: compute would-be allocated_ids via RoadmapFoldIn::renderId (padded) and return them WITHOUT writing / bumping the counter (parity with roadmap_log op:append dry_run). Fixes the testability gap; lets contributors confirm padding cheaply.
   **Layman:** You can't check the auto-ID formatting of the fold-in tools without them actually writing junk entries into the roadmap. A preview mode would let a session verify the IDs cheaply and safely.
   Kind: enhancement.
   Lanes: roadmapfoldin, remotecontrol.
   Source: finbreak-feedback-2026-07-12 (ANTS-3480 re-verify gap).
+  Already shipped — not a new build. Verified in current source: all three fold-in verbs already expose dry_run:true (ANTS-2227, 2026-06-30) which routes RoadmapFoldIn::peekIds (no .roadmap-counter bump) and skips insertBlock, AND echo allocated_ids as zero-padded rendered ids via RoadmapFoldIn::renderId (ANTS-3480). So dry_run:true on cold_eyes_fold_in / indie_review_fold_in / test_audit_fold_in returns the would-be padded ids (e.g. ["FIBR-0082"]) without touching ROADMAP — exactly the read-only preview finbreak asked for. Handler echoes: remotecontrol.cpp:16650 (indie), :18442 (cold_eyes), testauditengine.cpp:1912 (test_audit). The finbreak reporter (build c57e16b6) simply didn't know the param existed. Dup of ANTS-2227 + ANTS-3480.
 
-- 📋 [ANTS-3503] **session_orient codebase_index lane digest is empty for repos with no `## Module map` — add a capped file-path fallback digest.**
+- ✅ [ANTS-3503] **session_orient codebase_index lane digest is empty for repos with no `## Module map` — add a capped file-path fallback digest.**
   ANTS-3468 shipped the lane->source-file digest, but it degrades to lanes:[] for a project with no parseable `## Module map` (e.g. finbreak). The bundle still has file_count/roles but no 'where is the code' signal, so the 'query before grep' hint is empty for such repos. Fallback: when lanes is empty, emit a capped sorted top-level file-path digest (non-test paths; reuse ANTS-3468's kMaxLaneDigestFiles cap + a *_truncated flag; keep the session_orient ETag deterministic). Distinct from ANTS-3468 (which only fixed the has-module-map case).
   **Layman:** The one-call session opener's code map is blank for projects that don't declare a module map, so those projects still get no 'where is the code' hint on the first call — even though the tool already knows the file list.
   Kind: enhancement.
   Lanes: mcpprojection, remotecontrol.
   Source: in-session-2026-07-12 (noted while verifying ANTS-3468 vs finbreak re-report).
+  Resolved (2026-07-12): codebaseindex.cpp summary branch — when laneFiles is requested but the lane digest emitted 0 files (no file carries a lane → no parseable `## Module map`, e.g. finbreak), emit a flat top-level `source_files` digest (sorted non-test paths, shares kMaxLaneDigestFiles cap + lane_digest_truncated flag). Deterministic → session_orient 304 ETag stays stable; present only when the fallback fires (has-lanes shape byte-identical). No wiring change (lane_files already flows; session_orient already passes it). Test: CodebaseIndex.NoModuleMapFallbackDigest; spec INV-19 extended. Full suite green (2619).
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
