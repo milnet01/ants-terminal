@@ -87,8 +87,9 @@ them (§"Migration from v1"); the byte shrink comes later from the now-shipped
 - **Status is derived, never stored.** A reader resolves each assigned id's
   current status from `ROADMAP.md`; a reader's status view is always current,
   never persisted. (`feedback_query` renders this at-a-glance as
-  `mapped_id_status` — [{id, status}] resolved live from `ROADMAP.md` — as of
-  ANTS-3478; see §"Tooling".) The
+  `mapped_id_status` — [{id, status, shipped_date?}] resolved live from
+  `ROADMAP.md` — as of ANTS-3478, with `shipped_date` on ✅ ids added by
+  ANTS-3504; see §"Tooling" and §"Stale-binary self-check".) The
   resolve reuses the cached `roadmap_query` path (100 ms-TTL parsed-bullet
   cache, ANTS-1117), so a render costs one roadmap parse, not one per id, and
   adds no new persistent state.
@@ -96,11 +97,15 @@ them (§"Migration from v1"); the byte shrink comes later from the now-shipped
   `**Proposed ID:**` line is still the blank placeholder is un-triaged; that
   set is the maintainer's work-list (§"The un-triaged delta").
 - **Compaction is roadmap-driven.** Once an assigned id is ✅ in the roadmap,
-  the finding's write-up collapses to a `→ shipped ✅ (write-up compacted,
+  the finding's write-up collapses to a `→ shipped ✅ <date> (write-up compacted,
   ANTS-3443)` stub that keeps the `**Proposed ID:**` line above it (the id lives
   in that retained line, not the breadcrumb — see §"Maintainer compaction" for
-  the canonical form; `compact_resolved`). Nothing goes stale because nothing is
-  stored to go stale.
+  the canonical form; `compact_resolved`). The `<date>` is the fix's ship-date
+  (ANTS-3504), lifted from the id's `Resolved (YYYY-MM-DD)` roadmap line, so a
+  contributor on an old binary can compare it against their `session_orient`
+  `server_build.build_date` and relaunch rather than re-report an already-shipped
+  fix (§"Stale-binary self-check"). Nothing goes stale because nothing is stored
+  to go stale.
 
 **Marker + back-compat.** A v2 file carries `<!-- ants-mcp-feedback: 2 -->`.
 Tooling MUST still read v1 files: the delta parser (§"The un-triaged delta")
@@ -521,8 +526,16 @@ original body):
 ### Issue #1 — verify_changes timed out
 
 - **Proposed ID:** ANTS-1525, ANTS-1579
-→ shipped ✅ (write-up compacted, ANTS-3443)
+→ shipped ✅ 2026-07-12 (write-up compacted, ANTS-3443)
 ```
+
+The `2026-07-12` is the fix's **ship-date** (ANTS-3504) — the **last**
+`Resolved (YYYY-MM-DD)` date in the id's `ROADMAP.md` bullet body; a finding
+mapped to several shipped ids stamps the **latest** of their ship-dates. When no
+`Resolved` date is parseable for the id, the breadcrumb keeps the pre-3504
+dateless form (`→ shipped ✅ (write-up compacted, ANTS-3443)`) — the date is
+never fabricated. The date is the stale-binary self-check anchor
+(§"Stale-binary self-check").
 
 Retaining the `**Proposed ID:**` line is load-bearing: it keeps the block a
 *finding* (not reclassified as prose), keeps its ids in the assigned-id set
@@ -570,6 +583,43 @@ Always preview with `dry_run:true` — it returns every `collapsed[]` /
 the gate list + `skipped[]` codes above are the normative contract. ANTS-3443
 scopes `compact_resolved` only — `migrate_v2` is **ANTS-3446** and `assign_id`
 gets its own spec id.)**
+
+## Stale-binary self-check (ANTS-3504)
+
+The dominant failure mode across the corpus is the **stale-binary re-report**: a
+contributor session running an old MCP-server binary re-files a bug that already
+shipped, because it cannot tell "not fixed yet" from "fixed — relaunch to get
+it" (the 2026-07-10 batch had 8/14 findings be such re-reports; see ROADMAP
+ANTS-3499). ANTS-3504 joins the two facts needed to self-check, both already
+available:
+
+- **When the running binary was built** — `session_orient`'s
+  `server_build.build_date` (and `build_commit`).
+- **When a fix shipped** — the `Resolved (YYYY-MM-DD)` line in its `ROADMAP.md`
+  bullet, surfaced as the finding's **ship-date**.
+
+The ship-date is surfaced in two places, both sourced from the id's roadmap
+`Resolved` date (the **last** one in the bullet body — a bullet may carry
+`Progress (date)` lines before its final `Resolved (date)`):
+
+1. **In the file** — `compact_resolved`'s stub carries it:
+   `→ shipped ✅ <date> (write-up compacted, ANTS-3443)` (§"Maintainer
+   compaction").
+2. **In the query** — `feedback_query`'s `mapped_id_status` entries gain
+   `shipped_date` for ✅ ids: `{id, status: "✅", shipped_date: "2026-07-09"}`.
+
+**Convention (advisory, never enforced):** before re-reporting a finding whose
+`mapped_id_status` is ✅, a contributor compares its `shipped_date` against their
+own `session_orient` `server_build.build_date`. If `build_date < shipped_date`,
+the running binary predates the fix — relaunch before assuming it did not land.
+
+The anchor is the **date**, not `ANTS_VERSION` (which spans many commits and
+cannot distinguish a pre- from a post-fix build) and not a short commit (mapping
+an id → its shipping commit is not reliably mechanical; the `Resolved` date is a
+single, mechanically-parseable field). When a ✅ bullet carries no `Resolved`
+date, no ship-date is emitted — the stub keeps its pre-3504 dateless form and
+`shipped_date` is absent; the date is never fabricated. Full contract:
+`docs/specs/ANTS-3504.md`.
 
 ## v1 legacy compaction ops (un-migrated files only)
 
@@ -721,11 +771,11 @@ v1 code path until a file is migrated):
 
 | Verb | v2 change |
 |---|---|
-| `feedback_query` (ANTS-1961) **(marker-aware, ANTS-3448)** | On a `: 2`+ file the delta = un-triaged findings (unfilled `**Proposed ID:**`), not "after the last table"; emits `format_version` + `suspected_untagged[]` (§"The un-triaged delta" step 4) and `mapped_ids` = the inline assigned ids. **Built** — `FeedbackFile::parse()` is marker-aware; the v1 "after last watermark" path is retained for un-migrated files. Rendering each id's **live roadmap status** is **shipped (ANTS-3478)**: `mapped_id_status` = [{id, status}] resolved from the caller project's `ROADMAP.md` (present only when `mapped_ids` is non-empty; an absent id → `"unknown"`, never silently ✅). |
+| `feedback_query` (ANTS-1961) **(marker-aware, ANTS-3448)** | On a `: 2`+ file the delta = un-triaged findings (unfilled `**Proposed ID:**`), not "after the last table"; emits `format_version` + `suspected_untagged[]` (§"The un-triaged delta" step 4) and `mapped_ids` = the inline assigned ids. **Built** — `FeedbackFile::parse()` is marker-aware; the v1 "after last watermark" path is retained for un-migrated files. Rendering each id's **live roadmap status** is **shipped (ANTS-3478)**: `mapped_id_status` = [{id, status}] resolved from the caller project's `ROADMAP.md` (present only when `mapped_ids` is non-empty; an absent id → `"unknown"`, never silently ✅). **ANTS-3504** adds `shipped_date` to each ✅ entry (the id's last roadmap `Resolved (YYYY-MM-DD)` date; absent for non-✅ ids and ✅ ids with no `Resolved` line) so a contributor can compare it against `session_orient` `server_build.build_date` before re-reporting (§"Stale-binary self-check"). |
 | `session_orient` `feedback_pending` (ANTS-1964) **(ANTS-3448, no code change)** | The per-file un-triaged **count** shares `FeedbackFile::parse`'s delta path, so it now follows the v2 unfilled-`Proposed ID` rule on a `: 2` file **for free** (a v2 file tracks triage inline, so the v1 "after last table" count would miscount — including on a **migrated** file, which retains its v1 tables in place yet triages via `**Proposed ID:**`). No code change on this path — the marker-aware `parse()` supplies the version-correct `deltaPresent`/`deltaLineCount`. |
 | `feedback_log op:append_finding` (ANTS-1962) | Already emits the `**Proposed ID:**` placeholder — now **structural**; no behavioural change beyond guaranteeing the line. |
 | `feedback_log op:assign_id` **(shipped, ANTS-3447)** | The v2 triage write: fill one finding's `**Proposed ID:**` slot in place with the id(s) or a `n/a — <reason>` closure. Locates the finding by heading over the `### ` enumerator, **inheriting `compact_shipped`'s heading-resolution gate _shape_** (ANTS-3421: `heading_line` disambiguation + `target_ambiguous`+`candidates[]` when a "still broken" recheck reuses a `### ` title). Single-target (batch deferred), so no cross-target `duplicate_target`. Replaces `op:append_tracking` for v2 files. |
-| `feedback_log op:compact_resolved` **(shipped, ANTS-3443)** | Auto-collapse shipped findings' write-ups; gates on live roadmap ✅. Refuses `not_v2` on a v1 file. (A `drop_prose` option is **deferred** — see §"Maintainer compaction"; NOT in ANTS-3443 scope.) |
+| `feedback_log op:compact_resolved` **(shipped, ANTS-3443)** | Auto-collapse shipped findings' write-ups; gates on live roadmap ✅. Refuses `not_v2` on a v1 file. (A `drop_prose` option is **deferred** — see §"Maintainer compaction"; NOT in ANTS-3443 scope.) **ANTS-3504** stamps the fix's ship-date into the stub (`→ shipped ✅ <date> (write-up compacted, ANTS-3443)`; latest `Resolved` date among the finding's ✅ ids, dateless fallback when none) — §"Stale-binary self-check". |
 | `feedback_log op:migrate_v2` **(shipped, ANTS-3446)** | One-shot **mechanical** v1→v2 migration (§"Migration from v1"): bumps the marker + stamps blank `**Proposed ID:**` placeholders on un-triaged findings; reports `orphans[]`/`unclassified[]`. Leaves the v1 tables **in place** (no move/collapse); the default path reads no table id content (the `backfill_from_tracking:true` opt-in reads the rows to carry ids inline — ANTS-3474). |
 | `feedback_log op:append_tracking` | **Superseded by `assign_id`** (shipped, ANTS-3447) for v2 files — it remains the v1 triage-write op (writes a v1 table) for un-migrated files. On a `: 2` file it now **refuses `not_v1`** (shipped, ANTS-3477) pointing at `assign_id`; on a v1 / un-migrated file it stays valid. |
 | `feedback_log op:compact_shipped` (ANTS-3421) / `op:prune_tracking` (ANTS-3442) | **Legacy** — operate on v1 tables; used only to clean up / migrate un-migrated files. |
