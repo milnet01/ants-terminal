@@ -415,3 +415,159 @@ TEST(FeedbackCompactResolved, DispatchWired) {
               std::string::npos);
     EXPECT_NE(rc.find("FeedbackFile::compactResolved("), std::string::npos);
 }
+
+// ===== ANTS-3504 — ship-date stamp ====================================
+
+// §2.1 extractor: both paren + no-paren forms, Progress-then-Resolved,
+// last-wins, and the graceful misses (mid-line, "Resolved as of", prose,
+// absent) all yield the right date or "".
+TEST(FeedbackShipDate, ExtractorBothFormsAndMisses) {
+    using FeedbackFile::shipDateFromRoadmapBody;
+    EXPECT_EQ(shipDateFromRoadmapBody(
+        QStringLiteral("  Resolved (2026-07-09): did the thing.")),
+        QStringLiteral("2026-07-09"));                       // parenthesised
+    EXPECT_EQ(shipDateFromRoadmapBody(
+        QStringLiteral("  Resolved 2026-05-29: replaced the map.")),
+        QStringLiteral("2026-05-29"));                       // un-parenthesised
+    EXPECT_EQ(shipDateFromRoadmapBody(
+        QStringLiteral("  Resolved 2026-05-26 (in-session bundle).")),
+        QStringLiteral("2026-05-26"));            // no-paren date + note paren
+    EXPECT_EQ(shipDateFromRoadmapBody(
+        QStringLiteral("  Progress (2026-07-01): partial.\n"
+                       "  Resolved (2026-07-09): done.")),
+        QStringLiteral("2026-07-09"));         // Progress before final Resolved
+    EXPECT_EQ(shipDateFromRoadmapBody(
+        QStringLiteral("  Resolved 2026-05-01: first.\n"
+                       "  Resolved 2026-06-02: reopened then closed.")),
+        QStringLiteral("2026-06-02"));                       // last Resolved wins
+    // graceful misses → ""
+    EXPECT_TRUE(shipDateFromRoadmapBody(
+        QStringLiteral("  no longer shows up.** Resolved 2026-05-08 by X."))
+        .isEmpty());                                         // mid-line
+    EXPECT_TRUE(shipDateFromRoadmapBody(
+        QStringLiteral("  Resolved as of 2026-04-28.")).isEmpty()); // word between
+    EXPECT_TRUE(shipDateFromRoadmapBody(
+        QStringLiteral("  Resolved the deadlock in the parser.")).isEmpty()); // prose
+    EXPECT_TRUE(shipDateFromRoadmapBody(
+        QStringLiteral("  What: a description, no resolution line."))
+        .isEmpty());                                         // no Resolved line
+}
+
+// INV-1/INV-3 — the collapse stub carries the max ship-date across the
+// finding's ids; a dateless id does not lower the max; no mapped date →
+// byte-identical pre-3504 dateless stub.
+TEST(FeedbackShipDate, StubCarriesMaxDateAndDatelessFallback) {
+    // Dateless fallback (no shipDates): stub unchanged from pre-3504.
+    const FeedbackFile::ResolveResult r0 =
+        FeedbackFile::compactResolved(fx(), stdOpts());
+    EXPECT_NE(r0.newContent.indexOf(kBreadcrumb), -1)
+        << "dateless stub must be unchanged when no ship-date maps";
+
+    // 1525 -> 2026-07-05, 1579 dateless: max is 2026-07-05.
+    FeedbackFile::ResolveOptions o = stdOpts();
+    o.shipDates.insert(QStringLiteral("ANTS-1525"), QStringLiteral("2026-07-05"));
+    const QString stub05 = QString::fromUtf8(
+        "\xE2\x86\x92 shipped \xE2\x9C\x85 2026-07-05 "
+        "(write-up compacted, ANTS-3443)");
+    EXPECT_NE(FeedbackFile::compactResolved(fx(), o).newContent.indexOf(stub05), -1)
+        << "stub must carry the max date; the dateless id 1579 must not lower it";
+
+    // Both dated: the later date (2026-07-12) wins.
+    o.shipDates.insert(QStringLiteral("ANTS-1579"), QStringLiteral("2026-07-12"));
+    const QString stub12 = QString::fromUtf8(
+        "\xE2\x86\x92 shipped \xE2\x9C\x85 2026-07-12 "
+        "(write-up compacted, ANTS-3443)");
+    EXPECT_NE(FeedbackFile::compactResolved(fx(), o).newContent.indexOf(stub12), -1)
+        << "stub must carry the max across ids (2026-07-12 > 2026-07-05)";
+}
+
+// INV-2 — a dated stub is idempotent: re-running compact_resolved is a
+// byte-identical no-op (the `→ shipped` probe skips the collapsed finding).
+TEST(FeedbackShipDate, DatedStubIsIdempotent) {
+    FeedbackFile::ResolveOptions o = stdOpts();
+    o.shipDates.insert(QStringLiteral("ANTS-1525"), QStringLiteral("2026-07-12"));
+    o.shipDates.insert(QStringLiteral("ANTS-1579"), QStringLiteral("2026-07-12"));
+    const QString once  = FeedbackFile::compactResolved(fx(), o).newContent;
+    const QString twice = FeedbackFile::compactResolved(once, o).newContent;
+    EXPECT_EQ(once, twice);
+}
+
+// End-to-end: cmdFeedbackLog compact_resolved lifts the ship-date from the
+// live ROADMAP `Resolved` lines into the written stub (max across the ids).
+TEST(FeedbackShipDate, LiveCompactStampsShipDate) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = dir.path() + "/TEST_Ants_MCP_Feedback.md";
+    ASSERT_TRUE(writeStr(p, fx()));
+    const char *rm =
+        "# Roadmap\n\n"
+        "- \xE2\x9C\x85 [ANTS-1525] **verify_changes timeout fixed.**\n"
+        "  Resolved (2026-07-12): fixed the cold-cache hang.\n"
+        "- \xE2\x9C\x85 [ANTS-1579] **cache warm on relaunch.**\n"
+        "  Resolved 2026-07-11: warm at connect.\n"
+        "- \xF0\x9F\x9A\xA7 [ANTS-1600] **codebase_index counts.**\n";
+    ASSERT_TRUE(writeStr(dir.path() + "/ROADMAP.md", QString::fromUtf8(rm)));
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["op"] = "compact_resolved";
+    req["path"] = p;
+    req["caller_cwd"] = dir.path();
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+    ASSERT_TRUE(env.value("ok").toBool());
+    const QString datedStub = QString::fromUtf8(
+        "\xE2\x86\x92 shipped \xE2\x9C\x85 2026-07-12 "
+        "(write-up compacted, ANTS-3443)");
+    EXPECT_NE(readStr(p).indexOf(datedStub), -1)
+        << "Issue #1 stub must carry the max Resolved date end-to-end";
+}
+
+// INV-4 — feedback_query.mapped_id_status carries shipped_date on ✅ ids with
+// a Resolved date, and omits it for a non-✅ id.
+TEST(FeedbackShipDate, LiveQueryEmitsShippedDate) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = dir.path() + "/TEST_Ants_MCP_Feedback.md";
+    ASSERT_TRUE(writeStr(p, fx()));
+    const char *rm =
+        "# Roadmap\n\n"
+        "- \xE2\x9C\x85 [ANTS-1525] **fixed.**\n"
+        "  Resolved (2026-07-12): done.\n"
+        "- \xF0\x9F\x9A\xA7 [ANTS-1600] **open.**\n"
+        "  Progress (2026-07-01): wip.\n";
+    ASSERT_TRUE(writeStr(dir.path() + "/ROADMAP.md", QString::fromUtf8(rm)));
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["path"] = p;
+    req["caller_cwd"] = dir.path();
+    const QJsonObject env = rc.cmdFeedbackQuery(req).object();
+    ASSERT_TRUE(env.value("ok").toBool());
+    const QString check = QString::fromUtf8("\xE2\x9C\x85");
+    bool saw1525 = false, saw1600 = false;
+    for (const auto &v : env.value("mapped_id_status").toArray()) {
+        const QJsonObject o = v.toObject();
+        if (o.value("id").toString() == QStringLiteral("ANTS-1525")) {
+            saw1525 = true;
+            EXPECT_EQ(o.value("status").toString(), check);
+            EXPECT_EQ(o.value("shipped_date").toString(),
+                      QStringLiteral("2026-07-12"));
+        }
+        if (o.value("id").toString() == QStringLiteral("ANTS-1600")) {
+            saw1600 = true;
+            EXPECT_FALSE(o.contains(QStringLiteral("shipped_date")))
+                << "a non-✅ id must not carry shipped_date";
+        }
+    }
+    EXPECT_TRUE(saw1525) << "ANTS-1525 must appear in mapped_id_status";
+    EXPECT_TRUE(saw1600) << "ANTS-1600 must appear in mapped_id_status";
+}
+
+// Wiring — both surfaces populate the ship-date via the shared extractor, and
+// the feedback_query description documents shipped_date.
+TEST(FeedbackShipDate, WiringSharedExtractor) {
+    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    ASSERT_FALSE(rc.empty());
+    EXPECT_NE(rc.find("FeedbackFile::shipDateFromRoadmapBody"), std::string::npos);
+    EXPECT_NE(rc.find("shipped_date"), std::string::npos);
+    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    ASSERT_FALSE(ci.empty());
+    EXPECT_NE(ci.find("shipped_date"), std::string::npos)
+        << "feedback_query description must document shipped_date";
+}

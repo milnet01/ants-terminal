@@ -11017,7 +11017,9 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     // absent/unreadable roadmap leaves every id "unknown" rather than failing
     // the read.
     if (!pr.mappedIds.isEmpty()) {
+        static const QString kCheckQ = QString::fromUtf8("\xE2\x9C\x85");  // ✅
         QHash<QString, QString> idToStatus;
+        QHash<QString, QString> idToShipDate;   // ANTS-3504 — ✅ ids' ship-date
         const QString callerRaw =
             req.value(QStringLiteral("caller_cwd")).toString();
         const QString callerCanonical = callerRaw.isEmpty()
@@ -11033,15 +11035,28 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
                     if (b.id.isEmpty() || !RoadmapIndex::isCanonicalId(b.id))
                         continue;
                     idToStatus.insert(b.id, b.status);  // later wins (live row)
+                    // ANTS-3504 — capture the ship-date for ✅ ids (shared
+                    // extractor with compact_resolved) so a contributor can
+                    // compare it against their server_build.build_date.
+                    if (b.status == kCheckQ) {
+                        const QString d =
+                            FeedbackFile::shipDateFromRoadmapBody(b.body);
+                        if (!d.isEmpty()) idToShipDate.insert(b.id, d);
+                        else idToShipDate.remove(b.id);
+                    }
                 }
             }
         }
         QJsonArray statusArr;
         for (const QString &id : pr.mappedIds) {
             QJsonObject o;
+            const QString status = idToStatus.value(id, QStringLiteral("unknown"));
             o[QStringLiteral("id")]     = id;
-            o[QStringLiteral("status")] =
-                idToStatus.value(id, QStringLiteral("unknown"));
+            o[QStringLiteral("status")] = status;
+            // ANTS-3504 — shipped_date present only on ✅ ids with a parseable
+            // Resolved date (never on non-✅ / dateless ids; never fabricated).
+            if (status == kCheckQ && idToShipDate.contains(id))
+                o[QStringLiteral("shipped_date")] = idToShipDate.value(id);
             statusArr.append(o);
         }
         out["mapped_id_status"] = statusArr;
@@ -11449,7 +11464,14 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         for (const auto &b : RoadmapDialog::parseBullets(rmMarkdown)) {
             if (b.id.isEmpty() || !RoadmapIndex::isCanonicalId(b.id)) continue;
             ropts.roadmapIds.insert(b.id);
-            if (b.status == kCheck) ropts.shippedIds.insert(b.id);
+            if (b.status == kCheck) {
+                ropts.shippedIds.insert(b.id);
+                // ANTS-3504 — capture the ship-date from the same pass so the
+                // collapse stub can carry it (shared extractor with feedback_query).
+                const QString shipDate =
+                    FeedbackFile::shipDateFromRoadmapBody(b.body);
+                if (!shipDate.isEmpty()) ropts.shipDates.insert(b.id, shipDate);
+            }
         }
 
         const FeedbackFile::ResolveResult rr =

@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <QHash>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -241,7 +242,22 @@ struct ResolveOptions {
     QSet<QString> roadmapIds;   // every canonical id present in the roadmap
                                 // (any status) — an id absent from this set is
                                 // "unresolved" (archive-rotated / unknown)
+    // ANTS-3504 — id → ship-date (ISO "YYYY-MM-DD"): the date on the id's LAST
+    // roadmap `Resolved` line (parens optional; shipDateFromRoadmapBody). Filled
+    // by the cmdFeedbackLog wrapper from the same parseBullets pass. An id absent
+    // here has no ship-date; compactResolved stamps the max across a finding's
+    // ids into the stub, or the dateless breadcrumb when none maps.
+    QHash<QString, QString> shipDates;
 };
+
+// ANTS-3504 — extract a roadmap bullet's ship-date from its body: the ISO date
+// captured by the LAST body line matching `^\s*Resolved\s+\(?(\d{4}-\d{2}-\d{2})`
+// (a line-leading `Resolved` marker, date with or without parentheses — the
+// corpus uses both). "" when no line matches (mid-line / "Resolved as of …" /
+// no `Resolved` line → graceful dateless fallback). The single extractor both
+// feedback surfaces share (compact_resolved stub + feedback_query shipped_date).
+// See docs/specs/ANTS-3504.md § 2.1.
+QString shipDateFromRoadmapBody(const QString &roadmapBulletBody);
 
 struct ResolvedFinding {
     QString     heading;

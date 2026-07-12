@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Stamp the ship-date (+ short commit) into shipped feedback-file findings so a reporting session can self-check its server_build before re-reporting.** (ANTS-3504)
+  When we mark a bug fixed in another project's feedback file, also record WHICH build it shipped in. Then that project's Claude session can compare against its own running terminal and know "my copy predates this fix — restart before assuming it's still broken," instead of re-filing an already-fixed bug.
+
 - **session_orient codebase_index lane digest is empty for repos with no `## Module map` — add a capped file-path fallback digest.** (ANTS-3503)
   The one-call session opener's code map is blank for projects that don't declare a module map, so those projects still get no 'where is the code' hint on the first call — even though the tool already knows the file list.
 

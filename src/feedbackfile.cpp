@@ -864,6 +864,23 @@ QVector<FindingBlock> enumerateFindingBlocks(const QStringList &lines) {
     return out;
 }
 
+// ANTS-3504 — a roadmap bullet's ship-date: the ISO date on the LAST body line
+// beginning (after indent) with a `Resolved` marker, the date with or without
+// parentheses (`Resolved (2026-07-09):` and `Resolved 2026-05-29:` both occur).
+// MultilineOption anchors `^` at each body line; the last match wins (a bullet
+// may carry earlier Progress/Resolved updates). "" when nothing matches — a
+// mid-line `… . Resolved <date> by …` or `Resolved as of <date>` is a graceful
+// miss (dateless fallback), per docs/specs/ANTS-3504.md § 2.1.
+QString shipDateFromRoadmapBody(const QString &roadmapBulletBody) {
+    static const QRegularExpression re(
+        QStringLiteral(R"(^\s*Resolved\s+\(?(\d{4}-\d{2}-\d{2}))"),
+        QRegularExpression::MultilineOption);
+    QString last;
+    auto it = re.globalMatch(roadmapBulletBody);
+    while (it.hasNext()) last = it.next().captured(1);
+    return last;
+}
+
 // ANTS-3443 — compact_resolved. Collapse each shipped v2 finding's write-up
 // to a `→ shipped ✅ (write-up compacted, ANTS-3443)` stub that retains the
 // heading + the first `**Proposed ID:**` line. Gated per-finding on the
@@ -877,8 +894,13 @@ ResolveResult compactResolved(const QString &content, const ResolveOptions &opts
 
     static const QRegularExpression idTokRe(QStringLiteral("ANTS-[0-9]+"));
     static const QString kShippedProbe = QString::fromUtf8("\xE2\x86\x92 shipped");
-    static const QString kBreadcrumb = QString::fromUtf8(
-        "\xE2\x86\x92 shipped \xE2\x9C\x85 (write-up compacted, ANTS-3443)");
+    // ANTS-3504 — breadcrumb head ("→ shipped ✅ ", trailing space) + tail; a
+    // ship-date, when known, is inserted between them. Dateless: head+tail is
+    // byte-identical to the pre-3504 stub.
+    static const QString kBreadcrumbHead =
+        QString::fromUtf8("\xE2\x86\x92 shipped \xE2\x9C\x85 ");
+    static const QString kBreadcrumbTail =
+        QStringLiteral("(write-up compacted, ANTS-3443)");
 
     auto blockBytes = [&](int start0, int end0) -> int {
         QStringList seg;
@@ -956,10 +978,21 @@ ResolveResult compactResolved(const QString &content, const ResolveOptions &opts
         const QString idLineVerbatim = lines.at(p.idLine0);
         const int start0 = p.headingLine0 + 1;   // first body line
         const int end0   = p.extentEnd0;          // exclusive
+        // ANTS-3504 — stamp the max (latest) ship-date across the finding's ids
+        // (ISO YYYY-MM-DD sorts chronologically); a dateless id does not lower
+        // the max, and no mapped date → the dateless breadcrumb.
+        QString maxDate;
+        for (const QString &id : f.ids) {
+            const QString d = opts.shipDates.value(id);
+            if (!d.isEmpty() && d > maxDate) maxDate = d;
+        }
+        const QString breadcrumb = maxDate.isEmpty()
+            ? kBreadcrumbHead + kBreadcrumbTail
+            : kBreadcrumbHead + maxDate + QLatin1Char(' ') + kBreadcrumbTail;
         // Stub order: heading (untouched) → blank → retained id line →
         // breadcrumb → trailing blank.
         const QStringList newBody = { QString(), idLineVerbatim,
-                                      kBreadcrumb, QString() };
+                                      breadcrumb, QString() };
         for (int k = end0 - 1; k >= start0; --k) outLines.removeAt(k);
         for (int k = newBody.size() - 1; k >= 0; --k)
             outLines.insert(start0, newBody.at(k));
