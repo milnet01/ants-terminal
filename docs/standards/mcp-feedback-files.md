@@ -589,10 +589,10 @@ gets its own spec id.)**
 
 ## Stale-binary self-check (ANTS-3504)
 
-> **Status: specified — pending cold-eyes + implementation**
-> (`docs/specs/ANTS-3504.md`). The dated stub and `feedback_query` `shipped_date`
-> described here are the *target* contract. Until it ships, `compact_resolved`
-> emits the dateless stub and `mapped_id_status` carries `{id, status}` only.
+> **Status: spec-approved (cold-eyes clean, `docs/specs/ANTS-3504.md`) — pending
+> implementation.** The dated stub and `feedback_query` `shipped_date` described
+> here are the *target* contract. Until it ships, `compact_resolved` emits the
+> dateless stub and `mapped_id_status` carries `{id, status}` only.
 
 The dominant failure mode across the corpus is the **stale-binary re-report**: a
 contributor session running an old MCP-server binary re-files a bug that already
@@ -612,7 +612,10 @@ The ship-date is the ISO date on the **last** `Resolved` line in the bullet body
 without** parentheses — `Resolved (2026-07-09):` and `Resolved 2026-05-29:` are
 both valid — so the extractor matches `^\s*Resolved\s+\(?(\d{4}-\d{2}-\d{2})`
 (parens optional; the line anchor keeps prose like "Resolved the deadlock" from
-matching). It is surfaced in two places:
+matching). The narrow anchor also skips the less-common `… . Resolved 2026-… by …`
+(mid-line) and `Resolved as of 2026-…` forms — those yield no ship-date and fall
+back to the dateless stub (an accepted graceful miss; see spec §2.1). It is
+surfaced in two places:
 
 1. **In the file** — `compact_resolved`'s stub carries it:
    `→ shipped ✅ <date> (write-up compacted, ANTS-3443)` (§"Maintainer
