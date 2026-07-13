@@ -11550,7 +11550,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   rows / nav), flakiness-sensitive; better as its own focused effort. Do
   NOT retire diffviewer_extraction until that lands.
 
-- 📋 [ANTS-3506] **Extract AuditDialog::commentSuppresses to the engine lib (pure predicate trapped in the GUI TU).**
+- ✅ [ANTS-3506] **Extract AuditDialog::commentSuppresses to the engine lib (pure predicate trapped in the GUI TU).**
   commentSuppresses (auditdialog.cpp:2026) is a pure static predicate
   (comment text + rule id -> bool, QString/QRegularExpression only, no
   `this`/GUI) but lives in ants_audit_dialog_lib (the QDialog TU). That
@@ -11565,6 +11565,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   **Layman:** A small self-contained bit of audit logic currently lives inside the audit pop-up window's code; moving it to the shared audit engine would let its test live with the other audit-engine tests.
   Kind: refactor.
   Source: in-session-2026-07-13; surfaced during ANTS-3355.
+  Resolved (2026-07-13): moved commentSuppresses verbatim from AuditDialog (ants_audit_dialog_lib, the QDialog TU) to a free function in the AuditEngine namespace (auditengine.h/.cpp, ants_audit_lib). Updated the 3 inlineSuppressed call sites to AuditEngine::commentSuppresses; dropped the obsolete public static from auditdialog.h. The ANTS-3355 runtime test (audit_drop_alias) moved back from test_dialogs to test_audit (engine-only bundle) and now calls it via auditengine.h — a green test_audit proves the symbol resolves from the engine lib without the GUI lib. Full suite green (2631). Doc-note: ANTS-1111.md §2.6 still cites auditdialog.cpp line numbers for the predicate; left as-is (historical shipped spec, line cites already drift-prone).
 
 ## 0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)
 
