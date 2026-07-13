@@ -1605,10 +1605,13 @@ if(ANTS_TESTS)
     # auditdialog.cpp / auditengine.cpp) and need only Qt6::Core; a few
     # exercise live AuditEngine / AuditHygiene / RuleQualityTracker /
     # FeatureCoverage / Config APIs and pull in those translation units
-    # via ants_audit_lib + ants_core_lib. ants_audit_lib transitively
-    # brings auditdialog.cpp (a QDialog), so the GUI bundle helper
-    # applies. Phase 6 added feature_coverage (its impl lives in
-    # ants_audit_lib so it logically belongs here).
+    # via ants_audit_lib + ants_core_lib. The GUI bundle helper applies
+    # because ants_core_lib links Qt6::Widgets PUBLIC (see the split note
+    # at ants_audit_lib) — NOT because auditdialog.o is linked here: the
+    # AuditDialog TU lives in ants_audit_dialog_lib, which this bundle
+    # deliberately does not link (runtime AuditDialog tests go in
+    # test_dialogs — e.g. ANTS-3355 audit_drop_alias). Phase 6 added
+    # feature_coverage (its impl lives in ants_audit_lib so it belongs here).
     ants_add_gui_bundle(test_audit
         LIBS    ants_audit_lib ants_core_lib
         SOURCES tests/features/audit_command_rule_trust/test_audit_command_rule_trust.cpp
@@ -1627,7 +1630,10 @@ if(ANTS_TESTS)
                 tests/features/feature_coverage/test_feature_coverage.cpp
                 tests/features/roadmap_fold_in/test_roadmap_fold_in.cpp
                 tests/features/audit_corroboration_shift/test_audit_corroboration_shift.cpp
-                tests/features/audit_drop_alias/test_audit_drop_alias.cpp
+                # ANTS-3355 — audit_drop_alias moved to test_dialogs: upgraded
+                # from source-grep to a runtime call of AuditDialog::
+                # commentSuppresses, which lives in ants_audit_dialog_lib (the
+                # GUI lib test_audit deliberately does not link).
                 tests/features/audit_framework_detect/test_audit_framework_detect.cpp
                 tests/features/indie_review_engine/test_indie_review_engine.cpp
                 tests/features/debt_sweep_engine/test_debt_sweep_engine.cpp
@@ -1732,6 +1738,10 @@ if(ANTS_TESTS)
                 tests/features/indie_review_dialog/test_indie_review_dialog.cpp
                 # ANTS-1257 — AuditDialog v2 affordances (allow / fold / since-baseline).
                 tests/features/audit_dialog_v2/test_audit_dialog_v2.cpp
+                # ANTS-3355 — runtime coverage for the `// audit: drop` alias
+                # (AuditDialog::commentSuppresses). Lives here, not test_audit,
+                # because commentSuppresses is in ants_audit_dialog_lib.
+                tests/features/audit_drop_alias/test_audit_drop_alias.cpp
                 # ANTS-1259 — AuditDialog Debt Sweep tab (fix / defer / allow).
                 tests/features/debt_sweep_dialog/test_debt_sweep_dialog.cpp
                 tests/features/settings_profile_cancel_rollback/test_settings_profile_cancel_rollback.cpp
