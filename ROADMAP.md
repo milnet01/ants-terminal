@@ -4359,23 +4359,26 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
   Kind: perf.
   Source: user-request-2026-07-09.
 
-- 📋 [ANTS-3457] **Per-cell search-match std::lower_bound → precompute per-row match ranges once per frame.**
+- ✅ [ANTS-3457] **Per-cell search-match std::lower_bound → precompute per-row match ranges once per frame.**
   isCellSearchMatch / isCellCurrentMatch (terminalwidget.cpp:4276) do a std::lower_bound per cell (:864,:868) → O(cols×rows×log matches) per frame during an active find. Correctly short-circuits when no search is active, so low priority. Precompute the matching column spans per visible row once per frame instead of per cell.
   **Layman:** A small speedup that only matters while the find bar is open.
   Kind: perf.
   Source: user-request-2026-07-09.
+  Resolved (2026-07-13, commit f5228361). Hoisted the per-cell isCellSearchMatch std::lower_bound into a per-row precompute (m_paintSearchSpans), mirroring the existing urlSpans/hlSpans per-row caching: the probe runs once per row (empty when no search active) instead of once per painted cell; the per-cell result stays a single const bool searchMatch shared between the colour and opacity decisions. isCellSearchMatch is retained as the benchmark + INV-4 reference predicate. isCellCurrentMatch left per-cell (already O(1), not a lower_bound — out of scope). Feature-spec INV-4 + its source-scrape test updated to the strengthened invariant. Full suite 2637 green; paint/search benchmarks pass (no regression).
 
-- 📋 [ANTS-3458] **promptRegions iterated up to 3× per paint (O(#commands), unbounded by viewport) — cache/bound to visible range.**
+- ✅ [ANTS-3458] **promptRegions iterated up to 3× per paint (O(#commands), unbounded by viewport) — cache/bound to visible range.**
   Command timestamps (terminalwidget.cpp:1186), sticky-command header (:1477) and the command-mark gutter (:1596) each loop ALL prompt regions every paint — grows with session length, not viewport. Bound the scan to regions intersecting the visible range, or cache the per-frame result.
   **Layman:** In a long session with many commands, some on-screen decorations get slower to draw each frame.
   Kind: perf.
   Source: user-request-2026-07-09.
+  Resolved (2026-07-13, commit f5228361). The command-timestamp loop and the sticky-command-header loop now binary-search (std::lower_bound / std::upper_bound) to only the viewport-relevant region(s) instead of scanning all prompt regions (O(#commands)) every paint, relying on the existing ascending-startLine invariant (append at prompt-start 'A', front-eviction on cap). The command-mark gutter (3rd loop) is left O(#regions) by design — it is a full-scrollback minimap that maps every region across the whole widget height and cannot be viewport-bounded; documented in place. Full suite green.
 
-- 📋 [ANTS-3459] **Per-cell linear scan over URL/highlight spans → index spans by column.**
+- 💭 [ANTS-3459] **Per-cell linear scan over URL/highlight spans → index spans by column.**
   paintEvent scans urlSpans (:837) and hlSpans (:849) per cell → O(cols×spans) nested in the full cell walk. Usually few spans/line so low impact; if it shows up, build a per-row column→span lookup once per line.
   **Layman:** Minor drawing speedup on lines with many links or highlights.
   Kind: perf.
   Source: user-request-2026-07-09.
+  Resolved (2026-07-13) as won't-fix / no code change. The expensive work (URL + highlight regex) is already cached per-row (urlSpansForLine / m_hlSpanCache), so paintEvent's residual per-cell cost is only a walk of the row's span vector — which is EMPTY in the common case (no URLs, no highlight rules), i.e. zero iterations per cell already. The roadmap's suggested per-row column→span index would ADD a cols-sized allocation + fill per row even when there are 0 spans, pessimizing the overwhelmingly-common case. The ANTS-3462 baseline already measured the per-cell lookup at ~0.05ms and confirmed it is NOT a freeze contributor (the per-frame re-shape is). Closing 💭 rather than over-engineer a confirmed-negligible path (Simplicity First). Reopen only if a real many-spans profile (heavy user highlight rules) ever shows it.
 
 - ✅ [ANTS-3460] **Hoist per-frame QFontMetrics constructions in the paint overlays.**
   Overlays construct QFontMetrics once per frame each at terminalwidget.cpp:1184,:1386,:1434,:1526,:1556. Not per-cell so low priority; hoist to a per-frame local or member.
