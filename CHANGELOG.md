@@ -90,6 +90,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Release version bumps now reliably update the version shown in the README and roadmap (ANTS-2163).**
+  The automatic version updater was searching for old wording that no longer
+  matched those two files, so it quietly skipped them and the "Version X" line
+  could show a stale number after a release. Realigned the search text, removed a
+  dead rule for an AppImage filename that is now a wildcard, and taught the
+  drift-check to actually validate both banners so they can't silently fall
+  behind again.
+
 - **indie_review_orchestrate returns no_lanes when a ## Module map is present-but-unparseable (misleading "heading absent" error).** (ANTS-3481)
   The auto-reviewer says "you have no module map" even when the project DOES have one — it just can't read that particular list format. The error should say so instead of claiming it's missing.
 

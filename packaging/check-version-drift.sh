@@ -81,9 +81,20 @@ check packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml \
       '<release version="[0-9]+\.[0-9]+\.[0-9]+"' \
       'AppStream metainfo'
 
+# README header banner reads `Version <strong>X.Y.Z</strong>` (line ~20).
+# The old pattern here searched for `Current version:` — which the README
+# never says (that is the ROADMAP banner's wording), so the check silently
+# no-op'd and missed the 0.7.97/0.7.98 banner drift. Realigned in ANTS-2163.
 check README.md \
-      'Current version:.*[0-9]+\.[0-9]+\.[0-9]+' \
+      'Version <strong>[0-9]+\.[0-9]+\.[0-9]+' \
       'README'
+
+# ROADMAP header banner reads `> **Current version:** X.Y.Z.` (line ~4).
+# Added in ANTS-2163 — it had drifted two releases stale unnoticed because
+# nothing validated it.
+check ROADMAP.md \
+      'Current version:.*[0-9]+\.[0-9]+\.[0-9]+' \
+      'ROADMAP'
 
 # POSIX exit codes max at 255; we also reserve 126/127/128+ for shell errors.
 # Cap to 125 so even a repo with more than 125 drifted files still returns

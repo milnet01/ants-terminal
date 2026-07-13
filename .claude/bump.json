@@ -25,20 +25,15 @@
     },
     {
       "path": "README.md",
-      "pattern": "Current version: <strong>{OLD}</strong>",
-      "replace": "Current version: <strong>{NEW}</strong>"
-    },
-    {
-      "path": "README.md",
-      "$comment": "AppImage download URL in the Install section bakes the version into the filename. GitHub's /releases/latest/download/<filename> redirect requires the filename to match exactly, so the URL must move every release until the workflow ships an unversioned variant.",
-      "pattern": "Ants_Terminal-{OLD}-x86_64.AppImage",
-      "replace": "Ants_Terminal-{NEW}-x86_64.AppImage",
-      "replace_all": true
+      "$comment": "Header banner (README.md line ~20). Carries the version, no date — the dated history lives in CHANGELOG.md, linked on the same line. Realigned from the stale 'Current version: <strong>' wording in ANTS-2163 (the README says 'Version <strong>').",
+      "pattern": "Version <strong>{OLD}</strong>",
+      "replace": "Version <strong>{NEW}</strong>"
     },
     {
       "path": "ROADMAP.md",
+      "$comment": "Roadmap banner (line ~4), dateless for the same reason as the README banner. The replace intentionally omits a date: the recipe substitutes only {OLD}/{NEW}/{TODAY} literally, so it cannot consume the PREVIOUS release's date — appending ({TODAY}) while the old date remained produced a double-date (ANTS-2163).",
       "pattern": "**Current version:** {OLD}",
-      "replace": "**Current version:** {NEW} ({TODAY})"
+      "replace": "**Current version:** {NEW}"
     }
   ],
   "tag": "v{NEW}",

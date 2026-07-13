@@ -1,7 +1,7 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.99 (2026-07-09). See [CHANGELOG.md](CHANGELOG.md)
+> **Current version:** 0.7.99. See [CHANGELOG.md](CHANGELOG.md)
 > for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
 > standards; this document covers what's **planned**.
 >
@@ -8687,7 +8687,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-06-17 (sibling of ANTS-2146).
   Resolved (2026-06-17): same root cause, fixed in lockstep. fileoutline.cpp rxCppFunc gained the matching `(?!(?:return|co_return|co_await|co_yield|throw|else)\b)` lookahead after the leading `\s*`, so `return gamma(7);` is no longer emitted as a spurious `gamma` function symbol (which had propagated into read_region symbol-mode + codebase_index resolution). Regression locked by tests/features/mcp_file_outline INV-12 (fixture `return gamma(7);` → no `gamma` symbol, enclosing `beta` still surfaces); confirmed red pre-fix. rxCppMember left untouched (column-0 + `::`-qualified, cannot match indented dispatch lines).
 
-- 📋 [ANTS-2163] **Realign stale `.claude/bump.json` README replace-pattern so `/bump` updates the version banner.**
+- ✅ [ANTS-2163] **Realign stale `.claude/bump.json` README replace-pattern so `/bump` updates the version banner.**
   bump.json's README rules target `Current version: <strong>{OLD}</strong>` and
   `Ants_Terminal-{OLD}-x86_64.AppImage`, but README.md actually reads
   `Version <strong>{VER}</strong>` (line 20) and has no versioned AppImage URL.
@@ -8714,6 +8714,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   check-version-drift.sh to validate BOTH lines so neither drifts
   silently again. Third recurrence class (README @0.7.97, ROADMAP
   @0.7.98, both @0.7.99).
+  Resolved (2026-07-13). Realigned both stale bump.json README rules + the ROADMAP rule, and closed the drift-check blind spots. Specifics: (1) README banner rule now matches the actual `Version <strong>{OLD}</strong>` wording (was the never-present `Current version: <strong>`); (2) removed the dead AppImage-filename rule — README uses the wildcard `Ants_Terminal-*-x86_64.AppImage` + the unversioned `releases/latest` redirect, so the versioned pattern could never match (its own $comment's precondition — "until the workflow ships an unversioned variant" — is already met); (3) ROADMAP replace dropped the `({TODAY})` suffix that would have double-dated (literal-only substitution can't consume the previous release's date), and ROADMAP.md line 4 is now dateless to match; (4) check-version-drift.sh: re-pointed the README check at `Version <strong>` (the old `Current version:` pattern silently no-op'd on README) and ADDED a ROADMAP check — negative-tested both now flag a faked-truth drift. Drift check exits 0 clean. Root cause of the 3-release recurrence: patterns searched for text neither file contained, so both bump edits and the drift guard silently no-op'd.
 
 - ✅ [ANTS-2164] **Harden the RC→release→new-RC cadence into one guarded `cut-rc.sh cycle` command (extends ANTS-1318).**
   Recurring releases problems trace to the cadence being a multi-step manual
