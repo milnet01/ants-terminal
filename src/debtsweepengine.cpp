@@ -864,11 +864,43 @@ QList<Finding> detectMissingInvariantTests(
 // ---------------------------------------------------------------------------
 
 QList<Finding> detectRoadmapShippedWithoutCommit(
-    const QString &projectPath, const ScanOptions & /*opt*/) {
+    const QString &projectPath, const ScanOptions &opt) {
     const QString roadmapPath = projectPath + QStringLiteral("/ROADMAP.md");
     if (!QFileInfo::exists(roadmapPath)) return {};
     const QString body = slurpUtf8(roadmapPath);
     if (body.isEmpty()) return {};
+
+    // Window scoping (ANTS-3342). Without it the detector re-checked every
+    // ✅ item in the whole ROADMAP against `git log`, so ~433 pre-convention
+    // shipped items — whose IDs predate the commit-subject convention and so
+    // never appear in any commit — re-surfaced on every sweep. Restrict the
+    // candidates to items that were *flipped to ✅ within `since..HEAD`*:
+    // diff ROADMAP.md over the window and take the IDs whose ✅ line was
+    // added but not also removed (a bare remove+add is a position-is-priority
+    // reorder of an already-shipped item, not a fresh flip).
+    const QString since = resolveSinceRef(projectPath, opt.sinceRef);
+    const QString diff = runGit(
+        projectPath,
+        {QStringLiteral("diff"), QStringLiteral("--unified=0"),
+         since + QStringLiteral("..HEAD"),
+         QStringLiteral("--"), QStringLiteral("ROADMAP.md")},
+        kGitStdoutCap);
+    if (diff.isEmpty()) return {};  // empty window, or not a git checkout
+
+    static const QRegularExpression kAddedShippedRe(
+        QStringLiteral("^\\+- ✅ \\[(ANTS-\\d+)\\]"));
+    static const QRegularExpression kRemovedShippedRe(
+        QStringLiteral("^-- ✅ \\[(ANTS-\\d+)\\]"));
+    QSet<QString> addedShipped, removedShipped;
+    const QStringList diffLines = diff.split('\n');
+    for (const QString &dl : diffLines) {
+        const auto am = kAddedShippedRe.match(dl);
+        if (am.hasMatch()) { addedShipped.insert(am.captured(1)); continue; }
+        const auto rm = kRemovedShippedRe.match(dl);
+        if (rm.hasMatch()) removedShipped.insert(rm.captured(1));
+    }
+    addedShipped.subtract(removedShipped);
+    if (addedShipped.isEmpty()) return {};  // nothing freshly shipped in-window
 
     // U+2705 ✅ embedded directly; QString literal is UTF-16 so the
     // emoji is one code-point match. (Earlier UTF-8-byte variant
@@ -876,11 +908,12 @@ QList<Finding> detectRoadmapShippedWithoutCommit(
     static const QRegularExpression kShippedReUtf16(
         QStringLiteral("^- ✅ \\[(ANTS-\\d+)\\]"));
 
+    // Scan the live file for line numbers, keeping only in-window IDs.
     QList<QPair<QString, int>> ids;
     const QStringList lines = body.split('\n');
     for (int i = 0; i < lines.size(); ++i) {
         const auto m = kShippedReUtf16.match(lines.at(i));
-        if (m.hasMatch()) {
+        if (m.hasMatch() && addedShipped.contains(m.captured(1))) {
             ids.append({m.captured(1), i + 1});
         }
     }

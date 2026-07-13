@@ -102,6 +102,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Debt-sweep `shipped_without_commit` now honours the review window.** (ANTS-3342)
+  The detector re-checked every ✅ item in the whole ROADMAP against git log, re-surfacing ~433 pre-convention shipped items each sweep. It now only considers items flipped to ✅ within since..HEAD (diff ROADMAP.md over the window, added-but-not-removed ✅ lines) (ANTS-3342).
+
 - **Debt-sweep code-quality detectors no longer flag deliberate test-fixture data.** (ANTS-3344)
   orphan_q_unused / obsolete_qstring_idiom / dead_branch_after_return now skip the tests/features/ and tests/audit_fixtures/ subtrees, whose files embed those exact patterns as conformance inputs (ANTS-3344).
 

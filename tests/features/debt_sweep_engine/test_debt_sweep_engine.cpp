@@ -305,6 +305,53 @@ TEST(DebtSweepEngine, Inv4ShellTestCoversInvariant) {
 }
 
 // ---------------------------------------------------------------------------
+// ANTS-3342 — shipped_without_commit only considers ✅ items flipped within
+// the since..HEAD window, not every historically-shipped item (the ~433-FP
+// class: pre-convention IDs that never appear in any commit subject).
+// ---------------------------------------------------------------------------
+
+TEST(DebtSweepEngine, ShippedWithoutCommitHonoursSinceWindow) {
+    if (!gitAvailable()) GTEST_SKIP() << "git not available";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString dir = tmp.path();
+    ASSERT_EQ(runGitIn(dir, {"init", "-q"}), 0);
+    runGitIn(dir, {"config", "user.email", "t@example.com"});
+    runGitIn(dir, {"config", "user.name", "Test"});
+
+    // Base commit: ANTS-1 already shipped (pre-window), two planned items.
+    writeFile(dir, "ROADMAP.md",
+              "- ✅ [ANTS-1] old shipped, no commit mentions it\n"
+              "- 📋 [ANTS-2] planned\n"
+              "- 📋 [ANTS-3] planned\n");
+    ASSERT_EQ(runGitIn(dir, {"add", "ROADMAP.md"}), 0);
+    ASSERT_EQ(runGitIn(dir, {"commit", "-q", "-m", "base"}), 0);
+
+    // In-window commit: flip both to ✅. Its subject names ANTS-3 only.
+    writeFile(dir, "ROADMAP.md",
+              "- ✅ [ANTS-1] old shipped, no commit mentions it\n"
+              "- ✅ [ANTS-2] shipped, no commit mentions it\n"
+              "- ✅ [ANTS-3] shipped in this commit\n");
+    ASSERT_EQ(runGitIn(dir, {"add", "ROADMAP.md"}), 0);
+    ASSERT_EQ(runGitIn(dir,
+                       {"commit", "-q", "-m", "ANTS-3: shipped in this commit"}),
+              0);
+
+    DebtSweepEngine::ScanOptions opt;
+    opt.sinceRef = "HEAD~1";  // window = just the flip commit
+    const auto out =
+        DebtSweepEngine::detectRoadmapShippedWithoutCommit(dir, opt);
+
+    // ANTS-1: shipped pre-window → out of scope (the FP class this fixes).
+    // ANTS-3: flipped in-window but its ID is in a commit subject → covered.
+    // ANTS-2: flipped in-window, no commit subject mentions it → the one flag.
+    ASSERT_EQ(out.size(), 1);
+    EXPECT_TRUE(out[0].message.contains("ANTS-2"));
+    EXPECT_EQ(out[0].detectorId, QString("shipped_without_commit"));
+    EXPECT_EQ(out[0].file, QString("ROADMAP.md"));
+}
+
+// ---------------------------------------------------------------------------
 // INV-10 — templateDebtSweepFoldInBlock
 // ---------------------------------------------------------------------------
 

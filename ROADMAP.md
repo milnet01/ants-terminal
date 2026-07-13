@@ -8920,11 +8920,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: doom-feedback-2026-06-28 (DOOM-0009 step 4d/5 session).
   Resolved (2026-06-28): resolveSection (readregion.cpp) now collects headings in one pass and, when no exact slug match exists, resolves a unique dash-bounded prefix (`<wantSlug>-…`); ≥2 candidates → new `section_ambiguous` refusal carrying `candidates[]`; exact match still wins; section_slug echoes the resolved heading slug. Added section_ambiguous + the previously-undocumented section_not_found to mcp-error-codes.md; refreshed the section schema description; extended read_region_md_section (MD-9..12). Full suite 2313 green.
 
-- 📋 [ANTS-3342] **debt_sweep_scan `shipped_without_commit` ignores the `since` window.**
+- ✅ [ANTS-3342] **debt_sweep_scan `shipped_without_commit` ignores the `since` window.**
   Detector scans the whole ROADMAP against `git log --all` regardless of `--since`, so ~433 pre-convention ✅ items (e.g. ANTS-1007) re-surface every sweep. Fix: only flag ✅ bullets added/flipped within `since..HEAD` (diff ROADMAP.md in the window).
   **Layman:** The doc-drift check re-flags every historically-shipped roadmap item every run (433 false positives), instead of only ones marked done in the current window.
   Kind: fix.
   Source: debt-sweep-2026-06-28.
+  Resolved (2026-07-13): `detectRoadmapShippedWithoutCommit` now window-scopes its candidates. It diffs ROADMAP.md over `since..HEAD` and keeps only IDs whose ✅ line was added-but-not-also-removed (a bare remove+add is a position-is-priority reorder, not a fresh flip), then checks the live-file line numbers + `git log --all` for those IDs only. Empty diff → empty result (empty window or non-git). This drops the ~433 pre-convention ✅ items that re-surfaced every sweep. Regression `DebtSweepEngine.ShippedWithoutCommitHonoursSinceWindow` proves: pre-window ✅ excluded, in-window flip with no commit subject flagged, in-window flip named in a commit subject suppressed. Spec ANTS-1113 §3.5 updated to match. debt_sweep_engine suite 29/29 green.
 
 - 📋 [ANTS-3343] **debt_sweep_scan `missing_inv_test` matches the literal `INV-N` token only.**
   String-match of `INV-N` in test_* files, so behaviour-tested-without-the-comment reads as uncovered. Decide the convention: either mandate INV-N citations in test bodies, or match coverage behaviourally. `.sh`/`.bash` blind-spot already fixed this session.
