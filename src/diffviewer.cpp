@@ -3,17 +3,18 @@
 #include "clipboardguard.h"
 #include "dialogchrome.h"
 #include "themes.h"
+#include "treewatcher.h"
 
 #include <QDialog>
 #include <QFile>
 #include <QFileInfo>
-#include <QFileSystemWatcher>
 #include <QFont>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QObject>
 #include <QPointer>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QSet>
@@ -248,6 +249,14 @@ QDialog *show(QWidget *parent,
     // every refresh."
     auto lastHtml = std::make_shared<QString>();
 
+    // ANTS-3509 — every git command this dialog runs sets GIT_OPTIONAL_LOCKS=0
+    // so a read-only probe never refreshes/rewrites the index as a side effect
+    // (git's documented flag for polling tools). Without it, our own
+    // `git status` could rewrite .git/index, which the inotify watcher below
+    // would see as a change → re-probe → status → … an endless loop.
+    QProcessEnvironment gitEnv = QProcessEnvironment::systemEnvironment();
+    gitEnv.insert(QStringLiteral("GIT_OPTIONAL_LOCKS"), QStringLiteral("0"));
+
     // 0.7.32 (live updates) — runProbes spawns the five async git
     // probes and fires-and-forgets. Called once on dialog open, then
     // again every time the QFileSystemWatcher debounce timer fires
@@ -255,7 +264,7 @@ QDialog *show(QWidget *parent,
     // ProbeState so concurrent in-flight probes from a previous
     // refresh can't poison the new render.
     auto runProbes = [parent, cwd, dlgGuard, viewerGuard, copyGuard,
-                      liveStatusGuard, themeName, lastHtml]() {
+                      liveStatusGuard, themeName, lastHtml, gitEnv]() {
         if (!dlgGuard) return;
         if (liveStatusGuard) {
             liveStatusGuard->setText(QStringLiteral("● refreshing…"));
@@ -609,11 +618,12 @@ QDialog *show(QWidget *parent,
     // Spawn one async QProcess per probe. Each one writes into its
     // slot on the shared ProbeState when it finishes, then calls
     // finalize(). No blocking on the UI thread.
-    auto runAsync = [parent, cwd, finalize](const QStringList &args,
-                                             QString ProbeState::*slot,
-                                             ProbeState *st) {
+    auto runAsync = [parent, cwd, gitEnv, finalize](const QStringList &args,
+                                                    QString ProbeState::*slot,
+                                                    ProbeState *st) {
         auto *p = new QProcess(parent);
         p->setWorkingDirectory(cwd);
+        p->setProcessEnvironment(gitEnv);
         p->setProgram("git");
         p->setArguments(args);
         QPointer<QProcess> pg = p;
@@ -657,56 +667,105 @@ QDialog *show(QWidget *parent,
     // Initial probe spawn — populates the dialog right after show().
     runProbes();
 
-    // 0.7.32 (live updates) — QFileSystemWatcher on the relevant
-    // .git/* paths plus the working directory. Git operations
-    // (commit, checkout, fetch, pull, branch -d, add, etc.) all
-    // touch one or more of these paths; a debounce timer collapses
-    // the burst into a single re-probe. Refresh button forces an
-    // immediate re-probe regardless of the watcher.
-    auto *watcher = new QFileSystemWatcher(dialog);
-    auto *debounce = new QTimer(dialog);
-    debounce->setSingleShot(true);
-    debounce->setInterval(300);  // 300 ms — fast enough to feel live,
-                                 // slow enough to coalesce a `git pull`
-                                 // burst (which fires fileChanged
-                                 // O(refs) times in milliseconds).
-    QObject::connect(debounce, &QTimer::timeout, dialog, [runProbes]() {
-        runProbes();
-    });
+    // ANTS-3509 (supersedes the 0.7.32 QFileSystemWatcher design) — live
+    // updates via a raw-inotify DirTreeWatcher. QFileSystemWatcher's directory
+    // watch does NOT fire on a content EDIT of a child file (only add / remove
+    // / rename), so an editor or agent modifying an existing tracked file left
+    // the diff stale until a commit or a manual Refresh. Raw inotify on a
+    // directory watch reports child IN_MODIFY, so we watch the gitignore-aware
+    // set of working-tree directories (edits) + the .git metadata directories
+    // (staging / commit / branch / fetch) and re-probe on any change. Watching
+    // directories rather than one file per tracked path is ≈4× fewer watches,
+    // and closing the dialog releases every one.
+    auto *watcher = new DirTreeWatcher(dialog);
 
-    auto addPathSafe = [watcher](const QString &path) {
-        if (QFileInfo::exists(path)) watcher->addPath(path);
+    // Resolve-once cache for the git dir + working-tree root (async, so a
+    // sub-dir cwd / a git worktree — .git is a file — / a submodule all work).
+    struct GitPaths { QString gitDir; QString topLevel; bool resolved = false; };
+    auto gp = std::make_shared<GitPaths>();
+    QPointer<DirTreeWatcher> watcherGuard(watcher);
+
+    // Enumerate the (gitignore-aware) working-tree directory set and top up the
+    // watch set. `git ls-files --exclude-standard` already omits ignored trees
+    // (build/, node_modules/, …), so they are excluded by construction — never
+    // handed to the watcher. Re-run on every change so new non-ignored dirs
+    // start being watched (ignored ones never appear here).
+    auto enumerate = [parent, gitEnv, watcherGuard](const QString &topLevel) {
+        if (!watcherGuard || topLevel.isEmpty()) return;
+        auto *ls = new QProcess(parent);
+        ls->setWorkingDirectory(topLevel);
+        ls->setProcessEnvironment(gitEnv);
+        ls->setProgram(QStringLiteral("git"));
+        ls->setArguments({QStringLiteral("ls-files"), QStringLiteral("-z"),
+                          QStringLiteral("--cached"), QStringLiteral("--others"),
+                          QStringLiteral("--exclude-standard")});
+        QPointer<QProcess> lsg = ls;
+        QObject::connect(ls,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), parent,
+            [lsg, topLevel, watcherGuard](int code, QProcess::ExitStatus) {
+                if (lsg && code == 0 && watcherGuard) {
+                    watcherGuard->addDirs(DirTreeWatcher::directoriesContaining(
+                        topLevel, lsg->readAllStandardOutput()));
+                }
+                if (lsg) lsg->deleteLater();
+            });
+        ls->start();
     };
-    addPathSafe(cwd);
-    const QString gitDir = cwd + QStringLiteral("/.git");
-    addPathSafe(gitDir);
-    addPathSafe(gitDir + QStringLiteral("/HEAD"));
-    addPathSafe(gitDir + QStringLiteral("/index"));
-    addPathSafe(gitDir + QStringLiteral("/refs/heads"));
-    addPathSafe(gitDir + QStringLiteral("/refs/remotes"));
-    addPathSafe(gitDir + QStringLiteral("/logs/HEAD"));
 
-    // QFileSystemWatcher loses its watch on a file when the file is
-    // atomically replaced via rename(2) — git uses this pattern for
-    // HEAD/index/logs/HEAD updates. Re-add the path on each
-    // fileChanged so subsequent updates also fire.
-    auto onFsEvent = [watcher, debounce, addPathSafe](const QString &path) {
-        if (QFileInfo::exists(path) && !watcher->files().contains(path) &&
-            !watcher->directories().contains(path)) {
-            addPathSafe(path);
-        }
-        debounce->start();
+    // Re-seed: resolve the git paths once (then cache), watch the .git
+    // metadata dirs once, and (re)enumerate the working tree. Called at open
+    // and on every change burst.
+    auto reseed = [parent, cwd, gitEnv, gp, watcherGuard, enumerate]() {
+        if (gp->resolved) { enumerate(gp->topLevel); return; }
+        auto *rp = new QProcess(parent);
+        rp->setWorkingDirectory(cwd);
+        rp->setProcessEnvironment(gitEnv);
+        rp->setProgram(QStringLiteral("git"));
+        rp->setArguments({QStringLiteral("rev-parse"),
+                          QStringLiteral("--absolute-git-dir"),
+                          QStringLiteral("--show-toplevel")});
+        QPointer<QProcess> rpg = rp;
+        QObject::connect(rp,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), parent,
+            [rpg, cwd, gp, watcherGuard, enumerate](int code, QProcess::ExitStatus) {
+                gp->gitDir = cwd + QStringLiteral("/.git");
+                gp->topLevel = cwd;
+                if (rpg && code == 0) {
+                    const QStringList out =
+                        QString::fromUtf8(rpg->readAllStandardOutput())
+                            .trimmed().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+                    if (out.size() >= 1) gp->gitDir = out.at(0);
+                    if (out.size() >= 2) gp->topLevel = out.at(1);
+                }
+                if (rpg) rpg->deleteLater();
+                gp->resolved = true;
+                if (watcherGuard) {
+                    // .git metadata dirs: index (staging), logs/HEAD + refs/heads
+                    // (commit), HEAD in .git (checkout/branch), refs/remotes
+                    // (fetch). Watched as directories → a child rewrite fires.
+                    watcherGuard->addDirs({ gp->topLevel, gp->gitDir,
+                        gp->gitDir + QStringLiteral("/refs/heads"),
+                        gp->gitDir + QStringLiteral("/refs/remotes"),
+                        gp->gitDir + QStringLiteral("/logs") });
+                }
+                enumerate(gp->topLevel);
+            });
+        rp->start();
     };
-    QObject::connect(watcher, &QFileSystemWatcher::fileChanged, dialog, onFsEvent);
-    QObject::connect(watcher, &QFileSystemWatcher::directoryChanged, dialog, onFsEvent);
 
-    // Manual Refresh — bypasses debounce so the user gets an
-    // immediate response when they click. Useful when an external
-    // tool (a build script, a different terminal) has changed state
-    // outside the watched paths.
-    QObject::connect(refreshBtn, &QPushButton::clicked, dialog, [runProbes]() {
-        runProbes();
-    });
+    // Any watched change → re-probe (and re-seed to pick up new dirs). No
+    // feedback loop: our probes are read-only (GIT_OPTIONAL_LOCKS=0 above), so
+    // they never rewrite a watched path.
+    QObject::connect(watcher, &DirTreeWatcher::changed, dialog,
+                     [runProbes, reseed]() { reseed(); runProbes(); });
+
+    // Manual Refresh — immediate re-probe + re-seed; also the fallback path if
+    // inotify could not initialise (watcher->ok() == false).
+    QObject::connect(refreshBtn, &QPushButton::clicked, dialog,
+                     [runProbes, reseed]() { reseed(); runProbes(); });
+
+    // Initial arm.
+    reseed();
 
     return dialog;
 }

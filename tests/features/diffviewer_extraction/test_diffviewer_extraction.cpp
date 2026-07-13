@@ -110,7 +110,9 @@ static int runMain() {
         "struct ProbeState",
         "pending = 5",
         "for-each-ref",
-        "QFileSystemWatcher",
+        // ANTS-3509 — live refresh now runs on the raw-inotify DirTreeWatcher,
+        // which (unlike QFileSystemWatcher) sees a content edit of a child file.
+        "DirTreeWatcher",
         "runProbes",
         "lastHtml",
     };
@@ -158,6 +160,31 @@ static int runMain() {
                 << n << "` — feature-coverage QA helpers won't find this "
                    "widget";
     }
+
+    // INV-6 (ANTS-3509): live-refresh wiring. The dialog seeds the watch set
+    // from a gitignore-aware `git ls-files … --exclude-standard`, and runs its
+    // git probes with GIT_OPTIONAL_LOCKS=0 so a read-only `status` can't
+    // rewrite .git/index and self-trigger a re-probe loop. And the old
+    // QFileSystemWatcher must be gone (it dropped child content edits).
+    static const char *kLiveMarkers[] = {
+        "DirTreeWatcher",
+        "GIT_OPTIONAL_LOCKS",
+        "--exclude-standard",
+        "directoriesContaining",
+    };
+    for (const char *m : kLiveMarkers) {
+        if (!contains(dvImpl, m))
+            ADD_FAILURE_AT(__FILE__, __LINE__)
+                << "[INV-6] diffviewer.cpp missing live-refresh marker `"
+                << m << "` — ANTS-3509 watcher wiring incomplete";
+    }
+    // Check for actual USE (instantiation), not a bare mention — the rationale
+    // comment legitimately names QFileSystemWatcher to explain the switch.
+    if (contains(dvImpl, "new QFileSystemWatcher"))
+        ADD_FAILURE_AT(__FILE__, __LINE__)
+            << "[INV-6] diffviewer.cpp still instantiates QFileSystemWatcher — it "
+               "cannot see child content edits; ANTS-3509 replaced it with "
+               "DirTreeWatcher";
 
     // INV-3a: MainWindow::showDiffViewer body ≤ 50 meaningful LoC.
     const std::string body = showDiffViewerBody(mw);

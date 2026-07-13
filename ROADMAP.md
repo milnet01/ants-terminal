@@ -18821,11 +18821,12 @@ build).
   Kind: test.
   Source: cold-eyes-2026-07-13 (ANTS-3475 loop 4).
 
-- 📋 [ANTS-3509] **Review Changes dialog "live" auto-refresh misses changes until a manual Refresh.**
+- ✅ [ANTS-3509] **Review Changes dialog "live" auto-refresh misses changes until a manual Refresh.**
   The Review Changes / diff dialog (src/diffviewer.cpp) shows "● live — auto-refresh
   on git changes" but does not reliably update on git/working-tree changes; the user
   must press Refresh, after which it appears to keep up. Recurring — the user has
   reported it before.
+  Resolved (2026-07-13): root cause confirmed by headless characterization — Qt's QFileSystemWatcher directory watch does NOT fire on a content EDIT of a child file (only add/remove/rename), so editor/agent edits left the diff stale until a commit or manual Refresh. Fixed with a new raw-inotify DirTreeWatcher (src/treewatcher.{h,cpp}, ants_core_lib): directory-only watches (IN_MODIFY on a dir DOES report child edits — verified), one fd + one QSocketNotifier, debounced changed(), IN_IGNORED/overflow handling. diffviewer.cpp reseeds the watch set from a gitignore-aware `git ls-files --cached --others --exclude-standard` (so build/ etc. are excluded by construction — no separate exclude needed; inotify has no native exclude), resolves the git dir via `git rev-parse --absolute-git-dir --show-toplevel` (worktree/subdir/submodule-safe), and runs every probe with GIT_OPTIONAL_LOCKS=0 so a read-only status can't rewrite .git/index and self-trigger a loop. Directory-only ≈4× fewer watches than one-per-file (484 dirs vs ~1992 for this repo); released on dialog close. Tests: tree_watcher (behavioral ContentEditFires/NewFileFires + pure directoriesContaining, in test_dialogs since the Q_OBJECT pulls the core aggregate moc) + diffviewer_extraction INV-6 wiring scrape (RED: asserted QFileSystemWatcher). Full suite pending.
 
   Watcher wiring (diffviewer.cpp:660-712): QFileSystemWatcher on cwd + .git, .git/HEAD,
   .git/index, .git/refs/heads, .git/refs/remotes, .git/logs/HEAD; 300ms debounce →

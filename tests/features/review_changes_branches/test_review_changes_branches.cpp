@@ -92,39 +92,37 @@ TEST(ReviewChangesBranches, Main) {
     expect(contains(src, "auto state = std::make_shared<ProbeState>();"),
            "I6/runProbes-constructs-fresh-state-per-call");
 
-    // I7 — QFileSystemWatcher armed and connected through a
-    // debounce QTimer.
-    expect(contains(src,
-               "auto *watcher = new QFileSystemWatcher(dialog);"),
-           "I7/watcher-constructed-on-dialog");
-    expect(contains(src, "auto *debounce = new QTimer(dialog);"),
-           "I7/debounce-timer-constructed");
-    expect(contains(src, "debounce->setSingleShot(true);"),
-           "I7/debounce-is-single-shot");
-    expect(contains(src, "debounce->setInterval(300);"),
-           "I7/debounce-interval-300ms");
-    expect(contains(src, "addPathSafe(gitDir + QStringLiteral(\"/HEAD\"))"),
-           "I7/watch-git-HEAD");
-    expect(contains(src, "addPathSafe(gitDir + QStringLiteral(\"/index\"))"),
-           "I7/watch-git-index");
-    expect(contains(src, "addPathSafe(gitDir + QStringLiteral(\"/refs/heads\"))"),
-           "I7/watch-git-refs-heads");
-    expect(contains(src, "addPathSafe(gitDir + QStringLiteral(\"/refs/remotes\"))"),
-           "I7/watch-git-refs-remotes");
-    expect(contains(src, "addPathSafe(gitDir + QStringLiteral(\"/logs/HEAD\"))"),
-           "I7/watch-git-logs-HEAD");
-    expect(contains(src, "QFileSystemWatcher::fileChanged"),
-           "I7/connect-fileChanged");
-    expect(contains(src, "QFileSystemWatcher::directoryChanged"),
-           "I7/connect-directoryChanged");
+    // I7 (ANTS-3509) — live refresh runs on the raw-inotify DirTreeWatcher.
+    // QFileSystemWatcher was replaced because its directory watch does not fire
+    // on a content EDIT of a child file (only add/remove/rename), so an
+    // editor/agent edit left the diff stale until a commit or manual Refresh.
+    expect(contains(src, "auto *watcher = new DirTreeWatcher(dialog);"),
+           "I7/dirtreewatcher-constructed-on-dialog");
+    // Watch set seeded from a gitignore-aware ls-files (build/ etc. excluded by
+    // construction — inotify has no native exclude, so whitelisting is the
+    // mechanism), mapped to directories via the pure helper.
+    expect(contains(src, "--exclude-standard"),
+           "I7/seed-is-gitignore-aware");
+    expect(contains(src, "DirTreeWatcher::directoriesContaining("),
+           "I7/seed-maps-files-to-dirs");
+    // Git dir resolved (worktree / sub-dir cwd safe), not assumed at cwd/.git.
+    expect(contains(src, "--absolute-git-dir") &&
+               contains(src, "--show-toplevel"),
+           "I7/git-dir-resolved-via-rev-parse");
+    // .git metadata dirs watched for staging/commit/branch/fetch.
+    expect(contains(src, "/refs/heads") && contains(src, "/refs/remotes") &&
+               contains(src, "/logs"),
+           "I7/watch-git-metadata-dirs");
+    expect(contains(src, "DirTreeWatcher::changed"),
+           "I7/connect-changed");
 
-    // I8 — the fs-event handler re-adds the path. The pattern is
-    // the addPathSafe call inside the onFsEvent lambda.
-    expect(contains(src, "auto onFsEvent = [watcher, debounce"),
-           "I8/onFsEvent-lambda-defined");
-    expect(contains(src,
-               "!watcher->files().contains(path)"),
-           "I8/onFsEvent-checks-watch-state-before-readd");
+    // I8 (ANTS-3509) — re-probe + re-seed on any change; and probes run with
+    // GIT_OPTIONAL_LOCKS=0 so a read-only status can't rewrite .git/index and
+    // self-trigger a loop against the now-reliable inotify watch.
+    expect(contains(src, "reseed(); runProbes();"),
+           "I8/change-reseeds-and-reprobes");
+    expect(contains(src, "GIT_OPTIONAL_LOCKS"),
+           "I8/probes-disable-optional-index-locks");
 
     // I9 — manual Refresh button bypasses debounce by calling
     // runProbes directly.

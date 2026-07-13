@@ -99,6 +99,17 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Review Changes dialog now refreshes live on file edits, not just commits (ANTS-3509)**
+  The dialog advertised "live — auto-refresh on git changes" but went stale until
+  you pressed Refresh, because its QFileSystemWatcher could not see a content edit
+  of a file inside a watched directory (Qt only surfaces add/remove/rename). It is
+  now driven by a new raw-inotify DirTreeWatcher that watches the gitignore-aware
+  set of working-tree directories (edits included) plus the .git metadata — one
+  inotify fd, directories-only (≈4× fewer watches than one per tracked file), and
+  every watch is released when the dialog closes. Git dir is resolved via
+  `git rev-parse` (worktree / sub-dir cwd safe), and all probes run with
+  GIT_OPTIONAL_LOCKS=0 so a read-only status can't rewrite the index and self-loop.
+
 - **Silenced 4 more harmless compiler warnings from the diff/review viewer (ANTS-3505)**
   The same false-alarm "-Wnull-dereference" warning quieted in the dialog helper (ANTS-3358) also fired 4 times in the diff/review viewer's "back to top" button positioning. Quieted the same way (a tightly-scoped, GCC-only pragma), keeping the build warning-clean. No behaviour change.
 

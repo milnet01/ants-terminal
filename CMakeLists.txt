@@ -328,6 +328,10 @@ add_library(ants_core_lib STATIC
     # LIMIT_MATCH hardener) shared by auditengine and terminalwidget.
     src/regexharden.cpp
     src/subsystemmap.cpp
+    # ANTS-3509 — raw-inotify directory-tree watcher (Qt6::Core-only) driving
+    # the Review Changes dialog's live refresh; catches child content edits
+    # that QFileSystemWatcher drops.
+    src/treewatcher.cpp
     src/themedstylesheet.cpp
     src/globalshortcutsportal.cpp
     src/dialogshowtracer.cpp
@@ -1771,7 +1775,13 @@ if(ANTS_TESTS)
                 # + malformed-markup flagging.
                 tests/features/task_list_dialog_context_menu/test_task_list_dialog_context_menu.cpp
                 # ANTS-1842 — DialogChrome D2–D4 affordances.
-                tests/features/dialog_chrome_affordances/test_dialog_chrome_affordances.cpp)
+                tests/features/dialog_chrome_affordances/test_dialog_chrome_affordances.cpp
+                # ANTS-3509 — DirTreeWatcher (raw-inotify live-refresh engine).
+                # Q_OBJECT, so it must link the full set (its aggregated core
+                # moc co-references RemoteControl/VtStream — same reason
+                # LlmClient/LlmDispatcher live off test_core). GUI bundle ⇒
+                # QApplication event loop drives inotify + debounce delivery.
+                tests/features/tree_watcher/test_tree_watcher.cpp)
     target_compile_definitions(test_dialogs PRIVATE
         # ANTS-3346 — debt-sweep bulk-defer gate source-grep lock.
         SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
