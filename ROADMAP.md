@@ -18029,11 +18029,19 @@ server build id so clients can self-diagnose this.
   Kind: doc-fix.
   Source: cold-eyes-2026-07-10 (ANTS-3390 amendment loop 2).
 
-- 📋 [ANTS-3471] **Sweep unused-include clangd warnings across tests/features (cstdio/fstream/sstream carried but unused in test_mcp_codebase_index.cpp + the three mcp_feedback_* test files at least).**
+- ✅ [ANTS-3471] **Sweep unused-include clangd warnings across tests/features (cstdio/fstream/sstream carried but unused in test_mcp_codebase_index.cpp + the three mcp_feedback_* test files at least).**
   clangd [unused-includes] flags `#include <cstdio>` / `<fstream>` / `<sstream>` as not used directly in test_mcp_codebase_index.cpp:9-11 (and previously observed in the mcp_feedback_query / mcp_feedback_log / mcp_focused_test feature tests). Pre-existing boilerplate copied across the feature-test template, not introduced by ANTS-3390. Low risk: verify each is genuinely unused (clangd's fixes-available), drop, rebuild the test_claude bundle. Do a grep across tests/features for the same trio to catch the whole set in one sweep rather than file-by-file. Not urgent — cosmetic editor noise, zero runtime impact.
   **Layman:** Some test files include a few standard C++ headers they no longer use — harmless, but the editor flags them. A tidy-up pass would clear the noise.
   Kind: chore.
   Source: in-session-2026-07-10 (clangd diagnostics during ANTS-3390).
+  Resolved (2026-07-13): swept 457 unused <cstdio>/<fstream>/<sstream>
+  includes across 198 tests/features files (194 fstream, 191 sstream, 72
+  cstdio). Evidence-based removal — a header is dropped only where none of
+  its symbols appear (verified per-header, not per-file), so cstdio stays
+  wherever std::printf/fprintf/stderr are used; 6 stragglers where
+  remove/rename were QFile::remove (Qt method) not the C call were also
+  cleared. Zero runtime impact; full build + 2628/2628 tests green.
+  Commit fe8172d5.
 
 ### 🔌 Ants-MCP feedback from CC sessions (DOOM 2026-06-28)
 
