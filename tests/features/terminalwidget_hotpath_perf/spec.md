@@ -31,11 +31,16 @@ the invariants are source-scrape assertions against
   the rect flag) followed by a triple-click on the same cell runs a
   full-line selection under rectangular-selection semantics.
 
-- **INV-4 / search-match predicate computed once per cell.** The paint
-  cell loop MUST evaluate `isCellSearchMatch(globalLine, col)` at most
-  once per cell (hoisted into a local), not once for the colour decision
-  and again for the opacity decision. Under opacity + an active search
-  the duplicate was a second binary-search probe on every painted cell.
+- **INV-4 / search-match predicate hoisted per row, computed once per
+  cell.** ANTS-1841 removed the double per-cell probe (colour + opacity
+  each ran `isCellSearchMatch`). ANTS-3457 goes further: the paint cell
+  loop MUST NOT call `isCellSearchMatch(globalLine, col)` at all — the
+  underlying `std::lower_bound` into `m_searchMatches` is precomputed
+  once per row into `m_paintSearchSpans`, and the per-cell result is a
+  single `const bool searchMatch` walk of that (typically empty) row-span
+  list, shared between the colour and opacity decisions. A future edit
+  that reintroduces the per-cell `isCellSearchMatch(globalLine, col)`
+  probe (O(cols·log matches) per frame) reverts the fix.
 
 ## Test scope
 

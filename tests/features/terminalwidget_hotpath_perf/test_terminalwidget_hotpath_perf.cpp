@@ -84,18 +84,23 @@ TEST(TerminalWidgetHotPathPerf, Inv3TripleClickClearsRectFlag) {
            "a prior Alt-drag leaves m_rectSelection set";
 }
 
-// INV-4 — paintEvent evaluates the search-match predicate at most once
-// per cell.
+// INV-4 — paintEvent precomputes search-match spans per row (ANTS-3457)
+// and evaluates a single shared per-cell predicate (ANTS-1841).
 TEST(TerminalWidgetHotPathPerf, Inv4SearchMatchComputedOncePerCell) {
     const QString body = functionBody(
         tw(), QStringLiteral("void TerminalWidget::paintEvent("));
     ASSERT_FALSE(body.isEmpty()) << "paintEvent not found";
     EXPECT_TRUE(body.contains(QStringLiteral("const bool searchMatch")))
-        << "paintEvent must hoist the per-cell search-match predicate";
-    EXPECT_EQ(body.count(QStringLiteral("isCellSearchMatch(globalLine, col)")), 1)
-        << "isCellSearchMatch(globalLine, col) is evaluated more than once "
-           "per painted cell — colour + opacity decisions must share one "
-           "result";
+        << "paintEvent must hoist the per-cell search-match result into one "
+           "shared local (colour + opacity decisions)";
+    // ANTS-3457 — the std::lower_bound probe is precomputed per row, so the
+    // per-cell isCellSearchMatch(globalLine, col) call must be gone entirely.
+    EXPECT_EQ(body.count(QStringLiteral("isCellSearchMatch(globalLine, col)")), 0)
+        << "paintEvent still probes isCellSearchMatch per cell — the "
+           "std::lower_bound must be hoisted to a per-row precompute";
+    EXPECT_TRUE(body.contains(QStringLiteral("m_paintSearchSpans")))
+        << "paintEvent must precompute this row's search-match spans once "
+           "into m_paintSearchSpans instead of a per-cell probe";
 }
 
 // INV-5 — paintEvent honors the QPaintEvent damage rect: it reads

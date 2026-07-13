@@ -917,6 +917,21 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
         }
         const auto &hlSpans = hlCacheIt->second;
 
+        // ANTS-3457 — precompute this row's search-match spans once instead
+        // of a per-cell std::lower_bound (isCellSearchMatch was probed for
+        // every painted cell). Mirrors the urlSpans/hlSpans per-row caching
+        // above. m_searchMatches is empty when no search is active, so this
+        // hoists the (short-circuited) probe out of the column loop entirely.
+        m_paintSearchSpans.clear();
+        if (!m_searchMatches.empty()) {
+            auto sm = std::lower_bound(m_searchMatches.begin(), m_searchMatches.end(),
+                globalLine, [](const SearchMatch &m, int gl) { return m.globalLine < gl; });
+            for (; sm != m_searchMatches.end() && sm->globalLine == globalLine; ++sm)
+                m_paintSearchSpans.push_back({sm->col, sm->col + sm->length});
+        }
+        // (isCellCurrentMatch stays per-cell — it is O(1), a single index +
+        // compare, not the std::lower_bound this item targets.)
+
         // --- Ligature-aware text rendering ---
         // We accumulate runs of same-attribute cells and draw them together
         // to let Qt apply font ligatures (JetBrains Mono, Fira Code, etc.).
@@ -978,13 +993,18 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
             }
 
             bool selected = cellInSelection(globalLine, col);
-            // ANTS-1841 — compute the search-match predicate once per
-            // cell. It was evaluated here AND again at the opacity check
-            // below; with opacity < 255 and an active search that doubled
-            // a binary-search probe on every painted cell. `!selected`
-            // short-circuits it for selected cells (which never reach the
-            // opacity branch anyway), so this is strictly non-pessimizing.
-            const bool searchMatch = !selected && isCellSearchMatch(globalLine, col);
+            // ANTS-1841 — compute the search-match predicate once per cell
+            // (used here AND at the opacity check below). ANTS-3457 — the
+            // spans are now precomputed per row (m_paintSearchSpans), so the
+            // per-cell test is a walk of this row's (typically 0) match
+            // ranges rather than a std::lower_bound into all matches.
+            // `!selected` short-circuits it for selected cells (which never
+            // reach the opacity branch anyway), so this is non-pessimizing.
+            const bool searchMatch = !selected && [&] {
+                for (const auto &s : m_paintSearchSpans)
+                    if (col >= s.first && col < s.second) return true;
+                return false;
+            }();
             if (selected) {
                 fg = m_selectionFg;
                 bg = m_selectionBg;
@@ -1268,10 +1288,17 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
         const auto &regions = m_grid->promptRegions();
         const QFontMetrics &sfm = m_smallFontMetrics;  // ANTS-3460 — cached
 
-        for (size_t ri = 0; ri < regions.size(); ++ri) {
-            const auto &pr = regions[ri];
-            int vr = pr.startLine - viewStart;
-            if (vr < 0 || vr >= rows) continue;
+        // ANTS-3458 — regions are sorted ascending by startLine (append-only
+        // at prompt-start, front-eviction on cap), so binary-search to the
+        // first region at/after the viewport top and stop once startLine
+        // falls below it, instead of scanning the whole session's command
+        // history (O(#commands)) every paint just to `continue` past the
+        // off-screen ones.
+        auto prFirst = std::lower_bound(regions.begin(), regions.end(), viewStart,
+            [](const PromptRegion &r, int vs) { return r.startLine < vs; });
+        for (auto it = prFirst; it != regions.end() && it->startLine - viewStart < rows; ++it) {
+            const auto &pr = *it;
+            int vr = pr.startLine - viewStart;   // guaranteed in [0, rows) by the loop bounds
 
             int py = m_padding + vr * m_cellHeight;
 
@@ -1317,7 +1344,7 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
             }
 
             // Fold indicator for completed command output
-            if (pr.hasOutput && pr.commandEndMs > 0 && ri + 1 < regions.size()) {
+            if (pr.hasOutput && pr.commandEndMs > 0 && std::next(it) != regions.end()) {
                 int foldX = m_padding - 2;
                 if (foldX < 0) foldX = 2;
                 QColor foldColor = m_cursorColor;
@@ -1336,7 +1363,7 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
 
                     // Draw fold summary bar
                     int outputStart = pr.endLine + 1;
-                    int nextStart = (ri + 1 < regions.size()) ? regions[ri + 1].startLine : outputStart;
+                    int nextStart = (std::next(it) != regions.end()) ? std::next(it)->startLine : outputStart;
                     int foldedLines = nextStart - outputStart;
                     if (foldedLines > 0) {
                         int barY = py + m_cellHeight;
@@ -1558,13 +1585,20 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     // Sticky command header (pin command at top when scrolling through its output)
     if (m_scrollOffset > 0) {
         const auto &regions = m_grid->promptRegions();
-        // Find the prompt region whose output spans the current viewport top
-        for (int ri = static_cast<int>(regions.size()) - 1; ri >= 0; --ri) {
-            const auto &pr = regions[ri];
-            // The command output starts after pr.endLine; the next region starts at regions[ri+1].startLine
+        // ANTS-3458 — the region whose output spans the viewport top is the
+        // last one with startLine <= viewStart (outputs are contiguous and
+        // non-overlapping between consecutive regions), so binary-search to
+        // that single candidate instead of scanning all regions backwards on
+        // every scrolled paint (was O(#commands) when scrolled deep).
+        auto stickyUp = std::upper_bound(regions.begin(), regions.end(), viewStart,
+            [](int vs, const PromptRegion &r) { return vs < r.startLine; });
+        for (auto it = stickyUp; it != regions.begin(); ) {
+            --it;   // the single candidate; the break below guarantees one pass
+            const auto &pr = *it;
+            // The command output starts after pr.endLine; the next region starts at std::next(it)->startLine
             int outputStart = pr.endLine + 1;
-            int outputEnd = (ri + 1 < static_cast<int>(regions.size()))
-                            ? regions[ri + 1].startLine - 1
+            int outputEnd = (std::next(it) != regions.end())
+                            ? std::next(it)->startLine - 1
                             : scrollbackSize + rows - 1;
             // Viewport top line
             if (outputStart <= viewStart && outputEnd >= viewStart && pr.hasOutput) {
@@ -1613,6 +1647,7 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
                 }
                 break;
             }
+            break;   // single candidate only — never iterate to earlier regions
         }
     }
 
@@ -1668,6 +1703,10 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     // across the full scrollback at a glance — jump targets for
     // Ctrl+Shift+Up/Down. No-op when no prompt regions exist, so users
     // without shell integration see nothing change.
+    // ANTS-3458 — unlike the two loops above, this one is O(#regions) by
+    // design: it is a full-scrollback minimap, so every region maps to a
+    // tick across the whole widget height and cannot be viewport-bounded.
+    // Only runs when m_showCommandMarks is on.
     if (m_showCommandMarks) {
         const auto &regions = m_grid->promptRegions();
         if (!regions.empty()) {

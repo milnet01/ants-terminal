@@ -721,6 +721,11 @@ private:
     };
     mutable std::vector<PaintTextRun> m_paintRuns;
     mutable std::vector<char32_t> m_paintCps;
+    // ANTS-3457 — per-row search-match column spans, precomputed once per
+    // row (one std::lower_bound into m_searchMatches) instead of a per-cell
+    // probe. Same reuse pattern as m_paintRuns: cleared per row, capacity
+    // retained. Each pair is a half-open [startCol, endCol) match range.
+    mutable std::vector<std::pair<int,int>> m_paintSearchSpans;
 
     // Trigger rules
     std::vector<TriggerRule> m_triggerRules;
