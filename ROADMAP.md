@@ -18798,6 +18798,28 @@ build).
   Lanes: mcpprojection, remotecontrol.
   Source: finbreak feedback 2026-07-13 (re-confirm of ANTS-3481; enhancement suggestion).
 
+- 📋 [ANTS-3508] **Add the two missing migrate_v2 conformance fixtures ANTS-3446 §6 describes.**
+  docs/specs/ANTS-3446.md §6 describes two conformance cases that have no fixture
+  in tests/features/feedback_log_migrate_v2/test_feedback_log_migrate_v2.cpp (18
+  TEST()s, none covering these; found in the ANTS-3475 cold-eyes loop 4):
+  (1) **non-canonical anchor** — a `## Status of prior items (…)` heading (non-canonical,
+  does NOT match maintainerAnchorRe) must NOT set the watermark (lastMaintainerLine
+  stays at the prior canonical anchor or -1), and its table is left in place. Guards
+  the §2.3 precondition that only `^## 📋 Ants Terminal roadmap tracking( update)? \(`
+  sets the watermark.
+  (2) **above-watermark prose unreported** — a below-... sorry, an ABOVE-watermark
+  `### ` block that is not finding-shaped (prose) must be left line-less AND reported
+  in NEITHER orphans[] nor unclassified[] (feedbackfile.cpp:1159 — the "not-shaped &
+  above → expected already-reviewed prose: not reported" branch). Currently no
+  fixture has an above-watermark prose block (MixedFixture's only above-watermark
+  block, Issue #0, is finding-shaped → orphan).
+  Both are real code paths with correct behaviour; only the regression coverage is
+  missing. §6 now says "tracked for coverage, ANTS-3508" against each. Small: two
+  synthetic-content cases in the existing pure-migrateV2 test file, no new bundle.
+  **Layman:** The migrate_v2 design doc lists two test scenarios that were never actually turned into tests — add them so the doc's coverage claims are true.
+  Kind: test.
+  Source: cold-eyes-2026-07-13 (ANTS-3475 loop 4).
+
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
 Triage of the 2026-06-30 → 2026-07-01 un-triaged feedback tails from Vestige,
