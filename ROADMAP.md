@@ -9454,7 +9454,7 @@ indie-review finding.
   Kind: investigate.
   Source: user-request-2026-05-15.
 
-- 📋 [ANTS-1549] **CI speed-up — ccache + apt cache + paths-ignore for docs-only pushes.**
+- ✅ [ANTS-1549] **CI speed-up — ccache + apt cache + paths-ignore for docs-only pushes.**
   Current CI wall-time: ~12 min per push on `build-test` + ~12-15 min `build-asan` (run in parallel; ~12-15 min effective wall-time per push). With the current cadence of 5-10 pushes per day during fold-in seasons that's an hour+ of wait between push and green.
   
   Three low-effort wins (rough estimates):
@@ -9471,6 +9471,7 @@ indie-review finding.
   Lanes: ci, github-actions, perf.
   Kind: perf.
   Source: user-request-2026-05-18.
+  Resolved (2026-07-13, verify-before-fix catch — already shipped, bullet never flipped): all three core wins are live in .github/workflows/ci.yml (header comment "ANTS-1549 speedups (2026-05-18)"). (1) ccache — actions/cache@v5.0.5 SHA-pinned + CMAKE_C/CXX_COMPILER_LAUNCHER=ccache on both build-test and build-asan (ci.yml:68-90, 189-208), separate release/asan cache keys. (2) apt cache — awalsh128/cache-apt-pkgs-action@v1.6.1 for the shared Qt6/ninja/cppcheck dep set on both jobs (ci.yml:57-66, 179-187). (3) paths-ignore on the push trigger covering ROADMAP.md/CHANGELOG.md/README.md/PLUGINS.md/LICENSE/docs/**/.roadmap-counter — broader than the bullet's list; PRs still run the full gate (ci.yml:25-34). Actions are 40-char-SHA-pinned per the supply-chain hardening note. The bullet's "Stretch idea (separate spec)" — a split fast-lint job — was explicitly out of this item's scope and remains unimplemented; leave as a future enhancement, not a blocker for this item.
 
 - ✅ [ANTS-1556] **`--preset=fast` is functionally identical to `--preset=default` — give it a real differentiator.**
   User reported the build time hasn't changed after the pull-7
