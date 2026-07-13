@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`session_orient` now actively flags a stale MCP-server binary** (ANTS-3499)
+  When the running server's build commit is behind the project's HEAD, session_orient emits a server_build_stale block (behind_commits, built, head, hint) so a Claude Code session on an old binary is told to relaunch before trusting shipped status — instead of silently re-reporting already-fixed bugs. Advisory only; never blocks; skipped when the build commit is unknown to the repo or caller_cwd is not a git checkout.
+
 - **More tab colours, plus a "Custom colour…" picker for any colour you like (ANTS-1374).**
   Right-click a tab → the colour list now offers 14 preset colours (up from
   7), and a new "Custom colour…" entry opens a full colour picker so you can
