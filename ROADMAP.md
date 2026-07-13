@@ -18800,7 +18800,7 @@ build).
   Lanes: mcpprojection, remotecontrol.
   Source: finbreak feedback 2026-07-13 (re-confirm of ANTS-3481; enhancement suggestion).
 
-- 📋 [ANTS-3508] **Add the two missing migrate_v2 conformance fixtures ANTS-3446 §6 describes.**
+- ✅ [ANTS-3508] **Add the two missing migrate_v2 conformance fixtures ANTS-3446 §6 describes.**
   docs/specs/ANTS-3446.md §6 describes two conformance cases that have no fixture
   in tests/features/feedback_log_migrate_v2/test_feedback_log_migrate_v2.cpp (18
   TEST()s, none covering these; found in the ANTS-3475 cold-eyes loop 4):
@@ -18821,6 +18821,7 @@ build).
   **Layman:** The migrate_v2 design doc lists two test scenarios that were never actually turned into tests — add them so the doc's coverage claims are true.
   Kind: test.
   Source: cold-eyes-2026-07-13 (ANTS-3475 loop 4).
+  Resolved (2026-07-13): added both fixtures to tests/features/feedback_log_migrate_v2/test_feedback_log_migrate_v2.cpp — NonCanonicalAnchorNoWatermark (a non-canonical `## Status of prior items (…)` heading leaves the watermark at -1, so a finding above it is stamped not orphaned, and its table stays in place — guards the §2.3 maintainerAnchorRe precondition) and AboveWatermarkProseUnreported (an above-watermark prose `### ` block is left line-less and reported in neither orphans[] nor unclassified[] — feedbackfile.cpp:1159). 20/20 migrate_v2 tests green (was 18); spec §6 caveats replaced with the fixture names.
 
 - ✅ [ANTS-3509] **Review Changes dialog "live" auto-refresh misses changes until a manual Refresh.**
   The Review Changes / diff dialog (src/diffviewer.cpp) shows "● live — auto-refresh

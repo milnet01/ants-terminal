@@ -497,3 +497,75 @@ TEST(FeedbackMigrateV2, Ants3474BackfillFromTracking) {
         QStringLiteral("- **Proposed ID:** ANTS-3400")));
     EXPECT_EQ(off.newContent.count(kStamp), 2);
 }
+
+// ANTS-3508 — §2.3 precondition: a NON-canonical `## Status of prior items (…)`
+// heading (no 📋, different phrase → fails maintainerAnchorRe) must NOT set the
+// watermark. The finding sits ABOVE that heading: if the heading wrongly set the
+// watermark, the finding would be an orphan; because it does not, the watermark
+// stays -1 and the finding is stamped. The non-canonical table is left in place.
+TEST(FeedbackMigrateV2, NonCanonicalAnchorNoWatermark) {
+    const char *fix =
+        "<!-- ants-mcp-feedback: 1 -->\n"                              // 1
+        "# T\n"                                                        // 2
+        "\n"                                                           // 3
+        "### Issue #1 \xE2\x80\x94 fresh, above the status recap\n"    // 4
+        "- **What:** a gap.\n"                                         // 5
+        "\n"                                                           // 6
+        "## Status of prior items (2026-06-01, maintainer)\n"          // 7
+        "\n"                                                           // 8
+        "| Item | Status |\n"                                          // 9
+        "|---|---|\n"                                                  // 10
+        "| old thing | done |\n";                                      // 11
+    const QString in = QString::fromUtf8(fix);
+    // The non-canonical heading is not recognised as a tracking block.
+    EXPECT_EQ(FeedbackFile::parse(in).lastMaintainerLine, -1);
+
+    const FeedbackFile::MigrateResult r = FeedbackFile::migrateV2(in);
+    // Watermark -1 ⇒ the finding above the recap is still "below" ⇒ stamped,
+    // not orphaned (proves the recap heading did not move the watermark).
+    ASSERT_EQ(r.stamped.size(), 1);
+    EXPECT_TRUE(r.stamped.at(0).heading.contains(QStringLiteral("Issue #1")));
+    EXPECT_EQ(r.orphans.size(), 0);
+    EXPECT_EQ(r.newContent.count(kStamp), 1);
+    // The non-canonical heading + its table survive verbatim, in place.
+    EXPECT_TRUE(r.newContent.contains(
+        QStringLiteral("## Status of prior items (2026-06-01, maintainer)")));
+    EXPECT_TRUE(r.newContent.contains(QStringLiteral("| old thing | done |")));
+}
+
+// ANTS-3508 — §2.4 / feedbackfile.cpp:1159: an ABOVE-watermark `### ` block that
+// is NOT finding-shaped (prose) is left line-less AND reported in NEITHER
+// orphans[] nor unclassified[] (expected already-reviewed prose). The below-
+// watermark finding is stamped as usual; only the prose block exercises the
+// "not-shaped & above → not reported" branch.
+TEST(FeedbackMigrateV2, AboveWatermarkProseUnreported) {
+    const char *fix =
+        "<!-- ants-mcp-feedback: 1 -->\n"                              // 1
+        "# T\n"                                                        // 2
+        "\n"                                                           // 3
+        "### Positive note \xE2\x80\x94 apply_edits felt instant\n"    // 4
+        "It just worked.\n"                                            // 5
+        "\n"                                                           // 6
+        "## \xF0\x9F\x93\x8B Ants Terminal roadmap tracking "
+        "(2026-06-01, maintainer)\n"                                   // 7
+        "\n"                                                           // 8
+        "| # | Status |\n"                                            // 9
+        "|---|---|\n"                                                  // 10
+        "| #1 | \xE2\x9C\x85 |\n"                                     // 11
+        "\n"                                                           // 12
+        "### Issue #1 \xE2\x80\x94 below, fresh\n"                    // 13
+        "- **What:** a gap.\n";                                       // 14
+    const FeedbackFile::MigrateResult r =
+        FeedbackFile::migrateV2(QString::fromUtf8(fix));
+    // Below-watermark finding stamped; the above-watermark prose is silent.
+    ASSERT_EQ(r.stamped.size(), 1);
+    EXPECT_TRUE(r.stamped.at(0).heading.contains(QStringLiteral("Issue #1")));
+    EXPECT_EQ(r.orphans.size(), 0);        // prose ≠ finding_shaped_above
+    EXPECT_EQ(r.unclassified.size(), 0);   // prose above ≠ freeform below
+    // The prose block carries no stamp; its heading + body survive verbatim.
+    EXPECT_FALSE(r.newContent.contains(
+        QString::fromUtf8("### Positive note \xE2\x80\x94 apply_edits felt "
+                          "instant\n") + kStamp));
+    EXPECT_TRUE(r.newContent.contains(QStringLiteral("It just worked.")));
+    EXPECT_EQ(r.newContent.count(kStamp), 1);
+}
