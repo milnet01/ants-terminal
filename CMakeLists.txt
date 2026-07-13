@@ -1015,6 +1015,7 @@ if(ANTS_TESTS)
                 tests/features/tab_close_button_visible/test_tab_close_button_visible.cpp
                 tests/features/qpointer_destroyed_safe/test_qpointer_destroyed_safe.cpp
                 tests/features/scroll_to_bottom_chip_size/test_scroll_to_bottom_chip_size.cpp
+                tests/features/prompt_jump_chip/test_prompt_jump_chip.cpp
                 tests/features/review_changes_branches/test_review_changes_branches.cpp
                 tests/features/review_changes_clickable/test_review_changes_clickable.cpp
                 tests/features/review_button_untracked/test_review_button_untracked.cpp

@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **Prompt-jump chips in the scrollback.** (ANTS-1330)
+  Two small floating buttons (↑ / ↓) now appear above the "back to
+  bottom" chip when you scroll up: click ↑ to jump to your previous
+  command, ↓ for the next — the mouse companion to the existing
+  Ctrl+Shift+Up/Down shortcuts. They only show once you've scrolled up
+  and your shell has command markers (OSC 133) enabled.
+
 - **Stamp the ship-date (+ short commit) into shipped feedback-file findings so a reporting session can self-check its server_build before re-reporting.** (ANTS-3504)
   When we mark a bug fixed in another project's feedback file, also record WHICH build it shipped in. Then that project's Claude session can compare against its own running terminal and know "my copy predates this fix — restart before assuming it's still broken," instead of re-filing an already-fixed bug.
 

@@ -794,6 +794,12 @@ private:
 
     // Scroll-to-bottom button
     QPushButton *m_scrollToBottomBtn = nullptr;
+    // ANTS-1330 — prompt-jump chips (previous/next OSC 133 prompt): mouse
+    // companions to the Ctrl+Shift+Up/Down keyboard nav. Themed by
+    // styleScrollToBottomButton, positioned/toggled by
+    // updateScrollToBottomButton, and click-wired to navigatePrompt(-1)/(1).
+    QPushButton *m_promptPrevBtn = nullptr;
+    QPushButton *m_promptNextBtn = nullptr;
     void updateScrollToBottomButton();
     // ANTS-1984 — theme the floating scroll-to-bottom chip from the active
     // palette (it hard-coded its rgba colours before, ignoring the theme).

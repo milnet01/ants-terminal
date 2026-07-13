@@ -445,7 +445,7 @@ for the rotation contract.
   exit-code-mismatched HMACs. See
   [CHANGELOG.md §0.6.31](CHANGELOG.md#0631--2026-04-17).
 
-- 📋 [ANTS-1330] **Floating prompt-jump button in scrollback —
+- ✅ [ANTS-1330] **Floating prompt-jump button in scrollback —
   visual companion to the back-to-bottom chip.** User request
   2026-05-14. Add a small floating chip (styled like the
   scroll-to-bottom chip — circular, ID-scoped stylesheet so it
@@ -475,6 +475,7 @@ for the rotation contract.
   Source: user-request-2026-05-14.
   Priority: after the current token-saving / Claude-Code-
   integration sprint.
+  Resolved (2026-07-13): shipped the two floating prompt-jump chips (↑ previous / ↓ next) as m_promptPrevBtn/m_promptNextBtn in TerminalWidget, stacked above the scroll-to-bottom chip, shown when scrolled up AND at least one OSC 133 prompt exists. Click handlers reuse navigatePrompt(-1)/(1); theming reuses styleScrollToBottomButton (per-chip ID-scoped reset, ANTS-1326); positioning reuses updateScrollToBottomButton's local x/y (search-bar shift inherited). Design spec docs/specs/ANTS-1330.md cold-eyes-clean (5 loops). Test-first: tests/features/prompt_jump_chip/ (PromptJumpChip.Main, 18 invariants) written red against the feature-absent tree then driven green; existing scroll_to_bottom_chip_size stays green after the styler refactor. Full suite 2626/2626. Goes live on relaunch.
 
 - ✅ [ANTS-1371] **Menu-bar "Sponsors" entry → opens GitHub
   Sponsors page.** User request 2026-05-14. (Renumbered from

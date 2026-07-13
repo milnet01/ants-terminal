@@ -337,6 +337,39 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
         update();
     });
 
+    // ANTS-1330 — floating prompt-jump chips: mouse companions to the
+    // Ctrl+Shift+Up/Down keyboard prompt navigation. The click handlers reuse
+    // navigatePrompt() (no new lookup/scroll math); theming and positioning
+    // reuse styleScrollToBottomButton()/updateScrollToBottomButton(). Each chip
+    // is constructed and fully wired before the next is constructed (prev
+    // first) so the prompt_jump_chip source-grep test can window each chip's
+    // block by its own construction line.
+    m_promptPrevBtn = new QPushButton(this);
+    m_promptPrevBtn->setText("↑");  // up arrow — previous prompt
+    m_promptPrevBtn->setObjectName("promptPrevBtn");
+    m_promptPrevBtn->setFixedSize(32, 32);
+    m_promptPrevBtn->setToolTip("Jump to previous prompt (Ctrl+Shift+Up)");
+    m_promptPrevBtn->hide();
+    connect(m_promptPrevBtn, &QPushButton::clicked, this, [this]() {
+        navigatePrompt(-1);
+    });
+
+    m_promptNextBtn = new QPushButton(this);
+    m_promptNextBtn->setText("↓");  // down arrow — next prompt
+    m_promptNextBtn->setObjectName("promptNextBtn");
+    m_promptNextBtn->setFixedSize(32, 32);
+    m_promptNextBtn->setToolTip("Jump to next prompt (Ctrl+Shift+Down)");
+    m_promptNextBtn->hide();
+    connect(m_promptNextBtn, &QPushButton::clicked, this, [this]() {
+        navigatePrompt(1);
+    });
+
+    // Re-seed the theme now that the prompt chips exist — the seed above ran
+    // before their construction and null-skipped them (styleScrollToBottomButton
+    // guards each chip independently).
+    styleScrollToBottomButton(m_grid->defaultBg(), m_grid->defaultFg(),
+                              m_cursorColor, QColor());
+
     setMinimumSize(m_cellWidth * 20 + m_padding * 2, m_cellHeight * 5 + m_padding * 2);
     setMouseTracking(true);
 
@@ -660,21 +693,55 @@ void TerminalWidget::applyThemeColors(const QColor &fg, const QColor &bg,
 void TerminalWidget::styleScrollToBottomButton(const QColor &bg, const QColor &fg,
                                                const QColor &accent,
                                                const QColor &border) {
-    if (!m_scrollToBottomBtn) return;
     const QColor surface = bg.lightnessF() > 0.5 ? bg.darker(112) : bg.lighter(170);
     const QColor brd = border.isValid() ? border : accent;
     const QString surfaceRgba = QStringLiteral("rgba(%1,%2,%3,210)")
         .arg(surface.red()).arg(surface.green()).arg(surface.blue());
-    m_scrollToBottomBtn->setStyleSheet(QStringLiteral(
-        "QPushButton#scrollToBottomBtn {"
-        " background: %1; color: %2;"
-        " border: 1px solid %3;"
-        " border-radius: 16px; font-size: 14px;"
-        " padding: 0; min-width: 32px; max-width: 32px;"
-        " min-height: 32px; max-height: 32px; }"
-        "QPushButton#scrollToBottomBtn:hover {"
-        " background: %4; color: %5; }")
-        .arg(surfaceRgba, fg.name(), brd.name(), accent.name(), bg.name()));
+    // Each 32px circular chip carries its own ID-scoped stylesheet with an
+    // explicit padding/min/max reset (ANTS-1326) so the app-wide QPushButton
+    // cascade can't inflate/clip it. The three near-identical blocks are kept
+    // inline — NOT a %1-parameterised loop — on purpose: the ANTS-1326
+    // scroll_to_bottom_chip_size and ANTS-1330 prompt_jump_chip source-grep
+    // tests assert the literal `QPushButton#<id> {` reset blocks, which a
+    // parameterised selector would hide. Each chip is null-guarded on its own
+    // pointer (do not gate the ANTS-1330 prompt chips on m_scrollToBottomBtn —
+    // they are distinct widgets constructed alongside it).
+    if (m_scrollToBottomBtn) {
+        m_scrollToBottomBtn->setStyleSheet(QStringLiteral(
+            "QPushButton#scrollToBottomBtn {"
+            " background: %1; color: %2;"
+            " border: 1px solid %3;"
+            " border-radius: 16px; font-size: 14px;"
+            " padding: 0; min-width: 32px; max-width: 32px;"
+            " min-height: 32px; max-height: 32px; }"
+            "QPushButton#scrollToBottomBtn:hover {"
+            " background: %4; color: %5; }")
+            .arg(surfaceRgba, fg.name(), brd.name(), accent.name(), bg.name()));
+    }
+    if (m_promptPrevBtn) {
+        m_promptPrevBtn->setStyleSheet(QStringLiteral(
+            "QPushButton#promptPrevBtn {"
+            " background: %1; color: %2;"
+            " border: 1px solid %3;"
+            " border-radius: 16px; font-size: 14px;"
+            " padding: 0; min-width: 32px; max-width: 32px;"
+            " min-height: 32px; max-height: 32px; }"
+            "QPushButton#promptPrevBtn:hover {"
+            " background: %4; color: %5; }")
+            .arg(surfaceRgba, fg.name(), brd.name(), accent.name(), bg.name()));
+    }
+    if (m_promptNextBtn) {
+        m_promptNextBtn->setStyleSheet(QStringLiteral(
+            "QPushButton#promptNextBtn {"
+            " background: %1; color: %2;"
+            " border: 1px solid %3;"
+            " border-radius: 16px; font-size: 14px;"
+            " padding: 0; min-width: 32px; max-width: 32px;"
+            " min-height: 32px; max-height: 32px; }"
+            "QPushButton#promptNextBtn:hover {"
+            " background: %4; color: %5; }")
+            .arg(surfaceRgba, fg.name(), brd.name(), accent.name(), bg.name()));
+    }
 }
 
 bool TerminalWidget::event(QEvent *event) {
@@ -4750,8 +4817,29 @@ void TerminalWidget::updateScrollToBottomButton() {
         m_scrollToBottomBtn->move(x, y);
         m_scrollToBottomBtn->show();
         m_scrollToBottomBtn->raise();
+        // ANTS-1330 — the prompt-jump chips stack above the back-to-bottom
+        // chip, reusing its x/y (y already carries the search-bar shift, so
+        // they inherit it). Shown only when scrolled up AND at least one OSC
+        // 133 prompt has been recorded — a shell without shell-integration
+        // records none, so the chips would be inert; hide them rather than
+        // show dead controls.
+        if (m_promptPrevBtn && m_promptNextBtn) {
+            if (!m_grid->promptRegions().empty()) {
+                m_promptNextBtn->move(x, y - 40);
+                m_promptNextBtn->show();
+                m_promptNextBtn->raise();
+                m_promptPrevBtn->move(x, y - 80);
+                m_promptPrevBtn->show();
+                m_promptPrevBtn->raise();
+            } else {
+                m_promptNextBtn->hide();
+                m_promptPrevBtn->hide();
+            }
+        }
     } else {
         m_scrollToBottomBtn->hide();
+        if (m_promptNextBtn) m_promptNextBtn->hide();
+        if (m_promptPrevBtn) m_promptPrevBtn->hide();
     }
 }
 
