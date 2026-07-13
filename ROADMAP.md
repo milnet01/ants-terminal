@@ -8932,11 +8932,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: investigate.
   Source: debt-sweep-2026-06-28.
 
-- 📋 [ANTS-3344] **debt_sweep code-quality detectors fire on deliberate test-fixture data.**
+- ✅ [ANTS-3344] **debt_sweep code-quality detectors fire on deliberate test-fixture data.**
   orphan_q_unused / obsolete_qstring_idiom / dead_branch_after_return scan tests/features/ & tests/audit_fixtures/, which embed bad patterns as fixtures. Add a shared fixture-dir exclusion (obsolete_qstring already special-cases the engine's own source — generalise it).
   **Layman:** Detectors flag the bad-pattern examples that test files deliberately contain as inputs.
   Kind: fix.
   Source: debt-sweep-2026-06-28.
+  Resolved (2026-07-13): added a shared `isFixtureData(rel)` predicate (matches `tests/features/` and `tests/audit_fixtures/` subtrees) and wired it into all three code-quality detectors — orphan_q_unused / obsolete_qstring_idiom / dead_branch_after_return — so they skip the fixture files that deliberately embed bad patterns. obsolete_qstring's separate definitional self-match on the engine source stays. Regression test `DebtSweepEngine.CodeQualityDetectorsSkipFixtureData` commits the same bad snippet into tests/features/, tests/audit_fixtures/ and src/, asserting each detector flags only src/real.cpp. debt_sweep_engine suite 28/28 green.
 
 - ✅ [ANTS-3345] **debt_sweep_scan produces unbounded output — transport timeout + token overflow.**
   153-file diff times out the MCP transport; even a 10-file scope returns ~134k chars on one line (1000+ findings), bypassing the offload path and blowing the token cap. Needs result cap + pagination + offload (claude.mcp_offload_large_results) and benefits from the detector-FP fixes above that shrink volume.

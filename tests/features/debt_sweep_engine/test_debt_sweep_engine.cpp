@@ -187,6 +187,44 @@ TEST(DebtSweepEngine, OrphanQUnusedSkipsTypedefsAndComments) {
 }
 
 // ---------------------------------------------------------------------------
+// ANTS-3344 — the three code-quality detectors skip test-fixture subtrees
+// (tests/features/, tests/audit_fixtures/), which embed bad patterns as
+// deliberate conformance inputs, while still flagging real src/ code.
+// ---------------------------------------------------------------------------
+
+TEST(DebtSweepEngine, CodeQualityDetectorsSkipFixtureData) {
+    if (!gitAvailable()) GTEST_SKIP() << "git not available";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString dir = tmp.path();
+    ASSERT_EQ(runGitIn(dir, {"init", "-q"}), 0);
+    runGitIn(dir, {"config", "user.email", "t@example.com"});
+    runGitIn(dir, {"config", "user.name", "Test"});
+
+    // A file that trips all three detectors: an orphan Q_UNUSED, an
+    // obsolete QString idiom, and a statement after `return;`.
+    const QByteArray bad =
+        "void f() {\n"
+        "    Q_UNUSED(ghost);\n"
+        "    QString s = QString::null;\n"
+        "    return;\n"
+        "    trailing();\n"
+        "}\n";
+    writeFile(dir, "tests/features/foo/test_foo.cpp", bad);
+    writeFile(dir, "tests/audit_fixtures/rule/bad.cpp", bad);
+    writeFile(dir, "src/real.cpp", bad);  // control — must still flag.
+    ASSERT_EQ(runGitIn(dir, {"add", "-A"}), 0);
+
+    DebtSweepEngine::ScanOptions opt;
+    for (const auto &out : {DebtSweepEngine::detectOrphanQUnused(dir, opt),
+                            DebtSweepEngine::detectObsoleteQStringIdioms(dir, opt),
+                            DebtSweepEngine::detectDeadBranchAfterReturn(dir, opt)}) {
+        ASSERT_EQ(out.size(), 1);  // only src/real.cpp, never the fixtures.
+        EXPECT_EQ(out[0].file, QString("src/real.cpp"));
+    }
+}
+
+// ---------------------------------------------------------------------------
 // INV-4 — detectMissingInvariantTests
 // ---------------------------------------------------------------------------
 

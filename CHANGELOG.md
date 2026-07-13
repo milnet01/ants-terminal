@@ -102,6 +102,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Debt-sweep code-quality detectors no longer flag deliberate test-fixture data.** (ANTS-3344)
+  orphan_q_unused / obsolete_qstring_idiom / dead_branch_after_return now skip the tests/features/ and tests/audit_fixtures/ subtrees, whose files embed those exact patterns as conformance inputs (ANTS-3344).
+
 - **Review Changes dialog now refreshes live on file edits, not just commits (ANTS-3509)**
   The dialog advertised "live — auto-refresh on git changes" but went stale until
   you pressed Refresh, because its QFileSystemWatcher could not see a content edit

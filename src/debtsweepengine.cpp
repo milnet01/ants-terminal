@@ -122,6 +122,20 @@ QStringList lsFiles(const QString &projectPath, const QStringList &globs,
     return rows;
 }
 
+// Test-fixture subtrees deliberately embed the very patterns the
+// code-quality detectors hunt for — an orphan Q_UNUSED, a QString::null,
+// a statement after `return;` — as conformance inputs. Scanning them is a
+// guaranteed false positive (ROADMAP ANTS-3344), so orphan_q_unused /
+// obsolete_qstring_idiom / dead_branch_after_return skip these two trees.
+// This is distinct from obsolete_qstring's definitional self-match on the
+// engine's own source, which stays a per-detector special-case below.
+bool isFixtureData(const QString &rel) {
+    return rel.startsWith(QStringLiteral("tests/features/"))
+           || rel.contains(QStringLiteral("/tests/features/"))
+           || rel.startsWith(QStringLiteral("tests/audit_fixtures/"))
+           || rel.contains(QStringLiteral("/tests/audit_fixtures/"));
+}
+
 }  // anonymous
 
 // ---------------------------------------------------------------------------
@@ -332,6 +346,7 @@ QList<Finding> detectOrphanQUnused(
     const QStringList paths = files.split('\n', Qt::SkipEmptyParts);
     for (const QString &rel : paths) {
         if (++processed > 5000) break;
+        if (isFixtureData(rel)) continue;
         const QString abs = projectPath + QChar('/') + rel;
         const QString body = slurpUtf8(abs);
         if (body.isEmpty()) continue;
@@ -643,6 +658,7 @@ QList<Finding> detectObsoleteQStringIdioms(
         projectPath, {QStringLiteral("*.cpp"), QStringLiteral("*.h")});
     QList<Finding> out;
     for (const QString &rel : files) {
+        if (isFixtureData(rel)) continue;
         // This engine's own source *names* the obsolete idioms as data
         // (the obsoleteQtIdioms() table + its anchored regex literals).
         // Those are definitions, not occurrences-in-use, so excluding
@@ -758,6 +774,7 @@ QList<Finding> detectDeadBranchAfterReturn(
         projectPath, {QStringLiteral("*.cpp"), QStringLiteral("*.h")});
     QList<Finding> out;
     for (const QString &rel : files) {
+        if (isFixtureData(rel)) continue;
         const QString body = slurpUtf8(projectPath + QChar('/') + rel);
         if (body.isEmpty()) continue;
         out += detail::scanDeadBranchAfterReturn(rel, body);
