@@ -18,7 +18,11 @@ tracking tables in place**:
    watermark**, and has **no** existing `**Proposed ID:**` line.
 
 Nothing else changes: no tracking table is moved, collapsed, or deleted, so the
-v1 watermark — and thus the shipped un-triaged delta — is preserved.
+v1 watermark (`lastMaintainerLine`) is byte-stable. (After ANTS-3448 `parse()` is
+marker-aware, so the migrated `: 2` file's delta follows the v2
+inline-`**Proposed ID:**` rule; the blank stamps are what surface the migrated
+findings as un-triaged — the invariant is watermark preservation, not delta
+identity across the version bump.)
 
 **Optional (ANTS-3474) — `backfill_from_tracking:true`.** Real files' findings
 already carry a **blank** `- **Proposed ID:** _(maintainer to assign)_` line
@@ -45,8 +49,9 @@ the pre-ANTS-3474 behaviour.
   finding-shaped blocks are never stamped; the last is an `orphan`, a
   below-watermark not-finding-shaped block is `unclassified`.
 - **INV-4** — no v1 tracking table is moved/collapsed/deleted;
-  `lastMaintainerLine` is unchanged and the v1 delta is preserved modulo the
-  inserted stamp lines.
+  `lastMaintainerLine` is byte-stable across the `: 1`→`: 2` bump. (The migrated
+  file then reads under the marker-aware v2 rule — ANTS-3448 — so the invariant is
+  watermark preservation, not delta identity.)
 - **INV-5** — every below-watermark line-less `### ` block is either stamped or
   reported in `unclassified[]` (no silent drop).
 - **INV-6** — idempotent: a second run on a `: 2` file is a byte-identical no-op
