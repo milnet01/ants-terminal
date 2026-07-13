@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **More tab colours, plus a "Custom colour…" picker for any colour you like (ANTS-1374).**
+  Right-click a tab → the colour list now offers 14 preset colours (up from
+  7), and a new "Custom colour…" entry opens a full colour picker so you can
+  tag a tab with any colour at all. Custom colours are remembered across
+  restarts and stay put when you drag tabs around, exactly like the presets.
+
 - **Prompt-jump chips in the scrollback.** (ANTS-1330)
   Two small floating buttons (↑ / ↓) now appear above the "back to
   bottom" chip when you scroll up: click ↑ to jump to your previous

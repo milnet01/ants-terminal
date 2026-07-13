@@ -15,6 +15,7 @@
 #include "config.h"
 
 #include "../../_support/xdg_guard.h"
+#include "../../_support/srcgrep.h"  // ANTS-1374 — picker source-grep
 
 #include <QApplication>
 #include <QColor>
@@ -213,6 +214,40 @@ int runPersistenceRoundTrip() {
     return failures;
 }
 
+// ANTS-1374: source-grep contract for the tab-colour PICKER menu
+// (MainWindow::showTabColorMenu). The runtime tests above cover the
+// ColoredTabBar / Config storage the picker feeds; the picker menu
+// itself needs a full MainWindow to drive at runtime (spec §Out of
+// scope), so its palette size + custom-colour surface is locked here by
+// reading mainwindow.cpp source — the same approach as help_about_menu.
+int runPickerMenuSourceContract() {
+    int failures = 0;
+    const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    CHECK(!src.empty(), "mainwindow.cpp readable via SRC_MAINWINDOW_CPP_PATH");
+    const std::string body =
+        ants_test::slurpFunctionBody(src, "MainWindow::showTabColorMenu");
+    CHECK(!body.empty(), "showTabColorMenu body located");
+
+    // Part 1 — palette expanded from 7 to the full Catppuccin accent row.
+    // Each valid swatch is a QColor(0x..) constructor; the "None"/clear
+    // entry uses a default QColor(). Count only within the function body so
+    // unrelated QColor(0x..) uses elsewhere in mainwindow.cpp don't inflate.
+    const std::size_t swatches = ants_test::countOccurrences(body, "QColor(0x");
+    CHECK(swatches >= 14,
+          "picker palette has >= 14 named colour swatches (ANTS-1374 part 1)");
+
+    // Part 2 — a "Custom" entry opens QColorDialog for an arbitrary per-tab
+    // colour, persisted through the SAME persistTabColor path as the presets
+    // (so a custom pick survives restart + drag-reorder identically).
+    CHECK(body.find("Custom") != std::string::npos,
+          "picker offers a Custom colour entry (ANTS-1374 part 2)");
+    CHECK(body.find("QColorDialog::getColor") != std::string::npos,
+          "custom entry opens QColorDialog");
+    CHECK(body.find("persistTabColor") != std::string::npos,
+          "picker persists choices via persistTabColor");
+    return failures;
+}
+
 }  // namespace
 
 TEST(TabColor, Main) {
@@ -230,9 +265,11 @@ TEST(TabColor, Main) {
     failures += runReorderSurvives();
     failures += runRemoveCleansUp();
     failures += runPersistenceRoundTrip();
+    failures += runPickerMenuSourceContract();
 
     if (failures == 0) {
-        std::printf("tab_color: round-trip + reorder + remove + persist pass\n");
+        std::printf("tab_color: round-trip + reorder + remove + persist + "
+                    "picker-source pass\n");
         return;
     }
     std::fprintf(stderr, "tab_color: %d failure(s)\n", failures);

@@ -6232,7 +6232,7 @@ class; the deferrals below cover the rest.
 
 #### 🧹 Debt-sweep fold-in (2026-05-14, build warnings)
 
-- 📋 [ANTS-1374] **Expand the tab title-background colour palette
+- ✅ [ANTS-1374] **Expand the tab title-background colour palette
   + picker.** The current `tab_color_sequence` config key
   (`config.cpp:1019–1027`) accepts an ordered JSON array of
   colours; the in-app picker (`mainwindow.cpp` tab-context menu)
@@ -6249,6 +6249,7 @@ class; the deferrals below cover the rest.
   arbitrary colours.
   Kind: enhancement.
   Source: user-request-2026-05-14.
+  Resolved (2026-07-13). Both parts shipped in MainWindow::showTabColorMenu (src/mainwindow.cpp). Part 1: palette expanded 7→14 named swatches — the full Catppuccin Mocha accent row (Rosewater/Flamingo/Pink/Purple/Lavender/Red/Maroon/Orange/Yellow/Green/Teal/Sky/Sapphire/Blue), ordered warm→cool, +None. Preset names kept stable (Purple=Mauve, Orange=Peach) so existing users' vocabulary matches. Part 2: added a "Custom colour..." entry opening QColorDialog (seeded with the tab's current colour) for arbitrary per-tab colours; routes through the SAME setTabColor + persistTabColor path as the presets, so a custom pick renders, survives drag-reorder, and persists across restart identically (persistTabColor already stores HexArgb — the code comment had anticipated exactly this). Contrast: the added presets sit in the same pastel-lightness band as the shipped 7, so tab-label contrast is unchanged (no new risk); custom colours are the user's explicit choice. Test-first: extended tests/features/tab_color (runtime ColoredTabBar/Config storage already covered the persist path the custom entry reuses) with a source-grep runPickerMenuSourceContract over showTabColorMenu — asserts ≥14 swatches + Custom/QColorDialog + persistTabColor reuse. Watched it fail RED (3 failures: 7<14, no Custom, no QColorDialog) against pre-impl code, then green. spec.md updated (Contract §6 + scope + regression history). test_chrome 106/106; main exe relinked. Goes live on relaunch.
 
 #### 🔒 Tier 2 — hardening sweep
 

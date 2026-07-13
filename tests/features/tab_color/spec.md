@@ -39,6 +39,18 @@ produce a visible, persistent colour tag on the tab that:
    entries are auto-pruned on `closeTab` so the config doesn't
    accumulate orphans for tabs that will never re-exist.
 
+6. **Offers a rich palette plus an arbitrary custom colour (ANTS-1374).**
+   The picker MUST expose a broad set of named preset swatches (≥14 — the
+   full Catppuccin accent row) so users aren't limited to a handful, AND a
+   "Custom colour…" entry that opens `QColorDialog` for a fully arbitrary
+   per-tab colour. The custom pick MUST flow through the *same*
+   `ColoredTabBar::setTabColor` + `MainWindow::persistTabColor` path as the
+   presets, so it renders, survives drag-reorder, and persists across
+   restart identically (`persistTabColor` already stores `#rrggbbaa`
+   HexArgb, so an arbitrary colour round-trips losslessly). The added
+   presets stay within the same pastel-lightness band as the original 7,
+   so tab-label contrast is unchanged.
+
 ## Rationale
 
 The context-menu feature was implemented in 0.6.x but silently broken
@@ -62,15 +74,23 @@ a strip on top of the base-class paint) out of the stylesheet's reach.
   against `QStandardPaths::setTestModeEnabled(true)` so the real user
   config is never written.
 
+- **Picker menu surface (ANTS-1374, §6):** a source-grep contract over
+  `MainWindow::showTabColorMenu` in `mainwindow.cpp` — asserts ≥14 named
+  swatches, a "Custom" entry opening `QColorDialog`, and reuse of
+  `persistTabColor`. Source-grep (not runtime) because driving the live
+  menu needs a full MainWindow harness; the same approach as
+  `help_about_menu`.
+
 ### Out of scope
 - Pixel-level paint verification. `paintEvent` draws a 3-px strip at
   a fixed location; correctness of pixel coordinates is trivial
   (fixed integer arithmetic on `tabRect`) and changes with the style,
   so we don't snapshot it.
-- Interaction with the colour-picker context menu itself (requires a
-  full MainWindow harness to drive the menu). A MainWindow-level GUI
-  test could exercise the menu → ColoredTabBar path once such a
-  harness exists.
+- *Runtime* interaction with the colour-picker context menu (clicking a
+  swatch, driving `QColorDialog`) — requires a full MainWindow GUI
+  harness. The menu's *structure* is locked by the source-grep contract
+  above; a live menu → ColoredTabBar click-through is left for when such
+  a harness exists.
 
 ## Regression history
 
@@ -92,3 +112,8 @@ a strip on top of the base-class paint) out of the stylesheet's reach.
   under the `tab_groups` config key, re-apply on session restore via
   `MainWindow::applyPersistedTabColor`, and prune entries on
   `closeTab` so orphans don't accumulate.
+- **ANTS-1374 (user-request 2026-05-14):** the picker only offered 7
+  colours and no way to pick an arbitrary one. Expanded to the full
+  14-colour Catppuccin accent row and added a "Custom colour…" entry
+  (`QColorDialog`) that reuses the existing persist path. §6 above +
+  the `runPickerMenuSourceContract` source-grep lock the surface.

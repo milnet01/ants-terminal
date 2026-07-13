@@ -118,6 +118,7 @@ void sweepKwinScriptOrphansOnce();
 #include <QGuiApplication>
 #include <QStyleHints>
 #include <QInputDialog>
+#include <QColorDialog>  // ANTS-1374 — custom per-tab colour picker
 #include <QTableWidget>
 #include <QHeaderView>
 #include <QFormLayout>
@@ -6335,16 +6336,29 @@ void MainWindow::showTabColorMenu(int tabIndex) {
 
     menu.addSeparator();
 
+    // ANTS-1374 — the full Catppuccin Mocha accent row (14 colours),
+    // ordered warm→cool for a coherent picker. All sit in the same pastel
+    // lightness band as the original 7, so tab-label contrast is unchanged
+    // (the added colours can't be darker/lower-contrast than what shipped).
+    // "None" clears the tag. Preset names kept stable (Purple = Mauve,
+    // Orange = Peach) so existing users' colour vocabulary still matches.
     struct ColorEntry { QString name; QColor color; };
     QList<ColorEntry> colors = {
         {"None", QColor()},
-        {"Red", QColor(0xF3, 0x8B, 0xA8)},
-        {"Green", QColor(0xA6, 0xE3, 0xA1)},
-        {"Blue", QColor(0x89, 0xB4, 0xFA)},
-        {"Yellow", QColor(0xF9, 0xE2, 0xAF)},
+        {"Rosewater", QColor(0xF5, 0xE0, 0xDC)},
+        {"Flamingo", QColor(0xF2, 0xCD, 0xCD)},
+        {"Pink", QColor(0xF5, 0xC2, 0xE7)},
         {"Purple", QColor(0xCB, 0xA6, 0xF7)},
+        {"Lavender", QColor(0xB4, 0xBE, 0xFE)},
+        {"Red", QColor(0xF3, 0x8B, 0xA8)},
+        {"Maroon", QColor(0xEB, 0xA0, 0xAC)},
         {"Orange", QColor(0xFA, 0xB3, 0x87)},
+        {"Yellow", QColor(0xF9, 0xE2, 0xAF)},
+        {"Green", QColor(0xA6, 0xE3, 0xA1)},
         {"Teal", QColor(0x94, 0xE2, 0xD5)},
+        {"Sky", QColor(0x89, 0xDC, 0xEB)},
+        {"Sapphire", QColor(0x74, 0xC7, 0xEC)},
+        {"Blue", QColor(0x89, 0xB4, 0xFA)},
     };
     for (const auto &ce : colors) {
         QAction *a = menu.addAction(ce.name);
@@ -6368,6 +6382,25 @@ void MainWindow::showTabColorMenu(int tabIndex) {
             persistTabColor(tabWidget, ce.color);
         });
     }
+
+    // ANTS-1374 — arbitrary per-tab colour via QColorDialog. Routes through
+    // the exact same in-session (setTabColor) + persist (persistTabColor)
+    // path as the presets above, so a custom pick survives restart and
+    // drag-reorder identically — persistTabColor already stores HexArgb.
+    menu.addSeparator();
+    QAction *customAction = menu.addAction("Custom colour...");
+    connect(customAction, &QAction::triggered, this, [this, tabWidget]() {
+        int idx = m_tabWidget->indexOf(tabWidget);
+        if (idx < 0 || !m_coloredTabBar) return;
+        // Seed with the tab's current colour; an invalid QColor (uncoloured
+        // tab) just makes the dialog open on its own default.
+        const QColor chosen = QColorDialog::getColor(
+            m_coloredTabBar->tabColor(idx), this, "Tab title background");
+        if (!chosen.isValid()) return;  // user cancelled
+        m_coloredTabBar->setTabColor(idx, chosen);
+        persistTabColor(tabWidget, chosen);
+    });
+
     menu.exec(QCursor::pos());
 }
 
