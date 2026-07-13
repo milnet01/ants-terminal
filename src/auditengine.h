@@ -203,6 +203,18 @@ int computeConfidence(const Finding &f);
 int applyLearnedFpSuppressions(QList<Finding> &findings,
                                const QSet<QString> &learnedFingerprints);
 
+// ANTS-3506 — pure inline-suppress-token predicate (moved here from
+// AuditDialog, where it was trapped in the QDialog TU). Does
+// `commentText` (an already-stripped "// ..." comment body) contain a
+// suppression token matching `ruleId`? true if: a bare suppress (no rule
+// list) / the rule list contains ruleId / a glob 'rule-*' matches ruleId.
+// Recognises the ants-audit / `audit: drop` / NOLINT / cppcheck-suppress /
+// noqa / nosec / nosemgrep / gitleaks-allow / eslint-disable / pylint
+// families. Stateless (QString + QRegularExpression only, no `this`/GUI) —
+// shared by AuditDialog::inlineSuppressed and callable directly from
+// engine-only tests (test_audit).
+bool commentSuppresses(const QString &commentText, const QString &ruleId);
+
 // ANTS-1343 — mypy "Library stubs not installed" consolidator. When
 // `r.checkId == "mypy"` and ≥ 2 distinct missing stub packages are
 // present, collapse the per-package findings into a single synthetic

@@ -5,14 +5,18 @@
 // version only slurped auditdialog.cpp and regex-matched the source string,
 // so it could not catch a behavioural regression in the parser (a moved
 // alternative, a broken terminator class, a rule-list mismatch). It now calls
-// the real compiled AuditDialog::commentSuppresses() — a static method needing
+// the real compiled AuditEngine::commentSuppresses() — a free function needing
 // only Qt Core, no QApplication or dialog instance — and asserts the ANTS-1111
 // §4 INV-9 truth table directly. Behaviour coverage strictly subsumes the old
 // source-shape grep.
+//
+// ANTS-3506 — the predicate moved from AuditDialog (GUI TU) to the
+// AuditEngine namespace in ants_audit_lib, so this test now lives in the
+// engine-only test_audit bundle (no GUI lib linked) and calls it directly.
 
 #include <gtest/gtest.h>
 
-#include "auditdialog.h"
+#include "auditengine.h"
 
 #include <QString>
 
@@ -21,7 +25,7 @@ namespace {
 // Shorthand: `comment` is the token text as commentSuppresses sees it (the
 // leading `//` is already stripped by the caller before this point).
 bool suppresses(const char *comment, const char *rule) {
-    return AuditDialog::commentSuppresses(QString::fromUtf8(comment),
+    return AuditEngine::commentSuppresses(QString::fromUtf8(comment),
                                           QString::fromUtf8(rule));
 }
 

@@ -465,6 +465,74 @@ int applyLearnedFpSuppressions(QList<Finding> &findings,
     return marked;
 }
 
+// ANTS-3506 — moved verbatim from AuditDialog::commentSuppresses (the
+// pure predicate was trapped in the GUI TU). Body unchanged.
+bool commentSuppresses(const QString &commentText, const QString &ruleId) {
+    if (commentText.isEmpty()) return false;
+
+    // Lowercase for case-insensitive token matching — rule ids are already
+    // lowercase-alnum so this doesn't lose info.
+    const QString body = commentText.toLower();
+    const QString rule = ruleId.toLower();
+
+    // The "bare" forms (no rule list) — any of these suppresses everything.
+    // Matched conservatively: must be a whole word with `\b` semantics.
+    static const QRegularExpression reBare(
+        R"(\b(?:ants-audit:\s*disable(?:-next-line|-file)?|audit:\s*drop(?:-next-line|-file)?|nolint(?:nextline)?|cppcheck-suppress|noqa|nosec|nosemgrep|gitleaks:allow|eslint-disable(?:-line|-next-line)?|pylint:\s*disable)\b)",
+        QRegularExpression::CaseInsensitiveOption);
+    const auto bareMatch = reBare.match(body);
+    if (!bareMatch.hasMatch()) return false;
+
+    // Extract the rule-list payload, if any, following one of:
+    //   `: rule1, rule2`    (noqa/nosec/nosemgrep/pylint:disable style)
+    //   `=rule1,rule2`      (ants-audit, eslint, pylint variants)
+    //   `(rule1, rule2)`    (clang-tidy, cppcheck block form)
+    //   `[id1,id2]`         (cppcheck-suppress alt)
+    //   ` rule1 rule2`      (eslint bare)
+    // If none present → bare form → suppress everything.
+    const int tokEnd = bareMatch.capturedEnd();
+    const QString tail = body.mid(tokEnd).trimmed();
+
+    // Nothing after the token = bare suppress.
+    if (tail.isEmpty() || tail.startsWith("--")) return true;
+
+    // Pull out anything that looks like a rule-id list.
+    //
+    // 0.7.55 (2026-04-27 indie-review) — terminator class previously
+    // included `-`, which collides with the rule-id charset (rule IDs
+    // commonly contain hyphens, e.g. `bash-c-non-literal`,
+    // `google-cloud-credentials`). The non-greedy body match would
+    // stop at the first `-` in the rule ID, and `// nosemgrep:
+    // bash-c-non-literal` matched only `bash`, leaving the rest of
+    // the suppression silently inactive. Terminator class is now
+    // `[)\]]|$` — close-paren / close-bracket / end-of-string only.
+    static const QRegularExpression reList(
+        R"([:=(\[\s]\s*([a-z0-9_\-\*\s,\.]+?)(?:[)\]]|$))",
+        QRegularExpression::CaseInsensitiveOption);
+    const auto listMatch = reList.match(QString(" ") + tail);  // leading space ensures capture
+    if (!listMatch.hasMatch()) return true;   // token present but shape unknown → conservative suppress
+
+    const QString listStr = listMatch.captured(1);
+    static const QRegularExpression reIdSep(R"([,\s]+)");  // ANTS-1647
+    const QStringList ids = listStr.split(reIdSep, Qt::SkipEmptyParts);
+    for (const QString &raw : ids) {
+        const QString id = raw.trimmed();
+        if (id.isEmpty()) continue;
+        // Exact match or glob like `google-*`.
+        if (id == rule) return true;
+        if (id.contains('*')) {
+            QString pat = QRegularExpression::escape(id);
+            pat.replace("\\*", ".*");
+            if (QRegularExpression("^" + pat + "$",
+                    QRegularExpression::CaseInsensitiveOption)
+                    .match(rule).hasMatch()) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 // ANTS-1343 — see header comment. Pre-collapse `r.findings.size()` is
 // captured before reassignment so the authored `findingCount` reflects
 // the count the user actually saw on the wire from mypy, not the post-

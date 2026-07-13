@@ -38,15 +38,6 @@ public:
                 QWidget *parent,
                 Config *config);
 
-    // ANTS-1111 — pure static suppress-token predicate. Public so the
-    // ANTS-3355 runtime test can assert the INV-9 truth table directly
-    // (stateless: comment text + rule id → bool, no `this` / GUI needed).
-    // Does `commentText` (already-stripped "// ..." body) contain a
-    // suppression token matching `ruleId`?  true if: bare suppress (no
-    // rule list) / rule-list contains ruleId / glob 'rule-*' matches ruleId.
-    static bool commentSuppresses(const QString &commentText,
-                                  const QString &ruleId);
-
 signals:
     // Emitted when user clicks "Review with Claude" — carries path to temp results file
     void reviewRequested(const QString &resultsFile);
@@ -444,9 +435,9 @@ private:
     // (Doc deliberately avoids putting the literal "cppcheck-" + "suppress"
     // token at the start of a comment line — cppcheck's --inline-suppr
     // parser would otherwise pick it up and emit invalidSuppression.)
+    // Inline-suppress check. The suppress-token predicate itself is
+    // AuditEngine::commentSuppresses (ANTS-3506 — moved to the engine lib).
     bool inlineSuppressed(const Finding &f) const;
-    // commentSuppresses() moved to the public section (ANTS-3355) so the
-    // runtime feature test can call the pure static predicate directly.
 
     // Read ±radius lines around `line` from `absPath`. Returns the extracted
     // text (newline-joined) and the starting line number via out-params.

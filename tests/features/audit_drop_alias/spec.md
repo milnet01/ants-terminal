@@ -1,16 +1,19 @@
 # audit_drop_alias — `// audit: drop[=rule]` alias for the existing
 # `// ants-audit: disable` token (ANTS-1111)
 
-Runtime verification that `AuditDialog::commentSuppresses()` honours the
+Runtime verification that `AuditEngine::commentSuppresses()` honours the
 `audit: drop` alias with the same semantics as the long
 `ants-audit: disable` form. Upgraded from source-grep to a real call of
-the compiled static method (ANTS-3355) — the grep guard could not catch a
+the compiled function (ANTS-3355) — the grep guard could not catch a
 behavioural regression in the parser (moved alternative, broken terminator
 class, rule-list mismatch); the runtime call does.
 
-`commentSuppresses` is a static method that uses only Qt Core
-(QString / QRegularExpression), so the test needs no QApplication or
-dialog instance.
+`commentSuppresses` is a free function in the `AuditEngine` namespace
+(`ants_audit_lib`) that uses only Qt Core (QString / QRegularExpression),
+so the test needs no QApplication or dialog instance and lives in the
+engine-only `test_audit` bundle. It was extracted from `AuditDialog`
+(the GUI TU) by ANTS-3506; `AuditDialog::inlineSuppressed` is now its
+only production caller.
 
 ## INVs (ANTS-1111 §4)
 
