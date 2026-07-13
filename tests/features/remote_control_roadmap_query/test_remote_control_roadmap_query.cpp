@@ -12,9 +12,6 @@
 #include <QCoreApplication>
 #include <QStringList>
 
-#include <cstdio>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 

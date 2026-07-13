@@ -4,9 +4,6 @@
 
 #include "../../_support/expect.h"
 
-#include <cstdio>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #include <gtest/gtest.h>

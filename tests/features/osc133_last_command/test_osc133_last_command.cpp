@@ -3,9 +3,7 @@
 // wayland_quake_mode / global_shortcuts_portal / shift_enter_bracketed_paste.
 
 #include <cstdio>
-#include <fstream>
 #include <regex>
-#include <sstream>
 #include <string>
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"

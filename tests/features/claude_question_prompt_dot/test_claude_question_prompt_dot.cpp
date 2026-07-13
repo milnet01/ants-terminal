@@ -16,8 +16,6 @@
 #include <QFile>
 #include <QTemporaryDir>
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #ifndef ANTS_SOURCE_DIR

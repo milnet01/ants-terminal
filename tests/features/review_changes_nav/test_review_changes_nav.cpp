@@ -7,9 +7,7 @@
 // the wiring is a pure-source contract; no MainWindow / display needed.
 
 #include <cstdio>
-#include <fstream>
 #include <regex>
-#include <sstream>
 #include <string>
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"

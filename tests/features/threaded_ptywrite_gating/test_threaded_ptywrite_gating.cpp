@@ -6,7 +6,6 @@
 // not-echoing regression — pinned here so it can't come back.
 
 #include <cstdio>
-#include <fstream>
 #include <regex>
 #include <sstream>
 #include <string>

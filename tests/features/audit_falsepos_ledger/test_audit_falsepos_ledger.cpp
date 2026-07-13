@@ -20,8 +20,6 @@
 #include <QTemporaryDir>
 #include <QTextStream>
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #ifndef SRC_FALSEPOS_H_PATH

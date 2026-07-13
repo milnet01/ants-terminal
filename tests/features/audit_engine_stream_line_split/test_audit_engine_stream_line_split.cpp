@@ -14,8 +14,6 @@
 
 #include <QElapsedTimer>
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 namespace {

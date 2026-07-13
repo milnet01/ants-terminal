@@ -18,7 +18,6 @@
 #include <QTemporaryDir>
 #include <QTextStream>
 
-#include <fstream>
 #include <sstream>
 #include <string>
 

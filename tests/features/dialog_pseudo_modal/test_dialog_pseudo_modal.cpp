@@ -20,8 +20,6 @@
 #include <QWidget>
 
 #include <cstdio>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
 #include <gtest/gtest.h>

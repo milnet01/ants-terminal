@@ -10,8 +10,6 @@
 
 #include <QString>
 
-#include <cstdio>
-#include <fstream>
 #include <map>
 #include <sstream>
 #include <string>

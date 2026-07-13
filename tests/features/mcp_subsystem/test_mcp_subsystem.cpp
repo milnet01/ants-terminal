@@ -5,9 +5,7 @@
 // Exit 0 = all 12 invariants hold.
 
 #include <cstdio>
-#include <fstream>
 #include <regex>
-#include <sstream>
 #include <string>
 
 #include <gtest/gtest.h>

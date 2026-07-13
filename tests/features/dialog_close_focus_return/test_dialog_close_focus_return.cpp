@@ -19,8 +19,6 @@
 #include <QWidget>
 
 #include <cstdio>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"

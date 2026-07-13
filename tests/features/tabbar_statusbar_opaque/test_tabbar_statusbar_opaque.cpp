@@ -3,9 +3,7 @@
 // failure mode, different bars. See spec.md for invariant rationale.
 
 #include <cstdio>
-#include <fstream>
 #include <regex>
-#include <sstream>
 #include <string>
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"

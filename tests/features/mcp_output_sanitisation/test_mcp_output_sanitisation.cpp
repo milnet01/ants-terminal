@@ -15,8 +15,6 @@
 #include <QString>
 #include <QStringLiteral>
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH

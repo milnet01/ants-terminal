@@ -13,8 +13,6 @@
 #include <QTemporaryDir>
 #include <QTextStream>
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #ifndef MCP_ERROR_CODES_DOC_PATH

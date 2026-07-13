@@ -19,8 +19,6 @@
 #include <QSaveFile>
 #include <QTemporaryDir>
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 namespace {

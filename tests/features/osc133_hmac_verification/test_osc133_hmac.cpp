@@ -24,7 +24,6 @@
 #include <QMessageAuthenticationCode>
 #include <QString>
 
-#include <cstdio>
 #include <gtest/gtest.h>
 #include <cstring>
 

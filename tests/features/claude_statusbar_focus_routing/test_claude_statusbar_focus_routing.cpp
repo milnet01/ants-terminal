@@ -3,11 +3,8 @@
 // The wiring is GUI-lambda bound (live QStatusBar + PTY-backed terminals +
 // a focused window), so we lock the structure rather than drive it live.
 
-#include <cstdio>
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #ifndef SRC_CLAUDESTATUSWIDGETS_CPP_PATH

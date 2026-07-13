@@ -20,8 +20,6 @@
 #include <QTextStream>
 
 #include <cstdio>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 

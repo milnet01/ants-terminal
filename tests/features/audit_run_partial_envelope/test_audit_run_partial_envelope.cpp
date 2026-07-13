@@ -7,9 +7,6 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#include <cstdio>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #include <QHash>

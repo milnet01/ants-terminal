@@ -13,8 +13,6 @@
 #include <QString>
 
 #include <cstdio>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #ifndef SRC_AIDIALOG_CPP

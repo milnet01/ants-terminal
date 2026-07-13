@@ -4,8 +4,6 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #ifndef SRC_MAINWINDOW_CPP_PATH

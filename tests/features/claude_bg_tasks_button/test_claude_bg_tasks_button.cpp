@@ -4,9 +4,7 @@
 #include <cstdio>
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
-#include <fstream>
 #include <regex>
-#include <sstream>
 #include <string>
 
 // ANTS-1840 — behavioral half: sweepLiveness un-latch. Drives the real

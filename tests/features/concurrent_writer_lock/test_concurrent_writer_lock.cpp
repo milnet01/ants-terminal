@@ -14,11 +14,8 @@
 #include "../../_support/expect.h"
 #include "configbackup.h"
 
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #include <fcntl.h>

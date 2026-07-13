@@ -28,9 +28,6 @@
 #include <QTemporaryDir>
 
 #include <algorithm>
-#include <cstdio>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 

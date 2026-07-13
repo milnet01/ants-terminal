@@ -14,8 +14,6 @@
 #include <QJsonObject>
 #include <QTemporaryDir>
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #include "modelswitchledger.h"

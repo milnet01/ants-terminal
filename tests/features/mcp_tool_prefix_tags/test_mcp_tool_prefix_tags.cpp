@@ -10,9 +10,7 @@
 #include "../../_support/srcgrep.h"
 
 #include <cstdio>
-#include <fstream>
 #include <set>
-#include <sstream>
 #include <string>
 
 ANTS_TEST_SCOPE();

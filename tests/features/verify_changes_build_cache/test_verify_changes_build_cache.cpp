@@ -19,8 +19,6 @@
 #include <QStringLiteral>
 #include <QTemporaryDir>
 
-#include <fstream>
-#include <sstream>
 
 #ifndef SRC_REMOTECONTROL_H_PATH
 #error "SRC_REMOTECONTROL_H_PATH compile definition required"

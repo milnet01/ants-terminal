@@ -6,8 +6,6 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH

@@ -13,8 +13,6 @@
 #include <QString>
 #include <QStringList>
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #ifndef SRC_AUDIT_CPP_PATH

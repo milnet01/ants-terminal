@@ -11,8 +11,6 @@
 #include <QString>
 #include <QTemporaryDir>
 #include <cstdio>
-#include <fstream>
-#include <sstream>
 #include "remotecontrol.h"
 
 #ifndef SRC_REMOTECONTROL_CPP_PATH

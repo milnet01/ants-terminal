@@ -10,9 +10,7 @@
 // Source design: docs/specs/ANTS-1160.md §9.
 // Plan: docs/plans/ANTS-1160.md P2.
 
-#include <fstream>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"

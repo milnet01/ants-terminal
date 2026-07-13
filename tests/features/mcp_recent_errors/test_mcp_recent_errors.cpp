@@ -8,8 +8,6 @@
 #include <QString>
 
 #include <cstdio>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #include <gtest/gtest.h>

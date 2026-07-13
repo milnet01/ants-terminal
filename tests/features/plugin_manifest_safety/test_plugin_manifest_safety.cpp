@@ -8,10 +8,7 @@
 
 #include "../../_support/expect.h"
 
-#include <cstdio>
 #include <cstdlib>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 

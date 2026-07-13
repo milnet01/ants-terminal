@@ -8,10 +8,7 @@
 //
 // Exit 0 = all assertions hold.
 
-#include <cstdio>
 #include <cstring>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"

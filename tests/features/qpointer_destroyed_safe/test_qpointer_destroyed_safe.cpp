@@ -9,11 +9,8 @@
 
 #include "../../_support/expect.h"
 
-#include <cstdio>
 #include <cstdlib>
-#include <fstream>
 #include <regex>
-#include <sstream>
 #include <string>
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"

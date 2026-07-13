@@ -7,10 +7,7 @@
 #include "../../_support/expect.h"
 #include "resolvedroot.h"
 
-#include <cstdio>
-#include <fstream>
 #include <regex>
-#include <sstream>
 #include <string>
 
 #include <gtest/gtest.h>

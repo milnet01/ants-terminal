@@ -37,10 +37,7 @@
 
 #include <QCoreApplication>
 
-#include <cstdio>
 #include <cstring>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 

@@ -10,8 +10,6 @@
 #include <QElapsedTimer>
 #include <QString>
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #ifndef SRC_AUDITDIALOG_PATH

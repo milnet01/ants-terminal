@@ -1,9 +1,7 @@
 // Remote-control `new-tab` — source-grep regression test. See spec.md.
 
 #include <cstdio>
-#include <fstream>
 #include <regex>
-#include <sstream>
 #include <string>
 
 

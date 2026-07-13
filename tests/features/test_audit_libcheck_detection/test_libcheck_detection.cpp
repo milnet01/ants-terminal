@@ -13,8 +13,6 @@
 #include <QStringList>
 #include <QTemporaryDir>
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 namespace {

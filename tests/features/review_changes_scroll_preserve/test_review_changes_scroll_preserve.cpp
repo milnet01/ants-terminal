@@ -2,9 +2,7 @@
 // See spec.md for the contract (INV-1 through INV-6).
 
 #include <cstdio>
-#include <fstream>
 #include <regex>
-#include <sstream>
 #include <string>
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"

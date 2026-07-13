@@ -11,8 +11,6 @@
 #include <gtest/gtest.h>
 
 #include <cstdio>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 ANTS_TEST_SCOPE();

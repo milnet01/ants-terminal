@@ -6,9 +6,6 @@
 #include "../../_support/expect.h"
 #include "applyedits.h"
 
-#include <cstdio>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #include <gtest/gtest.h>

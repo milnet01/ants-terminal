@@ -28,8 +28,6 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 #include <cstring>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 // INV-9 / INV-10 (ANTS-1847) are behavioural — they link coloredtabbar

@@ -16,9 +16,6 @@
 #include <QStringList>
 #include <QTemporaryDir>
 
-#include <cstdio>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 namespace FT = FocusedTest;

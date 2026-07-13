@@ -7,9 +7,7 @@
 // on any tab whose shell emits title updates (notably Claude Code).
 
 #include <cstdio>
-#include <fstream>
 #include <regex>
-#include <sstream>
 #include <string>
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"

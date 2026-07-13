@@ -20,8 +20,6 @@
 #include <QStringLiteral>
 #include <QTemporaryDir>
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 ANTS_TEST_SCOPE();

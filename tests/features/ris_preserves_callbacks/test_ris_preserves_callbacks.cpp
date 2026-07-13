@@ -8,7 +8,6 @@
 
 #include <QByteArray>
 
-#include <cstdio>
 #include <gtest/gtest.h>
 #include <string>
 

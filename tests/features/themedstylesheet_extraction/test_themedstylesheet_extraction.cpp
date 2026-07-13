@@ -10,8 +10,6 @@
 #include <cstdio>
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #include <QColor>

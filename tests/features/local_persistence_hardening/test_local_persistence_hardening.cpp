@@ -17,8 +17,6 @@
 #include <QString>
 #include <QTemporaryDir>
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #include <sys/stat.h>

@@ -4,10 +4,8 @@
 //
 // Exit 0 = all 10 invariants hold.
 
-#include <cstdio>
 #include <fstream>
 #include <regex>
-#include <sstream>
 #include <string>
 
 #include <gtest/gtest.h>
