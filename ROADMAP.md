@@ -476,7 +476,7 @@ for the rotation contract.
   Priority: after the current token-saving / Claude-Code-
   integration sprint.
 
-- 📋 [ANTS-1371] **Menu-bar "Sponsors" entry → opens GitHub
+- ✅ [ANTS-1371] **Menu-bar "Sponsors" entry → opens GitHub
   Sponsors page.** User request 2026-05-14. (Renumbered from
   ANTS-1331 on 2026-05-14 to resolve a pre-existing duplicate
   with ROADMAP.md:6644 "Prev/next prompt-history navigation.") Add a top-level
@@ -502,6 +502,7 @@ for the rotation contract.
   Source: user-request-2026-05-14.
   Priority: after the current token-saving / Claude-Code-
   integration sprint.
+  Resolved (2026-07-13): subsumed by the &Donate menu (setupDonateMenu, added 2026-06-30). Donate is the rightmost menu and its first action, "Sponsor on &GitHub...", opens https://github.com/sponsors/milnet01 via QDesktopServices — exactly the one-click-to-Sponsors contract this item asked for (the standalone "Sponsors after Help" placement was superseded by the more visible rightmost Donate slot). Now regression-locked: help_about_menu feature test Invariant 12 (I12a–d) source-greps setupDonateMenu() for the sponsor action, the canonical URL, and the QDesktopServices::openUrl call, kept lockstep with .github/FUNDING.yml + SUPPORTERS.md. Test green (test_chrome / HelpAboutMenu.Main).
 
 ### 🔌 Plugins — trigger system
 

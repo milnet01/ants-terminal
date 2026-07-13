@@ -136,6 +136,22 @@ directly to `QDialog::close`. This bypasses the role-dispatch
 surface that QTBUG-79126 calls out as an aggravating factor
 on Wayland.
 
+### Invariant 12 — Donate menu opens the GitHub Sponsors page (ANTS-1371)
+
+The `&Donate` menu contains a `Sponsor on &GitHub...` action whose
+handler opens `https://github.com/sponsors/milnet01` via
+`QDesktopServices::openUrl` (the Qt 6 idiom that dispatches to
+`xdg-open` / the platform URL handler).
+
+ANTS-1371 (user request 2026-05-14) originally asked for a standalone
+`Sponsors` menu entry after Help. The `&Donate` menu added 2026-06-30
+subsumes it: Donate is the rightmost menu (Invariant 1), and its first
+action is the Sponsor-on-GitHub link — one in-GUI click reaches the
+GitHub Sponsors profile. The URL is the canonical destination mirrored
+in `.github/FUNDING.yml` (`github: [milnet01]`) and `SUPPORTERS.md`;
+this invariant keeps the in-app link and those docs lockstep so a drift
+in either fires the test.
+
 ## How this test anchors to reality
 
 MainWindow is too heavy to instantiate under a feature test
@@ -158,6 +174,9 @@ source-grep on `src/mainwindow.cpp`:
    `clicked()` to `QDialog::close`.
 5. No hardcoded `"0.7."` prefix appears inside the About handler
    body.
+6. `setupDonateMenu()`'s body contains a `Sponsor on &GitHub...`
+   action, the literal URL `https://github.com/sponsors/milnet01`,
+   and a `QDesktopServices::openUrl` call (Invariant 12 / ANTS-1371).
 
 If a future refactor replaces the Help menu with a custom
 implementation that drops the About action, or switches to a
