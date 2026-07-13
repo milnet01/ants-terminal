@@ -36,14 +36,14 @@ void writeFile(const QString &root, const QString &rel, const QByteArray &body) 
     const QString abs = root + QChar('/') + rel;
     QDir().mkpath(QFileInfo(abs).absolutePath());
     QFile f(abs);
-    f.open(QIODevice::WriteOnly);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));  // ANTS-3411 — check nodiscard open()
     f.write(body);
     f.close();
 }
 
 QByteArray readFile(const QString &abs) {
     QFile f(abs);
-    f.open(QIODevice::ReadOnly);
+    EXPECT_TRUE(f.open(QIODevice::ReadOnly));  // ANTS-3411 — check nodiscard open()
     const QByteArray b = f.readAll();
     f.close();
     return b;
