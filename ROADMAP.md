@@ -11537,6 +11537,34 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   **Layman:** Two behaviours are only checked by tests that read the source code as text, not by tests that actually run the code: the Review-Changes diff popup, and one shorthand comment that silences an audit warning. Add real run-the-code tests so the text-matching guards can eventually retire.
   Kind: test.
   Source: in-session-2026-06-28; surfaced during ANTS-1381 sibling-coverage verification..
+  Progress (2026-07-13): audit-drop half DONE (commit 28171191).
+  audit_drop_alias upgraded from source-grep to a runtime call of
+  AuditDialog::commentSuppresses asserting the ANTS-1111 §4 INV-9 truth
+  table; must-fail-first proven (breaking the audit:\s*drop regex
+  alternative turns the drop-asserting tests RED). commentSuppresses made
+  public (pure static predicate) and the test relocated test_audit →
+  test_dialogs (auditdialog.o lives in ants_audit_dialog_lib, which the
+  engine-only test_audit does not link). Full suite 2631/2631.
+  REMAINING: the diffviewer::show runtime half — a genuine async-GUI
+  integration test (5 async git probes on a synthetic repo, assert rendered
+  rows / nav), flakiness-sensitive; better as its own focused effort. Do
+  NOT retire diffviewer_extraction until that lands.
+
+- 📋 [ANTS-3506] **Extract AuditDialog::commentSuppresses to the engine lib (pure predicate trapped in the GUI TU).**
+  commentSuppresses (auditdialog.cpp:2026) is a pure static predicate
+  (comment text + rule id -> bool, QString/QRegularExpression only, no
+  `this`/GUI) but lives in ants_audit_dialog_lib (the QDialog TU). That
+  forced ANTS-3355's runtime test into test_dialogs instead of its
+  semantic home test_audit (engine-only, does not link the GUI lib), and
+  required widening the method to public. Extract it to ants_audit_lib
+  (e.g. a free function in a small suppresstoken TU, or a static on
+  AuditEngine); update the 3 inlineSuppressed call sites in auditdialog.cpp
+  and move the runtime test back to test_audit. Its only caller is
+  inlineSuppressed, so the move is contained. Deferred from ANTS-3355 to
+  keep that test-coverage item off the security-sensitive suppress path.
+  **Layman:** A small self-contained bit of audit logic currently lives inside the audit pop-up window's code; moving it to the shared audit engine would let its test live with the other audit-engine tests.
+  Kind: refactor.
+  Source: in-session-2026-07-13; surfaced during ANTS-3355.
 
 ## 0.7.65 — Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05)
 
