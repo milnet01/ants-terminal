@@ -14473,6 +14473,49 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
         result[QStringLiteral("server_build")] = sb;
     }
 
+    // --- server_build_stale (ANTS-3499) ---
+    // The stale_check_hint above is PASSIVE: it asks the reader to hand-
+    // compare build_commit against a fix's ship date — and reporting
+    // sessions don't. Eight of the ~14 external findings in the 2026-07-10
+    // triage batch were already-shipped fixes re-reported by sessions on old
+    // binaries. So do the comparison here: count the commits project HEAD has
+    // that the running binary's build commit does NOT (git rev-list --count
+    // <build>..HEAD, in caller_cwd) and, when behind, surface a loud advisory
+    // block. Advisory only — never sets ok=false (a stale binary can still
+    // orient). Skipped silently when the build commit is unknown to the repo
+    // (built elsewhere), HEAD equals the build (behind 0), or caller_cwd is
+    // not a git checkout — so it never false-alarms. Deterministic for a
+    // fixed (build_commit, HEAD), so it does not perturb the dispatch-layer
+    // ETag beyond a real HEAD advance.
+    {
+        const QString buildCommit = QStringLiteral(ANTS_BUILD_COMMIT);
+        const QString headSha = QString::fromUtf8(
+            runGit(rootCanonical, {QStringLiteral("rev-parse"),
+                                   QStringLiteral("HEAD")})).trimmed();
+        if (!headSha.isEmpty() && !buildCommit.isEmpty()) {
+            const QByteArray countRaw = runGit(
+                rootCanonical, {QStringLiteral("rev-list"),
+                                QStringLiteral("--count"),
+                                buildCommit + QStringLiteral("..HEAD")});
+            bool okNum = false;
+            const int behind =
+                QString::fromUtf8(countRaw).trimmed().toInt(&okNum);
+            if (okNum && behind > 0) {
+                QJsonObject stale;
+                stale[QStringLiteral("behind_commits")] = behind;
+                stale[QStringLiteral("built")] = buildCommit;
+                stale[QStringLiteral("head")]  = headSha.left(12);
+                stale[QStringLiteral("hint")]  = QStringLiteral(
+                    "Your running MCP-server binary is behind project HEAD — "
+                    "relaunch Ants Terminal (rebuild + restart) before trusting "
+                    "any ✅/shipped status or re-reporting a fix as still "
+                    "broken. behind_commits = commits on HEAD your build does "
+                    "not contain.");
+                result[QStringLiteral("server_build_stale")] = stale;
+            }
+        }
+    }
+
     // --- codebase_index (ANTS-2140 / ANTS-1637) ---
     // Make the codebase map ride the blessed first call: invoking
     // cmdCodebaseIndex drives CodebaseIndex::serve() (load -> refresh ->

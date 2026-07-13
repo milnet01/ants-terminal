@@ -213,3 +213,31 @@ TEST(session_orient_bundle, Inv9FeedbackPendingScan) {
     }
     EXPECT_EQ(0, expect_failures());
 }
+
+// INV-11 (ANTS-3499) — the bundle actively flags a stale MCP-server
+// binary: it compares the running binary's ANTS_BUILD_COMMIT against the
+// project HEAD (git rev-list --count <build>..HEAD) and, when behind,
+// emits a `server_build_stale` block with a `behind_commits` count. The
+// flag is advisory-only (emitted only when behind > 0), never fails the
+// bundle.
+TEST(session_orient_bundle, Inv11ServerBuildStaleFlag) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const auto pos = cpp.find("cmdSessionOrient");
+    if (pos == std::string::npos) {
+        expect(false, "INV-11: cmdSessionOrient body not found");
+    } else {
+        const std::string body =
+            ants_test::slurpFunctionBody(cpp, "cmdSessionOrient");
+        expect(contains(body, "\"server_build_stale\""),
+               "INV-11: bundle emits a server_build_stale envelope key");
+        expect(contains(body, "\"behind_commits\""),
+               "INV-11: stale block carries a behind_commits count");
+        expect(contains(body, "rev-list") && contains(body, "--count"),
+               "INV-11: behind count computed via git rev-list --count "
+               "<build>..HEAD");
+        expect(contains(body, "ANTS_BUILD_COMMIT"),
+               "INV-11: staleness compares the running binary's build commit");
+    }
+    EXPECT_EQ(0, expect_failures());
+}
