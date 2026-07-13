@@ -96,6 +96,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Silenced 4 more harmless compiler warnings from the diff/review viewer (ANTS-3505)**
+  The same false-alarm "-Wnull-dereference" warning quieted in the dialog helper (ANTS-3358) also fired 4 times in the diff/review viewer's "back to top" button positioning. Quieted the same way (a tightly-scoped, GCC-only pragma), keeping the build warning-clean. No behaviour change.
+
 - **Silenced 33 harmless compiler warnings from the dialog-frame helper (ANTS-3358)**
   A full optimised build printed ~33 false-alarm "-Wnull-dereference" warnings from the dialog centring/resize helper — the compiler couldn't prove a Qt widget pointer was set, even though the code already checks it. Quieted with a tightly-scoped, GCC-only pragma (the same approach as the earlier ANTS-1554 fix), so real warnings no longer get lost in the noise. No behaviour change.
 

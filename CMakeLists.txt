@@ -1874,6 +1874,8 @@ if(ANTS_TESTS)
                 tests/features/build_warning_repo_visibility_null_deref/test_build_warning_repo_visibility_null_deref.cpp
                 # ANTS-3358 — ChromeGuard -Wnull-dereference pragma guard.
                 tests/features/build_warning_dialogchrome_null_deref/test_build_warning_dialogchrome_null_deref.cpp
+                # ANTS-3505 — diffviewer positionBackToTop -Wnull-dereference guard.
+                tests/features/build_warning_diffviewer_null_deref/test_build_warning_diffviewer_null_deref.cpp
                 # ANTS-1450 — test_audit pattern/dimension JSON drift guard.
                 tests/features/test_audit_pattern_drift/test_pattern_drift.cpp
                 # ANTS-1226 — ModelRecommender scorer.
@@ -1997,6 +1999,8 @@ if(ANTS_TESTS)
         SRC_MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         # ANTS-3358 — ChromeGuard -Wnull-dereference pragma-guard source-grep.
         SRC_DIALOGCHROME_CPP="${CMAKE_SOURCE_DIR}/src/dialogchrome.cpp"
+        # ANTS-3505 — diffviewer positionBackToTop -Wnull-dereference source-grep.
+        SRC_DIFFVIEWER_CPP="${CMAKE_SOURCE_DIR}/src/diffviewer.cpp"
         # ANTS-1888 — chip wiring contract.
         SRC_CLAUDESTATUSWIDGETS_H_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.h"
         SRC_CLAUDESTATUSWIDGETS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp"

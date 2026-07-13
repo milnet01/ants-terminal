@@ -132,10 +132,22 @@ QDialog *show(QWidget *parent,
         if (!backToTopGuard || !viewerForBtn) return;
         QWidget *vp = viewerForBtn->viewport();
         if (!vp) return;
+        // ANTS-3505 — the guards above prove vp / backToTopGuard non-null, but
+        // once -O3 inlines QWidget::width() through the QScrollBar signal
+        // dispatch that calls this lambda, GCC loses the guard and reports a
+        // false-positive -Wnull-dereference. Same class as ANTS-1554/ANTS-3358;
+        // scope the suppression to just the geometry block, GCC-only.
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wnull-dereference"
+#endif
         backToTopGuard->adjustSize();
         const int margin = 12;
         const int x = vp->width() - backToTopGuard->width() - margin;
         backToTopGuard->move(std::max(margin, x), margin);
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic pop
+#endif
     };
     QObject::connect(viewer->verticalScrollBar(), &QScrollBar::valueChanged,
         backToTop, [backToTopGuard, positionBackToTop](int value) {

@@ -9920,12 +9920,13 @@ indie-review finding.
   Kind: doc.
   Source: user-request-2026-07-03 (claude-tidy CLAUDE.md compression).
 
-- 📋 [ANTS-3505] **Silence 4 GCC `-Wnull-dereference` false-positives from `diffviewer.cpp` (positionBackToTop lambda) — ANTS-1554/ANTS-3358 class.**
+- ✅ [ANTS-3505] **Silence 4 GCC `-Wnull-dereference` false-positives from `diffviewer.cpp` (positionBackToTop lambda) — ANTS-1554/ANTS-3358 class.**
   A full -O3 build emits 4 `-Wnull-dereference` warnings (2 "potential" + 2 definite) at `qwidget.h:904` (`QWidget::width()`), inlining from `diffviewer::show()`'s `positionBackToTop` lambda (`src/diffviewer.cpp:137`, reached via the `QScrollBar::valueChanged` lambda at :144 and the `rangeChanged` lambda at :154). The lambda guards `if (!backToTopGuard || !viewerForBtn) return;` (:132) and `if (!vp) return;` (:134) before touching `vp->width()` / `backToTopGuard->width()`, but once -O3 inlines the accessor through the Qt signal-dispatch machinery GCC loses the guard. Identical false-positive class to ANTS-1554 (mainwindow QHash) and ANTS-3358 (dialogchrome ChromeGuard). Fix: apply the same `#if defined(__GNUC__) && !defined(__clang__)`-guarded scoped `#pragma GCC diagnostic push/ignored "-Wnull-dereference"/pop` around the `positionBackToTop` lambda body (or the two connect sites that inline it), and extend the source-grep regression test (`tests/features/build_warning_dialogchrome_null_deref` or a diffviewer sibling) to lock it. Small, mechanical, zero behaviour change.
   Kind: fix.
   **Layman:** The same harmless-false-alarm compiler warning we just quieted in the dialog helper also fires 4 times in the diff/review viewer. Same cause (the compiler can't see a pointer null-check that the code already does), same one-line fix. Quiet these too so the build stays warning-clean.
   Kind: fix.
   Source: in-session-2026-07-13 (found during ANTS-3358 full-build verify).
+  Resolved (2026-07-13): same session as the ANTS-3358 fix that surfaced it. Reproduced by an -O3 single-TU compile of diffviewer.cpp — 4 -Wnull-dereference false positives (2 "potential" + 2 definite) at qwidget.h:904, inlining from the positionBackToTop lambda (diffviewer.cpp:137) via the QScrollBar::valueChanged/rangeChanged lambdas (:144/:154), each already guarded by `if (!backToTopGuard || !viewerForBtn) return;` + `if (!vp) return;`. Fixed with a GCC-only scoped `#pragma GCC diagnostic push/ignored "-Wnull-dereference"/pop` around the geometry block after the guards. Recompile: 4 → 0. Locked by tests/features/build_warning_diffviewer_null_deref (source-grep sibling of ANTS-3358): must-fail-first proven (RED without the ignored line, GREEN with).
 
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
