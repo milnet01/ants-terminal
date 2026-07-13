@@ -9003,6 +9003,18 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: user-request-2026-07-03.
   Shipped 2026-07-03. PathValidation::validatePath now allows an out-of-root path whose basename ends in _Ants_MCP_Feedback.md (new isFeedbackFile helper; addFeedbackHintIfApplicable removed as unreachable). One chokepoint covers all general verbs (read_region/read_regions/file_outline/workspace_search/apply_edits). Test: mcp_path_anchor PV-13 (FeedbackFileAllowedOutsideRoot) — existing file allowed w/ resolved set, non-existent allowed w/ empty resolved, non-feedback escape still refused. 19/19 McpPathAnchor green.
 
+- 📋 [ANTS-3510] **Reconcile the ANTS-1113 DebtSweepEngine spec with the post-ship code (ANTS-1358 / ANTS-2227 drift).**
+  Surfaced by the cold-eyes pass triggered by ANTS-3342 (that pass converged the §3.5 window-scoping edit; these are separate pre-existing drifts). docs/specs/ANTS-1113.md vs src/debtsweepengine.{h,cpp}:
+  - §2.1 `ScanOptions` omits the 6th field `int staleTodoMaxAgeDays = 180` (ANTS-1358).
+  - §2.1 `ApplyVerdict` lacks `bool wouldApply` and `applyMechanicalFix` lacks the `bool dryRun=false` param (ANTS-2227); §3.9 step machine + §2.2 `debt_sweep_apply_fix` envelope never mention the dry-run path.
+  - §2.1 namespace list + §3.8 `scanAll` order name only 7 of the 11 shipped detectors — missing detectStaleTodos / detectDuplicateIncludes / detectObsoleteQStringIdioms / detectDeadBranchAfterReturn (ANTS-1358); §1.1's v2 "unchanged" column is consequently false.
+  - §5 perf table has no rows for those 4 detectors; detectStaleTodos runs `git blame --line-porcelain` per marker (potentially the priciest detector) yet is unbudgeted.
+  - §3.10 empty-return contract omits the `deferred.size() != allocatedIds.size()` case (debtsweepengine.cpp:1209).
+  Also code-side: the header doc-comments for the other ANTS-1358 detectors may carry the same staleness class the ANTS-3342 fix cleaned up for shipped_without_commit. Run /cold-eyes on the spec after the sync (per global §14).
+  **Layman:** The debt-sweep engine's design doc has fallen behind the code over several months of changes; a reviewer found five places where the doc no longer matches what the code actually does.
+  Kind: doc-fix.
+  Source: cold-eyes-2026-07-13 (loop 2, ANTS-3342 review).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
