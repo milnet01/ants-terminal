@@ -105,11 +105,14 @@ QList<Finding> detectOrphanQUnused(
 QList<Finding> detectMissingInvariantTests(
     const QString &projectPath, const ScanOptions &opt);
 
-// Doc drift (a) — ROADMAP ✅ items whose stable ID isn't mentioned
-// in any commit subject. Reads ROADMAP.md, extracts
-// `^- ✅ \[(ANTS-\d+)\]`; runs `git log --all --format=%s` ONCE;
-// reports IDs with zero subject mentions. Self-disables on
-// non-git checkouts.
+// Doc drift (a) — ROADMAP ✅ items flipped to shipped within the
+// `sinceRef..HEAD` window whose stable ID isn't mentioned in any
+// commit subject (ANTS-3342). Diffs ROADMAP.md over the window and
+// keeps IDs whose `^- ✅ \[(ANTS-\d+)\]` line was added-but-not-also-
+// removed (a bare remove+add is a reorder, not a fresh flip); then
+// runs `git log --all --format=%s` ONCE and reports those in-window
+// IDs with zero subject mentions. Self-disables on non-git checkouts
+// / empty windows.
 QList<Finding> detectRoadmapShippedWithoutCommit(
     const QString &projectPath, const ScanOptions &opt);
 
