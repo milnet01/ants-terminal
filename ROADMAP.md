@@ -18821,6 +18821,43 @@ build).
   Kind: test.
   Source: cold-eyes-2026-07-13 (ANTS-3475 loop 4).
 
+- 📋 [ANTS-3509] **Review Changes dialog "live" auto-refresh misses changes until a manual Refresh.**
+  The Review Changes / diff dialog (src/diffviewer.cpp) shows "● live — auto-refresh
+  on git changes" but does not reliably update on git/working-tree changes; the user
+  must press Refresh, after which it appears to keep up. Recurring — the user has
+  reported it before.
+
+  Watcher wiring (diffviewer.cpp:660-712): QFileSystemWatcher on cwd + .git, .git/HEAD,
+  .git/index, .git/refs/heads, .git/refs/remotes, .git/logs/HEAD; 300ms debounce →
+  runProbes. Refresh button (:707) calls runProbes ONLY — it does NOT re-arm the
+  watcher — so "works after Refresh" means the watcher is PARTIALLY firing and missing
+  a class of changes, not dead.
+
+  Leading hypotheses (need live reproduction + instrumentation — do NOT guess-fix,
+  per reproduce-before-fix):
+  1. **Non-recursive cwd watch.** QFileSystemWatcher on the cwd DIRECTORY fires only
+     for direct children; a nested working-tree edit (e.g. tests/features/categories/
+     test_categories.py, 3 levels deep) never fires it. Only .git/* commit events do.
+     → the diff goes stale on file edits until a commit (or Refresh) re-probes.
+  2. **Re-arm-after-rename only inside onFsEvent (:693).** Git replaces index /
+     refs/heads/<branch> via atomic rename(2); QFileSystemWatcher drops the file watch
+     on replacement. Re-add happens only when SOME event fires; if the drop coincides
+     with a missed event, that path goes silent until another watched path re-triggers.
+  3. **cwd may not be the git root** for some tabs → cwd+"/.git" fails QFileInfo::exists,
+     addPathSafe silently skips ALL .git watches, leaving only the (non-recursive) cwd
+     dir watch. Verify the cwd passed in is the repo root.
+
+  Fix direction (after reproducing): watch recursively (or watch the git root's .git
+  dir + walk the working tree), and/or add a low-frequency fallback poll timer that
+  re-probes on an interval as a backstop when the watcher misses. Reproduction:
+  open the dialog, edit a nested file, confirm no auto-update; instrument onFsEvent /
+  directoryChanged to log which paths fire.
+  Feature test: tests/features/diffviewer_extraction + review_changes_branches already
+  source-scrape the "live" label — extend to assert the watcher covers nested edits.
+  **Layman:** The diff popup says it auto-updates on git changes, but often it doesn't move until you press Refresh — then it starts keeping up. Needs to actually be live.
+  Kind: fix.
+  Source: user-report-2026-07-13 (recurring; user has flagged before).
+
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
 Triage of the 2026-06-30 → 2026-07-01 un-triaged feedback tails from Vestige,
