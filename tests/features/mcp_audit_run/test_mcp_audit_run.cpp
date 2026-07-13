@@ -388,6 +388,54 @@ TEST(mcp_audit_run, Ants2182ResolveCompileCommandsProbesBuildDirs) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-3367 — behavioural: resolveBuildDir shares the candidate list +
+// probe with resolveCompileCommands but returns the dir NAME (for the
+// in-app dialog's clang-tidy/clazy `-p <dir>` shell strings). Same order,
+// same precedence; the two stay in lockstep off one list.
+TEST(mcp_audit_run, Ants3367ResolveBuildDirReturnsName) {
+    expect_reset();
+    QTemporaryDir root;
+    ASSERT_TRUE(root.isValid());
+    const QString base = root.path();
+
+    // No build dir yet → empty NAME.
+    expect(AuditEngine::resolveBuildDir(base).isEmpty(),
+           "ANTS-3367: no compile DB anywhere → empty name");
+
+    // DB only in build-fast/ → the NAME "build-fast" (not a path).
+    ASSERT_TRUE(QDir(base).mkpath(QStringLiteral("build-fast")));
+    { QFile f(base + QStringLiteral("/build-fast/compile_commands.json"));
+      ASSERT_TRUE(f.open(QIODevice::WriteOnly)); f.write("[]"); }
+    expect(AuditEngine::resolveBuildDir(base) == QStringLiteral("build-fast"),
+           "ANTS-3367: DB in build-fast/ resolves to the name build-fast");
+
+    // build/ added → build/ wins (first in the shared probe order), and the
+    // NAME agrees with resolveCompileCommands's PATH (same list, one probe).
+    ASSERT_TRUE(QDir(base).mkpath(QStringLiteral("build")));
+    { QFile f(base + QStringLiteral("/build/compile_commands.json"));
+      ASSERT_TRUE(f.open(QIODevice::WriteOnly)); f.write("[]"); }
+    expect(AuditEngine::resolveBuildDir(base) == QStringLiteral("build"),
+           "ANTS-3367: build/ takes precedence over build-fast/");
+    expect(AuditEngine::resolveCompileCommands(base) ==
+               base + QStringLiteral("/build/compile_commands.json"),
+           "ANTS-3367: resolveCompileCommands PATH agrees with the NAME");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3367 — source-scrape: the in-app AuditDialog clang-tidy + clazy
+// branches resolve their build dir through AuditEngine::resolveBuildDir,
+// not an inline copy of the candidate list. Guards against re-inlining the
+// {build, build-fast, …} list (the Rule-of-Three / ANTS-1707 miss class).
+TEST(mcp_audit_run, Ants3367AuditDialogUsesSharedProbe) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_AUDITDIALOG_CPP_PATH);
+    expect(contains(cpp, "AuditEngine::resolveBuildDir(m_projectPath)"),
+           "ANTS-3367: AuditDialog resolves its build dir via the shared helper");
+    expect(!contains(cpp, "\"build-asan\", \"build-workstation\""),
+           "ANTS-3367: the inline build-dir candidate list is gone from auditdialog");
+    EXPECT_EQ(0, expect_failures());
+}
+
 // ANTS-2182 INV-19 — source-scrape: the C/C++ tool branches in toolArgv
 // resolve the compile DB through the shared helper instead of a bare
 // hardcoded `build/compile_commands.json`, and cppcheck drives off

@@ -99,22 +99,37 @@ QString cppcheckIgnoreShellExpr() {
            QStringLiteral("; do [ -d \"$d\" ] && printf -- '-i %s ' \"$d\"; done)");
 }
 
-// ANTS-2182 — see the header. The probe order mirrors the in-app
-// AuditDialog build-dir loop (auditdialog.cpp), with `build/` first so a
+// ANTS-2182 — see the header. The probe order has `build/` first so a
 // canonical build wins over an iteration tree (build-fast/build-asan).
-QString resolveCompileCommands(const QString &projectRoot) {
+// ANTS-3367 — the candidate list + probe live here ONCE. resolveBuildDir
+// (returns the dir NAME, for the in-app dialog's clang-tidy/clazy `-p`
+// shell strings) and resolveCompileCommands (returns the full PATH, for
+// the MCP toolArgv) both consume it, so a new build-preset name only has
+// to be added in one place (the ANTS-1707 miss class).
+static const QStringList &buildDirCandidates() {
     static const QStringList kBuildDirs = {
         QStringLiteral("build"),         QStringLiteral("build-fast"),
         QStringLiteral("build-asan"),    QStringLiteral("build-workstation"),
         QStringLiteral("build-release"), QStringLiteral("build-debug"),
         QStringLiteral("build-test"),
     };
-    for (const QString &d : kBuildDirs) {
+    return kBuildDirs;
+}
+
+QString resolveBuildDir(const QString &projectRoot) {
+    for (const QString &d : buildDirCandidates()) {
         const QString db = projectRoot + QLatin1Char('/') + d +
                            QStringLiteral("/compile_commands.json");
-        if (QFileInfo::exists(db)) return db;
+        if (QFileInfo::exists(db)) return d;
     }
     return QString();
+}
+
+QString resolveCompileCommands(const QString &projectRoot) {
+    const QString d = resolveBuildDir(projectRoot);
+    if (d.isEmpty()) return QString();
+    return projectRoot + QLatin1Char('/') + d +
+           QStringLiteral("/compile_commands.json");
 }
 
 namespace {

@@ -288,6 +288,14 @@ QString cppcheckIgnoreShellExpr();
 // DB lives in a non-`build/` tree.
 QString resolveCompileCommands(const QString &projectRoot);
 
+// ANTS-3367 — sibling of resolveCompileCommands that returns the build
+// dir NAME relative to projectRoot (e.g. "build-fast"), not the full
+// compile_commands.json path. The in-app AuditDialog feeds this name into
+// its clang-tidy / clazy `-p <dir>` shell strings. Both share one
+// candidate list + probe (resolveCompileCommands composes its path on top
+// of this), so a new build-preset name is added in exactly one place.
+QString resolveBuildDir(const QString &projectRoot);
+
 // ANTS-1254 — wire-shape view of a single SARIF finding for the
 // last_audit_summary MCP tool. Distinct from `Finding` (the audit
 // dialog's in-memory parse target) because the wire needs the

@@ -8975,11 +8975,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: user-request-2026-06-28.
 
-- 📋 [ANTS-3367] **Unify the build-dir candidate list — auditdialog's two probe loops vs AuditEngine::resolveCompileCommands.**
+- ✅ [ANTS-3367] **Unify the build-dir candidate list — auditdialog's two probe loops vs AuditEngine::resolveCompileCommands.**
   ANTS-2182 added AuditEngine::resolveCompileCommands(projectRoot) for the MCP toolArgv path (returns the full compile_commands.json PATH for cppcheck --project / clazy -p). The in-app AuditDialog still has two near-identical inline probe loops (auditdialog.cpp ~1184-1190 clang-tidy, ~1299-1306 clazy) that return the relative build-dir NAME for shell `cd`/`-p .` strings. Three copies of the {build, build-fast, build-asan, build-workstation, build-release, build-debug, build-test} list = the genuine Rule-of-Three trigger (the list already caused ANTS-1707 when a static copy missed build-fast). Left un-merged in ANTS-2182 to stay surgical (different return shapes: PATH vs NAME). Fix: add a sibling AuditEngine::resolveBuildDir(projectRoot) returning the dir name (or have resolveCompileCommands expose the candidate list) and migrate both auditdialog loops onto it. Low risk, same subsystem.
   **Layman:** The list of build folders to search for the compiler database now lives in three places; merge them so a future build-folder name only has to be added once.
   Kind: refactor.
   Source: in-session-2026-06-30 (ANTS-2182 follow-up).
+  Resolved (2026-07-13): the {build, build-fast, build-asan, build-workstation, build-release, build-debug, build-test} candidate list now lives in one place. Added `AuditEngine::resolveBuildDir(projectRoot)` (returns the dir NAME) sharing a single `buildDirCandidates()` list + probe; `resolveCompileCommands` (full PATH) now composes its path on top of resolveBuildDir. Migrated both auditdialog.cpp inline loops (clang-tidy + clazy `-p <dir>`) onto the shared helper — the two hardcoded 7-dir lists are gone. Tests: mcp_audit_run Ants3367ResolveBuildDirReturnsName (behavioural — NAME + precedence + agreement with the PATH helper) + Ants3367AuditDialogUsesSharedProbe (source-scrape guarding against re-inlining the list, the ANTS-1707 miss class). 28/28 mcp_audit_run green; INV-19 precedence unchanged. Behaviour-preserving refactor, no user-facing change (no CHANGELOG).
 
 - ✅ [ANTS-3409] **roadmap_query one-line MCP description exceeds the 800 B wire budget (814 B) — mcp_tool_detail_field.Inv5WireBudgetUnder800 red on main.**
   Pre-existing failure (NOT caused by ANTS-3408, which only edited

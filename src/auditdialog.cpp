@@ -1180,14 +1180,9 @@ void AuditDialog::populateChecks() {
         //      some reason, the user sees one actionable diagnostic
         //      ("regenerate compile_commands.json") rather than 34.
         const bool hasClangTidy = toolExists("clang-tidy");
-        QString tidyBuildDir;
-        for (const char *cand : {"build", "build-fast", "build-asan", "build-workstation",
-                                  "build-release", "build-debug", "build-test"}) {
-            if (QFile::exists(m_projectPath + "/" + cand + "/compile_commands.json")) {
-                tidyBuildDir = QString::fromLatin1(cand);
-                break;
-            }
-        }
+        // ANTS-3367 — shared probe (was an inline copy of the build-dir
+        // list, now AuditEngine::resolveBuildDir).
+        const QString tidyBuildDir = AuditEngine::resolveBuildDir(m_projectPath);
         const QString tidyCmd = tidyBuildDir.isEmpty()
             ? QString("echo 'clang-tidy: no compile_commands.json found — "
                       "build the project first (CMAKE_EXPORT_COMPILE_COMMANDS=ON)'")
@@ -1295,14 +1290,9 @@ void AuditDialog::populateChecks() {
         // one (CMAKE_EXPORT_COMPILE_COMMANDS=ON). We probe common build-dir
         // names; user must have built at least once for clazy to work.
         const bool hasClazy = toolExists("clazy-standalone");
-        QString clazyBuildDir;
-        for (const char *cand : {"build", "build-fast", "build-asan", "build-workstation",
-                                  "build-release", "build-debug", "build-test"}) {
-            if (QFile::exists(m_projectPath + "/" + cand + "/compile_commands.json")) {
-                clazyBuildDir = QString::fromLatin1(cand);
-                break;
-            }
-        }
+        // ANTS-3367 — shared probe (was an inline copy of the build-dir
+        // list, now AuditEngine::resolveBuildDir).
+        const QString clazyBuildDir = AuditEngine::resolveBuildDir(m_projectPath);
         const QString clazyDesc = hasClazy
             ? (clazyBuildDir.isEmpty()
                 ? QString("(no compile_commands.json — build the project first)")
