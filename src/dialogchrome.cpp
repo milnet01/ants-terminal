@@ -65,6 +65,18 @@ protected:
     }
 
 private:
+    // ANTS-3358 — GCC's -Wnull-dereference fires ~33 false positives across
+    // this method cluster. Each geometry accessor is guarded first
+    // (`if (!m_dlg) return;`, or an inline `&& m_dlg`), but once -O3 inlines
+    // QWidget::rect/width/height/parentWidget → QScopedPointer::operator->
+    // (qscopedpointer.h:93) GCC loses the guard and can't prove the widget's
+    // d-pointer is non-null. Same false-positive class as ANTS-1554 (which
+    // scoped the identical pragma around the one QHash site in mainwindow.cpp).
+    // Guard it GCC-only so clang doesn't warn on an unknown pragma.
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wnull-dereference"
+#endif
     void onShow() {
         if (!m_restored) {
             m_restored = true;
@@ -103,6 +115,9 @@ private:
         if (g_config && !m_sizeKey.isEmpty() && m_dlg)
             g_config->setDialogSize(m_sizeKey, m_dlg->size());
     }
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic pop
+#endif
 
     QPointer<QDialog> m_dlg;
     QPointer<QObject> m_dlgObj;  // same object, base type — downcast-free identity check

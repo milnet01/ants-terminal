@@ -96,6 +96,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Silenced 33 harmless compiler warnings from the dialog-frame helper (ANTS-3358)**
+  A full optimised build printed ~33 false-alarm "-Wnull-dereference" warnings from the dialog centring/resize helper — the compiler couldn't prove a Qt widget pointer was set, even though the code already checks it. Quieted with a tightly-scoped, GCC-only pragma (the same approach as the earlier ANTS-1554 fix), so real warnings no longer get lost in the noise. No behaviour change.
+
 - **Release version bumps now reliably update the version shown in the README and roadmap (ANTS-2163).**
   The automatic version updater was searching for old wording that no longer
   matched those two files, so it quietly skipped them and the "Version X" line

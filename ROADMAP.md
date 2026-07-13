@@ -9854,11 +9854,12 @@ indie-review finding.
   Source: split from ANTS-1350 L-2 (in-session 2026-06-27).
   Resolved (2026-06-27, user decision): bumped the Compact-density meta/label floor 9px → 11px (kDensityTable Compact row: metaPx/labelPx 9→11) for readability. ANTS-1238 INV-8 amended (9px floor → 11px meta/label, 10px absolute) in spec + code comments. roadmap_density test sentinel migrated from the now-absent `font-size:9px` to the Compact-unique `h1{font-size:14px;}`. RoadmapDensity.Main green. Note: Compact .rm-state-label (11px) now slightly exceeds Cozy's (10px) — accepted at the user's instruction.
 
-- 📋 [ANTS-3358] **Silence 37 GCC `-Wnull-dereference` false-positives inlining from `dialogchrome.cpp` (ChromeGuard widget-geometry accessors) — ANTS-1554 class.**
+- ✅ [ANTS-3358] **Silence 37 GCC `-Wnull-dereference` false-positives inlining from `dialogchrome.cpp` (ChromeGuard widget-geometry accessors) — ANTS-1554 class.**
   A full `cmake --build build --clean-first` emits 37 `-Wnull-dereference` warnings, all inlining from `src/dialogchrome.cpp:58-104` — the `ChromeGuard::recenter()` / `positionGrip()` paths that call `m_dlg->rect()/width()/height()/size()` on the `QPointer<QDialog> m_dlg`. The warnings land inside Qt's own inlined `QWidget::rect/width/height` → `QScopedPointer<QObjectData>::operator->`: GCC can't prove the widget's d-pointer is non-null even though our code guards `if (!m_dlg) return;` first. Same false-positive class as ANTS-1554 (which scoped a `#pragma GCC diagnostic ignored "-Wnull-dereference"` around the one QHash site in mainwindow.cpp and locked it with tests/features/build_warning_repo_visibility_null_deref). Fix: apply the same `#if defined(__GNUC__) && !defined(__clang__)`-guarded scoped pragma around the geometry-accessor block(s) in ChromeGuard (recenter + positionGrip), and add a source-grep regression test mirroring the ANTS-1554 fixture. Deferred from the ANTS-2175/2176 MCP bundle to keep that change surgical (orthogonal subsystem).
   **Layman:** Every full build prints 37 harmless compiler warnings from the dialog-frame helper. They're false alarms (the compiler can't prove a Qt widget pointer is set, though our code already checks it). Quiet them the same way we quieted the earlier one, so real warnings don't get lost in the noise.
   Kind: fix.
   Source: in-session-2026-06-28 (full-build warning sweep).
+  Resolved (2026-07-13): reproduced by an -O3 single-TU compile — 33 -Wnull-dereference false positives inlining from the ChromeGuard geometry accessors (recenter/positionGrip/saveSize) into QScopedPointer::operator-> (qscopedpointer.h:93), each already guarded by `if (!m_dlg) return;`. Fixed with a GCC-only (`#if defined(__GNUC__) && !defined(__clang__)`) scoped `#pragma GCC diagnostic push/ignored "-Wnull-dereference"/pop` bracketing the ChromeGuard method cluster in dialogchrome.cpp (onShow→saveSize). Recompile: 33 → 0, no unknown-pragma warning, no other diagnostics. Locked by tests/features/build_warning_dialogchrome_null_deref (source-grep, mirrors ANTS-1554): must-fail-first proven (RED without the ignored line, GREEN with). Roadmap estimated 37; GCC's actual count on this toolchain is 33.
 
 - ✅ [ANTS-3410] **Extend tools/ci-parity.sh into a full pre-push CI mirror (--lints / --asan / --full).**
   Today ci-parity.sh reproduces only the test-run half of CI's
@@ -9918,6 +9919,13 @@ indie-review finding.
   **Layman:** Shrink the always-loaded project instructions file by moving a long block of rarely-needed settings-key reference into a separate doc that's read only when needed — same trick used before for the module map and behavioural notes. Every key is preserved, just relocated.
   Kind: doc.
   Source: user-request-2026-07-03 (claude-tidy CLAUDE.md compression).
+
+- 📋 [ANTS-3505] **Silence 4 GCC `-Wnull-dereference` false-positives from `diffviewer.cpp` (positionBackToTop lambda) — ANTS-1554/ANTS-3358 class.**
+  A full -O3 build emits 4 `-Wnull-dereference` warnings (2 "potential" + 2 definite) at `qwidget.h:904` (`QWidget::width()`), inlining from `diffviewer::show()`'s `positionBackToTop` lambda (`src/diffviewer.cpp:137`, reached via the `QScrollBar::valueChanged` lambda at :144 and the `rangeChanged` lambda at :154). The lambda guards `if (!backToTopGuard || !viewerForBtn) return;` (:132) and `if (!vp) return;` (:134) before touching `vp->width()` / `backToTopGuard->width()`, but once -O3 inlines the accessor through the Qt signal-dispatch machinery GCC loses the guard. Identical false-positive class to ANTS-1554 (mainwindow QHash) and ANTS-3358 (dialogchrome ChromeGuard). Fix: apply the same `#if defined(__GNUC__) && !defined(__clang__)`-guarded scoped `#pragma GCC diagnostic push/ignored "-Wnull-dereference"/pop` around the `positionBackToTop` lambda body (or the two connect sites that inline it), and extend the source-grep regression test (`tests/features/build_warning_dialogchrome_null_deref` or a diffviewer sibling) to lock it. Small, mechanical, zero behaviour change.
+  Kind: fix.
+  **Layman:** The same harmless-false-alarm compiler warning we just quieted in the dialog helper also fires 4 times in the diff/review viewer. Same cause (the compiler can't see a pointer null-check that the code already does), same one-line fix. Quiet these too so the build stays warning-clean.
+  Kind: fix.
+  Source: in-session-2026-07-13 (found during ANTS-3358 full-build verify).
 
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 

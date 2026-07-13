@@ -1872,6 +1872,8 @@ if(ANTS_TESTS)
                 # ANTS-1821/1822/1823/1824/1836 — local-persistence write-safety bundle.
                 tests/features/local_persistence_hardening/test_local_persistence_hardening.cpp
                 tests/features/build_warning_repo_visibility_null_deref/test_build_warning_repo_visibility_null_deref.cpp
+                # ANTS-3358 — ChromeGuard -Wnull-dereference pragma guard.
+                tests/features/build_warning_dialogchrome_null_deref/test_build_warning_dialogchrome_null_deref.cpp
                 # ANTS-1450 — test_audit pattern/dimension JSON drift guard.
                 tests/features/test_audit_pattern_drift/test_pattern_drift.cpp
                 # ANTS-1226 — ModelRecommender scorer.
@@ -1993,6 +1995,8 @@ if(ANTS_TESTS)
         SRC_RC_CPP="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"
         SRC_MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         SRC_MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        # ANTS-3358 — ChromeGuard -Wnull-dereference pragma-guard source-grep.
+        SRC_DIALOGCHROME_CPP="${CMAKE_SOURCE_DIR}/src/dialogchrome.cpp"
         # ANTS-1888 — chip wiring contract.
         SRC_CLAUDESTATUSWIDGETS_H_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.h"
         SRC_CLAUDESTATUSWIDGETS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp"
