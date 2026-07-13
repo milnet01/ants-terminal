@@ -6,6 +6,7 @@
 
 #include <QWidget>
 #include <QFont>
+#include <QFontMetrics>
 #include <QTimer>
 #include <QImage>
 #include <QLineEdit>
@@ -481,6 +482,17 @@ private:
     QFont m_smallFont;          // pt-size - 2, min 7 — cmd marks
     QFont m_quickSelectFont;    // pt-size - 1, min 8, bold — URL nav
     QFont m_perfFont;           // 9pt — perf overlay
+    // ANTS-3460 — QFontMetrics for the overlay fonts, cached beside the
+    // fonts (ANTS-1207 cached the fonts but paintEvent still built a fresh
+    // QFontMetrics per frame). Rebuilt in updateFontMetrics() in lockstep,
+    // so the sticky-header / IME / URL-quick-select / perf overlays reuse
+    // them instead of constructing per frame. Placeholder-initialised from
+    // a default QFont (QFontMetrics has no default ctor); the constructor's
+    // updateFontMetrics() call assigns the real values before the first paint.
+    QFontMetrics m_fontMetrics{QFont()};             // base font (m_font)
+    QFontMetrics m_smallFontMetrics{QFont()};        // command marks
+    QFontMetrics m_quickSelectFontMetrics{QFont()};  // URL quick-select labels
+    QFontMetrics m_perfFontMetrics{QFont()};         // perf overlay
     int m_cellWidth = 0;
     int m_cellHeight = 0;
     int m_fontAscent = 0;

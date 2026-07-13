@@ -4377,11 +4377,12 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
   Kind: perf.
   Source: user-request-2026-07-09.
 
-- 📋 [ANTS-3460] **Hoist per-frame QFontMetrics constructions in the paint overlays.**
+- ✅ [ANTS-3460] **Hoist per-frame QFontMetrics constructions in the paint overlays.**
   Overlays construct QFontMetrics once per frame each at terminalwidget.cpp:1184,:1386,:1434,:1526,:1556. Not per-cell so low priority; hoist to a per-frame local or member.
   **Layman:** Tiny cleanup — avoids rebuilding a font-measurement helper several times per frame.
   Kind: perf.
   Source: user-request-2026-07-09.
+  Resolved (2026-07-13). Completes ANTS-1207's caching intent (that pass cached the overlay FONTS "without per-frame allocation" but paintEvent still built a fresh QFontMetrics per frame). Fix: 4 cached QFontMetrics members (m_fontMetrics / m_smallFontMetrics / m_quickSelectFontMetrics / m_perfFontMetrics) rebuilt in updateFontMetrics() — the single font-rebuild site, called from the ctor before the first paint — in lockstep with the fonts; the 5 paintEvent local constructions replaced with zero-cost `const QFontMetrics&` aliases (usage sites untouched). paintEvent now has ZERO per-frame QFontMetrics constructions (verified by grep; the only remaining construction is the once-per-font-change local in updateFontMetrics). Honest scope note: the original premise ("once per frame each") was slightly overstated — on inspection 4 of the 5 sat behind conditionals false in the common case (IME preedit / URL quick-select / sticky-header-visible / perf-overlay-on) and the fifth (m_smallFont) was already a single per-frame local reused across its region loop; none was per-cell. So the runtime delta is negligible, as the item flagged (low priority). Kept the change anyway because it (a) completes the ANTS-1207 pattern consistently, (b) removes the last per-frame font-metric allocations, (c) is zero-risk (identical values, just cached). RAM: 4 × ~8-byte shared d-ptr per widget = negligible, bounded per-widget. Build green; test_chrome 106/106 pass. No CHANGELOG entry — imperceptible internal micro-opt, no user-visible behavior change.
 
 - ✅ [ANTS-3461] **UI-thread stall detector — log any paintEvent / onVtBatch exceeding a threshold (debug-gated).**
   The multi-second stall could not be reproduced in-session (user-reported). Add a debug-flag-gated wall-clock guard around paintEvent and onVtBatch that logs when either exceeds e.g. 50 ms, with the batch action count / viewport size. Confirms root cause and verifies the fixes. Reuses the DebugLog facility.

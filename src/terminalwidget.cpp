@@ -531,6 +531,14 @@ void TerminalWidget::updateFontMetrics() {
     m_perfFont.setPointSize(9);
     m_perfFont.setKerning(false);
 
+    // ANTS-3460 — rebuild the overlay QFontMetrics in lockstep with the
+    // fonts above so paintEvent's overlays reuse them instead of building
+    // a fresh QFontMetrics each frame. fm above is already QFontMetrics(m_font).
+    m_fontMetrics = fm;
+    m_smallFontMetrics = QFontMetrics(m_smallFont);
+    m_quickSelectFontMetrics = QFontMetrics(m_quickSelectFont);
+    m_perfFontMetrics = QFontMetrics(m_perfFont);
+
     // ANTS-3453 — the shaped-run cache holds layouts shaped in the previous
     // font/ascent; a family or size change makes every cached glyph run and
     // its baseline offset stale, so drop them all.
@@ -1258,7 +1266,7 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     // Command timestamps and fold indicators (OSC 133 shell integration)
     {
         const auto &regions = m_grid->promptRegions();
-        QFontMetrics sfm(m_smallFont);  // ANTS-1207 — cached
+        const QFontMetrics &sfm = m_smallFontMetrics;  // ANTS-3460 — cached
 
         for (size_t ri = 0; ri < regions.size(); ++ri) {
             const auto &pr = regions[ri];
@@ -1460,7 +1468,7 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
         int gx = m_padding + cursorCol * m_cellWidth;
         int gy = m_padding + effectiveCursorRow() * m_cellHeight;
         QString text = m_preeditString;
-        QFontMetrics fm(m_font);
+        const QFontMetrics &fm = m_fontMetrics;  // ANTS-3460 — cached
         int textW = fm.horizontalAdvance(text);
         // Don't paint past the right padding edge.
         int maxW = width() - m_padding - gx;
@@ -1508,7 +1516,7 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     // URL quick-select overlay labels
     if (m_urlQuickSelectActive && !m_quickSelectLabels.empty()) {
         p.setFont(m_quickSelectFont);  // ANTS-1207 — cached
-        QFontMetrics lfm(m_quickSelectFont);
+        const QFontMetrics &lfm = m_quickSelectFontMetrics;  // ANTS-3460 — cached
 
         for (const auto &ql : m_quickSelectLabels) {
             int vr = ql.globalLine - viewStart;
@@ -1600,7 +1608,7 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
                     QColor dimColor = m_grid->defaultFg();
                     dimColor.setAlpha(130);
                     p.setPen(dimColor);
-                    QFontMetrics fm(m_font);
+                    const QFontMetrics &fm = m_fontMetrics;  // ANTS-3460 — cached
                     p.drawText(width() - fm.horizontalAdvance(durStr) - m_padding - 4, 2 + m_fontAscent, durStr);
                 }
                 break;
@@ -1630,7 +1638,7 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
 
         // Measure and draw background — ANTS-1207 cached perf font.
         p.setFont(m_perfFont);
-        QFontMetrics pfm(m_perfFont);
+        const QFontMetrics &pfm = m_perfFontMetrics;  // ANTS-3460 — cached
         int lineH = pfm.height();
         int maxW = 0;
         for (const auto &l : lines) maxW = qMax(maxW, pfm.horizontalAdvance(l));
