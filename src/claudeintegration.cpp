@@ -8715,14 +8715,17 @@ void ClaudeIntegration::onMcpConnection() {
                         "[Unreleased] in CHANGELOG.md without re-emitting "
                         "the file. ops: add (default) | add_from_roadmap "
                         "(cite a ROADMAP id; reuses its headline + Layman "
-                        "line) | add_batch (entries[], one atomic commit). "
+                        "line) | add_batch (entries[], one atomic commit) | "
+                        "normalize (reorder [Unreleased]'s ### category "
+                        "blocks into canonical order). "
                         "Category from `category` or derived from `kind`. "
                         "Required: caller_cwd (+ summary for add, id for "
                         "add_from_roadmap, entries[] for add_batch). "
                         "dry_run:true previews without writing. "
                         "Refusals: not_unreleased, bad_category, "
                         "no_changelog, format_mismatch, id_not_in_roadmap, "
-                        "missing_field, bad_args, bad_op_combo.");
+                        "feature_grouped_section, missing_field, bad_args, "
+                        "bad_op_combo.");
                     // ANTS-2079 — full per-op reference in `detail`
                     // (stripped from the tools/list wire; served by
                     // tool_info {name:"changelog_log"}).
@@ -8755,14 +8758,30 @@ void ClaudeIntegration::onMcpConnection() {
                         "applies in input order (byte-identical to the "
                         "same N sequential calls), and per-entry failures "
                         "land in `skipped[]:[{index, code, error}]` while "
-                        "the rest apply. Required: "
+                        "the rest apply. "
+                        "op:\"normalize\" (ANTS-3495) — reorder the "
+                        "`### <category>` blocks under `## [Unreleased]` "
+                        "into canonical Keep-a-Changelog order "
+                        "(Added/Changed/Deprecated/Removed/Fixed/Security). "
+                        "Non-destructive: each block's bullets and any "
+                        "wedged prose move with its heading (relocating "
+                        "stray prose is a deferred follow-up); a duplicate "
+                        "or non-canonical heading keeps its relative "
+                        "position; a preamble paragraph above the first "
+                        "`### ` is untouched. No summary/body/id needed. "
+                        "Returns {ok, op, file, changed, order_before, "
+                        "order_after, bytes_written} (bytes + dry_run:true "
+                        "under preview; no write when already canonical, "
+                        "changed:false). Required: "
                         "caller_cwd (+ summary for add, or id for "
                         "add_from_roadmap, or entries[] for add_batch). "
                         "Atomic via QSaveFile. "
                         "Refusals: not_unreleased (no `## [Unreleased]` "
                         "heading), bad_category, no_changelog, "
                         "format_mismatch (YAML changelog), "
-                        "id_not_in_roadmap, missing_field, bad_args "
+                        "id_not_in_roadmap, feature_grouped_section "
+                        "(normalize: dated `### ` topics, not flat "
+                        "categories), missing_field, bad_args "
                         "(empty entries[]), bad_op_combo. "
                         "Returns {ok, op, file, category, line, "
                         "bytes_written, created_category, id?} — or for "
@@ -8801,6 +8820,7 @@ void ClaudeIntegration::onMcpConnection() {
                     clOpEnum.append("add");
                     clOpEnum.append("add_from_roadmap");
                     clOpEnum.append("add_batch");
+                    clOpEnum.append("normalize");
                     clOp["enum"] = clOpEnum;
                     clOp["description"] = QStringLiteral(
                         "Verb mode. Default \"add\" (summary + optional "
@@ -8811,7 +8831,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "auto-detects mode (a `summary` → add; an "
                         "`id`-only entry → add_from_roadmap); per-entry "
                         "failures land in `skipped[]` while the rest "
-                        "apply (parity with roadmap_log append_batch).");
+                        "apply (parity with roadmap_log append_batch). "
+                        "\"normalize\" (ANTS-3495) reorders the "
+                        "`### <category>` blocks under [Unreleased] into "
+                        "canonical Keep-a-Changelog order without moving "
+                        "content (needs no summary/body/id).");
 
                     QJsonObject clSummary;
                     clSummary["type"] = "string";

@@ -7,6 +7,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 namespace ChangelogLog {
 
@@ -54,5 +55,40 @@ struct InsertResult {
 InsertResult insertUnreleasedEntry(const QString &markdown,
                                    const QString &category,
                                    const QString &bulletBlock);
+
+// ANTS-3495 — op:normalize (reorder-only subset). Reorder the
+// `### <category>` blocks inside `## [Unreleased]` into canonical
+// Keep-a-Changelog order (Added/Changed/Deprecated/Removed/Fixed/
+// Security). Non-destructive: each block's body (its bullets and any
+// interleaved prose) moves with its heading — relocating stray prose
+// out of the wrong block is a deliberately deferred follow-up
+// (ROADMAP notes the policy is still undecided). A duplicate or
+// non-canonical `### ` heading keeps its relative position (stable
+// sort; unknown categories sort last). Content before the first
+// `### ` heading (a preamble paragraph) is preserved untouched.
+struct NormalizeResult {
+    bool        ok = false;
+    QString     markdown;             // new body (valid iff ok)
+    QString     code;                 // refusal code iff !ok
+    QString     error;                // human message iff !ok
+    bool        changed = false;      // true iff the reorder moved a block
+    QStringList order_before;         // category headings, original order
+    QStringList order_after;          // category headings, canonical order
+    // Non-blocking advisory (parity with insertUnreleasedEntry): after
+    // the reorder the section still interleaves non-heading prose
+    // between `### ` blocks. `malformed_line` is the 1-based line of the
+    // first offending line in the RESULT body (iff malformed_section).
+    bool        malformed_section = false;
+    int         malformed_line = -1;
+};
+
+// Canonicalise the ordering of the `### <category>` blocks under
+// `## [Unreleased]` in `markdown`. Refusals:
+//   not_unreleased          — no `## [Unreleased]` heading
+//   feature_grouped_section — section uses dated `### ` topic
+//                             subsections, not flat categories (parity
+//                             with insertUnreleasedEntry; reordering
+//                             dated topics by category is meaningless)
+NormalizeResult normalizeUnreleased(const QString &markdown);
 
 }  // namespace ChangelogLog

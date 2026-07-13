@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **changelog_log op:normalize — one-call tidy for the [Unreleased] section** (ANTS-3495)
+  Reorders the ### category blocks under ## [Unreleased] into canonical Keep-a-Changelog order (Added/Changed/Deprecated/Removed/Fixed/Security) without moving any content — the companion fix the malformed-section advisory previously lacked. Non-destructive (bullets stay under their heading; duplicate/custom headings keep their place), with a dry_run preview and a no-write no-op when the section is already canonical.
+
 - **`session_orient` now actively flags a stale MCP-server binary** (ANTS-3499)
   When the running server's build commit is behind the project's HEAD, session_orient emits a server_build_stale block (behind_commits, built, head, hint) so a Claude Code session on an old binary is told to relaunch before trusting shipped status — instead of silently re-reporting already-fixed bugs. Advisory only; never blocks; skipped when the build commit is unknown to the repo or caller_cwd is not a git checkout.
 

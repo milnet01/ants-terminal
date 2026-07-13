@@ -3,6 +3,10 @@
 #include "changeloglog.h"
 
 #include <QStringList>
+#include <QVector>
+
+#include <algorithm>
+#include <limits>
 
 namespace ChangelogLog {
 
@@ -266,6 +270,143 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
     r.created_category = true;
     r.markdown = lines.join(QLatin1Char('\n'));
     r.line = headingAt + 3;  // 1-based line of the inserted bullet
+    return r;
+}
+
+namespace {
+// Case-insensitive canonical index for a `### ` heading name. Returns
+// the 0-based Keep-a-Changelog order, or -1 for a non-canonical heading.
+// (canonicalCategories().indexOf is case-sensitive; the insert path can
+// afford that because it only orders around a matched target, but the
+// reorder must place a differently-cased `### fixed` correctly.)
+int canonicalIndexCI(const QString &name) {
+    const QStringList &cats = canonicalCategories();
+    for (int c = 0; c < cats.size(); ++c)
+        if (cats.at(c).compare(name, Qt::CaseInsensitive) == 0) return c;
+    return -1;
+}
+}  // namespace
+
+NormalizeResult normalizeUnreleased(const QString &markdown) {
+    NormalizeResult r;
+    QStringList lines = markdown.split(QLatin1Char('\n'));
+
+    // 1. Locate `## [Unreleased]`.
+    int unrel = -1;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (lines.at(i).trimmed().compare(
+                QStringLiteral("## [Unreleased]"), Qt::CaseInsensitive) == 0) {
+            unrel = i;
+            break;
+        }
+    }
+    if (unrel < 0) {
+        r.code = QStringLiteral("not_unreleased");
+        r.error = QStringLiteral(
+            "changelog_log: no `## [Unreleased]` heading found — the "
+            "CHANGELOG must follow Keep-a-Changelog with an Unreleased "
+            "section at the top");
+        return r;
+    }
+
+    // 2. Bound the Unreleased section [unrel+1, sectionEnd).
+    int sectionEnd = lines.size();
+    for (int i = unrel + 1; i < lines.size(); ++i) {
+        if (lines.at(i).startsWith(QStringLiteral("## "))) {
+            sectionEnd = i;
+            break;
+        }
+    }
+
+    // 3. Refuse a FEATURE-GROUPED section (dated `### ` topics, not flat
+    //    categories) — reordering dated topics by category is meaningless
+    //    (parity with insertUnreleasedEntry's refusal).
+    const int topicLine =
+        firstFeatureGroupedTopicLine(lines, unrel + 1, sectionEnd);
+    if (topicLine > 0) {
+        r.code = QStringLiteral("feature_grouped_section");
+        r.error = QStringLiteral(
+            "changelog_log: `## [Unreleased]` is feature-grouped — its "
+            "`### ` subsections are dated topics (first at line %1), not "
+            "Keep-a-Changelog categories; op:normalize only reorders flat "
+            "`### <category>` blocks.").arg(topicLine);
+        return r;
+    }
+
+    // 4. Find the first `### ` heading. Everything from [unrel+1, firstCat)
+    //    is preamble (kept untouched); no heading ⇒ nothing to reorder.
+    int firstCat = -1;
+    for (int i = unrel + 1; i < sectionEnd; ++i) {
+        if (lines.at(i).trimmed().startsWith(QStringLiteral("### "))) {
+            firstCat = i;
+            break;
+        }
+    }
+    if (firstCat < 0) {
+        r.ok = true;
+        r.markdown = markdown;
+        r.changed = false;
+        return r;
+    }
+
+    // 5. Partition [firstCat, sectionEnd) into `### `-led blocks. A block
+    //    spans its heading line through the line before the next `### `
+    //    (or sectionEnd) — so its bullets, blank spacer, and any wedged
+    //    prose travel with it.
+    struct Block { int key; int origin; QStringList body; };
+    QVector<Block> blocks;
+    int i = firstCat;
+    while (i < sectionEnd) {
+        const QString name = lines.at(i).trimmed().mid(4).trimmed();
+        int j = i + 1;
+        while (j < sectionEnd &&
+               !lines.at(j).trimmed().startsWith(QStringLiteral("### ")))
+            ++j;
+        Block b;
+        const int ci = canonicalIndexCI(name);
+        b.key = (ci >= 0) ? ci : std::numeric_limits<int>::max();
+        b.origin = blocks.size();
+        for (int k = i; k < j; ++k) b.body.append(lines.at(k));
+        blocks.append(b);
+        r.order_before.append(name);
+        i = j;
+    }
+
+    // 6. Stable-sort by canonical key: equal-key (duplicate) and
+    //    unknown-category blocks keep their original relative order.
+    QVector<Block> sorted = blocks;
+    std::stable_sort(sorted.begin(), sorted.end(),
+                     [](const Block &a, const Block &b) { return a.key < b.key; });
+
+    for (const Block &b : sorted)
+        r.order_after.append(r.order_before.at(b.origin));
+
+    bool changed = false;
+    for (int b = 0; b < sorted.size(); ++b)
+        if (sorted.at(b).origin != b) { changed = true; break; }
+
+    if (!changed) {
+        r.ok = true;
+        r.markdown = markdown;
+        r.changed = false;
+        const int pl = firstInterleavedProseLine(lines, unrel + 1, sectionEnd);
+        if (pl > 0) { r.malformed_section = true; r.malformed_line = pl; }
+        return r;
+    }
+
+    // 7. Reassemble: [0, firstCat) + reordered blocks + [sectionEnd, end).
+    //    The result is a permutation of the same lines, so total line
+    //    count — and thus the sectionEnd index — is preserved.
+    QStringList out;
+    for (int k = 0; k < firstCat; ++k) out.append(lines.at(k));
+    for (const Block &b : sorted) out += b.body;
+    for (int k = sectionEnd; k < lines.size(); ++k) out.append(lines.at(k));
+
+    r.ok = true;
+    r.markdown = out.join(QLatin1Char('\n'));
+    r.changed = true;
+    const int pl = firstInterleavedProseLine(out, unrel + 1, sectionEnd);
+    if (pl > 0) { r.malformed_section = true; r.malformed_line = pl; }
     return r;
 }
 

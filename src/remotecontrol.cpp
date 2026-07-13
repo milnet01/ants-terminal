@@ -5213,11 +5213,12 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         return cmdChangelogLogAddBatch(req);
     }
     if (op != QStringLiteral("add") &&
-        op != QStringLiteral("add_from_roadmap")) {
+        op != QStringLiteral("add_from_roadmap") &&
+        op != QStringLiteral("normalize")) {
         return clErr(QStringLiteral("bad_op_combo"),
             QStringLiteral("changelog_log: unknown op \"%1\" — expected "
-                           "\"add\" (default), \"add_from_roadmap\", or "
-                           "\"add_batch\"")
+                           "\"add\" (default), \"add_from_roadmap\", "
+                           "\"add_batch\", or \"normalize\"")
                 .arg(op));
     }
 
@@ -5259,6 +5260,87 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         return clErr(QStringLiteral("no_changelog"),
             QStringLiteral("changelog_log: no CHANGELOG.md under \"%1\"")
                 .arg(callerCanonical));
+    }
+
+    // ANTS-3495 — op:"normalize": reorder the `### <category>` blocks in
+    // `## [Unreleased]` into canonical Keep-a-Changelog order. No summary/
+    // body/id/category resolution — it rewrites layout, not content. The
+    // prose-relocation half of the ANTS-2125 advisory is a deferred
+    // follow-up; this canonicalises category ORDER only.
+    if (op == QStringLiteral("normalize")) {
+        QFile cf(clPath);
+        if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return clErr(QStringLiteral("changelog_read_failed"),
+                QStringLiteral("changelog_log: could not read \"%1\"")
+                    .arg(clPath));
+        }
+        const QString clMarkdown = QString::fromUtf8(cf.readAll());
+        cf.close();
+
+        const auto res = ChangelogLog::normalizeUnreleased(clMarkdown);
+        if (!res.ok) {
+            return clErr(res.code, res.error);
+        }
+
+        auto orderArr = [](const QStringList &v) {
+            QJsonArray a;
+            for (const QString &s : v) a.append(s);
+            return a;
+        };
+        // Reorder canonicalises category ORDER; interleaved prose (the
+        // other half of the ANTS-2125 malformation) is left in place, so
+        // surface it honestly rather than implying a full tidy.
+        auto proseAdvisory = [](int line) {
+            return QStringLiteral(
+                "changelog_log: category blocks reordered into canonical "
+                "Keep-a-Changelog order, but `## [Unreleased]` still "
+                "interleaves non-heading prose between `### ` blocks (first "
+                "at line %1). op:normalize reorders category order only; "
+                "relocating stray prose is a separate follow-up — tidy it by "
+                "hand or leave in place.").arg(line);
+        };
+
+        // dry_run, or an already-canonical section, both write nothing.
+        if (dryRun || !res.changed) {
+            QJsonObject out;
+            out["ok"]           = true;
+            out["op"]           = op;
+            out["file"]         = clPath.section('/', -1);
+            out["changed"]      = res.changed;
+            out["order_before"] = orderArr(res.order_before);
+            out["order_after"]  = orderArr(res.order_after);
+            out["bytes"]        =
+                static_cast<qint64>(res.markdown.toUtf8().size());
+            if (dryRun) out["dry_run"] = true;
+            if (res.malformed_section)
+                out["advisory"] = proseAdvisory(res.malformed_line);
+            return QJsonDocument(out);
+        }
+
+        QSaveFile cw(clPath);
+        if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            return clErr(QStringLiteral("changelog_write_failed"),
+                QStringLiteral("changelog_log: could not open \"%1\" for "
+                               "writing").arg(clPath));
+        }
+        const QByteArray utf8 = res.markdown.toUtf8();
+        if (cw.write(utf8) != utf8.size() || !cw.commit()) {
+            return clErr(QStringLiteral("changelog_write_failed"),
+                QStringLiteral("changelog_log: atomic write of \"%1\" failed")
+                    .arg(clPath));
+        }
+
+        QJsonObject out;
+        out["ok"]            = true;
+        out["op"]            = op;
+        out["file"]          = clPath.section('/', -1);
+        out["changed"]       = true;
+        out["order_before"]  = orderArr(res.order_before);
+        out["order_after"]   = orderArr(res.order_after);
+        out["bytes_written"] = static_cast<qint64>(utf8.size());
+        if (res.malformed_section)
+            out["advisory"] = proseAdvisory(res.malformed_line);
+        return QJsonDocument(out);
     }
 
     // Resolve summary / body / id / category by mode.
