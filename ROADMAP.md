@@ -9018,6 +9018,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: doc-fix.
   Source: cold-eyes-2026-07-13 (loop 2, ANTS-3342 review).
 
+- 📋 [ANTS-3513] **read_region/read_regions symbol mode should resolve namespace/class-qualified names, not only the bare identifier.**
+  Observed while fixing ANTS-2119: `read_region {symbol:"AntsHelper::driftCheck"}` and `{symbol:"claudestate::display"}` both refuse with `symbol_not_found`, while the bare `{symbol:"driftCheck"}` / `{symbol:"display"}` resolve fine. The flat file_outline indexes the unqualified identifier, so a qualified query misses. The instinct (from find_definition / grep output, which show qualified names) is to paste the qualified form, so this costs a retry each time. Fix: in symbol-mode resolution, if an exact match fails, retry against the last `::`-separated component (or match on suffix `(::|^)<tail>$`). Low-risk, purely additive matching. Same for read_regions items[].symbol.
+  **Layman:** When asking to read a function by name, typing its full name (like ClassName::method) fails and you must strip the prefix — the tool should accept both.
+  Kind: enhancement.
+  Source: in-session-2026-07-14 (ANTS-2119 work).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
