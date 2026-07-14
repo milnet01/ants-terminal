@@ -65,6 +65,8 @@ for security-relevant changes.
 
 ### Changed
 
+- ****Faster Roadmap dialog on large histories** — the bullet parser is memoized across debounced renders, so typing in the search box no longer re-parses the whole (up to 64 MiB) archive on every keystroke.** (ANTS-2119)
+
 - ****Lower idle CPU — a blinking cursor (and hover/expose repaints) no longer redraw the whole terminal.****
   paintEvent now honours the damage rectangle (ANTS-3454): it redraws only
   the screen rows the update actually touches. The cursor blink invalidates
@@ -101,6 +103,10 @@ for security-relevant changes.
   first ~124 bytes), skipping the wasted full-body invariant parse.
 
 ### Fixed
+
+- ****Audit-cache retention no longer deletes a report a kept run still references** — a same-second/same-commit filename collision could reap a SARIF/HTML file that a surviving history entry pointed at.** (ANTS-2119)
+
+- ****Output triggers now fire once per matching line** — a non-instant trigger (notify/command/run_script) fires on every completed line that matches, instead of once per output batch and only when the batch happened to end on a newline.** (ANTS-2119)
 
 - ****ANTS-2119 hardening tail (partial): 11 correctness/robustness fixes across the PTY, audit, MCP-dispatch, and Claude-integration lanes.****
   Small, low-risk repairs the June indie-review flagged: a stale-fd guard and a documented env-buffer reserve in the PTY reader; PTY write-loss is now logged instead of silent; the audit review-report handed to Claude gets explicit owner-only file permissions; the review dispatcher enforces its reply size limit in bytes (not characters) and rejects lane names that could escape the reports directory; the drift-check helper no longer throws away the script's error output; project discovery and the brief-file cache are bounded so a corrupt file or long session can't grow memory without limit; and a dead field was removed.
@@ -193,6 +199,10 @@ for security-relevant changes.
   and flip_batch (shared primitive).
 
 ### Security
+
+- ****Kitty graphics images are now strict-base64 decoded** — a corrupt image payload is rejected outright (matching the OSC 52 / iTerm2 paths) instead of silently feeding a garbage-prefixed stream to the image loader.** (ANTS-2119)
+
+- ****OSC 8 hyperlink phishing warning now covers the common case** — a benign-looking link label ("Download", "click here") pointing at a punycode/IDN-homograph or bare-IP destination now prompts before opening, not only when the label itself looks like a mismatched hostname.** (ANTS-2119)
 
 - **Audit window AI-review buttons now enforce the same network safety checks as the main AI client (ANTS-2121).**
   The audit window's "AI triage" buttons talk to the AI server over
