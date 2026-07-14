@@ -15,6 +15,7 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QSaveFile>
+#include <QSet>
 #include <QStringList>
 
 namespace AuditCache {
@@ -283,6 +284,18 @@ RecordedRun recordRun(const QString &canonProject,
     }
     newManifest[QStringLiteral("history")] = history;
 
+    // ANTS-2119 M2 — the caller already wrote the new SARIF (auditrunner.cpp,
+    // before recordRun). If the manifest write below fails, the old index.json
+    // stays intact (INV-10) and correctly names none of the new files — so the
+    // new SARIF is now an orphan no manifest references and no future reaper
+    // will see. Name it on the failure paths so the leak is debuggable.
+    auto warnOrphanSarif = [&out]() {
+        if (!out.sarifPath.isEmpty())
+            qWarning() << "AuditCache: index.json not updated; the new SARIF is "
+                          "now an orphan (no manifest references it):"
+                       << out.sarifPath;
+    };
+
     // Atomic write of index.json via QSaveFile. manifestPath + the
     // ConfigWriteLock guarding this RMW were taken at function entry
     // (ANTS-2189).
@@ -290,6 +303,7 @@ RecordedRun recordRun(const QString &canonProject,
     if (!sf.open(QIODevice::WriteOnly)) {
         qWarning() << "AuditCache: failed to open index.json for write:"
                    << sf.errorString();
+        warnOrphanSarif();
         return out;
     }
     setOwnerOnlyPerms(sf);
@@ -297,11 +311,13 @@ RecordedRun recordRun(const QString &canonProject,
         QJsonDocument(newManifest).toJson(QJsonDocument::Indented);
     if (sf.write(body) != body.size()) {
         qWarning() << "AuditCache: short write on index.json";
+        warnOrphanSarif();
         return out;
     }
     if (!sf.commit()) {
         qWarning() << "AuditCache: commit failed on index.json:"
                    << sf.errorString();
+        warnOrphanSarif();
         return out;
     }
     setOwnerOnlyPerms(manifestPath);
@@ -324,6 +340,27 @@ RecordedRun recordRun(const QString &canonProject,
     // filenames came from sarifPathFor/htmlPathFor — they live in
     // <root>/.audit_cache/ by construction. Resolve basename-only
     // entries to absolute paths.
+    //
+    // ANTS-2119 M1 — but a dropped entry's basename is NOT guaranteed unique:
+    // sarifPathFor stamps a 1-second timestamp + the commit SHA (no per-run
+    // nonce), so two sweeps in the same second on the same commit share a
+    // basename. If one twin is dropped while the other is kept, reaping the
+    // dropped entry would delete the file the kept entry still points at. Build
+    // the set of basenames still referenced by the kept manifest (new last_run +
+    // surviving history[]) and never reap one of them — the spec §2.4 keep_files
+    // guard the implementation had dropped (also covers a hand-merged manifest
+    // that duplicates a basename).
+    QSet<QString> keep;
+    auto addKeep = [&keep](const QJsonObject &e) {
+        for (const QString &k : {QStringLiteral("sarif"), QStringLiteral("html"),
+                                 QStringLiteral("findings_file")}) {
+            const QString b = e.value(k).toString();
+            if (!b.isEmpty()) keep.insert(b);
+        }
+    };
+    addKeep(lastRun);
+    for (const QJsonValue &v : history) addKeep(v.toObject());
+
     for (const QJsonValue &v : reaped) {
         const QJsonObject e = v.toObject();
         const QString sarif = e.value(QStringLiteral("sarif")).toString();
@@ -332,6 +369,8 @@ RecordedRun recordRun(const QString &canonProject,
             e.value(QStringLiteral("findings_file")).toString();
         auto reapOne = [&](const QString &basename) {
             if (basename.isEmpty()) return;
+            // ANTS-2119 M1 — a surviving entry still references this file.
+            if (keep.contains(basename)) return;
             QString abs = basename;
             if (!abs.startsWith(QLatin1Char('/'))) {
                 abs = dir + QLatin1Char('/') + abs;

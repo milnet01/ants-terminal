@@ -375,6 +375,64 @@ TEST(AuditRunCache, RecordRunCapsHistoryAtTenAndReapsDroppedFiles) {
               QStringLiteral("prev0000"));
 }
 
+TEST(AuditRunCache, Ants2119ReaperKeepsFileSharedWithSurvivingEntry) {
+    // ANTS-2119 M1 — sarif basenames carry a 1-second timestamp + the commit
+    // SHA (no per-run nonce), so two sweeps in the same second on the same
+    // commit share a basename. If a dropped history entry names the SAME file a
+    // surviving entry still references, the reaper must NOT delete it (spec
+    // §2.4 keep_files set, which the impl had dropped).
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+
+    const QString shared =
+        QStringLiteral("audit-2026-05-18T05-00-00Z-shared00.sarif");
+
+    QJsonObject prevLastRun;
+    prevLastRun[QStringLiteral("iso_timestamp")] = QStringLiteral("2026-05-18T11:00:00Z");
+    prevLastRun[QStringLiteral("commit")]        = QStringLiteral("prev0000");
+    prevLastRun[QStringLiteral("sarif")] =
+        QStringLiteral("audit-2026-05-18T11-00-00Z-prev0000.sarif");
+    ASSERT_TRUE(touch(root + QStringLiteral("/.audit_cache/")
+                      + prevLastRun.value(QStringLiteral("sarif")).toString()));
+
+    // 10 history entries (newest-first: i==9 appended first / kept, i==0
+    // appended last / dropped once prevLastRun migrates in). The dropped entry
+    // (i==0) and a kept entry (i==9) share ONE sarif file.
+    QJsonArray history;
+    for (int i = 9; i >= 0; --i) {
+        QJsonObject e;
+        e[QStringLiteral("iso_timestamp")] =
+            QStringLiteral("2026-05-18T0%1:00:00Z").arg(i);
+        e[QStringLiteral("commit")] = QStringLiteral("hist%1000").arg(i);
+        const QString sarif = (i == 0 || i == 9)
+            ? shared
+            : QStringLiteral("audit-2026-05-18T0%1-00-00Z-h%2.sarif").arg(i).arg(i);
+        e[QStringLiteral("sarif")] = sarif;
+        history.append(e);
+    }
+    ASSERT_TRUE(touch(root + QStringLiteral("/.audit_cache/") + shared));
+
+    QJsonObject seed;
+    seed[QStringLiteral("version")]  = 1;
+    seed[QStringLiteral("last_run")] = prevLastRun;
+    seed[QStringLiteral("history")]  = history;
+    ASSERT_TRUE(seedManifest(root, seed));
+
+    QJsonObject newLastRun;
+    newLastRun[QStringLiteral("iso_timestamp")] = QStringLiteral("2026-05-18T20:00:00Z");
+    newLastRun[QStringLiteral("commit")]        = QStringLiteral("new00000");
+    newLastRun[QStringLiteral("sarif")] =
+        QStringLiteral("audit-2026-05-18T20-00-00Z-new00000.sarif");
+    QJsonObject prior;
+    const AuditCache::RecordedRun rec = AuditCache::recordRun(root, newLastRun, &prior);
+    ASSERT_TRUE(rec.ok);
+
+    EXPECT_TRUE(QFile::exists(root + QStringLiteral("/.audit_cache/") + shared))
+        << "ANTS-2119 M1: the reaper must not delete a sarif still referenced "
+           "by a surviving history entry (basename-collision keep-set)";
+}
+
 TEST(AuditRunCache, RecordRunPersistsManifestWithOwnerOnlyPerms) {
     // INV-6 — manifest written with 0600 perms.
     QTemporaryDir tmp;
