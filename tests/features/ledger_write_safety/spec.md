@@ -26,9 +26,12 @@ Two cross-cutting persistence bugs flagged by indie-review #7 (2026-06-04):
 
 ## Surface
 
-- `src/modelswitchledger.cpp` — `writeLinesAtomic` (0700), `appendRecord` +
-  `writeRecords` (lock).
-- `src/modelnearmissledger.cpp` — same two fixes (same bug class).
+- `src/jsonlfile.cpp` — `JsonlFile::writeLinesAtomic` (0700 + owner-only 0600).
+  ANTS-2119 extracted this from the two ledgers into one shared copy so the
+  security-critical write sequence cannot drift between them.
+- `src/modelswitchledger.cpp` — `appendRecord` + `writeRecords` route writes
+  through `JsonlFile::writeLinesAtomic`; both hold a `ConfigWriteLock`.
+- `src/modelnearmissledger.cpp` — same delegation + lock (same bug class).
 - `src/auditfpledger.cpp` — `appendEntry` 0700 + lock spanning dedup+append.
 - `src/auditdialog.cpp` — `appendSnapshot` 0700 + trend.json lock;
   `saveBaseline` 0700.
@@ -44,5 +47,8 @@ Two cross-cutting persistence bugs flagged by indie-review #7 (2026-06-04):
   both survive (the lock is released between calls), and a `<path>.lock`
   sibling exists after a write.
 - **INV-4** — wiring: every cited site routes through `ensurePrivateDir`
-  (the bare `QDir().mkpath` idiom is gone at that site).
+  (the bare `QDir().mkpath` idiom is gone at that site). ANTS-2119 — the two
+  model ledgers delegate to `JsonlFile::writeLinesAtomic` (the `ensurePrivateDir`
+  sequence lives in `jsonlfile.cpp`), so the grep asserts each ledger calls the
+  shared helper rather than re-implementing the 0700 dance.
 - **INV-5** — wiring: every cited RMW site holds a `ConfigWriteLock`.

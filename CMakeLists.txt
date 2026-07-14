@@ -266,6 +266,9 @@ add_library(ants_core_lib STATIC
     src/feedbackfile.cpp
     # ANTS-1963 — spec_log pure markdown transforms (Qt6::Core-only).
     src/speclog.cpp
+    # ANTS-2119 — shared JSONL line-file primitives (readLines / writeLinesAtomic)
+    # used by both model ledgers; single copy of the 0700/0600 write sequence.
+    src/jsonlfile.cpp
     # ANTS-1735 — model-switch effectiveness ledger. In core (not claude) so the
     # read-only model_switch_stats MCP verb (mainwindow dispatch) can reach it.
     src/modelswitchledger.cpp
@@ -2009,6 +2012,8 @@ if(ANTS_TESTS)
         # ANTS-1988/1989 — file-write safety bundle wiring greps.
         SRC_MODELSWITCHLEDGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/modelswitchledger.cpp"
         SRC_MODELNEARMISSLEDGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/modelnearmissledger.cpp"
+        # ANTS-2119 — shared JSONL write helper (0700/0600 sequence lives here now).
+        SRC_JSONLFILE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/jsonlfile.cpp"
         SRC_AUDITCACHE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditcache.cpp"
         SRC_AUDITRUNNER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditrunner.cpp"
         SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"

@@ -5,14 +5,11 @@
 
 #include <QDateTime>
 #include <QDir>
-#include <QFile>
-#include <QFileInfo>
 #include <QJsonDocument>
 #include <QRegularExpression>
-#include <QSaveFile>
 #include <QStandardPaths>
 
-#include "secureio.h"      // setOwnerOnlyPerms, ensurePrivateDir
+#include "jsonlfile.h"     // ANTS-2119 — shared readLines / writeLinesAtomic
 #include "configbackup.h"  // ConfigWriteLock — ANTS-1989
 
 namespace ModelSwitchLedger {
@@ -23,42 +20,12 @@ QByteArray serialize(const Record &rec) {
     return QJsonDocument(toJson(rec)).toJson(QJsonDocument::Compact);
 }
 
-QList<QByteArray> readRawLines(const QString &path) {
-    QList<QByteArray> out;
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return out;
-    const QByteArray all = f.readAll();
-    for (const QByteArray &ln : all.split('\n'))
-        if (!ln.trimmed().isEmpty()) out.append(ln);
-    return out;
-}
-
 bool isPendingLine(const QByteArray &ln) {
     QJsonParseError err{};
     const QJsonDocument doc = QJsonDocument::fromJson(ln, &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject()) return false;
     return doc.object().value(QStringLiteral("outcome")).toObject()
         .value(QStringLiteral("pending")).toBool(false);
-}
-
-bool writeLinesAtomic(const QString &path, const QList<QByteArray> &lines) {
-    const QFileInfo fi(path);
-    // ANTS-1988 — create the cache dir private (0700) with no world-readable
-    // mkpath-then-chmod window. The ledger's dir listing would otherwise leak
-    // its name + mtimes (switch cadence) to other local users.
-    if (!ensurePrivateDir(fi.absolutePath())) return false;
-    QSaveFile sf(path);
-    if (!sf.open(QIODevice::WriteOnly)) return false;
-    for (const QByteArray &ln : lines) {
-        if (sf.write(ln) != ln.size() || sf.write("\n", 1) != 1) {
-            sf.cancelWriting();
-            return false;
-        }
-    }
-    // Tighten perms on the temp file before the atomic rename so the final
-    // ledger is never briefly group/world-readable (no create-then-chmod window).
-    setOwnerOnlyPerms(sf);
-    return sf.commit();
 }
 
 }  // namespace
@@ -122,20 +89,27 @@ Record fromJson(const QJsonObject &o) {
 }
 
 QList<QByteArray> evictToCap(QList<QByteArray> lines, qint64 capBytes) {
-    auto total = [&lines]() -> qint64 {
-        qint64 t = 0;
-        for (const QByteArray &l : lines) t += l.size() + 1;  // + '\n'
-        return t;
-    };
-    while (total() > capBytes && lines.size() > 1) {
+    // ANTS-2119 — track the running byte total (decrement per removal instead of
+    // re-summing the whole list each pass) and parse each line's pending state
+    // once up front rather than re-parsing its JSON on every while-iteration, so
+    // a heavy eviction no longer pays the O(N²) sum + per-pass re-parse cost.
+    qint64 total = 0;
+    for (const QByteArray &l : lines) total += l.size() + 1;   // + '\n'
+    QList<bool> pending;
+    pending.reserve(lines.size());
+    for (const QByteArray &l : lines) pending.append(isPendingLine(l));
+
+    while (total > capBytes && lines.size() > 1) {
         int victim = -1;
         // Oldest non-pending line, never the newest (last) — pending records are
         // pinned, lines removed whole (no mid-line truncation). INV-10.
         for (int i = 0; i < lines.size() - 1; ++i) {
-            if (!isPendingLine(lines.at(i))) { victim = i; break; }
+            if (!pending.at(i)) { victim = i; break; }
         }
         if (victim < 0) break;   // only pinned records + newest remain
+        total -= lines.at(victim).size() + 1;
         lines.removeAt(victim);
+        pending.removeAt(victim);
     }
     // ANTS-2196 — hard secondary ceiling. The loop above honours pending-pinning,
     // so a run of never-settling pending records (a project dir that vanished, so
@@ -144,8 +118,10 @@ QList<QByteArray> evictToCap(QList<QByteArray> lines, qint64 capBytes) {
     // drop the OLDEST line regardless of pending state (never the newest) so the
     // ledger is hard-bounded. Pin is a soft preference, not a leak licence.
     const qint64 hardCap = capBytes * kEvictHardCeilingMult;
-    while (total() > hardCap && lines.size() > 1)
+    while (total > hardCap && lines.size() > 1) {
+        total -= lines.at(0).size() + 1;
         lines.removeAt(0);   // oldest first; newest (last) always survives
+    }
     return lines;
 }
 
@@ -157,15 +133,15 @@ bool appendRecord(const QString &path, const Record &rec, qint64 capBytes) {
     // holder (the RMW itself is microseconds), so we proceed best-effort rather
     // than drop the record — a vanishingly rare race beats losing trust-signal data.
     ConfigWriteLock lock(path);
-    QList<QByteArray> lines = readRawLines(path);
+    QList<QByteArray> lines = JsonlFile::readLines(path);
     lines.append(serialize(rec));
     lines = evictToCap(lines, capBytes);
-    return writeLinesAtomic(path, lines);
+    return JsonlFile::writeLinesAtomic(path, lines);
 }
 
 QList<Record> readRecords(const QString &path) {
     QList<Record> out;
-    for (const QByteArray &ln : readRawLines(path)) {
+    for (const QByteArray &ln : JsonlFile::readLines(path)) {
         QJsonParseError err{};
         const QJsonDocument doc = QJsonDocument::fromJson(ln, &err);
         if (err.error == QJsonParseError::NoError && doc.isObject())
@@ -182,7 +158,7 @@ bool writeRecords(const QString &path, const QList<Record> &recs, qint64 capByte
     lines.reserve(recs.size());
     for (const Record &r : recs) lines.append(serialize(r));
     lines = evictToCap(lines, capBytes);
-    return writeLinesAtomic(path, lines);
+    return JsonlFile::writeLinesAtomic(path, lines);
 }
 
 namespace {

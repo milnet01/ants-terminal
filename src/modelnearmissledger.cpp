@@ -4,16 +4,13 @@
 #include <algorithm>
 
 #include <QDir>
-#include <QFile>
-#include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
-#include <QSaveFile>
 #include <QStandardPaths>
 
 #include "modelswitchledger.h"   // parseIso8601Ms reuse (INV per § 2.3 helpers)
-#include "secureio.h"            // setOwnerOnlyPerms, ensurePrivateDir
+#include "jsonlfile.h"           // ANTS-2119 — shared readLines / writeLinesAtomic
 #include "configbackup.h"        // ConfigWriteLock — ANTS-1989
 
 namespace ModelNearMissLedger {
@@ -42,32 +39,6 @@ const QStringList &taxonomyOrder() {
 
 QByteArray serialize(const Record &rec) {
     return QJsonDocument(toJson(rec)).toJson(QJsonDocument::Compact);
-}
-
-QList<QByteArray> readRawLines(const QString &path) {
-    QList<QByteArray> out;
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return out;
-    const QByteArray all = f.readAll();
-    for (const QByteArray &ln : all.split('\n'))
-        if (!ln.trimmed().isEmpty()) out.append(ln);
-    return out;
-}
-
-bool writeLinesAtomic(const QString &path, const QList<QByteArray> &lines) {
-    const QFileInfo fi(path);
-    // ANTS-1988 — private (0700) cache dir, no world-readable mkpath window.
-    if (!ensurePrivateDir(fi.absolutePath())) return false;
-    QSaveFile sf(path);
-    if (!sf.open(QIODevice::WriteOnly)) return false;
-    for (const QByteArray &ln : lines) {
-        if (sf.write(ln) != ln.size() || sf.write("\n", 1) != 1) {
-            sf.cancelWriting();
-            return false;
-        }
-    }
-    setOwnerOnlyPerms(sf);
-    return sf.commit();
 }
 
 }  // namespace
@@ -123,17 +94,20 @@ Record fromJson(const QJsonObject &o) {
 }
 
 QList<QByteArray> evictToCap(QList<QByteArray> lines, qint64 capBytes) {
-    auto total = [&lines]() -> qint64 {
-        qint64 t = 0;
-        for (const QByteArray &l : lines) t += l.size() + 1;
-        return t;
-    };
+    // ANTS-2119 — track the running byte total and drop the oldest lines in a
+    // single erase, so a heavy eviction is O(N) rather than O(N²) (the prior
+    // form re-summed the whole list and front-erased one line at a time).
+    qint64 total = 0;
+    for (const QByteArray &l : lines) total += l.size() + 1;   // + '\n'
     // INV-8 — drop oldest non-newest lines until ≤ capBytes; never drop the
     // newest line; lines removed whole (no mid-line truncation). No
     // pending-pinning (near-miss has no outcome backfill).
-    while (total() > capBytes && lines.size() > 1) {
-        lines.removeFirst();
+    int drop = 0;
+    while (total > capBytes && lines.size() - drop > 1) {
+        total -= lines.at(drop).size() + 1;
+        ++drop;
     }
+    if (drop > 0) lines.erase(lines.begin(), lines.begin() + drop);
     return lines;
 }
 
@@ -142,15 +116,15 @@ bool appendRecord(const QString &path, const Record &rec, qint64 capBytes) {
     // instances both append and the last rename drops one near-miss record.
     // Best-effort lock (see ModelSwitchLedger::appendRecord for the rationale).
     ConfigWriteLock lock(path);
-    QList<QByteArray> lines = readRawLines(path);
+    QList<QByteArray> lines = JsonlFile::readLines(path);
     lines.append(serialize(rec));
     lines = evictToCap(lines, capBytes);
-    return writeLinesAtomic(path, lines);
+    return JsonlFile::writeLinesAtomic(path, lines);
 }
 
 QList<Record> readRecords(const QString &path) {
     QList<Record> out;
-    for (const QByteArray &ln : readRawLines(path)) {
+    for (const QByteArray &ln : JsonlFile::readLines(path)) {
         QJsonParseError err{};
         const QJsonDocument doc = QJsonDocument::fromJson(ln, &err);
         if (err.error == QJsonParseError::NoError && doc.isObject())

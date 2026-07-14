@@ -25,6 +25,9 @@
 #ifndef SRC_MODELNEARMISSLEDGER_CPP_PATH
 #error "SRC_MODELNEARMISSLEDGER_CPP_PATH compile definition required"
 #endif
+#ifndef SRC_JSONLFILE_CPP_PATH
+#error "SRC_JSONLFILE_CPP_PATH compile definition required"
+#endif
 #ifndef SRC_AUDITCACHE_CPP_PATH
 #error "SRC_AUDITCACHE_CPP_PATH compile definition required"
 #endif
@@ -124,6 +127,7 @@ TEST(LedgerWriteSafety, Inv3LockDoesNotBreakHappyPath) {
 TEST(LedgerWriteSafety, Inv4Inv5Wiring) {
     const std::string msl = ants_test::slurpFile(SRC_MODELSWITCHLEDGER_CPP_PATH);
     const std::string nml = ants_test::slurpFile(SRC_MODELNEARMISSLEDGER_CPP_PATH);
+    const std::string jf  = ants_test::slurpFile(SRC_JSONLFILE_CPP_PATH);
     const std::string ac  = ants_test::slurpFile(SRC_AUDITCACHE_CPP_PATH);
     const std::string ar  = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
     const std::string af  = ants_test::slurpFile(SRC_AUDITAUTOFIX_CPP_PATH);
@@ -131,9 +135,15 @@ TEST(LedgerWriteSafety, Inv4Inv5Wiring) {
     const std::string ad  = ants_test::slurpFile(SRC_AUDITDIALOG_CPP_PATH);
 
     // INV-4 — ensurePrivateDir wired; the bare mkpath idiom gone at each site.
-    EXPECT_NE(msl.find("ensurePrivateDir(fi.absolutePath())"), std::string::npos);
+    // ANTS-2119 — both model ledgers now share JsonlFile::writeLinesAtomic, so
+    // the 0700 sequence lives once in jsonlfile.cpp and each ledger delegates to
+    // it (a single copy that can't drift between the two).
+    EXPECT_NE(jf.find("ensurePrivateDir(fi.absolutePath())"), std::string::npos);
+    EXPECT_NE(msl.find("JsonlFile::writeLinesAtomic("), std::string::npos)
+        << "firing ledger must route writes through the shared helper";
     EXPECT_EQ(msl.find("QDir().mkpath(fi.absolutePath())"), std::string::npos);
-    EXPECT_NE(nml.find("ensurePrivateDir(fi.absolutePath())"), std::string::npos);
+    EXPECT_NE(nml.find("JsonlFile::writeLinesAtomic("), std::string::npos)
+        << "near-miss ledger must route writes through the shared helper";
     EXPECT_EQ(nml.find("QDir().mkpath(fi.absolutePath())"), std::string::npos);
     EXPECT_NE(ac.find("return ensurePrivateDir(d)"), std::string::npos);
     EXPECT_NE(ar.find("ensurePrivateDir(AuditCache::cacheDir(canonProject))"),
