@@ -102,6 +102,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **last_audit_summary mislabels a genuine full-tree audit as a single_file/narrow rerun when findings land in one file.** (ANTS-3512)
+  The audit summary sometimes warns 'this looks like a one-file re-run, a bigger run may exist' even after a full project scan — because it guesses the scope from how many files had problems, not from what was actually asked for.
+
+- **workflow_state arg-validation messages — name all missing required args and distinguish absent skill from malformed.** (ANTS-3511)
+  When a Claude session calls the workflow_state tool without all its required inputs, the error now tells it everything that's missing in one go, instead of making it guess twice.
+
 - **Debt-sweep `shipped_without_commit` now honours the review window.** (ANTS-3342)
   The detector re-checked every ✅ item in the whole ROADMAP against git log, re-surfacing ~433 pre-convention shipped items each sweep. It now only considers items flipped to ✅ within since..HEAD (diff ROADMAP.md over the window, added-but-not-removed ✅ lines) (ANTS-3342).
 

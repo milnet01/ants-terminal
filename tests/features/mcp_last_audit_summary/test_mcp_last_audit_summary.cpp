@@ -687,6 +687,29 @@ TEST(Ants1576, ScopeClassifierWiredInHandler) {
     EXPECT_EQ(0, expect_failures());
 }
 
+TEST(Ants3512, RequestedScopeFromSidecarWiredInHandler) {
+    expect_reset();
+    // ANTS-3512 — cmdLastAuditSummary must read the requested scope back
+    // from the sibling findings sidecar and prefer it over the derived
+    // distinct-file heuristic, so a full-tree sweep that surfaces findings
+    // in one file isn't mislabelled a single_file rerun. Source-grep
+    // tripwire (matches the ScopeClassifierWiredInHandler pattern above).
+    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(rcc.find("env[\"requested_scope\"]") != std::string::npos,
+           "ANTS-3512 INV-1",
+           "handler must emit requested_scope from the findings sidecar");
+    expect(rcc.find("findings-") != std::string::npos,
+           "ANTS-3512 INV-1",
+           "handler must derive the findings-<iso>-<sha>.json sidecar name");
+    // The narrow_run_warning must be gated on the confirmed-broad flag so
+    // a requested full-tree run doesn't emit the false "broader file may
+    // exist" alarm.
+    expect(rcc.find("confirmedBroad") != std::string::npos,
+           "ANTS-3512 INV-2",
+           "narrow_run_warning must be gated on a confirmed-broad request");
+    EXPECT_EQ(0, expect_failures());
+}
+
 TEST(Ants1576, RuleIdsFilterBehavioural) {
     expect_reset();
     // INV-12 — drive the engine helper that backs the rule_ids

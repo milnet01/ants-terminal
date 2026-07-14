@@ -18877,6 +18877,20 @@ build).
   Kind: fix.
   Source: user-report-2026-07-13 (recurring; user has flagged before).
 
+- ✅ [ANTS-3511] **workflow_state arg-validation messages — name all missing required args and distinguish absent skill from malformed.**
+  finbreak feedback 2026-07-14. Two serially-confusing refusals: (1) op omitted -> "op must be get/set/clear" (silent that `skill` is also required); (2) op:get with no skill -> "invalid skill name — must match ^...$" but skill is ABSENT not malformed, so the message misdescribes the cause. Net: two failed round-trips to discover the arg set. Fix (cmdWorkflowState, remotecontrol.cpp): absent op names both required args ("op and skill are required"); empty/absent skill -> "skill is required"; regex message reserved for a present-but-non-conforming skill. Low/DX.
+  **Layman:** When a Claude session calls the workflow_state tool without all its required inputs, the error now tells it everything that's missing in one go, instead of making it guess twice.
+  Kind: fix.
+  Source: finbreak-mcp-feedback-2026-07-14.
+  Resolved (2026-07-14): cmdWorkflowState now (a) refuses an absent op with "op and skill are required (op must be get/set/clear)" so the caller learns skill is also required in the first round-trip, and (b) refuses an empty/absent skill with "skill is required" — the regex message is reserved for a present-but-non-conforming value. Spec INV-11 + regression test Inv11ArgValidationMessages. Full suite 2654/2654.
+
+- ✅ [ANTS-3512] **last_audit_summary mislabels a genuine full-tree audit as a single_file/narrow rerun when findings land in one file.**
+  finbreak feedback 2026-07-14. classifyAuditScope (remotecontrol.cpp:13467) infers scope purely from the distinct-file count in topFindings: distinct==1 -> single_file, 1..5 -> narrow, else broad. A genuine scope:full sweep that surfaces findings in only ONE file is therefore labelled single_file + emits narrow_run_warning ("A broader recent file may exist") — false: this WAS the broad run. Root cause: no persisted requested-scope; the label is a proxy that conflates 'few findings' with 'narrow scope'. Fix direction: persist audit_run's requested scope (SARIF sidecar / cache metadata) and have last_audit_summary report THAT; the distinct-file heuristic stays only as the fallback when provenance is absent. Note existing deferred ANTS-1593 (classifyAuditScope is a free symbol, hard to unit-test). Low/DX. Sizing under assessment this session.
+  **Layman:** The audit summary sometimes warns 'this looks like a one-file re-run, a bigger run may exist' even after a full project scan — because it guesses the scope from how many files had problems, not from what was actually asked for.
+  Kind: fix.
+  Source: finbreak-mcp-feedback-2026-07-14.
+  Resolved (2026-07-14): cmdLastAuditSummary reads the requested scope back from the sibling findings-<iso>-<sha>.json sidecar (already persisted by audit_run/AuditCache::recordRun, ANTS-1870) and emits it as requested_scope; when requested_scope=="full" the false narrow_run_warning is suppressed. Producer side needed no change — the gap was read-only. Foreign-format picks (no sidecar) fall back to the distinct-file heuristic. Spec ANTS-3512 INV-1/2 + regression test RequestedScopeFromSidecarWiredInHandler. Full suite 2654/2654.
+
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
 Triage of the 2026-06-30 → 2026-07-01 un-triaged feedback tails from Vestige,

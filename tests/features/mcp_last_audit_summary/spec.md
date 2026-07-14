@@ -27,6 +27,8 @@ SARIF fixtures + source-grep checks for the wiring INVs (5, 7).
 | ANTS-1625 INV-6 | docs/specs/ANTS-1625.md § 3 | Broader candidate older than 24h is out-of-window; picker keeps the newest narrow file. |
 | ANTS-1625 INV-7 | docs/specs/ANTS-1625.md § 3 | SARIF branch runs before the `pickForeign` lambda — SARIF naming sorts lex-max correctly. |
 | ANTS-1625 INV-8 | docs/specs/ANTS-1625.md § 3 | Narrow-suffix set (`-postfix`, `-single`, `-narrow`) appears in both `classifyAuditScope` and `pickForeignReport`. |
+| ANTS-3512 INV-1 | finbreak feedback 2026-07-14 | `cmdLastAuditSummary` reads the sibling `findings-<iso>-<sha>.json` sidecar's `scope` key and emits it as `requested_scope`, so the *requested* scope is authoritative over the distinct-file-count heuristic. |
+| ANTS-3512 INV-2 | finbreak feedback 2026-07-14 | A confirmed full-tree request (`requested_scope == "full"`) suppresses `narrow_run_warning`/`narrow_run_files` even when the derived tag is narrow — a whole-tree sweep whose findings land in one file is not a single-file rerun. |
 
 ## Strategy
 

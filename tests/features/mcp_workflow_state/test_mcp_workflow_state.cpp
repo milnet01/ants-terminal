@@ -55,6 +55,26 @@ TEST(McpWorkflowState, Inv7SkillNameRegex) {
         << "skill name regex ^[A-Za-z0-9_-]{1,32}$ missing";
 }
 
+// INV-11 (ANTS-3511): arg-validation messages name all missing required
+// args and distinguish an absent skill from a malformed one. Scoped to the
+// cmdWorkflowState body so an unrelated match elsewhere can't satisfy it.
+TEST(McpWorkflowState, Inv11ArgValidationMessages) {
+    QFile f(QString::fromUtf8(SRC_REMOTECONTROL_CPP_PATH));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const std::string body = ants_test::slurpFunctionBody(
+        f.readAll().toStdString(), "RemoteControl::cmdWorkflowState");
+    // Absent op names BOTH required args in one refusal.
+    EXPECT_NE(body.find("op and skill are required"), std::string::npos)
+        << "absent op must name `skill` as also-required";
+    // Absent skill reads as required, not \"invalid\".
+    EXPECT_NE(body.find("skill is required"), std::string::npos)
+        << "empty/absent skill must refuse with \"skill is required\", "
+           "not the regex message";
+    // Regex message retained for a present-but-non-conforming skill (INV-7).
+    EXPECT_NE(body.find("invalid skill name"), std::string::npos)
+        << "present-but-malformed skill keeps the regex message";
+}
+
 // INV-9: 4 KiB payload cap
 TEST(McpWorkflowState, Inv9PayloadCap) {
     QFile f(QString::fromUtf8(SRC_REMOTECONTROL_CPP_PATH));

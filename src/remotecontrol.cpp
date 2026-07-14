@@ -13874,7 +13874,44 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
         AuditEngine::AuditSummary preFilter = m_auditSummaryCache;
         const ScopeClassification sc = classifyAuditScope(preFilter, reportPath);
         env["scope"] = sc.tag;
-        if (sc.tag != QLatin1String("broad")) {
+
+        // ANTS-3512 — the derived tag above is a proxy: it infers scope
+        // from the distinct-file count in top findings, so a genuine
+        // whole-tree sweep that surfaces findings in one file reads as
+        // `single_file`. The *requested* scope is authoritative and is
+        // already persisted by audit_run into the sibling findings
+        // sidecar (`findings-<iso>-<sha>.json`, key "scope", ANTS-1870).
+        // Read it back and emit it as `requested_scope`; when the run was
+        // a confirmed full-tree request, suppress the "a broader recent
+        // file may exist" warning — it is definitionally false there.
+        // Native `.audit_cache/audit-*.sarif` picks have a sidecar;
+        // foreign-format picks (cppcheck-*.xml …) don't, so the heuristic
+        // stays as the fallback (finbreak feedback 2026-07-14).
+        QString requestedScope;
+        {
+            const QFileInfo rfi(reportPath);
+            const QString base = rfi.fileName();
+            if (base.startsWith(QLatin1String("audit-")) &&
+                base.endsWith(QLatin1String(".sarif"))) {
+                QString sidecarName = base;
+                sidecarName.replace(0, 6, QStringLiteral("findings-"));
+                sidecarName.chop(6);              // ".sarif"
+                sidecarName += QStringLiteral(".json");
+                QFile scf(rfi.absolutePath() + QLatin1Char('/') + sidecarName);
+                if (scf.open(QIODevice::ReadOnly)) {
+                    const QJsonObject sidecar =
+                        QJsonDocument::fromJson(scf.readAll()).object();
+                    requestedScope =
+                        sidecar.value(QStringLiteral("scope")).toString().trimmed();
+                }
+            }
+        }
+        const bool confirmedBroad =
+            requestedScope == QLatin1String("full");
+        if (!requestedScope.isEmpty())
+            env["requested_scope"] = requestedScope;
+
+        if (sc.tag != QLatin1String("broad") && !confirmedBroad) {
             env["narrow_run_warning"] =
                 QStringLiteral("%1 looks like a %2 rerun "
                                "(%3 distinct files in top findings). "
@@ -18974,19 +19011,34 @@ QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
     }
 
     // --- parse op ---
+    // ANTS-3511 — `op` and `skill` are both required for every op; an
+    // absent op names BOTH in the first refusal so the caller resolves
+    // the full arg set in one round-trip (finbreak feedback 2026-07-14)
+    // instead of discovering `skill` only on the next call.
     const QString opRaw = req.value(QStringLiteral("op")).toString();
     enum class Op { Get, Set, Clear };
     Op op;
     if      (opRaw == QStringLiteral("get"))   op = Op::Get;
     else if (opRaw == QStringLiteral("set"))   op = Op::Set;
     else if (opRaw == QStringLiteral("clear")) op = Op::Clear;
-    else {
+    else if (opRaw.isEmpty()) {
+        return QJsonDocument(csErr(QStringLiteral("bad_args"),
+            QStringLiteral("workflow_state: op and skill are required "
+                           "(op must be get/set/clear)")));
+    } else {
         return QJsonDocument(csErr(QStringLiteral("bad_args"),
             QStringLiteral("workflow_state: op must be get/set/clear")));
     }
 
     // --- validate skill name: ^[A-Za-z0-9_-]{1,32}$ ---
+    // ANTS-3511 — distinguish absent from malformed: an empty/absent
+    // skill reads as "required", not "invalid" (the regex message only
+    // makes sense for a present-but-non-conforming value).
     const QString skill = req.value(QStringLiteral("skill")).toString();
+    if (skill.isEmpty()) {
+        return QJsonDocument(csErr(QStringLiteral("bad_args"),
+            QStringLiteral("workflow_state: skill is required")));
+    }
     static const QRegularExpression kSkillRe(
         QStringLiteral("^[A-Za-z0-9_-]{1,32}$"));
     if (!kSkillRe.match(skill).hasMatch()) {
