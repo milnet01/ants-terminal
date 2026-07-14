@@ -144,6 +144,12 @@ void testSourceInvariants() {
     expect(rc.find("filterControlChars(") != std::string::npos,
            "source: cmdSendText delegates to filterControlChars");
 
+    // ANTS-2119 M2 — the ANTS-1176 dispatch log records whether the raw-bypass
+    // flag was set, so a same-UID-attack post-mortem can tell a filtered send
+    // from a raw control-byte injection.
+    expect(rc.find("text_bytes=%d raw=%d") != std::string::npos,
+           "source: dispatch log records the raw-bypass flag (raw=%d)");
+
     // INV-C (structural): start() call must appear inside a conditional
     // rather than at statement-top. Look backward 200 chars from the
     // first `m_remoteControl->start()` and confirm an `if (` is in

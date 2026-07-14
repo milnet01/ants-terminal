@@ -1938,9 +1938,14 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
     // size + tab + stripped-bytes count are the diagnostic axes.
     const int tabId = req.value("tab").toInt(-1);
     const int textBytes = req.value("text").toString().size();
+    // ANTS-2119 M2 — record whether the control-char filter bypass was
+    // requested (send-text / launch / new-tab honour raw:true). Without it a
+    // post-mortem of a same-UID attack can't distinguish a benign filtered send
+    // from a raw control-byte injection — the exact threat this log exists for.
+    const int rawBypass = req.value("raw").toBool(false) ? 1 : 0;
     ANTS_LOG(DebugLog::Network,
-             "rc dispatch cmd=%s tab=%d text_bytes=%d",
-             qUtf8Printable(cmd), tabId, textBytes);
+             "rc dispatch cmd=%s tab=%d text_bytes=%d raw=%d",
+             qUtf8Printable(cmd), tabId, textBytes, rawBypass);
     if (cmd == QLatin1String("ls")) {
         return cmdLs();
     }
