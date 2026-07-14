@@ -192,6 +192,16 @@ for security-relevant changes.
   note_already_present:true. Applies to flip (GFM + ants-v1), annotate,
   and flip_batch (shared primitive).
 
+### Security
+
+- **Audit window AI-review buttons now enforce the same network safety checks as the main AI client (ANTS-2121).**
+  The audit window's "AI triage" buttons talk to the AI server over
+  their own connection. They were missing three protections the main AI
+  client already has: refusing internal/cloud-metadata addresses (SSRF),
+  refusing sneaky redirects, and refusing credentials hidden in the URL.
+  All four egress checks now live in one shared validator both paths call,
+  so the audit buttons are guarded identically.
+
 ## [0.7.99] — unreleased (Patron RC preview)
 ### Added
 

@@ -83,6 +83,19 @@ public:
     // guarantee against a hostile hostname.
     static bool isEndpointHostBlocked(const QString &endpoint);
 
+    // ANTS-2121 — one egress-policy chokepoint shared by LlmClient::send and
+    // the AuditDialog AI-triage POSTs (which build a raw QNetworkAccessManager
+    // rather than routing through send). Returns an empty string when
+    // `endpoint` passes every gate, else a human-readable rejection reason (the
+    // caller prepends its own channel prefix). Runs, in order: the http/https
+    // scheme allowlist, the URL-userinfo refusal (ANTS-2109 H1), the SSRF
+    // host-block (ANTS-1746), and the cleartext-remote Bearer refusal
+    // (ANTS-1826/2108, gated on a non-empty `apiKey`). Callers must ALSO set
+    // QNetworkRequest::ManualRedirectPolicy on the reply (a request attribute,
+    // not a validation) to close the redirect-into-metadata hole (ANTS-1798).
+    static QString endpointEgressError(const QString &endpoint,
+                                       const QString &apiKey);
+
     // Parse one SSE "data:{…}" line → choices[0].delta.content. Empty for
     // "[DONE]", non-data lines, and non-content events.
     static QString sseContentDelta(const QString &dataLine);

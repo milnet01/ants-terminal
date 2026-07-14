@@ -5276,19 +5276,16 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
         const QString p = endpointUrl.path();
         endpointUrl.setPath((p.endsWith('/') ? p : p + "/") + "v1/chat/completions");
     }
-    if (endpointUrl.scheme() != "https" && endpointUrl.scheme() != "http") {
-        if (m_statusLabel) m_statusLabel->setFullText("AI triage: endpoint must be http(s)");
-        return;
-    }
-    // ANTS-1826 — never let the Bearer API key travel in cleartext to a remote
-    // host. Reuse LlmClient's plaintext-remote predicate (loopback/localhost
-    // exempt so a local dev LLM server still works) rather than re-deriving the
-    // scheme/host test here.
-    if (!apiKey.isEmpty() && LlmClient::isPlaintextRemote(endpointUrl.toString())) {
+    // ANTS-2121 — enforce the FULL LlmClient egress policy (scheme, URL
+    // userinfo, SSRF host-block, cleartext-remote Bearer) via the shared
+    // validator instead of the partial scheme+cleartext check this raw-QNAM
+    // path used to duplicate. Mirror send(); the ManualRedirectPolicy below
+    // completes the parity by closing the redirect-into-metadata hole.
+    const QString egressErr =
+        LlmClient::endpointEgressError(endpointUrl.toString(), apiKey);
+    if (!egressErr.isEmpty()) {
         if (m_statusLabel)
-            m_statusLabel->setFullText(
-                "AI triage: refusing to send the API key over cleartext http "
-                "to a remote host — use https (localhost is exempt)");
+            m_statusLabel->setFullText("AI triage: " + egressErr);
         return;
     }
 
@@ -5297,6 +5294,10 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
     if (!apiKey.isEmpty())
         req.setRawHeader("Authorization", ("Bearer " + apiKey).toUtf8());
     req.setTransferTimeout(30000);
+    // ANTS-1798/2121 — refuse redirects so a hostile 3xx can't bounce the POST
+    // (and Bearer key) into a metadata host the SSRF guard never re-validates.
+    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                     QNetworkRequest::ManualRedirectPolicy);
 
     auto *mgr = new QNetworkAccessManager(this);
     QNetworkReply *reply = mgr->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
@@ -5559,17 +5560,17 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
         const QString p = endpointUrl.path();
         endpointUrl.setPath((p.endsWith('/') ? p : p + "/") + "v1/chat/completions");
     }
-    if (endpointUrl.scheme() != "https" && endpointUrl.scheme() != "http") return;
-    // ANTS-2108 — the batch path uses a raw QNetworkAccessManager (not
-    // LlmClient::send), so it needs the same cleartext-Bearer refusal the
-    // single-finding path (requestAiTriage, ANTS-1826) already has. Without
-    // it the API key would ship in cleartext to a remote host. Loopback is
-    // exempt so a local dev LLM server still works keyed.
-    if (!apiKey.isEmpty() && LlmClient::isPlaintextRemote(endpointUrl.toString())) {
+    // ANTS-2108/2121 — the batch path uses a raw QNetworkAccessManager (not
+    // LlmClient::send), so it enforces the SAME egress policy via the shared
+    // validator: scheme, URL userinfo, SSRF host-block, and cleartext-remote
+    // Bearer (loopback exempt so a local dev LLM server still works keyed).
+    // Was a scheme+cleartext-only subset; the ManualRedirectPolicy below
+    // completes send()'s guard set.
+    const QString egressErr =
+        LlmClient::endpointEgressError(endpointUrl.toString(), apiKey);
+    if (!egressErr.isEmpty()) {
         if (m_statusLabel)
-            m_statusLabel->setFullText(
-                "AI triage: refusing to send the API key over cleartext http "
-                "to a remote host — use https (localhost is exempt)");
+            m_statusLabel->setFullText("AI triage: " + egressErr);
         return;
     }
 
@@ -5580,6 +5581,10 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
     // Batch requests can legitimately take longer than the single-finding
     // path — 60s cap instead of 30s.
     req.setTransferTimeout(60000);
+    // ANTS-1798/2121 — refuse redirects so a hostile 3xx can't bounce the POST
+    // (and Bearer key) into a metadata host the SSRF guard never re-validates.
+    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                     QNetworkRequest::ManualRedirectPolicy);
 
     auto *mgr = new QNetworkAccessManager(this);
     QNetworkReply *reply = mgr->post(req,

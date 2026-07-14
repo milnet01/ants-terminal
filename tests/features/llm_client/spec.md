@@ -42,6 +42,18 @@ without a live network.
   credentials would otherwise egress as an `Authorization: Basic` header,
   unscrubbed and invisible to the host-keyed scheme/SSRF gates. The refusal
   error names "credentials".
+- **INV-8** (ANTS-2121) — `endpointEgressError` is the single shared egress
+  validator: it runs, in order, the http/https scheme allowlist, the
+  URL-userinfo refusal (ANTS-2109 H1), the SSRF host-block (ANTS-1746), and the
+  cleartext-remote Bearer refusal (ANTS-1826/2108, gated on a non-empty key),
+  returning an empty string on pass or a prefix-free reason on the first failure.
+  `send()` calls it (preserving its verbatim `AI endpoint rejected — …`
+  messages), and the AuditDialog AI-triage POSTs (`requestAiTriage` +
+  `requestAiTriageBatch`) — which build a raw `QNetworkAccessManager` instead of
+  routing through `send()` — call it too and additionally set
+  `QNetworkRequest::ManualRedirectPolicy` (ANTS-1798), so both channels enforce
+  the identical policy. A source-grep guard locks the auditdialog wiring against
+  regressing to the former scheme+cleartext-only subset.
 - **INV-2c** (ANTS-2109 H2) — `isEndpointHostBlocked` is documented as
   IP-literal-only: a DNS hostname is NOT resolved and passes through. The
   guarantee is not overstated (no claim of hostname SSRF protection); the

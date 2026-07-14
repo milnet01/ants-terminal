@@ -189,6 +189,40 @@ bool LlmClient::accumulateCapped(QString &acc, qint64 &accBytes,
     return true;
 }
 
+QString LlmClient::endpointEgressError(const QString &endpoint,
+                                       const QString &apiKey) {
+    QString scheme;
+    if (!isEndpointAllowed(endpoint, &scheme))
+        return QStringLiteral(
+                   "only http/https are permitted (got '%1').").arg(scheme);
+    // ANTS-2109 H1 — refuse an endpoint that embeds URL userinfo
+    // (https://user:pass@host). Qt would derive an `Authorization: Basic`
+    // header from it and POST those credentials verbatim — unscrubbed, in
+    // addition to the Bearer key, to a value the user may have imported rather
+    // than typed. The host-keyed scheme/SSRF gates all run on QUrl::host()
+    // (which strips userinfo), so this channel is otherwise invisible. Refuse
+    // rather than silently strip so the surprising config surfaces.
+    // Scheme-agnostic — https leaks the creds too.
+    if (!QUrl(endpoint).userInfo().isEmpty())
+        return QStringLiteral(
+            "the URL embeds credentials (user:pass@host) that would be sent "
+            "unscrubbed. Remove the userinfo and use the API-key field.");
+    // ANTS-1746 — refuse SSRF-shaped endpoints (cloud-metadata
+    // 169.254.169.254, RFC-1918, link-local, ULA). Loopback + hostnames pass.
+    if (isEndpointHostBlocked(endpoint))
+        return QStringLiteral(
+            "host is a private, link-local, or cloud-metadata address (SSRF "
+            "guard). Use a public endpoint or a localhost server.");
+    // ANTS-1826/2108 — never ship the Bearer key in cleartext to a remote
+    // host. Gate on a non-empty key; loopback/localhost stay exempt via
+    // isPlaintextRemote so a local dev LLM server still works keyed.
+    if (!apiKey.isEmpty() && isPlaintextRemote(endpoint))
+        return QStringLiteral(
+            "refusing to send the API key over cleartext http to a remote "
+            "host. Use https (localhost is exempt).");
+    return QString();
+}
+
 void LlmClient::send(const LlmRequest &req) {
     abort();
     ++m_sendGeneration;   // ANTS-2019 — invalidate any pending deferred error
@@ -198,51 +232,14 @@ void LlmClient::send(const LlmRequest &req) {
     m_truncated = false;
     m_redactedCount = 0;
 
-    QString scheme;
-    if (!isEndpointAllowed(req.endpoint, &scheme)) {
-        emitDeferredError(
-            QStringLiteral("AI endpoint rejected — only http/https are "
-                           "permitted (got '%1').").arg(scheme));
-        return;
-    }
-    // ANTS-2109 H1 — refuse an endpoint that embeds URL userinfo
-    // (https://user:pass@host). Qt would derive an `Authorization: Basic`
-    // header from it and POST those credentials verbatim — unscrubbed, in
-    // addition to the Bearer key, to a value the user may have imported
-    // rather than typed. The host-keyed scheme/SSRF gates above all run on
-    // QUrl::host() (which strips userinfo), so this channel is otherwise
-    // invisible. Refuse rather than silently strip so the surprising config
-    // surfaces. Scheme-agnostic — https leaks the creds too.
-    if (!QUrl(req.endpoint).userInfo().isEmpty()) {
-        emitDeferredError(
-            QStringLiteral("AI endpoint rejected — the URL embeds credentials "
-                           "(user:pass@host) that would be sent unscrubbed. "
-                           "Remove the userinfo and use the API-key field."));
-        return;
-    }
-    if (isEndpointHostBlocked(req.endpoint)) {
-        // ANTS-1746 — refuse SSRF-shaped endpoints (cloud-metadata
-        // 169.254.169.254, RFC-1918, link-local, ULA). Loopback +
-        // hostnames still pass.
-        emitDeferredError(
-            QStringLiteral("AI endpoint rejected — host is a private, "
-                           "link-local, or cloud-metadata address (SSRF "
-                           "guard). Use a public endpoint or a localhost "
-                           "server."));
-        return;
-    }
-    // ANTS-2108 — single-chokepoint backstop: never ship the Bearer key in
-    // cleartext to a remote host. The aidialog warning and the auditdialog
-    // single-finding refusal (ANTS-1826) pre-check isPlaintextRemote, but the
-    // auditdialog batch path and the v2 review dialogs (coldeyesdialog →
-    // ReviewDialogBase) reach send() without it. Gate on a non-empty key
-    // (matching those call sites); loopback/localhost stay exempt via
-    // isPlaintextRemote so a local dev LLM server still works keyed.
-    if (!req.apiKey.isEmpty() && isPlaintextRemote(req.endpoint)) {
-        emitDeferredError(
-            QStringLiteral("AI endpoint rejected — refusing to send the API "
-                           "key over cleartext http to a remote host. Use "
-                           "https (localhost is exempt)."));
+    // ANTS-2121 — all four egress gates (scheme / URL-userinfo / SSRF /
+    // cleartext-remote Bearer) live in one shared validator so the AuditDialog
+    // AI-triage POSTs enforce the identical policy. The verbatim rejection
+    // messages are preserved (prefixed here); the redirect refusal below is a
+    // request attribute, not a validation, so it stays in send().
+    const QString egressErr = endpointEgressError(req.endpoint, req.apiKey);
+    if (!egressErr.isEmpty()) {
+        emitDeferredError(QStringLiteral("AI endpoint rejected — ") + egressErr);
         return;
     }
 

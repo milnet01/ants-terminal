@@ -4,6 +4,7 @@
 // INV-3  buildRequestBody scrubs secrets out of the serialised body.
 // INV-4  accumulateCapped 10 MiB cap + truncated marker.
 // INV-5  sseContentDelta SSE line parsing.
+// INV-8  endpointEgressError shared 4-gate validator + auditdialog wiring.
 // INV-16 the three LLM modules are widget-free (source-grep).
 
 #include "llmclient.h"
@@ -242,6 +243,67 @@ TEST(LlmClient, Ants2109_SendRefusesUrlUserinfo) {
             << captured.error.toStdString();
         EXPECT_FALSE(client.busy()) << ep.toStdString();
     }
+}
+
+// ANTS-2121 INV-8 — endpointEgressError is the single shared egress validator.
+// Both LlmClient::send and the AuditDialog AI-triage POSTs run every request
+// through it, so the scheme allowlist, URL-userinfo refusal, SSRF host-block,
+// and cleartext-remote Bearer refusal are enforced identically. Empty == pass;
+// the returned reason carries no channel prefix (callers add their own).
+TEST(LlmClient, Ants2121_EndpointEgressError) {
+    const QString key = QStringLiteral("sk-secret");
+    // Passes: https public endpoint with a key; loopback http keyed (exempt).
+    EXPECT_TRUE(LlmClient::endpointEgressError(
+        QStringLiteral("https://api.openai.com/v1/chat/completions"), key).isEmpty());
+    EXPECT_TRUE(LlmClient::endpointEgressError(
+        QStringLiteral("http://127.0.0.1:11434/v1/chat/completions"), key).isEmpty());
+    // Bad scheme.
+    EXPECT_TRUE(LlmClient::endpointEgressError(
+        QStringLiteral("file:///etc/passwd"), key)
+        .contains(QStringLiteral("http"), Qt::CaseInsensitive));
+    // URL userinfo (ANTS-2109 H1).
+    EXPECT_TRUE(LlmClient::endpointEgressError(
+        QStringLiteral("https://user:pass@api.openai.com/v1"), key)
+        .contains(QStringLiteral("credential"), Qt::CaseInsensitive));
+    // SSRF metadata IP literal (ANTS-1746).
+    EXPECT_TRUE(LlmClient::endpointEgressError(
+        QStringLiteral("http://169.254.169.254/v1"), key)
+        .contains(QStringLiteral("SSRF"), Qt::CaseInsensitive));
+    // Cleartext-remote Bearer (ANTS-1826/2108).
+    EXPECT_TRUE(LlmClient::endpointEgressError(
+        QStringLiteral("http://example.com/v1"), key)
+        .contains(QStringLiteral("cleartext"), Qt::CaseInsensitive));
+    // No key → cleartext-remote is allowed (the key is what must not leak).
+    EXPECT_TRUE(LlmClient::endpointEgressError(
+        QStringLiteral("http://example.com/v1"), QString()).isEmpty());
+    // Precedence: userinfo reported before the SSRF gate on the same URL.
+    EXPECT_TRUE(LlmClient::endpointEgressError(
+        QStringLiteral("http://user:pass@169.254.169.254/v1"), key)
+        .contains(QStringLiteral("credential"), Qt::CaseInsensitive));
+}
+
+// ANTS-2121 INV-8 (wiring) — the AuditDialog AI-triage POSTs build a raw
+// QNetworkAccessManager rather than routing through LlmClient::send, so they
+// must call endpointEgressError AND set ManualRedirectPolicy to enforce the
+// same egress policy. Source-grep guard against a regression that reintroduces
+// the partial scheme+cleartext-only check this path used to duplicate.
+TEST(LlmClient, Ants2121_AuditTriageRoutesThroughEgressValidator) {
+    const std::string src = ants_test::slurpFile(SRC_AUDITDIALOG_CPP_PATH);
+    ASSERT_FALSE(src.empty()) << "could not read " << SRC_AUDITDIALOG_CPP_PATH;
+    // Both triage POSTs (single + batch) call the shared validator.
+    const std::string needle = "LlmClient::endpointEgressError";
+    const size_t first = src.find(needle);
+    ASSERT_NE(first, std::string::npos)
+        << "audit triage must call endpointEgressError";
+    EXPECT_NE(src.find(needle, first + needle.size()), std::string::npos)
+        << "both requestAiTriage and requestAiTriageBatch must call it";
+    // ...and both refuse redirects (the guard endpointEgressError can't carry).
+    const std::string mrp = "ManualRedirectPolicy";
+    const size_t firstMrp = src.find(mrp);
+    ASSERT_NE(firstMrp, std::string::npos)
+        << "audit triage must set ManualRedirectPolicy";
+    EXPECT_NE(src.find(mrp, firstMrp + mrp.size()), std::string::npos)
+        << "both triage POSTs must set ManualRedirectPolicy";
 }
 
 // INV-16 — the three LLM modules include no Qt Widgets header.
