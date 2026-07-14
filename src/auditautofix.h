@@ -30,8 +30,10 @@ struct Repair {
 
 // Exhaustive behaviour-neutral safe-list. Returns a Repair only when `f`
 // is provably one of:
-//   - autofix.unused_include — cppcheck `unusedInclude` on a line that is
-//     an `#include` directive -> remove the line.
+//   - autofix.unused_include — a valid Repair rule, but planRepair never
+//     emits it: cppcheck `unusedInclude` is too false-positive-prone on
+//     Qt's transitive / moc-generated includes to delete safely
+//     (ANTS-2006), so it is declined here and left for manual review.
 //   - autofix.dead_q_unused  — a finding naming Q_UNUSED on a standalone
 //     `Q_UNUSED(...);` line -> remove the line.
 //   - autofix.stale_todo     — a `// ... TODO/FIXME ... remove after

@@ -49,6 +49,13 @@ bool VtStream::start(const QString &shell, const QString &workDir, int rows, int
     });
     connect(m_pty, &Pty::dataReceived, this, &VtStream::onPtyData);
     connect(m_pty, &Pty::finished, this, &VtStream::onPtyFinished);
+    // ANTS-2119 — surface PTY write-loss (queue/kernel-buffer overflow) so it is
+    // not silent. Rare (only past the 4 MiB EAGAIN queue cap), hence a log
+    // warning rather than a UI banner.
+    connect(m_pty, &Pty::writeLost, this, [](qint64 bytes) {
+        qWarning("VtStream: PTY dropped %lld byte(s) on write overflow",
+                 static_cast<long long>(bytes));
+    });
 
     m_wallClock.start();
 

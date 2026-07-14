@@ -182,6 +182,12 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
     (void)::snprintf(termProgramVerArg, sizeof(termProgramVerArg),
                      "TERM_PROGRAM_VERSION=%s", ANTS_VERSION);
     constexpr size_t kEnvpCap = 512;
+    // ANTS-2119 — reserve tail slots for the fixed overrides appended after the
+    // copy loop (5 KEY=VALUE strings) + the NUL terminator, with slack. Keep in
+    // sync with the append block below.
+    constexpr size_t kEnvpOverrideReserve = 8;
+    static_assert(kEnvpOverrideReserve >= 6,
+                  "reserve must cover the 5 appended overrides + NUL");
     const char *childEnvp[kEnvpCap];
     size_t envpCount = 0;
     // Copy parent's environ entries, skipping the 5 keys we
@@ -204,7 +210,7 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
             startsWith("COLORFGBG=")) {
             continue;
         }
-        if (envpCount >= kEnvpCap - 8) {
+        if (envpCount >= kEnvpCap - kEnvpOverrideReserve) {
             // ANTS-1175: surface the silent truncation that produced
             // the user-reported "ants-terminal sometimes opens a
             // shell with no PATH" symptom on environments with 500+
@@ -575,6 +581,12 @@ void Pty::resize(int rows, int cols) {
 }
 
 void Pty::onReadReady() {
+    // ANTS-2119 — defensive guard: a QSocketNotifier can fire once more after
+    // the fd was closed (destructor / start-failure / write-error paths set
+    // m_masterFd = -1). Reading a closed fd returns EBADF, which would fall
+    // through to the child-exit branch and spuriously emit finished(); bail.
+    if (m_masterFd < 0)
+        return;
     char buf[16384];
     while (true) {
         ssize_t n = ::read(m_masterFd, buf, sizeof(buf));

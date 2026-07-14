@@ -11345,6 +11345,10 @@ QList<ClaudeProject> ClaudeIntegration::discoverProjects() const {
         for (const QFileInfo &fi : sessionsDir.entryInfoList({"*.json"}, QDir::Files)) {
             QFile f(fi.absoluteFilePath());
             if (!f.open(QIODevice::ReadOnly)) continue;
+            // ANTS-2119 — session metadata is a few hundred bytes; skip an
+            // implausibly large file rather than OOM on an uncapped readAll()
+            // of a corrupt/hostile input.
+            if (f.size() > 1 * 1024 * 1024) continue;
             QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
             if (!doc.isObject()) continue;
             QJsonObject obj = doc.object();

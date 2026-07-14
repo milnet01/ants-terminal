@@ -24,6 +24,12 @@ QString slurpUtf8(const QString &absPath) {
     QFile f(absPath);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
     const QString content = QString::fromUtf8(f.readAll());
+    // ANTS-2119 — bound the cache: it holds full file bodies keyed by absPath,
+    // so an unbounded static grows with every distinct doc dispatched over a
+    // long session. Clear on overflow — a brief-dispatch cache is a within-run
+    // optimisation, so a cold re-read on the rare overflow is cheap.
+    if (s_cache.size() >= 64)
+        s_cache.clear();
     s_cache.insert(absPath, {mtime, content});
     return content;
 }

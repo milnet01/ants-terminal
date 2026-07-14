@@ -225,7 +225,7 @@ TEST(IndieReviewDispatch, G16_ResponseBodyRedaction) {
             "redactAndTruncate(QByteArray body");
     ASSERT_FALSE(redactFn.empty());
     const auto replacePos  = redactFn.find("text.replace(apiKey");
-    const auto truncatePos = redactFn.find("text.truncate(");
+    const auto truncatePos = redactFn.find("utf8.truncate(");
     ASSERT_NE(replacePos,  std::string::npos);
     ASSERT_NE(truncatePos, std::string::npos);
     EXPECT_LT(replacePos, truncatePos)

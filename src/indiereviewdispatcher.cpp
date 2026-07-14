@@ -52,8 +52,22 @@ QString redactAndTruncate(QByteArray body, const QString &apiKey,
     if (!apiKey.isEmpty()) {
         text.replace(apiKey, QStringLiteral("<redacted>"));
     }
-    if (text.toUtf8().size() > maxBytes) {
-        text.truncate(maxBytes);
+    // ANTS-2119 — enforce the byte budget on the UTF-8 encoding, not on
+    // QString::truncate's UTF-16 code-unit count (which under-counts multibyte
+    // content, letting the reply exceed maxBytes). Trim any partial trailing
+    // UTF-8 sequence so the re-decode stays clean (no U+FFFD tail).
+    QByteArray utf8 = text.toUtf8();
+    if (utf8.size() > maxBytes) {
+        utf8.truncate(maxBytes);
+        while (!utf8.isEmpty() &&
+               (static_cast<unsigned char>(utf8.back()) & 0xC0) == 0x80) {
+            utf8.chop(1);  // drop UTF-8 continuation bytes
+        }
+        if (!utf8.isEmpty() &&
+            (static_cast<unsigned char>(utf8.back()) & 0x80)) {
+            utf8.chop(1);  // drop the now-dangling lead byte
+        }
+        text = QString::fromUtf8(utf8);
         text += QStringLiteral("\n…<truncated>");
     }
     return text;
@@ -160,6 +174,24 @@ DispatchResult dispatchLanes(const DispatchRequest &req) {
             "indie_review_dispatch: dispatcher received empty lane "
             "list (caller must resolve before invocation)");
         return r;
+    }
+
+    // ANTS-2119 — lane names become <reports_dir>/<name>.md; reject any name
+    // that is not a single, safe path component so a crafted lane can't escape
+    // reports_dir via a directory separator or '..' (path traversal). Defence
+    // in depth: the MCP caller resolves lanes from the subsystem partition, but
+    // validate at the path-construction boundary regardless.
+    for (const LaneRequest &lr : req.lanes) {
+        const QString &n = lr.name;
+        if (n.isEmpty() || n == QLatin1String(".") || n == QLatin1String("..")
+            || n.contains(QLatin1Char('/')) || n.contains(QLatin1Char('\\'))) {
+            r.ok    = false;
+            r.code  = QStringLiteral("bad_lane");
+            r.error = QStringLiteral(
+                "indie_review_dispatch: lane name \"%1\" must be a single "
+                "path component (no directory separators or '..')").arg(n);
+            return r;
+        }
     }
 
     // INV-19 — ensure reports_dir exists.

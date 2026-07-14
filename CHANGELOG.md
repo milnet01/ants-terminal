@@ -102,6 +102,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- ****ANTS-2119 hardening tail (partial): 11 correctness/robustness fixes across the PTY, audit, MCP-dispatch, and Claude-integration lanes.****
+  Small, low-risk repairs the June indie-review flagged: a stale-fd guard and a documented env-buffer reserve in the PTY reader; PTY write-loss is now logged instead of silent; the audit review-report handed to Claude gets explicit owner-only file permissions; the review dispatcher enforces its reply size limit in bytes (not characters) and rejects lane names that could escape the reports directory; the drift-check helper no longer throws away the script's error output; project discovery and the brief-file cache are bounded so a corrupt file or long session can't grow memory without limit; and a dead field was removed.
+
 - **last_audit_summary mislabels a genuine full-tree audit as a single_file/narrow rerun when findings land in one file.** (ANTS-3512)
   The audit summary sometimes warns 'this looks like a one-file re-run, a bigger run may exist' even after a full project scan — because it guesses the scope from how many files had problems, not from what was actually asked for.
 

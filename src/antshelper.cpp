@@ -127,6 +127,8 @@ QJsonObject driftCheck(const QJsonObject & /*request*/,
 
     const QString stdoutText =
         QString::fromUtf8(proc.readAllStandardOutput());
+    const QString stderrText =
+        QString::fromUtf8(proc.readAllStandardError());
     const int exitCode = proc.exitCode();
 
     if (exitCode == 0) {
@@ -158,6 +160,11 @@ QJsonObject driftCheck(const QJsonObject & /*request*/,
     data.insert(QStringLiteral("clean"), false);
     data.insert(QStringLiteral("violations"), violations);
     data.insert(QStringLiteral("raw"), stdoutText);
+    // ANTS-2119 — surface the script's stderr (previously discarded) so a drift
+    // run that fails on stderr rather than stdout isn't opaque. Separate field;
+    // `raw` stays exactly the stdout per INV-6.
+    if (!stderrText.isEmpty())
+        data.insert(QStringLiteral("stderr"), stderrText);
     data.insert(QStringLiteral("exit_code"), exitCode);
     setExit(3);
     return okObj(data);

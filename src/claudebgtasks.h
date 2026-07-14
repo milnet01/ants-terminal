@@ -39,7 +39,6 @@ struct ClaudeBackgroundTask {
     // un-latch a liveness-finish if the output file resumes writing; a
     // transcript-finish is permanent.
     bool finishedByLiveness = false;
-    int exitCode = -1;      // captured from completion event when present
 };
 
 // Per-session tracker for Claude Code background tasks.

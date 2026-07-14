@@ -3922,6 +3922,11 @@ void AuditDialog::buildUI() {
             tmp->write(text.toUtf8());
             QString path = tmp->fileName();
             tmp->close();
+            // ANTS-2119 — the report persists in /tmp (autoRemove off; the path is
+            // handed to the external reviewer) and can contain file paths + code
+            // context. Enforce owner-only perms explicitly rather than relying on
+            // the platform's QTemporaryFile default.
+            setOwnerOnlyPerms(path);
             delete tmp;
             emit reviewRequested(path);
             close();
