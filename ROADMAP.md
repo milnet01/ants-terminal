@@ -9959,6 +9959,12 @@ indie-review finding.
   Source: in-session-2026-07-13 (found during ANTS-3358 full-build verify).
   Resolved (2026-07-13): same session as the ANTS-3358 fix that surfaced it. Reproduced by an -O3 single-TU compile of diffviewer.cpp — 4 -Wnull-dereference false positives (2 "potential" + 2 definite) at qwidget.h:904, inlining from the positionBackToTop lambda (diffviewer.cpp:137) via the QScrollBar::valueChanged/rangeChanged lambdas (:144/:154), each already guarded by `if (!backToTopGuard || !viewerForBtn) return;` + `if (!vp) return;`. Fixed with a GCC-only scoped `#pragma GCC diagnostic push/ignored "-Wnull-dereference"/pop` around the geometry block after the guards. Recompile: 4 → 0. Locked by tests/features/build_warning_diffviewer_null_deref (source-grep sibling of ANTS-3358): must-fail-first proven (RED without the ignored line, GREEN with).
 
+- 📋 [ANTS-3514] **Guard the -Wnull-dereference in terminal_a11y test (unchecked QAccessibleTextInterface).**
+  tests/features/terminal_a11y/test_terminal_a11y.cpp:81 dereferences iface->textInterface() twice without a null-check (text(0, characterCount())), emitting a GCC -Wnull-dereference under -O3 (surfaced while building test_chrome for ANTS-2119 M1/M2). Unlike ANTS-3358/3505/1554 this is a genuine unchecked pointer in TEST code (a null would crash the test, not production) — fix by ASSERT_NE(iface->textInterface(), nullptr) before use, or hoist it to a local. Small, mechanical.
+  **Layman:** A test file has a spot where the compiler warns it doesn't check a pointer before use; harmless in a test but it dirties the build log. Add the missing null-check.
+  Kind: test.
+  Source: in-session-2026-07-14 (found building test_chrome for ANTS-2119 terminalwidget bundle)..
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested
