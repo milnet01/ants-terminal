@@ -156,6 +156,29 @@ TEST(McpFocusedTest, HeuristicMode) {
     const auto r2 = FT::resolve({"notes.md"}, invalid);
     EXPECT_EQ(r2.selection, FT::Selection::Full);
     EXPECT_TRUE(r2.patterns.isEmpty());
+    // ANTS-2119 M1 — an unmappable file in heuristic mode is unmappedFiles, not
+    // ignoredFiles (heuristic mode consults no ignore globs).
+    EXPECT_TRUE(r2.unmappedFiles.contains("notes.md"));
+    EXPECT_FALSE(r2.ignoredFiles.contains("notes.md"));
+}
+
+// ANTS-2119 M1 — a mappable source file changed ALONGSIDE an unmappable
+// non-source file (no basename stem: Makefile, .json, .bin, dotfile) must force
+// the full suite, matching map mode's INV-4 conservatism. Previously the
+// non-source file was mislabelled as ignoredFiles and the run went Heuristic on
+// only the source file's tests — less conservative than map mode.
+TEST(McpFocusedTest, Ants2119HeuristicUnmappableForcesFull) {
+    FT::CoverageMap invalid;  // valid==false → heuristic mode
+    const auto r = FT::resolve({"src/widget.cpp", "data/blob.bin"}, invalid);
+    EXPECT_EQ(r.selection, FT::Selection::Full)
+        << "an unmappable file must force Full in heuristic mode (err toward "
+           "more tests)";
+    EXPECT_TRUE(r.unmappedFiles.contains("data/blob.bin"));
+    EXPECT_FALSE(r.ignoredFiles.contains("data/blob.bin"))
+        << "heuristic mode has no ignore globs — an unmappable file is not "
+           "'ignored'";
+    // The source file was still recognised (it just doesn't get to run alone).
+    EXPECT_TRUE(r.mappedFiles.contains("src/widget.cpp"));
 }
 
 // INV-9 — buildCtestRegex OR-joins / handles empty.

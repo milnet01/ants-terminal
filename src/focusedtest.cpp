@@ -194,16 +194,31 @@ Resolution resolve(const QStringList &changedFiles,
 
     if (!map.valid) {
         // Heuristic mode.
+        QString firstUnmapped;
         for (const QString &f : changedFiles) {
             const QString p = heuristicPattern(f);
             if (p.isEmpty()) {
-                r.ignoredFiles.append(f);
+                // ANTS-2119 M1 — a file with no usable basename stem (Makefile,
+                // .json, .bin, a dotfile — anything not source-like) is
+                // UNMAPPABLE, not ignore-glob-matched: heuristic mode consults
+                // no ignore globs, so labelling it ignoredFiles is wrong AND
+                // masks a coverage gap. Bucket it as unmappedFiles.
+                r.unmappedFiles.append(f);
+                if (firstUnmapped.isEmpty()) firstUnmapped = f;
             } else {
                 addPatterns(r.patterns, {p});
                 r.mappedFiles.append(f);
             }
         }
-        if (!r.patterns.isEmpty()) {
+        // ANTS-2119 M1 — like map mode's INV-4, an unmappable file forces Full
+        // so heuristic mode stays as conservative as map mode ("err toward more
+        // tests"): we can't know which tests an unmappable file affects.
+        if (!r.unmappedFiles.isEmpty()) {
+            r.selection = Selection::Full;
+            r.reason = QStringLiteral(
+                "no coverage map; unmappable file %1 (running full suite)")
+                .arg(firstUnmapped);
+        } else if (!r.patterns.isEmpty()) {
             r.selection = Selection::Heuristic;
             r.reason = QStringLiteral(
                 "no coverage map; heuristic matched %1 source file(s)")

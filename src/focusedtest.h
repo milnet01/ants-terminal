@@ -21,7 +21,9 @@ enum class Selection { Map, Heuristic, Full };
 
 struct CoverageMap {
     bool        valid = false;   // parsed OK and schema_version == 1
-    QString     error;           // "absent" / "bad_json" / "bad_schema" / ""
+    QString     error;           // ANTS-2119 L4 — full domain: "absent" /
+                                 // "read_failed" / "bad_json" / "bad_schema" /
+                                 // "bad_pattern" / "" (valid)
     int         schemaVersion = 0;
     QHash<QString, QStringList> entries;  // repo-rel src path -> patterns
     QStringList defaultPatterns;          // optional top-level "default"
