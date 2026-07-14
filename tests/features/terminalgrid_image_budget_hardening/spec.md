@@ -1,6 +1,7 @@
-# Inline-image budget + iTerm2 base64 hardening (ANTS-1828 / ANTS-1829)
+# Inline-image budget + iTerm2 base64 hardening (ANTS-1828 / ANTS-1829 / ANTS-2119)
 
-Two indie-review #6 findings in the TerminalGrid inline-image path.
+Indie-review findings in the TerminalGrid inline-image paths (#6: budget +
+iTerm2 base64; 2026-06-11 terminalgrid M2: the Kitty graphics path).
 
 ## Invariants
 
@@ -12,6 +13,12 @@ Two indie-review #6 findings in the TerminalGrid inline-image path.
   decoding and uses the strict decoder
   (`fromBase64Encoding` + `AbortOnBase64DecodingErrors`), matching the OSC 52 /
   SetUserVar discipline — not the permissive, uncapped `fromBase64`.
+- **INV-3** (ANTS-2119 M2) the Kitty graphics path (`handleApc`) strict-decodes
+  its base64 too (`fromBase64Encoding` + `AbortOnBase64DecodingErrors`), not the
+  non-strict `fromBase64(base64Data)` it used before, which silently skipped
+  invalid bytes and fed a garbage-prefixed stream to the image loader /
+  raw-pixel `.copy()`. A failed decode leaves the image null → the existing
+  ENODATA Kitty-protocol response fires.
 
 ## Test
 

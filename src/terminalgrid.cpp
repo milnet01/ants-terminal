@@ -2743,6 +2743,10 @@ void TerminalGrid::resize(int rows, int cols) {
             reflowed.erase(reflowed.begin());
             if (!isBlankLine(front)) {
                 m_scrollback.push_back(std::move(front));
+                // ANTS-2119 M1 — count reflow overflow as "pushed" so the
+                // scrollbackPushed() contract holds (get_scrollback's
+                // since_cursor diff must see these lines).
+                ++m_scrollbackPushed;
                 // ANTS-1333 INV-4 — reflowed rows came from joinLogical
                 // on m_screenLines; no usable mapping back to
                 // m_screenHyperlinks. Push an empty span vector to keep
@@ -2825,6 +2829,7 @@ void TerminalGrid::resize(int rows, int cols) {
                 reflowedAlt.erase(reflowedAlt.begin());
                 if (!isBlankLine(front)) {
                     m_scrollback.push_back(std::move(front));
+                    ++m_scrollbackPushed;   // ANTS-2119 M1 — see main-screen path
                     m_scrollbackHyperlinks.emplace_back();
                 }
             }
@@ -3386,7 +3391,20 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
     if (!fullData.empty() && fullData.size() <= 15 * 1024 * 1024) { // ~10MB decoded
         QByteArray base64Data = QByteArray::fromRawData(fullData.data(),
                                                          static_cast<int>(fullData.size()));
-        QByteArray decoded = QByteArray::fromBase64(base64Data);
+        // ANTS-2119 M2 — strict decode, matching the OSC 52 / OSC 1337 image
+        // paths (1568): AbortOnBase64DecodingErrors rejects a corrupt payload
+        // outright instead of silently skipping invalid bytes and feeding a
+        // garbage-prefixed byte stream to the image loader / raw-pixel .copy().
+        // A failed decode leaves `decoded` empty, so the image stays null and
+        // falls through to the ENODATA protocol response below (3450) — the
+        // right Kitty-protocol signal, which an early return would skip.
+        auto decRes = QByteArray::fromBase64Encoding(
+            base64Data,
+            QByteArray::Base64Encoding | QByteArray::AbortOnBase64DecodingErrors);
+        QByteArray decoded =
+            (decRes.decodingStatus == QByteArray::Base64DecodingStatus::Ok)
+                ? decRes.decoded
+                : QByteArray();
 
         if (format == 100) {
             // PNG format — peek dimensions via QImageReader before decode

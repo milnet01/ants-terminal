@@ -3950,17 +3950,24 @@ void TerminalWidget::invalidateSpanCaches() const {
     // detectUrls (2 regexes + a full-line QString) to re-run over the
     // whole viewport each paint.
     //
-    // ANTS-3452 refinement: a *pure append* (no ring eviction, no
-    // reflow) leaves every existing scrollback index content-stable —
-    // only the band [oldSize, newSize+rows) can alias different content
-    // (the rows that just scrolled from screen into scrollback, plus the
-    // fresh screen rows). Detect the pure-append case with the exact
-    // identity newSize == oldSize + pushDelta: any eviction or reflow
-    // breaks the equality and falls through to the wholesale clear, so
-    // the optimisation is self-correcting. In that case erase only the
-    // band and keep the immutable scrollback entries cached. A large
-    // between-paint jump (bandWidth > kSpanCacheBandCap) also falls back
-    // to the wholesale clear so the band loop can't run away.
+    // ANTS-3452 refinement: a *pure append* leaves every existing
+    // scrollback index content-stable — only the band [oldSize,
+    // newSize+rows) can alias different content (the rows that just
+    // scrolled from screen into scrollback, plus the fresh screen rows).
+    // Detect the pure-append case with the exact identity newSize ==
+    // oldSize + pushDelta: any ring eviction breaks the equality and
+    // falls through to the wholesale clear, so the optimisation is
+    // self-correcting. In that case erase only the band and keep the
+    // immutable scrollback entries cached. A large between-paint jump
+    // (bandWidth > kSpanCacheBandCap) also falls back to the wholesale
+    // clear so the band loop can't run away.
+    //
+    // ANTS-2119 — a resize reflow now advances pushDelta too (the reflow
+    // overflow push increments scrollbackPushed). A pure-overflow reflow
+    // (no eviction) appends to the back while [0, oldSize) keep their
+    // index + content, so the band-erase is still correct; a width reflow
+    // that repartitions existing scrollback also evicts/renumbers, which
+    // breaks the identity and falls back to the wholesale clear as before.
     static constexpr int kSpanCacheBandCap = 4096;
     const uint64_t pushedNow = m_grid->scrollbackPushed();
     if (pushedNow != m_lastScrollbackPushed) {

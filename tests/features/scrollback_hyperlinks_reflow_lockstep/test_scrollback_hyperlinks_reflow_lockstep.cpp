@@ -188,6 +188,42 @@ TEST(ScrollbackHyperlinksReflowLockstep, Main) {
                         "expected scrollback to grow on rows shrink");
     }
 
+    // --- INV-5 (ANTS-2119 M1) — scrollbackPushed() advances when a width
+    // reflow pushes overflow lines into scrollback. The header contract sells
+    // it as the authoritative "lines ever pushed" count (get_scrollback's
+    // since_cursor diff relies on it); only scrollUp used to increment it, so a
+    // resize-reflow silently under-counted and since_cursor dropped those
+    // lines. ---
+    {
+        Harness h;   // 24×80
+        // One long logical line spanning ~10 screen rows; no scrollUp yet
+        // (10 < 24 rows) so the pre-resize push count is a clean baseline.
+        h.feed(cup(0, 0));
+        h.feed(std::string(kCols * 10, 'x'));
+        const uint64_t pushedBefore = h.grid.scrollbackPushed();
+        // Narrow to 20 cols: the content rewraps to ~40 rows > 24, so ~16
+        // overflow lines are pushed into scrollback via the reflow path.
+        h.grid.resize(kRows, 20);
+        if (h.grid.scrollbackPushed() <= pushedBefore)
+            fail("INV-5 reflow counter",
+                        "scrollbackPushed() must advance when a resize reflow "
+                        "pushes overflow lines into scrollback (ANTS-2119 M1)");
+    }
+
+    // --- INV-6 (ANTS-2119 M1) — pushScrollbackLine() advances the counter.
+    // SessionManager restore uses it to repopulate scrollback; without the
+    // increment a restored session reports a stale "ever pushed" count. ---
+    {
+        Harness h;
+        const uint64_t before = h.grid.scrollbackPushed();
+        h.grid.pushScrollbackLine(TermLine{});
+        h.grid.pushScrollbackLine(TermLine{});
+        if (h.grid.scrollbackPushed() != before + 2)
+            fail("INV-6 pushScrollbackLine counter",
+                        "pushScrollbackLine() must advance scrollbackPushed() "
+                        "once per pushed line (ANTS-2119 M1)");
+    }
+
     std::printf("scrollback_hyperlinks_reflow_lockstep: "
-                "5 invariants held\n");
+                "7 invariants held\n");
 }

@@ -55,3 +55,20 @@ TEST(TerminalGridImageHardening, ITerm2ImageStrictDecodeAndCap) {
     EXPECT_TRUE(contains(body, "kMaxInlineImageB64Bytes"))
         << "handleOscImage must bound the base64 size before decoding";
 }
+
+// INV-3 (ANTS-2119 M2) — the Kitty graphics path (handleApc) strict-decodes its
+// base64 too, matching the OSC 52 / OSC 1337 image paths. It previously used the
+// non-strict QByteArray::fromBase64, which silently skips invalid bytes and
+// feeds a garbage-prefixed byte stream to the image loader / raw-pixel .copy().
+TEST(TerminalGridImageHardening, KittyApcImageStrictDecode) {
+    const std::string src = ants_test::slurpFile(SRC_TERMINALGRID_CPP_PATH);
+    ASSERT_FALSE(src.empty());
+    const std::string body = functionBody(src, "TerminalGrid::handleApc");
+    ASSERT_FALSE(body.empty()) << "handleApc not found";
+    EXPECT_TRUE(contains(body, "AbortOnBase64DecodingErrors"))
+        << "the Kitty APC image decode must strict-decode the base64";
+    EXPECT_TRUE(contains(body, "fromBase64Encoding"))
+        << "the Kitty APC image decode must use the strict fromBase64Encoding decoder";
+    EXPECT_FALSE(contains(body, "fromBase64(base64Data)"))
+        << "the non-strict fromBase64(base64Data) decode must be gone (ANTS-2119 M2)";
+}

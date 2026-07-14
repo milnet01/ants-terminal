@@ -371,6 +371,10 @@ public:
     // Session restore: direct access for SessionManager (respects max scrollback)
     void pushScrollbackLine(TermLine &&line) {
         m_scrollback.push_back(std::move(line));
+        // ANTS-2119 M1 — restore counts as "pushed" too, so a restored session's
+        // scrollbackPushed() reflects its scrollback depth (the get_scrollback
+        // since_cursor cursor is this counter).
+        ++m_scrollbackPushed;
         // ANTS-1999 — keep m_scrollbackHyperlinks in lockstep. Restore carries
         // no serialized OSC 8 span data, so push an empty entry; without it the
         // two deques desync permanently and later spans map to the wrong rows.
