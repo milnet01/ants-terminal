@@ -233,3 +233,34 @@ TEST(AdapterReadGfm, CaretAnchorExtracted) {
     EXPECT_EQ(bullets[0].anchor, QStringLiteral("vest-0042"));
     EXPECT_EQ(bullets[1].anchor, QStringLiteral("vest-0043"));
 }
+
+// ANTS-2119 (roadmapdialog M-1) — parseBullets is memoized on a (size, ==)
+// guard to kill the per-render re-parse cost. The memo must be transparent:
+// a repeat call on the same input returns the identical result, and a
+// different input must NOT return the previous call's cached result.
+TEST(AdapterReadGfm, Ants2119ParseBulletsMemoIsTransparent) {
+    const QString mdX = QStringLiteral(
+        "## Section\n"
+        "- ✅ [ANTS-0100] **Alpha**\n"
+        "- 📋 [ANTS-0101] **Beta**\n");
+    const QString mdY = QStringLiteral(
+        "## Section\n"
+        "- 🚧 [ANTS-0200] **Gamma**\n");
+
+    const auto x1 = RoadmapDialog::parseBullets(mdX);
+    const auto x2 = RoadmapDialog::parseBullets(mdX);   // cache hit
+    ASSERT_EQ(x1.size(), 2);
+    ASSERT_EQ(x2.size(), x1.size());
+    EXPECT_EQ(x2[0].id, x1[0].id);
+    EXPECT_EQ(x2[1].id, x1[1].id);
+
+    // Different input must invalidate the memo, not return mdX's cached result.
+    const auto y = RoadmapDialog::parseBullets(mdY);
+    ASSERT_EQ(y.size(), 1);
+    EXPECT_EQ(y[0].id, QStringLiteral("ANTS-0200"));
+
+    // And back to mdX still parses correctly (no cross-contamination).
+    const auto x3 = RoadmapDialog::parseBullets(mdX);
+    ASSERT_EQ(x3.size(), 2);
+    EXPECT_EQ(x3[1].id, QStringLiteral("ANTS-0101"));
+}

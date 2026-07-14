@@ -932,6 +932,18 @@ parsePassHeadingBullets(const QStringList &lines) {
 
 QVector<RoadmapDialog::BulletRecord>
 RoadmapDialog::parseBullets(const QString &markdownText) {
+    // ANTS-2119 (roadmapdialog M-1) — function-local memo, mirroring
+    // reverseTopLevelSections' (size, ==) guard. parseBullets is the dominant
+    // uncached per-render cost (full split('\n') + per-bullet regex +
+    // detectRoadmapFormat pre-scan over up to 64 MiB of History-mode archive
+    // markdown) and re-runs on every debounced keystroke / filter toggle in
+    // renderCardsHtml. The input is identical across consecutive renders of the
+    // same document, so the hit rate is ~100%; a content change invalidates it.
+    static thread_local QString s_lastInput;
+    static thread_local QVector<BulletRecord> s_lastResult;
+    if (markdownText.size() == s_lastInput.size() && markdownText == s_lastInput)
+        return s_lastResult;
+
     QVector<BulletRecord> out;
     // ANTS-1405 — widened from `\[ANTS-(\d+)\]` to accept any
     // `[PROJ-NNNN]` token shape per the shareable
@@ -1360,6 +1372,9 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
 
         out.append(rec);
     }
+    // ANTS-2119 (roadmapdialog M-1) — populate the memo for the next render.
+    s_lastInput  = markdownText;
+    s_lastResult = out;
     return out;
 }
 
@@ -2138,8 +2153,12 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // returns empty); skip the span rather than emit an empty one.
         html += QStringLiteral("<td class=\"rm-col-state%1%2\">")
                     .arg(curCell, stateAccent);
+        // ANTS-2119 (roadmapdialog L-2) — escape for consistency with the
+        // other emits (rec.status is one of four hardcoded emoji today, but
+        // every sibling field defensively escapes; do the same so a future
+        // parser change can't turn this into a CWE-79 vector).
         html += QStringLiteral("<span class=\"rm-state\">%1</span>")
-                    .arg(rec.status);
+                    .arg(htmlEscape(rec.status));
         const QString stateLabel = statusAccessibleLabel(rec.status);
         if (!stateLabel.isEmpty()) {
             html += QStringLiteral("<span class=\"rm-state-label\">%1</span>")
@@ -2187,8 +2206,11 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         if (rec.status == QStringLiteral("✅")) {
             const QString date = opts.shippedDates.value(rec.id);
             if (!date.isEmpty()) {
+                // ANTS-2119 (roadmapdialog L-2) — escape for consistency
+                // (date is a \d{4}-\d{2}-\d{2} capture today, but the sibling
+                // emits all escape defensively).
                 html += QStringLiteral(
-                    "<span class=\"rm-date\">· %1</span>").arg(date);
+                    "<span class=\"rm-date\">· %1</span>").arg(htmlEscape(date));
             }
         } else if (rec.status == QStringLiteral("🚧")) {
             // ANTS-1237 — "Updated Nd ago" on 🚧 cards; only when git
