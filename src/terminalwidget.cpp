@@ -32,6 +32,7 @@
 #include <QVBoxLayout>
 #include <QMenu>
 #include <QDesktopServices>
+#include <QHostAddress>
 #include <QUrl>
 #include <QProcess>
 #include <QStandardPaths>
@@ -4114,35 +4115,79 @@ std::vector<TerminalWidget::UrlSpan> TerminalWidget::detectUrls(int globalLine) 
     return spans;
 }
 
-void TerminalWidget::openHyperlink(const UrlSpan &span, int globalLine) {
-    // Homograph check: only relevant for OSC 8 where visible text ≠ URL text.
-    // When the visible label itself is a URL/hostname that doesn't match the
-    // actual URL host, warn the user before following the link.
-    if (span.isOsc8) {
-        QString visible = lineText(globalLine).mid(span.startCol,
-                                                    span.endCol - span.startCol + 1);
-        // Extract a candidate hostname from the visible label: look for
-        // `scheme://host` or a bare hostname token.
-        QString visibleHost;
-        static QRegularExpression hostRe(
-            R"((?:[a-z][a-z0-9+.\-]*://)?((?:[a-z0-9](?:[a-z0-9\-]*[a-z0-9])?\.)+[a-z]{2,}))",
-            QRegularExpression::CaseInsensitiveOption);
-        auto m = hostRe.match(visible);
-        if (m.hasMatch()) visibleHost = m.captured(1).toLower();
+TerminalWidget::HyperlinkWarning
+TerminalWidget::classifyHyperlink(const QString &visibleLabel, const QString &url) {
+    const QString actualHost = QUrl(url).host().toLower();
+    if (actualHost.isEmpty())
+        return HyperlinkWarning::None;   // e.g. mailto: — no host to spoof.
 
-        QString actualHost = QUrl(span.url).host().toLower();
-        // Strip leading "www." for comparison; many labels write github.com for www.github.com
-        auto strip = [](QString h) {
-            if (h.startsWith("www.")) h = h.mid(4);
-            return h;
-        };
-        if (!visibleHost.isEmpty() && !actualHost.isEmpty() &&
-            strip(visibleHost) != strip(actualHost)) {
+    // Extract a candidate hostname from the visible label: `scheme://host` or a
+    // bare hostname token, anywhere in the label (an embedded host still counts).
+    static const QRegularExpression hostRe(
+        R"((?:[a-z][a-z0-9+.\-]*://)?((?:[a-z0-9](?:[a-z0-9\-]*[a-z0-9])?\.)+[a-z]{2,}))",
+        QRegularExpression::CaseInsensitiveOption);
+    QString visibleHost;
+    const auto m = hostRe.match(visibleLabel);
+    if (m.hasMatch()) visibleHost = m.captured(1).toLower();
+
+    // Strip leading "www." — many labels write github.com for www.github.com.
+    const auto strip = [](QString h) {
+        if (h.startsWith(QLatin1String("www."))) h = h.mid(4);
+        return h;
+    };
+
+    if (!visibleHost.isEmpty()) {
+        // Classic homograph: the label looks like a host — flag only a mismatch.
+        return strip(visibleHost) == strip(actualHost)
+                   ? HyperlinkWarning::None
+                   : HyperlinkWarning::LabelHostMismatch;
+    }
+
+    // ANTS-2119 M2 — the label carries no hostname (the "Download"/"click here"
+    // phishing shape). Prompting on every benign descriptive label would be
+    // confirmation fatigue, so warn only when the destination is objectively
+    // suspicious: a punycode/IDN homograph, or a bare non-loopback IP literal
+    // (legitimate hyperlinks rarely target raw public IPs; dev-server loopback /
+    // link-local addresses are exempted so http://127.0.0.1 links don't nag).
+    // QUrl::host() returns the DECODED (Unicode) host, so test the ACE form for
+    // the xn-- prefix and the decoded form for any non-ASCII lookalike glyphs.
+    const QString aceHost = QUrl(url).host(QUrl::FullyEncoded).toLower();
+    if (aceHost.contains(QLatin1String("xn--")))
+        return HyperlinkWarning::SuspiciousDestination;
+    for (const QChar c : actualHost)
+        if (c.unicode() > 127) return HyperlinkWarning::SuspiciousDestination;
+    const QHostAddress addr(actualHost);
+    if (!addr.isNull() && !addr.isLoopback() && !addr.isLinkLocal())
+        return HyperlinkWarning::SuspiciousDestination;
+
+    return HyperlinkWarning::None;
+}
+
+void TerminalWidget::openHyperlink(const UrlSpan &span, int globalLine) {
+    // Phishing check: only relevant for OSC 8 where the visible text ≠ URL.
+    if (span.isOsc8) {
+        const QString visible = lineText(globalLine).mid(
+            span.startCol, span.endCol - span.startCol + 1);
+        const HyperlinkWarning warn = classifyHyperlink(visible, span.url);
+        if (warn != HyperlinkWarning::None) {
+            const QString actualHost = QUrl(span.url).host().toLower();
             QMessageBox box(this);
             box.setWindowTitle("Suspicious hyperlink");
             box.setIcon(QMessageBox::Warning);
-            box.setText(QString("The link text says %1 but the URL points to %2.")
-                        .arg(visibleHost, actualHost));
+            if (warn == HyperlinkWarning::LabelHostMismatch) {
+                static const QRegularExpression hostRe(
+                    R"((?:[a-z][a-z0-9+.\-]*://)?((?:[a-z0-9](?:[a-z0-9\-]*[a-z0-9])?\.)+[a-z]{2,}))",
+                    QRegularExpression::CaseInsensitiveOption);
+                const auto m = hostRe.match(visible);
+                const QString visibleHost =
+                    m.hasMatch() ? m.captured(1).toLower() : visible;
+                box.setText(QString("The link text says %1 but the URL points to %2.")
+                                .arg(visibleHost, actualHost));
+            } else {
+                box.setText(QString("This link points to %1, which looks "
+                                    "suspicious (a disguised or raw-address host).")
+                                .arg(actualHost));
+            }
             box.setInformativeText(QString("Destination:\n%1").arg(span.url));
             box.setStandardButtons(QMessageBox::Open | QMessageBox::Cancel);
             box.setDefaultButton(QMessageBox::Cancel);
@@ -5478,11 +5523,11 @@ void TerminalWidget::setTriggerRules(const QJsonArray &rules) {
 void TerminalWidget::checkTriggers(const QByteArray &data) {
     if (m_triggerRules.empty()) return;
     QString text = QString::fromUtf8(data);
-    // Non-instant rules wait for a newline-terminated chunk so they react to
-    // settled output rather than mid-line partial matches. Instant rules
-    // (e.g. password prompt watchers) get every chunk.
-    bool chunkEndsLine = (!text.isEmpty()) &&
-                         (text.endsWith('\n') || text.endsWith('\r'));
+    // ANTS-2119 M1 — this per-chunk path now runs ONLY instant rules (e.g.
+    // password-prompt watchers that must fire mid-line, before a newline).
+    // Non-instant dispatch triggers moved to onGridLineCompleted, where they
+    // fire once per completed line on the finalized line text — fixing the old
+    // "only when the batch ends in \n, and only once per batch" behaviour.
     for (const auto &rule : m_triggerRules) {
         // Skip grid-mutation types — those run via onGridLineCompleted where
         // we have a line-to-cell mapping. Routing them here would double-fire
@@ -5491,7 +5536,7 @@ void TerminalWidget::checkTriggers(const QByteArray &data) {
         if (rule.actionType == QLatin1String("highlight_line")
          || rule.actionType == QLatin1String("highlight_text")
          || rule.actionType == QLatin1String("make_hyperlink")) continue;
-        if (!rule.instant && !chunkEndsLine) continue;
+        if (!rule.instant) continue;   // non-instant dispatch → onGridLineCompleted
         QRegularExpressionMatch m = rule.pattern.match(text);
         if (!m.hasMatch()) continue;
         // run_script gets a separate signal carrying the matched substring so
@@ -5570,7 +5615,26 @@ void TerminalWidget::onGridLineCompleted(int screenRow) {
         bool isHighlightLine = (kind == QLatin1String("highlight_line"));
         bool isHighlightText = (kind == QLatin1String("highlight_text"));
         bool isMakeLink      = (kind == QLatin1String("make_hyperlink"));
-        if (!(isHighlightLine || isHighlightText || isMakeLink)) continue;
+        if (!(isHighlightLine || isHighlightText || isMakeLink)) {
+            // ANTS-2119 M1 — non-instant DISPATCH triggers (notify/sound/command/
+            // bell/inject/run_script) fire here too, once per completed line, so
+            // every matching line fires (not once per raw batch) and a match
+            // whose newline landed in a prior batch isn't missed. This callback
+            // already runs per line, so a plain match() gives the iTerm2
+            // once-per-line semantics. Instant rules stay in checkTriggers (they
+            // must fire mid-line, before a line completes).
+            if (!rule.instant) {
+                const QRegularExpressionMatch m = rule.pattern.match(text);
+                if (m.hasMatch()) {
+                    if (kind == QLatin1String("run_script"))
+                        emit triggerRunScript(rule.actionValue, m.captured(0));
+                    else
+                        emit triggerFired(rule.pattern.pattern(), kind,
+                                          rule.actionValue);
+                }
+            }
+            continue;   // dispatch handled here; instant rules run in checkTriggers
+        }
 
         auto it = rule.pattern.globalMatch(text);
         while (it.hasNext()) {

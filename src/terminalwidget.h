@@ -158,10 +158,11 @@ public:
 
     // Trigger rules (regex -> action). 0.6.9 adds:
     //   - actions: "bell", "inject", "run_script" (Lua function/action id)
-    //   - instant: fire on every PTY chunk vs. only on completed lines
-    //     (today checkTriggers runs on every chunk; instant is honored as the
-    //     current behavior, while non-instant batches into completed-line
-    //     evaluation — matches iTerm2's "Instant" flag semantics).
+    //   - instant: fire on every PTY chunk vs. only on completed lines.
+    //     Instant rules run in checkTriggers on each raw chunk (mid-line
+    //     watchers, e.g. password prompts). Non-instant rules run in
+    //     onGridLineCompleted, once per completed line on the finalized line
+    //     text (ANTS-2119 M1) — matches iTerm2's "Instant" flag semantics.
     struct TriggerRule {
         QRegularExpression pattern;
         // Dispatch types (emit via checkTriggers → triggerFired signal):
@@ -397,9 +398,28 @@ private:
     const std::vector<UrlSpan> &urlSpansForLine(int globalLine) const;
     QString lineText(int globalLine) const;
     void openFileAtPath(const QString &path);
-    // Opens a hyperlink, with OSC 8 homograph-attack warning when the visible
-    // label encodes a hostname that doesn't match the URL host.
+    // Opens a hyperlink, with an OSC 8 phishing warning (see classifyHyperlink).
     void openHyperlink(const UrlSpan &span, int globalLine);
+
+public:
+    // ANTS-2119 M2 — OSC 8 phishing classification, split out of openHyperlink so
+    // the policy is unit-testable without the modal dialog. Pure: no widget state.
+    enum class HyperlinkWarning {
+        None,                  // benign label + benign destination — open silently
+        LabelHostMismatch,     // label looks like host A, URL points to host B
+        SuspiciousDestination, // label carries no host, URL host is a punycode/IDN
+                               // homograph or a bare non-loopback IP literal
+    };
+    // Decide whether opening `url` under the visible link text `visibleLabel`
+    // warrants a confirmation prompt. Warns on the classic homograph (label host
+    // ≠ url host) and, for label-less phishing ("Download" → hostile site), only
+    // when the destination itself is objectively suspicious — prompting on every
+    // benign descriptive label would be confirmation fatigue that trains
+    // click-through.
+    static HyperlinkWarning classifyHyperlink(const QString &visibleLabel,
+                                              const QString &url);
+
+private:
 
     // Search
     struct SearchMatch { int globalLine; int col; int length; };

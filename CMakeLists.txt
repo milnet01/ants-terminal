@@ -1043,6 +1043,11 @@ if(ANTS_TESTS)
                 # TerminalWidget transitively pulls remotecontrol -> MainWindow,
                 # whose symbols are in ants_chrome_lib.
                 tests/features/terminal_a11y/test_terminal_a11y.cpp
+                # ANTS-2119 M2 — OSC 8 phishing classifier (static; needs the full
+                # TerminalWidget link set, same as terminal_a11y above).
+                tests/features/osc8_homograph_guard/test_osc8_homograph_guard.cpp
+                # ANTS-2119 M1 — non-instant dispatch triggers fire per completed line.
+                tests/features/trigger_line_dispatch/test_trigger_line_dispatch.cpp
                 tests/features/command_palette_ghost_completion/test_command_palette_ghost_completion.cpp
                 tests/features/no_anim_style/test_no_anim_style.cpp
                 tests/features/paste_dialog_custom/test_paste_dialog_custom.cpp
