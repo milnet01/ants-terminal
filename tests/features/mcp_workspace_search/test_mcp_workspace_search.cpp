@@ -149,6 +149,9 @@ TEST(McpWorkspaceSearch, WiringContract) {
     // description blurb and a detail-field mention.
     // Widened to 22000 after ANTS-3549 added the `files_only` prop + its
     // description blurb and a detail-field mention.
+    // Widened to 24000 after ANTS-3547 added the `offset` prop (wsOffsetProp)
+    // + its description blurb and a detail-field mention (required.append at
+    // offset ~22774).
     {
         // Anchor at the tools/list registration (literal "workspace_search"
         // with quotes), not the first incidental occurrence in a setter
@@ -157,7 +160,7 @@ TEST(McpWorkspaceSearch, WiringContract) {
         bool ok = false;
         if (reqPos != std::string::npos) {
             const size_t windowEnd = std::min(ciCpp.size(),
-                                              reqPos + 22000);
+                                              reqPos + 24000);
             const std::string window = ciCpp.substr(reqPos,
                                                     windowEnd - reqPos);
             ok = contains(window, "\"required\"") &&

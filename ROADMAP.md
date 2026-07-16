@@ -13401,11 +13401,12 @@ template / mutate this state atomically" → movable. If it's
   Kind: investigate.
   Source: in-session-2026-07-16.
 
-- 📋 [ANTS-3547] **`workspace_search` `offset` cursor — continue a truncated search instead of re-running it wider.**
+- ✅ [ANTS-3547] **`workspace_search` `offset` cursor — continue a truncated search instead of re-running it wider.**
   workspace_search truncates at max_results/max_bytes and reports results_dropped, but exposes no offset/cursor — the only way to reach dropped matches is a wider re-run that re-scans from scratch and re-emits every match already seen (O(all-seen-again)). Add an `offset` (skip the first N matches) so paging is O(page). Pairs with count_only (ANTS-3537): count first, then page. roadmap_query already returns next_offset — mirror that contract on workspace_search.
   **Layman:** If a search shows the first 50 hits and there are more, let me ask for the NEXT 50 — right now the only option is to redo the whole search bigger.
   Kind: enhancement.
   Source: in-session-2026-07-16.
+  Resolved (2026-07-16): workspace_search now accepts offset:N → returns the window [offset, offset+max_results) and, when more matches remain, emits next_offset (the page-N+1 cursor, mirroring roadmap_query). The build loop skips the first `offset` match events after ++seenMatchEvents (total count stays uncapped/offset-independent) and before the max_results cap; truncated recompute uses seenMatchEvents > offset + pageMatchCount; `offset` echoed only when non-default (default-call envelope byte-identical). next_offset is in raw match-event space so it composes with per-page dedup. Schema (wsOffsetProp, min 0) + main description updated; 4 source-grep INV cases added (Inv16-19). Sibling byte-window scrapes widened 22000→24000 (mcp_workspace_search required; mcp_workspace_search_timeout_sec INV5/6). Full suite 2694/2694 green. Live on next relaunch.
 
 - 📋 [ANTS-3548] **Default `max_match_bytes` ceiling on `workspace_search` — clip pathological long lines by default (token-saver default-ON).**
   max_match_bytes is opt-in (default 0 = off); the tool's own leaner_call_hint already nudges callers toward it — i.e. long lines are a known budget hazard left off by default, against the project's 'token-savers default ON, keep an off switch' rule. Apply a sane default clip (e.g. ~512 B/line) with an explicit opt-out. Needs a disable sentinel since 0 currently MEANS off — either keep 0=off and make the DEFAULT non-zero, or add -1=off. dedup key is computed pre-clip (INV-4), so behaviour is unchanged except over-long rows shrink. Small, safe, predictable.

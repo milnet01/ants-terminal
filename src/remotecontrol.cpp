@@ -9497,6 +9497,13 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // false. count_only (leaner still) takes precedence if both are set.
     const bool filesOnly =
         req.value(QStringLiteral("files_only")).toBool(false);
+    // ANTS-3547 — offset cursor: skip the first `offset` matches so a
+    // truncated search can be CONTINUED (page N+1) instead of re-run wider
+    // from scratch. Default 0 (byte-identical to the pre-3547 envelope);
+    // negative values clamp to 0. Mirrors roadmap_query's offset/next_offset
+    // contract. Ignored by count_only / files_only (they emit no rows).
+    const int offset =
+        qMax(0, req.value(QStringLiteral("offset")).toInt(0));
 
     // ANTS-1565-INV-1/2: per-call wall-clock budget. Default 5 s
     // (kWorkspaceSearchHardKillMs); accept `timeout_sec` integer in
@@ -9707,6 +9714,13 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             if (filesOnlyCurIdx >= 0) ++filesOnlyHits[filesOnlyCurIdx];
             continue;
         }
+        // ANTS-3547 — offset cursor: skip the first `offset` matches. Placed
+        // after ++seenMatchEvents (the total count stays uncapped and
+        // offset-independent) and before the max_results cap (offset pages
+        // within the same cap). Context lines buffered for a skipped match are
+        // bounded out by the per-match line-distance filter when the first
+        // kept match drains pendingBefore.
+        if (seenMatchEvents <= offset) continue;
         if (matches.size() >= maxResults) { truncated = true; continue; }
 
         const QJsonObject data = ev.value("data").toObject();
@@ -9793,7 +9807,13 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // ANTS-1248-INV-4: post-cap detection — truncated iff we either
     // saw more match events than max_results, or the hard kill / parse
     // budget cut us off mid-stream (ANTS-3405).
-    if (seenMatchEvents > matches.size() || hardKilled || parseBudgetExceeded)
+    // ANTS-3547 — `offset` shifts the returned window to [offset, offset+N):
+    // there is "more" iff the total exceeds what this page covers. Capture the
+    // raw (pre-dedup) page size now for the next_offset cursor below — dedup
+    // reassigns matches[] to the collapsed array, losing the count.
+    const int pageMatchCount = matches.size();
+    if (seenMatchEvents > offset + matches.size() ||
+        hardKilled || parseBudgetExceeded)
         truncated = true;
 
     // ANTS-3537 — count_only: return the totals with no row bodies. Placed
@@ -9949,6 +9969,16 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     out["pattern"]    = pattern;
     out["matches"]    = matches;
     out["truncated"]  = truncated;
+    // ANTS-3547 — offset cursor echoes. Echo `offset` only when non-default
+    // (keeps the common offset=0 envelope byte-identical), and emit
+    // `next_offset` — the page-N+1 cursor — when more matches remain beyond
+    // this page (mirrors roadmap_query). next_offset is in raw match-event
+    // space so it composes with dedup: each page dedups within itself, and the
+    // next page resumes at the raw cursor. Not emitted on a hard-kill / parse
+    // -budget / byte-cap-only truncation (there is no coherent match cursor).
+    if (offset > 0) out["offset"] = offset;
+    if (seenMatchEvents > offset + pageMatchCount)
+        out["next_offset"] = offset + pageMatchCount;
     if (dedupOn) {
         out["dedup"]            = true;
         out["dedup_collapsed"]  = dedupCollapsed;

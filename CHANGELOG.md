@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **workspace_search `offset` cursor — continue a truncated search instead of re-running it wider** (ANTS-3547)
+  `offset:N` returns the window `[offset, offset+max_results)`; when more matches remain the reply carries `next_offset`, which you pass back as `offset` to page forward (mirrors roadmap_query) — instead of re-running the search wider, which re-scans from scratch and re-emits every match already seen. Pairs with `count_only` (count first, then page). Dedup applies within each page.
+
 - **workspace_search `files_only` mode — return the deduplicated matched-file set with per-file hit counts, no match rows** (ANTS-3549)
   The rows-eliminated answer to "which files reference X?": `files_only:true` returns `{files:[{file,count}], files_count, count}` and omits every match line. Much smaller than `headline_only` when a symbol recurs many times in one file. File set and per-file counts are complete (uncapped by max_results); `count` is the true total. Complements `count_only` (counts only) and `headline_only` (one line per match).
 

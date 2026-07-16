@@ -315,3 +315,61 @@ TEST(workspace_search_payload_knobs, Inv15FilesOnlyInSchema) {
            "workspace_search tools/list descriptor");
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-3547 INV-16 — offset cursor: the build loop skips the first `offset`
+// match events (guard `seenMatchEvents <= offset`).
+TEST(workspace_search_payload_knobs, Inv16OffsetSkipGuard) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "seenMatchEvents <= offset"),
+           "INV-16: offset skip guard present in cmdWorkspaceSearch");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3547 INV-17 — truncation and the next_offset cursor account for the
+// offset: `truncated` uses `seenMatchEvents > offset + …` and the envelope
+// emits `next_offset` (the page-N+1 cursor, mirroring roadmap_query).
+TEST(workspace_search_payload_knobs, Inv17NextOffsetCursor) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "seenMatchEvents > offset +"),
+           "INV-17: truncated recompute accounts for offset");
+    expect(contains(cpp, "out[\"next_offset\"]"),
+           "INV-17: next_offset cursor emitted in the envelope");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3547 INV-18 — the offset skip is positioned AFTER the seenMatchEvents
+// increment (so the total count stays uncapped and offset-independent) and
+// BEFORE the max_results cap (offset pages within the same cap).
+TEST(workspace_search_payload_knobs, Inv18OffsetSkipPlacement) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const auto incPos  = cpp.find("++seenMatchEvents;");
+    const auto skipPos = cpp.find("seenMatchEvents <= offset");
+    const auto capPos  = cpp.find("matches.size() >= maxResults");
+    expect(incPos != std::string::npos && skipPos != std::string::npos &&
+           capPos != std::string::npos,
+           "INV-18: increment, skip guard, and cap all present");
+    if (incPos != std::string::npos && skipPos != std::string::npos &&
+        capPos != std::string::npos) {
+        expect(incPos < skipPos && skipPos < capPos,
+               "INV-18: offset skip runs after ++seenMatchEvents and before "
+               "the max_results cap");
+    }
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3547 INV-19 — tools/list schema enumerates the offset property (via
+// the workspace-search-unique wsOffsetProp builder).
+TEST(workspace_search_payload_knobs, Inv19OffsetInSchema) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    expect(contains(cpp, "wsOffsetProp"),
+           "INV-19: wsOffsetProp builder present");
+    expect(contains(cpp, "props[\"offset\"]      = wsOffsetProp") ||
+           contains(cpp, "props[\"offset\"] = wsOffsetProp"),
+           "INV-19: props[\"offset\"] wired to wsOffsetProp in "
+           "workspace_search descriptor");
+    EXPECT_EQ(0, expect_failures());
+}

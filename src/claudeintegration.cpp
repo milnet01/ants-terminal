@@ -3001,7 +3001,9 @@ void ClaudeIntegration::onMcpConnection() {
                     "`files_only:true` returns {files:[{file,count}], "
                     "files_count} with no match rows — the distinct "
                     "matched-file set for \"which files reference X?\". "
-                    "ANTS-1390: pass "
+                    "ANTS-3547: `offset` pages a truncated search — the reply "
+                    "carries `next_offset`; pass it back as `offset` to "
+                    "continue instead of re-running wider. ANTS-1390: pass "
                     "`caller_cwd: "
                     "\"~global\"` (alias `\"~claude-config\"`) to "
                     "search ~/.claude/ instead of a project root — "
@@ -3228,6 +3230,23 @@ void ClaudeIntegration::onMcpConnection() {
                         "precedence if both are set. Complements count_only "
                         "(counts only) and headline_only (one line per "
                         "match).");
+                    // ANTS-3547 — offset cursor: continue a truncated search
+                    // instead of re-running it wider. (Named wsOffsetProp so
+                    // the source-grep test can scope it to workspace_search.)
+                    QJsonObject wsOffsetProp;
+                    wsOffsetProp["type"] = "integer";
+                    wsOffsetProp["default"] = 0;
+                    wsOffsetProp["minimum"] = 0;
+                    wsOffsetProp["description"] = QStringLiteral(
+                        "Skip the first N matches, returning the window "
+                        "[offset, offset+max_results). Use to CONTINUE a "
+                        "truncated search (paging) instead of re-running it "
+                        "wider — which re-scans from scratch and re-emits "
+                        "every match already seen. When more matches remain, "
+                        "the response carries `next_offset`; pass it back as "
+                        "`offset` for the next page (mirrors roadmap_query). "
+                        "Pairs with count_only (ANTS-3537): count first, then "
+                        "page. Dedup applies within each page. Default 0.");
                     props["pattern"]     = patternProp;
                     props["enclosing_symbol"] = encProp;          // ANTS-2220
                     props["query"]       = queryProp;
@@ -3240,6 +3259,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["headline_only"]   = hoProp;        // ANTS-1876
                     props["count_only"]      = countOnlyProp; // ANTS-3537
                     props["files_only"]      = filesOnlyProp; // ANTS-3549
+                    props["offset"]      = wsOffsetProp;      // ANTS-3547
                     props["context"]     = ctxProp;
                     props["case"]        = caseProp;
                     props["respect_gitignore"] = respectGitignoreProp;
