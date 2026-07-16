@@ -13364,6 +13364,30 @@ template / mutate this state atomically" → movable. If it's
   Kind: fix.
   Source: cold-eyes-2026-07-16 (ANTS-3538 loop 4, reviewer accuracy lane).
 
+- 📋 [ANTS-3541] **Malformed `ids` filter fails silently to the full list instead of refusing — waste + wrong result.**
+  Hit directly this session: roadmap_query with ids passed as a comma-joined STRING ("ANTS-3537,ANTS-3538") rather than a JSON array silently fell through to the normal unfiltered list path (23 unrelated bullets), with no signal the arg was mistyped. The schema documents `ids` as an array and "empty array -> falls through", but a PRESENT-but-wrong-typed ids (string, or non-empty-but-malformed) should refuse bad_args (or coerce a comma/whitespace-split string) rather than return a large wrong result. Fail-loud on a present-but-invalid ids across the id-accepting verbs (roadmap_query, and any verb taking an array filter). Small, high-signal robustness fix; saves a full-list payload + a silent wrong answer.
+  **Layman:** If a tool call asks for specific roadmap items but formats the request slightly wrong, it quietly dumps the whole list instead of saying 'that was malformed' — wasting tokens and hiding the mistake.
+  Kind: fix.
+  Source: in-session-2026-07-16 (MCP-robustness noted from direct use).
+
+- 📋 [ANTS-3542] **`batch` verb — run N read sub-calls in one round-trip, compacted as one envelope.**
+  The common orient/triage sequences (git_state + roadmap_query + codebase_index; or several read_region calls across files) pay the per-call envelope + wrap + caller_cwd overhead N times, and each result lands separately in context. Investigate a `batch` verb taking calls:[{tool, args}, ...] and returning results:[...] in ONE envelope — one compaction/offload pass over the whole set, shared-prelude dedup, one wrap. Distinct from session_orient (a fixed bootstrap set) and read_regions (single-verb multi-path). Gate: only read/idempotent verbs eligible; cap N; per-sub-call error isolation (one failure -> that slot errors, rest apply). Investigate the token saving vs the added dispatch complexity before committing.
+  **Layman:** Add a way to ask several read questions in a single request instead of one-at-a-time, so we pay the per-call overhead once and the server can trim the combined answer together.
+  Kind: investigate.
+  Source: in-session-2026-07-16 (token-saving sweep, wave 3).
+
+- 📋 [ANTS-3543] **Auto-downshift a would-be-truncated list to headline_only instead of dropping the tail.**
+  roadmap_query / workspace_search / find_sources cap a large list at a ~20 KB soft budget by TRUNCATING tail rows (truncated:true + next_offset). For a caller scanning for existence/coverage that silently hides the tail. Investigate: when a bullets/matches list would exceed the soft cap, first DOWNSHIFT to the headline_only / row-shape-trimmed projection (drop bodies/context) so ALL items fit in the same budget, only truncating if still over. A scanning caller then gets every id+headline rather than 50 full rows + an invisible remainder. Distinct from ANTS-3532 (compact drops empty fields) and ANTS-3538 (offload preview). Make it opt-in or heuristic; measure which verbs benefit.
+  **Layman:** When a list of results is too big to send whole, keep every item but drop the long descriptions (show just the titles) rather than cutting off the end — so nothing goes invisibly missing.
+  Kind: investigate.
+  Source: in-session-2026-07-16 (token-saving sweep, wave 3).
+
+- 📋 [ANTS-3544] **`codebase_index` changed-since-etag incremental delta — don't re-send the whole map after a one-file edit.**
+  codebase_index returns the whole symbol/lane map; after a small edit (or at each session bootstrap, which eagerly refreshes it — ANTS-2140) the caller re-pays the full map even though almost nothing changed. Investigate a changed-since-etag delta: return only symbols in files whose mtime/content-hash changed since a prior index etag (added / removed / changed entries + the unchanged-file list), so an incremental re-orient is cheap. Distinct from ANTS-3534 (delta for the APPEND-ONLY query verbs roadmap/changelog/feedback) — codebase_index is a rebuilt map, so this needs per-file change tracking + a stable per-file sub-etag, not an append watermark. Investigate the index's existing mtime bookkeeping first.
+  **Layman:** After editing a single file, asking for the project's code map re-sends the entire map; add a way to send back only what changed since last time.
+  Kind: investigate.
+  Source: in-session-2026-07-16 (token-saving sweep, wave 3).
+
 ### 🎨 At-a-glance build-version surface (user request 2026-05-14)
 
 - ✅ [ANTS-1323] **`v0.7.92 · 2026-05-14 08:48` build-badge on
