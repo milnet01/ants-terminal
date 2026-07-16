@@ -14,6 +14,7 @@
 // global and content-addressed — never project-scoped — so it cannot
 // "shadow" across a project relocation (docs/standards/mcp-caches.md).
 
+#include <QJsonArray>
 #include <QString>
 
 class QJsonObject;
@@ -31,6 +32,11 @@ constexpr qint64  kSpillMaxBytes = 64LL * 1024 * 1024;   // 64 MiB
 // for bodies over the cap (RAM bound on the earlyoom host, § 4).
 constexpr int     kHeadRowsMax           = 25;
 constexpr qint64  kStructuredParseMaxBytes = 1LL * 1024 * 1024;  // 1 MiB
+
+// ANTS-3545 — read_spill row-paging default page (rows) when row_count is
+// omitted / 0. Row-count-bounded (not byte-bounded); still hard-capped by the
+// kStructuredParseMaxBytes parse cap on the whole body. See docs/specs/ANTS-2094.md § 2.4.1.
+constexpr int     kSpillRowsDefault      = 100;
 
 // Config (set from the GUI thread on load / Settings Apply, read on every
 // dispatch). setOffloadConfig clamps threshold to [4096, 1048576] and head
@@ -64,6 +70,24 @@ struct SpillSlice {
 // handle must be a bare 64-hex sha256 (validated by the caller). maxBytes<=0
 // → default 512 KiB; clamped to the 4 MiB ceiling.
 SpillSlice readSpill(const QString &handle, qint64 offset, qint64 maxBytes);
+
+// ANTS-3545 — read_spill structured row-paging (§ 2.4.1 / INV-14). Pages the
+// spilled body's dominant array (the SAME array offloadBody previews as
+// head_rows_key — shared detection) by ROW, parsed. `code` carries the refusal
+// token when !ok; `cmdReadSpill` owns the human error/hint strings.
+struct SpillRows {
+    bool       ok = false;
+    QString    code;          // bad_args / not_found / too_large / not_array
+    QString    key;           // dominant array field name (== head_rows_key)
+    QJsonArray rows;          // parsed [rowOffset, rowOffset+count) window
+    qint64     rowOffset = 0;
+    qint64     totalRows = 0; // dominant array's full length
+    bool       truncated = false;
+};
+// handle must be a bare 64-hex sha256 (validated by the caller). Negative
+// rowOffset/rowCount → bad_args; rowCount<=0 → kSpillRowsDefault. Stats the
+// file and refuses too_large (> kStructuredParseMaxBytes) BEFORE reading it.
+SpillRows readSpillRows(const QString &handle, qint64 rowOffset, qint64 rowCount);
 
 // Session-start sweep: drop spill files with mtime older than 24 h (INV-7).
 void spillSweep();

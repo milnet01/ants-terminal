@@ -3699,14 +3699,24 @@ void ClaudeIntegration::onMcpConnection() {
                     "(default 512 KiB, 4 MiB ceiling). Page by advancing to the "
                     "RETURNED offset+bytes (a UTF-8 char-boundary cut can "
                     "shorten a slice). Returns {content, offset, bytes, "
-                    "total_bytes, truncated}. Refusals: bad_args (handle not a "
-                    "bare lowercase 64-hex, or negative offset/max_bytes), "
+                    "total_bytes, truncated}. ANTS-3545 — for an offloaded body "
+                    "whose preview showed head_rows_key (an array of rows), "
+                    "pass row_offset/row_count instead to page that array by "
+                    "ROW, parsed: returns a DIFFERENT envelope {mode:\"rows\", "
+                    "key, rows, row_offset, total_rows, truncated} (no "
+                    "content); page on via row_offset + rows.size(). Refusals: "
+                    "bad_args (bad handle, or negative "
+                    "offset/max_bytes/row_offset/row_count), "
                     "not_found (never spilled or evicted — re-issue the "
-                    "original call). The spill store is global/content-"
+                    "original call), too_large / not_array (row mode, on a "
+                    "> 1 MiB or non-array body — byte-page it instead). The "
+                    "spill store is global/content-"
                     "addressed, so caller_cwd is optional.");
                 rsTool["selection_hint"] = QStringLiteral(
                     "Use only after a read verb returned an offloaded:true "
-                    "envelope, to fetch the rest of the body via its handle.");
+                    "envelope, to fetch the rest of the body via its handle — "
+                    "byte-paged, or (if the preview showed head_rows_key) "
+                    "row-paged with row_offset/row_count.");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -3726,9 +3736,29 @@ void ClaudeIntegration::onMcpConnection() {
                         mbP["description"] = QStringLiteral(
                             "Cap on the returned slice in bytes (default "
                             "512 KiB, server-clamped to 4 MiB).");
+                    // ANTS-3545 — row-paging args (row mode). integer,
+                    // minimum:0 (matching byte-mode offset); a numeric value
+                    // routes cmdReadSpill to readSpillRows.
+                    QJsonObject roP; roP["type"] = "integer";
+                        roP["minimum"] = 0;
+                        roP["description"] = QStringLiteral(
+                            "Row-paging: 0-based index of the first row of the "
+                            "offloaded body's dominant array (the head_rows_key "
+                            "array). Presence of row_offset or row_count "
+                            "switches read_spill to row mode; page on by "
+                            "row_offset + rows.size().");
+                    QJsonObject rcP; rcP["type"] = "integer";
+                        rcP["minimum"] = 0;
+                        rcP["description"] = QStringLiteral(
+                            "Row-paging: number of rows to return (default 100; "
+                            "0/omitted = default). Row mode returns "
+                            "{mode:\"rows\", key, rows, row_offset, total_rows, "
+                            "truncated}.");
                     props["handle"]     = hP;
                     props["offset"]     = oP;
                     props["max_bytes"]  = mbP;
+                    props["row_offset"] = roP;     // ANTS-3545
+                    props["row_count"]  = rcP;     // ANTS-3545
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray required;

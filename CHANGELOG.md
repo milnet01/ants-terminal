@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **read_spill row-paging — page a parked list's rows cheaply instead of re-downloading the whole body** (ANTS-3545)
+  When a large list reply is parked (offloaded) and its preview shows an array of rows, `read_spill` now accepts `row_offset`/`row_count` to fetch the NEXT batch of rows, already parsed — instead of byte-paging (which lands mid-row) or re-fetching everything. Returns `{mode:"rows", key, rows, row_offset, total_rows, truncated}`; page on via `row_offset + rows.size()`. Completes the ANTS-3538 preview. Pages the same dominant array the preview named (shared detection). Bounded by a stat-before-read 1 MiB parse cap (refuses `too_large` without loading an over-cap body); non-array bodies refuse `not_array` (byte-page them). Byte-mode `read_spill` is unchanged.
+
 - **workspace_search `offset` cursor — continue a truncated search instead of re-running it wider** (ANTS-3547)
   `offset:N` returns the window `[offset, offset+max_results)`; when more matches remain the reply carries `next_offset`, which you pass back as `offset` to page forward (mirrors roadmap_query) — instead of re-running the search wider, which re-scans from scratch and re-emits every match already seen. Pairs with `count_only` (count first, then page). Dedup applies within each page.
 

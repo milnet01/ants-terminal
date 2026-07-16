@@ -13389,11 +13389,12 @@ template / mutate this state atomically" → movable. If it's
   Kind: investigate.
   Source: in-session-2026-07-16 (token-saving sweep, wave 3).
 
-- 📋 [ANTS-3545] **`read_spill` structured row-paging (`rows:[start,end]`) — page deep rows of an offloaded list without byte-slicing.**
+- ✅ [ANTS-3545] **`read_spill` structured row-paging (`rows:[start,end]`) — page deep rows of an offloaded list without byte-slicing.**
   Completion of ANTS-3538. 3538's `head_rows` gives the first K parsed rows of a spilled list body; read_spill (mcpspill.cpp:217) only offers BYTE offsets, which land mid-JSON and can't be parsed — so rows K..2K force a full re-read of the whole body. Add a `rows:[start,end]` (or row_offset/row_count) selector that reparses the spilled body, finds the same dominant array 3538 chose (head_rows_key), and returns a parsed slice + row_count. Same RAM bound as 3538 (kStructuredParseMaxBytes 1 MiB parse cap). Turns the offload preview from 'first page only' into true random-access paging.
   **Layman:** After a big list gets parked, you can already peek the first few rows for free; this lets you grab the NEXT batch cheaply too, instead of re-downloading the whole thing.
   Kind: enhancement.
   Source: in-session-2026-07-16.
+  Resolved (2026-07-16): read_spill now supports structured row-paging. A numeric row_offset/row_count routes cmdReadSpill to the new mcp::readSpillRows (mcpspill.cpp), which pages the spilled body's dominant array by ROW, parsed — the SAME array offloadBody previews as head_rows_key (extracted shared dominantArrayKey helper, so preview and pager can never disagree). Half-open [row_offset, row_offset+row_count) window, overflow-safe (subtraction), kSpillRowsDefault=100 default page; stat-before-read refuses too_large (>1 MiB) without loading the body; negative-arg bad_args gate lives in readSpillRows (directly unit-testable); not_array / not_found preserved. Envelope {mode:"rows", key, rows, row_offset, total_rows, truncated}; byte mode byte-identical to pre-3545. Schema row props + description + selection_hint updated (claudeintegration.cpp); offloadBody hint now advertises row paging gated on domCount>0 (covers the preview-omitted large-row case); too_large/not_array added to mcp-error-codes.md (category 2). Spec ANTS-2094 §2.4.1 + INV-14 amended and taken through a 4-loop cold-eyes to convergence (8 cold reviews; caught the dead-on-arrival schema, an integer-overflow slice, a RAM-blowing unconditional read, and untestable coverage — all fixed pre-implementation). Test-first: Inv14ReadSpillRowPaging (readSpillRows direct — RED by link-absence) + Inv14RowModeWiring (source-scrape). Full suite 2696/2696 green. Live on next relaunch. Follow-up: read_spill/offload has no mcp-behavioural-notes.md section at all (pre-existing gap, out of this scope).
 
 - 📋 [ANTS-3546] **Server-side 'already-emitted' auto-304 — a repeat identical read body returns a pointer, not the bytes.**
   Offload already content-addresses every body by sha256 (the spill handle). Keep a small session/process-scoped LRU of recently-emitted content hashes; when a verb is about to return bytes whose hash is already in the set AND the spill file still exists, return {unchanged:true, handle, emitted_recently} instead of the full body — like offload, but triggered by REPETITION not size. Targets the subagent review-loop re-read cost token_usage can't see (ties ANTS-3536). Open Qs: cross-subagent scope (all sessions share one Ants server, so dedup spans subagents — a plus); staleness (evict on file-mtime change, bound the LRU); correctness (only 304 when the caller can re-fetch via read_spill). RAM: bounded LRU of hashes only, no bodies held.
@@ -13438,6 +13439,12 @@ template / mutate this state atomically" → movable. If it's
   **Layman:** A few edge behaviours of the reply-parking feature are correct in code but not yet pinned by a test; add those tests so a future change can't silently break them.
   Kind: test.
   Source: cold-eyes-2026-07-16 ANTS-3540.
+
+- 📋 [ANTS-3553] **Document the offload / read_spill contract in mcp-behavioural-notes.md.**
+  Noticed while shipping ANTS-3545: docs/standards/mcp-behavioural-notes.md has NO section for the result-offload path (offloadBody / head_rows preview / read_spill byte + row paging). ANTS-2094 §7 lists behavioural-notes as a cross-doc target but it was never added. Add a read_spill behavioural note covering: the offloaded:true envelope shape, byte paging (offset/max_bytes, advance by returned offset+bytes), the ANTS-3538 head_rows preview, and the ANTS-3545 row mode (row_offset/row_count → {mode:"rows", key, rows, row_offset, total_rows, truncated}); refusal codes too_large/not_array. Pre-existing gap (predates 3545), deferred to keep 3545 in-scope.
+  **Layman:** The "park a huge reply, re-read it later" feature has no entry in the behavioural-notes reference doc — so a future session learns it only from the tool schema.
+  Kind: doc.
+  Source: in-session-2026-07-16.
 
 ### 🎨 At-a-glance build-version surface (user request 2026-05-14)
 

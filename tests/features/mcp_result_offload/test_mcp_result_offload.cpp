@@ -470,3 +470,101 @@ TEST_F(McpResultOffload, Inv9BaseEnvelopeNeverExceedsBody) {
     // The core INV-9 predicate holds unconditionally: output ≤ body bytes.
     EXPECT_LE(env.toUtf8().size(), body.toUtf8().size());
 }
+
+// INV-14 (ANTS-3545) — read_spill row-paging: mcp::readSpillRows pages the
+// dominant array by row, sharing offloadBody's dominant-array detection so the
+// paged `key` equals the offload preview's `head_rows_key`. Direct-call test
+// (like INV-5/6 call readSpill); must-fail-first is the link-time absence of
+// readSpillRows pre-feature. Covers continuity incl. a final partial page, the
+// past-end + default-page + negative-arg + not_found edges.
+TEST_F(McpResultOffload, Inv14ReadSpillRowPaging) {
+    const int N = 47;                       // not a multiple of the page K
+    QJsonArray arr;
+    for (int i = 0; i < N; ++i) {
+        QJsonObject r; r["i"] = i; r["v"] = QStringLiteral("row%1").arg(i);
+        arr.append(r);
+    }
+    QJsonObject b; b["matches"] = arr; b["pattern"] = QStringLiteral("x");
+    b["pad"] = QString(20000, QLatin1Char('p'));   // cross the offload threshold
+    const QString body = compact(b);
+    const QJsonObject env = offloadEnv(QStringLiteral("workspace_search"), body);
+    const QString handle = env.value("handle").toString();
+    ASSERT_FALSE(handle.isEmpty());
+
+    // Page [0,K), [K,2K), … contiguous + deep-equal to the spilled rows at
+    // absolute indices; the last page is the partial [40,47).
+    const int K = 10;
+    int seen = 0;
+    qint64 off = 0;
+    for (int guard = 0; guard < 100; ++guard) {
+        const mcp::SpillRows p = mcp::readSpillRows(handle, off, K);
+        ASSERT_TRUE(p.ok) << p.code.toStdString();
+        EXPECT_EQ(p.key, QStringLiteral("matches"));       // == head_rows_key
+        EXPECT_EQ(p.totalRows, N);
+        EXPECT_EQ(p.rowOffset, off);
+        for (int j = 0; j < p.rows.size(); ++j)
+            EXPECT_EQ(p.rows.at(j), arr.at(static_cast<int>(off) + j)) << off + j;
+        seen += p.rows.size();
+        off += p.rows.size();
+        if (!p.truncated) break;
+    }
+    EXPECT_EQ(seen, N);
+    // The paged key equals the offloaded envelope's head_rows_key.
+    ASSERT_TRUE(env.contains("head_rows_key"));
+    EXPECT_EQ(env.value("head_rows_key").toString(), QStringLiteral("matches"));
+
+    // Final partial page: [40,47) → 7 rows, truncated:false.
+    const mcp::SpillRows last = mcp::readSpillRows(handle, 40, K);
+    ASSERT_TRUE(last.ok);
+    EXPECT_EQ(last.rows.size(), 7);
+    EXPECT_FALSE(last.truncated);
+
+    // Past-end → empty, truncated:false.
+    const mcp::SpillRows past = mcp::readSpillRows(handle, N + 5, K);
+    ASSERT_TRUE(past.ok);
+    EXPECT_TRUE(past.rows.isEmpty());
+    EXPECT_FALSE(past.truncated);
+
+    // row_count == 0 → default page (kSpillRowsDefault = 100 > N → whole array).
+    const mcp::SpillRows def = mcp::readSpillRows(handle, 0, 0);
+    ASSERT_TRUE(def.ok);
+    EXPECT_EQ(def.rows.size(), N);
+    EXPECT_FALSE(def.truncated);
+
+    // Negative arg → bad_args (gate lives in readSpillRows, directly testable).
+    EXPECT_EQ(mcp::readSpillRows(handle, -1, K).code, QStringLiteral("bad_args"));
+    EXPECT_EQ(mcp::readSpillRows(handle, 0, -5).code, QStringLiteral("bad_args"));
+
+    // Unknown handle → not_found (inherited INV-5).
+    const mcp::SpillRows missing =
+        mcp::readSpillRows(QString(64, QLatin1Char('a')), 0, K);
+    EXPECT_FALSE(missing.ok);
+    EXPECT_EQ(missing.code, QStringLiteral("not_found"));
+
+    // A non-array (scalar-only) body → not_array.
+    QJsonObject sb; sb["only"] = QString(20000, QLatin1Char('s'));
+    const QString shandle =
+        offloadEnv(QStringLiteral("get_text"), compact(sb)).value("handle").toString();
+    ASSERT_FALSE(shandle.isEmpty());
+    EXPECT_EQ(mcp::readSpillRows(shandle, 0, K).code, QStringLiteral("not_array"));
+}
+
+// INV-14 (ANTS-3545) — row-mode wiring source-scrape (the bundle links
+// ants_core_lib, not RemoteControl, so cmdReadSpill is not runtime-callable —
+// only its literals can be asserted). cmdReadSpill routes numeric row args to
+// readSpillRows and emits mode:"rows"; the read_spill schema declares the two
+// row props. The mode:"rows" literal is absent from pre-feature code (RED).
+TEST_F(McpResultOffload, Inv14RowModeWiring) {
+    const QString rc = readSource(SRC_RC_CPP);
+    ASSERT_FALSE(rc.isEmpty());
+    EXPECT_TRUE(rc.contains(QStringLiteral("readSpillRows")));
+    EXPECT_TRUE(rc.contains(QStringLiteral("\"row_offset\"")));
+    EXPECT_TRUE(rc.contains(QStringLiteral("\"row_count\"")));
+    // The observable row-mode discriminator: mode == "rows".
+    EXPECT_TRUE(rc.contains(QStringLiteral("QStringLiteral(\"rows\")")));
+
+    const QString ci = readSource(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    ASSERT_FALSE(ci.isEmpty());
+    EXPECT_TRUE(ci.contains(QStringLiteral("props[\"row_offset\"]")));
+    EXPECT_TRUE(ci.contains(QStringLiteral("props[\"row_count\"]")));
+}

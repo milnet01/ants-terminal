@@ -86,6 +86,25 @@ void evict(const QString &keepHandle) {
     }
 }
 
+// ANTS-3545 — the dominant array: the root object's own direct **non-empty**
+// array member with the most elements; ties break to the lexicographically-
+// first key (QJsonObject iterates in sorted key order). No recursion into
+// nested objects, so a tabular {__cols__,__rows__} member is never selected.
+// Shared by offloadBody's head_rows preview and readSpillRows, so the previewed
+// key (head_rows_key) and the paged key are always the same array (INV-13/14).
+// Sets *count to the winning array's size (0 ⇒ empty return key, no root array).
+QString dominantArrayKey(const QJsonObject &root, int *count) {
+    QString domKey;
+    int domCount = 0;
+    for (auto it = root.begin(); it != root.end(); ++it) {
+        if (!it.value().isArray()) continue;
+        const int n = it.value().toArray().size();
+        if (n > domCount) { domCount = n; domKey = it.key(); }
+    }
+    if (count) *count = domCount;
+    return domKey;
+}
+
 }  // namespace
 
 void setOffloadConfig(bool enabled, int thresholdBytes, int headBytes) {
@@ -156,18 +175,23 @@ QString offloadBody(const QString &toolName, const QString &body) {
         if (perr.error == QJsonParseError::NoError && doc.isObject()) {
             const QJsonObject root = doc.object();
             // Dominant array = the root's own direct non-empty array member
-            // with the most elements. QJsonObject iterates in sorted key
-            // order, so the first strict-max is the lexicographically-first
-            // key on ties (deterministic; no recursion into nested objects,
-            // so a tabular {__cols__,__rows__} member is never selected).
-            QString domKey;
+            // with the most elements (shared helper — ANTS-3545 — so the
+            // head_rows preview and read_spill row-paging always agree).
             int domCount = 0;
-            for (auto it = root.begin(); it != root.end(); ++it) {
-                if (!it.value().isArray()) continue;
-                const int n = it.value().toArray().size();
-                if (n > domCount) { domCount = n; domKey = it.key(); }
-            }
+            const QString domKey = dominantArrayKey(root, &domCount);
             if (domCount > 0) {
+                // ANTS-3545 — advertise row paging on the very envelope where
+                // the agent decides how to continue (discoverability). Gated on
+                // a dominant array EXISTING, not on the head_rows preview
+                // fitting below — a large-first-row body omits the preview yet
+                // is still row-pageable, and is exactly where byte paging lands
+                // mid-row. A > 1 MiB body never reaches here (row mode refuses
+                // too_large) and a non-array body has domCount == 0.
+                o[QStringLiteral("hint")] = QStringLiteral(
+                    "Large result spilled. Re-read the full body via read_spill "
+                    "{handle:\"%1\"}: byte-paged (offset/max_bytes), or "
+                    "row-paged (row_offset/row_count) over the \"%2\" array.")
+                    .arg(handle, domKey);
                 // S0 = the full envelope with the three scalar preview fields
                 // + head_rows_truncated at its WIDER 'false' form (5 B) + an
                 // empty head_rows. Measuring 'false' guarantees the finished
@@ -252,6 +276,54 @@ SpillSlice readSpill(const QString &handle, qint64 offset, qint64 maxBytes) {
     s.bytes     = keep;
     s.truncated = (offset + keep) < total;
     return s;
+}
+
+SpillRows readSpillRows(const QString &handle, qint64 rowOffset, qint64 rowCount) {
+    SpillRows r;
+    // ANTS-3545 — negative-arg gate lives HERE (not cmdReadSpill) so it is
+    // directly unit-testable; only 0/omitted maps to the default, never a
+    // negative (§ 2.4.1 / INV-14).
+    if (rowOffset < 0 || rowCount < 0) { r.code = QStringLiteral("bad_args"); return r; }
+
+    const QString path = spillPath(handle);
+    const QFileInfo fi(path);
+    if (!fi.exists()) { r.code = QStringLiteral("not_found"); return r; }
+    // Stat BEFORE reading: refuse an over-cap body without loading it into RAM
+    // (§ 4 — do not mirror readSpill's unconditional readAll on the row path).
+    if (fi.size() > kStructuredParseMaxBytes) { r.code = QStringLiteral("too_large"); return r; }
+
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) { r.code = QStringLiteral("not_found"); return r; }
+    const QByteArray full = f.readAll();
+    f.close();
+
+    QJsonParseError perr{};
+    const QJsonDocument doc = QJsonDocument::fromJson(full, &perr);
+    if (perr.error != QJsonParseError::NoError || !doc.isObject()) {
+        r.code = QStringLiteral("not_array"); return r;
+    }
+    int domCount = 0;
+    const QString domKey = dominantArrayKey(doc.object(), &domCount);
+    if (domCount == 0) { r.code = QStringLiteral("not_array"); return r; }
+
+    const QJsonArray arr = doc.object().value(domKey).toArray();
+    const qint64 totalRows = arr.size();
+    r.ok        = true;
+    r.key       = domKey;
+    r.rowOffset = rowOffset;
+    r.totalRows = totalRows;
+    if (rowOffset >= totalRows) {          // past end → empty, not truncated
+        r.truncated = false;
+        return r;
+    }
+    const qint64 count = (rowCount <= 0) ? kSpillRowsDefault : rowCount;
+    // Overflow-safe: `totalRows - rowOffset` is >= 0 after the past-end guard,
+    // never `rowOffset + count` (two caller-controlled values could overflow).
+    const qint64 take = qMin(count, totalRows - rowOffset);
+    for (qint64 i = 0; i < take; ++i)
+        r.rows.append(arr.at(static_cast<int>(rowOffset + i)));
+    r.truncated = (rowOffset + take) < totalRows;
+    return r;
 }
 
 void setSpillDirOverride(const QString &dir) {

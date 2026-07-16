@@ -10389,6 +10389,56 @@ QJsonDocument RemoteControl::cmdReadSpill(const QJsonObject &req) {
         o["code"]  = QStringLiteral("bad_args");
         return QJsonDocument(o);
     }
+    // ANTS-3545 — row mode: a numeric row_offset/row_count routes to
+    // readSpillRows (row-paged), which owns the negative-arg / not_found /
+    // too_large / not_array refusals. isDouble() (not mere presence) mirrors
+    // byte mode's arg reads, so a non-numeric row arg falls to byte mode. When
+    // a request mixes row keys with byte offset/max_bytes, row mode wins and
+    // the byte args are ignored (§ 2.4.1).
+    const QJsonValue roV = req.value(QStringLiteral("row_offset"));
+    const QJsonValue rcV = req.value(QStringLiteral("row_count"));
+    if (roV.isDouble() || rcV.isDouble()) {
+        const qint64 rowOffset = roV.isDouble() ? static_cast<qint64>(roV.toDouble()) : 0;
+        const qint64 rowCount  = rcV.isDouble() ? static_cast<qint64>(rcV.toDouble()) : 0;
+        const mcp::SpillRows r = mcp::readSpillRows(handle, rowOffset, rowCount);
+        if (!r.ok) {
+            QJsonObject o;
+            o["ok"]   = false;
+            o["code"] = r.code;
+            if (r.code == QStringLiteral("not_found")) {
+                o["error"] = QStringLiteral(
+                    "read_spill: handle not found (never spilled, or evicted — "
+                    "re-issue the original call)");
+            } else if (r.code == QStringLiteral("too_large")) {
+                o["error"] = QStringLiteral(
+                    "read_spill: body too large (> 1 MiB) to parse for "
+                    "row-paging");
+                o["hint"]  = QStringLiteral(
+                    "byte-page it via offset/max_bytes — byte mode does not "
+                    "parse the body");
+            } else if (r.code == QStringLiteral("not_array")) {
+                o["error"] = QStringLiteral(
+                    "read_spill: body has no row-shaped array to page");
+                o["hint"]  = QStringLiteral(
+                    "byte-page it via offset/max_bytes instead");
+            } else {  // bad_args
+                o["error"] = QStringLiteral(
+                    "read_spill: \"row_offset\"/\"row_count\" must be >= 0");
+            }
+            return QJsonDocument(o);
+        }
+        QJsonObject o;
+        o["ok"]         = true;
+        o["mode"]       = QStringLiteral("rows");
+        o["key"]        = r.key;
+        o["rows"]       = r.rows;
+        o["row_offset"] = r.rowOffset;
+        o["total_rows"] = r.totalRows;
+        o["truncated"]  = r.truncated;
+        return QJsonDocument(o);
+    }
+    // Byte mode (§ 2.4) — unchanged; the negative-byte-arg gate below is now
+    // reached only in byte mode (row mode returned above).
     const QJsonValue offV = req.value(QStringLiteral("offset"));
     const QJsonValue mbV  = req.value(QStringLiteral("max_bytes"));
     const qint64 offset   = offV.isDouble() ? static_cast<qint64>(offV.toDouble()) : 0;
