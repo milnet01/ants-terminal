@@ -74,13 +74,18 @@ or the built envelope isn't smaller than the body — the verb returns the
 a content-addressed spill written just before a late fail-open is a benign
 duplicate the 24 h sweep reclaims).
 
-**Offload envelope** (`offloaded:true`): `handle` (the 64-char sha256),
-`head` (a leading byte-prefix of the body), `bytes`/`row_count`, and a
-`hint` naming both re-read modes. When the body's dominant field is a
-row-shaped array, ANTS-3538 adds a typed **`head_rows` preview** —
-`head_rows` (the first few whole elements), `head_rows_key` (the array's
-field name), `head_rows_truncated`, `head_truncated` — so the caller sees
-real rows, not just a clipped byte-string.
+**Offload envelope** (`offloaded:true`): the base fields are `handle` (the
+64-char sha256), `head` (a leading byte-prefix of the body),
+`head_truncated`, `bytes` (the full body size), and a `hint` — all emitted
+unconditionally. When the body's dominant field is a row-shaped array,
+ANTS-3538 adds a typed **`head_rows` preview** — `head_rows` (the first few
+whole elements), `head_rows_key` (the array's field name),
+`head_rows_truncated`, `row_count` (the array's total length) — so the
+caller sees real rows, not just a clipped byte-string, and the `hint`
+additionally advertises row paging (it does so whenever a dominant array
+exists, even when the rows are too large to fit the preview budget). A body
+with no row-shaped array carries only the base fields and a
+byte-paging-only `hint`.
 
 **`read_spill` — byte mode (default).** `offset`/`max_bytes` return
 `{ok, content, offset, bytes, total_bytes, truncated}`; page forward by
