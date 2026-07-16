@@ -13412,6 +13412,24 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Source: in-session-2026-07-16.
 
+- 📋 [ANTS-3549] **`workspace_search` `files_only` mode — return the deduplicated matched-file set, no line bodies.**
+  Third row-shape knob alongside count_only (ANTS-3537, counts only) and headline_only (one line per match). files_only returns the distinct set of files that matched (optionally with per-file hit counts) and drops the match rows entirely — the answer to 'where is X referenced?' when you'll open the files next anyway. Much smaller than headline_only when a symbol recurs many times per file. Reuses rg's `begin` events (already counted for count_only's files_count), so it's nearly free to add.
+  **Layman:** For 'which files mention X', give me just the list of files — not every single line, which is huge when a name appears 40 times in one file.
+  Kind: enhancement.
+  Source: in-session-2026-07-16.
+
+- 📋 [ANTS-3550] **Suppress advisory hint fields after first emission — session 'already-taught' latch on next_call_hint / leaner_call_hint.**
+  Every workspace_search reply ships leaner_call_hint (~120 B) and the list verbs ship next_call_hint (~90 B) — educational the first time, recurring overhead thereafter. compact:true does NOT drop them (they're non-empty strings, so 3532's empty-field compaction skips them). Add a session/process-scoped 'taught' set keyed by hint-kind: emit each advisory string once, then omit it for the rest of the session. Distinct from ANTS-3532 (empty-field compaction) and the per-call fields= whitelist. Keep an off switch (config) for callers that re-read the hint each call. Small recurring saving across a whole session's worth of read calls.
+  **Layman:** The little 'tip: you could call this more cheaply' notes are useful the first time and pure noise every time after; show each once per session, then stop.
+  Kind: enhancement.
+  Source: in-session-2026-07-16.
+
+- 📋 [ANTS-3551] **Path-only / manifest mode for `find_sources` + `find_caller` — return the file set, not the surrounding bodies.**
+  Investigate the current find_sources / find_caller envelopes (both flagged heavy — ~52 s cold, ANTS-3444) and add a path-only / manifest mode returning just the matched file paths (+ line numbers) without quoted code windows, mirroring ANTS-1281's manifest-not-bodies posture for indie_review_brief. When the caller will read_region the hits next, the quoted windows are re-sent bytes. Verify what each verb emits today before sizing; frame the saving against a real caller-graph query.
+  **Layman:** When I ask 'who calls this function', often I just need the list of files to open next — not a chunk of code quoted around each call.
+  Kind: investigate.
+  Source: in-session-2026-07-16.
+
 ### 🎨 At-a-glance build-version surface (user request 2026-05-14)
 
 - ✅ [ANTS-1323] **`v0.7.92 · 2026-05-14 08:48` build-badge on
