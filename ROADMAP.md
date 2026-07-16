@@ -13388,6 +13388,30 @@ template / mutate this state atomically" → movable. If it's
   Kind: investigate.
   Source: in-session-2026-07-16 (token-saving sweep, wave 3).
 
+- 📋 [ANTS-3545] **`read_spill` structured row-paging (`rows:[start,end]`) — page deep rows of an offloaded list without byte-slicing.**
+  Completion of ANTS-3538. 3538's `head_rows` gives the first K parsed rows of a spilled list body; read_spill (mcpspill.cpp:217) only offers BYTE offsets, which land mid-JSON and can't be parsed — so rows K..2K force a full re-read of the whole body. Add a `rows:[start,end]` (or row_offset/row_count) selector that reparses the spilled body, finds the same dominant array 3538 chose (head_rows_key), and returns a parsed slice + row_count. Same RAM bound as 3538 (kStructuredParseMaxBytes 1 MiB parse cap). Turns the offload preview from 'first page only' into true random-access paging.
+  **Layman:** After a big list gets parked, you can already peek the first few rows for free; this lets you grab the NEXT batch cheaply too, instead of re-downloading the whole thing.
+  Kind: enhancement.
+  Source: in-session-2026-07-16.
+
+- 📋 [ANTS-3546] **Server-side 'already-emitted' auto-304 — a repeat identical read body returns a pointer, not the bytes.**
+  Offload already content-addresses every body by sha256 (the spill handle). Keep a small session/process-scoped LRU of recently-emitted content hashes; when a verb is about to return bytes whose hash is already in the set AND the spill file still exists, return {unchanged:true, handle, emitted_recently} instead of the full body — like offload, but triggered by REPETITION not size. Targets the subagent review-loop re-read cost token_usage can't see (ties ANTS-3536). Open Qs: cross-subagent scope (all sessions share one Ants server, so dedup spans subagents — a plus); staleness (evict on file-mtime change, bound the LRU); correctness (only 304 when the caller can re-fetch via read_spill). RAM: bounded LRU of hashes only, no bodies held.
+  **Layman:** When a review loop reads the same file region five times, send the actual text once and just say 'same as before' the other four times.
+  Kind: investigate.
+  Source: in-session-2026-07-16.
+
+- 📋 [ANTS-3547] **`workspace_search` `offset` cursor — continue a truncated search instead of re-running it wider.**
+  workspace_search truncates at max_results/max_bytes and reports results_dropped, but exposes no offset/cursor — the only way to reach dropped matches is a wider re-run that re-scans from scratch and re-emits every match already seen (O(all-seen-again)). Add an `offset` (skip the first N matches) so paging is O(page). Pairs with count_only (ANTS-3537): count first, then page. roadmap_query already returns next_offset — mirror that contract on workspace_search.
+  **Layman:** If a search shows the first 50 hits and there are more, let me ask for the NEXT 50 — right now the only option is to redo the whole search bigger.
+  Kind: enhancement.
+  Source: in-session-2026-07-16.
+
+- 📋 [ANTS-3548] **Default `max_match_bytes` ceiling on `workspace_search` — clip pathological long lines by default (token-saver default-ON).**
+  max_match_bytes is opt-in (default 0 = off); the tool's own leaner_call_hint already nudges callers toward it — i.e. long lines are a known budget hazard left off by default, against the project's 'token-savers default ON, keep an off switch' rule. Apply a sane default clip (e.g. ~512 B/line) with an explicit opt-out. Needs a disable sentinel since 0 currently MEANS off — either keep 0=off and make the DEFAULT non-zero, or add -1=off. dedup key is computed pre-clip (INV-4), so behaviour is unchanged except over-long rows shrink. Small, safe, predictable.
+  **Layman:** One giant machine-generated line shouldn't be able to flood a search result; trim over-long lines automatically unless asked not to.
+  Kind: enhancement.
+  Source: in-session-2026-07-16.
+
 ### 🎨 At-a-glance build-version surface (user request 2026-05-14)
 
 - ✅ [ANTS-1323] **`v0.7.92 · 2026-05-14 08:48` build-badge on
