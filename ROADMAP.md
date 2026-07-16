@@ -18956,6 +18956,45 @@ no action). Four actionable items below.
   Kind: perf.
   Source: finbreak-feedback-2026-07-14.
 
+### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
+
+/cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +
+cited docs + cited code), because the *_brief verbs return PATHS ONLY
+(coldeyesengine.cpp:938 INV-3 / indiereviewengine.cpp:356 INV-5 — deliberately
+no inlining, to keep the parent orchestrator lean) so every fresh subagent
+re-reads the same spec + ~15-20 code files, and the ~8KB base brief
+(skills/*/references/review-brief.md) re-ships each lane×loop. Umbrella:
+ANTS-3520 (shared content-addressed read-cache). Concrete grounded sub-ideas
+below. No rigor-neutral infra-independent big win exists — region-narrowing
+trades completeness, cross-subagent prompt-caching is unmeasured infra; measure
+before the big build.
+
+- 📋 [ANTS-3521] **Measure per-lane reviewer input-token cost before optimizing (can't optimize what we don't measure).**
+  Instrument /cold-eyes and /indie-review to capture per-lane input tokens (base brief vs cited docs vs cited code) and whether sibling/loop subagents hit the prompt cache. token_usage / model_switch_stats infra may already expose the raw signal. This gates ANTS-3520 and the region/pack ideas — validate the prompt-caching assumption empirically before the big build.
+  **Layman:** First put a number on how many tokens each review helper actually burns reading files, so we can prove any saving is real.
+  Kind: investigate.
+  Source: user-request-2026-07-16.
+
+- ✅ [ANTS-3522] **cold_eyes_brief: resolve cited-code REGIONS (symbol / file:line) so cold-eyes reviewers read regions + outline, not whole files.**
+  Extend extractCitedCodePaths (coldeyesengine.cpp:938) to also capture the cited symbol/line from the doc (file.cpp:123, Class::method, INV-N) and emit cited_code_regions[] {path, symbol|line, resolved_range via file_outline} in the cold_eyes_brief envelope (remotecontrol.cpp:18239). Additive — keep cited_code_paths. Rigor guard: ALWAYS include the file OUTLINE (full symbol list) so structural completeness is preserved; regions carry the cited detail; reviewer expands on judgment. Cold-eyes-only (citation-local verification); NOT indie-review (needs whole-file context to find uncited bugs).
+  **Layman:** When a spec cites a specific function or line, hand the reviewer just that slice plus a map of the file, instead of the whole 1500-line file.
+  Kind: enhancement.
+  Source: user-request-2026-07-16.
+  Resolved (2026-07-16): extractCitedCodePaths gained a citedRegionsOut out-param (coldeyesengine.cpp) capturing the line from each `<path>:<line>` citation, grouped per resolved file (sorted-unique). cold_eyes_brief emits cited_code_regions[] {path, lines[]} (remotecontrol.cpp) + a 'Cited code regions' brief section + outline-first reading instructions. Additive (cited_code_paths untouched); structure preserved (reviewer still outlines). Scope: the `path:line` citation form; symbol-only citations (Class::method) deferred as a follow-up. Regression: ColdEyesEngine.Ants3522CitedCodeRegionsGrouped (proves 2 cited lines vs a 200-line file). Full suite 2673/2673.
+
+- ✅ [ANTS-3523] **Skill reading-discipline: outline-first + region-read cited code; base brief as a stable cacheable prefix.**
+  Edit ~/.claude/skills/cold-eyes/SKILL.md + indie-review/SKILL.md. Cold-eyes: reviewers outline cited files (file_outline) then read cited regions (read_region), expanding only where the outline flags relevance — preserves completeness, cuts bytes. Indie-review (rigor-sensitive): outline-first for CONTRACT/reference docs + non-owned cross-referenced files only; keep the lane's OWNED source whole (bug-finding needs full context). Put the identical base brief first as a byte-stable prefix to maximise any cross-subagent prompt-cache hits. Consumes cited_code_regions once the brief emits it.
+  **Layman:** Tell the review helpers to skim a file's structure first and read only the relevant parts, and to arrange their prompt so repeated boilerplate can be cached.
+  Kind: doc.
+  Source: user-request-2026-07-16.
+  Resolved (2026-07-16): edited ~/.claude/skills/cold-eyes/SKILL.md (Phase 1b + Phase 2) and references/review-brief.md with an accuracy-preserving reading discipline — read docs in full; for cited CODE outline first (file_outline, all symbols visible) then read cited path:line regions (read_region), expand only when the outline flags a nearby gap; keep the verbatim base brief first + byte-stable so prompt-caching can serve it to sibling/loop reviewers. Cold-eyes ONLY (user choice 2026-07-16); indie-review left whole-file. Global-skill edit — not part of the product release, no CHANGELOG entry.
+
+- 📋 [ANTS-3524] **Indie-review: dedup the per-lane contract-doc + base-brief re-reads across lanes.**
+  indie_review_brief inlines a ROADMAP slice + FP ledger but lists 3 docs/standards/*.md as paths each lane re-reads, plus the ~8KB base brief re-ships per lane×loop. Provide the contract docs as outline/summary or a shared once-per-run block, and lean on the deterministic cacheable-prefix layout (ANTS-3520). Also the refactor anchor: assembleBriefForDispatch (indiereviewengine.cpp, decl indiereviewengine.h:125) is the only body-inlining path and is uncapped (ties to ANTS-1648) — a shared content-addressed pack would cap + dedup it in one move.
+  **Layman:** Every code-review helper currently re-reads the same three standards documents and the same instructions; share them once instead.
+  Kind: investigate.
+  Source: user-request-2026-07-16.
+
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
 Triage of the 2026-06-30 → 2026-07-01 un-triaged feedback tails from Vestige,

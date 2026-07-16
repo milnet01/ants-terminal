@@ -959,6 +959,53 @@ TEST(ColdEyesEngine, Ants1633StaleCitationsCapturedSeparately) {
         << "INV-B: stale py path must surface in staleCitationsOut";
 }
 
+// ANTS-3522 — cited code REGIONS. `<path>:<line>` citations contribute the
+// exact line numbers (sorted-unique, grouped per resolved file) so a reviewer
+// reads a window around each cited line instead of the whole file. Files cited
+// without a line stay in cited_code_paths only. The saving is citation-local
+// and structure-preserving (the reviewer still outlines the file).
+TEST(ColdEyesEngine, Ants3522CitedCodeRegionsGrouped) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    // A large source file, cited at two distinct lines (one repeated + out of
+    // order — must dedup and sort).
+    QString big;
+    for (int i = 1; i <= 200; ++i) big += QStringLiteral("line %1\n").arg(i);
+    ASSERT_TRUE(ws.writeRel("src/big.cpp", big));
+    ASSERT_TRUE(ws.writeRel("src/plain.cpp", "x"));   // cited without a line
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-3522.md",
+        QStringLiteral(
+            "# Spec\n"
+            "See `src/big.cpp:150` and `src/big.cpp:10`.\n"
+            "Also `src/big.cpp:150` again (must dedup).\n"
+            "And a bare mention of src/plain.cpp with no line.\n")));
+
+    QStringList stale;
+    QMap<QString, QList<int>> regions;
+    const auto out = ColdEyesEngine::extractCitedCodePaths(
+        ws.root(),
+        QStringList{QStringLiteral("docs/specs/ANTS-3522.md")},
+        &stale, &regions);
+
+    // big.cpp resolved with its cited lines, sorted + deduped.
+    ASSERT_TRUE(regions.contains(QStringLiteral("src/big.cpp")));
+    const QList<int> bigLines = regions.value(QStringLiteral("src/big.cpp"));
+    ASSERT_EQ(bigLines.size(), 2)
+        << "ANTS-3522: two distinct cited lines after dedup";
+    EXPECT_EQ(bigLines.at(0), 10)  << "ANTS-3522: lines sorted ascending";
+    EXPECT_EQ(bigLines.at(1), 150);
+    // A file cited WITHOUT a `:line` contributes no region (paths only).
+    EXPECT_FALSE(regions.contains(QStringLiteral("src/plain.cpp")))
+        << "ANTS-3522: bare-mention file has no cited region";
+    EXPECT_TRUE(out.contains(QStringLiteral("src/plain.cpp")))
+        << "ANTS-3522: bare-mention file still surfaces in cited_code_paths";
+    // Proof of the saving: 2 cited lines drive the read, not the 200-line file.
+    int totalRegionLines = 0;
+    for (const auto &v : regions) totalRegionLines += v.size();
+    EXPECT_LT(totalRegionLines, 200 / 10)
+        << "ANTS-3522: cited regions are a small fraction of the whole file";
+}
+
 // ANTS-1633 INV-C — version-string false-positives (1.2.3:4) and
 // non-recognised extensions stay out of both lists.
 TEST(ColdEyesEngine, Ants1633RegexRejectsNonCodeCitations) {

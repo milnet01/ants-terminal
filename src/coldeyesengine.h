@@ -20,7 +20,8 @@
 //       each doc itself via its Read tool.
 //
 //   extractCitedCodePaths(projectPath, docPaths,
-//                         staleCitationsOut = nullptr)
+//                         staleCitationsOut = nullptr,
+//                         citedRegionsOut = nullptr)
 //       Regex pass over doc bodies for `src/foo.{h,cpp}` mentions
 //       + language-agnostic `file:line` citations (.c/.cpp/.h/.hpp/
 //       .py/.ts/.tsx/.js/.jsx/.go/.rs/.lua, ANTS-1633). Resolves
@@ -29,6 +30,10 @@
 //       that resolved on disk; cited-but-missing paths are sorted
 //       into `staleCitationsOut` when the caller supplies one (the
 //       brief envelope surfaces them as `stale_citations[]`).
+//       ANTS-3522 — when `citedRegionsOut` is supplied, the cited
+//       LINE numbers from `<path>:<line>` citations are grouped per
+//       resolved path (sorted-unique) so a reviewer can read a window
+//       around each cited line instead of the whole file.
 //
 //   crossDocDiffFromDir(projectPath, reportsDirRelative, minLanes, reportsRead)
 //       Thin wrapper around IndieReviewEngine::corroboratedFindingsFromDir
@@ -46,6 +51,7 @@
 #include "indiereviewengine.h"  // CorroboratedFinding shared type
 
 #include <QList>
+#include <QMap>
 #include <QString>
 #include <QStringList>
 
@@ -117,6 +123,14 @@ struct BriefManifest {
     // can flag them as accuracy-dimension findings without redoing
     // the grep + stat themselves.
     QStringList staleCitations;
+    // ANTS-3522 — cited code regions. For each RESOLVED cited file that
+    // carried a `<path>:<line>` citation, the sorted-unique line numbers the
+    // docs cited. Lets a cold-eyes reviewer read a window around each cited
+    // line (plus the file's outline) instead of the whole file — the
+    // citation-local verification a spec review needs, at a fraction of the
+    // bytes. Files cited without a line stay in citedCodePaths only (the
+    // reviewer outlines them). Additive; never replaces citedCodePaths.
+    QMap<QString, QList<int>> citedCodeRegions;
     // ANTS-1440 — structured summary surfaced in the MCP envelope.
     // For spec lanes this is the parsed `# ` H1 line of the primary
     // spec (e.g. "ANTS-1435 — session_memory reads honour caller_cwd")
@@ -134,7 +148,8 @@ BriefManifest   assembleBriefManifest(const QString &projectPath,
 
 QStringList     extractCitedCodePaths(const QString &projectPath,
                                       const QStringList &docPaths,
-                                      QStringList *staleCitationsOut = nullptr);
+                                      QStringList *staleCitationsOut = nullptr,
+                                      QMap<QString, QList<int>> *citedRegionsOut = nullptr);
 
 // ANTS-1413 — single-doc cross-consistency brief. Cheap entry-point
 // for "given a `doc_path`, what other docs in this project should

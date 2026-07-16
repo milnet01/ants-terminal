@@ -854,11 +854,13 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
 
 QStringList extractCitedCodePaths(const QString &projectPath,
                                   const QStringList &docPaths,
-                                  QStringList *staleCitationsOut) {
+                                  QStringList *staleCitationsOut,
+                                  QMap<QString, QList<int>> *citedRegionsOut) {
     QSet<QString> seenResolved;
     QSet<QString> seenStale;
     QStringList   out;
     QStringList   stale;
+    QMap<QString, QSet<int>> regionSet;   // ANTS-3522 — resolved path -> cited lines
 
     // Original Ants regex: `src/<path>.{h,cpp}` mentions (no
     // `:line` required). Kept so existing Ants-doc citations
@@ -879,9 +881,9 @@ QStringList extractCitedCodePaths(const QString &projectPath,
             "\\b((?:[A-Za-z0-9_][A-Za-z0-9_.-]*/)*"
             "[A-Za-z0-9_][A-Za-z0-9_.-]*"
             "\\.(?:c|cpp|h|hpp|cc|cxx|py|ts|tsx|js|jsx|"
-            "go|rs|lua|java|kt|swift|m|mm|sh)):\\d+"));
+            "go|rs|lua|java|kt|swift|m|mm|sh)):(\\d+)"));
 
-    auto considerHit = [&](const QString &hit) {
+    auto considerHit = [&](const QString &hit, int line) {
         // INV-13 defence (resolved path) — canonicalises under
         // projectPath. INV-13 defence (stale path) — lexical
         // check: no `..` segments, no leading `/`, since
@@ -891,6 +893,9 @@ QStringList extractCitedCodePaths(const QString &projectPath,
         const QString abs = projectPath + QChar('/') + hit;
         if (QFileInfo::exists(abs)) {
             if (!PathValidation::isInsideProject(projectPath, abs)) return;
+            // ANTS-3522 — record the cited line for a resolved path even on
+            // a repeat mention (a file is often cited at several lines).
+            if (line > 0) regionSet[hit].insert(line);
             if (seenResolved.contains(hit)) return;
             seenResolved.insert(hit);
             out << hit;
@@ -915,23 +920,32 @@ QStringList extractCitedCodePaths(const QString &projectPath,
     for (const QString &rel : docPaths) {
         const QString body = slurpUtf8(projectPath + QChar('/') + rel);
         if (body.isEmpty()) continue;
-        // Pass 1: src/<path>.{h,cpp} (Ants-shaped citations).
+        // Pass 1: src/<path>.{h,cpp} (Ants-shaped citations, no line).
         auto it1 = rxSrcCpp.globalMatch(body);
         while (it1.hasNext()) {
             const QString hit = QStringLiteral("src/")
                               + it1.next().captured(1);
-            considerHit(hit);
+            considerHit(hit, -1);
         }
         // Pass 2: language-agnostic `<path>:<line>` citations.
         auto it2 = rxFileLine.globalMatch(body);
         while (it2.hasNext()) {
-            const QString hit = it2.next().captured(1);
-            considerHit(hit);
+            const auto mt = it2.next();
+            considerHit(mt.captured(1), mt.captured(2).toInt());
         }
     }
     std::sort(out.begin(), out.end());
     std::sort(stale.begin(), stale.end());
     if (staleCitationsOut) *staleCitationsOut = stale;
+    // ANTS-3522 — flatten the accumulated per-file line-sets into sorted lists.
+    if (citedRegionsOut) {
+        citedRegionsOut->clear();
+        for (auto it = regionSet.constBegin(); it != regionSet.constEnd(); ++it) {
+            QList<int> lines(it.value().begin(), it.value().end());
+            std::sort(lines.begin(), lines.end());
+            citedRegionsOut->insert(it.key(), lines);
+        }
+    }
     return out;
 }
 
@@ -959,7 +973,8 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
     // the brief envelope can surface them as `stale_citations[]`.
     m.citedCodePaths = extractCitedCodePaths(projectPath,
                                              lane.docPaths,
-                                             &m.staleCitations);
+                                             &m.staleCitations,
+                                             &m.citedCodeRegions);
 
     // ANTS-1440 — spec-lane enrichment. For lanes named `spec/...`
     // (single-spec lanes from derivePartition or caller-supplied),
@@ -1004,6 +1019,22 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
             b += QStringLiteral("- ") + p + QChar('\n');
         }
     }
+    // ANTS-3522 — cited code regions. Where the docs cite `<path>:<line>`,
+    // list the exact lines so the reviewer reads a window around each (via
+    // read_region / file_outline) instead of the whole file — the
+    // citation-local check a doc-vs-code review needs, at a fraction of the
+    // bytes. Structure is never lost: the reviewer still outlines the file.
+    if (!m.citedCodeRegions.isEmpty()) {
+        b += QStringLiteral("\n## Cited code regions "
+                            "(outline the file, then read these lines)\n\n");
+        for (auto it = m.citedCodeRegions.constBegin();
+             it != m.citedCodeRegions.constEnd(); ++it) {
+            b += QStringLiteral("- ") + it.key() + QStringLiteral(" — lines ");
+            QStringList lns;
+            for (int ln : it.value()) lns << QString::number(ln);
+            b += lns.join(QStringLiteral(", ")) + QChar('\n');
+        }
+    }
     // ANTS-1457 — previously-rejected findings (do not re-raise).
     // Inserted before the Instructions section so the reviewer
     // reads it before they begin.
@@ -1041,11 +1072,20 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
     }
     b += QStringLiteral(
         "\n## Instructions\n\n"
-        "Read each doc and cross-reference file via your Read tool. "
-        "Do NOT trust prior summarisations of them — the doc set may "
-        "have shifted since the brief was assembled. Flag findings "
-        "with file:line citations against the doc whose claim you "
-        "dispute (or the code whose behaviour the doc misstates).\n");
+        "Read each doc and cross-reference file in FULL via your Read tool — "
+        "they are what you are reviewing. Do NOT trust prior summarisations "
+        "of them — the doc set may have shifted since the brief was "
+        "assembled.\n\n"
+        "For the cited CODE files (read-only): read token-efficiently WITHOUT "
+        "losing accuracy. Outline each file first (file_outline) to see every "
+        "symbol, then read a window around each cited line under "
+        "\"Cited code regions\" (read_region) — you do NOT need the whole "
+        "file. Expand to neighbouring code only when the outline or a cited "
+        "region suggests the doc omits or misstates something nearby. This "
+        "keeps structural completeness (the outline shows all symbols) while "
+        "avoiding whole-file slurps of large sources.\n\n"
+        "Flag findings with file:line citations against the doc whose claim "
+        "you dispute (or the code whose behaviour the doc misstates).\n");
     m.brief = b;
     return m;
 }

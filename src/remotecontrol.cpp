@@ -18372,6 +18372,20 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     for (const QString &p : m.crossReferenceDocs) xref.append(p);
     QJsonArray code;
     for (const QString &p : m.citedCodePaths) code.append(p);
+    // ANTS-3522 — cited code regions: per-file the exact cited lines, so a
+    // reviewer reads a window around each (outline + read_region) instead of
+    // the whole file. Additive alongside cited_code_paths. Empty when no
+    // `<path>:<line>` citation resolved.
+    QJsonArray regions;
+    for (auto it = m.citedCodeRegions.constBegin();
+         it != m.citedCodeRegions.constEnd(); ++it) {
+        QJsonObject r;
+        r["path"] = it.key();
+        QJsonArray lines;
+        for (int ln : it.value()) lines.append(ln);
+        r["lines"] = lines;
+        regions.append(r);
+    }
     // ANTS-1633 — paths the regex matched but the filesystem
     // could not resolve under projectPath. Empty array when
     // every citation resolved (the common case). Per-lane
@@ -18388,6 +18402,7 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     env["doc_paths"]             = dps;
     env["cross_reference_docs"]  = xref;
     env["cited_code_paths"]      = code;
+    env["cited_code_regions"]    = regions;
     env["stale_citations"]       = stale;
     // ANTS-1440 — surface the structured summary so callers don't
     // have to grep the brief markdown for the H1 line.

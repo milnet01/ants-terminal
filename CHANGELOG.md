@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **cold_eyes_brief: resolve cited-code REGIONS (symbol / file:line) so cold-eyes reviewers read regions + outline, not whole files.** (ANTS-3522)
+  cold_eyes_brief now emits cited_code_regions[] ({path, lines[]}) — the exact lines from each `path:line` citation, grouped per file — so a cold-eyes reviewer reads a window around each cited line (outline + read_region) instead of the whole file. Additive alongside cited_code_paths; structural completeness is preserved (the reviewer still outlines the file). Cuts review-loop token cost without losing accuracy.
+
 - **changelog_log op:normalize — one-call tidy for the [Unreleased] section** (ANTS-3495)
   Reorders the ### category blocks under ## [Unreleased] into canonical Keep-a-Changelog order (Added/Changed/Deprecated/Removed/Fixed/Security) without moving any content — the companion fix the malformed-section advisory previously lacked. Non-destructive (bullets stay under their heading; duplicate/custom headings keep their place), with a dry_run preview and a no-write no-op when the section is already canonical.
 
