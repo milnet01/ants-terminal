@@ -52,6 +52,18 @@ When a large read result is spilled to a content-addressed cache file and a
 `{offloaded:true, handle, head, …}` envelope returned instead; re-read the full
 body via the `read_spill` verb.
 
+**ANTS-3538 — structured preview for array bodies.** When the spilled body is a
+JSON object with a dominant array member (`workspace_search` → `matches`,
+`roadmap_query` → `bullets`, …), the envelope *additionally* carries
+`head_rows` (the first K complete rows, parseable JSON — not a byte-cut),
+`row_count` (the array's full length), `head_rows_key` (which array), and
+`head_rows_truncated`. So a caller needing only the first rows or the count
+answers from the envelope without a `read_spill` round-trip. The preview is
+capped at `mcp_offload_head_bytes` and stays strictly smaller than the raw body
+(INV-9); it is omitted (byte-prefix `head` only) for non-object / no-array /
+tabular-encoded / over-1-MiB bodies, or when nothing fits the budget. The
+pre-3538 `head`/`head_truncated` fields are unchanged.
+
 - `claude.mcp_offload_large_results` (bool, default **true** since the
   2026-06-25 fast-follow) — session default for the per-call `offload` arg
   (per-call wins). Default ON per the "token-savers default ON" rule, now that

@@ -16,8 +16,10 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QRegularExpression>
 #include <QString>
 #include <QTemporaryDir>
@@ -283,4 +285,152 @@ TEST_F(McpResultOffload, Inv11FailOpenWiring) {
     // ensurePrivateDir / open / commit failures all `return body;`.
     EXPECT_TRUE(src.contains(QStringLiteral("if (!ensurePrivateDir(spillDir())) return body;")));
     EXPECT_TRUE(src.contains(QStringLiteral("if (!f.commit()) return body;")));
+}
+
+// ANTS-3538 — helper: parse an offload envelope string to its JSON object.
+namespace {
+QJsonObject offloadEnv(const QString &tool, const QString &body) {
+    return QJsonDocument::fromJson(
+        mcp::offloadBody(tool, body).toUtf8()).object();
+}
+QString compact(const QJsonObject &o) {
+    return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
+}
+}  // namespace
+
+// INV-13 — structured preview happy path: a workspace_search-shaped body
+// with N > kHeadRowsMax rows carries head_rows_key / row_count / head_rows /
+// head_rows_truncated; head_rows holds the first K complete rows (K capped by
+// kHeadRowsMax here), deep-equal to the body's array; the byte-prefix
+// head / head_truncated are unchanged; and the envelope stays < bytes (INV-9).
+TEST_F(McpResultOffload, Inv13StructuredPreviewHappyPath) {
+    QJsonArray arr;
+    for (int i = 0; i < 2000; ++i) { QJsonObject r; r["i"] = i; arr.append(r); }
+    QJsonObject b; b["matches"] = arr; b["pattern"] = QStringLiteral("x");
+    const QString body = compact(b);
+    ASSERT_GT(body.toUtf8().size(), 16384);   // crosses the default threshold
+
+    const QJsonObject o = offloadEnv(QStringLiteral("workspace_search"), body);
+    EXPECT_TRUE(o.value("offloaded").toBool());
+    EXPECT_TRUE(o.value("head_truncated").toBool());        // INV-2 unchanged
+    EXPECT_TRUE(body.toUtf8().startsWith(o.value("head").toString().toUtf8()));
+    EXPECT_EQ(o.value("head_rows_key").toString(), QStringLiteral("matches"));
+    EXPECT_EQ(o.value("row_count").toInt(), 2000);
+    const QJsonArray hr = o.value("head_rows").toArray();
+    EXPECT_LE(hr.size(), mcp::kHeadRowsMax);
+    EXPECT_GT(hr.size(), 0);
+    EXPECT_TRUE(o.value("head_rows_truncated").toBool());    // 2000 > K
+    for (int i = 0; i < hr.size(); ++i)                      // deep-equal
+        EXPECT_EQ(hr.at(i), arr.at(i)) << i;
+    // INV-9: the offloaded envelope is strictly smaller than the raw body.
+    EXPECT_LT(compact(o).toUtf8().size(), body.toUtf8().size());
+}
+
+// INV-13 — budget-driven truncation: a few large-but-fitting rows so the byte
+// budget (not kHeadRowsMax) forces the cut. head_rows.size() < row_count and
+// < kHeadRowsMax, head_rows_truncated == true.
+TEST_F(McpResultOffload, Inv13BudgetDrivenTruncation) {
+    QJsonArray arr;
+    for (int i = 0; i < 10; ++i) {
+        QJsonObject r; r["s"] = QString(900, QLatin1Char('a')); arr.append(r);
+    }
+    QJsonObject b; b["matches"] = arr;
+    b["pad"] = QString(10000, QLatin1Char('p'));   // push body over threshold
+    const QString body = compact(b);
+    ASSERT_GT(body.toUtf8().size(), 16384);
+
+    const QJsonObject o = offloadEnv(QStringLiteral("find_sources"), body);
+    const QJsonArray hr = o.value("head_rows").toArray();
+    EXPECT_EQ(o.value("row_count").toInt(), 10);
+    EXPECT_GT(hr.size(), 0);
+    EXPECT_LT(hr.size(), 10);                       // cut before all 10
+    EXPECT_LT(hr.size(), mcp::kHeadRowsMax);        // by budget, not the cap
+    EXPECT_TRUE(o.value("head_rows_truncated").toBool());
+    EXPECT_LT(compact(o).toUtf8().size(), body.toUtf8().size());
+}
+
+// INV-13 — tie-break: two equal-length root arrays resolve to the
+// lexicographically-first key (QJsonObject iteration order).
+TEST_F(McpResultOffload, Inv13TieBreakLexicographicKey) {
+    QJsonObject b;
+    b["zzz"] = QJsonArray{4, 5, 6};
+    b["aaa"] = QJsonArray{1, 2, 3};
+    b["pad"] = QString(20000, QLatin1Char('x'));
+    const QJsonObject o = offloadEnv(QStringLiteral("roadmap_query"), compact(b));
+    EXPECT_EQ(o.value("head_rows_key").toString(), QStringLiteral("aaa"));
+    EXPECT_EQ(o.value("row_count").toInt(), 3);
+}
+
+// INV-13 — omission edges (all-four-or-none), each still carrying head /
+// head_truncated: scalar-only, empty-array member, and an unparseable body.
+TEST_F(McpResultOffload, Inv13OmissionScalarEmptyUnparseable) {
+    auto assertNoPreview = [](const QJsonObject &o) {
+        EXPECT_TRUE(o.value("head_truncated").toBool());     // head still there
+        EXPECT_FALSE(o.contains("head_rows"));
+        EXPECT_FALSE(o.contains("head_rows_key"));
+        EXPECT_FALSE(o.contains("row_count"));
+        EXPECT_FALSE(o.contains("head_rows_truncated"));
+    };
+    // Scalar-only (no array member).
+    QJsonObject scalar; scalar["text"] = QString(20000, QLatin1Char('x'));
+    assertNoPreview(offloadEnv(QStringLiteral("get_text"), compact(scalar)));
+    // Empty array member (the "non-empty" detection filter).
+    QJsonObject empty; empty["matches"] = QJsonArray();
+    empty["pad"] = QString(20000, QLatin1Char('x'));
+    assertNoPreview(offloadEnv(QStringLiteral("workspace_search"), compact(empty)));
+    // Unparseable body (not valid JSON).
+    assertNoPreview(offloadEnv(QStringLiteral("read_log"),
+                               QString(20000, QLatin1Char('x'))));
+}
+
+// INV-13 — marginal body: at a head≈threshold config the body only just
+// exceeds the head guard, so no element fits the budget and all four
+// structured fields are omitted (byte-identical to the non-array fallback).
+TEST_F(McpResultOffload, Inv13MarginalBodyOmitted) {
+    mcp::setOffloadConfig(true, 4096, 16384);   // threshold 4096, head 16384
+    QJsonObject b;
+    b["matches"] = QJsonArray{QStringLiteral("row")};
+    b["pad"] = QString(16400, QLatin1Char('x'));
+    const QString body = compact(b);
+    ASSERT_GT(body.toUtf8().size(), 16384);     // over the head guard...
+    const QJsonObject o = offloadEnv(QStringLiteral("codebase_index"), body);
+    EXPECT_TRUE(o.value("offloaded").toBool());
+    EXPECT_FALSE(o.contains("head_rows"));       // ...but nothing fits → omit
+    EXPECT_FALSE(o.contains("head_rows_key"));
+}
+
+// INV-13 — parse cap: a body over kStructuredParseMaxBytes skips the parse
+// (no structured preview), bounding the transient parse footprint (§ 4).
+TEST_F(McpResultOffload, Inv13ParseCapSkipped) {
+    QJsonObject b;
+    b["matches"] = QJsonArray{QString(1100000, QLatin1Char('a'))};  // > 1 MiB
+    const QString body = compact(b);
+    ASSERT_GT(body.toUtf8().size(), mcp::kStructuredParseMaxBytes);
+    const QJsonObject o = offloadEnv(QStringLiteral("get_scrollback"), body);
+    EXPECT_TRUE(o.value("offloaded").toBool());
+    EXPECT_FALSE(o.contains("head_rows_key"));
+}
+
+// INV-13 — tabular (ANTS-2090) interaction: a body whose only root array was
+// packed into {__cols__,__rows__} exposes no root array → byte-head only;
+// but a leftover sibling scalar array is still legitimately previewed.
+TEST_F(McpResultOffload, Inv13TabularSiblingAndPacked) {
+    // Fully packed: the sole array member is now a {__cols__,__rows__} object.
+    QJsonObject cols; cols["__cols__"] = QJsonArray{QStringLiteral("a")};
+    cols["__rows__"] = QJsonArray{QJsonArray{1}};
+    QJsonObject packed; packed["files"] = cols;
+    packed["pad"] = QString(20000, QLatin1Char('x'));
+    const QJsonObject po = offloadEnv(QStringLiteral("find_sources"), compact(packed));
+    EXPECT_FALSE(po.contains("head_rows_key"));   // no root array → byte-head
+
+    // Leftover sibling scalar array (find_sources' unmatched_terms) survives
+    // tabular and is previewed.
+    QJsonObject sib; sib["files"] = cols;
+    sib["unmatched_terms"] = QJsonArray{QStringLiteral("p"), QStringLiteral("q"),
+                                        QStringLiteral("r")};
+    sib["pad"] = QString(20000, QLatin1Char('x'));
+    const QJsonObject so = offloadEnv(QStringLiteral("find_sources"), compact(sib));
+    EXPECT_EQ(so.value("head_rows_key").toString(),
+              QStringLiteral("unmatched_terms"));
+    EXPECT_EQ(so.value("row_count").toInt(), 3);
 }

@@ -25,6 +25,13 @@ namespace mcp {
 constexpr int     kSpillMaxFiles = 64;
 constexpr qint64  kSpillMaxBytes = 64LL * 1024 * 1024;   // 64 MiB
 
+// ANTS-3538 — structured preview for array-shaped bodies (§ 2.3.1 / INV-13).
+// kHeadRowsMax caps head_rows cardinality independently of the byte budget;
+// kStructuredParseMaxBytes skips the transient QJsonDocument::fromJson parse
+// for bodies over the cap (RAM bound on the earlyoom host, § 4).
+constexpr int     kHeadRowsMax           = 25;
+constexpr qint64  kStructuredParseMaxBytes = 1LL * 1024 * 1024;  // 1 MiB
+
 // Config (set from the GUI thread on load / Settings Apply, read on every
 // dispatch). setOffloadConfig clamps threshold to [4096, 1048576] and head
 // to [256, 16384] (INV-12) before publishing.

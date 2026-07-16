@@ -10,8 +10,10 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonParseError>
 #include <QJsonValue>
 #include <QSaveFile>
 #include <QStandardPaths>
@@ -139,6 +141,76 @@ QString offloadBody(const QString &toolName, const QString &body) {
     o[QStringLiteral("hint")] = QStringLiteral(
         "Large result spilled. Re-read the full body via read_spill "
         "{handle:\"%1\"} (optional offset/max_bytes to page).").arg(handle);
+
+    // ANTS-3538 — additive structured preview for array-shaped bodies
+    // (§ 2.3.1 / INV-13). Purely additive: the pre-3538 fields above are
+    // untouched (INV-2). For a JSON-object body carrying a dominant array
+    // member, append the first K complete rows + the total count so a caller
+    // that needs only the head rows or the count answers without a read_spill
+    // round-trip. INV-9 is airtight by construction: the row budget is
+    // measured against the actual serialized envelope (S0) and capped at
+    // offloadHeadBytes(), so the envelope always stays strictly < total.
+    if (total <= kStructuredParseMaxBytes) {   // parse cap (§ 4 RAM bound)
+        QJsonParseError perr{};
+        const QJsonDocument doc = QJsonDocument::fromJson(utf8, &perr);
+        if (perr.error == QJsonParseError::NoError && doc.isObject()) {
+            const QJsonObject root = doc.object();
+            // Dominant array = the root's own direct non-empty array member
+            // with the most elements. QJsonObject iterates in sorted key
+            // order, so the first strict-max is the lexicographically-first
+            // key on ties (deterministic; no recursion into nested objects,
+            // so a tabular {__cols__,__rows__} member is never selected).
+            QString domKey;
+            int domCount = 0;
+            for (auto it = root.begin(); it != root.end(); ++it) {
+                if (!it.value().isArray()) continue;
+                const int n = it.value().toArray().size();
+                if (n > domCount) { domCount = n; domKey = it.key(); }
+            }
+            if (domCount > 0) {
+                // S0 = the full envelope with the three scalar preview fields
+                // + head_rows_truncated at its WIDER 'false' form (5 B) + an
+                // empty head_rows. Measuring 'false' guarantees the finished
+                // field (usually 'true', 4 B) can only shrink the envelope,
+                // never grow it past the budget. S0 counts the escaped head
+                // and every other byte, so escaping / config extremes are all
+                // accounted, not assumed away.
+                QJsonObject probe = o;
+                probe[QStringLiteral("head_rows_key")]       = domKey;
+                probe[QStringLiteral("row_count")]           = domCount;
+                probe[QStringLiteral("head_rows_truncated")] = false;
+                probe[QStringLiteral("head_rows")]           = QJsonArray();
+                const qint64 s0 = QJsonDocument(probe)
+                    .toJson(QJsonDocument::Compact).size();
+                // Cap the preview at offloadHeadBytes() (keep it a preview,
+                // not a bytes-1 near-copy) AND at total - s0 - 1 (INV-9: the
+                // -1 supplies the strict inequality).
+                const qint64 budget =
+                    qMin<qint64>(offloadHeadBytes(), total - s0 - 1);
+                // Greedily append complete elements while the head_rows
+                // content (its serialized array literal minus the empty "[]")
+                // stays within budget and the count stays under kHeadRowsMax.
+                const QJsonArray fullArr = root.value(domKey).toArray();
+                QJsonArray headRows;
+                for (const QJsonValue &el : fullArr) {
+                    if (headRows.size() >= kHeadRowsMax) break;
+                    QJsonArray probeArr = headRows;
+                    probeArr.append(el);
+                    const qint64 arrLen = QJsonDocument(probeArr)
+                        .toJson(QJsonDocument::Compact).size();
+                    if (arrLen - 2 > budget) break;   // "[]" == 2 bytes
+                    headRows = probeArr;
+                }
+                if (!headRows.isEmpty()) {
+                    o[QStringLiteral("head_rows_key")] = domKey;
+                    o[QStringLiteral("row_count")]     = domCount;
+                    o[QStringLiteral("head_rows")]     = headRows;
+                    o[QStringLiteral("head_rows_truncated")] =
+                        headRows.size() < domCount;
+                }
+            }
+        }
+    }
     return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
 }
 

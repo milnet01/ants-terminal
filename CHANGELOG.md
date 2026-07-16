@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Structured preview on offloaded Ants-MCP replies — first rows + total, no second fetch (ANTS-3538)**
+  When a large array-shaped reply is parked to a spill file, the preview now includes the first few whole results plus the total count (head_rows / row_count), so most callers answer without a read_spill round-trip. The preview is capped and always smaller than the original (INV-9); it falls back to the byte-prefix head for non-array, tabular, over-1-MiB, or marginal bodies.
+
 - **workspace_search `count_only` mode — return {count, files_count} with no match rows (ANTS-3537)**
   A rows-eliminated existence/frequency check ("is X referenced?", "how many call-sites?") that skips serialising match bodies. `count` is the true total (uncapped by max_results); `truncated` flags only a cut-off scan. Complements headline_only and max_match_bytes.
 
