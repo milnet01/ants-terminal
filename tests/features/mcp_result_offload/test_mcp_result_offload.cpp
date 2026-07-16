@@ -146,8 +146,12 @@ TEST_F(McpResultOffload, Inv12HeadCharBoundary) {
     mcp::setOffloadConfig(true, 4096, 256);   // head cut at byte 256
     // 254 ASCII then a 3-byte '€' occupying bytes 254..256 — the head cut at
     // 256 lands mid-sequence, so it must retreat to 254.
+    // The '€' run is long enough that the body clears the envelope-overhead
+    // floor, so offload fires (INV-9 fail-open only declines a body that can't
+    // be shrunk — Inv9BaseEnvelopeNeverExceedsBody). The head cut is unaffected: it always lands in the
+    // first '€' and retreats to byte 254.
     QString body = QString(254, QLatin1Char('a'));
-    for (int i = 0; i < 50; ++i) body += QString::fromUtf8("\xE2\x82\xAC");
+    for (int i = 0; i < 400; ++i) body += QString::fromUtf8("\xE2\x82\xAC");
     const QString env = mcp::offloadBody(QStringLiteral("read_log"), body);
     const QString head =
         QJsonDocument::fromJson(env.toUtf8()).object().value("head").toString();
@@ -215,8 +219,11 @@ TEST_F(McpResultOffload, Inv8IdempotentReSpill) {
 TEST_F(McpResultOffload, Inv7EvictionAndSweep) {
     QString lastHandle;
     for (int i = 0; i < mcp::kSpillMaxFiles + 5; ++i) {
+        // Body sized above the envelope-overhead floor so offload fires (so the
+        // returned envelope carries a handle); ~3 KB each keeps the file-COUNT
+        // cap (not the 64 MiB byte cap) the binding eviction constraint.
         const QString body =
-            QStringLiteral("body-%1-").arg(i) + QString(400, QLatin1Char('w'));
+            QStringLiteral("body-%1-").arg(i) + QString(3000, QLatin1Char('w'));
         lastHandle = QJsonDocument::fromJson(
             mcp::offloadBody(QStringLiteral("find_sources"), body).toUtf8())
             .object().value("handle").toString();
@@ -383,20 +390,25 @@ TEST_F(McpResultOffload, Inv13OmissionScalarEmptyUnparseable) {
                                QString(20000, QLatin1Char('x'))));
 }
 
-// INV-13 — marginal body: at a head≈threshold config the body only just
-// exceeds the head guard, so no element fits the budget and all four
-// structured fields are omitted (byte-identical to the non-array fallback).
-TEST_F(McpResultOffload, Inv13MarginalBodyOmitted) {
-    mcp::setOffloadConfig(true, 4096, 16384);   // threshold 4096, head 16384
+// INV-13 — single oversized row: the body offloads (default head 2048 ≪ body)
+// but the first array element exceeds the row budget, so all four structured
+// fields are omitted while the byte-prefix head / head_truncated remain
+// (best-effort preview, not a guarantee). The head≈threshold config where the
+// whole offload fails open is covered separately by
+// Inv9BaseEnvelopeNeverExceedsBody (ANTS-3540).
+TEST_F(McpResultOffload, Inv13SingleOversizedRowOmitted) {
+    // Default config from SetUp (threshold 16384, head 2048).
     QJsonObject b;
-    b["matches"] = QJsonArray{QStringLiteral("row")};
-    b["pad"] = QString(16400, QLatin1Char('x'));
+    b["matches"] = QJsonArray{QString(3000, QLatin1Char('a'))};  // one big row
+    b["pad"] = QString(16000, QLatin1Char('p'));                 // over threshold
     const QString body = compact(b);
-    ASSERT_GT(body.toUtf8().size(), 16384);     // over the head guard...
+    ASSERT_GT(body.toUtf8().size(), 16384);
     const QJsonObject o = offloadEnv(QStringLiteral("codebase_index"), body);
-    EXPECT_TRUE(o.value("offloaded").toBool());
-    EXPECT_FALSE(o.contains("head_rows"));       // ...but nothing fits → omit
+    EXPECT_TRUE(o.value("offloaded").toBool());   // envelope (head 2048) ≪ body
+    EXPECT_TRUE(o.value("head_truncated").toBool());
+    EXPECT_FALSE(o.contains("head_rows"));         // 3000-byte row > 2048 budget
     EXPECT_FALSE(o.contains("head_rows_key"));
+    EXPECT_LT(compact(o).toUtf8().size(), body.toUtf8().size());  // INV-9
 }
 
 // INV-13 — parse cap: a body over kStructuredParseMaxBytes skips the parse
@@ -433,4 +445,28 @@ TEST_F(McpResultOffload, Inv13TabularSiblingAndPacked) {
     EXPECT_EQ(so.value("head_rows_key").toString(),
               QStringLiteral("unmatched_terms"));
     EXPECT_EQ(so.value("row_count").toInt(), 3);
+}
+
+// ANTS-3540 / INV-9 — the base (pre-3538) head+pointer envelope must itself be
+// a strict net saving. At a head≈threshold config the fixed envelope overhead
+// (handle + hint + keys ≈ 330 B) plus a full head can exceed a body that only
+// just clears the § 2.1 head guard. offloadBody now measures the finished
+// envelope and fails open (returns the body unchanged, per INV-11) whenever it
+// would not be strictly smaller — so an offloaded envelope is *always* < bytes,
+// at every config. Scalar-only body so the 3538 structured path stays inert and
+// only the base envelope is exercised. (The fail-open is a facet of INV-9's
+// net-saving guarantee, not a new invariant — hence the Inv9 prefix.)
+TEST_F(McpResultOffload, Inv9BaseEnvelopeNeverExceedsBody) {
+    mcp::setOffloadConfig(true, 4096, 16384);   // head 16384 ≈ the body size
+    QJsonObject b; b["text"] = QString(16400, QLatin1Char('x'));
+    const QString body = compact(b);
+    ASSERT_GT(body.toUtf8().size(), 16384);      // clears the head guard...
+    const QString env = mcp::offloadBody(QStringLiteral("get_text"), body);
+    // ...but head(16384) + ~330 B overhead > body, so offload can save nothing:
+    // fail open, returning the untrimmed body verbatim (no larger envelope).
+    EXPECT_EQ(env, body);
+    const QJsonObject o = QJsonDocument::fromJson(env.toUtf8()).object();
+    EXPECT_FALSE(o.value("offloaded").toBool());
+    // The core INV-9 predicate holds unconditionally: output ≤ body bytes.
+    EXPECT_LE(env.toUtf8().size(), body.toUtf8().size());
 }

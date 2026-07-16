@@ -211,7 +211,18 @@ QString offloadBody(const QString &toolName, const QString &body) {
             }
         }
     }
-    return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
+    // INV-9 (ANTS-3540) — the offload must be a strict net saving. The base
+    // head+pointer envelope's fixed overhead (handle + hint + keys ≈ 330 B)
+    // plus a full head can exceed a body that only just clears the § 2.1 head
+    // guard (reachable at a head≈threshold config). The structured path above
+    // already bounds itself against `total`, but the base envelope did not.
+    // Fail open when the finished envelope is not strictly smaller than the
+    // body: the untrimmed body is both correct and smaller (same posture as the
+    // INV-11 write-failure fail-open). Guarantees out_bytes < bytes for every
+    // offloaded envelope, at every config.
+    const QByteArray envelope = QJsonDocument(o).toJson(QJsonDocument::Compact);
+    if (envelope.size() >= total) return body;
+    return QString::fromUtf8(envelope);
 }
 
 SpillSlice readSpill(const QString &handle, qint64 offset, qint64 maxBytes) {

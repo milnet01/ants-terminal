@@ -119,6 +119,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Large-result offload never hands back a preview envelope larger than the original reply** (ANTS-3540)
+  At a head≈threshold config the fixed envelope overhead plus the head could exceed a body that only just cleared the head guard, so offload could produce a net *loss*. offloadBody now measures the finished envelope and fails open (returns the untrimmed body) when it would not be strictly smaller — honoring the INV-9 net-saving guarantee at every config.
+
 - **last_audit_summary no longer mislabels a since-tag / since-last-run / branch-diff / files audit as a single-file rerun.** (ANTS-3517)
   The narrow_run_warning suppression (ANTS-3512) only trusted the `full` scope; every explicit multi-file changeset scope now suppresses the false "a broader recent file may exist" alarm, since the sidecar-recorded requested scope is authoritative.
 

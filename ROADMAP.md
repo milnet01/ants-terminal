@@ -13358,11 +13358,12 @@ template / mutate this state atomically" → movable. If it's
   Kind: investigate.
   Source: in-session-2026-07-16 (token-saving sweep, wave 2).
 
-- 📋 [ANTS-3540] **Offload head guard misses the fixed-envelope overhead — INV-9 violable at a head≈threshold config.**
+- ✅ [ANTS-3540] **Offload head guard misses the fixed-envelope overhead — INV-9 violable at a head≈threshold config.**
   Found during the ANTS-3538 cold-eyes loop (2026-07-16). ANTS-2094 INV-9 (offloaded out_bytes < raw bytes) rests on the § 2.1 head guard `bodyBytes > offloadHeadBytes()`. But the returned envelope is `head (>= offloadHeadBytes raw, escaped) + ~326 B fixed overhead` (ok/offloaded/handle-64hex/bytes/head_truncated/hint-with-handle). The guard omits that ~326 B, so a body in `(offloadHeadBytes, offloadHeadBytes + ~326]` offloads to a NET LOSS (envelope >= body) whenever `threshold <= offloadHeadBytes + ~326`. Reachable within the accepted § 2.6 clamps (head 4096, threshold 4096 → a 4200 B body). Default config (threshold 16384 >> head 2048 + 326) is safe, so this bites only lowered-threshold / raised-head operators. Fix: tighten the § 2.1 guard to `bodyBytes > offloadHeadBytes() + kEnvelopeOverhead` (or require the threshold floor to exceed the head ceiling), and add an INV-1 boundary test at a head≈threshold config. Touches the accepted § 2.1 / INV-1, so it is its own item (not folded into 3538, whose structured path is already INV-9-airtight by construction and whose omission fallback merely inherits this pre-existing envelope).
   **Layman:** A rare mis-set config could make the "park the big reply" feature hand back something slightly bigger than the original instead of smaller — file it to fix the size check.
   Kind: fix.
   Source: cold-eyes-2026-07-16 (ANTS-3538 loop 4, reviewer accuracy lane).
+  Resolved (2026-07-16): mcp::offloadBody now measures the finished compact envelope and fails open (returns the body unchanged, per INV-11) whenever it would not be strictly smaller than the body — closing the head≈threshold net-loss case. Reproduce-first: Inv9BaseEnvelopeNeverExceedsBody was RED (16720 B envelope for a 16411 B body) before the fix, GREEN after; full suite 2686/2686. Spec ANTS-2094 §2.1/§2.3.1/INV-9 refreshed to match; cold-eyes ran 3 loops to polish convergence (also fixed pre-existing spec drift: stale eligible-verb list, INV-6 max_bytes:0 wording, spillSweep file cite, missing !rawRequested guard).
 
 - 📋 [ANTS-3541] **Malformed `ids` filter fails silently to the full list instead of refusing — waste + wrong result.**
   Hit directly this session: roadmap_query with ids passed as a comma-joined STRING ("ANTS-3537,ANTS-3538") rather than a JSON array silently fell through to the normal unfiltered list path (23 unrelated bullets), with no signal the arg was mistyped. The schema documents `ids` as an array and "empty array -> falls through", but a PRESENT-but-wrong-typed ids (string, or non-empty-but-malformed) should refuse bad_args (or coerce a comma/whitespace-split string) rather than return a large wrong result. Fail-loud on a present-but-invalid ids across the id-accepting verbs (roadmap_query, and any verb taking an array filter). Small, high-signal robustness fix; saves a full-list payload + a silent wrong answer.
@@ -13429,6 +13430,12 @@ template / mutate this state atomically" → movable. If it's
   **Layman:** When I ask 'who calls this function', often I just need the list of files to open next — not a chunk of code quoted around each call.
   Kind: investigate.
   Source: in-session-2026-07-16.
+
+- 📋 [ANTS-3552] **ANTS-2094 offload/read_spill unit-coverage gaps — add the edge assertions the spec calls follow-ups.**
+  Surfaced by the ANTS-3540 cold-eyes loop (all disclosed in-spec as follow-ups, not defects): (1) INV-6 — read_spill max_bytes:0 defaulting to the 512 KiB page, and negative offset/max_bytes → bad_args, are unexercised (Inv5And6ReadSpillPaging covers only paging + offset-past-end + unknown-handle). (2) INV-1 — the dispatch-site >=threshold / >head boundary (offload fires at bytes==threshold, not at a (head,threshold) body) is only source-scraped via INV-9, never asserted behaviourally; offloadBody itself has no threshold guard (always spills), so a small dispatch-level harness is needed. Add the cases + drop the follow-up caveats from the spec's INV-1/INV-6 test notes once landed.
+  **Layman:** A few edge behaviours of the reply-parking feature are correct in code but not yet pinned by a test; add those tests so a future change can't silently break them.
+  Kind: test.
+  Source: cold-eyes-2026-07-16 ANTS-3540.
 
 ### 🎨 At-a-glance build-version surface (user request 2026-05-14)
 
