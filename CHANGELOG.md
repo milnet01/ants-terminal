@@ -65,6 +65,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **feedback_query mapped_id_status marks cross-repo ids foreign_repo instead of unknown.** (ANTS-3518)
+  A mapped ANTS-id whose prefix is absent from the caller project's own roadmap now resolves to "foreign_repo" (with a mapped_id_status_note) rather than the ambiguous "unknown", so a consumer session no longer misreads a shipped suggestion as never-shipped. Fuller cross-repo status resolution is tracked in ANTS-3519.
+
 - ****Faster Roadmap dialog on large histories** — the bullet parser is memoized across debounced renders, so typing in the search box no longer re-parses the whole (up to 64 MiB) archive on every keystroke.** (ANTS-2119)
 
 - ****Lower idle CPU — a blinking cursor (and hover/expose repaints) no longer redraw the whole terminal.****
@@ -103,6 +106,9 @@ for security-relevant changes.
   first ~124 bytes), skipping the wasted full-body invariant parse.
 
 ### Fixed
+
+- **last_audit_summary no longer mislabels a since-tag / since-last-run / branch-diff / files audit as a single-file rerun.** (ANTS-3517)
+  The narrow_run_warning suppression (ANTS-3512) only trusted the `full` scope; every explicit multi-file changeset scope now suppresses the false "a broader recent file may exist" alarm, since the sidecar-recorded requested scope is authoritative.
 
 - ****Audit-cache retention no longer deletes a report a kept run still references** — a same-second/same-commit filename collision could reap a SARIF/HTML file that a surviving history entry pointed at.** (ANTS-2119)
 

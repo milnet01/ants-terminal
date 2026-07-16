@@ -710,6 +710,29 @@ TEST(Ants3512, RequestedScopeFromSidecarWiredInHandler) {
     EXPECT_EQ(0, expect_failures());
 }
 
+TEST(Ants3517, ChangesetScopesSuppressNarrowWarning) {
+    expect_reset();
+    // ANTS-3517 — the ANTS-3512 confirmed-broad gate was `full`-only, so a
+    // genuine since-tag / since-last-run / branch-diff / files changeset sweep
+    // that surfaced findings in one file still tripped narrow_run_warning
+    // (finbreak feedback 2026-07-14). The gate must now recognise every
+    // explicit multi-file scope selector, not just "full". Source-grep
+    // tripwire (matches the Ants3512 handler-wiring pattern above); these
+    // tokens did not exist in remotecontrol.cpp before the fix, so a revert to
+    // the full-only form fails this test.
+    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(rcc.find("startsWith(QLatin1String(\"since-tag:\"))") != std::string::npos,
+           "ANTS-3517",
+           "confirmedBroad gate must recognise since-tag: scopes");
+    expect(rcc.find("QLatin1String(\"branch-diff\")") != std::string::npos,
+           "ANTS-3517",
+           "confirmedBroad gate must recognise the branch-diff scope");
+    expect(rcc.find("QLatin1String(\"since-last-run\")") != std::string::npos,
+           "ANTS-3517",
+           "confirmedBroad gate must recognise the since-last-run scope");
+    EXPECT_EQ(0, expect_failures());
+}
+
 TEST(Ants1576, RuleIdsFilterBehavioural) {
     expect_reset();
     // INV-12 — drive the engine helper that backs the rule_ids

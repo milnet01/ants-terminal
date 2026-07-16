@@ -622,6 +622,54 @@ TEST(McpFeedbackQuery, MappedIdStatusResolvesLiveRoadmap) {
     EXPECT_EQ(got.value("ANTS-3999"), QStringLiteral("unknown"));   // absent
 }
 
+// ANTS-3518 — a mapped id whose prefix is absent from the caller roadmap's own
+// id-prefixes is cross-repo, not merely archived: resolve it to "foreign_repo"
+// (with a top-level mapped_id_status_note) instead of the ambiguous "unknown",
+// so a consumer session doesn't misread a shipped cross-repo suggestion as
+// never-shipped. A same-prefix id that is simply absent stays "unknown".
+TEST(McpFeedbackQuery, MappedIdStatusForeignRepo) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    // v2 file: mapped ids are always ANTS-* (the parser's id regex). From a
+    // consumer project whose roadmap uses a different prefix, those ids are
+    // cross-repo — the exact case that made every ANTS id read "unknown".
+    const QString body = QStringLiteral(
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "# Ants MCP Feedback — Test\n\n"
+        "## 2026-07-16 — s\n\n"
+        "### Finding A\n\n- **What:** a.\n- **Proposed ID:** ANTS-3517\n\n"
+        "### Finding B\n\n- **What:** b.\n- **Proposed ID:** ANTS-3518\n");
+    const QString p = writeFeedback(dir, "Fibr_Ants_MCP_Feedback.md", body);
+    ASSERT_FALSE(p.isEmpty());
+    // The consumer project's ROADMAP uses the FIBR prefix and contains no ANTS
+    // ids at all — so the ANTS mapped ids belong to a foreign roadmap.
+    QFile rm(dir.path() + "/ROADMAP.md");
+    ASSERT_TRUE(rm.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    rm.write(QString::fromUtf8(
+        "# ROADMAP\n\n"
+        "- \xF0\x9F\x93\x8B [FIBR-0100] **A planned local item.**\n").toUtf8());
+    rm.close();
+
+    RemoteControl rc(nullptr);
+    QJsonObject req; req["path"] = p; req["caller_cwd"] = dir.path();
+    const QJsonObject env = rc.cmdFeedbackQuery(req).object();
+    ASSERT_TRUE(env.value("ok").toBool());
+    ASSERT_TRUE(env.contains("mapped_id_status"));
+
+    QHash<QString, QString> got;
+    for (const auto &v : env.value("mapped_id_status").toArray()) {
+        const QJsonObject o = v.toObject();
+        got.insert(o.value("id").toString(), o.value("status").toString());
+    }
+    // ANTS prefix absent from the FIBR caller roadmap → cross-repo, not the
+    // ambiguous "unknown" (which a consumer would misread as "never shipped").
+    EXPECT_EQ(got.value("ANTS-3517"), QStringLiteral("foreign_repo"));
+    EXPECT_EQ(got.value("ANTS-3518"), QStringLiteral("foreign_repo"));
+    // The note fires whenever any mapped id is foreign_repo.
+    EXPECT_TRUE(env.contains("mapped_id_status_note"));
+    // Sibling test MappedIdStatusResolvesLiveRoadmap covers the same-prefix
+    // fallback: an ANTS id absent from an ANTS-prefixed roadmap stays "unknown".
+}
+
 // ANTS-3478 — a fresh / untriaged file (no filled Proposed IDs → empty
 // mapped_ids) omits mapped_id_status entirely (no roadmap read cost).
 TEST(McpFeedbackQuery, MappedIdStatusAbsentWhenNoMappedIds) {

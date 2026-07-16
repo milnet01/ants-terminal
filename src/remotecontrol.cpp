@@ -11107,6 +11107,14 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
         static const QString kCheckQ = QString::fromUtf8("\xE2\x9C\x85");  // ✅
         QHash<QString, QString> idToStatus;
         QHash<QString, QString> idToShipDate;   // ANTS-3504 — ✅ ids' ship-date
+        // ANTS-3518 — the caller roadmap's own id-prefixes, so a mapped id
+        // whose prefix is absent here can be flagged cross-repo ("foreign_repo")
+        // rather than the ambiguous "unknown".
+        QSet<QString> callerPrefixes;
+        const auto idPrefix = [](const QString &id) {
+            const int dash = id.lastIndexOf(QLatin1Char('-'));
+            return dash > 0 ? id.left(dash) : id;
+        };
         const QString callerRaw =
             req.value(QStringLiteral("caller_cwd")).toString();
         const QString callerCanonical = callerRaw.isEmpty()
@@ -11122,6 +11130,7 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
                     if (b.id.isEmpty() || !RoadmapIndex::isCanonicalId(b.id))
                         continue;
                     idToStatus.insert(b.id, b.status);  // later wins (live row)
+                    callerPrefixes.insert(idPrefix(b.id));  // ANTS-3518
                     // ANTS-3504 — capture the ship-date for ✅ ids (shared
                     // extractor with compact_resolved) so a contributor can
                     // compare it against their server_build.build_date.
@@ -11135,9 +11144,29 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
             }
         }
         QJsonArray statusArr;
+        bool anyForeign = false;
         for (const QString &id : pr.mappedIds) {
             QJsonObject o;
-            const QString status = idToStatus.value(id, QStringLiteral("unknown"));
+            QString status = idToStatus.value(id, QString());
+            if (status.isEmpty()) {
+                // ANTS-3518 — an id absent from the caller roadmap is either
+                // archived (same repo, migrated to CHANGELOG) or cross-repo.
+                // Feedback files are authored in consumer projects but cite
+                // ANTS ids that live in the Ants Terminal roadmap, so resolving
+                // against the caller roadmap always misses them. When the id's
+                // prefix isn't among the caller roadmap's own prefixes, mark it
+                // "foreign_repo" (not "unknown") so a consumer session doesn't
+                // misread a shipped suggestion as never-shipped. (finbreak
+                // 2026-07-14.) The prefix set is empty when the caller roadmap
+                // was unreadable — fall back to "unknown" there.
+                if (!callerPrefixes.isEmpty() &&
+                    !callerPrefixes.contains(idPrefix(id))) {
+                    status = QStringLiteral("foreign_repo");
+                    anyForeign = true;
+                } else {
+                    status = QStringLiteral("unknown");
+                }
+            }
             o[QStringLiteral("id")]     = id;
             o[QStringLiteral("status")] = status;
             // ANTS-3504 — shipped_date present only on ✅ ids with a parseable
@@ -11147,6 +11176,13 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
             statusArr.append(o);
         }
         out["mapped_id_status"] = statusArr;
+        if (anyForeign)
+            out[QStringLiteral("mapped_id_status_note")] = QStringLiteral(
+                "Some mapped ids belong to a different project's roadmap "
+                "(their id-prefix is absent from this project's ROADMAP.md) and "
+                "are marked \"foreign_repo\" rather than resolved. ANTS-* ids "
+                "live in the Ants Terminal roadmap — check there for live "
+                "status.");
     }
 
     // ANTS-3448 — marker-aware v2 delta. `format_version` (0/1/2/…) lets a
@@ -13911,8 +13947,23 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
                 }
             }
         }
+        // ANTS-3517 — extend the ANTS-3512 `full`-only gate to every explicit
+        // multi-file scope selector. `since-tag:*`, `since-commit:*`,
+        // `since-last-run`, `branch-diff` and `files` are deliberate changeset
+        // sweeps (auditscope resolveChangedFiles) and `full`/`auto` are
+        // whole-tree; surfacing findings in one file is normal for all of them,
+        // so none is a mis-picked single_file rerun. The distinct-file
+        // heuristic stays only for the foreign-format fallback (no sidecar) or
+        // an unrecognised scope. (finbreak feedback 2026-07-14: a genuine
+        // since-tag sweep still tripped the warning under the full-only gate.)
         const bool confirmedBroad =
-            requestedScope == QLatin1String("full");
+            requestedScope == QLatin1String("full")
+            || requestedScope == QLatin1String("auto")
+            || requestedScope == QLatin1String("since-last-run")
+            || requestedScope == QLatin1String("branch-diff")
+            || requestedScope == QLatin1String("files")
+            || requestedScope.startsWith(QLatin1String("since-tag:"))
+            || requestedScope.startsWith(QLatin1String("since-commit:"));
         if (!requestedScope.isEmpty())
             env["requested_scope"] = requestedScope;
 

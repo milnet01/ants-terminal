@@ -18924,6 +18924,38 @@ build).
   Source: finbreak-mcp-feedback-2026-07-14.
   Resolved (2026-07-14): cmdLastAuditSummary reads the requested scope back from the sibling findings-<iso>-<sha>.json sidecar (already persisted by audit_run/AuditCache::recordRun, ANTS-1870) and emits it as requested_scope; when requested_scope=="full" the false narrow_run_warning is suppressed. Producer side needed no change — the gap was read-only. Foreign-format picks (no sidecar) fall back to the distinct-file heuristic. Spec ANTS-3512 INV-1/2 + regression test RequestedScopeFromSidecarWiredInHandler. Full suite 2654/2654.
 
+### 🔌 Ants-MCP feedback from CC sessions — 2026-07-16 triage
+
+Triage of the finbreak feedback delta (2026-07-14 session). Two POSITIVE
+datapoints (async-audit write-path + spec/cold-eyes/roadmap-hygiene at scale —
+no action). Four actionable items below.
+
+- ✅ [ANTS-3517] **last_audit_summary narrow_run_warning still fires for since-tag / since-last-run / branch-diff / files scopes (ANTS-3512 residual).**
+  ANTS-3512 suppressed the warning only when the sidecar scope == "full". But since-tag:*, since-last-run, branch-diff and files are all deliberate multi-file changeset sweeps where surfacing findings in one file is normal — the warning still misfires there. The sidecar (findings-<iso>-<sha>.json, key "scope", auditcache.cpp:217) records req.scope verbatim, so it is authoritative; the distinct-file heuristic should only be the fallback for foreign-format picks with no sidecar. Fix: extend the confirmedBroad gate in remotecontrol.cpp cmdLastAuditSummary (~13915) to recognise every explicit scope selector, not just full. Minor/cosmetic (SARIF + counts already correct).
+  **Layman:** When an audit is run over just the files changed since a git tag, the summary sometimes wrongly warns it looks like a single-file rerun. Trust the scope that was actually requested.
+  Kind: fix.
+  Source: finbreak-feedback-2026-07-14.
+  Resolved (2026-07-16): confirmedBroad gate in cmdLastAuditSummary (remotecontrol.cpp ~13915) now recognises since-tag:* / since-commit:* / since-last-run / branch-diff / files / auto in addition to full, so a genuine changeset sweep that surfaces findings in one file no longer trips narrow_run_warning. Sidecar scope is authoritative; heuristic kept only for foreign-format picks. Regression: Ants3517.ChangesetScopesSuppressNarrowWarning.
+
+- ✅ [ANTS-3518] **feedback_query mapped_id_status: emit foreign_repo (not unknown) for mapped ids whose prefix is absent from the caller project's roadmap.**
+  mapped_id_status (ANTS-3478) resolves each mapped id against the CALLER project's ROADMAP.md (findRoadmapUnder). From a consumer project (finbreak/FIBR) the ANTS-prefixed ids never resolve -> status "unknown", which a contributor misreads as "not shipped". Surgical honest-signal: while parsing the caller roadmap, collect the set of id-prefixes present; for a mapped id whose prefix is NOT in that set (and the caller roadmap was readable), emit status "foreign_repo" + a top-level hint instead of "unknown". Distinguishes cross-repo ids from genuinely-archived same-repo ids. remotecontrol.cpp cmdFeedbackQuery ~11106.
+  **Layman:** When another project checks whether its Ants suggestions shipped, every ANTS-id currently reads 'unknown' because those ids live in the Ants Terminal roadmap, not theirs — so it looks like nothing shipped. Return an honest 'different repo' marker instead.
+  Kind: enhancement.
+  Source: finbreak-feedback-2026-07-14.
+  Resolved (2026-07-16): cmdFeedbackQuery mapped_id_status now emits "foreign_repo" (not "unknown") for a mapped id whose prefix is absent from the caller roadmap's own id-prefixes, plus a top-level mapped_id_status_note. Mapped ids are always ANTS-* (parser regex), so from a consumer project they correctly read foreign_repo instead of misreading as never-shipped. Same-prefix-absent still reads "unknown". Regression: McpFeedbackQuery.MappedIdStatusForeignRepo. Fuller cross-repo resolution deferred to ANTS-3519.
+
+- 📋 [ANTS-3519] **feedback_query — resolve foreign-prefix mapped ids (ANTS-*) against the canonical sibling roadmap under the shared root.**
+  Follow-up to the foreign_repo honest-signal. Feedback files live at the shared root (/mnt/Games/Scripts/Linux); the ANTS canonical roadmap is a sibling (Ants_Terminal/ROADMAP.md). For foreign-prefix mapped ids, locate the sibling project whose roadmap owns that prefix (scan shared-root siblings once, cost-gated on foreign ids present) and resolve real status/shipped_date from it. Design call: hard-coded dir name vs prefix-scan; caching; RAM budget (bounded: one roadmap parse per distinct foreign prefix, discarded after). Deferred from the surgical fix as a deliberate cross-project-read change.
+  **Layman:** Go further than the 'different repo' marker: actually look up whether a cross-project Ants suggestion shipped by reading the Ants Terminal roadmap that sits next to the feedback file, so 'did my suggestion ship?' works from any project.
+  Kind: investigate.
+  Source: finbreak-feedback-2026-07-14.
+
+- 📋 [ANTS-3520] **Shared content-addressed read-cache across sibling review agents in the orchestration verbs (cold_eyes_* / indie_review_* / test_audit_*).**
+  In a multi-lane /cold-eyes (or /indie-review, /test-audit) loop, each of N cold lanes per pass re-reads the whole spec + the same ~15-20 cited code files independently; on the reporter's run each lane cost ~100-145k input tokens and 3 lanes x 8 loops re-read the same files ~24x. Cost scales lanes x loops x (spec + cited-code bytes) when those bytes are identical across lanes in a pass and near-stable across passes. Two shapes: (A) a 'code-basis pack' the orchestrator pre-extracts once and embeds verbatim in each lane brief (the *_brief builders already assemble per-lane context); (B) a run-scoped content-addressed cache in the MCP layer keyed on (path, file-hash) that dedupes reads across concurrent agents of one run. Win: pay for cited code once per run, not once per lane per loop. RAM: bounded by one run's cited-file set; evict at run end.
+  **Layman:** When several review helpers check the same document at once, each one re-reads the same spec and code files from scratch — the biggest cost of a review. Read each file once per run and share it, to cut token spend a lot.
+  Kind: perf.
+  Source: finbreak-feedback-2026-07-14.
+
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
 Triage of the 2026-06-30 → 2026-07-01 un-triaged feedback tails from Vestige,
