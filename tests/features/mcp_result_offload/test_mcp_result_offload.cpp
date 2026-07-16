@@ -199,6 +199,87 @@ TEST_F(McpResultOffload, Inv5And6ReadSpillPaging) {
     EXPECT_EQ(missing.code, QStringLiteral("not_found"));
 }
 
+// ───────────────────────────────────────────────────────────────────
+// ANTS-3552 — edge assertions the ANTS-2094 spec listed as INV-1/INV-6
+// follow-ups (behaviour was already correct but unexercised).
+// ───────────────────────────────────────────────────────────────────
+
+// INV-6 — read_spill max_bytes<=0 defaults to the 512 KiB page (NOT a
+// zero-length read): a small body comes back whole and untruncated. The free
+// function treats negative max_bytes identically; the bad_args refusal for a
+// negative arg is imposed one layer up, at cmdReadSpill (scraped below).
+TEST_F(McpResultOffload, Inv6ReadSpillMaxBytesDefaultsToPage) {
+    const QString body = QString(50000, QLatin1Char('z'));  // well under 512 KiB
+    const QString handle = QJsonDocument::fromJson(
+        mcp::offloadBody(QStringLiteral("codebase_index"), body).toUtf8())
+        .object().value("handle").toString();
+    for (qint64 mb : {qint64(0), qint64(-1)}) {
+        const mcp::SpillSlice s = mcp::readSpill(handle, 0, mb);
+        ASSERT_TRUE(s.ok) << "max_bytes=" << mb;
+        EXPECT_EQ(s.content, body)
+            << "max_bytes=" << mb << " must default to the full page, not 0-length";
+        EXPECT_EQ(s.bytes, body.toUtf8().size());
+        EXPECT_FALSE(s.truncated);
+    }
+}
+
+// INV-6 — the negative-arg → bad_args refusal lives at the dispatch
+// (cmdReadSpill byte mode), which validates before calling readSpill.
+TEST_F(McpResultOffload, Inv6ReadSpillNegativeArgGateAtDispatch) {
+    const QString rc = readSource(SRC_RC_CPP);
+    ASSERT_FALSE(rc.isEmpty());
+    EXPECT_TRUE(rc.contains(
+        QStringLiteral("offset < 0 || (mbV.isDouble() && maxBytes < 0)")))
+        << "cmdReadSpill must reject a negative byte offset/max_bytes";
+    EXPECT_TRUE(rc.contains(QStringLiteral(
+        "read_spill: \\\"offset\\\"/\\\"max_bytes\\\" must be >= 0")))
+        << "the negative-byte-arg refusal carries the bad_args message";
+}
+
+// INV-1 — the offload boundary, now behaviourally testable via the extracted
+// mcp::shouldOffload predicate: fires AT the threshold (>=), and the > head
+// guard binds when the head budget meets/exceeds the threshold (INV-12 lets
+// the two clamp ranges overlap).
+TEST_F(McpResultOffload, Inv1ShouldOffloadBoundary) {
+    mcp::setOffloadConfig(true, 16384, 2048);   // threshold 16384, head 2048
+    EXPECT_FALSE(mcp::shouldOffload(16383)) << "below threshold: no offload";
+    EXPECT_TRUE(mcp::shouldOffload(16384))  << "at threshold: offload (>=, inclusive)";
+    EXPECT_TRUE(mcp::shouldOffload(20000));
+    // Head budget >= threshold: the > head guard is now the binding constraint.
+    mcp::setOffloadConfig(true, 4096, 16384);   // threshold 4096, head 16384
+    EXPECT_FALSE(mcp::shouldOffload(5000))
+        << "over threshold but within head: no offload (envelope wouldn't save)";
+    EXPECT_FALSE(mcp::shouldOffload(16384)) << "== head: no offload (> head is exclusive)";
+    EXPECT_TRUE(mcp::shouldOffload(16385))  << "over both threshold and head: offload";
+}
+
+// INV-1 — offloadBody has NO threshold guard: handed a body BELOW the offload
+// threshold (yet still large enough that the head+pointer envelope saves
+// bytes), it spills anyway. The threshold is purely the dispatch's concern
+// (shouldOffload) — which is why the dispatch must gate the call. (offloadBody
+// does fail open when the envelope wouldn't shrink the body — the separate
+// Inv9 case — so this body clears head + envelope overhead, not the threshold.)
+TEST_F(McpResultOffload, Inv1OffloadBodyHasNoInternalThresholdGuard) {
+    // Fixture config: threshold 16384, head 2048. A 5 KB body is below the
+    // threshold but well above head + envelope overhead, so offloadBody spills.
+    const QString body = QString(5000, QLatin1Char('h'));
+    ASSERT_LT(body.toUtf8().size(), mcp::offloadThresholdBytes());
+    const QJsonObject o = QJsonDocument::fromJson(
+        mcp::offloadBody(QStringLiteral("get_text"), body).toUtf8()).object();
+    EXPECT_TRUE(o.value("offloaded").toBool())
+        << "offloadBody spills a below-threshold body; the size gate is the dispatch's";
+    EXPECT_EQ(o.value("handle").toString().size(), 64);
+}
+
+// INV-1 — the dispatch gates offloadBody through mcp::shouldOffload (not an
+// inline compare), keeping the boundary in one behaviourally-tested predicate.
+TEST_F(McpResultOffload, Inv1DispatchUsesShouldOffload) {
+    const QString ci = readSource(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    ASSERT_FALSE(ci.isEmpty());
+    EXPECT_TRUE(ci.contains(QStringLiteral("mcp::shouldOffload(")))
+        << "the dispatch must gate offload via the shouldOffload predicate";
+}
+
 // INV-8 — content-addressed: spilling the same body twice yields one file
 // and a stable handle.
 TEST_F(McpResultOffload, Inv8IdempotentReSpill) {

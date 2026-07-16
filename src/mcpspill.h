@@ -51,10 +51,17 @@ int  offloadHeadBytes();
 // `compact` resolution).
 bool offloadRequested(const QJsonObject &args);
 
+// ANTS-3552 — the dispatch-site offload size gate (INV-1), extracted so the
+// >=threshold / >head boundary is behaviourally testable. offloadBody has no
+// internal threshold guard (it always spills), so the dispatch must gate its
+// call through this predicate. True iff bodyBytes >= offloadThresholdBytes()
+// AND bodyBytes > offloadHeadBytes().
+bool shouldOffload(qint64 bodyBytes);
+
 // Spill `body` and return the head+pointer envelope JSON string. On ANY
 // write failure (dir unwritable, disk full, commit() false) returns `body`
 // unchanged — fail-open (INV-11). Caller must already have checked the
-// threshold + head guard (INV-1).
+// threshold + head guard (INV-1) via shouldOffload().
 QString offloadBody(const QString &toolName, const QString &body);
 
 // read_spill byte-paging slice (INV-5/INV-6).

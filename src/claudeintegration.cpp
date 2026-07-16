@@ -10418,9 +10418,11 @@ void ClaudeIntegration::onMcpConnection() {
                 if (toolHandled && !etagUnchanged && !rawRequested &&
                     mcp::isOffloadEligible(toolName) &&
                     mcp::offloadRequested(argsObj)) {
+                    // ANTS-3552 — the >=threshold / >head boundary is the
+                    // extracted mcp::shouldOffload predicate (behaviourally
+                    // tested; offloadBody has no internal threshold guard).
                     const qint64 bodyBytes = responseText.toUtf8().size();
-                    if (bodyBytes >= mcp::offloadThresholdBytes() &&
-                        bodyBytes >  mcp::offloadHeadBytes()) {
+                    if (mcp::shouldOffload(bodyBytes)) {
                         responseText = mcp::offloadBody(toolName, responseText);
                     }
                 }

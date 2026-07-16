@@ -119,6 +119,17 @@ bool offloadDefault()        { return g_offloadEnabled.load(std::memory_order_re
 int  offloadThresholdBytes() { return g_offloadThreshold.load(std::memory_order_relaxed); }
 int  offloadHeadBytes()      { return g_offloadHead.load(std::memory_order_relaxed); }
 
+// ANTS-3552 — the dispatch-site offload size gate, extracted so the boundary
+// is behaviourally testable (offloadBody itself has no threshold guard — it
+// always spills — so the gate must live at the caller). Offload iff the body
+// is at or above the configured threshold (>=, inclusive) AND strictly larger
+// than the head budget (> head): the second guard keeps offload a net saving
+// when the head clamp meets or exceeds the threshold clamp (both ranges can
+// overlap — INV-12). See docs/specs/ANTS-2094.md § INV-1.
+bool shouldOffload(qint64 bodyBytes) {
+    return bodyBytes >= offloadThresholdBytes() && bodyBytes > offloadHeadBytes();
+}
+
 bool offloadRequested(const QJsonObject &args) {
     const QJsonValue v = args.value(QStringLiteral("offload"));
     return v.isBool() ? v.toBool() : offloadDefault();

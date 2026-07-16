@@ -13435,17 +13435,33 @@ template / mutate this state atomically" → movable. If it's
   Kind: investigate.
   Source: in-session-2026-07-16.
 
-- 📋 [ANTS-3552] **ANTS-2094 offload/read_spill unit-coverage gaps — add the edge assertions the spec calls follow-ups.**
+- ✅ [ANTS-3552] **ANTS-2094 offload/read_spill unit-coverage gaps — add the edge assertions the spec calls follow-ups.**
   Surfaced by the ANTS-3540 cold-eyes loop (all disclosed in-spec as follow-ups, not defects): (1) INV-6 — read_spill max_bytes:0 defaulting to the 512 KiB page, and negative offset/max_bytes → bad_args, are unexercised (Inv5And6ReadSpillPaging covers only paging + offset-past-end + unknown-handle). (2) INV-1 — the dispatch-site >=threshold / >head boundary (offload fires at bytes==threshold, not at a (head,threshold) body) is only source-scraped via INV-9, never asserted behaviourally; offloadBody itself has no threshold guard (always spills), so a small dispatch-level harness is needed. Add the cases + drop the follow-up caveats from the spec's INV-1/INV-6 test notes once landed.
   **Layman:** A few edge behaviours of the reply-parking feature are correct in code but not yet pinned by a test; add those tests so a future change can't silently break them.
   Kind: test.
   Source: cold-eyes-2026-07-16 ANTS-3540.
+  Resolved (2026-07-16): added the ANTS-2094 INV-1/INV-6 follow-up edge assertions. INV-6: Inv6ReadSpillMaxBytesDefaultsToPage pins max_bytes<=0 (0 and negative) → 512 KiB default page (free-fn behavioural); Inv6ReadSpillNegativeArgGateAtDispatch source-scrapes cmdReadSpill's negative-arg → bad_args gate. INV-1: extracted the dispatch offload boundary into a pure mcp::shouldOffload(bodyBytes) predicate (>=threshold && >head) so it is behaviourally testable — Inv1ShouldOffloadBoundary asserts the ==threshold inclusive edge + the >head guard binding when head>=threshold; Inv1OffloadBodyHasNoInternalThresholdGuard pins that offloadBody spills a below-threshold body (no internal threshold guard); Inv1DispatchUsesShouldOffload source-scrapes the dispatch gate. Byte-identical offload behaviour (pure refactor). Test-first: Inv1DispatchUsesShouldOffload RED before wiring the dispatch; also caught + corrected my wrong assumption that offloadBody 'always spills' (it fails open when the envelope won't shrink the body). Full build + suite 2708/2708 (5 new tests). Spec INV-1/INV-6 test-notes updated; caveats dropped. /cold-eyes (2 lanes) affirmed the amended sections clean; the run surfaced PRE-EXISTING test-note over-claims elsewhere (INV-5/7/11/14/§6 + 2 stale log entries) → filed ANTS-3554 for a dedicated doc+test correction (not bundled here, §11).
 
 - 📋 [ANTS-3553] **Document the offload / read_spill contract in mcp-behavioural-notes.md.**
   Noticed while shipping ANTS-3545: docs/standards/mcp-behavioural-notes.md has NO section for the result-offload path (offloadBody / head_rows preview / read_spill byte + row paging). ANTS-2094 §7 lists behavioural-notes as a cross-doc target but it was never added. Add a read_spill behavioural note covering: the offloaded:true envelope shape, byte paging (offset/max_bytes, advance by returned offset+bytes), the ANTS-3538 head_rows preview, and the ANTS-3545 row mode (row_offset/row_count → {mode:"rows", key, rows, row_offset, total_rows, truncated}); refusal codes too_large/not_array. Pre-existing gap (predates 3545), deferred to keep 3545 in-scope.
   **Layman:** The "park a huge reply, re-read it later" feature has no entry in the behavioural-notes reference doc — so a future session learns it only from the tool schema.
   Kind: doc.
   Source: in-session-2026-07-16.
+
+- 📋 [ANTS-3554] **ANTS-2094 spec test-note over-claims + missing offload/read_spill coverage — correct the notes and add the tests together.**
+  Surfaced by the ANTS-3552 cold-eyes loop (both lanes, verified against src + tests) — all PRE-EXISTING drift, none from ANTS-3552 (whose INV-1/INV-6 edits both lanes affirmed clean). The ANTS-2094 spec (and its cold-eyes log) claim automated coverage that `tests/features/mcp_result_offload/test_mcp_result_offload.cpp` does not have. Fix each by ADDING the missing test AND making the note honest in one unit (avoid churn):
+  - HIGH — INV-11 `Inv11FailOpenWiring` is source-scrape only (greps `return body;`); the note + Loop-3 log claim a runtime fault-injection assertion (unwritable dir → env==body, no stray temp). Add the fault-injection test (setSpillDirOverride at a read-only dir, call offloadBody, assert env==body + no *.json), or reword note+log to "source-scrape only".
+  - HIGH — INV-14 `too_large`: `readSpillRows` stat-before-read `too_large` gate (mcpspill.cpp ~304) untested. Only `Inv13ParseCapSkipped` hits `too_large` (byte-preview path). Add a >1 MiB spilled-body case asserting `readSpillRows(...).code=="too_large"`.
+  - HIGH — INV-5 test-note claims traversal/abs-path/uppercase-hex/63-65-char handle → bad_args behavioural tests; none exist (Inv5And6 does full-read/paging/past-end/unknown-handle; Inv10 only scrapes the `^[0-9a-f]{64}$` literal). Note should match the scrape-only reality, or add the edge inputs.
+  - MED — INV-14 `not_array` over-claims scalar-only/empty-array/root-array; only scalar-only is tested (test:625-630). Add `{"matches":[]}` + bare-root-array cases, or narrow the note.
+  - MED — INV-14 `hint`-field: `SpillRows` has no `hint` (built only in cmdReadSpill); Loop-4 log + note claim an assertion that can't exist on the direct test. Add a `Inv14RowModeWiring` scrape for the `o["hint"]` literals, or correct note+log.
+  - MED — INV-7 re-spill-of-older-body eviction survival not exercised (Inv7 writes only distinct bodies; Inv8 re-spills but asserts only handle/count). Add a re-spill-under-eviction case, or soften the note.
+  - MED — ANTS-3540 net-saving fail-open still writes the spill file + runs eviction before discarding the envelope (unlike INV-11's QSaveFile commit-or-nothing). Disclose in § 2.3.1/INV-9 (or defer the size check before the write — more invasive).
+  - LOW — § 6 bundles "marginal body" under the INV-13 test list; it is covered by `Inv9BaseEnvelopeNeverExceedsBody` (INV-13's own text already disambiguates). Fix § 6 cross-ref.
+  Run /cold-eyes on the corrected spec (per CLAUDE.md §14) once landed.
+  **Layman:** Some of the offload spec's "this is tested" notes claim tests that don't actually exist yet; make the notes honest by adding the missing tests.
+  Kind: review-fix.
+  Source: cold-eyes-2026-07-16 ANTS-3552 (2 lanes, both verified against test_mcp_result_offload.cpp).
 
 ### 🎨 At-a-glance build-version surface (user request 2026-05-14)
 
