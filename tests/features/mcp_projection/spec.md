@@ -99,3 +99,39 @@ log: `docs/specs/ANTS-2090.md`. Test invariants (`McpTabular` cases):
 - **Schema** — the 7 list-shaped read verbs (`roadmap_query`,
   `workspace_search`, `file_outline`, `find_sources`, `find_caller`,
   `codebase_index`, `docs_index`) each declare the `encoding` enum prop.
+
+## ANTS-3550 — advisory-hint "already-taught" latch
+
+Same bundle, `appendReadHints` chokepoint: the presentation-only nudges
+(`next_call_hint` / `leaner_call_hint`) are educational the first time and
+pure recurring overhead thereafter. A process-scoped latch emits each
+`(tool, hint-kind)` pair once, then suppresses it. State lives in
+`src/mcpprojection.cpp` (`setHintLatchEnabled` / `hintLatchEnabled` /
+`resetHintLatch` + the private `claimHint` test-and-set). Module default
+OFF (so the `McpReadHints` cases above — and any direct library use — emit
+a hint on every call, exactly as pre-3550); the app turns it ON via the
+`claude.mcp_hint_latch` config key (default true), published to the module
+flag from `mainwindow.cpp` at config load + external reload (mirrors
+`setTerseDefault`). Getter-only config — the off-switch is the config key,
+live-reloaded on external edit; no Settings toggle. Test invariants
+(`McpHintLatch` / `McpHintLatchWiring` cases):
+
+- **INV-L1 — module default OFF; getter/setter round-trip.**
+  `hintLatchEnabled()` is false at rest; `setHintLatchEnabled` flips it.
+- **INV-L2 — enabled: first emission passes, exact repeat suppressed.** With
+  the latch on, the second identical `appendReadHints(tool,…)` omits the
+  nudge it emitted on the first (a body with both nudges suppressed returns
+  unchanged).
+- **INV-L3 — keyed per `(tool, hint-kind)`.** A distinct verb's own nudge is
+  never hidden by another verb being taught — `workspace_search`'s leaner
+  tip and `file_outline`'s etag nudge still emit after `roadmap_query` was
+  taught; only exact `(tool, kind)` repeats drop.
+- **INV-L4 — the two kinds latch independently.** Teaching a tool's
+  `next_call_hint` does not consume its `leaner_call_hint` slot.
+- **INV-L5 — disabled ⟹ no suppression.** With the latch off, repeated calls
+  emit every time (byte-for-byte the pre-3550 behaviour).
+- **INV-L6 — `resetHintLatch()` re-teaches.** After a reset the next call
+  emits the nudge again (test isolation / future per-session hook).
+- **INV-L7 — wiring.** `config.cpp` exposes
+  `claude.mcp_hint_latch` defaulting true; `mainwindow.cpp` publishes it via
+  `mcp::setHintLatchEnabled(m_config.claudeMcpHintLatch())`.

@@ -83,6 +83,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **MCP read replies now teach each advisory hint once per session, then hush (ANTS-3550)**
+  The next_call_hint / leaner_call_hint nudges on read replies are educational the first time and pure recurring overhead after; a process-scoped "already-taught" latch emits each (tool, hint-kind) pair once, then omits it. Keyed per verb so a distinct verb's own tip is never hidden. On by default (token-saver); flip the claude.mcp_hint_latch config key off to get the tips on every call.
+
 - **Cold-eyes: stop full-reading large append-only cross-ref logs (ROADMAP/CHANGELOG) — consult by search/region.** (ANTS-3526)
   Right now every review helper is told to read the entire 25,000-line roadmap and 19,000-line changelog top to bottom — the single biggest review cost. Have them search those two big logs for the exact thing they're checking instead.
 

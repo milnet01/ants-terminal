@@ -67,6 +67,23 @@ QString projectFields(const QString &responseText, const QJsonArray &fields);
 QString appendReadHints(const QString &toolName, const QJsonObject &args,
                         const QString &responseText, bool etagUnchanged);
 
+// ANTS-3550 — session/process "already-taught" latch for the presentation-only
+// advisory hints (`next_call_hint` / `leaner_call_hint`). Each is educational
+// the first time and pure recurring overhead thereafter; once a (tool, hint-
+// kind) pair has been emitted this process, appendReadHints omits it for the
+// rest of the process. Keyed per (tool, hint-kind) so a distinct verb's own
+// leaner tip is never hidden — only exact repeats are dropped. Process-scoped:
+// the one Ants server is shared across subagents, so the latch spans them
+// (intended — same rationale as ANTS-3546). Module default OFF so direct /
+// library use is unaffected (byte-identical to pre-3550; mirrors
+// setTerseDefault); the application enables it via the claude.mcp_hint_latch
+// config key (default true). Atomic enable flag + mutex-guarded taught-set;
+// resetHintLatch() clears the set (test isolation / a future per-session hook).
+// See tests/features/mcp_projection/spec.md.
+void setHintLatchEnabled(bool enabled);
+bool hintLatchEnabled();
+void resetHintLatch();
+
 // ANTS-2091 — compact-envelope transform. Recursively drops dead-weight
 // fields the model never reads (JSON null, false, empty string, empty
 // array, empty object) from a read response, opt-in via `compact:true`.

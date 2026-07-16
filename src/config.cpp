@@ -588,6 +588,16 @@ void Config::setClaudeMcpTerseResponses(bool enabled) {
     save();
 }
 
+// ANTS-3550 — the advisory-hint "already-taught" latch (next_call_hint /
+// leaner_call_hint emitted once per process, then suppressed). Default TRUE:
+// token-saving on out of the box. Getter-only: mainwindow publishes it to the
+// mcp::setHintLatchEnabled module flag at config load + external reload; there
+// is no Settings toggle (an advanced escape-hatch knob — flip the config key to
+// re-enable the tips every call, live-reloaded on external edit).
+bool Config::claudeMcpHintLatch() const {
+    return m_data.value("claude.mcp_hint_latch").toBool(true);
+}
+
 // ANTS-2094 — result-offload config. Default ON since the ANTS-2094
 // fast-follow (2026-06-25): read_spill round-tripping is field-proven, so
 // per the "token-savers default ON" rule every session offloads large read

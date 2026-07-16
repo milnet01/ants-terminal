@@ -152,6 +152,11 @@ public:
     bool claudeMcpTerseResponses() const;
     void setClaudeMcpTerseResponses(bool enabled);
 
+    // ANTS-3550 — advisory-hint "already-taught" latch. Default true: the
+    // per-call next_call_hint / leaner_call_hint nudges are emitted once per
+    // process then suppressed. Getter-only; drives mcp::setHintLatchEnabled().
+    bool claudeMcpHintLatch() const;
+
     // ANTS-2094 — proactive result offload (observation masking).
     // Default ON since the 2026-06-25 fast-follow: large read bodies are
     // offloaded to a head+pointer out of the box (token-savers default ON).

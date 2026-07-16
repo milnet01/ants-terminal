@@ -7,6 +7,7 @@
 #include <QJsonObject>
 #include <QJsonParseError>
 #include <QJsonValue>
+#include <QMutex>
 
 namespace mcp {
 
@@ -23,6 +24,41 @@ void setTerseDefault(bool terse) {
 
 bool terseDefault() {
     return g_terseDefault.load(std::memory_order_relaxed);
+}
+
+// ANTS-3550 — the advisory-hint "already-taught" latch (see header). The enable
+// flag is published cross-thread like g_terseDefault (GUI writes, dispatch
+// reads) so it's atomic; the taught-set is mutated on the dispatch path and
+// guarded by a mutex (a request may run concurrently with a sibling subagent's).
+namespace {
+std::atomic<bool> g_hintLatchEnabled{false};  // module default OFF (mirror terse)
+QMutex g_hintLatchMutex;
+QSet<QString> g_taughtHints;
+
+// Test-and-set: true the FIRST time (tool, field) is seen while the latch is
+// enabled, marking it taught; false on every repeat. Latch disabled → always
+// true and records nothing, so appendReadHints emits exactly as pre-ANTS-3550.
+bool claimHint(const QString &tool, const QString &field) {
+    if (!g_hintLatchEnabled.load(std::memory_order_relaxed)) return true;
+    const QString key = tool + QChar(u'\x1f') + field;  // unit-separator delim
+    QMutexLocker lock(&g_hintLatchMutex);
+    if (g_taughtHints.contains(key)) return false;
+    g_taughtHints.insert(key);
+    return true;
+}
+}  // namespace
+
+void setHintLatchEnabled(bool enabled) {
+    g_hintLatchEnabled.store(enabled, std::memory_order_relaxed);
+}
+
+bool hintLatchEnabled() {
+    return g_hintLatchEnabled.load(std::memory_order_relaxed);
+}
+
+void resetHintLatch() {
+    QMutexLocker lock(&g_hintLatchMutex);
+    g_taughtHints.clear();
 }
 
 bool isFieldProjectionTool(const QString &toolName) {
@@ -172,10 +208,12 @@ QString appendReadHints(const QString &tool, const QJsonObject &args,
     QJsonObject env = d.object();
     if (!env.value(QStringLiteral("ok")).toBool()) return responseText;
     bool changed = false;
-    // etag-reuse nudge — any body size (ANTS-2180).
+    // etag-reuse nudge — any body size (ANTS-2180). ANTS-3550 — claimHint
+    // last (test-and-set) so it only marks taught when we'd actually emit.
     if (env.contains(QStringLiteral("etag")) &&
         !args.contains(QStringLiteral("etag_match")) &&
-        !env.contains(QStringLiteral("next_call_hint"))) {
+        !env.contains(QStringLiteral("next_call_hint")) &&
+        claimHint(tool, QStringLiteral("next_call_hint"))) {
         env[QStringLiteral("next_call_hint")] = QStringLiteral(
             "pass etag_match=\"%1\" next call to skip an unchanged "
             "re-read (304 Not Modified)")
@@ -186,7 +224,10 @@ QString appendReadHints(const QString &tool, const QJsonObject &args,
     if (utf8.size() >= kLeanerThresholdBytes &&
         !env.contains(QStringLiteral("leaner_call_hint"))) {
         const QString lean = leanerModeHintFor(tool, args);
-        if (!lean.isEmpty()) {
+        // ANTS-3550 — claimHint after !lean.isEmpty() so an absent leaner tip
+        // never burns the latch slot; only a real emission marks it taught.
+        if (!lean.isEmpty() &&
+            claimHint(tool, QStringLiteral("leaner_call_hint"))) {
             env[QStringLiteral("leaner_call_hint")] = lean;
             changed = true;
         }

@@ -309,6 +309,134 @@ TEST(McpReadHints, Ants2086NoLeanerHintWhenAlreadyLean) {
 }
 
 // ───────────────────────────────────────────────────────────────────
+// ANTS-3550 — the advisory-hint "already-taught" latch. Once enabled, a
+// (tool, hint-kind) pair emits its nudge once per process, then is
+// suppressed. Module default OFF (existing McpReadHints tests above run
+// with the latch off, so they see a hint on every call). The fixture's
+// TearDown always restores the module default (OFF + empty set) so a
+// failing assertion can't leak latch state into a sibling test.
+// ───────────────────────────────────────────────────────────────────
+class McpHintLatch : public ::testing::Test {
+protected:
+    void SetUp() override { mcp::resetHintLatch(); }
+    void TearDown() override {
+        mcp::setHintLatchEnabled(false);
+        mcp::resetHintLatch();
+    }
+};
+
+// Getter/setter round-trip; the module default is OFF (mirrors terseDefault).
+TEST_F(McpHintLatch, Ants3550GetterSetterDefaultOff) {
+    EXPECT_FALSE(mcp::hintLatchEnabled());  // OFF at rest (TearDown restores it)
+    mcp::setHintLatchEnabled(true);
+    EXPECT_TRUE(mcp::hintLatchEnabled());
+    mcp::setHintLatchEnabled(false);
+    EXPECT_FALSE(mcp::hintLatchEnabled());
+}
+
+// Enabled: the first emission of each kind passes, the identical repeat is
+// dropped — and a body with both nudges suppressed returns unchanged.
+TEST_F(McpHintLatch, Ants3550SuppressesRepeatWhenEnabled) {
+    mcp::setHintLatchEnabled(true);
+    const QJsonObject first = parse(mcp::appendReadHints(
+        QStringLiteral("roadmap_query"), QJsonObject{}, bigBodyWithEtag(), false));
+    ASSERT_TRUE(first.contains("next_call_hint"));
+    ASSERT_TRUE(first.contains("leaner_call_hint"));
+    const QJsonObject second = parse(mcp::appendReadHints(
+        QStringLiteral("roadmap_query"), QJsonObject{}, bigBodyWithEtag(), false));
+    EXPECT_FALSE(second.contains("next_call_hint"))
+        << "the etag-reuse nudge must be taught once per process";
+    EXPECT_FALSE(second.contains("leaner_call_hint"))
+        << "the leaner nudge must be taught once per process";
+}
+
+// Keyed per (tool, kind): a DISTINCT verb's own nudge is never hidden by
+// another verb having been taught — only exact (tool, kind) repeats drop.
+TEST_F(McpHintLatch, Ants3550PerToolKeyingKeepsDistinctTip) {
+    mcp::setHintLatchEnabled(true);
+    // roadmap_query claims both its kinds.
+    parse(mcp::appendReadHints(QStringLiteral("roadmap_query"), QJsonObject{},
+                               bigBodyWithEtag(), false));
+    // workspace_search's own (different) leaner tip still emits.
+    const QJsonObject ws = parse(mcp::appendReadHints(
+        QStringLiteral("workspace_search"), QJsonObject{}, bigBodyNoEtag(), false));
+    ASSERT_TRUE(ws.contains("leaner_call_hint"));
+    EXPECT_NE(ws.value("leaner_call_hint").toString().indexOf("max_match_bytes"),
+              -1);
+    // file_outline's etag-reuse nudge still emits (roadmap_query's claim is
+    // its own key, not a global next_call_hint latch).
+    const QString etagBody = QStringLiteral("{\"ok\":true,\"etag\":\"zzz\"}");
+    const QJsonObject fo = parse(mcp::appendReadHints(
+        QStringLiteral("file_outline"), QJsonObject{}, etagBody, false));
+    EXPECT_TRUE(fo.contains("next_call_hint"));
+}
+
+// The two kinds latch independently: teaching next_call_hint for a tool does
+// not consume that tool's leaner_call_hint slot.
+TEST_F(McpHintLatch, Ants3550KindsLatchIndependently) {
+    mcp::setHintLatchEnabled(true);
+    // Small etag-only body: eligible for next_call_hint only (below the
+    // leaner byte gate) → claims file_outline|next_call_hint.
+    const QString small = QStringLiteral("{\"ok\":true,\"etag\":\"e1\"}");
+    const QJsonObject a = parse(mcp::appendReadHints(
+        QStringLiteral("file_outline"), QJsonObject{}, small, false));
+    ASSERT_TRUE(a.contains("next_call_hint"));
+    ASSERT_FALSE(a.contains("leaner_call_hint"));
+    // A big file_outline body now: next_call_hint suppressed (already taught),
+    // but leaner_call_hint is a fresh kind and still emits.
+    const QJsonObject b = parse(mcp::appendReadHints(
+        QStringLiteral("file_outline"), QJsonObject{}, bigBodyWithEtag(), false));
+    EXPECT_FALSE(b.contains("next_call_hint")) << "next kind already taught";
+    ASSERT_TRUE(b.contains("leaner_call_hint")) << "leaner kind is independent";
+    EXPECT_NE(b.value("leaner_call_hint").toString().indexOf("filter="), -1);
+}
+
+// Disabled (module default): repeats are never suppressed — byte-for-byte the
+// pre-ANTS-3550 behaviour.
+TEST_F(McpHintLatch, Ants3550DisabledNeverSuppresses) {
+    mcp::setHintLatchEnabled(false);
+    const QJsonObject a = parse(mcp::appendReadHints(
+        QStringLiteral("roadmap_query"), QJsonObject{}, bigBodyWithEtag(), false));
+    const QJsonObject b = parse(mcp::appendReadHints(
+        QStringLiteral("roadmap_query"), QJsonObject{}, bigBodyWithEtag(), false));
+    EXPECT_TRUE(a.contains("next_call_hint"));
+    EXPECT_TRUE(b.contains("next_call_hint")) << "latch off: no suppression";
+    EXPECT_TRUE(a.contains("leaner_call_hint"));
+    EXPECT_TRUE(b.contains("leaner_call_hint"));
+}
+
+// resetHintLatch() forgets the taught set, so the next call re-teaches.
+TEST_F(McpHintLatch, Ants3550ResetReteaches) {
+    mcp::setHintLatchEnabled(true);
+    parse(mcp::appendReadHints(QStringLiteral("roadmap_query"), QJsonObject{},
+                               bigBodyWithEtag(), false));
+    const QJsonObject suppressed = parse(mcp::appendReadHints(
+        QStringLiteral("roadmap_query"), QJsonObject{}, bigBodyWithEtag(), false));
+    EXPECT_FALSE(suppressed.contains("next_call_hint"));
+    mcp::resetHintLatch();
+    const QJsonObject reTaught = parse(mcp::appendReadHints(
+        QStringLiteral("roadmap_query"), QJsonObject{}, bigBodyWithEtag(), false));
+    EXPECT_TRUE(reTaught.contains("next_call_hint")) << "reset must re-teach";
+}
+
+// Wiring: config exposes the off-switch key (default ON) and the app publishes
+// it to the module flag at load / external reload.
+TEST(McpHintLatchWiring, Ants3550ConfigAndAppPublish) {
+    QFile cfg(QString::fromUtf8(SRC_CONFIG_CPP_PATH));
+    ASSERT_TRUE(cfg.open(QIODevice::ReadOnly));
+    const QByteArray c = cfg.readAll();
+    EXPECT_TRUE(c.contains("value(\"claude.mcp_hint_latch\").toBool(true)"))
+        << "config getter must expose claude.mcp_hint_latch defaulting true";
+    QFile mw(QString::fromUtf8(SRC_MAINWINDOW_CPP));
+    ASSERT_TRUE(mw.open(QIODevice::ReadOnly));
+    const QByteArray m = mw.readAll();
+    EXPECT_TRUE(m.contains("mcp::setHintLatchEnabled("))
+        << "mainwindow must publish the latch flag";
+    EXPECT_TRUE(m.contains("claudeMcpHintLatch()"))
+        << "mainwindow must read the claude.mcp_hint_latch getter";
+}
+
+// ───────────────────────────────────────────────────────────────────
 // ANTS-2091 — mcp::compactEnvelope: drop dead-weight fields, keep the
 // protected branch-on keys, recurse.
 // ───────────────────────────────────────────────────────────────────

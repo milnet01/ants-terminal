@@ -4034,6 +4034,10 @@ void MainWindow::setupClaudeMcpProviders() {
     // on out of the box); the Settings Apply path and onConfigFileChanged
     // (external edits) re-publish it.
     mcp::setTerseDefault(m_config.claudeMcpTerseResponses());
+    // ANTS-3550 — publish the advisory-hint latch (default ON): the
+    // next_call_hint / leaner_call_hint nudges are taught once per process
+    // then suppressed. Same publish sites as terse (load + external reload).
+    mcp::setHintLatchEnabled(m_config.claudeMcpHintLatch());
     // ANTS-2094 — publish the result-offload config (default ON since the
     // 2026-06-25 fast-follow) and run a one-shot session-start sweep of
     // stale (>24 h) spill files.
@@ -7141,6 +7145,9 @@ void MainWindow::onConfigFileChanged(const QString &path) {
     // external config edit (the Settings dialog's own Apply re-publishes
     // directly, since a self-write echo short-circuits above).
     mcp::setTerseDefault(m_config.claudeMcpTerseResponses());
+    // ANTS-3550 — re-publish the advisory-hint latch after an external edit
+    // (live off-switch: flip claude.mcp_hint_latch to get the tips back).
+    mcp::setHintLatchEnabled(m_config.claudeMcpHintLatch());
     // ANTS-2094 — re-publish result-offload config after an external edit.
     mcp::setOffloadConfig(m_config.claudeMcpOffloadLargeResults(),
                           m_config.claudeMcpOffloadThresholdBytes(),
