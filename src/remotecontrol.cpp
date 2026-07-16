@@ -9481,6 +9481,14 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // the per-match {file, line, headline} shape.
     const bool headlineOnly =
         req.value(QStringLiteral("headline_only")).toBool(false);
+    // ANTS-3537 — count_only: rows-ELIMINATED existence/frequency mode.
+    // When true, the rg scan still runs (we must count), but matches[] is
+    // omitted entirely and the envelope carries only {count, files_count,
+    // truncated}. Complements headline_only (row-shape trim) and
+    // max_match_bytes (row-length trim). Default false → byte-identical to
+    // the pre-3537 envelope.
+    const bool countOnly =
+        req.value(QStringLiteral("count_only")).toBool(false);
 
     // ANTS-1565-INV-1/2: per-call wall-clock budget. Default 5 s
     // (kWorkspaceSearchHardKillMs); accept `timeout_sec` integer in
@@ -9587,6 +9595,11 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // their owning match, direct-append for events that trail one.
     QJsonArray matches;
     int seenMatchEvents = 0;
+    // ANTS-3537 — distinct files that contained a match. rg --json emits
+    // exactly one `begin` event per matched file, so counting begins gives
+    // the true file count without a per-path set (and independent of the
+    // matches[] max_results cap, which count_only bypasses).
+    int filesWithMatches = 0;
     bool truncated = false;
     int lastMatchIdx = -1;  // ANTS-1304: index into matches[] for the
                             // most recent match in the current file
@@ -9622,6 +9635,8 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         // event in file B never belongs to a match in file A.
         if (evType == QLatin1String("begin") ||
             evType == QLatin1String("end")) {
+            if (evType == QLatin1String("begin"))
+                ++filesWithMatches;   // ANTS-3537: one begin per matched file
             lastMatchIdx = -1;
             pendingBefore.clear();
             continue;
@@ -9744,6 +9759,31 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // budget cut us off mid-stream (ANTS-3405).
     if (seenMatchEvents > matches.size() || hardKilled || parseBudgetExceeded)
         truncated = true;
+
+    // ANTS-3537 — count_only: return the totals with no row bodies. Placed
+    // after the genuine-error guards above (rg crash / exit≥2 / hard-kill or
+    // parse-budget with zero results already returned rg_failed) but before
+    // the dedup / clip / enclosing_symbol / byte-cap stages, all of which
+    // operate on matches[] we do not emit. `count` is seenMatchEvents — the
+    // TRUE total (it is incremented before the max_results cap), so unlike
+    // the normal envelope a >max_results result is NOT flagged truncated;
+    // truncated here means the COUNT itself is partial (the scan was
+    // hard-killed or the parse budget was exceeded mid-stream). The filter
+    // echoes mirror the ok:true path so a 0-count stays diagnosable.
+    if (countOnly) {
+        QJsonObject out;
+        out["ok"]          = true;
+        out["pattern"]     = pattern;
+        out["count"]       = seenMatchEvents;
+        out["files_count"] = filesWithMatches;
+        out["truncated"]   = (hardKilled || parseBudgetExceeded);
+        out["count_only"]  = true;
+        out["respect_gitignore"] = respect_gitignore;
+        out["include_hidden"]    = include_hidden;
+        out["timeout_sec"]       = budgetSec;
+        out["elapsed_ms"]        = static_cast<int>(wall.elapsed());
+        return QJsonDocument(out);
+    }
 
     // ANTS-1501 — near-duplicate excerpt dedup. Broad queries that hit
     // a common code shape ("emit signalName", `connect(`, "qDebug() <<")

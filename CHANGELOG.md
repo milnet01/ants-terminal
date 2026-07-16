@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **workspace_search `count_only` mode — return {count, files_count} with no match rows (ANTS-3537)**
+  A rows-eliminated existence/frequency check ("is X referenced?", "how many call-sites?") that skips serialising match bodies. `count` is the true total (uncapped by max_results); `truncated` flags only a cut-off scan. Complements headline_only and max_match_bytes.
+
 - **cold_eyes_brief: resolve cited-code REGIONS (symbol / file:line) so cold-eyes reviewers read regions + outline, not whole files.** (ANTS-3522)
   cold_eyes_brief now emits cited_code_regions[] ({path, lines[]}) — the exact lines from each `path:line` citation, grouped per file — so a cold-eyes reviewer reads a window around each cited line (outline + read_region) instead of the whole file. Additive alongside cited_code_paths; structural completeness is preserved (the reviewer still outlines the file). Cuts review-loop token cost without losing accuracy.
 

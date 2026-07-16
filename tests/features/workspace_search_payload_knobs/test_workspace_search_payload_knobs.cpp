@@ -197,3 +197,58 @@ TEST(workspace_search_payload_knobs, Inv7ToolsListEnumerates) {
            "workspace_search tools/list descriptor");
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-3537 INV-8 — count_only arg parsed in cmdWorkspaceSearch.
+TEST(workspace_search_payload_knobs, Inv8CountOnlyParsed) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "\"count_only\""),
+           "INV-8: count_only arg name present in cmdWorkspaceSearch");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3537 INV-9 — count_only envelope emits count + files_count and
+// omits matches[] (early return before the dedup/clip pipeline).
+TEST(workspace_search_payload_knobs, Inv9CountOnlyEnvelopeShape) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "out[\"count\"]") &&
+           contains(cpp, "out[\"files_count\"]"),
+           "INV-9: count + files_count fields emitted");
+    // The count_only branch must sit BEFORE the dedup loop so matches[]
+    // is never serialised (rows-eliminated). Anchor on the branch guard
+    // preceding the dedup site.
+    const auto branchPos = cpp.find("if (countOnly) {");
+    const auto dedupPos  = cpp.find(".toString().simplified()");
+    expect(branchPos != std::string::npos,
+           "INV-9: count_only early-return branch present");
+    if (branchPos != std::string::npos && dedupPos != std::string::npos) {
+        expect(branchPos < dedupPos,
+               "INV-9: count_only return runs BEFORE the dedup pipeline "
+               "(matches[] is never built into the envelope)");
+    }
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3537 INV-10 — files_count derives from rg `begin` events, and the
+// true total count is uncapped (seenMatchEvents, not matches.size()).
+TEST(workspace_search_payload_knobs, Inv10CountUncappedFilesFromBegin) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "filesWithMatches"),
+           "INV-10: filesWithMatches counter present");
+    expect(contains(cpp, "out[\"count\"]       = seenMatchEvents;") ||
+           contains(cpp, "out[\"count\"] = seenMatchEvents;"),
+           "INV-10: count is the uncapped seenMatchEvents total");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3537 INV-11 — tools/list schema enumerates count_only.
+TEST(workspace_search_payload_knobs, Inv11CountOnlyInSchema) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    expect(contains(cpp, "props[\"count_only\"]"),
+           "INV-11: props[\"count_only\"] populated in "
+           "workspace_search tools/list descriptor");
+    EXPECT_EQ(0, expect_failures());
+}

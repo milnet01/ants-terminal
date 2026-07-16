@@ -2937,7 +2937,10 @@ void ClaudeIntegration::onMcpConnection() {
                     "lane, glob, max_results (cap 500), context [0,10], "
                     "case, respect_gitignore, include_hidden, dedup, "
                     "timeout_sec [1,30], max_match_bytes, headline_only, "
-                    "enclosing_symbol. "
+                    "enclosing_symbol, count_only. "
+                    "count_only:true returns {count, files_count, "
+                    "truncated} with matches[] omitted — a rows-eliminated "
+                    "existence/frequency check. "
                     "caller_cwd anchors the project root (or '~global' for "
                     "~/.claude/). The query is ONE literal/regex pattern, not "
                     "AND-combined words — a multi-word query that hits 0 "
@@ -2991,7 +2994,18 @@ void ClaudeIntegration::onMcpConnection() {
                     "nearest-preceding symbol) — folds the post-search "
                     "\"which function?\" lookup into the search; costs "
                     "one outline scan per distinct matched file, so it "
-                    "is off by default. On hard-kill the "
+                    "is off by default. ANTS-3537: `count_only:true` "
+                    "returns {ok, count, files_count, truncated, "
+                    "count_only:true} with matches[] omitted entirely "
+                    "(the rg scan still runs; rows are never "
+                    "serialised) — a rows-ELIMINATED mode for "
+                    "existence/frequency checks (\"is X referenced?\", "
+                    "\"how many call-sites?\"). `count` is the true "
+                    "total (uncapped by max_results); `truncated` is "
+                    "true only if the scan was cut off (hard-kill / "
+                    "parse budget), never merely because the row cap "
+                    "was hit. Composes with regex / lane / glob / case "
+                    "filters. On hard-kill the "
                     "rg_failed envelope carries a `hint` field with "
                     "the three viable next steps. ANTS-1390: pass "
                     "`caller_cwd: "
@@ -3176,6 +3190,28 @@ void ClaudeIntegration::onMcpConnection() {
                         "file-outline scan per distinct matched file, so it "
                         "is off by default. A match before the first symbol "
                         "(e.g. in includes) carries no `enclosing`.");
+                    // ANTS-3537 — count_only: rows-eliminated existence /
+                    // frequency mode. Omits matches[] entirely; returns
+                    // just the totals.
+                    QJsonObject countOnlyProp;
+                    countOnlyProp["type"] = "boolean";
+                    countOnlyProp["default"] = false;
+                    countOnlyProp["description"] = QStringLiteral(
+                        "When true, run the search but return only "
+                        "`{count, files_count, truncated, "
+                        "count_only:true}` — matches[] is omitted "
+                        "entirely (the rg scan still runs; the rows are "
+                        "never serialised). A rows-ELIMINATED mode for "
+                        "existence / frequency checks (\"is X referenced "
+                        "anywhere?\", \"how many call-sites?\") that would "
+                        "otherwise pay for row bodies they discard. "
+                        "`count` is the TRUE total match count (uncapped "
+                        "by max_results); `files_count` is the number of "
+                        "files with a match. `truncated` is true only "
+                        "when the scan was cut off (hard-kill / parse "
+                        "budget), never merely because the row cap was "
+                        "hit. Complements headline_only (row-shape trim) "
+                        "and max_match_bytes (row-length trim).");
                     props["pattern"]     = patternProp;
                     props["enclosing_symbol"] = encProp;          // ANTS-2220
                     props["query"]       = queryProp;
@@ -3186,6 +3222,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["max_bytes"]   = maxBytesProp;
                     props["max_match_bytes"] = mmbProp;       // ANTS-1876
                     props["headline_only"]   = hoProp;        // ANTS-1876
+                    props["count_only"]      = countOnlyProp; // ANTS-3537
                     props["context"]     = ctxProp;
                     props["case"]        = caseProp;
                     props["respect_gitignore"] = respectGitignoreProp;

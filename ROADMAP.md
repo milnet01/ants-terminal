@@ -13338,11 +13338,12 @@ template / mutate this state atomically" → movable. If it's
   Kind: investigate.
   Source: in-session-2026-07-16 (token-saving sweep).
 
-- 📋 [ANTS-3537] **workspace_search `count_only` mode — return total match/file counts with no row bodies.**
+- ✅ [ANTS-3537] **workspace_search `count_only` mode — return total match/file counts with no row bodies.**
   workspace_search always serialises match rows (capped at max_results); an existence / frequency check ("is X referenced anywhere?", "how many call-sites?") pays for row bodies it discards — and max_results:1 can't report the TRUE total (it only sets truncated:true). Add `count_only:true` returning `{count, files_count, truncated:false}` with matches[] omitted entirely (the rg scan still runs; rows are never serialised). Complements headline_only (row-shape trim) and max_match_bytes (row-length trim) with a rows-ELIMINATED mode. find_sources / find_caller already cover symbol call-counts; this covers arbitrary string/regex frequency. Additive param, no behaviour change when absent — surgical.
   **Layman:** Add a 'just tell me how many' switch to code search, so existence/frequency checks don't pay for every matched line.
   Kind: enhancement.
   Source: in-session-2026-07-16 (token-saving sweep, wave 2).
+  Resolved (2026-07-16): workspace_search now accepts count_only:true → returns {count, files_count, truncated, count_only:true} with matches[] omitted; count is the uncapped seenMatchEvents total, files_count derives from rg begin events, truncated flags only a cut-off scan (hard-kill / parse budget). Schema + description updated; 4 source-grep INV cases added to workspace_search_payload_knobs (15/15 green). Live on next relaunch.
 
 - 📋 [ANTS-3538] **Structured head for offloaded LIST responses — first K complete rows + total, not a truncated byte prefix.**
   When a list-shaped reply exceeds mcp_offload_threshold_bytes it spills and returns a byte-prefix `head` that is frequently cut mid-JSON (`head_truncated:true` — hit directly in THIS session on a workspace_search). A byte prefix of a rows array is nearly useless: the model can't parse a half-cut row, so it pays a read_spill round-trip even when it only needed the first few results or the count. For array-shaped bodies, make the offload head a STRUCTURED preview instead: first K COMPLETE rows + `total_count` + the scalar envelope fields — so many callers answer without the spill fetch. Fall back to the byte-prefix head for non-array bodies. Directly cuts read_spill round-trips (each is a full extra tool call). Noted as an MCP-usability gap from direct use.
