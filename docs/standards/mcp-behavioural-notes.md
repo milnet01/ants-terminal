@@ -60,6 +60,59 @@ survived projection) and `offload` (a smaller body may now fit under the
 spill threshold; if it still spills, the spill file holds valid tabular
 JSON). Spec + cold-eyes log: `docs/specs/ANTS-2090.md`.
 
+## Result offload + `read_spill` (ANTS-2094 / ANTS-3538 / ANTS-3545)
+
+When a read reply exceeds the spill threshold, the dispatcher's last step
+(`mcp::offloadBody`, after `appendReadHints` and `tabularize`) parks the
+full body on disk and returns a small pointer instead — so a giant reply
+costs a few hundred tokens up front, and the caller re-reads only the slice
+it needs. The body is written **content-addressed** to
+`~/.cache/ants-terminal/mcp-spill/<sha256>.json` (swept at 24 h). The write
+is **fail-open**: if the private dir, `open`, write, or `commit` fails —
+or the built envelope isn't smaller than the body — the verb returns the
+**full inline body**, never an error (a partial temp file is cancelled, and
+a content-addressed spill written just before a late fail-open is a benign
+duplicate the 24 h sweep reclaims).
+
+**Offload envelope** (`offloaded:true`): `handle` (the 64-char sha256),
+`head` (a leading byte-prefix of the body), `bytes`/`row_count`, and a
+`hint` naming both re-read modes. When the body's dominant field is a
+row-shaped array, ANTS-3538 adds a typed **`head_rows` preview** —
+`head_rows` (the first few whole elements), `head_rows_key` (the array's
+field name), `head_rows_truncated`, `head_truncated` — so the caller sees
+real rows, not just a clipped byte-string.
+
+**`read_spill` — byte mode (default).** `offset`/`max_bytes` return
+`{ok, content, offset, bytes, total_bytes, truncated}`; page forward by
+re-calling with `offset` ← the returned `offset + bytes` until
+`truncated` is false. Byte mode never parses the body, so it works on any
+spill regardless of size or shape.
+
+**`read_spill` — row mode (ANTS-3545).** A numeric `row_offset`/`row_count`
+routes to the parsed row-pager and returns
+`{ok, mode:"rows", key, rows, row_offset, total_rows, truncated}` — clean
+element boundaries over the dominant array (same key as `head_rows_key`).
+`row_count ≤ 0` (or omitted) serves the default page (`kSpillRowsDefault`,
+100 rows); `row_offset` past the end yields an empty non-truncated page.
+Row mode **wins over byte mode** when a call carries both key sets (the
+byte `offset`/`max_bytes` are ignored).
+
+**Refusal codes** (all on the `read_spill` verb):
+- `bad_args` — `handle` isn't a 64-char lowercase sha256, or a byte/row
+  arg is negative.
+- `not_found` — handle never spilled or was evicted; re-issue the original
+  call to regenerate it.
+- `too_large` — body > 1 MiB (`kStructuredParseMaxBytes`), stat-gated
+  **before** load so an over-cap body is never parsed into RAM; the `hint`
+  says byte-page it via `offset`/`max_bytes` instead. Row mode only.
+- `not_array` — body isn't a JSON object with a dominant row-shaped array
+  to page; the `hint` says byte-page it instead. Row mode only.
+
+`raw:true` (see the read-verbs note below) suppresses offload entirely, so
+an Edit-from-output caller gets true bytes rather than a head+pointer.
+Specs: `docs/specs/ANTS-2094.md` (offload + byte paging), ANTS-3538
+(`head_rows` preview), ANTS-3545 (row mode).
+
 ## Trimmed descriptions + `tool_info` `detail` (ANTS-2079)
 
 The seven largest tool descriptions (`roadmap_query`,
