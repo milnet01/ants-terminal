@@ -13357,6 +13357,12 @@ template / mutate this state atomically" → movable. If it's
   Kind: investigate.
   Source: in-session-2026-07-16 (token-saving sweep, wave 2).
 
+- 📋 [ANTS-3540] **Offload head guard misses the fixed-envelope overhead — INV-9 violable at a head≈threshold config.**
+  Found during the ANTS-3538 cold-eyes loop (2026-07-16). ANTS-2094 INV-9 (offloaded out_bytes < raw bytes) rests on the § 2.1 head guard `bodyBytes > offloadHeadBytes()`. But the returned envelope is `head (>= offloadHeadBytes raw, escaped) + ~326 B fixed overhead` (ok/offloaded/handle-64hex/bytes/head_truncated/hint-with-handle). The guard omits that ~326 B, so a body in `(offloadHeadBytes, offloadHeadBytes + ~326]` offloads to a NET LOSS (envelope >= body) whenever `threshold <= offloadHeadBytes + ~326`. Reachable within the accepted § 2.6 clamps (head 4096, threshold 4096 → a 4200 B body). Default config (threshold 16384 >> head 2048 + 326) is safe, so this bites only lowered-threshold / raised-head operators. Fix: tighten the § 2.1 guard to `bodyBytes > offloadHeadBytes() + kEnvelopeOverhead` (or require the threshold floor to exceed the head ceiling), and add an INV-1 boundary test at a head≈threshold config. Touches the accepted § 2.1 / INV-1, so it is its own item (not folded into 3538, whose structured path is already INV-9-airtight by construction and whose omission fallback merely inherits this pre-existing envelope).
+  **Layman:** A rare mis-set config could make the "park the big reply" feature hand back something slightly bigger than the original instead of smaller — file it to fix the size check.
+  Kind: fix.
+  Source: cold-eyes-2026-07-16 (ANTS-3538 loop 4, reviewer accuracy lane).
+
 ### 🎨 At-a-glance build-version surface (user request 2026-05-14)
 
 - ✅ [ANTS-1323] **`v0.7.92 · 2026-05-14 08:48` build-badge on
