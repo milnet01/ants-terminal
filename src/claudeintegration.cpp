@@ -2997,7 +2997,11 @@ void ClaudeIntegration::onMcpConnection() {
                     "existence/frequency mode; `count` is the true "
                     "total (uncapped by max_results). On hard-kill the "
                     "rg_failed envelope carries a `hint` field with "
-                    "the three viable next steps. ANTS-1390: pass "
+                    "the three viable next steps. ANTS-3549: "
+                    "`files_only:true` returns {files:[{file,count}], "
+                    "files_count} with no match rows — the distinct "
+                    "matched-file set for \"which files reference X?\". "
+                    "ANTS-1390: pass "
                     "`caller_cwd: "
                     "\"~global\"` (alias `\"~claude-config\"`) to "
                     "search ~/.claude/ instead of a project root — "
@@ -3202,6 +3206,28 @@ void ClaudeIntegration::onMcpConnection() {
                         "budget), never merely because the row cap was "
                         "hit. Complements headline_only (row-shape trim) "
                         "and max_match_bytes (row-length trim).");
+                    // ANTS-3549 — files_only: rows-eliminated "which files
+                    // matched" mode. Distinct matched-file set + per-file
+                    // counts; drops the match rows.
+                    QJsonObject filesOnlyProp;
+                    filesOnlyProp["type"] = "boolean";
+                    filesOnlyProp["default"] = false;
+                    filesOnlyProp["description"] = QStringLiteral(
+                        "When true, return only `{files:[{file, count}], "
+                        "files_count, count, truncated, files_only:true}` — "
+                        "the DISTINCT set of files that matched, each with its "
+                        "hit count, and NO match rows. A rows-ELIMINATED mode "
+                        "for \"which files reference X?\" when you will open "
+                        "the files next anyway; much smaller than "
+                        "headline_only when a symbol recurs many times in one "
+                        "file. `count` is the true total match count across "
+                        "all files (uncapped by max_results); the file list "
+                        "is complete (not capped by max_results). `truncated` "
+                        "is true only when the scan was cut off (hard-kill / "
+                        "parse budget). count_only (leaner still) takes "
+                        "precedence if both are set. Complements count_only "
+                        "(counts only) and headline_only (one line per "
+                        "match).");
                     props["pattern"]     = patternProp;
                     props["enclosing_symbol"] = encProp;          // ANTS-2220
                     props["query"]       = queryProp;
@@ -3213,6 +3239,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["max_match_bytes"] = mmbProp;       // ANTS-1876
                     props["headline_only"]   = hoProp;        // ANTS-1876
                     props["count_only"]      = countOnlyProp; // ANTS-3537
+                    props["files_only"]      = filesOnlyProp; // ANTS-3549
                     props["context"]     = ctxProp;
                     props["case"]        = caseProp;
                     props["respect_gitignore"] = respectGitignoreProp;

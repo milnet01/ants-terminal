@@ -110,7 +110,9 @@ TEST(mcp_workspace_search_timeout_sec, Inv5SchemaDeclaresTimeoutSec) {
     // top-level description extension pushed timeoutSecProp past 12000);
     // → 20000 in ANTS-2220 (the enclosing_symbol prop block + description
     // extension pushed props["timeout_sec"] to offset ~17164).
-    const size_t end = std::min(ci.size(), wsAnchor + 20000);
+    // → 22000 in ANTS-3549 (the files_only prop block + description extension
+    // pushed props["timeout_sec"] to offset ~20875).
+    const size_t end = std::min(ci.size(), wsAnchor + 22000);
     const std::string window = ci.substr(wsAnchor, end - wsAnchor);
     expect(contains(window, "\"timeout_sec\""),
            "INV-5a: workspace_search inputSchema does not declare a "
@@ -138,7 +140,9 @@ TEST(mcp_workspace_search_timeout_sec, Inv6DescriptionMentionsTimeoutSec) {
     // top-level description extension pushed timeoutSecProp past 12000);
     // → 20000 in ANTS-2220 (the enclosing_symbol prop block + description
     // extension pushed props["timeout_sec"] to offset ~17164).
-    const size_t end = std::min(ci.size(), wsAnchor + 20000);
+    // → 22000 in ANTS-3549 (the files_only prop block + description extension
+    // pushed props["timeout_sec"] to offset ~20875).
+    const size_t end = std::min(ci.size(), wsAnchor + 22000);
     const std::string window = ci.substr(wsAnchor, end - wsAnchor);
     expect(contains(window, "timeout_sec"),
            "INV-6a: workspace_search description does not mention "

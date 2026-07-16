@@ -9489,6 +9489,14 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // the pre-3537 envelope.
     const bool countOnly =
         req.value(QStringLiteral("count_only")).toBool(false);
+    // ANTS-3549 — files_only: rows-ELIMINATED "which files matched" mode.
+    // Returns the distinct matched-file set (with per-file hit counts) and
+    // drops the match rows entirely — the answer to "where is X referenced?"
+    // when the caller will open the files next. Much smaller than
+    // headline_only when a symbol recurs many times in one file. Default
+    // false. count_only (leaner still) takes precedence if both are set.
+    const bool filesOnly =
+        req.value(QStringLiteral("files_only")).toBool(false);
 
     // ANTS-1565-INV-1/2: per-call wall-clock budget. Default 5 s
     // (kWorkspaceSearchHardKillMs); accept `timeout_sec` integer in
@@ -9600,6 +9608,13 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // the true file count without a per-path set (and independent of the
     // matches[] max_results cap, which count_only bypasses).
     int filesWithMatches = 0;
+    // ANTS-3549 — files_only capture: matched files in rg output order plus a
+    // parallel per-file match count. rg groups a file's events between its
+    // begin/end, so the path is taken from the begin event and each match is
+    // attributed to the file whose begin we last saw (filesOnlyCurIdx).
+    QStringList filesOnlyOrder;
+    QList<int>  filesOnlyHits;
+    int         filesOnlyCurIdx = -1;
     bool truncated = false;
     int lastMatchIdx = -1;  // ANTS-1304: index into matches[] for the
                             // most recent match in the current file
@@ -9635,8 +9650,22 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         // event in file B never belongs to a match in file A.
         if (evType == QLatin1String("begin") ||
             evType == QLatin1String("end")) {
-            if (evType == QLatin1String("begin"))
+            if (evType == QLatin1String("begin")) {
                 ++filesWithMatches;   // ANTS-3537: one begin per matched file
+                if (filesOnly) {
+                    // ANTS-3549 — capture the path from the begin event (rg
+                    // emits exactly one per matched file) and open a fresh
+                    // per-file count slot for the matches that follow.
+                    const QJsonObject bdata = ev.value("data").toObject();
+                    QString bp = bdata.value("path").toObject()
+                                     .value("text").toString();
+                    if (bp.startsWith(rootCanonical + QLatin1Char('/')))
+                        bp = bp.mid(rootCanonical.size() + 1);
+                    filesOnlyCurIdx = filesOnlyOrder.size();
+                    filesOnlyOrder.append(bp);
+                    filesOnlyHits.append(0);
+                }
+            }
             lastMatchIdx = -1;
             pendingBefore.clear();
             continue;
@@ -9671,6 +9700,13 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
 
         if (evType != QLatin1String("match")) continue;
         ++seenMatchEvents;
+        // ANTS-3549 — files_only: attribute the match to its file and skip
+        // building the row. The increment sits BEFORE the max_results cap so
+        // a file's count reflects ALL its matches, not just the first N.
+        if (filesOnly) {
+            if (filesOnlyCurIdx >= 0) ++filesOnlyHits[filesOnlyCurIdx];
+            continue;
+        }
         if (matches.size() >= maxResults) { truncated = true; continue; }
 
         const QJsonObject data = ev.value("data").toObject();
@@ -9778,6 +9814,38 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         out["files_count"] = filesWithMatches;
         out["truncated"]   = (hardKilled || parseBudgetExceeded);
         out["count_only"]  = true;
+        out["respect_gitignore"] = respect_gitignore;
+        out["include_hidden"]    = include_hidden;
+        out["timeout_sec"]       = budgetSec;
+        out["elapsed_ms"]        = static_cast<int>(wall.elapsed());
+        return QJsonDocument(out);
+    }
+
+    // ANTS-3549 — files_only: return the distinct matched-file set (with
+    // per-file hit counts) and no row bodies. Placed alongside count_only —
+    // after the genuine-error guards, before the dedup / clip / enclosing /
+    // byte-cap stages that all operate on matches[] we never emit. The file
+    // list is NOT capped by max_results (like count_only's count it is
+    // complete), and the per-file counts are uncapped too. `count` is the
+    // true total match count across all files; `truncated` means the SCAN was
+    // cut off (hard-kill / parse budget), never the row cap. count_only
+    // (checked first) wins if both flags are set.
+    if (filesOnly) {
+        QJsonArray files;
+        for (int i = 0; i < filesOnlyOrder.size(); ++i) {
+            QJsonObject fe;
+            fe["file"]  = filesOnlyOrder.at(i);
+            fe["count"] = filesOnlyHits.at(i);
+            files.append(fe);
+        }
+        QJsonObject out;
+        out["ok"]          = true;
+        out["pattern"]     = pattern;
+        out["files"]       = files;
+        out["files_count"] = filesWithMatches;
+        out["count"]       = seenMatchEvents;
+        out["truncated"]   = (hardKilled || parseBudgetExceeded);
+        out["files_only"]  = true;
         out["respect_gitignore"] = respect_gitignore;
         out["include_hidden"]    = include_hidden;
         out["timeout_sec"]       = budgetSec;

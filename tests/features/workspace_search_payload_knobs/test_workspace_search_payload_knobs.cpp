@@ -252,3 +252,66 @@ TEST(workspace_search_payload_knobs, Inv11CountOnlyInSchema) {
            "workspace_search tools/list descriptor");
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-3549 INV-12 — files_only arg parsed in cmdWorkspaceSearch.
+TEST(workspace_search_payload_knobs, Inv12FilesOnlyParsed) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "\"files_only\""),
+           "INV-12: files_only arg name present in cmdWorkspaceSearch");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3549 INV-13 — files_only envelope emits a files[] set and omits the
+// match rows (early return before the dedup/clip pipeline, like count_only).
+TEST(workspace_search_payload_knobs, Inv13FilesOnlyEnvelopeShape) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "out[\"files\"]"),
+           "INV-13: files[] field emitted");
+    // The files_only branch must sit BEFORE the dedup loop so matches[]
+    // is never serialised (rows-eliminated). Anchor on the branch guard
+    // preceding the dedup site.
+    const auto branchPos = cpp.find("if (filesOnly) {");
+    const auto dedupPos  = cpp.find(".toString().simplified()");
+    expect(branchPos != std::string::npos,
+           "INV-13: files_only early-return branch present");
+    if (branchPos != std::string::npos && dedupPos != std::string::npos) {
+        expect(branchPos < dedupPos,
+               "INV-13: files_only return runs BEFORE the dedup pipeline "
+               "(matches[] is never built into the envelope)");
+    }
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3549 INV-14 — the file set is captured from rg `begin` events (path +
+// per-file hit count), and per-file counting is uncapped (the increment sits
+// before the max_results cap, so a file's count reflects ALL its matches).
+TEST(workspace_search_payload_knobs, Inv14FilesOnlyPerFileFromBegin) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "filesOnlyOrder") && contains(cpp, "filesOnlyHits"),
+           "INV-14: per-file order + hit-count accumulators present");
+    // The per-file increment must precede the matches[] max_results cap so
+    // it counts every match, not just those under the cap.
+    const auto hitPos = cpp.find("++filesOnlyHits");
+    const auto capPos = cpp.find("matches.size() >= maxResults");
+    expect(hitPos != std::string::npos,
+           "INV-14: per-file hit increment present");
+    if (hitPos != std::string::npos && capPos != std::string::npos) {
+        expect(hitPos < capPos,
+               "INV-14: per-file count increments BEFORE the max_results cap "
+               "(count is uncapped)");
+    }
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3549 INV-15 — tools/list schema enumerates files_only.
+TEST(workspace_search_payload_knobs, Inv15FilesOnlyInSchema) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    expect(contains(cpp, "props[\"files_only\"]"),
+           "INV-15: props[\"files_only\"] populated in "
+           "workspace_search tools/list descriptor");
+    EXPECT_EQ(0, expect_failures());
+}

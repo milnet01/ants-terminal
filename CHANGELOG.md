@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **workspace_search `files_only` mode — return the deduplicated matched-file set with per-file hit counts, no match rows** (ANTS-3549)
+  The rows-eliminated answer to "which files reference X?": `files_only:true` returns `{files:[{file,count}], files_count, count}` and omits every match line. Much smaller than `headline_only` when a symbol recurs many times in one file. File set and per-file counts are complete (uncapped by max_results); `count` is the true total. Complements `count_only` (counts only) and `headline_only` (one line per match).
+
 - **Structured preview on offloaded Ants-MCP replies — first rows + total, no second fetch (ANTS-3538)**
   When a large array-shaped reply is parked to a spill file, the preview now includes the first few whole results plus the total count (head_rows / row_count), so most callers answer without a read_spill round-trip. The preview is capped and always smaller than the original (INV-9); it falls back to the byte-prefix head for non-array, tabular, over-1-MiB, or marginal bodies.
 

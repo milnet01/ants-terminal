@@ -13413,11 +13413,12 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Source: in-session-2026-07-16.
 
-- 📋 [ANTS-3549] **`workspace_search` `files_only` mode — return the deduplicated matched-file set, no line bodies.**
+- ✅ [ANTS-3549] **`workspace_search` `files_only` mode — return the deduplicated matched-file set, no line bodies.**
   Third row-shape knob alongside count_only (ANTS-3537, counts only) and headline_only (one line per match). files_only returns the distinct set of files that matched (optionally with per-file hit counts) and drops the match rows entirely — the answer to 'where is X referenced?' when you'll open the files next anyway. Much smaller than headline_only when a symbol recurs many times per file. Reuses rg's `begin` events (already counted for count_only's files_count), so it's nearly free to add.
   **Layman:** For 'which files mention X', give me just the list of files — not every single line, which is huge when a name appears 40 times in one file.
   Kind: enhancement.
   Source: in-session-2026-07-16.
+  Resolved (2026-07-16): workspace_search now accepts files_only:true → returns {files:[{file,count}], files_count, count, truncated, files_only:true} with matches[] omitted. The file set + per-file counts are captured from rg `begin` events (path) and match attribution before the max_results cap, so both the file list and per-file counts are uncapped/complete; truncated flags only a cut-off scan. count_only takes precedence if both flags set. Schema + main description updated; 4 source-grep INV cases added to workspace_search_payload_knobs (Inv12-15); two sibling byte-window scrapes (mcp_workspace_search required, mcp_workspace_search_timeout_sec INV5/6) widened 20000→22000 for the new prop blurb. Full suite 2690/2690 green. Live on next relaunch.
 
 - 📋 [ANTS-3550] **Suppress advisory hint fields after first emission — session 'already-taught' latch on next_call_hint / leaner_call_hint.**
   Every workspace_search reply ships leaner_call_hint (~120 B) and the list verbs ship next_call_hint (~90 B) — educational the first time, recurring overhead thereafter. compact:true does NOT drop them (they're non-empty strings, so 3532's empty-field compaction skips them). Add a session/process-scoped 'taught' set keyed by hint-kind: emit each advisory string once, then omit it for the rest of the session. Distinct from ANTS-3532 (empty-field compaction) and the per-call fields= whitelist. Keep an off switch (config) for callers that re-read the hint each call. Small recurring saving across a whole session's worth of read calls.
