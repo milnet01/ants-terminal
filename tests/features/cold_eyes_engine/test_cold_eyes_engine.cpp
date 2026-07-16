@@ -132,7 +132,7 @@ TEST(ColdEyesEngine, BriefManifestIsPathsOnly) {
     lane.docPaths << QStringLiteral("docs/specs/ANTS-9999.md");
 
     const auto m = ColdEyesEngine::assembleBriefManifest(ws.root(), lane);
-    EXPECT_TRUE(m.brief.contains(QStringLiteral("Read each doc")));
+    EXPECT_TRUE(m.brief.contains(QStringLiteral("Read the doc files")));
     EXPECT_FALSE(m.brief.contains(QStringLiteral("MASSIVE_INLINED_SECRET_BODY")))
         << "INV-3: brief must NOT inline doc bodies";
     EXPECT_EQ(m.docPaths, lane.docPaths);
@@ -1004,6 +1004,48 @@ TEST(ColdEyesEngine, Ants3522CitedCodeRegionsGrouped) {
     for (const auto &v : regions) totalRegionLines += v.size();
     EXPECT_LT(totalRegionLines, 200 / 10)
         << "ANTS-3522: cited regions are a small fraction of the whole file";
+}
+
+// ANTS-3526 — large append-only cross-ref logs (ROADMAP.md / CHANGELOG.md)
+// are routed to a SEARCH-not-read brief section, while small contracts
+// (CLAUDE.md / README.md) stay full-read. Guards the #1 cold-eyes token
+// sink the ANTS-3521 measurement found (whole-file reads of the giant logs).
+TEST(ColdEyesEngine, Ants3526LargeCrossRefLogsRoutedToSearch) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    // Small contracts stay full-read; the two logs exceed the 100 KiB
+    // threshold (content is irrelevant — only file size drives the split).
+    ASSERT_TRUE(ws.writeRel("CLAUDE.md", "x"));
+    ASSERT_TRUE(ws.writeRel("README.md", "x"));
+    const QString bigLog(120 * 1024, QLatin1Char('x'));  // > 100 KiB
+    ASSERT_TRUE(ws.writeRel("ROADMAP.md", bigLog));
+    ASSERT_TRUE(ws.writeRel("CHANGELOG.md", bigLog));
+    ASSERT_TRUE(ws.writeRel("docs/standards/coding.md", "x"));
+
+    ColdEyesEngine::Lane lane;
+    lane.name = QStringLiteral("standards");
+    lane.docPaths << QStringLiteral("docs/standards/coding.md");
+
+    const auto m = ColdEyesEngine::assembleBriefManifest(ws.root(), lane);
+
+    // All four still surface as cross-refs (membership unchanged).
+    EXPECT_EQ(m.crossReferenceDocs.size(), 4);
+    // Only the two oversized logs are classified large.
+    EXPECT_EQ(m.largeCrossReferenceDocs.size(), 2);
+    EXPECT_TRUE(m.largeCrossReferenceDocs.contains(QStringLiteral("ROADMAP.md")));
+    EXPECT_TRUE(m.largeCrossReferenceDocs.contains(QStringLiteral("CHANGELOG.md")));
+    EXPECT_FALSE(m.largeCrossReferenceDocs.contains(QStringLiteral("CLAUDE.md")))
+        << "ANTS-3526: small contract must stay full-read, not search-only";
+    EXPECT_FALSE(m.largeCrossReferenceDocs.contains(QStringLiteral("README.md")));
+
+    // Brief renders the distinct search-not-read section for the logs...
+    EXPECT_TRUE(m.brief.contains(QStringLiteral("Cross-reference logs")))
+        << "ANTS-3526: logs get a distinct brief section";
+    EXPECT_TRUE(m.brief.contains(QStringLiteral("SEARCH, do NOT full-read")));
+    // ...and the small contracts stay in the full-read section.
+    EXPECT_TRUE(m.brief.contains(QStringLiteral("read in full, cross-check")));
+    // Instructions teach the search discipline for the logs.
+    EXPECT_TRUE(m.brief.contains(QStringLiteral("workspace_search")));
 }
 
 // ANTS-1633 INV-C — version-string false-positives (1.2.3:4) and

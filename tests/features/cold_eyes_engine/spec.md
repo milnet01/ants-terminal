@@ -16,7 +16,7 @@ through `ants_core_lib` (no `Qt6::Widgets` event loop required).
 | ENG-1 | `derivePartition(Default)` builds canonical lane set | `contracts` / `standards` / `decisions` lanes present when their docs exist |
 | ENG-2 | Spec lanes emitted only for 📋/🚧 ROADMAP entries | shipped (✅) IDs absent from active set |
 | ENG-3 | Spec-lane cap honoured (INV-2) | 15 fake active specs → 12 returned + `truncated=true` |
-| ENG-4 | `assembleBriefManifest` is paths-only (INV-3) | `brief` contains "Read each doc"; no doc-body bytes inlined |
+| ENG-4 | `assembleBriefManifest` is paths-only (INV-3) | `brief` contains "Read the doc files"; no doc-body bytes inlined |
 | ENG-5 | `crossReferenceDocs` is contract trio + CHANGELOG (INV-4) | exact set, lane's own docs de-duped |
 | ENG-6 | `extractCitedCodePaths` resolves `src/foo.{h,cpp}` mentions | hits real paths; rejects non-existent paths |
 | ENG-7 | `crossDocDiffFromDir` delegates to indie-review engine | empty dir → empty findings |

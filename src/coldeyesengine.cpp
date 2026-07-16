@@ -962,11 +962,19 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
         QStringLiteral("ROADMAP.md"),
         QStringLiteral("CHANGELOG.md"),
     };
+    // ANTS-3526 — cross-ref docs over this size are append-only LOGS
+    // (ROADMAP.md ~2.3 MB, CHANGELOG.md ~1.1 MB); every legitimate
+    // full-read contract (CLAUDE.md ~20 KB, README.md ~9 KB, a spec) sits
+    // well under it. The ANTS-3521 measurement showed whole-file reads of
+    // these logs were the dominant /cold-eyes token sink, so they are
+    // routed to a search-not-read brief section instead.
+    constexpr qint64 kLargeCrossRefBytes = 100 * 1024;
     const QSet<QString> laneDocSet(lane.docPaths.begin(), lane.docPaths.end());
     for (const QString &x : kCrossRefs) {
-        if (!laneDocSet.contains(x) && fileExists(projectPath, x)) {
-            m.crossReferenceDocs << x;
-        }
+        if (laneDocSet.contains(x) || !fileExists(projectPath, x)) continue;
+        m.crossReferenceDocs << x;
+        if (QFileInfo(projectPath + QChar('/') + x).size() > kLargeCrossRefBytes)
+            m.largeCrossReferenceDocs << x;
     }
 
     // ANTS-1633 — collect stale citations (cited-but-missing) so
@@ -1005,10 +1013,25 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
     for (const QString &p : lane.docPaths) {
         b += QStringLiteral("- ") + p + QChar('\n');
     }
-    if (!m.crossReferenceDocs.isEmpty()) {
+    // ANTS-3526 — split cross-refs: small contracts get a full read; large
+    // append-only logs get a SEARCH-don't-read section (see Instructions).
+    const QSet<QString> largeRefSet(m.largeCrossReferenceDocs.begin(),
+                                    m.largeCrossReferenceDocs.end());
+    QStringList smallCrossRefs;
+    for (const QString &p : m.crossReferenceDocs) {
+        if (!largeRefSet.contains(p)) smallCrossRefs << p;
+    }
+    if (!smallCrossRefs.isEmpty()) {
         b += QStringLiteral("\n## Cross-reference docs "
-                            "(always cross-check for drift)\n\n");
-        for (const QString &p : m.crossReferenceDocs) {
+                            "(read in full, cross-check for drift)\n\n");
+        for (const QString &p : smallCrossRefs) {
+            b += QStringLiteral("- ") + p + QChar('\n');
+        }
+    }
+    if (!m.largeCrossReferenceDocs.isEmpty()) {
+        b += QStringLiteral("\n## Cross-reference logs "
+                            "(append-only — SEARCH, do NOT full-read)\n\n");
+        for (const QString &p : m.largeCrossReferenceDocs) {
             b += QStringLiteral("- ") + p + QChar('\n');
         }
     }
@@ -1072,10 +1095,17 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
     }
     b += QStringLiteral(
         "\n## Instructions\n\n"
-        "Read each doc and cross-reference file in FULL via your Read tool — "
-        "they are what you are reviewing. Do NOT trust prior summarisations "
-        "of them — the doc set may have shifted since the brief was "
-        "assembled.\n\n"
+        "Read the doc files (this lane) and the small \"Cross-reference docs\" "
+        "in FULL via your Read tool — they are what you are reviewing. Do NOT "
+        "trust prior summarisations of them — the doc set may have shifted "
+        "since the brief was assembled.\n\n"
+        "For any \"Cross-reference logs\" (large append-only files such as "
+        "ROADMAP.md / CHANGELOG.md — tens of thousands of lines): do NOT read "
+        "them in full. Drift-checking against a monotonically-growing log is a "
+        "targeted lookup, not a read. Search the log (workspace_search / grep) "
+        "for the specific ID, feature name, or version you are drift-checking "
+        "and read_region a window around each hit. A full read wastes hundreds "
+        "of thousands of tokens and buries the one line that matters.\n\n"
         "For the cited CODE files (read-only): read token-efficiently WITHOUT "
         "losing accuracy. Outline each file first (file_outline) to see every "
         "symbol, then read a window around each cited line under "

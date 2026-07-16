@@ -115,6 +115,15 @@ struct BriefManifest {
     QString     brief;
     QStringList docPaths;
     QStringList crossReferenceDocs;  // INV-4 fixed contract trio + CHANGELOG
+    // ANTS-3526 — the subset of crossReferenceDocs that are large append-only
+    // logs (file size > kLargeCrossRefBytes, e.g. ROADMAP.md / CHANGELOG.md at
+    // 1-2 MB / 20-25K lines). A drift-check against a monotonically-growing log
+    // is a targeted lookup, never a whole-file read, so the brief lists these
+    // under a distinct "SEARCH, do not full-read" section and the Instructions
+    // tell the reviewer to grep/read_region them. The ANTS-3521 measurement
+    // found these whole-file reads were the #1 /cold-eyes token sink (~856K
+    // tok/lane, re-paid lane x loop). Always a subset of crossReferenceDocs.
+    QStringList largeCrossReferenceDocs;
     QStringList citedCodePaths;
     // ANTS-1633 — code paths cited in the doc bodies (`<path>:<line>`
     // form, language-agnostic) that the regex matched but the

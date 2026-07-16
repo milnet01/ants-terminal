@@ -18370,6 +18370,13 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     for (const QString &p : m.docPaths) dps.append(p);
     QJsonArray xref;
     for (const QString &p : m.crossReferenceDocs) xref.append(p);
+    // ANTS-3526 — the subset of cross_reference_docs that are large append-only
+    // logs (ROADMAP.md / CHANGELOG.md). The brief already routes these to a
+    // "SEARCH, do not full-read" section; surface the subset structurally so a
+    // caller building its own pipeline can apply the same discipline without
+    // re-parsing the brief markdown.
+    QJsonArray xrefLarge;
+    for (const QString &p : m.largeCrossReferenceDocs) xrefLarge.append(p);
     QJsonArray code;
     for (const QString &p : m.citedCodePaths) code.append(p);
     // ANTS-3522 — cited code regions: per-file the exact cited lines, so a
@@ -18401,6 +18408,7 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     env["brief"]                 = m.brief;
     env["doc_paths"]             = dps;
     env["cross_reference_docs"]  = xref;
+    env["large_cross_reference_docs"] = xrefLarge;
     env["cited_code_paths"]      = code;
     env["cited_code_regions"]    = regions;
     env["stale_citations"]       = stale;

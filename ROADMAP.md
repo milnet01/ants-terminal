@@ -18969,11 +18969,12 @@ below. No rigor-neutral infra-independent big win exists — region-narrowing
 trades completeness, cross-subagent prompt-caching is unmeasured infra; measure
 before the big build.
 
-- 📋 [ANTS-3521] **Measure per-lane reviewer input-token cost before optimizing (can't optimize what we don't measure).**
+- ✅ [ANTS-3521] **Measure per-lane reviewer input-token cost before optimizing (can't optimize what we don't measure).**
   Instrument /cold-eyes and /indie-review to capture per-lane input tokens (base brief vs cited docs vs cited code) and whether sibling/loop subagents hit the prompt cache. token_usage / model_switch_stats infra may already expose the raw signal. This gates ANTS-3520 and the region/pack ideas — validate the prompt-caching assumption empirically before the big build.
   **Layman:** First put a number on how many tokens each review helper actually burns reading files, so we can prove any saving is real.
   Kind: investigate.
   Source: user-request-2026-07-16.
+  Resolved (2026-07-16): Measured. token_usage reports ORCHESTRATOR MCP-wrap savings, NOT subagent read cost — the MCP server has zero visibility into subagent file-reads (they run in the harness; the prompt-cache-hit signal lives in the harness's own API usage records, unreachable from the MCP layer). So the empirical cache half can only be captured harness-side; the analytical half is fully computable now. Analytical per-cold-eyes-lane cost (bytes/4 heuristic): the cross-reference docs, read in FULL by every lane, dominate — ROADMAP.md 2.32MB (~580K tok) + CHANGELOG.md 1.10MB (~276K tok) = ~856K tok/lane, vs all 22 standards docs 273KB (~68K tok) + base brief 1.7KB. The #1 sink is whole-file reads of the two giant append-only cross-ref logs, re-paid lane x loop — an order of magnitude over the actual review target and larger than a single context window (so the instruction is partly fictional; the subagent truncates or greps anyway). Sibling-dedup cache (ANTS-3520) is second-order by comparison. Actionable fix filed as ANTS-3526.
 
 - ✅ [ANTS-3522] **cold_eyes_brief: resolve cited-code REGIONS (symbol / file:line) so cold-eyes reviewers read regions + outline, not whole files.**
   Extend extractCitedCodePaths (coldeyesengine.cpp:938) to also capture the cited symbol/line from the doc (file.cpp:123, Class::method, INV-N) and emit cited_code_regions[] {path, symbol|line, resolved_range via file_outline} in the cold_eyes_brief envelope (remotecontrol.cpp:18239). Additive — keep cited_code_paths. Rigor guard: ALWAYS include the file OUTLINE (full symbol list) so structural completeness is preserved; regions carry the cited detail; reviewer expands on judgment. Cold-eyes-only (citation-local verification); NOT indie-review (needs whole-file context to find uncited bugs).
@@ -18994,6 +18995,13 @@ before the big build.
   **Layman:** Every code-review helper currently re-reads the same three standards documents and the same instructions; share them once instead.
   Kind: investigate.
   Source: user-request-2026-07-16.
+
+- ✅ [ANTS-3526] **Cold-eyes: stop full-reading large append-only cross-ref logs (ROADMAP/CHANGELOG) — consult by search/region.**
+  The ANTS-3521 measurement shows the #1 /cold-eyes token sink is whole-file reads of the cross-reference logs. assembleBriefManifest's kCrossRefs hard-includes ROADMAP.md (2.32MB, 25K lines) + CHANGELOG.md (1.10MB, 19K lines), and the Instructions block tells every lane to "read each cross-reference file in FULL" — ~856K tok/lane, re-paid lane x loop, larger than one context window (so it truncates/greps anyway). Fix (safe cut, accuracy-preserving): in assembleBriefManifest classify cross-ref docs by size; small contracts (CLAUDE.md/README.md) stay full-read; large append-only logs over a threshold (~100KB) render under a distinct "Cross-reference logs (SEARCH, do not full-read)" section, and Instructions tell the reviewer to workspace_search/grep the log for the specific ID/feature/version being drift-checked and read_region the hit. Add large_cross_reference_docs[] to the cold_eyes_brief envelope; update the /cold-eyes skill reading discipline (review-brief.md + SKILL.md) to match. Drift-check against an append-only log is inherently a targeted lookup, so full access via search preserves accuracy and cuts review noise. Kind: perf. Source: measurement-ANTS-3521-2026-07-16.
+  **Layman:** Right now every review helper is told to read the entire 25,000-line roadmap and 19,000-line changelog top to bottom — the single biggest review cost. Have them search those two big logs for the exact thing they're checking instead.
+  Kind: perf.
+  Source: measurement-ANTS-3521-2026-07-16.
+  Shipped (2026-07-16): assembleBriefManifest now classifies cross-ref docs by file size (>100KB → append-only log). Small contracts (CLAUDE.md/README.md) render under "## Cross-reference docs (read in full…)"; large logs (ROADMAP.md/CHANGELOG.md) render under "## Cross-reference logs (append-only — SEARCH, do NOT full-read)" and the Instructions block tells the reviewer to workspace_search/grep the log for the specific ID/feature/version and read_region the hit. Envelope adds large_cross_reference_docs[] (remotecontrol.cpp cmdColdEyesBrief); tool description updated (claudeintegration.cpp). Cold-eyes skill reading discipline updated (SKILL.md §1a + review-brief.md). Test: ColdEyesEngine.Ants3526LargeCrossRefLogsRoutedToSearch (RED-equivalent: field/section did not exist pre-change). Full suite 2674/2674 green. Est. saving on this repo: ~856K tok/lane removed from the instructed read set (ROADMAP 2.32MB + CHANGELOG 1.10MB no longer full-read), re-paid every lane x loop.
 
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
@@ -21448,6 +21456,12 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Kind: feature.
   Lanes: claudeintegration, mcp, auditdialog.
   Source: user-request-2026-05-20.
+
+- 📋 [ANTS-3527] **Cross-session messaging: let CC sessions in different tabs of the same Ants terminal talk to each other.**
+  Ants already has the substrate: one shared hook UDS (claudeintegration, one socket across all tabs), the remotecontrol UDS (JSON-over-Unix-socket), per-tab session tracking (tab_list, sessionPathForCwd project-scoped resolver), and a send-text verb that writes into a tab's composer. Build a same-terminal cross-session channel on top. Design surface (investigate first): TRANSPORT — new remotecontrol verb pair (session_send / session_inbox) vs a shared mailbox file under XDG_RUNTIME_DIR; ADDRESSING — by tab id / by project root / broadcast to all sessions; DELIVERY — a CC session cannot receive an async push, so either (a) an MCP inbox verb the target session polls on its own turn, or (b) inject a visible line into the target tab via the existing send-text path (more intrusive, interrupts the target); PERSISTENCE + RAM — bounded per-session ring buffer (e.g. last N messages, evict on read or age-out), state the budget at design time; TRUST — same-UID + same-terminal only, reuse the SO_PEERCRED/0700 model, no cross-machine. Concrete first use surfaced today: two sessions (DOOM Ants, finbreak) running /cold-eyes loops in parallel could coordinate ("done with my lane", "found X, check your side"). Ties to the terminal-as-workshop platform theme and the 0.8.0 multiplexing lane. Kind: feature. Source: user-request-2026-07-16.
+  **Layman:** When you have two Claude sessions open in two tabs, give them a way to pass notes to each other — "I'm done, your turn" or "here's what I found" — instead of you copy-pasting between them.
+  Kind: feature.
+  Source: user-request-2026-07-16.
 
 ### 📚 Methodology — adopted as standing practice
 

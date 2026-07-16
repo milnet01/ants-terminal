@@ -68,6 +68,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Cold-eyes: stop full-reading large append-only cross-ref logs (ROADMAP/CHANGELOG) — consult by search/region.** (ANTS-3526)
+  Right now every review helper is told to read the entire 25,000-line roadmap and 19,000-line changelog top to bottom — the single biggest review cost. Have them search those two big logs for the exact thing they're checking instead.
+
 - **feedback_query mapped_id_status marks cross-repo ids foreign_repo instead of unknown.** (ANTS-3518)
   A mapped ANTS-id whose prefix is absent from the caller project's own roadmap now resolves to "foreign_repo" (with a mapped_id_status_note) rather than the ambiguous "unknown", so a consumer session no longer misreads a shipped suggestion as never-shipped. Fuller cross-repo status resolution is tracked in ANTS-3519.
 
