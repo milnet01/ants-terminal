@@ -19012,6 +19012,24 @@ before the big build.
   Kind: perf.
   Source: user-request-2026-07-16.
 
+- 📋 [ANTS-3529] **Port the cheap-breadth→strong-depth two-tier dispatch to /cold-eyes and /test-audit.**
+  /indie-review already routes attention with a cheap-model breadth pass over ALL lanes, then a strong-model deep pass over ONLY the lanes/findings that showed signal (ANTS-2208/2209 — a 2026-06-26 13-lane run had 11 of 13 clean, so full-model on every lane is mostly waste). /cold-eyes and /test-audit still dispatch every lane/chunk at full model every loop. Port the two-tier: cheap (Haiku) breadth pass flags lanes/chunks with a potential finding; strong model reviews only the escalation set. RIGOR TRADEOFF: the cheap model can false-clean a subtle finding — mitigate with a low escalation threshold (escalate on any suspicion), corroboration, and a MEDIUM floor, exactly as indie-review does. Highest-value remaining review-loop saving; recommend user sign-off (rigor-adjacent). Kind: perf. Source: skill-review-2026-07-16.
+  **Layman:** Cold-eyes and test-audit currently send every helper at full power even though most find nothing. First run a quick, cheap scan to see which parts look risky, then send the expensive helper only there.
+  Kind: perf.
+  Source: skill-review-2026-07-16.
+
+- 📋 [ANTS-3530] **/cold-eyes: skip re-reviewing lanes whose brief input is byte-identical to a prior clean loop.**
+  /cold-eyes loops until clean, re-reviewing ALL lanes every loop for cold independence. But a lane whose FULL brief input (doc bodies + cross-ref + cited-code regions) content-hashes identical to the loop where it last reviewed clean cannot surface a NEW finding on re-read — same bytes in. Gate loop N>=2: skip a lane iff (input-hash unchanged) AND (last verdict clean); re-review every lane whose docs the fix step touched. Log skipped-vs-reviewed (never silently drop a lane). RIGOR TRADEOFF: forgoes the nondeterministic re-roll on unchanged clean lanes (a finding missed by loop-1's dice is not re-attempted), weakening the loop-to-re-verify guarantee for unchanged lanes. Big saving on 4-8 loop runs (usually only 1-2 lanes change per loop). Recommend user sign-off (rigor-adjacent). Kind: perf. Source: skill-review-2026-07-16.
+  **Layman:** When cold-eyes loops again, don't re-check the parts that didn't change and were already clean — same text in means the same answer out. (Small catch: those parts don't get a lucky second look.)
+  Kind: perf.
+  Source: skill-review-2026-07-16.
+
+- 📋 [ANTS-3531] **Rigor-neutral orchestrator discipline for the review skills: Ants-MCP discovery + load-shared-once-per-run + cheap pre-pass.**
+  Rigor-NEUTRAL orchestrator-side savings across the review skills (no accuracy cost, lower value than the two-tier/skip levers): (a) do partition / file_outline / grep / report-collection discovery via Ants MCP verbs (wrapped, cheaper) rather than raw tools — mostly already true in Ants sessions, make it explicit in the skills; (b) load run-invariant inputs (partition, FP-ledger, project-context header) ONCE per run and reuse across loops, not re-loaded per loop; (c) a cheap structural pre-pass for /cold-eyes (broken relative links, TODO/FIXME/TBD markers, version-string mismatches vs the shipped version) that pre-populates the mechanical findings so the LLM lanes spend tokens on judgment calls — mirrors /test-audit's existing grep pre-pass. Kind: perf. Source: skill-review-2026-07-16.
+  **Layman:** Housekeeping savings with no downside: use the terminal's cheaper built-in lookups, load the shared stuff once per run instead of every loop, and let a quick mechanical scan handle the obvious stuff so the expensive helpers only do the hard parts.
+  Kind: perf.
+  Source: skill-review-2026-07-16.
+
 ### 🔌 Ants-MCP feedback from CC sessions (cross-session reports 2026-07-01)
 
 Triage of the 2026-06-30 → 2026-07-01 un-triaged feedback tails from Vestige,
