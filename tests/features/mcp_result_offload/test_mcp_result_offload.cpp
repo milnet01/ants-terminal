@@ -23,6 +23,7 @@
 #include <QRegularExpression>
 #include <QString>
 #include <QTemporaryDir>
+#include <QTemporaryFile>
 
 namespace {
 
@@ -370,9 +371,32 @@ TEST_F(McpResultOffload, Inv10ReadSpillWiring) {
 TEST_F(McpResultOffload, Inv11FailOpenWiring) {
     const QString src = readSource(SRC_MCPSPILL_CPP_PATH);
     ASSERT_FALSE(src.isEmpty());
-    // ensurePrivateDir / open / commit failures all `return body;`.
+    // All four fail-open exits — ensurePrivateDir / open / short-write /
+    // commit — return the original body unchanged.
     EXPECT_TRUE(src.contains(QStringLiteral("if (!ensurePrivateDir(spillDir())) return body;")));
+    EXPECT_TRUE(src.contains(QStringLiteral("if (!f.open(QIODevice::WriteOnly)) return body;")));
+    EXPECT_TRUE(src.contains(QStringLiteral("f.cancelWriting(); return body;")));
     EXPECT_TRUE(src.contains(QStringLiteral("if (!f.commit()) return body;")));
+}
+
+// INV-11 — fail-open, behavioural: when the spill dir can't be created (its
+// parent is a regular FILE, so ensurePrivateDir's mkpath can never succeed),
+// offloadBody returns the original body verbatim — no offloaded:true envelope,
+// no stray spill file left behind. The runtime complement to the source-scrape
+// above. A file-as-parent forces the failure regardless of uid (no
+// chmod-vs-root fragility a read-only-dir approach would carry).
+TEST_F(McpResultOffload, Inv11FailOpenFaultInjection) {
+    QTemporaryFile blocker;                        // a regular file...
+    ASSERT_TRUE(blocker.open());
+    const QString spill = blocker.fileName() + QStringLiteral("/spill");
+    mcp::setSpillDirOverride(spill);               // ...as the spill dir's parent
+    const QString body = QString(20000, QLatin1Char('f'));
+    const QString env = mcp::offloadBody(QStringLiteral("workspace_search"), body);
+    EXPECT_EQ(env, body) << "fail-open must return the body verbatim";
+    EXPECT_FALSE(QJsonDocument::fromJson(env.toUtf8()).object()
+                     .value("offloaded").toBool());
+    EXPECT_FALSE(QFileInfo(spill).exists()) << "no spill file (nor temp) on fail-open";
+    mcp::setSpillDirOverride(m_tmp.path());         // restore the fixture's writable dir
 }
 
 // ANTS-3538 — helper: parse an offload envelope string to its JSON object.
@@ -643,9 +667,59 @@ TEST_F(McpResultOffload, Inv14RowModeWiring) {
     EXPECT_TRUE(rc.contains(QStringLiteral("\"row_count\"")));
     // The observable row-mode discriminator: mode == "rows".
     EXPECT_TRUE(rc.contains(QStringLiteral("QStringLiteral(\"rows\")")));
+    // The too_large / not_array refusals each carry a byte-paging redirect
+    // `hint`. That hint is built in cmdReadSpill (the SpillRows struct
+    // readSpillRows returns has no `hint` field), so it is asserted here by
+    // source-scrape, not on the direct readSpillRows call.
+    EXPECT_TRUE(rc.contains(QStringLiteral("byte mode does not")))
+        << "too_large refusal must redirect the caller to byte paging";
+    EXPECT_TRUE(rc.contains(QStringLiteral("byte-page it via offset/max_bytes instead")))
+        << "not_array refusal must redirect the caller to byte paging";
 
     const QString ci = readSource(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.isEmpty());
     EXPECT_TRUE(ci.contains(QStringLiteral("props[\"row_offset\"]")));
     EXPECT_TRUE(ci.contains(QStringLiteral("props[\"row_count\"]")));
+}
+
+// INV-14 (ANTS-3545) — row-mode refusal edges the Inv14ReadSpillRowPaging
+// happy-path run doesn't reach: the stat-before-read `too_large` gate (a
+// > 1 MiB body refused without loading it — mirrors Inv13ParseCapSkipped's
+// body, here exercising the ROW path), and the two `not_array` shapes beyond
+// scalar-only — an empty-array member (domCount == 0) and a bare root array
+// (parses, but not a JSON object).
+TEST_F(McpResultOffload, Inv14RowModeRefusalEdges) {
+    // too_large — a > 1 MiB spilled body refuses before parsing (stat gate).
+    {
+        QJsonObject b;
+        b["matches"] = QJsonArray{QString(1100000, QLatin1Char('a'))};  // > 1 MiB
+        const QString body = compact(b);
+        ASSERT_GT(body.toUtf8().size(), mcp::kStructuredParseMaxBytes);
+        const QString handle =
+            offloadEnv(QStringLiteral("get_scrollback"), body).value("handle").toString();
+        ASSERT_FALSE(handle.isEmpty());
+        EXPECT_EQ(mcp::readSpillRows(handle, 0, 10).code, QStringLiteral("too_large"));
+    }
+    // not_array — an empty array member (domCount == 0).
+    {
+        QJsonObject b;
+        b["matches"] = QJsonArray();
+        b["pad"] = QString(20000, QLatin1Char('p'));
+        const QString handle = offloadEnv(QStringLiteral("workspace_search"),
+                                          compact(b)).value("handle").toString();
+        ASSERT_FALSE(handle.isEmpty());
+        EXPECT_EQ(mcp::readSpillRows(handle, 0, 10).code, QStringLiteral("not_array"));
+    }
+    // not_array — a bare root array (valid JSON, but doc.isObject() is false).
+    {
+        QJsonArray arr;
+        for (int i = 0; i < 4000; ++i) arr.append(i);   // large enough to offload
+        const QString body = QString::fromUtf8(
+            QJsonDocument(arr).toJson(QJsonDocument::Compact));
+        ASSERT_GT(body.toUtf8().size(), 16384);
+        const QString handle =
+            offloadEnv(QStringLiteral("roadmap_query"), body).value("handle").toString();
+        ASSERT_FALSE(handle.isEmpty());
+        EXPECT_EQ(mcp::readSpillRows(handle, 0, 10).code, QStringLiteral("not_array"));
+    }
 }

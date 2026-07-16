@@ -13448,7 +13448,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: doc.
   Source: in-session-2026-07-16.
 
-- 📋 [ANTS-3554] **ANTS-2094 spec test-note over-claims + missing offload/read_spill coverage — correct the notes and add the tests together.**
+- ✅ [ANTS-3554] **ANTS-2094 spec test-note over-claims + missing offload/read_spill coverage — correct the notes and add the tests together.**
   Surfaced by the ANTS-3552 cold-eyes loop (both lanes, verified against src + tests) — all PRE-EXISTING drift, none from ANTS-3552 (whose INV-1/INV-6 edits both lanes affirmed clean). The ANTS-2094 spec (and its cold-eyes log) claim automated coverage that `tests/features/mcp_result_offload/test_mcp_result_offload.cpp` does not have. Fix each by ADDING the missing test AND making the note honest in one unit (avoid churn):
   - HIGH — INV-11 `Inv11FailOpenWiring` is source-scrape only (greps `return body;`); the note + Loop-3 log claim a runtime fault-injection assertion (unwritable dir → env==body, no stray temp). Add the fault-injection test (setSpillDirOverride at a read-only dir, call offloadBody, assert env==body + no *.json), or reword note+log to "source-scrape only".
   - HIGH — INV-14 `too_large`: `readSpillRows` stat-before-read `too_large` gate (mcpspill.cpp ~304) untested. Only `Inv13ParseCapSkipped` hits `too_large` (byte-preview path). Add a >1 MiB spilled-body case asserting `readSpillRows(...).code=="too_large"`.
@@ -13462,6 +13462,7 @@ template / mutate this state atomically" → movable. If it's
   **Layman:** Some of the offload spec's "this is tested" notes claim tests that don't actually exist yet; make the notes honest by adding the missing tests.
   Kind: review-fix.
   Source: cold-eyes-2026-07-16 ANTS-3552 (2 lanes, both verified against test_mcp_result_offload.cpp).
+  Resolved (2026-07-16): corrected the INV-5/7/9/11/14 + §6 test-notes to match the tests and backfilled the coverage they claimed. Added Inv11FailOpenFaultInjection (runtime fail-open), Inv14RowModeRefusalEdges (too_large stat-gate + empty-array/root-array not_array), redirect-hint source-scrapes + all-four fail-open-branch scrapes in the wiring tests; disclosed the ANTS-3540 fail-open write+evict disk side-effect (INV-9); narrowed INV-7's un-exercisable re-spill clause; annotated three stale cold-eyes-log claims (Loop-3 INV-11, ANTS-3545 Loop-4 INV-14-hint, main-log Loop-4 INV-5). Cold-eyes 1-loop 2-lane (shared-read-cache) converged polish — CRITICAL 0·HIGH 0·MEDIUM 0·LOW 2·INFO 1, both LOWs fixed. Full suite 2710/2710 green.
 
 ### 🎨 At-a-glance build-version surface (user request 2026-05-14)
 
