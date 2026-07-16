@@ -13308,6 +13308,36 @@ template / mutate this state atomically" → movable. If it's
   Kind: test.
   Source: in-session-2026-06-25 (observed during ANTS-2093 full-suite run; verified pre-existing via clean-HEAD rerun).
 
+- 📋 [ANTS-3532] **Auto-compact large MCP responses by default (server-side `compact`; tabular stays opt-in).**
+  The compact (ANTS-2091) / tabular (ANTS-2090) / fields= / headline_only knobs are all opt-in PER CALL, so a session that never passes them gets zero saving — contra the project's "token-saving features default ON" posture (most sessions never opt in). Add a config key `mcp_auto_compact_large_results` (default true): above a byte threshold, auto-apply `compact` field-dropping (never touching protected keys ok/code/error/etag/found/unchanged) and stamp `auto_compacted:true` on the envelope so the caller knows. Apply BEFORE the offload size check so a response that compacts under mcp_offload_threshold_bytes skips the read_spill round-trip entirely (synergy: fewer spill fetches too). `tabular` auto-apply stays opt-in (caller must decode the columnar form) — gate behind a per-session capability / config, default off. Investigate the empty-vs-absent safety edge (compact doc: a reader distinguishing empty-from-absent could break) before defaulting it across every verb.
+  **Layman:** The money-saving reply options exist, but you have to ask for them on every call — turn the safe one on automatically for big replies.
+  Kind: enhancement.
+  Source: in-session-2026-07-16 (token-saving sweep).
+
+- 📋 [ANTS-3533] **`changelog_query` read verb — mirror `roadmap_query` so drift-checks stop reading the whole CHANGELOG.**
+  CHANGELOG.md is the #2 measured review-loop sink (~276K tok, ANTS-3521). `changelog_log` is write-only; any drift-check against the changelog must grep/read the whole file. Add a READ verb symmetric with roadmap_query: look up entries by version / ANTS-ID / [Unreleased] section, returning compact structured entries with ETag-304 + fields= / headline_only. Directly shrinks what cold-eyes/indie-review are INSTRUCTED to read: ANTS-3526 made them SEARCH the big logs instead of full-reading, but the search still returns raw grep lines — this returns a structured answer instead. Reuses roadmap_query's parser-cache (ANTS-1117) + response-wrap patterns; low new-surface, high symmetry.
+  **Layman:** Add a quick lookup for the changelog like the one the roadmap already has, so reviews don't read the whole 276K-token file.
+  Kind: feature.
+  Source: in-session-2026-07-16 (token-saving sweep).
+
+- 📋 [ANTS-3534] **Changed-since-etag DELTA mode for the append-only query verbs (roadmap / changelog / feedback).**
+  ETag-304 is all-or-nothing: a re-poll with a stale etag re-reads the ENTIRE body. For append-only corpora (ROADMAP, CHANGELOG, feedback files) a long-running session that re-queries could instead get only the entries added/changed since the supplied etag — a delta — not a full re-read. Design questions to settle before building: etag->content-offset mapping; handling in-place edits/status-flips (not just tail appends) so a delta can't miss a mutation above the watermark; interaction with the 100ms parser-cache TTL; whether the delta is worth it below the offload threshold. Complements ANTS-2232 (section pins) via a different mechanism. Investigate feasibility + payload-shape first.
+  **Layman:** Instead of re-sending the whole list when you ask again, send just what changed since last time.
+  Kind: investigate.
+  Source: in-session-2026-07-16 (token-saving sweep).
+
+- 📋 [ANTS-3535] **Audit always-loaded preamble ordering for prompt-cache stability (volatile bytes LAST).**
+  The SessionStart hook prelude + CLAUDE.md + MEMORY.md form the cached system-prompt prefix. Any run-VARIABLE bytes injected before the large stable blocks (git ahead/behind, feedback_pending counts, last-commit line, branch drift) bust the Anthropic prompt cache for everything after them, re-charging the stable tail each session; the UserPromptSubmit git-context hook also re-injects per turn. Audit hook output ordering so all volatile content sorts LAST behind the byte-stable prefix, maximising the cacheable span. Pure ordering discipline — no payload-shape change. This is the always-loaded-preamble analogue of the ANTS-3528 "byte-stable brief prefix" finding at the skill layer. Measure the cache-hit delta before/after (token accounting / model_switch_stats) to confirm the win is real and not harness-swallowed.
+  **Layman:** Put the bits that change every session at the end, so the big unchanging part stays cached and isn't re-billed each time.
+  Kind: investigate.
+  Source: in-session-2026-07-16 (token-saving sweep).
+
+- 📋 [ANTS-3536] **Review-loop token accounting — estimate the subagent read cost token_usage can't see.**
+  token_usage reports only orchestrator MCP-wrap savings; the DOMINANT review-loop cost (subagent whole-file / region reads x lanes x loops, ANTS-3521) is invisible to the server because it runs in the harness Read tool. Add an estimator that, from a review run's brief manifest (the files + regions each lane is instructed to read) x lane/loop counts, projects the read-token cost — so we can MEASURE whether the ANTS-352x levers (3522/3526/3529/3530/3531) moved the needle rather than inferring it. Observability, not a saver itself, but the prerequisite for prioritising any further review-loop work (currently we ship levers blind to their effect). Distinct from ANTS-1245 (tracking/reports of MCP calls, not subagent reads).
+  **Layman:** We can't currently see how many tokens the review helpers spend reading files — add an estimate so we know if the recent savings actually worked.
+  Kind: investigate.
+  Source: in-session-2026-07-16 (token-saving sweep).
+
 ### 🎨 At-a-glance build-version surface (user request 2026-05-14)
 
 - ✅ [ANTS-1323] **`v0.7.92 · 2026-05-14 08:48` build-badge on
