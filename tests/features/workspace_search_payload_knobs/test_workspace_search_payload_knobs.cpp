@@ -373,3 +373,34 @@ TEST(workspace_search_payload_knobs, Inv19OffsetInSchema) {
            "workspace_search descriptor");
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-3548 INV-1 amendment — max_match_bytes is default-ON: an absent
+// arg clips to kDefaultMaxMatchBytes (512), not 0. Source anchors: the
+// named constant + the default-init in cmdWorkspaceSearch.
+TEST(workspace_search_payload_knobs, Inv20DefaultOnClip) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "ANTS-3548"),
+           "INV-20: ANTS-3548 anchor present in cmdWorkspaceSearch");
+    expect(contains(cpp, "kDefaultMaxMatchBytes"),
+           "INV-20: kDefaultMaxMatchBytes constant named");
+    expect(contains(cpp, "int maxMatchBytes = kDefaultMaxMatchBytes"),
+           "INV-20: maxMatchBytes defaults to the clip (default-ON)");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3548 INV-1 amendment — an explicit max_match_bytes <= 0 opts OUT
+// (the off switch), and the schema advertises default 512 / minimum 0 so
+// the 0 opt-out is in-range and passable.
+TEST(workspace_search_payload_knobs, Inv21ExplicitOptOut) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "requested <= 0"),
+           "INV-21: explicit <= 0 opts out of the clip");
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    expect(contains(ci, "mmbProp[\"default\"] = 512"),
+           "INV-21: schema advertises default 512");
+    expect(contains(ci, "mmbProp[\"minimum\"] = 0"),
+           "INV-21: schema minimum 0 so the 0 opt-out is in-range");
+    EXPECT_EQ(0, expect_failures());
+}

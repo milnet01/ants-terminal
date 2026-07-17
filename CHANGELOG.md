@@ -17,6 +17,11 @@ for security-relevant changes.
 - **find_definition is blind to GLSL/shader symbols — add a `glsl` language family.** (ANTS-3558)
   In projects built around shaders (like the DOOM renderer), the "where is this defined?" tool can't see any shader code, so it wrongly reports symbols as missing.
 
+### Changed
+
+- **Default `max_match_bytes` ceiling on `workspace_search` — clip pathological long lines by default (token-saver default-ON).** (ANTS-3548)
+  One giant machine-generated line shouldn't be able to flood a search result; trim over-long lines automatically unless asked not to.
+
 ### Fixed
 
 - **Malformed `ids` filter fails silently to the full list instead of refusing — waste + wrong result.** (ANTS-3541)

@@ -9612,6 +9612,11 @@ constexpr int kWorkspaceSearchMaxResultsCap = 500;  // ANTS-1248-INV-4
 constexpr int kWorkspaceSearchMaxColumns    = 500;
 constexpr int kWorkspaceSearchStderrCapBytes = 4096; // ANTS-1248-INV-8
 constexpr int kWorkspaceSearchGlobBytesCap   =  256; // ANTS-1248-INV-9
+// ANTS-3548 — default-ON per-match line-length clip. An absent
+// `max_match_bytes` clips to this many UTF-8 bytes/line (token-saver
+// default-ON per the "savers default ON, keep an off switch" rule); an
+// explicit `<= 0` opts out. Within the [50, 10000] effective clip range.
+constexpr int kDefaultMaxMatchBytes         =  512;  // ANTS-3548
 
 QJsonObject wsErr(const char *code, const QString &message) {
     QJsonObject o;
@@ -9787,15 +9792,26 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     const bool isRegex = req.value("regex").toBool(false);
     const QString caseMode = req.value("case").toString(QStringLiteral("smart"));
 
-    // ANTS-1876 — per-match text clip (INV-1). Out-of-range falls
-    // back to 0 (off), matching the `context` parse idiom above.
-    // Clamp range [50, 10000] guarantees at least the ellipsis + 47
-    // bytes of payload.
-    int maxMatchBytes = 0;
+    // ANTS-1876 / ANTS-3548 — per-match text clip (INV-1). The clip is
+    // now default-ON (token-saver default per the project's "savers
+    // default ON, keep an off switch" rule): an absent arg → the
+    // kDefaultMaxMatchBytes (512) clip. An explicit value in [50, 10000]
+    // overrides; an explicit `<= 0` opts OUT (0 = no clip, the off
+    // switch); an out-of-range *positive* value clamps into [50, 10000]
+    // so a mistyped small/large value still clips predictably rather
+    // than silently disabling the saver. A non-numeric value leaves the
+    // 512 default (so the only opt-out is a numeric `<= 0`).
+    int maxMatchBytes = kDefaultMaxMatchBytes;
     const QJsonValue mmbVal = req.value(QStringLiteral("max_match_bytes"));
     if (mmbVal.isDouble()) {
         const int requested = mmbVal.toInt();
-        if (requested >= 50 && requested <= 10000) {
+        if (requested <= 0) {
+            maxMatchBytes = 0;          // ANTS-3548 explicit opt-out
+        } else if (requested < 50) {
+            maxMatchBytes = 50;         // clamp low
+        } else if (requested > 10000) {
+            maxMatchBytes = 10000;      // clamp high
+        } else {
             maxMatchBytes = requested;
         }
     }
@@ -10356,11 +10372,13 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // see whether they got their requested timeout_sec or the default.
     out["timeout_sec"] = budgetSec;
     out["elapsed_ms"] = static_cast<int>(wall.elapsed());
-    // ANTS-1876 — activation-gated echo (INV-6). Default calls
-    // (max_match_bytes == 0 AND headline_only == false) get neither
-    // field — wire byte-identical with pre-fix envelopes. Only the
-    // ok:true path reaches here; error envelopes return early via
-    // wsErr() before this point (INV-6b).
+    // ANTS-1876 / ANTS-3548 — activation-gated echo (INV-6). The clip
+    // echoes iff its EFFECTIVE value > 0. Since ANTS-3548 made the
+    // default 512 (> 0), a default call now echoes `max_match_bytes:512`
+    // — the deliberate transparency signal that the default clip is
+    // active. Only an explicit opt-out (`max_match_bytes <= 0` → 0)
+    // suppresses the echo. Only the ok:true path reaches here; error
+    // envelopes return early via wsErr() before this point (INV-6b).
     if (maxMatchBytes > 0) {
         out["max_match_bytes"] = maxMatchBytes;
     }

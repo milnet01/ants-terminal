@@ -3131,23 +3131,30 @@ void ClaudeIntegration::onMcpConnection() {
                     // 47 bytes of payload.
                     QJsonObject mmbProp;
                     mmbProp["type"]    = "integer";
-                    mmbProp["default"] = 0;
-                    mmbProp["minimum"] = 50;
+                    // ANTS-3548 — default-ON clip (512). `minimum` is 0
+                    // (not 50) so the `0` opt-out sentinel is in-range /
+                    // passable; the effective CLIP range is still
+                    // [50, 10000] (server clamps 1..49 up to 50).
+                    mmbProp["default"] = 512;
+                    mmbProp["minimum"] = 0;
                     mmbProp["maximum"] = 10000;
                     mmbProp["description"] = QStringLiteral(
                         "Per-match `text` (or `headline`, if "
                         "`headline_only:true`) clip in UTF-8 bytes. "
-                        "When > 0, every text-bearing field — "
-                        "primary `text`, every `text` inside "
-                        "`context_before` / `context_after` — is "
-                        "clipped to *exactly* this many UTF-8 bytes "
-                        "(payload prefix + 3-byte ellipsis \"\xE2\x80\xA6\"). "
-                        "Fields whose unclipped form already fits "
-                        "are emitted verbatim. Server-clamped to "
-                        "[50, 10000]; 0 (default) disables. Dedup "
-                        "runs BEFORE the clip so the key is "
-                        "unaffected (ANTS-1876 INV-4). Echo on the "
-                        "envelope only when activated (> 0).");
+                        "Every text-bearing field — primary `text`, "
+                        "every `text` inside `context_before` / "
+                        "`context_after` — is clipped to *exactly* this "
+                        "many UTF-8 bytes (payload prefix + 3-byte "
+                        "ellipsis \"\xE2\x80\xA6\"). Fields whose unclipped "
+                        "form already fits are emitted verbatim. "
+                        "ANTS-3548: **default-ON** — absent → 512 (a "
+                        "token-saver clip on long/pathological lines); "
+                        "pass **0 to opt out** (no clip). An explicit "
+                        "value clamps to the [50, 10000] clip range. "
+                        "Dedup runs BEFORE the clip so the key is "
+                        "unaffected (ANTS-1876 INV-4). The effective clip "
+                        "value echoes on the envelope (so a default call "
+                        "carries `max_match_bytes:512`).");
                     // ANTS-1876 — headline_only summary shape:
                     // emit {file, line, headline} triples instead of
                     // the bullets-mode {file, line, text, context_*}

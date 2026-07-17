@@ -170,9 +170,12 @@ QString leanerModeHintFor(const QString &tool, const QJsonObject &args) {
         return QString();
     }
     if (tool == QStringLiteral("workspace_search"))
+        // ANTS-3548 — long lines are clipped by default now (512 B), so
+        // the remaining levers are a narrower search or a leaner row
+        // shape; don't nudge max_match_bytes (already default-ON).
         return QStringLiteral(
-            "pass max_match_bytes= to clip long match lines, or a "
-            "narrower lane=/glob= to cut the result set");
+            "pass a narrower lane=/glob= to cut the result set, or "
+            "headline_only=/count_only=/files_only= for a leaner shape");
     if (tool == QStringLiteral("file_outline") &&
         !args.contains(QStringLiteral("filter")))
         return QStringLiteral(

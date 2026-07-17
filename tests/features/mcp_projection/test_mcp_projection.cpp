@@ -288,13 +288,15 @@ TEST(McpReadHints, Ants2081EtagMatchSuppressesReuseHint) {
     EXPECT_FALSE(o.contains("next_call_hint"));
 }
 
-// workspace_search names its own cheaper knob.
+// workspace_search names its own cheaper knob. ANTS-3548 made the
+// max_match_bytes clip default-ON, so the hint no longer nudges it —
+// the remaining levers are a narrower search / a leaner row shape.
 TEST(McpReadHints, Ants2086WorkspaceSearchLeanerHint) {
     const QJsonObject o = parse(mcp::appendReadHints(
         QStringLiteral("workspace_search"), QJsonObject{}, bigBodyNoEtag(),
         false));
     ASSERT_TRUE(o.contains("leaner_call_hint"));
-    EXPECT_NE(o.value("leaner_call_hint").toString().indexOf("max_match_bytes"),
+    EXPECT_NE(o.value("leaner_call_hint").toString().indexOf("narrower lane"),
               -1);
 }
 
@@ -361,7 +363,7 @@ TEST_F(McpHintLatch, Ants3550PerToolKeyingKeepsDistinctTip) {
     const QJsonObject ws = parse(mcp::appendReadHints(
         QStringLiteral("workspace_search"), QJsonObject{}, bigBodyNoEtag(), false));
     ASSERT_TRUE(ws.contains("leaner_call_hint"));
-    EXPECT_NE(ws.value("leaner_call_hint").toString().indexOf("max_match_bytes"),
+    EXPECT_NE(ws.value("leaner_call_hint").toString().indexOf("narrower lane"),
               -1);
     // file_outline's etag-reuse nudge still emits (roadmap_query's claim is
     // its own key, not a global next_call_hint latch).
