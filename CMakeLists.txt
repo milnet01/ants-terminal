@@ -938,6 +938,19 @@ if(ANTS_TESTS)
         TIMEOUT 120)
 
     # ----------------------------------------------------------------------
+    # ANTS-2050 — user-level feature case suite (the automatable lanes of
+    # docs/qa/e2e/cases.md) run through the ANTS-2049 harness. Same opt-in
+    # "e2e" label + offscreen wiring as e2e_smoke; the manual / pending-hook
+    # cases in cases.md are not part of this automated target.
+    # ----------------------------------------------------------------------
+    add_test(NAME e2e_cases
+             COMMAND bash ${CMAKE_SOURCE_DIR}/tools/e2e/cases.sh)
+    set_tests_properties(e2e_cases PROPERTIES
+        LABELS "e2e"
+        ENVIRONMENT "ANTS_E2E_BIN=$<TARGET_FILE:ants-terminal>;QT_QPA_PLATFORM=offscreen"
+        TIMEOUT 180)
+
+    # ----------------------------------------------------------------------
     # ANTS-1217 Phase 2 — test_vt bundle.
     # 27 standalone test executables for vtparser/terminalgrid/themes
     # invariants consolidated into one GoogleTest bundle. Each migrated

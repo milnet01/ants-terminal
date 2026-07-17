@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **User-level e2e feature case suite (ANTS-2050)**
+  A lane-partitioned QA suite that drives the app as a user through the
+  ANTS-2049 harness: tools/e2e/cases.sh automates the terminal-basics,
+  scrollback, resize and theme-restyle-liveness lanes (run all or one lane),
+  wired into `ctest -L e2e`; docs/qa/e2e/cases.md enumerates every feature as
+  drive→expected cases marked auto/manual/pending-hook.
+
 - **End-to-end test harness (ANTS-2049): a `--e2e` launch flag + socket-only inject verbs let the app be driven as a user for testing.**
   New `--e2e` flag forces the RemoteControl socket open and unlocks four
   socket-only inject verbs (inject-key, inject-click, resize-window,

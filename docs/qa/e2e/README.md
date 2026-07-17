@@ -79,7 +79,12 @@ To address a specific widget, give it an `objectName` in the source and
 pass it as `widget`. Current hooks: `roadmapButton`, `RoadmapDialog`
 (ANTS-2049); add more as cases need them.
 
-## Case format (for the ANTS-2050 suite)
+## Case format (the ANTS-2050 suite)
+
+The feature-covering suite lives in [`cases.sh`](../../../tools/e2e/cases.sh)
+(automated lanes) and [`cases.md`](cases.md) (the full checklist, marking each
+case auto / manual / pending-hook). `cases.sh` runs all lanes or one:
+`bash tools/e2e/cases.sh theme`.
 
 Each case is **drive → observe → assert**, exit 0 on pass. Build them on
 `run.sh`'s functions:

@@ -150,8 +150,12 @@ load. Quick check: `LC_ALL=C.UTF-8 ctest --test-dir build`.
 - **E2E harness** (`tools/e2e/`, label `e2e`, ANTS-2049) — drive a
   throwaway `--e2e` instance as a user (inject-key/click, resize-window,
   grab-image over its socket via `--remote-json`) and observe it. Opt-in:
-  `ctest -L e2e` (excluded from the default presets). How-to +
-  case format: [`docs/qa/e2e/README.md`](docs/qa/e2e/README.md).
+  `ctest -L e2e` (excluded from the default presets). Two suites:
+  `smoke.sh` (harness-contract guards) and `cases.sh` (ANTS-2050
+  feature lanes — `terminal`/`scrollback`/`resize`/`theme`, run all or
+  `cases.sh <lane>`). Full feature checklist (auto/manual/pending-hook):
+  [`docs/qa/e2e/cases.md`](docs/qa/e2e/cases.md); how-to + case format:
+  [`docs/qa/e2e/README.md`](docs/qa/e2e/README.md).
 
 ## Conventions
 
