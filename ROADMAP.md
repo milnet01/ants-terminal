@@ -9026,11 +9026,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: doc-fix.
   Source: cold-eyes-2026-07-13 (loop 2, ANTS-3342 review).
 
-- 📋 [ANTS-3513] **read_region/read_regions symbol mode should resolve namespace/class-qualified names, not only the bare identifier.**
+- ✅ [ANTS-3513] **read_region/read_regions symbol mode should resolve namespace/class-qualified names, not only the bare identifier.**
   Observed while fixing ANTS-2119: `read_region {symbol:"AntsHelper::driftCheck"}` and `{symbol:"claudestate::display"}` both refuse with `symbol_not_found`, while the bare `{symbol:"driftCheck"}` / `{symbol:"display"}` resolve fine. The flat file_outline indexes the unqualified identifier, so a qualified query misses. The instinct (from find_definition / grep output, which show qualified names) is to paste the qualified form, so this costs a retry each time. Fix: in symbol-mode resolution, if an exact match fails, retry against the last `::`-separated component (or match on suffix `(::|^)<tail>$`). Low-risk, purely additive matching. Same for read_regions items[].symbol.
   **Layman:** When asking to read a function by name, typing its full name (like ClassName::method) fails and you must strip the prefix — the tool should accept both.
   Kind: enhancement.
   Source: in-session-2026-07-14 (ANTS-2119 work).
+  Resolved 2026-07-17: qualified-name fallback added to resolveSymbol (readregion.cpp) — the complement of ANTS-3399. A pasted Class::method / ns::fn now resolves the bare outline entry via the last ::/. component (unambiguous-only; ties fall through to symbol_not_found). Locked by McpReadRegion.QualifiedNameResolvesBareOutlineEntry + QualifiedNameAmbiguousTailRejected (12/12 green).
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
@@ -19171,6 +19172,24 @@ positive confirmation of ANTS-3518 (foreign_repo status) — no new work.
   Source: in-session-2026-07-17 (user-reported SessionStart hook error).
   Resolved (2026-07-17): added a split-tree guard in mcporientation.cpp installAt() — before the settings merge, compare the resolved orientation-script path (AppConfigLocation, redirected to /tmp under --e2e) against the settings file's home tree (QDir::homePath()/homeOverride). When the script is outside that home, skip the whole install (ok:true, warning naming ANTS-3562) so an e2e run never writes the user's real ~/.claude/settings.json a hook pointing at a throwaway path. Self-contained — covers any config redirection, not just --e2e. Normal launches (config + ~/.claude under one home) are unaffected; the homeOverride test seam keeps existing installAt tests green. Test: McpOrientation_Ants3562.SplitTreeInstallGuardPresent (source-grep — the split-tree case can't be driven through homeOverride and a behavioural run would touch real ~/.claude). The stale entry the user hit this session already self-healed on relaunch.
 
+- ✅ [ANTS-3564] **debt_sweep_scan self-describes its scope (detectors_run + scope_note) so total_findings:0 is not misread as "no debt".**
+  Rolodex on 0.7.100: debt_sweep_scan returned total_findings:0 on a
+  repo with real, sweepable debt (dead local, uncalled method, stale
+  doc prose, GitHub Action pins below latest-major). The mechanical
+  detectors are marker/lockstep heuristics only; a zero result reads as
+  "clean" but the detectors never covered dead-code / stale-prose /
+  action-currency. Shipping fix (option b from the report): the
+  envelope now self-describes scope — `detectors_run` (categories
+  actually scanned) + a constant `scope_note` stating the sweep is
+  marker-based and a judgment pass is still required. Option (a)
+  (broaden detectors: assigned-but-never-read locals, action-pin
+  currency) is the larger follow-up, left open. Kind: enhancement.
+  Lanes: remotecontrol, debtsweepengine.
+  **Layman:** The debt-sweep tool only looks for a narrow set of markers; when it finds nothing it should say "I only checked these things", not silently imply the project is clean.
+  Kind: enhancement.
+  Source: cc-feedback-2026-07-17 (Rolodex).
+  Resolved 2026-07-17: debt_sweep_scan envelope now self-describes scope — detectors_run[] + a constant scope_note (remotecontrol.cpp) so total_findings:0 is not misread as clean. Compiles + links green; live-verify on relaunch. Option (a) broaden-detectors left open.
+
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
 /cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +
@@ -20416,6 +20435,56 @@ partition (11 lanes) is documented in this fold-in for reuse.
   **Layman:** Let a Claude session bookmark up to 5 spots in the code or docs ("remember the audit lexer", "remember the scroll spec"), then jump back to any of them in a single call. Unlike a plain note, the bookmark stores WHERE the code is, not a frozen copy — so when you recall it, you get the up-to-date version even if the code moved or changed. The big win is after a context reset (/compact): the session can instantly re-open the exact spots it was working on instead of re-searching for them, which saves tokens.
   Kind: feature.
   Source: user-request-2026-06-27.
+
+- 📋 [ANTS-3563] **Investigate an Ants-MCP path to compact the live Claude Code chat, plus a safe read-only compaction advisor.**
+  User question 2026-07-17: can Ants MCP compact a chat? Assessment:
+  no safe path exists TODAY. The only mechanism to trigger CC's
+  `/compact` from outside is keystroke injection into the focused
+  terminal's PTY — the SAME mechanism parked as unsafe by the
+  auto-model-switcher (project_auto_switcher_parked): every firing
+  window races the live prompt and can corrupt input. Auto-compacting
+  also silently discards conversation context (billing/UX hazard,
+  mirrors the switcher's no-auto-action rule).
+  Two-part investigation:
+  (a) Is there any official CC control surface (hook, SDK, MCP callback)
+  to request a compact WITHOUT keystroke injection? If a real API ships,
+  un-park and build a `compact_chat` verb gated on it.
+  (b) Safe increment shippable now: a READ-ONLY compaction advisor —
+  surface a "context large; /compact recommended" hint from token_usage
+  / claudestateresolver signals, and let the USER type /compact. No
+  injection, no auto-action. This is the parked-switcher philosophy
+  (read-only stats + manual chip) applied to context size.
+  Spec-first + cold-eyes before any code touches the injection path.
+  **Layman:** Can Ants tell Claude Code to shrink its own conversation memory to save tokens? Look into it — but safely, not by faking keypresses.
+  Kind: investigate.
+  Source: user-request-2026-07-17.
+  Design (ultrathink 2026-07-17, user goal: autonomous CC on a long
+  project, compacting safely at intervals without exhausting context).
+  KEY REFRAME: the way to not "use up all the context" is NOT to press
+  /compact from outside — it is to keep the durable work-state OUTSIDE
+  the chat so the chat stays small and CC's NATIVE turn-boundary
+  auto-compact is lossless. An MCP server also cannot make its client
+  run a slash command, so Ants triggering /compact is both unsafe
+  (parked keystroke-injection race) and architecturally wrong.
+  Mechanisms, ranked:
+  1. Subagent-per-task — heavy context (file reads, tool output,
+     reasoning) lives in a disposable sub-context that evaporates on
+     return; the driver holds only the plan + one-line outcomes.
+     "Compaction by construction" — the driver rarely needs compacting.
+  2. Task-loop + external state — roadmap items as the task list; each
+     outcome persisted to ROADMAP/journal/session_memory; re-hydrate a
+     fresh context via session_orient in one call.
+  3. CC native auto-compact as the backstop (already fires at safe turn
+     boundaries; with durable state on disk it loses nothing critical).
+  4. Optional PreCompact hook snapshots live task-state to
+     session_memory just before any compact.
+  5. Ants READ-ONLY context-pressure advisor (from tokenusageengine):
+     "70% context — checkpoint & compact at the next task boundary";
+     CC decides and runs it. CC-managed => safe (the user's own
+     safety framing).
+  Buildable safe increments (spec-first + cold-eyes): (i) the
+  context-pressure advisor verb; (ii) a one-call "resume brief" emitting
+  durable autonomous-run state. NOT building: any /compact injection.
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 

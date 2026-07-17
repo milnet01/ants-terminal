@@ -19,10 +19,16 @@ for security-relevant changes.
 
 ### Changed
 
+- **debt_sweep_scan self-describes its scope (detectors_run + scope_note) so total_findings:0 is not misread as "no debt".** (ANTS-3564)
+  The debt-sweep tool only looks for a narrow set of markers; when it finds nothing it should say "I only checked these things", not silently imply the project is clean.
+
 - **Default `max_match_bytes` ceiling on `workspace_search` — clip pathological long lines by default (token-saver default-ON).** (ANTS-3548)
   One giant machine-generated line shouldn't be able to flood a search result; trim over-long lines automatically unless asked not to.
 
 ### Fixed
+
+- **read_region/read_regions symbol mode should resolve namespace/class-qualified names, not only the bare identifier.** (ANTS-3513)
+  When asking to read a function by name, typing its full name (like ClassName::method) fails and you must strip the prefix — the tool should accept both.
 
 - **Malformed `ids` filter fails silently to the full list instead of refusing — waste + wrong result.** (ANTS-3541)
   If a tool call asks for specific roadmap items but formats the request slightly wrong, it quietly dumps the whole list instead of saying 'that was malformed' — wasting tokens and hiding the mistake.
