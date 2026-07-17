@@ -27,10 +27,16 @@ namespace SymbolQuery {
 // Java, C#, Kotlin, Swift, Scala, PHP); its anchors mirror FileOutline's
 // generic outline regexes so find_definition / find_caller cover the same
 // files codebase_index / file_outline now do.
-enum class Lang { Auto, Cpp, Py, Lua, Sh, Generic };
+// ANTS-3558 — `Glsl` covers shader sources (.glsl/.comp/.frag/.vert/…) so
+// find_definition is not silently blind to every symbol in a Vulkan/GLSL
+// project (DOOM_Ants feedback 2026-07-17). Its def anchor stops at `(`, so
+// it matches both same-line and Allman (next-line `{`) function bodies —
+// the Generic brace-family anchor requires the `{` on the def line and
+// would miss the common next-line-brace GLSL style.
+enum class Lang { Auto, Cpp, Py, Lua, Sh, Generic, Glsl };
 
-// "" / "auto" → Auto; "cpp"/"py"/"lua"/"sh"/"generic" → the explicit family;
-// anything else → Auto (permissive — the caller's lang hint never
+// "" / "auto" → Auto; "cpp"/"py"/"lua"/"sh"/"generic"/"glsl" → the explicit
+// family; anything else → Auto (permissive — the caller's lang hint never
 // hard-fails the scan).
 Lang parseLang(const QString &s);
 

@@ -5737,11 +5737,13 @@ void ClaudeIntegration::onMcpConnection() {
                         QJsonArray e;
                         e.append("auto"); e.append("cpp"); e.append("py");
                         e.append("lua");  e.append("sh");
+                        e.append("generic"); e.append("glsl");  // ANTS-2150 / ANTS-3558
                         p["enum"]        = e;
                         p["default"]     = "auto";
                         p["description"] = QStringLiteral(
                             "Restrict the scan to one language family. "
-                            "\"auto\" (default) scans all four.");
+                            "\"auto\" (default) scans every supported family "
+                            "(cpp, py, lua, sh, generic, glsl).");
                         props["lang"] = p;
                     }
                     {
@@ -5824,11 +5826,13 @@ void ClaudeIntegration::onMcpConnection() {
                         QJsonArray e;
                         e.append("auto"); e.append("cpp"); e.append("py");
                         e.append("lua");  e.append("sh");
+                        e.append("generic"); e.append("glsl");  // ANTS-2150 / ANTS-3558
                         p["enum"]        = e;
                         p["default"]     = "auto";
                         p["description"] = QStringLiteral(
                             "Restrict the scan to one language family. "
-                            "\"auto\" (default) scans all four.");
+                            "\"auto\" (default) scans every supported family "
+                            "(cpp, py, lua, sh, generic, glsl).");
                         props["lang"] = p;
                     }
                     {

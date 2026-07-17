@@ -34,6 +34,7 @@ const char *langStr(Lang l) {
         case Lang::Lua:     return "lua";
         case Lang::Sh:      return "sh";
         case Lang::Generic: return "generic";
+        case Lang::Glsl:    return "glsl";
         case Lang::Auto:    return "";
     }
     return "";
@@ -65,6 +66,21 @@ Lang langForExt(const QString &ext) {
         ext == QLatin1String("sc")  || ext == QLatin1String("php") ||
         ext == QLatin1String("rb")) {
         return Lang::Generic;
+    }
+    // ANTS-3558 — GLSL / Vulkan shader stages. Only the UNAMBIGUOUS
+    // extensions: the two-letter `.vs`/`.fs`/`.gs` are deliberately omitted
+    // because `.fs` is also F# source — `.vert`/`.frag`/`.geom` cover those
+    // stages without the cross-language collision.
+    if (ext == QLatin1String("glsl") || ext == QLatin1String("comp") ||
+        ext == QLatin1String("frag") || ext == QLatin1String("vert") ||
+        ext == QLatin1String("geom") || ext == QLatin1String("tesc") ||
+        ext == QLatin1String("tese") || ext == QLatin1String("vsh")  ||
+        ext == QLatin1String("fsh")  || ext == QLatin1String("mesh") ||
+        ext == QLatin1String("task") || ext == QLatin1String("rgen") ||
+        ext == QLatin1String("rchit")|| ext == QLatin1String("rmiss")||
+        ext == QLatin1String("rahit")|| ext == QLatin1String("rint") ||
+        ext == QLatin1String("rcall")) {
+        return Lang::Glsl;
     }
     return Lang::Auto;
 }
@@ -152,6 +168,22 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             add(QStringLiteral("^\\s*(?:export\\s+)?(?:default\\s+)?(?:const|let|var)\\s+") + s + QStringLiteral("\\s*=\\s*(?:async\\s+)?(?:\\([^)]*\\)|[A-Za-z_$][\\w$]*)\\s*=>"));
             a.call = QRegularExpression(QStringLiteral("\\b") + s + QStringLiteral("\\s*\\("));
             break;
+        case Lang::Glsl:
+            // ANTS-3558 — a GLSL function definition/prototype is
+            // `<qualifiers>* <rettype> <name>(<args>)` at line start. Require
+            // one-or-more leading `word ` tokens (the return type, plus any
+            // storage/precision qualifiers) BEFORE the name, then `(`. This
+            // stops at `(` — it does NOT require `{` on the same line, so the
+            // Allman next-line-brace style (`uint pcgHash(uint x)\n{`) common
+            // in shader code still resolves (the Generic brace anchor misses
+            // it). The negative lookahead rejects a statement-position call
+            // (`return foo(`, `else foo(`): a bare/qualified call has no
+            // leading return-type token, so it never matches. cppKind splits
+            // a trailing-`;` prototype into `declaration`.
+            add(QStringLiteral("^[ \\t]*(?!(?:return|else|if|for|while|do|switch|case|discard)\\b)(?:[A-Za-z_]\\w*\\s+)+") + s + QStringLiteral("\\s*\\("));
+            a.call = QRegularExpression(QStringLiteral("\\b") + s + QStringLiteral("\\s*\\("));
+            a.cppKind = true;
+            break;
         case Lang::Auto:
             break;
     }
@@ -168,8 +200,9 @@ struct ScanState {
     bool walkCapped = false;
 
     // Anchors keyed by language ordinal; built once per call.
-    // Size == Lang enum cardinality (Auto,Cpp,Py,Lua,Sh,Generic — ANTS-2150).
-    Anchors anchors[6];
+    // Size == Lang enum cardinality
+    // (Auto,Cpp,Py,Lua,Sh,Generic — ANTS-2150; Glsl — ANTS-3558).
+    Anchors anchors[7];
 
     // Definition buckets (definitions first, then declarations).
     bool collectDefs = false;
@@ -312,6 +345,7 @@ void prepare(ScanState &st, const QString &rootCanonical,
     buildIf(Lang::Lua);
     buildIf(Lang::Sh);
     buildIf(Lang::Generic);
+    buildIf(Lang::Glsl);   // ANTS-3558
 }
 
 bool rootUsable(const QString &rootCanonical) {
@@ -327,6 +361,7 @@ Lang parseLang(const QString &s) {
     if (s == QLatin1String("lua")) return Lang::Lua;
     if (s == QLatin1String("sh"))  return Lang::Sh;
     if (s == QLatin1String("generic")) return Lang::Generic;
+    if (s == QLatin1String("glsl")) return Lang::Glsl;   // ANTS-3558
     return Lang::Auto;
 }
 

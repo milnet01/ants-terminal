@@ -433,6 +433,71 @@ TEST(McpSymbolQuery, BraceFamilyLanguages) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-3558 — GLSL / shader family. The distinguishing case vs the Generic
+// brace-family anchor is the Allman next-line-brace style (`uint pcgHash(uint
+// x)\n{`) that is common in shader code — Generic requires the `{` on the def
+// line and misses it, so before this family GLSL projects (DOOM_Ants) got a
+// silent zero from find_definition. The Glsl def anchor stops at `(`.
+TEST(McpSymbolQuery, Ants3558GlslShaderFamily) {
+    expect_reset();
+
+    QTemporaryDir tmp;
+    expect(tmp.isValid(), "setup: QTemporaryDir valid");
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+
+    // .glsl — Allman next-line braces (the case Generic misses).
+    writeFile(root, QStringLiteral("shaders/pt_common.glsl"),
+              QStringLiteral("uint pcgHash(uint x)\n"
+                             "{\n"
+                             "    return x * 747796405u + 2891336453u;\n"
+                             "}\n"
+                             "vec3 decodeAlbedo(uint id, vec2 uv)\n"
+                             "{\n"
+                             "    return vec3(0.0);\n"
+                             "}\n"));
+    // .comp — same-line brace def, a prototype (declaration), and a caller.
+    writeFile(root, QStringLiteral("shaders/pathtrace.comp"),
+              QStringLiteral("vec2 detilePOM(vec2 baseUV);\n"          // prototype
+                             "vec3 hash3(ivec2 cell) {\n"
+                             "    return vec3(float(pcgHash(uint(cell.x))));\n"  // caller
+                             "}\n"));
+
+    SymbolQuery::Options def;
+    auto defFound = [&](const char *sym) {
+        return SymbolQuery::findDefinition(root, QString::fromUtf8(sym), def)
+                   .definitions.size() >= 1;
+    };
+    expect(defFound("pcgHash"),      "glsl: next-line-brace def found (Generic misses this)");
+    expect(defFound("decodeAlbedo"), "glsl: second next-line-brace def found");
+    expect(defFound("hash3"),        "glsl: same-line-brace def found");
+
+    // A trailing-`;` prototype is a declaration, not a definition (cppKind).
+    const auto dp =
+        SymbolQuery::findDefinition(root, QStringLiteral("detilePOM"), def);
+    expect(dp.definitions.size() >= 1, "glsl: prototype located");
+    expect(dp.definitions.front().kind == QStringLiteral("declaration"),
+           "glsl: trailing-; prototype tagged declaration");
+
+    // The caller inside hash3's body resolves.
+    expect(SymbolQuery::findCaller(root, QStringLiteral("pcgHash"), def)
+               .callers.size() >= 1, "glsl: caller of pcgHash found");
+
+    // lang filter: Lang::Glsl scans the shader files; Lang::Generic does not
+    // (the .glsl/.comp extensions map to Glsl, so the Generic pass skips them).
+    SymbolQuery::Options gl;   gl.lang = SymbolQuery::Lang::Glsl;
+    SymbolQuery::Options gen;  gen.lang = SymbolQuery::Lang::Generic;
+    expect(SymbolQuery::findDefinition(root, QStringLiteral("pcgHash"), gl)
+               .definitions.size() >= 1, "lang=glsl finds the shader def");
+    expect(SymbolQuery::findDefinition(root, QStringLiteral("pcgHash"), gen)
+               .definitions.isEmpty(), "lang=generic skips shader files");
+
+    // parseLang round-trips the new family name.
+    expect(SymbolQuery::parseLang(QStringLiteral("glsl")) ==
+           SymbolQuery::Lang::Glsl, "parseLang(\"glsl\") == Lang::Glsl");
+
+    EXPECT_EQ(0, expect_failures());
+}
+
 TEST(McpSymbolQuery, WiringContract) {
     expect_reset();
 
