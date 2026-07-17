@@ -12,6 +12,7 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.100] — unreleased (Patron RC preview)
 ### Added
 
 - **User-level e2e feature case suite (ANTS-2050)**
