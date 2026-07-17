@@ -262,7 +262,7 @@ for security-relevant changes.
   All four egress checks now live in one shared validator both paths call,
   so the audit buttons are guarded identically.
 
-## [0.7.99] — unreleased (Patron RC preview)
+## [0.7.99] — 2026-07-17
 ### Added
 
 - **feedback_log op:"assign_id" — v2 inline triage write** (ANTS-3447)

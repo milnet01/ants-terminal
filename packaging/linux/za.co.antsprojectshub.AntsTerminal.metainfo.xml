@@ -103,7 +103,7 @@
   </screenshots>
 
   <releases>
-    <release version="0.7.99" date="2026-07-09">
+    <release version="0.7.99" date="2026-07-17">
       <description>
         <p>Internal infrastructure and developer-tooling release — no new user-facing features. Every change here is under-the-hood work on the built-in Claude Code / MCP integration.</p>
         <ul>

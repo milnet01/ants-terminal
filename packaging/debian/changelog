@@ -20,7 +20,7 @@ ants-terminal (0.7.99-1) unstable; urgency=medium
     findings; audit_run no longer auto-runs mypy. (ANTS-3416, 3425,
     3430, 3432, 3435, 3346, 3345, 3418, 3445)
 
- -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 09 Jul 2026 08:58:14 +0200
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 17 Jul 2026 00:00:00 +0200
 
 ants-terminal (0.7.98-1) unstable; urgency=medium
 
