@@ -19306,7 +19306,7 @@ suite of feature test cases to run through that harness. This complements (does
 not replace) the 1996 automated unit/feature tests, which never drive the live
 GUI/PTY end to end. Item 2 depends on item 1.
 
-- 📋 [ANTS-2049] **Build an end-to-end harness that lets the agent drive Ants Terminal as a user and observe the result.**
+- ✅ [ANTS-2049] **Build an end-to-end harness that lets the agent drive Ants Terminal as a user and observe the result.**
   Spec-first (run through /cold-eyes before building per the project's spec
   discipline). Define a repeatable process for: (1) launching a live or
   offscreen Ants instance dedicated to testing (must NOT relink/disturb the
@@ -19330,6 +19330,7 @@ GUI/PTY end to end. Item 2 depends on item 1.
   Kind: implement.
   Lanes: testing-infrastructure, claudeintegration, remotecontrol.
   Source: user-request-2026-06-10.
+  Resolved (2026-07-17): e2e harness fully implemented per docs/specs/ANTS-2049.md (Tasks 2–12; Task 1 gate shipped 2026-06-10). --remote-json passthrough (main.cpp); four socket-only inject verbs inject-key/inject-click/resize-window/grab-image + e2eResolveTarget (remotecontrol.cpp), gated on m_e2eMode, NOT MCP-registered; objectName hooks (roadmapButton / RoadmapDialog); tools/e2e/run.sh + smoke.sh (8 cases, spec §6); opt-in `e2e` ctest label (excluded from default/workstation/fast/debug presets). Docs: error-codes taxonomy (e2e_disabled/widget_not_found), docs/qa/e2e/README.md, CLAUDE.md pointer, CHANGELOG. Verified: smoke ALL PASS offscreen (case 3 dialog-grab skips offscreen per spec), `ctest -L e2e` green in 8.4s, full suite 2712/2712 green, no QtTest link (INV-8). Note: on-screen dialog-grab (case 3) needs the roadmap button active (cwd-detected) — reliable dialog-opening is an ANTS-2050 test-authoring concern. Unblocks ANTS-2050. Commits f202d476…(this).
 
 - 📋 [ANTS-2050] **Author a user-level test-case suite covering every feature, to run through the E2E harness.**
   Depends on the harness item above. Enumerate test cases (each: steps →
