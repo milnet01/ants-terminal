@@ -92,6 +92,23 @@ TEST(RoadmapQueryKeywordFilter, Inv5HandlerWiring) {
         << "the applied query must be echoed in the envelope";
 }
 
+// INV-8 (ANTS-3560) — when a keyword `query` matches zero bullets on a
+// roadmap that DOES contain id-bearing bullets, the handler must emit a
+// query-specific "no bullet matched query" warning, not the ANTS-1538
+// "every entry has no [PROJ-NNNN] id" text (which misdirects toward
+// include_narrator_bullets). The gate splits on the post-ID-prune count
+// captured before the query filter runs.
+TEST(RoadmapQueryKeywordFilter, Inv8QueryEmptyWarningIsQueryAware) {
+    const QString rc = readSource(SRC_RC_CPP);
+    ASSERT_FALSE(rc.isEmpty());
+    EXPECT_TRUE(rc.contains(QStringLiteral("postIdPruneCountFull")))
+        << "warning gate must measure the id-bearing count before the "
+           "query filter to distinguish query-miss from id-mandate drop";
+    EXPECT_TRUE(rc.contains(QStringLiteral("no bullet matched query")))
+        << "a zero-match query on an id-bearing roadmap must warn about "
+           "the query, not claim every entry lacks a [PROJ-NNNN] id";
+}
+
 // INV-6 — the inputSchema declares the `query` property so the dispatch
 // layer recognises it (no longer flagged in ignored_args).
 TEST(RoadmapQueryKeywordFilter, Inv6SchemaDeclaresQuery) {

@@ -28,6 +28,15 @@ It is a list-path filter, not a targeted selector.
 - **INV-6** — `roadmap_query`'s inputSchema declares the `query` property
   (so the dispatch layer recognises it and no longer flags it in
   `ignored_args`).
+- **INV-8** (ANTS-3560) — when a `query` matches zero bullets on a roadmap
+  that still contains id-bearing bullets, the empty-result warning is
+  query-specific (`no bullet matched query "<q>"`, naming the count of
+  id-bearing bullets searched and hinting at `ids:[...]` for a
+  space/comma-separated multi-id query), NOT the ANTS-1538 "every entry
+  has no [PROJ-NNNN] id" text. The gate distinguishes the two by capturing
+  `postIdPruneCountFull` (the id-bearing count) after the ID-prune but
+  before `applyQueryFilter`. Reported by Rolodex (2026-07-16): a
+  space-separated multi-id `query` hit the misleading ANTS-1538 warning.
 - **INV-7** (ANTS-3420 → ANTS-3422) — the `mainwindow.cpp` `roadmap_query`
   provider forwards `query` (and the ANTS-3402 `max_body_bytes` /
   ANTS-1907 `include_section_etags` / `section_etag_match` companions) to

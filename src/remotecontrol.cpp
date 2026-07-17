@@ -5166,6 +5166,13 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         }
         filtered = pruned;
     }
+    // ANTS-3560 — count AFTER the ID-prune but BEFORE the keyword filter,
+    // so the warning gate below can tell "the ID-mandate dropped every
+    // bullet" (id-bearing count 0) from "the query matched nothing"
+    // (id-bearing count > 0). Without this split a query that matched no
+    // bullet fell through the ANTS-1538 gate and wrongly claimed every
+    // entry lacked a [PROJ-NNNN] id (Rolodex feedback 2026-07-16).
+    const int postIdPruneCountFull = filtered.size();
     // ANTS-3391 — keyword filter composes after status, before pagination
     // (so count / next_offset reflect the narrowed set).
     applyQueryFilter(filtered);
@@ -5217,15 +5224,32 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // didn't tag bullets with [PROJ-NNNN] tokens; without this hint
     // the caller reads {ok:true, bullets:[], count:0} as "no work"
     // when in reality every bullet was pruned by the ID-mandate.
-    if (preIdPruneCountFull > 0 && filtered.isEmpty() &&
-        !includeNarratorBullets && !includeSectionHeaders) {
-        out["warning"] = QStringLiteral(
-            "default ID-filter dropped all %1 bullet(s) (every entry "
-            "was either a rollup-summary or narrator-prose line with "
-            "no [PROJ-NNNN] id). Re-issue with "
-            "include_narrator_bullets:true and/or "
-            "include_section_headers:true to see them.")
-                .arg(preIdPruneCountFull);
+    if (filtered.isEmpty()) {
+        if (!queryArg.isEmpty() && postIdPruneCountFull > 0) {
+            // ANTS-3560 — the keyword query, not the ID-mandate, emptied
+            // the set: N id-bearing bullets were searched and none matched.
+            // The old ANTS-1538 text misdirected toward
+            // include_narrator_bullets when the real fix is to fix the
+            // query; a space/comma-separated multi-id query is the common
+            // trigger (Rolodex), so hint at ids:[...] / one-id-at-a-time.
+            out["warning"] = QStringLiteral(
+                "no bullet matched query \"%1\" (%2 id-bearing bullet(s) "
+                "searched). If you passed multiple space/comma-separated "
+                "ids, use ids:[...] or query one id at a time.")
+                    .arg(queryArg).arg(postIdPruneCountFull);
+        } else if (preIdPruneCountFull > 0 &&
+                   !includeNarratorBullets && !includeSectionHeaders) {
+            // ANTS-1538 — the default ID-filter genuinely dropped every
+            // actionable bullet (no query narrowed it, or the file has no
+            // id-bearing bullets at all). Surface the opt-ins.
+            out["warning"] = QStringLiteral(
+                "default ID-filter dropped all %1 bullet(s) (every entry "
+                "was either a rollup-summary or narrator-prose line with "
+                "no [PROJ-NNNN] id). Re-issue with "
+                "include_narrator_bullets:true and/or "
+                "include_section_headers:true to see them.")
+                    .arg(preIdPruneCountFull);
+        }
     }
     // ANTS-1428 — envelope-level format echo. The adapter parses
     // the whole file in one shape; if any bullet was tagged GFM,
