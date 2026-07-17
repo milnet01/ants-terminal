@@ -147,6 +147,11 @@ load. Quick check: `LC_ALL=C.UTF-8 ctest --test-dir build`.
   `test_<feature>.cpp`, exit 0/non-zero with enough output to diagnose;
   (3) add the source to a bundle's `SOURCES` list (do NOT `add_executable`);
   (4) verify it FAILS against pre-fix code before restoring the fix.
+- **E2E harness** (`tools/e2e/`, label `e2e`, ANTS-2049) — drive a
+  throwaway `--e2e` instance as a user (inject-key/click, resize-window,
+  grab-image over its socket via `--remote-json`) and observe it. Opt-in:
+  `ctest -L e2e` (excluded from the default presets). How-to +
+  case format: [`docs/qa/e2e/README.md`](docs/qa/e2e/README.md).
 
 ## Conventions
 

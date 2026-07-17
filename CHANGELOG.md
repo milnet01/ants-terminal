@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **End-to-end test harness (ANTS-2049): a `--e2e` launch flag + socket-only inject verbs let the app be driven as a user for testing.**
+  New `--e2e` flag forces the RemoteControl socket open and unlocks four
+  socket-only inject verbs (inject-key, inject-click, resize-window,
+  grab-image) behind an m_e2eMode gate; a generic `--remote-json` client
+  passthrough carries their argument shapes. A shell driver
+  (tools/e2e/run.sh) + 8-case smoke suite (tools/e2e/smoke.sh) launch a
+  throwaway isolated instance, drive it, and reap it, wired as an opt-in
+  `e2e` ctest label. The inject verbs are NOT MCP tools, so they are
+  unreachable against a normal instance (they refuse e2e_disabled).
+
 - **read_spill row-paging — page a parked list's rows cheaply instead of re-downloading the whole body** (ANTS-3545)
   When a large list reply is parked (offloaded) and its preview shows an array of rows, `read_spill` now accepts `row_offset`/`row_count` to fetch the NEXT batch of rows, already parsed — instead of byte-paging (which lands mid-row) or re-fetching everything. Returns `{mode:"rows", key, rows, row_offset, total_rows, truncated}`; page on via `row_offset + rows.size()`. Completes the ANTS-3538 preview. Pages the same dominant array the preview named (shared detection). Bounded by a stat-before-read 1 MiB parse cap (refuses `too_large` without loading an over-cap body); non-array bodies refuse `not_array` (byte-page them). Byte-mode `read_spill` is unchanged.
 
