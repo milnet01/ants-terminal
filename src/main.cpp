@@ -5,6 +5,7 @@
 
 #include <QApplication>
 #include <QJsonObject>
+#include <QJsonDocument>
 #include "debuglog.h"
 #include <QCommandLineParser>
 #include <QTimer>
@@ -293,10 +294,50 @@ int main(int argc, char *argv[]) {
         "Default 100, capped at 10 000 server-side.",
         "n");
     parser.addOption(remoteLinesOpt);
+    // ANTS-2049 — generic raw-JSON passthrough for the e2e harness. Carries
+    // a whole `{cmd, ...args}` object so verbs with new argument shapes
+    // (inject-key/click, resize-window, grab-image) are reachable without a
+    // hand-coded --remote-* flag per arg. Standalone (no --remote needed).
+    QCommandLineOption remoteJsonOpt("remote-json",
+        "Send a raw JSON verb object to the RemoteControl socket and print "
+        "the JSON reply. The object must carry a string \"cmd\" field; the "
+        "rest become the verb's args. Honours --remote-socket / "
+        "ANTS_REMOTE_SOCKET. Exit 0 on ok, 2 on a verb refusal, 1 on a "
+        "transport error.",
+        "json");
+    parser.addOption(remoteJsonOpt);
     parser.process(app);
 
     if (parser.isSet(newPluginOpt)) {
         return scaffoldPlugin(parser.value(newPluginOpt));
+    }
+    if (parser.isSet(remoteJsonOpt)) {
+        // ANTS-2049 — raw-JSON passthrough. Resolve the socket the same way
+        // the --remote client does (--remote-socket wins, else the default
+        // which itself honours ANTS_REMOTE_SOCKET), then hand off to the
+        // unchanged runClient so we inherit its exit semantics + SO_PEERCRED
+        // server-credential check (INV-9).
+        const QString socketPath = parser.isSet(remoteSocketOpt)
+            ? parser.value(remoteSocketOpt)
+            : RemoteControl::defaultSocketPath();
+        const QJsonDocument doc =
+            QJsonDocument::fromJson(parser.value(remoteJsonOpt).toUtf8());
+        if (!doc.isObject()) {
+            std::fprintf(stderr,
+                "ants-terminal --remote-json: value is not a JSON object\n");
+            return 1;
+        }
+        QJsonObject obj = doc.object();
+        const QString jsonCmd = obj.value(QStringLiteral("cmd")).toString();
+        if (jsonCmd.isEmpty()) {
+            std::fprintf(stderr,
+                "ants-terminal --remote-json: missing string \"cmd\" field\n");
+            return 1;
+        }
+        // runClient re-inserts cmd into the args envelope
+        // (remotecontrol.cpp), so drop it here to avoid a redundant channel.
+        obj.remove(QStringLiteral("cmd"));
+        return RemoteControl::runClient(jsonCmd, obj, socketPath);
     }
     if (parser.isSet(remoteOpt)) {
         const QString socketPath = parser.isSet(remoteSocketOpt)
