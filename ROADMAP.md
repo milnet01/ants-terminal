@@ -20494,6 +20494,22 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Buildable safe increments (spec-first + cold-eyes): (i) the
   context-pressure advisor verb; (ii) a one-call "resume brief" emitting
   durable autonomous-run state. NOT building: any /compact injection.
+  Progress 2026-07-17 (implementation increment): the core of the safe
+  solution ALREADY SHIPS in this project and is now regression-locked.
+  Chain: Claude Code's NATIVE auto-compact fires at safe turn
+  boundaries → the PreCompact hook (ants-precompact-snapshot.sh) saves
+  the live TodoWrite task list → the SessionStart(compact) preamble
+  (ants-session-preamble.sh) re-injects in_progress+pending todos as an
+  `[ants:resume]` line. So an autonomous run's task list survives each
+  auto-compact losslessly WITHOUT any /compact injection. Verified
+  end-to-end and locked by 3 new hook_pack assertions (resume line
+  surfaces in_progress+pending, excludes completed, no stale line
+  without a session id). REMAINING (design-first follow-up, not built):
+  the proactive context-pressure ADVISOR — a read-only "you're deep in
+  context; checkpoint & compact at the next task boundary" hint from
+  tokenusageengine, so CC compacts at a clean boundary rather than
+  wherever native auto-compact happens to fire. That verb needs a spec
+  + cold-eyes before code.
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 

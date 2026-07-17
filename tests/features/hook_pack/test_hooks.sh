@@ -60,6 +60,41 @@ else
     fail "INV-3 preamble stdout=${preamble_out} exceeds 500-byte cap"
 fi
 
+# ---------- Auto-compact resume flow (ANTS-3563 / ANTS-1252 §1.5) ----------
+# The PreCompact snapshot → SessionStart `[ants:resume]` chain is what makes
+# Claude Code's native auto-compaction LOSSLESS for an autonomous run: the
+# in-progress/pending task list survives the compact so CC resumes where it
+# left off. Lock the chain end-to-end so it can't silently regress.
+if [ "$have_jq" -eq 1 ]; then
+    RC_HOME="$(mktemp -d -t ants-resume.XXXXXX)"
+    mkdir -p "$RC_HOME/.cache/ants-terminal"
+    rc_sid="sess-resume-test"
+    printf '%s' '{"ts":"2026-07-17T00:00:00Z","todos":[{"content":"Finish parser fix","status":"in_progress"},{"content":"Write test","status":"pending"},{"content":"Old done","status":"completed"}]}' \
+        > "$RC_HOME/.cache/ants-terminal/precompact_${rc_sid}.json"
+    rc_out="$(cd "$REPO_ROOT" && printf '{}\n' | CLAUDE_SESSION_ID="$rc_sid" HOME="$RC_HOME" bash "$HOOKS_DIR/ants-session-preamble.sh" 2>/dev/null)"
+    if printf '%s' "$rc_out" | grep -q '\[ants:resume\].*Finish parser fix' \
+       && printf '%s' "$rc_out" | grep -q 'Write test'; then
+        pass "auto-compact resume: [ants:resume] surfaces in_progress+pending todos"
+    else
+        fail "auto-compact resume: missing/incomplete resume line: ${rc_out}"
+    fi
+    if printf '%s' "$rc_out" | grep -q 'Old done'; then
+        fail "auto-compact resume: leaked a completed todo into the resume line"
+    else
+        pass "auto-compact resume: completed todos excluded"
+    fi
+    # No session id → no snapshot lookup → no stale resume line.
+    rc_none="$(cd "$REPO_ROOT" && printf '{}\n' | CLAUDE_SESSION_ID="" HOME="$RC_HOME" bash "$HOOKS_DIR/ants-session-preamble.sh" 2>/dev/null)"
+    if printf '%s' "$rc_none" | grep -q '\[ants:resume\]'; then
+        fail "auto-compact resume: emitted a resume line with no session id"
+    else
+        pass "auto-compact resume: no resume line without a session id"
+    fi
+    rm -rf "$RC_HOME"
+else
+    skip "auto-compact resume flow (jq not available)"
+fi
+
 # ---------- INV-4 & behavioural: bash-veto reason cap + hits + bypass ----------
 if [ "$have_jq" -eq 1 ]; then
     check_reason_size() {
