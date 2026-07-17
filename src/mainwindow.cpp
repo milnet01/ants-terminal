@@ -3940,6 +3940,9 @@ void MainWindow::setupStatusBarChrome() {
     // ROADMAP.md-presence convention so terminals running outside any
     // project root pay nothing.
     m_roadmapBtn = new QPushButton(tr("Roadmap"), this);
+    // ANTS-2049 — objectName hook for the e2e harness (inject-click by
+    // objectName to open the Roadmap dialog; smoke case 3).
+    m_roadmapBtn->setObjectName(QStringLiteral("roadmapButton"));
     m_roadmapBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     m_roadmapBtn->hide();
     statusBar()->addPermanentWidget(m_roadmapBtn);

@@ -2604,6 +2604,10 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
       m_themeName(themeName),
       m_lastHtml(std::make_shared<QString>()),
       m_config(cfg) {
+    // ANTS-2049 — objectName hook so the e2e harness can resolve this dialog
+    // via e2eResolveTarget(findChild) and confirm it opened after an
+    // inject-click on the Roadmap button (smoke case 3).
+    setObjectName(QStringLiteral("RoadmapDialog"));
     setWindowTitle(tr("Roadmap — %1").arg(QFileInfo(roadmapPath).fileName()));
     // ANTS-1100 spec: 1200x800 default; DialogChrome restores the
     // user's persisted SIZE below (D3) if they have resized us before.
