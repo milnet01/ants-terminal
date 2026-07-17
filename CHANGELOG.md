@@ -27,6 +27,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Bash guard-hook no longer vetoes a `grep -v ROADMAP.md` / `--exclude=ROADMAP.md` exclusion as if it were a read of the roadmap (ANTS-2169).**
+
 - **read_region/read_regions symbol mode should resolve namespace/class-qualified names, not only the bare identifier.** (ANTS-3513)
   When asking to read a function by name, typing its full name (like ClassName::method) fails and you must strip the prefix — the tool should accept both.
 

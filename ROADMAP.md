@@ -8770,11 +8770,20 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: user-request-2026-06-24 (hotfix path for urgent published-release bugs).
   Shipped 2026-06-25 (commit a3fd123). Two-phase `hotfix` subcommand + fix_is_on_main; guards fix_not_on_main / rc_base_mismatch / hotfix_branch_exists / conflict-abort; covered by the cut_rc_behaviour shell harness + Ants2165* source-scrape cases.
 
-- 📋 [ANTS-2169] **Bash guard-hook false-positives on filename mentions + blocks line-level git diff.**
+- ✅ [ANTS-2169] **Bash guard-hook false-positives on filename mentions + blocks line-level git diff.**
   Two guard-hook frictions hit while working: (1) a `grep` that merely listed ROADMAP.md / CHANGELOG.md as `grep -v` EXCLUSIONS tripped the "use roadmap_query" guard — it pattern-matches the literal filename in the command string regardless of read-vs-exclude intent; the guard should not fire when the filename only appears after `-v` / as an exclusion. (2) `git diff` (line-level verification of a surgical multi-file edit) is blocked toward get_git_status / verify_changes, but no MCP verb returns the raw unified diff content, so there is no cheap path to actually SEE the changed lines. Consider a verb that returns a bounded unified diff, or relax the git-diff guard for small/staged diffs.
   **Layman:** The helper that nudges me toward cheaper Ants tools sometimes fires when it shouldn't, slowing me down.
   Kind: enhancement.
   Source: in-session-2026-06-25 (Flathub epic work).
+  Resolved 2026-07-17: Part 1 (the FP) fixed — ants-bash-veto.sh now
+  marks ROADMAP.md a non-read when it appears as a grep exclusion
+  (grep -v ROADMAP.md / --exclude=ROADMAP.md) so the roadmap_query
+  block skips it; a genuine `grep <pat> ROADMAP.md` still blocks.
+  Locked by two new hook_pack assertions. Part 2 (raw unified diff via
+  an MCP verb) is already served by git_state op:diff (working-tree
+  diff, ANTS-2074) + hunks=true (ANTS-3377) — no new work needed.
+  Note: the installed ~/.claude/hooks copy is stale vs repo; re-run
+  tools/install-hooks.sh (or relaunch) to pick up this fix live.
 
 - ✅ [ANTS-2175] **MCP dispatch silently ignores unknown / misspelled args — echo an `ignored_args` advisory.**
   Trigger: passed `query="token"` to `roadmap_query`, which has no `query` param (its filters are status / section / id / mode). The unknown arg was silently dropped and the verb returned the full unfiltered roadmap — looked like a working search, cost ~6 extra calls to realise the filter was a no-op.
