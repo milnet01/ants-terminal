@@ -12,6 +12,19 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **find_definition is blind to GLSL/shader symbols — add a `glsl` language family.** (ANTS-3558)
+  In projects built around shaders (like the DOOM renderer), the "where is this defined?" tool can't see any shader code, so it wrongly reports symbols as missing.
+
+### Fixed
+
+- **e2e run leaks a throwaway config path into the real ~/.claude/settings.json SessionStart hook.** (ANTS-3562)
+  Running the built-in end-to-end test suite quietly edits your real Claude settings to point a startup script at a temporary folder; once that folder is deleted, every later Claude session shows a "file not found" hook error until the app is relaunched and rewrites it.
+
+- **roadmap_query zero keyword-match emits a misleading "every entry has no [PROJ-NNNN] id" warning.** (ANTS-3560)
+  When you search the roadmap and nothing matches, the tool wrongly says "none of your items have IDs" and points you at the wrong fix — when the truth is simply that your search text matched nothing.
+
 ## [0.7.100] — unreleased (Patron RC preview)
 ### Added
 
