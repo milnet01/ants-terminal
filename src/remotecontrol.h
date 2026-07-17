@@ -15,6 +15,7 @@
 
 class QLocalServer;
 class QLocalSocket;
+class QWidget;                 // ANTS-2049 — e2eResolveTarget return type
 class MainWindow;
 class ClaudeIntegration;
 namespace VerifyTrust { class Client; }
@@ -382,6 +383,19 @@ public:
     QJsonDocument cmdRoadmapBranchDrift(const QJsonObject &req);
     QJsonDocument cmdTabList();
     QJsonDocument cmdGetText(const QJsonObject &req);
+
+    // ANTS-2049 — e2e harness inject verbs. Socket-dispatch-only (hyphenated
+    // on-wire keys inject-key / inject-click / resize-window / grab-image),
+    // gated behind m_e2eMode (set only via setE2eMode on the --e2e launch
+    // path). Deliberately NOT MCP-registered, so unreachable through the
+    // agent's MCP toolset against the user's live instance (security property,
+    // spec §5). e2eResolveTarget is the shared offscreen-safe widget resolver
+    // (never QApplication::activeWindow()). See docs/specs/ANTS-2049.md.
+    QWidget *e2eResolveTarget(const QString &objectName) const;
+    QJsonDocument cmdInjectKey(const QJsonObject &req);
+    QJsonDocument cmdInjectClick(const QJsonObject &req);
+    QJsonDocument cmdResizeWindow(const QJsonObject &req);
+    QJsonDocument cmdGrabImage(const QJsonObject &req);
 
     // ANTS-1301: recent_errors — scan the focused terminal's recent
     // scrollback with a per-language regex bank (ScrollbackErrors) and

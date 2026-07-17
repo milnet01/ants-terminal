@@ -58,6 +58,13 @@
 #include <QFileInfo>
 #include <QDate>
 #include <QSaveFile>
+// ANTS-2049 — e2e inject verbs: synthetic Qt event posting + widget grab.
+#include <QApplication>
+#include <QWidget>
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <QPixmap>
+#include <QScreen>
 #include <algorithm>
 #include <QHash>
 #include <QJsonArray>
@@ -1970,6 +1977,27 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
     if (cmd == QLatin1String("tab-list")) {
         return cmdTabList();
     }
+    // ANTS-2049 — e2e inject verbs (socket-only). Gated behind m_e2eMode: on a
+    // normal binary (no --e2e) the gate is false and every inject verb refuses
+    // with code:"e2e_disabled" and posts no event / does no resize/grab
+    // (INV-1). The verbs carry new argument shapes reached via --remote-json.
+    if (cmd == QLatin1String("inject-key")
+            || cmd == QLatin1String("inject-click")
+            || cmd == QLatin1String("resize-window")
+            || cmd == QLatin1String("grab-image")) {
+        if (!m_e2eMode) {
+            QJsonObject o;
+            o["ok"]    = false;
+            o["code"]  = QStringLiteral("e2e_disabled");
+            o["error"] = cmd + QStringLiteral(
+                ": refused — instance not launched with --e2e");
+            return QJsonDocument(o);
+        }
+        if (cmd == QLatin1String("inject-key"))     return cmdInjectKey(req);
+        if (cmd == QLatin1String("inject-click"))   return cmdInjectClick(req);
+        if (cmd == QLatin1String("resize-window"))  return cmdResizeWindow(req);
+        return cmdGrabImage(req);
+    }
     if (cmd == QLatin1String("roadmap-query")) {
         // ANTS-1247: thread `req` through so `--remote roadmap-query
         // status=active` (if a future --remote-status flag lands)
@@ -2573,6 +2601,230 @@ QJsonDocument RemoteControl::cmdTabList() {
     out["ok"] = true;
     out["tabs"] = m_main->tabsAsJson();
     return QJsonDocument(out);
+}
+
+// ============================================================================
+// ANTS-2049 — e2e harness inject verbs (socket-only, gated on m_e2eMode).
+// All run on the GUI thread (dispatch() is called from the QLocalServer
+// readyRead handler, which the GUI thread owns), so posting synthetic events
+// to widgets is main-thread-safe using raw QKeyEvent / QMouseEvent —
+// the shipped binary gains no Qt Test-module link (INV-8).
+// ============================================================================
+
+// Shared refusal envelope for the e2e verbs. Mirrors the {ok:false, code,
+// error} shape the harness dispatches on (spec §2.3).
+static QJsonDocument e2eRefusal(const QString &verb, const QString &code,
+                                const QString &msg) {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["code"]  = code;
+    o["error"] = verb + QStringLiteral(": ") + msg;
+    return QJsonDocument(o);
+}
+
+// Offscreen-safe target resolver (spec §2.3 / INV-4). Order: (1) an active
+// modal dialog; else (2) the first visible non-main top-level; else (3) the
+// main window. Never QApplication::activeWindow() (unreliable offscreen / on
+// some WMs — the codebase avoids it deliberately). With a non-empty
+// objectName, descend into the resolved top-level via findChild (nullptr →
+// the caller emits widget_not_found).
+QWidget *RemoteControl::e2eResolveTarget(const QString &objectName) const {
+    QWidget *top = QApplication::activeModalWidget();
+    if (!top) {
+        const auto tops = QApplication::topLevelWidgets();
+        for (QWidget *w : tops) {
+            if (w == static_cast<QWidget *>(m_main)) continue;
+            if (!w->isVisible()) continue;
+            top = w;
+            break;
+        }
+    }
+    if (!top) top = m_main;
+    if (objectName.isEmpty()) return top;
+    return top->findChild<QWidget *>(objectName);
+}
+
+QJsonDocument RemoteControl::cmdInjectKey(const QJsonObject &req) {
+    const QString widget = req.value(QStringLiteral("widget")).toString();
+    QWidget *target = e2eResolveTarget(widget);
+    if (!widget.isEmpty() && !target)
+        return e2eRefusal(QStringLiteral("inject-key"),
+                          QStringLiteral("widget_not_found"),
+                          QStringLiteral("no widget named \"%1\"").arg(widget));
+    if (!target)
+        return e2eRefusal(QStringLiteral("inject-key"),
+                          QStringLiteral("bad_args"),
+                          QStringLiteral("no live top-level window"));
+
+    // Post to the focus widget (falling back to the target itself) — the
+    // robust, accelerator-independent path the smoke suite relies on
+    // (a printable string reaching the focused grid's keyPressEvent → PTY).
+    QWidget *dest = target->focusWidget();
+    if (!dest) dest = target;
+
+    // key: an integer Qt::Key value, or a small set of named keys.
+    int key = 0;
+    const QJsonValue kv = req.value(QStringLiteral("key"));
+    if (kv.isDouble()) {
+        key = kv.toInt();
+    } else {
+        static const QHash<QString, int> named = {
+            {QStringLiteral("Return"),    Qt::Key_Return},
+            {QStringLiteral("Enter"),     Qt::Key_Enter},
+            {QStringLiteral("Escape"),    Qt::Key_Escape},
+            {QStringLiteral("Tab"),       Qt::Key_Tab},
+            {QStringLiteral("Backspace"), Qt::Key_Backspace},
+            {QStringLiteral("Space"),     Qt::Key_Space},
+            {QStringLiteral("Up"),        Qt::Key_Up},
+            {QStringLiteral("Down"),      Qt::Key_Down},
+            {QStringLiteral("Left"),      Qt::Key_Left},
+            {QStringLiteral("Right"),     Qt::Key_Right},
+        };
+        key = named.value(kv.toString(), 0);
+    }
+    const QString text = req.value(QStringLiteral("text")).toString();
+    if (key == 0 && text.isEmpty())
+        return e2eRefusal(QStringLiteral("inject-key"),
+                          QStringLiteral("bad_args"),
+                          QStringLiteral("need a \"key\" or \"text\""));
+
+    Qt::KeyboardModifiers mods = Qt::NoModifier;
+    const QJsonArray modArr = req.value(QStringLiteral("modifiers")).toArray();
+    for (const QJsonValue &m : modArr) {
+        const QString ms = m.toString().toLower();
+        if (ms == QLatin1String("ctrl") || ms == QLatin1String("control"))
+            mods |= Qt::ControlModifier;
+        else if (ms == QLatin1String("shift"))
+            mods |= Qt::ShiftModifier;
+        else if (ms == QLatin1String("alt"))
+            mods |= Qt::AltModifier;
+        else if (ms == QLatin1String("meta"))
+            mods |= Qt::MetaModifier;
+    }
+
+    QCoreApplication::postEvent(
+        dest, new QKeyEvent(QEvent::KeyPress, key, mods, text));
+    QCoreApplication::postEvent(
+        dest, new QKeyEvent(QEvent::KeyRelease, key, mods, text));
+    QJsonObject o;
+    o["ok"] = true;
+    return QJsonDocument(o);
+}
+
+QJsonDocument RemoteControl::cmdInjectClick(const QJsonObject &req) {
+    const QString widget = req.value(QStringLiteral("widget")).toString();
+    QWidget *target = e2eResolveTarget(widget);
+    if (!widget.isEmpty() && !target)
+        return e2eRefusal(QStringLiteral("inject-click"),
+                          QStringLiteral("widget_not_found"),
+                          QStringLiteral("no widget named \"%1\"").arg(widget));
+    if (!target)
+        return e2eRefusal(QStringLiteral("inject-click"),
+                          QStringLiteral("bad_args"),
+                          QStringLiteral("no live top-level window"));
+
+    QPoint pt;
+    if (req.contains(QStringLiteral("x")) && req.contains(QStringLiteral("y")))
+        pt = QPoint(req.value(QStringLiteral("x")).toInt(),
+                    req.value(QStringLiteral("y")).toInt());
+    else
+        pt = target->rect().center();
+
+    Qt::MouseButton btn = Qt::LeftButton;
+    const QString bs = req.value(QStringLiteral("button")).toString().toLower();
+    if (bs == QLatin1String("right"))       btn = Qt::RightButton;
+    else if (bs == QLatin1String("middle")) btn = Qt::MiddleButton;
+
+    const QPointF local(pt);
+    const QPointF global = target->mapToGlobal(pt);
+    QCoreApplication::postEvent(
+        target, new QMouseEvent(QEvent::MouseButtonPress, local, global,
+                                btn, btn, Qt::NoModifier));
+    QCoreApplication::postEvent(
+        target, new QMouseEvent(QEvent::MouseButtonRelease, local, global,
+                                btn, Qt::NoButton, Qt::NoModifier));
+    QJsonObject o;
+    o["ok"] = true;
+    return QJsonDocument(o);
+}
+
+QJsonDocument RemoteControl::cmdResizeWindow(const QJsonObject &req) {
+    // resize-window ignores `widget` — it acts on the resolved top-level
+    // window. Reply echoes the post-clamp size (INV-1: socket-observable).
+    QWidget *target = e2eResolveTarget(QString());
+    if (!target)
+        return e2eRefusal(QStringLiteral("resize-window"),
+                          QStringLiteral("bad_args"),
+                          QStringLiteral("no live top-level window"));
+    QWidget *win = target->window();
+
+    int w = req.value(QStringLiteral("w")).toInt(0);
+    int h = req.value(QStringLiteral("h")).toInt(0);
+    if (w <= 0 || h <= 0)
+        return e2eRefusal(QStringLiteral("resize-window"),
+                          QStringLiteral("bad_args"),
+                          QStringLiteral("\"w\" and \"h\" must be positive"));
+
+    // Clamp to [minimum, screen-available].
+    const QSize minSz =
+        win->minimumSizeHint().expandedTo(win->minimumSize());
+    if (minSz.width()  > 0) w = std::max(w, minSz.width());
+    if (minSz.height() > 0) h = std::max(h, minSz.height());
+    if (QScreen *scr = win->screen()) {
+        const QRect avail = scr->availableGeometry();
+        if (avail.width()  > 0) w = std::min(w, avail.width());
+        if (avail.height() > 0) h = std::min(h, avail.height());
+    }
+    win->resize(w, h);
+
+    QJsonObject o;
+    o["ok"] = true;
+    o["w"]  = win->width();
+    o["h"]  = win->height();
+    return QJsonDocument(o);
+}
+
+QJsonDocument RemoteControl::cmdGrabImage(const QJsonObject &req) {
+    // Guard order (spec §2.3 / INV-5): (1) empty path → bad_args;
+    // (2) unset artifact dir → bad_args (clearer than validatePath's
+    // fail-closed empty-root message); (3) path escaping the artifact root
+    // → bad_path via PathValidation.
+    const QString path = req.value(QStringLiteral("path")).toString();
+    if (path.isEmpty())
+        return e2eRefusal(QStringLiteral("grab-image"),
+                          QStringLiteral("bad_args"),
+                          QStringLiteral("\"path\" required"));
+    const QByteArray dirEnv = qgetenv("ANTS_E2E_ARTIFACT_DIR");
+    if (dirEnv.isEmpty())
+        return e2eRefusal(QStringLiteral("grab-image"),
+                          QStringLiteral("bad_args"),
+                          QStringLiteral("ANTS_E2E_ARTIFACT_DIR unset"));
+    const QString root =
+        QFileInfo(QString::fromLocal8Bit(dirEnv)).canonicalFilePath();
+    const auto chk = PathValidation::validatePath(
+        path, root, QStringLiteral("grab-image"), QStringLiteral("path"));
+    if (chk.bad) return QJsonDocument(chk.err);
+
+    const QString widget = req.value(QStringLiteral("widget")).toString();
+    QWidget *target = e2eResolveTarget(widget);
+    if (!widget.isEmpty() && !target)
+        return e2eRefusal(QStringLiteral("grab-image"),
+                          QStringLiteral("widget_not_found"),
+                          QStringLiteral("no widget named \"%1\"").arg(widget));
+    if (!target)
+        return e2eRefusal(QStringLiteral("grab-image"),
+                          QStringLiteral("bad_args"),
+                          QStringLiteral("no live top-level window"));
+
+    const QString out = chk.argvForm;
+    if (!target->grab().save(out, "PNG"))
+        return e2eRefusal(QStringLiteral("grab-image"),
+                          QStringLiteral("bad_args"),
+                          QStringLiteral("PNG save failed"));
+    QJsonObject o;
+    o["ok"]   = true;
+    o["path"] = out;
+    return QJsonDocument(o);
 }
 
 // ANTS-1932 — to_status synonym resolver. Maps the natural English words
