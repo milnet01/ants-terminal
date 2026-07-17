@@ -17805,6 +17805,26 @@ QJsonDocument RemoteControl::cmdDebtSweepScan(const QJsonObject &req) {
     env["has_more"]        = hasMore;
     if (hasMore) env["next_offset"] = offset + returned;
     env["by_category"]     = by;
+    // ANTS-3564 (Rolodex feedback 2026-07-17) — self-describe the sweep's
+    // SCOPE so total_findings:0 is not misread as "no debt". The detectors are
+    // deterministic marker/lockstep heuristics (TODO/FIXME age, version
+    // lockstep, a bounded dead-code / duplicate-include set), NOT a judgment
+    // audit: assigned-but-never-read locals, stale prose, and GitHub Action
+    // pins below latest-major are all out of scope. Emit the categories
+    // actually scanned + a one-line scope caveat so a caller does not treat a
+    // clean mechanical sweep as a full audit.
+    QJsonArray detectorsRun;
+    if (opt.includeCodeDrift)      detectorsRun.append(QStringLiteral("code_drift"));
+    if (opt.includeTestCoverage)   detectorsRun.append(QStringLiteral("test_coverage"));
+    if (opt.includeDocDrift)       detectorsRun.append(QStringLiteral("doc_drift"));
+    if (opt.includePackagingDrift) detectorsRun.append(QStringLiteral("packaging_drift"));
+    env["detectors_run"] = detectorsRun;
+    env["scope_note"] = QStringLiteral(
+        "Marker/lockstep heuristics only (TODO-FIXME age, version lockstep, "
+        "bounded dead-code / duplicate-include). Not a judgment audit: "
+        "assigned-but-never-read locals, stale prose, and action pins below "
+        "latest-major are out of scope. total_findings:0 means \"no marker "
+        "hits\", not \"no debt\" — a judgment sweep is still required.");
     // Resolve since for response transparency.
     QString sinceRes = opt.sinceRef;
     if (sinceRes.isEmpty()) {
