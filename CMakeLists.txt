@@ -922,6 +922,22 @@ if(ANTS_TESTS)
         TIMEOUT 60)
 
     # ----------------------------------------------------------------------
+    # ANTS-2049 — e2e harness smoke suite. Opt-in (label "e2e"), excluded from
+    # the default / workstation / fast / debug presets (like "perf") — it
+    # drives a live --e2e instance over its RemoteControl socket, which needs
+    # a GUI/offscreen platform + a real shell. Runs headless via
+    # QT_QPA_PLATFORM=offscreen so an automated `ctest -L e2e` stays green
+    # (the dialog-grab case skips under offscreen). ANTS_E2E_BIN points at the
+    # freshly built binary rather than run.sh's build-fast/ default.
+    # ----------------------------------------------------------------------
+    add_test(NAME e2e_smoke
+             COMMAND bash ${CMAKE_SOURCE_DIR}/tools/e2e/smoke.sh)
+    set_tests_properties(e2e_smoke PROPERTIES
+        LABELS "e2e"
+        ENVIRONMENT "ANTS_E2E_BIN=$<TARGET_FILE:ants-terminal>;QT_QPA_PLATFORM=offscreen"
+        TIMEOUT 120)
+
+    # ----------------------------------------------------------------------
     # ANTS-1217 Phase 2 — test_vt bundle.
     # 27 standalone test executables for vtparser/terminalgrid/themes
     # invariants consolidated into one GoogleTest bundle. Each migrated
