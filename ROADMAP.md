@@ -20510,6 +20510,23 @@ partition (11 lanes) is documented in this fold-in for reuse.
   tokenusageengine, so CC compacts at a clean boundary rather than
   wherever native auto-compact happens to fire. That verb needs a spec
   + cold-eyes before code.
+  CONCLUSIVE (2026-07-17, verified via claude-code-guide against current
+  CC docs): a hook or skill CANNOT initiate compaction. PreCompact only
+  reacts/blocks, never starts a compact; no skill or model output can run
+  /compact; there is NO auto-compact threshold setting; the Agent SDK has
+  no compaction API. The only triggers are the user typing /compact and
+  auto-compact near-full — neither reachable by hook/skill/model. So the
+  literal "give CC the ability to compact its own chat" is BLOCKED on
+  Anthropic (parallels project_auto_switcher_parked — both need a real
+  Anthropic API). Feature request to file: (a) a PreCompact-INITIATING
+  hook output, or (b) a configurable auto-compact threshold
+  (compact-at-N%), or (c) an SDK/headless compaction call.
+  SHIPPED WORKAROUND that achieves the actual goal (bounded small context
+  on long autonomous runs, cheaper than compaction): the /autonomous
+  command (~/.claude/commands/autonomous.md) — subagent-per-task (heavy
+  context disposable; demoed 69k tokens offloaded → 250-word result) +
+  durable state + fresh-invocation-per-task for the literal work→reset
+  loop. Un-park this item only when Anthropic ships a compaction trigger.
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
