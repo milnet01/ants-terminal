@@ -19332,7 +19332,7 @@ GUI/PTY end to end. Item 2 depends on item 1.
   Source: user-request-2026-06-10.
   Resolved (2026-07-17): e2e harness fully implemented per docs/specs/ANTS-2049.md (Tasks 2–12; Task 1 gate shipped 2026-06-10). --remote-json passthrough (main.cpp); four socket-only inject verbs inject-key/inject-click/resize-window/grab-image + e2eResolveTarget (remotecontrol.cpp), gated on m_e2eMode, NOT MCP-registered; objectName hooks (roadmapButton / RoadmapDialog); tools/e2e/run.sh + smoke.sh (8 cases, spec §6); opt-in `e2e` ctest label (excluded from default/workstation/fast/debug presets). Docs: error-codes taxonomy (e2e_disabled/widget_not_found), docs/qa/e2e/README.md, CLAUDE.md pointer, CHANGELOG. Verified: smoke ALL PASS offscreen (case 3 dialog-grab skips offscreen per spec), `ctest -L e2e` green in 8.4s, full suite 2712/2712 green, no QtTest link (INV-8). Note: on-screen dialog-grab (case 3) needs the roadmap button active (cwd-detected) — reliable dialog-opening is an ANTS-2050 test-authoring concern. Unblocks ANTS-2050. Commits f202d476…(this).
 
-- 📋 [ANTS-2050] **Author a user-level test-case suite covering every feature, to run through the E2E harness.**
+- ✅ [ANTS-2050] **Author a user-level test-case suite covering every feature, to run through the E2E harness.**
   Depends on the harness item above. Enumerate test cases (each: steps →
   expected observable result, runnable through the harness) covering every
   user-facing feature: terminal basics (typing, line-wrap, ANSI colours,
@@ -19351,6 +19351,25 @@ GUI/PTY end to end. Item 2 depends on item 1.
   Kind: test.
   Lanes: testing-infrastructure, qa.
   Source: user-request-2026-06-10.
+  Resolved (2026-07-17): feature-covering QA suite authored on the ANTS-2049 harness. docs/qa/e2e/cases.md enumerates every user-facing feature across all 13 subsystems as drive→expected cases, each marked auto/manual/pending-hook (honest coverage map). tools/e2e/cases.sh automates the lanes the current harness asserts headlessly — terminal basics (echo, ANSI SGR, CR overwrite, UTF-8/CJK double-width, long-line integrity), scrollback retention, resize (echo+clamp+reflow), theme restyle-liveness (config-reload thrash → app alive + re-renders) — lane-selectable (cases.sh <lane>), wired into `ctest -L e2e` as e2e_cases (offscreen, ~12s). No new harness hooks needed for these. The manual (needs-display) and pending-hook (needs-objectName/verb) cases remain documented in cases.md; automating the pending-hook lanes is ANTS-3557. Theme lane drives the config-reload applyTheme path — the ANTS-3556 Wayland-menu race stays guarded by tests/features/theme_switch_popup_defer (different path). Verified: ctest -L e2e green (smoke + cases), shellcheck clean. Commit 9c7b5d62.
+
+- 📋 [ANTS-3557] **Extend the e2e harness with GUI hooks to automate the ANTS-2050 pending-hook lanes.**
+  Follow-up to ANTS-2050. The feature checklist (docs/qa/e2e/cases.md) marks
+  many cases 🔧 pending-hook — automatable once the harness can address them.
+  Add, lane by lane (promote each 🔧→✅ in cases.md + a cases.sh lane as it
+  lands): key/shortcut injection with reliable focus (scrollback find /
+  back-to-bottom / prompt-jump; tab open/close/rename/reorder; splits);
+  per-dialog objectName hooks (audit / settings / about / review-changes) for
+  open+grab; status-bar chip objectNames + value read-back (git branch, repo
+  visibility, tasks done/total, model chip); a relaunch-same-profile helper +
+  graceful-quit save (session persistence); a paste path (image paste
+  auto-save); and a plugin-load path (Lua sandbox: strips globals,
+  instruction-count timeout). Alt-screen (1049) is automatable now via raw
+  escapes — a cheap early win.
+  Layman: keep growing the automated QA checklist so more of the app is
+  checked by the robot instead of by hand.
+  Kind: enhancement.
+  Source: in-session-2026-07-17.
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
