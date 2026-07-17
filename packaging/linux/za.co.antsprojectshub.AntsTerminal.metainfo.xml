@@ -103,6 +103,18 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.100" date="2026-07-17">
+      <description>
+        <p>Tab-colour and scrollback-navigation polish for everyday use, a new end-to-end test harness, and a large under-the-hood sweep of the built-in Claude Code / MCP integration (cheaper searches, paged result previews, and rendering speed-ups).</p>
+        <ul>
+          <li><em>Added:</em> 14 tab-colour presets plus a "Custom colour…" picker for any shade you like, and floating prompt-jump chips (↑ / ↓) that navigate scrollback between shell commands. (ANTS-1374, ANTS-1330)</li>
+          <li><em>Added:</em> An end-to-end test harness — a <code>--e2e</code> launch flag and socket-only inject verbs let the app be driven as a user for testing, with an automated feature case suite. (ANTS-2049, ANTS-2050)</li>
+          <li><em>Changed:</em> Built-in Claude Code / MCP token-savings — cheaper searches (<code>count_only</code> / <code>files_only</code> / <code>offset</code> paging), row-paged previews for large offloaded replies, cold-eyes region windows instead of whole-file reads, and a one-call <code>[Unreleased]</code> tidy. (ANTS-3537, 3549, 3547, 3545, 3538, 3522, 3495)</li>
+          <li><em>Changed:</em> Lower idle CPU and faster rendering under heavy output — a blinking cursor no longer repaints the whole terminal, glyph shaping is cached, and output repaints are frame-paced so typing stays responsive. (ANTS-3454, 3453, 3451)</li>
+          <li><em>Fixed:</em> A crash when changing the colour theme from the menu on Wayland; a large-result offload preview never exceeds the original reply; plus a tail of hardening fixes across the PTY, audit, and MCP dispatch. (ANTS-3556, 3540, 2119)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.99" date="2026-07-17">
       <description>
         <p>Internal infrastructure and developer-tooling release — no new user-facing features. Every change here is under-the-hood work on the built-in Claude Code / MCP integration.</p>

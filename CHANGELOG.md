@@ -148,6 +148,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Crash when changing the colour theme from the menu (ANTS-3556)**
+  Picking a theme from View → Theme could crash the terminal on Wayland.
+  The restyle now runs a beat after the menu closes instead of while it is
+  still closing, so the earlier safety guard is no longer bypassed. Locked
+  with a regression test.
+
 - **Large-result offload never hands back a preview envelope larger than the original reply** (ANTS-3540)
   At a head≈threshold config the fixed envelope overhead plus the head could exceed a body that only just cleared the head guard, so offload could produce a net *loss*. offloadBody now measures the finished envelope and fails open (returns the untrimmed body) when it would not be strictly smaller — honoring the INV-9 net-saving guarantee at every config.
 

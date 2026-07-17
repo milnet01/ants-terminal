@@ -1,3 +1,33 @@
+ants-terminal (0.7.100-1) unstable; urgency=medium
+
+  * Tab colouration — 14 preset tab colours plus a custom colour picker
+    for any shade you like; custom colours persist across restarts and
+    survive tab dragging. (ANTS-1374)
+  * Scrollback navigation — floating up/down chips jump between shell
+    commands when you scroll up and your shell has command markers
+    enabled. (ANTS-1330)
+  * End-to-end test harness — the terminal can now be driven as a user
+    for testing via a new --e2e flag and socket-only inject verbs
+    (inject-key, inject-click, resize-window, grab-image), with an
+    automated feature case suite in tools/e2e/. (ANTS-2049, ANTS-2050)
+  * Claude Code integration token savings — workspace_search count_only /
+    files_only / offset paging avoid re-fetching whole result sets;
+    read_spill row-paging on parked lists; structured previews for large
+    offloaded replies; cold_eyes_brief cited-code region windows instead
+    of whole files; changelog_log op:normalize. (ANTS-3537, 3549, 3547,
+    3545, 3538, 3522, 3495)
+  * Performance — a blinking cursor and hover repaints no longer redraw
+    the whole terminal (ANTS-3454); a shaped-run cache cuts text-shaping
+    cost 1.6-1.9x (ANTS-3453); output repaints are frame-paced to keep
+    typing responsive under heavy output (ANTS-3451).
+  * Fixes — fixed a crash when changing the colour theme from the menu on
+    Wayland (ANTS-3556); a large-result offload preview never exceeds the
+    original reply (ANTS-3540); a tail of hardening fixes across the PTY,
+    audit, and MCP dispatch, and session_orient now flags a stale MCP
+    binary (ANTS-3499).
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 17 Jul 2026 00:00:00 +0200
+
 ants-terminal (0.7.99-1) unstable; urgency=medium
 
   * Internal infrastructure and developer-tooling release — no new
