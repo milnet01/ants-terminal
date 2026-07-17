@@ -45,4 +45,16 @@ source tree spanning C++, Python, Lua, Shell):
     token-cost entries, the `"symbol"` `kindForName` bucket, and the
     `Required` `callerCwdContractFor` branches.
 
+**`find_caller` files_only manifest** (ANTS-3555, source-grep — cmdFindCaller
+has no public test seam, same contract as INV-9/10/11):
+
+12. `cmdFindCaller` parses a `files_only` arg and, when set, early-returns a
+    manifest — `{files:[{file, count, lines[]}], files_count, callers_count,
+    files_only:true, definition?, …}` — that drops the quoted per-call
+    `context` windows. The branch precedes the full `callers[]` loop (so the
+    context lines are never built), and `count` equals the per-file `lines[]`
+    length (the returned, possibly `max_results`-capped, call sites), while
+    top-level `callers_count` still carries the true pre-cap total.
+13. The `find_caller` `tools/list` descriptor enumerates `files_only`.
+
 Exit 0 = every invariant holds.

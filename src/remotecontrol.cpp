@@ -16351,6 +16351,70 @@ QJsonDocument RemoteControl::cmdFindCaller(const QJsonObject &req) {
     const SymbolQuery::CallResult res =
         SymbolQuery::findCaller(root, symbol, sqOptions(req));
 
+    // ANTS-3555 — files_only manifest mode: return the distinct set of files
+    // that call the symbol (per-file call count + the exact line numbers) and
+    // drop the quoted per-call `context` windows + the redundant per-row
+    // `lang`. Those context lines are re-sent bytes when the caller opens the
+    // file with read_region next; the manifest is what it actually needs to
+    // navigate. Mirrors workspace_search's files_only (ANTS-3549) and
+    // indie_review_brief's manifest-not-bodies posture (ANTS-1281). Placed
+    // before the full callers[] loop so the context windows are never built.
+    const bool filesOnly =
+        req.value(QStringLiteral("files_only")).toBool(false);
+    if (filesOnly) {
+        QStringList order;               // first-seen file order (scan order)
+        QHash<QString, int> idx;         // file -> index into the parallel vecs
+        QVector<int> counts;
+        QVector<QJsonArray> linesByFile;
+        for (const SymbolQuery::CallMatch &c : res.callers) {
+            const auto it = idx.constFind(c.file);
+            int i;
+            if (it == idx.constEnd()) {
+                i = order.size();
+                idx.insert(c.file, i);
+                order.append(c.file);
+                counts.append(0);
+                linesByFile.append(QJsonArray());
+            } else {
+                i = it.value();
+            }
+            counts[i] += 1;
+            linesByFile[i].append(c.line);
+        }
+        QJsonArray files;
+        for (int i = 0; i < order.size(); ++i) {
+            QJsonObject fe;
+            fe["file"] = order.at(i);
+            // `count` is the returned (possibly max_results-capped) call count
+            // for this file and equals lines[].size(); top-level callers_count
+            // carries the true pre-cap total.
+            fe["count"] = counts.at(i);
+            fe["lines"] = linesByFile.at(i);
+            files.append(fe);
+        }
+        QJsonObject out;
+        out["ok"]            = true;
+        out["symbol"]        = symbol;
+        out["lang"]          = sqLangEcho(req);
+        out["files"]         = files;
+        out["files_count"]   = static_cast<int>(order.size());
+        out["callers_count"] = res.callersTotal;
+        out["files_only"]    = true;
+        if (res.definition.has_value()) {
+            // Keep the "where + who" pairing: the definition is a single small
+            // object (a body only when include_body is set), not a context
+            // window, so it survives the manifest trim.
+            QJsonObject dj = defMatchToJson(res.definition.value());
+            if (req.value(QStringLiteral("include_body")).toBool())
+                sqAttachBody(dj, root, symbol);
+            out["definition"] = dj;
+        }
+        out["files_scanned"] = res.filesScanned;
+        out["truncated"]     = res.truncated;
+        out["walk_capped"]   = res.walkCapped;
+        return QJsonDocument(out);
+    }
+
     QJsonArray callers;
     for (const SymbolQuery::CallMatch &c : res.callers) {
         QJsonObject o;

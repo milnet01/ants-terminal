@@ -507,10 +507,17 @@ TEST(McpSymbolQuery, Ants2087IncludeBodyWired) {
     EXPECT_NE(defBody.find("sqAttachBody"), std::string::npos)
         << "cmdFindDefinition must attach the body when requested";
 
-    // cmdFindCaller reads include_body for its definition echo.
+    // cmdFindCaller reads include_body for its definition echo. Bound the
+    // scrape by the next method definition rather than a fixed byte window —
+    // ANTS-3555's files_only branch grew the body and pushed the
+    // definition-echo `include_body` past the old 1800-byte window.
     const auto callPos = rcCpp.find("RemoteControl::cmdFindCaller");
     ASSERT_NE(callPos, std::string::npos);
-    const std::string callBody = rcCpp.substr(callPos, 1800);
+    const auto callEnd =
+        rcCpp.find("\nQJsonDocument RemoteControl::", callPos + 1);
+    const std::string callBody = rcCpp.substr(
+        callPos,
+        callEnd == std::string::npos ? std::string::npos : callEnd - callPos);
     EXPECT_NE(callBody.find("include_body"), std::string::npos)
         << "cmdFindCaller must read include_body";
 
@@ -525,4 +532,57 @@ TEST(McpSymbolQuery, Ants2087IncludeBodyWired) {
     EXPECT_GE(n, 2)
         << "include_body must be declared on both find_definition + "
            "find_caller schemas; found " << n;
+}
+
+// ANTS-3555 — files_only manifest mode: find_caller returns the distinct
+// matched-file set (per-file call count + the exact line numbers) and drops
+// the quoted per-call `context` windows — the manifest the caller reads_region
+// next, not the re-sent code around every call. cmdFindCaller has no public
+// test seam (see ANTS-2087 above), so this locks the envelope + schema via the
+// same source-scrape contract INV-9/10/11 use.
+TEST(McpSymbolQuery, Ants3555FilesOnlyManifest) {
+    const std::string rcCpp =
+        ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string ciCpp =
+        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+
+    // Scope to cmdFindCaller's body (bounded by the next method definition so
+    // the scrape can't bleed into a neighbour).
+    const auto callPos = rcCpp.find("RemoteControl::cmdFindCaller");
+    ASSERT_NE(callPos, std::string::npos);
+    const auto callEnd =
+        rcCpp.find("\nQJsonDocument RemoteControl::", callPos + 1);
+    const std::string callBody = rcCpp.substr(
+        callPos,
+        callEnd == std::string::npos ? std::string::npos : callEnd - callPos);
+
+    // INV-1 — files_only arg parsed inside cmdFindCaller.
+    EXPECT_NE(callBody.find("\"files_only\""), std::string::npos)
+        << "cmdFindCaller must parse the files_only arg";
+
+    // INV-2 — manifest envelope: emits per-file line numbers and the branch
+    // early-returns BEFORE the full callers[] loop, so the quoted `context`
+    // windows are never built into the reply.
+    const auto branchPos = callBody.find("if (filesOnly)");
+    EXPECT_NE(branchPos, std::string::npos)
+        << "files_only early-return branch present in cmdFindCaller";
+    EXPECT_NE(callBody.find("\"lines\""), std::string::npos)
+        << "files_only manifest carries per-file line numbers";
+    const auto ctxLoopPos = callBody.find("o[\"context\"]");
+    if (branchPos != std::string::npos && ctxLoopPos != std::string::npos) {
+        EXPECT_LT(branchPos, ctxLoopPos)
+            << "files_only must return BEFORE the context-quoting caller loop";
+    }
+
+    // INV-3 — tools/list schema enumerates files_only within the find_caller
+    // descriptor block (bounded by the next descriptor).
+    const auto fcSchema = ciCpp.find("t[\"name\"] = \"find_caller\"");
+    ASSERT_NE(fcSchema, std::string::npos);
+    const auto fcSchemaEnd = ciCpp.find("t[\"name\"] =", fcSchema + 1);
+    const std::string fcBlock = ciCpp.substr(
+        fcSchema,
+        fcSchemaEnd == std::string::npos ? std::string::npos
+                                         : fcSchemaEnd - fcSchema);
+    EXPECT_NE(fcBlock.find("props[\"files_only\"]"), std::string::npos)
+        << "find_caller tools/list schema must enumerate files_only";
 }

@@ -5797,9 +5797,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "symbol's own definition line is excluded from "
                         "callers; `definition` carries the best-guess "
                         "definition so you get \"where + who\" in one "
-                        "call. Refusals: bad_args (symbol missing or "
-                        "not a valid identifier), no_project "
-                        "(caller_cwd unresolved).");
+                        "call. With `files_only:true` the `callers[]` "
+                        "array is replaced by `files:[{file, count, "
+                        "lines[]}]` (the matched-file manifest, no "
+                        "quoted context windows). Refusals: bad_args "
+                        "(symbol missing or not a valid identifier), "
+                        "no_project (caller_cwd unresolved).");
                     t["selection_hint"] = QStringLiteral(
                         "Use instead of grep+Read for \"who calls Foo?\". "
                         "Pairs with find_definition; shell matches are "
@@ -5852,6 +5855,29 @@ void ClaudeIntegration::onMcpConnection() {
                             "context lines and are unaffected. Off by "
                             "default (ANTS-2087).");
                         props["include_body"] = p;
+                    }
+                    {
+                        // ANTS-3555 — files_only: manifest mode. Drop the
+                        // quoted per-call `context` windows; return the
+                        // matched-file set + exact line numbers instead.
+                        QJsonObject p;
+                        p["type"]    = "boolean";
+                        p["default"] = false;
+                        p["description"] = QStringLiteral(
+                            "When true, return {files:[{file, count, "
+                            "lines[]}], files_count, callers_count, "
+                            "files_only:true, definition?, ...} — the "
+                            "DISTINCT set of files that call the symbol, each "
+                            "with its call count and the exact line numbers, "
+                            "and NO quoted `context` windows. A "
+                            "rows-ELIMINATED manifest for \"which files call "
+                            "X?\" when you will read_region the sites next. "
+                            "`count` is the returned (possibly "
+                            "max_results-capped) call count for that file and "
+                            "equals lines[].size(); top-level callers_count "
+                            "carries the true pre-cap total. Off by default "
+                            "(ANTS-3555).");
+                        props["files_only"] = p;
                     }
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["encoding"] = makeEncodingProp();      // ANTS-2090
