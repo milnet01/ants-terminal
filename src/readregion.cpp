@@ -174,6 +174,33 @@ SymRange resolveSymbol(const QString &absPath, const QString &name) {
         if (r.matchCount != 1) firstIdx = -1;   // ambiguous/none → not found
     }
 
+    // ANTS-3513 — qualified-name fallback, the complement of the ANTS-3399
+    // pass above. When the caller PASTES a qualified name
+    // (`AntsHelper::driftCheck`, `claudestate::display`) — the instinct from
+    // find_definition / grep output — but the flat outline indexes only the
+    // bare identifier (a namespace free function, an inline member), the exact
+    // pass and the bare-suffix pass both miss (the latter is skipped because
+    // the name already contains `::`/`.`). Retry against the last
+    // `::`/`.`-separated component: match the bare tail exactly OR a
+    // differently-qualified outline entry ending in it. Only an UNAMBIGUOUS
+    // hit is accepted; ties fall through to not-found so the caller
+    // disambiguates rather than reading a wrong slice.
+    if (firstIdx < 0 && (name.contains(QLatin1String("::")) ||
+                         name.contains(QLatin1Char('.')))) {
+        const int cppSep = name.lastIndexOf(QLatin1String("::"));
+        const QString tail = (cppSep >= 0)
+            ? name.mid(cppSep + 2)
+            : name.mid(name.lastIndexOf(QLatin1Char('.')) + 1);
+        if (!tail.isEmpty()) {
+            const QString cppSuffix = QStringLiteral("::") + tail;
+            const QString pySuffix  = QLatin1Char('.') + tail;
+            runPass([&](const QString &n) {
+                return n == tail || n.endsWith(cppSuffix) || n.endsWith(pySuffix);
+            });
+            if (r.matchCount != 1) firstIdx = -1;   // ambiguous/none → not found
+        }
+    }
+
     if (firstIdx < 0) return r;  // not found
     r.found = true;
     const int chosenIdx = (defIdx >= 0) ? defIdx : firstIdx;

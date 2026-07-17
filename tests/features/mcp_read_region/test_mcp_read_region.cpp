@@ -229,6 +229,52 @@ TEST(McpReadRegion, BareNameTwoWordReturnTypeMember) {
     EXPECT_EQ(envb.value("start_line").toInt(), 5);
 }
 
+// ANTS-3513 — the COMPLEMENT of ANTS-3399. When the flat outline indexes only
+// the BARE identifier (a namespace free function, `AntsHelper::driftCheck`'s
+// outline entry is bare `driftCheck`) but the caller PASTES the qualified name
+// (the instinct from find_definition / grep output), the exact pass misses and
+// — because the name contains `::` — the bare-suffix fallback is skipped, so
+// the pre-fix code returned symbol_not_found. The qualified→bare tail fallback
+// resolves it, so both spellings work.
+TEST(McpReadRegion, QualifiedNameResolvesBareOutlineEntry) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QStringList src = {
+        "namespace ns {",                    // 1  outline: ns (namespace)
+        "int display() {",                   // 2  outline: display (bare)
+        "    return 7;",                     // 3
+        "}",                                 // 4
+        "}",                                 // 5
+    };
+    const QString p = writeFile(dir, "n.cpp", src);
+    // Bare name resolves (sanity: the outline entry is bare)...
+    ReadRegion::Options ob; ob.symbol = "display";
+    const QJsonObject envb = ReadRegion::extract(p, ob);
+    ASSERT_TRUE(envb.value("ok").toBool())
+        << envb.value("error").toString().toStdString();
+    EXPECT_EQ(envb.value("start_line").toInt(), 2);
+    // ...and so does the QUALIFIED paste via the tail fallback.
+    ReadRegion::Options oq; oq.symbol = "ns::display";
+    const QJsonObject envq = ReadRegion::extract(p, oq);
+    ASSERT_TRUE(envq.value("ok").toBool())
+        << envq.value("error").toString().toStdString();
+    EXPECT_EQ(envq.value("start_line").toInt(), 2);
+}
+
+// ANTS-3513 — an ambiguous qualified paste (the bare tail matches two symbols)
+// must still fall through to symbol_not_found, not silently pick one.
+TEST(McpReadRegion, QualifiedNameAmbiguousTailRejected) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QStringList src = {
+        "int A::run() { return 1; }",        // 1  outline: A::run
+        "int B::run() { return 2; }",        // 2  outline: B::run
+    };
+    const QString p = writeFile(dir, "s.cpp", src);
+    ReadRegion::Options o; o.symbol = "C::run";   // tail `run` matches A::run AND B::run
+    const QJsonObject env = ReadRegion::extract(p, o);
+    EXPECT_FALSE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("code").toString(), "symbol_not_found");
+}
+
 // ANTS-3399 / ANTS-3404 — an AMBIGUOUS bare name (two classes share a method
 // name) must NOT silently pick one; it falls through to symbol_not_found so
 // the caller re-queries with the qualified name.
