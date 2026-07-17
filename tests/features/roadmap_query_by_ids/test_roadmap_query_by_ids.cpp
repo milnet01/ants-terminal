@@ -144,3 +144,38 @@ TEST(roadmap_query_by_ids, Inv10ArrayCap) {
            "INV-10: oversize ids array refuses bad_args");
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-3541 INV-11 — a comma/whitespace-joined STRING `ids` is coerced
+// to the array form instead of silently falling through to the full
+// list (the mistyped-scalar footgun). Source anchor: the isString()
+// coercion branch + the [,\s]+ split in cmdRoadmapQuery.
+TEST(roadmap_query_by_ids, Inv11StringIdsCoerced) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "ANTS-3541"),
+           "INV-11: ANTS-3541 anchor present in cmdRoadmapQuery");
+    expect(contains(cpp, "idsVal.isString()"),
+           "INV-11: string ids coerced (isString branch)");
+    expect(contains(cpp, "raw.split(") &&
+               contains(cpp, "Qt::SkipEmptyParts"),
+           "INV-11: comma/whitespace split on the coerced string");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3541 INV-12 — a present-but-invalid `ids` refuses bad_args
+// rather than returning a large wrong result: (a) a non-array/
+// non-string scalar, and (b) a NON-EMPTY ids yielding zero valid ids
+// after hygiene. Empty array / empty string keep the documented
+// absent fall-through (INV-1).
+TEST(roadmap_query_by_ids, Inv12PresentButInvalidRefuses) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    expect(contains(cpp, "got a non-string scalar"),
+           "INV-12: non-array/non-string ids refuses bad_args");
+    expect(contains(cpp, "ids contained no valid id after hygiene"),
+           "INV-12: non-empty-but-all-malformed ids refuses bad_args");
+    expect(contains(cpp, "idsPresentNonEmpty"),
+           "INV-12: non-empty tracking guards the documented "
+           "empty-array/empty-string fall-through");
+    EXPECT_EQ(0, expect_failures());
+}

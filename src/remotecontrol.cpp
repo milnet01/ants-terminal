@@ -3816,33 +3816,79 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // elements) is treated as absent so it falls through to the
     // normal list path. 100-element cap so a malformed caller can't
     // blow the cache scan budget.
+    //
+    // ANTS-3541 — malformed-`ids` hardening. Previously ONLY an array
+    // was honoured: a caller who passed `ids` as a comma-joined string
+    // ("ANTS-3537,ANTS-3538") fell silently through to the full
+    // unfiltered list (N unrelated bullets) with no signal the arg was
+    // mistyped. Now: (a) a string is COERCED — split on comma/
+    // whitespace into the array form (saves the retry round-trip); and
+    // (b) a present `ids` that is neither array nor string, or a
+    // NON-EMPTY ids that yields zero valid ids after hygiene, REFUSES
+    // bad_args rather than returning a large wrong result. An empty
+    // array / empty string stays the documented "absent" fall-through.
     QStringList idsArg;
     QStringList idsArgInputOrder;  // INV-9 — first-occurrence ordering.
     {
         const QJsonValue idsVal = req.value(QStringLiteral("ids"));
+        QJsonArray arr;
+        bool idsPresentNonEmpty = false;
         if (idsVal.isArray()) {
-            const QJsonArray arr = idsVal.toArray();
-            if (arr.size() > 100) {
-                out["ok"] = false;
-                out["error"] = QStringLiteral(
-                    "ids array must contain at most 100 elements; "
-                    "got %1").arg(arr.size());
-                out["code"] = QStringLiteral("bad_args");
-                return QJsonDocument(out);
+            arr = idsVal.toArray();
+            idsPresentNonEmpty = !arr.isEmpty();
+        } else if (idsVal.isString()) {
+            const QString raw = idsVal.toString().trimmed();
+            if (!raw.isEmpty()) {
+                const QStringList toks = raw.split(
+                    QRegularExpression(QStringLiteral("[,\\s]+")),
+                    Qt::SkipEmptyParts);
+                for (const QString &t : toks) arr.append(t);
+                idsPresentNonEmpty = !arr.isEmpty();
             }
-            for (const auto &v : arr) {
-                if (!v.isString()) continue;  // skip non-string elements
-                QString s = v.toString();
-                if (s.size() > 64) s.truncate(64);
-                for (int i = 0; i < s.size(); ++i) {
-                    if (s.at(i).unicode() < 0x20) s[i] = QChar('?');
-                }
-                if (s.isEmpty()) continue;
-                if (!idsArg.contains(s)) {
-                    idsArg.append(s);
-                    idsArgInputOrder.append(s);
-                }
+        } else if (!idsVal.isUndefined() && !idsVal.isNull()) {
+            // Present but neither array nor string (number/bool/object):
+            // fail loud instead of silently dumping the full list.
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "ids must be a JSON array of id strings or a "
+                "comma-separated string; got a non-string scalar");
+            out["code"] = QStringLiteral("bad_args");
+            return QJsonDocument(out);
+        }
+
+        if (arr.size() > 100) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "ids array must contain at most 100 elements; "
+                "got %1").arg(arr.size());
+            out["code"] = QStringLiteral("bad_args");
+            return QJsonDocument(out);
+        }
+        for (const auto &v : arr) {
+            if (!v.isString()) continue;  // skip non-string elements
+            QString s = v.toString();
+            if (s.size() > 64) s.truncate(64);
+            for (int i = 0; i < s.size(); ++i) {
+                if (s.at(i).unicode() < 0x20) s[i] = QChar('?');
             }
+            if (s.isEmpty()) continue;
+            if (!idsArg.contains(s)) {
+                idsArg.append(s);
+                idsArgInputOrder.append(s);
+            }
+        }
+        // ANTS-3541 — present-but-yielded-nothing: a NON-EMPTY ids
+        // (array or coerced string) whose every element was non-string /
+        // empty / control-only refuses rather than falling through to
+        // the full list. Empty array / empty string keeps the documented
+        // absent behaviour (idsPresentNonEmpty stays false above).
+        if (idsPresentNonEmpty && idsArg.isEmpty()) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "ids contained no valid id after hygiene; pass an array "
+                "of id strings (e.g. [\"ANTS-1719\"])");
+            out["code"] = QStringLiteral("bad_args");
+            return QJsonDocument(out);
         }
     }
 

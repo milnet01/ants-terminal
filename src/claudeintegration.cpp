@@ -2208,10 +2208,15 @@ void ClaudeIntegration::onMcpConnection() {
                         "ids, matched_ids, missing_ids, found}. "
                         "Duplicates de-duped (first occurrence wins). "
                         "Empty array (zero elements) → falls through to "
-                        "the normal list path. Cannot combine with "
-                        "`id`, `section`, or `mode:section_index` "
-                        "(bad_mode_combo). Max 100 items (bad_args). "
-                        "Pairs with singular `id` (ANTS-1856).");
+                        "the normal list path. A comma/whitespace-joined "
+                        "STRING (\"ANTS-1719,ANTS-1721\") is coerced to "
+                        "this array form; a present-but-otherwise-typed or "
+                        "non-empty-but-all-malformed ids refuses bad_args "
+                        "rather than silently dumping the full list "
+                        "(ANTS-3541). Cannot combine with `id`, `section`, "
+                        "or `mode:section_index` (bad_mode_combo). Max 100 "
+                        "items (bad_args). Pairs with singular `id` "
+                        "(ANTS-1856).");
                     props["ids"] = idsProp;
                     // ANTS-1398 — opt-in to retain section-rollup
                     // bullets (empty id/headline, status emoji only).

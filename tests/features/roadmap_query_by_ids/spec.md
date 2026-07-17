@@ -68,3 +68,18 @@ matched_ids, missing_ids}`. Body included by default. Bypasses the
 - **INV-10 / array size cap.** `ids` is hygiene-capped at 100 elements.
   Beyond that the call refuses `{ok:false, code:"bad_args"}` so a
   malformed/looping caller can't blow the cache scan budget.
+- **INV-11 / string coercion (ANTS-3541).** A caller who passes `ids`
+  as a comma/whitespace-joined STRING (`"ANTS-1719,ANTS-1721"`) has it
+  coerced to the array form (split on `[,\s]+`) instead of silently
+  falling through to the full unfiltered list. Saves the retry
+  round-trip. Source anchor: the `idsVal.isString()` branch + the
+  `[,\s]+` split in `cmdRoadmapQuery` (`ANTS-3541`).
+- **INV-12 / present-but-invalid refuses (ANTS-3541).** A present `ids`
+  that is neither array nor string (number/bool/object) refuses
+  `{ok:false, code:"bad_args"}`; likewise a NON-EMPTY `ids` (array or
+  coerced string) whose every element is non-string / empty /
+  control-only refuses rather than returning the full list. An empty
+  array / empty string keeps the documented absent fall-through
+  (INV-1), guarded by `idsPresentNonEmpty`. Source anchors:
+  `"got a non-string scalar"` and
+  `"ids contained no valid id after hygiene"` in `cmdRoadmapQuery`.

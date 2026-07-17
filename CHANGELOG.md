@@ -19,6 +19,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Malformed `ids` filter fails silently to the full list instead of refusing — waste + wrong result.** (ANTS-3541)
+  If a tool call asks for specific roadmap items but formats the request slightly wrong, it quietly dumps the whole list instead of saying 'that was malformed' — wasting tokens and hiding the mistake.
+
 - **e2e run leaks a throwaway config path into the real ~/.claude/settings.json SessionStart hook.** (ANTS-3562)
   Running the built-in end-to-end test suite quietly edits your real Claude settings to point a startup script at a temporary folder; once that folder is deleted, every later Claude session shows a "file not found" hook error until the app is relaunched and rewrites it.
 
