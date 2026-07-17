@@ -67,6 +67,18 @@ if ants_is_source_read "$cmd"; then
     exit 0
 fi
 
+# ANTS-2169 — the ROADMAP block below matches the literal filename anywhere in
+# the command, so it wrongly fires when ROADMAP.md is a grep EXCLUSION
+# (grep -v ROADMAP.md, --exclude=ROADMAP.md) rather than a file grep READS.
+# roadmap_query is the cheaper path for `grep <pat> ROADMAP.md` (a read);
+# filtering the file out of a pipe / file-list is a legitimate use the veto
+# must not block. Detect the exclusion shape (grep … -v … ROADMAP.md, in that
+# order) and mark it a non-read so the block below skips it.
+roadmap_read=1
+case "$cmd" in
+    *"grep"*"-v"*"ROADMAP.md"*|*"--exclude"*"ROADMAP.md"*) roadmap_read=0 ;;
+esac
+
 # Block branches — precise, low false-positive routing kept as hard vetoes.
 reason=""
 case "$cmd" in
@@ -74,7 +86,8 @@ case "$cmd" in
         reason='use mcp__ants__get_git_status / mcp__ants__roadmap_query — paginated git facts cost ~30 tokens vs raw stdout'
         ;;
     *"cat ROADMAP.md"*"grep"*|*"grep "*"ROADMAP.md"*)
-        reason='use mcp__ants__roadmap_query (status=active returns ~10x fewer tokens than full ROADMAP)'
+        [ "$roadmap_read" -eq 1 ] && \
+            reason='use mcp__ants__roadmap_query (status=active returns ~10x fewer tokens than full ROADMAP)'
         ;;
 esac
 

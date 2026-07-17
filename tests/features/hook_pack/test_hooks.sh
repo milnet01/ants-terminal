@@ -92,6 +92,24 @@ if [ "$have_jq" -eq 1 ]; then
         fail "behaviour bash-veto fired on \"ls -la\""
     fi
 
+    # ANTS-2169: ROADMAP.md as a grep -v / --exclude EXCLUSION is not a read of
+    # the file, so the roadmap_query block must NOT fire on it.
+    for excl in \
+        '{"tool_input":{"command":"grep -v ROADMAP.md"}}' \
+        '{"tool_input":{"command":"git diff --name-only | grep -v ROADMAP.md"}}'; do
+        if [ -z "$(printf '%s' "$excl" | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null)" ]; then
+            pass "ANTS-2169 no block on ROADMAP.md exclusion"
+        else
+            fail "ANTS-2169 blocked a ROADMAP.md exclusion: $excl"
+        fi
+    done
+    # Positive guard: a genuine grep READ of ROADMAP.md must still block.
+    if [ -n "$(printf '%s' '{"tool_input":{"command":"grep foo ROADMAP.md"}}' | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null)" ]; then
+        pass "ANTS-2169 real grep-read of ROADMAP.md still blocks"
+    else
+        fail "ANTS-2169 real grep-read of ROADMAP.md no longer blocks (regression)"
+    fi
+
     # Bypass: trailing `# ants-bypass` suppresses the veto.
     bypass_out="$(printf '%s' '{"tool_input":{"command":"grep -r foo src/ # ants-bypass"}}' | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null)"
     if [ -z "$bypass_out" ]; then
