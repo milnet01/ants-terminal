@@ -496,6 +496,36 @@ QString slurp(const char *path) {
 #ifndef SRC_MAINWINDOW_CPP
 #  define SRC_MAINWINDOW_CPP "src/mainwindow.cpp"
 #endif
+#ifndef SRC_MCPORIENTATION_CPP
+#  define SRC_MCPORIENTATION_CPP "src/mcporientation.cpp"
+#endif
+
+// ANTS-3562 — installAt must NOT write the real ~/.claude/settings.json a
+// SessionStart hook pointing at a script that lives outside the settings
+// file's home tree. Under --e2e the config dir (AppConfigLocation, used by
+// resolveScriptPath) is redirected to a throwaway /tmp path while
+// resolveSettingsPath keeps the real ~/.claude, so a naive install leaks a
+// dangling temp-path hook. The split-tree case can't be driven through the
+// homeOverride seam (it forces both paths under one home) and a behavioural
+// run would touch the real ~/.claude, so this is a source-grep contract:
+// the guard, its home-tree comparison, and the ok:true skip must be present.
+TEST(McpOrientation_Ants3562, SplitTreeInstallGuardPresent) {
+    const QString src = slurp(SRC_MCPORIENTATION_CPP);
+    ASSERT_FALSE(src.isEmpty()) << "could not read " SRC_MCPORIENTATION_CPP;
+    EXPECT_TRUE(src.contains(QStringLiteral("ANTS-3562")))
+        << "split-tree guard anchor missing from installAt";
+    EXPECT_TRUE(src.contains(QStringLiteral("scriptUnderHome")))
+        << "installAt must compare the script path against the settings home tree";
+    EXPECT_TRUE(src.contains(QStringLiteral("outside the settings-file home tree")))
+        << "the skip warning must name the cross-tree cause";
+    // The guard sits BEFORE the settings merge, so no cross-tree write happens.
+    const int guardPos = src.indexOf(QStringLiteral("scriptUnderHome"));
+    const int mergePos = src.indexOf(QStringLiteral("mergeSettings(settingsPath"));
+    ASSERT_NE(guardPos, -1);
+    ASSERT_NE(mergePos, -1);
+    EXPECT_LT(guardPos, mergePos)
+        << "the split-tree guard must run before the settings.json merge";
+}
 
 TEST(McpOrientation_Inv7, SelectionHintFormat) {
     const QString src = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);

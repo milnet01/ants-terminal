@@ -356,6 +356,37 @@ Result installAt(const QString &homeDir) {
     r.scriptPath = resolveScriptPath(homeDir);
     const QString settingsPath = resolveSettingsPath(homeDir);
 
+    // ANTS-3562 — refuse to touch ~/.claude/settings.json when the resolved
+    // orientation-script path lives OUTSIDE the settings file's home tree.
+    // resolveScriptPath uses QStandardPaths::AppConfigLocation, which under
+    // --e2e is redirected to a throwaway /tmp config dir; resolveSettingsPath
+    // keeps the REAL ~/.claude. A naive install then wrote the user's real
+    // settings a SessionStart hook pointing at the temp script, which dangles
+    // the moment the e2e dir is reaped — a non-blocking "No such file" hook
+    // error on every later Claude Code session until a normal relaunch rewrote
+    // the path. Skip the whole install in that split-tree case; a normal launch
+    // (config dir + ~/.claude under the same home) is unaffected. Self-contained
+    // guard so any config redirection — not just --e2e — is covered by
+    // construction. ok:true — this is a deliberate no-op, not a failure.
+    {
+        const QString homeRoot = QDir::cleanPath(
+            homeDir.isEmpty() ? QDir::homePath() : homeDir);
+        const QString cleanScript = QDir::cleanPath(r.scriptPath);
+        const bool scriptUnderHome =
+            cleanScript == homeRoot ||
+            cleanScript.startsWith(homeRoot + QLatin1Char('/'));
+        if (!scriptUnderHome) {
+            r.ok = true;
+            r.warning = QStringLiteral(
+                "skipped SessionStart hook install: orientation script path "
+                "(%1) is outside the settings-file home tree (%2) — refusing to "
+                "write a cross-tree hook that would dangle (ANTS-3562; e.g. an "
+                "--e2e run with a redirected config dir).").arg(cleanScript, homeRoot);
+            qWarning().noquote() << "[mcp-orientation]" << (r.warning);
+            return r;
+        }
+    }
+
     // Decide the script-write disposition per § 2.1.1.
     const QString runningVersion = QStringLiteral(ANTS_VERSION);
     const QString markerVersion = parseScriptMarkerVersion(r.scriptPath);

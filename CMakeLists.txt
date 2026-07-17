@@ -2054,6 +2054,8 @@ if(ANTS_TESTS)
         SRC_DEBUGLOG_PATH="${CMAKE_SOURCE_DIR}/src/debuglog.cpp"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
         SRC_RC_CPP="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"
+        # ANTS-3562 — mcporientation split-tree guard source-grep.
+        SRC_MCPORIENTATION_CPP="${CMAKE_SOURCE_DIR}/src/mcporientation.cpp"
         SRC_MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         SRC_MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         # ANTS-3358 — ChromeGuard -Wnull-dereference pragma-guard source-grep.
