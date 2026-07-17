@@ -1325,7 +1325,17 @@ void MainWindow::setupViewMenu() {
         a->setChecked(name == m_config.theme());
         m_themeGroup->addAction(a);
         connect(a, &QAction::triggered, this, [this, name]() {
-            applyTheme(name);
+            // ANTS-3556 — defer the app-wide restyle out of the QMenu's
+            // mouse-event / triggered call stack. Applying synchronously here
+            // runs qApp->setStyleSheet() (which walks + re-polishes every
+            // widget) while the menu is still tearing down a transient
+            // status-bar widget (toast / Undo / Claude permission prompt),
+            // dereferencing a freed pointer mid-walk → SIGSEGV. applyTheme's
+            // own ANTS-2097 activePopupWidget() guard is bypassed because Qt
+            // has already dismissed the popup by the time triggered fires
+            // (pronounced on Wayland/xdg-popup). singleShot(0) lets the menu
+            // fully close + the event stack unwind before the restyle runs.
+            QTimer::singleShot(0, this, [this, name]() { applyTheme(name); });
         });
     }
 
@@ -1435,7 +1445,10 @@ void MainWindow::setupViewMenu() {
             a->setChecked(name == m_currentTheme);
             m_themeGroup->addAction(a);
             connect(a, &QAction::triggered, this, [this, name]() {
-                applyTheme(name);
+                // ANTS-3556 — same deferral as the initial theme actions
+                // above: never restyle synchronously inside the menu's
+                // triggered stack (freed-widget SIGSEGV).
+                QTimer::singleShot(0, this, [this, name]() { applyTheme(name); });
             });
         }
         showStatusMessage("Themes reloaded", 3000);

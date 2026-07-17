@@ -28,6 +28,18 @@ std::string applyThemeBody() {
                                   : nextDef - defPos);
 }
 
+// Slice of mainwindow.cpp covering MainWindow::setupViewMenu — where the
+// View→Themes QAction handlers are wired.
+std::string setupViewMenuBody() {
+    const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const auto defPos = src.find("void MainWindow::setupViewMenu(");
+    EXPECT_NE(defPos, std::string::npos);
+    const auto nextDef = src.find("\nvoid MainWindow::", defPos + 20);
+    return src.substr(defPos, nextDef == std::string::npos
+                                  ? src.size() - defPos
+                                  : nextDef - defPos);
+}
+
 }  // namespace
 
 // INV-1 — the popup guard gates the restyle: activePopupWidget() is
@@ -73,4 +85,36 @@ TEST(ThemeSwitchPopupDefer, Inv3EarlyReturnFirst) {
     ASSERT_NE(guardPos, std::string::npos);
     EXPECT_LT(earlyPos, guardPos)
         << "same-theme early-return must precede the popup guard";
+}
+
+// INV-4 (ANTS-3556) — the theme-menu QAction handlers must NOT call
+// applyTheme synchronously. The ANTS-2097 activePopupWidget() guard is
+// bypassed on Wayland: Qt dismisses the QMenu popup before QAction::triggered
+// fires, so activePopupWidget() is already null and the app-wide restyle runs
+// inside the menu's still-unwinding mouse-event stack → SIGSEGV (recurred
+// 2026-07-17). Every applyTheme(name) call in setupViewMenu — the initial
+// theme actions AND the reload-themes rebuilt actions — must be deferred via
+// QTimer::singleShot(0, ...) so it runs after the menu has torn down.
+TEST(ThemeSwitchPopupDefer, Inv4MenuHandlersDefer) {
+    const std::string body = setupViewMenuBody();
+    ASSERT_NE(body.find("applyTheme(name)"), std::string::npos)
+        << "setupViewMenu must wire the theme actions to applyTheme(name)";
+    int sites = 0;
+    size_t i = 0;
+    const std::string needle = "applyTheme(name)";
+    while ((i = body.find(needle, i)) != std::string::npos) {
+        ++sites;
+        const size_t windowStart = i < 160 ? 0 : i - 160;
+        const std::string before = body.substr(windowStart, i - windowStart);
+        EXPECT_NE(before.find("singleShot(0"), std::string::npos)
+            << "theme-action applyTheme(name) call #" << sites
+            << " must be deferred via QTimer::singleShot(0, ...) — a "
+               "synchronous call crashes inside the menu's event stack "
+               "(ANTS-3556)";
+        i += needle.size();
+    }
+    EXPECT_GE(sites, 2)
+        << "both the initial theme actions and the reload-themes rebuilt "
+           "actions must defer applyTheme; found "
+        << sites;
 }

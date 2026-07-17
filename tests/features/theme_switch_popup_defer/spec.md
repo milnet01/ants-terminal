@@ -29,6 +29,18 @@ the menu has closed and the event stack has unwound, so the restyle walks
 a quiescent widget set. Startup / programmatic callers (no active popup)
 stay synchronous.
 
+**ANTS-3556 (recurred 2026-07-17).** The `activePopupWidget()` guard alone
+is insufficient: on Wayland/xdg-popup Qt dismisses the `QMenu` popup
+*before* emitting `QAction::triggered`, so `activePopupWidget()` is already
+null at the guard check and the restyle runs synchronously inside the
+menu's still-unwinding mouse-event stack (coredump: `applyTheme` called
+directly from `QAction::triggered`, not a deferred `QTimer` frame). Fix:
+move the deferral to the two theme-menu call-sites in `setupViewMenu`
+(the initial theme actions + the reload-themes rebuilt actions) — each
+`QAction::triggered` handler wraps `applyTheme(name)` in
+`QTimer::singleShot(0, this, …)` so it never runs inside the menu stack.
+The internal `activePopupWidget()` guard is kept as belt-and-suspenders.
+
 ## Invariants tested
 
 - **INV-1** — `applyTheme` references `QApplication::activePopupWidget()`,
