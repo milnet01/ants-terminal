@@ -27,6 +27,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log flip/annotate: digit-led-id bullets have no working locator — headline fallback also fails.** (ANTS-3561)
+  roadmap_log op:flip / op:annotate can now locate an ants-v1 emoji bullet (`- 📋 [ID] **…**`) inside a GFM-majority (mixed-format) roadmap. Previously the ants-v1 walker only ran when the file had ZERO GFM bullets, so a mixed file's appended emoji bullets were unaddressable by id or headline — bullet_not_found — even though roadmap_query read them fine.
+
 - **Bash guard-hook no longer vetoes a `grep -v ROADMAP.md` / `--exclude=ROADMAP.md` exclusion as if it were a read of the roadmap (ANTS-2169).**
 
 - **read_region/read_regions symbol mode should resolve namespace/class-qualified names, not only the bare identifier.** (ANTS-3513)

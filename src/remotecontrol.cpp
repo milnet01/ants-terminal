@@ -7019,6 +7019,115 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     //    ants-v1 native walker before refusing.
     QStringList lines = markdown.split(QChar('\n'));
     const QVector<GfmBullet> bullets = walkGfmBullets(lines);
+
+    // ANTS-3561 — apply an op:flip / op:annotate to a single, already-located
+    // ants-v1 native bullet (index into `v1bullets`): status-emoji swap
+    // (skipped under annotate) + optional note, then a dry_run preview or an
+    // atomic write + success envelope. Shared by TWO locate sites — the
+    // GFM-empty branch (a pure ants-v1 roadmap) and the GFM-no-match fallback
+    // (a MIXED GFM+ants-v1 file whose target is an appended `- 📋 [ID]` emoji
+    // bullet that walkGfmBullets never sees — the Vestige 3D_E-NNNN case).
+    auto applyAntsV1FlipResult =
+        [&](const QVector<AntsV1Bullet> &v1bullets, int matchIdx)
+            -> QJsonDocument {
+        const AntsV1Bullet &v1target = v1bullets.at(matchIdx);
+        if (v1target.insideFenced) {
+            return rlErr(QStringLiteral("anchor_unsafe_context"),
+                QStringLiteral("roadmap_log: located bullet is "
+                               "inside a fenced code block — "
+                               "refusing to edit"));
+        }
+        // Apply flip (skipped under annotate) + optional note, then
+        // atomic write. applyAntsV1Flip edits the headline in place
+        // (no line-count change), so appendBodyNote's firstLine
+        // index stays valid when both run.
+        const QString fromStatus = v1target.status;
+        if (!annotateMode) {
+            applyAntsV1Flip(lines, v1target, targetEmoji);
+        }
+        int noteLine = -1;
+        bool noteAlreadyPresent = false;
+        if (!note.isEmpty()) {
+            noteLine = appendBodyNote(lines, v1target.firstLine, note,
+                                      &noteAlreadyPresent);
+        }
+        const QString updated = lines.join(QChar('\n'));
+        // ANTS-2136 — dry_run preview (ants-v1 path): the locator
+        // resolved and the surgery is computed in-memory; return the
+        // would-be edit WITHOUT writing ROADMAP.md.
+        if (dryRun) {
+            const QByteArray previewUtf8 = updated.toUtf8();
+            QJsonObject out;
+            out["ok"]              = true;
+            out["op"]              = annotateMode
+                                       ? QStringLiteral("annotate")
+                                       : QStringLiteral("flip");
+            out["dry_run"]         = true;
+            out["format"]          = QStringLiteral("ants-v1");
+            out["from_status"]     = fromStatus;
+            out["to_status"]       = annotateMode ? fromStatus
+                                                  : targetEmoji;
+            out["file"]            = QStringLiteral("ROADMAP.md");
+            out["line"]            = v1target.firstLine + 1;
+            out["bytes"]           = static_cast<qint64>(previewUtf8.size());
+            out["anchor_injected"] = false;
+            out["id"]              = v1target.id;
+            if (!note.isEmpty()) {
+                out["note_appended"] = !noteAlreadyPresent;
+                out["note_line"]     = noteLine + 1;
+                if (noteAlreadyPresent)
+                    out["note_already_present"] = true;
+            }
+            return QJsonDocument(out);
+        }
+        QSaveFile rw(roadmapPath);
+        if (!rw.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            return rlErr(QStringLiteral("roadmap_write_failed"),
+                QStringLiteral("roadmap_log: could not open \"%1\" "
+                               "for writing").arg(roadmapPath));
+        }
+        const QByteArray utf8 = updated.toUtf8();
+        if (rw.write(utf8) != utf8.size() || !rw.commit()) {
+            return rlErr(QStringLiteral("roadmap_write_failed"),
+                QStringLiteral("roadmap_log: atomic write of \"%1\" "
+                               "failed").arg(roadmapPath));
+        }
+        QJsonObject out;
+        out["ok"]              = true;
+        out["op"]              = annotateMode
+                                   ? QStringLiteral("annotate")
+                                   : QStringLiteral("flip");
+        out["format"]          = QStringLiteral("ants-v1");
+        out["from_status"]     = fromStatus;
+        out["to_status"]       = annotateMode ? fromStatus
+                                              : targetEmoji;
+        out["file"]            = QStringLiteral("ROADMAP.md");
+        out["line"]            = v1target.firstLine + 1;
+        out["bytes_written"]   = static_cast<qint64>(utf8.size());
+        out["anchor_injected"] = false;
+        out["id"]              = v1target.id;
+        if (!note.isEmpty()) {
+            out["note_appended"] = !noteAlreadyPresent;
+            out["note_line"]     = noteLine + 1;
+            if (noteAlreadyPresent)
+                out["note_already_present"] = true;
+        }
+        if (!noteScrubbedNames.isEmpty()) {
+            QJsonArray dropped;
+            for (const QString &n : noteScrubbedNames) dropped.append(n);
+            out["note_scrubbed_params"] = dropped;
+        }
+        // ANTS-2089 — confirm-after compact echo (ants-v1 flip).
+        if (rcReturnHeadlineOnly(req)) {
+            out["post_bullets"] = QJsonArray{ rcCompactBullet(
+                v1target.id,
+                rcStatusWord(out.value(QStringLiteral("to_status"))
+                                 .toString()),
+                v1target.headline) };
+        }
+        return QJsonDocument(out);
+    };
+
     if (bullets.isEmpty() &&
         markdownBytes > kRoadmapMinParseableSize) {
         // ANTS-1441 — try ants-v1 native format. Different bullet
@@ -7112,102 +7221,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                         .arg(v1matchedCount);
                 return rlSugErr(code, msg, suggestions, v1matchedCount);
             }
-            const AntsV1Bullet &v1target = v1bullets.at(v1matches.first());
-            if (v1target.insideFenced) {
-                return rlErr(QStringLiteral("anchor_unsafe_context"),
-                    QStringLiteral("roadmap_log: located bullet is "
-                                   "inside a fenced code block — "
-                                   "refusing to edit"));
-            }
-            // Apply flip (skipped under annotate) + optional note, then
-            // atomic write. applyAntsV1Flip edits the headline in place
-            // (no line-count change), so appendBodyNote's firstLine
-            // index stays valid when both run.
-            const QString fromStatus = v1target.status;
-            if (!annotateMode) {
-                applyAntsV1Flip(lines, v1target, targetEmoji);
-            }
-            int noteLine = -1;
-            bool noteAlreadyPresent = false;
-            if (!note.isEmpty()) {
-                noteLine = appendBodyNote(lines, v1target.firstLine, note,
-                                          &noteAlreadyPresent);
-            }
-            const QString updated = lines.join(QChar('\n'));
-            // ANTS-2136 — dry_run preview (ants-v1 path): the locator
-            // resolved and the surgery is computed in-memory; return the
-            // would-be edit WITHOUT writing ROADMAP.md.
-            if (dryRun) {
-                const QByteArray previewUtf8 = updated.toUtf8();
-                QJsonObject out;
-                out["ok"]              = true;
-                out["op"]              = annotateMode
-                                           ? QStringLiteral("annotate")
-                                           : QStringLiteral("flip");
-                out["dry_run"]         = true;
-                out["format"]          = QStringLiteral("ants-v1");
-                out["from_status"]     = fromStatus;
-                out["to_status"]       = annotateMode ? fromStatus
-                                                      : targetEmoji;
-                out["file"]            = QStringLiteral("ROADMAP.md");
-                out["line"]            = v1target.firstLine + 1;
-                out["bytes"]           = static_cast<qint64>(previewUtf8.size());
-                out["anchor_injected"] = false;
-                out["id"]              = v1target.id;
-                if (!note.isEmpty()) {
-                    out["note_appended"] = !noteAlreadyPresent;
-                    out["note_line"]     = noteLine + 1;
-                    if (noteAlreadyPresent)
-                        out["note_already_present"] = true;
-                }
-                return QJsonDocument(out);
-            }
-            QSaveFile rw(roadmapPath);
-            if (!rw.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                return rlErr(QStringLiteral("roadmap_write_failed"),
-                    QStringLiteral("roadmap_log: could not open \"%1\" "
-                                   "for writing").arg(roadmapPath));
-            }
-            const QByteArray utf8 = updated.toUtf8();
-            if (rw.write(utf8) != utf8.size() || !rw.commit()) {
-                return rlErr(QStringLiteral("roadmap_write_failed"),
-                    QStringLiteral("roadmap_log: atomic write of \"%1\" "
-                                   "failed").arg(roadmapPath));
-            }
-            QJsonObject out;
-            out["ok"]              = true;
-            out["op"]              = annotateMode
-                                       ? QStringLiteral("annotate")
-                                       : QStringLiteral("flip");
-            out["format"]          = QStringLiteral("ants-v1");
-            out["from_status"]     = fromStatus;
-            out["to_status"]       = annotateMode ? fromStatus
-                                                  : targetEmoji;
-            out["file"]            = QStringLiteral("ROADMAP.md");
-            out["line"]            = v1target.firstLine + 1;
-            out["bytes_written"]   = static_cast<qint64>(utf8.size());
-            out["anchor_injected"] = false;
-            out["id"]              = v1target.id;
-            if (!note.isEmpty()) {
-                out["note_appended"] = !noteAlreadyPresent;
-                out["note_line"]     = noteLine + 1;
-                if (noteAlreadyPresent)
-                    out["note_already_present"] = true;
-            }
-            if (!noteScrubbedNames.isEmpty()) {
-                QJsonArray dropped;
-                for (const QString &n : noteScrubbedNames) dropped.append(n);
-                out["note_scrubbed_params"] = dropped;
-            }
-            // ANTS-2089 — confirm-after compact echo (ants-v1 flip).
-            if (rcReturnHeadlineOnly(req)) {
-                out["post_bullets"] = QJsonArray{ rcCompactBullet(
-                    v1target.id,
-                    rcStatusWord(out.value(QStringLiteral("to_status"))
-                                     .toString()),
-                    v1target.headline) };
-            }
-            return QJsonDocument(out);
+            // ANTS-3561 — the surgery + envelope is shared with the
+            // mixed-file GFM-no-match fallback (see step 7 below).
+            return applyAntsV1FlipResult(v1bullets, v1matches.first());
         }
         // Neither GFM nor ants-v1 — genuinely unrecognised.
         // (Pass-headings is caught earlier; see the format_mismatch
@@ -7292,6 +7308,33 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 "On a flip roadmap_log injects a durable caret anchor you "
                 "can reuse next time.");
             return QJsonDocument(env);
+        }
+    }
+    // ANTS-3561 — mixed-format fallback: a GFM-majority roadmap can carry
+    // ants-v1 emoji bullets (`- 📋 [ID] **…**`) appended by op:append, which
+    // walkGfmBullets does not recognise. When the GFM locator matched none
+    // (and the caller used id/headline, not a GFM-only anchor), try the
+    // ants-v1 walker before refusing — so those bullets stay addressable by
+    // id/headline. Falls through to the GFM refusal below on any non-single
+    // ants-v1 match, preserving the pure-GFM not-found path (incl. the
+    // synthetic-id refusal above).
+    if (matchedCount == 0 && locAnchor.isEmpty()) {
+        const QVector<AntsV1Bullet> v1bullets = walkAntsV1Bullets(lines);
+        if (!v1bullets.isEmpty()) {
+            QVector<int> v1matches;
+            if (!locId.isEmpty()) {
+                for (int i = 0; i < v1bullets.size(); ++i)
+                    if (v1bullets.at(i).id == locId) v1matches.append(i);
+            } else if (!locHeadline.isEmpty()) {
+                const quint64 needHash =
+                    rcFnv1a64(rcNormaliseHeadline(locHeadline));
+                for (int i = 0; i < v1bullets.size(); ++i)
+                    if (rcFnv1a64(rcNormaliseHeadline(
+                            v1bullets.at(i).headline)) == needHash)
+                        v1matches.append(i);
+            }
+            if (v1matches.size() == 1)
+                return applyAntsV1FlipResult(v1bullets, v1matches.first());
         }
     }
     if (matchedCount == 0 || matchedCount > 1) {

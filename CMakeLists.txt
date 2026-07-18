@@ -1428,6 +1428,9 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_flip_gfm_headline/test_roadmap_log_flip_gfm_headline.cpp
                 # ANTS-3387 bad_id_format guard for nonconforming bracket-token ids.
                 tests/features/roadmap_id_format_guard/test_roadmap_id_format_guard.cpp
+                # ANTS-3561 roadmap_log flip/annotate locates an ants-v1 emoji
+                # bullet in a GFM-majority (mixed-format) roadmap.
+                tests/features/roadmap_log_flip_mixed_format/test_roadmap_log_flip_mixed_format.cpp
                 # ANTS-3382 roadmap_log evidence:[paths] append + roadmap_query echo.
                 tests/features/roadmap_log_evidence/test_roadmap_log_evidence.cpp
                 # ANTS-3417 roadmap_log writers emit no trailing whitespace.
