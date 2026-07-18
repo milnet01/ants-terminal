@@ -21822,7 +21822,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Scope (design-locked, spec docs/specs to follow, cold-eyes first):
   1. ClaudeIntegration gains a tokensSavedUpdated(qint64) signal
      emitted at the single recordDispatch() hook; TokenUsageEngine
-     stays as-is (session total via buildReport).
+     gains pure fold/sum/humanize helpers (session total via buildReport).
   2. New status-bar State chip (claudestatuswidgets) showing the
      live session saved total ("↓ 1.2M saved"); theme-styled like
      the context-% bar; hidden when session saved == 0; rich
