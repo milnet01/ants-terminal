@@ -19110,6 +19110,20 @@ build).
   Source: finbreak-mcp-feedback-2026-07-14.
   Resolved (2026-07-14): cmdLastAuditSummary reads the requested scope back from the sibling findings-<iso>-<sha>.json sidecar (already persisted by audit_run/AuditCache::recordRun, ANTS-1870) and emits it as requested_scope; when requested_scope=="full" the false narrow_run_warning is suppressed. Producer side needed no change — the gap was read-only. Foreign-format picks (no sidecar) fall back to the distinct-file heuristic. Spec ANTS-3512 INV-1/2 + regression test RequestedScopeFromSidecarWiredInHandler. Full suite 2654/2654.
 
+- 📋 [ANTS-3567] **indie_review_partition has no sparse-partition hint pointing at the new source_paths[] ad-hoc mode.**
+  Symmetry follow-up to ANTS-3375. cold_eyes_partition emits
+  sparse_partition_hint / next_step_hint pointing callers at the
+  doc_paths[] escape hatch (ANTS-1571) when a default-scope partition
+  comes back near-empty. indie_review_partition (module-map driven)
+  has no equivalent: when a project lacks a CLAUDE.md `## Module map`
+  / docs/subsystems.md the partition is empty and the caller gets no
+  pointer to the now-available indie_review_brief source_paths[] ad-hoc
+  mode. Add a parallel hint on cmdIndieReviewPartition citing ANTS-3375.
+  Lanes: coldeyes-analogue / mcp.
+  **Layman:** The doc-review helper tells you about its escape hatch when it finds nothing; the code-review one doesn't yet — add the matching pointer.
+  Kind: enhancement.
+  Source: in-session-2026-07-18 (ANTS-3375 follow-up).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-16 triage
 
 Triage of the finbreak feedback delta (2026-07-14 session). Two POSITIVE
