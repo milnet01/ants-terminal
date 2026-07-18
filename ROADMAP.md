@@ -21813,6 +21813,36 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Lanes: new (tokenusagetracker, tokenusagedialog), claudeintegration
   (extend parseTranscriptTail), mainwindow (menu wire).
 
+- 🚧 [ANTS-3572] **Surface MCP tokens-saved as a live status-bar chip + persisted month / YTD / all-time aggregate.**
+  Gives the existing (ANTS-1284) TokenUsageEngine a UI face + a
+  memory. Distinct from ANTS-1245 (which reports tokens *consumed*
+  + cost with graphs/SQLite, design-only): this reports tokens
+  *saved* by MCP, backed by a bounded monthly map in config.json.
+
+  Scope (design-locked, spec docs/specs to follow, cold-eyes first):
+  1. ClaudeIntegration gains a tokensSavedUpdated(qint64) signal
+     emitted at the single recordDispatch() hook; TokenUsageEngine
+     stays as-is (session total via buildReport).
+  2. New status-bar State chip (claudestatuswidgets) showing the
+     live session saved total ("↓ 1.2M saved"); theme-styled like
+     the context-% bar; hidden when session saved == 0; rich
+     tooltip: session / this-month / this-year / all-time.
+  3. Persistence: fold session total into a monthly bucket map
+     {"YYYY-MM": saved} + a never-reset lifetime counter +
+     _since date, written to config.json on session reset
+     (MCP initialize) and app quit. Monthly map pruned to the
+     most-recent ~24 months (lifetime keeps the exact all-time).
+     YTD = sum of current-year buckets; month = current bucket.
+  4. token_usage MCP verb gains month_saved / ytd_saved /
+     lifetime_saved + a monthly[] breakdown.
+  5. Config flag claude.tokens_saved_chip_enabled (default true).
+  RAM: two qint64s + <=24 tiny map entries. Fold-in attributes a
+  midnight-crossing session to the month it ended in (approx.,
+  noted in spec).
+  **Layman:** A little pill on the status bar shows how many tokens the Ants MCP has saved you — live this session, plus this-month / this-year / all-time totals that survive restarts.
+  Kind: feature.
+  Source: user-request-2026-07-18.
+
 ### 🎨 Claude Code integration platform — terminal-as-workshop for hooks / skills / sub-agents / MCP (user request 2026-05-07)
 
 - 📋 [ANTS-1162] **First-class scaffolding inside Ants Terminal
