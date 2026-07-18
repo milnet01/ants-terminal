@@ -19207,6 +19207,12 @@ positive confirmation of ANTS-3518 (foreign_repo status) — no new work.
   Kind: fix.
   Source: in-session-2026-07-18 (ANTS-3561 follow-up).
 
+- 📋 [ANTS-3566] **roadmap_log flip/annotate bullet_not_found suggestions rank by headline-prefix even for an id locator — surfaces unrelated bullets.**
+  Noticed while reproducing ANTS-3561: `roadmap_log op:annotate id:"3D_E-0031"` (genuinely-absent id path) returned 3 suggestions all starting with "3" — the nearest-neighbour ranker (cmdRoadmapLogFlip step 7, and the ants-v1 0-match block) scores candidates by shared normalised-headline PREFIX with the locator STRING, which is meaningless when the locator is an id (`3d_e-0031`) rather than a headline. Fix: when the locator is an `id` (not `headline`), either omit suggestions or rank by id edit-distance / same-prefix ids, not headline overlap. Low severity (error-message quality only; the real not-found is correct). Same pattern likely in cmdRoadmapLogAmendBody's GFM 0-match suggestions.
+  **Layman:** When the tool can't find a to-do item by its ID number, the "did you mean…?" hints it offers are picked by matching the ID text against item titles, so they come out unrelated (e.g. an ID starting with "3" suggests every title starting with "3"). Small cosmetic-quality issue in the error message only.
+  Kind: enhancement.
+  Source: in-session-2026-07-18 (observed during ANTS-3561 repro).
+
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
 /cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +
