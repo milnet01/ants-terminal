@@ -15792,8 +15792,26 @@ QJsonObject parseSpecBody(const QString &body) {
         }
     }
 
-    out["invariants"]       = invariants;
-    out["invariants_count"] = invariants.size();
+    // ANTS-3569 — surface invariants declared inline in prose (outside the
+    // recognized table/bullet forms, e.g. `**Invariant (INV-N): ...**`) so a
+    // caller trusting invariants_count knows the structured list may be
+    // incomplete. Count distinct INV-N tokens present in the spec body but
+    // absent from the structured list. Inline prose is not the sanctioned
+    // form (specs.md § bullet form), so we hint rather than parse every shape.
+    QSet<QString> structuredInvIds;
+    for (const auto &v : invariants)
+        structuredInvIds.insert(v.toObject().value(QStringLiteral("id")).toString());
+    static const QRegularExpression invTokenRe(QStringLiteral("INV-[0-9]+"));
+    QSet<QString> untabledInvIds;
+    auto invTokIt = invTokenRe.globalMatch(body);
+    while (invTokIt.hasNext()) {
+        const QString id = invTokIt.next().captured(0);
+        if (!structuredInvIds.contains(id)) untabledInvIds.insert(id);
+    }
+
+    out["invariants"]                   = invariants;
+    out["invariants_count"]             = invariants.size();
+    out["possible_untabled_invariants"] = untabledInvIds.size();
     return out;
 }
 

@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **spec_query silently under-reports invariants declared inline (`** (ANTS-3569)
+  When a spec writes a rule as a sentence instead of a list or table, the quick spec-reader reports zero rules, so a caller trusting the count thinks the spec has no invariants.
+
 - **`indie_review_brief` gains a `source_paths[]` ad-hoc-lane mode — a lightweight single-reviewer broker for a cold review of a code / dependency diff**
   When `lane` is not in the auto-partition, pass `source_paths[]`
   (the changed files of a dependency bump / code diff) and the brief
@@ -38,6 +41,9 @@ for security-relevant changes.
   One giant machine-generated line shouldn't be able to flood a search result; trim over-long lines automatically unless asked not to.
 
 ### Fixed
+
+- **read_regions `requests`/`paths`/`regions` aliases are stripped by the inputSchema (additionalProperties:false) before reaching the ANTS-3500 fallback.** (ANTS-3568)
+  The batch file-reader has handy synonym keys that were coded in but the tool's input rules silently throw them away, so they never work — you always hit an error unless you spell it exactly `items`.
 
 - **roadmap_log flip/annotate ID-locator suggestions now rank by sibling-id prefix, not headline overlap** (ANTS-3566)
   A bullet_not_found on an id like `3D_E-0031` no longer suggests every bullet whose title merely starts with "3"; it offers same-prefix sibling ids (or none when nothing is related).

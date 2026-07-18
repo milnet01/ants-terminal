@@ -19231,6 +19231,38 @@ positive confirmation of ANTS-3518 (foreign_repo status) — no new work.
   Source: in-session-2026-07-18 (observed during ANTS-3561 repro).
   Resolved (2026-07-18): for an id locator, bullet_not_found suggestions now rank sibling IDs by shared case-insensitive prefix (new rcRankIdsBySharedPrefix helper) instead of ranking headlines by overlap with the id string — so an absent 3D_E-0031 suggests 3D_E- siblings, not every headline starting with "3", and returns no suggestions when nothing shares a prefix. Applied to both the GFM step-7 block and the ants-v1 zero-match block in cmdRoadmapLogFlip; headline-locator ranking (ANTS-3378) unchanged. amend_body was out of scope (its refusal carries no suggestions[]). Regression-locked by tests/features/roadmap_log_flip_id_suggestions (3 INV).
 
+### 🔌 Ants-MCP feedback from CC sessions — 2026-07-18 triage
+
+Triage of the 2026-07-18 cross-session feedback delta (Album Builder, DOOM,
+Vestige). 8 of 11 shared feedback files were clean; the 3 findings below are the
+actionable Ants-MCP items.
+
+- ✅ [ANTS-3568] **read_regions `requests`/`paths`/`regions` aliases are stripped by the inputSchema (additionalProperties:false) before reaching the ANTS-3500 fallback.**
+  Confirmed LIVE on server ad9b4303/2026-07-18 (post-ANTS-3500): read_regions {requests:[...]} (no items) -> {ok:false, code:bad_args, "items array is required"}. cmdReadRegions (remotecontrol.cpp:10853) DOES implement the requests/paths/regions fallback, but the read_regions inputSchema (claudeintegration.cpp:3631) sets additionalProperties:false and declares only items/max_bytes/raw/caller_cwd — so the alias keys are stripped by schema validation before the handler sees them, making the ANTS-3500 fallback dead code. The tool description advertises the aliases. Fix: declare requests/paths/regions as optional array properties in the inputSchema (same item shape as items) so they survive validation and reach the fallback. Regression-lock with a feature test that drives read_regions via `requests`.
+  **Layman:** The batch file-reader has handy synonym keys that were coded in but the tool's input rules silently throw them away, so they never work — you always hit an error unless you spell it exactly `items`.
+  Kind: fix.
+  Source: cc-feedback-2026-07-18 (DOOM); follow-up to ANTS-3500.
+  Resolved (2026-07-18): declared requests/paths/regions as array properties in the read_regions inputSchema (claudeintegration.cpp) so additionalProperties:false no longer strips the documented ANTS-3500 aliases before cmdReadRegions' fallback ran — the handler code was unreachable. Root-caused via a live repro (read_regions {requests:[...]} -> bad_args on server ad9b4303/2026-07-18). Regression-locked by ReadRegions.SchemaDeclaresAliases (RR-8), the schema-block grep RR-7's handler-only grep was missing. Full suite green (2747).
+
+- ✅ [ANTS-3569] **spec_query silently under-reports invariants declared inline (`**Invariant (INV-N): ...**`) — only table/bullet forms are parsed.**
+  spec_query invariant parser (remotecontrol.cpp ~15745) has exactly two recognizers: table-form `| INV-N | body | test |` and bullet-form `- **INV-N** — body`. A spec declaring an invariant inline in prose as `**Invariant (INV-18-1): ...**` yields invariants_count:0, so the lean contract surface under-reports (repro: Album Builder docs/specs/18-player-mode-surface.md). Inline prose is NOT the sanctioned form (specs.md standard is the bullet form), so rather than parse every ad-hoc shape, surface a `possible_untabled_invariants` hint = count of `INV-\d+` tokens present in the spec body that did NOT match a structured recognizer, so a caller knows the structured list may be incomplete. Low severity. Regression-lock with a fixture spec that states an INV inline.
+  **Layman:** When a spec writes a rule as a sentence instead of a list or table, the quick spec-reader reports zero rules, so a caller trusting the count thinks the spec has no invariants.
+  Kind: enhancement.
+  Source: cc-feedback-2026-07-18 (Album Builder).
+  Resolved (2026-07-18): parseSpecBody (the shared spec_query + invariant_check parser, remotecontrol.cpp) now emits possible_untabled_invariants — the count of distinct INV-N tokens present in the spec body but absent from the structured table/bullet list — so a caller knows invariants_count may under-report inline-declared invariants (e.g. `**Invariant (INV-N):**`). Regression-locked by McpSpecQuery INV-5b. Full suite green (2747).
+
+- 📋 [ANTS-3570] **roadmap_log flip_batch: line_range locator has no ants-v1 fallback in a mixed-format roadmap (ANTS-3565 residual).**
+  ANTS-3561/3565 fixed id + headline locators for appended ants-v1 emoji bullets in a GFM-majority roadmap, but cmdRoadmapLogFlipBatch (remotecontrol.cpp ~8215) deliberately excludes line_range from the v1 fallback (`if (candFirstLines.isEmpty() && !isRange ...)`, comment: "a line_range legitimately means GFM rows"). So a line_range:[N,N] locator on a mixed-format roadmap still resolves only against GFM bullets, never the appended emoji bullets — Vestige's original repro (3D_E-0030 at line 535). Low priority: id/headline now cover the real need. If actioned, walk vbs for a line_range locator when GFM yields zero and the file is mixed-format; mirror the ANTS-3565 fallback but allow isRange. Same design question in cmdRoadmapLogFlip single-flip if it grows a line_range locator.
+  **Layman:** In a to-do file that mixes two bullet styles, flipping a newer emoji-style item by its line number still fails — though you can now flip it by its ID or title instead, which is the usual way.
+  Kind: enhancement.
+  Source: cc-feedback-2026-07-18 (Vestige); residual of ANTS-3565.
+
+- 📋 [ANTS-3571] **feedback_log op:assign_id silently ignores its documented `note` param — prose is never written under the heading.**
+  Reproduced this session: feedback_log op:assign_id with ids:[...] + note:"<~200 chars>" wrote only the `**Proposed ID:**` line (bytes_delta reflected the id text alone; the note was absent from the file on read-back — 3D_Engine_Ants_MCP_Feedback.md lines 23-39). The assign_id schema documents `note` as "Optional prose under the heading (both ops)". Either wire assign_id to append the note as an indented continuation under the finding heading (mirroring the append_finding note path), or drop `note` from the assign_id schema if it is out of scope. Fix in feedbackfile.cpp assign_id path; regression-lock with a feature test asserting the note text is present after assign_id.
+  **Layman:** The tool that stamps a tracking ID onto a piece of feedback is supposed to also let you add a short note (e.g. "fixed — please relaunch"), but the note is thrown away silently, so the explanation never reaches the other session.
+  Kind: fix.
+  Source: in-session-2026-07-18 (hit while triaging DOOM/Vestige feedback).
+
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
 /cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +

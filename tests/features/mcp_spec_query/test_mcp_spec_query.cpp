@@ -86,6 +86,14 @@ TEST(McpSpecQuery, WiringContract) {
            "INV-5",
            "cmdSpecQuery must delegate parsing to parseSpecBody helper");
 
+    // INV-5b — ANTS-3569: parseSpecBody surfaces a possible_untabled_invariants
+    // hint (count of INV-N tokens present in prose but absent from the
+    // structured table/bullet list) so a caller knows invariants_count may
+    // under-report inline-declared invariants (e.g. `**Invariant (INV-N):**`).
+    expect(contains(rcCpp, "possible_untabled_invariants"),
+           "INV-5b",
+           "parseSpecBody must emit possible_untabled_invariants (ANTS-3569)");
+
     // INV-6 — mainwindow registration.
     expect(contains(mwCpp, "registerToolProvider(\"spec_query\""),
            "INV-6a",

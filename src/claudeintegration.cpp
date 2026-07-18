@@ -3688,6 +3688,20 @@ void ClaudeIntegration::onMcpConnection() {
                       props["max_bytes"] = p; }
                     props["raw"]        = makeRawProp();         // ANTS-2218
                     props["caller_cwd"] = makeCallerCwdReadProp();
+                    // ANTS-3568 — declare requests/paths/regions as schema
+                    // properties so additionalProperties:false does not strip
+                    // these documented aliases (ANTS-3500) before they reach
+                    // cmdReadRegions' fallback. Same array shape as `items`
+                    // (the handler picks the first array-valued alias when
+                    // `items` is absent); `items` still wins.
+                    for (const char *alias : {"requests", "paths", "regions"}) {
+                        QJsonObject a = itemsProp;
+                        a["description"] = QStringLiteral(
+                            "Alias for `items` (ANTS-3500) — same array shape. "
+                            "Declared so the documented alias survives schema "
+                            "validation; canonical `items` still wins.");
+                        props[QLatin1String(alias)] = a;
+                    }
                     schema["properties"] = props;
                     QJsonArray required;
                     required.append("items");

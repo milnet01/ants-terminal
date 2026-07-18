@@ -226,3 +226,27 @@ TEST(ReadRegions, ItemsKeyAliases) {
     EXPECT_EQ(0, expect_failures())
         << expect_failures() << " ANTS-3500 alias wiring invariant(s) failed";
 }
+
+// RR-8 — ANTS-3568: the read_regions inputSchema must DECLARE the
+// requests/paths/regions aliases. Without them, additionalProperties:false
+// strips the alias keys before cmdReadRegions' RR-7 fallback ever runs — so
+// the handler code is unreachable and RR-7's handler-grep passes while the
+// alias is dead end-to-end. Window on the read_regions schema block.
+TEST(ReadRegions, SchemaDeclaresAliases) {
+    expect_reset();
+    const std::string ci =
+        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const auto p = ci.find("rrsTool[\"name\"] = \"read_regions\"");
+    ASSERT_NE(p, std::string::npos);
+    const auto end = ci.find("tools.append(rrsTool)", p);
+    ASSERT_NE(end, std::string::npos);
+    const std::string block = ci.substr(p, end - p);
+    expect(block.find("\"requests\"") != std::string::npos, "RR-8a",
+           "read_regions schema does not declare the `requests` alias");
+    expect(block.find("\"paths\"") != std::string::npos, "RR-8b",
+           "read_regions schema does not declare the `paths` alias");
+    expect(block.find("\"regions\"") != std::string::npos, "RR-8c",
+           "read_regions schema does not declare the `regions` alias");
+    EXPECT_EQ(0, expect_failures())
+        << expect_failures() << " ANTS-3568 schema-alias invariant(s) failed";
+}
