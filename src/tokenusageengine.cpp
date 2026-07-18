@@ -3,6 +3,7 @@
 #include "tokenusageengine.h"
 
 #include <QDateTime>
+#include <QStringList>
 
 #include <algorithm>
 
@@ -166,6 +167,52 @@ Snapshot Tracker::buildReport(bool includeZero) const {
         }
     }
     return snap;
+}
+
+// ---- ANTS-3572 pure persistence helpers ---------------------------------
+
+QJsonObject foldMonthlyBucket(QJsonObject monthly, const QString &monthKey,
+                              qint64 add, int keepMonths) {
+    // Values are stored as JSON numbers (double), exact-integer to 2^53 —
+    // far beyond any real token total (INV-9).
+    const qint64 prev = static_cast<qint64>(monthly.value(monthKey).toDouble(0));
+    monthly[monthKey] = static_cast<double>(prev + add);
+
+    // Retain only the keepMonths lexicographically-greatest keys. QJsonObject
+    // keys() is ascending, so the oldest are at the front (INV-4).
+    if (keepMonths > 0 && monthly.size() > keepMonths) {
+        const QStringList keys = monthly.keys();  // ascending
+        const int drop = monthly.size() - keepMonths;
+        for (int i = 0; i < drop; ++i) monthly.remove(keys.at(i));
+    }
+    return monthly;
+}
+
+qint64 sumYear(const QJsonObject &monthly, const QString &yearPrefix) {
+    qint64 sum = 0;
+    for (auto it = monthly.begin(); it != monthly.end(); ++it) {
+        if (it.key().startsWith(yearPrefix))
+            sum += static_cast<qint64>(it.value().toDouble(0));
+    }
+    return sum;
+}
+
+QString humanizeCount(qint64 n) {
+    if (n < 1000) return QString::number(n);
+    double v;
+    QLatin1Char suffix('K');
+    if (n < 1000000) {
+        v = n / 1000.0;
+    } else if (n < 1000000000) {
+        v = n / 1000000.0;
+        suffix = QLatin1Char('M');
+    } else {
+        v = n / 1000000000.0;
+        suffix = QLatin1Char('B');
+    }
+    QString s = QString::number(v, 'f', 1);
+    if (s.endsWith(QLatin1String(".0"))) s.chop(2);  // "1.0K" → "1K"
+    return s + suffix;
 }
 
 }  // namespace TokenUsageEngine

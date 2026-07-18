@@ -94,6 +94,7 @@ private:
     QCheckBox *m_claudeAutoModelToast     = nullptr;
     QCheckBox *m_claudeAutoModelChipPulse = nullptr;
     QCheckBox *m_claudeAutoModelUndo      = nullptr;
+    QCheckBox *m_claudeTokensSavedChip    = nullptr;  // ANTS-3572
     // ANTS-1901 — master on/off toggle for the whole Ants MCP
     // integration (default on). Greys out every dependent control below
     // (auto-switcher, orientation hook, terse replies) when off.

@@ -313,6 +313,7 @@ private:
     // via addPermanentWidget).
     QLabel              *m_statusLabel = nullptr;
     QProgressBar        *m_contextBar = nullptr;
+    QLabel              *m_tokensSavedChip = nullptr;  // ANTS-3572
     QPushButton         *m_reviewBtn = nullptr;
     QLabel              *m_errorLabel = nullptr;
     // Owned auto-hide timer for m_errorLabel. Without an owned timer,

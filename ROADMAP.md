@@ -11770,6 +11770,22 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   Kind: chore.
   Source: user-request-2026-06-27.
 
+- 📋 [ANTS-3573] **Harden token_usage_no_ci_diagnostic Inv4SuccessPathClean fixed 2000-byte window.**
+  tests/features/token_usage_no_ci_diagnostic Inv4SuccessPathClean
+  windows `cpp.substr(pos, 2000)` from `env["ok"] = true;` and asserts
+  `env["calls"]` is inside it. ANTS-3572 added four fields to
+  cmdTokenUsage's response and (initially) placed them before the calls
+  loop, pushing `env["calls"] = calls;` past the 2000-byte window → false
+  failure. Worked around cleanly by placing the new fields AFTER
+  `env["calls"] = calls;` (JSON order is immaterial), but the window is
+  brittle — same ANTS-2178 source-window-drift class. Fix: search the
+  whole cmdTokenUsage function body (from `env["ok"]` to the closing
+  `return QJsonDocument(env);`) for `env["calls"]` instead of a fixed
+  2000-byte slice. Low priority; the invariant still holds today.
+  **Layman:** A test checks the token-usage reply is built correctly by looking at a fixed-size chunk of code; adding a new field can push what it looks for out of view and falsely fail it.
+  Kind: test.
+  Source: in-session-2026-07-18 (noticed during ANTS-3572).
+
 ### 📝 Cold-eyes 2026-05-21
 
 Docs reviewed: PLUGINS.md, README.md, CONTRIBUTING.md, CHANGELOG.md, SECURITY.md, docs/specs/ANTS-1120.md, ANTS-1160.md, ANTS-1318.md, docs/decisions/ADR-0002 + ADR-0003, docs/standards/* (all). Loops to clean: 8. Findings fixed: ~20 across the run.
@@ -21813,11 +21829,12 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Lanes: new (tokenusagetracker, tokenusagedialog), claudeintegration
   (extend parseTranscriptTail), mainwindow (menu wire).
 
-- 🚧 [ANTS-3572] **Surface MCP tokens-saved as a live status-bar chip + persisted month / YTD / all-time aggregate.**
+- ✅ [ANTS-3572] **Surface MCP tokens-saved as a live status-bar chip + persisted month / YTD / all-time aggregate.**
   Gives the existing (ANTS-1284) TokenUsageEngine a UI face + a
   memory. Distinct from ANTS-1245 (which reports tokens *consumed*
   + cost with graphs/SQLite, design-only): this reports tokens
   *saved* by MCP, backed by a bounded monthly map in config.json.
+  Resolved (2026-07-18): shipped. TokenUsageEngine fold/sum/humanize pure helpers; ClaudeIntegration endTokenSession() unified reset path + tokensSavedUpdated/tokenSessionEnding signals; MainWindow foldTokenSavingsIntoConfig + tokenSavingsSummary (config.json store-only setters, one write at fold); status-bar tokens-saved pill (session on face, month/YTD/all-time tooltip); token_usage verb month_saved/ytd_saved/lifetime_saved/monthly[]; Settings → General toggle (default on). Spec docs/specs/ANTS-3572.md (cold-eyes converged, 4 loops). Tests: token_usage_engine FOLD/HUMAN, tokens_saved_chip source-grep (test_claude), config surfacing round-trip. Full suite green 2758/2758.
 
   Scope (design-locked, spec docs/specs to follow, cold-eyes first):
   1. ClaudeIntegration gains a tokensSavedUpdated(qint64) signal

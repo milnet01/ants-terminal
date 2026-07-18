@@ -1559,7 +1559,11 @@ if(ANTS_TESTS)
                 # ANTS-1307 project_conventions MCP convention summary.
                 tests/features/mcp_project_conventions/test_mcp_project_conventions.cpp
                 # ANTS-1302 focused_test runner (lib + wiring).
-                tests/features/mcp_focused_test/test_mcp_focused_test.cpp)
+                tests/features/mcp_focused_test/test_mcp_focused_test.cpp
+                # ANTS-3572 — tokens-saved chip + aggregate wiring source-grep
+                # (needs the mainwindow/claudestatuswidgets/claudeintegration/
+                # remotecontrol SRC_*_PATH defs this bundle already carries).
+                tests/features/tokens_saved_chip/test_tokens_saved_chip.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.

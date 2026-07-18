@@ -46,6 +46,17 @@ class RemoteControl;
 class PluginManager;
 #endif
 
+// ANTS-3572 — snapshot of the persisted tokens-saved aggregate + the live
+// session, assembled by MainWindow::tokenSavingsSummary() for the token_usage
+// MCP verb. Each scalar period is stored + live session; `monthly` is the
+// folded buckets only, recent-first. See docs/specs/ANTS-3572.md.
+struct TokenSavingsSummary {
+    qint64     month    = 0;
+    qint64     ytd      = 0;
+    qint64     lifetime = 0;
+    QJsonArray monthly;   // [{ "month": "YYYY-MM", "saved": n }, …]
+};
+
 class MainWindow : public QMainWindow {
     Q_OBJECT
 
@@ -63,6 +74,10 @@ protected:
 
 private slots:
     void onTitleChanged(const QString &title);
+    // ANTS-3572 — fold the just-ended MCP session's savings into config.json.
+    // Connected to ClaudeIntegration::tokenSessionEnding (synchronous, before
+    // the counter resets) and called from closeEvent at app quit.
+    void foldTokenSavingsIntoConfig();
     void toggleMaximize();
 
     void newTab();
@@ -132,6 +147,11 @@ public:
     // m_claudeIntegration. Non-owning pointer; may be null if the
     // Claude integration subsystem was never constructed.
     ClaudeIntegration *claudeIntegration() const { return m_claudeIntegration; }
+
+    // ANTS-3572 — exposed to RemoteControl::cmdTokenUsage for the verb's
+    // month_saved / ytd_saved / lifetime_saved / monthly[] fields. Reads
+    // m_config + the engine; each period is stored + live session.
+    TokenSavingsSummary tokenSavingsSummary() const;
 
     // `tabListForRemote()` returns one JSON object per tab with
     // `index`, `title`, `cwd`, `active` (used by the `ls` command).

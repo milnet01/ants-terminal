@@ -268,6 +268,18 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         "disabling takes effect immediately.");
     layout->addRow(m_claudeMcpEnabled);
 
+    // ANTS-3572 — status-bar "tokens saved" pill on/off. Independent of the
+    // auto-switcher; default on (a token-saving surface ships enabled). The
+    // ledger keeps accruing when off — only the widget is hidden (INV-11).
+    m_claudeTokensSavedChip = new QCheckBox(
+        "Show \"tokens saved\" pill in the status bar", tab);
+    m_claudeTokensSavedChip->setToolTip(
+        "When on, a small pill on the status bar shows how many tokens the "
+        "Ants MCP has saved you this session; hover it for this-month / "
+        "this-year / all-time totals. On by default. Turning it off just "
+        "hides the pill — the running totals keep accruing.");
+    layout->addRow(m_claudeTokensSavedChip);
+
     // ANTS-1735 §2.7 — single prominent toggle for the autonomous
     // model switcher. Quietly swaps Claude Code between Haiku /
     // Sonnet / Opus at turn boundaries so the user never has to
@@ -1087,6 +1099,8 @@ void SettingsDialog::loadSettings() {
         m_claudeAutoModelChipPulse->setChecked(m_config->claudeAutoModelChipPulseEnabled());
     if (m_claudeAutoModelUndo)
         m_claudeAutoModelUndo->setChecked(m_config->claudeAutoModelUndoEnabled());
+    if (m_claudeTokensSavedChip)  // ANTS-3572
+        m_claudeTokensSavedChip->setChecked(m_config->claudeTokensSavedChipEnabled());
     if (m_claudeMcpEnabled)
         m_claudeMcpEnabled->setChecked(m_config->claudeMcpEnabled());
     if (m_claudeMcpOrientation)
@@ -1220,6 +1234,8 @@ void SettingsDialog::applySettings() {
         m_config->setClaudeAutoModelChipPulseEnabled(m_claudeAutoModelChipPulse->isChecked());
     if (m_claudeAutoModelUndo)
         m_config->setClaudeAutoModelUndoEnabled(m_claudeAutoModelUndo->isChecked());
+    if (m_claudeTokensSavedChip)  // ANTS-3572
+        m_config->setClaudeTokensSavedChipEnabled(m_claudeTokensSavedChip->isChecked());
     if (m_claudeMcpOrientation) {
         const bool wasEnabled = m_config->claudeMcpOrientationEnabled();
         const bool nowEnabled = m_claudeMcpOrientation->isChecked();

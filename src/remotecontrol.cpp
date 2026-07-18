@@ -18977,6 +18977,12 @@ QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req,
     // Snapshot first; reset (if requested) only AFTER the snapshot
     // exists in the response — INV-9 (read-and-clear atomicity).
     const TokenUsageEngine::Snapshot snap = ci->tokenUsageReport(includeZero);
+    // ANTS-3572 — read the persisted aggregate (stored + live session) BEFORE
+    // any reset folds the session into storage, so the fields already include
+    // the session about to be folded (a follow-up call then returns the same
+    // lifetime). m_main is non-owning/non-null by contract; guard defensively.
+    const TokenSavingsSummary savings =
+        m_main ? m_main->tokenSavingsSummary() : TokenSavingsSummary{};
     if (wantsReset) {
         ci->resetTokenUsage();
     }
@@ -19018,6 +19024,13 @@ QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req,
         calls.append(c);
     }
     env["calls"] = calls;
+    // ANTS-3572 — persisted month / YTD / all-time saved (each = stored + this
+    // session). monthly[] is the folded buckets only, recent-first. Placed
+    // after calls[] (JSON order is immaterial; summary totals follow the detail).
+    env["month_saved"]    = savings.month;
+    env["ytd_saved"]      = savings.ytd;
+    env["lifetime_saved"] = savings.lifetime;
+    env["monthly"]        = savings.monthly;
     return QJsonDocument(env);
 }
 

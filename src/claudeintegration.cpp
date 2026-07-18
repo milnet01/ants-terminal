@@ -1465,6 +1465,17 @@ void ClaudeIntegration::recordDispatch(
              static_cast<long long>(wrapBytes),
              static_cast<long long>(durUs),
              cachedHit ? "yes" : "no");
+    // ANTS-3572 — drive the tokens-saved chip from the single dispatch hook.
+    emit tokensSavedUpdated(m_tokenUsage.buildReport(false).totalSaved);
+}
+
+void ClaudeIntegration::endTokenSession() {
+    // ANTS-3572 — sole reset path (see docs/specs/ANTS-3572.md). Emit BEFORE
+    // the reset so MainWindow's same-thread (DirectConnection) fold slot
+    // snapshots the intact session total; then clear; then blank the chip.
+    emit tokenSessionEnding();
+    m_tokenUsage.reset();
+    emit tokensSavedUpdated(0);
 }
 
 QJsonObject ClaudeIntegration::queryMcpTrace(
@@ -1572,7 +1583,9 @@ void ClaudeIntegration::onMcpConnection() {
             if (method == "initialize") {
                 // ANTS-1284 — reset per-tool dispatch counters on
                 // session-start handshake. See docs/specs/ANTS-1284.md.
-                m_tokenUsage.reset();
+                // ANTS-3572 — fold the previous session into the persisted
+                // aggregate before clearing (endTokenSession emits first).
+                endTokenSession();
                 QJsonObject caps;
                 caps["tools"] = QJsonObject();
                 QJsonObject serverInfo;

@@ -94,3 +94,48 @@ TEST_F(ConfigSurfacingDefaults, IndependentTogglesPersistOrthogonally) {
     EXPECT_TRUE(cfg2.claudeAutoModelChipPulseEnabled());
     EXPECT_TRUE(cfg2.claudeAutoModelUndoEnabled());
 }
+
+// ANTS-3572 — tokens-saved chip flag defaults TRUE (a token-saving surface
+// ships enabled); the three data keys default empty/zero on a fresh config.
+TEST_F(ConfigSurfacingDefaults, TokensSavedDefaults) {
+    Config cfg;
+    EXPECT_TRUE(cfg.claudeTokensSavedChipEnabled());
+    EXPECT_TRUE(cfg.claudeTokensSavedMonthly().isEmpty());
+    EXPECT_EQ(cfg.claudeTokensSavedLifetime(), 0);
+    EXPECT_TRUE(cfg.claudeTokensSavedSince().isEmpty());
+}
+
+// ANTS-3572 — the chip flag saves on set (normal idiom); the three DATA
+// setters are store-only, so they persist only after an explicit save()
+// (INV-7 — the fold batches all three behind one write).
+TEST_F(ConfigSurfacingDefaults, TokensSavedRoundTrip) {
+    {
+        Config cfg;
+        cfg.setClaudeTokensSavedChipEnabled(false);  // saves immediately
+        QJsonObject monthly;
+        monthly["2026-07"] = 5000.0;
+        cfg.setClaudeTokensSavedMonthly(monthly);    // store-only
+        cfg.setClaudeTokensSavedLifetime(123456);    // store-only
+        cfg.setClaudeTokensSavedSince("2026-07-18"); // store-only
+        cfg.save();                                  // single write (INV-7)
+    }
+    Config cfg2;
+    EXPECT_FALSE(cfg2.claudeTokensSavedChipEnabled());
+    EXPECT_EQ(cfg2.claudeTokensSavedLifetime(), 123456);
+    EXPECT_EQ(static_cast<qint64>(
+                  cfg2.claudeTokensSavedMonthly().value("2026-07").toDouble()),
+              5000);
+    EXPECT_EQ(cfg2.claudeTokensSavedSince(), QString("2026-07-18"));
+}
+
+// ANTS-3572 — the store-only data setters do NOT persist without a save()
+// (proves INV-7's "no per-call write" — a bare setter leaves disk untouched).
+TEST_F(ConfigSurfacingDefaults, TokensSavedDataSettersAreStoreOnly) {
+    {
+        Config cfg;
+        cfg.setClaudeTokensSavedLifetime(999);  // store-only, no save()
+    }
+    Config cfg2;
+    EXPECT_EQ(cfg2.claudeTokensSavedLifetime(), 0)
+        << "a store-only setter must not persist without an explicit save()";
+}

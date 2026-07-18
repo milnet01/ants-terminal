@@ -1,4 +1,8 @@
 #include "mainwindow.h"
+
+#include "tokenusageengine.h"  // ANTS-3572 — foldMonthlyBucket / sumYear
+#include <QDate>
+#include <QJsonObject>
 #include "themes.h"             // ANTS-1325: include directly where Themes:: is called
 
 #include "coloredtabbar.h"
@@ -3932,6 +3936,13 @@ void MainWindow::setupStatusBarChrome() {
     connect(m_claudeStatusBarController, &ClaudeStatusBarController::statusMessageCleared,
             this, &MainWindow::clearStatusMessage);
 
+    // ANTS-3572 — fold the session's tokens-saved total into the persisted
+    // aggregate just before the engine resets. The default (Auto → Direct,
+    // same thread) connection runs the slot synchronously inside emit, so the
+    // fold reads the intact total before reset() clears it (INV-3).
+    connect(m_claudeIntegration, &ClaudeIntegration::tokenSessionEnding,
+            this, &MainWindow::foldTokenSavingsIntoConfig);
+
     setupClaudeMcpProviders();
 
     // 0.7.39 — Roadmap button. Sibling to Background Tasks; same size/
@@ -5745,7 +5756,56 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     // colors at next launch even when scrollback isn't saved.
     saveTabColorSequence();
     saveAllSessions();
+    // ANTS-3572 — fold the final MCP session's savings before we exit; the
+    // case the initialize-time fold can't cover (a new process starts empty).
+    // endTokenSession folds (via tokenSessionEnding) then resets.
+    if (m_claudeIntegration) m_claudeIntegration->endTokenSession();
     event->accept();
+}
+
+// ANTS-3572 — persist the just-ended session's tokens-saved total. Triggered
+// synchronously by ClaudeIntegration::tokenSessionEnding (before the counter
+// resets) and at app quit. One config write after the store-only setters
+// (INV-7); idempotent — a 0-total (repeat) call is a no-op (INV-2).
+void MainWindow::foldTokenSavingsIntoConfig() {
+    if (!m_claudeIntegration) return;
+    const qint64 s =
+        m_claudeIntegration->tokenUsageReport(/*includeZero=*/false).totalSaved;
+    if (s <= 0) return;
+    const QString month = QDate::currentDate().toString("yyyy-MM");
+    m_config.setClaudeTokensSavedMonthly(TokenUsageEngine::foldMonthlyBucket(
+        m_config.claudeTokensSavedMonthly(), month, s, /*keepMonths=*/24));
+    m_config.setClaudeTokensSavedLifetime(
+        m_config.claudeTokensSavedLifetime() + s);
+    if (m_config.claudeTokensSavedSince().isEmpty())
+        m_config.setClaudeTokensSavedSince(
+            QDate::currentDate().toString(Qt::ISODate));
+    m_config.save();  // single write after the three store-only setters (INV-7)
+}
+
+// ANTS-3572 — assemble the tokens-saved summary for the token_usage MCP verb.
+// Each period = stored + live session; monthly[] is the folded buckets only,
+// recent-first. Reads the same single ClaudeIntegration the verb's `ci` points
+// at, so verb numbers are mutually consistent (INV-1).
+TokenSavingsSummary MainWindow::tokenSavingsSummary() const {
+    TokenSavingsSummary out;
+    const qint64 session = m_claudeIntegration
+        ? m_claudeIntegration->tokenUsageReport(false).totalSaved : 0;
+    const QJsonObject monthly = m_config.claudeTokensSavedMonthly();
+    const QString curMonth = QDate::currentDate().toString("yyyy-MM");
+    const QString curYear  = QDate::currentDate().toString("yyyy");
+    out.month    = static_cast<qint64>(monthly.value(curMonth).toDouble(0)) + session;
+    out.ytd      = TokenUsageEngine::sumYear(monthly, curYear) + session;
+    out.lifetime = m_config.claudeTokensSavedLifetime() + session;
+    // Recent-first: QJsonObject::keys() is ascending, so reverse-iterate.
+    const QStringList keys = monthly.keys();
+    for (auto it = keys.crbegin(); it != keys.crend(); ++it) {
+        QJsonObject e;
+        e["month"] = *it;
+        e["saved"] = monthly.value(*it).toDouble(0);
+        out.monthly.append(e);
+    }
+    return out;
 }
 
 // --- Status bar ---

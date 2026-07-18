@@ -46,6 +46,26 @@ simultaneously (RoadMap button + GitHub repo-type badge) plus a
 third architectural cousin (the ANTS-1158 Task List dialog, fixed
 via the `claudetasklist.cpp::poll()` mtime-gated rescue).
 
+## Signal-driven State widgets (the `shellCwd()`-trio exception)
+
+Not every State widget reads `shellCwd()`. Some report a fact about the
+**Claude session / MCP** rather than the focused tab, and are driven by a
+`ClaudeIntegration` signal instead of the timer/startup/tab trio:
+
+- **Context-% bar** — driven by `ClaudeIntegration::contextUpdated(int)`;
+  hides on `<= 0`.
+- **Tokens-saved pill** (`m_tokensSavedChip`, ANTS-3572) — driven by
+  `ClaudeIntegration::tokensSavedUpdated(qint64)`; the update slot gates
+  `show()` on `Config::claudeTokensSavedChipEnabled()` AND a `> 0` session,
+  hides otherwise. It also styles from the active theme in the slot AND in
+  `applyTheme()` so a live theme switch repaints it.
+
+These wire to the signal in `ClaudeStatusBarController::attach()`, NOT to the
+`shellCwd()` trio — the "cold launch hides the widget" failure mode does not
+apply (there is no PID-timing race; the signal simply hasn't fired yet). A
+source-grep conformance test still locks the wiring (e.g.
+`tests/features/tokens_saved_chip/`).
+
 ## Action-category widget refresh contract
 
 Action-category buttons (Review Changes, Background Tasks,

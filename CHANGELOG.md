@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Surface MCP tokens-saved as a live status-bar chip + persisted month / YTD / all-time aggregate.** (ANTS-3572)
+  A little pill on the status bar shows how many tokens the Ants MCP has saved you — live this session, plus this-month / this-year / all-time totals that survive restarts.
+
 - **spec_query silently under-reports invariants declared inline (`** (ANTS-3569)
   When a spec writes a rule as a sentence instead of a list or table, the quick spec-reader reports zero rules, so a caller trusting the count thinks the spec has no invariants.
 

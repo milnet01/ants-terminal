@@ -522,6 +522,37 @@ void Config::setClaudeAutoModelChipPulseEnabled(bool enabled) {
     save();
 }
 
+// ANTS-3572 — tokens-saved aggregate. The three data setters are STORE-ONLY
+// (storeIfChanged writes m_data but does not persist); MainWindow's fold calls
+// one save() after mutating all three (INV-7). The chip flag saves on set.
+QJsonObject Config::claudeTokensSavedMonthly() const {
+    return m_data.value("claude.tokens_saved_monthly").toObject();
+}
+void Config::setClaudeTokensSavedMonthly(const QJsonObject &monthly) {
+    storeIfChanged("claude.tokens_saved_monthly", monthly);  // no save() — INV-7
+}
+qint64 Config::claudeTokensSavedLifetime() const {
+    return static_cast<qint64>(
+        m_data.value("claude.tokens_saved_lifetime").toDouble(0));
+}
+void Config::setClaudeTokensSavedLifetime(qint64 tokens) {
+    storeIfChanged("claude.tokens_saved_lifetime",
+                   static_cast<double>(tokens));            // no save() — INV-7
+}
+QString Config::claudeTokensSavedSince() const {
+    return m_data.value("claude.tokens_saved_since").toString();
+}
+void Config::setClaudeTokensSavedSince(const QString &isoDate) {
+    storeIfChanged("claude.tokens_saved_since", isoDate);     // no save() — INV-7
+}
+bool Config::claudeTokensSavedChipEnabled() const {
+    return m_data.value("claude.tokens_saved_chip_enabled").toBool(true);
+}
+void Config::setClaudeTokensSavedChipEnabled(bool enabled) {
+    if (!storeIfChanged("claude.tokens_saved_chip_enabled", enabled)) return;
+    save();
+}
+
 bool Config::claudeAutoModelUndoEnabled() const {
     return m_data.value("claude.auto_model_undo_enabled").toBool(true);
 }

@@ -334,7 +334,12 @@ public:
     TokenUsageEngine::Snapshot tokenUsageReport(bool includeZero) const {
         return m_tokenUsage.buildReport(includeZero);
     }
-    void resetTokenUsage() { m_tokenUsage.reset(); }
+    void resetTokenUsage() { endTokenSession(); }  // ANTS-3572 — folds first
+    // ANTS-3572 — the single production reset path: emits tokenSessionEnding
+    // (a synchronous fold on MainWindow), resets the counter, then blanks the
+    // chip. Every reset routes through here so the fold-before-reset ordering
+    // lives in one place and a repeat call folds a 0 total (idempotent).
+    void endTokenSession();
     // Test-only convenience: drive recordCall without the full MCP
     // dispatch path. Mirrors processHookEventForTest's pattern.
     // ANTS-1355 — wrapBytes + durationUs defaulted to preserve v1
@@ -465,6 +470,13 @@ signals:
     void sessionStopped(const QString &reason);
     void fileChanged(const QString &filePath);
     void contextUpdated(int percent);
+    // ANTS-3572 — MCP tokens-saved surfacing. tokensSavedUpdated drives the
+    // status-bar chip (carries the live session total; 0 blanks it at a
+    // session boundary). tokenSessionEnding is emitted synchronously by
+    // endTokenSession() just before the counter resets, so MainWindow can fold
+    // the still-intact total into the persisted aggregate. See ANTS-3572.
+    void tokensSavedUpdated(qint64 sessionSaved);
+    void tokenSessionEnding();
     void permissionRequested(const QString &tool, const QString &input);
     // Plan mode is orthogonal to tool-use state — the user toggles it
     // with Shift+Tab in the Claude Code TUI. Detected from transcript

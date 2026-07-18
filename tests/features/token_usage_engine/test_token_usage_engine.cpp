@@ -328,3 +328,72 @@ TEST(TokenUsageEngine, Ants3361ConservativeFloorNoOverClaim) {
     EXPECT_EQ(snap.calls[0].estTokensSaved, qint64(0))
         << "output exceeding the baseline must floor at 0, not over-claim";
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-3572 — pure persistence helpers (foldMonthlyBucket / sumYear /
+// humanizeCount) backing the tokens-saved chip + monthly/YTD/all-time.
+// See docs/specs/ANTS-3572.md § 5.
+// ---------------------------------------------------------------------------
+
+using TokenUsageEngine::foldMonthlyBucket;
+using TokenUsageEngine::humanizeCount;
+using TokenUsageEngine::sumYear;
+
+static qint64 bucket(const QJsonObject &m, const char *k) {
+    return static_cast<qint64>(m.value(QString::fromLatin1(k)).toDouble(0));
+}
+
+// FOLD-1 (INV-1 parity) — a fold lands the session in its month bucket, and
+// stored + 0 == the pre-fold stored + session (no jump across the fold).
+TEST(TokenSavingsHelpers, FoldParityNoJump) {
+    const qint64 session = 1000;
+    const QJsonObject empty;
+    const qint64 disp1 = bucket(empty, "2026-07") + session;  // pre-fold display
+    const QJsonObject m = foldMonthlyBucket(empty, "2026-07", session, 24);
+    EXPECT_EQ(bucket(m, "2026-07"), 1000);
+    EXPECT_EQ(sumYear(m, "2026") + 0, disp1);                 // post-fold == pre
+}
+
+// FOLD-2 (INV-2 helper no-op) — a zero-session fold leaves the bucket unchanged.
+TEST(TokenSavingsHelpers, FoldZeroIsNoOp) {
+    QJsonObject m = foldMonthlyBucket(QJsonObject{}, "2026-07", 1000, 24);
+    m = foldMonthlyBucket(m, "2026-07", 0, 24);
+    EXPECT_EQ(bucket(m, "2026-07"), 1000);
+}
+
+// FOLD-3 (INV-4 prune) — 30 distinct months, keep 24; the oldest 6 drop.
+TEST(TokenSavingsHelpers, FoldPrunesToKeepMonths) {
+    QJsonObject m;  // 2024-01..2024-12, 2025-01..2025-12, 2026-01..2026-06 = 30
+    for (int y = 2024; y <= 2026; ++y) {
+        const int lastMonth = (y == 2026) ? 6 : 12;
+        for (int mo = 1; mo <= lastMonth; ++mo)
+            m = foldMonthlyBucket(m, QString::asprintf("%04d-%02d", y, mo), 100, 24);
+    }
+    EXPECT_EQ(m.size(), 24);
+    EXPECT_FALSE(m.contains("2024-01"));  // oldest six pruned
+    EXPECT_FALSE(m.contains("2024-06"));
+    EXPECT_TRUE(m.contains("2024-07"));   // 24 newest retained
+    EXPECT_TRUE(m.contains("2026-06"));
+}
+
+// FOLD-4 (INV-4 YTD window) — sumYear scopes to the requested year's buckets.
+TEST(TokenSavingsHelpers, SumYearIsYearScoped) {
+    QJsonObject m;
+    m = foldMonthlyBucket(m, "2025-11", 100, 24);
+    m = foldMonthlyBucket(m, "2025-12", 200, 24);
+    m = foldMonthlyBucket(m, "2026-01", 300, 24);
+    m = foldMonthlyBucket(m, "2026-07", 400, 24);
+    EXPECT_EQ(sumYear(m, "2026"), 700);
+    EXPECT_EQ(sumYear(m, "2025"), 300);
+}
+
+// HUMAN-1 (§ 2.7) — humanizer across the branch edges; trailing ".0" trimmed.
+TEST(TokenSavingsHelpers, HumanizeBranchEdges) {
+    EXPECT_EQ(humanizeCount(0),          QString("0"));
+    EXPECT_EQ(humanizeCount(999),        QString("999"));
+    EXPECT_EQ(humanizeCount(1000),       QString("1K"));
+    EXPECT_EQ(humanizeCount(12400),      QString("12.4K"));
+    EXPECT_EQ(humanizeCount(1000000),    QString("1M"));
+    EXPECT_EQ(humanizeCount(1200000),    QString("1.2M"));
+    EXPECT_EQ(humanizeCount(1000000000), QString("1B"));
+}

@@ -1,5 +1,6 @@
 #include "claudestatuswidgets.h"
 
+#include <QDate>
 #include <QDateTime>
 #include <QElapsedTimer>
 #include <QFile>
@@ -30,6 +31,7 @@
 #include "claudebgtasks.h"
 #include "claudestateresolver.h"   // ANTS-1873
 #include "config.h"                // ANTS-1735 §2.7 — claudeAutoModel()
+#include "tokenusageengine.h"      // ANTS-3572 — humanizeCount / sumYear
 #include "modelautoswitch.h"       // ANTS-1735 §2.3 — decide() gate
 #include "modelrecommender.h"
 #include "modelswitchledger.h"     // ANTS-1735 §2.5 — append + statsEnvelope
@@ -126,6 +128,17 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_contextBar->setAccessibleName(tr("Claude Code context window usage"));
     m_contextBar->hide();
     m_statusBar->addPermanentWidget(m_contextBar);
+
+    // ANTS-3572 — MCP tokens-saved pill. Face shows the live session total
+    // ("↓ 1.2M saved"); the tooltip adds this-month / this-year / all-time
+    // from the persisted aggregate. Sits next to the context bar (both are
+    // session telemetry). Styled dynamically (theme-aware) in its update slot
+    // and applyTheme(); hidden until a saving accrues this session.
+    m_tokensSavedChip = new QLabel(m_statusBar);
+    m_tokensSavedChip->setObjectName(QStringLiteral("claudeTokensSavedChip"));
+    m_tokensSavedChip->setAccessibleName(tr("MCP tokens saved this session"));
+    m_tokensSavedChip->hide();
+    m_statusBar->addPermanentWidget(m_tokensSavedChip);
 
     // Review Changes button (shown when Claude edits files). Size/height
     // intentionally left at Qt's default so it matches the sibling
@@ -467,6 +480,58 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
             m_contextBar->setToolTip(
                 QString("Context %1% — consider using /compact").arg(percent));
         }
+    });
+
+    // ANTS-3572 — tokens-saved pill. Face = live session (humanized); tooltip
+    // adds this-month / this-year / all-time from the persisted aggregate.
+    // Hidden when the feature is off or nothing was saved this session.
+    connect(m_integration, &ClaudeIntegration::tokensSavedUpdated,
+            this, [this](qint64 sessionSaved) {
+        const Config &cfg = cachedConfig();
+        if (!cfg.claudeTokensSavedChipEnabled() || sessionSaved <= 0) {
+            m_tokensSavedChip->hide();
+            return;
+        }
+        m_tokensSavedChip->setText(
+            QStringLiteral("↓ %1 saved")
+                .arg(TokenUsageEngine::humanizeCount(sessionSaved)));
+        const QJsonObject monthly = cfg.claudeTokensSavedMonthly();
+        const QString curMonth =
+            QDate::currentDate().toString(QStringLiteral("yyyy-MM"));
+        const QString curYear =
+            QDate::currentDate().toString(QStringLiteral("yyyy"));
+        const qint64 month =
+            static_cast<qint64>(monthly.value(curMonth).toDouble(0)) + sessionSaved;
+        const qint64 ytd = TokenUsageEngine::sumYear(monthly, curYear) + sessionSaved;
+        const qint64 life = cfg.claudeTokensSavedLifetime() + sessionSaved;
+        QString tip = tr("This session: %1 · This month: %2 · This year: %3 · "
+                         "All-time: %4 saved")
+                          .arg(TokenUsageEngine::humanizeCount(sessionSaved),
+                               TokenUsageEngine::humanizeCount(month),
+                               TokenUsageEngine::humanizeCount(ytd),
+                               TokenUsageEngine::humanizeCount(life));
+        const QString since = cfg.claudeTokensSavedSince();
+        if (!since.isEmpty()) {
+            const QDate d = QDate::fromString(since, Qt::ISODate);
+            if (d.isValid())
+                tip += tr(" (since %1)")
+                           .arg(d.toString(QStringLiteral("d MMM yyyy")));
+        }
+        const qint64 failedTokens =
+            m_integration->tokenUsageReport(false).totalFailedBytes / 4;
+        if (failedTokens > 0)
+            tip += tr(" · net of %1 wasted on failed calls")
+                       .arg(TokenUsageEngine::humanizeCount(failedTokens));
+        m_tokensSavedChip->setToolTip(tip);
+        m_tokensSavedChip->setAccessibleDescription(tip);
+        const Theme &th = Themes::byName(m_currentThemeName);
+        m_tokensSavedChip->setStyleSheet(
+            QStringLiteral("QLabel { border: 1px solid %1; border-radius: 3px; "
+                           "background: %2; color: %3; padding: 0px 4px; "
+                           "font-size: 10px; }")
+                .arg(th.border.name(), th.bgSecondary.name(),
+                     th.textPrimary.name()));
+        m_tokensSavedChip->show();
     });
 
     connect(m_integration, &ClaudeIntegration::fileChanged,
@@ -874,6 +939,15 @@ void ClaudeStatusBarController::applyTheme(const QString &themeName) {
     }
     if (m_errorLabel)
         m_errorLabel->setStyleSheet(QStringLiteral("color: %1; padding: 0 4px; font-size: 11px;").arg(th.ansi[1].name()));
+    // ANTS-3572 — keep the tokens-saved pill themed across live theme switches
+    // (its update slot styles it on show; this covers a switch while shown).
+    if (m_tokensSavedChip)
+        m_tokensSavedChip->setStyleSheet(
+            QStringLiteral("QLabel { border: 1px solid %1; border-radius: 3px; "
+                           "background: %2; color: %3; padding: 0px 4px; "
+                           "font-size: 10px; }")
+                .arg(th.border.name(), th.bgSecondary.name(),
+                     th.textPrimary.name()));
 }
 
 void ClaudeStatusBarController::refreshBgTasksButton() {

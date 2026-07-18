@@ -106,3 +106,25 @@ compiled out under `-DANTS_LUA_PLUGINS=OFF`.
 - `claude.mcp_project_query_result_cap_bytes` (int, default 65536, clamp
   `[1024, 1048576]`) — output cap; over-cap → `result_too_large` (aggregate
   harder). Config-file-only.
+
+## Tokens-saved chip + aggregate (ANTS-3572)
+
+Surfaces the `TokenUsageEngine` (ANTS-1284) session savings as a live status-bar
+pill plus a persisted month / YTD / all-time total (also on the `token_usage`
+verb's `month_saved` / `ytd_saved` / `lifetime_saved` / `monthly[]` fields). See
+[`../specs/ANTS-3572.md`](../specs/ANTS-3572.md).
+
+- `claude.tokens_saved_chip_enabled` (bool, default **true**) — Settings →
+  General ("Show \"tokens saved\" pill in the status bar"). Gates the widget
+  only; the ledger keeps accruing when off (re-enabling shows the true total).
+- `claude.tokens_saved_monthly` (object `{"YYYY-MM": number}`) — per-month gross
+  saved buckets, pruned to the most-recent 24 keys. Config-file-only; written by
+  the fold at session reset / app quit (a **store-only** setter — no per-call
+  write).
+- `claude.tokens_saved_lifetime` (number) — exact all-time gross saved, never
+  pruned. Config-file-only; store-only setter.
+- `claude.tokens_saved_since` (string, ISO date) — first-fold date, seeded once;
+  reformatted for the tooltip's "since …". Config-file-only; store-only setter.
+
+Values are JSON numbers (exact-integer to 2^53). The three data keys are written
+together behind a single `Config::save()` at fold time (never per MCP call).

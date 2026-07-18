@@ -9,6 +9,7 @@
 #pragma once
 
 #include <QHash>
+#include <QJsonObject>
 #include <QList>
 #include <QString>
 
@@ -88,5 +89,24 @@ private:
     QHash<QString, ToolCounter> m_counters;
     qint64                       m_sinceUnixMs = 0;
 };
+
+// ANTS-3572 — pure persistence helpers for the tokens-saved aggregate
+// (status-bar chip + monthly / YTD / all-time). Kept here (Qt6::Core, no
+// Widgets) so they are unit-testable without a MainWindow; the fold/write
+// side that consumes them lives on MainWindow. See docs/specs/ANTS-3572.md.
+
+// Add `add` to monthly[monthKey] (values are JSON numbers, exact-integer to
+// 2^53), then retain only the `keepMonths` lexicographically-greatest keys
+// ("YYYY-MM" collates chronologically). Returns the updated, pruned map.
+QJsonObject foldMonthlyBucket(QJsonObject monthly, const QString &monthKey,
+                              qint64 add, int keepMonths);
+
+// Sum of buckets whose key starts with `yearPrefix` (e.g. "2026") — the
+// year-to-date total over the retained monthly map.
+qint64 sumYear(const QJsonObject &monthly, const QString &yearPrefix);
+
+// "820" / "1K" / "12.4K" / "1.2M" / "1B" — one decimal, trailing ".0"
+// trimmed. UI-agnostic so the chip and any other surface share one format.
+QString humanizeCount(qint64 n);
 
 }  // namespace TokenUsageEngine

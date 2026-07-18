@@ -177,6 +177,20 @@ public:
     int  claudeMcpProjectQueryTimeoutMs() const;
     int  claudeMcpProjectQueryResultCapBytes() const;
 
+    // ANTS-3572 — persisted "MCP tokens saved" aggregate feeding the
+    // status-bar chip's tooltip + the token_usage verb. The three DATA
+    // setters are STORE-ONLY (they write m_data but do NOT save()), so the
+    // fold on MainWindow batches all three behind one save(); the chip flag
+    // follows the normal save-on-set idiom. See docs/specs/ANTS-3572.md.
+    QJsonObject claudeTokensSavedMonthly() const;             // {"YYYY-MM": n}
+    void        setClaudeTokensSavedMonthly(const QJsonObject &monthly);
+    qint64      claudeTokensSavedLifetime() const;            // exact all-time
+    void        setClaudeTokensSavedLifetime(qint64 tokens);
+    QString     claudeTokensSavedSince() const;               // ISO first-fold date
+    void        setClaudeTokensSavedSince(const QString &isoDate);
+    bool        claudeTokensSavedChipEnabled() const;         // default true
+    void        setClaudeTokensSavedChipEnabled(bool enabled);
+
     // ANTS-1863 — persist the Tools → Debug Mode category bit-mask across
     // relaunch. The runtime mask (DebugLog::active()) otherwise reset to off on
     // every restart, forcing the user to re-tick categories before each Claude
