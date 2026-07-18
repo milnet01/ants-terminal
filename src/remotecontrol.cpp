@@ -17135,9 +17135,75 @@ QJsonDocument RemoteControl::cmdIndieReviewBrief(const QJsonObject &req) {
     for (const auto &l : lanes) {
         if (l.name == laneName) { match = &l; break; }
     }
-    if (!match) return QJsonDocument(irErr(
-        QStringLiteral("not_found"),
-        QStringLiteral("indie_review_brief: no such lane")));
+
+    // ANTS-3375 / ANTS-3493 — lane-agnostic fallback: when the caller
+    // passes a lane name not in the derived partition AND an explicit
+    // `source_paths` array, synthesise an ad-hoc Lane on the fly. The
+    // code-review analogue of cold_eyes_brief's doc_paths[] escape hatch
+    // (ANTS-1508): a session wanting a single cold review of a small
+    // code / dependency diff can mint a brief over the exact changed-file
+    // set without committing a .indie-review/partition.json. Each path
+    // routes through the central cwd-anchor chokepoint
+    // (PathValidation::validatePath) so a traversal / symlink escape is
+    // refused; assembleBriefManifest re-applies the INV-4 canonicalisation
+    // guard as defence in depth.
+    IndieReviewEngine::Lane adhoc;
+    QJsonArray rejectedSourcePaths;
+    if (!match) {
+        const QJsonValue spV = req.value(QStringLiteral("source_paths"));
+        if (spV.isArray()) {
+            for (const QJsonValue &v : spV.toArray()) {
+                const QString sp = v.toString().trimmed();
+                if (sp.isEmpty()) continue;
+                const auto pc = PathValidation::validatePath(
+                    sp, root, QStringLiteral("indie_review_brief"),
+                    QStringLiteral("source_paths"));
+                if (pc.bad) {
+                    QJsonObject rej;
+                    rej[QStringLiteral("path")]   = sp;
+                    rej[QStringLiteral("reason")] =
+                        pc.err.value(QStringLiteral("error")).toString();
+                    rejectedSourcePaths.append(rej);
+                    continue;
+                }
+                // validatePath leaves `resolved` empty for a path that
+                // doesn't canonicalise — i.e. doesn't exist. An ad-hoc
+                // lane can only review files that are actually present.
+                if (pc.resolved.isEmpty()) {
+                    QJsonObject rej;
+                    rej[QStringLiteral("path")]   = sp;
+                    rej[QStringLiteral("reason")] = QStringLiteral(
+                        "indie_review_brief: \"source_paths\" no such file");
+                    rejectedSourcePaths.append(rej);
+                    continue;
+                }
+                adhoc.sourcePaths << sp;
+            }
+        }
+        if (!adhoc.sourcePaths.isEmpty()) {
+            adhoc.name    = laneName;
+            adhoc.summary = QStringLiteral(
+                "Ad-hoc lane (caller-supplied source_paths).");
+            match = &adhoc;
+        }
+    }
+    if (!match) {
+        QJsonObject err = irErr(
+            QStringLiteral("not_found"),
+            QStringLiteral("indie_review_brief: no such lane (and no "
+                           "source_paths[] override supplied)"));
+        // List known lanes so the caller can recover without a second
+        // round-trip to indie_review_partition.
+        QJsonArray known;
+        for (const auto &l : lanes) known.append(l.name);
+        err[QStringLiteral("known_lanes")] = known;
+        // ANTS-3375 — if every supplied source_paths entry was rejected the
+        // ad-hoc lane is empty and we land here; tell the caller which
+        // path was bad rather than dropping the signal.
+        if (!rejectedSourcePaths.isEmpty())
+            err[QStringLiteral("source_paths_rejected")] = rejectedSourcePaths;
+        return QJsonDocument(err);
+    }
 
     // ANTS-1281: v2 manifest shape — `brief` no longer inlines source
     // bodies; subagent reads them via its Read tool. Per the spec the

@@ -126,6 +126,67 @@ TEST(McpIndieReviewTools, Ants1288PartitionEmitsSuggestedMerges) {
         << "cmdIndieReviewPartition no longer calls the engine helper";
 }
 
+// ANTS-3375 / ANTS-3493 INV-11 — cmdIndieReviewBrief synthesises an
+// ad-hoc lane from a caller-supplied `source_paths[]` when the lane is
+// absent from the derived partition (mirrors cold_eyes_brief's ANTS-1508
+// doc_paths[] fallback). Source-grep over the handler body.
+TEST(McpIndieReviewTools, Ants3375SourcePathsAdHocLaneInHandler) {
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    ASSERT_FALSE(rc.empty());
+    const auto pos = rc.find("RemoteControl::cmdIndieReviewBrief");
+    ASSERT_NE(pos, std::string::npos);
+    const auto end = rc.find("\n}\n", pos);
+    ASSERT_NE(end, std::string::npos);
+    const std::string body = rc.substr(pos, end - pos);
+
+    EXPECT_NE(body.find("\"source_paths\""), std::string::npos)
+        << "INV-11: handler must read the source_paths field";
+    EXPECT_NE(body.find("PathValidation::validatePath"), std::string::npos)
+        << "INV-11: source_paths entries must route through the "
+           "traversal-guard chokepoint";
+    EXPECT_NE(body.find("assembleBriefManifest"), std::string::npos)
+        << "INV-11: handler must feed the ad-hoc lane to "
+           "assembleBriefManifest";
+}
+
+// ANTS-3375 / ANTS-3493 INV-12 — the unknown-lane refusal names the
+// source_paths[] override and carries known_lanes + source_paths_rejected
+// so the caller recovers without a second partition round-trip.
+TEST(McpIndieReviewTools, Ants3375NotFoundNamesSourcePathsOverride) {
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    ASSERT_FALSE(rc.empty());
+    const auto pos = rc.find("RemoteControl::cmdIndieReviewBrief");
+    ASSERT_NE(pos, std::string::npos);
+    const auto end = rc.find("\n}\n", pos);
+    ASSERT_NE(end, std::string::npos);
+    const std::string body = rc.substr(pos, end - pos);
+
+    EXPECT_NE(body.find("source_paths[] override"), std::string::npos)
+        << "INV-12: not_found refusal must name the source_paths[] override";
+    EXPECT_NE(body.find("known_lanes"), std::string::npos)
+        << "INV-12: refusal must list known_lanes for recovery";
+    EXPECT_NE(body.find("source_paths_rejected"), std::string::npos)
+        << "INV-12: refusal must surface per-path reject reasons";
+}
+
+// ANTS-3375 / ANTS-3493 INV-13 — the indie_review_brief descriptor
+// declares the optional source_paths array prop and cites the roadmap
+// IDs so the ad-hoc mode is discoverable from tools/list.
+TEST(McpIndieReviewTools, Ants3375SourcePathsSchemaDeclared) {
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    ASSERT_FALSE(ci.empty());
+    const auto pos = ci.find("t[\"name\"] = \"indie_review_brief\"");
+    ASSERT_NE(pos, std::string::npos);
+    const auto end = ci.find("tools.append(t);", pos);
+    ASSERT_NE(end, std::string::npos);
+    const std::string region = ci.substr(pos, end - pos);
+
+    EXPECT_NE(region.find("props[\"source_paths\"]"), std::string::npos)
+        << "INV-13: source_paths prop not declared on indie_review_brief";
+    EXPECT_NE(region.find("ANTS-3375"), std::string::npos)
+        << "INV-13: descriptor must cite ANTS-3375 for discoverability";
+}
+
 TEST(McpIndieReviewTools, AllSchemasUseAdditionalPropertiesFalse) {
     // Defensive: every new tool's inputSchema sets additionalProperties=false
     // so unknown keys are rejected. Region scoped to JUST the indie_review_*

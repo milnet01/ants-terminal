@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **`indie_review_brief` gains a `source_paths[]` ad-hoc-lane mode — a lightweight single-reviewer broker for a cold review of a code / dependency diff**
+  When `lane` is not in the auto-partition, pass `source_paths[]`
+  (the changed files of a dependency bump / code diff) and the brief
+  is synthesised over just those files — the code-review analogue of
+  `cold_eyes_brief`'s `doc_paths[]`. Paths are traversal-guarded;
+  rejected entries surface in `source_paths_rejected`, and an unknown
+  lane with no usable override now lists `known_lanes` for recovery.
+  (ANTS-3375, ANTS-3493)
+
 - **feedback_query — resolve foreign-prefix mapped ids (ANTS-*) against the canonical sibling roadmap under the shared root.** (ANTS-3519)
   feedback_query now resolves foreign-prefix mapped ids (e.g. ANTS-* cited in a consumer project's feedback file) against the sibling roadmap that owns the prefix — the mapped_id_status entry carries the real status, a resolved_from field naming the owning project, and shipped_date when shipped, instead of a bare "foreign_repo". Cost-gated on a foreign id being present and RAM-bounded (one roadmap parse per distinct foreign prefix, discarded after).
 

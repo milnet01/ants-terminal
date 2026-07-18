@@ -6050,19 +6050,54 @@ void ClaudeIntegration::onMcpConnection() {
                         "12-16 briefs in one parallel batch, which "
                         "fits comfortably under this cap. Higher "
                         "than the 10/min Expensive tier the sibling "
-                        "`indie_review_*` verbs sit in.");
+                        "`indie_review_*` verbs sit in. "
+                        "Optional (ANTS-3375 / ANTS-3493): "
+                        "source_paths[] — when `lane` is not in the "
+                        "auto-partition, the brief is synthesised from "
+                        "these caller-supplied changed-file paths "
+                        "instead. The code-review analogue of "
+                        "cold_eyes_brief's doc_paths[] (ANTS-1508): use "
+                        "it as a lightweight single-reviewer broker for a "
+                        "Rule-8 cold review of a small code / dependency "
+                        "diff, without committing a "
+                        ".indie-review/partition.json. Paths must be "
+                        "project-relative and resolve inside the project "
+                        "root (traversal-guarded); non-resolving / "
+                        "escaping entries are refused and surfaced in "
+                        "`source_paths_rejected`.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to assemble the brief for one "
                         "indie-review chunk. Run after "
-                        "indie_review_partition.");
+                        "indie_review_partition. Pass source_paths[] "
+                        "with an ad-hoc lane label for a cold review of "
+                        "a changed-file set / dependency diff.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject laneProp;
                     laneProp["type"] = "string";
                     laneProp["description"] = QStringLiteral(
-                        "Lane name as returned by indie_review_partition.");
+                        "Lane name as returned by indie_review_partition. "
+                        "In source_paths[] ad-hoc mode (ANTS-3375) this "
+                        "is any label you choose for the changed-file set.");
+                    // ANTS-3375 / ANTS-3493 — optional ad-hoc source set.
+                    QJsonObject sourcePathsProp;
+                    sourcePathsProp["type"] = "array";
+                    QJsonObject sourcePathsItems;
+                    sourcePathsItems["type"] = "string";
+                    sourcePathsProp["items"] = sourcePathsItems;
+                    sourcePathsProp["description"] = QStringLiteral(
+                        "Optional (ANTS-3375 / ANTS-3493). When `lane` is "
+                        "absent from the auto-partition, synthesise an "
+                        "ad-hoc review lane over these project-relative "
+                        "source paths (e.g. the changed files of a "
+                        "dependency bump / code diff). Mirrors "
+                        "cold_eyes_brief's doc_paths[]. Each path is "
+                        "traversal-guarded; entries that escape the root "
+                        "or don't exist are refused and listed in "
+                        "`source_paths_rejected`.");
                     QJsonObject props;
                     props["lane"] = laneProp;
+                    props["source_paths"] = sourcePathsProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
