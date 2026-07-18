@@ -39,6 +39,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log flip/annotate ID-locator suggestions now rank by sibling-id prefix, not headline overlap** (ANTS-3566)
+  A bullet_not_found on an id like `3D_E-0031` no longer suggests every bullet whose title merely starts with "3"; it offers same-prefix sibling ids (or none when nothing is related).
+
+- **roadmap_log op:amend_body and op:flip_batch locate ants-v1 emoji bullets in a mixed-format roadmap** (ANTS-3565)
+  Extends the ANTS-3561 fix to two more verbs: in a GFM-majority ROADMAP.md with appended `- 📋 [ID]` emoji bullets, amend_body and flip_batch can now patch/flip those bullets by id or headline (flip_batch resolves each locator against either format and can flip GFM and emoji bullets in one commit).
+
 - **roadmap_log flip/annotate: digit-led-id bullets have no working locator — headline fallback also fails.** (ANTS-3561)
   roadmap_log op:flip / op:annotate can now locate an ants-v1 emoji bullet (`- 📋 [ID] **…**`) inside a GFM-majority (mixed-format) roadmap. Previously the ants-v1 walker only ran when the file had ZERO GFM bullets, so a mixed file's appended emoji bullets were unaddressable by id or headline — bullet_not_found — even though roadmap_query read them fine.
 

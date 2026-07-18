@@ -1434,6 +1434,12 @@ if(ANTS_TESTS)
                 # ANTS-3561 roadmap_log flip/annotate locates an ants-v1 emoji
                 # bullet in a GFM-majority (mixed-format) roadmap.
                 tests/features/roadmap_log_flip_mixed_format/test_roadmap_log_flip_mixed_format.cpp
+                # ANTS-3565 roadmap_log amend_body + flip_batch locate ants-v1
+                # emoji bullets in a mixed-format roadmap (ANTS-3561 siblings).
+                tests/features/roadmap_log_mixed_format_amend_flipbatch/test_roadmap_log_mixed_format_amend_flipbatch.cpp
+                # ANTS-3566 roadmap_log flip/annotate id-locator bullet_not_found
+                # suggestions rank by sibling-id prefix, not headline overlap.
+                tests/features/roadmap_log_flip_id_suggestions/test_roadmap_log_flip_id_suggestions.cpp
                 # ANTS-3382 roadmap_log evidence:[paths] append + roadmap_query echo.
                 tests/features/roadmap_log_evidence/test_roadmap_log_evidence.cpp
                 # ANTS-3417 roadmap_log writers emit no trailing whitespace.

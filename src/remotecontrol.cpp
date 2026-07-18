@@ -6798,6 +6798,36 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     return QJsonDocument(out);
 }
 
+// ANTS-3566 — rank sibling roadmap IDs by shared case-insensitive prefix with a
+// (not-found) ID locator, best first. For a bullet_not_found on an ID locator,
+// ranking candidate HEADLINES by overlap with the id STRING is meaningless (an
+// id like "3D_E-0031" shares a leading "3" with every headline starting "3");
+// same-project siblings that share an id prefix are the useful hint. Returns
+// indices into `candidateIds` (≤ limit); empty when nothing shares a prefix, so
+// the caller emits no suggestions rather than misleading ones. Shared by the
+// GFM step-7 block and the ants-v1 zero-match block below.
+static QVector<int> rcRankIdsBySharedPrefix(const QStringList &candidateIds,
+                                            const QString &locId, int limit) {
+    const QString need = locId.toLower();
+    QVector<QPair<int, int>> scored;  // (sharedPrefixLen, index)
+    for (int i = 0; i < candidateIds.size(); ++i) {
+        const QString cand = candidateIds.at(i).toLower();
+        if (cand.isEmpty()) continue;
+        int shared = 0;
+        const int lim = std::min(cand.size(), need.size());
+        while (shared < lim && cand.at(shared) == need.at(shared)) ++shared;
+        if (shared > 0) scored.append(qMakePair(shared, i));
+    }
+    std::sort(scored.begin(), scored.end(),
+        [](const QPair<int, int> &a, const QPair<int, int> &b) {
+            return a.first > b.first;
+        });
+    QVector<int> out;
+    for (int k = 0; k < scored.size() && out.size() < limit; ++k)
+        out.append(scored.at(k).second);
+    return out;
+}
+
 // ANTS-1428 — roadmap_log op:"flip". Adapter-mode write path for
 // GFM-format ROADMAP.md files. Locator: bold-ID → caret anchor →
 // headline-hash; on first touch of a bullet that has neither a
@@ -7179,10 +7209,21 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                         s["id"]       = b.id;
                         suggestions.append(s);
                     }
+                } else if (!locId.isEmpty()) {
+                    // ANTS-3566 — ID locator: rank sibling ids by shared
+                    // prefix, not headline overlap with the id string.
+                    QStringList ids;
+                    for (const auto &b : v1bullets) ids.append(b.id);
+                    for (const int idx :
+                         rcRankIdsBySharedPrefix(ids, locId, 3)) {
+                        const auto &b = v1bullets.at(idx);
+                        QJsonObject s;
+                        s["headline"] = b.headline;
+                        s["id"]       = b.id;
+                        suggestions.append(s);
+                    }
                 } else {
-                    const QString needle = !locHeadline.isEmpty()
-                        ? locHeadline : locId;
-                    const QString norm = rcNormaliseHeadline(needle);
+                    const QString norm = rcNormaliseHeadline(locHeadline);
                     QVector<QPair<int, int>> scored;
                     for (int i = 0; i < v1bullets.size(); ++i) {
                         const QString h = rcNormaliseHeadline(
@@ -7352,6 +7393,22 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 if (!b.boldId.isEmpty()) s["id"]     = b.boldId;
                 suggestions.append(s);
             }
+        } else if (!locId.isEmpty()) {
+            // ANTS-3566 — ID locator: rank sibling bold-IDs by shared prefix,
+            // not headline overlap with the id string (which surfaces every
+            // bullet whose headline merely starts with the id's leading char).
+            // Empty when nothing shares a prefix — no misleading suggestions.
+            QStringList ids;
+            for (const auto &b : bullets) ids.append(b.boldId);
+            for (const int idx : rcRankIdsBySharedPrefix(ids, locId, 3)) {
+                const auto &b = bullets.at(idx);
+                QJsonObject s;
+                s["headline"] = rcGfmCanonicalHeadline(b.headline);
+                s["line"]     = b.firstLine + 1;
+                if (!b.anchor.isEmpty()) s["anchor"] = b.anchor;
+                if (!b.boldId.isEmpty()) s["id"]     = b.boldId;
+                suggestions.append(s);
+            }
         } else {
             // ANTS-3378 — rank nearest neighbours by token overlap against
             // each bullet's CANONICAL headline (the form roadmap_query
@@ -7360,8 +7417,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             // ranking surface unrelated bullets. Each suggestion carries the
             // bullet line so the caller can re-target precisely.
             const QString needle = !locHeadline.isEmpty()
-                ? locHeadline
-                : (!locId.isEmpty() ? locId : locAnchor);
+                ? locHeadline : locAnchor;
             const QString norm = rcNormaliseHeadline(needle);
             const QStringList needleToks =
                 norm.split(QLatin1Char(' '), Qt::SkipEmptyParts);
@@ -7754,34 +7810,68 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
                                              bullets.at(i).boldId)
                         .contains(need)) m.append(i);
         }
-        if (m.size() != 1) {
-            return rlSugErr(m.isEmpty()
-                    ? QStringLiteral("bullet_not_found")
-                    : QStringLiteral("bullet_ambiguous"),
-                m.isEmpty()
-                    ? QStringLiteral("roadmap_log: locator matched zero GFM "
-                                     "bullets")
-                    : QStringLiteral("roadmap_log: locator matched %1 GFM "
-                                     "bullets — narrow with id/anchor")
-                        .arg(m.size()),
-                m.size());
+        if (m.size() == 1) {
+            const GfmBullet &t = bullets.at(m.first());
+            if (t.insideFenced) {
+                return rlErr(QStringLiteral("anchor_unsafe_context"),
+                    QStringLiteral("roadmap_log: located bullet is inside a "
+                                   "fenced code block — refusing to edit"));
+            }
+            // Anchor the body span at firstLine (the checkbox line), NOT
+            // headlineLine: walkGfmBullets advances headlineLine past
+            // indented non-metadata continuation lines (they count as
+            // "headline content" for anchor placement), but for amend_body
+            // those lines ARE part of the searchable body. firstLine+1 is the
+            // true body start; the headline line itself is excluded from the
+            // search (amendBodyExact starts at bodyAnchorLine+1).
+            bodyAnchorLine = t.firstLine;
+            reportLine     = t.firstLine + 1;
+            matchedId      = t.boldId;
+        } else {
+            // ANTS-3565 — mixed-format fallback: a GFM-majority roadmap can
+            // carry appended ants-v1 emoji bullets (`- 📋 [ID] **…**`) that
+            // walkGfmBullets never sees. On a GFM zero-match for an
+            // id/headline locator (anchor is GFM-only), try the ants-v1 walker
+            // before refusing — mirrors cmdRoadmapLogFlip's step-7 fallback.
+            // A GFM ambiguous match (>1) is a real GFM problem — do not fall
+            // through.
+            QVector<int> vm;
+            QVector<AntsV1Bullet> v1;
+            if (m.isEmpty() && locAnchor.isEmpty() &&
+                markdownBytes > kRoadmapMinParseableSize) {
+                v1 = walkAntsV1Bullets(lines);
+                if (!locId.isEmpty()) {
+                    for (int i = 0; i < v1.size(); ++i)
+                        if (v1.at(i).id == locId) vm.append(i);
+                } else if (!locHeadline.isEmpty()) {
+                    for (int i = 0; i < v1.size(); ++i)
+                        if (rcFnv1a64(rcNormaliseHeadline(v1.at(i).headline))
+                                == need) vm.append(i);
+                }
+            }
+            if (vm.size() != 1) {
+                return rlSugErr(m.isEmpty()
+                        ? QStringLiteral("bullet_not_found")
+                        : QStringLiteral("bullet_ambiguous"),
+                    m.isEmpty()
+                        ? QStringLiteral("roadmap_log: locator matched zero "
+                                         "GFM bullets")
+                        : QStringLiteral("roadmap_log: locator matched %1 GFM "
+                                         "bullets — narrow with id/anchor")
+                            .arg(m.size()),
+                    m.size());
+            }
+            const AntsV1Bullet &t = v1.at(vm.first());
+            if (t.insideFenced) {
+                return rlErr(QStringLiteral("anchor_unsafe_context"),
+                    QStringLiteral("roadmap_log: located bullet is inside a "
+                                   "fenced code block — refusing to edit"));
+            }
+            format         = QStringLiteral("ants-v1");
+            bodyAnchorLine = t.firstLine;
+            reportLine     = t.firstLine + 1;
+            matchedId      = t.id;
         }
-        const GfmBullet &t = bullets.at(m.first());
-        if (t.insideFenced) {
-            return rlErr(QStringLiteral("anchor_unsafe_context"),
-                QStringLiteral("roadmap_log: located bullet is inside a "
-                               "fenced code block — refusing to edit"));
-        }
-        // Anchor the body span at firstLine (the checkbox line), NOT
-        // headlineLine: walkGfmBullets advances headlineLine past
-        // indented non-metadata continuation lines (they count as
-        // "headline content" for anchor placement), but for amend_body
-        // those lines ARE part of the searchable body. firstLine+1 is the
-        // true body start; the headline line itself is excluded from the
-        // search (amendBodyExact starts at bodyAnchorLine+1).
-        bodyAnchorLine = t.firstLine;
-        reportLine     = t.firstLine + 1;
-        matchedId      = t.boldId;
     } else if (markdownBytes > kRoadmapMinParseableSize) {
         const QVector<AntsV1Bullet> v1 = walkAntsV1Bullets(lines);
         if (v1.isEmpty()) {
@@ -8013,8 +8103,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     if (rcBulletsArePassHeadings(RoadmapDialog::parseBullets(markdown)))
         return cmdRoadmapLogPassFlipBatch(req, roadmapPath, markdown);
     const bool isGfm = !walkGfmBullets(lines).isEmpty();
+    // ANTS-3565 — a mixed GFM+ants-v1 roadmap (GFM-majority with appended
+    // `- 📋 [ID]` emoji bullets) must resolve locators against EITHER set, so
+    // walk ants-v1 whenever the file is big enough — not only when there are
+    // zero GFM bullets. `hasV1walk` gates that walk; `isV1` stays the pure
+    // ants-v1 signal (no GFM bullets) used for the top-level `format` label
+    // and the unrecognised-format refusal.
+    const bool hasV1walk = markdownBytes > kRoadmapMinParseableSize;
     bool isV1 = false;
-    if (!isGfm && markdownBytes > kRoadmapMinParseableSize)
+    if (!isGfm && hasV1walk)
         isV1 = !walkAntsV1Bullets(lines).isEmpty();
     if (!isGfm && !isV1) {
         return rlErr(QStringLiteral("unrecognised_format"),
@@ -8041,15 +8138,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         bool    wantAnchor    = false;  // GFM: inject because no id & no anchor
         QString anchorToInject;         // filled in phase 1.5
         int     locatorIndex  = -1;
+        bool    isV1Bullet    = false;  // ANTS-3565 — resolved via ants-v1
     };
     QVector<Target> targets;
     QJsonArray skipped;
     QSet<int> claimedFirstLines;  // dedup: a bullet flips at most once
 
-    const QVector<GfmBullet>    gbs = isGfm ? walkGfmBullets(lines)
-                                            : QVector<GfmBullet>();
-    const QVector<AntsV1Bullet> vbs = isV1  ? walkAntsV1Bullets(lines)
-                                            : QVector<AntsV1Bullet>();
+    // ANTS-3565 — walk ants-v1 whenever the file is big enough (not only for a
+    // pure-v1 file) so a GFM-majority roadmap's appended emoji bullets are a
+    // per-locator fallback below.
+    const QVector<GfmBullet>    gbs = isGfm    ? walkGfmBullets(lines)
+                                               : QVector<GfmBullet>();
+    const QVector<AntsV1Bullet> vbs = hasV1walk ? walkAntsV1Bullets(lines)
+                                                : QVector<AntsV1Bullet>();
 
     auto skip = [&](int idx, const QString &code, const QString &err) {
         QJsonObject s;
@@ -8090,6 +8191,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         // id > anchor > headline > line_range; range may match many).
         QVector<int> candFirstLines;
         bool isRange = false;
+        bool locViaV1 = !isGfm;  // ANTS-3565 — this locator resolved via ants-v1
         if (isGfm) {
             if (!locId.isEmpty()) {
                 for (const auto &b : gbs)
@@ -8108,6 +8210,22 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                 for (const auto &b : gbs)
                     if (b.firstLine + 1 >= a && b.firstLine + 1 <= z)
                         candFirstLines.append(b.firstLine);
+            }
+            // ANTS-3565 — mixed-format fallback: no GFM candidate for an
+            // id/headline locator → try the appended ants-v1 emoji bullets
+            // (anchor is GFM-only; a line_range legitimately means GFM rows).
+            if (candFirstLines.isEmpty() && !isRange && locAnchor.isEmpty() &&
+                (!locId.isEmpty() || !locHeadline.isEmpty())) {
+                if (!locId.isEmpty()) {
+                    for (const auto &b : vbs)
+                        if (b.id == locId) candFirstLines.append(b.firstLine);
+                } else {
+                    const quint64 need = headlineHash(locHeadline);
+                    for (const auto &b : vbs)
+                        if (headlineHash(b.headline) == need)
+                            candFirstLines.append(b.firstLine);
+                }
+                if (!candFirstLines.isEmpty()) locViaV1 = true;
             }
         } else {  // ants-v1
             if (!locAnchor.isEmpty()) {
@@ -8153,7 +8271,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             t.note         = note;
             t.noteScrubbed = noteScrubbed;
             t.locatorIndex = li;
-            if (isGfm) {
+            t.isV1Bullet   = locViaV1;
+            if (!locViaV1) {
                 const auto it = std::find_if(gbs.begin(), gbs.end(),
                     [fl](const GfmBullet &b){ return b.firstLine == fl; });
                 if (it->insideFenced) {
@@ -8262,7 +8381,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     for (const Target &t : applyOrder) {
         // Locate the live bullet at t.firstLine and apply.
         QString hlText;  // ANTS-2089 — for the post_bullets compact echo
-        if (isGfm) {
+        // ANTS-3565 — apply per the bullet's OWN format, not the file's
+        // dominant one: a mixed roadmap flips its GFM and emoji bullets in the
+        // same batch.
+        if (!t.isV1Bullet) {
             const QVector<GfmBullet> live = walkGfmBullets(lines);
             const auto it = std::find_if(live.begin(), live.end(),
                 [&t](const GfmBullet &b){ return b.firstLine == t.firstLine; });
@@ -8288,6 +8410,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         r["line"]        = t.firstLine + 1;
         r["from_status"] = t.fromStatus;
         r["to_status"]   = targetEmoji;
+        // ANTS-3565 — tag emoji bullets resolved via the mixed-format fallback
+        // so the caller can tell them apart from the file's dominant GFM rows.
+        if (t.isV1Bullet) r["format"] = QStringLiteral("ants-v1");
         if (!t.id.isEmpty())     r["id"]     = t.id;
         if (!t.anchor.isEmpty()) r["anchor"] = t.anchor;
         if (!t.anchorToInject.isEmpty()) {
