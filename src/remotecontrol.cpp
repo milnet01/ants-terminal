@@ -11714,6 +11714,75 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
                 }
             }
         }
+        // ANTS-3519 — resolve foreign-prefix mapped ids (absent from the
+        // caller roadmap, prefix not among its own) against the sibling
+        // project whose roadmap OWNS that prefix. Feedback files live at the
+        // shared root; the owning roadmap (e.g. Ants Terminal for ANTS-*) is a
+        // sibling subdir. Cost-gated on a foreign id being present; RAM-bounded
+        // — at most ONE full roadmap parse per distinct foreign prefix,
+        // retaining only the mapped foreign ids, discarded after. No persistent
+        // cache (a rare triage-time path). The caller roadmap itself is skipped.
+        QHash<QString, QJsonObject> foreignResolved;  // id → {status, resolved_from, shipped_date?}
+        if (!callerPrefixes.isEmpty()) {
+            QSet<QString> neededForeignIds;
+            QSet<QString> foreignPrefixes;
+            for (const QString &id : pr.mappedIds) {
+                if (idToStatus.contains(id)) continue;
+                const QString pfx = idPrefix(id);
+                if (!callerPrefixes.contains(pfx)) {
+                    neededForeignIds.insert(id);
+                    foreignPrefixes.insert(pfx);
+                }
+            }
+            if (!foreignPrefixes.isEmpty()) {
+                const QDir rootDir(QFileInfo(resolved).absolutePath());
+                const QStringList subs = rootDir.entryList(
+                    QDir::Dirs | QDir::NoDotAndDotDot);
+                for (const QString &sub : subs) {
+                    if (foreignPrefixes.isEmpty()) break;  // every prefix owned
+                    const QString subCanon =
+                        QFileInfo(rootDir.absoluteFilePath(sub))
+                            .canonicalFilePath();
+                    const QString sibRoadmap =
+                        subCanon.isEmpty() ? QString()
+                                           : findRoadmapUnder(subCanon);
+                    if (sibRoadmap.isEmpty() || sibRoadmap == roadmapPath)
+                        continue;
+                    QFile sf(sibRoadmap);
+                    if (!sf.open(QIODevice::ReadOnly | QIODevice::Text))
+                        continue;
+                    // Cheap ownership sniff from the file head — no full parse.
+                    const QByteArray head = sf.read(32 * 1024);
+                    const QString sibPrefix =
+                        rlDetectCounterPrefix(QString::fromUtf8(head));
+                    if (sibPrefix.isEmpty() ||
+                        !foreignPrefixes.contains(sibPrefix)) {
+                        sf.close();
+                        continue;
+                    }
+                    sf.seek(0);
+                    const QString sibMd = QString::fromUtf8(sf.readAll());
+                    sf.close();
+                    const QString sibLeaf = QFileInfo(subCanon).fileName();
+                    for (const auto &b : RoadmapDialog::parseBullets(sibMd)) {
+                        if (b.id.isEmpty() || !neededForeignIds.contains(b.id))
+                            continue;
+                        QJsonObject fr;
+                        fr[QStringLiteral("status")]        = b.status;
+                        fr[QStringLiteral("resolved_from")] = sibLeaf;
+                        if (b.status == kCheckQ) {
+                            const QString d =
+                                FeedbackFile::shipDateFromRoadmapBody(b.body);
+                            if (!d.isEmpty())
+                                fr[QStringLiteral("shipped_date")] = d;
+                        }
+                        foreignResolved.insert(b.id, fr);  // later row wins
+                    }
+                    foreignPrefixes.remove(sibPrefix);
+                }
+            }
+        }
+
         QJsonArray statusArr;
         bool anyForeign = false;
         for (const QString &id : pr.mappedIds) {
@@ -11730,7 +11799,11 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
                 // misread a shipped suggestion as never-shipped. (finbreak
                 // 2026-07-14.) The prefix set is empty when the caller roadmap
                 // was unreadable — fall back to "unknown" there.
-                if (!callerPrefixes.isEmpty() &&
+                if (foreignResolved.contains(id)) {
+                    // ANTS-3519 — resolved from the owning sibling roadmap.
+                    status = foreignResolved.value(id)
+                                 .value(QStringLiteral("status")).toString();
+                } else if (!callerPrefixes.isEmpty() &&
                     !callerPrefixes.contains(idPrefix(id))) {
                     status = QStringLiteral("foreign_repo");
                     anyForeign = true;
@@ -11740,10 +11813,20 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
             }
             o[QStringLiteral("id")]     = id;
             o[QStringLiteral("status")] = status;
-            // ANTS-3504 — shipped_date present only on ✅ ids with a parseable
-            // Resolved date (never on non-✅ / dateless ids; never fabricated).
-            if (status == kCheckQ && idToShipDate.contains(id))
+            // ANTS-3519 — a cross-repo resolved id carries resolved_from (+ its
+            // ship date if ✅). ANTS-3504 — otherwise the caller-roadmap ship
+            // date, present only on ✅ ids with a parseable Resolved date
+            // (never on non-✅ / dateless ids; never fabricated).
+            if (foreignResolved.contains(id)) {
+                const QJsonObject fr = foreignResolved.value(id);
+                o[QStringLiteral("resolved_from")] =
+                    fr.value(QStringLiteral("resolved_from"));
+                if (fr.contains(QStringLiteral("shipped_date")))
+                    o[QStringLiteral("shipped_date")] =
+                        fr.value(QStringLiteral("shipped_date"));
+            } else if (status == kCheckQ && idToShipDate.contains(id)) {
                 o[QStringLiteral("shipped_date")] = idToShipDate.value(id);
+            }
             statusArr.append(o);
         }
         out["mapped_id_status"] = statusArr;

@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **feedback_query — resolve foreign-prefix mapped ids (ANTS-*) against the canonical sibling roadmap under the shared root.** (ANTS-3519)
+  feedback_query now resolves foreign-prefix mapped ids (e.g. ANTS-* cited in a consumer project's feedback file) against the sibling roadmap that owns the prefix — the mapped_id_status entry carries the real status, a resolved_from field naming the owning project, and shipped_date when shipped, instead of a bare "foreign_repo". Cost-gated on a foreign id being present and RAM-bounded (one roadmap parse per distinct foreign prefix, discarded after).
+
 - **find_definition is blind to GLSL/shader symbols — add a `glsl` language family.** (ANTS-3558)
   In projects built around shaders (like the DOOM renderer), the "where is this defined?" tool can't see any shader code, so it wrongly reports symbols as missing.
 
