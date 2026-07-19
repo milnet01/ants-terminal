@@ -12,6 +12,7 @@
 #include "coldeyesengine.h"  // ANTS-1319 — cold-eyes partition cache
 #include "roadmapindex.h"  // ANTS-1287 — heading-index cache members
 
+#include <functional>  // ANTS-3543 — downshiftMatches lean-projector callback
 #include <memory>
 
 class QLocalServer;
@@ -301,6 +302,44 @@ public:
             env[droppedField] = r.itemsDropped;
         }
         return r;
+    }
+
+    // ANTS-3543 — workspace_search auto-downshift. Applies the byte-cap to
+    // out["matches"]; iff the cap dropped rows AND the caller isn't already
+    // lean, re-projects the FULL pre-cap matches via `leanProjector`
+    // (the handler passes rcApplyHeadlineOnly) and re-caps, so a scanning
+    // caller keeps every file:line instead of losing the tail. Sets
+    // downshifted / headline_only / results_dropped / bytes_cap_clamped and an
+    // HONEST truncated. `scanTruncated` is out["truncated"] BEFORE this call
+    // (its SCAN-cutoff meaning, set at the handler's out["truncated"]=truncated
+    // — capJsonArrayToBytes overwrites truncated to true on a trim and clears
+    // nothing on a fit, so the honest value is recomputed here). The projector
+    // is a callback (not the TU-local rcApplyHeadlineOnly) purely so a pure
+    // test can drive this socket-free, mirroring capJsonArrayToBytes.
+    static inline void downshiftMatches(
+            QJsonObject &out, bool alreadyLean, bool scanTruncated, int maxBytes,
+            const std::function<void(QJsonArray &)> &leanProjector) {
+        const QJsonArray fullMatches = out.value("matches").toArray();  // pre-cap
+        auto cap = capJsonArrayToBytes(out, QStringLiteral("matches"),
+                                       QStringLiteral("results_dropped"), maxBytes);
+        const bool capClamped = cap.capClamped;
+        if (out.contains("results_dropped") && !alreadyLean) {
+            QJsonArray lean = fullMatches;
+            leanProjector(lean);                 // handler passes rcApplyHeadlineOnly
+            out["matches"] = lean;
+            out.remove("results_dropped");       // the fat-cap drop no longer applies
+            out["downshifted"]  = true;
+            out["headline_only"] = true;         // reflect the shape now emitted
+            capJsonArrayToBytes(out, QStringLiteral("matches"),
+                                QStringLiteral("results_dropped"), maxBytes);
+            // (same maxBytes ⇒ capClamped is unchanged from the first cap.)
+            // HONEST truncated: scan cutoff OR the lean re-cap still dropped.
+            // Without this the stale fat-cap truncated:true would falsely signal
+            // "incomplete" on a fully-returned lean list — the exact signal
+            // ANTS-3543 § 1 exists to prevent.
+            out["truncated"] = scanTruncated || out.contains("results_dropped");
+        }
+        if (capClamped) out["bytes_cap_clamped"] = true;   // preserve ANTS-1293 echo
     }
 
     // ANTS-2220 — the function/method enclosing `line`, given a file_outline

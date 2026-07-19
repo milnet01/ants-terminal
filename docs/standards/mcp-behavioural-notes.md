@@ -184,6 +184,23 @@ server-controllable beyond this per-tool hint.
   `PaginationEngine::kSoftCapBytes` (no `next_offset` in v1). The
   builder is the pure static `RemoteControl::buildRoadmapBundlesEnvelope`
   (warm-cache, no re-parse). Spec `docs/specs/ANTS-1922.md`.
+- **`downshifted` (ANTS-3543, `roadmap_query` + `workspace_search`)** —
+  on the **auto-truncate path** (caller passed no explicit `limit`, and
+  not `include_body` / `mode:headline_only`), if a large list would drop
+  its tail the server first projects the WHOLE list to its lean shape
+  (`roadmap_query` → `{id, status, headline_oneline, section_slug}`;
+  `workspace_search` → `{file, line, headline}` + `also_at`) and
+  re-measures, so a scanning caller keeps every row's identity instead of
+  a silent cut-off. Emits truthy-only `downshifted:true`; the drop signals
+  (`truncated`/`next_offset`/`results_dropped`) are **cleared** when the
+  lean list is complete and only reappear if even the lean list overflows.
+  `workspace_search` also sets `headline_only:true` — so it can appear on a
+  response the caller did **not** request (meaning widens from "you asked
+  for lean rows" to "rows were leaned to fit"). Pure helpers:
+  `PaginationEngine::pageBullets`'s `RowProjector` arg and
+  `RemoteControl::downshiftMatches` (both socket-free unit-tested). An
+  explicit `limit` opts out (fat paging respected). Spec
+  `docs/specs/ANTS-3543.md`.
 - **`read_log`** — filters a log file (the Ants debug log or a
   `caller_cwd` path) to matching lines via the pure `ReadLog::filter`
   helper; streaming drop-oldest byte cap + `since_cursor` incremental

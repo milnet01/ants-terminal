@@ -40,6 +40,14 @@ for security-relevant changes.
 
 ### Changed
 
+- **Auto-downshift a would-be-truncated `roadmap_query` / `workspace_search` list to its titles-only form instead of cutting off the tail.** (ANTS-3543)
+  When a result list is too big to send whole and you didn't ask for a
+  specific page size, the server now keeps every item but drops the long
+  descriptions (showing just the titles / file:line) rather than silently
+  cutting off the end — so a scan for "is X tracked anywhere?" no longer
+  misses a hidden remainder. It emits `downshifted:true`, and only pages
+  if even the titles-only list overflows.
+
 - **debt_sweep_scan self-describes its scope (detectors_run + scope_note) so total_findings:0 is not misread as "no debt".** (ANTS-3564)
   The debt-sweep tool only looks for a narrow set of markers; when it finds nothing it should say "I only checked these things", not silently imply the project is clean.
 

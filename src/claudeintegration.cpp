@@ -2381,12 +2381,19 @@ void ClaudeIntegration::onMcpConnection() {
                     limitProp["description"] = QStringLiteral(
                         "Cap on bullets[] length (1..500). If "
                         "omitted, server auto-truncates when the "
-                        "response would exceed ~20 KB and emits "
-                        "`truncated:true` + `next_offset`. Explicit "
-                        "limit wins (auto-pick only fires when "
-                        "omitted). When pagination applies, envelope "
-                        "carries offset/limit/total/truncated and "
-                        "next_offset when truncated.");
+                        "response would exceed ~20 KB. ANTS-3543 — on "
+                        "that auto path the server first downshifts the "
+                        "whole list to headline-only rows ({id, status, "
+                        "headline_oneline, section_slug}) so you keep "
+                        "every id instead of losing the tail, emitting "
+                        "`downshifted:true`; the drop signals "
+                        "(`truncated`/`next_offset`) are cleared when the "
+                        "lean list is complete, and only reappear if even "
+                        "the lean list overflows. Explicit limit wins "
+                        "(auto-pick + downshift only fire when omitted). "
+                        "When pagination applies, envelope carries "
+                        "offset/limit/total/truncated and next_offset "
+                        "when truncated.");
                     props["limit"] = limitProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
@@ -3137,7 +3144,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "exceeded, trailing matches are dropped and the "
                         "envelope carries truncated:true + "
                         "results_dropped:<n> (+ bytes_cap_clamped:true if "
-                        "the requested cap exceeded the ceiling).");
+                        "the requested cap exceeded the ceiling). "
+                        "ANTS-3543 — unless you passed mode=headline_only, "
+                        "the server first downshifts the whole match set "
+                        "to lean {file,line,headline} rows and re-caps, "
+                        "emitting `downshifted:true` + `headline_only:true` "
+                        "(so headline_only may appear on a response you "
+                        "did not request) and clearing the drop signals "
+                        "when the lean set is complete.");
                     // ANTS-1876 — per-match text clip. Out-of-range
                     // falls back to default (off, 0); clamp range
                     // [50, 10000] guarantees at least the ellipsis +

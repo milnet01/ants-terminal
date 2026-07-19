@@ -7,7 +7,13 @@
 #include <QJsonArray>
 #include <QString>
 
+#include <functional>
+
 namespace PaginationEngine {
+
+// ANTS-3543 — optional row projector. Mutates a row array in place to its
+// lean shape (same contract as rcProjectHeadlineOnly). Qt6::Core-only.
+using RowProjector = std::function<void(QJsonArray &)>;
 
 // Soft cap for the bullets[] subset emitted in one response. Set
 // below the MCP client's 25k-token spill threshold so the wire
@@ -33,6 +39,8 @@ struct PageResult {
     int        total = 0;    // post-filter total before pagination
     bool       truncated = false;  // slice.size() < (total - offset)
     int        nextOffset = -1;    // valid iff truncated; else -1
+    bool       downshifted = false;  // ANTS-3543 — rows projected to their
+                                     // lean shape to fit more items in budget.
 };
 
 // Slice `filtered` per `offset` + `limit`, applying auto-truncate
@@ -49,9 +57,15 @@ struct PageResult {
 //   kMaxLimit]) when >= 1; pass -1 to request auto-pick (caller
 //   omitted the arg). 0 is invalid and the caller must reject
 //   upstream with bad_args before calling this helper.
+// - `downshift` (ANTS-3543): optional lean projector. When set AND the
+//   auto path (limit <= 0) truncated the fat set, re-pages a lean copy of
+//   the FULL `filtered` so a scanning caller keeps every row's identity
+//   instead of losing the tail (PageResult.downshifted = true). Default {}
+//   → byte-identical to pre-3543 behaviour. Never mutates `filtered`.
 PageResult pageBullets(const QJsonArray &filtered,
                        int offset,
-                       int limit);
+                       int limit,
+                       const RowProjector &downshift = {});
 
 // True when the caller-supplied (offset, limit) pair should produce
 // pagination fields on the envelope. Reasoning: pre-1436 callers

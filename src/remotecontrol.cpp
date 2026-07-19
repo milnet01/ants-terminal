@@ -4808,8 +4808,18 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         applyQueryFilter(filtered);
         // ANTS-1436-INV-11 — pagination via PaginationEngine helper.
         // One call site per emission branch (section + full-file).
+        // ANTS-3543 — auto-downshift a would-be-truncated fat list to its
+        // headline-only projection so a scanning caller keeps every id/
+        // headline rather than losing the tail. Gated off when the caller
+        // already asked for lean rows (headline_only) or explicitly wants
+        // bodies (include_body); the section_index sections[] branch is
+        // excluded (section descriptors have no lean form — § 5).
+        const bool wantDownshift =
+            (mode != QLatin1String("headline_only")) && !includeBody;
         auto page = PaginationEngine::pageBullets(
-            filtered, offsetArg, limitArg);
+            filtered, offsetArg, limitArg,
+            wantDownshift ? PaginationEngine::RowProjector(&rcProjectHeadlineOnly)
+                          : PaginationEngine::RowProjector{});
         const bool emitPagination =
             PaginationEngine::shouldEmitPaginationFields(
                 callerPassedOffset, callerPassedLimit, page.truncated);
@@ -4876,6 +4886,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             out["truncated"] = page.truncated;
             if (page.truncated) out["next_offset"] = page.nextOffset;
         }
+        // ANTS-3543 — emit only when a downshift fired (truthy-only, like
+        // truncated). Rows are then headline-shaped and the tail is complete.
+        if (page.downshifted) out["downshifted"] = true;
         // ANTS-1398-INV-5: echo the opt-in only when the caller set it.
         if (hasIncludeHeadersArg) {
             out["include_section_headers"] = includeSectionHeaders;
@@ -5227,8 +5240,13 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // Second of two call sites (the other is in the section-mode
     // branch above). Stateless; auto-truncate fires when caller
     // omitted limit AND filtered exceeds the soft cap.
+    // ANTS-3543 — same auto-downshift gate as the section branch.
+    const bool wantDownshift =
+        (mode != QLatin1String("headline_only")) && !includeBody;
     auto page = PaginationEngine::pageBullets(
-        filtered, offsetArg, limitArg);
+        filtered, offsetArg, limitArg,
+        wantDownshift ? PaginationEngine::RowProjector(&rcProjectHeadlineOnly)
+                      : PaginationEngine::RowProjector{});
     const bool emitPagination =
         PaginationEngine::shouldEmitPaginationFields(
             callerPassedOffset, callerPassedLimit, page.truncated);
@@ -5264,6 +5282,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["truncated"] = page.truncated;
         if (page.truncated) out["next_offset"] = page.nextOffset;
     }
+    // ANTS-3543 — emit only when a downshift fired (truthy-only, like
+    // truncated). Rows are then headline-shaped and the tail is complete.
+    if (page.downshifted) out["downshifted"] = true;
     // ANTS-1538 — when the default ID-filter silently dropped every
     // actionable bullet, surface a warning naming the opt-ins. Common
     // on legacy GFM-task-list or older-spec roadmaps whose authors
@@ -10865,12 +10886,18 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // bounds total size so wide context windows / long lines can't blow
     // the transport budget. Trims matches[] from the tail and sets
     // truncated=true (the existing flag already means "not everything").
+    // ANTS-3543 — auto-downshift: if the cap drops rows and the caller isn't
+    // already lean (headline_only), re-project the FULL matches to their lean
+    // {file,line,headline} shape and re-cap so a scanning caller keeps every
+    // file:line instead of losing the tail. `scanTruncated` snapshots the
+    // pre-cap truncated (scan-cutoff meaning) so the helper can recompute an
+    // honest truncated. count_only / files_only returned earlier — they carry
+    // no matches[] and never reach here.
     {
-        const int maxBytes = req.value("max_bytes").toInt(0);
-        const auto cap = RemoteControl::capJsonArrayToBytes(
-            out, QStringLiteral("matches"),
-            QStringLiteral("results_dropped"), maxBytes);
-        if (cap.capClamped) out["bytes_cap_clamped"] = true;
+        const bool scanTruncated = out.value("truncated").toBool();  // pre-cap
+        RemoteControl::downshiftMatches(out, headlineOnly, scanTruncated,
+                                        req.value("max_bytes").toInt(0),
+                                        rcApplyHeadlineOnly);
     }
     // ANTS-1248-INV-6: stateless — no cache, no member-state mutation.
     // ANTS-1248-INV-10: reachability gated by the existing UDS +

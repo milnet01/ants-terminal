@@ -157,7 +157,11 @@ TEST(RcReadToolByteCap, HelperContract) {
                "outlineOneFile does not byte-cap symbols[] (ANTS-1293)");
     }
 
-    // WI-2 — workspace_search handler caps matches[] with results_dropped.
+    // WI-2 — workspace_search caps matches[] with results_dropped. ANTS-3543
+    // moved the cap out of the handler body into the RemoteControl::
+    // downshiftMatches header helper (which the handler now routes through);
+    // assert the routing here and the cap in the helper so the ANTS-1293
+    // invariant stays pinned across the refactor.
     {
         const std::string rc = ants_test::slurpFile(SRC_RC_CPP);
         const auto p = rc.find("RemoteControl::cmdWorkspaceSearch");
@@ -167,10 +171,20 @@ TEST(RcReadToolByteCap, HelperContract) {
         // substr(p) (everything to EOF, which could match a later cmd).
         const std::string body = ants_test::slurpFunctionBody(
             rc, "RemoteControl::cmdWorkspaceSearch");
-        expect(body.find("capJsonArrayToBytes") != std::string::npos &&
-                   body.find("results_dropped") != std::string::npos,
+        expect(body.find("downshiftMatches") != std::string::npos,
                "WI-2b",
-               "cmdWorkspaceSearch does not byte-cap matches[] (ANTS-1293)");
+               "cmdWorkspaceSearch must route its byte-cap through "
+               "RemoteControl::downshiftMatches (ANTS-3543)");
+        const std::string hdr = ants_test::slurpFile(SRC_RC_HEADER);
+        // Anchor on the definition signature: the bare name also appears in an
+        // #include comment above, and slurpFunctionBody takes the FIRST match.
+        const std::string helper =
+            ants_test::slurpFunctionBody(hdr, "void downshiftMatches");
+        expect(helper.find("capJsonArrayToBytes") != std::string::npos &&
+                   helper.find("results_dropped") != std::string::npos,
+               "WI-2c",
+               "downshiftMatches does not byte-cap matches[] (ANTS-1293 "
+               "preserved through the ANTS-3543 refactor)");
     }
 
     EXPECT_EQ(0, expect_failures())

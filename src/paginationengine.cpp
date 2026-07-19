@@ -43,7 +43,8 @@ int measureCutPoint(const QJsonArray &filtered, int budget) {
 
 PageResult pageBullets(const QJsonArray &filtered,
                        int offset,
-                       int limit) {
+                       int limit,
+                       const RowProjector &downshift) {
     PageResult r;
     r.total = filtered.size();
 
@@ -53,13 +54,16 @@ PageResult pageBullets(const QJsonArray &filtered,
     if (offset > r.total) offset = r.total;
     r.offset = offset;
 
-    const QJsonArray tail = (offset == 0)
-        ? filtered
-        : [&]() {
-              QJsonArray t;
-              for (int i = offset; i < r.total; ++i) t.append(filtered.at(i));
-              return t;
-          }();
+    // Slice [offset, end) of an arbitrary row array (the fat `filtered` or,
+    // on a downshift, its lean copy). offset is already clamped to [0,total].
+    auto tailFrom = [&](const QJsonArray &arr) -> QJsonArray {
+        if (offset == 0) return arr;
+        QJsonArray t;
+        for (int i = offset; i < arr.size(); ++i) t.append(arr.at(i));
+        return t;
+    };
+
+    const QJsonArray tail = tailFrom(filtered);
 
     // Limit handling. -1 = auto-pick (caller didn't pass). Explicit
     // value clamps to [kMinLimit, kMaxLimit].
@@ -88,6 +92,29 @@ PageResult pageBullets(const QJsonArray &filtered,
     if (r.truncated) {
         r.nextOffset = offset + r.slice.size();
     }
+
+    // ANTS-3543 — auto-downshift. When the auto path (limit <= 0) truncated
+    // the fat set and a lean projector is supplied, re-page a lean copy of the
+    // FULL set from the same offset: a scanning caller keeps every row's
+    // identity instead of silently losing the tail. `limit` is now positive iff
+    // the caller passed an explicit page size (that branch clamps it), so
+    // `limit <= 0` still identifies the auto path. `filtered` is never mutated —
+    // the projector runs on a copy.
+    if (downshift && limit <= 0 && r.truncated) {
+        QJsonArray leanFull = filtered;   // deep-on-write copy
+        downshift(leanFull);
+        const QJsonArray leanTail = tailFrom(leanFull);
+        const int budget = kSoftCapBytes - kEnvelopeOverheadBytes;
+        const int n = measureCutPoint(leanTail, budget);
+        QJsonArray slice;
+        for (int i = 0; i < n; ++i) slice.append(leanTail.at(i));
+        r.slice = slice;
+        r.limit = n;
+        r.downshifted = true;
+        r.truncated = (r.slice.size() < leanTail.size());
+        r.nextOffset = r.truncated ? (offset + r.slice.size()) : -1;
+    }
+
     return r;
 }
 

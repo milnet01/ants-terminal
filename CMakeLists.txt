@@ -1375,6 +1375,8 @@ if(ANTS_TESTS)
                 tests/features/session_memory_read_caller_cwd/test_session_memory_read_caller_cwd.cpp
                 # ANTS-1436 roadmap_query pagination + auto-truncate.
                 tests/features/roadmap_query_pagination/test_roadmap_query_pagination.cpp
+                # ANTS-3543 auto-downshift a would-be-truncated list to its lean projection.
+                tests/features/list_downshift/test_list_downshift.cpp
                 # ANTS-1856 roadmap_query single-item id selector.
                 tests/features/roadmap_query_by_id/test_roadmap_query_by_id.cpp
                 # ANTS-1726 roadmap_query multi-item ids[] selector.
