@@ -568,6 +568,56 @@ TEST(McpTerseDefault, Ants2085GetterSetterRoundTrips) {
 }
 
 // ───────────────────────────────────────────────────────────────────
+// ANTS-3532 — "auto-compact large replies by default" is DELIVERED by
+// ANTS-2085's terse-default path, NOT by a separate config key (the
+// roadmap item predated ANTS-2085 and its premise — "compact is opt-in
+// per call" — was already stale). These guards lock in the three
+// load-bearing facts that make the saving default-ON, so a future edit
+// can't silently disable it:
+//   (1) the config key defaults to true,
+//   (2) startup publishes it into the dispatch-read global, and
+//   (3) compaction is ordered BEFORE the offload/spill step (so a body
+//       that compacts under the spill threshold skips the round-trip).
+// ANTS-3532 closed as satisfied-by-ANTS-2085; see the ROADMAP note.
+// ───────────────────────────────────────────────────────────────────
+TEST(McpTerseDefault, Ants3532DefaultOnAndOrderedBeforeOffload) {
+    // (1) claude.mcp_terse_responses defaults to true — the source of the
+    // default-ON compaction. If this flips, every session loses the
+    // no-opt-in saving with no other test catching it.
+    QFile cfg(QString::fromUtf8(SRC_CONFIG_CPP_PATH));
+    ASSERT_TRUE(cfg.open(QIODevice::ReadOnly));
+    const QByteArray cfgSrc = cfg.readAll();
+    EXPECT_TRUE(cfgSrc.contains(
+        "m_data.value(\"claude.mcp_terse_responses\").toBool(true)"))
+        << "claude.mcp_terse_responses must default to true — default-ON "
+           "compaction (ANTS-3532's goal) depends on it";
+
+    // (2) startup wires the config value into mcp::setTerseDefault so the
+    // dispatch-read process-global reflects it.
+    QFile mw(QString::fromUtf8(SRC_MAINWINDOW_CPP));
+    ASSERT_TRUE(mw.open(QIODevice::ReadOnly));
+    const QByteArray mwSrc = mw.readAll();
+    EXPECT_TRUE(mwSrc.contains(
+        "setTerseDefault(m_config.claudeMcpTerseResponses())"))
+        << "startup must publish the terse-default config into the "
+           "dispatch-read global";
+
+    // (3) compaction runs BEFORE the offload/spill step: a body that
+    // compacts under the spill threshold skips the read_spill round-trip
+    // (ANTS-3532's ordering requirement — already satisfied).
+    QFile ci(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
+    ASSERT_TRUE(ci.open(QIODevice::ReadOnly));
+    const QByteArray ciSrc = ci.readAll();
+    const int comp = ciSrc.indexOf("mcp::compactEnvelope(");
+    const int offl = ciSrc.indexOf("mcp::offloadBody(");
+    ASSERT_GT(comp, 0) << "compactEnvelope dispatch call site not found";
+    ASSERT_GT(offl, 0) << "offloadBody dispatch call site not found";
+    EXPECT_LT(comp, offl)
+        << "compaction must run before offload so a compacted body can "
+           "skip the spill round-trip";
+}
+
+// ───────────────────────────────────────────────────────────────────
 // ANTS-2090 — mcp::tabularize: pack homogeneous top-level arrays-of-objects
 // into a columnar {__cols__, __rows__} form. See docs/specs/ANTS-2090.md.
 // ───────────────────────────────────────────────────────────────────
