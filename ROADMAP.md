@@ -13420,6 +13420,7 @@ template / mutate this state atomically" → movable. If it's
   - CONTRACT: response keys flip full->lean, so a NEW envelope flag is required (downshifted:true); no existing field covers it (truncated means tail-dropped; mode still reads "bullets").
   - POLICY: heuristic/auto (matches token-saving-default-ON), gated to the auto-truncate path only (caller passed no explicit limit/max_results) and skipped when already lean.
   - MAIN HAZARD: must re-project the FULL filtered set and RE-PAGE — downshifting only the current slice keeps the same dropped tail (zero benefit) — and clear truncated/next_offset when everything now fits. Also interacts with roadmap_query headline_only INV-6 (which currently measures the unprojected shape). Est. ~40-80 lines but contract-bearing.
+  Spec written + cold-eyes converged (2026-07-19): docs/specs/ANTS-3543.md, 11 INVs, 3 cold-eyes loops (loop 1: 1 HIGH stale-truncated + 5 MED; loop 2: 5 MED incl. bundles-mode gap + pure-testability extraction; loop 3: polish-only, converged). Status=accepted, awaiting user sign-off before implementation. Design: per-verb downshift — PaginationEngine gains an optional projector callback (roadmap_query wires rcProjectHeadlineOnly at the 2 bullet sites); workspace_search gets a pure static-inline RemoteControl::downshiftMatches(projector callback) so INV-8/9/10 are socket-free unit-testable; new truthy-only `downshifted` envelope flag; honest `truncated` recompute. Follow-ups filed: ANTS-3575 (bundles-mode), ANTS-3576 (changelog_query), ANTS-3577 (already-lean measure). NOT yet built — design-gate per user direction.
 
 - 📋 [ANTS-3544] **`codebase_index` changed-since-etag incremental delta — don't re-send the whole map after a one-file edit.**
   codebase_index returns the whole symbol/lane map; after a small edit (or at each session bootstrap, which eagerly refreshes it — ANTS-2140) the caller re-pays the full map even though almost nothing changed. Investigate a changed-since-etag delta: return only symbols in files whose mtime/content-hash changed since a prior index etag (added / removed / changed entries + the unchanged-file list), so an incremental re-orient is cheap. Distinct from ANTS-3534 (delta for the APPEND-ONLY query verbs roadmap/changelog/feedback) — codebase_index is a rebuilt map, so this needs per-file change tracking + a stable per-file sub-etag, not an append watermark. Investigate the index's existing mtime bookkeeping first.
@@ -13524,6 +13525,24 @@ template / mutate this state atomically" → movable. If it's
   **Layman:** Some tests fail every time we add a feature just because they count lines in the code and the number changed — make them tolerant so they only break on real problems.
   Kind: test.
   Source: in-session-2026-07-19 (split from ANTS-2178 durable-fix clause).
+
+- 📋 [ANTS-3575] **roadmap_query bundles-mode silent tail-drop — downshift or explicitly accept.**
+  buildRoadmapBundlesEnvelope (remotecontrol.cpp:3391, called at :4589) bounds bundles[] at the soft cap by dropping whole trailing bundles — a third roadmap_query truncation path (distinct from pageBullets and workspace_search's capJsonArrayToBytes), with the same silent-tail-loss shape ANTS-3543 addresses for flat rows. ANTS-3543 explicitly scoped it out because a bundle is a structured group (id + members + counts), not a flat row with a headline_only lean form — downshifting means projecting each bundle's members, a distinct design. Decide: (a) member-level downshift, or (b) at minimum surface a truncated/dropped signal so the cut is not invisible.
+  **Layman:** When roadmap bundles get too big to send, the app quietly drops the last ones off the end; decide whether to shrink them instead or at least flag the cut.
+  Kind: investigate.
+  Source: in-session-2026-07-19 (ANTS-3543 cold-eyes loop 2, § 5 follow-up).
+
+- 📋 [ANTS-3576] **changelog_query auto-downshift — wire the ANTS-3543 engine hook to the changelog reader.**
+  cmdChangelogQuery shares PaginationEngine::pageBullets (call sites remotecontrol.cpp:5739, :5805) and has a headline_only mode, so ANTS-3543's engine projector hook makes it eligible for a near-free downshift wiring — pass its headline_only projector at those two sites. Confirm first that changelog_query's headline_only projection is a reusable in-place function like rcProjectHeadlineOnly (changelog rows are shaped differently from roadmap bullets, so the projector is not literally shared). Deferred from ANTS-3543 to keep that spec to its two ROADMAP-named verbs.
+  **Layman:** Give the changelog search the same 'keep every item, drop the descriptions' behaviour the roadmap and code search get, so long changelog queries don't lose their tail.
+  Kind: enhancement.
+  Source: in-session-2026-07-19 (ANTS-3543 cold-eyes, § 5 follow-up).
+
+- 📋 [ANTS-3577] **headline_only mode measures the unprojected (fat) row for the byte-cap — drops more than needed.**
+  Today roadmap_query / workspace_search in headline_only mode measure the FAT row for the soft cap, then project the surviving slice to lean — so they drop more rows than the lean shape actually needs to fit. ANTS-3543 does not change this (its downshift only fires when the caller is NOT already lean). Fix: in already-lean mode, project BEFORE the measure-then-cut so the cap counts the lean bytes and more rows fit per page. Small, self-contained; distinct from ANTS-3543's not-already-lean downshift.
+  **Layman:** When you ask for title-only results, the app still measures the full-size rows when deciding how many fit, so it cuts off more than it has to; measure the trimmed size instead.
+  Kind: optimize.
+  Source: in-session-2026-07-19 (ANTS-3543 cold-eyes, § 5 follow-up).
 
 ### 🎨 At-a-glance build-version surface (user request 2026-05-14)
 
