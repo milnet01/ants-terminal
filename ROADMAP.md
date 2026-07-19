@@ -13312,7 +13312,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Source: in-session-2026-06-11 (plan-reuse research, 41-80% agentic cost cut).
 
-- 📋 [ANTS-2178] **Fix 9 pre-existing failing feature tests on main (brittle source-count drift + GUI/runtime), unrelated to ANTS-2093.**
+- ✅ [ANTS-2178] **Fix 9 pre-existing failing feature tests on main (brittle source-count drift + GUI/runtime), unrelated to ANTS-2093.**
   Verified pre-existing (all 9 fail identically on clean HEAD via a git-stash rerun; ANTS-2093 touches none of the counted files). Three categories:
   
   1. Brittle source-COUNT drift (magic numbers stale vs current source — likely from ANTS-2090/2094 and peers adding MCP verbs/props without bumping the expectation; matches the source-scrape-window debt class):
@@ -13333,6 +13333,7 @@ template / mutate this state atomically" → movable. If it's
   **Layman:** Nine tests were already failing on the main branch before today's work — mostly because they count things in the code (like "expect 18 of X") and recent features added more without updating the number. Worth a cleanup pass so the test suite goes fully green again.
   Kind: test.
   Source: in-session-2026-06-25 (observed during ANTS-2093 full-suite run; verified pre-existing via clean-HEAD rerun).
+  Resolved (2026-07-19): all 9 named tests verified present and GREEN — full suite 2769/2769, 0 failures (ctest --preset=default). The failures were re-greened incidentally by intervening bundle work (the ANTS-3533/2093-era count updates — e.g. McpProjection.Inv10SchemaDeclaresFields now expects 13 makeFieldsProp sites, matching source; RcLaunchCwdAnchor / Ants1372SourceGrep counts updated; the runtime/UI trio pass). Confirmed the 9 exist (not deleted): Ants1372SourceGrep.S1, RcLaunchCwdAnchor.Main, FlatpakLuaModule.Main, RoadmapViewerTabs.Main, McpModelSwitchStats.{GlobalScopeAggregatesAcrossProjects,ProjectScoped}, McpProjection.Inv10SchemaDeclaresFields, ThemedstylesheetExtraction.Main, TabCloseButtonVisible.Main. The durable anti-drift clause (convert exact `==` counts to `>=` floors / generated manifest) is split out to ANTS-3574 — a per-test-judgment semantics change, deliberately NOT done as a blind mid-churn sed that could weaken a removal-detecting lock.
 
 - ✅ [ANTS-3532] **Auto-compact large MCP responses by default (server-side `compact`; tabular stays opt-in).**
   The compact (ANTS-2091) / tabular (ANTS-2090) / fields= / headline_only knobs are all opt-in PER CALL, so a session that never passes them gets zero saving — contra the project's "token-saving features default ON" posture (most sessions never opt in). Add a config key `mcp_auto_compact_large_results` (default true): above a byte threshold, auto-apply `compact` field-dropping (never touching protected keys ok/code/error/etag/found/unchanged) and stamp `auto_compacted:true` on the envelope so the caller knows. Apply BEFORE the offload size check so a response that compacts under mcp_offload_threshold_bytes skips the read_spill round-trip entirely (synergy: fewer spill fetches too). `tabular` auto-apply stays opt-in (caller must decode the columnar form) — gate behind a per-session capability / config, default off. Investigate the empty-vs-absent safety edge (compact doc: a reader distinguishing empty-from-absent could break) before defaulting it across every verb.
@@ -13509,6 +13510,12 @@ template / mutate this state atomically" → movable. If it's
   Kind: fix.
   Source: user-crash-report-2026-07-17.
   Resolved (2026-07-17): deferred the theme apply at the two setupViewMenu call-sites (initial theme actions mainwindow.cpp:1327 + reload-themes rebuild :1437) via QTimer::singleShot(0, this, ...), so applyTheme never runs inside the QMenu's triggered/mouse-event stack. Root cause confirmed: ANTS-2097's activePopupWidget() guard is bypassed because Qt dismisses the popup before triggered fires (Wayland) — coredump showed applyTheme called directly from QAction::triggered. Guard + ANTS-2024 reap kept as backup. Regression: theme_switch_popup_defer INV-4 (RED→GREEN); the SIGSEGV is a teardown race not reliably triggerable, so the invariant locks the deferral, not the crash. Commit 8ff06305. Runtime confirmation deferred to the ANTS-2049 e2e harness (user redirected focus there).
+
+- 📋 [ANTS-3574] **Convert brittle exact source-count test assertions to `>=` floors or a generated manifest (recurring source-scrape drift).**
+  Split from ANTS-2178's "consider" clause. The 9 tests it named are green again (verified 2769/2769), but the root cause of the recurring red — exact-equality source-count assertions (`EXPECT_EQ(count, N)` over a call-site scrape) — remains a debt class every feature addition re-triggers (source-scrape-window drift). Candidates with genuine floor semantics ("at least N call-sites present, one per handler"): RcLaunchCwdAnchor validatePath count, Ants1372SourceGrep checkCallerCwd floor, roadmap_query_pagination pageBullets count. Convert those exact `==` to `>=` floors (keeps the "every handler is wired" guarantee, drops the additive-drift churn). LEAVE true-equality locks that must catch a REMOVAL as-is (e.g. McpProjection one-fields-prop-per-tool) — a floor there would miss a dropped prop; for those prefer a generated manifest or an explicit "bump me when you add a tool" comment. Per-test judgment, not a blanket sed. Bounded, test-only, no runtime change.
+  **Layman:** Some tests fail every time we add a feature just because they count lines in the code and the number changed — make them tolerant so they only break on real problems.
+  Kind: test.
+  Source: in-session-2026-07-19 (split from ANTS-2178 durable-fix clause).
 
 ### 🎨 At-a-glance build-version surface (user request 2026-05-14)
 
