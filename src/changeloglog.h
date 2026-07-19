@@ -19,6 +19,12 @@ QString kindToCategory(const QString &kind);
 // True iff `category` is one of the six canonical categories.
 bool isValidCategory(const QString &category);
 
+// The six canonical Keep-a-Changelog categories, in spec order
+// (Added/Changed/Deprecated/Removed/Fixed/Security). Exposed publicly
+// (ANTS-3533) so changelog_query can emit the `accepted[]` list in a
+// `bad_category` refusal; previously a file-private helper.
+const QStringList &canonicalCategories();
+
 // Render a single Keep-a-Changelog bullet block:
 //   - **<summary>** (<id>)
 //     <body line 1>

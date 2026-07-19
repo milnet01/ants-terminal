@@ -10,8 +10,9 @@
 
 namespace ChangelogLog {
 
-namespace {
 // Canonical Keep-a-Changelog category order (spec § sections).
+// Public since ANTS-3533 (declared in changeloglog.h) so changelog_query
+// can reuse it for the `bad_category` `accepted[]` echo.
 const QStringList &canonicalCategories() {
     static const QStringList v = {
         QStringLiteral("Added"),   QStringLiteral("Changed"),
@@ -20,7 +21,6 @@ const QStringList &canonicalCategories() {
     };
     return v;
 }
-}  // namespace
 
 QString kindToCategory(const QString &kind) {
     // Added — net-new surface.

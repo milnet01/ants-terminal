@@ -323,6 +323,8 @@ add_library(ants_core_lib STATIC
     src/llmdispatcher.cpp
     src/roadmapindex.cpp
     src/changeloglog.cpp
+    # ANTS-3533 — structured Keep-a-Changelog reader for changelog_query.
+    src/changelogquery.cpp
     # ANTS-2126 — pass-headings (`#### Pass N.M`) roadmap_log writer
     # primitives (render / flip / annotate), mirror of changeloglog.cpp.
     src/passheadingwrite.cpp
@@ -1464,6 +1466,8 @@ if(ANTS_TESTS)
                 tests/features/changelog_log_add_batch/test_changelog_log_add_batch.cpp
                 # ANTS-3495 changelog_log op:normalize (reorder [Unreleased] categories).
                 tests/features/changelog_log_normalize/test_changelog_log_normalize.cpp
+                # ANTS-3533 changelog_query structured CHANGELOG reader (parser + wiring).
+                tests/features/changelog_query/test_changelog_query.cpp
                 # ANTS-1426 parseBullets blank-line continuation.
                 tests/features/roadmap_parser_blank_line_continuation/test_roadmap_parser_blank_line_continuation.cpp
                 # ANTS-1427 MCP dispatch debug-log audit trail.

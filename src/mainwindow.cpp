@@ -4464,6 +4464,12 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("changelog_log",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdChangelogLog));
+    // ANTS-3533 — changelog_query: read-only structured CHANGELOG reader,
+    // the symmetric read side of changelog_log. Required contract (read
+    // verb, ANTS-1520). Opts into fields=/compact/etag/offload allowlists.
+    m_claudeIntegration->registerToolProvider("changelog_query",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdChangelogQuery));
     // ANTS-1583 — roadmap_branch_drift: compare ROADMAP ✅ entries'
     // cited commit SHAs against HEAD's reachable history. caller_cwd
     // is Required (ANTS-1404 contract registered below).

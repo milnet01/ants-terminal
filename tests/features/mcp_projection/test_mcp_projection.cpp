@@ -183,13 +183,14 @@ TEST(McpProjection, Inv10SchemaDeclaresFields) {
     // One call site per in-scope projection tool (ANTS-1855 added
     // read_log → 8; ANTS-1735 added model_switch_stats → 9; ANTS-2021
     // added read_region → 10; ANTS-1637 added codebase_index → 11;
-    // ANTS-2139 added docs_index → 12). The lambda definition reads
-    // `makeFieldsProp = [` so it is not counted by the call-form needle.
+    // ANTS-2139 added docs_index → 12; ANTS-3533 added changelog_query
+    // → 13). The lambda definition reads `makeFieldsProp = [` so it is
+    // not counted by the call-form needle.
     int count = 0;
     int idx = 0;
     const QByteArray needle = "makeFieldsProp();";
     while ((idx = s.indexOf(needle, idx)) != -1) { ++count; idx += needle.size(); }
-    EXPECT_EQ(count, 12) << "expected 12 makeFieldsProp() call sites, got "
+    EXPECT_EQ(count, 13) << "expected 13 makeFieldsProp() call sites, got "
                          << count;
 }
 
@@ -539,11 +540,12 @@ TEST(McpCompact, Ants2091DispatchAndSchemaWiring) {
     EXPECT_TRUE(s.contains("mcp::terseDefault()"))
         << "compaction must fall back to mcp::terseDefault() when compact "
            "is absent";
-    // 11 compact schema props, one per in-scope projection tool.
+    // 12 compact schema props, one per in-scope projection tool
+    // (ANTS-3533 added changelog_query → 12).
     int count = 0, idx = 0;
     const QByteArray needle = "makeCompactProp();";
     while ((idx = s.indexOf(needle, idx)) != -1) { ++count; idx += needle.size(); }
-    EXPECT_EQ(count, 11) << "expected 11 makeCompactProp() call sites, got "
+    EXPECT_EQ(count, 12) << "expected 12 makeCompactProp() call sites, got "
                          << count;
 }
 

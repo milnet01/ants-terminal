@@ -9170,6 +9170,150 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = clSchema;
                     tools.append(t);
                 }
+                // ANTS-3533 — changelog_query: read-only structured CHANGELOG
+                // reader, the symmetric read side of changelog_log.
+                {
+                    QJsonObject t;
+                    t["name"] = "changelog_query";
+                    t["description"] = QStringLiteral(
+                        "Read CHANGELOG.md as structured entries {version, date, "
+                        "unreleased, category, text, ids[], body?} instead of "
+                        "full-reading the file — the symmetric read side of "
+                        "changelog_log, mirroring roadmap_query. Filters: "
+                        "version=<token|Unreleased>, category=<Added|Changed|"
+                        "Deprecated|Removed|Fixed|Security>, query=<keyword>, "
+                        "id / ids[] (look up entries citing a [PROJ-NNNN]). "
+                        "mode: entries (default) | version_index (version "
+                        "skeleton + per-category counts, no entries) | "
+                        "headline_only (~10x smaller). Opt-in: include_body, "
+                        "compact, fields, etag_match, offset/limit (1..500). "
+                        "caller_cwd Required. Refusals: no_changelog, "
+                        "format_mismatch, bad_version, bad_category, bad_mode, "
+                        "bad_mode_combo, bad_case, bad_args. Etag-304 aware.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to look up CHANGELOG.md entries by version / id / "
+                        "category / keyword without reading the whole file — "
+                        "the read side of changelog_log (drift checks, "
+                        "\"what shipped under ANTS-NNNN?\").");
+
+                    QJsonObject cqVersion;
+                    cqVersion["type"] = "string";
+                    cqVersion["description"] = QStringLiteral(
+                        "Filter to one version block. The bare version token "
+                        "(\"0.7.100\") or \"Unreleased\" (case-insensitive). "
+                        "Empty = all versions. Unknown → bad_version.");
+
+                    QJsonObject cqCategory;
+                    cqCategory["type"] = "string";
+                    QJsonArray cqCatEnum;
+                    cqCatEnum.append("Added");
+                    cqCatEnum.append("Changed");
+                    cqCatEnum.append("Deprecated");
+                    cqCatEnum.append("Removed");
+                    cqCatEnum.append("Fixed");
+                    cqCatEnum.append("Security");
+                    cqCategory["enum"] = cqCatEnum;
+                    cqCategory["description"] = QStringLiteral(
+                        "Keep-a-Changelog category filter (case-sensitive). "
+                        "Ignored in version_index mode. Unknown → bad_category.");
+
+                    QJsonObject cqQuery;
+                    cqQuery["type"] = "string";
+                    cqQuery["description"] = QStringLiteral(
+                        "Case-insensitive substring over each entry's text + "
+                        "body (capped 200 chars). Composes with version/"
+                        "category as a conjunction.");
+
+                    QJsonObject cqId;
+                    cqId["type"] = "string";
+                    cqId["description"] = QStringLiteral(
+                        "Look up entries citing a single [PROJ-NNNN] id. "
+                        "Overrides version/category/query + pagination. A "
+                        "genuinely-absent id → found:false (not a refusal); a "
+                        "case-only mismatch → bad_case. Mutually exclusive with "
+                        "ids. Cannot combine with mode:version_index.");
+
+                    QJsonObject cqIds;
+                    cqIds["type"] = "array";
+                    QJsonObject cqIdsItem;
+                    cqIdsItem["type"] = "string";
+                    cqIds["items"] = cqIdsItem;
+                    cqIds["description"] = QStringLiteral(
+                        "Batch id lookup (array or comma/space string; deduped; "
+                        ">100 → bad_args). A case-only mismatch is demoted to "
+                        "missing_ids (no batch refusal). Mutually exclusive "
+                        "with id.");
+
+                    QJsonObject cqMode;
+                    cqMode["type"] = "string";
+                    QJsonArray cqModeEnum;
+                    cqModeEnum.append("entries");
+                    cqModeEnum.append("version_index");
+                    cqModeEnum.append("headline_only");
+                    cqMode["enum"] = cqModeEnum;
+                    cqMode["description"] = QStringLiteral(
+                        "Response mode. \"entries\" (default) returns filtered "
+                        "entries; \"version_index\" returns the version "
+                        "skeleton with per-category counts (no entries); "
+                        "\"headline_only\" narrows each entry to {version, "
+                        "category, text_oneline, ids} (~10x smaller).");
+
+                    QJsonObject cqIncludeBody;
+                    cqIncludeBody["type"] = "boolean";
+                    cqIncludeBody["description"] = QStringLiteral(
+                        "entries mode only: attach each entry's continuation "
+                        "body. Default false. Ignored in headline_only / "
+                        "version_index.");
+
+                    QJsonObject cqOffset;
+                    cqOffset["type"] = "integer";
+                    cqOffset["description"] = QStringLiteral(
+                        "0-based pagination start over the post-filter list.");
+
+                    QJsonObject cqLimit;
+                    cqLimit["type"] = "integer";
+                    cqLimit["description"] = QStringLiteral(
+                        "Page size, clamped 1..500 (mirrors roadmap_query). "
+                        "Omitted → auto soft-cap; truncation emits truncated + "
+                        "next_offset.");
+
+                    QJsonObject cqEncoding;
+                    cqEncoding["type"] = "string";
+                    QJsonArray cqEncEnum;
+                    cqEncEnum.append("json");
+                    cqEncEnum.append("tabular");
+                    cqEncoding["enum"] = cqEncEnum;
+                    cqEncoding["description"] = QStringLiteral(
+                        "Optional (ANTS-2090). \"tabular\" packs the entries/"
+                        "versions array columnar (30-60% smaller). Default "
+                        "\"json\".");
+
+                    QJsonObject cqProps;
+                    cqProps["caller_cwd"]   = makeCallerCwdReadProp();
+                    cqProps["version"]      = cqVersion;
+                    cqProps["category"]     = cqCategory;
+                    cqProps["query"]        = cqQuery;
+                    cqProps["id"]           = cqId;
+                    cqProps["ids"]          = cqIds;
+                    cqProps["mode"]         = cqMode;
+                    cqProps["include_body"] = cqIncludeBody;
+                    cqProps["offset"]       = cqOffset;
+                    cqProps["limit"]        = cqLimit;
+                    cqProps["etag_match"]   = makeEtagMatchProp();  // ANTS-1499
+                    cqProps["fields"]       = makeFieldsProp();     // ANTS-1720
+                    cqProps["compact"]      = makeCompactProp();    // ANTS-2091
+                    cqProps["encoding"]     = cqEncoding;           // ANTS-2090
+
+                    QJsonObject cqSchema;
+                    cqSchema["type"] = "object";
+                    cqSchema["properties"] = cqProps;
+                    QJsonArray cqReq;
+                    cqReq.append(QStringLiteral("caller_cwd"));
+                    cqSchema["required"] = cqReq;
+                    cqSchema["additionalProperties"] = false;
+                    t["inputSchema"] = cqSchema;
+                    tools.append(t);
+                }
                 // ANTS-1399-INV-1 — tool_info(name) descriptor.
                 // Cheaper than re-fetching tools/list when the assistant
                 // only needs to refresh memory on one tool's schema.
@@ -9528,9 +9672,10 @@ void ClaudeIntegration::onMcpConnection() {
                         return QStringLiteral("debt-sweep");
                     if (name.startsWith(QStringLiteral("roadmap_")))
                         return QStringLiteral("roadmap");
-                    // ANTS-1548 — changelog_log is the CHANGELOG-writer
-                    // sibling of the roadmap family.
-                    if (name == QLatin1String("changelog_log"))
+                    // ANTS-1548 — changelog_log (writer) + ANTS-3533
+                    // changelog_query (reader) are the CHANGELOG siblings
+                    // of the roadmap family.
+                    if (name.startsWith(QStringLiteral("changelog_")))
                         return QStringLiteral("roadmap");
                     // ANTS-1414 — lane-source-agnostic alias bucket.
                     if (name == QLatin1String("cross_doc_diff"))
@@ -11019,6 +11164,7 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // tools/call dispatcher at the same site as ANTS-1404
     // (no per-tool wiring needed).
     if (toolName == QStringLiteral("roadmap_query"))      return C::Required;
+    if (toolName == QStringLiteral("changelog_query"))    return C::Required;  // ANTS-3533
     if (toolName == QStringLiteral("subsystem"))          return C::Required;
     if (toolName == QStringLiteral("workspace_search"))   return C::Required;
     // ANTS-1636 — find_sources: project-scoped topic-to-files scan.
@@ -11111,6 +11257,7 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
     // priority list in the roadmap entry.
     return toolName == QStringLiteral("project_layout")
         || toolName == QStringLiteral("roadmap_query")
+        || toolName == QStringLiteral("changelog_query")   // ANTS-3533
         || toolName == QStringLiteral("file_outline")
         // ANTS-2021 — read_region: a re-read of an unchanged slice 304s,
         // the core "free re-read" win.

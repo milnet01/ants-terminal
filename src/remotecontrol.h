@@ -8,6 +8,7 @@
 #include <QJsonObject>
 
 #include "auditengine.h"  // ANTS-1254 — AuditSummary value member below
+#include "changelogquery.h"  // ANTS-3533 — changelog_query parse-cache member
 #include "coldeyesengine.h"  // ANTS-1319 — cold-eyes partition cache
 #include "roadmapindex.h"  // ANTS-1287 — heading-index cache members
 
@@ -685,6 +686,12 @@ public:
     // docs/specs/ANTS-1548.md.
     QJsonDocument cmdChangelogLog(const QJsonObject &req);
 
+    // ANTS-3533 — changelog_query: read-only structured reader over
+    // CHANGELOG.md (mirror of cmdRoadmapQuery). Modes entries /
+    // version_index / headline_only; version/category/query/id/ids
+    // filters; mtime+TTL parse cache. See docs/specs/ANTS-3533.md.
+    QJsonDocument cmdChangelogQuery(const QJsonObject &req);
+
     // ANTS-2044 — op:"add_batch": N entries, one read + one atomic
     // QSaveFile commit (parity with roadmap_log op:append_batch). Each
     // entry resolves by auto-detected mode — `summary` → add,
@@ -829,6 +836,15 @@ private:
     // `duplicate_ids` only when non-empty so a clean roadmap stays at
     // its existing envelope shape.
     mutable QJsonArray m_roadmapCacheDuplicateIds;
+    // ANTS-3533 — changelog_query parse cache (mtime+TTL, same shape as
+    // the roadmap cache; single-slot + path-keyed so it never shadows
+    // across projects — docs/standards/mcp-caches.md). Holds the parsed
+    // CHANGELOG plus the roadmap prefix P sniffed once per parse.
+    mutable QString m_changelogCachePath;
+    mutable qint64 m_changelogCacheMtimeMs = 0;
+    mutable qint64 m_changelogCacheStampMs = 0;
+    mutable ChangelogQuery::ParseResult m_changelogCache;
+    mutable QString m_changelogCachePrefix;
     // ANTS-1922 — test-only soft-cap override for bundles mode (0 =
     // default PaginationEngine::kSoftCapBytes). Set via
     // setBundleSoftCapOverride; never written on the live path.

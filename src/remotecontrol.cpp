@@ -5515,6 +5515,314 @@ static QString changelogMalformedAdvisory(int line, bool plural,
 // ANTS-1548 — changelog_log. Renders one Keep-a-Changelog bullet and
 // splices it under the right category in `## [Unreleased]`. m_main-
 // independent (caller_cwd + filesystem only), same as the flip path.
+// ANTS-3533 — changelog_query: read-only structured CHANGELOG.md reader,
+// the symmetric read side of changelog_log. Mirrors cmdRoadmapQuery's
+// arg/mode/refusal discipline. See docs/specs/ANTS-3533.md.
+QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
+    auto err = [](const QString &code, const QString &message) {
+        QJsonObject env;
+        env[QStringLiteral("ok")]    = false;
+        env[QStringLiteral("code")]  = code;
+        env[QStringLiteral("error")] = message;
+        return QJsonDocument(env);
+    };
+
+    const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
+    if (callerRaw.isEmpty())
+        return err(QStringLiteral("caller_cwd_required"),
+                   QStringLiteral("changelog_query: caller_cwd is required"));
+    const QString callerCanonical = QFileInfo(callerRaw).canonicalFilePath();
+    if (callerCanonical.isEmpty())
+        return err(QStringLiteral("no_changelog"),
+                   QStringLiteral("changelog_query: caller_cwd \"%1\" does not "
+                                  "canonicalise to an existing directory").arg(callerRaw));
+
+    // (1) path resolution — no_changelog / format_mismatch (§ 2.3 precedence).
+    const QString clPath = findChangelogUnder(callerCanonical);
+    if (clPath.isEmpty()) {
+        if (!findYamlChangelogUnder(callerCanonical).isEmpty())
+            return err(QStringLiteral("format_mismatch"),
+                       QStringLiteral("changelog_query: found a YAML changelog; "
+                                      "only Keep-a-Changelog Markdown (CHANGELOG.md) "
+                                      "is read"));
+        return err(QStringLiteral("no_changelog"),
+                   QStringLiteral("changelog_query: no CHANGELOG.md found under \"%1\"")
+                       .arg(callerCanonical));
+    }
+
+    // (2) bad_mode.
+    const QString mode =
+        req.value(QStringLiteral("mode")).toString(QStringLiteral("entries"));
+    static const QStringList kModes = { QStringLiteral("entries"),
+                                        QStringLiteral("version_index"),
+                                        QStringLiteral("headline_only") };
+    if (!kModes.contains(mode)) {
+        QJsonObject env;
+        env[QStringLiteral("ok")]       = false;
+        env[QStringLiteral("code")]     = QStringLiteral("bad_mode");
+        env[QStringLiteral("error")]    =
+            QStringLiteral("changelog_query: unknown mode \"%1\"").arg(mode.left(64));
+        env[QStringLiteral("accepted")] = QJsonArray::fromStringList(kModes);
+        return QJsonDocument(env);
+    }
+
+    // (4) id / ids parse — id+ids → bad_args; >100 → bad_args (§ 2.3).
+    const QString singleId = req.value(QStringLiteral("id")).toString().trimmed();
+    const bool hasId = !singleId.isEmpty();
+    QStringList reqIds;
+    bool hasIds = false;
+    {
+        const QJsonValue idsv = req.value(QStringLiteral("ids"));
+        if (idsv.isArray()) {
+            const QJsonArray a = idsv.toArray();
+            hasIds = !a.isEmpty();
+            for (const QJsonValue &v : a) {
+                const QString s = v.toString().trimmed();
+                if (!s.isEmpty() && !reqIds.contains(s)) reqIds << s;
+            }
+        } else if (idsv.isString() && !idsv.toString().trimmed().isEmpty()) {
+            hasIds = true;
+            const auto parts = idsv.toString().split(
+                QRegularExpression(QStringLiteral("[,\\s]+")), Qt::SkipEmptyParts);
+            for (const QString &s : parts)
+                if (!reqIds.contains(s)) reqIds << s;
+        }
+    }
+    if (hasId && hasIds)
+        return err(QStringLiteral("bad_args"),
+                   QStringLiteral("changelog_query: pass either id or ids, not both"));
+    if (reqIds.size() > 100)
+        return err(QStringLiteral("bad_args"),
+                   QStringLiteral("changelog_query: ids exceeds 100 entries"));
+    const bool idMode = hasId || hasIds;
+
+    // (5) bad_mode_combo — id/ids + version_index.
+    if (idMode && mode == QLatin1String("version_index"))
+        return err(QStringLiteral("bad_mode_combo"),
+                   QStringLiteral("changelog_query: id/ids cannot combine with "
+                                  "mode:version_index"));
+
+    // --- parse (mtime+TTL cache, single-slot, path-keyed) ---
+    const QFileInfo fi(clPath);
+    const qint64 mtime = fi.lastModified().toMSecsSinceEpoch();
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const bool fresh = (m_changelogCachePath == clPath) &&
+                       (m_changelogCacheMtimeMs == mtime) && mtime != 0 &&
+                       (nowMs - m_changelogCacheStampMs <= kRoadmapCacheTtlMs);
+    if (!fresh) {
+        QString md;
+        QFile f(clPath);
+        if (f.open(QIODevice::ReadOnly | QIODevice::Text))
+            md = QString::fromUtf8(f.readAll());
+        // Prefix P = project roadmap prefix (ANTS-3533 § 3). Sniff from
+        // the ROADMAP.md at the repo root; fall back to "ANTS".
+        const QString roadmapPath = findRoadmapUnder(callerCanonical);
+        const QString roadmapDir = roadmapPath.isEmpty()
+            ? callerCanonical
+            : QFileInfo(roadmapPath).absolutePath();
+        const QString prefix =
+            RoadmapFoldIn::sniffIdPrefix(roadmapDir, QStringLiteral("ANTS"));
+        m_changelogCache       = ChangelogQuery::parse(md, prefix);
+        m_changelogCachePrefix = prefix;
+        m_changelogCachePath   = clPath;
+        m_changelogCacheMtimeMs = mtime;
+        m_changelogCacheStampMs = nowMs;
+    }
+    const ChangelogQuery::ParseResult &pr = m_changelogCache;
+
+    // (7) bad_version — version filter matching no block (normalise Unreleased).
+    QString versionFilter = req.value(QStringLiteral("version")).toString();
+    const bool hasVersionFilter = !versionFilter.isEmpty();
+    if (hasVersionFilter &&
+        versionFilter.compare(QStringLiteral("Unreleased"), Qt::CaseInsensitive) == 0)
+        versionFilter = QStringLiteral("Unreleased");
+    if (hasVersionFilter) {
+        bool exists = false;
+        QStringList tokens;
+        for (const ChangelogQuery::VersionInfo &vi : pr.versions) {
+            tokens << vi.version;
+            if (vi.version == versionFilter) exists = true;
+        }
+        if (!exists) {
+            QJsonObject env;
+            env[QStringLiteral("ok")]       = false;
+            env[QStringLiteral("code")]     = QStringLiteral("bad_version");
+            env[QStringLiteral("error")]    =
+                QStringLiteral("changelog_query: no version block \"%1\"")
+                    .arg(versionFilter.left(64));
+            env[QStringLiteral("versions")] = QJsonArray::fromStringList(tokens);
+            return QJsonDocument(env);
+        }
+    }
+
+    // (8) bad_category — validate in every mode (validate-then-ignore, § 2.4).
+    const QString category = req.value(QStringLiteral("category")).toString();
+    if (!category.isEmpty() && !ChangelogLog::isValidCategory(category)) {
+        QJsonObject env;
+        env[QStringLiteral("ok")]       = false;
+        env[QStringLiteral("code")]     = QStringLiteral("bad_category");
+        env[QStringLiteral("error")]    =
+            QStringLiteral("changelog_query: unknown category \"%1\"")
+                .arg(category.left(64));
+        env[QStringLiteral("accepted")] =
+            QJsonArray::fromStringList(ChangelogLog::canonicalCategories());
+        return QJsonDocument(env);
+    }
+
+    // (9) offset / limit shape (bad_args).
+    int offset = 0;
+    bool passedOffset = false;
+    if (req.contains(QStringLiteral("offset"))) {
+        const QJsonValue v = req.value(QStringLiteral("offset"));
+        const double d = v.toDouble(-1);
+        if (!v.isDouble() || d < 0 || d != std::floor(d))
+            return err(QStringLiteral("bad_args"),
+                       QStringLiteral("changelog_query: offset must be a "
+                                      "non-negative integer"));
+        offset = static_cast<int>(d);
+        passedOffset = true;
+    }
+    int limitArg = -1;
+    bool passedLimit = false;
+    if (req.contains(QStringLiteral("limit"))) {
+        const QJsonValue v = req.value(QStringLiteral("limit"));
+        const double d = v.toDouble(0);
+        if (!v.isDouble() || d < 1 || d != std::floor(d))
+            return err(QStringLiteral("bad_args"),
+                       QStringLiteral("changelog_query: limit must be an "
+                                      "integer >= 1"));
+        limitArg = static_cast<int>(d);
+        passedLimit = true;
+    }
+    Q_UNUSED(passedOffset);
+
+    const bool headlineOnly = (mode == QLatin1String("headline_only"));
+    const bool includeBody  = req.value(QStringLiteral("include_body")).toBool(false);
+
+    auto entryToJson = [&](const ChangelogQuery::Entry &e) {
+        QJsonObject o;
+        o[QStringLiteral("version")]  = e.version;
+        o[QStringLiteral("category")] = e.category;
+        o[QStringLiteral("ids")]      = QJsonArray::fromStringList(e.ids);
+        if (headlineOnly) {
+            o[QStringLiteral("text_oneline")] = e.text.simplified();
+        } else {
+            o[QStringLiteral("date")]       = e.date;
+            o[QStringLiteral("unreleased")] = e.unreleased;
+            o[QStringLiteral("text")]       = e.text;
+            if (includeBody && !e.body.isEmpty())
+                o[QStringLiteral("body")] = e.body;
+        }
+        return o;
+    };
+
+    QJsonObject out;
+    out[QStringLiteral("ok")]   = true;
+    out[QStringLiteral("path")] = clPath;
+    out[QStringLiteral("mode")] = mode;
+
+    if (mode == QLatin1String("version_index")) {
+        QJsonArray versions;
+        for (const ChangelogQuery::VersionInfo &vi : pr.versions) {
+            if (hasVersionFilter && vi.version != versionFilter) continue;
+            QJsonObject o;
+            o[QStringLiteral("version")]     = vi.version;
+            o[QStringLiteral("date")]        = vi.date;
+            o[QStringLiteral("unreleased")]  = vi.unreleased;
+            o[QStringLiteral("entry_count")] = vi.entry_count;
+            QJsonObject cats;
+            for (const auto &p : vi.categories) cats[p.first] = p.second;
+            o[QStringLiteral("categories")] = cats;
+            versions << o;
+        }
+        const PaginationEngine::PageResult page =
+            PaginationEngine::pageBullets(versions, offset,
+                                          passedLimit ? limitArg : -1);
+        out[QStringLiteral("versions")] = page.slice;
+        out[QStringLiteral("count")]    = page.slice.size();
+        out[QStringLiteral("total")]    = page.total;
+        out[QStringLiteral("offset")]   = page.offset;
+        if (page.truncated) {
+            out[QStringLiteral("truncated")]   = true;
+            out[QStringLiteral("next_offset")] = page.nextOffset;
+        }
+        if (hasVersionFilter) out[QStringLiteral("version")] = versionFilter;
+        return QJsonDocument(out);
+    }
+
+    // entries / headline_only.
+    QString needle = req.value(QStringLiteral("query")).toString();
+    if (needle.size() > 200) needle.truncate(200);
+    needle = needle.toLower();
+
+    QJsonArray arr;
+    QStringList matchedIds, missingIds;
+    if (idMode) {
+        const QStringList requested = hasId ? QStringList{ singleId } : reqIds;
+        QSet<QString> realIds;
+        QHash<QString, QString> ciToReal;
+        for (const ChangelogQuery::Entry &e : pr.entries)
+            for (const QString &id : e.ids) {
+                realIds.insert(id);
+                ciToReal.insert(id.toLower(), id);
+            }
+        // bad_case — SINGULAR id only, case-only mismatch (§ 2.3).
+        if (hasId && !realIds.contains(singleId)) {
+            const auto it = ciToReal.constFind(singleId.toLower());
+            if (it != ciToReal.constEnd()) {
+                QJsonObject env;
+                env[QStringLiteral("ok")]           = false;
+                env[QStringLiteral("code")]         = QStringLiteral("bad_case");
+                env[QStringLiteral("error")]        =
+                    QStringLiteral("changelog_query: id \"%1\" differs only by "
+                                   "case from \"%2\"").arg(singleId, it.value());
+                env[QStringLiteral("canonical_id")] = it.value();
+                return QJsonDocument(env);
+            }
+        }
+        QSet<QString> reqExact(requested.begin(), requested.end());
+        for (const QString &r : requested)
+            (realIds.contains(r) ? matchedIds : missingIds) << r;
+        for (const ChangelogQuery::Entry &e : pr.entries) {
+            bool hit = false;
+            for (const QString &id : e.ids)
+                if (reqExact.contains(id)) { hit = true; break; }
+            if (hit) arr << entryToJson(e);
+        }
+    } else {
+        for (const ChangelogQuery::Entry &e : pr.entries) {
+            if (hasVersionFilter && e.version != versionFilter) continue;
+            if (!category.isEmpty() && e.category != category) continue;
+            if (!needle.isEmpty() &&
+                !e.text.toLower().contains(needle) &&
+                !e.body.toLower().contains(needle))
+                continue;
+            arr << entryToJson(e);
+        }
+    }
+
+    const PaginationEngine::PageResult page =
+        PaginationEngine::pageBullets(arr, offset, passedLimit ? limitArg : -1);
+    out[QStringLiteral("entries")] = page.slice;
+    out[QStringLiteral("count")]   = page.slice.size();
+    out[QStringLiteral("total")]   = page.total;
+    out[QStringLiteral("offset")]  = page.offset;
+    if (page.truncated) {
+        out[QStringLiteral("truncated")]   = true;
+        out[QStringLiteral("next_offset")] = page.nextOffset;
+    }
+    if (hasVersionFilter)   out[QStringLiteral("version")]  = versionFilter;
+    if (!category.isEmpty()) out[QStringLiteral("category")] = category;
+    if (idMode) {
+        if (hasId) out[QStringLiteral("id")]  = singleId;
+        else       out[QStringLiteral("ids")] = QJsonArray::fromStringList(reqIds);
+        out[QStringLiteral("matched_ids")] = QJsonArray::fromStringList(matchedIds);
+        out[QStringLiteral("missing_ids")] = QJsonArray::fromStringList(missingIds);
+        out[QStringLiteral("found")]       = (page.total > 0);
+    }
+    return QJsonDocument(out);
+}
+
 QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     auto clErr = [](const QString &code, const QString &message) {
         QJsonObject env;

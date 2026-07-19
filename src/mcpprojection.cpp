@@ -63,6 +63,7 @@ void resetHintLatch() {
 
 bool isFieldProjectionTool(const QString &toolName) {
     return toolName == QStringLiteral("roadmap_query")
+        || toolName == QStringLiteral("changelog_query")   // ANTS-3533
         || toolName == QStringLiteral("project_layout")
         || toolName == QStringLiteral("file_outline")
         || toolName == QStringLiteral("get_environment")
@@ -96,6 +97,7 @@ bool isOffloadEligible(const QString &toolName) {
         // page like any other read body keeps even a full page off the wire.
         || toolName == QStringLiteral("debt_sweep_scan")
         || toolName == QStringLiteral("roadmap_query")
+        || toolName == QStringLiteral("changelog_query")   // ANTS-3533
         // ANTS-2093 — project_query: a large snippet result spills like any
         // other read body (INV-9), re-read verbatim via read_spill.
         || toolName == QStringLiteral("project_query");
