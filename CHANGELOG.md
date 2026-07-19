@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`changelog_query` read verb — mirror `roadmap_query` so drift-checks stop reading the whole CHANGELOG.** (ANTS-3533)
+  Add a quick lookup for the changelog like the one the roadmap already has, so reviews don't read the whole 276K-token file.
+
 - **Surface MCP tokens-saved as a live status-bar chip + persisted month / YTD / all-time aggregate.** (ANTS-3572)
   A little pill on the status bar shows how many tokens the Ants MCP has saved you — live this session, plus this-month / this-year / all-time totals that survive restarts.
 

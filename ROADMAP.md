@@ -13340,11 +13340,12 @@ template / mutate this state atomically" → movable. If it's
   Kind: enhancement.
   Source: in-session-2026-07-16 (token-saving sweep).
 
-- 📋 [ANTS-3533] **`changelog_query` read verb — mirror `roadmap_query` so drift-checks stop reading the whole CHANGELOG.**
+- ✅ [ANTS-3533] **`changelog_query` read verb — mirror `roadmap_query` so drift-checks stop reading the whole CHANGELOG.**
   CHANGELOG.md is the #2 measured review-loop sink (~276K tok, ANTS-3521). `changelog_log` is write-only; any drift-check against the changelog must grep/read the whole file. Add a READ verb symmetric with roadmap_query: look up entries by version / ANTS-ID / [Unreleased] section, returning compact structured entries with ETag-304 + fields= / headline_only. Directly shrinks what cold-eyes/indie-review are INSTRUCTED to read: ANTS-3526 made them SEARCH the big logs instead of full-reading, but the search still returns raw grep lines — this returns a structured answer instead. Reuses roadmap_query's parser-cache (ANTS-1117) + response-wrap patterns; low new-surface, high symmetry.
   **Layman:** Add a quick lookup for the changelog like the one the roadmap already has, so reviews don't read the whole 276K-token file.
   Kind: feature.
   Source: in-session-2026-07-16 (token-saving sweep).
+  Resolved (2026-07-19): shipped. New parser src/changelogquery.{h,cpp} + RemoteControl::cmdChangelogQuery; modes entries/version_index/headline_only; version/category/query/id/ids filters; mtime+TTL cache; opted into fields/compact/etag/offload allowlists. Spec docs/specs/ANTS-3533.md cold-eyes converged (5 loops). Full suite green (2773/2773).
 
 - 📋 [ANTS-3534] **Changed-since-etag DELTA mode for the append-only query verbs (roadmap / changelog / feedback).**
   ETag-304 is all-or-nothing: a re-poll with a stale etag re-reads the ENTIRE body. For append-only corpora (ROADMAP, CHANGELOG, feedback files) a long-running session that re-queries could instead get only the entries added/changed since the supplied etag — a delta — not a full re-read. Design questions to settle before building: etag->content-offset mapping; handling in-place edits/status-flips (not just tail appends) so a delta can't miss a mutation above the watermark; interaction with the 100ms parser-cache TTL; whether the delta is worth it below the offload threshold. Complements ANTS-2232 (section pins) via a different mechanism. Investigate feasibility + payload-shape first.
