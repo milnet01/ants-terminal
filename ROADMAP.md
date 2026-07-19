@@ -13544,6 +13544,15 @@ template / mutate this state atomically" → movable. If it's
   Kind: optimize.
   Source: in-session-2026-07-19 (ANTS-3543 cold-eyes, § 5 follow-up).
 
+- 📋 [ANTS-3578] **Delta-envelope shared foundation — partial "changed-since" responses for the don't-re-send trio (ANTS-3534/3544/3546).**
+  Umbrella/foundation for the three "don't re-send unchanged bytes" items, designed jointly per user direction. Spec: docs/specs/ANTS-3578.md (cold-eyes pending).
+  SHARED FOUNDATION (build once): (a) a delta-envelope contract {unchanged | delta:{added,changed,removed}, base_etag, new_etag} layered on the EXISTING all-or-nothing etag; (b) the etag_match input arg reused as a CURSOR (not just a 304 gate); (c) the single-process shared cache home next to m_idempotentReadCache (one QLocalServer per process → all CC subagents share it). Reuses etagFor=hex16(sha256) (claudeintegration.cpp:11309), applyEtagPattern (:11316), the offload/spill sha256 content-store (mcpspill.cpp).
+  THREE ADAPTERS (only the KEYING differs): 3544 codebase_index per-file sub-etag — NEARLY FREE, serve() already computes StaleSet{changed,added,removed} (codebaseindex.h:75, .cpp:646) and throws it away; expose it gated on caller's prior etag = flagship, build first. 3546 server-side auto-304 — add m_emittedHashLru sibling to m_idempotentReadCache, populated on offloadBody spill, return {unchanged:true,handle} on byte-identical repetition (not size); reuses spill re-fetch. 3534 append-verb delta — per-corpus cursor: feedback ALREADY has a line watermark (feedbackfile.cpp:1066, easy), changelog has dated-section boundaries (easy), roadmap is HARD (position-is-priority reordering + status-flips mutate ABOVE any tail watermark → needs per-entry sub-hashing, converging with 3544's per-file approach). Recommend phasing 3544 → 3546 → 3534(feedback/changelog first, roadmap sub-hash last or defer).
+  Conflicts: 3546 (byte-identical repetition) and 3534 (grew-by-a-little) are orthogonal/complementary, both beat plain etag-304. 3534 body's own open Qs: etag→offset map, in-place edits above watermark, 100ms TTL interaction, worth-it-below-offload-threshold.
+  **Layman:** When you ask the app for the same big list again and only a little changed, today it re-sends the whole thing; this builds the shared plumbing so it can send just "here's what changed since last time" — used by three features that all waste tokens re-sending unchanged data.
+  Kind: implement.
+  Source: in-session-2026-07-19 (ANTS-3543 follow-on; user asked to design the caching trio jointly).
+
 ### 🎨 At-a-glance build-version surface (user request 2026-05-14)
 
 - ✅ [ANTS-1323] **`v0.7.92 · 2026-05-14 08:48` build-badge on
