@@ -504,7 +504,11 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
             static_cast<qint64>(monthly.value(curMonth).toDouble(0)) + sessionSaved;
         const qint64 ytd = TokenUsageEngine::sumYear(monthly, curYear) + sessionSaved;
         const qint64 life = cfg.claudeTokensSavedLifetime() + sessionSaved;
-        QString tip = tr("This session: %1 · This month: %2 · This year: %3 · "
+        // Vertical layout (one stat per line) — magnifier users can't read a
+        // single long horizontal line (ANTS-3572 follow-up, user request).
+        QString tip = tr("This session: %1\n"
+                         "This month: %2\n"
+                         "This year: %3\n"
                          "All-time: %4 saved")
                           .arg(TokenUsageEngine::humanizeCount(sessionSaved),
                                TokenUsageEngine::humanizeCount(month),
@@ -520,7 +524,7 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
         const qint64 failedTokens =
             m_integration->tokenUsageReport(false).totalFailedBytes / 4;
         if (failedTokens > 0)
-            tip += tr(" · net of %1 wasted on failed calls")
+            tip += tr("\nnet of %1 wasted on failed calls")
                        .arg(TokenUsageEngine::humanizeCount(failedTokens));
         m_tokensSavedChip->setToolTip(tip);
         m_tokensSavedChip->setAccessibleDescription(tip);
