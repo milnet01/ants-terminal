@@ -360,6 +360,10 @@ struct AssignTarget {
                               // ("ANTS-1525, ANTS-1526" or "n/a — <reason>" / "n/a")
     bool    isClosure = false;// wrapper sets true when `value` is an n/a closure
                               // (informational; not load-bearing in the helper)
+    QString note;             // ANTS-3571 — optional single-line closure note;
+                              // written as a `- **Note:**` bullet under the id
+                              // line (wrapper folds newlines to spaces). Empty
+                              // ⟹ no note bullet touched.
 };
 
 struct AssignResult {
@@ -368,7 +372,8 @@ struct AssignResult {
     int     line = -1;        // 1-based `### ` heading line in the ORIGINAL file
     QString value;            // the id-line value written (echoes target.value)
     bool    inserted = false; // true ⟹ the finding had no id line (inserted)
-    bool    changed = false;  // false ⟹ the line already held `value` (no-op)
+    bool    changed = false;  // false ⟹ file byte-identical (id AND note no-op)
+    bool    noteWritten = false; // ANTS-3571 — a note bullet was rendered
     long    bytesDelta = 0;   // signed size change
     QString code;             // "" on success; else target_not_found /
                               // target_ambiguous

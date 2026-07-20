@@ -13029,12 +13029,24 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         const QString content = QString::fromUtf8(rf.readAll());
         rf.close();
 
+        // ANTS-3571 — the documented `note` was silently ignored. Fold any
+        // newline / control char to a space (the finding block is one bullet
+        // per line) and trim; an empty result leaves the note bullet untouched.
+        QString note = req.value(QStringLiteral("note")).toString();
+        {
+            static const QRegularExpression noteCtrlRe(
+                QStringLiteral("[\\x00-\\x1F]"));
+            note.replace(noteCtrlRe, QStringLiteral(" "));
+            note = note.trimmed();
+        }
+
         FeedbackFile::AssignTarget tgt;
         tgt.heading     = heading;
         tgt.headingLine =
             req.value(QStringLiteral("heading_line")).toInt(-1);
         tgt.value       = value;
         tgt.isClosure   = hasClosure;
+        tgt.note        = note;
         const FeedbackFile::AssignResult ar =
             FeedbackFile::assignId(content, tgt);
 
@@ -13094,6 +13106,9 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         out[QStringLiteral("value")]       = ar.value;
         out[QStringLiteral("inserted")]    = ar.inserted;
         out[QStringLiteral("changed")]     = ar.changed;
+        // ANTS-3571 — echo whether a note bullet was rendered so the caller
+        // can confirm the note landed (only when a note was supplied).
+        if (ar.noteWritten) out[QStringLiteral("note_written")] = true;
         out[QStringLiteral("bytes_delta")] =
             static_cast<qint64>(ar.bytesDelta);
         if (derived) out[QStringLiteral("path_derived")] = true;  // ANTS-3376

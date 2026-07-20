@@ -62,6 +62,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **feedback_log op:assign_id now honours its documented `note` param (ANTS-3571)**
+  assign_id{ids|closure, note} silently dropped the note — it was never
+  read from the request. It now renders as a single `- **Note:** <note>`
+  bullet under the finding's Proposed ID line (newlines folded to spaces),
+  replaced in place on re-assign so the write stays idempotent; the
+  envelope echoes note_written:true.
+
 - **roadmap_query: prose/ID-less roadmaps now warn on every status filter, not just `status:all` (ANTS-3583)**
   A status-filtered query (planned/in-progress/considered) against a
   roadmap with zero [PROJ-NNNN]-tagged bullets returned a bare count:0

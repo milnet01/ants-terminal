@@ -1270,32 +1270,55 @@ AssignResult assignId(const QString &content, const AssignTarget &target) {
         QStringLiteral("- **Proposed ID:** ") + target.value;
 
     QStringList outLines = lines;
+    int idPos = -1;   // final index of the id line in outLines
     if (fb.idLine0 >= 0) {
         // Replace the finding's FIRST `**Proposed ID:**` line in place (any
-        // stray second one is left as-is).
+        // stray second one is left as-is). A byte-identical assignment is a
+        // harmless no-op here; the overall `changed` flag is decided by the
+        // final content comparison below so a note-only change still commits.
         res.inserted = false;
-        if (lines.at(fb.idLine0) == canonical) {
-            // Byte-identical no-op — skip the write so the mtime/ETag is
-            // untouched (idempotency, §2.5 / INV-6/8).
-            res.changed = false;
-            res.newContent = content;
-            return res;
-        }
         outLines[fb.idLine0] = canonical;
-        res.changed = true;
+        idPos = fb.idLine0;
     } else {
         // No id line — insert as the first body bullet: directly under the
         // heading, or after a single blank line following it (preserve the
         // heading → blank → bullets layout, parity with migrate_v2 § 2.2 pass 2).
         // No finding-shaped gate: the maintainer named this block explicitly.
         res.inserted = true;
-        res.changed  = true;
         int at0 = fb.headingLine0 + 1;
         if (at0 < lines.size() && lines.at(at0).trimmed().isEmpty()) ++at0;
         outLines.insert(at0, canonical);
+        idPos = at0;
+    }
+
+    // ANTS-3571 — the documented `note` param was silently dropped. Render it
+    // as a single `- **Note:** <note>` bullet directly under the Proposed ID
+    // line (the wrapper folds newlines to spaces, so it stays one line).
+    // Replace an existing note bullet in the SAME finding rather than append,
+    // so a re-assign with the same id+note is a byte-identical no-op (INV-8).
+    if (!target.note.isEmpty()) {
+        const QString canonNote =
+            QStringLiteral("- **Note:** ") + target.note;
+        static const QRegularExpression noteRe(
+            QStringLiteral("^- \\*\\*note:\\*\\*"),
+            QRegularExpression::CaseInsensitiveOption);
+        const int shift   = res.inserted ? 1 : 0;  // an id insert shifted the tail
+        const int bodyEnd = fb.extentEnd0 + shift;  // exclusive, outLines coords
+        int noteLine = -1;
+        for (int li = fb.headingLine0 + 1;
+             li < bodyEnd && li < outLines.size(); ++li) {
+            if (li == idPos) continue;              // never the id line
+            if (noteRe.match(outLines.at(li)).hasMatch()) { noteLine = li; break; }
+        }
+        if (noteLine >= 0) outLines[noteLine] = canonNote;   // replace in place
+        else               outLines.insert(idPos + 1, canonNote);
+        res.noteWritten = true;
     }
 
     res.newContent = outLines.join(QLatin1Char('\n'));
+    // INV-8 idempotency spans BOTH the id line and the note bullet: `changed`
+    // is the final byte comparison, so an unchanged file skips the write.
+    res.changed    = (res.newContent != content);
     res.bytesDelta = static_cast<long>(res.newContent.toUtf8().size())
                    - static_cast<long>(content.toUtf8().size());
     return res;

@@ -4434,7 +4434,11 @@ void ClaudeIntegration::onMcpConnection() {
                             "Optional finding heading level, default h2.");
                     QJsonObject noteProp; noteProp["type"] = "string";
                         noteProp["description"] = QStringLiteral(
-                            "Optional prose under the heading (both ops).");
+                            "Optional prose under the heading (append_finding / "
+                            "append_tracking). ANTS-3571 — on assign_id it is "
+                            "written as a single `- **Note:**` bullet under the "
+                            "finding's Proposed ID line (newlines folded to "
+                            "spaces; re-assign replaces it in place).");
                     QJsonObject findingsProp; findingsProp["type"] = "array";
                         { QJsonObject it; it["type"] = "object";
                           QJsonObject fp;
