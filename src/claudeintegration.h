@@ -355,6 +355,17 @@ public:
                                 wrapBytes, durationUs, success);
     }
 
+    // ANTS-3579 — per-project session saved-BYTES (divided to tokens at display /
+    // fold). sessionSavedBytesForProject returns 0 for an unknown root;
+    // sessionSavedBytesByProject is the whole-map snapshot MainWindow's fold
+    // iterates (the live map is private). See docs/specs/ANTS-3579.md § 2.1/2.3.
+    qint64 sessionSavedBytesForProject(const QString &root) const {
+        return m_sessionSavedBytesByProject.value(root, 0);
+    }
+    QHash<QString, qint64> sessionSavedBytesByProject() const {
+        return m_sessionSavedBytesByProject;
+    }
+
     // ANTS-1294 — frame user-supplied MCP content as data. Wraps a
     // tools/call response payload in <ants_mcp_data tool="..."> so
     // a consuming model can syntactically distinguish "data the
@@ -564,6 +575,15 @@ private:
     // ANTS-1284 — per-tool MCP dispatch byte counters. Resets on
     // MCP `initialize` and on explicit token_usage(reset:true).
     TokenUsageEngine::Tracker m_tokenUsage;
+
+    // ANTS-3579 — per-project session accumulator + LRU touch-seq + a bounded
+    // caller_cwd→root canonicalisation memo (perf, § 6). All capped at
+    // kMaxTokenProjects and cleared AFTER the fold in endTokenSession (INV-12).
+    QHash<QString, qint64>  m_sessionSavedBytesByProject;  // canonicalRoot → bytes
+    QHash<QString, quint64> m_projectTouchSeq;             // canonicalRoot → last touch
+    QHash<QString, QString> m_callerCwdRootMemo;           // caller_cwd → canonicalRoot
+    quint64                 m_projectTouchCounter = 0;
+    static constexpr int    kMaxTokenProjects = 64;
 
     // ANTS-1399 — snapshot of the last `tools/list` array build,
     // populated at the end of the `tools/list` handler. `tool_info`

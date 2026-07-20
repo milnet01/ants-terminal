@@ -102,11 +102,13 @@ TEST(TokensSavedChip, VisibilityGuardsAndPlacement) {
     const std::string cpp =
         ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
     EXPECT_TRUE(has(cpp, "claudeTokensSavedChipEnabled()"))
-        << "update slot must gate on the enabled flag (INV-11)";
-    EXPECT_TRUE(has(cpp, "sessionSaved <= 0"))
-        << "update slot must hide when the session total is 0 (INV-5)";
+        << "render must gate on the enabled flag (INV-11)";
+    // ANTS-3579 — the visibility guard is now per-project stored+session
+    // (refreshTokensSavedChip), superseding the old global `sessionSaved <= 0`.
+    EXPECT_TRUE(has(cpp, "storedLife + sessionTokens <= 0"))
+        << "render must hide when the focused project's stored+session is 0";
     EXPECT_TRUE(has(cpp, "m_tokensSavedChip->hide()"))
-        << "update slot must have a hide() path";
+        << "render must have a hide() path";
     const auto ctx  = cpp.find("addPermanentWidget(m_contextBar)");
     const auto chip = cpp.find("addPermanentWidget(m_tokensSavedChip)");
     ASSERT_NE(ctx,  std::string::npos);

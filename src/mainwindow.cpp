@@ -5775,18 +5775,45 @@ void MainWindow::closeEvent(QCloseEvent *event) {
 // (INV-7); idempotent — a 0-total (repeat) call is a no-op (INV-2).
 void MainWindow::foldTokenSavingsIntoConfig() {
     if (!m_claudeIntegration) return;
+    const QString month = QDate::currentDate().toString("yyyy-MM");
+    bool dirty = false;
+    // ANTS-3572 — global fold (unchanged): runs FIRST, only when the session
+    // saved something globally (INV-4).
     const qint64 s =
         m_claudeIntegration->tokenUsageReport(/*includeZero=*/false).totalSaved;
-    if (s <= 0) return;
-    const QString month = QDate::currentDate().toString("yyyy-MM");
-    m_config.setClaudeTokensSavedMonthly(TokenUsageEngine::foldMonthlyBucket(
-        m_config.claudeTokensSavedMonthly(), month, s, /*keepMonths=*/24));
-    m_config.setClaudeTokensSavedLifetime(
-        m_config.claudeTokensSavedLifetime() + s);
-    if (m_config.claudeTokensSavedSince().isEmpty())
-        m_config.setClaudeTokensSavedSince(
-            QDate::currentDate().toString(Qt::ISODate));
-    m_config.save();  // single write after the three store-only setters (INV-7)
+    if (s > 0) {
+        m_config.setClaudeTokensSavedMonthly(TokenUsageEngine::foldMonthlyBucket(
+            m_config.claudeTokensSavedMonthly(), month, s, /*keepMonths=*/24));
+        m_config.setClaudeTokensSavedLifetime(
+            m_config.claudeTokensSavedLifetime() + s);
+        if (m_config.claudeTokensSavedSince().isEmpty())
+            m_config.setClaudeTokensSavedSince(
+                QDate::currentDate().toString(Qt::ISODate));
+        dirty = true;
+    }
+    // ANTS-3579 — per-project fold: snapshot the live bytes map, convert to
+    // tokens, fold each root (threading the accumulator), then ONE prune pass
+    // (M-2). Independent of the global aggregate; shares the single save below.
+    const QHash<QString, qint64> byProj =
+        m_claudeIntegration->sessionSavedBytesByProject();
+    if (!byProj.isEmpty()) {
+        QJsonObject bp = m_config.claudeTokensSavedByProject();
+        const QString nowIso = QDateTime::currentDateTime().toString(Qt::ISODate);
+        bool folded = false;
+        for (auto it = byProj.constBegin(); it != byProj.constEnd(); ++it) {
+            const qint64 tokens = it.value() / TokenUsageEngine::kCharsPerToken;
+            if (tokens <= 0) continue;
+            bp = TokenUsageEngine::foldProjectBucket(
+                bp, it.key(), tokens, month, nowIso, /*keepMonths=*/24);
+            folded = true;
+        }
+        if (folded) {
+            bp = TokenUsageEngine::pruneProjectBuckets(bp, /*keepProjects=*/64);
+            m_config.setClaudeTokensSavedByProject(bp);
+            dirty = true;
+        }
+    }
+    if (dirty) m_config.save();  // single write, global + per-project (INV-6)
 }
 
 // ANTS-3572 — assemble the tokens-saved summary for the token_usage MCP verb.
@@ -5910,6 +5937,8 @@ void MainWindow::refreshStatusBarForActiveTab() {
         if (m_roadmapBtn) m_roadmapBtn->hide();
         m_roadmapPath.clear();
         if (m_repoVisibilityLabel) m_repoVisibilityLabel->hide();
+        if (m_claudeStatusBarController)  // ANTS-3579 — no tab → hide the pill
+            m_claudeStatusBarController->refreshTokensSavedChip();
         return;
     }
 
@@ -5941,6 +5970,10 @@ void MainWindow::refreshStatusBarForActiveTab() {
         m_claudeStatusBarController->refreshBgTasksButton();
     refreshRoadmapButton();
     refreshRepoVisibility();
+    // ANTS-3579 (INV-7) — re-scope the tokens-saved pill to the new tab's
+    // project, so a tab switch shows that project's savings with no MCP call.
+    if (m_claudeStatusBarController)
+        m_claudeStatusBarController->refreshTokensSavedChip();
 
     // ANTS-1851 — if the tab we just switched TO owns a still-pending
     // permission prompt, re-paint its bottom-bar Allow/Deny buttons (the

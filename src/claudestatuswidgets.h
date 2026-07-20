@@ -105,6 +105,10 @@ public:
     // undetectable. Reuses ModelRecommender::tierFromModelId +
     // thinkingLevelFromLatestUserTurn.
     void refreshModelStateChip();
+    // ANTS-3579 — render the tokens-saved pill for the FOCUSED tab's project.
+    // Called from the tokensSavedUpdated nudge AND MainWindow::
+    // refreshStatusBarForActiveTab() on a tab switch (INV-7).
+    void refreshTokensSavedChip();
 
     // ANTS-1735 §2.3 — autonomous switcher tick. Reads the focused
     // tab's tracker entry, builds a ModelAutoSwitch::Gate, calls

@@ -545,6 +545,12 @@ QString Config::claudeTokensSavedSince() const {
 void Config::setClaudeTokensSavedSince(const QString &isoDate) {
     storeIfChanged("claude.tokens_saved_since", isoDate);     // no save() — INV-7
 }
+QJsonObject Config::claudeTokensSavedByProject() const {          // ANTS-3579
+    return m_data.value("claude.tokens_saved_by_project").toObject();
+}
+void Config::setClaudeTokensSavedByProject(const QJsonObject &byProject) {
+    storeIfChanged("claude.tokens_saved_by_project", byProject); // no save() — INV-6
+}
 bool Config::claudeTokensSavedChipEnabled() const {
     return m_data.value("claude.tokens_saved_chip_enabled").toBool(true);
 }

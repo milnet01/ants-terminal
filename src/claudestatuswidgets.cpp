@@ -485,58 +485,12 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
     // ANTS-3572 — tokens-saved pill. Face = live session (humanized); tooltip
     // adds this-month / this-year / all-time from the persisted aggregate.
     // Hidden when the feature is off or nothing was saved this session.
+    // ANTS-3579 — a dispatch is only a NUDGE; the render reads the FOCUSED
+    // project (§ 2.2), not the signal arg. refreshTokensSavedChip() is the named
+    // method MainWindow::refreshStatusBarForActiveTab() also calls on a tab
+    // switch (INV-7), so the pill re-scopes to whichever project's tab is active.
     connect(m_integration, &ClaudeIntegration::tokensSavedUpdated,
-            this, [this](qint64 sessionSaved) {
-        const Config &cfg = cachedConfig();
-        if (!cfg.claudeTokensSavedChipEnabled() || sessionSaved <= 0) {
-            m_tokensSavedChip->hide();
-            return;
-        }
-        m_tokensSavedChip->setText(
-            QStringLiteral("↓ %1 saved")
-                .arg(TokenUsageEngine::humanizeCount(sessionSaved)));
-        const QJsonObject monthly = cfg.claudeTokensSavedMonthly();
-        const QString curMonth =
-            QDate::currentDate().toString(QStringLiteral("yyyy-MM"));
-        const QString curYear =
-            QDate::currentDate().toString(QStringLiteral("yyyy"));
-        const qint64 month =
-            static_cast<qint64>(monthly.value(curMonth).toDouble(0)) + sessionSaved;
-        const qint64 ytd = TokenUsageEngine::sumYear(monthly, curYear) + sessionSaved;
-        const qint64 life = cfg.claudeTokensSavedLifetime() + sessionSaved;
-        // Vertical layout (one stat per line) — magnifier users can't read a
-        // single long horizontal line (ANTS-3572 follow-up, user request).
-        QString tip = tr("This session: %1\n"
-                         "This month: %2\n"
-                         "This year: %3\n"
-                         "All-time: %4 saved")
-                          .arg(TokenUsageEngine::humanizeCount(sessionSaved),
-                               TokenUsageEngine::humanizeCount(month),
-                               TokenUsageEngine::humanizeCount(ytd),
-                               TokenUsageEngine::humanizeCount(life));
-        const QString since = cfg.claudeTokensSavedSince();
-        if (!since.isEmpty()) {
-            const QDate d = QDate::fromString(since, Qt::ISODate);
-            if (d.isValid())
-                tip += tr(" (since %1)")
-                           .arg(d.toString(QStringLiteral("d MMM yyyy")));
-        }
-        const qint64 failedTokens =
-            m_integration->tokenUsageReport(false).totalFailedBytes / 4;
-        if (failedTokens > 0)
-            tip += tr("\nnet of %1 wasted on failed calls")
-                       .arg(TokenUsageEngine::humanizeCount(failedTokens));
-        m_tokensSavedChip->setToolTip(tip);
-        m_tokensSavedChip->setAccessibleDescription(tip);
-        const Theme &th = Themes::byName(m_currentThemeName);
-        m_tokensSavedChip->setStyleSheet(
-            QStringLiteral("QLabel { border: 1px solid %1; border-radius: 3px; "
-                           "background: %2; color: %3; padding: 0px 4px; "
-                           "font-size: 10px; }")
-                .arg(th.border.name(), th.bgSecondary.name(),
-                     th.textPrimary.name()));
-        m_tokensSavedChip->show();
-    });
+            this, [this](qint64) { refreshTokensSavedChip(); });
 
     connect(m_integration, &ClaudeIntegration::fileChanged,
             this, [this](const QString &path) {
@@ -1368,6 +1322,94 @@ void ClaudeStatusBarController::apply() {
 
 // ANTS-1226 — Passive model-tier recommender chip.
 // Reads the last 20 assistant turns from the active session's
+// ANTS-3579 — render the tokens-saved pill for the FOCUSED tab's project.
+// Called from the tokensSavedUpdated nudge AND MainWindow::
+// refreshStatusBarForActiveTab() (tab switch, INV-7). See docs/specs/ANTS-3579.md.
+void ClaudeStatusBarController::refreshTokensSavedChip()
+{
+    const Config &cfg = cachedConfig();
+    if (!cfg.claudeTokensSavedChipEnabled()) { m_tokensSavedChip->hide(); return; }
+
+    // Focused project root — same static canonicalisation the attribution uses
+    // (INV-11); reached via the provider, not a MainWindow method (M2).
+    QString root;
+    if (m_focusedTerminalProvider) {
+        if (TerminalWidget *t = m_focusedTerminalProvider()) {
+            const QString cwd = t->shellCwd();
+            if (!cwd.isEmpty()) root = QFileInfo(cwd).canonicalFilePath();
+        }
+    }
+
+    // Live session (bytes→tokens, divided ONCE here) + persisted bucket.
+    const qint64 sessionTokens = root.isEmpty()
+        ? 0
+        : m_integration->sessionSavedBytesForProject(root)
+              / TokenUsageEngine::kCharsPerToken;
+    const QJsonObject bucket = root.isEmpty()
+        ? QJsonObject()
+        : cfg.claudeTokensSavedByProject().value(root).toObject();
+    const qint64 storedLife =
+        static_cast<qint64>(bucket.value(QStringLiteral("lifetime")).toDouble(0));
+
+    // Visibility: stored + session (H-1) — a project with history shows on switch.
+    if (storedLife + sessionTokens <= 0) { m_tokensSavedChip->hide(); return; }
+
+    // Face: session when > 0, else all-time (never "↓ 0 saved").
+    const qint64 faceTokens = sessionTokens > 0 ? sessionTokens : storedLife;
+    m_tokensSavedChip->setText(
+        QStringLiteral("↓ %1 saved")
+            .arg(TokenUsageEngine::humanizeCount(faceTokens)));
+
+    // Per-project periods = stored + this project's live session.
+    const QJsonObject monthly = bucket.value(QStringLiteral("monthly")).toObject();
+    const QString curMonth = QDate::currentDate().toString(QStringLiteral("yyyy-MM"));
+    const QString curYear  = QDate::currentDate().toString(QStringLiteral("yyyy"));
+    const qint64 month =
+        static_cast<qint64>(monthly.value(curMonth).toDouble(0)) + sessionTokens;
+    const qint64 ytd  = TokenUsageEngine::sumYear(monthly, curYear) + sessionTokens;
+    const qint64 life = storedLife + sessionTokens;
+
+    QString allTime = tr("All-time: %1 saved (this project")
+                          .arg(TokenUsageEngine::humanizeCount(life));
+    const QString since = bucket.value(QStringLiteral("since")).toString();
+    if (!since.isEmpty()) {
+        const QDate d = QDate::fromString(since, Qt::ISODate);
+        if (d.isValid())
+            allTime += tr(", since %1").arg(d.toString(QStringLiteral("d MMM yyyy")));
+    }
+    allTime += QStringLiteral(")");
+
+    // "All projects" line = the untouched global aggregate + global live session
+    // (M-c) — NOT a sum of the per-project buckets (INV-4).
+    const qint64 globalSession = m_integration->tokenUsageReport(false).totalSaved;
+    const qint64 globalLife = cfg.claudeTokensSavedLifetime() + globalSession;
+
+    QString tip = tr("This session: %1\n"
+                     "This month: %2\n"
+                     "This year: %3\n"
+                     "%4")
+                      .arg(TokenUsageEngine::humanizeCount(sessionTokens),
+                           TokenUsageEngine::humanizeCount(month),
+                           TokenUsageEngine::humanizeCount(ytd),
+                           allTime);
+    tip += QLatin1Char('\n') + QString(5, QChar(0x2500))  // ───── separator
+         + QLatin1Char('\n')
+         + tr("All projects: %1")
+               .arg(TokenUsageEngine::humanizeCount(globalLife));
+
+    m_tokensSavedChip->setToolTip(tip);
+    m_tokensSavedChip->setAccessibleName(tr("MCP tokens saved — current project"));
+    m_tokensSavedChip->setAccessibleDescription(tip);
+    const Theme &th = Themes::byName(m_currentThemeName);
+    m_tokensSavedChip->setStyleSheet(
+        QStringLiteral("QLabel { border: 1px solid %1; border-radius: 3px; "
+                       "background: %2; color: %3; padding: 0px 4px; "
+                       "font-size: 10px; }")
+            .arg(th.border.name(), th.bgSecondary.name(),
+                 th.textPrimary.name()));
+    m_tokensSavedChip->show();
+}
+
 // transcript, scores complexity, and shows a chip when the
 // recommendation differs from the current model in use.
 void ClaudeStatusBarController::refreshModelChip()

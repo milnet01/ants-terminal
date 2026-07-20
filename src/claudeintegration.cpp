@@ -1465,6 +1465,50 @@ void ClaudeIntegration::recordDispatch(
              static_cast<long long>(wrapBytes),
              static_cast<long long>(durUs),
              cachedHit ? "yes" : "no");
+    // ANTS-3579 — attribute this call's saved BYTES to its project. Grouped with
+    // the tokens-saved emit below (both are the pill's concern). The key is the
+    // canonicalised caller_cwd (no MainWindow — QFileInfo::canonicalFilePath is
+    // static), memoised in a bounded map (§ 6). Empty/nonexistent dir → drop
+    // (still counted globally). Success-only; per-call floor at 0 (INV-1).
+    if (succeeded) {
+        const QString cwd = argsObj.value(QStringLiteral("caller_cwd")).toString();
+        if (!cwd.isEmpty()) {
+            QString root = m_callerCwdRootMemo.value(cwd);
+            if (root.isEmpty()) {
+                root = QFileInfo(cwd).canonicalFilePath();
+                if (!root.isEmpty()) {
+                    if (m_callerCwdRootMemo.size() >= kMaxTokenProjects)
+                        m_callerCwdRootMemo.clear();   // bounded memo (§ 6)
+                    m_callerCwdRootMemo.insert(cwd, root);
+                }
+            }
+            if (!root.isEmpty()) {
+                const qint64 rawSaved =
+                    TokenUsageEngine::Tracker::baselineFor(toolName)
+                        - (argBytes + outBytes);
+                const qint64 saved = rawSaved > 0 ? rawSaved : 0;
+                // Cap the live map: evict the least-recently-touched root before
+                // admitting a new one (INV-5b, "oldest wins").
+                if (!m_sessionSavedBytesByProject.contains(root) &&
+                    m_sessionSavedBytesByProject.size() >= kMaxTokenProjects) {
+                    QString victim;
+                    quint64 oldest = 0;
+                    bool have = false;
+                    for (auto it = m_projectTouchSeq.constBegin();
+                         it != m_projectTouchSeq.constEnd(); ++it)
+                        if (!have || it.value() < oldest) {
+                            oldest = it.value(); victim = it.key(); have = true;
+                        }
+                    if (!victim.isEmpty()) {
+                        m_sessionSavedBytesByProject.remove(victim);
+                        m_projectTouchSeq.remove(victim);
+                    }
+                }
+                m_sessionSavedBytesByProject[root] += saved;
+                m_projectTouchSeq[root] = ++m_projectTouchCounter;
+            }
+        }
+    }
     // ANTS-3572 — drive the tokens-saved chip from the single dispatch hook.
     emit tokensSavedUpdated(m_tokenUsage.buildReport(false).totalSaved);
 }
@@ -1475,6 +1519,13 @@ void ClaudeIntegration::endTokenSession() {
     // snapshots the intact session total; then clear; then blank the chip.
     emit tokenSessionEnding();
     m_tokenUsage.reset();
+    // ANTS-3579 (INV-12) — clear the per-project live maps AFTER the fold above
+    // has snapshotted them (the fold runs synchronously inside the emit); never
+    // before, or the fold would see an empty map (silent per-project loss).
+    m_sessionSavedBytesByProject.clear();
+    m_projectTouchSeq.clear();
+    m_callerCwdRootMemo.clear();
+    m_projectTouchCounter = 0;
     emit tokensSavedUpdated(0);
 }
 

@@ -190,6 +190,11 @@ public:
     void        setClaudeTokensSavedSince(const QString &isoDate);
     bool        claudeTokensSavedChipEnabled() const;         // default true
     void        setClaudeTokensSavedChipEnabled(bool enabled);
+    // ANTS-3579 — per-project tokens-saved store: {"<canonicalRoot>": {monthly,
+    // lifetime, since, updated}}. Store-only (folded behind MainWindow's single
+    // save(), INV-6). See docs/specs/ANTS-3579.md § 2.3.
+    QJsonObject claudeTokensSavedByProject() const;
+    void        setClaudeTokensSavedByProject(const QJsonObject &byProject);
 
     // ANTS-1863 — persist the Tools → Debug Mode category bit-mask across
     // relaunch. The runtime mask (DebugLog::active()) otherwise reset to off on

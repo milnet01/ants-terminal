@@ -1569,7 +1569,10 @@ if(ANTS_TESTS)
                 # ANTS-3572 — tokens-saved chip + aggregate wiring source-grep
                 # (needs the mainwindow/claudestatuswidgets/claudeintegration/
                 # remotecontrol SRC_*_PATH defs this bundle already carries).
-                tests/features/tokens_saved_chip/test_tokens_saved_chip.cpp)
+                tests/features/tokens_saved_chip/test_tokens_saved_chip.cpp
+                # ANTS-3579 — per-project pill wiring scrapes (recordDispatch /
+                # widget / mainwindow fold + tab refresh).
+                tests/features/tokens_saved_by_project/test_tokens_saved_by_project_wiring.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.

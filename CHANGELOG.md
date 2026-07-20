@@ -40,6 +40,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **The status-bar "tokens saved" badge is now scoped to the current project instead of a global all-projects total.** (ANTS-3579)
+  The pill shows the savings for the project of the tab you're looking at — its live-session number on the face, this-month/year/all-time in the tooltip — and switching tabs re-scopes it. A separate "All projects" tooltip line preserves the previous global total. Savings are attributed per Claude Code call's project folder; the per-project store is bounded (64 projects, LRU). Switching to a tab for a project you have history for (but haven't used this session) shows that project's all-time.
+
 - **changelog_query entries[] auto-downshifts to the lean headline_only shape when a page would truncate, keeping the whole tail (mirrors roadmap_query).** (ANTS-3576)
   When a full-detail entries page overflows the soft cap, the server projects every entry to {version, category, ids, text_oneline} and re-pages so nothing is silently dropped; the response then carries downshifted:true. Opt out with an explicit limit or include_body.
 
