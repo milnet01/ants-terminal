@@ -109,12 +109,18 @@ TEST(workspace_search_payload_knobs, Inv4DedupKeyUnaffectedByClip) {
     // The dedup loop normalises the matched text via QString
     // ::simplified() before keying. Look for the call form used by
     // the current code at cmdWorkspaceSearch's dedup branch.
-    const auto dedupPos = cpp.find(".toString().simplified()");
+    // Scope the position anchors to the cmdWorkspaceSearch body: the
+    // `.toString().simplified()` idiom recurs in other functions (e.g.
+    // rcProjectChangelogHeadlineOnly, ANTS-3576), so a whole-file find()
+    // would match an unrelated earlier occurrence and test the wrong thing.
+    const std::string ws =
+        ants_test::slurpFunctionBody(cpp, "RemoteControl::cmdWorkspaceSearch");
+    const auto dedupPos = ws.find(".toString().simplified()");
     // The CLIP-INVOCATION site (not the arg parse) — the call to
     // `rcClipMatchTextFields(matches, ...)`. The arg parse must
     // happen earlier (before the rg launch) but the clip itself
     // must run AFTER the dedup loop.
-    const auto clipCallPos = cpp.find("rcClipMatchTextFields(matches");
+    const auto clipCallPos = ws.find("rcClipMatchTextFields(matches");
     expect(dedupPos != std::string::npos,
            "INV-4: dedup site (text.simplified()) present");
     expect(clipCallPos != std::string::npos,
@@ -218,8 +224,12 @@ TEST(workspace_search_payload_knobs, Inv9CountOnlyEnvelopeShape) {
     // The count_only branch must sit BEFORE the dedup loop so matches[]
     // is never serialised (rows-eliminated). Anchor on the branch guard
     // preceding the dedup site.
-    const auto branchPos = cpp.find("if (countOnly) {");
-    const auto dedupPos  = cpp.find(".toString().simplified()");
+    // Scope to the cmdWorkspaceSearch body (see INV-4) so the dedup anchor
+    // can't match an earlier `.toString().simplified()` in another function.
+    const std::string ws =
+        ants_test::slurpFunctionBody(cpp, "RemoteControl::cmdWorkspaceSearch");
+    const auto branchPos = ws.find("if (countOnly) {");
+    const auto dedupPos  = ws.find(".toString().simplified()");
     expect(branchPos != std::string::npos,
            "INV-9: count_only early-return branch present");
     if (branchPos != std::string::npos && dedupPos != std::string::npos) {
@@ -272,8 +282,12 @@ TEST(workspace_search_payload_knobs, Inv13FilesOnlyEnvelopeShape) {
     // The files_only branch must sit BEFORE the dedup loop so matches[]
     // is never serialised (rows-eliminated). Anchor on the branch guard
     // preceding the dedup site.
-    const auto branchPos = cpp.find("if (filesOnly) {");
-    const auto dedupPos  = cpp.find(".toString().simplified()");
+    // Scope to the cmdWorkspaceSearch body (see INV-4) so the dedup anchor
+    // can't match an earlier `.toString().simplified()` in another function.
+    const std::string ws =
+        ants_test::slurpFunctionBody(cpp, "RemoteControl::cmdWorkspaceSearch");
+    const auto branchPos = ws.find("if (filesOnly) {");
+    const auto dedupPos  = ws.find(".toString().simplified()");
     expect(branchPos != std::string::npos,
            "INV-13: files_only early-return branch present");
     if (branchPos != std::string::npos && dedupPos != std::string::npos) {
