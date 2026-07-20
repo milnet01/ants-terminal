@@ -1648,10 +1648,12 @@ void ClaudeIntegration::onMcpConnection() {
                 // session compare against `git log` and flag "server predates
                 // commit X" instead of chasing stale telemetry (cf. the
                 // ANTS-1632/1903/1947 stale-binary investigations).
-                serverInfo["build_commit"] = QStringLiteral(ANTS_BUILD_COMMIT);
-                serverInfo["build_date"] = QStringLiteral(ANTS_BUILD_DATE);
-                serverInfo["build_time"] = QStringLiteral(ANTS_BUILD_TIME);
-                serverInfo["build_type"] = QStringLiteral(ANTS_BUILD_TYPE);
+                // ANTS-3582: ANTS_BUILD_* are extern const char[] (build_info_values.cpp),
+                // so read via fromLatin1 — not compile-time literals.
+                serverInfo["build_commit"] = QString::fromLatin1(ANTS_BUILD_COMMIT);
+                serverInfo["build_date"] = QString::fromLatin1(ANTS_BUILD_DATE);
+                serverInfo["build_time"] = QString::fromLatin1(ANTS_BUILD_TIME);
+                serverInfo["build_type"] = QString::fromLatin1(ANTS_BUILD_TYPE);
                 result["protocolVersion"] = "2025-11-25";
                 result["capabilities"] = caps;
                 result["serverInfo"] = serverInfo;
@@ -10435,10 +10437,10 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-1952 — re-surface build identity here too, so a
                         // session that has already handshaked can confirm the
                         // running binary's SHA without re-issuing initialize.
-                        info["server_build_commit"] = QStringLiteral(ANTS_BUILD_COMMIT);
-                        info["server_build_date"] = QStringLiteral(ANTS_BUILD_DATE);
-                        info["server_build_time"] = QStringLiteral(ANTS_BUILD_TIME);
-                        info["server_build_type"] = QStringLiteral(ANTS_BUILD_TYPE);
+                        info["server_build_commit"] = QString::fromLatin1(ANTS_BUILD_COMMIT);  // ANTS-3582: extern arrays
+                        info["server_build_date"] = QString::fromLatin1(ANTS_BUILD_DATE);
+                        info["server_build_time"] = QString::fromLatin1(ANTS_BUILD_TIME);
+                        info["server_build_type"] = QString::fromLatin1(ANTS_BUILD_TYPE);
                         responseText = QString::fromUtf8(
                             QJsonDocument(info).toJson(QJsonDocument::Compact));
                         toolHandled = true;
@@ -10522,10 +10524,10 @@ void ClaudeIntegration::onMcpConnection() {
                                 // separate get_session_info round-trip.
                                 QJsonObject sb;
                                 sb["version"]      = QStringLiteral(ANTS_VERSION);
-                                sb["build_commit"] = QStringLiteral(ANTS_BUILD_COMMIT);
-                                sb["build_date"]   = QStringLiteral(ANTS_BUILD_DATE);
-                                sb["build_time"]   = QStringLiteral(ANTS_BUILD_TIME);
-                                sb["build_type"]   = QStringLiteral(ANTS_BUILD_TYPE);
+                                sb["build_commit"] = QString::fromLatin1(ANTS_BUILD_COMMIT);  // ANTS-3582: extern arrays
+                                sb["build_date"]   = QString::fromLatin1(ANTS_BUILD_DATE);
+                                sb["build_time"]   = QString::fromLatin1(ANTS_BUILD_TIME);
+                                sb["build_type"]   = QString::fromLatin1(ANTS_BUILD_TYPE);
                                 env["server_build"] = sb;
                             }
                         } else if (reqName.isEmpty()) {

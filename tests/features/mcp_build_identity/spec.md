@@ -7,12 +7,15 @@ trap behind the ANTS-1632 / 1903 / 1947 stale-binary investigations,
 where a committed fix sat on disk while the running MCP server was an
 older binary, so investigations chased ghosts.
 
-The build-stamp infrastructure already exists (ANTS-1222 + ANTS-1394):
-`cmake/build_info.h.in` → generated `build/generated/build_info.h`
-defines `ANTS_BUILD_COMMIT` (short git SHA), `ANTS_BUILD_DATE`,
-`ANTS_BUILD_TIME`, `ANTS_BUILD_TYPE`. This feature wires those four
-macros into the MCP `initialize` `serverInfo` object and the
-`get_session_info` control-plane verb.
+The build-stamp infrastructure already exists (ANTS-1222 + ANTS-1394,
+reworked by ANTS-3582): `src/build_info.h` is a stable hand-written header
+declaring `extern const char ANTS_BUILD_COMMIT[]` (short git SHA),
+`ANTS_BUILD_DATE`, `ANTS_BUILD_TIME`, `ANTS_BUILD_TYPE`; the definitions
+live in a generated `build_info_values.cpp` compiled into `ants_core_lib`.
+This feature wires those four symbols into the MCP `initialize`
+`serverInfo` object and the `get_session_info` control-plane verb. Because
+they are runtime arrays (not literals), consumers read them via
+`QString::fromLatin1(ANTS_BUILD_*)`.
 
 ## Test scope
 
@@ -31,9 +34,12 @@ Source-scrape regression locks the wiring so a future refactor of
   `server_build_time` / `server_build_type`, so a session that has
   already handshaked can re-confirm the running SHA without a second
   `initialize`.
-- **INV-4.** `CMakeLists.txt` wires `ants_claude_lib` to the generated
-  header dir and depends on `ants_build_info`, so the include resolves
-  and the stamp refreshes on every build.
+- **INV-4.** (ANTS-3582) `CMakeLists.txt` refreshes the build-info values
+  every build via a file-level `add_custom_command` feeding a generated
+  `build_info_values.cpp` (driven by an `ants_build_info_stamp` target),
+  NOT a target-level `add_dependencies` on an always-run target — the
+  latter forced a full rebuild (reverted attempt 1). `copy_if_different`
+  keeps only `build_info_values.o` dirty.
 
 ## ANTS-2073 — first-read surfaces
 
@@ -54,6 +60,11 @@ a `server_build` block to both.
 - **INV-6.** The `tool_info` catalog branch (`catalogMode`) stamps the
   same `server_build` block, so the once-per-session discovery call
   reveals the running binary's identity.
-- **INV-7.** `CMakeLists.txt` wires `ants_core_lib` (where
-  `remotecontrol.cpp` lives) to the generated header dir and depends on
-  `ants_build_info`.
+- **INV-7.** (ANTS-3582) `build_info_values.cpp` (the extern definitions)
+  compiles into `ants_core_lib` (where `remotecontrol.cpp` lives) with
+  `SKIP_PRECOMPILE_HEADERS`, so the symbols resolve for every consumer that
+  links core and a per-build value change never drags the core PCH.
+- **INV-8.** (ANTS-3582) `src/build_info.h` is the stable extern-declaration
+  header — `ANTS_BUILD_TIME` is an `extern const char[]`, never a
+  `#define` and never a configure template — so the build minute cannot
+  leak back into the preprocessed form the heavy consumers recompile on.

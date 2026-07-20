@@ -15782,10 +15782,13 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
     {
         QJsonObject sb;
         sb[QStringLiteral("version")]      = QStringLiteral(ANTS_VERSION);
-        sb[QStringLiteral("build_commit")] = QStringLiteral(ANTS_BUILD_COMMIT);
-        sb[QStringLiteral("build_date")]   = QStringLiteral(ANTS_BUILD_DATE);
-        sb[QStringLiteral("build_time")]   = QStringLiteral(ANTS_BUILD_TIME);
-        sb[QStringLiteral("build_type")]   = QStringLiteral(ANTS_BUILD_TYPE);
+        // ANTS-3582: ANTS_BUILD_* are extern const char[] (defined in the
+        // generated build_info_values.cpp), so read them via fromLatin1 — they
+        // are not compile-time string literals, so QStringLiteral won't compile.
+        sb[QStringLiteral("build_commit")] = QString::fromLatin1(ANTS_BUILD_COMMIT);
+        sb[QStringLiteral("build_date")]   = QString::fromLatin1(ANTS_BUILD_DATE);
+        sb[QStringLiteral("build_time")]   = QString::fromLatin1(ANTS_BUILD_TIME);
+        sb[QStringLiteral("build_type")]   = QString::fromLatin1(ANTS_BUILD_TYPE);
         // ANTS-2152 — steer the reader away from the version-string trap:
         // the version can be identical across the commit that shipped a fix
         // and the older commit a client is still running (a deploy gap, not
@@ -15815,7 +15818,7 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
     // fixed (build_commit, HEAD), so it does not perturb the dispatch-layer
     // ETag beyond a real HEAD advance.
     {
-        const QString buildCommit = QStringLiteral(ANTS_BUILD_COMMIT);
+        const QString buildCommit = QString::fromLatin1(ANTS_BUILD_COMMIT);  // ANTS-3582: extern array, not a literal
         const QString headSha = QString::fromUtf8(
             runGit(rootCanonical, {QStringLiteral("rev-parse"),
                                    QStringLiteral("HEAD")})).trimmed();

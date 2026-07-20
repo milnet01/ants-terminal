@@ -21,6 +21,9 @@ ANTS_TEST_SCOPE();
 #ifndef SRC_REMOTECONTROL_CPP_PATH
 #error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
 #endif
+#ifndef SRC_BUILD_INFO_H_PATH
+#error "SRC_BUILD_INFO_H_PATH compile definition required"
+#endif
 
 namespace {
 
@@ -42,7 +45,8 @@ std::string between(const std::string &hay, const std::string &from,
 
 }  // namespace
 
-// INV-1 — the generated build_info.h header is included.
+// INV-1 — the build_info.h header is included (ANTS-3582: now a stable
+// hand-written extern-declaration header in src/, not a generated one).
 TEST(mcp_build_identity, Inv1IncludesBuildInfo) {
     expect_reset();
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
@@ -98,21 +102,25 @@ TEST(mcp_build_identity, Inv3SessionInfoResurfacesIdentity) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// INV-4 — CMakeLists wires the generated header dir + build-info
-// dependency onto ants_claude_lib so the include resolves and the
-// stamp refreshes on every build.
-TEST(mcp_build_identity, Inv4CMakeWiresGeneratedHeader) {
+// INV-4 (ANTS-3582) — CMakeLists refreshes the build-info VALUES every build
+// via a file-level custom command feeding a generated build_info_values.cpp,
+// NOT a target-level dependency on an always-run target (which forced a full
+// rebuild — the reverted attempt-1 dead ends). The stamp target drives the
+// per-build refresh; copy_if_different keeps only build_info_values.o dirty.
+TEST(mcp_build_identity, Inv4CMakeRefreshesValuesFileLevel) {
     expect_reset();
     const std::string cml = ants_test::slurpFile(SRC_CMAKELISTS_PATH);
-    const std::string region =
-        between(cml, "add_library(ants_claude_lib", "add_library(ants_audit_lib");
-    ASSERT_FALSE(region.empty())
-        << "INV-4 precondition: ants_claude_lib block not found";
-    expect(contains(region, "target_include_directories(ants_claude_lib") &&
-               contains(region, "generated"),
-           "INV-4: ants_claude_lib gets the build/generated include dir");
-    expect(contains(region, "add_dependencies(ants_claude_lib ants_build_info)"),
-           "INV-4: ants_claude_lib depends on ants_build_info");
+    expect(contains(cml, "add_custom_target(ants_build_info_stamp"),
+           "INV-4: a phony stamp target drives the per-build values refresh");
+    expect(contains(cml, "build_info_values.cpp") &&
+               contains(cml, "GenerateBuildInfoValues.cmake"),
+           "INV-4: build_info_values.cpp is generated via the values script");
+    // The load-bearing negative: the values source must NOT be dragged in by a
+    // target-level dependency on the always-run stamp/generator target.
+    expect(!contains(cml, "add_dependencies(ants_core_lib ants_build_info_stamp)") &&
+               !contains(cml, "add_dependencies(ants_claude_lib ants_build_info"),
+           "INV-4: no target-level add_dependencies on the always-run refresh "
+           "(that forced a full rebuild in the reverted attempt)");
     EXPECT_EQ(0, expect_failures());
 }
 
@@ -153,13 +161,37 @@ TEST(mcp_build_identity, Inv6ToolInfoCatalogStampsServerBuild) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// INV-7 (ANTS-2073) — CMake wires ants_core_lib (remotecontrol.cpp's lib)
-// to the generated header + ants_build_info dependency.
-TEST(mcp_build_identity, Inv7CMakeWiresCoreLib) {
+// INV-7 (ANTS-2073 + ANTS-3582) — build_info_values.cpp (the extern
+// definitions) compiles into ants_core_lib, where remotecontrol.cpp lives, so
+// the symbols resolve for every consumer that links core. SKIP_PRECOMPILE_HEADERS
+// keeps a per-build value change from dragging core's PCH.
+TEST(mcp_build_identity, Inv7CMakeCompilesValuesIntoCoreLib) {
     expect_reset();
     const std::string cml = ants_test::slurpFile(SRC_CMAKELISTS_PATH);
-    expect(contains(cml, "target_include_directories(ants_core_lib") &&
-               contains(cml, "add_dependencies(ants_core_lib ants_build_info)"),
-           "INV-7: ants_core_lib gets generated dir + ants_build_info dep");
+    expect(contains(cml, "target_sources(ants_core_lib") &&
+               contains(cml, "ANTS_BUILD_INFO_VALUES_CPP"),
+           "INV-7: build_info_values.cpp compiles into ants_core_lib");
+    expect(contains(cml, "SKIP_PRECOMPILE_HEADERS"),
+           "INV-7: the generated values TU is PCH-decoupled so a value change "
+           "doesn't rebuild the core PCH");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// INV-8 (ANTS-3582) — churn regression guard. src/build_info.h must be the
+// STABLE extern-declaration header, NOT a macro header that bakes the build
+// minute into the preprocessed form ccache hashes (which recompiled the two
+// ~1 MB consumers on every cross-minute build). A regression back to
+// `#define ANTS_BUILD_TIME "HH:MM"` in the header is what this catches.
+TEST(mcp_build_identity, Inv8BuildInfoHeaderIsStableExternDecls) {
+    expect_reset();
+    const std::string bi = ants_test::slurpFile(SRC_BUILD_INFO_H_PATH);
+    expect(contains(bi, "extern const char ANTS_BUILD_TIME[]"),
+           "INV-8: build_info.h declares ANTS_BUILD_TIME as an extern array");
+    expect(!contains(bi, "#define ANTS_BUILD_TIME"),
+           "INV-8: build_info.h must NOT bake the build minute in as a macro "
+           "(that re-introduces the cross-minute recompile of the heavy TUs)");
+    expect(!contains(bi, "@ANTS_BUILD_TIME@"),
+           "INV-8: build_info.h is hand-written + stable, not a configure "
+           "template (the values live in the generated build_info_values.cpp)");
     EXPECT_EQ(0, expect_failures());
 }

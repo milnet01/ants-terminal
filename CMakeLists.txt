@@ -13,41 +13,67 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_compile_definitions(ANTS_VERSION="${PROJECT_VERSION}")
 
 # ---------------------------------------------------------------------------
-# Build metadata for Help → About (ANTS-1222 + ANTS-1394 build-time refresh)
+# Build metadata for Help → About + MCP server identity
+# (ANTS-1222 + ANTS-1394 + ANTS-3582 value/header decouple)
 # ---------------------------------------------------------------------------
-# Build-time bake: date, time, build type, short git SHA. Surfaced
-# via the generated `build_info.h` (see cmake/build_info.h.in). Only
-# `aboutdialogs.cpp` + `mainwindow.cpp` include this header, so a
-# SHA change recompiles two TUs rather than every TU (vs
-# add_compile_definitions which would invalidate ccache for the
-# whole project on every commit). The compiler ID/version is
-# detected at COMPILE time inside aboutdialogs.cpp via __GNUC__ /
-# __clang_major__, so no CMake plumbing for that.
+# Build-time bake: date, time (HH:MM), build type, short git SHA. Surfaced
+# via src/build_info.h (Help → About build line, and the MCP session_orient /
+# serverInfo stamp). The compiler ID/version is detected at COMPILE time
+# inside aboutdialogs.cpp via __GNUC__ / __clang_major__, so no CMake
+# plumbing for that.
 #
-# ANTS-1394: a custom target ALL invokes cmake/GenerateBuildInfo.cmake
-# on every build (not every configure), so incremental rebuilds
-# advance the timestamp. configure_file's copy_if_different keeps
-# ccache warm when an intra-minute rebuild produces the same content.
+# ANTS-3582 — decouple the VALUES from the header. src/build_info.h is a
+# STABLE hand-written header of `extern const char ANTS_BUILD_*[]`
+# declarations (committed, never regenerated); the DEFINITIONS live in a
+# generated build_info_values.cpp compiled into ants_core_lib. Previously
+# build_info.h was itself generated (macro #defines), so the build minute
+# lived in the preprocessed form ccache hashes — and every cross-minute
+# rebuild recompiled the two ~1 MB consumers (remotecontrol.cpp,
+# claudeintegration.cpp) that stamp the minute into serverInfo, a ~1-2 min
+# tax on the inner edit-build loop. With the values in a separate TU, a
+# per-build change recompiles ONLY build_info_values.o.
+#
+# The load-bearing wiring (see the ANTS-3582 post-mortem for the two dead
+# ends): a per-build refresh must NOT flow through a target-level
+# add_dependencies on an always-run custom target — that propagates "always
+# dirty" and forces a FULL rebuild. Instead:
+#   * ants_build_info_stamp (ALL) touches a stamp file every build;
+#   * a FILE-level add_custom_command(OUTPUT build_info_values.cpp DEPENDS
+#     <stamp>) re-runs the generator every build, but configure_file's
+#     copy_if_different keeps the .cpp mtime stable unless a value changed;
+#   * Ninja `restat` on the custom command then prunes the downstream, so
+#     only build_info_values.o rebuilds — nothing else is dragged in.
 # Default build type if not specified
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
-# ANTS-1394: build_info.h refresh on every build, not every configure.
-# add_custom_target ALL always re-runs the script; configure_file
-# inside the script uses copy_if_different so ccache stays warm
-# on intra-minute rebuilds (the file's mtime only advances when
-# the embedded HH:MM minute changed OR git SHA / build type changed).
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
-add_custom_target(ants_build_info ALL
+set(ANTS_BUILD_INFO_VALUES_CPP "${CMAKE_BINARY_DIR}/generated/build_info_values.cpp")
+set(ANTS_BUILD_INFO_STAMP "${CMAKE_BINARY_DIR}/generated/build_info_values.stamp")
+
+# Phony always-run trigger: a custom target is always considered dirty by
+# Ninja, so this touches the stamp on every build.
+add_custom_target(ants_build_info_stamp ALL
+    COMMAND ${CMAKE_COMMAND} -E touch "${ANTS_BUILD_INFO_STAMP}"
+    BYPRODUCTS "${ANTS_BUILD_INFO_STAMP}"
+    COMMENT "Stamping build_info regeneration trigger (ANTS-3582)"
+    VERBATIM)
+
+# File-level edge: build_info_values.cpp depends on the always-touched stamp,
+# so the generator re-runs every build; copy_if_different keeps its mtime
+# stable unless a value changed. NO add_dependencies — the mtime-stable file
+# edge is the whole point (a target-level dep would force a full rebuild).
+add_custom_command(
+    OUTPUT "${ANTS_BUILD_INFO_VALUES_CPP}"
     COMMAND ${CMAKE_COMMAND}
         -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
-        -DOUTPUT_FILE=${CMAKE_BINARY_DIR}/generated/build_info.h
-        -DTEMPLATE_FILE=${CMAKE_SOURCE_DIR}/cmake/build_info.h.in
+        -DOUTPUT_FILE=${ANTS_BUILD_INFO_VALUES_CPP}
+        -DTEMPLATE_FILE=${CMAKE_SOURCE_DIR}/cmake/build_info_values.cpp.in
         -DANTS_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-        -P ${CMAKE_SOURCE_DIR}/cmake/GenerateBuildInfo.cmake
-    BYPRODUCTS ${CMAKE_BINARY_DIR}/generated/build_info.h
-    COMMENT "Refreshing build_info.h timestamp (ANTS-1394)"
+        -P ${CMAKE_SOURCE_DIR}/cmake/GenerateBuildInfoValues.cmake
+    DEPENDS "${ANTS_BUILD_INFO_STAMP}"
+    COMMENT "Refreshing build_info_values.cpp (ANTS-3582)"
     VERBATIM)
 
 # Qt6 version floor. 6.2 is the first LTS that ships the full set of
@@ -350,14 +376,21 @@ target_link_libraries(ants_core_lib
     PRIVATE ants_warnings)
 target_include_directories(ants_core_lib PUBLIC src)
 set_target_properties(ants_core_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
-# ANTS-2073: remotecontrol.cpp #includes the configure-time-generated
-# build_info.h so session_orient can surface the running server's build
-# identity (git SHA + build date) — clients self-diagnose a stale-binary
-# deploy gap. Same wiring as ants_claude_lib (ANTS-1952); regenerated on
-# every build by ants_build_info.
-target_include_directories(ants_core_lib
-    PRIVATE "${CMAKE_BINARY_DIR}/generated")
-add_dependencies(ants_core_lib ants_build_info)
+# ANTS-3582: build_info_values.cpp holds the extern definitions for
+# src/build_info.h (build date / minute / SHA / type). It compiles into core
+# so the symbols resolve for every consumer that links core: remotecontrol.cpp
+# here (session_orient / server_build stamp), and claudeintegration.cpp /
+# mainwindow.cpp / aboutdialogs.cpp transitively (chrome/claude/dialogs → core).
+# SKIP_PRECOMPILE_HEADERS + SKIP_UNITY_BUILD_INCLUSION keep it a standalone TU
+# so a per-build value change never drags core's PCH or a unity batch — which
+# would re-defeat the decouple. No target-level add_dependencies: the file-level
+# custom-command edge (top of file) provides ordering without forcing a rebuild.
+# src/build_info.h resolves via the PUBLIC `src` include dir above (and a
+# same-directory quote include from each consumer).
+target_sources(ants_core_lib PRIVATE "${ANTS_BUILD_INFO_VALUES_CPP}")
+set_source_files_properties("${ANTS_BUILD_INFO_VALUES_CPP}" PROPERTIES
+    SKIP_PRECOMPILE_HEADERS ON
+    SKIP_UNITY_BUILD_INCLUSION ON)
 
 add_library(ants_vt_lib STATIC
     src/vtparser.cpp
@@ -383,16 +416,12 @@ add_library(ants_chrome_lib STATIC
 target_link_libraries(ants_chrome_lib
     PUBLIC  ants_vt_lib
     PRIVATE ants_warnings)
-# ANTS-1323: mainwindow.cpp now reads ANTS_BUILD_DATE / ANTS_BUILD_TIME
-# from the configure-time-generated build_info.h for the window-title
-# build-badge — same generated header ants_dialogs_lib already uses
-# (ANTS-1222).
-target_include_directories(ants_chrome_lib
-    PRIVATE "${CMAKE_BINARY_DIR}/generated")
+# ANTS-1323 + ANTS-3582: mainwindow.cpp reads ANTS_BUILD_DATE /
+# ANTS_BUILD_TIME (window-title build-badge) from src/build_info.h — a stable
+# extern-declaration header resolved via core's PUBLIC `src` include dir. The
+# values live in build_info_values.cpp (compiled into core); no generated
+# include dir or per-build target dependency is needed here.
 set_target_properties(ants_chrome_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
-# ANTS-1394: mainwindow.cpp #includes build_info.h — must wait for
-# the build-time regenerator so the timestamp is fresh per build.
-add_dependencies(ants_chrome_lib ants_build_info)
 if(LayerShellQt_FOUND)
     target_link_libraries(ants_chrome_lib PRIVATE LayerShellQt::Interface)
     target_compile_definitions(ants_chrome_lib PRIVATE ANTS_WAYLAND_LAYER_SHELL=1)
@@ -435,13 +464,11 @@ target_link_libraries(ants_claude_lib
     PUBLIC  ants_chrome_lib
     PRIVATE ants_warnings)
 set_target_properties(ants_claude_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
-# ANTS-1952: claudeintegration.cpp #includes the configure-time-generated
-# build_info.h to stamp the MCP serverInfo with git SHA + build time. The
-# header lives in build/generated/ (ants_chrome_lib has it PRIVATE, so it
-# does not propagate) and is regenerated on every build by ants_build_info.
-target_include_directories(ants_claude_lib
-    PRIVATE "${CMAKE_BINARY_DIR}/generated")
-add_dependencies(ants_claude_lib ants_build_info)
+# ANTS-1952 + ANTS-3582: claudeintegration.cpp #includes src/build_info.h to
+# stamp the MCP serverInfo with git SHA + build time. The header is a stable
+# extern-declaration header (resolved via core's PUBLIC `src` include dir);
+# the values live in build_info_values.cpp compiled into core, so no generated
+# include dir or per-build target dependency is needed here.
 
 # ANTS-1444: the audit engine/runner/hygiene core is split from the
 # Widgets-using AuditDialog. ants_audit_lib holds the non-GUI TUs (none
@@ -508,14 +535,11 @@ add_library(ants_dialogs_lib STATIC
 target_link_libraries(ants_dialogs_lib
     PUBLIC  ants_chrome_lib
     PRIVATE ants_warnings)
-# ANTS-1222: aboutdialogs.cpp includes the configure-time-generated
-# build_info.h. Header lives in build/generated/ and is regenerated
-# on every `cmake build/` reconfigure (see top-of-file block).
-target_include_directories(ants_dialogs_lib
-    PRIVATE "${CMAKE_BINARY_DIR}/generated")
+# ANTS-1222 + ANTS-3582: aboutdialogs.cpp #includes src/build_info.h (a stable
+# extern-declaration header resolved via core's PUBLIC `src` include dir) for
+# the Help → About build line. Values live in build_info_values.cpp compiled
+# into core; no generated include dir or per-build target dependency needed.
 set_target_properties(ants_dialogs_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
-# ANTS-1394: aboutdialogs.cpp #includes build_info.h.
-add_dependencies(ants_dialogs_lib ants_build_info)
 
 if(LUA_FOUND)
     add_library(ants_lua_lib STATIC
@@ -1605,6 +1629,8 @@ if(ANTS_TESTS)
         SRC_BGDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.h"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
         SRC_REMOTECONTROL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"
+        # ANTS-3582 — stable extern-decl build-info header (churn regression guard).
+        SRC_BUILD_INFO_H_PATH="${CMAKE_SOURCE_DIR}/src/build_info.h"
         # ANTS-3345 — debt_sweep_scan offload-eligibility source-grep lock.
         SRC_MCPPROJECTION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mcpprojection.cpp"
         # ANTS-1880 — phases-layout source-grep paths.
