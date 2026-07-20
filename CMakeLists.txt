@@ -1304,6 +1304,8 @@ if(ANTS_TESTS)
                 tests/features/feedback_log_migrate_v2/test_feedback_log_migrate_v2.cpp
                 # ANTS-3447 feedback_log op:assign_id (v2 inline triage write).
                 tests/features/feedback_log_assign_id/test_feedback_log_assign_id.cpp
+                # ANTS-3571 feedback_log op:assign_id honours the `note` param.
+                tests/features/feedback_log_assign_id_note/test_assign_id_note.cpp
                 # ANTS-3448 feedback_query marker-aware v2 un-triaged delta.
                 tests/features/feedback_query_v2_delta/test_feedback_query_v2_delta.cpp
                 tests/features/mcp_spec_log/test_mcp_spec_log.cpp
@@ -1333,6 +1335,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_token_usage_tool/test_mcp_token_usage_tool.cpp
                 tests/features/mcp_roadmap_section_slice/test_mcp_roadmap_section_slice.cpp
                 tests/features/mcp_cold_eyes/test_mcp_cold_eyes.cpp
+                # ANTS-3567 indie_review_partition sparse-partition hint (source_paths ad-hoc).
+                tests/features/indie_review_partition_sparse_hint/test_sparse_hint.cpp
                 tests/features/mcp_session_memory/test_mcp_session_memory.cpp
                 # ANTS-1724 — session_brief MCP tool.
                 tests/features/mcp_session_brief/test_mcp_session_brief.cpp

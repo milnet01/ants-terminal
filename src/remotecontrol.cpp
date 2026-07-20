@@ -17672,6 +17672,28 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
         }
         env["path"] = src.isEmpty() ? QStringLiteral("CLAUDE.md") : src;
     }
+    // ANTS-3567 — symmetry with cmdColdEyesPartition's sparse_partition_hint
+    // (ANTS-1634a). When the module-map deriver yields ≤1 lane (no CLAUDE.md
+    // `## Module map` of `- <name> — <summary>` subsystems, no
+    // docs/subsystems.md, or a file-list map that doesn't partition), point
+    // the caller at indie_review_brief's source_paths[] ad-hoc mode (ANTS-3375,
+    // the code-review analogue of cold_eyes_brief doc_paths[]) and the
+    // .indie-review/partition.json override, so a sweep on a non-canonical
+    // layout sees the workaround inline instead of giving up on the empty
+    // partition.
+    if (lanes.size() <= 1) {
+        env["sparse_partition"]      = true;
+        env["sparse_partition_hint"] = QStringLiteral(
+            "Module-map deriver returned %1 lane(s). Check that the project "
+            "root's CLAUDE.md carries a `## Module map` of `- <name> — "
+            "<summary>` subsystems (or that docs/subsystems.md exists). Pass "
+            "indie_review_brief(lane=\"<your-label>\", source_paths=[\"...\"]) "
+            "to mint a brief over an arbitrary file set without a partition "
+            "(ANTS-3375 ad-hoc mode), or commit "
+            "<projectPath>/.indie-review/partition.json to persist an "
+            "override.")
+                .arg(static_cast<int>(lanes.size()));
+    }
     return QJsonDocument(env);
 }
 

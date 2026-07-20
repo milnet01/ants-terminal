@@ -19201,7 +19201,7 @@ build).
   Source: finbreak-mcp-feedback-2026-07-14.
   Resolved (2026-07-14): cmdLastAuditSummary reads the requested scope back from the sibling findings-<iso>-<sha>.json sidecar (already persisted by audit_run/AuditCache::recordRun, ANTS-1870) and emits it as requested_scope; when requested_scope=="full" the false narrow_run_warning is suppressed. Producer side needed no change — the gap was read-only. Foreign-format picks (no sidecar) fall back to the distinct-file heuristic. Spec ANTS-3512 INV-1/2 + regression test RequestedScopeFromSidecarWiredInHandler. Full suite 2654/2654.
 
-- 📋 [ANTS-3567] **indie_review_partition has no sparse-partition hint pointing at the new source_paths[] ad-hoc mode.**
+- ✅ [ANTS-3567] **indie_review_partition has no sparse-partition hint pointing at the new source_paths[] ad-hoc mode.**
   Symmetry follow-up to ANTS-3375. cold_eyes_partition emits
   sparse_partition_hint / next_step_hint pointing callers at the
   doc_paths[] escape hatch (ANTS-1571) when a default-scope partition
@@ -19214,6 +19214,7 @@ build).
   **Layman:** The doc-review helper tells you about its escape hatch when it finds nothing; the code-review one doesn't yet — add the matching pointer.
   Kind: enhancement.
   Source: in-session-2026-07-18 (ANTS-3375 follow-up).
+  Resolved (2026-07-20): cmdIndieReviewPartition now emits sparse_partition:true + sparse_partition_hint when lanes.size() <= 1, mirroring cmdColdEyesPartition's ANTS-1634a hint; the hint cites indie_review_brief source_paths[] ad-hoc mode (ANTS-3375) + the .indie-review/partition.json override. The mcp_cold_eyes sparse-hint test was rescoped to cmdColdEyesPartition's body (a second sparse_partition_hint now precedes it in file order). Regression test tests/features/indie_review_partition_sparse_hint (2 tests). 13 cold_eyes/indie tests green.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-16 triage
 

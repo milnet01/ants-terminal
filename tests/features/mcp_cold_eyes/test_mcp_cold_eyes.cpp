@@ -207,7 +207,13 @@ TEST(McpColdEyes, ProviderLambdasForwardArgs) {
 TEST(McpColdEyes, Ants1634SparsePartitionHintMentionsBriefAndOverride) {
     const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(rc.empty());
-    const auto pos = rc.find("sparse_partition_hint");
+    // ANTS-3567 added a second sparse_partition_hint in cmdIndieReviewPartition
+    // (earlier in the file), so scope the lookup to cmdColdEyesPartition's body
+    // rather than the global first occurrence.
+    const auto fn = rc.find("RemoteControl::cmdColdEyesPartition");
+    ASSERT_NE(fn, std::string::npos)
+        << "cmdColdEyesPartition body not found in remotecontrol.cpp";
+    const auto pos = rc.find("sparse_partition_hint", fn);
     ASSERT_NE(pos, std::string::npos)
         << "sparse_partition_hint emission missing from remotecontrol.cpp";
     // Scope the grep to a window of ~600 bytes after the field name —

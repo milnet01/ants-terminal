@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **indie_review_partition now emits a sparse_partition_hint on an empty/≤1-lane partition (ANTS-3567)**
+  Symmetry with cold_eyes_partition (ANTS-1634a): when the module-map
+  deriver yields ≤1 lane (no CLAUDE.md `## Module map`, no
+  docs/subsystems.md), the response now carries sparse_partition:true plus a
+  hint pointing at indie_review_brief's source_paths[] ad-hoc mode
+  (ANTS-3375) and the .indie-review/partition.json override — instead of a
+  bare empty partition the caller can't act on.
+
 - **`changelog_query` read verb — mirror `roadmap_query` so drift-checks stop reading the whole CHANGELOG.** (ANTS-3533)
   Add a quick lookup for the changelog like the one the roadmap already has, so reviews don't read the whole 276K-token file.
 
