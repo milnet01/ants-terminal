@@ -643,6 +643,25 @@ void rcProjectHeadlineOnly(QJsonArray &arr) {
     }
 }
 
+// ANTS-3576 — project each changelog entry object to the lean
+// mode:"headline_only" shape {version, category, ids, text_oneline}.
+// Mutates in place. Mirrors cmdChangelogQuery's entryToJson headlineOnly
+// branch so an auto-downshift (ANTS-3543) of the fat entries[] yields
+// byte-identical rows to a native headline_only call. text_oneline =
+// text.simplified() (the fat entry stores the full multi-line `text`).
+void rcProjectChangelogHeadlineOnly(QJsonArray &arr) {
+    for (int i = 0; i < arr.size(); ++i) {
+        const QJsonObject src = arr.at(i).toObject();
+        QJsonObject p;
+        p[QStringLiteral("version")]  = src.value(QStringLiteral("version"));
+        p[QStringLiteral("category")] = src.value(QStringLiteral("category"));
+        p[QStringLiteral("ids")]      = src.value(QStringLiteral("ids"));
+        p[QStringLiteral("text_oneline")] =
+            src.value(QStringLiteral("text")).toString().simplified();
+        arr.replace(i, p);
+    }
+}
+
 // ANTS-1521 — collapse a possibly multi-line headline to a single
 // line: \r and \n become spaces, then runs of whitespace collapse to
 // one space, then trim. Used to populate the `headline_oneline`
@@ -4816,6 +4835,15 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // excluded (section descriptors have no lean form — § 5).
         const bool wantDownshift =
             (mode != QLatin1String("headline_only")) && !includeBody;
+        // ANTS-3577 — restore ANTS-1881 INV-6: in already-lean
+        // (headline_only) mode project the FULL filtered set to its 4-key
+        // shape BEFORE pagination, so the soft-cap measure counts lean bytes
+        // and more rows fit per page. The prior code projected page.slice
+        // AFTER the fat measure, dropping more rows than the lean shape needs.
+        // filtered's only post-pageBullets use is .isEmpty() (below), which an
+        // in-place projection leaves unchanged.
+        if (mode == QLatin1String("headline_only"))
+            rcProjectHeadlineOnly(filtered);
         auto page = PaginationEngine::pageBullets(
             filtered, offsetArg, limitArg,
             wantDownshift ? PaginationEngine::RowProjector(&rcProjectHeadlineOnly)
@@ -4823,14 +4851,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         const bool emitPagination =
             PaginationEngine::shouldEmitPaginationFields(
                 callerPassedOffset, callerPassedLimit, page.truncated);
-        // ANTS-1517 — strip body fields when include_body is false.
+        // ANTS-1517 — strip body fields when include_body is false (a no-op
+        // when the headline_only projection above already dropped bodies).
         if (!includeBody) rcStripBodyFields(page.slice);
-        // ANTS-1881 — section-branch projection. INV-3 combinator
-        // equivalence: same pre-pagination iteration as bullets-
-        // mode; mode-driven projection happens at emit time.
-        if (mode == QLatin1String("headline_only")) {
-            rcProjectHeadlineOnly(page.slice);
-        }
         out["ok"] = true;
         out["bullets"] = page.slice;
         out["path"] = path;
@@ -5243,6 +5266,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // ANTS-3543 — same auto-downshift gate as the section branch.
     const bool wantDownshift =
         (mode != QLatin1String("headline_only")) && !includeBody;
+    // ANTS-3577 — restore ANTS-1881 INV-6: project the FULL filtered set to
+    // its lean 4-key shape BEFORE pagination in headline_only mode, so the
+    // soft-cap measure counts lean bytes (more rows per page). The prior code
+    // measured the fat row then projected page.slice, dropping more than
+    // needed. filtered's only later use is .isEmpty() (below), unaffected by an
+    // in-place projection.
+    if (mode == QLatin1String("headline_only"))
+        rcProjectHeadlineOnly(filtered);
     auto page = PaginationEngine::pageBullets(
         filtered, offsetArg, limitArg,
         wantDownshift ? PaginationEngine::RowProjector(&rcProjectHeadlineOnly)
@@ -5251,21 +5282,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         PaginationEngine::shouldEmitPaginationFields(
             callerPassedOffset, callerPassedLimit, page.truncated);
 
-    // ANTS-1517 — strip body fields when include_body is false.
+    // ANTS-1517 — strip body fields when include_body is false (a no-op when
+    // the headline_only projection above already dropped bodies).
     // ANTS-3402 — else re-truncate to the 2000 list cap: this path emits
     // from m_roadmapCacheBullets, whose bodies are now stored up to
     // kRoadmapQueryBodyStoreCap; the larger body is reserved for the
     // opt-in id/ids fetch, so a list stays at the 2000 cap.
     if (!includeBody) rcStripBodyFields(page.slice);
     else              rcCapBodyFields(page.slice, kRoadmapQueryBodyCap);
-    // ANTS-1881 — full-file projection (main emission surface).
-    // INV-6: PaginationEngine already measured the unprojected
-    // page above; projection happens here so the wire payload is
-    // narrow, but the page boundary was set by the broader shape
-    // — same predicate as bullets-mode, only the keys differ.
-    if (mode == QLatin1String("headline_only")) {
-        rcProjectHeadlineOnly(page.slice);
-    }
 
     out["ok"] = true;
     out["bullets"] = page.slice;
@@ -5822,8 +5846,19 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
         }
     }
 
+    // ANTS-3576 — auto-downshift the fat entries[] to the lean headline_only
+    // shape when it would truncate (mirrors ANTS-3543 for roadmap_query), so a
+    // scanning caller keeps every entry's version/ids instead of losing the
+    // tail. Gated off when the caller already asked for lean rows
+    // (headline_only) or explicitly wants bodies (include_body). The
+    // version_index site above has no lean form and stays 3-arg.
+    const bool wantDownshift = !headlineOnly && !includeBody;
     const PaginationEngine::PageResult page =
-        PaginationEngine::pageBullets(arr, offset, passedLimit ? limitArg : -1);
+        PaginationEngine::pageBullets(
+            arr, offset, passedLimit ? limitArg : -1,
+            wantDownshift
+                ? PaginationEngine::RowProjector(&rcProjectChangelogHeadlineOnly)
+                : PaginationEngine::RowProjector{});
     out[QStringLiteral("entries")] = page.slice;
     out[QStringLiteral("count")]   = page.slice.size();
     out[QStringLiteral("total")]   = page.total;
@@ -5832,6 +5867,9 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
         out[QStringLiteral("truncated")]   = true;
         out[QStringLiteral("next_offset")] = page.nextOffset;
     }
+    // ANTS-3576 — emit only when a downshift fired (truthy-only, like
+    // truncated). Rows are then headline-shaped and the tail is complete.
+    if (page.downshifted) out[QStringLiteral("downshifted")] = true;
     if (hasVersionFilter)   out[QStringLiteral("version")]  = versionFilter;
     if (!category.isEmpty()) out[QStringLiteral("category")] = category;
     if (idMode) {

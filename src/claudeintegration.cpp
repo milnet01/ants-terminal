@@ -9289,7 +9289,12 @@ void ClaudeIntegration::onMcpConnection() {
                     cqLimit["description"] = QStringLiteral(
                         "Page size, clamped 1..500 (mirrors roadmap_query). "
                         "Omitted → auto soft-cap; truncation emits truncated + "
-                        "next_offset.");
+                        "next_offset. ANTS-3576 — in entries mode (not "
+                        "headline_only / include_body), a would-be-truncated "
+                        "page auto-downshifts to the lean headline_only entry "
+                        "shape {version, category, ids, text_oneline} and "
+                        "re-pages so the tail is kept; the response then carries "
+                        "downshifted:true and its rows are headline-shaped.");
 
                     QJsonObject cqEncoding;
                     cqEncoding["type"] = "string";

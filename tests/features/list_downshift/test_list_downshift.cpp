@@ -333,3 +333,39 @@ TEST(list_downshift, WorkspaceSearchRoutingAndProjectorIdentity) {
            "downshiftMatches byte-caps matches[] (ANTS-1293 preserved)");
     EXPECT_EQ(0, expect_failures());
 }
+
+// ─── ANTS-3576 — changelog_query entries[] downshift wiring ──────────────────
+// cmdChangelogQuery routes its fat entries[] page through the SAME engine
+// downshift hook, passing a CHANGELOG-shaped projector (rcProjectChangelogHeadlineOnly,
+// NOT the roadmap rcProjectHeadlineOnly — changelog rows differ), gated off in
+// headline_only / include_body mode, and emits downshifted only when it fires.
+TEST(list_downshift, ChangelogQueryDownshiftWiring) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    // The changelog-shaped projector must exist and differ from the roadmap
+    // one (a copy-paste of rcProjectHeadlineOnly would blank version/ids).
+    expect(contains(cpp, "void rcProjectChangelogHeadlineOnly(QJsonArray"),
+           "ANTS-3576: rcProjectChangelogHeadlineOnly defined");
+    const std::string projBody =
+        ants_test::slurpFunctionBody(cpp, "void rcProjectChangelogHeadlineOnly");
+    expect(contains(projBody, "text_oneline") &&
+               contains(projBody, "simplified()"),
+           "ANTS-3576: the changelog projector emits "
+           "text_oneline = text.simplified() (lean shape, not the roadmap "
+           "4-key shape)");
+    const std::string body = ants_test::slurpFunctionBody(
+        cpp, "RemoteControl::cmdChangelogQuery");
+    expect(!body.empty(), "cmdChangelogQuery body located");
+    expect(contains(body, "RowProjector(&rcProjectChangelogHeadlineOnly)"),
+           "ANTS-3576: entries[] page wires the changelog-shaped projector as "
+           "the downshift hook (projector identity — not the roadmap one)");
+    expect(contains(body, "!headlineOnly && !includeBody"),
+           "ANTS-3576: downshift gated off when the caller is already lean "
+           "(headline_only) or wants bodies (include_body)");
+    expect(contains(body, "if (page.downshifted) out[QStringLiteral(\"downshifted\")] = true;"),
+           "ANTS-3576: downshifted emitted truthy-only on the entries branch");
+    // The version_index page has no lean form and must stay 3-arg (no projector).
+    expect(contains(body, "PaginationEngine::pageBullets(versions, offset,"),
+           "ANTS-3576: version_index page stays projector-free (no lean form)");
+    EXPECT_EQ(0, expect_failures());
+}

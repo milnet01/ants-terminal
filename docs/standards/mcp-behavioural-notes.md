@@ -184,12 +184,14 @@ server-controllable beyond this per-tool hint.
   `PaginationEngine::kSoftCapBytes` (no `next_offset` in v1). The
   builder is the pure static `RemoteControl::buildRoadmapBundlesEnvelope`
   (warm-cache, no re-parse). Spec `docs/specs/ANTS-1922.md`.
-- **`downshifted` (ANTS-3543, `roadmap_query` + `workspace_search`)** —
+- **`downshifted` (ANTS-3543 `roadmap_query` + `workspace_search`;
+  ANTS-3576 `changelog_query`)** —
   on the **auto-truncate path** (caller passed no explicit `limit`, and
   not `include_body` / `mode:headline_only`), if a large list would drop
   its tail the server first projects the WHOLE list to its lean shape
   (`roadmap_query` → `{id, status, headline_oneline, section_slug}`;
-  `workspace_search` → `{file, line, headline}` + `also_at`) and
+  `workspace_search` → `{file, line, headline}` + `also_at`;
+  `changelog_query` entries → `{version, category, ids, text_oneline}`) and
   re-measures, so a scanning caller keeps every row's identity instead of
   a silent cut-off. Emits truthy-only `downshifted:true`; the drop signals
   (`truncated`/`next_offset`/`results_dropped`) are **cleared** when the

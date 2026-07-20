@@ -24,6 +24,15 @@ bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
 }
 
+size_t countOccurrences(const std::string &hay, const std::string &needle) {
+    size_t n = 0, pos = 0;
+    while ((pos = hay.find(needle, pos)) != std::string::npos) {
+        ++n;
+        pos += needle.size();
+    }
+    return n;
+}
+
 }  // namespace
 
 // INV-1 — mode allow-set extended to three values.
@@ -203,6 +212,19 @@ TEST(roadmap_query_headline_only, Inv6PaginationOnProjectedSet) {
     // so the auto-truncate measures the right bytes.
     expect(contains(cpp, "PaginationEngine::pageBullets("),
            "INV-6: PaginationEngine drives the page slice");
+    // ANTS-3577 — the projection must run on the FULL `filtered` array BEFORE
+    // pagination (so the soft-cap measure counts the LEAN bytes), at both
+    // bullet-emitting branches (section + full-file). The pre-3577 code
+    // projected page.slice AFTER the fat measure, dropping more rows than the
+    // lean shape needs; that regression is now pinned out. (This restores the
+    // behaviour ANTS-1881 INV-6 always specified; the weak "is pageBullets
+    // called at all" check above let the drift slip through.)
+    expect(countOccurrences(cpp, "rcProjectHeadlineOnly(filtered)") == 2,
+           "INV-6: headline_only projects `filtered` before pagination at "
+           "both bullet branches (measure counts lean bytes)");
+    expect(!contains(cpp, "rcProjectHeadlineOnly(page.slice)"),
+           "INV-6: no post-pagination projection of page.slice remains "
+           "(it would measure the fat row and over-drop)");
     EXPECT_EQ(0, expect_failures());
 }
 

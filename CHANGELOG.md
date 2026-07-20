@@ -40,6 +40,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **changelog_query entries[] auto-downshifts to the lean headline_only shape when a page would truncate, keeping the whole tail (mirrors roadmap_query).** (ANTS-3576)
+  When a full-detail entries page overflows the soft cap, the server projects every entry to {version, category, ids, text_oneline} and re-pages so nothing is silently dropped; the response then carries downshifted:true. Opt out with an explicit limit or include_body.
+
 - **Auto-downshift a would-be-truncated `roadmap_query` / `workspace_search` list to its titles-only form instead of cutting off the tail.** (ANTS-3543)
   When a result list is too big to send whole and you didn't ask for a
   specific page size, the server now keeps every item but drops the long
@@ -55,6 +58,9 @@ for security-relevant changes.
   One giant machine-generated line shouldn't be able to flood a search result; trim over-long lines automatically unless asked not to.
 
 ### Fixed
+
+- **roadmap_query mode:"headline_only" now measures the lean row for the auto-truncate cap, so more title-only bullets fit per page.** (ANTS-3577)
+  Restores ANTS-1881 INV-6: the projection to the 4-key headline shape now runs before pagination (it had drifted to projecting the page after measuring the full-size row, dropping more rows than needed).
 
 - **read_regions `requests`/`paths`/`regions` aliases are stripped by the inputSchema (additionalProperties:false) before reaching the ANTS-3500 fallback.** (ANTS-3568)
   The batch file-reader has handy synonym keys that were coded in but the tool's input rules silently throw them away, so they never work — you always hit an error unless you spell it exactly `items`.

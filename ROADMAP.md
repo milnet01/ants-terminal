@@ -13538,17 +13538,19 @@ template / mutate this state atomically" → movable. If it's
   Kind: investigate.
   Source: in-session-2026-07-19 (ANTS-3543 cold-eyes loop 2, § 5 follow-up).
 
-- 📋 [ANTS-3576] **changelog_query auto-downshift — wire the ANTS-3543 engine hook to the changelog reader.**
+- ✅ [ANTS-3576] **changelog_query auto-downshift — wire the ANTS-3543 engine hook to the changelog reader.**
   cmdChangelogQuery shares PaginationEngine::pageBullets (call sites remotecontrol.cpp:5739, :5805) and has a headline_only mode, so ANTS-3543's engine projector hook makes it eligible for a near-free downshift wiring — pass its headline_only projector at those two sites. Confirm first that changelog_query's headline_only projection is a reusable in-place function like rcProjectHeadlineOnly (changelog rows are shaped differently from roadmap bullets, so the projector is not literally shared). Deferred from ANTS-3543 to keep that spec to its two ROADMAP-named verbs.
   **Layman:** Give the changelog search the same 'keep every item, drop the descriptions' behaviour the roadmap and code search get, so long changelog queries don't lose their tail.
   Kind: enhancement.
   Source: in-session-2026-07-19 (ANTS-3543 cold-eyes, § 5 follow-up).
+  Resolved (2026-07-20): wired the ANTS-3543 downshift hook into cmdChangelogQuery's entries[] page. New file-local rcProjectChangelogHeadlineOnly projects a fat entry → {version, category, ids, text_oneline} (mirrors entryToJson's headline_only branch); gated !headlineOnly && !includeBody; emits downshifted:true truthy-only. version_index page stays 3-arg (no lean form). Schema (cqLimit desc) + behavioural-notes downshifted entry + new list_downshift.ChangelogQueryDownshiftWiring test updated. pageBullets call count unchanged (5).
 
-- 📋 [ANTS-3577] **headline_only mode measures the unprojected (fat) row for the byte-cap — drops more than needed.**
+- ✅ [ANTS-3577] **headline_only mode measures the unprojected (fat) row for the byte-cap — drops more than needed.**
   Today roadmap_query / workspace_search in headline_only mode measure the FAT row for the soft cap, then project the surviving slice to lean — so they drop more rows than the lean shape actually needs to fit. ANTS-3543 does not change this (its downshift only fires when the caller is NOT already lean). Fix: in already-lean mode, project BEFORE the measure-then-cut so the cap counts the lean bytes and more rows fit per page. Small, self-contained; distinct from ANTS-3543's not-already-lean downshift.
   **Layman:** When you ask for title-only results, the app still measures the full-size rows when deciding how many fit, so it cuts off more than it has to; measure the trimmed size instead.
   Kind: optimize.
   Source: in-session-2026-07-19 (ANTS-3543 cold-eyes, § 5 follow-up).
+  Resolved (2026-07-20): restored ANTS-1881 INV-6. Both roadmap_query bullet branches now project filtered→lean BEFORE pagination (rcProjectHeadlineOnly(filtered)), so the soft-cap measure counts lean bytes and more headline_only rows fit per page; removed the post-pagination page.slice projection that measured the fat row. INV-6 test strengthened from "pageBullets is called" to pinning projection-before-pagination (rcProjectHeadlineOnly(filtered)==2, no page.slice projection). The finding's workspace_search half was inaccurate: cmdWorkspaceSearch already projects lean (rcApplyHeadlineOnly) before the byte-cap, so no change there.
 
 - 💭 [ANTS-3578] **Delta-envelope shared foundation — partial "changed-since" responses for the don't-re-send trio (ANTS-3534/3544/3546).**
   Umbrella/foundation for the three "don't re-send unchanged bytes" items, designed jointly per user direction. Spec: docs/specs/ANTS-3578.md (cold-eyes pending).

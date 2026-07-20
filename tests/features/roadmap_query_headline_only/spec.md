@@ -12,7 +12,7 @@ implementation in `src/remotecontrol.cpp` + `src/claudeintegration.cpp`.
 | INV-3 | `Inv3CombinatorIdParity` | Headline-only emission walks the same `m_roadmapCacheBullets` iteration as bullets-mode (positional `id` parity). |
 | INV-4 | `Inv4SameModeShortCircuit`, `Inv4CrossModeNoShortCircuit` | ETag computed over projected payload (existing `applyEtagPattern` wrapper at dispatcher fires for `roadmap_query` per `isEtagSupportedTool`). |
 | INV-5 | `Inv5CombinatorCoverageSourceGrep`, `Inv5IdSelectorProjected` | Projection applies at BOTH emission surfaces (main loop AND id-branch). |
-| INV-6 | `Inv6PaginationOnProjectedSet` | `PaginationEngine::pageBullets` is called on the projected array, not the unprojected. |
+| INV-6 | `Inv6PaginationOnProjectedSet` | `PaginationEngine::pageBullets` measures the projected (lean) array, not the unprojected — `rcProjectHeadlineOnly(filtered)` runs BEFORE pagination at both bullet branches, and no `page.slice` post-projection remains (ANTS-3577 restored this; the pre-3577 code measured the fat row). |
 | INV-7 | `Inv7ToolsListEnumerates` | `modeEnum.append("headline_only")` exists in the `roadmap_query` `tools/list` builder. |
 | INV-8 | `Inv8DuplicateIdsParity` | `duplicate_ids[]` emission gate is independent of mode (shared `m_roadmapCacheDuplicateIds` cache, all bullets-emission branches surface it). |
 
