@@ -9991,6 +9991,24 @@ indie-review finding.
   Kind: refactor.
   Source: indie-review-2026-06-11 (claudetasklist L1/L2) — deferred from ANTS-2119 surgical sweep 2026-07-14..
 
+- ✅ [ANTS-3580] **Pre-push git hook that runs the build-test CI gate locally before every push.**
+  tools/hooks/pre-push (wired via core.hooksPath=tools/hooks). Runs the full ctest under LC_ALL=C.UTF-8 against the warm build/ tree — exactly build-test's `ctest --output-on-failure`. Mirrors ci.yml's push paths-ignore (docs-only push → skip, stays instant). Bypass: git push --no-verify. Deeper gates (build-asan, --lints, qt62-baseline) remain in tools/ci-parity.sh --full for pre-release / sanitizer- / packaging-touching work. Motivated by the ANTS-3576 CI red: a narrow `ctest -R <subset>` passed locally while the full suite was red (a whole-file source-scrape flipped). Robustness note: the docs-only detection uses positive capture (grep -vE non-empty), not `grep -qv` exit code, which proved unreliable on this box.
+  **Layman:** Add an automatic check that runs the full test suite (the way GitHub does) right before you push, so a broken build is caught on your machine instead of coming back as a red CI email.
+  Kind: chore.
+  Source: user-request-2026-07-20.
+
+- 📋 [ANTS-3581] **Sweep feature tests for brittle whole-file position-scrapes (find() on a common idiom).**
+  workspace_search_payload_knobs INV-4/9/13 did cpp.find(".toString().simplified()") over the WHOLE file to locate cmdWorkspaceSearch's dedup site; ANTS-3576 added that idiom in rcProjectChangelogHeadlineOnly earlier in the file and flipped the branchPos<dedupPos assertions (fixed by scoping to slurpFunctionBody). Other tests likely share the whole-file-position-anchor anti-pattern. Sweep tests/features for `cpp.find(` position comparisons on non-unique idioms and scope each to the enclosing function body (slurpFunctionBody). Distinct from ANTS-2178 (source-COUNT drift) — this is position-drift.
+  **Layman:** Some tests check that one bit of code appears before another by searching the whole 20k-line file for a common phrase; adding that phrase anywhere else silently breaks them. Find and fix the rest so a future edit can't trip them.
+  Kind: test.
+  Source: in-session-2026-07-20 (ANTS-3576 CI red root-cause).
+
+- 📋 [ANTS-3582] **build_info.h minute-granularity forces a ~1-2 min recompile of 4 heavy TUs on every cross-minute build.**
+  cmake/build_info.h.in embeds ANTS_BUILD_TIME as HH:MM (ANTS-1394, refreshed every build via the ants_build_info ALL target). build_info.h is #included by remotecontrol.cpp (~985 KB), claudeintegration.cpp (~689 KB), mainwindow.cpp, aboutdialogs.cpp. copy_if_different keeps mtime stable WITHIN a minute, but across a minute boundary the HH:MM macro changes → those 4 TUs recompile AND ccache misses (the changed time string is in the preprocessed form ccache hashes), so remotecontrol.cpp + claudeintegration.cpp pay a full cc1plus (~1-2 min total) on essentially every real rebuild. This is why an in-hook build was infeasible for ANTS-3580 (the pre-push hook runs ctest against build/ as-is instead). Fix options: drop minute granularity (embed date + commit only; About dialog rarely needs the minute), or decouple the build-time value from the compiled TUs (e.g. link a tiny generated build_info.o so only IT recompiles, not the giant consumers). Measure ccache hit-rate impact before/after.
+  **Layman:** Every time you rebuild and a minute has ticked over, the app needlessly recompiles its two biggest source files (because a build-time clock value is baked into a shared header), adding a minute or two. Bake in the date/commit only, not the minute, so normal rebuilds stay fast.
+  Kind: perf.
+  Source: in-session-2026-07-20 (ANTS-3580 pre-push hook investigation).
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested

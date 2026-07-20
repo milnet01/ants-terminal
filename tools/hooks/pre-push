@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# ANTS-3580 — pre-push CI gate. Runs the correctness test suite under CI's
+# locale (C.UTF-8) against the warm build/ tree BEFORE the push — so a test
+# failure is caught locally instead of coming back as a red CI email (the
+# ANTS-3576 case: a narrow `ctest -R <subset>` passed locally while the full
+# suite was red in CI). This is the FAST gate (see the ctest scope note below);
+# the complete, exact CI mirror is `tools/ci-parity.sh --full`.
+#
+# Scope: this is the FAST gate (the test-failure class that actually bites).
+# The deeper CI gates — build-asan (sanitizers), --lints (cppcheck / appstream
+# / desktop / groff / version-drift / completions), and the qt62-baseline
+# compile guard — are slower and run via `tools/ci-parity.sh --full` before a
+# release or when touching sanitizer- / packaging-sensitive code.
+#
+# Mirrors ci.yml's push `paths-ignore`: a docs-only push (ROADMAP / CHANGELOG /
+# README / PLUGINS / LICENSE / docs/** / .roadmap-counter) skips CI, so the hook
+# skips too and stays instant.
+#
+# Bypass (use sparingly): `git push --no-verify`.
+set -uo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root" || exit 0
+
+zero="0000000000000000000000000000000000000000"
+
+# ci.yml push paths-ignore — a push touching ONLY these skips CI.
+docs_only_re='^(ROADMAP\.md|CHANGELOG\.md|README\.md|PLUGINS\.md|LICENSE|\.roadmap-counter|docs/)'
+
+# Collect the set of commits being pushed (across all refs on stdin) and the
+# files they touch. If we can't compute a precise range (new branch, no remote
+# tracking), fall back to running the gate — never skip on uncertainty.
+changed=""
+run_gate=0
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [[ "$local_sha" == "$zero" ]] && continue          # branch delete — nothing to test
+    if [[ "$remote_sha" == "$zero" ]]; then
+        # New branch on the remote: diff against origin/main's merge-base if we
+        # have it, else test unconditionally.
+        base="$(git merge-base "$local_sha" origin/main 2>/dev/null || true)"
+        if [[ -n "$base" ]]; then
+            changed+=$'\n'"$(git diff --name-only "$base" "$local_sha")"
+        else
+            run_gate=1
+        fi
+    else
+        changed+=$'\n'"$(git diff --name-only "$remote_sha" "$local_sha")"
+    fi
+done
+
+changed="$(printf '%s\n' "$changed" | sed '/^$/d' | sort -u)"
+
+if [[ "$run_gate" -eq 0 && -n "$changed" ]]; then
+    # Positive capture (robust across grep builds — a bare `grep -qv` exit code
+    # proved unreliable here): the non-doc files are the lines that do NOT match
+    # docs_only_re. If there are none, the push is docs-only and CI would skip.
+    non_doc="$(grep -vE "$docs_only_re" <<<"$changed" || true)"
+    if [[ -z "$non_doc" ]]; then
+        echo "pre-push: docs-only push (CI skips via paths-ignore) — no local gate."
+        exit 0
+    fi
+fi
+
+echo "pre-push: running the CI test gate locally (parallel, LC_ALL=C.UTF-8, e2e/perf excluded)…"
+echo "          bypass with 'git push --no-verify'; complete mirror: tools/ci-parity.sh --full"
+
+# Run the correctness suite against the EXISTING build/ — the hook does NOT
+# build. Why: build_info.h (ANTS-1394) embeds the build MINUTE + git SHA and is
+# #included by the two largest TUs (remotecontrol.cpp ~985 KB, claudeintegration
+# .cpp ~689 KB), so any build crossing a minute boundary recompiles them
+# (ccache-busted by the time macro) — minutes, not seconds. A multi-minute build
+# under `git push` would guarantee the hook gets bypassed. The class this gate
+# exists to catch (source-scrape drift — the ANTS-3576 case) reads the SOURCE at
+# test time, so it is caught with NO rebuild; behavioral tests run against the
+# binaries you already built while iterating.
+#
+# FAST-GATE scope: parallel (-j4) over the correctness labels, EXCLUDING e2e
+# (drives a throwaway GUI instance — slow/unreliable in a detached hook) and perf
+# (benchmarks that must not contend under -j). --timeout caps any hang (~22s).
+# The COMPLETE, exact CI mirror (clean build + serial full suite + e2e + perf +
+# build-asan + lints + qt62-baseline) is `tools/ci-parity.sh --full` — run it
+# before a release or when touching sanitizer- / packaging- / e2e-sensitive code.
+if [[ ! -f build/CTestTestfile.cmake ]]; then
+    echo "pre-push: no build/ test tree found — build first" >&2
+    echo "          (cmake --build build) or run tools/ci-parity.sh, then push." >&2
+    echo "          (--no-verify to override.)" >&2
+    exit 1
+fi
+
+if ! LC_ALL=C.UTF-8 ctest --test-dir build -j4 --output-on-failure \
+        --timeout 180 -LE 'e2e|perf'; then
+    echo >&2
+    echo "pre-push: correctness suite FAILED under the CI locale — push blocked." >&2
+    echo "          Fix the failures (or 'git push --no-verify' to override)." >&2
+    echo "          NB: tests ran against your CURRENT build/ — if you changed" >&2
+    echo "          behavior, rebuild (cmake --build build) and re-push." >&2
+    exit 1
+fi
+
+echo "pre-push: correctness suite green — push allowed."
+exit 0
