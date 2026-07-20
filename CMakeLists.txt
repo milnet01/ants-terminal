@@ -1713,6 +1713,8 @@ if(ANTS_TESTS)
                 tests/features/token_usage_engine/test_token_usage_engine.cpp
                 # ANTS-1432 — failed-call accumulator on TokenUsageEngine.
                 tests/features/token_usage_failed_metric/test_token_usage_failed_metric.cpp
+                # ANTS-3579 — per-project fold/prune helpers + public kCharsPerToken.
+                tests/features/tokens_saved_by_project/test_tokens_saved_by_project.cpp
                 tests/features/roadmap_index_engine/test_roadmap_index_engine.cpp
                 tests/features/cold_eyes_engine/test_cold_eyes_engine.cpp
                 tests/features/session_memory_engine/test_session_memory_engine.cpp

@@ -95,11 +95,34 @@ private:
 // Widgets) so they are unit-testable without a MainWindow; the fold/write
 // side that consumes them lives on MainWindow. See docs/specs/ANTS-3572.md.
 
+// ANTS-3579 — chars-per-token divisor, promoted from the tokenusageengine.cpp
+// anonymous namespace to a public constexpr so the per-project display path
+// (claudestatuswidgets.cpp) and its tests reference it by symbol rather than a
+// bare `/ 4` literal.
+constexpr qint64 kCharsPerToken = 4;  // ~Anthropic BPE order-of-magnitude
+
 // Add `add` to monthly[monthKey] (values are JSON numbers, exact-integer to
 // 2^53), then retain only the `keepMonths` lexicographically-greatest keys
 // ("YYYY-MM" collates chronologically). Returns the updated, pruned map.
 QJsonObject foldMonthlyBucket(QJsonObject monthly, const QString &monthKey,
                               qint64 add, int keepMonths);
+
+// ANTS-3579 — per-project persistence helpers for the tokens-saved pill's
+// `claude.tokens_saved_by_project` map. See docs/specs/ANTS-3579.md § 2.5.
+//
+// Fold ONE project's `addTokens` into byProject[root]: lifetime += addTokens,
+// monthly via foldMonthlyBucket(...,keepMonths), stamp `since` = nowIso.left(10)
+// (date portion) if absent, set `updated` = nowIso. Does NOT evict roots — that
+// is pruneProjectBuckets, a separate single pass, so eviction is independent of
+// the order roots are folded (INV-5b, M-2).
+QJsonObject foldProjectBucket(QJsonObject byProject, const QString &root,
+                              qint64 addTokens, const QString &monthKey,
+                              const QString &nowIso, int keepMonths);
+
+// Retain only the `keepProjects` roots with the newest `updated` datetime; ties
+// broken by root string (larger evicted first) so the result is a pure function
+// of the whole map. Call ONCE after the fold loop.
+QJsonObject pruneProjectBuckets(QJsonObject byProject, int keepProjects);
 
 // Sum of buckets whose key starts with `yearPrefix` (e.g. "2026") — the
 // year-to-date total over the retained monthly map.

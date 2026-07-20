@@ -46,7 +46,8 @@ const QHash<QString, qint64> &baselineTable() {
     return kBaselines;
 }
 
-constexpr qint64 kCharsPerToken = 4;  // ~Anthropic BPE order-of-magnitude
+// ANTS-3579 — kCharsPerToken moved to the public header (tokenusageengine.h) so
+// the per-project display path + tests reference it by symbol.
 
 }  // namespace
 
@@ -186,6 +187,44 @@ QJsonObject foldMonthlyBucket(QJsonObject monthly, const QString &monthKey,
         for (int i = 0; i < drop; ++i) monthly.remove(keys.at(i));
     }
     return monthly;
+}
+
+// ANTS-3579 — see header. Folds one root; does NOT evict (pruneProjectBuckets does).
+QJsonObject foldProjectBucket(QJsonObject byProject, const QString &root,
+                              qint64 addTokens, const QString &monthKey,
+                              const QString &nowIso, int keepMonths) {
+    QJsonObject bucket = byProject.value(root).toObject();
+    const qint64 prevLife = static_cast<qint64>(
+        bucket.value(QStringLiteral("lifetime")).toDouble(0));
+    bucket[QStringLiteral("lifetime")] =
+        static_cast<double>(prevLife + addTokens);
+    bucket[QStringLiteral("monthly")] = foldMonthlyBucket(
+        bucket.value(QStringLiteral("monthly")).toObject(), monthKey, addTokens,
+        keepMonths);
+    if (bucket.value(QStringLiteral("since")).toString().isEmpty())
+        bucket[QStringLiteral("since")] = nowIso.left(10);  // date portion
+    bucket[QStringLiteral("updated")] = nowIso;
+    byProject[root] = bucket;
+    return byProject;
+}
+
+// ANTS-3579 — evict to keepProjects roots, oldest `updated` first; ties broken by
+// root string (larger evicted first) so the result is a pure function of the map.
+QJsonObject pruneProjectBuckets(QJsonObject byProject, int keepProjects) {
+    if (keepProjects <= 0 || byProject.size() <= keepProjects) return byProject;
+    QStringList roots = byProject.keys();
+    std::sort(roots.begin(), roots.end(),
+              [&](const QString &a, const QString &b) {
+                  const QString ua = byProject.value(a).toObject()
+                                         .value(QStringLiteral("updated")).toString();
+                  const QString ub = byProject.value(b).toObject()
+                                         .value(QStringLiteral("updated")).toString();
+                  if (ua != ub) return ua < ub;  // oldest updated evicted first
+                  return a > b;                  // tie: larger root evicted first
+              });
+    const int drop = byProject.size() - keepProjects;
+    for (int i = 0; i < drop; ++i) byProject.remove(roots.at(i));
+    return byProject;
 }
 
 qint64 sumYear(const QJsonObject &monthly, const QString &yearPrefix) {
