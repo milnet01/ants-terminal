@@ -5316,7 +5316,32 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // the caller reads {ok:true, bullets:[], count:0} as "no work"
     // when in reality every bullet was pruned by the ID-mandate.
     if (filtered.isEmpty()) {
-        if (!queryArg.isEmpty() && postIdPruneCountFull > 0) {
+        // ANTS-3583 — does the WHOLE file have any [PROJ-NNNN]-tagged bullet?
+        // preIdPruneCountFull is captured AFTER the status filter, so a
+        // status filter that drops the status-less narrator bullets of a
+        // prose/milestone roadmap zeroes the ANTS-1538 gate below: the caller
+        // then gets a bare count:0 that reads as "no work left" when the truth
+        // is "this tool can't parse this roadmap format" (perch feedback
+        // 2026-07-18 — status:'planned' had no warning while status:'all' did).
+        // Whether the roadmap has ZERO id-bearing bullets is a property of the
+        // file, not of the filter, so surface it on EVERY filter with a
+        // machine-detectable parseable_bullets:0. Early-exit keeps it O(1) on
+        // a normal roadmap (first id-bearing bullet ends the scan), and it only
+        // runs on the already-empty path.
+        bool fileHasIdBearingBullet = false;
+        for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
+            if (!shouldDropUnnumbered(v)) { fileHasIdBearingBullet = true; break; }
+        }
+        if (!fileHasIdBearingBullet &&
+            !includeNarratorBullets && !includeSectionHeaders) {
+            out["parseable_bullets"] = 0;
+            out["warning"] = QStringLiteral(
+                "this roadmap has no [PROJ-NNNN]-tagged bullets that "
+                "roadmap_query can parse (it is prose/milestone-style). "
+                "count:0 means \"format not recognised\", NOT \"no outstanding "
+                "work\" — identical on every status filter. Re-issue with "
+                "include_narrator_bullets:true to see the raw bullets.");
+        } else if (!queryArg.isEmpty() && postIdPruneCountFull > 0) {
             // ANTS-3560 — the keyword query, not the ID-mandate, emptied
             // the set: N id-bearing bullets were searched and none matched.
             // The old ANTS-1538 text misdirected toward

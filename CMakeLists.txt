@@ -1387,6 +1387,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_refusal_envelope_hints/test_refusal_envelope_hints.cpp
                 # ANTS-1425 roadmap_query narrator-bullet filter v2.
                 tests/features/roadmap_query_narrator_filter/test_narrator_filter.cpp
+                # ANTS-3583 roadmap_query prose-roadmap warning parity across status filters.
+                tests/features/roadmap_query_prose_no_id_warning/test_prose_no_id_warning.cpp
                 # ANTS-1646 roadmap_query duplicate-ID detector envelope field.
                 tests/features/roadmap_query_duplicate_ids/test_roadmap_query_duplicate_ids.cpp
                 # ANTS-1354 MCP tool descriptor version field.

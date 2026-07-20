@@ -19354,6 +19354,13 @@ actionable Ants-MCP items.
   Kind: fix.
   Source: in-session-2026-07-18 (hit while triaging DOOM/Vestige feedback).
 
+- ✅ [ANTS-3583] **roadmap_query status-filtered count:0 on a prose/ID-less roadmap must carry the same "no parseable bullets" warning + a machine signal, not a bare count:0.**
+  roadmap_query{status:'planned'|'in-progress'|'considered'} against a roadmap with zero [PROJ-NNNN] bullets returns {count:0} with NO warning; only status:'all' surfaces the ANTS-1538 "dropped all N bullets" hint. Root cause: preIdPruneCountFull (remotecontrol.cpp:5243) is captured AFTER the status filter, so a status filter that drops the status-less narrator bullets zeroes the warning gate. Fix: on the empty-result path, compute file-level id-bearing count over m_roadmapCacheBullets; when zero, emit warning + parseable_bullets:0 on EVERY filter. Section= path is separately mitigated by section_shape.
+  **Layman:** When a project's to-do list is written as plain prose (no tracked IDs), asking Ants "what's planned?" wrongly looked like "nothing left to do." Now it clearly says "I can't read this list's format" instead of a silent empty answer.
+  Kind: fix.
+  Source: perch_Ants_MCP_Feedback.md 2026-07-18 (+corroboration 2026-07-18).
+  Resolved (2026-07-20): remotecontrol.cpp cmdRoadmapQuery empty-result path now scans m_roadmapCacheBullets via shouldDropUnnumbered for any id-bearing bullet; when none exist emits parseable_bullets:0 + a filter-independent "format not recognised" warning (branch precedes the ANTS-1538/ANTS-3560 gates). Regression test tests/features/roadmap_query_prose_no_id_warning (3 INVs). All 299 roadmap tests green. Section= path stays separately mitigated by section_shape.
+
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
 /cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +

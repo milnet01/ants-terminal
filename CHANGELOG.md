@@ -62,6 +62,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query: prose/ID-less roadmaps now warn on every status filter, not just `status:all` (ANTS-3583)**
+  A status-filtered query (planned/in-progress/considered) against a
+  roadmap with zero [PROJ-NNNN]-tagged bullets returned a bare count:0
+  with no warning — dangerously readable as "no work left". The empty
+  path now scans the whole file for any id-bearing bullet and, when none
+  exist, emits a machine-detectable parseable_bullets:0 plus a "format
+  not recognised" warning identically on every filter.
+
 - **roadmap_query mode:"headline_only" now measures the lean row for the auto-truncate cap, so more title-only bullets fit per page.** (ANTS-3577)
   Restores ANTS-1881 INV-6: the projection to the 4-key headline shape now runs before pagination (it had drifted to projecting the page after measuring the full-size row, dropping more rows than needed).
 
