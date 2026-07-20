@@ -21915,6 +21915,12 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Kind: feature.
   Source: user-request-2026-07-18.
 
+- 🚧 [ANTS-3579] **Scope the tokens-saved status-bar pill to the current project.**
+  Extends ANTS-3572. Today the pill's face is the global in-process session total and its tooltip (month/YTD/all-time) is a single global config aggregate (claude.tokens_saved_monthly/_lifetime) — no project dimension (TokenUsageEngine::m_counters is keyed by tool name only). User wants face + tooltip scoped to the FOCUSED tab's project, with the existing global kept as a separate "all projects" tooltip line. Enablers all exist: ants::resolveCallerCwdRoot (remotecontrol.cpp:13600) canonicalises caller_cwd→project key; MainWindow::focusedTerminal()->shellCwd() (live /proc read) gives the focused project; recordDispatch (claudeintegration.cpp:1439) already holds argsObj (caller_cwd). Design: add a per-project session accumulator in ClaudeIntegration (saved-bytes by canonical project root), attribute each successful call's max(0, baseline-outBytes) at recordDispatch; persist a bounded per-project config store (cap ~64 roots, LRU by last-updated, ≤24 monthly buckets each — mirrors foldMonthlyBucket); pill reads focused project's session + persisted, refreshes on MCP call AND tab-focus change; keep global aggregate untouched for the "all projects" line. Migration: per-project all-time accrues from ship date (no retroactive split); all-projects line shows true full history. Spec-first + cold-eyes before build (extends a spec'd feature).
+  **Layman:** Make the "tokens saved" badge show just what you saved in the project you're looking at, not one lump total across every project — with an "all projects" line kept in the tooltip so nothing is lost.
+  Kind: enhancement.
+  Source: user-request-2026-07-20.
+
 ### 🎨 Claude Code integration platform — terminal-as-workshop for hooks / skills / sub-agents / MCP (user request 2026-05-07)
 
 - 📋 [ANTS-1162] **First-class scaffolding inside Ants Terminal
