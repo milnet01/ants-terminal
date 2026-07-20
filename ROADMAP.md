@@ -21938,6 +21938,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   **Layman:** Make the "tokens saved" badge show just what you saved in the project you're looking at, not one lump total across every project — with an "all projects" line kept in the tooltip so nothing is lost.
   Kind: enhancement.
   Source: user-request-2026-07-20.
+  Spec signed off 2026-07-20 (cold-eyes converged loop 5; H-1 visibility confirmed by user: show a history-only project's pill). Implementing test-first per spec §5.
 
 ### 🎨 Claude Code integration platform — terminal-as-workshop for hooks / skills / sub-agents / MCP (user request 2026-05-07)
 
