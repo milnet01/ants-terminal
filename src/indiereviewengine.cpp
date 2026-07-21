@@ -11,6 +11,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QMap>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -134,6 +135,93 @@ QList<Lane> parsePartitionOverride(const QString &json,
     return out;
 }
 
+// ANTS-3507 — file-list module-map fallback partitioner. When the
+// subsystem-shape parser (SubsystemMap) derives no lanes because the
+// `## Module map` section is a `- <path> — <description>` file list rather
+// than the `- `name` — summary` subsystem shape, group the listed source
+// paths by their top-level directory (one lane per dir). Path tokens are
+// harvested from each bullet's pre-separator prefix (backticks tolerated);
+// only entries that contain a '/', canonicalise inside the project, and
+// exist on disk are kept. Returns a partition ONLY when grouping yields >1
+// lane — a single lane is no more reviewable than the refusal, so the caller
+// keeps its module_map_unparseable / sparse_partition path.
+QList<Lane> deriveFileListPartition(const QString &projectPath,
+                                    const QString &sourcePath) {
+    const QString body = slurpUtf8(sourcePath);
+    if (body.isEmpty()) return {};
+    const QStringList lines = body.split(QLatin1Char('\n'));
+
+    // Find the `## Module map` section (same anchor SubsystemMap keys on).
+    int i = 0;
+    const int n = lines.size();
+    bool inSection = false;
+    for (; i < n; ++i) {
+        if (lines.at(i).startsWith(QStringLiteral("## Module map"))) {
+            inSection = true;
+            ++i;
+            break;
+        }
+    }
+    if (!inSection) return {};
+
+    // ` — ` (U+2014) or ` -- ` separates the path token(s) from the prose;
+    // harvest paths only from the prefix so a path named in the description
+    // isn't grouped. A path token must contain a '/' (a bare word is a
+    // subsystem name SubsystemMap already tried and found nothing for).
+    static const QRegularExpression sepRe(QStringLiteral(R"( (?:—|--) )"));
+    static const QRegularExpression pathRe(
+        QStringLiteral(R"(([A-Za-z0-9_.][A-Za-z0-9_./-]*))"));
+
+    // QMap → deterministic (alphabetical) lane order across re-derivations.
+    QMap<QString, QStringList> groups;
+    for (; i < n; ++i) {
+        const QString &ln = lines.at(i);
+        if (ln.startsWith(QStringLiteral("## ")) ||
+            ln.startsWith(QStringLiteral("# ")))
+            break;  // next heading ends the module map
+        const QString t = ln.trimmed();
+        if (!t.startsWith(QStringLiteral("- "))) continue;
+        QString prefix = t.mid(2);
+        const auto sep = sepRe.match(prefix);
+        if (sep.hasMatch()) prefix = prefix.left(sep.capturedStart());
+        prefix.remove(QLatin1Char('`'));
+        auto pm = pathRe.globalMatch(prefix);
+        while (pm.hasNext()) {
+            QString rel = pm.next().captured(1);
+            if (!rel.contains(QLatin1Char('/'))) continue;  // not a path
+            while (rel.endsWith(QLatin1Char('/'))) rel.chop(1);
+            if (rel.isEmpty()) continue;
+            // Path-safety + existence: must resolve inside the project and
+            // point at a real file or directory.
+            const QString joined = projectPath + QChar('/') + rel;
+            if (!PathValidation::isInsideProject(projectPath, joined)) continue;
+            if (!QFileInfo::exists(joined)) continue;
+            const QString topDir = rel.section(QLatin1Char('/'), 0, 0);
+            if (topDir.isEmpty()) continue;
+            groups[topDir] << rel;
+        }
+    }
+
+    if (groups.size() < 2) return {};  // no useful partition — keep refusal
+
+    QList<Lane> out;
+    out.reserve(groups.size());
+    for (auto it = groups.constBegin(); it != groups.constEnd(); ++it) {
+        Lane l;
+        l.name = it.key();
+        QStringList paths = it.value();
+        paths.removeDuplicates();
+        l.sourcePaths = paths;
+        l.summary = QStringLiteral(
+                        "%1 path(s) under %2/ (file-list module map, "
+                        "grouped by top-level directory)")
+                        .arg(paths.size())
+                        .arg(it.key());
+        out << l;
+    }
+    return out;
+}
+
 }  // namespace
 
 QList<Lane> derivePartition(const QString &projectPath) {
@@ -179,6 +267,14 @@ QList<Lane> derivePartition(const QString &projectPath) {
                 existing.name += QStringLiteral(", ") + l.name;
         }
     }
+    // ANTS-3507 — when the subsystem-shape parse yields nothing (a
+    // `- <path> — <desc>` file-list module map, not `- `name` — summary`),
+    // fall back to grouping the listed paths by top-level directory so a
+    // common map shape still auto-partitions. deriveFileListPartition returns
+    // empty unless it derives >1 lane, so the caller keeps its
+    // module_map_unparseable / sparse_partition path when it can't.
+    if (out.isEmpty())
+        return deriveFileListPartition(projectPath, sourcePath);
     return out;
 }
 

@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **indie_review partition deriver: optional fallback to group a file-list `## Module map` into lanes by top-level directory.** (ANTS-3507)
+  Right now the auto-reviewer only works when a project's module map lists named subsystems; a project that lists plain file paths (common) gets refused and must hand-write a partition file. Let it fall back to grouping those files into lanes by their top folder.
+
 - **indie_review_partition now emits a sparse_partition_hint on an empty/≤1-lane partition (ANTS-3567)**
   Symmetry with cold_eyes_partition (ANTS-1634a): when the module-map
   deriver yields ≤1 lane (no CLAUDE.md `## Module map`, no

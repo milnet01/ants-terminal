@@ -1738,6 +1738,8 @@ if(ANTS_TESTS)
                 tests/features/audit_drop_alias/test_audit_drop_alias.cpp
                 tests/features/audit_framework_detect/test_audit_framework_detect.cpp
                 tests/features/indie_review_engine/test_indie_review_engine.cpp
+                # ANTS-3507 — file-list module-map fallback partitioner.
+                tests/features/indie_review_filelist_partition/test_indie_review_filelist_partition.cpp
                 tests/features/debt_sweep_engine/test_debt_sweep_engine.cpp
                 tests/features/verify_changes_engine/test_verify_changes_engine.cpp
                 # ANTS-3473 — fold-in ID prefix sniffing.

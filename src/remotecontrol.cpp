@@ -17875,8 +17875,10 @@ QJsonDocument RemoteControl::cmdIndieReviewOrchestrate(const QJsonObject &req) {
                     "code-identifier name token, an em-dash/hyphen separator, "
                     "then a summary), and each named subsystem must resolve to "
                     "≥1 source file. A `- <path> — <description>` file list is "
-                    "not parsed. Pass a .cold-eyes/partition.json override to "
-                    "hand-author the lanes.").arg(src)));
+                    "grouped by top-level directory only when that yields ≥2 "
+                    "lanes (ANTS-3507); this map did not. Pass a "
+                    ".cold-eyes/partition.json override to hand-author the "
+                    "lanes.").arg(src)));
         }
         return QJsonDocument(irErr(
             QStringLiteral("no_lanes"),
