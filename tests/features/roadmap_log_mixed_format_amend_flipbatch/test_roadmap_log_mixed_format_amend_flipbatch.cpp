@@ -94,6 +94,14 @@ QString readAll(const QString &path) {
     return s;
 }
 
+// 1-based line number of the first line containing `needle` (0 if absent).
+int lineOf(const QString &path, const QString &needle) {
+    const QStringList lines = readAll(path).split(QLatin1Char('\n'));
+    for (int i = 0; i < lines.size(); ++i)
+        if (lines.at(i).contains(needle)) return i + 1;
+    return 0;
+}
+
 }  // namespace
 
 // INV-1 — amend_body patches the ants-v1 emoji bullet's body by id.
@@ -274,4 +282,45 @@ TEST(roadmap_log_mixed_amend_flipbatch, Inv6AbsentIdFails) {
     ASSERT_EQ(skipped.size(), 1);
     EXPECT_EQ(skipped.first().toObject().value(QStringLiteral("code")).toString(),
               QStringLiteral("bullet_not_found"));
+}
+
+// INV-7 (ANTS-3570) — flip_batch resolves the ants-v1 emoji bullet by a
+// line_range locator in a mixed-format roadmap. Before the fix, the ANTS-3565
+// v1 fallback deliberately excluded line_range ("a line_range legitimately
+// means GFM rows"), so a range naming the appended emoji bullet's line matched
+// zero GFM rows and returned bullet_not_found. The emoji bullet sits on a line
+// no GFM bullet occupies, so a single-line range must resolve it via the v1 set.
+TEST(roadmap_log_mixed_amend_flipbatch, Inv7FlipBatchEmojiBulletByLineRange) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = roadmapPath(tmp.path());
+    ASSERT_TRUE(writeFile(path, seed()));
+
+    const int emojiLine = lineOf(path, QStringLiteral("[3D_E-0031]"));
+    ASSERT_GT(emojiLine, 0) << "seed must contain the emoji bullet line";
+
+    RemoteControl rc(nullptr);
+    QJsonObject loc;
+    loc[QStringLiteral("line_range")] = QJsonArray{ emojiLine, emojiLine };
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("flip_batch");
+    req[QStringLiteral("to_status")]  = QStringLiteral("shipped");
+    req[QStringLiteral("locators")]   = QJsonArray{ loc };
+    const QJsonObject resp = rc.cmdRoadmapLogFlipBatchForTest(req).object();
+
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("flipped_count")).toInt(), 1)
+        << "a line_range naming the emoji bullet must flip it in a mixed file; "
+           "skipped="
+        << QString::fromUtf8(QJsonDocument(
+               resp.value(QStringLiteral("skipped")).toArray())
+               .toJson(QJsonDocument::Compact)).toStdString();
+    const QJsonArray flipped = resp.value(QStringLiteral("flipped")).toArray();
+    ASSERT_EQ(flipped.size(), 1);
+    const QJsonObject e = flipped.first().toObject();
+    EXPECT_EQ(e.value(QStringLiteral("format")).toString(),
+              QStringLiteral("ants-v1"));
+    EXPECT_TRUE(readAll(path).contains(
+        QString::fromUtf8("\xE2\x9C\x85 [3D_E-0031]")));
 }

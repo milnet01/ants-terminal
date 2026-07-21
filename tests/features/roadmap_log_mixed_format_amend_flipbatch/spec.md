@@ -32,9 +32,17 @@ ANTS-3561 fixed for flip/annotate.
   `applyGfmFlip`). A flipped emoji-bullet result entry carries
   `format:"ants-v1"`.
 
-Ambiguous GFM (>1 match) and anchor/line_range locators keep their existing
-GFM-only behaviour — the fallback fires only on a GFM zero-match for an
-id/headline locator, so it never shadows a real GFM hit.
+Ambiguous GFM (>1 match) and anchor locators keep their existing GFM-only
+behaviour — the fallback fires only on a GFM zero-match, so it never shadows
+a real GFM hit.
+
+**ANTS-3570 follow-up.** The original fix excluded `line_range` from the
+ants-v1 fallback ("a line_range legitimately means GFM rows"), leaving
+Vestige's `3D_E-NNNN`-by-line repro unaddressable: an emoji bullet appended
+into a GFM-majority roadmap sits on a line no GFM row occupies, so a range
+naming it matched zero GFM rows and returned `bullet_not_found`. The fallback
+now also walks the ants-v1 set for a line in-range on a GFM zero-match — anchor
+stays GFM-only, and a range that hits real GFM rows is served by them first.
 
 ## Surface
 
@@ -74,3 +82,9 @@ id/headline locator, so it never shadows a real GFM hit.
   id:"3D_E-9999"` returns a non-ok envelope (no match manufactured), and a
   `flip_batch` locator with an absent id lands in `skipped[]` with
   `bullet_not_found`. Behavioural.
+- **INV-7 / flip_batch emoji bullet by line_range (ANTS-3570).** In a mixed
+  GFM+ants-v1 file, `op:"flip_batch"` with a single `line_range:[N,N]` locator
+  where N is the emoji bullet's 1-based line returns `flipped_count:1`, the
+  entry carries `format:"ants-v1"`, and the file shows the swapped emoji. The
+  range matches zero GFM rows, so the ants-v1 fallback resolves it.
+  Behavioural.

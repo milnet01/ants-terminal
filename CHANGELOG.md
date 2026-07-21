@@ -70,6 +70,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log flip_batch: line_range locator has no ants-v1 fallback in a mixed-format roadmap (ANTS-3565 residual).** (ANTS-3570)
+  In a to-do file that mixes two bullet styles, flipping a newer emoji-style item by its line number still fails — though you can now flip it by its ID or title instead, which is the usual way.
+
 - **feedback_log op:assign_id now honours its documented `note` param (ANTS-3571)**
   assign_id{ids|closure, note} silently dropped the note — it was never
   read from the request. It now renders as a single `- **Note:** <note>`

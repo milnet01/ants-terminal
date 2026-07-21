@@ -8605,16 +8605,24 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             }
             // ANTS-3565 — mixed-format fallback: no GFM candidate for an
             // id/headline locator → try the appended ants-v1 emoji bullets
-            // (anchor is GFM-only; a line_range legitimately means GFM rows).
-            if (candFirstLines.isEmpty() && !isRange && locAnchor.isEmpty() &&
-                (!locId.isEmpty() || !locHeadline.isEmpty())) {
+            // (anchor is GFM-only). ANTS-3570 extends this to a line_range
+            // locator: an emoji bullet appended into a GFM-majority roadmap
+            // sits on a line no GFM row occupies, so a range that matched zero
+            // GFM rows must still walk the ants-v1 set for a line in-range.
+            if (candFirstLines.isEmpty() && locAnchor.isEmpty()) {
                 if (!locId.isEmpty()) {
                     for (const auto &b : vbs)
                         if (b.id == locId) candFirstLines.append(b.firstLine);
-                } else {
+                } else if (!locHeadline.isEmpty()) {
                     const quint64 need = headlineHash(locHeadline);
                     for (const auto &b : vbs)
                         if (headlineHash(b.headline) == need)
+                            candFirstLines.append(b.firstLine);
+                } else if (isRange) {
+                    const int a = locRange.at(0).toInt(),
+                              z = locRange.at(1).toInt();
+                    for (const auto &b : vbs)
+                        if (b.firstLine + 1 >= a && b.firstLine + 1 <= z)
                             candFirstLines.append(b.firstLine);
                 }
                 if (!candFirstLines.isEmpty()) locViaV1 = true;
