@@ -54,6 +54,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_query mode:bundles clusters on headline tokens only — same kind+lane+stem items return as all-singletons, indistinguishable from no-clusters.** (ANTS-3388)
+  roadmap_query mode:bundles now groups per-module "<verb> <path>/spec.md"-style to-dos that share the same Kind, a lane, and a template shape (previously returned as indistinguishable singletons), and always reports no_clusters_found so a caller can tell "grouped into singletons" from a real grouping.
+
 - **The status-bar "tokens saved" badge is now scoped to the current project instead of a global all-projects total.** (ANTS-3579)
   The pill shows the savings for the project of the tab you're looking at — its live-session number on the face, this-month/year/all-time in the tooltip — and switching tabs re-scopes it. A separate "All projects" tooltip line preserves the previous global total. Savings are attributed per Claude Code call's project folder; the per-project store is bounded (64 projects, LRU). Switching to a tab for a project you have history for (but haven't used this session) shows that project's all-time.
 

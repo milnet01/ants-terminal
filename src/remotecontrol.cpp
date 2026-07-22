@@ -1224,6 +1224,34 @@ QString rcNormaliseHeadline(const QString &raw) {
     return out;
 }
 
+// ANTS-3388 — structural signature for `<verb> <path>`-template bullets
+// (e.g. "Author src/mame_curator/<mod>/spec.md"), whose discriminating
+// tokens are all paths/filenames the clustering denoiser strips — leaving
+// them un-clusterable by shared-token overlap. The signature keeps the
+// leading verb + the first and last path segments + segment count, so
+// per-module template bullets that vary only in a middle path segment
+// share it, while a different template (different verb / root / leaf /
+// depth) does not. Empty when the headline is not template-shaped (no
+// alphabetic leading verb, or no multi-segment path token). Cheap: one
+// normalise + split, computed once per bullet.
+static QString rcStructuralStem(const QString &headline) {
+    const QStringList toks = rcNormaliseHeadline(headline)
+                                 .split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    if (toks.size() < 2) return {};
+    const QString verb = toks.first();
+    for (const QChar c : verb)
+        if (!c.isLetter()) return {};   // a real action word, not a path/number
+    for (int i = 1; i < toks.size(); ++i) {
+        if (!toks[i].contains(QLatin1Char('/'))) continue;
+        const QStringList segs =
+            toks[i].split(QLatin1Char('/'), Qt::SkipEmptyParts);
+        if (segs.size() < 2) continue;
+        return verb + QLatin1Char('|') + segs.first() + QLatin1Char('|') +
+               segs.last() + QLatin1Char('|') + QString::number(segs.size());
+    }
+    return {};   // no path token ⟹ not a <verb> <path> template
+}
+
 // ANTS-3387 — classify a roadmap id/locator token that is bracket-token
 // SHAPED (a `<prefix>-<digits>` id, as authored in `[PREFIX-NNNN]`) but
 // fails the canonical PROJ-NNNN gate — the letter-led
@@ -3457,6 +3485,8 @@ QJsonObject RemoteControl::buildRoadmapBundlesEnvelope(
 
     struct Item {
         QString id, status, headlineOneline, body;
+        QString kind;                  // ANTS-3388 — Kind: facet, for the edge weight
+        QString stem;                  // ANTS-3388 — <verb> <path> structural signature
         QStringList lanes;
         QSet<QString> tokens;          // raw headline tokens (labels + ✅-sibling check)
         QSet<QString> clusterTokens;   // ANTS-2155 — denoised, for the bundle edge
@@ -3488,6 +3518,8 @@ QJsonObject RemoteControl::buildRoadmapBundlesEnvelope(
             it.headlineOneline =
                 o.value(QStringLiteral("headline_oneline")).toString();
             it.body = o.value(QStringLiteral("body")).toString();
+            it.kind = o.value(QStringLiteral("kind")).toString();
+            it.stem = rcStructuralStem(headline);   // ANTS-3388
             const QJsonArray la = o.value(QStringLiteral("lanes")).toArray();
             for (const auto &l : la) it.lanes.append(l.toString());
             it.tokens = tokset;
@@ -3545,7 +3577,24 @@ QJsonObject RemoteControl::buildRoadmapBundlesEnvelope(
         while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
         return x;
     };
-    const auto clusterEdge = [&active](int x, int y) -> bool {
+    const auto sharedLane = [&active](int x, int y) -> bool {
+        const QSet<QString> lx(active[x].lanes.begin(), active[x].lanes.end());
+        for (const QString &l : active[y].lanes)
+            if (lx.contains(l)) return true;
+        return false;
+    };
+    const auto clusterEdge = [&active, &sharedLane](int x, int y) -> bool {
+        // ANTS-3388 — structural-template assist: same Kind + a shared lane +
+        // an identical <verb> <path> stem clusters template bullets (per-module
+        // "Author …/spec.md") whose only shared tokens are the paths/filenames
+        // the denoiser strips. Runs BEFORE the token guard because such bullets
+        // often have near-empty clusterTokens. Guarded on all three facets so a
+        // bare same-kind/same-lane pair never over-merges.
+        if (!active[x].stem.isEmpty() && active[x].stem == active[y].stem &&
+            !active[x].kind.isEmpty() && active[x].kind == active[y].kind &&
+            sharedLane(x, y)) {
+            return true;
+        }
         const QSet<QString> &tx = active[x].clusterTokens;
         const QSet<QString> &ty = active[y].clusterTokens;
         if (tx.isEmpty() || ty.isEmpty()) return false;
@@ -3556,9 +3605,7 @@ QJsonObject RemoteControl::buildRoadmapBundlesEnvelope(
         if (inter < 2) return false;                                  // ≥2 shared-topic floor
         if (inter >= 3) return true;                                  // strong overlap
         if (static_cast<double>(inter) / small.size() >= 0.5) return true;  // overlap coefficient
-        QSet<QString> lx(active[x].lanes.begin(), active[x].lanes.end());  // lane assist
-        for (const QString &l : active[y].lanes) if (lx.contains(l)) return true;
-        return false;
+        return sharedLane(x, y);   // lane assist (same-lane 2-token pairs)
     };
     for (int i = 0; i < activeTotal; ++i) {
         for (int j = i + 1; j < activeTotal; ++j) {
@@ -3741,6 +3788,15 @@ QJsonObject RemoteControl::buildRoadmapBundlesEnvelope(
     out["total_bundle_count"] = bundles.size();
     out["bundles_omitted"] = static_cast<int>(bundles.size()) - bundlesArr.size();
     out["truncated"] = truncated;
+    // ANTS-3388 — distinguish "grouped into all-singletons" (clustering ran
+    // but nothing merged) from "found real clusters". True ⟺ no bundle in the
+    // full pre-cap set reached size ≥ 2, so a caller never mistakes N size:1
+    // bundles for a successful grouping. Measured over `bundles` (not the
+    // cap-truncated `bundlesArr`), and vacuously true for an empty active set.
+    bool anyCluster = false;
+    for (const Bundle &b : bundles)
+        if (b.size >= 2) { anyCluster = true; break; }
+    out["no_clusters_found"] = !anyCluster;
     out["bundles"] = bundlesArr;
     return out;
 }

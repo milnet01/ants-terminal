@@ -29,7 +29,8 @@ const QString kDone     = QString::fromUtf8("\xE2\x9C\x85");      // ✅
 QJsonObject bullet(const QString &id, const QString &status,
                    const QString &headline,
                    const QStringList &lanes = {},
-                   const QString &body = {}) {
+                   const QString &body = {},
+                   const QString &kind = {}) {   // ANTS-3388 — Kind: facet
     QJsonObject o;
     o["id"] = id;
     o["status"] = status;
@@ -39,6 +40,7 @@ QJsonObject bullet(const QString &id, const QString &status,
     for (const QString &l : lanes) la.append(l);
     o["lanes"] = la;
     o["body"] = body;
+    o["kind"] = kind;
     return o;
 }
 
@@ -378,5 +380,99 @@ TEST(mcp_roadmap_bundles, SchemaBundlesEnum) {
     const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(cpp, "modeEnum.append(\"bundles\")"),
            "schema: bundles value in the mode enum");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ── ANTS-3388 — Kind+lane structural-template clustering + no_clusters_found ──
+
+// INV-14 — per-module "<verb> <path>/spec.md" template bullets (same Kind,
+// same lane, denoised tokens < 2) cluster via the structural-stem assist.
+TEST(mcp_roadmap_bundles, Inv14StructuralTemplateClusters) {
+    expect_reset();
+    QJsonArray a;
+    a.append(bullet("ANTS-1057", kPlanned, "Author src/mame_curator/alpha/spec.md",
+                    {"docs"}, {}, "doc"));
+    a.append(bullet("ANTS-1058", kPlanned, "Author src/mame_curator/beta/spec.md",
+                    {"docs"}, {}, "doc"));
+    a.append(bullet("ANTS-1059", kPlanned, "Author src/mame_curator/gamma/spec.md",
+                    {"docs"}, {}, "doc"));
+    const QJsonObject env = RemoteControl::buildRoadmapBundlesEnvelope(a, kCap);
+
+    const QJsonObject b = findBundle(env, "ANTS-1057");
+    expect(b.value("size").toInt() == 3, "three template bullets in one bundle");
+    expect(findBundle(env, "ANTS-1058").value("size").toInt() == 3,
+           "1058 in the same size-3 bundle");
+    expect(findBundle(env, "ANTS-1059").value("size").toInt() == 3,
+           "1059 in the same size-3 bundle");
+    expect(env.value("no_clusters_found").toBool() == false,
+           "a real cluster ⟹ no_clusters_found:false");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// INV-15 — the structural assist is guarded on all three facets: a different
+// Kind, a different lane, or a different template does NOT merge.
+TEST(mcp_roadmap_bundles, Inv15StructuralAssistGuarded) {
+    expect_reset();
+
+    // Different Kind (doc vs test) → no structural edge.
+    {
+        QJsonArray a;
+        a.append(bullet("ANTS-2001", kPlanned, "Author src/mod/x/spec.md",
+                        {"docs"}, {}, "doc"));
+        a.append(bullet("ANTS-2002", kPlanned, "Author src/mod/y/spec.md",
+                        {"docs"}, {}, "test"));
+        const QJsonObject env = RemoteControl::buildRoadmapBundlesEnvelope(a, kCap);
+        expect(findBundle(env, "ANTS-2001").value("size").toInt() == 1,
+               "different Kind ⟹ not merged");
+    }
+    // Different lane → no structural edge.
+    {
+        QJsonArray a;
+        a.append(bullet("ANTS-2003", kPlanned, "Author src/mod/x/spec.md",
+                        {"docs"}, {}, "doc"));
+        a.append(bullet("ANTS-2004", kPlanned, "Author src/mod/y/spec.md",
+                        {"core"}, {}, "doc"));
+        const QJsonObject env = RemoteControl::buildRoadmapBundlesEnvelope(a, kCap);
+        expect(findBundle(env, "ANTS-2003").value("size").toInt() == 1,
+               "different lane ⟹ not merged");
+    }
+    // Different template shape (different root + leaf + depth) → no edge.
+    {
+        QJsonArray a;
+        a.append(bullet("ANTS-2005", kPlanned, "Author src/mod/x/spec.md",
+                        {"docs"}, {}, "doc"));
+        a.append(bullet("ANTS-2006", kPlanned, "Author docs/readme.md",
+                        {"docs"}, {}, "doc"));
+        const QJsonObject env = RemoteControl::buildRoadmapBundlesEnvelope(a, kCap);
+        expect(findBundle(env, "ANTS-2005").value("size").toInt() == 1,
+               "different template ⟹ not merged");
+    }
+    EXPECT_EQ(0, expect_failures());
+}
+
+// INV-16 — no_clusters_found:true when every bundle is a singleton, and the
+// flag is always present (true even for an empty active set).
+TEST(mcp_roadmap_bundles, Inv16NoClustersFoundFlag) {
+    expect_reset();
+
+    // All-singletons: three unrelated bullets.
+    {
+        QJsonArray a;
+        a.append(bullet("ANTS-3001", kPlanned, "alpha widget rendering"));
+        a.append(bullet("ANTS-3002", kPlanned, "beta parser rework"));
+        a.append(bullet("ANTS-3003", kPlanned, "gamma socket timeout"));
+        const QJsonObject env = RemoteControl::buildRoadmapBundlesEnvelope(a, kCap);
+        expect(env.contains("no_clusters_found"), "flag always present");
+        expect(env.value("no_clusters_found").toBool() == true,
+               "all-singletons ⟹ no_clusters_found:true");
+    }
+    // Empty active set → vacuously true, flag present.
+    {
+        QJsonArray a;
+        const QJsonObject env = RemoteControl::buildRoadmapBundlesEnvelope(a, kCap);
+        expect(env.contains("no_clusters_found"), "flag present on empty set");
+        expect(env.value("no_clusters_found").toBool() == true,
+               "empty active ⟹ no_clusters_found:true");
+    }
     EXPECT_EQ(0, expect_failures());
 }

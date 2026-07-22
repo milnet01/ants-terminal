@@ -42,6 +42,19 @@ bullet object carries the keys the builder reads: `id`, `status`
   `setBundleSoftCapOverride` seam is wired into the branch (source-grep).
 - **INV-13** — the label lane-fallback folds case (`claude`/`Claude` →
   one bucket).
+- **INV-14** — (ANTS-3388) per-module `<verb> <path>`-template bullets
+  whose discriminating tokens are all paths/filenames (denoised away, so
+  they share < 2 cluster tokens) still cluster when they share the same
+  `Kind`, a lane, and an identical structural stem (leading verb + first
+  & last path segment + segment count) — e.g. three `Author
+  src/mame_curator/<mod>/spec.md` docs items land in one bundle.
+- **INV-15** — (ANTS-3388) the structural assist is conjunctive: a
+  differing `Kind`, a disjoint lane set, or a different template shape
+  (root/leaf/depth) does NOT merge — so it cannot over-cluster.
+- **INV-16** — (ANTS-3388) the envelope always carries
+  `no_clusters_found` (bool): `true` ⟺ no bundle in the full pre-cap set
+  reached size ≥ 2 (all-singletons, or an empty active set), so a caller
+  distinguishes "grouped into singletons" from a real grouping.
 
 ## Pre-fix check
 
