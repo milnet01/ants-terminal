@@ -1,3 +1,23 @@
+ants-terminal (0.7.101-1) unstable; urgency=medium
+
+  * MCP tokens-saved tracking on the status bar — live session savings
+    plus month/YTD/all-time totals, scoped to the current project.
+    (ANTS-3572, ANTS-3579)
+  * Build diagnostics now suggest missing #include directives for
+    "undeclared symbol" errors, resolving the header automatically.
+    (ANTS-3374)
+  * Claude Code integration — faster changelog/roadmap queries with
+    auto-downshift paging, improved partition detection for file-list
+    module maps, better spec-reader accuracy (inline invariants, GLSL
+    symbols), and cross-session feedback with foreign-ID resolution.
+    (ANTS-3533, 3507, 3569, 3558, 3519)
+  * Roadmap and query robustness — ID-locator fallbacks in mixed-format
+    files, accurate parsing and pagination, batch-read synonyms, e2e
+    config isolation, and spec invariant reporting. (ANTS-3570, 3561,
+    3566, 3583, 3568, 3577, 3513, 3541, 3562, 3560)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 22 Jul 2026 00:00:00 +0200
+
 ants-terminal (0.7.100-1) unstable; urgency=medium
 
   * Tab colouration — 14 preset tab colours plus a custom colour picker

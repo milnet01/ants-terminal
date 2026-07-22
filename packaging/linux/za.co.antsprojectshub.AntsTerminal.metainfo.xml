@@ -103,6 +103,17 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.101" date="2026-07-22">
+      <description>
+        <p>MCP tokens-saved tracking on the status bar, smarter build-error diagnostics, and a large internal sweep of Claude Code integration reliability and query performance.</p>
+        <ul>
+          <li><em>Added:</em> Status-bar tokens-saved chip showing live session savings plus month/YTD/all-time totals, scoped to the current project. (ANTS-3572, ANTS-3579)</li>
+          <li><em>Added:</em> Build diagnostics now suggest missing <code>#include</code> directives for "undeclared symbol" errors, resolving the header automatically. (ANTS-3374)</li>
+          <li><em>Changed:</em> Claude Code integration — faster changelog/roadmap queries with auto-downshift paging, improved partition detection for file-list module maps, better spec-reader accuracy (inline invariants, GLSL symbols), and cross-session feedback with foreign-ID resolution. (ANTS-3533, 3507, 3569, 3558, 3519)</li>
+          <li><em>Fixed:</em> Roadmap and query robustness — ID-locator fallbacks in mixed-format files, accurate parsing and pagination, batch-read synonyms, spec invariant reporting, and e2e config isolation. (ANTS-3570, 3561, 3566, 3583, 3568, 3577, 3513, 3541, 3562, 3560)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.100" date="2026-07-22">
       <description>
         <p>Tab-colour and scrollback-navigation polish for everyday use, a new end-to-end test harness, and a large under-the-hood sweep of the built-in Claude Code / MCP integration (cheaper searches, paged result previews, and rendering speed-ups).</p>
