@@ -32,6 +32,7 @@
 #include "remotecontrolgate.h"
 #include "resolvedroot.h"
 #include "scrollbackerrors.h"
+#include "buildfixhint.h"
 #include "sessionmemoryengine.h"
 #include "similarcode.h"
 #include "symbolquery.h"
@@ -2234,6 +2235,44 @@ QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
     return QJsonDocument(out);
 }
 
+void RemoteControl::enrichLikelyFixes(QJsonArray &errors,
+                                      const QString &root) const {
+    // ANTS-3374 — stitch the diagnose→fix loop: on an undeclared-symbol
+    // diagnostic, resolve the declaring header and attach a `likely_fix`
+    // add_include hint. Dedups by symbol (cascades name the same symbol
+    // repeatedly) and caps distinct header lookups so a wall of errors
+    // can't fan out into an unbounded SymbolQuery tree-walk.
+    if (root.isEmpty() || errors.isEmpty()) return;
+    constexpr int kMaxLookups = 25;
+    QHash<QString, QString> headerBySym;  // symbol → header ("" = miss)
+    int lookups = 0;
+    for (int i = 0; i < errors.size(); ++i) {
+        QJsonObject e = errors.at(i).toObject();
+        const QString sym =
+            BuildFixHint::undeclaredSymbol(e.value("message").toString());
+        if (sym.isEmpty()) continue;
+        QString header;
+        if (const auto it = headerBySym.constFind(sym);
+            it != headerBySym.constEnd()) {
+            header = it.value();
+        } else if (lookups < kMaxLookups) {
+            header = BuildFixHint::resolveHeader(root, sym);
+            headerBySym.insert(sym, header);
+            ++lookups;
+        } else {
+            continue;  // lookup budget spent — leave the rest un-enriched
+        }
+        if (header.isEmpty()) continue;
+        QJsonObject lf;
+        lf["add_include"] = header;
+        lf["defines"]     = sym;
+        const QString at = e.value("file").toString();
+        if (!at.isEmpty()) lf["at"] = at;
+        e["likely_fix"] = lf;
+        errors.replace(i, e);
+    }
+}
+
 QJsonDocument RemoteControl::cmdRecentErrors(const QJsonObject &req) {
     // ANTS-1301 — scan the focused terminal's recent scrollback for
     // structured errors. Terminal resolution mirrors cmdGetText
@@ -2280,6 +2319,9 @@ QJsonDocument RemoteControl::cmdRecentErrors(const QJsonObject &req) {
         o["text"]    = e.text;
         errors.append(o);
     }
+
+    // ANTS-3374 — best-effort add_include hint on undeclared-symbol errors.
+    enrichLikelyFixes(errors, resolveRootCanonical(m_main, req));
 
     out["ok"]            = true;
     out["errors"]        = errors;
@@ -21182,6 +21224,10 @@ QJsonDocument RemoteControl::cmdBuildStatus(const QJsonObject &req) {
     }
     QJsonObject env = BuildCache::toJson(*loaded);
     env["ok"] = true;
+    // ANTS-3374 — add_include hint on undeclared-symbol errors.
+    QJsonArray btErrors = env.value("errors").toArray();
+    enrichLikelyFixes(btErrors, rootCanonical);
+    env["errors"] = btErrors;
     const auto stale =
         BuildCache::checkStale(rootCanonical, loaded->recordedAtMs);
     if (!stale.staleKnown) {

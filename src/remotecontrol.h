@@ -444,6 +444,14 @@ public:
     // See docs/specs/ANTS-1301.md.
     QJsonDocument cmdRecentErrors(const QJsonObject &req);
 
+    // ANTS-3374: attach a `likely_fix` add_include hint to every entry in
+    // `errors` whose message names an undeclared symbol that resolves to a
+    // project header (BuildFixHint). Dedups by symbol and bounds the number
+    // of distinct header lookups. Best-effort — an empty `root` is a no-op.
+    // Shared by cmdRecentErrors + cmdBuildStatus. See
+    // tests/features/mcp_likely_fix/spec.md.
+    void enrichLikelyFixes(QJsonArray &errors, const QString &root) const;
+
     // ANTS-1312: last_selection — return the focused (or routed)
     // terminal's current selection text. Delegates to
     // TerminalWidget::selectedText(). Tab routing mirrors cmdGetText /

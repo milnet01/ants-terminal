@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **recent_errors / build_status — attach likely_fix add_include for "'X' has not been declared" diagnostics.** (ANTS-3374)
+  recent_errors and build_status now attach a likely_fix:{add_include, defines, at} hint on undeclared-symbol diagnostics ('X' has not been declared / was not declared in this scope / unknown type name 'X' / use of undeclared identifier 'X'), resolving the declaring header so the missing #include no longer needs a second lookup.
+
 - **indie_review partition deriver: optional fallback to group a file-list `## Module map` into lanes by top-level directory.** (ANTS-3507)
   Right now the auto-reviewer only works when a project's module map lists named subsystems; a project that lists plain file paths (common) gets refused and must hand-write a partition file. Let it fall back to grouping those files into lanes by their top folder.
 

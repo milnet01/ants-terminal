@@ -18197,11 +18197,12 @@ server build id so clients can self-diagnose this.
   Source: cc-feedback-2026-06-30 (Vestige Sug-B, 2 days running).
   Resolved (2026-07-10): VerifyEngine::findUnreferencedSources (pure basename grep over CMakeLists.txt/*.cmake, build/vendor dirs pruned via isNoiseDir) + caller-side git-added-source parse in collectGitSnapshot; surfaced as advisory orphaned_sources[] in verify_changes (does not flip all_passed, emitted only when non-empty). Engine spec INV-10 + test Inv10OrphanedSourceLint. Inverse check (dead source-list entry) deferred — out-of-scope in the engine spec. Full suite 2589/2589.
 
-- 📋 [ANTS-3374] **recent_errors / build_status — attach likely_fix add_include for "'X' has not been declared" diagnostics.**
+- ✅ [ANTS-3374] **recent_errors / build_status — attach likely_fix add_include for "'X' has not been declared" diagnostics.**
   Vestige: 'DeviceHotSwapMode has not been declared' etc. On a 'X has not been declared'/'unknown type name X' diagnostic, auto-run find_definition(X) and attach likely_fix:{add_include:'<header>', defines:'X', at:'<failing file>'}. Stitches the existing 2-verb diagnose→fix loop.
   **Layman:** For the most common C++ build error, auto-suggest the missing #include instead of making you look it up.
   Kind: feature.
   Source: cc-feedback-2026-06-30 (Vestige Sug-C).
+  Resolved (2026-07-22) — new pure helper BuildFixHint (src/buildfixhint.{h,cpp}, ants_core_lib): undeclaredSymbol() extracts the identifier from the four GCC/clang undeclared-symbol diagnostics; resolveHeader() reuses SymbolQuery::findDefinition to find the declaring header (header-suffix match, else on-disk sibling header of a source def). cmdRecentErrors + cmdBuildStatus (read path) post-process their errors[] via RemoteControl::enrichLikelyFixes — dedups by symbol, caps distinct lookups at 25, attaches likely_fix:{add_include, defines, at}. Self-gating: a symbol that resolves nowhere yields no suggestion. Test-first: tests/features/mcp_likely_fix (3 cases, INV-1..5); full suite 2821/2821 green.
 
 - ✅ [ANTS-3375] **Lightweight single-reviewer broker for a Rule-8 code/dependency diff (or document indie_review_dispatch for it).**
   Vestige: cold_eyes_* is doc-only; indie_review_* is the heavyweight multi-agent pipeline. For a 4-file dep-add (libebur128) the contributor fell back to a raw general-purpose subagent (which caught a real non-PIC/-fPIE link bug). Either add an indie_review_brief mode taking an explicit changed-file set + 'verify upstream facts', or document indie_review_dispatch as the single-reviewer entry point. May be discoverability, not capability.
