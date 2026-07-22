@@ -26,7 +26,7 @@ ants-terminal (0.7.100-1) unstable; urgency=medium
     audit, and MCP dispatch, and session_orient now flags a stale MCP
     binary (ANTS-3499).
 
- -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 17 Jul 2026 00:00:00 +0200
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 22 Jul 2026 00:00:00 +0200
 
 ants-terminal (0.7.99-1) unstable; urgency=medium
 

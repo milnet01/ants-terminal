@@ -126,7 +126,7 @@ for security-relevant changes.
 - **roadmap_query zero keyword-match emits a misleading "every entry has no [PROJ-NNNN] id" warning.** (ANTS-3560)
   When you search the roadmap and nothing matches, the tool wrongly says "none of your items have IDs" and points you at the wrong fix — when the truth is simply that your search text matched nothing.
 
-## [0.7.100] — unreleased (Patron RC preview)
+## [0.7.100] — 2026-07-22
 ### Added
 
 - **User-level e2e feature case suite (ANTS-2050)**

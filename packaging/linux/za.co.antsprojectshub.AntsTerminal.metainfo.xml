@@ -103,7 +103,7 @@
   </screenshots>
 
   <releases>
-    <release version="0.7.100" date="2026-07-17">
+    <release version="0.7.100" date="2026-07-22">
       <description>
         <p>Tab-colour and scrollback-navigation polish for everyday use, a new end-to-end test harness, and a large under-the-hood sweep of the built-in Claude Code / MCP integration (cheaper searches, paged result previews, and rendering speed-ups).</p>
         <ul>
