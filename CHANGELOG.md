@@ -12,6 +12,7 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.101] — unreleased (Patron RC preview)
 ### Added
 
 - **recent_errors / build_status — attach likely_fix add_include for "'X' has not been declared" diagnostics.** (ANTS-3374)
