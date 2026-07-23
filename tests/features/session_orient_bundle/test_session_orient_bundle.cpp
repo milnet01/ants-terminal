@@ -124,6 +124,24 @@ TEST(session_orient_bundle, Inv6PartialUpstreamFailure) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-3587 — a fresh project with no ROADMAP must keep top-level ok:true; the
+// absent-but-optional artifact is surfaced via notices[], not ok:false. The
+// ok-aggregation routes upstreams through the noteOrFail helper which treats a
+// no_roadmap_loaded / no_roadmap refusal as a notice rather than a failure.
+TEST(session_orient_bundle, Ants3587AbsentRoadmapKeepsOkAddsNotice) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string body =
+        ants_test::slurpFunctionBody(cpp, "cmdSessionOrient");
+    expect(contains(body, "no_roadmap_loaded"),
+           "ANTS-3587: absent-roadmap refusal recognised as optional");
+    expect(contains(body, "notices"),
+           "ANTS-3587: absent-optional artifacts surfaced via notices[]");
+    expect(contains(body, "noteOrFail"),
+           "ANTS-3587: upstreams routed through the absent-optional helper");
+    EXPECT_EQ(0, expect_failures());
+}
+
 // INV-7 — tokenCostFor bucket.
 TEST(session_orient_bundle, Inv7TokenCostBucketRegistered) {
     expect_reset();

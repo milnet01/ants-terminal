@@ -104,6 +104,37 @@ TEST(IndieReviewEngine, Ants1288SuggestedMergesNearAndDistinct) {
     EXPECT_TRUE(merges[0].rationale.startsWith(QStringLiteral("near-identical")));
 }
 
+// ANTS-3591 — a directory-grouping fallback lane (ANTS-3507) has a boilerplate
+// summary shared by construction across all such lanes; summary-similarity
+// would otherwise flag nonsensical merges (src+tests, .github+tests). Fallback
+// lanes must never be a merge source — but a real lane pair alongside them
+// still merges.
+TEST(IndieReviewEngine, Ants3591FallbackBoilerplateNotMerged) {
+    auto mk = [](const QString &n, const QString &s) {
+        IndieReviewEngine::Lane l; l.name = n; l.summary = s; return l;
+    };
+    const auto fallback = [](int n, const QString &dir) {
+        return QStringLiteral("%1 path(s) under %2/ (file-list module map, "
+                              "grouped by top-level directory)")
+            .arg(n).arg(dir);
+    };
+    QList<IndieReviewEngine::Lane> lanes;
+    lanes << mk("src",     fallback(89, "src"))
+          << mk("tests",   fallback(12, "tests"))
+          << mk(".github", fallback(2, ".github"))
+          << mk("scripts", fallback(4, "scripts"));
+    EXPECT_TRUE(IndieReviewEngine::suggestedMerges(lanes).isEmpty())
+        << "ANTS-3591: fallback boilerplate summaries must not be merged";
+
+    // A genuinely duplicated real lane pair still merges despite fallback lanes.
+    lanes << mk("luaengine",    "sandboxed Lua 5.4 plugin VM and lifecycle.")
+          << mk("pluginmanager","sandboxed Lua 5.4 plugin VM and lifecycle.");
+    const auto merges = IndieReviewEngine::suggestedMerges(lanes);
+    ASSERT_EQ(merges.size(), 1);
+    EXPECT_TRUE(merges[0].lanes.contains("luaengine"));
+    EXPECT_TRUE(merges[0].lanes.contains("pluginmanager"));
+}
+
 TEST(IndieReviewEngine, Ants1288MultiNameBulletSurvivesAndIsSuggested) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());

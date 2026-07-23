@@ -3702,7 +3702,11 @@ void ClaudeIntegration::onMcpConnection() {
                     "reading via this verb does NOT satisfy the native Edit "
                     "tool's read-precondition — do a native Read before editing "
                     "a file you intend to modify. ANTS-3500: `requests` / "
-                    "`paths` / `regions` are accepted as aliases for `items`.");
+                    "`paths` / `regions` are accepted as aliases for `items`. "
+                    "ANTS-3589: pass an optional top-level `path` as the "
+                    "default for any item that omits its own `path` (per-item "
+                    "`path` still wins) — so reading N slices of ONE file is "
+                    "just {path, items:[{start_line,end_line}, …]}.");
                 rrsTool["selection_hint"] = QStringLiteral(
                     "Use when one file_outline/find_definition pass surfaced "
                     "several symbols/sections to read together — batch them "
@@ -3782,6 +3786,17 @@ void ClaudeIntegration::onMcpConnection() {
                             "validation; canonical `items` still wins.");
                         props[QLatin1String(alias)] = a;
                     }
+                    // ANTS-3589 — optional top-level `path`: the per-item
+                    // default for any item that omits its own `path`. Declared
+                    // so additionalProperties:false keeps it (and so it is not
+                    // reported in ignored_args). Per-item `path` still wins.
+                    { QJsonObject p; p["type"] = "string";
+                      p["description"] = QStringLiteral(
+                          "Optional default path (ANTS-3589): any item that "
+                          "omits its own `path` reads from this file instead, "
+                          "so reading N slices of one file need not repeat the "
+                          "filename. A per-item `path` still wins.");
+                      props["path"] = p; }
                     schema["properties"] = props;
                     QJsonArray required;
                     required.append("items");
@@ -5074,6 +5089,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "a failure); on any upstream failure "
                         "the failing key carries that upstream's "
                         "verbatim refusal envelope. ANTS-1883. "
+                        "ANTS-3587: an upstream that refuses ONLY because "
+                        "an optional artifact is absent (no ROADMAP.md yet — "
+                        "no_roadmap_loaded) keeps ok:true and is surfaced in "
+                        "a notices[] array, so a fresh project's first call "
+                        "does not read as a failure. "
                         "Etag tip: cache the returned `etag` field and "
                         "pass it back via `etag_match` on subsequent "
                         "calls in the same session — saves a full "

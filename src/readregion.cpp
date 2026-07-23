@@ -581,12 +581,17 @@ QString sliceEtag(const QJsonObject &obj) {
 // project-relative. Returns the slice envelope on success, or an ok:false
 // {code,error} object so the batch loop records one bad item without aborting.
 QJsonObject readOneRegion(const QJsonObject &item,
-                          const QString &rootCanonical, int maxBytes) {
-    const QString rawPath = item.value(QStringLiteral("path")).toString();
+                          const QString &rootCanonical, int maxBytes,
+                          const QString &defaultPath) {
+    // ANTS-3589 — a per-item `path` wins; otherwise fall back to the batch's
+    // top-level `defaultPath` so the single-file case need not repeat it.
+    QString rawPath = item.value(QStringLiteral("path")).toString();
+    if (rawPath.isEmpty()) rawPath = defaultPath;
     if (rawPath.isEmpty()) {
         QJsonObject o;
         o["ok"]    = false;
-        o["error"] = QStringLiteral("read_regions: item missing \"path\"");
+        o["error"] = QStringLiteral("read_regions: item missing \"path\" "
+                                    "(and no top-level `path` default)");
         o["code"]  = QStringLiteral("bad_args");
         return o;
     }
@@ -627,7 +632,8 @@ QJsonObject readOneRegion(const QJsonObject &item,
 }  // namespace
 
 QJsonObject extractBatch(const QString &rootCanonical,
-                         const QJsonValue &itemsValue, int maxBytes) {
+                         const QJsonValue &itemsValue, int maxBytes,
+                         const QString &defaultPath) {
     if (!itemsValue.isArray()) {
         QJsonObject o;
         o["ok"]    = false;
@@ -666,7 +672,8 @@ QJsonObject extractBatch(const QString &rootCanonical,
     for (const QJsonValue &iv : items) {
         const QJsonObject item = iv.toObject();
         const int itemCap = budget > 0 ? budget : 1;
-        QJsonObject slice = readOneRegion(item, rootCanonical, itemCap);
+        QJsonObject slice =
+            readOneRegion(item, rootCanonical, itemCap, defaultPath);
         const QString etag = sliceEtag(slice);
         const QString prior =
             item.value(QStringLiteral("etag_match")).toString();

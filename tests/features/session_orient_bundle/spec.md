@@ -13,6 +13,7 @@ ETag-eligible verbs into one envelope.
 | 4   | `Inv4CallerCwdRequired`           | `session_orient` mapped to `Required` in `callerCwdContractFor`. |
 | 5   | `Inv5ToolsListDescribesBundle`    | tools/list descriptor block exists for `session_orient`. |
 | 6   | `Inv6PartialUpstreamFailure`      | bundle's `ok` reflects all-three success/failure. |
+| 6b  | `Ants3587AbsentRoadmapKeepsOkAddsNotice` | an upstream that refuses ONLY for an absent optional artifact (`no_roadmap_loaded`/`no_roadmap`) keeps top-level `ok:true` and is surfaced in a `notices[]` array, not `ok:false`; real failures (bad cwd, unreadable state) still fail (ANTS-3587). |
 | 7   | `Inv7TokenCostBucketRegistered`   | `tokenCostFor` table carries an entry for `session_orient`. |
 | 8   | `Inv8CodebaseIndexRefreshTrimmed` | bundle invokes `cmdCodebaseIndex` under a `codebase_index` key (eager refresh at session start) AND strips volatile `generated_at_ms`/`refreshed_files` to keep the ETag stable (ANTS-2140). |
 | 9   | `Inv9FeedbackPendingScan`         | bundle surfaces the cross-session feedback backlog under a `feedback_pending` key, reusing `FeedbackFile::parse`, gated to the maintainer project by `docs/standards/mcp-feedback-files.md`, surfacing only files with an un-triaged `deltaPresent` (ANTS-1964). |

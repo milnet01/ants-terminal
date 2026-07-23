@@ -215,6 +215,51 @@ TEST(McpLastAuditSummary, Ants3372DropsProgressBarArtifacts) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-3590 — a zero-content placeholder result (empty ruleId, empty message,
+// empty artifact uri, startLine 0 — e.g. trivy rendering an empty result set
+// as one blank result on a clean scan) is "nothing found", not a finding: it
+// must be skipped BEFORE the tally (so a clean scan does not read as "1
+// actionable" with a blank MAJOR row) and never appear in top_findings. A real
+// finding alongside it still counts and survives.
+TEST(McpLastAuditSummary, Ants3590DropsEmptyPlaceholderResult) {
+    expect_reset();
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString sarifPath = dir.path() + "/audit.sarif";
+    {
+        std::ofstream out(sarifPath.toStdString());
+        out << R"sarif({
+          "version": "2.1.0",
+          "runs": [{
+            "tool": {"driver": {"name": "t", "rules": []}},
+            "results": [
+              {"level":"warning","ruleId":"",
+               "message":{"text":""},
+               "locations":[{"physicalLocation":{
+                 "artifactLocation":{"uri":""},
+                 "region":{"startLine":0}}}]},
+              {"level":"error","ruleId":"real-bug",
+               "message":{"text":"real finding"},
+               "locations":[{"physicalLocation":{
+                 "artifactLocation":{"uri":"src/real.cpp"},
+                 "region":{"startLine":42}}}]}
+            ]
+          }]
+        })sarif";
+    }
+    auto s = AuditEngine::summariseSarif(sarifPath, 50, "note");
+    ASSERT_TRUE(s.has_value());
+    // The empty placeholder is skipped before the tally: only the real error
+    // counts — no phantom warning.
+    EXPECT_EQ(1, s->countError);
+    EXPECT_EQ(0, s->countWarning)
+        << "ANTS-3590: empty placeholder must not tally as a warning";
+    EXPECT_EQ(0, s->countNote);
+    ASSERT_EQ(1, static_cast<int>(s->topFindings.size()));
+    EXPECT_EQ(s->topFindings.front().ruleId.toStdString(), "real-bug");
+    EXPECT_EQ(0, expect_failures());
+}
+
 TEST(McpLastAuditSummary, Inv7FilePassthroughNoRewrite) {
     expect_reset();
     auto s = AuditEngine::summariseSarif(

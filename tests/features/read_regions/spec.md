@@ -31,6 +31,18 @@ etag_match?}`. caller_cwd Required.
 - **RR-6 wiring** — `cmdReadRegions` (+ the `readOneRegion` helper) in
   remotecontrol.cpp; the `read_regions` tool schema in claudeintegration.cpp;
   the provider registered Required in mainwindow.cpp.
+- **RR-7/RR-8 items aliases** (ANTS-3500/3568) — `requests` / `paths` /
+  `regions` are accepted as aliases for `items` (canonical `items` wins) and
+  are DECLARED in the schema so `additionalProperties:false` does not strip
+  them before the handler's fallback runs.
+- **RR-9 top-level `path` default** (ANTS-3589) — an optional top-level `path`
+  is the per-item fallback: any item that omits its own `path` reads from it,
+  so N slices of one file is `{path, items:[{start_line,end_line}, …]}`. A
+  per-item `path` still wins; with neither, the item still fails `bad_args`.
+- **RR-10 top-level `path` wiring** — the top-level `path` is declared in the
+  read_regions schema (survives `additionalProperties:false`, drops out of
+  `ignored_args`) and forwarded by `cmdReadRegions` as `extractBatch`'s
+  `defaultPath`.
 
 ## Out of scope
 

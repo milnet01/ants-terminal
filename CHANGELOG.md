@@ -12,6 +12,27 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **read_regions: accept an optional top-level `path` used as the default for any item that omits its own `path` (per-item path still wins).** (ANTS-3589)
+  When you want several slices of ONE file, read_regions makes you repeat the same filename on every slice; let it take one filename at the top like its sibling read_region does.
+
+### Changed
+
+- **cold_eyes_brief: caution reviewers that ROADMAP/CHANGELOG are append-only HISTORY — a ✅/Resolved bullet is PAST state, a 📋 bullet is already-tracked work.** (ANTS-3586)
+  Cold-eyes reviewers keep re-reporting already-fixed bugs because a 'Resolved' roadmap line reads to them like an open problem; add one sentence to the brief telling them to verify against current source first.
+
+### Fixed
+
+- **indie_review_orchestrate: don't fire summary-similarity `suggested_merges` for lanes built by the file-list directory-grouping fallback (boilerplate summaries → false merges).** (ANTS-3591)
+  When indie-review groups a file-list project by folder, every lane's description is near-identical boilerplate, so the 'you could merge these lanes' hint wrongly suggests merging tests with src.
+
+- **audit_run/last_audit_summary: filter zero-content SARIF results (empty ruleId AND message AND artifact uri AND startLine 0) out of total_raw/total_actionable and top_findings.** (ANTS-3590)
+  A completely clean repo reported '1 actionable finding' — a blank MAJOR row with no file, rule, or message — because trivy emitted one empty placeholder result. A close-phase/audit gate could misread that as a real blocker.
+
+- **session_orient: keep top-level `ok:true` when the only problem is absent-but-optional artifacts (no ROADMAP/specs/empty index) — surface them via `warnings[]`/`notices[]`.** (ANTS-3587)
+  A brand-new project with no roadmap yet gets a scary 'ok:false' from the first orientation call, as if something broke — but 'no roadmap yet' is normal.
+
 ## [0.7.101] — unreleased (Patron RC preview)
 ### Added
 

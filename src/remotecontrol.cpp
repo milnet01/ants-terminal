@@ -11380,9 +11380,13 @@ QJsonDocument RemoteControl::cmdReadRegions(const QJsonObject &req) {
             if (v.isArray()) { itemsVal = v; break; }
         }
     }
+    // ANTS-3589 — a top-level `path` is the per-item default: an item that
+    // omits its own `path` reads from this instead, so the single-file case
+    // (N slices of one module) passes the filename once. Per-item `path` wins.
     return QJsonDocument(ReadRegion::extractBatch(
         rootCanonical, itemsVal,
-        req.value(QStringLiteral("max_bytes")).toInt(0)));
+        req.value(QStringLiteral("max_bytes")).toInt(0),
+        req.value(QStringLiteral("path")).toString()));
 }
 
 // ANTS-2094 — read_spill: re-read a body spilled by the offload path, by its
@@ -15847,13 +15851,35 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
 
     QJsonObject result;
     bool allOk = true;
+    // ANTS-3587 — a fresh project legitimately lacks a ROADMAP.md (and specs /
+    // codebase index). That is a normal state, not an orient failure: keep
+    // top-level ok:true when an upstream refuses ONLY because an optional
+    // artifact is absent, and surface the absence via notices[]. Reserve
+    // ok:false for a real failure (bad cwd, unreadable state).
+    QJsonArray notices;
+    const auto noteOrFail = [&](const QJsonObject &o, const char *label) {
+        if (o.value(QStringLiteral("ok")).toBool(false)) return;
+        const QString code = o.value(QStringLiteral("code")).toString();
+        if (code == QStringLiteral("no_roadmap_loaded")
+                || code == QStringLiteral("no_roadmap")) {
+            QJsonObject n;
+            n[QStringLiteral("source")] = QLatin1String(label);
+            n[QStringLiteral("code")]   = code;
+            n[QStringLiteral("note")]   = QStringLiteral(
+                "no ROADMAP.md yet — normal for a fresh project, not an error; "
+                "create one via roadmap_log when there is work to track");
+            notices.append(n);
+            return;  // absent-but-optional artifact: does NOT fail orient
+        }
+        allOk = false;
+    };
 
     // --- current_state (ANTS-1569) ---
     {
         QJsonObject csReq;
         csReq[QStringLiteral("caller_cwd")] = rootCanonical;
         const QJsonObject cs = cmdCurrentState(csReq).object();
-        if (!cs.value(QStringLiteral("ok")).toBool(false)) allOk = false;
+        noteOrFail(cs, "current_state");
         result[QStringLiteral("current_state")] = cs;
     }
 
@@ -15862,7 +15888,7 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
         QJsonObject plReq;
         plReq[QStringLiteral("caller_cwd")] = rootCanonical;
         const QJsonObject pl = cmdProjectLayout(plReq).object();
-        if (!pl.value(QStringLiteral("ok")).toBool(false)) allOk = false;
+        noteOrFail(pl, "project_layout");
         result[QStringLiteral("project_layout")] = pl;
     }
 
@@ -15881,7 +15907,7 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
         rqReq[QStringLiteral("mode")]       = QStringLiteral("section_index");
         rqReq[QStringLiteral("status")]     = QStringLiteral("active");
         const QJsonObject rq = cmdRoadmapQuery(rqReq).object();
-        if (!rq.value(QStringLiteral("ok")).toBool(false)) allOk = false;
+        noteOrFail(rq, "sections_index");
         if (rq.value(QStringLiteral("legacy_format")).toBool(false))
             legacyRawActive = rq.value(QStringLiteral("raw_active_count")).toInt(0);
         result[QStringLiteral("sections_index")] = rq;
@@ -16132,6 +16158,9 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
         result[QStringLiteral("feedback_pending")] = fp;
     }
 
+    // ANTS-3587 — surface absent-but-optional artifacts (e.g. no ROADMAP.md on
+    // a fresh project) as notices without failing the whole envelope.
+    if (!notices.isEmpty()) result[QStringLiteral("notices")] = notices;
     result[QStringLiteral("ok")] = allOk;
     // ETag injected at the dispatch layer (isEtagSupportedTool).
     return QJsonDocument(result);

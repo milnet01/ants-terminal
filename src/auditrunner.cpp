@@ -762,6 +762,9 @@ ParsedOutput parseToolOutput(const QString &tool,
                 }
             }
             out.rawCount = arr.size();
+            // ANTS-3590 — count of non-finding placeholder entries dropped
+            // below; subtracted from rawCount after the loop.
+            int emptyEntries = 0;
             // ANTS-1870 — iterate EVERY entry so `findings` collects the full
             // non-suppressed set; the `< sampleCap` gate now applies only to
             // the `samples` preview append below.
@@ -786,6 +789,16 @@ ParsedOutput parseToolOutput(const QString &tool,
                 }
                 const QString ruleStr =
                     e.value(QStringLiteral("check_id")).toString();
+                // ANTS-3590 — a JSON entry that yields NO file, NO message AND
+                // NO rule is not a finding: Trivy's native `Results[]` are
+                // per-target containers, so a clean scan emits one such empty
+                // entry that would otherwise become a blank placeholder SARIF
+                // result (uri:"", ruleId:"", message:"", startLine:0) and read
+                // as "1 actionable". Drop it — never count, sample, or emit.
+                if (fileStr.isEmpty() && msg.isEmpty() && ruleStr.isEmpty()) {
+                    ++emptyEntries;
+                    continue;
+                }
                 // ANTS-1820 — drop learned false positives before the sample
                 // is built; rawCount keeps the tool's raw total.
                 if (isLearnedFp(learnedFps, fileStr, ruleStr, msg)) {
@@ -817,6 +830,9 @@ ParsedOutput parseToolOutput(const QString &tool,
                 }
                 if (out.samples.size() < sampleCap) out.samples.append(s);
             }
+            // ANTS-3590 — exclude the dropped placeholder entries from the raw
+            // total so a clean scan reports 0, not 1.
+            out.rawCount = arr.size() - emptyEntries;
             // Honour SARIF cap.
             if (out.rawCount > kSarifFindingsMax)
                 out.rawCount = kSarifFindingsMax;

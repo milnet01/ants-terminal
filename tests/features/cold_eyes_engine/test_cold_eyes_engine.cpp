@@ -1046,6 +1046,10 @@ TEST(ColdEyesEngine, Ants3526LargeCrossRefLogsRoutedToSearch) {
     EXPECT_TRUE(m.brief.contains(QStringLiteral("read in full, cross-check")));
     // Instructions teach the search discipline for the logs.
     EXPECT_TRUE(m.brief.contains(QStringLiteral("workspace_search")));
+    // ANTS-3586 — Instructions warn the logs are append-only HISTORY so a
+    // reviewer does not re-report a ✅/Resolved bullet as a live defect.
+    EXPECT_TRUE(m.brief.contains(QStringLiteral("append-only HISTORY")))
+        << "ANTS-3586: brief must caution that matched log bullets are history";
 }
 
 // ANTS-1633 INV-C — version-string false-positives (1.2.3:4) and

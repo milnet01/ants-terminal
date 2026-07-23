@@ -250,3 +250,67 @@ TEST(ReadRegions, SchemaDeclaresAliases) {
     EXPECT_EQ(0, expect_failures())
         << expect_failures() << " ANTS-3568 schema-alias invariant(s) failed";
 }
+
+// RR-9 — ANTS-3589: a top-level `defaultPath` is the per-item `path` fallback.
+// (a) an item that omits its own `path` reads from the default; (b) a per-item
+// `path` still wins; (c) with neither, the item still fails bad_args.
+TEST(ReadRegions, TopLevelDefaultPath) {
+    Fixture fx;
+    // (a) both items omit `path` → resolved from the default (src/a.cpp).
+    QJsonArray items;
+    { QJsonObject o; o["start_line"] = 1; o["end_line"] = 2; items.append(o); }
+    { QJsonObject o; o["symbol"] = "beta"; items.append(o); }
+    const QJsonObject env =
+        ReadRegion::extractBatch(fx.root, QJsonValue(items), 0, "src/a.cpp");
+    ASSERT_TRUE(env.value("ok").toBool());
+    const QJsonArray r = env.value("results").toArray();
+    ASSERT_EQ(r.size(), 2);
+    EXPECT_TRUE(r.at(0).toObject().value("ok").toBool());
+    EXPECT_EQ(r.at(0).toObject().value("path").toString().toStdString(),
+              "src/a.cpp");
+    EXPECT_TRUE(joinLines(r.at(0).toObject()).contains("alpha"));
+    EXPECT_TRUE(joinLines(r.at(1).toObject()).contains("stepB"));
+
+    // (b) a per-item `path` overrides the default.
+    QJsonArray items2; items2.append(secItem("doc.md", "4-2-details"));
+    const QJsonObject env2 =
+        ReadRegion::extractBatch(fx.root, QJsonValue(items2), 0, "src/a.cpp");
+    const QJsonObject e2 = env2.value("results").toArray().at(0).toObject();
+    EXPECT_EQ(e2.value("path").toString().toStdString(), "doc.md");
+    EXPECT_TRUE(joinLines(e2).contains("detail body"));
+
+    // (c) no per-item path and an empty default → bad_args (prior behaviour).
+    QJsonArray items3;
+    { QJsonObject o; o["start_line"] = 1; items3.append(o); }
+    const QJsonObject env3 =
+        ReadRegion::extractBatch(fx.root, QJsonValue(items3), 0, QString());
+    const QJsonObject e3 = env3.value("results").toArray().at(0).toObject();
+    EXPECT_FALSE(e3.value("ok").toBool());
+    EXPECT_EQ(e3.value("code").toString().toStdString(), "bad_args");
+}
+
+// RR-10 — ANTS-3589: the top-level `path` default must be (a) DECLARED in the
+// read_regions schema so additionalProperties:false keeps it (and it drops out
+// of ignored_args), and (b) read by cmdReadRegions and forwarded to
+// extractBatch. Both are wiring sites the pure RR-9 core cannot cover.
+TEST(ReadRegions, TopLevelPathWiring) {
+    expect_reset();
+    const std::string ci =
+        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const auto p = ci.find("rrsTool[\"name\"] = \"read_regions\"");
+    ASSERT_NE(p, std::string::npos);
+    const auto end = ci.find("tools.append(rrsTool)", p);
+    ASSERT_NE(end, std::string::npos);
+    const std::string block = ci.substr(p, end - p);
+    expect(block.find("props[\"path\"]") != std::string::npos, "RR-10a",
+           "read_regions schema does not declare a top-level `path` default");
+    const auto h = rc.find("RemoteControl::cmdReadRegions");
+    ASSERT_NE(h, std::string::npos);
+    const std::string hbody = rc.substr(h, 2000);
+    expect(hbody.find("extractBatch") != std::string::npos &&
+               hbody.find("\"path\"") != std::string::npos, "RR-10b",
+           "cmdReadRegions does not forward a top-level `path` to extractBatch");
+    EXPECT_EQ(0, expect_failures())
+        << expect_failures() << " ANTS-3589 wiring invariant(s) failed";
+}

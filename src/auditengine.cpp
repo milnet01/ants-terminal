@@ -645,6 +645,30 @@ bool isLikelyParseArtifact(const AuditSummaryFinding &f) {
     return f.file.contains(QLatin1Char('%')) && !f.file.contains(QLatin1Char('/'));
 }
 
+// ANTS-3590 — a zero-content SARIF result: empty ruleId AND empty message AND
+// empty artifact uri AND startLine 0. Trivy (and any adapter that renders an
+// empty result set as one blank result) can emit one; it is "nothing found",
+// not a finding, so it must not tally into counts or top_findings. A real
+// finding always carries at least one of these fields. Defense-in-depth: the
+// producer-side drop lives in auditrunner.cpp, this guards cached/foreign SARIFs.
+bool isEmptyPlaceholderResult(const QJsonObject &res) {
+    if (!res.value(QStringLiteral("ruleId")).toString().isEmpty()) return false;
+    if (!res.value(QStringLiteral("message")).toObject()
+             .value(QStringLiteral("text")).toString().isEmpty()) return false;
+    const QJsonArray locs = res.value(QStringLiteral("locations")).toArray();
+    if (!locs.isEmpty()) {
+        const QJsonObject phys = locs.first().toObject()
+            .value(QStringLiteral("physicalLocation")).toObject();
+        if (!phys.value(QStringLiteral("artifactLocation")).toObject()
+                 .value(QStringLiteral("uri")).toString().isEmpty())
+            return false;
+        if (phys.value(QStringLiteral("region")).toObject()
+                .value(QStringLiteral("startLine")).toInt(0) != 0)
+            return false;
+    }
+    return true;
+}
+
 }  // namespace
 
 std::optional<AuditSummary> summariseSarif(
@@ -724,6 +748,10 @@ std::optional<AuditSummary> summariseSarif(
         const QJsonArray results = run.value(QStringLiteral("results")).toArray();
         for (const QJsonValue &rv : results) {
             const QJsonObject res = rv.toObject();
+            // ANTS-3590 — skip a zero-content placeholder result before the
+            // tally so a clean repo whose SARIF carries a blank trivy result
+            // does not read as "1 actionable" with a blank MAJOR row.
+            if (isEmptyPlaceholderResult(res)) continue;
             const QString level = res.value(QStringLiteral("level")).toString(
                 QStringLiteral("warning"));
 

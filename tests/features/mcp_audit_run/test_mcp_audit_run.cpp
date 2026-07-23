@@ -308,6 +308,30 @@ TEST(mcp_audit_run, Ants3472MypyNoteSeverityExcluded) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-3590 — parseToolOutput's JSON branch must DROP an entry that yields no
+// file, no message AND no rule (e.g. trivy's native `Results[]` are per-target
+// containers, so a clean scan emits one such empty entry that would otherwise
+// become a blank placeholder SARIF result reading as "1 actionable"). Bounded
+// to the JSON branch so a plain-text tool line can't satisfy the guard.
+TEST(mcp_audit_run, Ants3590DropsEmptyJsonEntries) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
+    const auto pos = cpp.find("out.rawCount = arr.size();");
+    ASSERT_NE(pos, std::string::npos);
+    const auto blockEnd = cpp.find("Line-based fallback for plain-text tools",
+                                   pos);
+    ASSERT_NE(blockEnd, std::string::npos);
+    const std::string body = cpp.substr(pos, blockEnd - pos);
+    expect(contains(body, "ANTS-3590"),
+           "INV: parseToolOutput carries the ANTS-3590 empty-entry anchor");
+    expect(contains(body, "fileStr.isEmpty() && msg.isEmpty() && "
+                          "ruleStr.isEmpty()"),
+           "INV: parseToolOutput skips a no-file/no-msg/no-rule JSON entry");
+    expect(contains(body, "arr.size() - emptyEntries"),
+           "INV: rawCount excludes the dropped empty entries");
+    EXPECT_EQ(0, expect_failures());
+}
+
 // ANTS-2185 INV-18 — scoped positionals are guarded against argv
 // option-injection: no tool branch may append the raw scopedPaths; every
 // scoped path goes through the ./-guard first. A file named `-rf.cpp` in

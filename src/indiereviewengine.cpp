@@ -303,6 +303,17 @@ int levenshtein(const QString &a, const QString &b) {
     return prev[n];
 }
 
+// ANTS-3591 — a directory-grouping fallback lane (ANTS-3507) carries a
+// boilerplate summary ("<n> path(s) under <dir>/ (file-list module map,
+// grouped by top-level directory)"). That text is identical by construction
+// across such lanes, so summary-similarity would flag nonsensical merges
+// (src+tests, .github+tests). A fallback summary carries no subsystem signal,
+// so it must never drive a merge — exclude it from the summary-similarity pass.
+bool isFileListFallbackSummary(const QString &summary) {
+    return summary.contains(
+        QLatin1String("grouped by top-level directory"));
+}
+
 }  // namespace
 
 QList<MergeSuggestion> suggestedMerges(const QList<Lane> &lanes) {
@@ -313,10 +324,12 @@ QList<MergeSuggestion> suggestedMerges(const QList<Lane> &lanes) {
 
     for (int i = 0; i < lanes.size(); ++i) {
         const QString a = lanes.at(i).summary.trimmed();
-        if (a.isEmpty()) continue;
+        // ANTS-3591 — skip fallback lanes (boilerplate summaries) as a merge
+        // source; their summary text is meaningless for similarity.
+        if (a.isEmpty() || isFileListFallbackSummary(a)) continue;
         for (int j = i + 1; j < lanes.size(); ++j) {
             const QString b = lanes.at(j).summary.trimmed();
-            if (b.isEmpty()) continue;
+            if (b.isEmpty() || isFileListFallbackSummary(b)) continue;
 
             QString rationale;
             if (a == b) {

@@ -56,7 +56,13 @@ QJsonObject extract(const QString &absPath, const Options &opts);
 // Per-item failures (bad/missing path, invalid selector) land in that item's
 // result with ok:false; the batch envelope stays ok:true. Pure (Qt6::Core +
 // PathValidation), so the handler in remotecontrol.cpp only resolves the root.
+// ANTS-3589 — `defaultPath` is the top-level `path` fallback: any item that
+// omits its own `path` reads from `defaultPath` instead (a per-item `path`
+// still wins), so the common "N slices of ONE file" case can pass the filename
+// once instead of repeating it on every item. Empty → items must each carry a
+// `path` (prior behaviour).
 QJsonObject extractBatch(const QString &rootCanonical,
-                         const QJsonValue &itemsValue, int maxBytes);
+                         const QJsonValue &itemsValue, int maxBytes,
+                         const QString &defaultPath = QString());
 
 }  // namespace ReadRegion

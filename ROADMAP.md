@@ -19369,6 +19369,66 @@ actionable Ants-MCP items.
   Source: perch_Ants_MCP_Feedback.md 2026-07-18 (+corroboration 2026-07-18).
   Resolved (2026-07-20): remotecontrol.cpp cmdRoadmapQuery empty-result path now scans m_roadmapCacheBullets via shouldDropUnnumbered for any id-bearing bullet; when none exist emits parseable_bullets:0 + a filter-independent "format not recognised" warning (branch precedes the ANTS-1538/ANTS-3560 gates). Regression test tests/features/roadmap_query_prose_no_id_warning (3 INVs). All 299 roadmap tests green. Section= path stays separately mitigated by section_shape.
 
+### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
+
+Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
+(Vestige, DOOM, OneUp, finbreak). Each finding was dedup-checked against the
+existing roadmap before allocation; confirmations of already-shipped items carry
+no new ID.
+
+- 📋 [ANTS-3584] **changelog_log: add an opt-in feature-grouped-subsection insert mode for `### <DATE> <Category> — <headline>` CHANGELOGs.**
+  From 3D_Engine (Vestige) feedback. changelog_log op:add already DETECTS this house style (fires an accurate advisory and refuses to splice a bare `### Added` block between the dated subsections), but the only fallbacks are op:add_from_roadmap or a hand-edit. Add an opt-in `subsection` param taking {date, category, headline} + body + optional bullets that emits a `### <date> <Category> — <headline>` block at the top of [Unreleased]. Purely additive — flat-category behaviour unchanged when the param is omitted.
+  **Layman:** Some projects group their changelog by dated feature blocks rather than flat Added/Fixed headings; give changelog_log a native way to insert those instead of forcing a hand-edit.
+  Kind: enhancement.
+  Source: vestige-feedback-2026-07-23.
+
+- 📋 [ANTS-3585] **audit_run: raise/uncap the per-tool time ceiling and disambiguate `incomplete_tools` (truncated vs complete-but-slow) + surface per-file parse failures.**
+  From DOOM_Ants (193 files, incl. an 8,900-line C++23 TU). cppcheck reports partial:true / incomplete_tools:[cppcheck] even on a dedicated re-run at the documented 60s ceiling, and the envelope doesn't say whether results were truncated or complete-but-slow. Three sub-asks: (1) raise the per-tool cap ceiling above 60s (or an uncapped mode on the async path, which already survives the transport timeout); (2) when a tool is in incomplete_tools, surface truncated-vs-complete (files_analysed/files_total or a per-tool `truncated` flag); (3) surface cppcheck syntaxError/parse-failure per file so a caller knows a C++ TU got ZERO coverage (cppcheck's frontend can't parse C++23 — r_vulkan.cpp), and/or suggest clang-tidy for modern-C++ TUs. Related but distinct from shipped ANTS-2105/2183/3396.
+  **Layman:** On a big C/C++ project a caller can't tell whether the security scan actually finished or was cut off — and one huge modern-C++ file gets silently skipped with no warning.
+  Kind: enhancement.
+  Source: doom-feedback-2026-07-23.
+
+- ✅ [ANTS-3586] **cold_eyes_brief: caution reviewers that ROADMAP/CHANGELOG are append-only HISTORY — a ✅/Resolved bullet is PAST state, a 📋 bullet is already-tracked work.**
+  From DOOM_Ants 2026-07-23 sweep — two loop-2 false positives came exactly this way (a ✅ DOOM-0194 echoed as a live defect; a 📋 DOOM-0150 echoed as a fresh HIGH). In cold_eyes_brief's 'Cross-reference logs (SEARCH, do not full-read)' section add: 'ROADMAP/CHANGELOG are append-only HISTORY — a ✅/Resolved/shipped bullet describes PAST state and a 📋 bullet is already-tracked work; verify every such claim against CURRENT source before reporting it, and never treat a Resolved bullet as an open defect.' Optionally pre-classify matched bullets by their status emoji so reviewers see the lifecycle state alongside the hit. Cheap, high-leverage — a token-saver.
+  **Layman:** Cold-eyes reviewers keep re-reporting already-fixed bugs because a 'Resolved' roadmap line reads to them like an open problem; add one sentence to the brief telling them to verify against current source first.
+  Kind: doc.
+  Source: doom-feedback-2026-07-23.
+  Resolved (2026-07-23): cold_eyes_brief Instructions now caution that ROADMAP/CHANGELOG are append-only HISTORY — a ✅/Resolved bullet is PAST state and a 📋 bullet is already-tracked work; verify against current source, never report a Resolved bullet as open. Test: ColdEyesEngine cross-ref-logs brief asserts 'append-only HISTORY'. Full suite 2825 green.
+
+- ✅ [ANTS-3587] **session_orient: keep top-level `ok:true` when the only problem is absent-but-optional artifacts (no ROADMAP/specs/empty index) — surface them via `warnings[]`/`notices[]`.**
+  From OneUp (fresh PySide6 project, no ROADMAP.md, empty codebase index). Top-level ok:false came only from active_bullets + sections_index returning no_roadmap_loaded; the sub-objects were fine. Reserve ok:false for an actual failure (bad cwd, unreadable state) and report absent-optional artifacts via a warnings[]/notices[] array so a session doesn't distrust the whole envelope.
+  **Layman:** A brand-new project with no roadmap yet gets a scary 'ok:false' from the first orientation call, as if something broke — but 'no roadmap yet' is normal.
+  Kind: enhancement.
+  Source: oneup-feedback-2026-07-23.
+  Resolved (2026-07-23): cmdSessionOrient routes the three upstreams through a noteOrFail helper — a no_roadmap_loaded/no_roadmap refusal keeps top-level ok:true and is surfaced in a notices[] array instead of failing; real failures (bad cwd, unreadable state) still fail. Tool description + feature-test spec updated. Test: session_orient_bundle.Ants3587AbsentRoadmapKeepsOkAddsNotice. Full suite 2825 green.
+
+- 📋 [ANTS-3588] **project_settings op:detect: also propose `test_roots`/`changelog`/`docs_dir` when the conventional dirs/files exist on disk, not just `source_roots`.**
+  From OneUp. detect suggested source_roots:[.] but stayed silent on test_roots (tests/ present), changelog (CHANGELOG.md present), docs_dir (docs/ present), forcing a 3-round op:set dance. Still preview-only (no write) so the caller confirms — turns it into one op:init. Bonus: [.] as a source root pulls packaging/data/screenshots into scope; detect could note excluded/attention dirs. Distinct from shipped ANTS-3483 (vendored-dir skipping).
+  **Layman:** The auto-detect for project layout only fills in the source folder even when it can plainly see a tests/ dir and a CHANGELOG.md — make it offer those too so setup is one step, not three.
+  Kind: enhancement.
+  Source: oneup-feedback-2026-07-23.
+
+- ✅ [ANTS-3589] **read_regions: accept an optional top-level `path` used as the default for any item that omits its own `path` (per-item path still wins).**
+  From OneUp — two false starts before the single-file case worked ({items:[{path,start,end}...]} with path repeated on every item). read_region takes a top-level path; read_regions silently ignores one (lists it in ignored_args). Additive + back-compatible: a top-level path defaults any item that omits its own path, collapsing the single-file case to {path, items:[{start_line,end_line}...]} — exactly what a read_region user first tries. Optionally, when a top-level path is present-but-ignored, emit a one-line hint instead of only listing it in ignored_args. Distinct from shipped ANTS-3500/3568 (batch-key aliases).
+  **Layman:** When you want several slices of ONE file, read_regions makes you repeat the same filename on every slice; let it take one filename at the top like its sibling read_region does.
+  Kind: enhancement.
+  Source: oneup-feedback-2026-07-23.
+  Resolved (2026-07-23): read_regions accepts an optional top-level `path` as the per-item default (per-item path still wins); declared in the schema so additionalProperties:false keeps it (and it drops out of ignored_args). ReadRegion::extractBatch gained a defaultPath param; cmdReadRegions forwards it. Tests RR-9 (pure) + RR-10 (wiring). Full suite 2825 green.
+
+- ✅ [ANTS-3590] **audit_run/last_audit_summary: filter zero-content SARIF results (empty ruleId AND message AND artifact uri AND startLine 0) out of total_raw/total_actionable and top_findings.**
+  From finbreak. Full-tree audit_run returned total_raw:1/total_actionable:1; last_audit_summary surfaced a top_finding level:warning/severity:MAJOR with empty file/ruleId/message/line:0. SARIF shows every tool clean EXCEPT trivy, which emitted one placeholder result {uri:'', region:{startLine:0}, message:'', ruleId:''}. Filter such hollow placeholders (likely a trivy-adapter issue: trivy emitting an empty result set as one blank result). Distinct from shipped ANTS-3395 (stderr/progress-line filtering).
+  **Layman:** A completely clean repo reported '1 actionable finding' — a blank MAJOR row with no file, rule, or message — because trivy emitted one empty placeholder result. A close-phase/audit gate could misread that as a real blocker.
+  Kind: fix.
+  Source: finbreak-feedback-2026-07-23.
+  Resolved (2026-07-23): parseToolOutput (auditrunner) drops JSON entries with no file AND no message AND no rule (Trivy's native Results[] are per-target containers, so a clean scan emitted one empty placeholder) — rawCount excludes them; summariseSarif (auditengine) also skips a zero-content placeholder result before the tally (cached/foreign SARIFs). A clean repo now reports 0, not 1. Tests: mcp_audit_run.Ants3590DropsEmptyJsonEntries + McpLastAuditSummary.Ants3590DropsEmptyPlaceholderResult. Full suite 2825 green.
+
+- ✅ [ANTS-3591] **indie_review_orchestrate: don't fire summary-similarity `suggested_merges` for lanes built by the file-list directory-grouping fallback (boilerplate summaries → false merges).**
+  From finbreak — under the ANTS-3507 directory-grouping fallback every lane summary is boilerplate ('<n> path(s) under <dir>/ (file-list module map, grouped by top-level directory)'), so the summary-text-similarity detector flagged nonsensical merges [.github+tests 91%, scripts+src 92%, scripts+tests 92%, src+tests 95%]. When lanes come from the fallback, skip the summary-similarity heuristic (summaries are boilerplate by construction) or compute similarity on source_paths overlap rather than summary text. Follow-up on shipped ANTS-1288.
+  **Layman:** When indie-review groups a file-list project by folder, every lane's description is near-identical boilerplate, so the 'you could merge these lanes' hint wrongly suggests merging tests with src.
+  Kind: fix.
+  Source: finbreak-feedback-2026-07-23.
+  Resolved (2026-07-23): IndieReviewEngine::suggestedMerges excludes directory-grouping fallback lanes (ANTS-3507) — their 'grouped by top-level directory' summaries are boilerplate by construction, so summary-similarity no longer flags nonsensical merges (src+tests); genuinely duplicated real lanes still merge. Test: IndieReviewEngine.Ants3591FallbackBoilerplateNotMerged. Full suite 2825 green.
+
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
 /cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +
