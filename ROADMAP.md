@@ -19429,6 +19429,37 @@ no new ID.
   Source: finbreak-feedback-2026-07-23.
   Resolved (2026-07-23): IndieReviewEngine::suggestedMerges excludes directory-grouping fallback lanes (ANTS-3507) — their 'grouped by top-level directory' summaries are boilerplate by construction, so summary-similarity no longer flags nonsensical merges (src+tests); genuinely duplicated real lanes still merge. Test: IndieReviewEngine.Ants3591FallbackBoilerplateNotMerged. Full suite 2825 green.
 
+### 💡 Session-suggested improvements (2026-07-23)
+
+Ideas surfaced in an open "what else?" session on 2026-07-23, all aimed at the
+project's north stars: fewer tokens, safe unattended (autonomous) runs, and
+deeper Claude Code integration. Not from a review pass or feedback file — direct
+assistant suggestions, accepted by the user for filing.
+
+- 📋 [ANTS-3592] **Autonomous-run cockpit — a live HUD with an enforced spend/token ceiling and one-click Stop.**
+  Token-usage tracking today is retrospective (reports after the fact). This is the live counterpart for unattended runs: current task, tokens/min burn rate, projected time-to-budget-exhaustion, and a one-click hard Stop. Because the terminal owns the PTY it can ENFORCE a ceiling (kill the run), not merely warn — turning the billing-safety rule into a visible, enforced guardrail. Design must state a RAM budget for the sampling buffer and an eviction/window policy per the consider-RAM rule. Relates to the token-usage tracking lane and the autonomous-run goal.
+  **Layman:** When Claude is running on its own for a long time, show a live panel with how fast it's spending tokens, a guess of when it'll hit the budget, and a big Stop button that actually halts it.
+  Kind: feature.
+  Source: assistant-suggestion-2026-07-23.
+
+- 📋 [ANTS-3593] **Human-facing "where was I" resume card after a compact/relaunch.**
+  The PreCompact->SessionStart resume chain (ANTS-3563) restores machine context but has no human-readable summary. This is a small panel — last N actions, current task, next step — surfaced after a compact or relaunch so the user re-enters a long session in seconds instead of scrolling scrollback. Feeds off the same resume packet the chain already assembles; presentation layer only.
+  **Layman:** After the terminal restarts or Claude's memory is compacted, show a small card summarising the last few things done, the current task, and the next step — so you can jump back in at a glance.
+  Kind: feature.
+  Source: assistant-suggestion-2026-07-23.
+
+- 📋 [ANTS-3594] **MCP verb-usage telemetry that self-tunes the SessionStart prelude.**
+  The SessionStart hook hard-codes ~12 verbs (ANTS-2037). If the server logged which verbs each session actually calls, the always-loaded prelude could surface the real top-N per project. Serves BOTH discoverability and token reduction (stop advertising unused verbs). Keep a bounded rolling counter (name -> count, capped, per-project); state the RAM/disk budget at design time. Distinct from model_switch_stats (that's model switching, not verb usage).
+  **Layman:** The terminal advertises about a dozen helper tools to Claude at startup. Track which ones Claude actually uses here and show the real top ones — so the startup hint is useful and doesn't waste words on tools nobody calls.
+  Kind: enhancement.
+  Source: assistant-suggestion-2026-07-23.
+
+- 📋 [ANTS-3595] **Unified "what changed since my last session_orient" delta verb for autonomous loops.**
+  Individual verbs already do ETag-304 short-circuits, but an autonomous loop still re-reads several surfaces to re-orient. This is one verb that returns only the DELTA since the caller's last session_orient (roadmap edits, git branch/HEAD moves, new feedback-pending, changed specs), keyed off the session_orient etag the caller already holds. Cuts the dominant repeated cost in autonomous runs. Bounded output; reuse the existing per-upstream etags rather than a new cache.
+  **Layman:** Give Claude one quick way to ask 'what changed since I last looked?' instead of re-reading several files every loop — cheaper on every iteration of a long unattended run.
+  Kind: enhancement.
+  Source: assistant-suggestion-2026-07-23.
+
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
 /cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +
