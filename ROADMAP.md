@@ -19506,11 +19506,12 @@ assistant suggestions, accepted by the user for filing.
   Kind: doc.
   Source: in-session-2026-07-24 (ANTS-3479/3599 follow-up).
 
-- 📋 [ANTS-3603] **Extract a shared fence-aware markdown scanner (fenceRe / fenceOpenerChar / scanBoundaries) into one util.**
+- 🚧 [ANTS-3603] **Extract a shared fence-aware markdown scanner (fenceRe / fenceOpenerChar / scanBoundaries) into one util.**
   Rule-of-Three foundation for ANTS-3600 / ANTS-3601. `fenceRe()` + `fenceOpenerChar` + the fence-boundary scan are DUPLICATED verbatim in `src/feedbackfile.cpp` (fenceRe :34, fenceOpenerChar :58) and `src/speclog.cpp` (:21 / :31); the incoming `src/docintegrity.*` engine (ANTS-3601) plus the ANTS-3600 audit lane would be the 3rd/4th call-sites. Extract into a Core-only `src/markdownscan.{h,cpp}` (fence-state line iterator: given a doc, yield each line tagged in-fence / out-of-fence, space-only `^ {0,3}(```|~~~)` opener per ANTS-3598). Refactor feedbackfile.cpp + speclog.cpp to call it (existing call-sites benefit; their FeedbackV2Delta / McpSpecLog suites must stay green). BUILD THIS FIRST — 3600 and 3601 depend on it. RAM: zero net new (moves existing code); the scanner is a per-line iterator, no whole-doc buffering beyond the caller's existing read.
   **Layman:** Three different files need the same little routine that reads a Markdown file while correctly skipping code examples. Right now two of them each carry their own copy. Before building the new doc-checking tools, pull that routine into one shared place so all three use the same, tested version.
   Kind: refactor.
   Source: in-session-2026-07-24.
+  Implementing (2026-07-24): foundation for the ANTS-3600/3601 doc-integrity arc; specs accepted after 7 cold-eyes loops. Building test-first.
 
 - 📋 [ANTS-3604] **docs_index scanDoc is not fence-aware — headings/links inside code fences counted as real.**
   Latent false-positive in `src/docsindex.cpp` `scanDoc` (:72). It matches `headingRx` (`^(#{1,6})\s+(.+)$`) and `linkRx` (`\[[^\]]*\]\(([^)\s]+)\)`) on every line with NO fenced-region tracking — a `# foo` bash comment or a `[t](p)` sample inside a ```` ``` ```` fence is recorded as a real heading / link, polluting the heading list, the link graph, and any downstream broken-link check. Fix: skip fenced regions using the shared fence scanner from the foundation item (do NOT hand-roll a 3rd copy). Reproduce-first: add a docsindex test doc with a heading + link inside a fence, assert they are NOT in the ScanResult. Discovered while scoping ANTS-3601 (flag-don't-dismiss).
