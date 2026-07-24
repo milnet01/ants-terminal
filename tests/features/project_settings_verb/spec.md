@@ -39,6 +39,16 @@ the ANTS-2160 suite used for its consumer-wiring check.
 - **INV-17** (ANTS-3390) — a miss with source loose AT the repo root
   (`rootLevel>0`) → whole-root `source_roots:["."]` (subsumes the depth-0
   files + subdirs); `retroarch.c`+`libretro-common/x.c` → `["."]`, total 2.
+- **INV-19** (ANTS-3588) — a `source_roots` suggestion ALSO proposes the
+  conventional aux layout keys present on disk. Positive: `engine/` (≥2 `.c`,
+  a miss) + `tests/`, `docs/`, `docs/specs/`, `ROADMAP.md`, `CHANGELOG.md`
+  (`.md` not indexable, so `docs/` is NOT a source subdir) →
+  `sourceRoots==["engine"]`, `testRoots==["tests"]`, `docsDir=="docs"`,
+  `specsDir=="docs/specs"`, `roadmap=="ROADMAP.md"`, `changelog=="CHANGELOG.md"`.
+  Negative: standard `src/`+`tests/` (no suggestion) + `CHANGELOG.md` →
+  `sourceRoots` nullopt AND all five aux fields nullopt (no ride-along without
+  a suggestion). Pre-fix: the `Suggestion` struct has no aux fields → the test
+  does not compile, so the assertions cannot false-green.
 - **INV-5/6/10/13 (wiring)** — `project_settings` registered
   `CallerCwdContract::Required` in `claudeintegration.cpp`'s
   `callerCwdContractFor()` + `registerToolProvider`; the handler writes

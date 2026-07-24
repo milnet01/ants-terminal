@@ -19,6 +19,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **project_settings op:detect: also propose `test_roots`/`changelog`/`docs_dir` when the conventional dirs/files exist on disk, not just `source_roots`.** (ANTS-3588)
+  The auto-detect for project layout only fills in the source folder even when it can plainly see a tests/ dir and a CHANGELOG.md — make it offer those too so setup is one step, not three.
+
 - **cold_eyes_brief: caution reviewers that ROADMAP/CHANGELOG are append-only HISTORY — a ✅/Resolved bullet is PAST state, a 📋 bullet is already-tracked work.** (ANTS-3586)
   Cold-eyes reviewers keep re-reporting already-fixed bugs because a 'Resolved' roadmap line reads to them like an open problem; add one sentence to the brief telling them to verify against current source first.
 

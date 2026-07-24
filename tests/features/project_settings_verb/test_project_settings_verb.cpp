@@ -315,6 +315,57 @@ TEST(ProjectSettingsVerb, ExcludedEchoesVendoredDirs) {
     EXPECT_FALSE(s.excluded.contains(QStringLiteral("engine")));
 }
 
+// INV-19 (ANTS-3588) — a source_roots suggestion (misplaced layout) also
+// proposes the conventional aux layout keys present on disk, so one op:init
+// writes the whole block. engine/ holds 2 .c files (a miss: defaultSourceCount
+// 1 < kMissRatio*3); the .md / root files are not indexable so docs/ is never
+// proposed as a source subdir.
+TEST(ProjectSettingsVerb, MisplacedLayoutProposesAuxKeys) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/engine/a.c", cFile("a"));
+    writeFile(root + "/engine/b.c", cFile("b"));
+    writeFile(root + "/tests/t.c", cFile("t"));
+    writeFile(root + "/docs/x.md", QStringLiteral("# d\n"));
+    writeFile(root + "/docs/specs/s.md", QStringLiteral("# s\n"));
+    writeFile(root + "/ROADMAP.md", QStringLiteral("# r\n"));
+    writeFile(root + "/CHANGELOG.md", QStringLiteral("# c\n"));
+
+    const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
+    ASSERT_TRUE(s.sourceRoots.has_value());
+    EXPECT_EQ(*s.sourceRoots, QStringList{QStringLiteral("engine")});  // docs/ NOT a source subdir
+    ASSERT_TRUE(s.testRoots.has_value());
+    EXPECT_EQ(*s.testRoots, QStringList{QStringLiteral("tests")});
+    ASSERT_TRUE(s.docsDir.has_value());
+    EXPECT_EQ(*s.docsDir, QStringLiteral("docs"));
+    ASSERT_TRUE(s.specsDir.has_value());
+    EXPECT_EQ(*s.specsDir, QStringLiteral("docs/specs"));
+    ASSERT_TRUE(s.roadmap.has_value());
+    EXPECT_EQ(*s.roadmap, QStringLiteral("ROADMAP.md"));
+    ASSERT_TRUE(s.changelog.has_value());
+    EXPECT_EQ(*s.changelog, QStringLiteral("CHANGELOG.md"));
+}
+
+// INV-19 negative — a standard layout makes no suggestion, so NO aux key is
+// proposed even when CHANGELOG.md is present (the ride-along requires a
+// source_roots suggestion).
+TEST(ProjectSettingsVerb, StandardLayoutProposesNoAuxKeys) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/src/a.c", cFile("a"));
+    writeFile(root + "/src/b.c", cFile("b"));
+    writeFile(root + "/tests/t.c", cFile("t"));
+    writeFile(root + "/CHANGELOG.md", QStringLiteral("# c\n"));
+
+    const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
+    EXPECT_FALSE(s.sourceRoots.has_value());   // default walk covers → no suggestion
+    EXPECT_FALSE(s.testRoots.has_value());
+    EXPECT_FALSE(s.docsDir.has_value());
+    EXPECT_FALSE(s.specsDir.has_value());
+    EXPECT_FALSE(s.roadmap.has_value());
+    EXPECT_FALSE(s.changelog.has_value());     // nullopt DESPITE CHANGELOG.md
+}
+
 // INV-5 / INV-6 / INV-10 / INV-13 — verb-layer + registration wiring
 // (source-grep; the verb glue isn't unit-testable without RemoteControl).
 TEST(ProjectSettingsVerb, VerbAndRegistrationWiring) {

@@ -107,6 +107,28 @@ bool validFileUnder(const QString &root, const QString &rel) {
     return PathValidation::isInsideProject(root, abs) && QFileInfo(abs).isFile();
 }
 
+// ANTS-3588 (INV-19) — attach the conventional auxiliary layout keys that EXIST
+// on disk to a suggestion that already recommends a source_roots override, so a
+// single op:init writes the whole layout block. Each field stays nullopt when
+// its conventional path is absent (never a present-but-empty value), so the
+// verb's `if (sug.field)` emission and the op:init applyWrite re-check are safe.
+// Called only where s.sourceRoots is set — the aux keys ride ONLY on a
+// suggestion (a standard layout proposes nothing; INV-1/INV-6 unchanged).
+void proposeAuxLayout(Suggestion &s, const QString &root) {
+    QStringList testDirs;
+    for (const QString &d : {QStringLiteral("tests"), QStringLiteral("test")})
+        if (validDirUnder(root, d)) testDirs << d;
+    if (!testDirs.isEmpty()) s.testRoots = testDirs;
+    if (validDirUnder(root, QStringLiteral("docs")))
+        s.docsDir = QStringLiteral("docs");
+    if (validDirUnder(root, QStringLiteral("docs/specs")))
+        s.specsDir = QStringLiteral("docs/specs");
+    if (validFileUnder(root, QStringLiteral("ROADMAP.md")))
+        s.roadmap = QStringLiteral("ROADMAP.md");
+    if (validFileUnder(root, QStringLiteral("CHANGELOG.md")))
+        s.changelog = QStringLiteral("CHANGELOG.md");
+}
+
 }  // namespace
 
 // ANTS-2161 / ANTS-3393 — single source of truth for "is this a top-level
@@ -228,6 +250,7 @@ Suggestion detect(const QString &rootCanonical) {
     // rootLevel==0 falls through to the subdir list (INV-14/INV-17).
     if (rootLevel > 0) {
         s.sourceRoots = QStringList{QStringLiteral(".")};
+        proposeAuxLayout(s, rootCanonical);            // ANTS-3588 (INV-19)
         s.reason = QStringLiteral(
             "default src/+tests/ walk indexed %1 of %2 source files; %3 file(s) "
             "sit loose at the repo root — suggesting the whole-root walk (\".\") "
@@ -262,6 +285,7 @@ Suggestion detect(const QString &rootCanonical) {
     int covered = 0;
     for (const auto &p : cands) { chosen << p.first; covered += p.second; }
     s.sourceRoots = chosen;
+    proposeAuxLayout(s, rootCanonical);                // ANTS-3588 (INV-19)
     s.reason = QStringLiteral(
         "default src/+tests/ walk indexed %1 of %2 source files; %3 hold(s) %4")
         .arg(s.defaultSourceCount).arg(total)

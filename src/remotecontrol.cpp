@@ -12098,6 +12098,15 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
         if (!sug.excluded.isEmpty())
             s[QStringLiteral("excluded")] =
                 QJsonArray::fromStringList(sug.excluded);
+        // ANTS-3588 (INV-19) — conventional aux layout keys, emitted only when
+        // detect proposed them (i.e. alongside a source_roots suggestion).
+        if (sug.testRoots)
+            s[QStringLiteral("test_roots")] =
+                QJsonArray::fromStringList(*sug.testRoots);
+        if (sug.docsDir)   s[QStringLiteral("docs_dir")]  = *sug.docsDir;
+        if (sug.specsDir)  s[QStringLiteral("specs_dir")] = *sug.specsDir;
+        if (sug.roadmap)   s[QStringLiteral("roadmap")]   = *sug.roadmap;
+        if (sug.changelog) s[QStringLiteral("changelog")] = *sug.changelog;
         QJsonObject o;
         o[QStringLiteral("ok")]         = true;
         o[QStringLiteral("present")]    = sug.present;
@@ -12177,10 +12186,20 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
         } else {
             const ProjectSettings::Suggestion sug =
                 ProjectSettings::detect(rootCanonical);
+            QJsonObject detected;
             if (sug.sourceRoots)
-                toWrite[QStringLiteral("source_roots")] =
+                detected[QStringLiteral("source_roots")] =
                     QJsonArray::fromStringList(*sug.sourceRoots);
-            if (toWrite.isEmpty()) {              // nothing to do is not an error
+            // ANTS-3588 (INV-19) — the conventional aux layout keys ride along a
+            // source_roots suggestion, so one init writes the whole block.
+            if (sug.testRoots)
+                detected[QStringLiteral("test_roots")] =
+                    QJsonArray::fromStringList(*sug.testRoots);
+            if (sug.docsDir)   detected[QStringLiteral("docs_dir")]  = *sug.docsDir;
+            if (sug.specsDir)  detected[QStringLiteral("specs_dir")] = *sug.specsDir;
+            if (sug.roadmap)   detected[QStringLiteral("roadmap")]   = *sug.roadmap;
+            if (sug.changelog) detected[QStringLiteral("changelog")] = *sug.changelog;
+            if (detected.isEmpty()) {             // nothing to do is not an error
                 QJsonObject o;
                 o[QStringLiteral("ok")]       = true;
                 o[QStringLiteral("written")]  = false;
@@ -12189,6 +12208,16 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
                     : sug.reason;
                 return QJsonDocument(o);
             }
+            // ANTS-3588 — validate the detector-derived block exactly as explicit
+            // keys (§2.3): each path was existence-checked in detect, so this is a
+            // formality unless a path vanished (TOCTOU) → bad_path.
+            QString ec, ek, ev;
+            const auto merged = ProjectSettings::applyWrite(
+                QJsonObject{}, detected, rootCanonical, &ec, &ek, &ev);
+            if (!merged)
+                return err(ec, QStringLiteral("project_settings: invalid %1=%2")
+                                   .arg(ek, ev));
+            toWrite = *merged;
         }
         return writeOut(toWrite);
     }

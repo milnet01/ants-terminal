@@ -19402,11 +19402,12 @@ no new ID.
   Source: oneup-feedback-2026-07-23.
   Resolved (2026-07-23): cmdSessionOrient routes the three upstreams through a noteOrFail helper — a no_roadmap_loaded/no_roadmap refusal keeps top-level ok:true and is surfaced in a notices[] array instead of failing; real failures (bad cwd, unreadable state) still fail. Tool description + feature-test spec updated. Test: session_orient_bundle.Ants3587AbsentRoadmapKeepsOkAddsNotice. Full suite 2825 green.
 
-- 📋 [ANTS-3588] **project_settings op:detect: also propose `test_roots`/`changelog`/`docs_dir` when the conventional dirs/files exist on disk, not just `source_roots`.**
+- ✅ [ANTS-3588] **project_settings op:detect: also propose `test_roots`/`changelog`/`docs_dir` when the conventional dirs/files exist on disk, not just `source_roots`.**
   From OneUp. detect suggested source_roots:[.] but stayed silent on test_roots (tests/ present), changelog (CHANGELOG.md present), docs_dir (docs/ present), forcing a 3-round op:set dance. Still preview-only (no write) so the caller confirms — turns it into one op:init. Bonus: [.] as a source root pulls packaging/data/screenshots into scope; detect could note excluded/attention dirs. Distinct from shipped ANTS-3483 (vendored-dir skipping).
   **Layman:** The auto-detect for project layout only fills in the source folder even when it can plainly see a tests/ dir and a CHANGELOG.md — make it offer those too so setup is one step, not three.
   Kind: enhancement.
   Source: oneup-feedback-2026-07-23.
+  Resolved (2026-07-24). ProjectSettings::detect() now attaches the conventional auxiliary layout keys present on disk (test_roots={tests,test}, docs_dir=docs, specs_dir=docs/specs, roadmap=ROADMAP.md, changelog=CHANGELOG.md) whenever it already recommends a source_roots override, via a new proposeAuxLayout() helper called on both miss-paths. op:detect echoes them (emitted only when set); op:init now routes the whole detector-derived block (source_roots + aux) through applyWrite, making §2.3's pre-existing contract true and validating the aux paths (TOCTOU-safe). A standard src/+tests/ layout suggests nothing and still writes nothing (INV-1/INV-6 unchanged). Spec ANTS-2161.md amended + cold-eyes loops 1-2 (polish-converged); INV-19 added to tests/features/project_settings_verb (pos+neg), all 31 project-settings tests green. Goes live on next Ants relaunch. Follow-up ANTS-3596 (spec citation drift).
 
 - ✅ [ANTS-3589] **read_regions: accept an optional top-level `path` used as the default for any item that omits its own `path` (per-item path still wins).**
   From OneUp — two false starts before the single-file case worked ({items:[{path,start,end}...]} with path repeated on every item). read_region takes a top-level path; read_regions silently ignores one (lists it in ignored_args). Additive + back-compatible: a top-level path defaults any item that omits its own path, collapsing the single-file case to {path, items:[{start_line,end_line}...]} — exactly what a read_region user first tries. Optionally, when a top-level path is present-but-ignored, emit a one-line hint instead of only listing it in ignored_args. Distinct from shipped ANTS-3500/3568 (batch-key aliases).
@@ -19459,6 +19460,11 @@ assistant suggestions, accepted by the user for filing.
   **Layman:** Give Claude one quick way to ask 'what changed since I last looked?' instead of re-reading several files every loop — cheaper on every iteration of a long unattended run.
   Kind: enhancement.
   Source: assistant-suggestion-2026-07-23.
+
+- 📋 [ANTS-3596] **docs/specs/ANTS-2161.md `~:line` citations into remotecontrol.cpp re-drift every few commits — make them drift-resistant.**
+  Noticed during the ANTS-3588 cold-eyes loop (2026-07-24). ANTS-3470 re-synced §2.2/§2.3/§2.4 remotecontrol.cpp line citations on 2026-07-21 (op:detect envelope set to ~:11985); two commits later (ANTS-3586..3595) the op:detect serialisation is at ~:12086 again — a ~100-line re-drift. This is a treadmill: a growing file makes every absolute ~:line anchor stale within days. Root-cause fix instead of another one-shot re-sync: cite by SYMBOL + method (e.g. "cmdProjectSettings op:detect block") rather than ~:line, or drop the line anchors to section/function references only. Low priority (the anchors are `~`-approximate and non-load-bearing); do on the next ANTS-2161 touch.
+  Kind: doc-fix.
+  Source: in-session-2026-07-24 (ANTS-3588 cold-eyes loop 2 open question).
 
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 

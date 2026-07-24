@@ -56,6 +56,15 @@ struct Suggestion {
     int                        totalSourceCount   = 0;  // admitted files repo-wide (bounded)
     std::optional<QStringList> wouldUseRoots;     // ANTS-3369: roots already in effect — declared source_roots when present:true, else whichever of src/ or tests/ actually hold source on the no-override path. Echoed so a caller can confirm the layout even when nothing is suggested.
     QStringList                excluded;          // ANTS-3369: every isNoiseDir match present on disk and skipped, minus dot-dirs (build* + vendored names listed; .git/.ants not). Names only, no descent.
+    // ANTS-3588 (INV-19): conventional auxiliary layout keys that EXIST on disk,
+    // proposed ONLY alongside a sourceRoots suggestion (a misplaced/flat layout)
+    // so a single op:init writes the whole block. Each is nullopt when its
+    // conventional path is absent — NEVER a present-but-empty value.
+    std::optional<QStringList> testRoots;         // subset of {tests, test} present as dirs, tests-then-test
+    std::optional<QString>     docsDir;           // "docs" if docs/ is a dir
+    std::optional<QString>     specsDir;          // "docs/specs" if that dir exists
+    std::optional<QString>     roadmap;           // "ROADMAP.md" if that file exists
+    std::optional<QString>     changelog;         // "CHANGELOG.md" if that file exists
 };
 
 // Bounded shallow analysis of <rootCanonical>. If .ants/project.json
