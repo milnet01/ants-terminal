@@ -70,6 +70,14 @@ Listed only where behavior isn't obvious from the name.
   `docs/standards`/`docs/specs` that no longer appear in project sources),
   `changelog_test_coverage`. (`test_health` is shell-side in
   `auditdialog.cpp`.)
+- `markdownscan` (Qt6::Core, `ants_core_lib`) — shared CommonMark fence
+  primitives (`fenceRe` / `fenceOpenerChar` / `fenceMask`), hoisted from the
+  verbatim copies in `feedbackfile`/`speclog`. Consumed by `feedbackfile`,
+  `speclog`, `featurecoverage` (contract_doc_drift), `docintegrity`. ANTS-3603.
+- `docintegrity` (Qt6::Core, `ants_core_lib`) — deterministic doc-integrity
+  engine: dead anchors, broken relative links, TOC coverage over a doc set.
+  GitHub-compatible `gfmSlug`, fence-aware. Powers the `doc_integrity` MCP verb
+  and the cold-eyes Phase-1e feed (`doc_integrity[]` in the brief). ANTS-3601.
 - `focusedtest` (Qt6::Core) — resolves the `focused_test` MCP tool:
   changed files → `ctest -R` patterns via `tests/coverage-map.json`, with
   a basename heuristic + conservative full-suite fallback. Spec ANTS-1302.

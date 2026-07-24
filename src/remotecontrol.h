@@ -8,6 +8,7 @@
 #include <QJsonObject>
 
 #include "auditengine.h"  // ANTS-1254 — AuditSummary value member below
+#include "docintegrity.h"  // ANTS-3601 — DocIntegrity::Finding in helper sig
 #include "changelogquery.h"  // ANTS-3533 — changelog_query parse-cache member
 #include "coldeyesengine.h"  // ANTS-1319 — cold-eyes partition cache
 #include "roadmapindex.h"  // ANTS-1287 — heading-index cache members
@@ -503,6 +504,20 @@ public:
     // ANTS-2139 — docs_index: serve a pre-computed project documentation map
     // (summary / topic / doc_path / id) via DocsIndex::serve.
     QJsonDocument cmdDocsIndex(const QJsonObject &req);
+    // ANTS-3601 — doc_integrity: deterministic dead-anchor / broken-link / TOC
+    // checks over a project-relative doc set (DocIntegrity::check).
+    QJsonDocument cmdDocIntegrity(const QJsonObject &req);
+    // Pure helpers extracted for headless testing (the handler needs a live
+    // MainWindow). `docIntegrityEnumerate` maps a validated `path` → the sorted
+    // project-relative doc set (dir → recursive *.md; file → one; empty → the
+    // docsDirDefault walk; non-existent → empty). `docIntegrityBuildResponse`
+    // filters findings + counts by `kinds` (empty = all).
+    static QStringList docIntegrityEnumerate(const QString &rootCanonical,
+                                             const QString &rawPath,
+                                             const QString &docsDirDefault);
+    static QJsonObject docIntegrityBuildResponse(
+        const QList<DocIntegrity::Finding> &findings,
+        const QSet<QString> &kinds, const QStringList &checkedDocs);
     // ANTS-2161 — project_settings: detect a misplaced layout + create/update
     // .ants/project.json (ops detect / init / set) via ProjectSettings.
     QJsonDocument cmdProjectSettings(const QJsonObject &req);

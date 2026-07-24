@@ -12,6 +12,7 @@
 #include "applyedits.h"
 #include "codebaseindex.h"
 #include "docsindex.h"
+#include "docintegrity.h"      // ANTS-3601 — doc_integrity verb
 #include "speclog.h"             // ANTS-1963
 #include "modelswitchledger.h"   // ANTS-1735 — model_switch_stats aggregation
 #include "modelnearmissledger.h" // ANTS-1894 — model_switch_stats near-miss arm
@@ -12161,6 +12162,120 @@ QJsonDocument RemoteControl::cmdDocsIndex(const QJsonObject &req) {
                          params));
 }
 
+// ANTS-3601 — doc_integrity: deterministic dead-anchor / broken-link / TOC
+// checks over a project-relative doc set. caller_cwd Required (the dispatcher
+// enforces caller_cwd_required before this runs). Optional `path` (a single
+// doc or a dir, default the docs_dir override else `docs/`) routes through
+// PathValidation; an optional `kinds` filter narrows findings + counts; the
+// ETag-304 short-circuit is applied centrally (isEtagSupportedTool). Findings
+// come from DocIntegrity::check (docintegrity.cpp). See docs/specs/ANTS-3601.md.
+QJsonDocument RemoteControl::cmdDocIntegrity(const QJsonObject &req) {
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        QJsonObject o;
+        o[QStringLiteral("ok")]    = false;
+        o[QStringLiteral("error")] = QStringLiteral("doc_integrity: no focused project");
+        o[QStringLiteral("code")]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
+    // path → relDocs (validate a supplied path first, so a root-escape refuses
+    // bad_path before any enumeration — INV-10).
+    const QString rawPath = req.value(QStringLiteral("path")).toString();
+    if (!rawPath.isEmpty()) {
+        const auto check = PathValidation::validatePath(
+            rawPath, rootCanonical, QStringLiteral("doc_integrity"),
+            QStringLiteral("path"));
+        if (check.bad) return QJsonDocument(check.err);  // root-escape → bad_path
+    }
+    const QString docsDir =
+        ProjectSettings::load(rootCanonical).docsDir.value_or(QStringLiteral("docs"));
+    QStringList relDocs = docIntegrityEnumerate(rootCanonical, rawPath, docsDir);
+
+    DocIntegrity::Options opts;
+    if (relDocs.size() > opts.maxDocsPerRun)
+        relDocs = relDocs.mid(0, opts.maxDocsPerRun);
+
+    QStringList checked;
+    const QList<DocIntegrity::Finding> findings =
+        DocIntegrity::check(rootCanonical, relDocs, opts, &checked);
+
+    QSet<QString> kindFilter;
+    for (const auto &v : req.value(QStringLiteral("kinds")).toArray())
+        kindFilter.insert(v.toString());
+
+    // etag injected centrally (isEtagSupportedTool).
+    return QJsonDocument(docIntegrityBuildResponse(findings, kindFilter, checked));
+}
+
+// ANTS-3601 — pure: a validated `rawPath` → sorted project-relative doc set.
+QStringList RemoteControl::docIntegrityEnumerate(const QString &rootCanonical,
+                                                 const QString &rawPath,
+                                                 const QString &docsDirDefault) {
+    const QDir rootDir(rootCanonical);
+    const auto collectMd = [&](const QString &dirAbs) {
+        QStringList out;
+        QDirIterator it(dirAbs, {QStringLiteral("*.md")}, QDir::Files,
+                        QDirIterator::Subdirectories);
+        while (it.hasNext()) out << rootDir.relativeFilePath(it.next());
+        out.sort();
+        return out;
+    };
+    if (rawPath.isEmpty())  // default → the docs_dir override else docs/
+        return collectMd(QDir::cleanPath(rootDir.filePath(docsDirDefault)));
+    const QString abs = QDir::cleanPath(rootDir.filePath(rawPath));
+    const QFileInfo fi(abs);
+    if (fi.isDir())  return collectMd(abs);           // dir → recursive *.md
+    if (fi.isFile()) return {rootDir.relativeFilePath(abs)};  // file → one doc
+    return {};  // non-existent in-root path → INV-15 (empty checked_docs)
+}
+
+// ANTS-3601 — pure: DocIntegrity findings → the response object, filtered by
+// `kinds` (empty = all). Both findings[] and counts{} narrow together (INV-18).
+QJsonObject RemoteControl::docIntegrityBuildResponse(
+    const QList<DocIntegrity::Finding> &findings, const QSet<QString> &kinds,
+    const QStringList &checkedDocs) {
+    // Kind wire strings (snake_case) — the CamelCase enum never reaches the wire.
+    const auto kindStr = [](DocIntegrity::Kind k) -> QString {
+        switch (k) {
+        case DocIntegrity::Kind::DeadAnchor: return QStringLiteral("dead_anchor");
+        case DocIntegrity::Kind::BrokenLink: return QStringLiteral("broken_link");
+        case DocIntegrity::Kind::TocGap:     return QStringLiteral("toc_gap");
+        }
+        return QString();
+    };
+    const auto wanted = [&](const QString &k) {
+        return kinds.isEmpty() || kinds.contains(k);
+    };
+
+    QJsonArray findingsArr;
+    int deadAnchor = 0, brokenLink = 0, tocGap = 0;
+    for (const DocIntegrity::Finding &f : findings) {
+        const QString ks = kindStr(f.kind);
+        if (!wanted(ks)) continue;
+        QJsonObject fo;
+        fo[QStringLiteral("kind")]    = ks;
+        fo[QStringLiteral("file")]    = f.file;
+        fo[QStringLiteral("line")]    = f.line;
+        fo[QStringLiteral("message")] = f.message;
+        findingsArr.append(fo);
+        if (f.kind == DocIntegrity::Kind::DeadAnchor)      ++deadAnchor;
+        else if (f.kind == DocIntegrity::Kind::BrokenLink) ++brokenLink;
+        else                                               ++tocGap;
+    }
+
+    QJsonObject counts;
+    if (wanted(QStringLiteral("dead_anchor"))) counts[QStringLiteral("dead_anchor")] = deadAnchor;
+    if (wanted(QStringLiteral("broken_link"))) counts[QStringLiteral("broken_link")] = brokenLink;
+    if (wanted(QStringLiteral("toc_gap")))     counts[QStringLiteral("toc_gap")]     = tocGap;
+
+    QJsonObject o;
+    o[QStringLiteral("ok")]           = true;
+    o[QStringLiteral("findings")]     = findingsArr;
+    o[QStringLiteral("counts")]       = counts;
+    o[QStringLiteral("checked_docs")] = QJsonArray::fromStringList(checkedDocs);
+    return o;
+}
+
 // ANTS-2161 — project_settings: detect a misplaced layout + create/update
 // <root>/.ants/project.json. Ops detect (read-only preview) / init (write
 // the detected or explicit block, refuse settings_exists, no clobber) / set
@@ -20081,6 +20196,12 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     QJsonArray stale;
     for (const QString &p : m.staleCitations) stale.append(p);
 
+    // ANTS-3601 — deterministic doc-integrity findings for the lane's own
+    // docs (dead anchors / broken links / TOC gaps), ready for cold-eyes
+    // Phase 1e. Empty when the lane's docs are clean (the common case).
+    QJsonArray docIntegrity;
+    for (const QString &p : m.docIntegrity) docIntegrity.append(p);
+
     QJsonObject env;
     env["ok"]                    = true;
     env["lane"]                  = laneName;
@@ -20091,6 +20212,7 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     env["cited_code_paths"]      = code;
     env["cited_code_regions"]    = regions;
     env["stale_citations"]       = stale;
+    env["doc_integrity"]         = docIntegrity;  // ANTS-3601
     // ANTS-1440 — surface the structured summary so callers don't
     // have to grep the brief markdown for the H1 line.
     env["summary"]               = m.summary;

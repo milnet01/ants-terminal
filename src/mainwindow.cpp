@@ -5127,6 +5127,10 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("docs_index",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdDocsIndex));
+    // ANTS-3601 — doc_integrity: deterministic dead-anchor / broken-link / TOC checks.
+    m_claudeIntegration->registerToolProvider("doc_integrity",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdDocIntegrity));
     // ANTS-2161 — project_settings: detect layout + create/update .ants/project.json.
     m_claudeIntegration->registerToolProvider("project_settings",
         ClaudeIntegration::CallerCwdContract::Required,

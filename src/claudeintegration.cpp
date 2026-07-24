@@ -4073,6 +4073,60 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(diTool);
 
+                // ANTS-3601 — doc_integrity: deterministic dead-anchor /
+                // broken-link / TOC-coverage checks over a doc set. The
+                // grep-able rot cold-eyes reviewers otherwise find by hand.
+                QJsonObject docInt;
+                docInt["name"] = "doc_integrity";
+                docInt["description"] = QStringLiteral(
+                    "Deterministic markdown doc-integrity check (no LLM). Reports "
+                    "three kinds: dead_anchor (a [t](#slug) / [t](other.md#slug) "
+                    "naming no real heading), broken_link (a [t](relpath) whose "
+                    "target file is missing), toc_gap (a hand-maintained Table of "
+                    "Contents that omits an H2 section or lists a duplicate). "
+                    "Fence-aware (fenced examples ignored); GitHub-compatible "
+                    "heading slugs. path=<file|dir> scopes the run (a dir walks "
+                    "its *.md recursively); omitted → the project docs_dir (else "
+                    "docs/). kinds=[...] filters findings + counts. A non-existent "
+                    "in-root path is ok:true with empty checked_docs; a "
+                    "root-escaping path refuses bad_path. ETag-304: unchanged docs "
+                    "re-read free. caller_cwd required.");
+                docInt["selection_hint"] = QStringLiteral(
+                    "Use before a cold-eyes doc review, or after editing a long "
+                    "contract doc, to catch dead anchors / broken links / TOC "
+                    "drift mechanically. The literal-drift sibling is the "
+                    "contract_doc_drift audit lane.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    QJsonObject props;
+                    QJsonObject pathProp; pathProp["type"] = "string";
+                        pathProp["description"] = QStringLiteral(
+                            "Project-relative file or directory to check "
+                            "(default: the docs_dir override, else docs/). A "
+                            "directory walks its *.md recursively.");
+                    QJsonObject kindsProp; kindsProp["type"] = "array";
+                        {
+                            QJsonObject items; items["type"] = "string";
+                            items["enum"] = QJsonArray{
+                                QStringLiteral("dead_anchor"),
+                                QStringLiteral("broken_link"),
+                                QStringLiteral("toc_gap")};
+                            kindsProp["items"] = items;
+                        }
+                        kindsProp["description"] = QStringLiteral(
+                            "Optional filter; narrows findings AND counts to "
+                            "these kinds. Omitted → all three.");
+                    props["path"]       = pathProp;
+                    props["kinds"]      = kindsProp;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
+                    schema["properties"] = props;
+                    docInt["inputSchema"] = schema;
+                }
+                tools.append(docInt);
+
                 // ANTS-2161 — project_settings: detect a misplaced layout +
                 // create/update <root>/.ants/project.json so a non-src/
                 // project (e.g. code under linuxdoom-1.10/) stops getting an
@@ -7777,7 +7831,8 @@ void ClaudeIntegration::onMcpConnection() {
                     t["description"] = QStringLiteral(
                         "Return a brief manifest for one lane: brief "
                         "text + doc_paths + cross_reference_docs + "
-                        "cited_code_paths + stale_citations. Doc "
+                        "cited_code_paths + stale_citations + "
+                        "doc_integrity. Doc "
                         "bodies are NOT inlined (ANTS-1319 INV-3, "
                         "mirrors ANTS-1281); the subagent reads each "
                         "doc via its Read tool. The `cited_code_paths` "
@@ -9728,6 +9783,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // Documentation map (ANTS-2139): summary is the
                         // ~80 B/doc light list; topic/doc_path bodies smaller.
                         {QStringLiteral("docs_index"),        {800,  6000}},
+                        // ANTS-3601 — doc_integrity: findings list, usually
+                        // small (most docs are clean); grows with breakage.
+                        {QStringLiteral("doc_integrity"),     {500,  4000}},
                         // Repo / docs.
                         {QStringLiteral("roadmap_query"),     {1700, 12000}},
                         {QStringLiteral("roadmap_log"),       {200,  600}},
@@ -9875,6 +9933,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-2139 — docs_index: project-scoped
                         // documentation-map reader.
                         name == QLatin1String("docs_index") ||
+                        // ANTS-3601 — doc_integrity: project-scoped
+                        // doc-consistency reader.
+                        name == QLatin1String("doc_integrity") ||
                         // ANTS-2161 — project_settings: project-scoped
                         // layout-config detect + create/update.
                         name == QLatin1String("project_settings") ||
@@ -11255,6 +11316,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-2139 — docs_index is a project-scoped documentation-map reader
     // keyed on the resolved root; Required (sibling of codebase_index).
     if (toolName == QStringLiteral("docs_index"))          return C::Required;
+    // ANTS-3601 — doc_integrity is a project-scoped doc-consistency reader
+    // keyed on the resolved root; Required.
+    if (toolName == QStringLiteral("doc_integrity"))       return C::Required;
     // ANTS-2161 — project_settings reads/writes <root>/.ants/project.json
     // anchored on the resolved root; Required.
     if (toolName == QStringLiteral("project_settings"))    return C::Required;
@@ -11434,6 +11498,8 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
         || toolName == QStringLiteral("codebase_index")
         // ANTS-2139 — docs_index: an unchanged warm query 304s.
         || toolName == QStringLiteral("docs_index")
+        // ANTS-3601 — doc_integrity: unchanged docs → identical findings → 304.
+        || toolName == QStringLiteral("doc_integrity")
         || toolName == QStringLiteral("last_audit_summary")
         || toolName == QStringLiteral("get_environment")
         || toolName == QStringLiteral("tab_list")

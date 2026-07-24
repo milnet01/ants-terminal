@@ -1,5 +1,6 @@
 #include "coldeyesengine.h"
 
+#include "docintegrity.h"      // ANTS-3601 — doc-integrity findings in the brief
 #include "falseposledger.h"
 #include "indiereviewengine.h"
 #include "pathvalidation.h"
@@ -983,6 +984,20 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
                                              lane.docPaths,
                                              &m.staleCitations,
                                              &m.citedCodeRegions);
+
+    // ANTS-3601 — deterministic doc-integrity findings for the lane's OWN docs
+    // (docPaths only — never crossReferenceDocs; the giant ROADMAP/CHANGELOG
+    // logs must not be handed to check, § 2.7). Formatted for the envelope.
+    for (const DocIntegrity::Finding &f :
+         DocIntegrity::check(projectPath, lane.docPaths)) {
+        const QString kind = f.kind == DocIntegrity::Kind::DeadAnchor
+                                 ? QStringLiteral("dead_anchor")
+                             : f.kind == DocIntegrity::Kind::BrokenLink
+                                 ? QStringLiteral("broken_link")
+                                 : QStringLiteral("toc_gap");
+        m.docIntegrity << QStringLiteral("%1:%2: [%3] %4")
+                              .arg(f.file).arg(f.line).arg(kind, f.message);
+    }
 
     // ANTS-1440 — spec-lane enrichment. For lanes named `spec/...`
     // (single-spec lanes from derivePartition or caller-supplied),

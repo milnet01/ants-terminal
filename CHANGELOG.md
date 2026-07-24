@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **New `doc_integrity` MCP verb + engine — deterministic dead-anchor / broken-link / TOC-coverage checks for markdown docs** (ANTS-3601)
+  Finds the internal-consistency rot in long contract docs that no test caught and only a careful human reader spotted: a `[text](#heading)` link whose heading was renamed, a `[text](../file)` whose target moved, or a hand-maintained Table of Contents that drifted from the sections. GitHub-compatible heading slugs, fence-aware (fenced examples ignored). Runs as the `doc_integrity` verb (scope a file/dir, filter by kind) and feeds the cold-eyes review pre-pass automatically.
+
 - **New `contract_doc_drift` audit lane — flags back-ticked literals in `docs/standards`/`docs/specs` that no longer exist in the code** (ANTS-3600)
   Catches the doc-vs-code drift where a contract doc quotes a file path, symbol, or config key that a rename left behind. Fence-aware (fenced examples are skipped) and path-aware (slash-paths resolve). Human-triage severity, never auto-fixed; a project-local `.ants_doc_drift_allow.txt` suppresses intentionally-illustrative literals. Runs in the GUI Audit dialog.
 

@@ -132,6 +132,14 @@ struct BriefManifest {
     // can flag them as accuracy-dimension findings without redoing
     // the grep + stat themselves.
     QStringList staleCitations;
+    // ANTS-3601 — deterministic doc-integrity findings (dead anchors, broken
+    // links, TOC gaps) for the lane's OWN docPaths, so the cold-eyes Phase-1e
+    // mechanical pre-pass is served ready-made. relDocs = docPaths ONLY (never
+    // crossReferenceDocs — the giant ROADMAP/CHANGELOG logs must not be handed
+    // to DocIntegrity::check; docs/specs/ANTS-3601.md § 2.7). Surfaces as
+    // `doc_integrity[]` in the brief envelope, each entry formatted
+    // "<file>:<line>: [<kind>] <message>".
+    QStringList docIntegrity;
     // ANTS-3522 — cited code regions. For each RESOLVED cited file that
     // carried a `<path>:<line>` citation, the sorted-unique line numbers the
     // docs cited. Lets a cold-eyes reviewer read a window around each cited
