@@ -59,6 +59,17 @@ QList<SpecToken> findDriftTokens(
     const QString &specText,
     const std::function<bool(const QString &)> &existsInSource);
 
+// ANTS-3600 — a fence-aware, path-widened variant of extractSpecTokens for
+// the contract-doc drift lane. Two differences from extractSpecTokens:
+//   1. the token charset adds `/` so slash-paths (`archived/unknown`,
+//      `tools/e2e/cases.sh`) are captured;
+//   2. lines inside fenced code blocks are skipped (a fenced example is an
+//      illustration, not a contract claim) — fence state comes from the
+//      shared MarkdownScan scanner, and back-ticked URLs are dropped.
+// Distinct function so the existing tests/features drift lane's token shape is
+// untouched. See docs/specs/ANTS-3600.md § 2.4.
+QList<SpecToken> extractDocLiteralTokens(const QString &docText);
+
 // ---------------------------------------------------------------------------
 // Lane 2 — CHANGELOG ↔ feature-test coverage
 // ---------------------------------------------------------------------------
@@ -135,7 +146,19 @@ bool bulletMatchesAnyTitle(const QString &bulletText,
 // literally true was tried and floods the lane with false drift on every
 // spec-cited test-case name (verified ANTS-2113), so the message — not the
 // scope — was the bug.
-QString buildProjectSourceBlob(const QString &projectPath);
+// ANTS-3600 — options controlling what buildProjectSourceBlob concatenates.
+// The defaults reproduce the pre-ANTS-3600 whole-tree-including-`.md`
+// behaviour, so both existing 1-arg call-sites (runSpecDriftCheck,
+// DebtSweepEngine) are behaviour-preserved with no edit.
+struct BlobOptions {
+    bool includeMarkdownContents = true;   // false → exclude *.md bodies
+    bool appendPathManifest      = false;  // true  → append every walked
+                                           //         file's project-relative
+                                           //         path (before all gates)
+};
+
+QString buildProjectSourceBlob(const QString &projectPath,
+                               const BlobOptions &opts = {});
 
 // Does `token` appear anywhere in `blob`? Substring containment first;
 // then `::` and `.` tail-fallbacks (so `Class::method` and `module.func`
@@ -177,5 +200,22 @@ QString runSpecDriftCheck(const QString &projectPath);
 // title via `bulletMatchesAnyTitle`. Silently returns "" if CHANGELOG.md
 // is absent or no specs exist.
 QString runChangelogCoverageCheck(const QString &projectPath);
+
+// ANTS-3600 — read `<projectPath>/.ants_doc_drift_allow.txt` into a token
+// set (one literal per line; whole-line `#` comments and blank lines
+// ignored; each token trimmed of surrounding whitespace / CRLF). Absent
+// file → empty set. Suppresses a token by exact, case-sensitive equality.
+QSet<QString> loadAllowlist(const QString &projectPath);
+
+// ANTS-3600 — Lane 3: contract-doc ↔ code literal drift. For each `*.md`
+// under `<projectPath>/docs/standards/` and `docs/specs/`, extract
+// back-ticked literals (extractDocLiteralTokens) and report the ones that
+// appear in no non-`.md` source file and match no real file path in the
+// tree (buildProjectSourceBlob with markdown bodies excluded + a path
+// manifest). Allowlisted tokens (loadAllowlist) are suppressed. Silent
+// no-op ("") for a project with neither docs dir. A pure free function,
+// dispatched by the GUI Audit dialog's inProcessRunner path — see
+// docs/specs/ANTS-3600.md.
+QString runContractDocDriftCheck(const QString &projectPath);
 
 } // namespace FeatureCoverage

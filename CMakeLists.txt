@@ -1739,6 +1739,8 @@ if(ANTS_TESTS)
                 tests/features/audit_sarif_suppressions/test_audit_sarif_suppressions.cpp
                 tests/features/audit_tool_crash_distinct/test_audit_tool_crash_distinct.cpp
                 tests/features/feature_coverage/test_feature_coverage.cpp
+                # ANTS-3600 — contract-doc ↔ code literal-drift lane.
+                tests/features/contract_doc_drift/test_contract_doc_drift.cpp
                 tests/features/roadmap_fold_in/test_roadmap_fold_in.cpp
                 tests/features/audit_corroboration_shift/test_audit_corroboration_shift.cpp
                 # ANTS-3506 — audit_drop_alias returns HOME to test_audit. Its

@@ -485,6 +485,27 @@ void AuditDialog::populateChecks() {
         m_checks.append(std::move(c));
     }
 
+    // Lane 1b — contract-doc ↔ code literal drift (ANTS-3600). Back-ticked
+    // literals in docs/standards + docs/specs that no longer appear in
+    // project sources. Human-triage (Minor), never auto-fixed, non-blocking.
+    // The filter is left UNCAPPED (maxLines = 0): the FP-heavier docs/specs
+    // corpus can exceed the default 100-line cap, which would silently drop
+    // every alphabetically-later doc's findings (docs/specs/ANTS-3600.md § 2.2).
+    {
+        AuditCheck c;
+        c.id          = "contract_doc_drift";
+        c.name        = "Contract-Doc ↔ Code Drift";
+        c.description = "Back-ticked literals in docs/standards + docs/specs that no longer appear in project sources";
+        c.category    = "General";
+        c.type        = CheckType::CodeSmell;
+        c.severity    = Severity::Minor;
+        c.autoSelect  = true;
+        c.available   = true;
+        c.filter.maxLines = 0;   // UNCAPPED — see § 2.2 / INV-10
+        c.inProcessRunner = &AuditDialog::runContractDocDriftCheck;
+        m_checks.append(std::move(c));
+    }
+
     // Lane 2 — CHANGELOG bullet ↔ feature-test coverage. Scans the top
     // `## [x.y.z]` section of CHANGELOG.md for Added/Fixed bullets that
     // don't plausibly match any tests/features/*/spec.md title. Info-
@@ -6329,6 +6350,13 @@ QString AuditDialog::plainTextResults() const {
 
 QString AuditDialog::runSpecDriftCheck(const QString &projectPath) {
     return FeatureCoverage::runSpecDriftCheck(projectPath);
+}
+
+// ANTS-3600 — thin forwarder to the pure runner in ants_audit_lib, mirroring
+// runSpecDriftCheck. All logic lives in FeatureCoverage so it is headless-
+// testable without QtWidgets.
+QString AuditDialog::runContractDocDriftCheck(const QString &projectPath) {
+    return FeatureCoverage::runContractDocDriftCheck(projectPath);
 }
 
 QString AuditDialog::runChangelogCoverageCheck(const QString &projectPath) {

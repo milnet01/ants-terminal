@@ -66,6 +66,8 @@ Listed only where behavior isn't obvious from the name.
   `falseposledger`. ANTS-1708.
 - `featurecoverage` — in-process audit lanes via
   `AuditCheck::inProcessRunner`: `spec_code_drift`,
+  `contract_doc_drift` (ANTS-3600 — back-ticked literals in
+  `docs/standards`/`docs/specs` that no longer appear in project sources),
   `changelog_test_coverage`. (`test_health` is shell-side in
   `auditdialog.cpp`.)
 - `focusedtest` (Qt6::Core) — resolves the `focused_test` MCP tool:

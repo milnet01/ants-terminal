@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **New `contract_doc_drift` audit lane — flags back-ticked literals in `docs/standards`/`docs/specs` that no longer exist in the code** (ANTS-3600)
+  Catches the doc-vs-code drift where a contract doc quotes a file path, symbol, or config key that a rename left behind. Fence-aware (fenced examples are skipped) and path-aware (slash-paths resolve). Human-triage severity, never auto-fixed; a project-local `.ants_doc_drift_allow.txt` suppresses intentionally-illustrative literals. Runs in the GUI Audit dialog.
+
 - **audit_run: richer partiality + zero-coverage surface, raised time ceilings (ANTS-3585)** (ANTS-3585)
   A big C/C++ sweep no longer misleads a caller: `incomplete_tools_detail[]` says WHY each tool is incomplete ({tool, status, elapsed_ms, truncated} — truncated ⇒ cut off at the cap, false ⇒ crashed) and `parse_failures[]` names source files cppcheck could not parse (a C++23 TU its frontend chokes on gets zero coverage instead of being silently absent). The per-tool wall-clock cap ceiling is raised 60→300 s and the aggregate 240→900 s (default stays 30 s; high caps are meant for the async path, which survives the transport timeout). Both surfaces ship on the sync and async-poll envelopes.
 
