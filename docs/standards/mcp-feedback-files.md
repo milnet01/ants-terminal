@@ -8,7 +8,7 @@ matches the `*_Ants_MCP_Feedback.md` glob at the shared root — one file per
 contributing project; the glob, not any list here, is authoritative. Each
 filename is the project's **directory leaf** plus the suffix (the
 canonical-basename rule below); the human brand is informational only and
-never forms the filename. A snapshot (correct at time of writing):
+never forms the filename. A snapshot (correct as of 2026-07-24):
 
 | Project dir (`…/<leaf>/`) | Feedback filename | Brand (informational) |
 |---|---|---|
@@ -21,6 +21,9 @@ never forms the filename. A snapshot (correct at time of writing):
 | `Ants_Terminal` | `Ants_Terminal_Ants_MCP_Feedback.md` | Ants Terminal |
 | `Contact_List` | `Contact_List_Ants_MCP_Feedback.md` | Contact List |
 | `finbreak` | `finbreak_Ants_MCP_Feedback.md` | Fin Break |
+| `OneUp` | `OneUp_Ants_MCP_Feedback.md` | OneUp |
+| `perch` | `perch_Ants_MCP_Feedback.md` | Perch |
+| `Rolodex` | `Rolodex_Ants_MCP_Feedback.md` | Rolodex |
 | `DOOM_Ants` | `DOOM_Ants_MCP_Feedback.md` ⚠ leaf-mismatch | DOOM |
 
 `DOOM_Ants/` is the sole exception: its file uses the brand token `DOOM`,
@@ -38,7 +41,7 @@ The load-bearing reason it exists: the maintainer session reviews these
 files by reading only the **un-triaged tail** (everything a contributor
 appended since the last maintainer review). A regular format lets a tool
 return just that delta instead of the maintainer re-reading the whole
-file every week (the largest, 3D_Engine, runs to several thousand lines) — the
+file every week (v1 files grew unbounded — the largest reached several thousand lines) — the
 `feedback_query` MCP verb, ANTS-1961.
 
 ## Contents
