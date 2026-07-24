@@ -31,6 +31,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Headless `audit_run` MCP verb does not dispatch the in-process (`inProcessRunner`) audit lanes.** (ANTS-3605)
+  The headless `audit_run` MCP verb now runs the in-process doc-vs-code drift lanes (spec↔code, contract-doc, changelog↔test) that previously fired only in the GUI Audit dialog, so automated Claude/CI audits get the same coverage. A tool-less host no longer refuses an auto-detect sweep — the lanes need no external binary.
+
 - **Hoisted the duplicated CommonMark fence-scanner into a shared `MarkdownScan` module** (ANTS-3603)
   feedbackfile.cpp and speclog.cpp had verbatim copies of the fence-opener regex + opener-char helper; both now call the single `src/markdownscan.{h,cpp}` copy (Qt6::Core-only), which also exposes a `fenceMask` primitive for the doc-integrity arc. No behaviour change.
 

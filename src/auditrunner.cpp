@@ -42,6 +42,7 @@
 #include "auditscope.h"     // ANTS-1504 changed-file resolver
 #include "auditengine.h"    // ANTS-1576 buildVcsProvenanceBlock
 #include "auditfpledger.h"  // ANTS-1820 learned-FP ledger (headless gap)
+#include "featurecoverage.h"  // ANTS-3605 in-process drift lanes (GUI parity)
 #include "secureio.h"       // setOwnerOnlyPerms — 0600 on SARIF/HTML
 #include "secretredact.h"   // ANTS-2188 scrub secret shapes from raw output
 
@@ -1658,7 +1659,14 @@ RunResult runAudit(const RunRequest &req) {
     }
 
     // ── INV-14 / explicit-tool refusal.
-    if (toolAbsPath.isEmpty()) {
+    // ANTS-3605 — refuse ONLY when the caller named tools explicitly and none
+    // resolved (intent honoured). An auto-detect sweep (empty req.tools) with
+    // no external tool on PATH is NOT refused: the in-process drift lanes below
+    // need no external binary, so a tool-less host still gets that coverage —
+    // matching the GUI dialog, which always runs the lanes. The second
+    // explicit-list check below (already guarded by !req.tools.isEmpty())
+    // preserves the strict refusal for a named-but-unresolvable tool.
+    if (toolAbsPath.isEmpty() && !req.tools.isEmpty()) {
         r.ok = false;
         r.code  = QStringLiteral("no_tools_runnable");
         r.error = QStringLiteral(
@@ -1694,6 +1702,11 @@ RunResult runAudit(const RunRequest &req) {
     QSet<QString> sinceLastRunChangedFiles;
     bool          sinceLastRunActive = false;
     QString       priorFindingsFile;
+    // ANTS-3605 — set true only under a narrowed (file-diff) scope with
+    // changes; gates OFF the whole-project in-process drift lanes below, which
+    // would otherwise report drift unrelated to the changed-file set (mirroring
+    // the not_file_scoped skip of repo-global tools like gitleaks).
+    bool          scopeNarrowed = false;
     {
         auto applyFullScan = [&](const QString &resolvedLabel) {
             r.scopeResolved = resolvedLabel;
@@ -1759,6 +1772,7 @@ RunResult runAudit(const RunRequest &req) {
             r.scopeResolved     = req.scope;
             r.scopeAnchorCommit = sr.anchorCommit;
             r.changedFilesCount = static_cast<int>(sr.files.size());
+            scopeNarrowed       = true;  // ANTS-3605 — skip whole-project lanes
             // ANTS-1870 — only `since-last-run` produces a findings delta
             // (§ 2.8 / INV-10). Capture the changed set + the prior sidecar
             // basename for the delta computation after the run completes.
@@ -1968,6 +1982,39 @@ RunResult runAudit(const RunRequest &req) {
 
     if (pending > 0) loop.exec();
     aggTimer.stop();
+
+    // ── ANTS-3605 — in-process audit lanes (spec↔code / contract-doc /
+    // changelog↔test drift). These are GUI-free FeatureCoverage free functions,
+    // not QProcess tools, so they run outside the multiplexer above — after the
+    // external tools have finished, before the tally so their counts fold into
+    // the totals. Each emits `file:line: message`, which finish()'s
+    // parseToolOutput line-fallback parses like any plain-text tool (the lane
+    // ids are not JSON tools, so INV-17's JSON-only path is not taken).
+    //
+    // They run ONLY on a default auto-detect sweep (empty req.tools) at full
+    // scope: an explicit tools=[…] request scopes to those tools, and a
+    // narrowed file-diff scope skips whole-project checks (scopeNarrowed).
+    // This mirrors AuditDialog::populateChecks, which registers all three
+    // autoSelect. finish() runs post-loop, so its `--pending` / `loop.quit()`
+    // are harmless no-ops (the loop has already exited).
+    if (req.tools.isEmpty() && !scopeNarrowed) {
+        struct InProcessLane {
+            const char *id;
+            QString (*fn)(const QString &);
+        };
+        static const InProcessLane kInProcessLanes[] = {
+            { "spec_code_drift",         &FeatureCoverage::runSpecDriftCheck },
+            { "contract_doc_drift",      &FeatureCoverage::runContractDocDriftCheck },
+            { "changelog_test_coverage", &FeatureCoverage::runChangelogCoverageCheck },
+        };
+        for (const auto &lane : kInProcessLanes) {
+            QElapsedTimer laneTimer;
+            laneTimer.start();
+            const QString out = lane.fn(canonProject);
+            finish(QString::fromLatin1(lane.id), QStringLiteral("ok"),
+                   out, laneTimer.elapsed());
+        }
+    }
 
     // ── Tally totals.
     for (auto it = r.byTool.constBegin(); it != r.byTool.constEnd(); ++it) {

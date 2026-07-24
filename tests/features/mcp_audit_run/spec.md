@@ -7,8 +7,8 @@ in v2 (roadmap follow-up).
 
 ## Invariants exercised by this test set
 
-- **INV-1 / Aggregate cap constant.** `kAggregateCapMs = 240'000`
-  defined in auditrunner.cpp.
+- **INV-1 / Aggregate cap constant.** `kAggregateCapMs = 900'000`
+  defined in auditrunner.cpp (ANTS-3585 raised it 240'000 → 900'000).
 - **INV-2 / PathValidation on caller_cwd.** `canonicalFilePath` +
   `isDir` check before tool dispatch.
 - **INV-3 / Required contract.** `audit_run ∈ Required` in
@@ -69,3 +69,17 @@ in v2 (roadmap follow-up).
   completes server-side and writes its SARIF — and that the result is read
   back via `last_audit_summary` (or the envelope's `cache_path`). Mirrors
   the two-tier-timeout note `verify_changes` already carries.
+- **INV-21 / in-process drift lanes dispatched headless (ANTS-3605).**
+  A default auto-detect sweep (`tools:[]`) at full scope runs the GUI-free
+  `FeatureCoverage` lanes — `spec_code_drift`, `contract_doc_drift`,
+  `changelog_test_coverage` — inside `runAudit`, after the external
+  QProcess tools and before the tally, feeding each through the same
+  `finish()` seam so they land in `by_tool[<lane-id>]`. An explicit
+  `tools:[…]` request or a narrowed file-diff scope skips them (whole-
+  project checks). Relaxes INV-14: an empty-`tools` sweep with no external
+  tool on PATH no longer refuses `no_tools_runnable` — it proceeds so the
+  lanes (which need no external binary) still run, matching the GUI dialog.
+  Test: `Ants3605InProcessLanesDispatchedHeadless` — a hermetic
+  QTemporaryDir project whose `tests/features/*/spec.md` cites a
+  back-ticked token absent from the tree; asserts `spec_code_drift` lands
+  in `by_tool` with `rawCount ≥ 1`. See docs/specs/ANTS-1351.md INV-21.

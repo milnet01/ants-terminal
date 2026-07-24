@@ -10,6 +10,7 @@
 #include "../../_support/srcgrep.h"
 
 #include <QDir>
+#include <QFile>
 
 #include <QHash>
 #include <QJsonArray>
@@ -570,4 +571,66 @@ TEST(mcp_audit_run, Ants3395TrivyFatalRoutedToAbort) {
         << "a FATAL log line is not a finding";
     EXPECT_TRUE(counts.aborted)
         << "the abort marker must surface so the tool is marked crashed";
+}
+
+// ANTS-3605 — the headless audit_run path must dispatch the in-process
+// (inProcessRunner) audit lanes — spec↔code / contract-doc / changelog↔test
+// drift — that previously fired only when a human opened the GUI Audit dialog
+// (auditdialog.cpp populateChecks registers all three autoSelect). A default
+// auto-detect sweep (empty tools) at full scope runs them alongside the
+// external QProcess tools, so the automated CC/MCP workflow gets the same
+// doc-vs-code drift coverage the GUI has.
+//
+// Hermetic: a QTemporaryDir project carrying one tests/features/*/spec.md that
+// cites a back-ticked identifier absent from the whole tree. The spec-drift
+// lane (FeatureCoverage::runSpecDriftCheck) must report it and land in
+// r.byTool. RED pre-fix (byTool has no in-process lane, it only ran the
+// external QProcess tools); GREEN post-fix.
+//
+// Host-robust: the assertion is on the in-process lane only, so it holds
+// whether or not any external audit tool is installed — on a tool-less host
+// the INV-14 refusal relaxation lets the auto-detect sweep proceed to the
+// lanes instead of returning no_tools_runnable.
+TEST(mcp_audit_run, Ants3605InProcessLanesDispatchedHeadless) {
+    expect_reset();
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) {
+        expect(false, "ANTS-3605: QTemporaryDir setup");
+        return;
+    }
+    const QString root = tmp.path();
+    QDir d(root);
+
+    // A src/ tree must exist or runSpecDriftCheck self-disables (returns "").
+    ASSERT_TRUE(d.mkpath(QStringLiteral("src")));
+    {
+        QFile f(root + QStringLiteral("/src/only.cpp"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+        f.write("int realSymbol() { return 0; }\n");
+    }
+    // A feature spec citing a token present NOWHERE else in the tree → drift.
+    ASSERT_TRUE(d.mkpath(QStringLiteral("tests/features/sentinel")));
+    {
+        QFile f(root + QStringLiteral("/tests/features/sentinel/spec.md"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+        f.write("# spec\n\nThe function `ZzDriftSentinel_absent` was renamed.\n");
+    }
+
+    AuditRunner::RunRequest req;
+    req.projectRoot = root;
+    req.scope       = QStringLiteral("full");  // whole-tree, no git dependency
+    // tools left empty → auto-detect sweep, the only mode that runs the
+    // whole-project in-process lanes (an explicit tools=[…] request or a
+    // narrowed file-diff scope skips them, mirroring the not_file_scoped skip
+    // of repo-global tools like gitleaks).
+    const AuditRunner::RunResult r = AuditRunner::runAudit(req);
+
+    expect(r.ok, "ANTS-3605: runAudit ok on the hermetic project");
+    expect(r.byTool.contains(QStringLiteral("spec_code_drift")),
+           "ANTS-3605: spec_code_drift in-process lane ran via headless audit_run");
+    if (r.byTool.contains(QStringLiteral("spec_code_drift"))) {
+        expect(r.byTool.value(QStringLiteral("spec_code_drift")).rawCount >= 1,
+               "ANTS-3605: spec-drift lane reported the absent sentinel token");
+    }
+    EXPECT_EQ(0, expect_failures());
 }
