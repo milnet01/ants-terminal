@@ -9,6 +9,25 @@
 > Read this file when authoring a `ROADMAP.md` bullet, a `CHANGELOG.md`
 > entry, or any tooling that consumes either format. Skip otherwise.
 
+## Contents
+
+- [3. ROADMAP.md format spec](#3-roadmapmd-format-spec)
+  - [3.1 File header](#31-file-header)
+  - [3.2 Heading hierarchy](#32-heading-hierarchy)
+  - [3.3 Status emojis](#33-status-emojis)
+  - [3.4 Theme emojis](#34-theme-emojis)
+  - [3.5 Bullet structure](#35-bullet-structure)
+  - [3.6 Current-work signaling](#36-current-work-signaling)
+  - [3.7 Release blocks](#37-release-blocks)
+  - [3.8 Findings fold-in subsections](#38-findings-fold-in-subsections)
+  - [3.9 Archive rotation](#39-archive-rotation)
+  - [3.10 Compatibility with GFM task lists](#310-compatibility-with-gfm-task-lists)
+  - [3.11 ROADMAP anti-patterns](#311-roadmap-anti-patterns)
+- [4. CHANGELOG.md format spec](#4-changelogmd-format-spec)
+  - [4.1 Structure](#41-structure)
+  - [4.2 Conventions](#42-conventions)
+  - [4.3 Release flow with ROADMAP integration](#43-release-flow-with-roadmap-integration)
+
 ## 3. ROADMAP.md format spec
 
 A shareable contract for `ROADMAP.md` files. Following this
