@@ -744,8 +744,8 @@ public:
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // op:"add" renders a bullet under a category in `## [Unreleased]`;
     // op:"add_from_roadmap" reuses a ROADMAP bullet's prose verbatim by
-    // id. caller_cwd-required (write op); atomic via QSaveFile. See
-    // docs/specs/ANTS-1548.md.
+    // id. caller_cwd-required (write op); atomic via QSaveFile.
+    // Contract: tests/features/changelog_log_writer/spec.md.
     QJsonDocument cmdChangelogLog(const QJsonObject &req);
 
     // ANTS-3533 — changelog_query: read-only structured reader over

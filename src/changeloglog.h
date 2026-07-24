@@ -2,7 +2,8 @@
 // Keep-a-Changelog entry and splice it under `## [Unreleased]` in a
 // CHANGELOG.md body. Qt6::Core-only; lives in ants_core_lib so the
 // remotecontrol handler and the feature test share one implementation.
-// See docs/specs/ANTS-1548.md.
+// Contract: tests/features/changelog_log_writer/spec.md (no docs/specs
+// file was written for ANTS-1548).
 
 #pragma once
 

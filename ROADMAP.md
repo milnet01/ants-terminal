@@ -19464,15 +19464,17 @@ assistant suggestions, accepted by the user for filing.
   Kind: enhancement.
   Source: assistant-suggestion-2026-07-23.
 
-- 📋 [ANTS-3596] **docs/specs/ANTS-2161.md `~:line` citations into remotecontrol.cpp re-drift every few commits — make them drift-resistant.**
+- ✅ [ANTS-3596] **docs/specs/ANTS-2161.md `~:line` citations into remotecontrol.cpp re-drift every few commits — make them drift-resistant.**
   Noticed during the ANTS-3588 cold-eyes loop (2026-07-24). ANTS-3470 re-synced §2.2/§2.3/§2.4 remotecontrol.cpp line citations on 2026-07-21 (op:detect envelope set to ~:11985); two commits later (ANTS-3586..3595) the op:detect serialisation is at ~:12086 again — a ~100-line re-drift. This is a treadmill: a growing file makes every absolute ~:line anchor stale within days. Root-cause fix instead of another one-shot re-sync: cite by SYMBOL + method (e.g. "cmdProjectSettings op:detect block") rather than ~:line, or drop the line anchors to section/function references only. Low priority (the anchors are `~`-approximate and non-load-bearing); do on the next ANTS-2161 touch.
   Kind: doc-fix.
   Source: in-session-2026-07-24 (ANTS-3588 cold-eyes loop 2 open question).
+  Resolved (2026-07-24): converted the drift-prone absolute ~:line citations in docs/specs/ANTS-2161.md §2.2/§2.3/§2.4 to symbol references (cmdSessionOrient, feedback_pending sibling block, cmdProjectSettings op:detect block, cmdApplyEdits write, callerCwdContractFor chain). Cold-eyes loop-log line citations (720+) left as historical audit trail.
 
-- 📋 [ANTS-3597] **changeloglog.{h,cpp} reference a non-existent `docs/specs/ANTS-1548.md` (dangling doc pointer).**
+- ✅ [ANTS-3597] **changeloglog.{h,cpp} reference a non-existent `docs/specs/ANTS-1548.md` (dangling doc pointer).**
   Noticed during ANTS-3584 (2026-07-24). `src/changeloglog.h:5` ("See docs/specs/ANTS-1548.md.") and `src/changeloglog.cpp:1` point at a design spec that was never written — changelog_log (ANTS-1548) has only feature-test contracts + mcp-behavioural-notes.md, no docs/specs file. Either write the spec or drop/redirect the pointer (e.g. to docs/standards/mcp-behavioural-notes.md's changelog_log section). Trivial; do on the next changeloglog touch.
   Kind: doc-fix.
   Source: in-session-2026-07-24 (ANTS-3584 investigation).
+  Resolved (2026-07-24): redirected the dangling docs/specs/ANTS-1548.md pointer in changeloglog.h and remotecontrol.h to the real contract doc tests/features/changelog_log_writer/spec.md (no docs/specs file was ever written for ANTS-1548).
 
 - ✅ [ANTS-3598] **feedback-file `fenceRe` uses `\s{0,3}` but CommonMark + the mcp-feedback-files.md spec say the fence-opener indent is space-only.**
   `src/feedbackfile.cpp` `fenceRe` (~line 34) matches `^\s{0,3}(```|~~~)`, but both CommonMark and `docs/standards/mcp-feedback-files.md` (§"The un-triaged delta", the fence-skip rule) specify up to 3 *spaces* of indent for a fence opener. `\s` also admits tab/CR/FF/VT, so a tab-indented line that is NOT a valid CommonMark fence could be treated as one when the delta parser skips fenced regions. Behaviourally negligible in the current corpus but a latent parser-correctness drift. Fix: tighten the code to a literal space `^ {0,3}(```|~~~)` (matches the spec) rather than relax the doc — the space-only form is the CommonMark-correct one. Found by ANTS-3479 cold-eyes; the doc side was left unchanged (it is the correct side).
@@ -19530,23 +19532,27 @@ assistant suggestions, accepted by the user for filing.
   Kind: enhancement.
   Source: in-session-2026-07-24 (cold-eyes on ANTS-3600).
 
-- 📋 [ANTS-3606] **roadmap-format.md §3.5.1 vs §3.10.4 — reconcile the prefix-casing contradiction.**
+- ✅ [ANTS-3606] **roadmap-format.md §3.5.1 vs §3.10.4 — reconcile the prefix-casing contradiction.**
   §3.5.1 says multi-prefix repos (Sh-, Ed-, Phase-) are permitted (case-insensitive regex, matching the reader). §3.10.4 claims the tooling requires `[A-Z][A-Z0-9_-]+-\d+` (uppercase only) and that mixed-case `Sh-`/`Ed-` are `not accepted by the parser`, `consistent with §3.5.1` — both false. Verified: the READ/parse path is case-insensitive (`remotecontrol.cpp:499` bullet scan, `:1278` kIdIsh, `roadmapindex.cpp:62` isCanonicalId all use `(?=[A-Za-z0-9_-]*[A-Za-z])`), so `Sh-`/`Ed-` roadmaps parse fine; only the WRITE-side `roadmap_log` `id_prefix`/`prefix_hint` arg validates uppercase-only (`remotecontrol.cpp:8108` `^[A-Z][A-Z0-9_-]{0,15}$`). §3.10.4 must be rewritten to separate read-acceptance (case-insensitive) from the write-arg constraint (uppercase-only), not claim the parser rejects mixed case. Surfaced by cold-eyes on the ANTS-3602 TOC sweep.
   **Layman:** Two parts of the roadmap format guide disagree on whether lowercase project tags like `Sh-` are allowed; fix them to tell the same, correct story.
   Kind: doc-fix.
   Source: cold-eyes-2026-07-24.
+  Resolved (2026-07-24): §3.10.4 rewritten to separate read-acceptance (case-insensitive parser — bullet-scan / kIdIsh / isCanonicalId, same regex family as §3.5.1) from write-allocation (uppercase-only roadmap_log id_prefix/prefix_hint arg, rxPrefix/kIdPrefixShape). Dropped the false 'parser rejects mixed case' claim; cited by symbol not line.
+  Correction (2026-07-24 cold-eyes): the write side is NOT uppercase-only. id allocation (roadmap_log id_prefix, validated by kIdPrefixShape at remotecontrol.cpp:527, used at :6941) is case-insensitive — comment at :518 says it's deliberately looser than prefix_hint so a caller can pin a lowercase/mixed-case prefix. The ONLY uppercase-only check is op:flip's prefix_hint (rxPrefix, :8108), a caret-anchor helper that never constrains id allocation. §3.10.4 now documents id parsing + allocation both case-insensitive, with prefix_hint as the lone exception.
 
-- 📋 [ANTS-3607] **roadmap-format.md §3.2 — explicit `<a name=>` anchor-precedence claim is unshipped.**
+- ✅ [ANTS-3607] **roadmap-format.md §3.2 — explicit `<a name=>` anchor-precedence claim is unshipped.**
   §3.2 tells authors to embed `<a name="release-0-7-0"></a>` before a heading for a stable anchor, claiming `Explicit anchors take precedence and survive heading edits`. Verified against `roadmapdialog.cpp`: heading anchors are generated purely positionally (`tocAnchorAt(headingIdx++)` → `roadmap-toc-N`, emitted at `:1558-1559`); no code path scans for or honors a hand-embedded `<a name=>`. Either implement explicit-anchor precedence or amend the doc to drop the claim (confirm first whether QTextBrowser passes literal `<a name>` HTML through from the rendered body). Surfaced by cold-eyes on the ANTS-3602 TOC sweep.
   **Layman:** The guide promises a way to pin a permanent link to a roadmap section, but the app doesn't actually do that yet — fix the app or the guide.
   Kind: doc-fix.
   Source: cold-eyes-2026-07-24.
+  Resolved (2026-07-24): §3.2 amended — dropped the unshipped 'explicit anchors take precedence and survive heading edits' claim. Verified: roadmapdialog.cpp generates positional roadmap-toc-N anchors only (tocAnchorAt); no code path scans the body for hand-embedded <a name>. Doc now states positional-only reality.
 
-- 📋 [ANTS-3608] **roadmap-format.md §3.8 — cross-reference the `Kind:` inheritance line to §3.5's explicit-field rule.**
+- ✅ [ANTS-3608] **roadmap-format.md §3.8 — cross-reference the `Kind:` inheritance line to §3.5's explicit-field rule.**
   §3.8 line ~470 `Kind/Source lines are usually inherited from the section.` reads as if inheritance is sufficient, but §3.5/§3.5.3 make `Kind:` REQUIRED on every bullet (section is only a human hint). Add a one-clause `(the canonical bullet still carries Kind: explicitly per §3.5.3)` so a §3.8-skimming reader isn't misled. Minor consistency nit surfaced by cold-eyes on the ANTS-3602 TOC sweep.
   **Layman:** One sentence in the guide could make a reader think they can skip a required field; add a short note pointing to the rule that says it's mandatory.
   Kind: doc-fix.
   Source: cold-eyes-2026-07-24.
+  Resolved (2026-07-24): §3.8 'Kind/Source inherited from section' line now cross-references §3.5.3's required-field rule (Kind: explicit on every actionable bullet; section context is a hint, not a substitute).
 
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 

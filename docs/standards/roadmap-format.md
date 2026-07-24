@@ -69,15 +69,15 @@ naturally to release blocks once the project ships 1.0 (the work
 under `P01` becomes the body of `## 1.0.0 — initial release`).
 
 **Headings are addressable.** The viewer auto-generates anchor
-names of the form `roadmap-toc-N` based on heading position. For
-stable cross-references, embed an explicit anchor:
+names of the form `roadmap-toc-N` from each heading's *position*
+in the document (`tocAnchorAt` in `roadmapdialog.cpp`); the TOC
+sidebar scrolls to those. The anchor is positional, so it shifts
+when a heading is inserted or removed above it — there is no
+edit-stable heading anchor today.
 
-```markdown
-<a name="release-0-7-0"></a>
-## 0.7.0 — shell integration (target: 2026-06)
-```
-
-Explicit anchors take precedence and survive heading edits.
+Hand-embedded `<a name="…">` anchors are **not** honored: no code
+path scans the roadmap body for them or gives them precedence over
+the positional ones, so don't rely on them for cross-references.
 
 ### 3.3 Status emojis
 
@@ -468,7 +468,11 @@ Conventions for any findings fold-in:
   `**HIGH — …**`, `**MEDIUM — …**`, `**LOW — …**`.
 - **Position by priority** — Tier-1 / CRITICAL items go above
   existing Tier-2 / HIGH items.
-- **Kind/Source lines are usually inherited from the section.**
+- **Kind/Source lines are usually inherited from the section**
+  for readability — but the canonical bullet still carries
+  `Kind:` explicitly on every actionable item (§3.5.3); section
+  context is only a human hint, never a substitute for the
+  required field.
 
 ### 3.9 Archive rotation
 
@@ -573,14 +577,36 @@ the metadata, and the file is GFM again.
 This spec uses **one prefix per repo** (`ANTS-`, `VESTIGE-`,
 …) by convention. Repos with multiple work streams sometimes
 prefer **multi-prefix** schemes (`SH-`, `ED-`, `PHASE-`) for
-lane visibility. Multi-prefix is permitted — the format-spec
-tooling requires the regex `\[[A-Z][A-Z0-9_-]+-\d+\]` (uppercase
-only, consistent with § 3.5.1 and the `roadmap-query` parser in
-`remotecontrol.cpp`). Mixed-case prefixes like `Sh-`, `Ed-` are
-**not** accepted by the parser. The single-prefix rule is convention
-because it
-keeps `.roadmap-counter` unambiguous; multi-prefix repos need
-one counter per prefix.
+lane visibility. Multi-prefix is permitted. Mixed-case prefixes
+like `Sh-`, `Ed-`, `mame-curator-` parse, are fetched / flipped,
+**and** are allocated fine — id handling is case-insensitive on
+both the read and the write side. The one uppercase-only check in
+the tooling is a narrow `op:flip` anchor helper, not id handling:
+
+- **Id parsing — case-insensitive.** The `roadmap-query` parser
+  accepts any letter-containing, dash-then-digit token
+  (`(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-\d+`), so
+  mixed-case prefixes **do** parse and can be fetched / flipped by
+  id. Same regex family §3.5.1 documents — see the bullet-scan and
+  `kIdIsh` patterns in `remotecontrol.cpp` and
+  `RoadmapIndex::isCanonicalId`.
+- **Id allocation — also case-insensitive.** The `roadmap_log`
+  `id_prefix` argument (the counter-prefix override for
+  `op:append` / `op:append_batch`) is validated by the *same*
+  letter-containing, case-insensitive grammar (`kIdPrefixShape` in
+  `remotecontrol.cpp`), which is deliberately looser than the
+  helper below so a repo can pin a lowercase / mixed-case prefix
+  (e.g. `mame-curator`). So a repo can mint new `Sh-` / `Ed-` ids
+  directly.
+- **The lone uppercase-only rule — `op:flip`'s `prefix_hint`.**
+  That argument is validated `^[A-Z][A-Z0-9_-]{0,15}$` (`rxPrefix`
+  in `remotecontrol.cpp`), but it is used *only* when injecting a
+  caret anchor onto a GFM bullet that has no id — it never
+  constrains id allocation.
+
+The single-prefix rule is convention because it keeps
+`.roadmap-counter` unambiguous; multi-prefix repos need one
+counter per prefix.
 
 #### 3.10.5 Heading-format roadmaps (`#### Pass N.M`)
 
