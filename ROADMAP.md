@@ -19620,6 +19620,32 @@ assistant suggestions, accepted by the user for filing.
   Kind: fix.
   Source: cold-eyes ANTS-3609 (2026-07-24).
 
+- 📋 [ANTS-3615] **audit_run's `suppressions` request field is a silent no-op + the `.audit_allowlist.json` custom-regex filter is GUI-only — decide wire-or-drop.**
+  Cold-eyes ANTS-3609 loop 4 (verified against src/auditrunner.cpp). Two
+  related headless-engine gaps where the ANTS-1351 v1 contract documents a
+  suppression surface the shipped MCP `runAudit` doesn't implement:
+  (1) `req.suppressionsMode` (parsed from the `suppressions` field at
+  mainwindow.cpp:4534) is NEVER read anywhere in runAudit — so a caller
+  passing `suppressions:"none"` or `"path:<file>"` sees no effect and no
+  refusal (a silent no-op, worse than an unadvertised gap). The only active
+  headless suppression is the ANTS-1820 learned-FP ledger
+  (.audit_cache/learned-fp.jsonl, drop-from-count, no SARIF marking).
+  (2) INV-6's second half — `.audit_allowlist.json` custom-regex filtering
+  with hardenUserRegex/isCatastrophicRegex + the compiled-regex cache — is
+  wired only into AuditEngine::applyFilter, which just the GUI dialog calls;
+  runAudit reads `.audit_allowlist.json` shape only (auditrunner.cpp header
+  comment says so explicitly, 'logged as roadmap follow-up'). Decide per
+  surface: either (a) wire suppressionsMode + the custom-regex filter into
+  runAudit so the headless path matches the GUI + the documented contract,
+  or (b) remove `suppressions` from the audit_run request schema and drop
+  INV-6's second half from the contract. The ANTS-3609 doc pass corrected
+  INV-6/INV-7/§2.1/INV-2 to describe the SHIPPED behaviour; this item is the
+  code decision. Prefer (a) — the learned-FP ledger + a working
+  `.audit_suppress`/allowlist path is the parity a CI sweep expects.
+  **Layman:** The automated audit has a 'hide these known-OK warnings' setting that quietly does nothing, and a custom-rules filter that only works in the app window, not the automated path. Either make them work everywhere or remove them.
+  Kind: investigate.
+  Source: cold-eyes ANTS-3609 (2026-07-24).
+
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
 /cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +
