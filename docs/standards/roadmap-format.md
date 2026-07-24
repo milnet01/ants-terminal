@@ -138,7 +138,7 @@ Required pieces:
   one-line summary; this is what the dialog filters and the LLM
   agent reads first.
 - **`Kind: <kind>.`** — declares the type of work. One of the
-  twelve values in §3.5.3. **Required as of v1.1** so the Roadmap
+  values in §3.5.3. **Required as of v1.1** so the Roadmap
   viewer (and any tooling that consumes the file
   deterministically) can categorise without inferring from the
   surrounding section heading. The dominant Kind for a section

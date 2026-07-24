@@ -19502,11 +19502,12 @@ assistant suggestions, accepted by the user for filing.
   Source: in-session-2026-07-24 (ANTS-3599 follow-up).
   Resolved (2026-07-24): new src/docintegrity.{h,cpp} (Qt6::Core) — deterministic dead-anchor / broken-link / TOC-coverage engine with GitHub-compatible gfmSlug, fence-aware via MarkdownScan. Two entry points: (1) doc_integrity MCP verb (cmdDocIntegrity in remotecontrol.cpp, registered mainwindow.cpp + claudeintegration.cpp schema/contract/etag/tokencost/kind; path→relDocs local walk, kinds filter, ETag-304 central); (2) cold_eyes_brief Phase-1e feed (doc_integrity[] in BriefManifest, docPaths-only per §2.7). Tests: engine tests/features/doc_integrity/ (test_core, 13 cases incl. gfmSlug table + caps, red-before-green via fence sabotage); verb tests/features/doc_integrity_verb/ (test_claude, INV-10/16/18 via pure helpers + source-scrape). Full suite green. INV-11 (fenceMask) already shipped in ANTS-3603.
 
-- 📋 [ANTS-3602] **Sweep long contract docs (>500 lines) for navigability + implementer token cost — TOC + dedup pass on a cadence.**
+- ✅ [ANTS-3602] **Sweep long contract docs (>500 lines) for navigability + implementer token cost — TOC + dedup pass on a cadence.**
   mcp-feedback-files.md got a dedup trim (ANTS-3479) + a section-anchor TOC (ANTS-3599); the same treatment pays off on the other long contract docs. Proposal: identify docs in docs/standards + docs/specs over ~500 lines that lack a TOC or carry repeated-restatement dedup debt, and apply the ANTS-3479/3599 treatment on a cadence (e.g. one per release cycle). Each is a non-normative hygiene edit → must run through /cold-eyes per CLAUDE.md §14, as ANTS-3479/3599 did. Ordering by size/scan-frequency picks the highest-leverage doc first.
   **Layman:** Go through the longest reference documents and make them shorter and easier to jump around, so every future task spends fewer tokens re-reading them.
   Kind: doc.
   Source: in-session-2026-07-24 (ANTS-3479/3599 follow-up).
+  Resolved (2026-07-24): first cadence pass. Added a `## Contents` section TOC (H2+H3, 16 GitHub-slugger anchors) to docs/standards/roadmap-format.md (672→692 lines, the highest-scan-frequency contract doc lacking a TOC). Ran through /cold-eyes per §14: TOC verified clean (all 16 anchors resolve, no fenced-example heading leaked). No dedup debt found (each subsection is distinct). Cold-eyes also surfaced 3 PRE-EXISTING accuracy bugs orthogonal to the TOC — fixed the trivial one inline (stale `twelve values`→`the values`, the Kind table has 21) and roadmapped the substantive ones (ANTS-3606 §3.5.1/§3.10.4 prefix-casing contradiction, ANTS-3607 unshipped `<a name=>` anchor-precedence claim, ANTS-3608 §3.8 Kind-inheritance cross-ref). Cadence continues: remaining >500-line docs/specs docs get the treatment one per release cycle, highest-scan-frequency first.
 
 - ✅ [ANTS-3603] **Extract a shared fence-aware markdown scanner (fenceRe / fenceOpenerChar / scanBoundaries) into one util.**
   Rule-of-Three foundation for ANTS-3600 / ANTS-3601. `fenceRe()` + `fenceOpenerChar` + the fence-boundary scan are DUPLICATED verbatim in `src/feedbackfile.cpp` (fenceRe :34, fenceOpenerChar :58) and `src/speclog.cpp` (:21 / :31); the incoming `src/docintegrity.*` engine (ANTS-3601) plus the ANTS-3600 audit lane would be the 3rd/4th call-sites. Extract into a Core-only `src/markdownscan.{h,cpp}` (fence-state line iterator: given a doc, yield each line tagged in-fence / out-of-fence, space-only `^ {0,3}(```|~~~)` opener per ANTS-3598). Refactor feedbackfile.cpp + speclog.cpp to call it (existing call-sites benefit; their FeedbackV2Delta / McpSpecLog suites must stay green). BUILD THIS FIRST — 3600 and 3601 depend on it. RAM: zero net new (moves existing code); the scanner is a per-line iterator, no whole-doc buffering beyond the caller's existing read.
@@ -19528,6 +19529,24 @@ assistant suggestions, accepted by the user for filing.
   **Layman:** The automatic code-audit that a Claude session can run (the headless one) skips a couple of in-app-only checks — the ones that compare docs/specs against the code. Those only run when a human opens the Audit window by hand. This wires them into the headless path too, so they actually fire in the automated workflow.
   Kind: enhancement.
   Source: in-session-2026-07-24 (cold-eyes on ANTS-3600).
+
+- 📋 [ANTS-3606] **roadmap-format.md §3.5.1 vs §3.10.4 — reconcile the prefix-casing contradiction.**
+  §3.5.1 says multi-prefix repos (Sh-, Ed-, Phase-) are permitted (case-insensitive regex, matching the reader). §3.10.4 claims the tooling requires `[A-Z][A-Z0-9_-]+-\d+` (uppercase only) and that mixed-case `Sh-`/`Ed-` are `not accepted by the parser`, `consistent with §3.5.1` — both false. Verified: the READ/parse path is case-insensitive (`remotecontrol.cpp:499` bullet scan, `:1278` kIdIsh, `roadmapindex.cpp:62` isCanonicalId all use `(?=[A-Za-z0-9_-]*[A-Za-z])`), so `Sh-`/`Ed-` roadmaps parse fine; only the WRITE-side `roadmap_log` `id_prefix`/`prefix_hint` arg validates uppercase-only (`remotecontrol.cpp:8108` `^[A-Z][A-Z0-9_-]{0,15}$`). §3.10.4 must be rewritten to separate read-acceptance (case-insensitive) from the write-arg constraint (uppercase-only), not claim the parser rejects mixed case. Surfaced by cold-eyes on the ANTS-3602 TOC sweep.
+  **Layman:** Two parts of the roadmap format guide disagree on whether lowercase project tags like `Sh-` are allowed; fix them to tell the same, correct story.
+  Kind: doc-fix.
+  Source: cold-eyes-2026-07-24.
+
+- 📋 [ANTS-3607] **roadmap-format.md §3.2 — explicit `<a name=>` anchor-precedence claim is unshipped.**
+  §3.2 tells authors to embed `<a name="release-0-7-0"></a>` before a heading for a stable anchor, claiming `Explicit anchors take precedence and survive heading edits`. Verified against `roadmapdialog.cpp`: heading anchors are generated purely positionally (`tocAnchorAt(headingIdx++)` → `roadmap-toc-N`, emitted at `:1558-1559`); no code path scans for or honors a hand-embedded `<a name=>`. Either implement explicit-anchor precedence or amend the doc to drop the claim (confirm first whether QTextBrowser passes literal `<a name>` HTML through from the rendered body). Surfaced by cold-eyes on the ANTS-3602 TOC sweep.
+  **Layman:** The guide promises a way to pin a permanent link to a roadmap section, but the app doesn't actually do that yet — fix the app or the guide.
+  Kind: doc-fix.
+  Source: cold-eyes-2026-07-24.
+
+- 📋 [ANTS-3608] **roadmap-format.md §3.8 — cross-reference the `Kind:` inheritance line to §3.5's explicit-field rule.**
+  §3.8 line ~470 `Kind/Source lines are usually inherited from the section.` reads as if inheritance is sufficient, but §3.5/§3.5.3 make `Kind:` REQUIRED on every bullet (section is only a human hint). Add a one-clause `(the canonical bullet still carries Kind: explicitly per §3.5.3)` so a §3.8-skimming reader isn't misled. Minor consistency nit surfaced by cold-eyes on the ANTS-3602 TOC sweep.
+  **Layman:** One sentence in the guide could make a reader think they can skip a required field; add a short note pointing to the rule that says it's mandatory.
+  Kind: doc-fix.
+  Source: cold-eyes-2026-07-24.
 
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
