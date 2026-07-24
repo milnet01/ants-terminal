@@ -273,6 +273,79 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
     return r;
 }
 
+SubsectionResult insertUnreleasedSubsection(const QString &markdown,
+                                            const QString &date,
+                                            const QString &category,
+                                            const QString &headline,
+                                            const QString &body,
+                                            const QStringList &bulletBlocks) {
+    SubsectionResult r;
+    if (!isValidCategory(category)) {
+        r.code = QStringLiteral("bad_category");
+        r.error = QStringLiteral(
+            "changelog_log: \"%1\" is not a Keep-a-Changelog category "
+            "(Added/Changed/Deprecated/Removed/Fixed/Security)")
+                .arg(category);
+        return r;
+    }
+
+    QStringList lines = markdown.split(QLatin1Char('\n'));
+
+    // Locate `## [Unreleased]`.
+    int unrel = -1;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (lines.at(i).trimmed().compare(
+                QStringLiteral("## [Unreleased]"), Qt::CaseInsensitive) == 0) {
+            unrel = i;
+            break;
+        }
+    }
+    if (unrel < 0) {
+        r.code = QStringLiteral("not_unreleased");
+        r.error = QStringLiteral(
+            "changelog_log: no `## [Unreleased]` heading found — the "
+            "CHANGELOG must follow Keep-a-Changelog with an Unreleased "
+            "section at the top");
+        return r;
+    }
+
+    // Insert at the TOP of the section (newest-first): right after the
+    // `## [Unreleased]` heading and its single blank spacer (if present).
+    int insertAt = unrel + 1;
+    if (insertAt < lines.size() && lines.at(insertAt).trimmed().isEmpty())
+        ++insertAt;
+
+    // Build the dated subsection block.
+    QStringList block;
+    block.append(QStringLiteral("### %1 %2 — %3")
+                     .arg(date.trimmed(), category, headline.trimmed()));
+    block.append(QString());                       // blank after the heading
+    if (!body.trimmed().isEmpty()) {
+        const QStringList bodyLines = body.split(QLatin1Char('\n'));
+        for (const QString &ln : bodyLines) block.append(ln);
+        block.append(QString());                   // blank after the prose
+    }
+    for (const QString &bb : bulletBlocks) {
+        block += bb.split(QLatin1Char('\n'));
+        block.append(QString());                   // blank after each bullet block
+    }
+
+    // Repair a missing spacer: if the line the block lands after is not blank
+    // (no blank followed `## [Unreleased]`), prepend one so the heading and the
+    // new subsection never abut.
+    const bool prependedBlank =
+        insertAt > 0 && !lines.at(insertAt - 1).trimmed().isEmpty();
+    if (prependedBlank) block.prepend(QString());
+
+    for (int k = 0; k < block.size(); ++k)
+        lines.insert(insertAt + k, block.at(k));
+
+    r.ok = true;
+    r.markdown = lines.join(QLatin1Char('\n'));
+    r.line = insertAt + 1 + (prependedBlank ? 1 : 0);   // 1-based heading line
+    return r;
+}
+
 namespace {
 // Case-insensitive canonical index for a `### ` heading name. Returns
 // the 0-based Keep-a-Changelog order, or -1 for a non-canonical heading.

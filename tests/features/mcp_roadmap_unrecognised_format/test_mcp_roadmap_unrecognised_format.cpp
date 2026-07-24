@@ -134,17 +134,20 @@ TEST(mcp_roadmap_unrecognised_format, Inv3LogGateAndShape) {
     const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
     ASSERT_FALSE(cpp.empty()) << "INV-3: remotecontrol.cpp not readable";
 
-    // ANTS-1428 inserted cmdRoadmapLogFlip between cmdRoadmapLog
-    // and cmdWorkspaceSearch in the TU; the old bound captured
-    // both bodies. Tighten to the flip-impl boundary so we test
-    // the cmdRoadmapLog (append) body specifically.
+    // The `unrecognised_format` WRITE gate lives in cmdRoadmapLogAppend
+    // (cmdRoadmapLog itself is now a thin dispatcher). Bound that function
+    // directly — bounding from the dispatcher instead swept up the unrelated
+    // cmdChangelog* functions that sit between it and cmdRoadmapLogFlip in the
+    // TU, so any growth there (e.g. ANTS-3584 add_subsection) tipped the
+    // accidental span over the boundedBetween ceiling (ANTS source-scrape
+    // window brittleness).
     const std::string body = boundedBetween(
         cpp,
-        "QJsonDocument RemoteControl::cmdRoadmapLog(",
+        "QJsonDocument RemoteControl::cmdRoadmapLogAppend(",
         "QJsonDocument RemoteControl::cmdRoadmapLogFlip(");
     ASSERT_FALSE(body.empty())
-        << "INV-3: failed to bound cmdRoadmapLog body (sig moved "
-           "or bound > 24 KB)";
+        << "INV-3: failed to bound cmdRoadmapLogAppend body (sig moved "
+           "or bound exceeded)";
 
     expect(contains(body, "ANTS-1429"),
            "INV-3: ANTS-1429 anchor present in cmdRoadmapLog");

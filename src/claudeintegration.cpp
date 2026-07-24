@@ -9133,6 +9133,7 @@ void ClaudeIntegration::onMcpConnection() {
                     clOpEnum.append("add");
                     clOpEnum.append("add_from_roadmap");
                     clOpEnum.append("add_batch");
+                    clOpEnum.append("add_subsection");
                     clOpEnum.append("normalize");
                     clOp["enum"] = clOpEnum;
                     clOp["description"] = QStringLiteral(
@@ -9145,6 +9146,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "`id`-only entry → add_from_roadmap); per-entry "
                         "failures land in `skipped[]` while the rest "
                         "apply (parity with roadmap_log append_batch). "
+                        "\"add_subsection\" (ANTS-3584) writes a DATED "
+                        "feature-grouped block (`### <date> <Category> — "
+                        "<headline>` + optional prose `body` + optional "
+                        "`bullets[]`) at the TOP of [Unreleased], "
+                        "newest-first — for changelogs grouped by dated "
+                        "topic rather than flat categories (needs "
+                        "`headline` + `category`|`kind`; `date` defaults "
+                        "to today). "
                         "\"normalize\" (ANTS-3495) reorders the "
                         "`### <category>` blocks under [Unreleased] into "
                         "canonical Keep-a-Changelog order without moving "
@@ -9221,6 +9230,42 @@ void ClaudeIntegration::onMcpConnection() {
                         "in input order; per-entry failures go to "
                         "`skipped[]`.");
 
+                    // ANTS-3584 — op:"add_subsection" params: the dated
+                    // topic headline, its date, and optional bullets rendered
+                    // beneath the prose.
+                    QJsonObject clHeadline;
+                    clHeadline["type"] = "string";
+                    clHeadline["maxLength"] = 300;
+                    clHeadline["description"] = QStringLiteral(
+                        "op:\"add_subsection\" — the dated topic headline; the "
+                        "block heading is `### <date> <Category> — "
+                        "<headline>`. Include any ids in the headline text "
+                        "(e.g. \"Meadow trees cast shadows (PROJ-33)\").");
+
+                    QJsonObject clDate;
+                    clDate["type"] = "string";
+                    clDate["description"] = QStringLiteral(
+                        "op:\"add_subsection\" — the subsection date "
+                        "(YYYY-MM-DD). Optional; defaults to today. The block "
+                        "is inserted newest-first at the top of [Unreleased].");
+
+                    QJsonObject clBulletItem;
+                    clBulletItem["type"] = "object";
+                    QJsonObject clBulletProps;
+                    clBulletProps["summary"] = clSummary;
+                    clBulletProps["body"]    = clBody;
+                    clBulletProps["id"]      = clId;
+                    clBulletItem["properties"] = clBulletProps;
+                    QJsonObject clBullets;
+                    clBullets["type"]  = "array";
+                    clBullets["items"] = clBulletItem;
+                    clBullets["description"] = QStringLiteral(
+                        "op:\"add_subsection\" — optional bullets rendered "
+                        "under the subsection prose, each `- **summary** (id)` "
+                        "+ optional indented body. Each item is {summary "
+                        "(required), body?, id?} (a bare string is accepted as "
+                        "the summary).");
+
                     // ANTS-2136 — dry_run preview (parity with
                     // roadmap_log): resolve the would-be insert (id,
                     // category routing, rendered bullet, line) without
@@ -9245,6 +9290,9 @@ void ClaudeIntegration::onMcpConnection() {
                     clProps["body"]       = clBody;
                     clProps["id"]         = clId;
                     clProps["entries"]    = clEntries;
+                    clProps["headline"]   = clHeadline;
+                    clProps["date"]       = clDate;
+                    clProps["bullets"]    = clBullets;
                     clProps["dry_run"]    = clDryRun;
 
                     QJsonObject clSchema;

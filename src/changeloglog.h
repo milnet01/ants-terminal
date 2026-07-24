@@ -62,6 +62,38 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
                                    const QString &category,
                                    const QString &bulletBlock);
 
+struct SubsectionResult {
+    bool    ok = false;
+    QString markdown;   // new body (valid iff ok)
+    QString code;       // refusal code iff !ok
+    QString error;      // human message iff !ok
+    int     line = -1;  // 1-based line of the inserted `### ` heading (iff ok)
+};
+
+// ANTS-3584 — insert a DATED feature-grouped subsection at the TOP of the
+// `## [Unreleased]` section (newest-first), for CHANGELOGs that group by dated
+// topic (`### <date> <Category> — <headline>` + prose + bullets) rather than
+// flat Keep-a-Changelog categories (the Vestige/3D_Engine house style). Opt-in:
+// the flat-category `insertUnreleasedEntry` path is unchanged. Emits:
+//   ### <date> <Category> — <headline>
+//   <blank>
+//   <body prose, flush-left, verbatim lines>   (omitted when body is blank)
+//   <blank>
+//   <bulletBlocks, one blank line between>      (omitted when none)
+//   <blank>
+// `bulletBlocks` are pre-rendered via formatBullet(). A missing blank spacer
+// after `## [Unreleased]` is repaired so the heading never abuts the block.
+// Refusals:
+//   not_unreleased  — no `## [Unreleased]` heading
+//   bad_category    — category not one of the six canonical values
+// (date/headline emptiness is a verb-layer `missing_field` guard.)
+SubsectionResult insertUnreleasedSubsection(const QString &markdown,
+                                            const QString &date,
+                                            const QString &category,
+                                            const QString &headline,
+                                            const QString &body,
+                                            const QStringList &bulletBlocks);
+
 // ANTS-3495 — op:normalize (reorder-only subset). Reorder the
 // `### <category>` blocks inside `## [Unreleased]` into canonical
 // Keep-a-Changelog order (Added/Changed/Deprecated/Removed/Fixed/

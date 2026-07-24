@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **changelog_log: add an opt-in feature-grouped-subsection insert mode for `### <DATE> <Category> — <headline>` CHANGELOGs.** (ANTS-3584)
+  Some projects group their changelog by dated feature blocks rather than flat Added/Fixed headings; give changelog_log a native way to insert those instead of forcing a hand-edit.
+
 - **read_regions: accept an optional top-level `path` used as the default for any item that omits its own `path` (per-item path still wins).** (ANTS-3589)
   When you want several slices of ONE file, read_regions makes you repeat the same filename on every slice; let it take one filename at the top like its sibling read_region does.
 

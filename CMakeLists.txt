@@ -1500,6 +1500,8 @@ if(ANTS_TESTS)
                 tests/features/changelog_log_add_batch/test_changelog_log_add_batch.cpp
                 # ANTS-3495 changelog_log op:normalize (reorder [Unreleased] categories).
                 tests/features/changelog_log_normalize/test_changelog_log_normalize.cpp
+                # ANTS-3584 changelog_log op:add_subsection (dated feature-grouped block).
+                tests/features/changelog_log_subsection/test_changelog_log_subsection.cpp
                 # ANTS-3533 changelog_query structured CHANGELOG reader (parser + wiring).
                 tests/features/changelog_query/test_changelog_query.cpp
                 # ANTS-1426 parseBullets blank-line continuation.

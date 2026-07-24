@@ -6031,11 +6031,13 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     }
     if (op != QStringLiteral("add") &&
         op != QStringLiteral("add_from_roadmap") &&
+        op != QStringLiteral("add_subsection") &&
         op != QStringLiteral("normalize")) {
         return clErr(QStringLiteral("bad_op_combo"),
             QStringLiteral("changelog_log: unknown op \"%1\" — expected "
                            "\"add\" (default), \"add_from_roadmap\", "
-                           "\"add_batch\", or \"normalize\"")
+                           "\"add_batch\", \"add_subsection\", or "
+                           "\"normalize\"")
                 .arg(op));
     }
 
@@ -6157,6 +6159,119 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         out["bytes_written"] = static_cast<qint64>(utf8.size());
         if (res.malformed_section)
             out["advisory"] = proseAdvisory(res.malformed_line);
+        return QJsonDocument(out);
+    }
+
+    // ANTS-3584 — op:"add_subsection": write a DATED feature-grouped block
+    // (`### <date> <Category> — <headline>` + prose + bullets) at the TOP of
+    // `## [Unreleased]`, for changelogs grouped by dated topic rather than flat
+    // categories (Vestige/3D_Engine house style). Opt-in; the flat add /
+    // add_from_roadmap paths are unchanged.
+    if (op == QStringLiteral("add_subsection")) {
+        QString headline = req.value(QStringLiteral("headline")).toString();
+        if (headline.trimmed().isEmpty()) {
+            return clErr(QStringLiteral("missing_field"),
+                QStringLiteral("changelog_log: op:\"add_subsection\" requires "
+                               "`headline`"));
+        }
+        QString category = req.value(QStringLiteral("category")).toString();
+        if (category.isEmpty()) {
+            const QString kind = req.value(QStringLiteral("kind")).toString();
+            if (kind.isEmpty()) {
+                return clErr(QStringLiteral("missing_field"),
+                    QStringLiteral("changelog_log: op:\"add_subsection\" "
+                                   "requires `category` or `kind` (to derive "
+                                   "it)"));
+            }
+            category = ChangelogLog::kindToCategory(kind);
+        }
+        // The block leads with the date (newest-first); default to today.
+        QString date = req.value(QStringLiteral("date")).toString().trimmed();
+        if (date.isEmpty())
+            date = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
+        QString subBody = req.value(QStringLiteral("body")).toString();
+
+        // Render optional bullets — each a bare string summary, or an object
+        // {summary (required), body?, id?}. Empty summaries are skipped.
+        QStringList bulletBlocks;
+        const QJsonArray bulletsArr =
+            req.value(QStringLiteral("bullets")).toArray();
+        for (const QJsonValue &bv : bulletsArr) {
+            QString bs, bb, bid;
+            if (bv.isString()) {
+                bs = bv.toString();
+            } else if (bv.isObject()) {
+                const QJsonObject bo = bv.toObject();
+                bs  = bo.value(QStringLiteral("summary")).toString();
+                bb  = bo.value(QStringLiteral("body")).toString();
+                bid = bo.value(QStringLiteral("id")).toString();
+            }
+            if (bs.trimmed().isEmpty()) continue;
+            QStringList bscrub;
+            rcScrubLeakedToolXml(bs, bscrub);
+            rcScrubLeakedToolXml(bb, bscrub);
+            bulletBlocks.append(ChangelogLog::formatBullet(bs, bb, bid));
+        }
+
+        QStringList scrubbed;
+        rcScrubLeakedToolXml(headline, scrubbed);
+        rcScrubLeakedToolXml(subBody, scrubbed);
+
+        QFile cf(clPath);
+        if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return clErr(QStringLiteral("changelog_read_failed"),
+                QStringLiteral("changelog_log: could not read \"%1\"")
+                    .arg(clPath));
+        }
+        const QString clMarkdown = QString::fromUtf8(cf.readAll());
+        cf.close();
+
+        const auto res = ChangelogLog::insertUnreleasedSubsection(
+            clMarkdown, date, category, headline, subBody, bulletBlocks);
+        if (!res.ok) {
+            return clErr(res.code, res.error);
+        }
+
+        const QString heading = QStringLiteral("### %1 %2 — %3")
+                                    .arg(date, category, headline.trimmed());
+        if (dryRun) {
+            QJsonObject out;
+            out["ok"]       = true;
+            out["op"]       = op;
+            out["dry_run"]  = true;
+            out["written"]  = false;
+            out["file"]     = clPath.section('/', -1);
+            out["category"] = category;
+            out["date"]     = date;
+            out["heading"]  = heading;
+            out["line"]     = res.line;
+            out["bytes"]    =
+                static_cast<qint64>(res.markdown.toUtf8().size());
+            return QJsonDocument(out);
+        }
+
+        QSaveFile cw(clPath);
+        if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            return clErr(QStringLiteral("changelog_write_failed"),
+                QStringLiteral("changelog_log: could not open \"%1\" for "
+                               "writing").arg(clPath));
+        }
+        const QByteArray utf8 = res.markdown.toUtf8();
+        if (cw.write(utf8) != utf8.size() || !cw.commit()) {
+            return clErr(QStringLiteral("changelog_write_failed"),
+                QStringLiteral("changelog_log: atomic write of \"%1\" failed")
+                    .arg(clPath));
+        }
+
+        QJsonObject out;
+        out["ok"]            = true;
+        out["op"]            = op;
+        out["file"]          = clPath.section('/', -1);
+        out["category"]      = category;
+        out["date"]          = date;
+        out["heading"]       = heading;
+        out["line"]          = res.line;
+        out["bytes_written"] = static_cast<qint64>(utf8.size());
         return QJsonDocument(out);
     }
 
