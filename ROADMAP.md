@@ -19576,6 +19576,7 @@ assistant suggestions, accepted by the user for filing.
   **Layman:** A code comment at the top of one file lists 9 of the 10 audit tools; add the missing one so it's not misleading.
   Kind: doc-fix.
   Source: in-session-2026-07-24 (found during ANTS-3609 reconciliation).
+  Broaden to two more stale auditrunner.h comments found in cold-eyes ANTS-3609 loop 3: (1) the ToolResult::status field comment lists `not_runnable` as a value, but the shipped state machine (auditrunner.cpp) only ever sets ok/timed_out/crashed — unresolved tools go to toolsSkipped[], so `not_runnable` is a dead value; drop it from the comment. (2) the RunRequest::scope field comment lists only `auto|files|since-tag|branch-diff`, missing `full` (ANTS-2015) and `since-last-run` (ANTS-1870) which are implemented. All three (incl. the missing-clang-tidy tool list) are trivial header-comment refreshes in the same file — the ANTS-1351.md spec (which defers to auditrunner.h as authoritative) was corrected in the ANTS-3609 doc pass.
 
 - 📋 [ANTS-3611] **audit_run in-flight/job reap windows (270 s) never bumped after ANTS-3585 raised the aggregate cap to 900 s — a 270–900 s sweep can be wrongly reaped as stale.**
   Surfaced by two independent cold-eyes lanes during ANTS-3609. `kVerbInFlightReapMs = 270'000` (claudeintegration.h:640, comment "240 + 30") and its sibling `kAuditJobReapMs = 270'000` (claudeintegration.h:695, "== kVerbInFlightReapMs") are both still keyed to the PRE-ANTS-3585 240 s aggregate-cap ceiling. ANTS-3585 raised `kAggregateCapMs` 240'000→900'000 and `kCapPerToolMax` 60→300 but missed these two reap windows. Consequence: a legitimately-still-running audit between 270 s and 900 s has its in-flight slot (verbInFlightTryAcquire lazy sweep, claudeintegration.cpp:11141) or async-job slot (:11170) reaped as 'stale worker death', so a second audit_run for the SAME project root can start concurrently — defeating INV-11 (single in-flight per canonical projectRoot). Fix: derive both from `kAggregateCapMs` (e.g. `kAggregateCapMs + 30'000`) rather than a hardcoded 270'000, so they track the cap automatically. Reproduce-first: a feature test that acquires a slot, advances mock time to 300 s, and asserts a second acquire on the same root is still refused.
@@ -19594,6 +19595,29 @@ assistant suggestions, accepted by the user for filing.
   Cold-eyes ANTS-3609 found the live /home/ants/.claude/skills/audit/SKILL.md (190 lines) contains ZERO references to `audit_run` / `mcp__ants__audit_run` / a 'Fast path (Ants Terminal)' block — yet docs/specs/ANTS-1351.md §7 describes exactly that block as the skill-side deliverable and the spec Status reads 'implemented'. So /audit invoked through the skill still does N raw Bash tool calls the old way; the ~60 K-token/sweep saving the whole verb was built for is bypassed by the skill's own callers. Fix: add the §7 fast-path block (flag-mapping + top_findings_count tip + audit-triage handoff) to the top of the audit SKILL.md, exactly as ANTS-1351 §7 specifies. The ANTS-3609 doc-fix reframed §7 as 'proposed, not yet applied' pending this. Note: this edits a GLOBAL skill under ~/.claude/, not the repo.
   **Layman:** There's a fast, cheap way for the audit command to run, but the shortcut was never actually switched on in the command's instructions, so it still uses the slow expensive path. Switch it on.
   Kind: doc-fix.
+  Source: cold-eyes ANTS-3609 (2026-07-24).
+
+- 📋 [ANTS-3614] **audit_run /tmp SARIF/HTML fallback files are never reaped — a tmp-leak on read-only-root runs.**
+  Surfaced by cold-eyes ANTS-3609 loop 3. The primary SARIF/HTML
+  artifacts land in <root>/.audit_cache/ and ARE garbage-collected by
+  AuditCache's manifest-driven reaper (auditcache.cpp:331-394 — deletes
+  the files of history entries dropped when the cache rotates, post-commit,
+  keep-set-guarded, symlink-escape-safe). But when the project root is
+  read-only, allocSarifPath() (auditrunner.cpp:636-655) falls back to
+  $XDG_CACHE_HOME/Ants Terminal/audit/ or last-resort /tmp/audit-<sid>-
+  <seq>-<rand>.sarif — and those live OUTSIDE the cache dir, which the
+  reaper explicitly refuses to touch (auditcache.cpp:385 'never delete
+  files outside our cache dir'). So every read-only-root audit_run leaves
+  its SARIF (and HTML) behind forever. Low severity (the fallback is rare —
+  only fires on an unwritable root; /tmp is cleared on reboot), but a real
+  unbounded-growth path. Fix options: (a) a tmpfiles.d rule for the /tmp
+  pattern; (b) an app-level sweep of stale $XDG/audit + /tmp/audit-* on
+  startup; (c) prefer the XDG cache (already first in allocSarifPath) and
+  add a small retention cap there. Note: the ANTS-1351 spec INV-12's old
+  'cleanup hooked to MainWindow::aboutToQuit' claim was fiction (no such
+  hook exists) — corrected in the ANTS-3609 doc pass.
+  **Layman:** When the audit tool can't write into your project folder it drops its report files in a temp area and never cleans them up, so they slowly pile up. Add a cleanup.
+  Kind: fix.
   Source: cold-eyes ANTS-3609 (2026-07-24).
 
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
