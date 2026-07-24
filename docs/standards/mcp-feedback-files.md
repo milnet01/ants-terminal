@@ -75,9 +75,9 @@ table, so the largest file reached 267 KB. `compact_shipped` (ANTS-3421) and
 `prune_tracking` (ANTS-3442) existed only to fight that self-inflicted bloat.
 
 v2 stops **writing** tracking tables; status is derived from `ROADMAP.md`
-instead (§"Tooling"). Migration (`migrate_v2`, ANTS-3446) leaves any existing v1
-tables **in place** — it converts a file to `: 2` without moving or collapsing
-them (§"Migration from v1"); the byte shrink comes later from the now-shipped
+instead (§"Tooling"). Migration (`migrate_v2`, ANTS-3446) converts a file to `: 2`
+but leaves any existing v1 tables **in place** (§"Migration from v1"); the byte
+shrink comes later from the now-shipped
 `compact_resolved`:
 
 - **Triage is inline.** The maintainer records `finding → id` by filling the
@@ -304,8 +304,10 @@ appending a block. For each finding in the un-triaged tail:
    the maintainer decides not to track carries a **closure marker** instead —
    `n/a — <reason>` (`n/a — out of scope`, `n/a — self-resolved`, `n/a — schema
    fix already shipped`). Both an id and a closure marker count as *triaged*
-   (the finding leaves the tail); only the bare `_(maintainer to assign)_`
-   placeholder or an **empty value on an existing line** is un-triaged. (An
+   (the finding leaves the tail); any other value is un-triaged — most commonly
+   the bare `_(maintainer to assign)_` placeholder or an empty value, but a stray
+   free-text value (e.g. `won't fix`) counts as un-triaged too (the full value
+   rule is the parser contract below). (An
    *absent* `**Proposed ID:**` line is different: it means the `### ` block is
    not a finding at all — non-finding prose per the delta parser — not that it
    is un-triaged.)
@@ -625,7 +627,7 @@ date, no ship-date is emitted — the stub keeps its pre-3504 dateless form and
 ## v1 legacy compaction ops (un-migrated files only)
 
 The two ops below act on the **v1 tracking table**, which v2 files don't newly
-write (a migrated file retains its v1 tables in place). They remain only to clean
+write (a migrated file retains its v1 tables in place, §"Migration from v1"). They remain only to clean
 up legacy files; do not reach for them on a freshly-authored v2 file.
 
 ### `compact_shipped` — ANTS-3421
