@@ -43,7 +43,7 @@ file every week (the largest, 3D_Engine, runs to several thousand lines) — the
 
 ## Contents
 
-- [Format version 2](#format-version-2-2026-07-04-status-lives-in-the-roadmap-not-here) — status lives in the ROADMAP, not here
+- [Format version 2](#format-version-2-2026-07-04-status-lives-in-the-roadmap-not-here)
 - [Two roles, one file](#two-roles-one-file)
 - [File location & name](#file-location--name)
 - [File skeleton](#file-skeleton)
@@ -335,7 +335,7 @@ appending a block. For each finding in the un-triaged tail:
    each id's live status as `mapped_id_status` as of ANTS-3478 — see §"Tooling").
    The file records *which id*, never *what state*. If an assigned id
    is **absent** from `ROADMAP.md` (e.g. archive-rotated per roadmap-format.md),
-   the reader renders it `archived/unknown` and surfaces it — it is never
+   the reader renders it `unknown` and surfaces it — it is never
    silently treated as shipped.
 
 3. Once an assigned id is ✅ in the roadmap, collapse the finding's write-up to
