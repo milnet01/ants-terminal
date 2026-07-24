@@ -77,8 +77,9 @@ table, so the largest file reached 267 KB. `compact_shipped` (ANTS-3421) and
 v2 stops **writing** tracking tables; status is derived from `ROADMAP.md`
 instead (§"Tooling"). Migration (`migrate_v2`, ANTS-3446) converts a file to `: 2`
 but leaves any existing v1 tables **in place** (§"Migration from v1"); the byte
-shrink comes later from the now-shipped
-`compact_resolved`:
+shrink comes later from the now-shipped `compact_resolved`.
+
+The v2 model, in four rules:
 
 - **Triage is inline.** The maintainer records `finding → id` by filling the
   finding's own `**Proposed ID:**` slot (already part of the finding template,
@@ -523,12 +524,12 @@ original body):
 → shipped ✅ 2026-07-12 (write-up compacted, ANTS-3443)
 ```
 
-The `2026-07-12` is the fix's **ship-date** (ANTS-3504) — each id's
-positionally-last `Resolved` date (parentheses optional), then the **max** of
-those across the finding's ✅ ids. When no id has a parseable `Resolved` date the
-breadcrumb keeps the dateless form (`→ shipped ✅ (write-up compacted,
-ANTS-3443)`). See §"Stale-binary self-check" for the exact extraction rule, the
-date-not-version/commit rationale, and the contributor self-check convention.
+The `2026-07-12` is the fix's **ship-date** (ANTS-3504) — the **max** of the
+finding's ✅ ids' ship-dates, or the dateless form (`→ shipped ✅ (write-up
+compacted, ANTS-3443)`) when no id has a parseable `Resolved` date. See
+§"Stale-binary self-check" for the exact per-id extraction rule (the last
+`Resolved` line, parens optional, the regex), the date-not-version/commit
+rationale, and the contributor self-check convention.
 
 Retaining the `**Proposed ID:**` line is load-bearing: it keeps the block a
 *finding* (not reclassified as prose), keeps its ids in the assigned-id set
@@ -573,7 +574,7 @@ Always preview with `dry_run:true` — it returns every `collapsed[]` /
 `cmdFeedbackLog op:compact_resolved`, `tests/features/feedback_log_compact_resolved/`;
 the gate list + `skipped[]` codes above are the normative contract. ANTS-3443
 scopes `compact_resolved` only — `migrate_v2` is **ANTS-3446** and `assign_id`
-gets its own spec id.)**
+is **ANTS-3447**.)**
 
 ## Stale-binary self-check (ANTS-3504)
 
