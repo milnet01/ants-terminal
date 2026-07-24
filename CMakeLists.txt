@@ -288,6 +288,9 @@ add_library(ants_core_lib STATIC
     src/docsindex.cpp
     # ANTS-2160 — per-project .ants/project.json settings loader (Qt6::Core-only).
     src/projectsettings.cpp
+    # ANTS-3603 — shared CommonMark fence primitives (Qt6::Core-only), hoisted
+    # from the verbatim copies in feedbackfile.cpp + speclog.cpp.
+    src/markdownscan.cpp
     # ANTS-1961 / ANTS-1962 — feedback-file parse + render helpers.
     src/feedbackfile.cpp
     # ANTS-1963 — spec_log pure markdown transforms (Qt6::Core-only).
@@ -1989,6 +1992,8 @@ if(ANTS_TESTS)
                 tests/features/flatpak_lua_module/test_flatpak_lua_module.cpp
                 tests/features/mcp_master_toggle/test_mcp_master_toggle.cpp
                 tests/features/flathub_manifest_transform/test_flathub_manifest_transform.cpp
+                # ANTS-3603 — shared MarkdownScan fence primitives (fenceMask contract).
+                tests/features/markdownscan/test_markdownscan.cpp
                 tests/features/config_parse_failure_guard/test_config_parse_failure.cpp
                 tests/features/config_reload_loop_safety/test_config_reload_loop_safety.cpp
                 tests/features/debuglog_perms/test_debuglog_perms.cpp

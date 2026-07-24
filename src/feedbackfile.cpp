@@ -3,6 +3,8 @@
 
 #include "feedbackfile.h"
 
+#include "markdownscan.h"
+
 #include <QHash>
 #include <QRegularExpression>
 #include <QSet>
@@ -27,15 +29,10 @@ const QRegularExpression &maintainerAnchorRe() {
     return re;
 }
 
-// Fence opener: ``` or ~~~ with up to 3 leading spaces (CommonMark).
-// Captures the fence char so the closer can match the same character.
-// The indent is space-only per CommonMark (`\s` would admit a tab/CR/FF,
-// treating a non-fence line as a fence and swallowing findings — ANTS-3598).
-const QRegularExpression &fenceRe() {
-    static const QRegularExpression re(
-        QStringLiteral("^ {0,3}(```|~~~)"));
-    return re;
-}
+// ANTS-3603 — the fence primitives now live in MarkdownScan (markdownscan.h).
+// Bring fenceOpenerChar into this namespace so the boundary scanners below
+// call it unqualified, exactly as they did before the hoist.
+using MarkdownScan::fenceOpenerChar;
 
 // A boundary heading is exactly one or two leading hashes followed by a
 // space (`###`+ are inert body lines).
@@ -50,14 +47,6 @@ bool isBoundaryHeading(const QString &line) {
 
 bool isMaintainerHeading(const QString &line) {
     return maintainerAnchorRe().match(line).hasMatch();
-}
-
-// Returns the fence-char that closes an open fence on `line`, or a null
-// QChar if the line is not a fence opener.
-QChar fenceOpenerChar(const QString &line) {
-    const auto m = fenceRe().match(line);
-    if (!m.hasMatch()) return QChar();
-    return m.captured(1).at(0);
 }
 
 // ANTS-3421 — single-source fence-aware boundary scan. One `#`/`## `

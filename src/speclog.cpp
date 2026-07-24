@@ -3,6 +3,8 @@
 
 #include "speclog.h"
 
+#include "markdownscan.h"
+
 #include <QRegularExpression>
 #include <QStringList>
 
@@ -18,20 +20,10 @@ EditResult fail(const QString &code, const QString &error) {
     return r;
 }
 
-const QRegularExpression &fenceRe() {
-    // ^ {0,3}(```|~~~) — same fence rule the mcp-feedback-files.md
-    // parser contract defines (ANTS-1963 § 2.3). Space-only indent per
-    // CommonMark; a tab must not open a fence (ANTS-3598).
-    static const QRegularExpression re(
-        QStringLiteral("^ {0,3}(```|~~~)"));
-    return re;
-}
-
-QChar fenceOpenerChar(const QString &line) {
-    const auto m = fenceRe().match(line);
-    if (!m.hasMatch()) return QChar();
-    return m.captured(1).at(0);
-}
+// ANTS-3603 — the fence primitives now live in MarkdownScan (markdownscan.h).
+// Bring fenceOpenerChar into this namespace so findSectionHeading below calls
+// it unqualified, exactly as it did before the hoist.
+using MarkdownScan::fenceOpenerChar;
 
 // A `## ` section boundary: exactly two hashes + space (`### `+ never
 // ends a `## ` section).

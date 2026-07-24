@@ -25,6 +25,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Hoisted the duplicated CommonMark fence-scanner into a shared `MarkdownScan` module** (ANTS-3603)
+  feedbackfile.cpp and speclog.cpp had verbatim copies of the fence-opener regex + opener-char helper; both now call the single `src/markdownscan.{h,cpp}` copy (Qt6::Core-only), which also exposes a `fenceMask` primitive for the doc-integrity arc. No behaviour change.
+
 - **project_settings op:detect: also propose `test_roots`/`changelog`/`docs_dir` when the conventional dirs/files exist on disk, not just `source_roots`.** (ANTS-3588)
   The auto-detect for project layout only fills in the source folder even when it can plainly see a tests/ dir and a CHANGELOG.md — make it offer those too so setup is one step, not three.
 
