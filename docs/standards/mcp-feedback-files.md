@@ -41,6 +41,23 @@ return just that delta instead of the maintainer re-reading the whole
 file every week (the largest, 3D_Engine, runs to several thousand lines) — the
 `feedback_query` MCP verb, ANTS-1961.
 
+## Contents
+
+- [Format version 2](#format-version-2-2026-07-04-status-lives-in-the-roadmap-not-here) — status lives in the ROADMAP, not here
+- [Two roles, one file](#two-roles-one-file)
+- [File location & name](#file-location--name)
+- [File skeleton](#file-skeleton)
+- [Contributor block](#contributor-block)
+- [Maintainer triage (v2 — inline id assignment)](#maintainer-triage-v2--inline-id-assignment)
+- [The un-triaged delta (parser contract)](#the-un-triaged-delta-parser-contract)
+- [Status emojis](#status-emojis)
+- [Contributor don'ts](#contributor-donts)
+- [Maintainer compaction (v2 — `compact_resolved`)](#maintainer-compaction-v2--compact_resolved--ants-3443)
+- [Stale-binary self-check](#stale-binary-self-check-ants-3504)
+- [v1 legacy compaction ops](#v1-legacy-compaction-ops-un-migrated-files-only)
+- [Migration from v1](#migration-from-v1)
+- [Tooling (verbs) under v2](#tooling-verbs-under-v2)
+
 ## Format version 2 (2026-07-04): status lives in the ROADMAP, not here
 
 **v2 principle — the feedback file stores only what it uniquely owns: the
