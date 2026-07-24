@@ -19474,11 +19474,12 @@ assistant suggestions, accepted by the user for filing.
   Kind: doc-fix.
   Source: in-session-2026-07-24 (ANTS-3584 investigation).
 
-- 📋 [ANTS-3598] **feedback-file `fenceRe` uses `\s{0,3}` but CommonMark + the mcp-feedback-files.md spec say the fence-opener indent is space-only.**
+- ✅ [ANTS-3598] **feedback-file `fenceRe` uses `\s{0,3}` but CommonMark + the mcp-feedback-files.md spec say the fence-opener indent is space-only.**
   `src/feedbackfile.cpp` `fenceRe` (~line 34) matches `^\s{0,3}(```|~~~)`, but both CommonMark and `docs/standards/mcp-feedback-files.md` (§"The un-triaged delta", the fence-skip rule) specify up to 3 *spaces* of indent for a fence opener. `\s` also admits tab/CR/FF/VT, so a tab-indented line that is NOT a valid CommonMark fence could be treated as one when the delta parser skips fenced regions. Behaviourally negligible in the current corpus but a latent parser-correctness drift. Fix: tighten the code to a literal space `^ {0,3}(```|~~~)` (matches the spec) rather than relax the doc — the space-only form is the CommonMark-correct one. Found by ANTS-3479 cold-eyes; the doc side was left unchanged (it is the correct side).
   **Layman:** A tiny pattern-matching rule in the feedback-file reader is slightly looser than its written spec — it accepts tab-indented lines the spec says it shouldn't. Harmless today, but worth tightening so code and spec agree.
   Kind: fix.
   Source: in-session-2026-07-24 (ANTS-3479 cold-eyes, lane B).
+  Resolved (2026-07-24): Tightened `fenceRe` in both `src/feedbackfile.cpp` and `src/speclog.cpp` from `^\s{0,3}(```|~~~)` to `^ {0,3}(```|~~~)` — space-only indent per CommonMark. speclog.cpp moved in lockstep because its comment asserts parity with the mcp-feedback-files.md fence rule. Added must-fail-first regression test `FeedbackV2Delta.FenceOpenerIsSpaceIndentOnly` (tab-indented ``` before a second finding: RED=1 pre-fix, GREEN=2 post-fix) + INV-7 spec note. Full FeedbackV2Delta + McpSpecLog suites green (28/28). No other parser carried the `\s{0,3}` fence pattern (grep-verified). The doc side was already correct and left unchanged. Commit 492153e7.
 
 - 📋 [ANTS-3599] **Add a section-anchor table of contents to mcp-feedback-files.md (789-line contract doc).**
   `docs/standards/mcp-feedback-files.md` is well over the 200-line implementer-scan threshold with no TOC / section-anchor list under the H1 (cold-eyes dim 11/12 — token efficiency at implementation time). Add a short anchored section list under the H1 so a reader can jump to §"Tooling" / §"Migration from v1" etc. Deferred from the ANTS-3479 dedup trim because a TOC *grows* the doc and is orthogonal to that consolidation mandate. Low priority.
