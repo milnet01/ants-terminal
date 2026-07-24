@@ -19518,6 +19518,12 @@ assistant suggestions, accepted by the user for filing.
   Kind: fix.
   Source: in-session-2026-07-24.
 
+- 📋 [ANTS-3605] **Headless `audit_run` MCP verb does not dispatch the in-process (`inProcessRunner`) audit lanes.**
+  Found while cold-eyes-reviewing ANTS-3600. `AuditDialog::populateChecks` registers in-process lanes via `AuditCheck::inProcessRunner` (spec_code_drift, changelog_test_coverage), dispatched only in `src/auditdialog.cpp` (`runNextCheck`, GUI-only). The headless MCP `audit_run` path (`AuditRunner::runAudit`, src/auditrunner.cpp) is built around the hardcoded `kKnownTools()` QProcess list and has NO `inProcessRunner` reference (verified: zero hits in auditrunner.cpp) — so the in-process lanes never fire via `audit_run`. Consequence: doc-vs-code drift lanes (incl. the new ANTS-3600 contract_doc_drift) run ONLY when a human opens the GUI Audit dialog, not in the automated CC/MCP workflow. Fix: hoist the inProcessRunner registry + dispatch into a GUI-free path (ants_audit_lib) that both AuditDialog and AuditRunner drive, so `audit_run` runs the in-process lanes too. Pre-existing (predates ANTS-3600); ANTS-1119 extracted the AuditCheck struct but not the dispatch loop. RAM: negligible (moves existing dispatch). Blocks full headless value of ANTS-3600.
+  **Layman:** The automatic code-audit that a Claude session can run (the headless one) skips a couple of in-app-only checks — the ones that compare docs/specs against the code. Those only run when a human opens the Audit window by hand. This wires them into the headless path too, so they actually fire in the automated workflow.
+  Kind: enhancement.
+  Source: in-session-2026-07-24 (cold-eyes on ANTS-3600).
+
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
 /cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +
