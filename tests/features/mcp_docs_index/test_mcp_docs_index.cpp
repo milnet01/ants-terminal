@@ -169,6 +169,30 @@ TEST(DocsIndex, LinkExtraction) {
     EXPECT_EQ(findEntry(idx, QStringLiteral("docs/x/y.md")), nullptr);
 }
 
+// ANTS-3604 — headings and links inside a fenced code block are illustrative,
+// not real index content, and must be skipped (fence-aware scan).
+TEST(DocsIndex, FenceAwareScan) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/docs/fence.md",
+              QStringLiteral("# Real Title\n"
+                             "[real](sib.md)\n"
+                             "\n"
+                             "```\n"
+                             "# Fake Heading\n"
+                             "[fake](ghost.md)\n"
+                             "```\n"
+                             "## Real Sub\n"));
+    Index idx = build(dir.path(), 1000);
+    const DocEntry *d = findEntry(idx, QStringLiteral("docs/fence.md"));
+    ASSERT_NE(d, nullptr);
+    // Only the two real headings; the fenced "# Fake Heading" is excluded.
+    ASSERT_EQ(d->headings.size(), 2);
+    EXPECT_EQ(d->headings[0].text, QStringLiteral("Real Title"));
+    EXPECT_EQ(d->headings[1].text, QStringLiteral("Real Sub"));
+    // Only the real link; the fenced [fake](ghost.md) is excluded.
+    EXPECT_EQ(d->links, (QStringList{QStringLiteral("docs/sib.md")}));
+}
+
 // INV-5 — selector arity.
 TEST(DocsIndex, SelectorArity) {
     QTemporaryDir dir;

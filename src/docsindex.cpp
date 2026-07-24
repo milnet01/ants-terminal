@@ -5,6 +5,7 @@
 
 #include "sessionmemoryengine.h"
 #include "projectsettings.h"   // ANTS-2160 — docs_dir override
+#include "markdownscan.h"      // ANTS-3604 — shared fence-aware scanner
 
 #include <QDir>
 #include <QDirIterator>
@@ -87,6 +88,7 @@ ScanResult scanDoc(const QString &absPath, const QString &relDir,
     QSet<QString> linkSet;
     qint64 budget = 0;
     int lineNo = 0;
+    QChar openFence;  // ANTS-3604 — null when not inside a fenced code block
 
     while (!f.atEnd()) {
         const QByteArray raw = f.readLine();
@@ -98,6 +100,17 @@ ScanResult scanDoc(const QString &absPath, const QString &relDir,
         QString line = QString::fromUtf8(raw);
         while (line.endsWith(QLatin1Char('\n')) || line.endsWith(QLatin1Char('\r')))
             line.chop(1);
+
+        // ANTS-3604 — a heading / link inside a ```/~~~ fenced code block is
+        // an illustration, not real index content. Track the open fence and
+        // skip its opener, body, and closer lines (line/byte counting above
+        // still runs so line numbers stay accurate).
+        const QChar opener = MarkdownScan::fenceOpenerChar(line);
+        if (!openFence.isNull()) {
+            if (!opener.isNull() && opener == openFence) openFence = QChar();
+            continue;
+        }
+        if (!opener.isNull()) { openFence = opener; continue; }
 
         const auto hm = headingRx.match(line);
         if (hm.hasMatch()) {

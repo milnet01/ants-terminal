@@ -42,6 +42,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`docs_index` no longer indexes headings or links inside fenced code blocks** (ANTS-3604)
+  A `# Heading` or `[link](x)` written inside a ``` example block was being treated as a real document heading/link. The scanner is now fence-aware, so illustrative examples in code fences no longer pollute the documentation map.
+
 - **indie_review_orchestrate: don't fire summary-similarity `suggested_merges` for lanes built by the file-list directory-grouping fallback (boilerplate summaries → false merges).** (ANTS-3591)
   When indie-review groups a file-list project by folder, every lane's description is near-identical boilerplate, so the 'you could merge these lanes' hint wrongly suggests merging tests with src.
 
