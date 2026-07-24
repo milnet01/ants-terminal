@@ -6901,8 +6901,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "shipping each tool's raw output through parent "
                         "context. v1 ships infrastructure: tools run "
                         "with scrubbed env, absolute-path resolution, "
-                        "per-tool wall-clock cap (default 30 s, [5, 60]), "
-                        "aggregate cap min(N*cap*1.5, 240 s). Caller "
+                        "per-tool wall-clock cap (default 30 s, [5, 300]; "
+                        "ANTS-3585 raised the ceiling for big C/C++ sweeps — "
+                        "a high cap is meant for the async path), "
+                        "aggregate cap min(N*cap*1.5, 900 s). Caller "
                         "supplies tools list (auto-detect when empty), "
                         "scope (auto / files / since-tag:X / branch-diff), "
                         "and optional top_findings_count for inline "
@@ -6920,6 +6922,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "artifact) and `incomplete_tools[]` naming the "
                         "offenders, so a single tool blowing its cap never "
                         "yields an all-or-nothing empty result. "
+                        "ANTS-3585: `incomplete_tools_detail[]` says WHY each "
+                        "is incomplete ({tool, status, elapsed_ms, truncated}: "
+                        "truncated=true ⇒ cut off at the cap, false ⇒ crashed) "
+                        "so a caller need not scan by_tool[]; and "
+                        "`parse_failures[]` lists source files a tool (cppcheck) "
+                        "could not PARSE — a C++23 TU its frontend chokes on "
+                        "gets ZERO coverage and would otherwise be silently "
+                        "absent from the findings. "
                         "ANTS-2183 — **long sweeps & the transport cap:** a "
                         "full-tree (scope:\"full\") run can take minutes and "
                         "exceed the MCP client's request timer (Claude "
@@ -6996,7 +7006,9 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject capProp;
                     capProp["type"] = "integer";
                     capProp["description"] = QStringLiteral(
-                        "Per-tool wall-clock cap in seconds, [5, 60]. "
+                        "Per-tool wall-clock cap in seconds, [5, 300]. "
+                        "Caps above ~60 s are meant for the async path "
+                        "(async:true), which survives the transport timeout. "
                         "Default 30. Out-of-range → bad_args.");
                     QJsonObject suppProp;
                     suppProp["type"] = "string";
@@ -7087,7 +7099,9 @@ void ClaudeIntegration::onMcpConnection() {
                         "reports whether the POLL succeeded): "
                         "\"running\" (with elapsed_ms), \"done\" (with "
                         "cache_path + total_raw/total_actionable/partial/"
-                        "incomplete_tools; no_changes on an empty changeset; "
+                        "incomplete_tools (+ incomplete_tools_detail/"
+                        "parse_failures, ANTS-3585); no_changes on an empty "
+                        "changeset; "
                         "read_full_with:last_audit_summary), \"error\" (the "
                         "run's own code/error), or \"expired\" (job_id "
                         "unknown or evicted from the bounded registry — the "
@@ -11179,6 +11193,16 @@ QJsonObject ClaudeIntegration::auditJobPollEnvelope(
         QJsonArray inc;
         for (const QString &t : j.incompleteTools) inc.append(t);
         env["incomplete_tools"] = inc;
+        // ANTS-3585 — same richer surfaces as the sync provider (mainwindow):
+        // per-tool truncated/crashed detail + the zero-coverage parse-failure
+        // list. Omitted when empty.
+        if (!j.incompleteToolsDetail.isEmpty())
+            env["incomplete_tools_detail"] = j.incompleteToolsDetail;
+        if (!j.parseFailures.isEmpty()) {
+            QJsonArray pf;
+            for (const QString &f : j.parseFailures) pf.append(f);
+            env["parse_failures"] = pf;
+        }
         if (j.noChanges) env["no_changes"] = true;
         env["read_full_with"]   = QStringLiteral("last_audit_summary");
     }

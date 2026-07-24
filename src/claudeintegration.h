@@ -664,6 +664,11 @@ public:
         int         totalRaw = 0, totalActionable = 0;
         bool        partial = false, noChanges = false;
         QStringList incompleteTools;
+        // ANTS-3585 — carried from RunResult so the async-poll done-branch can
+        // emit the same detail + zero-coverage surface as the sync provider
+        // (the AuditJob keeps compact fields, not the full byTool map).
+        QJsonArray  incompleteToolsDetail;
+        QStringList parseFailures;
     };
     // Register a new running job for `root`; returns its "audit-N" id, or
     // an empty string when the bounded registry is saturated with running

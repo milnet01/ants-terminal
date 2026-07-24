@@ -8,7 +8,7 @@
 //   * Absolute-path tool resolution via QStandardPaths::findExecutable
 //     with 60 s TTL cache (INV-10)
 //   * Per-tool wall-clock cap with SIGTERM/SIGKILL (INV-5)
-//   * Aggregate cap of min(N*cap*1.5, 240 s) (INV-1)
+//   * Aggregate cap of min(N*cap*1.5, 900 s) (INV-1; ANTS-3585)
 //   * Hardcoded kExclusions list (INV-6)
 //   * Per-call SARIF path (INV-12)
 //   * Per-sample 256 B message cap + bottom-up trim cascade (INV-13)
@@ -75,9 +75,16 @@ namespace AuditRunner {
 namespace {
 
 // ───────────────────────────── ANTS-1351-INV-1 ──
-constexpr int kAggregateCapMs            = 240'000;
+// ANTS-3585 — raised from 240'000 so a per-tool cap up to kCapPerToolMax
+// (300 s) is not immediately re-clamped by the aggregate ceiling. Only binds
+// on an opt-in high cap (the default 30 s run is nowhere near it) and is meant
+// for the async path, which survives the MCP transport timeout.
+constexpr int kAggregateCapMs            = 900'000;
 constexpr int kCapPerToolMin             = 5;
-constexpr int kCapPerToolMax             = 60;
+// ANTS-3585 — raised from 60 so a big C/C++ sweep (cppcheck on a 193-file
+// tree with an 8,900-line TU) can finish instead of false-timing-out. Opt-in
+// per request; the default (30 s, in auditrunner.h) is unchanged.
+constexpr int kCapPerToolMax             = 300;
 // (Default 30 s is encoded in auditrunner.h struct initialiser.)
 constexpr int kTopFindingsMin            = 0;
 constexpr int kTopFindingsMax            = 100;
@@ -663,6 +670,10 @@ struct ParsedOutput {
     // The runner promotes this to a "crashed" status so the tool surfaces in
     // incomplete_tools[] (ANTS-2032) instead of a misleading clean run.
     bool       aborted = false;
+    // ANTS-3585 — files cppcheck flagged with a frontend parse-failure id
+    // (syntaxError / internalError / …): the whole TU failed to parse, so it
+    // got zero real coverage. Deduped; empty for non-cppcheck / clean runs.
+    QStringList parseFailureFiles;
 };
 
 // ANTS-1820 — learned-FP suppression for the headless path. The GUI's
@@ -870,6 +881,30 @@ ParsedOutput parseToolOutput(const QString &tool,
         if (tool == QLatin1String("mypy")
             && msg.startsWith(QLatin1String("note:"), Qt::CaseInsensitive)) {
             continue;
+        }
+        // ANTS-3585 — cppcheck tags every finding with its check-id as a
+        // trailing `[id]` (default template). A parse-failure id means the
+        // whole TU failed to parse (cppcheck's frontend can't handle the
+        // dialect, e.g. C++23) — that file got ZERO coverage, so record it so
+        // a caller isn't misled by its absence from the findings. Recorded
+        // before the learned-FP `continue` below: the coverage gap is real
+        // even if the diagnostic itself is suppressed.
+        if (tool == QLatin1String("cppcheck")) {
+            static const QRegularExpression rxCheckId(
+                QStringLiteral("\\[([A-Za-z0-9_]+)\\]\\s*$"));
+            static const QSet<QString> kParseFailureIds = {
+                QStringLiteral("syntaxError"),
+                QStringLiteral("internalError"),
+                QStringLiteral("internalAstError"),
+                QStringLiteral("preprocessorErrorDirective"),
+                QStringLiteral("cppcheckError"),
+            };
+            const QRegularExpressionMatch idm = rxCheckId.match(msg);
+            if (idm.hasMatch()
+                && kParseFailureIds.contains(idm.captured(1))
+                && !out.parseFailureFiles.contains(fileStr)) {
+                out.parseFailureFiles.append(fileStr);
+            }
         }
         ++located;  // rawCount keeps the raw total, learned FPs included
         // ANTS-1820 — the line-based tools (cppcheck/clazy/mypy/shellcheck)
@@ -1384,6 +1419,34 @@ QStringList incompleteToolNames(const QHash<QString, ToolResult> &byTool) {
     return names;
 }
 
+// ANTS-3585 — {tool, status, elapsed_ms, truncated} per non-ok tool, sorted by
+// tool name (reuses incompleteToolNames for the sorted key set).
+QJsonArray incompleteToolsDetail(const QHash<QString, ToolResult> &byTool) {
+    QJsonArray out;
+    for (const QString &name : incompleteToolNames(byTool)) {
+        const ToolResult &tr = byTool.value(name);
+        QJsonObject o;
+        o[QStringLiteral("tool")]       = name;
+        o[QStringLiteral("status")]     = tr.status;
+        o[QStringLiteral("elapsed_ms")] = tr.elapsedMs;
+        o[QStringLiteral("truncated")]  =
+            (tr.status == QLatin1String("timed_out"));
+        out.append(o);
+    }
+    return out;
+}
+
+// ANTS-3585 — deduped, ascending union of every tool's parseFailureFiles.
+QStringList parseFailureFiles(const QHash<QString, ToolResult> &byTool) {
+    QSet<QString> uniq;
+    for (auto it = byTool.constBegin(); it != byTool.constEnd(); ++it) {
+        for (const QString &f : it->parseFailureFiles) uniq.insert(f);
+    }
+    QStringList out(uniq.constBegin(), uniq.constEnd());
+    out.sort();
+    return out;
+}
+
 void trimSamplesCascade(QHash<QString, ToolResult> &byTool,
                         bool &samplesTruncated) {
     auto totalSize = [&]() {
@@ -1448,13 +1511,15 @@ ParsedCounts parseWithSuppression(const QString &tool, const QString &raw,
             break;
         }
     }
-    ParsedCounts c{p.rawCount,
-                   p.rawCount - p.suppressedCount,
-                   static_cast<int>(p.samples.size())};
+    ParsedCounts c{};
+    c.rawCount              = p.rawCount;
+    c.afterFilterCount      = p.rawCount - p.suppressedCount;
+    c.sampleCount           = static_cast<int>(p.samples.size());
     c.findingsCount        = static_cast<int>(p.findings.size());
     c.findingsTruncated     = p.findingsTruncated;
     c.allFindingsHaveHexFp  = allHex;
     c.aborted               = p.aborted;  // ANTS-3395
+    c.parseFailureFiles     = p.parseFailureFiles;  // ANTS-3585
     return c;
 }
 
@@ -1816,6 +1881,7 @@ RunResult runAudit(const RunRequest &req) {
         // zero-finding run.
         if (tr.status == QLatin1String("ok") && parsed.aborted)
             tr.status = QStringLiteral("crashed");
+        tr.parseFailureFiles = parsed.parseFailureFiles;      // ANTS-3585
         fullFindingsByTool[tool] = parsed.findings;           // ANTS-1870
         if (parsed.findingsTruncated) anyFindingsTruncated = true;
         r.byTool[tool]      = tr;
@@ -1920,6 +1986,9 @@ RunResult runAudit(const RunRequest &req) {
     // so a partial run still leaves a recoverable artifact on disk.
     r.incompleteTools = internal::incompleteToolNames(r.byTool);
     r.partial         = !r.incompleteTools.isEmpty();
+    // ANTS-3585 — richer partiality + zero-coverage surfaces derived once here.
+    r.incompleteToolsDetail = internal::incompleteToolsDetail(r.byTool);
+    r.parseFailures         = internal::parseFailureFiles(r.byTool);
 
     // ── INV-13 / sample-trim cascade.
     internal::trimSamplesCascade(r.byTool, r.samplesTruncated);

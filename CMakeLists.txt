@@ -1532,6 +1532,8 @@ if(ANTS_TESTS)
                 tests/features/audit_run_compile_commands_validation/test_audit_run_compile_commands_validation.cpp
                 # ANTS-2032 audit_run partial-envelope surface.
                 tests/features/audit_run_partial_envelope/test_audit_run_partial_envelope.cpp
+                # ANTS-3585 audit_run incompleteness detail + parse-failure surface.
+                tests/features/audit_run_incomplete_detail/test_audit_run_incomplete_detail.cpp
                 # ANTS-3396 opt-in async audit_run + audit_poll job registry.
                 tests/features/mcp_audit_run_async/test_mcp_audit_run_async.cpp
                 # ANTS-3418 audit_run drops mypy from the auto-detect default.

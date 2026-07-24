@@ -25,8 +25,8 @@ in v2 (roadmap follow-up).
   bottom-up cascade 10 → 5 → 3.
 - **INV-15 / since-tag argv-safe.** Regex sanitiser
   `^[A-Za-z0-9._/+-]{1,128}$` + leading-`-` reject.
-- **INV-16 / Range checks.** `cap_per_tool_seconds` [5, 60];
-  `top_findings_count` [0, 100].
+- **INV-16 / Range checks.** `cap_per_tool_seconds` [5, 300] (ANTS-3585
+  raised the ceiling from 60); `top_findings_count` [0, 100].
 - **INV-17 / Secret redaction of raw tool output (ANTS-2188).** Each
   tool's raw output is run through `SecretRedact::scrub` in the `finish`
   lambda *before* it is stored into `rawByTool` (→ the on-disk SARIF

@@ -34,7 +34,7 @@ struct RunRequest {
     QString     projectRoot;             // canonical absolute (validated)
     QStringList tools;                   // empty == auto-detect
     QString     scope;                   // "auto" | "files" | "since-tag:<t>" | "branch-diff"
-    int         capPerToolSeconds = 30;  // clamped [5, 60]; out-of-range → bad_args
+    int         capPerToolSeconds = 30;  // clamped [5, 300]; out-of-range → bad_args
     QString     suppressionsMode;        // "auto" | "none" | "path:<file>"
     QStringList formats;                 // {"sarif"} default; {"sarif","html"} for opt-in
     int         topFindingsCount = 0;    // [0, 100]; out-of-range → bad_args
@@ -57,6 +57,10 @@ struct ToolResult {
     int        rawCount = 0;
     int        afterFilterCount = 0;
     QJsonArray samples;           // each message ≤ 256 B
+    // ANTS-3585 — source files this tool failed to PARSE (cppcheck syntaxError
+    // / internalError / … on a TU its frontend can't handle, e.g. C++23). A
+    // file here got ZERO coverage; empty for non-cppcheck / clean runs.
+    QStringList parseFailureFiles;
 };
 
 struct RunResult {
@@ -108,6 +112,14 @@ struct RunResult {
     // first-class envelope field instead of forcing a by_tool[] scan.
     bool                       partial = false;
     QStringList                incompleteTools;
+    // ANTS-3585 — richer partiality surface. `incompleteToolsDetail` is one
+    // {tool, status, elapsed_ms, truncated} object per non-ok tool (truncated
+    // == status=="timed_out"), so a caller can tell a cut-off from a crash
+    // without scanning by_tool[] (which the async-poll envelope doesn't carry).
+    // `parseFailures` is the deduped union of every tool's parseFailureFiles —
+    // source files that got ZERO coverage because the tool couldn't parse them.
+    QJsonArray                 incompleteToolsDetail;
+    QStringList                parseFailures;
     // ANTS-1870 — since-last-run findings delta. `delta` carries
     // {added[], removed[], added_count, removed_count,
     // carried_forward_count} and is present only for an actually-narrowed,
@@ -122,7 +134,7 @@ struct RunResult {
     bool                       findingsTruncated = false;
 };
 
-// Aggregate cap = min(tools.count * capPerToolSeconds * 1.5, 240 s).
+// Aggregate cap = min(tools.count * capPerToolSeconds * 1.5, 900 s).
 // SIGTERM at per-tool cap; SIGKILL 2 s later. Stderr excerpts capped
 // at 256 B and emitted in samples[0].message on crash (INV-4).
 RunResult runAudit(const RunRequest &req);
@@ -142,6 +154,15 @@ qint64 measureEnvelopeBytes(const QJsonArray &samples,
 // is non-empty. Pure over the byTool map so the feature test can assert
 // the derivation without spawning a real tool.
 QStringList incompleteToolNames(const QHash<QString, ToolResult> &byTool);
+
+// ANTS-3585 — per-tool incompleteness detail: one {tool, status, elapsed_ms,
+// truncated} object for every tool whose status is not "ok", sorted by tool
+// name (truncated == status=="timed_out"). Empty when the run is complete.
+// Pure over byTool so the feature test can assert the derivation.
+QJsonArray incompleteToolsDetail(const QHash<QString, ToolResult> &byTool);
+
+// ANTS-3585 — deduped, ascending union of every tool's parseFailureFiles.
+QStringList parseFailureFiles(const QHash<QString, ToolResult> &byTool);
 
 // Apply the bottom-up sample trim cascade: 10 → 5 → 3. Returns the
 // trimmed samples and sets samplesTruncated when any trim fired.
@@ -171,6 +192,11 @@ struct ParsedCounts {
     // ANTS-3395 — true when a JSON tool logged a fatal abort and produced no
     // parseable findings (the runner promotes this to a "crashed" status).
     bool aborted = false;
+    // ANTS-3585 — source files whose parse failed (cppcheck syntaxError /
+    // internalError / internalAstError / preprocessorErrorDirective /
+    // cppcheckError). A TU here got zero real coverage. Empty for
+    // non-cppcheck tools and for clean runs.
+    QStringList parseFailureFiles;
 };
 ParsedCounts parseWithSuppression(const QString &tool, const QString &raw,
                                   int sampleCap,

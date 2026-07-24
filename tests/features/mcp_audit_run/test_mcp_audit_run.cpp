@@ -32,12 +32,13 @@ bool contains(const std::string &hay, const std::string &needle) {
 
 }  // namespace
 
-// INV-1 — aggregate cap constant.
+// INV-1 — aggregate cap constant. ANTS-3585 raised the ceiling 240→900 s so a
+// per-tool cap up to 300 s isn't re-clamped by the aggregate.
 TEST(mcp_audit_run, Inv1AggregateCapConstant) {
     expect_reset();
     const std::string cpp = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
-    expect(contains(cpp, "kAggregateCapMs            = 240'000"),
-           "INV-1: aggregate cap = 240 s");
+    expect(contains(cpp, "kAggregateCapMs            = 900'000"),
+           "INV-1: aggregate cap = 900 s (ANTS-3585)");
     EXPECT_EQ(0, expect_failures());
 }
 
@@ -161,10 +162,10 @@ TEST(mcp_audit_run, Inv16CapRanges) {
 
     AuditRunner::RunRequest bad2;
     bad2.projectRoot = root;
-    bad2.capPerToolSeconds = 61;  // > 60
+    bad2.capPerToolSeconds = 301;  // > 300 (ANTS-3585 raised ceiling from 60)
     AuditRunner::RunResult r2 = AuditRunner::runAudit(bad2);
     expect(!r2.ok && r2.code == QStringLiteral("bad_args"),
-           "INV-16: cap > 60 → bad_args");
+           "INV-16: cap > 300 → bad_args");
 
     AuditRunner::RunRequest bad3;
     bad3.projectRoot = root;

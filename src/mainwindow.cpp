@@ -4615,6 +4615,10 @@ void MainWindow::setupClaudeMcpProviders() {
                             term.partial         = r.partial;
                             term.noChanges       = r.noChanges;
                             term.incompleteTools = r.incompleteTools;
+                            // ANTS-3585 — carry the richer surfaces so the
+                            // async-poll done-branch emits them too.
+                            term.incompleteToolsDetail = r.incompleteToolsDetail;
+                            term.parseFailures         = r.parseFailures;
                         }
                         ci->auditJobComplete(jobId, term);
                         ci->verbInFlightRelease(
@@ -4692,6 +4696,16 @@ void MainWindow::setupClaudeMcpProviders() {
                 QJsonArray inc;
                 for (const QString &t : r.incompleteTools) inc.append(t);
                 env["incomplete_tools"] = inc;
+            }
+            // ANTS-3585 — richer partiality (why each tool is incomplete:
+            // truncated vs crashed + elapsed_ms) and the zero-coverage list
+            // (source files a tool could not parse). Both omitted when empty.
+            if (!r.incompleteToolsDetail.isEmpty())
+                env["incomplete_tools_detail"] = r.incompleteToolsDetail;
+            if (!r.parseFailures.isEmpty()) {
+                QJsonArray pf;
+                for (const QString &f : r.parseFailures) pf.append(f);
+                env["parse_failures"] = pf;
             }
             if (!r.sarifPath.isEmpty())
                 env["sarif_path"] = r.sarifPath;
