@@ -40,7 +40,8 @@ version-correct.
   excluded; empty on v1.
 - **INV-6** — the v1 boundary scan is version-independent.
 - **INV-7** — fenced regions inert in both the finding enumeration and the
-  finding-bullet scan.
+  finding-bullet scan; the fence opener is space-indent-only (CommonMark, up to
+  3 spaces) — a TAB-indented ``` does not open a fence (ANTS-3598).
 - **INV-8** — `feedback_query` emits `format_version` + `suspected_untagged[]`.
 - **INV-9** — `feedback_pending`'s count follows the v2 rule via `parse()`.
 - **INV-11** — the v2 delta is a concatenation, NOT a contiguous file slice.

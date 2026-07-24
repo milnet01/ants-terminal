@@ -29,9 +29,11 @@ const QRegularExpression &maintainerAnchorRe() {
 
 // Fence opener: ``` or ~~~ with up to 3 leading spaces (CommonMark).
 // Captures the fence char so the closer can match the same character.
+// The indent is space-only per CommonMark (`\s` would admit a tab/CR/FF,
+// treating a non-fence line as a fence and swallowing findings — ANTS-3598).
 const QRegularExpression &fenceRe() {
     static const QRegularExpression re(
-        QStringLiteral("^\\s{0,3}(```|~~~)"));
+        QStringLiteral("^ {0,3}(```|~~~)"));
     return re;
 }
 

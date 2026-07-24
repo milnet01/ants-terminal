@@ -19,10 +19,11 @@ EditResult fail(const QString &code, const QString &error) {
 }
 
 const QRegularExpression &fenceRe() {
-    // ^\s{0,3}(```|~~~) — same fence rule the mcp-feedback-files.md
-    // parser contract defines (ANTS-1963 § 2.3).
+    // ^ {0,3}(```|~~~) — same fence rule the mcp-feedback-files.md
+    // parser contract defines (ANTS-1963 § 2.3). Space-only indent per
+    // CommonMark; a tab must not open a fence (ANTS-3598).
     static const QRegularExpression re(
-        QStringLiteral("^\\s{0,3}(```|~~~)"));
+        QStringLiteral("^ {0,3}(```|~~~)"));
     return re;
 }
 

@@ -271,6 +271,33 @@ TEST(FeedbackV2Delta, FenceSafety) {
     EXPECT_TRUE(r.mappedIds.isEmpty());
 }
 
+// INV-7 (ANTS-3598) — the fence opener is space-indent-only (CommonMark): a
+// TAB-indented ``` is NOT a fence, so a real finding after it is not swallowed.
+// Guards against `fenceRe`'s prior `\s{0,3}` (which admitted a tab) silently
+// opening a fence and hiding every following finding to EOF.
+TEST(FeedbackV2Delta, FenceOpenerIsSpaceIndentOnly) {
+    const char *fix =
+        "<!-- ants-mcp-feedback: 2 -->\n"                 // 1
+        "# T\n"                                           // 2
+        "\n"                                              // 3
+        "### Real\n"                                      // 4  un-triaged
+        "- **Proposed ID:** _(maintainer to assign)_\n"  // 5
+        "- **What:** example:\n"                          // 6
+        "\t```text\n"                                     // 7  TAB-indent — NOT a fence
+        "### AlsoReal\n"                                  // 8  un-triaged
+        "- **Proposed ID:** _(maintainer to assign)_\n"  // 9
+        "- **What:** second gap.\n";                      // 10
+    const QString in = QString::fromUtf8(fix);
+    const QStringList lines = in.split(QLatin1Char('\n'));
+    // The tab-indented ``` does not open a fence, so BOTH findings enumerate
+    // (the buggy `\s{0,3}` opened a fence here and swallowed AlsoReal → 1).
+    EXPECT_EQ(FeedbackFile::enumerateFindingBlocks(lines).size(), 2);
+    const FeedbackFile::ParseResult r = FeedbackFile::parse(in);
+    ASSERT_TRUE(r.deltaPresent);
+    EXPECT_TRUE(r.delta.contains(QStringLiteral("### Real")));
+    EXPECT_TRUE(r.delta.contains(QStringLiteral("### AlsoReal")));
+}
+
 // INV-12 — migrate_v2 → parse round-trip agree on the version.
 TEST(FeedbackV2Delta, MigrateThenParseRoundTrip) {
     const char *v1fix =
