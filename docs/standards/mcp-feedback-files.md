@@ -87,9 +87,9 @@ them (§"Migration from v1"); the byte shrink comes later from the now-shipped
 - **Status is derived, never stored.** A reader resolves each assigned id's
   current status from `ROADMAP.md`; a reader's status view is always current,
   never persisted. (`feedback_query` renders this at-a-glance as
-  `mapped_id_status` — [{id, status}] resolved live from `ROADMAP.md` (as of
-  ANTS-3478), plus an optional `shipped_date` on ✅ ids (ANTS-3504); see
-  §"Tooling" and §"Stale-binary self-check".) The
+  `mapped_id_status` — [{id, status}] resolved live from `ROADMAP.md`, ANTS-3478,
+  plus an optional `shipped_date` on ✅ ids per ANTS-3504; see §"Tooling" and
+  §"Stale-binary self-check".) The
   resolve reuses the cached `roadmap_query` path (100 ms-TTL parsed-bullet
   cache, ANTS-1117), so a render costs one roadmap parse, not one per id, and
   adds no new persistent state.
@@ -110,10 +110,8 @@ them (§"Migration from v1"); the byte shrink comes later from the now-shipped
 **Marker + back-compat.** A v2 file carries `<!-- ants-mcp-feedback: 2 -->`.
 Tooling MUST still read v1 files: the delta parser (§"The un-triaged delta")
 recognises **both** the v1 "after the last maintainer tracking table" rule and
-the v2 "unfilled `Proposed ID`" rule, and a v1 file is migrated to v2 **lazily**
-(§"Migration from v1") — blank `**Proposed ID:**` placeholders stamped on the
-un-triaged findings and the v1 tables left in place — never in a flag-day
-rewrite.
+the v2 "unfilled `Proposed ID`" rule, and a v1 file is migrated to v2 **lazily**,
+never in a flag-day rewrite (§"Migration from v1").
 
 ## Two roles, one file
 
@@ -213,19 +211,15 @@ a fresh file is born v2 and never needs `migrate_v2`.)
 - **Proposed ID:** _(maintainer to assign)_     ← blank ⟹ un-triaged (the tail)
 ```
 
-A v2 file writes **no new maintainer tracking table** — a **migrated** file
-retains its v1 tables in place (`migrate_v2` does not move or collapse them;
-their `## 📋 …` headings still match `maintainerAnchorRe`, so a v1 reader still
-parses them, while a `: 2` file's v2 delta ignores them entirely — it keys on
-`**Proposed ID:**`, not the watermark, so the retained tables don't perturb it
-(the reason leave-in-place is safe). Triage
-happens in place: the maintainer replaces the `_(maintainer to assign)_`
-placeholder with
-`ANTS-NNNN` (the finding is now triaged), and once that id ships the whole
-finding body collapses to a `→ shipped ✅ <date> (write-up compacted, ANTS-3443)`
-stub that retains the `**Proposed ID:**` line (the `<date>` is the ship-date,
-ANTS-3504; the canonical form is in §"Maintainer compaction"). Status is never
-written here — a reader resolves it live from `ROADMAP.md`.
+A v2 file writes **no new maintainer tracking table**; a **migrated** file
+retains its v1 tables in place (§"Migration from v1" — the v2 delta keys on
+`**Proposed ID:**`, not the watermark, so the retained tables don't perturb it).
+Triage happens in place: the maintainer replaces the `_(maintainer to assign)_`
+placeholder with `ANTS-NNNN` (the finding is now triaged), and once that id ships
+the whole finding body collapses to a `→ shipped ✅ <date> (write-up compacted,
+ANTS-3443)` stub that retains the `**Proposed ID:**` line (the `<date>` is the
+ship-date, ANTS-3504; canonical form in §"Maintainer compaction"). Status is
+never written here — a reader resolves it live from `ROADMAP.md`.
 
 The first-line HTML comment marks the format version: `<!-- ants-mcp-feedback:
 2 -->` is a v2 (inline-id) file; `<!-- ants-mcp-feedback: 1 -->` is v1
@@ -636,10 +630,7 @@ date, no ship-date is emitted — the stub keeps its pre-3504 dateless form and
 
 The two ops below act on the **v1 tracking table**, which v2 files don't newly
 write (a migrated file retains its v1 tables in place). They remain only to clean
-up legacy files; do not reach for them on a freshly-authored v2 file. (The
-**default** `migrate_v2` uses none of their row logic — it calls `parse()` only for
-the watermark line, §"Migration from v1"; the ANTS-3474 `backfill_from_tracking`
-opt-in reads the rows to carry ids inline.)
+up legacy files; do not reach for them on a freshly-authored v2 file.
 
 ### `compact_shipped` — ANTS-3421
 
@@ -762,10 +753,8 @@ by **ANTS-3475**.)
 `dry_run:true` previews `stamped[]` / `orphans[]` / `unclassified[]` +
 `bytes_delta` and writes nothing. After migration the file is `: 2` with its v1
 tables **retained in place**; `assign_id` then fills the placeholders and, once
-an id ships, `compact_resolved` collapses that finding's write-up. The
-leave-in-place rule kept the v1 watermark valid so migration never had to wait
-for the marker-aware reader — the reason there was no hard ordering dependency
-(above). Now that ANTS-3448 has shipped and a
+an id ships, `compact_resolved` collapses that finding's write-up. Now that
+ANTS-3448 has shipped and a
 `: 2` file's delta no longer depends on the tables, **removing the retained
 tables from a migrated file is unblocked** and is the planned final declutter
 step: the canonical v2 file carries no tracking table — the finding→id mapping
