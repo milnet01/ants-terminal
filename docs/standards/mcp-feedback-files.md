@@ -228,9 +228,7 @@ legacy corpus predates it, so a parser MUST NOT *require* a marker: identify
 feedback files by the filename glob `*_Ants_MCP_Feedback.md`, and when the
 marker is absent fall back to content (a v1 tracking table ⟹ v1) per
 §"The un-triaged delta". A new file SHOULD carry `: 2`; `op:migrate_v2` bumps a
-`: 1` file to `: 2`. (The whole corpus was migrated to `: 2` on 2026-07-10, and
-`FeedbackFile::skeleton()` emits `: 2` for a brand-new file as of ANTS-3476, so
-a fresh file is born v2.) The blockquote header pointer is the
+`: 1` file to `: 2`. The blockquote header pointer is the
 contributor's one-screen reminder of the rules — including the
 `feedback_query` / `feedback_log` verb names (ANTS-2226), so a contributor
 session discovers the read/write tools from the file itself rather than
@@ -546,10 +544,8 @@ hold, evaluated first-failure-wins in this order (else it is left untouched and
 reported in `skipped[]` with a `code`):
 
 1. it has a **shippable id** — its first `**Proposed ID:**` value holds ≥ 1
-   `ANTS-[0-9]+` id **and is not an `n/a` closure** (`no_shippable_id`). A value
-   beginning `n/a` (case-insensitive, `n/a\b`) is a closure and fails **even when
-   it also names an `ANTS-NNNN`** — the incidental id does not make it
-   collapsible.
+   `ANTS-[0-9]+` id **and is not an `n/a` closure** (`no_shippable_id`;
+   closure-wins-over-incidental-id per §"Maintainer triage").
 2. its body does not already carry a `→ shipped` breadcrumb line
    (`already_compacted`, idempotent) — checked **before** the roadmap gates, so
    an already-collapsed finding stays collapsed regardless of later roadmap churn
@@ -638,8 +634,9 @@ These files grow without bound: every contributor finding stays at full
 verbosity forever, even after its `ANTS-NNNN` ships and the originating
 session confirms the fix. `feedback_log op:"compact_shipped"` is the first of
 the **two v1 delete-prohibition exceptions** (the second is `prune_tracking`,
-below) — it *collapses with provenance*, it never deletes. The finding's substance survives under its
-`ANTS-NNNN` (the git-tracked ROADMAP bullet + CHANGELOG); the file keeps a one-line stub.
+below) — it *collapses with provenance* (the same "substance survives under
+`ANTS-NNNN`" contract as `compact_resolved`, §"Maintainer compaction"), it never
+deletes.
 
 For each maintainer-named target block it replaces the body (every line
 after the boundary heading up to the next `#`/`## ` boundary) with a single
@@ -702,8 +699,8 @@ sibling (§5).
 ## Migration from v1
 
 A v1 file becomes v2 **lazily**, never in a flag-day rewrite. Migration is
-**mechanical by default and leaves the v1 tracking tables in place** (ANTS-3446):
-it does the unambiguous, lossless work and defers the fuzzy finding→id triage to
+**mechanical by default** (ANTS-3446): it does the unambiguous, lossless work
+and defers the fuzzy finding→id triage to
 `assign_id` — except under the `backfill_from_tracking:true` opt-in (ANTS-3474),
 which carries a confident id in from the tables (detailed below). Crucially, most legacy `### ` findings **carry no `**Proposed ID:**`
 line at all** (the corpus predates the structural line — *pre-migration
@@ -751,14 +748,15 @@ triage is `assign_id`'s job; the byte *shrink* comes from `compact_resolved`.
 by **ANTS-3475**.)
 
 `dry_run:true` previews `stamped[]` / `orphans[]` / `unclassified[]` +
-`bytes_delta` and writes nothing. After migration the file is `: 2` with its v1
-tables **retained in place**; `assign_id` then fills the placeholders and, once
-an id ships, `compact_resolved` collapses that finding's write-up. Now that
+`bytes_delta` and writes nothing. After migration the file is `: 2`; `assign_id` then fills the
+placeholders and, once an id ships, `compact_resolved` collapses that finding's
+write-up. Now that
 ANTS-3448 has shipped and a
 `: 2` file's delta no longer depends on the tables, **removing the retained
 tables from a migrated file is unblocked** and is the planned final declutter
-step: the canonical v2 file carries no tracking table — the finding→id mapping
-lives inline (the backfilled `**Proposed ID:**` lines) and status comes from the
+step: the *post-strip* canonical v2 file will carry no tracking table — the
+finding→id mapping lives inline (the backfilled `**Proposed ID:**` lines) and
+status comes from the
 ROADMAP. Because these files are **not git-tracked**, a strip must snapshot them
 first (the tables' notes are otherwise unrecoverable). Full contract:
 `docs/specs/ANTS-3446.md` (implemented — `FeedbackFile::migrateV2` +
