@@ -122,6 +122,44 @@ TEST(DocIntegrity, BrokenLinks) {
     EXPECT_TRUE(hasMention(fs, Kind::BrokenLink, "gone.md"));
 }
 
+// INV-5b (ANTS-3623) — a link inside an INLINE code span is prose about a
+// link, not a link. Fenced blocks were already skipped; inline spans were
+// not, and that was the dominant false-positive source: 21 of 22
+// broken_link findings over this project's own doc tree were back-ticked
+// examples, 12 of them in doc_integrity's own spec, which must contain
+// `[text](target)` samples to describe what the checker does.
+TEST(DocIntegrity, InlineCodeSpansNotHarvested) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    ASSERT_TRUE(writeFile(root + "/docs/a.md",
+                          "# H\n"
+                          "Prose about `[text](gone-a.md)` as an example.\n"
+                          "Double ticks ``[t](gone-b.md)`` too.\n"
+                          "A placeholder `[text](url)` and `[x](int idx)`.\n"));
+    const auto fs = DocIntegrity::check(root, {"docs/a.md"});
+    EXPECT_EQ(countKind(fs, Kind::BrokenLink), 0)
+        << "back-ticked example links must not be harvested";
+}
+
+// INV-5c (ANTS-3623) — masking must not swallow a REAL link whose *text* is
+// code. `[`a/b.md`](a/b.md)` is the house style for citing a file, and the
+// brackets and target sit outside the span, so it must still be checked.
+// This is the case that makes "delete the span" wrong and "blank it" right.
+TEST(DocIntegrity, RealLinkWithCodeTextStillChecked) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    ASSERT_TRUE(writeFile(root + "/docs/here.md", "# ok\n"));
+    ASSERT_TRUE(writeFile(root + "/docs/a.md",
+                          "# H\n"
+                          "See [`here.md`](here.md) and [`gone.md`](gone.md).\n"));
+    const auto fs = DocIntegrity::check(root, {"docs/a.md"});
+    EXPECT_EQ(countKind(fs, Kind::BrokenLink), 1)
+        << "a real link with code-formatted text must still be checked";
+    EXPECT_TRUE(hasMention(fs, Kind::BrokenLink, "gone.md"));
+}
+
 // INV-6 — a root-escaping link (relative escape AND absolute target) is
 // skipped, never probed, never treated as an in-root file.
 TEST(DocIntegrity, RootEscapeSkipped) {

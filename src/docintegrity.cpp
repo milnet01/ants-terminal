@@ -88,12 +88,49 @@ QList<Heading> extractHeadings(const QStringList &lines,
     return out;
 }
 
+// ANTS-3623 — blank out inline-code spans so link harvesting ignores them.
+// Fenced blocks were already skipped via fenceMask, but INLINE code was not,
+// and that was the dominant source of false positives: 21 of the 22
+// broken_link findings over this project's own doc tree were back-ticked
+// prose, 12 of them in doc_integrity's OWN spec, which necessarily contains
+// `[text](target)` examples to describe what the checker does. A checker
+// that flags the document explaining it is a checker nobody can gate on.
+//
+// Replaces the span (backticks included) with spaces rather than deleting
+// it, so a real link whose TEXT is code — [`a/b.md`](a/b.md) — still parses:
+// the brackets and the target sit outside the span and survive. Follows the
+// CommonMark rule that a span closes on a backtick run of equal length.
+QString maskInlineCode(const QString &line) {
+    QString out = line;
+    const int n = out.size();
+    int i = 0;
+    while (i < n) {
+        if (out.at(i) != QLatin1Char('`')) { ++i; continue; }
+        const int openStart = i;
+        int openLen = 0;
+        while (i < n && out.at(i) == QLatin1Char('`')) { ++i; ++openLen; }
+        int j = i;
+        bool closed = false;
+        while (j < n) {
+            if (out.at(j) != QLatin1Char('`')) { ++j; continue; }
+            int closeLen = 0;
+            while (j < n && out.at(j) == QLatin1Char('`')) { ++j; ++closeLen; }
+            if (closeLen == openLen) { closed = true; break; }
+        }
+        if (!closed) break;   // unterminated run — leave the remainder alone
+        for (int k = openStart; k < j; ++k) out[k] = QLatin1Char(' ');
+        i = j;
+    }
+    return out;
+}
+
 QList<Link> extractLinks(const QStringList &lines,
                          const QVector<bool> &fence, int cap) {
     QList<Link> out;
     for (int i = 0; i < lines.size() && out.size() < cap; ++i) {
         if (fence.value(i)) continue;
-        auto it = linkRe().globalMatch(lines[i]);
+        const QString scanLine = maskInlineCode(lines[i]);
+        auto it = linkRe().globalMatch(scanLine);
         while (it.hasNext() && out.size() < cap) {
             const auto m = it.next();
             out.append({m.captured(1).trimmed(), i + 1});
