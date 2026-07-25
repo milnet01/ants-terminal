@@ -27,6 +27,39 @@ Spec source: `docs/specs/ANTS-1295.md`.
 - **PV-5 absolute outside-root rejects.** `/etc/passwd` →
   `bad=true` with the same envelope shape.
 
+- **PV-FB the feedback-file carve-out is bounded by a directory, not
+  just a basename suffix (ANTS-3430 / ANTS-3616).** ANTS-3430 lets a
+  `*_Ants_MCP_Feedback.md` escape the project root, because that shared
+  cross-session file lives outside every project by convention.
+  ANTS-3616 anchored it. Three cases, and all three matter:
+
+  1. `../Proj_Ants_MCP_Feedback.md` — the documented location, one level
+     above the root — **accepts**.
+  2. `../elsewhere/deep/Evil_Ants_MCP_Feedback.md` — right suffix, wrong
+     directory — **refuses**. Pre-ANTS-3616 the suffix was the sole
+     condition with no anchoring of any kind, so this passed. Because
+     `apply_edits` shares this chokepoint, that made "ends with
+     `_Ants_MCP_Feedback.md`" a filesystem-wide **write** primitive.
+  3. `../secrets.txt` — right directory, wrong name — **refuses**, so
+     narrowing the exception did not accidentally widen it into
+     "anything in the parent dir".
+  4. A session whose `caller_cwd` is a project **subdirectory** still
+     reaches the shared file — **accepts**.
+
+  Case 4 is why the bound is the **ancestor chain** rather than the
+  root's immediate parent. The convention names the parent, but
+  `rootCanonical` here is the caller's cwd: `resolveRootCanonical`
+  returns `rr.cwd` and does **not** walk up to a git root. A
+  parent-only rule would therefore lock out precisely those sessions
+  launched from a subdirectory. The ancestor chain keeps them working
+  and still excludes every sibling and unrelated tree, since
+  `<shared>/elsewhere/deep/` is not an ancestor of `<shared>/project`.
+
+  The check runs on the *resolved/cleaned* absolute path, never the
+  caller's raw string: a directory test is meaningless on `../x.md`.
+  Verified against the 13-file live corpus, every one of which sits
+  exactly one level above its project root.
+
 - **PV-6 control character rejects.** A path containing a U+0001
   → `bad=true`, error mentions "control or backslash".
 

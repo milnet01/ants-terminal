@@ -13,6 +13,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
 #include <QString>
 #include <QStringLiteral>
 #include <QTemporaryDir>
@@ -165,12 +166,25 @@ TEST(McpPathAnchor, FeedbackFileAllowedOutsideRoot) {
     EXPECT_FALSE(check.err.contains(QStringLiteral("hint")));
 
     // A not-yet-existing feedback path is likewise allowed (won't canonicalise,
-    // so resolved stays empty — the writer reconstructs it).
+    // so resolved stays empty — the writer reconstructs it). feedback_log
+    // creates the file on first append, so this case is load-bearing.
+    //
+    // ANTS-3616 narrowed WHERE that is true. This assertion used to pass
+    // `/nonexistent/DOOM_Ants_MCP_Feedback.md` — an arbitrary absolute path
+    // in a directory unrelated to the project — and expected acceptance,
+    // which is exactly the unbounded surface ANTS-3616 closes. The
+    // requirement it was really guarding is "not-yet-existing", not
+    // "anywhere", so it now uses a fresh name in the CORRECT directory:
+    // same intent, bounded location. Refusal of the far-away variant is
+    // covered by FeedbackSuffixElsewhereRefused.
     const auto check2 = PathValidation::validatePath(
-        QStringLiteral("/nonexistent/DOOM_Ants_MCP_Feedback.md"), root,
+        shared + QStringLiteral("/DOOM_Ants_MCP_Feedback.md"), root,
         QStringLiteral("apply_edits"), QStringLiteral("path"));
     EXPECT_FALSE(check2.bad)
-        << "non-existent feedback path must be allowed (ANTS-3430)";
+        << "non-existent feedback path in the project root's parent must be "
+           "allowed (ANTS-3430) — feedback_log creates it on first append; "
+           "err="
+        << check2.err.value(QStringLiteral("error")).toString().toStdString();
     EXPECT_TRUE(check2.resolved.isEmpty());
 }
 
@@ -429,4 +443,108 @@ TEST(McpPathAnchorWiring, CMakeListsWiresPathValidation) {
     ASSERT_FALSE(ck.empty());
     EXPECT_NE(ck.find("src/pathvalidation.cpp"), std::string::npos)
         << "ants_core_lib SOURCES list missing pathvalidation.cpp";
+}
+
+// ── PV-FB (ANTS-3430 / ANTS-3616) — the feedback-file carve-out is
+// bounded by a DIRECTORY, not just a basename suffix.
+//
+// ANTS-3430 lets a `*_Ants_MCP_Feedback.md` escape the project root,
+// because that shared cross-session file lives outside every project by
+// convention. ANTS-3616 anchored it: the suffix used to be the only
+// condition, so the exception admitted the name at any depth from any
+// directory — and because apply_edits runs through this same chokepoint,
+// that made the suffix a filesystem-wide write primitive.
+//
+// Fixture shape mirrors the live layout: <shared>/<project>/ with the
+// feedback file in <shared>.
+namespace {
+struct FeedbackFixture {
+    QTemporaryDir tmp;
+    QString shared;    // canonical <shared>
+    QString root;      // canonical <shared>/project
+    bool build() {
+        if (!tmp.isValid()) return false;
+        shared = QFileInfo(tmp.path()).canonicalFilePath();
+        if (!QDir(shared).mkpath(QStringLiteral("project"))) return false;
+        if (!QDir(shared).mkpath(QStringLiteral("elsewhere/deep"))) return false;
+        root = QFileInfo(shared + QStringLiteral("/project"))
+                   .canonicalFilePath();
+        return true;
+    }
+    bool write(const QString &rel) {
+        QFile f(shared + QLatin1Char('/') + rel);
+        if (!f.open(QIODevice::WriteOnly)) return false;
+        f.write("x");
+        return true;
+    }
+};
+}  // namespace
+
+TEST(McpPathAnchor, FeedbackFileInParentAccepted) {
+    FeedbackFixture fx;
+    ASSERT_TRUE(fx.build());
+    ASSERT_TRUE(fx.write(QStringLiteral("Proj_Ants_MCP_Feedback.md")));
+
+    // The documented location: one level above the project root.
+    const auto check = PathValidation::validatePath(
+        QStringLiteral("../Proj_Ants_MCP_Feedback.md"), fx.root,
+        QStringLiteral("apply_edits"));
+    EXPECT_FALSE(check.bad)
+        << "the conventional feedback location must stay reachable: "
+        << QString::fromUtf8(
+               QJsonDocument(check.err).toJson(QJsonDocument::Compact))
+               .toStdString();
+}
+
+TEST(McpPathAnchor, FeedbackSuffixElsewhereRefused) {
+    FeedbackFixture fx;
+    ASSERT_TRUE(fx.build());
+    ASSERT_TRUE(fx.write(
+        QStringLiteral("elsewhere/deep/Evil_Ants_MCP_Feedback.md")));
+
+    // Same suffix, wrong directory — pre-ANTS-3616 this was accepted, which
+    // is what turned the naming convention into a write primitive.
+    const auto check = PathValidation::validatePath(
+        QStringLiteral("../elsewhere/deep/Evil_Ants_MCP_Feedback.md"),
+        fx.root, QStringLiteral("apply_edits"));
+    EXPECT_TRUE(check.bad)
+        << "the carve-out must be bounded to the project root's parent, "
+           "not granted to the suffix anywhere on the filesystem";
+}
+
+TEST(McpPathAnchor, FeedbackFileReachableFromProjectSubdirectory) {
+    FeedbackFixture fx;
+    ASSERT_TRUE(fx.build());
+    ASSERT_TRUE(QDir(fx.root).mkpath(QStringLiteral("src/deep")));
+    ASSERT_TRUE(fx.write(QStringLiteral("Proj_Ants_MCP_Feedback.md")));
+
+    // resolveRootCanonical returns the caller's cwd verbatim — it does NOT
+    // walk up to a git root — so a session launched from a subdirectory has
+    // a root BELOW the shared dir. An immediate-parent-only rule would lock
+    // exactly those sessions out of their own feedback file, which is why
+    // the bound is the ancestor chain.
+    const QString subRoot = QFileInfo(fx.root + QStringLiteral("/src/deep"))
+                                .canonicalFilePath();
+    ASSERT_FALSE(subRoot.isEmpty());
+
+    const auto check = PathValidation::validatePath(
+        fx.shared + QStringLiteral("/Proj_Ants_MCP_Feedback.md"), subRoot,
+        QStringLiteral("apply_edits"));
+    EXPECT_FALSE(check.bad)
+        << "a session whose caller_cwd is a project subdirectory must still "
+           "reach the shared feedback file; err="
+        << check.err.value(QStringLiteral("error")).toString().toStdString();
+}
+
+TEST(McpPathAnchor, NonFeedbackFileInParentStillRefused) {
+    FeedbackFixture fx;
+    ASSERT_TRUE(fx.build());
+    ASSERT_TRUE(fx.write(QStringLiteral("secrets.txt")));
+
+    // The directory is right but the name is not — narrowing the carve-out
+    // must not have widened it into "anything in the parent dir".
+    const auto check = PathValidation::validatePath(
+        QStringLiteral("../secrets.txt"), fx.root,
+        QStringLiteral("apply_edits"));
+    EXPECT_TRUE(check.bad);
 }

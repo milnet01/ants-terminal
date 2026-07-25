@@ -32,17 +32,51 @@ QJsonObject makeErr(const QString &toolName, const QString &paramName,
     return o;
 }
 
+// ANTS-1837 — NFC-insensitive anchor test; defined below, declared here so
+// isFeedbackFile (ANTS-3616) can reuse it rather than hand-roll the same
+// prefix comparison.
+bool anchoredUnder(const QString &candidate, const QString &root);
+
 // ANTS-3430 — the conventional cross-session feedback file lives one level
 // ABOVE the project root (<shared>/<proj>_Ants_MCP_Feedback.md). It is a
 // world-readable shared coordination file that legitimately lives outside
 // every project dir, so the general project-scoped verbs (read_region,
 // file_outline, read_regions, workspace_search, apply_edits) are permitted
-// to reach it — the basename suffix is the SOLE, deliberate boundary of the
-// out-of-root relaxation. Supersedes ANTS-3419, which kept the bad_path
-// refusal and only added a redirecting hint to feedback_query / feedback_log.
-bool isFeedbackFile(const QString &rawPath) {
-    return QFileInfo(rawPath).fileName().endsWith(
-        QStringLiteral("_Ants_MCP_Feedback.md"));
+// to reach it. Supersedes ANTS-3419, which kept the bad_path refusal and
+// only added a redirecting hint to feedback_query / feedback_log.
+//
+// ANTS-3616 — the exception is now anchored to a DIRECTORY as well as a
+// basename suffix. It used to key on the suffix alone, with no anchoring
+// of any kind, so it admitted the suffix at any depth from any directory:
+// `../../../anywhere/X_Ants_MCP_Feedback.md` passed. Since apply_edits
+// runs through this same chokepoint, that made "ends with
+// _Ants_MCP_Feedback.md" a filesystem-wide WRITE primitive.
+//
+// The bound is "the file sits in an ANCESTOR directory of the project
+// root" — not, as first written, "the root's immediate parent". The
+// convention names the parent, but `rootCanonical` here is the caller's
+// cwd (resolveRootCanonical returns rr.cwd; it does NOT walk up to a git
+// root), so a session invoked from a SUBDIRECTORY of its project has a
+// root one or more levels below the shared dir. A parent-only rule would
+// lock exactly those sessions out of their own feedback file. The
+// ancestor chain keeps them working while still excluding every sibling
+// and unrelated tree — `<shared>/elsewhere/deep/` is not an ancestor of
+// `<shared>/project`, so it stays refused.
+//
+// `absPath` must be the resolved/cleaned absolute path, NOT the caller's
+// raw string: the directory test is meaningless on `../x.md`.
+bool isFeedbackFile(const QString &absPath, const QString &rootCanonical) {
+    if (!QFileInfo(absPath).fileName().endsWith(
+            QStringLiteral("_Ants_MCP_Feedback.md")))
+        return false;
+    if (rootCanonical.isEmpty()) return false;   // fail closed, as elsewhere
+    const QString dir = QFileInfo(absPath).absolutePath()
+                            .normalized(QString::NormalizationForm_C);
+    const QString root = rootCanonical.normalized(QString::NormalizationForm_C);
+    if (dir.isEmpty()) return false;
+    // `dir` must be root itself or one of its ancestors — i.e. root lies
+    // at or beneath dir. anchoredUnder() is exactly that test, inverted.
+    return anchoredUnder(root, dir);
 }
 
 // ANTS-1837 — NFC-insensitive anchor test. Both arguments are expected to
@@ -110,7 +144,7 @@ Check validatePath(const QString &rawPath,
         // suffix and nothing else.
         if (!resolved.isEmpty()) {
             if (!anchoredUnder(resolved, rootCanonical)
-                && !isFeedbackFile(rawPath)) {
+                && !isFeedbackFile(resolved, rootCanonical)) {
                 pc.bad = true;
                 pc.err = makeErr(toolName, paramName,
                     QStringLiteral("escapes project root"));
@@ -120,7 +154,7 @@ Check validatePath(const QString &rawPath,
         } else {
             const QString cleaned = QDir::cleanPath(joined);
             if (!anchoredUnder(cleaned, rootCanonical)
-                && !isFeedbackFile(rawPath)) {
+                && !isFeedbackFile(cleaned, rootCanonical)) {
                 pc.bad = true;
                 pc.err = makeErr(toolName, paramName,
                     QStringLiteral("escapes project root"));
