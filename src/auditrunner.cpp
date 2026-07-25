@@ -1004,9 +1004,11 @@ ParsedOutput parseToolOutput(const QString &tool,
             }
         }
         ++located;  // rawCount keeps the raw total, learned FPs included
-        // ANTS-1820 — the line-based tools (cppcheck/clazy/mypy/shellcheck)
+        // ANTS-1820 — the line-based tools (cppcheck/clazy/clang-tidy/mypy)
         // key the ledger by tool name, matching the GUI's Finding::checkId,
         // so learned FPs recorded in the dialog suppress here too.
+        // (shellcheck is NOT one of them — isJsonFindingTool routes it down
+        // the JSON branch above, where the tool's own check_id is the key.)
         if (isLearnedFp(learnedFps, fileStr, tool, msg)) {
             ++out.suppressedCount;
             continue;

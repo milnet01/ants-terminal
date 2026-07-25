@@ -19743,6 +19743,14 @@ shipped.
   Lanes: auditrunner, auditengine.
   Source: cold-eyes ANTS-1351 loop 2, lane 1 (2026-07-25).
 
+- 📋 [ANTS-3625] **test-audit skill fast-path never applied to ~/.claude/skills/test-audit/SKILL.md — the exact twin of ANTS-3613, and the same unrealised token saving.**
+  VERIFIED. The live /home/ants/.claude/skills/test-audit/SKILL.md contains no `Fast path` heading and no `test_audit_partition` / `mcp__ants__test_audit_*` reference, while docs/specs/ANTS-1397.md section 7 describes exactly such a block as the skill-side deliverable. So /test-audit invoked through the skill still loads the full SKILL.md + references (~34.5 KiB measured, which the spec's section 1 rounds to ~32 KiB) and does the partition/brief/synth work the long way — the ~8 K first-session displacement plus ~16 K per repeat sweep the verb family was built for is bypassed by the skill's own callers.
+  This is the precise twin of ANTS-3613, which shipped the same fix for the /audit skill earlier today, so the shape of the work is known: add the fast-path block between the usage and procedure sections, AND add the verbs to the frontmatter `allowed-tools` list — the ANTS-3613 pass found the block alone is not enough, since without the allowlist entry the skill cannot call the verb at all. Cover the five verbs (partition / brief / synthesis_prompt / fold_in / recheck), the caller_cwd-Required contract (every one refuses `caller_cwd_required` without it — INV-5), and the dispatcher-level `rate_limited` refusal on the Expensive-tier verbs. ANTS-1397.md section 7 now carries a PROPOSED banner pointing here; clear it when applied. Note the file lives outside the repo, under ~/.claude/.
+  **Layman:** Same problem we just fixed for the audit command: there is a fast, cheap way for the test-audit command to run, but the shortcut was never switched on in its instructions, so it still takes the slow expensive path.
+  Kind: doc-fix.
+  Lanes: mcp.
+  Source: cold-eyes ANTS-1397 loop 3, lane 3 (2026-07-25).
+
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
 /cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +
