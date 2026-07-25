@@ -41,7 +41,7 @@ in v2 (roadmap follow-up).
   tool's raw output is run through `SecretRedact::scrub` in the `finish`
   lambda *before* it is stored into `rawByTool` (→ the on-disk SARIF
   notification text) or handed to `parseToolOutput` (→ `samples` /
-  `top_findings`). trivy runs `--scanners secret` and surfaces the
+  `top_findings`). trivy runs `--scanners vuln,secret` and surfaces the
   literal secret value; gitleaks already runs `--redact`, but trivy did
   not, so an unredacted secret would otherwise reach both the
   `.audit_cache/*.sarif` artifact and the MCP envelope returned to the

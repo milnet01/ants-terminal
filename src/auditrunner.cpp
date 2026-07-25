@@ -105,8 +105,9 @@ constexpr int kTopFindingsMax            = 100;
 // It is deliberately a flat 2, NOT the spec's old `max(2, nproc/8)`: the
 // binding resource is RAM per concurrent tool-set, not cores, and nproc/8 on
 // a many-core host would authorise a memory footprint the host cannot hold.
-// Two concurrent sweeps ≈ 3.8 GiB, which is the ~5 GiB audit ceiling the
-// spec's budget assumed.
+// Two concurrent sweeps ≈ 3.8 GiB tool-side. (The spec's § 6 budget adds a
+// concurrent build on top: ≈ 6.3 GiB common, ≈ 8.1 GiB worst case on the
+// 12-core reference host — the older "~5 GiB ceiling" figure is retired.)
 constexpr int kMaxConcurrentRuns         = 2;
 int            g_activeRuns = 0;
 std::mutex     g_activeRunsMutex;

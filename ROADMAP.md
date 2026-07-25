@@ -19782,6 +19782,18 @@ shipped.
   Lanes: testauditengine, claudeintegration.
   Source: cold-eyes ANTS-1397 loop 4, lane 3 (2026-07-25).
 
+- 📋 [ANTS-3629] **writeSarif's cross-tool 10 000-result cap truncates the SARIF silently — `findings_truncated` only reflects the PER-TOOL cap, so a multi-tool sweep can lose thousands of results while reporting false.**
+  VERIFIED — there are TWO distinct kSarifFindingsMax ceilings and only one is signalled.
+  (a) PER-TOOL, in parseToolOutput (auditrunner.cpp:931-938 and the line-based twin ~:1030): when one tool's findings exceed 10 000 it stops appending and sets `out.findingsTruncated = true`. That is the ONLY source of RunResult::findingsTruncated, which becomes the envelope's `findings_truncated`.
+  (b) CROSS-TOOL CUMULATIVE, in writeSarif (auditrunner.cpp:1148, and :1166 for the ANTS-1870 carried-forward run): a single `emitted` counter runs across ALL tools' runs, and each loop does a bare `if (emitted >= kSarifFindingsMax) break;`. It sets nothing.
+  So a sweep of, say, three tools at 5 000 findings each: no single tool trips (a), so `findings_truncated` is false; but (b) drops ~5 000 results from the SARIF. The caller reads an envelope asserting completeness over an artifact that is missing a third of its findings — and the SARIF is the artifact the whole verb exists to produce, the one a CI gate or a triage subagent reads. On a security-relevant sweep the dropped tail reads as clean.
+  Note the drop order is deliberate and worth keeping: current-run results are emitted first and the carried-forward synthetic run sheds first, so what is lost is the least-fresh material. The defect is the silence, not the policy.
+  Fix: raise a distinct signal on the writer break — either set `findingsTruncated` there too (simplest, but conflates two different truncations a caller may want to distinguish) or add a `sarif_truncated` / `sarif_results_dropped` envelope field, which is the more honest shape since it is the ARTIFACT that was cut, not the finding set. Emitting a SARIF `notifications[]` entry is the third option and matches the format's own idiom. ANTS-1351.md INV-13 now documents both ceilings and states plainly that the cumulative one is unsignalled; clear that note when this lands.
+  **Layman:** The audit report file has a 10,000-finding ceiling. If several tools together go over it, the extra findings are dropped from the report and nothing says so — the summary still reports 'not truncated'. You could read a report as complete when thousands of findings were cut.
+  Kind: fix.
+  Lanes: auditrunner.
+  Source: cold-eyes ANTS-1351 loop 5, lane 1 (2026-07-25).
+
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
 /cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +

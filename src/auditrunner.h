@@ -50,14 +50,18 @@ struct ToolSkip {
 };
 
 struct RunRequest {
-    QString     projectRoot;             // canonical absolute (validated)
+    // Raw caller_cwd as passed by the MCP layer. runAudit canonicalises
+    // it into a local (`canonProject`) and validates that — this field is
+    // NOT rewritten. See docs/specs/ANTS-1351.md INV-2.
+    QString     projectRoot;
     QStringList tools;                   // empty == auto-detect
     // "auto" (whole tree) | "full" (ANTS-2015, explicit whole tree) |
     // "files" | "branch-diff" | "since-tag:<t>" | "since-last-run"
     // (ANTS-1870). A narrowing scope with no resolvable changed-file
     // set demotes to a full scan (scopeDemoted/-Reason below).
     QString     scope;
-    int         capPerToolSeconds = 30;  // clamped [5, 300]; out-of-range → bad_args
+    int         capPerToolSeconds = 30;  // range [5, 300]; out-of-range →
+                                         // bad_args (never clamped)
     QString     suppressionsMode;        // "auto" | "none" | "path:<file>"
     QStringList formats;                 // {"sarif"} default; {"sarif","html"} for opt-in
     int         topFindingsCount = 0;    // [0, 100]; out-of-range → bad_args
