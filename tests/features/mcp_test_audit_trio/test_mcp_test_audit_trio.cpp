@@ -2,6 +2,7 @@
 // test_audit_* MCP trio.
 
 #include "../../_support/expect.h"
+#include "claudeintegration.h"   // ANTS-3628 — INV-5 asserts the real contract
 #include "testauditengine.h"
 
 #include <gtest/gtest.h>
@@ -60,26 +61,37 @@ TEST(mcp_test_audit_trio, Inv4TokenViaQHash) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// INV-5 — all four verbs Optional (none in Required branch).
-TEST(mcp_test_audit_trio, Inv5OptionalContract) {
-    expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    // Locate the Required block (between "Required — refuse" and
-    // "TabSpecific —" comments).
-    const auto reqStart = ci.find("Required — refuse with caller_cwd_required");
-    const auto reqEnd   = ci.find("TabSpecific —", reqStart);
-    ASSERT_NE(reqStart, std::string::npos);
-    ASSERT_NE(reqEnd,   std::string::npos);
-    const std::string region = ci.substr(reqStart, reqEnd - reqStart);
-    expect(!contains(region, "\"test_audit_partition\""),
-           "INV-5: test_audit_partition must NOT be Required");
-    expect(!contains(region, "\"test_audit_brief\""),
-           "INV-5: test_audit_brief must NOT be Required");
-    expect(!contains(region, "\"test_audit_synthesis_prompt\""),
-           "INV-5: test_audit_synthesis_prompt must NOT be Required");
-    expect(!contains(region, "\"test_audit_fold_in\""),
-           "INV-5: test_audit_fold_in must NOT be Required");
-    EXPECT_EQ(0, expect_failures());
+// INV-5 — every test_audit_* verb is Required (ANTS-3628).
+//
+// This test used to be `Inv5OptionalContract` and asserted the exact
+// INVERSE: that none of the verbs appeared in the Required branch. All
+// five have registered CallerCwdContract::Required since they shipped,
+// so the assertion was false — it passed only because its scrape window
+// (between the "Required — refuse with caller_cwd_required" and
+// "TabSpecific —" comments, src lines ~11414-11489) sits well above the
+// test_audit_* branches at ~11598-11602. The window never contained the
+// lines it claimed to check, so the negative assertions were vacuously
+// true, and a real regression to Optional would not have been caught.
+//
+// Rewritten as a VALUE assertion against callerCwdContractFor rather
+// than a byte-window scrape of its source: window drift is what made the
+// original test lie, and calling the function cannot drift. (Same move
+// ANTS-3611 made for the aggregate-cap constant.) These verbs read and
+// WRITE under the caller's project root — test_audit_fold_in appends to
+// ROADMAP.md — so Required is the security-relevant classification, not
+// a stylistic one.
+TEST(mcp_test_audit_trio, Inv5RequiredContract) {
+    for (const QString &name : {QStringLiteral("test_audit_partition"),
+                                QStringLiteral("test_audit_brief"),
+                                QStringLiteral("test_audit_synthesis_prompt"),
+                                QStringLiteral("test_audit_fold_in"),
+                                QStringLiteral("test_audit_recheck")}) {
+        EXPECT_EQ(ClaudeIntegration::callerCwdContractFor(name),
+                  ClaudeIntegration::CallerCwdContract::Required)
+            << "INV-5: " << name.toStdString()
+            << " must be Required — it resolves paths under the caller's "
+               "project root";
+    }
 }
 
 // INV-6 — dimension list canonical (kDimensions).
