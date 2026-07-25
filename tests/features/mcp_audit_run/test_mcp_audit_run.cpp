@@ -35,10 +35,11 @@ bool contains(const std::string &hay, const std::string &needle) {
 
 // INV-1 — aggregate cap constant. ANTS-3585 raised the ceiling 240→900 s so a
 // per-tool cap up to 300 s isn't re-clamped by the aggregate.
+// ANTS-3611 promoted the constant to auditrunner.h, so this asserts the
+// real value rather than scraping the .cpp for a byte-exact literal.
 TEST(mcp_audit_run, Inv1AggregateCapConstant) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
-    expect(contains(cpp, "kAggregateCapMs            = 900'000"),
+    expect(AuditRunner::kAggregateCapMs == 900'000,
            "INV-1: aggregate cap = 900 s (ANTS-3585)");
     EXPECT_EQ(0, expect_failures());
 }
@@ -90,6 +91,23 @@ TEST(mcp_audit_run, Inv9InFlightGateInline) {
            "INV-9: gate acquired in audit_run dispatch");
     expect(contains(mw, "verbInFlightRelease("),
            "INV-9: gate released after run");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// INV-9b (ANTS-3611) — the stale-slot reap windows must DERIVE from the
+// runner's aggregate cap, not re-hardcode it. A reap window shorter than
+// the cap frees the slot under a still-running worker, so a second
+// audit_run for the same root can start concurrently (defeats INV-9).
+TEST(mcp_audit_run, Inv9bReapWindowsDeriveFromAggregateCap) {
+    expect_reset();
+    const std::string h = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
+    expect(contains(h, "AuditRunner::kAggregateCapMs"),
+           "INV-9b: kVerbInFlightReapMs derived from the aggregate cap");
+    expect(contains(h, "kAuditJobReapMs   = kVerbInFlightReapMs"),
+           "INV-9b: the job reaper shares the same derived window");
+    // The pre-ANTS-3611 hardcoded 240+30 s window must be gone.
+    expect(!contains(h, "270'000"),
+           "INV-9b: no stale hardcoded 270'000 reap window remains");
     EXPECT_EQ(0, expect_failures());
 }
 

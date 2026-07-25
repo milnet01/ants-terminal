@@ -7,8 +7,11 @@ in v2 (roadmap follow-up).
 
 ## Invariants exercised by this test set
 
-- **INV-1 / Aggregate cap constant.** `kAggregateCapMs = 900'000`
-  defined in auditrunner.cpp (ANTS-3585 raised it 240'000 → 900'000).
+- **INV-1 / Aggregate cap constant.** `AuditRunner::kAggregateCapMs =
+  900'000` (ANTS-3585 raised it 240'000 → 900'000). ANTS-3611 promoted it
+  from an `auditrunner.cpp`-local constant to `auditrunner.h` so the MCP
+  layer can derive from it; the test asserts the value, not a source byte
+  pattern.
 - **INV-2 / PathValidation on caller_cwd.** `canonicalFilePath` +
   `isDir` check before tool dispatch.
 - **INV-3 / Required contract.** `audit_run ∈ Required` in
@@ -17,6 +20,13 @@ in v2 (roadmap follow-up).
   SIGKILL grace.
 - **INV-9 / Inline in-flight gate.** `verbInFlightTryAcquire` /
   `verbInFlightRelease` on ClaudeIntegration.
+- **INV-9b / Reap windows track the aggregate cap (ANTS-3611).**
+  `kVerbInFlightReapMs` is `AuditRunner::kAggregateCapMs + 30'000` and
+  `kAuditJobReapMs` is an alias of it — never a hardcoded literal. Before
+  ANTS-3611 both were a stale `270'000` (240 s + 30 s slack) left behind
+  when ANTS-3585 raised the cap to 900 s, so an audit legitimately running
+  between 270 s and 900 s had its slot reaped as "worker death" and a
+  second `audit_run` on the same root could start concurrently.
 - **INV-10 / Env scrub.** Allowlist + blocklist + AWS_* prefix +
   LC_* prefix.
 - **INV-10b / Absolute-path tool resolution.** Via

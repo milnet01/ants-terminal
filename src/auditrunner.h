@@ -1,14 +1,18 @@
 // ANTS-1351 — server-side audit runner. Wraps the existing
 // AuditEngine pure-function pipeline (ANTS-1119) + QProcess
-// invocation of N external tools (cppcheck, clazy, ruff, bandit,
-// semgrep, gitleaks, trivy, shellcheck, mypy) behind a single MCP
-// verb. Returns a structured envelope + SARIF file path instead of
-// shipping N raw tool outputs through parent context.
+// invocation of N external tools (cppcheck, clazy, clang-tidy, ruff,
+// bandit, semgrep, gitleaks, trivy, shellcheck, mypy — kKnownTools())
+// behind a single MCP verb. Returns a structured envelope + SARIF file
+// path instead of shipping N raw tool outputs through parent context.
 //
-// Threading model (§ 2.5 of spec): runAudit blocks the caller. The
-// MCP dispatcher routes this onto the dedicated m_auditPool worker
-// (INV-9) so the GUI thread stays responsive; the worker hosts a
-// local QEventLoop that multiplexes the per-tool QProcess signals.
+// Threading model (INV-9): runAudit blocks its calling thread and hosts
+// a local QEventLoop that multiplexes the per-tool QProcess signals, so
+// it must never run on the GUI/MCP thread (ANTS-2103). Both MCP dispatch
+// paths honour that with an ad-hoc QThread::create() — the sync verb
+// joins it, the async verb (ANTS-3396) hands it to a job registry. There
+// is no `m_auditPool` thread pool: that was an unbuilt v2 design, and
+// ANTS-3612 replaced it with an engine-side aggregate concurrency cap
+// (kMaxConcurrentRuns in the .cpp) that refuses with `server_busy`.
 //
 // See docs/specs/ANTS-1351.md.
 
@@ -25,6 +29,21 @@
 
 namespace AuditRunner {
 
+// ── ANTS-1351-INV-1 / ANTS-3585 — aggregate wall-clock ceiling for one
+// runAudit() call. Raised from 240'000 so a per-tool cap up to
+// kCapPerToolMax (300 s) is not immediately re-clamped by the aggregate
+// ceiling; only binds on an opt-in high cap (the default 30 s run is
+// nowhere near it) and is meant for the async path, which survives the
+// MCP transport timeout.
+//
+// ANTS-3611 — PUBLIC (was an auditrunner.cpp-local constant) because the
+// MCP layer's stale-slot reapers must track it: a legitimately-running
+// audit may occupy its in-flight / job slot for up to this long, so any
+// reap window keyed to a smaller hardcoded number would free the slot
+// under a live worker and let a second run start concurrently. Derive,
+// never re-hardcode (see ClaudeIntegration::kVerbInFlightReapMs).
+inline constexpr int kAggregateCapMs = 900'000;
+
 struct ToolSkip {
     QString tool;
     QString reason;
@@ -33,7 +52,11 @@ struct ToolSkip {
 struct RunRequest {
     QString     projectRoot;             // canonical absolute (validated)
     QStringList tools;                   // empty == auto-detect
-    QString     scope;                   // "auto" | "files" | "since-tag:<t>" | "branch-diff"
+    // "auto" (whole tree) | "full" (ANTS-2015, explicit whole tree) |
+    // "files" | "branch-diff" | "since-tag:<t>" | "since-last-run"
+    // (ANTS-1870). A narrowing scope with no resolvable changed-file
+    // set demotes to a full scan (scopeDemoted/-Reason below).
+    QString     scope;
     int         capPerToolSeconds = 30;  // clamped [5, 300]; out-of-range → bad_args
     QString     suppressionsMode;        // "auto" | "none" | "path:<file>"
     QStringList formats;                 // {"sarif"} default; {"sarif","html"} for opt-in
@@ -52,7 +75,10 @@ struct RunRequest {
 
 struct ToolResult {
     QString    tool;
-    QString    status;            // "ok" | "timed_out" | "not_runnable" | "crashed"
+    // "ok" | "timed_out" | "crashed" — the only three states the runner
+    // ever sets. A tool that could not be resolved on PATH never gets a
+    // ToolResult at all; it lands in RunResult::toolsSkipped instead.
+    QString    status;
     qint64     elapsedMs = 0;
     int        rawCount = 0;
     int        afterFilterCount = 0;
@@ -134,9 +160,12 @@ struct RunResult {
     bool                       findingsTruncated = false;
 };
 
-// Aggregate cap = min(tools.count * capPerToolSeconds * 1.5, 900 s).
-// SIGTERM at per-tool cap; SIGKILL 2 s later. Stderr excerpts capped
-// at 256 B and emitted in samples[0].message on crash (INV-4).
+// Aggregate cap = min(tools.count * capPerToolSeconds * 1.5,
+// kAggregateCapMs). SIGTERM at per-tool cap; SIGKILL 2 s later. On a
+// crash, a stderr excerpt capped at 256 B is emitted in
+// samples[0].message on a BEST-EFFORT basis (INV-4): a crash with no
+// stderr, or stderr the parser can't shape into a sample, yields an
+// empty samples[] — the "crashed" status is the reliable signal.
 RunResult runAudit(const RunRequest &req);
 
 // Pure helpers exposed for the engine test fixtures + the

@@ -4668,6 +4668,13 @@ void MainWindow::setupClaudeMcpProviders() {
                 env["ok"]    = false;
                 env["code"]  = r.code;
                 env["error"] = r.error;
+                // ANTS-3612 — the aggregate concurrency cap is transient,
+                // so give the caller the same backoff hint the other
+                // busy-style refusals carry (already_running,
+                // too_many_jobs). Every other engine refusal is a hard
+                // input error and gets no retry hint.
+                if (r.code == QLatin1String("server_busy"))
+                    env["retry_after_ms"] = 5000;
                 return QString::fromUtf8(
                     QJsonDocument(env).toJson(QJsonDocument::Compact));
             }

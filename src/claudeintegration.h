@@ -16,6 +16,9 @@
 #include <QDateTime>
 
 #include "tokenusageengine.h"
+// ANTS-3611 — for AuditRunner::kAggregateCapMs. Header-only constant; no
+// link dependency on ants_audit_lib is implied.
+#include "auditrunner.h"
 
 #include <functional>
 #include <map>
@@ -637,7 +640,13 @@ private:
     // so a worker-death orphan can't permanently brick the slot.
     mutable QHash<QPair<QString, QString>, qint64> m_verbInFlight;
     mutable QMutex                                 m_verbInFlightMutex;
-    static constexpr qint64 kVerbInFlightReapMs = 270'000;  // 240 + 30
+    // ANTS-3611 — DERIVED from the runner's aggregate cap, never hardcoded.
+    // A run may legitimately occupy its slot for the whole aggregate cap;
+    // reaping earlier frees the slot under a live worker and lets a second
+    // audit_run for the same root start concurrently (defeats INV-11).
+    // The +30 s is worker-teardown slack.
+    static constexpr qint64 kVerbInFlightReapMs =
+        static_cast<qint64>(AuditRunner::kAggregateCapMs) + 30'000;
 public:
     // Public for the dispatch lambdas in mainwindow.cpp. Returns
     // -1 if the slot was free (and reserved on the caller's behalf);
@@ -692,7 +701,8 @@ private:
     mutable QMutex                              m_auditJobsMutex;
     quint64                 m_auditJobNextId  = 1;   // guarded by mutex
     static constexpr int    kAuditJobsMax     = 16;
-    static constexpr qint64 kAuditJobReapMs   = 270'000;  // == kVerbInFlightReapMs
+    // ANTS-3611 — same derivation, same reason (see kVerbInFlightReapMs).
+    static constexpr qint64 kAuditJobReapMs   = kVerbInFlightReapMs;
 
 
     // Private helpers — the test-only methods in the public section

@@ -31,6 +31,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Refreshed five stale code comments in the audit runner (missing tool, dead status value, incomplete scope list, missing caveat).** (ANTS-3610)
+
 - **Headless `audit_run` MCP verb does not dispatch the in-process (`inProcessRunner`) audit lanes.** (ANTS-3605)
   The headless `audit_run` MCP verb now runs the in-process doc-vs-code drift lanes (spec↔code, contract-doc, changelog↔test) that previously fired only in the GUI Audit dialog, so automated Claude/CI audits get the same coverage. A tool-less host no longer refuses an auto-detect sweep — the lanes need no external binary.
 
@@ -44,6 +46,15 @@ for security-relevant changes.
   Cold-eyes reviewers keep re-reporting already-fixed bugs because a 'Resolved' roadmap line reads to them like an open problem; add one sentence to the brief telling them to verify against current source first.
 
 ### Fixed
+
+- **`audit_run` cleans up the temporary report files it leaves when a project folder is read-only.** (ANTS-3614)
+  When the audit can't write into your project it drops its report in a temp area, and those were never cleaned up. They are now swept after a week, on the next audit that needs the fallback.
+
+- **`audit_run` no longer treats a long-but-healthy sweep as a dead worker.** (ANTS-3611)
+  The safety timer that stops two audits running on the same project at once still used an old 4.5-minute limit, but audits can legitimately take up to 15 minutes. A long sweep could have its slot freed underneath it, letting a duplicate start. The timer is now derived from the real limit instead of hardcoded.
+
+- **Aggregate concurrency cap on `audit_run` — a third simultaneous sweep now refuses `server_busy` instead of allocating.** (ANTS-3612)
+  The audit engine was meant to run through a small pool of worker lanes to cap memory, but that pooling was never built — each audit just started its own worker. Up to 16 could run at once (~30 GiB of tool memory), enough to run a 32 GiB machine out of RAM. `runAudit` now takes one of two process-wide slots before doing any work, so audits across different projects are bounded too.
 
 - **`docs_index` no longer indexes headings or links inside fenced code blocks** (ANTS-3604)
   A `# Heading` or `[link](x)` written inside a ``` example block was being treated as a real document heading/link. The scanner is now fence-aware, so illustrative examples in code fences no longer pollute the documentation map.

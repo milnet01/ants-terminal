@@ -76,11 +76,10 @@ namespace AuditRunner {
 namespace {
 
 // ───────────────────────────── ANTS-1351-INV-1 ──
-// ANTS-3585 — raised from 240'000 so a per-tool cap up to kCapPerToolMax
-// (300 s) is not immediately re-clamped by the aggregate ceiling. Only binds
-// on an opt-in high cap (the default 30 s run is nowhere near it) and is meant
-// for the async path, which survives the MCP transport timeout.
-constexpr int kAggregateCapMs            = 900'000;
+// kAggregateCapMs (900'000) now lives in auditrunner.h — ANTS-3611 promoted
+// it to the public header so the MCP layer's stale-slot reap windows derive
+// from it instead of re-hardcoding a stale copy. Used unqualified below; the
+// enclosing `namespace AuditRunner` resolves it.
 constexpr int kCapPerToolMin             = 5;
 // ANTS-3585 — raised from 60 so a big C/C++ sweep (cppcheck on a 193-file
 // tree with an 8,900-line TU) can finish instead of false-timing-out. Opt-in
@@ -89,6 +88,45 @@ constexpr int kCapPerToolMax             = 300;
 // (Default 30 s is encoded in auditrunner.h struct initialiser.)
 constexpr int kTopFindingsMin            = 0;
 constexpr int kTopFindingsMax            = 100;
+// ───────────────────────────── ANTS-1351-INV-9 (ANTS-3612) ──
+// Aggregate concurrency cap. The v1 contract promised an `m_auditPool`
+// worker pool that was never built, so N audits against N DIFFERENT project
+// roots each spawned an ad-hoc QThread with no aggregate ceiling — the
+// per-root in-flight gate only stops a SECOND run on the SAME root, and the
+// async job registry allows 16. One sweep's external tools peak around
+// 1.9 GiB RSS, so 16 concurrent sweeps is ~30 GiB: a live OOM path on a
+// 32 GiB host.
+//
+// The cap lives HERE rather than at the MCP dispatch site so every caller
+// (sync verb, async job worker, any future CLI) inherits it from the engine.
+// It is deliberately a flat 2, NOT the spec's old `max(2, nproc/8)`: the
+// binding resource is RAM per concurrent tool-set, not cores, and nproc/8 on
+// a many-core host would authorise a memory footprint the host cannot hold.
+// Two concurrent sweeps ≈ 3.8 GiB, which is the ~5 GiB audit ceiling the
+// spec's budget assumed.
+constexpr int kMaxConcurrentRuns         = 2;
+int            g_activeRuns = 0;
+std::mutex     g_activeRunsMutex;
+
+bool runSlotTryAcquire() {
+    std::lock_guard<std::mutex> lk(g_activeRunsMutex);
+    if (g_activeRuns >= kMaxConcurrentRuns) return false;
+    ++g_activeRuns;
+    return true;
+}
+
+void runSlotRelease() {
+    std::lock_guard<std::mutex> lk(g_activeRunsMutex);
+    if (g_activeRuns > 0) --g_activeRuns;
+}
+
+// RAII so every `return r;` below the acquisition frees the slot — runAudit
+// has ~20 early-return paths and a leaked slot bricks the cap permanently.
+struct RunSlotGuard {
+    bool held = false;
+    ~RunSlotGuard() { if (held) runSlotRelease(); }
+};
+
 // ───────────────────────────── ANTS-1351-INV-5 ──
 constexpr int kKillGraceMs               = 2'000;
 // ───────────────────────────── ANTS-1351-INV-10 ──
@@ -633,8 +671,49 @@ std::mutex g_sarifSeqMutex;
 // with a 16-byte random suffix to defeat the predictable-filename
 // pre-create attack that the older `/tmp/audit-<pid>-<epoch>-<seq>`
 // scheme allowed (indie-review-2026-05-19 audit-pipeline H2).
+// ── ANTS-3614 — reap orphaned fallback artifacts.
+// The PRIMARY artifacts land in `<root>/.audit_cache/` and are garbage-
+// collected by AuditCache's manifest-driven reaper. The fallbacks written
+// here do not: they live outside the cache dir, which that reaper refuses
+// to touch by design. So every read-only-root sweep used to leak its SARIF
+// (and sibling HTML) forever. Sweep them here — lazily, once per process,
+// on the first fallback allocation — so the cleanup costs nothing on the
+// overwhelmingly common writable-root path.
+//
+// Only our own `audit-*.{sarif,html}` names are considered, symlinks are
+// excluded (never follow a squatted link out of the directory), and in
+// /tmp another user's same-named file simply fails to unlink under the
+// sticky bit.
+constexpr qint64 kFallbackReapAgeSecs = 7 * 24 * 60 * 60;  // one week
+
+void reapStaleFallbackArtifacts(const QString &dirPath) {
+    QDir dir(dirPath);
+    if (!dir.exists()) return;
+    const QDateTime cutoff =
+        QDateTime::currentDateTime().addSecs(-kFallbackReapAgeSecs);
+    const QFileInfoList stale = dir.entryInfoList(
+        {QStringLiteral("audit-*.sarif"), QStringLiteral("audit-*.html")},
+        QDir::Files | QDir::NoSymLinks);
+    for (const QFileInfo &fi : stale) {
+        if (fi.lastModified() < cutoff)
+            QFile::remove(fi.absoluteFilePath());
+    }
+}
+
+void reapFallbackArtifactsOnce() {
+    static std::once_flag once;
+    std::call_once(once, [] {
+        const QString cacheRoot =
+            QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+        if (!cacheRoot.isEmpty())
+            reapStaleFallbackArtifacts(cacheRoot + QLatin1String("/audit"));
+        reapStaleFallbackArtifacts(QStringLiteral("/tmp"));
+    });
+}
+
 QString allocSarifPath() {
     std::lock_guard<std::mutex> lk(g_sarifSeqMutex);
+    reapFallbackArtifactsOnce();
     const int seq = ++g_sarifSeq;
     const QString rand =
         QUuid::createUuid().toRfc4122().toHex().left(16);
@@ -1312,7 +1391,7 @@ bool validateCompileCommandsImpl(const QString &canonProject,
     }
     if (chosen.isEmpty()) {
         // No JSON → nothing to validate. Clazy will fail at runtime
-        // and surface `not_runnable`; that's the v1 behaviour.
+        // and surface as status "crashed"; that's the v1 behaviour.
         return true;
     }
 
@@ -1621,6 +1700,22 @@ RunResult runAudit(const RunRequest &req) {
             }
         }
     }
+
+    // ── ANTS-3612 / INV-9 — aggregate concurrency cap. Taken AFTER the
+    // cheap argument validation above (a malformed request should get its
+    // deterministic bad_args refusal whether or not the host is busy) and
+    // BEFORE any filesystem or process work. Released by the guard on
+    // every exit path below.
+    RunSlotGuard slot;
+    if (!runSlotTryAcquire()) {
+        r.ok = false;
+        r.code  = QStringLiteral("server_busy");
+        r.error = QStringLiteral(
+            "audit_run: %1 audits already running (aggregate concurrency "
+            "cap); retry shortly").arg(kMaxConcurrentRuns);
+        return r;
+    }
+    slot.held = true;
 
     // ── ANTS-1456 / ANTS-1464 — load project audit-config.json
     // once per run so toolArgv() can override defaults.
@@ -2179,6 +2274,9 @@ RunResult runAudit(const RunRequest &req) {
         } else {
             // No SARIF + no cache: emit HTML alongside a randomised path so
             // an attacker can't pre-create a symlink at a known location.
+            // ANTS-3614 — this branch allocates a fallback without going
+            // through allocSarifPath(), so trigger the reaper here too.
+            reapFallbackArtifactsOnce();
             const QString rand =
                 QUuid::createUuid().toRfc4122().toHex().left(16);
             const QString cacheRoot = QStandardPaths::writableLocation(

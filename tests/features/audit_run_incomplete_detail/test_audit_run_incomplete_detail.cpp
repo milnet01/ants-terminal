@@ -120,7 +120,9 @@ TEST(AuditRunIncompleteDetail, Inv5RaisedCeilings) {
     const std::string rn = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
     EXPECT_TRUE(contains(rn, "kCapPerToolMax             = 300"))
         << "INV-5: per-tool cap ceiling raised to 300 s";
-    EXPECT_TRUE(contains(rn, "kAggregateCapMs            = 900'000"))
+    // ANTS-3611 moved kAggregateCapMs to auditrunner.h — assert the real
+    // value instead of scraping the .cpp for a byte-exact literal.
+    EXPECT_EQ(AuditRunner::kAggregateCapMs, 900'000)
         << "INV-5: aggregate cap ceiling raised to 900 s";
     // Default per-tool cap unchanged (30 s) — the high cap is opt-in.
     const std::string hdr = ants_test::slurpFile(SRC_AUDITRUNNER_H_PATH);
