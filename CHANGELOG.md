@@ -34,6 +34,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **The `/test-audit` command now uses the fast server-side path, like `/audit` already does.** (ANTS-3625)
+  There was a quick way for the test-audit command to run its detection and chunking work inside Ants rather than the slow way, but the shortcut had never been switched on in the command's instructions. It is now — so a test-suite sweep no longer has to load the command's full manual to get started.
+
 - **Refreshed five stale code comments in the audit runner (missing tool, dead status value, incomplete scope list, missing caveat).** (ANTS-3610)
 
 - **Headless `audit_run` MCP verb does not dispatch the in-process (`inProcessRunner`) audit lanes.** (ANTS-3605)
