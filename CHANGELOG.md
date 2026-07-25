@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`changelog_query` accepts `section` as an alias for `version`.** (ANTS-3618)
+  Callers arriving from `roadmap_query` reach for its vocabulary and passed `section:"Unreleased"`, which was silently ignored — so every entry came back, reading as a filter that matched everything rather than one never applied. Passing both with different values now refuses `bad_args`.
+
 - **Review Changes dialog shows each touched file's total line count.** (ANTS-3632)
   The Status list now renders a dimmed `(N lines)` after each entry, so file size is visible before clicking in. Renames report the new path; deleted, binary, unreadable and over-64 MiB files show no suffix rather than a misleading number. Counted in 64 KiB chunks, so memory stays flat on multi-MiB files.
 
@@ -36,6 +39,12 @@ for security-relevant changes.
   When you want several slices of ONE file, read_regions makes you repeat the same filename on every slice; let it take one filename at the top like its sibling read_region does.
 
 ### Changed
+
+- **`find_sources` is now labelled C/C++-only before you call it, not after.** (ANTS-3619)
+  On a Python or JS project it returns `files_count:0`, which is indistinguishable from a genuine "nothing calls this" — the worst possible wrong answer when checking a change's blast radius. The limit was only explained in the response. Both pre-call surfaces (the session hook menu and the tool catalog hint) now state it, and the adjacent `find_definition` line names its languages so the asymmetry is visible rather than inferred.
+
+- **`roadmap_query`'s `bad_mode` refusal now lists the accepted modes.** (ANTS-3617)
+  A caller who guessed a mode name wrong was told only which value was rejected, not which were valid, so finding the right spelling meant going to read the schema. Matches the `accepted` array its `changelog_query` sibling and its own `bad_status` already emit.
 
 - **The `/test-audit` command now uses the fast server-side path, like `/audit` already does.** (ANTS-3625)
   There was a quick way for the test-audit command to run its detection and chunking work inside Ants rather than the slow way, but the shortcut had never been switched on in the command's instructions. It is now — so a test-suite sweep no longer has to load the command's full manual to get started.
@@ -60,6 +69,12 @@ for security-relevant changes.
   `quick:true` ran an identical full walk and pre-pass. `--quick` is caller-side (the grep pre-pass is the audit; only the subagent phase is skipped), so the field promised a fast path that did not exist. Callers passing it now get a schema refusal rather than a silent no-op.
 
 ### Fixed
+
+- **A `test_audit_*` contract test that asserted the opposite of the shipped behaviour and passed anyway.** (ANTS-3628)
+  It checked that the verbs were NOT caller_cwd-Required — the inverse of the truth — and passed only because the source window it searched had drifted off the lines it meant to inspect, so its assertions were vacuous and a real regression would have gone unnoticed. Rewritten to call the contract function directly, covering all five verbs; verified to fail when a verb is flipped.
+
+- **Two stale `audit_run` schema descriptions that under-reported what a sweep does.** (ANTS-3622)
+  `tools` claimed auto-detect skipped clang-tidy (it skips only mypy — 9 tools run by default, clang-tidy among them), and `paths` claimed only cppcheck and clang-tidy honoured it (eight tools do; only the repo-global gitleaks and trivy ignore it). The second mattered most: believing narrowing didn't reach ruff/bandit/semgrep, a caller would skip `paths` and pay for a full sweep.
 
 - **`feedback_log op:compact_resolved` accepts v2-or-later feedback files, not exactly v2.** (ANTS-3621)
   The gate was `!= 2` while the parser gates on `>= 2`, so a future v3+ file was read with v2 semantics but refused as `not_v2` and pointed at `migrate_v2` — a no-op on an already-migrated file, leaving no way forward.

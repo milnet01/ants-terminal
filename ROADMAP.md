@@ -19675,22 +19675,24 @@ shipped.
   Lanes: remotecontrol, pathvalidation, claudeintegration.
   Source: OneUp_Ants_MCP_Feedback.md finding 5 (2026-07-25 triage).
 
-- 📋 [ANTS-3617] **roadmap_query's `bad_mode` refusal should list the accepted modes — its sibling changelog_query already does.**
+- ✅ [ANTS-3617] **roadmap_query's `bad_mode` refusal should list the accepted modes — its sibling changelog_query already does.**
   VERIFIED. roadmap_query's bad_mode branch (remotecontrol.cpp:4076-4079) emits only `{ok:false, code:"bad_mode", error:"unknown mode: <x>"}`. The sibling changelog_query's bad_mode branch (remotecontrol.cpp, cmdChangelogQuery) already emits an `accepted:[...]` array built from its kModes list. Same-family inconsistency; the roadmap one is the more frequently called verb. Fix is to mirror changelog_query: emit `accepted:["bullets","section_index","headline_only", ...]` from the same list the validator checks against, so the two can't drift. Turns a guess-and-retry loop into one self-correcting call. Keep the existing 64-byte truncation + control-char scrub on the echoed value.
   **Layman:** When you pass a wrong option name to the roadmap lookup, it says "unknown" without telling you what the right names are, so you have to guess. Its sibling tool already lists them.
   Kind: enhancement.
   Lanes: remotecontrol.
   Source: OneUp_Ants_MCP_Feedback.md finding 7 (2026-07-25 triage).
+  Resolved (2026-07-25): the four-way `mode !=` chain is now a single kModes list, and the bad_mode refusal carries `accepted:[...]` — matching its changelog_query sibling and roadmap_query's own bad_status. Two guards fired on the change and both were fixed rather than worked around: mcp_roadmap_bundles INV-6 scraped the literal `mode != QLatin1String("bundles")` (repointed to the kModes spelling — same invariant), and mcp_roadmap_unrecognised_format's boundedBetween ceiling was 56 bytes short (89,497 B → 90,168 B against a 90,112 B cap; bumped 88→96 KiB with the measured figures recorded). That ceiling's 11-bump history is now filed as ANTS-3633.
 
-- 📋 [ANTS-3618] **changelog_query silently ignores `section` — alias it to the `version` filter that already exists, or hint.**
+- ✅ [ANTS-3618] **changelog_query silently ignores `section` — alias it to the `version` filter that already exists, or hint.**
   PARTLY ALREADY SHIPPED — the reporter's suggested fix exists. cmdChangelogQuery already accepts `version:"Unreleased"`, normalises it case-insensitively, and refuses `bad_version` with a `versions:[...]` list when it misses. What the OneUp session actually passed was `section:"Unreleased"`, which is not a recognised arg, so it landed in `ignored_args[]` and all 57 entries came back.
   Residual gap, and the only thing to build: an unrecognised arg whose intent is unambiguous should not cost a round-trip. Either (a) accept `section` as an alias for `version` (smallest, and `ignored_args` stops firing), or (b) when `section` is present and ignored, add a `hint` naming `version` as the filter to use. Prefer (a). Note the reporter's premise that there is "no first-class way to fetch just the Unreleased section" is out of date — say so if this is closed as partly-done.
   **Layman:** Someone asked the changelog reader for just the unreleased section using the word "section"; the tool ignored it and returned everything. The feature they wanted already exists under a different argument name — it just doesn't tell them that.
   Kind: enhancement.
   Lanes: remotecontrol.
   Source: OneUp_Ants_MCP_Feedback.md finding 8 (2026-07-25 triage).
+  Resolved (2026-07-25) via option (a), the preferred one: `section` is accepted as an exact alias for `version` (a CHANGELOG's `## [X.Y.Z]` blocks ARE its sections), declared in the schema so mcp::ignoredArgs stops flagging it. Passing both with DIFFERENT values refuses bad_args rather than silently picking one. A `section` value that is not a version still self-corrects, because the existing bad_version refusal lists the versions that do exist. The reporter's premise that there is "no first-class way to fetch just the Unreleased section" was already out of date — version:"Unreleased" has always worked.
 
-- 📋 [ANTS-3619] **find_sources is C/C++-only but is advertised generically pre-call — a zero-caller result on a Python project reads as "nothing calls this".**
+- ✅ [ANTS-3619] **find_sources is C/C++-only but is advertised generically pre-call — a zero-caller result on a Python project reads as "nothing calls this".**
   VERIFIED. The post-call hint is good — remotecontrol.cpp:2472 already returns "scanned 0 files: no C/C++ source found under the project's source roots. find_sources ranks C/C++ only — for a Python or other-language project use codebase_index / workspace_search". The problem is purely that this arrives AFTER the call. The two places a caller reads BEFORE calling both advertise it without qualification: the SessionStart hook's verb menu line (`find_sources -> "who calls bar?"`) and the tool_info catalog selection_hint.
   What makes it a trap rather than a nuisance is the asymmetry with its neighbour: find_definition IS multi-language (C++/Python/Lua/Shell, and GLSL since ANTS-3558), and the two verbs sit adjacent in the menu. A reader who has just used find_definition successfully on a Python project reasonably assumes the sibling covers the same languages, and `files_count:0` is indistinguishable from a genuine no-callers finding unless the envelope is read carefully. The finbreak session hit this while checking the blast radius of a money-critical repository method before changing its consumer — the report notes that is "the most dangerous possible wrong answer".
   Fix, cheapest first: (1) qualify the language in the hook line and the catalog selection_hint — pre-call is where it has to be. (2) Optionally, when the project index shows zero C/C++ files, refuse up front with a distinct code (e.g. `lang_unsupported`) instead of an ok:true zero-result envelope, so the failure can't be mistaken for a real answer at all. (1) is the whole win for near-zero cost; (2) is the belt-and-braces.
@@ -19698,6 +19700,7 @@ shipped.
   Kind: doc-fix.
   Lanes: claudeintegration, remotecontrol.
   Source: finbreak_Ants_MCP_Feedback.md (2026-07-25 triage).
+  Resolved (2026-07-25) via fix (1), the pre-call qualification, which the bullet identified as the whole win. Both pre-call surfaces now name the limit: the SessionStart hook menu line (mcporientation.cpp) reads `find_sources -> "who calls bar?" (C/C++ ONLY -- else use codebase_index / workspace_search)`, and the neighbouring find_definition line gained its language list so the asymmetry that caused the trap is visible rather than inferred. The tool_info catalog selection_hint now LEADS with the limit. Note the hint had to be rewritten twice: ANTS-1897 INV-7 requires it start with "Use " and stay under 280 chars, and ANTS-1453 HINT-3 caps it at 240 — the first draft was 490 and failed both. Final is 236. Fix (2) (a distinct lang_unsupported refusal) NOT built: it is a behaviour change to an ok:true path, and (1) closes the reported trap.
 
 - 💭 [ANTS-3620] **changelog_log op:add_from_roadmap carries an imperative roadmap headline verbatim into a `### Added` block ("Add a … button" under Added).**
   Filed as CONSIDERED, not planned — the reporter explicitly flagged it as take-or-leave and near-zero severity, and verbatim reuse is the entire point of add_from_roadmap.
@@ -19719,13 +19722,14 @@ shipped.
   Source: in-session-2026-07-25 (hit while running the 13-file feedback compaction sweep).
   Resolved (2026-07-25): the compact_resolved version gate is now `ver < 2`, not `ver != 2`, matching the parser's own `formatVersion >= 2` (feedbackfile.cpp:142). Pre-fix a v3+ file was parsed with v2 inline-ID semantics but refused here as not_v2 with the advice to run migrate_v2 — a no-op on an already-migrated file, so there was no way forward. Refusal text also updated to "v2 or later".
 
-- 📋 [ANTS-3622] **audit_run's `tools` schema string says auto-detect excludes clang-tidy, but kAutoDetectTools() excludes only mypy — decide which side is right.**
+- ✅ [ANTS-3622] **audit_run's `tools` schema string says auto-detect excludes clang-tidy, but kAutoDetectTools() excludes only mypy — decide which side is right.**
   VERIFIED both sides. The MCP schema string (claudeintegration.cpp:7086-7095) says: "Empty / omitted = auto-detect all runnable EXCEPT clang-tidy and mypy, which are opt-in", and goes on to justify clang-tidy's exclusion ("needs `-p build/`, pair it with paths + checks for the scoped sweep, ANTS-1512"). But kAutoDetectTools() (auditrunner.cpp:268-275) is kKnownTools() with ONLY mypy removed — clang-tidy IS auto-detected. docs/specs/ANTS-1351.md agrees with the code (9 tools on a default sweep), so the schema string is the outlier.
   Not auto-fixed because it is a genuine behavioural question, not a typo: the schema's stated RATIONALE for excluding clang-tidy is sound (it needs a compile DB and is expensive), so the honest options are (a) make the code match the doc — drop clang-tidy from kAutoDetectTools() the way ANTS-3418 dropped mypy, which CHANGES what a default sweep runs and its cost/coverage profile; or (b) make the doc match the code — delete the clang-tidy clause from the schema string, accepting clang-tidy in every default sweep. Note (a) has a real downside on C/C++ projects: clang-tidy is one of the few tools that parses modern C++ where cppcheck's frontend gives up (see ANTS-3585's C++23 parse-failure case), so auto-excluding it would quietly shrink coverage on exactly the projects that need it. Leaning (b). Whichever is chosen, ANTS-1351.md section 2.1 carries a note pointing here — clear it in the same pass.
   **Layman:** The audit tool's own help text says it skips one of the ten analysers unless you ask for it. The code doesn't actually skip it. Either the help is wrong or the skipping was never implemented — worth deciding on purpose rather than leaving them disagreeing.
   Kind: fix.
   Lanes: claudeintegration, auditrunner.
   Source: cold-eyes ANTS-1351 pass 6, lane 1 (2026-07-25).
+  Resolved (2026-07-25) by fixing the DOC side of both stale strings, not the code. The `tools` description claimed auto-detect excluded clang-tidy (it excludes only mypy — 9 tools, clang-tidy included), and the `paths` description claimed only cppcheck + clang-tidy honoured it (verified against the toolArgv branches: EIGHT tools append the scoped paths — cppcheck, clazy, clang-tidy, ruff, bandit, semgrep, shellcheck, mypy; gitleaks and trivy are repo-global). Chose the doc side because spec (ANTS-1351 §2.1) and code already agreed — the strings were the lone outliers, and dropping clang-tidy from auto-detect to match one would have silently narrowed every default sweep. The stale clang-tidy rationale went too: ANTS-2182 gave it automatic compile-DB resolution, so it no longer needs a hand-passed `-p build/`. Under-claiming `paths` was not harmless: a caller who believed narrowing did not reach ruff/bandit/semgrep would avoid it and pay for a full sweep.
 
 - 📋 [ANTS-3623] **doc_integrity flags its own spec's illustrative examples as broken links — 20 of 51 findings come from ANTS-3601.md and ANTS-2139.md fixture prose.**
   Ran doc_integrity over the doc tree after the ANTS-1351/1397 reconciliation. It returned 51 findings (22 broken_link, 6 dead_anchor, 23 toc_gap). ZERO were in the three docs actually edited — the checker is behaving — but the finding list is dominated by self-referential noise: 15 from docs/specs/ANTS-3601.md (doc_integrity's OWN spec, whose prose deliberately contains `[x](other.md)`, `#some-heading`, `[y](../src/foo.cpp)` etc. as illustrations of what the checker catches) and 6 from docs/specs/ANTS-2139.md (same pattern, `path.md` / `relative.md` / `sib.md` fixtures). Two more (`[int idx](...)`, `[text](url)`) are generic placeholder prose, not links anyone intended to resolve.
@@ -19776,7 +19780,7 @@ shipped.
   Source: cold-eyes ANTS-1397 loop 4, lane 3 (2026-07-25).
   Resolved (2026-07-25): partition() now root-anchors every caller-supplied scope path. Both the `path:<sub>` and `files:<csv>` branches are checked with QDir::cleanPath against the canonical root before any walk; anything resolving outside refuses bad_path, and a `files:` list refuses as a WHOLE when any entry escapes rather than silently dropping it. In-tree `..` that resolves back under the root (path:tests/../tests) is still accepted — the check is an anchor, not a substring ban. Anchoring is lexical; symlinks inside the root are not resolved (noted in the test spec as out of scope). Tests: TestAuditWalk.G18ScopePathEscapeRefused / G18ScopeFilesEscapeRefused / G18InTreeScopesStillAccepted in tests/features/test_audit_glob_walk_synth_mode/. MUST-FAIL-FIRST PROVEN: with the guard disabled the two escape tests fail, and G18ScopePathEscapeRefused takes 32.9 s because `path:../../..` really does walk far up the filesystem — the negative control (in-tree scopes) passes in both states.
 
-- 📋 [ANTS-3628] **Inv5OptionalContract asserts the INVERSE of the shipped caller_cwd contract and passes only because its scrape window drifted off the block it checks.**
+- ✅ [ANTS-3628] **Inv5OptionalContract asserts the INVERSE of the shipped caller_cwd contract and passes only because its scrape window drifted off the block it checks.**
   VERIFIED. tests/features/mcp_test_audit_trio/test_mcp_test_audit_trio.cpp:64 ships `TEST(mcp_test_audit_trio, Inv5OptionalContract)` whose assertions read `test_audit_partition must NOT be Required`, `test_audit_brief must NOT be Required`, etc. But all five test_audit_* verbs DO register CallerCwdContract::Required (mainwindow.cpp) and ARE listed Required in callerCwdContractFor (claudeintegration.cpp:11543-11547). So the test asserts the inverse of shipped behaviour.
   It passes anyway — and the reason is the more interesting defect. It scrapes a window bounded by the literals "Required — refuse with caller_cwd_required" and "TabSpecific —", then asserts the verb names are ABSENT from that slice. The contract table has since grown, so the test_audit block at :11543 now sits past the window's end. The test therefore checks a region that no longer contains the verbs and passes vacuously: it would pass whether the contract were Required or Optional, so it has been guarding nothing since the table grew.
   This is the failure mode the session memory note on source-scrape byte-windows warns about, and it is why loop 3 wrongly recorded INV-5 as "unasserted in tests" — a vacuous test reads as no test until you look at why it is green.
@@ -19785,6 +19789,7 @@ shipped.
   Kind: test.
   Lanes: testauditengine, claudeintegration.
   Source: cold-eyes ANTS-1397 loop 4, lane 3 (2026-07-25).
+  Resolved (2026-07-25): renamed Inv5OptionalContract -> Inv5RequiredContract and rewritten as a VALUE assertion over ClaudeIntegration::callerCwdContractFor, covering all five verbs (the original four plus test_audit_recheck), asserting Required. The byte-window scrape is gone entirely — window drift is precisely what made the original lie (its window spanned src ~11414-11489 while the test_audit_* branches sit at ~11598-11602, so four negative assertions were vacuously true and a real regression to Optional would have passed). PROVEN TO BITE: flipping test_audit_recheck to C::Optional and rebuilding fails the test; restored after. Kept in mcp_test_audit_trio rather than moved to mcp_required_contract_baseline — with the window gone the two are the same kind of check, so relocating would move lines without changing what they guard. ANTS-1397 §5 and the header note reconciled.
 
 - 📋 [ANTS-3629] **writeSarif's cross-tool 10 000-result cap truncates the SARIF silently — `findings_truncated` only reflects the PER-TOOL cap, so a multi-tool sweep can lose thousands of results while reporting false.**
   VERIFIED — there are TWO distinct kSarifFindingsMax ceilings and only one is signalled.
@@ -19883,6 +19888,53 @@ shipped.
   Kind: enhancement.
   Lanes: diffviewer.
   Source: user-request-2026-07-25.
+
+- 📋 [ANTS-3633] **boundedBetween's runaway-growth ceiling has been bumped 11 times and never once caught a runaway — it taxes every edit instead.**
+  Found while shipping ANTS-3617: a ~700-byte edit to cmdRoadmapQuery
+  failed mcp_roadmap_unrecognised_format because the function's measured
+  body went 89,497 B → 90,168 B, 56 B past boundedBetween's 90,112 B
+  (88 KiB) ceiling.
+
+  The ceiling's stated purpose is to be "a meaningful runaway guard" that
+  makes an author "think twice about whether the work belongs in a helper
+  instead". Its actual history, all in the same comment block:
+  16 → 24 → 28 → 32 → 40 → 44 → 52 → 64 → 72 → 80 → 88 → 96 KiB. Eleven
+  bumps. Every single firing was resolved by raising the number, never
+  once by extracting a helper. A guard whose only observed outcome is
+  "raise the guard" is not a guard; it is a per-edit tax with a
+  misleading comment on top.
+
+  Worse, the failure is UNINFORMATIVE. Its message read "sig moved or
+  bound > 16 KB" — a number four ceilings out of date (fixed in passing
+  this session) — so the reader is told to look for a moved signature and
+  a limit that has not existed since ANTS-1428. Diagnosing the real cause
+  cost a stash-and-measure round trip against HEAD.
+
+  Options, cheapest first:
+  (a) Delete the ceiling. Keep boundedBetween's start/end signature
+      match (which genuinely guards against scraping the WRONG function
+      after a reorder — the real failure mode) and drop the size cap that
+      has never fired usefully.
+  (b) Replace it with a real growth signal that does not block: emit a
+      warning above N KiB rather than failing, so the "think twice"
+      nudge lands without gating the build.
+  (c) Keep it and set it from a measured baseline + generous slack, so
+      routine edits do not trip it.
+
+  Prefer (a). If the intent is genuinely to police function size, that is
+  a lint/complexity concern, not something to smuggle into a
+  source-scrape helper that exists to bound a regex window.
+
+  Related: this is the same source-scrape brittleness family as ANTS-3628
+  (a scrape window that drifted off its target and made the test pass
+  vacuously) and the ANTS-3584 note already in this file's INV-3 comment.
+  The general lesson — prefer a value assertion over a byte window
+  wherever the value is reachable — is worth writing into
+  docs/standards/testing.md rather than rediscovering per incident.
+  **Layman:** A safety check meant to warn us when one function grows too big has instead just been raised every time it fired, for years. It costs us time on every change and has never once done its job.
+  Kind: test.
+  Lanes: tests, remotecontrol.
+  Source: in-session-2026-07-25 (hit while shipping ANTS-3617).
 
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
