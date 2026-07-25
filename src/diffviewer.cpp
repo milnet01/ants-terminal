@@ -51,6 +51,56 @@ static QString diffHeaderPath(const QString &line) {
     return line.mid(b + 3).trimmed();
 }
 
+// ANTS-3632 — total line count of a working-tree file, for the "(N lines)"
+// suffix in the Status list. Returns -1 when the count would be absent or
+// meaningless, and the caller then renders no suffix: a deleted path, an
+// unreadable file, a binary, or a file past kMaxScanBytes. Failing soft
+// matters more than completeness here — a wrong number next to a filename
+// is worse than no number.
+//
+// Read in fixed-size chunks rather than readAll(): the Status list routinely
+// includes multi-MiB files (this repo's own ROADMAP.md is ~2.4 MiB), and the
+// dialog should not hold a whole file in memory just to count newlines.
+static int fileLineCount(const QString &absPath) {
+    QFile f(absPath);
+    if (!f.open(QIODevice::ReadOnly)) return -1;
+    constexpr qint64 kMaxScanBytes = 64LL * 1024 * 1024;
+    if (f.size() > kMaxScanBytes) return -1;
+
+    constexpr int kChunk = 64 * 1024;
+    QByteArray buf(kChunk, Qt::Uninitialized);
+    qint64 lines = 0;
+    bool   sawAny = false;
+    char   last = '\n';
+    while (true) {
+        const qint64 n = f.read(buf.data(), kChunk);
+        if (n <= 0) break;
+        // Binary sniff on the first chunk only — same test the New-files
+        // renderer uses. A NUL anywhere later is vanishingly rare in a
+        // file whose head is clean, and re-checking every chunk would
+        // double the scan cost for no practical gain.
+        if (!sawAny && buf.left(static_cast<int>(n)).contains('\0')) return -1;
+        sawAny = true;
+        for (qint64 i = 0; i < n; ++i) {
+            if (buf.at(static_cast<int>(i)) == '\n') ++lines;
+        }
+        last = buf.at(static_cast<int>(n - 1));
+    }
+    if (!sawAny) return 0;              // empty file
+    if (last != '\n') ++lines;          // count a final unterminated line
+    return static_cast<int>(lines);
+}
+
+// " (N lines)" for a repo-relative path, or empty when the count is
+// unavailable (see fileLineCount).
+static QString lineCountSuffix(const QString &baseDir, const QString &rel) {
+    const QString key = rel.trimmed();
+    if (key.isEmpty() || key.endsWith('/')) return {};
+    const int n = fileLineCount(baseDir + QLatin1Char('/') + key);
+    if (n < 0) return {};
+    return QStringLiteral(" (%1 line%2)").arg(n).arg(n == 1 ? "" : "s");
+}
+
 QDialog *show(QWidget *parent,
               const QString &cwd,
               const QString &themeName) {
@@ -327,6 +377,16 @@ QDialog *show(QWidget *parent,
                 .arg(fileAnchorId(key), esc);
         };
 
+        // ANTS-3632 — dimmed " (N lines)" after a Status entry, so the
+        // filename stays the thing the eye lands on. Empty when the count
+        // is unavailable (deleted / binary / unreadable / oversized).
+        auto countSuffix = [&state, &lth](const QString &path) -> QString {
+            const QString s = lineCountSuffix(state->cwd, path);
+            if (s.isEmpty()) return {};
+            return QStringLiteral("<span style='color: %1;'>%2</span>")
+                .arg(lth.textSecondary.name(), s.toHtmlEscaped());
+        };
+
         if (!state->status.isEmpty()) {
             section(QStringLiteral("Status"));
             for (const QString &line : state->status.split('\n')) {
@@ -339,7 +399,8 @@ QDialog *show(QWidget *parent,
                     // NF marker; the path links to its New-files hunk.
                     html += QStringLiteral("<span style='color: %1;'>NF</span> ")
                                 .arg(lth.ansi[2].name())
-                         + fileLink(line.mid(3)) + "\n";
+                         + fileLink(line.mid(3))
+                         + countSuffix(line.mid(3)) + "\n";
                 } else if (line.size() > 3) {
                     // Porcelain short: 2 status chars + space + path. Keep the
                     // status code as plain text; link the path to its diff
@@ -356,6 +417,11 @@ QDialog *show(QWidget *parent,
                                          path.toHtmlEscaped());
                     else
                         html += path.toHtmlEscaped();
+                    // ANTS-3632 — size of the file as it stands now. Keyed on
+                    // the NEW path so a rename reports the file that exists.
+                    // A staged deletion ("D ") has no working-tree file, so
+                    // fileLineCount fails soft and no suffix is appended.
+                    html += countSuffix(key);
                     html += "\n";
                 } else {
                     html += esc + "\n";
