@@ -5172,6 +5172,12 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("audit_falsepos_log",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdAuditFalseposLog));
+    // ANTS-1713 — audit_dismiss: write side of the fingerprint-keyed
+    // learned-FP ledger (ANTS-1708 shipped the ledger + the GUI recording
+    // path; this lets a CC session record the verdict it just reasoned to).
+    m_claudeIntegration->registerToolProvider("audit_dismiss",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdAuditDismiss));
     m_claudeIntegration->registerToolProvider("git_state",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdGitState));

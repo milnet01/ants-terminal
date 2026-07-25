@@ -541,6 +541,15 @@ public:
     // the root via resolveCallerCwdRoot (m_main-dependent for the tab
     // fallback, like the other root-resolving verbs).
     QJsonDocument cmdAuditFalseposLog(const QJsonObject &req);
+    // ANTS-1713 — audit_dismiss: record a learned-false-positive verdict
+    // into <root>/.audit_cache/learned-fp.jsonl (delegates to the pure
+    // ants::auditfp::appendEntry). Deferred v2 of ANTS-1708, which shipped
+    // the ledger + GUI recording path but no MCP write side. Takes either a
+    // `fingerprint` or (`file`, `message`) the server hashes via
+    // computeFingerprint. Distinct from cmdAuditFalseposLog: that writes the
+    // PROSE ledger the review skills read; this writes the FINGERPRINT
+    // ledger both audit_run and the Audit dialog filter on.
+    QJsonDocument cmdAuditDismiss(const QJsonObject &req);
 
     // ANTS-1303: find_definition / find_caller — tree-wide regex
     // symbol scanner. Delegate to SymbolQuery; resolve the root via

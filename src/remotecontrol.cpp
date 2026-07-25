@@ -29,6 +29,7 @@
 #include "projectsettings.h"    // ANTS-2160 — .ants/project.json overrides
 #include "plantemplateengine.h"
 #include "falseposledger.h"
+#include "auditfpledger.h"      // ANTS-1713 — audit_dismiss learned-FP ledger
 #include "projectlayoutengine.h"
 #include "remotecontrolgate.h"
 #include "resolvedroot.h"
@@ -14601,6 +14602,116 @@ QJsonDocument RemoteControl::cmdAuditFalseposLog(const QJsonObject &req) {
     out["created"]        = r.created;
     out["timestamp"]      = r.timestamp;
     out["review_kind"]    = e.reviewKind;
+    return QJsonDocument(out);
+}
+
+// ANTS-1713 — audit_dismiss: record a learned-false-positive verdict into
+// <root>/.audit_cache/learned-fp.jsonl from a Claude Code session. Deferred
+// v2 of ANTS-1708, which shipped the ledger + the GUI recording path but no
+// MCP write side — so only the Audit dialog could teach the ledger, and a
+// session that had just reasoned a finding to be a false positive had no way
+// to say so. Both audit_run (ANTS-1820) and the dialog read this ledger, so
+// one dismissal suppresses the finding on every later sweep.
+//
+// Distinct from audit_falsepos_log above: that is the PROSE ledger the
+// review skills read (.ants_review_falsepos.jsonl, claim + rationale); this
+// is the FINGERPRINT ledger the audit engine filters on.
+QJsonDocument RemoteControl::cmdAuditDismiss(const QJsonObject &req) {
+    auto adErr = [](const QString &code, const QString &message) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = message;
+        o["code"]  = code;
+        return QJsonDocument(o);
+    };
+
+    // Root resolution mirrors cmdAuditFalseposLog: caller_cwd is Required by
+    // contract, so the canonical path is all we need (no tab fallback).
+    const QString callerRaw =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    const QString root = QFileInfo(callerRaw).canonicalFilePath();
+    if (root.isEmpty()) {
+        return adErr(QStringLiteral("no_project"),
+            QStringLiteral("audit_dismiss: caller_cwd does not resolve to "
+                           "an existing project directory"));
+    }
+
+    const QString rule = req.value(QStringLiteral("rule")).toString().trimmed();
+    if (rule.isEmpty()) {
+        return adErr(QStringLiteral("bad_args"),
+            QStringLiteral("audit_dismiss: `rule` is required (the audit "
+                           "check id the finding came from)"));
+    }
+
+    // Two input shapes: a caller-supplied fingerprint, or (file, message)
+    // from which the server computes it. Computing server-side is the
+    // preferred form — it guarantees the same hash the engine will look up.
+    static const QRegularExpression rxFp(QStringLiteral("^[0-9a-f]{16}$"));
+    QString fingerprint =
+        req.value(QStringLiteral("fingerprint")).toString().trimmed();
+    bool computed = false;
+    if (!fingerprint.isEmpty()) {
+        if (!rxFp.match(fingerprint).hasMatch()) {
+            return adErr(QStringLiteral("bad_args"),
+                QStringLiteral("audit_dismiss: `fingerprint` must be 16 "
+                               "lowercase hex chars (got \"%1\")")
+                    .arg(fingerprint));
+        }
+    } else {
+        const QString file = req.value(QStringLiteral("file")).toString();
+        const QString message =
+            req.value(QStringLiteral("message")).toString();
+        if (file.isEmpty() || message.isEmpty()) {
+            return adErr(QStringLiteral("bad_args"),
+                QStringLiteral("audit_dismiss: pass either `fingerprint`, or "
+                               "both `file` and `message` so the server can "
+                               "compute it"));
+        }
+        fingerprint =
+            ants::auditfp::computeFingerprint(file, rule, message);
+        computed = true;
+    }
+
+    ants::auditfp::Entry e;
+    e.fingerprint = fingerprint;
+    e.rule        = rule;
+    e.reason      = req.value(QStringLiteral("reason")).toString();
+    // Stamp here rather than letting appendEntry default it, so the response
+    // can report the exact value written.
+    e.timestamp   = QDateTime::currentDateTimeUtc()
+                        .toString(Qt::ISODate);
+
+    const QString path = root + QStringLiteral("/.audit_cache/learned-fp.jsonl");
+
+    // dry_run: validate + compute + report the would-be record without the
+    // append (ANTS-2227's convention on the sibling write verbs).
+    if (req.value(QStringLiteral("dry_run")).toBool()) {
+        QJsonObject out;
+        out["ok"]          = true;
+        out["dry_run"]     = true;
+        out["path"]        = path;
+        out["fingerprint"] = fingerprint;
+        out["computed"]    = computed;
+        out["rule"]        = rule;
+        out["timestamp"]   = e.timestamp;
+        return QJsonDocument(out);
+    }
+
+    if (!ants::auditfp::appendEntry(root, e)) {
+        return adErr(QStringLiteral("write_failed"),
+            QStringLiteral("audit_dismiss: could not append to %1").arg(path));
+    }
+
+    QJsonObject out;
+    out["ok"]          = true;
+    out["path"]        = path;
+    out["fingerprint"] = fingerprint;
+    // True when the server derived the fingerprint from (file, rule, message)
+    // rather than taking the caller's — lets a caller confirm the hash it
+    // will need if it wants to reference the entry later.
+    out["computed"]    = computed;
+    out["rule"]        = rule;
+    out["timestamp"]   = e.timestamp;
     return QJsonDocument(out);
 }
 

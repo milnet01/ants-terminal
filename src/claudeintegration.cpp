@@ -4714,6 +4714,79 @@ void ClaudeIntegration::onMcpConnection() {
                     tools.append(t);
                 }
 
+                // ANTS-1713 — audit_dismiss: record a learned-false-positive
+                // verdict into the fingerprint ledger both audit_run and the
+                // Audit dialog filter on. Deferred v2 of ANTS-1708.
+                {
+                    QJsonObject t;
+                    t["name"] = "audit_dismiss";
+                    t["description"] = QStringLiteral(
+                        "Record one learned-false-positive verdict into "
+                        "<project>/.audit_cache/learned-fp.jsonl — the "
+                        "fingerprint-keyed ledger BOTH `audit_run` and the "
+                        "Audit dialog filter on, so a dismissed finding stays "
+                        "suppressed on every later sweep (and survives edits "
+                        "that shift its line: the fingerprint is "
+                        "line-independent). Pass `rule` plus EITHER "
+                        "`fingerprint` OR `file`+`message` (preferred — the "
+                        "server hashes them the same way the engine will look "
+                        "them up). Re-dismissing an already-recorded "
+                        "fingerprint is a no-op, not an error. Returns {ok, "
+                        "path, fingerprint, computed, rule, timestamp}. "
+                        "Refusals: `bad_args` (missing rule, or neither "
+                        "fingerprint nor file+message, or a malformed "
+                        "fingerprint), `no_project` (caller_cwd unresolved), "
+                        "`write_failed` (I/O error). caller_cwd required. "
+                        "NOT the same as audit_falsepos_log, which writes the "
+                        "prose ledger the review skills read.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use when you have verified an audit finding is a "
+                        "false positive and want future audits to stop "
+                        "reporting it — previously only the Audit dialog "
+                        "could teach the ledger.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    QJsonObject ruleProp; ruleProp["type"] = "string";
+                        ruleProp["description"] = QStringLiteral(
+                            "Required. The audit check id the finding came "
+                            "from. For the line-based tools (cppcheck, clazy, "
+                            "clang-tidy, mypy, shellcheck) this is the tool "
+                            "name; JSON tools use their own check id.");
+                    QJsonObject fileProp; fileProp["type"] = "string";
+                        fileProp["description"] = QStringLiteral(
+                            "The finding's file, as the tool spelled it. "
+                            "Required unless `fingerprint` is given.");
+                    QJsonObject msgProp; msgProp["type"] = "string";
+                        msgProp["description"] = QStringLiteral(
+                            "The finding's message. A leading "
+                            "<path>:<line>[:<col>]: prefix is stripped before "
+                            "hashing, so the verdict survives line shifts. "
+                            "Required unless `fingerprint` is given.");
+                    QJsonObject fpProp; fpProp["type"] = "string";
+                        fpProp["description"] = QStringLiteral(
+                            "Optional 16-lowercase-hex fingerprint, when you "
+                            "already have it. Prefer file+message.");
+                    QJsonObject reasonProp; reasonProp["type"] = "string";
+                        reasonProp["description"] = QStringLiteral(
+                            "Optional human note — why it isn't a real bug. "
+                            "Recorded for the next reader; no secrets.");
+                    props["rule"]        = ruleProp;
+                    props["file"]        = fileProp;
+                    props["message"]     = msgProp;
+                    props["fingerprint"] = fpProp;
+                    props["reason"]      = reasonProp;
+                    props["dry_run"]     = makeDryRunProp();
+                    props["caller_cwd"]  = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("rule"));
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema["required"] = req;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-1250: git_state — single tool, dispatches on
                 // `op` (status / log / diff). Collapsed from three
                 // separate tools to save ~240 permanent schema tokens
@@ -9909,7 +9982,10 @@ void ClaudeIntegration::onMcpConnection() {
                         name == QLatin1String("audit_poll") ||
                         // ANTS-2129 — audit_falsepos_log: write side of the
                         // false-positive ledger, audit-family.
-                        name == QLatin1String("audit_falsepos_log"))
+                        name == QLatin1String("audit_falsepos_log") ||
+                        // ANTS-1713 — audit_dismiss: write side of the
+                        // fingerprint-keyed learned-FP ledger.
+                        name == QLatin1String("audit_dismiss"))
                         return QStringLiteral("audit");
                     if (name == QLatin1String("verify_changes"))
                         return QStringLiteral("verify");
@@ -11340,6 +11416,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-2129 — audit_falsepos_log resolves <root>/.ants_review_falsepos.jsonl
     // off caller_cwd; Required (matches the other root-resolving write verbs).
     if (toolName == QStringLiteral("audit_falsepos_log")) return C::Required;
+    // ANTS-1713 — audit_dismiss resolves <root>/.audit_cache/learned-fp.jsonl
+    // off caller_cwd; Required (same shape as audit_falsepos_log).
+    if (toolName == QStringLiteral("audit_dismiss"))      return C::Required;
     // ANTS-1963 — spec_log resolves docs/specs|phases/<id>.md under the
     // caller's project root; Required matches spec_query.
     if (toolName == QStringLiteral("spec_log"))            return C::Required;

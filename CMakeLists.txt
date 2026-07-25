@@ -1431,6 +1431,8 @@ if(ANTS_TESTS)
                 tests/features/audit_skill_anchors/test_audit_skill_anchors.cpp
                 # ANTS-1351 v1 audit_run MCP verb.
                 tests/features/mcp_audit_run/test_mcp_audit_run.cpp
+                # ANTS-1713 audit_dismiss MCP verb (learned-FP write side).
+                tests/features/audit_dismiss/test_audit_dismiss.cpp
                 # ANTS-1397 v1 test_audit_* MCP trio.
                 tests/features/mcp_test_audit_trio/test_mcp_test_audit_trio.cpp
                 # ANTS-2096 paginated partition keeps pre-pass findings for brief.

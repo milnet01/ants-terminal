@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`audit_dismiss` — let Claude tell the audit tool "that finding isn't a real bug".** (ANTS-1713)
+  Until now only the Audit pop-up could mark a warning as a false positive so later audits stop reporting it. Claude can now record the same verdict directly. It is remembered by content rather than by line number, so it survives edits that move the code around.
+
 - **New `doc_integrity` MCP verb + engine — deterministic dead-anchor / broken-link / TOC-coverage checks for markdown docs** (ANTS-3601)
   Finds the internal-consistency rot in long contract docs that no test caught and only a careful human reader spotted: a `[text](#heading)` link whose heading was renamed, a `[text](../file)` whose target moved, or a hand-maintained Table of Contents that drifted from the sections. GitHub-compatible heading slugs, fence-aware (fenced examples ignored). Runs as the `doc_integrity` verb (scope a file/dir, filter by kind) and feeds the cold-eyes review pre-pass automatically.
 
