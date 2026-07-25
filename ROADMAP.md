@@ -9107,6 +9107,7 @@ suppression that survives line drift.
   Kind: enhancement.
   Lanes: auditrunner, auditengine, auditdialog.
   Source: self-audit 2026-05-20; pairs with ANTS-1449.
+  Progress (2026-07-25): one of the three legs landed via ANTS-3615 — the `.audit_allowlist.json` custom-regex filter is no longer GUI-only; its loader/matcher moved into AuditEngine and `runAudit` applies it per finding, alongside the ANTS-1820 learned-FP ledger, with the `suppressions` request field now governing both. So headless sweeps get the dialog's *pre-triage drop* parity. STILL OPEN, and this item stays the tracker for them: (i) baseline-diff — "new since `.audit_cache/baseline.json`" needs a `baseline` / `--new-only` request option (note ANTS-1870's since-last-run delta is adjacent but distinct: it diffs against the PRIOR RUN's findings sidecar, not a pinned baseline); (ii) a confidence floor — `AuditEngine::computeConfidence` exists but `runAudit` never materialises `Finding` objects, so wiring it means the v2 per-finding path deciding whether to build them; (iii) the AI-triage stage, which needs an LLM round-trip the headless verb currently has no seam for. Re-scope (i)+(ii) as one item and (iii) separately when picked up — they have very different costs.
 
 - ✅ [ANTS-1708] **Persistent fingerprint-keyed FP-suppression ledger
   for static-audit findings.** Shipped 2026-05-20. Confirmed the premise:
