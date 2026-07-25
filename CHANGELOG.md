@@ -70,6 +70,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A SARIF report could silently drop findings while reporting `findings_truncated: false`.** (ANTS-3629)
+  The document is capped at 10 000 results across all tools, but only the per-tool caps set the flag. Several tools each individually under the cap could sum past it, so results vanished from the report a reviewer treats as the complete finding set, with nothing to say so. The document-wide shed is now reported.
+
 - **A `test_audit_*` contract test that asserted the opposite of the shipped behaviour and passed anyway.** (ANTS-3628)
   It checked that the verbs were NOT caller_cwd-Required — the inverse of the truth — and passed only because the source window it searched had drifted off the lines it meant to inspect, so its assertions were vacuous and a real regression would have gone unnoticed. Rewritten to call the contract function directly, covering all five verbs; verified to fail when a verb is flipped.
 
@@ -107,6 +110,12 @@ for security-relevant changes.
   A brand-new project with no roadmap yet gets a scary 'ok:false' from the first orientation call, as if something broke — but 'no roadmap yet' is normal.
 
 ### Security
+
+- **The cross-session feedback-file exception is now bounded by directory, not just filename.** (ANTS-3616)
+  One shared coordination file is deliberately allowed to sit outside the project root. That exception keyed on the filename suffix alone with no location check, so any path ending `_Ants_MCP_Feedback.md` anywhere on the filesystem qualified — and since `apply_edits` uses the same check, that made the naming convention a broad write permission. It now also requires the file to sit in a directory above the project. The `apply_edits` description, which stated the root-escape refusal with no mention of the exception, has been corrected — that omission is what led a contributor to report it as a suspected security hole.
+
+- **`audit_run`'s compile-DB escape validator no longer skips every non-default build tree.** (ANTS-3624)
+  It probed only `build/` while clazy and clang-tidy resolve their compile database from seven build-dir names. On a tree whose DB lives in `build-fast/` — this project's documented iteration workflow — the validator found no file, concluded there was nothing to validate, and the tools then consumed that DB with its include paths never checked for escapes. Both now go through the same resolver.
 
 - **`test_audit_partition` now root-anchors a caller-supplied `scope`, closing a path-traversal read.** (ANTS-3627)
   A `scope:"path:../.."` (or a `files:` entry with `../`) was concatenated onto the project root with no anchor check, so the walk enumerated files outside the project and returned their paths in the envelope. Both branches are now checked against the canonical root and refuse `bad_path`; a `files:` list refuses as a whole rather than silently dropping the bad entry.
