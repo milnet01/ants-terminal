@@ -64,8 +64,15 @@ constexpr const char *kOrientationScriptBody =
     "  • changelog_log      → CHANGELOG.md append (Keep-a-Changelog aware)\n"
     "  • workspace_search   → project-wide code search (saves 250–4500 tokens vs grep)\n"
     "  • file_outline       → outline a file; read_region(s) fetch its slices\n"
-    "  • find_definition    → \"where is foo defined?\"\n"
-    "  • find_sources       → \"who calls bar?\"\n"
+    "  • find_definition    → \"where is foo defined?\" (C++/Python/Lua/sh/GLSL)\n"
+    // ANTS-3619 — the language qualifier has to be HERE, pre-call. The
+    // post-call envelope already explains the C/C++ limit, but by then a
+    // zero-result has been read as "nothing calls this" — the most
+    // dangerous possible wrong answer when checking a blast radius. The
+    // trap is the asymmetry with the line above: find_definition IS
+    // multi-language, they sit adjacent, so a reader generalises.
+    "  • find_sources       → \"who calls bar?\" (C/C++ ONLY — else use\n"
+    "                         codebase_index / workspace_search)\n"
     "  • git_state          → status + branch + ahead/behind in one call\n"
     "  • read_log           → filtered log tail (vs full Read)\n"
     "  • model_switch_stats → auto-switcher trust signal + near-miss breakdown\n"

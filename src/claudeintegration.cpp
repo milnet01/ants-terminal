@@ -2948,12 +2948,24 @@ void ClaudeIntegration::onMcpConnection() {
                         "lines). Token-savings: typically replaces a "
                         "3-4 round-trip grep + read cycle with one "
                         "MCP call.");
+                    // ANTS-3619 — lead with the language limit. The
+                    // envelope already explains it on a zero-result, but
+                    // that is after the fact: files_count:0 on a Python
+                    // project is indistinguishable from a genuine
+                    // "nothing calls this", which is the worst possible
+                    // wrong answer when checking a change's blast radius.
+                    // Must start with "Use " and stay under 240 chars
+                    // (ANTS-1897 INV-7 / ANTS-1453 HINT-3) — the
+                    // qualifier has to fit that budget, so it leads and
+                    // the "prefer find_definition for known symbols"
+                    // advice moves to the description above.
                     t["selection_hint"] = QStringLiteral(
-                        "Use when starting investigation on a topic "
-                        "where you don't know the exact symbol yet. "
-                        "For known symbols, prefer find_definition "
-                        "(one symbol) / similar_code (shape) / "
-                        "workspace_search (exact match).");
+                        "Use for topic discovery in C/C++ ONLY — on "
+                        "Python/JS/Go it returns files_count:0, which "
+                        "reads as \"no callers\" but is not an answer; "
+                        "use codebase_index or workspace_search there. "
+                        "find_definition IS multi-language — do not copy "
+                        "its reach.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
@@ -7082,17 +7094,30 @@ void ClaudeIntegration::onMcpConnection() {
                     schema["type"] = "object";
                     QJsonObject toolsProp;
                     toolsProp["type"] = "array";
+                    // ANTS-3622 — this string used to claim auto-detect
+                    // excluded clang-tidy as well as mypy. It never did:
+                    // kAutoDetectTools() removes only mypy, so a default
+                    // sweep is 9 tools including clang-tidy. Fixed here
+                    // rather than in the code because spec (ANTS-1351
+                    // §2.1) and code already agreed at 9 — this string was
+                    // the lone outlier, and dropping clang-tidy to match
+                    // it would have silently changed what every default
+                    // sweep covers. The stale clang-tidy rationale is gone
+                    // too: ANTS-2182 gave it automatic compile-DB
+                    // resolution, so it no longer needs a hand-passed
+                    // `-p build/`.
                     toolsProp["description"] = QStringLiteral(
                         "Subset of {cppcheck, clazy, clang-tidy, ruff, "
                         "bandit, semgrep, gitleaks, trivy, shellcheck, "
-                        "mypy}. Empty / omitted = auto-detect all "
-                        "runnable EXCEPT clang-tidy and mypy, which are "
-                        "opt-in. clang-tidy needs `-p build/` (pair it "
-                        "with `paths` + `checks` for the scoped sweep, "
-                        "ANTS-1512); mypy runs deps-less here so a "
-                        "full-sweep mypy is import-not-found noise — CI / "
-                        "pre-commit run the real deps-installed mypy "
-                        "(ANTS-3418). Request either explicitly to run it.");
+                        "mypy} (10 known). Empty / omitted = auto-detect "
+                        "every runnable tool EXCEPT mypy — 9 tools, "
+                        "clang-tidy included. mypy runs deps-less here so "
+                        "a full-sweep mypy is import-not-found noise — CI "
+                        "/ pre-commit run the real deps-installed mypy "
+                        "(ANTS-3418); request it explicitly to run it. "
+                        "clang-tidy resolves its compile DB automatically "
+                        "(ANTS-2182); pair it with `paths` + `checks` for "
+                        "a scoped sweep (ANTS-1512).");
                     QJsonObject scopeProp;
                     scopeProp["type"] = "string";
                     scopeProp["description"] = QStringLiteral(
@@ -7164,11 +7189,22 @@ void ClaudeIntegration::onMcpConnection() {
                     // ANTS-1512 — scoped-check mode.
                     QJsonObject pathsProp;
                     pathsProp["type"] = "array";
+                    // ANTS-3622 — second stale string in this schema. It
+                    // named cppcheck + clang-tidy only; eight of the ten
+                    // tools append the scoped paths (verified against the
+                    // toolArgv branches). Under-claiming here is not
+                    // harmless: a caller who believes narrowing does not
+                    // reach ruff/bandit/semgrep will avoid `paths` and pay
+                    // for a full sweep it did not need.
                     pathsProp["description"] = QStringLiteral(
                         "Project-relative paths constraining the "
                         "tool's invocation (e.g. [\"menu/drivers/\", "
-                        "\"gfx/\"]). Currently honoured by cppcheck "
-                        "and clang-tidy as positional args. Each "
+                        "\"gfx/\"]). Honoured as positional args by "
+                        "every file-scoped tool: cppcheck, clazy, "
+                        "clang-tidy, ruff, bandit, semgrep, shellcheck, "
+                        "mypy. gitleaks and trivy are repo-global and "
+                        "ignore them (they skip entirely under a "
+                        "narrowing scope — not_file_scoped). Each "
                         "entry is sanitised through isAuditArgSafe; "
                         "any failing entry rejects the whole call "
                         "with code:\"bad_args\".");
@@ -9494,6 +9530,20 @@ void ClaudeIntegration::onMcpConnection() {
                         "(\"0.7.100\") or \"Unreleased\" (case-insensitive). "
                         "Empty = all versions. Unknown → bad_version.");
 
+                    // ANTS-3618 — `section` is an exact alias for `version`
+                    // (a CHANGELOG's `## [X.Y.Z]` blocks ARE its sections).
+                    // Declared so the dispatch layer stops flagging it in
+                    // ignored_args and, more importantly, so it actually
+                    // filters: callers arriving from roadmap_query reach for
+                    // its vocabulary and passing `section` used to return
+                    // every entry, which reads as a filter that matched
+                    // everything rather than one never applied.
+                    QJsonObject cqSection;
+                    cqSection["type"] = "string";
+                    cqSection["description"] = QStringLiteral(
+                        "Alias for `version` — same values, same refusals. "
+                        "Passing both with different values → bad_args.");
+
                     QJsonObject cqCategory;
                     cqCategory["type"] = "string";
                     QJsonArray cqCatEnum;
@@ -9587,6 +9637,7 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject cqProps;
                     cqProps["caller_cwd"]   = makeCallerCwdReadProp();
                     cqProps["version"]      = cqVersion;
+                    cqProps["section"]      = cqSection;        // ANTS-3618
                     cqProps["category"]     = cqCategory;
                     cqProps["query"]        = cqQuery;
                     cqProps["id"]           = cqId;
