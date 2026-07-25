@@ -332,3 +332,62 @@ TEST(AuditRunCompileCommandsValidation, Inv14SizeCapsDeclared) {
     EXPECT_TRUE(contains(src, "kCompileCommandsMaxBytes"));
     EXPECT_TRUE(contains(src, "kCompileCommandsMaxEntries"));
 }
+
+// ── INV-15 (ANTS-3624) — the validator probes every build dir the tools
+// actually resolve `-p` from, not just build/.
+//
+// The validator used to hand-roll a two-entry list (build/ + the project
+// root) while clazy/clang-tidy resolve their DB through
+// AuditEngine::resolveCompileCommands, which walks seven build-dir names.
+// On a tree whose DB lives in build-fast/ — this project's documented
+// iteration workflow — the validator found nothing, reported "nothing to
+// validate", and the tools then consumed that DB with its include paths
+// unchecked. Same hostile fixture as INV-11, only relocated.
+
+TEST(AuditRunCompileCommandsValidation, Inv15NonDefaultBuildDirValidated) {
+    for (const QString &dir : {QStringLiteral("build-fast"),
+                               QStringLiteral("build-asan"),
+                               QStringLiteral("build-workstation"),
+                               QStringLiteral("build-release"),
+                               QStringLiteral("build-debug"),
+                               QStringLiteral("build-test")}) {
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        ASSERT_TRUE(QDir(tmp.path()).mkpath(dir));
+
+        const QByteArray json =
+            "[{"
+                "\"directory\":\"" + tmp.path().toUtf8() + "/"
+                    + dir.toUtf8() + "\","
+                "\"file\":\"" + tmp.path().toUtf8() + "/src/x.cpp\","
+                "\"arguments\":["
+                    "\"/usr/bin/c++\","
+                    "\"-include\",\"/home/user/.ssh/id_rsa\","
+                    "\"-c\",\"src/x.cpp\""
+                "]"
+            "}]";
+        ASSERT_TRUE(writeFile(tmp.path(),
+                              dir + "/compile_commands.json", json));
+
+        QString reason;
+        EXPECT_FALSE(AuditRunner::internal::validateCompileCommands(
+            tmp.path(), &reason))
+            << "hostile DB in " << dir.toStdString()
+            << "/ was not validated — the escape check was skipped";
+        EXPECT_FALSE(reason.isEmpty()) << dir.toStdString();
+    }
+}
+
+// INV-15b — a project with NO compile DB anywhere still returns true.
+// Guards the other direction: the resolver swap must not turn "nothing to
+// validate" into a refusal, which would break every non-C/C++ project.
+TEST(AuditRunCompileCommandsValidation, Inv15bNoDbAnywhereStillOk) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(QDir(tmp.path()).mkpath("build-fast"));  // dir, no DB in it
+
+    QString reason;
+    EXPECT_TRUE(AuditRunner::internal::validateCompileCommands(
+        tmp.path(), &reason));
+    EXPECT_TRUE(reason.isEmpty());
+}

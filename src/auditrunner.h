@@ -265,6 +265,17 @@ bool isIncludePathAllowed(const QString &includePath,
 QStringList extractIncludeArgs(const QStringList &args);
 QStringList splitCommandString(const QString &cmd);
 
+// ANTS-3629 — test hook for the DOCUMENT-wide SARIF ceiling. Writes a SARIF
+// at `path` from `findingsByTool` and sets *docTruncated when the cross-tool
+// kSarifFindingsMax ceiling shed any result. Exposed because the overflow it
+// reports is otherwise only reachable by spawning enough real tools to sum
+// past 10 000 findings — the per-tool caps never fire in that scenario,
+// which is exactly why it went unreported.
+bool writeSarifForTest(const QString &path,
+                       const QHash<QString, ToolResult> &byTool,
+                       const QHash<QString, QJsonArray> &findingsByTool,
+                       bool *docTruncated);
+
 // ANTS-2185 — scoped-positional argv-injection guard. Prefixes `./` to a
 // dash-leading relative path so the child tool can't parse it as a flag;
 // absolute and ordinary relative paths pass through unchanged.

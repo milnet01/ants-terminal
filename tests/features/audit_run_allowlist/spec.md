@@ -68,6 +68,28 @@ rather than duplicating the matcher.
   naming the offending value and the accepted set. An **empty** array stays
   valid and keeps the `["sarif"]` default.
 
+- **INV-8 / The document-wide SARIF ceiling reports its shed
+  (ANTS-3629).** `writeSarif` bounds the whole document at
+  `kSarifFindingsMax` (10 000) results across *every* tool, but only the
+  **per-tool** caps set `findings_truncated`. So N tools each
+  comfortably under the per-tool cap could sum past the document
+  ceiling: results were dropped from the artifact while the envelope
+  reported `findings_truncated:false`. That is silent loss in the file a
+  reviewer treats as the complete finding set, and unlike INV-4/INV-7 it
+  is not a refusal case — the run *succeeds*, just incompletely.
+  `writeSarif` now counts what it sheds and reports it through a
+  `docTruncated` out-param, which `runAudit` ORs into
+  `r.findingsTruncated`. INV-8's fixture is deliberately 4 tools ×
+  3 000 findings — a shape where **no** per-tool cap fires, because that
+  is precisely the case that escaped. INV-8b pins the other direction so
+  the flag cannot degrade into always-true.
+
+  Scope note: the sidecar baseline's own `findings_truncated`
+  (`mergedTruncated`) already carries a `> kSarifFindingsMax` size check
+  on the merged record and is left alone — it answers "is this baseline
+  incomplete", which is a different question from "did the emitted SARIF
+  shed results".
+
 ## Out of scope
 
 - `.audit_suppress` stays GUI-only. It is keyed by the line-grain

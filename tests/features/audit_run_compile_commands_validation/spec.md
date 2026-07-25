@@ -53,3 +53,26 @@ prefix (`/usr/include`, `/usr/lib`, `/opt`, …).
 - INV-14: `validateCompileCommands` short-circuits with a refusal
   envelope when the JSON exceeds the 32 MiB byte cap or 50000
   entry cap (defence-in-depth against DoS via giant files).
+- INV-15 (ANTS-3624): `validateCompileCommands` locates the DB
+  through `AuditEngine::resolveCompileCommands` — the **same**
+  resolver that builds the tools' `-p` argument — so every build-dir
+  variant it walks (`build`, `build-fast`, `build-asan`,
+  `build-workstation`, `build-release`, `build-debug`, `build-test`)
+  is validated, plus a root-level `compile_commands.json` as the one
+  location the shared probe does not cover.
+
+  This closes a **silent bypass**, not a cosmetic mismatch. The
+  validator previously hand-rolled a two-entry list (`build/` +
+  project root) while clazy and clang-tidy resolved their DB through
+  the seven-name probe. On a tree whose DB lived anywhere else the
+  validator found no file, concluded "nothing to validate", returned
+  true — and the tools then consumed that DB with its include paths
+  never checked for escapes. It failed open exactly where a
+  non-default build tree was in use, which on this project is the
+  documented iteration workflow (`build-fast/`). ANTS-3367
+  centralised the candidate list so precisely this drift could not
+  happen; this call site predated it and was missed.
+
+  INV-15b pins the other direction: a project with no DB anywhere
+  still returns true, so the swap cannot turn "nothing to validate"
+  into a refusal for every non-C/C++ project.

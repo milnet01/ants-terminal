@@ -1084,9 +1084,18 @@ bool writeSarif(const QString &path,
                 const QHash<QString, QString> &rawByTool,
                 const QString &rootCanonical,
                 const QHash<QString, QJsonArray> &findingsByTool,
-                const QJsonArray &carriedForward = {}) {
+                const QJsonArray &carriedForward = {},
+                // ANTS-3629 — out-param: set when the CROSS-tool ceiling
+                // shed results. The per-tool caps set findingsTruncated
+                // during parse, but this document-wide one did not report
+                // anything, so N tools each under the per-tool cap could
+                // sum past it and the envelope still said
+                // findings_truncated:false. Silent loss in the artifact a
+                // reviewer treats as the complete finding set.
+                bool *docTruncated = nullptr) {
     QJsonArray  runsArr;
     int         emitted = 0;   // running result count vs kSarifFindingsMax
+    int         dropped = 0;   // ANTS-3629 — results shed at that ceiling
     // ANTS-1576 — capture once, attach to every run we emit. The probe
     // forks at most three short git subprocesses; runs once per
     // writeSarif call (not per tool).
@@ -1146,7 +1155,7 @@ bool writeSarif(const QString &path,
         const QJsonArray &src = findingsByTool.contains(it.key())
             ? findingsByTool[it.key()] : tr.samples;
         for (const QJsonValue &v : src) {
-            if (emitted >= kSarifFindingsMax) break;
+            if (emitted >= kSarifFindingsMax) { ++dropped; continue; }
             results.append(sarifResultFromFinding(v.toObject(), false));
             ++emitted;
         }
@@ -1163,7 +1172,7 @@ bool writeSarif(const QString &path,
     if (!carriedForward.isEmpty()) {
         QJsonArray results;
         for (const QJsonValue &v : carriedForward) {
-            if (emitted >= kSarifFindingsMax) break;
+            if (emitted >= kSarifFindingsMax) { ++dropped; continue; }
             results.append(sarifResultFromFinding(v.toObject(), true));
             ++emitted;
         }
@@ -1179,6 +1188,12 @@ bool writeSarif(const QString &path,
             run["versionControlProvenance"] = vcpBlock;
         runsArr.append(run);
     }
+    // ANTS-3629 — report the document-wide shed. Set even when the write
+    // below fails: the caller's question is "was anything dropped from the
+    // finding set", and that is already true regardless of whether the
+    // file landed.
+    if (docTruncated && dropped > 0) *docTruncated = true;
+
     QJsonObject doc;
     doc["version"] = QStringLiteral("2.1.0");
     doc["$schema"] = QStringLiteral(
@@ -1406,14 +1421,26 @@ constexpr int    kCompileCommandsMaxEntries = 50000;
 
 bool validateCompileCommandsImpl(const QString &canonProject,
                                  QString *errReason) {
-    // Probe the same two locations clazy's default argv uses.
-    const QStringList candidates = {
-        canonProject + QLatin1String("/build/compile_commands.json"),
-        canonProject + QLatin1String("/compile_commands.json"),
-    };
-    QString chosen;
-    for (const QString &c : candidates) {
-        if (QFile::exists(c)) { chosen = c; break; }
+    // ANTS-3624 — probe through the SAME resolver that builds the tools'
+    // `-p` argv (AuditEngine::resolveCompileCommands → build/, build-fast/,
+    // build-asan/, build-workstation/, build-release/, build-debug/,
+    // build-test/). This used to be a hand-rolled two-entry list of
+    // `build/` + the project root, so on any tree whose DB lives in a
+    // non-default build dir the validator found nothing, concluded there
+    // was "nothing to validate", and returned true — while clazy and
+    // clang-tidy went on to consume that very DB with its include paths
+    // never checked for escapes. The validation silently did nothing
+    // precisely where a non-default build tree was in use, which on this
+    // project is the documented iteration workflow (build-fast/).
+    // ANTS-3367 centralised the candidate list so exactly this drift
+    // could not happen; this call site predates it and was missed.
+    QString chosen = AuditEngine::resolveCompileCommands(canonProject);
+    if (chosen.isEmpty()) {
+        // Root-level DB — the one location the shared probe does not cover
+        // (it only walks build-dir names). Kept from the original list.
+        const QString atRoot =
+            canonProject + QLatin1String("/compile_commands.json");
+        if (QFile::exists(atRoot)) chosen = atRoot;
     }
     if (chosen.isEmpty()) {
         // No JSON → nothing to validate. Clazy will fail at runtime
@@ -1576,6 +1603,13 @@ void trimSamplesCascade(QHash<QString, ToolResult> &byTool,
 bool validateCompileCommands(const QString &canonProject,
                              QString *errReason) {
     return validateCompileCommandsImpl(canonProject, errReason);
+}
+bool writeSarifForTest(const QString &path,
+                       const QHash<QString, ToolResult> &byTool,
+                       const QHash<QString, QJsonArray> &findingsByTool,
+                       bool *docTruncated) {
+    return writeSarif(path, byTool, /*rawByTool=*/{}, /*rootCanonical=*/{},
+                      findingsByTool, /*carriedForward=*/{}, docTruncated);
 }
 bool isIncludePathAllowed(const QString &includePath,
                           const QString &entryDir,
@@ -2344,6 +2378,7 @@ RunResult runAudit(const RunRequest &req) {
     const AuditCache::IsoNow iso     = AuditCache::isoNow();
     const AuditCache::GitInfo gitI   = AuditCache::gitInfo(canonProject);
 
+    bool sarifDocTruncated = false;   // ANTS-3629 — cross-tool shed flag
     QString cacheSarifAbs;
     QString cacheHtmlAbs;
     if (formats.contains(QLatin1String("sarif"))) {
@@ -2353,7 +2388,8 @@ RunResult runAudit(const RunRequest &req) {
         if (!cacheSarifAbs.isEmpty()
          && ensurePrivateDir(AuditCache::cacheDir(canonProject))  // ANTS-1988 — 0700
          && writeSarif(cacheSarifAbs, r.byTool, rawByTool, req.projectRoot,
-                       fullFindingsByTool, carriedForwardForSarif)) {
+                       fullFindingsByTool, carriedForwardForSarif,
+                       &sarifDocTruncated)) {
             r.sarifPath = cacheSarifAbs;
             r.cachePath = cacheSarifAbs;
         } else {
@@ -2362,10 +2398,16 @@ RunResult runAudit(const RunRequest &req) {
             cacheSarifAbs.clear();
             const QString sp = allocSarifPath();
             if (writeSarif(sp, r.byTool, rawByTool, req.projectRoot,
-                           fullFindingsByTool, carriedForwardForSarif)) {
+                           fullFindingsByTool, carriedForwardForSarif,
+                           &sarifDocTruncated)) {
                 r.sarifPath = sp;
             }
         }
+        // ANTS-3629 — a cross-tool shed is truncation too. Without this,
+        // N tools each individually under the per-tool cap could sum past
+        // the document ceiling and the envelope would still report
+        // findings_truncated:false.
+        if (sarifDocTruncated) r.findingsTruncated = true;
     }
     if (formats.contains(QLatin1String("html"))) {
         QString hp;

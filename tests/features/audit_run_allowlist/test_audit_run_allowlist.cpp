@@ -266,3 +266,81 @@ TEST(AuditRunAllowlist, Inv7bAcceptedFormatsNotRefused) {
             << "] must be accepted";
     }
 }
+
+namespace {
+// N synthetic findings shaped enough for sarifResultFromFinding.
+QJsonArray syntheticFindings(int n, const QString &tool) {
+    QJsonArray a;
+    for (int i = 0; i < n; ++i) {
+        QJsonObject o;
+        o[QStringLiteral("file")]     = QStringLiteral("src/f%1.cpp").arg(i);
+        o[QStringLiteral("line")]     = i + 1;
+        o[QStringLiteral("severity")] = QStringLiteral("warning");
+        o[QStringLiteral("message")]  = tool + QStringLiteral(" finding");
+        o[QStringLiteral("check_id")] = tool;
+        a.append(o);
+    }
+    return a;
+}
+}  // namespace
+
+// INV-8 (ANTS-3629) — the DOCUMENT-wide SARIF ceiling reports its shed.
+//
+// writeSarif bounds the whole document at kSarifFindingsMax (10 000)
+// across every tool, but only the PER-TOOL caps used to set
+// findings_truncated. So N tools each comfortably under the per-tool cap
+// could sum past the document ceiling: results were dropped from the
+// artifact while the envelope still said findings_truncated:false. That
+// is silent loss in the file a reviewer treats as the complete finding
+// set — the shape below (4 tools x 3 000 = 12 000) is deliberately one
+// where no per-tool cap fires, because that is the case that escaped.
+TEST(AuditRunAllowlist, Inv8SarifDocumentCapReportsTruncation) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+
+    QHash<QString, AuditRunner::ToolResult>  byTool;
+    QHash<QString, QJsonArray>               findingsByTool;
+    const QStringList tools = {QStringLiteral("cppcheck"),
+                               QStringLiteral("ruff"),
+                               QStringLiteral("bandit"),
+                               QStringLiteral("semgrep")};
+    for (const QString &t : tools) {
+        AuditRunner::ToolResult tr;
+        tr.tool   = t;
+        tr.status = QStringLiteral("ok");
+        byTool.insert(t, tr);
+        findingsByTool.insert(t, syntheticFindings(3000, t));
+    }
+
+    bool docTruncated = false;
+    const QString out = dir.path() + QStringLiteral("/o.sarif");
+    ASSERT_TRUE(AuditRunner::internal::writeSarifForTest(
+        out, byTool, findingsByTool, &docTruncated));
+    EXPECT_TRUE(docTruncated)
+        << "INV-8: 12 000 findings across 4 tools exceed the 10 000 "
+           "document ceiling — the shed must be reported";
+}
+
+// INV-8b — under the ceiling, nothing is reported as truncated. Guards
+// against the flag becoming always-true, which would be just as useless.
+TEST(AuditRunAllowlist, Inv8bUnderDocumentCapNotTruncated) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+
+    QHash<QString, AuditRunner::ToolResult>  byTool;
+    QHash<QString, QJsonArray>               findingsByTool;
+    for (const QString &t : {QStringLiteral("cppcheck"),
+                             QStringLiteral("ruff")}) {
+        AuditRunner::ToolResult tr;
+        tr.tool   = t;
+        tr.status = QStringLiteral("ok");
+        byTool.insert(t, tr);
+        findingsByTool.insert(t, syntheticFindings(100, t));
+    }
+
+    bool docTruncated = false;
+    const QString out = dir.path() + QStringLiteral("/o.sarif");
+    ASSERT_TRUE(AuditRunner::internal::writeSarifForTest(
+        out, byTool, findingsByTool, &docTruncated));
+    EXPECT_FALSE(docTruncated) << "INV-8b: 200 findings must not truncate";
+}
