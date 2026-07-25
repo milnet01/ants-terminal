@@ -19732,7 +19732,7 @@ shipped.
   Source: cold-eyes ANTS-1351 pass 6, lane 1 (2026-07-25).
   Resolved (2026-07-25) by fixing the DOC side of both stale strings, not the code. The `tools` description claimed auto-detect excluded clang-tidy (it excludes only mypy — 9 tools, clang-tidy included), and the `paths` description claimed only cppcheck + clang-tidy honoured it (verified against the toolArgv branches: EIGHT tools append the scoped paths — cppcheck, clazy, clang-tidy, ruff, bandit, semgrep, shellcheck, mypy; gitleaks and trivy are repo-global). Chose the doc side because spec (ANTS-1351 §2.1) and code already agreed — the strings were the lone outliers, and dropping clang-tidy from auto-detect to match one would have silently narrowed every default sweep. The stale clang-tidy rationale went too: ANTS-2182 gave it automatic compile-DB resolution, so it no longer needs a hand-passed `-p build/`. Under-claiming `paths` was not harmless: a caller who believed narrowing did not reach ruff/bandit/semgrep would avoid it and pay for a full sweep.
 
-- 📋 [ANTS-3623] **doc_integrity flags its own spec's illustrative examples as broken links — 20 of 51 findings come from ANTS-3601.md and ANTS-2139.md fixture prose.**
+- ✅ [ANTS-3623] **doc_integrity flags its own spec's illustrative examples as broken links — 20 of 51 findings come from ANTS-3601.md and ANTS-2139.md fixture prose.**
   Ran doc_integrity over the doc tree after the ANTS-1351/1397 reconciliation. It returned 51 findings (22 broken_link, 6 dead_anchor, 23 toc_gap). ZERO were in the three docs actually edited — the checker is behaving — but the finding list is dominated by self-referential noise: 15 from docs/specs/ANTS-3601.md (doc_integrity's OWN spec, whose prose deliberately contains `[x](other.md)`, `#some-heading`, `[y](../src/foo.cpp)` etc. as illustrations of what the checker catches) and 6 from docs/specs/ANTS-2139.md (same pattern, `path.md` / `relative.md` / `sib.md` fixtures). Two more (`[int idx](...)`, `[text](url)`) are generic placeholder prose, not links anyone intended to resolve.
   That is ~20 of 22 broken_link findings being structural false positives, which makes the broken-link lane close to unusable as a gate. Fix options, cheapest first: (a) skip fenced-code and inline-code spans when harvesting links (`` `path.md` `` in backticks is prose about a path, not a link) — this alone kills most of them; (b) honour an opt-out marker for docs that document the checker itself; (c) skip link targets that look like placeholders (`url`, `target`, `relpath`, `int idx` — no extension and no slash). Prefer (a) + (c).
   Separately, the 23 toc_gap findings all come from three specs (ANTS-1870, ANTS-2023, ANTS-2141) that have no table of contents at all — flagging every section of a TOC-less doc is noisier than one finding saying "this doc has no TOC". Consider collapsing per-doc when the doc has zero TOC entries.
@@ -19740,6 +19740,15 @@ shipped.
   Kind: fix.
   Lanes: docintegrity.
   Source: in-session-2026-07-25 (running doc_integrity after the cold-eyes pass-6 doc edits).
+  Resolved (2026-07-25) with fix (a) ONLY — inline-code spans are masked before link harvesting. Fix (c) (placeholder-target heuristics) proved unnecessary and was deliberately NOT built: I dumped the 22 live broken_link findings and read every flagged source line, and all 21 noise findings are inside backticks — including the two `int idx` hits (a C++ lambda in prose) and both `url` hits. A placeholder heuristic would have been a second, fuzzier rule earning nothing on top. Fenced blocks were already skipped via fenceMask; inline spans were the whole gap.
+
+  maskInlineCode BLANKS the span (backticks included) rather than deleting it, so a real link whose TEXT is code — [`a/b.md`](a/b.md), this project's house style for citing a file — still parses: the brackets and target sit outside the span. INV-5c pins exactly that, because "delete the span" would silently stop checking a large fraction of the real links in this doc tree. Follows the CommonMark equal-length closing-run rule.
+
+  Expected effect on the live tree: 22 → 1. The survivor is genuine and worth fixing separately — docs/specs/ANTS-1894.md:851 writes [`docs/specs/ANTS-1894.md`](docs/specs/ANTS-1894.md), a repo-root-relative target resolved relative to docs/specs/, so it probes docs/specs/docs/specs/ANTS-1894.md.
+
+  VERIFICATION CAVEAT, stated rather than glossed: the 22 → 1 drop is NOT yet observed live. The MCP server is the running Ants instance (the ~/.local/share home copy), so a doc_integrity call still executes the OLD binary — the re-run after the fix returned an identical count AND a byte-identical etag (0925fc3b849bc80f), which is the tell. Verification here is the unit tests (INV-5b/INV-5c, fixtures replicating the real flagged patterns verbatim), plus the source reading above. Re-run doc_integrity after the next relaunch to confirm the live count.
+
+  NOT done, deferred: the bullet's separate toc_gap observation (23 findings from three TOC-less specs; collapse per-doc). Left open as its own concern — it is a different check with a different fix, and folding it in here would have made one commit answer two questions.
 
 - ✅ [ANTS-3624] **audit_run's compile_commands escape-validator probes 2 build-dir locations while the tools resolve their `-p` DB from 7 — a DB in build-fast/ is used but never validated.**
   VERIFIED both halves. `validateCompileCommandsImpl` (auditrunner.cpp ~:1406) hard-codes exactly two candidates — `<root>/build/compile_commands.json` and `<root>/compile_commands.json` — and RETURNS TRUE (pass) when neither exists (~:1414). But INV-19's `-p` argument for clazy/clang-tidy resolves through `AuditEngine::resolveCompileCommands` (auditengine.cpp:195-219), which probes SEVEN variants: build, build-fast, build-asan, build-workstation, build-release, build-debug, build-test.
@@ -19938,6 +19947,39 @@ shipped.
   Kind: test.
   Lanes: tests, remotecontrol.
   Source: in-session-2026-07-25 (hit while shipping ANTS-3617).
+
+- 📋 [ANTS-3634] **doc_integrity: collapse toc_gap per-doc when a spec has no TOC, and fix ANTS-1894.md's self-referential link.**
+  Split out of ANTS-3623, which fixed the broken_link noise (22 → 1
+  expected) but deliberately left these two.
+
+  1. toc_gap collapse. 23 of the pre-fix findings came from three specs
+     (ANTS-1870, ANTS-2023, ANTS-2141) that have no table of contents at
+     all. Emitting one finding per uncovered section on a TOC-less doc is
+     noisier than a single "this doc has no TOC" — and arguably the
+     TOC-less case should not be a finding at all, since a spec is not
+     required to have one. Check the detectToc predicate first: check 3
+     is documented as running "only when a TOC region was found", so
+     these docs evidently trip the region detector on something that is
+     not a TOC. That detection false positive may be the real bug, in
+     which case collapsing per-doc would paper over it. Diagnose before
+     choosing.
+
+  2. ANTS-1894.md:851 is a REAL broken link and the sole survivor of the
+     ANTS-3623 cleanup. It writes
+     [`docs/specs/ANTS-1894.md`](docs/specs/ANTS-1894.md) — a
+     repo-root-relative target resolved relative to the citing file's own
+     directory, so the checker probes
+     docs/specs/docs/specs/ANTS-1894.md. Correct it to a bare
+     ANTS-1894.md (or drop the self-link entirely — a doc citing itself
+     by full path reads as a copy-paste artifact).
+
+  Confirm the 22 → 1 baseline with a doc_integrity run after the next
+  relaunch before starting: ANTS-3623's effect could not be observed live
+  because the MCP server runs the pre-fix binary.
+  **Layman:** Two leftovers from the link-checker cleanup: it still reports one gripe per section on documents that have no contents list at all, and one genuinely wrong link needs fixing.
+  Kind: fix.
+  Lanes: docintegrity.
+  Source: in-session-2026-07-25 (ANTS-3623 follow-up).
 
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 

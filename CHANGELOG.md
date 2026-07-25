@@ -70,6 +70,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`doc_integrity` no longer reports example links written inside backticks as broken.** (ANTS-3623)
+  Fenced code blocks were skipped but inline `` `[text](target)` `` spans were not, so 21 of the 22 broken-link findings over this project's docs were prose examples — 12 of them in doc_integrity's own spec, which has to contain sample links to explain what the checker does. Real links whose text is code, `[`a/b.md`](a/b.md)`, are still checked.
+
 - **A SARIF report could silently drop findings while reporting `findings_truncated: false`.** (ANTS-3629)
   The document is capped at 10 000 results across all tools, but only the per-tool caps set the flag. Several tools each individually under the cap could sum past it, so results vanished from the report a reviewer treats as the complete finding set, with nothing to say so. The document-wide shed is now reported.
 
