@@ -55,6 +55,19 @@ rather than duplicating the matcher.
   delegate. `AuditDialog::AllowlistEntry` is an alias of
   `AuditEngine::AllowlistEntry`.
 
+- **INV-7 / `formats` is honoured or refused, never ignored (ANTS-3626).**
+  The same silent-no-op class as INV-4, found by the ANTS-1351 cold-eyes
+  pass. `formats` was only ever probed via `contains("sarif")` /
+  `contains("html")`, so an unrecognised entry was simultaneously
+  non-empty — suppressing the `["sarif"]` default — and matched by neither
+  branch: no artifact written, `sarif_path` / `cache_path` absent, and
+  still `ok:true`. It is the costlier half of the pair, because the
+  discarded work is a whole sweep rather than a filter step. Each entry
+  must be `"sarif"` or `"html"`, checked alongside the other cheap request
+  fields and before the concurrency slot; anything else refuses `bad_args`
+  naming the offending value and the accepted set. An **empty** array stays
+  valid and keeps the `["sarif"]` default.
+
 ## Out of scope
 
 - `.audit_suppress` stays GUI-only. It is keyed by the line-grain

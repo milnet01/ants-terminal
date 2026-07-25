@@ -1732,6 +1732,25 @@ RunResult runAudit(const RunRequest &req) {
             }
         }
     }
+    // ── ANTS-3626 — validate `formats`. Before this the field was only
+    // ever probed with contains("sarif") / contains("html"), so a
+    // non-empty unrecognised value (e.g. ["json"]) was simultaneously
+    // non-empty — suppressing the ["sarif"] default — and matched by
+    // neither branch: no artifact written, no sarif_path/cache_path in
+    // the envelope, and still ok:true. A 15-minute sweep could be
+    // discarded on a typo. Same silent-no-op class as ANTS-3615's
+    // `suppressions`. An EMPTY array is valid and keeps the ["sarif"]
+    // default (see the defaulting at the writeSarif site below).
+    for (const QString &f : req.formats) {
+        if (f != QLatin1String("sarif") && f != QLatin1String("html")) {
+            r.ok = false;
+            r.code  = QStringLiteral("bad_args");
+            r.error = QStringLiteral(
+                "audit_run: formats entry \"%1\" not recognised "
+                "(accepted: \"sarif\", \"html\")").arg(f);
+            return r;
+        }
+    }
 
     // ── ANTS-3612 / INV-9 — aggregate concurrency cap. Taken AFTER the
     // cheap argument validation above (a malformed request should get its

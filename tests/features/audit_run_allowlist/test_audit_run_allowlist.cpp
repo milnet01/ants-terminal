@@ -213,3 +213,56 @@ TEST(AuditRunAllowlist, Inv6SharedEngineImplementation) {
                                           "warning: bogus thing here"))
         << "empty allowlist never matches";
 }
+
+// INV-7 (ANTS-3626) — `formats` is validated, the same silent-no-op class
+// INV-4 closed for `suppressions`. An unrecognised value used to be
+// simultaneously non-empty (suppressing the ["sarif"] default) and matched
+// by neither the sarif nor the html branch, so the run wrote no artifact,
+// omitted sarif_path/cache_path, and still returned ok:true — discarding a
+// potentially 15-minute sweep on a typo.
+TEST(AuditRunAllowlist, Inv7UnknownFormatRefuses) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    AuditRunner::RunRequest req;
+    req.projectRoot = dir.path();
+    req.formats     = {QStringLiteral("json")};
+
+    const AuditRunner::RunResult r = AuditRunner::runAudit(req);
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.code, QStringLiteral("bad_args"))
+        << "INV-7: an unrecognised format must refuse, not silently "
+           "produce no artifact";
+
+    // A mixed list refuses on the bad member — a valid sibling does not
+    // launder it through.
+    req.formats = {QStringLiteral("sarif"), QStringLiteral("pdf")};
+    const AuditRunner::RunResult r2 = AuditRunner::runAudit(req);
+    EXPECT_FALSE(r2.ok);
+    EXPECT_EQ(r2.code, QStringLiteral("bad_args"));
+}
+
+// INV-7b — the accepted set, and an EMPTY array, are not refused. Empty is
+// valid and keeps the ["sarif"] default; pinning it here stops a future
+// tightening from turning the default path into a refusal.
+TEST(AuditRunAllowlist, Inv7bAcceptedFormatsNotRefused) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QList<QStringList> ok = {
+        {},
+        {QStringLiteral("sarif")},
+        {QStringLiteral("html")},
+        {QStringLiteral("sarif"), QStringLiteral("html")},
+    };
+    for (const QStringList &f : ok) {
+        AuditRunner::RunRequest req;
+        req.projectRoot = dir.path();
+        req.formats     = f;
+        // Name a tool that cannot resolve, so the run stops well past the
+        // formats gate without spawning anything.
+        req.tools       = {QStringLiteral("cppcheck")};
+        const AuditRunner::RunResult r = AuditRunner::runAudit(req);
+        EXPECT_NE(r.code, QStringLiteral("bad_args"))
+            << "INV-7b: formats [" << f.join(QLatin1Char(',')).toStdString()
+            << "] must be accepted";
+    }
+}
