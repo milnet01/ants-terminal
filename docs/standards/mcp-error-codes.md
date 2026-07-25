@@ -40,7 +40,7 @@ against the table below.
 | `bad_tool` | A named entry in a tool-list argument isn't one the verb knows. | `audit_run tools:["cppcheque"]` — not in `kKnownTools()`. |
 | `bad_scope` | A `scope` argument is malformed, or its embedded value fails sanitisation. | `audit_run scope:"since-tag:--evil"` — the tag fails `^[A-Za-z0-9._/+-]{1,128}$` or leads with `-`. |
 | `bad_severity_floor` | A `severity_floor` argument isn't one of the accepted levels (`error`, `warning`, `note`). | `last_audit_summary severity_floor:"catastrophic"`. |
-| `bad_actionable` | `test_audit_fold_in`: the `actionable[]` payload is malformed or empty. Refused *before* any id is allocated, so a bad payload can't permanently burn counter ids. | `test_audit_fold_in actionable:[]`. |
+| `bad_actionable` | `test_audit_fold_in`: an `actionable[]` **entry** carries none of `headline` / `summary` / `claim`. An **empty array** is `missing_field`, not this. Both refuse *before* any id is allocated, so a bad payload can't permanently burn counter ids. | `test_audit_fold_in actionable:[{"file":"x.py"}]` (no headline). |
 | `narrative_md_required` | A verb in narrative mode was given no `narrative_md` body (empty or absent). | `test_audit_fold_in narrative_mode:true` with no `narrative_md`. |
 | `unknown_dimension` | A named review/audit dimension isn't in the engine's canonical set. | `test_audit_partition dimensions:"csv:foo"` — not in `kDimensions`. |
 | `bad_chunk_id` | A `chunk_id` isn't present in the partition it references. | `test_audit_brief chunk_id:"c-999"` against a 16-chunk partition. |

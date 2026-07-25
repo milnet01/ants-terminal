@@ -19794,6 +19794,16 @@ shipped.
   Lanes: auditrunner.
   Source: cold-eyes ANTS-1351 loop 5, lane 1 (2026-07-25).
 
+- 📋 [ANTS-3630] **test_audit_partition's `quick` field is accepted, forwarded and never read — a documented user-facing flag (`/test-audit --quick`) that changes nothing.**
+  VERIFIED: `bool quick` is declared (testauditengine.h:85) and forwarded from the MCP dispatch lambda (mainwindow.cpp:4819), but `req.quick` has ZERO reads anywhere in testauditengine.cpp. So `test_audit_partition{quick:true}` performs the identical full walk + full pre-pass scan as a normal call.
+  This is the third member of the silent-no-op family this session found (ANTS-3615's `suppressions`, ANTS-3626's `formats`, now `quick`) and it is the worst of the three because it is USER-FACING: `/test-audit --quick` is an advertised flag, documented in the skill's usage block as "grep-pass only — no subagents, seconds not minutes".
+  MY OWN CONTRIBUTION TO THE BLAST RADIUS, recorded so it isn't repeated: ANTS-3625 (earlier today) applied the ANTS-1397 section-7 fast-path sketch to the live ~/.claude/skills/test-audit/SKILL.md, and that sketch's flag mapping routed `--quick` to `quick:true`. I verified five other things in that sketch against source before applying and did not check `quick` — so the apply turned a stale spec line into live instructions telling the orchestrator to rely on a dead flag. The skill has been corrected to do the skipping caller-side and to say the flag is a no-op.
+  Decide: (a) implement it — `quick` should skip the pre-pass scan (the expensive part: 17 regexes x every test file) and return chunks only, which is what "seconds not minutes" means; or (b) remove the field from the struct, the lambda and the schema, and keep `--quick` purely caller-side (the skill now does this anyway). (a) is the better end state: the caller cannot skip the server-side scan, only its own subagent phase, so today's `--quick` still pays the scan cost it claims to avoid. Whichever is chosen, ANTS-1397 section 2.2 and section 7 now flag it and must be cleared.
+  **Layman:** The test-audit command has a '--quick' option promising a fast grep-only pass. The setting is passed all the way to the engine and then ignored, so quick mode does exactly the same (slow) work as a full run.
+  Kind: fix.
+  Lanes: testauditengine, mainwindow.
+  Source: cold-eyes ANTS-1397 loop 6 (2026-07-25).
+
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
 /cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +
