@@ -4478,8 +4478,10 @@ void MainWindow::setupClaudeMcpProviders() {
         rcDelegate(&RemoteControl::cmdRoadmapBranchDrift));
     // ANTS-1351 — audit_run server-side runner. Inline in-flight gate
     // via ClaudeIntegration::verbInFlight* (§ 2.4 of v4 spec) — no
-    // class abstraction; two consumers (this verb + ANTS-1397's
-    // test_audit_partition) don't justify the helper class.
+    // class abstraction; two consumers (this verb + indie_review_dispatch,
+    // ANTS-1352) don't justify the helper class. ANTS-1397's
+    // test_audit_partition was a designed third consumer but was never
+    // wired — see that spec's INV-12 (corrected 2026-07-25).
     // caller_cwd is Required (ANTS-1404 contract registered in
     // callerCwdContractFor); dispatcher refuses upstream when absent.
     m_claudeIntegration->registerToolProvider("audit_run",
