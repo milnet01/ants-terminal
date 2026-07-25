@@ -871,6 +871,38 @@ PartitionResult partition(const PartitionRequest &req) {
             "backslash — rejected");
         return r;
     }
+    // ANTS-3627 — root-anchor every caller-supplied scope path. Both
+    // scope branches concatenate onto the project root without
+    // canonicalising, so `path:../..` (and `files:../../etc/passwd`,
+    // which the backslash check above does not cover) would otherwise
+    // walk a tree outside the project and return its paths to the
+    // caller. Anchor lexically: the resolved path must be the root or
+    // sit under it. Symlinks inside the root are not resolved — that
+    // is a separate concern from the `..` escape this closes.
+    {
+        QStringList rels;
+        if (req.scope.startsWith(QLatin1String("path:"))) {
+            rels << scopeSubdir(req.scope);
+        } else if (req.scope.startsWith(QLatin1String("files:"))) {
+            for (const QString &p :
+                     req.scope.mid(6).split(QLatin1Char(','))) {
+                rels << p.trimmed();
+            }
+        }
+        for (const QString &rel : rels) {
+            if (rel.isEmpty()) continue;  // the walk already skips these
+            const QString abs =
+                QDir::cleanPath(canon + QLatin1Char('/') + rel);
+            if (abs != canon
+                && !abs.startsWith(canon + QLatin1Char('/'))) {
+                r.ok = false; r.code = QStringLiteral("bad_path");
+                r.error = QStringLiteral(
+                    "test_audit_partition: scope path \"%1\" escapes the "
+                    "project root — rejected").arg(rel);
+                return r;
+            }
+        }
+    }
     // INV-6 — dimensions.
     const QStringList dims = resolveDimensions(req.dimensions);
     if (dims.isEmpty()) {

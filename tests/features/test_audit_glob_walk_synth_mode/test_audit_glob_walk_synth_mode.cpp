@@ -342,3 +342,77 @@ TEST(TestAuditDocs, G13ErrorCodesPresentInTaxonomy) {
     EXPECT_NE(doc.find("reports_dir_unreadable"), std::string::npos);
     EXPECT_NE(doc.find("reports_dir_empty"), std::string::npos);
 }
+
+// ---------- G-18 (ANTS-3627) — scope paths are root-anchored -------
+//
+// `partition()` concatenated a caller-supplied `path:`/`files:` scope
+// onto the project root with no anchor check, so `path:../..` walked a
+// tree outside the project and returned its file paths to the caller.
+// These assert the refusal, and that ordinary in-tree scopes are
+// untouched by the check.
+
+// Build a project fixture with a SIBLING directory outside it, so an
+// escape has something real to find (a walk that returns nothing would
+// pass a naive assertion for the wrong reason).
+QString buildEscapeFixture(const QString &parent) {
+    const QString root = parent + QStringLiteral("/project");
+    EXPECT_TRUE(writeFile(root + "/CMakeLists.txt",
+                          "project(t)\nenable_testing()\n"));
+    EXPECT_TRUE(writeFile(root + "/tests/test_x.cpp",
+                          "int main() { return 0; }\n"));
+    // Outside the project root, but reachable via `../`.
+    EXPECT_TRUE(writeFile(parent + "/outside/test_secret.cpp",
+                          "int main() { return 0; }\n"));
+    return root;
+}
+
+TEST(TestAuditWalk, G18ScopePathEscapeRefused) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    const QString root = buildEscapeFixture(tmp.path());
+    for (const QString &scope : {QStringLiteral("path:.."),
+                                 QStringLiteral("path:../outside"),
+                                 QStringLiteral("path:../../.."),
+                                 QStringLiteral("path:tests/../..")}) {
+        TestAuditEngine::PartitionRequest req;
+        req.callerCwd = root;
+        req.scope     = scope;
+        const auto r = TestAuditEngine::partition(req);
+        EXPECT_FALSE(r.ok)
+            << "scope " << scope.toStdString() << " escaped the root";
+        EXPECT_EQ(r.code, QStringLiteral("bad_path"))
+            << "scope " << scope.toStdString();
+    }
+}
+
+TEST(TestAuditWalk, G18ScopeFilesEscapeRefused) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    const QString root = buildEscapeFixture(tmp.path());
+    TestAuditEngine::PartitionRequest req;
+    req.callerCwd = root;
+    // One in-tree entry + one escaping entry: the whole call must refuse
+    // rather than silently drop the bad entry (which is what the walk's
+    // pre-ANTS-3627 `QFileInfo::exists` filter did).
+    req.scope = QStringLiteral(
+        "files:tests/test_x.cpp,../outside/test_secret.cpp");
+    const auto r = TestAuditEngine::partition(req);
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(r.code, QStringLiteral("bad_path"));
+}
+
+TEST(TestAuditWalk, G18InTreeScopesStillAccepted) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    const QString root = buildEscapeFixture(tmp.path());
+    // A `..` that stays inside the root must NOT be refused — the check
+    // is an anchor, not a substring ban.
+    for (const QString &scope : {QStringLiteral("path:tests"),
+                                 QStringLiteral("path:tests/../tests"),
+                                 QStringLiteral("path:.")}) {
+        TestAuditEngine::PartitionRequest req;
+        req.callerCwd = root;
+        req.scope     = scope;
+        const auto r = TestAuditEngine::partition(req);
+        EXPECT_NE(r.code, QStringLiteral("bad_path"))
+            << "in-tree scope " << scope.toStdString()
+            << " wrongly refused as an escape";
+    }
+}
