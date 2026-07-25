@@ -19708,7 +19708,7 @@ shipped.
   Lanes: remotecontrol.
   Source: OneUp_Ants_MCP_Feedback.md finding 6 (2026-07-25 triage).
 
-- 📋 [ANTS-3621] **feedback_log op:compact_resolved refuses a v4 feedback file as `not_v2` and tells the caller to run migrate_v2 — a version gate that reads `!= 2` instead of `>= 2`.**
+- ✅ [ANTS-3621] **feedback_log op:compact_resolved refuses a v4 feedback file as `not_v2` and tells the caller to run migrate_v2 — a version gate that reads `!= 2` instead of `>= 2`.**
   Hit while running the maintainer compaction sweep across all 13 *_Ants_MCP_Feedback.md files. OneUp_Ants_MCP_Feedback.md carries `<!-- ants-mcp-feedback: 4 -->` and compact_resolved refused: `{code:"not_v2", error:"compact_resolved requires a v2 file (...); this file is v4 — run op:migrate_v2 first"}`.
   VERIFIED in source: remotecontrol.cpp:13097 gates on `if (ver != 2)`. The comment above it (:13090-13092) explains the intent correctly — a *v1* file predates the structural `**Proposed ID:**` line, so nothing would parse as a finding — but the implementation expresses "not v1" as "exactly 2", so every FUTURE version is refused too. The refusal text then gives actively wrong advice: running migrate_v2 on a v4 file would attempt a v1→v2 downgrade path on a newer format.
   Fix: gate on `ver < 2` (with the v0/no-marker case still refusing), and reword the message to name the minimum rather than an exact version. Then re-run the sweep on OneUp. Worth a quick grep for the same `!= <version>` shape on the sibling ops (`assign_id` and `prune_tracking` both read the marker) so the whole family fails forward consistently.
@@ -19717,6 +19717,7 @@ shipped.
   Kind: fix.
   Lanes: remotecontrol.
   Source: in-session-2026-07-25 (hit while running the 13-file feedback compaction sweep).
+  Resolved (2026-07-25): the compact_resolved version gate is now `ver < 2`, not `ver != 2`, matching the parser's own `formatVersion >= 2` (feedbackfile.cpp:142). Pre-fix a v3+ file was parsed with v2 inline-ID semantics but refused here as not_v2 with the advice to run migrate_v2 — a no-op on an already-migrated file, so there was no way forward. Refusal text also updated to "v2 or later".
 
 - 📋 [ANTS-3622] **audit_run's `tools` schema string says auto-detect excludes clang-tidy, but kAutoDetectTools() excludes only mypy — decide which side is right.**
   VERIFIED both sides. The MCP schema string (claudeintegration.cpp:7086-7095) says: "Empty / omitted = auto-detect all runnable EXCEPT clang-tidy and mypy, which are opt-in", and goes on to justify clang-tidy's exclusion ("needs `-p build/`, pair it with paths + checks for the scoped sweep, ANTS-1512"). But kAutoDetectTools() (auditrunner.cpp:268-275) is kKnownTools() with ONLY mypy removed — clang-tidy IS auto-detected. docs/specs/ANTS-1351.md agrees with the code (9 tools on a default sweep), so the schema string is the outlier.
@@ -19753,7 +19754,7 @@ shipped.
   Source: cold-eyes ANTS-1397 loop 3, lane 3 (2026-07-25).
   Resolved (2026-07-25): ~/.claude/skills/test-audit/SKILL.md now carries a '## Fast path (Ants Terminal)' block between ## Usage and ## Procedure, and its allowed-tools frontmatter lists all five verbs (partition / brief / synthesis_prompt / fold_in / recheck). Applied the ANTS-1397 section-7 sketch, extended with what the ANTS-3613 pass taught: the frontmatter entry is not optional — without it the skill cannot call the verb even with the block present. Also folded in five things the draft predates or omits, all verified this session: caller_cwd is Required on every verb (the draft's Optional contract never shipped); partition's two-trigger pre_pass_cached omission plus pre_pass_chunk_ids; synth's mode/offset/limit/allow_outside_project; fold_in's bad_actionable-before-id-allocation guard and dry_run; and the Expensive-tier rate_limited refusal on partition/fold_in. Kept the 'structured inputs, NOT triaged output' caveat so the orchestrator still dispatches the chunk + triage subagents. ANTS-1397.md section 7's PROPOSED banner flips to APPLIED in the loop-4 fix batch (that file is mid-cold-eyes-review; editing it now would drift the reviewer's line citations).
 
-- 📋 [ANTS-3626] **audit_run's `formats` field is unvalidated — an unrecognised value suppresses the default and silently produces no artifact, the same class ANTS-3615 just closed for `suppressions`.**
+- ✅ [ANTS-3626] **audit_run's `formats` field is unvalidated — an unrecognised value suppresses the default and silently produces no artifact, the same class ANTS-3615 just closed for `suppressions`.**
   VERIFIED. The schema documents `formats` as a subset of ["sarif","html"], but runAudit never validates the array — it only asks `formats.contains("sarif")` and `formats.contains("html")`. A non-empty unrecognised value such as ["json"] therefore (a) is non-empty, so the ["sarif"] default does not apply, (b) matches neither branch, so no SARIF and no HTML is written, (c) leaves `sarif_path` / `cache_path` absent from the envelope, and (d) still returns ok:true. No refusal code covers it.
   This is exactly the silent-no-op shape ANTS-3615 just fixed for `suppressions`, and it is arguably worse: a caller who mistypes a format gets a successful-looking envelope with no artifact and no signal, and the audit work — potentially a 15-minute sweep — is thrown away. The `suppressions` case at least left the run's results intact.
   Fix (mirror ANTS-3615's shape): validate each entry against the accepted set at the same point as the other cheap request-field checks — before the concurrency slot and before any tool spawns — and refuse `bad_args` naming the offending value and the accepted set. Decide explicitly what an EMPTY array means: today it takes the ["sarif"] default (empty is falsy for both contains checks, so the default branch applies), which is probably right, but say so in the spec rather than leaving it to be re-derived. ANTS-1351.md section 2.1's `formats` row now documents the current behaviour and points here; clear that note when this lands, and add the accepted-set list to the tool schema description at the same time.
@@ -19761,8 +19762,9 @@ shipped.
   Kind: fix.
   Lanes: auditrunner, claudeintegration.
   Source: cold-eyes ANTS-1351 loop 4, lane 1 (2026-07-25).
+  Resolved (2026-07-25): `formats` is validated against {sarif, html} alongside the other cheap request fields — before the concurrency slot and before any tool spawns — refusing bad_args naming the offending value and the accepted set. An EMPTY array stays valid and keeps the ["sarif"] default; that is now pinned by a test rather than left to be re-derived. Tests: AuditRunAllowlist.Inv7UnknownFormatRefuses (single bad value + a mixed list, so a valid sibling cannot launder a bad one) and Inv7bAcceptedFormatsNotRefused (the negative control). MUST-FAIL-FIRST PROVEN: Inv7UnknownFormatRefuses fails with the guard disabled. Feature spec INV-7 added to tests/features/audit_run_allowlist/spec.md.
 
-- 📋 [ANTS-3627] **test_audit_partition's `scope:"path:<sub>"` is concatenated onto the project root with no root-anchor check — `path:../..` walks outside the project.**
+- ✅ [ANTS-3627] **test_audit_partition's `scope:"path:<sub>"` is concatenated onto the project root with no root-anchor check — `path:../..` walks outside the project.**
   VERIFIED in source. `walkTestFiles` (testauditengine.cpp ~:337-339) does:
       if (scope.startsWith("path:")) { sub = scope.mid(5); scopeRoot = projectRoot + '/' + sub; }
   No canonicalisation, no root anchor, no PathValidation. So `scope:"path:../../.."` sets scopeRoot outside the project and the subsequent walk enumerates + reads files there; the envelope then carries their paths back to the caller. The sibling `files:` branch is only marginally better — it rejects empty entries and backslashes (~:345) but not `../`, so `files:../../etc/passwd` resolves and is emitted if it exists.
@@ -19772,6 +19774,7 @@ shipped.
   Kind: security.
   Lanes: testauditengine.
   Source: cold-eyes ANTS-1397 loop 4, lane 3 (2026-07-25).
+  Resolved (2026-07-25): partition() now root-anchors every caller-supplied scope path. Both the `path:<sub>` and `files:<csv>` branches are checked with QDir::cleanPath against the canonical root before any walk; anything resolving outside refuses bad_path, and a `files:` list refuses as a WHOLE when any entry escapes rather than silently dropping it. In-tree `..` that resolves back under the root (path:tests/../tests) is still accepted — the check is an anchor, not a substring ban. Anchoring is lexical; symlinks inside the root are not resolved (noted in the test spec as out of scope). Tests: TestAuditWalk.G18ScopePathEscapeRefused / G18ScopeFilesEscapeRefused / G18InTreeScopesStillAccepted in tests/features/test_audit_glob_walk_synth_mode/. MUST-FAIL-FIRST PROVEN: with the guard disabled the two escape tests fail, and G18ScopePathEscapeRefused takes 32.9 s because `path:../../..` really does walk far up the filesystem — the negative control (in-tree scopes) passes in both states.
 
 - 📋 [ANTS-3628] **Inv5OptionalContract asserts the INVERSE of the shipped caller_cwd contract and passes only because its scrape window drifted off the block it checks.**
   VERIFIED. tests/features/mcp_test_audit_trio/test_mcp_test_audit_trio.cpp:64 ships `TEST(mcp_test_audit_trio, Inv5OptionalContract)` whose assertions read `test_audit_partition must NOT be Required`, `test_audit_brief must NOT be Required`, etc. But all five test_audit_* verbs DO register CallerCwdContract::Required (mainwindow.cpp) and ARE listed Required in callerCwdContractFor (claudeintegration.cpp:11543-11547). So the test asserts the inverse of shipped behaviour.
@@ -19795,7 +19798,7 @@ shipped.
   Lanes: auditrunner.
   Source: cold-eyes ANTS-1351 loop 5, lane 1 (2026-07-25).
 
-- 📋 [ANTS-3630] **test_audit_partition's `quick` field is accepted, forwarded and never read — a documented user-facing flag (`/test-audit --quick`) that changes nothing.**
+- ✅ [ANTS-3630] **test_audit_partition's `quick` field is accepted, forwarded and never read — a documented user-facing flag (`/test-audit --quick`) that changes nothing.**
   VERIFIED: `bool quick` is declared (testauditengine.h:85) and forwarded from the MCP dispatch lambda (mainwindow.cpp:4819), but `req.quick` has ZERO reads anywhere in testauditengine.cpp. So `test_audit_partition{quick:true}` performs the identical full walk + full pre-pass scan as a normal call.
   This is the third member of the silent-no-op family this session found (ANTS-3615's `suppressions`, ANTS-3626's `formats`, now `quick`) and it is the worst of the three because it is USER-FACING: `/test-audit --quick` is an advertised flag, documented in the skill's usage block as "grep-pass only — no subagents, seconds not minutes".
   MY OWN CONTRIBUTION TO THE BLAST RADIUS, recorded so it isn't repeated: ANTS-3625 (earlier today) applied the ANTS-1397 section-7 fast-path sketch to the live ~/.claude/skills/test-audit/SKILL.md, and that sketch's flag mapping routed `--quick` to `quick:true`. I verified five other things in that sketch against source before applying and did not check `quick` — so the apply turned a stale spec line into live instructions telling the orchestrator to rely on a dead flag. The skill has been corrected to do the skipping caller-side and to say the flag is a no-op.
@@ -19804,6 +19807,82 @@ shipped.
   Kind: fix.
   Lanes: testauditengine, mainwindow.
   Source: cold-eyes ANTS-1397 loop 6 (2026-07-25).
+  Resolved (2026-07-25) via option (b) — REMOVED, not implemented. Option (a) in this bullet was wrong and I verified it before acting: it proposed making `quick` skip the pre-pass scan, but the live skill (~/.claude/skills/test-audit/SKILL.md:112,142) defines --quick as "the grep pre-pass IS the audit" with only the subagent phase skipped. Implementing (a) would have deleted the very output --quick exists to produce. The schema string ("Quick mode — skip pre-pass regex scan") carried the same wrong semantics, so it was drift too, not a contract. Removed the property from the audit schema, `req.quick` from the dispatch lambda (mainwindow.cpp) and `bool quick` from PartitionRequest. Because the schema is additionalProperties:false, a stale caller now gets a LOUD refusal instead of a silent no-op. --quick stays caller-side, which the skill already does correctly.
+
+- 📋 [ANTS-3631] **Feedback v2 has no "needs info" state — a maintainer question to the reporting session is invisible in their delta.**
+  Triage is not always id-or-drop: some findings need a round-trip
+  ("which project layout?", "paste the failing envelope"). v2 has no
+  state for that.
+
+  VERIFIED against source, not inferred. parse()'s v2 branch
+  (feedbackfile.cpp:261) defines the un-triaged delta as every `### `
+  finding whose FIRST `**Proposed ID:**` value is neither an ANTS-NNNN
+  id nor an `n/a` closure (closureRe(), :99 — `^n/a\b`). assign_id's
+  `note` (ANTS-3571, :1286) writes a `- **Note:**` bullet under that
+  line, but assign_id requires exactly one of ids|closure, and a closure
+  always renders `n/a — <reason>`. So EVERY way of attaching a question
+  also fills the slot, which removes the finding from the reporting
+  session's next feedback_query delta. The question is written where
+  its intended reader has stopped looking.
+
+  Today's workaround (in use as of this session): reply with
+  op:"append_finding" against their file — a new EOF block has a blank
+  Proposed ID, so it does surface in their delta. It works, but it
+  inverts the roles (the maintainer posts as a contributor), and the
+  answer comes back as yet another finding rather than attached to the
+  original.
+
+  Fix: a third assign_id disposition alongside ids/closure — e.g.
+  `awaiting:"<question>"` rendering `**Proposed ID:** _(awaiting
+  reporter — &lt;question&gt;)_`. Teach closureRe()'s call-site in
+  parse() to treat an `_(awaiting` value as UNFILLED so the finding
+  stays in the delta, and have compact_resolved skip it (no id to gate
+  on). Then the reporter sees their own finding, with the question
+  attached, in the surface they already read. Also surface a count in
+  session_orient's feedback_pending block so the maintainer sees which
+  questions are still unanswered.
+
+  Gate: needs a standard change first — docs/standards/mcp-feedback-files.md
+  §2.2 defines the delta rule, so amend the spec before the parser.
+  **Layman:** When I triage another project's bug report and need to ask them a question, there is no way to ask it that they will actually see.
+  Kind: feature.
+  Lanes: feedbackfile, claudeintegration.
+  Source: user-request-2026-07-25.
+
+- ✅ [ANTS-3632] **Review Changes dialog: show each touched file's total line count in the Status list.**
+  User request: the Status list names each touched file but gives no
+  sense of its size, so there is no way to tell a one-line tweak's file
+  from a 20 000-line one before clicking in.
+  Resolved (2026-07-25): shipped as described. Verified live against this repo's own working tree; full suite 2899/2899 green.
+
+  Renders a dimmed `(N lines)` after each Status entry — the file's TOTAL
+  length as it stands in the working tree, not the churn.
+
+  Design notes:
+  - Fails soft by construction. fileLineCount() returns -1 and the caller
+    emits NO suffix for a deleted path, an unreadable file, a binary
+    (NUL sniff on the first chunk, same test the New-files renderer
+    already uses), or a file over 64 MiB. A wrong number beside a
+    filename is worse than no number.
+  - Renames key on the NEW path, so the count describes the file that
+    actually exists.
+  - Chunked 64 KiB read, not readAll(): the Status list routinely carries
+    multi-MiB files (this repo's own ROADMAP.md is ~2.4 MiB) and the
+    dialog must not hold one in memory just to count newlines. RAM is
+    O(64 KiB) regardless of file size.
+  - Counts a final unterminated line, so the number matches `wc -l` + 1
+    on a file with no trailing newline — i.e. what an editor shows.
+
+  Open question deliberately NOT decided here: the request said "total
+  line numbers", and the example `(2324 lines)` reads as whole-file
+  length, which is what shipped. Churn (`+18 −4`) is the other reasonable
+  reading and is arguably more useful in a review surface. Cheap to add
+  alongside if wanted — the diffstat is already parsed for the diffstat
+  section.
+  **Layman:** The Review Changes window now tells you how big each changed file is, e.g. "M ROADMAP.md (2324 lines)".
+  Kind: enhancement.
+  Lanes: diffviewer.
+  Source: user-request-2026-07-25.
 
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 

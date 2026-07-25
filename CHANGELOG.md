@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Review Changes dialog shows each touched file's total line count.** (ANTS-3632)
+  The Status list now renders a dimmed `(N lines)` after each entry, so file size is visible before clicking in. Renames report the new path; deleted, binary, unreadable and over-64 MiB files show no suffix rather than a misleading number. Counted in 64 KiB chunks, so memory stays flat on multi-MiB files.
+
 - **`audit_dismiss` — let Claude tell the audit tool "that finding isn't a real bug".** (ANTS-1713)
   Until now only the Audit pop-up could mark a warning as a false positive so later audits stop reporting it. Claude can now record the same verdict directly. It is remembered by content rather than by line number, so it survives edits that move the code around.
 
@@ -51,7 +54,18 @@ for security-relevant changes.
 - **cold_eyes_brief: caution reviewers that ROADMAP/CHANGELOG are append-only HISTORY — a ✅/Resolved bullet is PAST state, a 📋 bullet is already-tracked work.** (ANTS-3586)
   Cold-eyes reviewers keep re-reporting already-fixed bugs because a 'Resolved' roadmap line reads to them like an open problem; add one sentence to the brief telling them to verify against current source first.
 
+### Removed
+
+- **`test_audit_partition`'s inert `quick` field, which was accepted and forwarded but never read.** (ANTS-3630)
+  `quick:true` ran an identical full walk and pre-pass. `--quick` is caller-side (the grep pre-pass is the audit; only the subagent phase is skipped), so the field promised a fast path that did not exist. Callers passing it now get a schema refusal rather than a silent no-op.
+
 ### Fixed
+
+- **`feedback_log op:compact_resolved` accepts v2-or-later feedback files, not exactly v2.** (ANTS-3621)
+  The gate was `!= 2` while the parser gates on `>= 2`, so a future v3+ file was read with v2 semantics but refused as `not_v2` and pointed at `migrate_v2` — a no-op on an already-migrated file, leaving no way forward.
+
+- **`audit_run` refuses an unrecognised `formats` value instead of silently producing no report.** (ANTS-3626)
+  An unrecognised entry such as `["json"]` was non-empty enough to suppress the `["sarif"]` default yet matched neither output branch, so a sweep that could run for 15 minutes finished with `ok:true`, no artifact, and no signal. Now refused as `bad_args` naming the accepted set, before any tool starts. An empty array still means `["sarif"]`.
 
 - **The audit's "hide these known-OK warnings" list now works outside the app window too.** (ANTS-3615)
   The `.audit_allowlist.json` filter only ever ran in the Audit pop-up, so an entry that hid a finding there did nothing when Claude or CI ran the same audit. It is now shared by both. The `suppressions` setting, which had quietly done nothing, is honoured too — and an unrecognised value now says so instead of being ignored.
@@ -76,6 +90,11 @@ for security-relevant changes.
 
 - **session_orient: keep top-level `ok:true` when the only problem is absent-but-optional artifacts (no ROADMAP/specs/empty index) — surface them via `warnings[]`/`notices[]`.** (ANTS-3587)
   A brand-new project with no roadmap yet gets a scary 'ok:false' from the first orientation call, as if something broke — but 'no roadmap yet' is normal.
+
+### Security
+
+- **`test_audit_partition` now root-anchors a caller-supplied `scope`, closing a path-traversal read.** (ANTS-3627)
+  A `scope:"path:../.."` (or a `files:` entry with `../`) was concatenated onto the project root with no anchor check, so the walk enumerated files outside the project and returned their paths in the envelope. Both branches are now checked against the canonical root and refuse `bad_path`; a `files:` list refuses as a whole rather than silently dropping the bad entry.
 
 ## [0.7.101] — unreleased (Patron RC preview)
 ### Added
