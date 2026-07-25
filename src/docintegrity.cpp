@@ -294,8 +294,11 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
             }
         }
 
-        // Check 3 — TOC coverage (only when a TOC region was found).
-        if (d.tocEndLine >= 0) {
+        // Check 3 — TOC coverage (only when a TOC region with at least one
+        // `#anchor` entry was found). Coverage is matched by slug, so a TOC
+        // whose items are all plain text (e.g. `- §1 Problem`) offers nothing
+        // to match and would report every section missing (ANTS-3634).
+        if (d.tocEndLine >= 0 && !d.tocEntries.isEmpty()) {
             QHash<QString, int> firstSeen;
             for (const auto &e : d.tocEntries) {
                 if (firstSeen.contains(e.first)) {

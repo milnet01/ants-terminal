@@ -230,6 +230,40 @@ TEST(DocIntegrity, NoTocNoGap) {
     EXPECT_EQ(countKind(DocIntegrity::check(root, {"docs/a.md"}), Kind::TocGap), 0);
 }
 
+// INV-9b (ANTS-3634) — a TOC region whose items carry no `#anchor` link at all
+// yields no slugs to match against, so check 3 must stand down rather than
+// report every section missing. Real shape: docs/specs/ANTS-2023.md, whose TOC
+// lists plain-text `- §1 Problem` items — it produced 8 false TocGaps.
+TEST(DocIntegrity, LinklessTocNotReportedAsGaps) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    ASSERT_TRUE(writeFile(root + "/docs/a.md",
+                          "## Contents\n"
+                          "\n"
+                          "- §1 Problem\n"
+                          "- §2 Surface\n"
+                          "\n"
+                          "## 1. Problem\ntext\n"
+                          "## 2. Surface\ntext\n"));
+    EXPECT_EQ(countKind(DocIntegrity::check(root, {"docs/a.md"}), Kind::TocGap), 0);
+
+    // A TOC that DOES use anchors keeps full coverage — the stand-down is
+    // scoped to the zero-entry case, not "any linkless item" (§ 2.5 already
+    // skips an individual linkless bullet without ending the run).
+    ASSERT_TRUE(writeFile(root + "/docs/b.md",
+                          "## Contents\n"
+                          "\n"
+                          "- Sections\n"            // linkless parent bullet
+                          "- [Alpha](#alpha)\n"
+                          "\n"
+                          "## Alpha\ntext\n"
+                          "## Beta\ntext\n"));
+    const auto fs = DocIntegrity::check(root, {"docs/b.md"});
+    EXPECT_EQ(countKind(fs, Kind::TocGap), 1);
+    EXPECT_TRUE(hasMention(fs, Kind::TocGap, "Beta"));
+}
+
 // INV-12 — pure: two runs identical, no files written.
 TEST(DocIntegrity, PureNoState) {
     QTemporaryDir tmp;

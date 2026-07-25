@@ -70,6 +70,19 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Link checker no longer reports every section of a spec as "missing from TOC" when that spec's contents list is plain text.** (ANTS-3634)
+  (ANTS-3634) `doc_integrity`'s TOC-coverage check matches sections by
+  anchor slug, but it only required that a contents *region* exist — not
+  that the region actually contained any `#anchor` links. A spec whose
+  contents list is written as plain text (`- §1 Problem`) therefore
+  offered nothing to match against, and every one of its sections was
+  reported missing. Three specs (ANTS-1870, ANTS-2023, ANTS-2141)
+  accounted for 23 of the 26 findings over this project's own docs — all
+  false alarms; the documents were fine. The check now stands down when a
+  contents region yields no anchors. A contents list that does use
+  anchors keeps full coverage, including the existing rule that a single
+  linkless bullet is skipped without ending the list.
+
 - **`doc_integrity` no longer reports example links written inside backticks as broken.** (ANTS-3623)
   Fenced code blocks were skipped but inline `` `[text](target)` `` spans were not, so 21 of the 22 broken-link findings over this project's docs were prose examples — 12 of them in doc_integrity's own spec, which has to contain sample links to explain what the checker does. Real links whose text is code, `[`a/b.md`](a/b.md)`, are still checked.
 

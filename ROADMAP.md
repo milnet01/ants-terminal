@@ -19948,9 +19948,54 @@ shipped.
   Lanes: tests, remotecontrol.
   Source: in-session-2026-07-25 (hit while shipping ANTS-3617).
 
-- 📋 [ANTS-3634] **doc_integrity: collapse toc_gap per-doc when a spec has no TOC, and fix ANTS-1894.md's self-referential link.**
+- ✅ [ANTS-3634] **doc_integrity: collapse toc_gap per-doc when a spec has no TOC, and fix ANTS-1894.md's self-referential link.**
   Split out of ANTS-3623, which fixed the broken_link noise (22 → 1
   expected) but deliberately left these two.
+  Resolved (2026-07-25). ANTS-3623 confirmed first against the
+  post-relaunch binary: docs/standards/mcp-feedback-files.md dropped 22 → 0
+  findings, new etag 15561b9cef98bb60 (the pre-fix run returned a
+  byte-identical 0925fc3b849bc80f, which was the tell that the old binary
+  was answering).
+
+  BOTH premises in this item's original write-up were WRONG, and the
+  diagnosis it asked for is what disproved them:
+
+  1. NOT "three specs with no table of contents at all". ANTS-2023 has a
+     TOC (## Contents, :10-18) — as do ANTS-1870 and ANTS-2141. Their
+     entries are plain text (- §1 Problem) while the headings are
+     ## 1. Problem. detectToc (docintegrity.cpp:166-171) harvests entries
+     ONLY from [text](#anchor) links, so tocEntries came back empty while
+     tocEndLine was set; check() gated on the REGION (tocEndLine >= 0) but
+     matched on entrySlugs, so every H2 after the region fired. So the
+     "detection false positive" this item suspected was real, but it was
+     in the ENTRY harvest, not the region detector — and collapsing
+     per-doc would indeed have papered over it, exactly as feared.
+
+     Fix: gate check 3 on the region having >= 1 anchor entry
+     (docintegrity.cpp:297). Test LinklessTocNotReportedAsGaps proved RED
+     first (2 false gaps on the fixture) then GREEN. Its second half pins
+     that an anchored TOC keeps full coverage, so the stand-down cannot
+     silently widen. Spec gains INV-9b + two Out-of-scope entries.
+
+  2. NOT a real broken link. ANTS-1894.md:851 sits inside § 8 Cross-doc
+     impact as DRAFT text for CHANGELOG.md, where a repo-root-relative
+     path is correct — CHANGELOG.md:1752 shipped the identical link.
+     Rewriting it to a bare ANTS-1894.md, as this item instructed, would
+     have CORRUPTED the draft. Left untouched by design; recorded as a
+     known limitation in ANTS-3601 § Out of scope and tracked as
+     ANTS-3635(c).
+
+  docs/ went 26 → 3 findings, all 3 residual false positives now split out
+  to ANTS-3635 with per-class root causes. Suite 2910/2910 green
+  (ctest exit=0).
+
+  Build-environment note: the suite would not run at first — cmake 4.4.0
+  (Tumbleweed) changed gtest discovery, and build/ still held 07-20
+  `<target>[1]_include.cmake` files whose empty TEST_JSON_OUTPUT_DIR made
+  gtest write to /cmake_test_discovery_*.json (root, denied). A plain
+  `cmake -G Ninja -B build` regenerates them under the new hash-suffixed
+  scheme; the 12 orphans were unreferenced and removed. No project change
+  needed — recording it so the next stale-tree relaunch is not re-debugged.
 
   1. toc_gap collapse. 23 of the pre-fix findings came from three specs
      (ANTS-1870, ANTS-2023, ANTS-2141) that have no table of contents at
@@ -19980,6 +20025,46 @@ shipped.
   Kind: fix.
   Lanes: docintegrity.
   Source: in-session-2026-07-25 (ANTS-3623 follow-up).
+
+- 📋 [ANTS-3635] **doc_integrity: three residual broken_link false-positive classes the ANTS-3623/3634 passes did not cover.**
+  Measured against the live post-relaunch binary: docs/ now yields 3
+  broken_link findings, and ALL THREE are false positives. Each has a
+  distinct root cause, verified in source:
+
+  (a) Multi-line inline code span. docs/specs/ANTS-1150.md:198 — a single
+  backtick span opens on :197 and closes on :198, wrapping the C++
+  `[this](int idx) { ... }` lambda. maskInlineCode (docintegrity.cpp:103)
+  is line-scoped: it bails on an unterminated run, so :198's `[this](int
+  idx)` is harvested as a link. CommonMark allows a code span to cross a
+  newline, so this is a real gap in the ANTS-3623 mask.
+
+  (b) Fence nested in a list item. docs/specs/ANTS-1238.md:328 — the
+  ```cpp fence at :319 is indented 4 spaces as list-item continuation.
+  fenceRe (markdownscan.cpp:13) is `^ {0,3}(```|~~~)`, matching
+  CommonMark's TOP-LEVEL 3-space limit, so a list-nested fence is never
+  opened and its whole body is scanned as prose. Fixing this needs list
+  context (the fence may indent to the item's content column), so it is
+  not a one-character regex widening — treat the indent limit as
+  relative-to-container, or track an enclosing list's content column.
+
+  (c) Markdown quoted on behalf of ANOTHER file. docs/specs/ANTS-1894.md:851
+  writes [`docs/specs/ANTS-1894.md`](docs/specs/ANTS-1894.md) inside § 8
+  Cross-doc impact, as DRAFT text for CHANGELOG.md. From the repo root
+  that path is correct — CHANGELOG.md:1752 shipped the identical link —
+  but the checker resolves it relative to the citing doc's own directory
+  (docs/specs/), so it probes docs/specs/docs/specs/. Do NOT "fix" the
+  doc: the draft is faithful, and rewriting it would make the copied
+  CHANGELOG entry wrong. Options are to skip links inside a block a spec
+  marks as draft-for-another-file, or to accept and document it.
+
+  Recommended split: (a) is self-contained and worth doing. (b) is the
+  subtle one — spec the container rule before coding. (c) may be best
+  closed as a documented limitation in ANTS-3601 § Out of scope rather
+  than chased, since it needs the checker to know a block's destination.
+  **Layman:** The link checker still cries wolf in three narrow situations: code examples that wrap across lines, code blocks nested inside bullet lists, and draft text a spec quotes on behalf of another file.
+  Kind: fix.
+  Lanes: docintegrity.
+  Source: in-session-2026-07-25 (ANTS-3634 follow-up, measured post-relaunch).
 
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
