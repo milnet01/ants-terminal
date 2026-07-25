@@ -4064,10 +4064,18 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     const bool hasModeArg = req.contains(QStringLiteral("mode"));
     QString mode = req.value(QStringLiteral("mode")).toString().toLower();
     if (mode.isEmpty()) mode = QStringLiteral("bullets");
-    if (mode != QLatin1String("bullets") &&
-        mode != QLatin1String("section_index") &&
-        mode != QLatin1String("headline_only") &&
-        mode != QLatin1String("bundles")) {   // ANTS-1922
+    // ANTS-3617 — one list, used both to validate and to tell the caller
+    // what was allowed. Previously the four modes were spelled out as a
+    // chain of `!=` and the refusal named only the rejected value, so a
+    // caller who guessed wrong had to go read the schema to find the
+    // right spelling. The sibling changelog_query already ships an
+    // `accepted` array on its bad_mode (and roadmap_query's own
+    // bad_status does too) — this closes the odd one out.
+    static const QStringList kModes = { QStringLiteral("bullets"),
+                                        QStringLiteral("section_index"),
+                                        QStringLiteral("headline_only"),
+                                        QStringLiteral("bundles") };  // ANTS-1922
+    if (!kModes.contains(mode)) {
         QString verbatim = req.value(QStringLiteral("mode")).toString();
         if (verbatim.size() > 64) verbatim.truncate(64);
         for (int i = 0; i < verbatim.size(); ++i) {
@@ -4076,6 +4084,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["ok"] = false;
         out["error"] = QStringLiteral("unknown mode: %1").arg(verbatim);
         out["code"] = QStringLiteral("bad_mode");
+        out["accepted"] = QJsonArray::fromStringList(kModes);
         return QJsonDocument(out);
     }
     // ANTS-1437-INV-3: section_index + section is conceptually
@@ -5801,7 +5810,30 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
     const ChangelogQuery::ParseResult &pr = m_changelogCache;
 
     // (7) bad_version — version filter matching no block (normalise Unreleased).
+    // ANTS-3618 — `section` is accepted as an alias for `version`. Callers
+    // arriving from roadmap_query reach for its vocabulary and pass
+    // `section:"Unreleased"`; that landed in ignored_args[] and the verb
+    // cheerfully returned every entry, which reads as "the filter found
+    // everything" rather than "the filter was never applied". A CHANGELOG's
+    // `## [X.Y.Z]` blocks ARE its sections, so the alias is exact — and a
+    // value that is not a version still self-corrects, because the
+    // bad_version refusal below lists the versions that do exist.
     QString versionFilter = req.value(QStringLiteral("version")).toString();
+    const QString sectionAlias = req.value(QStringLiteral("section")).toString();
+    if (!sectionAlias.isEmpty()) {
+        if (!versionFilter.isEmpty() && versionFilter != sectionAlias) {
+            QJsonObject env;
+            env[QStringLiteral("ok")]    = false;
+            env[QStringLiteral("code")]  = QStringLiteral("bad_args");
+            env[QStringLiteral("error")] = QStringLiteral(
+                "changelog_query: `section` is an alias for `version`; pass "
+                "one or the other, not two different values (version=\"%1\", "
+                "section=\"%2\")").arg(versionFilter.left(64),
+                                       sectionAlias.left(64));
+            return QJsonDocument(env);
+        }
+        versionFilter = sectionAlias;
+    }
     const bool hasVersionFilter = !versionFilter.isEmpty();
     if (hasVersionFilter &&
         versionFilter.compare(QStringLiteral("Unreleased"), Qt::CaseInsensitive) == 0)

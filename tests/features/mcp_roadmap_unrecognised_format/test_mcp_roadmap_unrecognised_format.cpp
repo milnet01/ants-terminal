@@ -37,7 +37,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 std::string boundedBetween(const std::string &cpp,
                            const std::string &startSig,
                            const std::string &endSig,
-                           size_t kMaxBound = 88 * 1024) {
+                           size_t kMaxBound = 96 * 1024) {
     // ANTS-1436 bumped 28→32 KB: pagination args parse (~1.5 KB)
     // + PaginationEngine::pageBullets call + envelope augment at
     // each of the 2 emission sites (~600 B × 2). The pagination
@@ -76,6 +76,13 @@ std::string boundedBetween(const std::string &cpp,
     // measured body sat at ~79.5 KB before this change (the earlier
     // "~70 KB" note was stale), so it had crept to the ceiling; the
     // guard stays meaningful and still flags a genuine new-mode addition.
+    // ANTS-3617 bumped 88→96 KB: collapsing the four-way `mode !=` chain
+    // into a single kModes list (so bad_mode can echo `accepted`, matching
+    // changelog_query) plus its rationale comment added ~0.7 KB. The
+    // measured body was 89,497 B before the change and 90,168 B after —
+    // i.e. it had crept to within 600 B of the old 90,112 B ceiling, and
+    // this bump restores the headroom rather than papering over a
+    // runaway.
     const auto startPos = cpp.find(startSig);
     if (startPos == std::string::npos) return {};
     const auto endPos = cpp.find(endSig, startPos + startSig.size());
@@ -99,7 +106,7 @@ TEST(mcp_roadmap_unrecognised_format, Inv1QueryGate) {
         "QJsonDocument RemoteControl::cmdRoadmapLog(");
     ASSERT_FALSE(body.empty())
         << "INV-1: failed to bound cmdRoadmapQuery body (sig moved "
-           "or bound > 16 KB)";
+           "or body exceeded boundedBetween's kMaxBound ceiling)";
 
     expect(contains(body, "ANTS-1429"),
            "INV-1: ANTS-1429 anchor present in cmdRoadmapQuery");

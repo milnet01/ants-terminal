@@ -352,8 +352,12 @@ TEST(mcp_roadmap_bundles, Inv6ComboGuards) {
            "INV-6: bundles+id guard present");
     expect(contains(cpp, "ids selector does not combine with mode:bundles"),
            "INV-6: bundles+ids guard present");
-    expect(contains(cpp, "mode != QLatin1String(\"bundles\")"),
-           "INV-6: bundles in the mode allow-list");
+    // ANTS-3617 replaced the `mode != QLatin1String("bundles")` chain with
+    // a single kModes list (so the bad_mode refusal can echo `accepted`).
+    // Same invariant — bundles is in the allow-list — scraped at its new
+    // spelling, inside that list rather than in a comparison.
+    expect(contains(cpp, "QStringLiteral(\"bundles\") };"),
+           "INV-6: bundles in the kModes allow-list");
     EXPECT_EQ(0, expect_failures());
 }
 
