@@ -82,7 +82,9 @@ struct PartitionRequest {
     QString scope;             // "auto" | "path:<sub>" | "files:<csv>"
     QString dimensions;        // "auto" | "csv:<d1,d2,...>"
     int     chunkSize = 12;    // clamped [4, 30]
-    bool    quick = false;
+    // ANTS-3630 — no `quick` field: it was never read, so it promised a
+    // fast path that did not exist. `--quick` is caller-side (skip the
+    // subagent phase; the grep pre-pass is the audit).
     int     offset = 0;
     int     limit = -1;        // -1 → no caller limit
 };

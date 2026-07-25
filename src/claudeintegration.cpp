@@ -7380,12 +7380,15 @@ void ClaudeIntegration::onMcpConnection() {
                         "Files per chunk. Default 12; clamped to [4, 30] "
                         "server-side. Override via "
                         "<projectPath>/.test-audit/partition.json.");
-                    QJsonObject qP;
-                    qP["type"] = "boolean";
-                    qP["default"] = false;
-                    qP["description"] = QStringLiteral(
-                        "Quick mode — skip pre-pass regex scan. Default "
-                        "false.");
+                    // ANTS-3630 — the `quick` property is gone. It was
+                    // accepted, forwarded and never read, so `quick:true`
+                    // ran an identical full walk + pre-pass. Its schema
+                    // text ("skip pre-pass regex scan") also contradicted
+                    // the /test-audit skill, where the grep pre-pass IS
+                    // the whole audit under --quick and only the subagent
+                    // phase is skipped — which is caller-side. With
+                    // additionalProperties:false a stale caller now gets a
+                    // loud schema refusal instead of a silent no-op.
                     QJsonObject oP;
                     oP["type"] = "integer";
                     oP["default"] = 0;
@@ -7402,7 +7405,7 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject ccwd; ccwd["type"] = "string";
                     QJsonObject props;
                     props["scope"] = sP; props["dimensions"] = dP;
-                    props["chunk_size"] = cP; props["quick"] = qP;
+                    props["chunk_size"] = cP;
                     props["offset"] = oP; props["limit"] = lP;
                     props["caller_cwd"] = ccwd;
                     schema["properties"] = props;

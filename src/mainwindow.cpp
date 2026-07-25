@@ -4816,7 +4816,6 @@ void MainWindow::setupClaudeMcpProviders() {
             req.dimensions  = args.value(QStringLiteral("dimensions")).toString();
             if (args.value(QStringLiteral("chunk_size")).isDouble())
                 req.chunkSize = args.value(QStringLiteral("chunk_size")).toInt();
-            req.quick       = args.value(QStringLiteral("quick")).toBool();
             if (args.value(QStringLiteral("offset")).isDouble())
                 req.offset = args.value(QStringLiteral("offset")).toInt();
             if (args.value(QStringLiteral("limit")).isDouble())
