@@ -26,8 +26,11 @@
 //   * Cross-tool finding correlation (cppcheck + clazy reporting the same
 //     underlying defect as one) — each tool diffs within its own checkId
 //     namespace (ANTS-1870 § 5).
-//   * `.audit_suppress` / `.audit_allowlist.json` regex hardening
-//     (INV-6 second half). v1 reads `.audit_allowlist.json` shape only.
+//   * `.audit_suppress` — still GUI-only. It is keyed by the line-grain
+//     `Finding::dedupKey` the runner never materialises, and the
+//     drift-resilient learned-FP ledger (ANTS-1820) supersedes it here.
+//     (`.audit_allowlist.json` IS applied as of ANTS-3615, through the
+//     shared AuditEngine loader/matcher — hardening included.)
 //   * Line-precise finding identity — the fingerprint is line-insensitive
 //     by design (ANTS-1820 / ANTS-1870 § 2.2).
 //
@@ -823,7 +826,13 @@ bool hasToolAbortMarker(const QString &raw) {
 ParsedOutput parseToolOutput(const QString &tool,
                              const QString &raw,
                              int sampleCap,
-                             const QSet<QString> &learnedFps) {
+                             const QSet<QString> &learnedFps,
+                             // ANTS-3615 — project-local `.audit_allowlist.json`
+                             // entries, empty when suppressions:"none". Applied
+                             // at the same seam as the learned-FP ledger so both
+                             // suppression sources share one drop point.
+                             const QList<AuditEngine::AllowlistEntry> &allowlist
+                                 = {}) {
     ParsedOutput out;
     if (raw.trimmed().isEmpty()) return out;
     // ANTS-3395 — JSON tools (semgrep/bandit/ruff/gitleaks/trivy/shellcheck)
@@ -893,6 +902,13 @@ ParsedOutput parseToolOutput(const QString &tool,
                 // ANTS-1820 — drop learned false positives before the sample
                 // is built; rawCount keeps the tool's raw total.
                 if (isLearnedFp(learnedFps, fileStr, ruleStr, msg)) {
+                    ++out.suppressedCount;
+                    continue;
+                }
+                // ANTS-3615 — same drop for a `.audit_allowlist.json` match.
+                // JSON tools key on their own check id, matching the GUI's
+                // Finding::checkId for these detectors.
+                if (AuditEngine::allowlisted(allowlist, ruleStr, fileStr, msg)) {
                     ++out.suppressedCount;
                     continue;
                 }
@@ -991,6 +1007,12 @@ ParsedOutput parseToolOutput(const QString &tool,
         // key the ledger by tool name, matching the GUI's Finding::checkId,
         // so learned FPs recorded in the dialog suppress here too.
         if (isLearnedFp(learnedFps, fileStr, tool, msg)) {
+            ++out.suppressedCount;
+            continue;
+        }
+        // ANTS-3615 — same drop for a `.audit_allowlist.json` match. The
+        // line-based tools' check id IS the tool name (as above).
+        if (AuditEngine::allowlisted(allowlist, tool, fileStr, msg)) {
             ++out.suppressedCount;
             continue;
         }
@@ -1578,9 +1600,15 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
 // ANTS-1820 — test hook delegating to the anonymous-namespace parser.
 ParsedCounts parseWithSuppression(const QString &tool, const QString &raw,
                                   int sampleCap,
-                                  const QSet<QString> &learnedFps) {
+                                  const QSet<QString> &learnedFps,
+                                  const QString &allowlistPath) {
+    // ANTS-3615 — compile the allowlist through the same engine loader
+    // runAudit uses, so the test exercises the real path (hardening included).
+    const QList<AuditEngine::AllowlistEntry> allowlist =
+        allowlistPath.isEmpty() ? QList<AuditEngine::AllowlistEntry>{}
+                                : AuditEngine::loadAllowlist(allowlistPath);
     const ParsedOutput p =
-        parseToolOutput(tool, raw, sampleCap, learnedFps);
+        parseToolOutput(tool, raw, sampleCap, learnedFps, allowlist);
     // ANTS-1870 — every finding must carry a 16-lowercase-hex fp.
     static const QRegularExpression rxFp(QStringLiteral("^[0-9a-f]{16}$"));
     bool allHex = !p.findings.isEmpty();
@@ -1722,11 +1750,66 @@ RunResult runAudit(const RunRequest &req) {
     const QJsonObject projectConfig =
         loadProjectAuditConfig(canonProject);
 
+    // ── ANTS-3615 — honour `suppressions`. Before this the field was parsed
+    // into req.suppressionsMode and then never read: a caller passing
+    // "none" or "path:<file>" got no effect AND no refusal, which is worse
+    // than an unadvertised gap. The headless engine has two suppression
+    // sources — the ANTS-1820 learned-FP ledger and the project-local
+    // `.audit_allowlist.json` — and `suppressions` now governs both.
+    // (`.audit_suppress` stays GUI-only: it is keyed by the line-grain
+    // dedupKey the runner never materialises, and the drift-resilient
+    // learned-FP ledger supersedes it for the headless path.)
+    bool    suppressionsOn   = true;
+    QString allowlistPath    =
+        canonProject + QLatin1String("/.audit_allowlist.json");
+    if (req.suppressionsMode.isEmpty()
+        || req.suppressionsMode == QLatin1String("auto")) {
+        // defaults above
+    } else if (req.suppressionsMode == QLatin1String("none")) {
+        suppressionsOn = false;
+    } else if (req.suppressionsMode.startsWith(QLatin1String("path:"))) {
+        // INV-2 — a caller-named suppression file must resolve INSIDE the
+        // project root; otherwise `path:` is an arbitrary-file-read oracle
+        // (a malformed-JSON qWarning would confirm existence).
+        const QString named = req.suppressionsMode.mid(5);
+        const QString canonNamed = QFileInfo(named).isAbsolute()
+            ? QFileInfo(named).canonicalFilePath()
+            : QFileInfo(canonProject + QLatin1Char('/') + named)
+                  .canonicalFilePath();
+        if (canonNamed.isEmpty()
+            || !(canonNamed == canonProject
+                 || canonNamed.startsWith(canonProject + QLatin1Char('/')))) {
+            r.ok = false;
+            r.code  = QStringLiteral("bad_path");
+            r.error = QStringLiteral(
+                "audit_run: suppressions path \"%1\" does not resolve to an "
+                "existing file under the project root").arg(named);
+            return r;
+        }
+        allowlistPath = canonNamed;
+    } else {
+        r.ok = false;
+        r.code  = QStringLiteral("bad_args");
+        r.error = QStringLiteral(
+            "audit_run: suppressions \"%1\" unrecognised; expected \"auto\", "
+            "\"none\" or \"path:<file>\"").arg(req.suppressionsMode);
+        return r;
+    }
+
     // ── ANTS-1820 — load the drift-resilient learned-FP ledger once per run.
     // The GUI dialog records FPs into `.audit_cache/learned-fp.jsonl`; without
     // this the headless MCP/CI sweep re-surfaces every learned false positive.
-    const QSet<QString> learnedFps = ants::auditfp::fingerprintSet(
-        ants::auditfp::loadEntries(canonProject));
+    const QSet<QString> learnedFps = suppressionsOn
+        ? ants::auditfp::fingerprintSet(
+              ants::auditfp::loadEntries(canonProject))
+        : QSet<QString>{};
+    // ── ANTS-3615 — the project-local cross-detector allowlist, shared with
+    // the GUI dialog via AuditEngine. Compiled once per run (each entry's
+    // line_regex goes through isCatastrophicRegex + hardenUserRegex inside
+    // the loader), then matched per finding in parseToolOutput.
+    const QList<AuditEngine::AllowlistEntry> allowlist = suppressionsOn
+        ? AuditEngine::loadAllowlist(allowlistPath)
+        : QList<AuditEngine::AllowlistEntry>{};
 
     // ── INV-10 / resolve absolute paths for the requested tool list.
     QStringList wantedTools = req.tools;
@@ -1978,10 +2061,12 @@ RunResult runAudit(const RunRequest &req) {
         const QString scrubbed = SecretRedact::scrub(rawOutput).text;
         rawByTool[tool] = scrubbed;
         const ParsedOutput parsed =
-            parseToolOutput(tool, scrubbed, kSamplesPerToolDefault, learnedFps);
+            parseToolOutput(tool, scrubbed, kSamplesPerToolDefault,
+                            learnedFps, allowlist);
         tr.rawCount         = parsed.rawCount;
-        // ANTS-1820 — the only filter the v1 runner applies is the learned-FP
-        // ledger; afterFilterCount drops the suppressed total.
+        // ANTS-1820 / ANTS-3615 — the runner's two suppression sources (the
+        // learned-FP ledger and `.audit_allowlist.json`) both drop into
+        // suppressedCount; afterFilterCount is the raw total minus them.
         tr.afterFilterCount = parsed.rawCount - parsed.suppressedCount;
         tr.samples          = parsed.samples;
         // ANTS-3395 — a JSON tool that logged a fatal abort (e.g. trivy "run

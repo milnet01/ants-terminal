@@ -1800,6 +1800,8 @@ if(ANTS_TESTS)
                 tests/features/audit_exclusion_set/test_audit_exclusion_set.cpp
                 # ANTS-1708 — fingerprint-keyed learned-FP ledger.
                 tests/features/audit_fp_ledger/test_audit_fp_ledger.cpp
+                # ANTS-3615 — headless .audit_allowlist.json + suppressions.
+                tests/features/audit_run_allowlist/test_audit_run_allowlist.cpp
                 # ANTS-1719 — native safe-list auto-fix engine.
                 tests/features/audit_low_confidence_autofix/test_audit_low_confidence_autofix.cpp
                 # ANTS-1826/1830 — AI-triage cleartext-key refusal + verdict-badge

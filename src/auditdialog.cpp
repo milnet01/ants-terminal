@@ -2140,30 +2140,11 @@ bool AuditDialog::isGeneratedFile(const QString &path) {
     return false;
 }
 
+// ANTS-3615 — body moved to AuditEngine so the headless audit_run path
+// compiles allowlist globs identically. Kept as a thin delegate: the
+// path-rule call-sites below and the feature tests both key on this name.
 QRegularExpression AuditDialog::globToRegex(const QString &glob) {
-    // Convert a minimal subset of glob to regex:
-    //   **   — any path (including slashes)
-    //   *    — any segment (no slashes)
-    //   ?    — one char (no slash)
-    // Everything else is escaped.
-    QString re;
-    re.reserve(glob.size() * 2);
-    re.append('^');
-    for (int i = 0; i < glob.size(); ++i) {
-        const QChar c = glob[i];
-        if (c == '*' && i + 1 < glob.size() && glob[i + 1] == '*') {
-            re.append(".*");
-            ++i;
-        } else if (c == '*') {
-            re.append("[^/]*");
-        } else if (c == '?') {
-            re.append("[^/]");
-        } else {
-            re.append(QRegularExpression::escape(QString(c)));
-        }
-    }
-    re.append('$');
-    return QRegularExpression(re);
+    return AuditEngine::globToRegex(glob);
 }
 
 bool AuditDialog::applyPathRules(Finding &f) const {
@@ -2514,54 +2495,16 @@ QString AuditDialog::banditSkipFlags() const {
 // Project-local grep-rule allowlist (.audit_allowlist.json)
 // ---------------------------------------------------------------------------
 
+// ANTS-3615 — loader + matcher moved to AuditEngine (Qt6::Core-only) so the
+// headless `audit_run` path applies the same `.audit_allowlist.json` filter.
+// These stay as the dialog's entry points; the logic has one home now.
 void AuditDialog::loadAllowlist() {
-    m_allowlist.clear();
-    QFile f(m_projectPath + "/.audit_allowlist.json");
-    if (!f.open(QIODevice::ReadOnly)) return;
-    QJsonParseError err;
-    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
-    f.close();
-    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-        qWarning(".audit_allowlist.json: %s", qPrintable(err.errorString()));
-        return;
-    }
-    const QJsonArray entries = doc.object().value("allowlist").toArray();
-    for (const QJsonValue &v : entries) {
-        if (!v.isObject()) continue;
-        const QJsonObject o = v.toObject();
-        const QString rule = o.value("rule").toString();
-        const QString glob = o.value("path_glob").toString();
-        const QString line = o.value("line_regex").toString();
-        if (rule.isEmpty() || glob.isEmpty() || line.isEmpty()) continue;
-        if (isCatastrophicRegex(line)) {
-            qWarning(".audit_allowlist.json: line_regex rejected for "
-                     "shape-DoS risk: %s", qPrintable(line));
-            continue;
-        }
-        AllowlistEntry e;
-        e.rule      = rule;
-        e.pathRegex = globToRegex(glob);
-        e.lineRegex = QRegularExpression(hardenUserRegex(line));
-        if (!e.lineRegex.isValid()) {
-            qWarning(".audit_allowlist.json: bad line_regex '%s': %s",
-                     qPrintable(line),
-                     qPrintable(e.lineRegex.errorString()));
-            continue;
-        }
-        e.reason    = o.value("reason").toString();
-        m_allowlist.append(e);
-    }
+    m_allowlist = AuditEngine::loadAllowlist(
+        m_projectPath + "/.audit_allowlist.json");
 }
 
 bool AuditDialog::allowlisted(const Finding &f) const {
-    if (m_allowlist.isEmpty()) return false;
-    for (const AllowlistEntry &e : m_allowlist) {
-        if (e.rule != f.checkId) continue;
-        if (!f.file.isEmpty() && !e.pathRegex.match(f.file).hasMatch()) continue;
-        if (!e.lineRegex.match(f.message).hasMatch()) continue;
-        return true;
-    }
-    return false;
+    return AuditEngine::allowlisted(m_allowlist, f.checkId, f.file, f.message);
 }
 
 // ANTS-1257 v2 — append one allowlist entry matching `f` and reload. The

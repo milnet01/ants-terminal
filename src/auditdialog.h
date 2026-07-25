@@ -111,12 +111,10 @@ private:
     //     "allowlist": [ { "rule": "id", "path_glob": "glob",
     //                      "line_regex": "regex", "reason": "..." } ] }
     // All four fields are required per entry except `reason` (informational).
-    struct AllowlistEntry {
-        QString rule;                         // audit check id
-        QRegularExpression pathRegex;         // compiled from glob
-        QRegularExpression lineRegex;         // compiled from line_regex
-        QString reason;
-    };
+    // ANTS-3615 — the struct + its loader/matcher moved to AuditEngine
+    // (Qt6::Core-only) so the headless `audit_run` path shares them. The
+    // alias keeps `AuditDialog::AllowlistEntry` valid for existing users.
+    using AllowlistEntry = AuditEngine::AllowlistEntry;
     QList<AllowlistEntry> m_allowlist;
 protected:
     void loadAllowlist();

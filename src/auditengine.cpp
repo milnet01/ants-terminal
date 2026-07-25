@@ -39,6 +39,92 @@ QString hardenUserRegex(const QString &pattern) {
     return ants::regex::hardenUserRegex(pattern);
 }
 
+// ── ANTS-3615 — allowlist loader / matcher / glob compiler.
+// Moved verbatim off AuditDialog (which now delegates) so the headless
+// `audit_run` path can apply the same `.audit_allowlist.json` filter the
+// GUI dialog has always applied. Behaviour is byte-identical to the
+// pre-move dialog methods.
+
+QRegularExpression globToRegex(const QString &glob) {
+    // Convert a minimal subset of glob to regex:
+    //   **   — any path (including slashes)
+    //   *    — any segment (no slashes)
+    //   ?    — one char (no slash)
+    // Everything else is escaped.
+    QString re;
+    re.reserve(glob.size() * 2);
+    re.append('^');
+    for (int i = 0; i < glob.size(); ++i) {
+        const QChar c = glob[i];
+        if (c == '*' && i + 1 < glob.size() && glob[i + 1] == '*') {
+            re.append(".*");
+            ++i;
+        } else if (c == '*') {
+            re.append("[^/]*");
+        } else if (c == '?') {
+            re.append("[^/]");
+        } else {
+            re.append(QRegularExpression::escape(QString(c)));
+        }
+    }
+    re.append('$');
+    return QRegularExpression(re);
+}
+
+QList<AllowlistEntry> loadAllowlist(const QString &allowlistPath) {
+    QList<AllowlistEntry> out;
+    QFile f(allowlistPath);
+    if (!f.open(QIODevice::ReadOnly)) return out;
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+    f.close();
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+        qWarning(".audit_allowlist.json: %s", qPrintable(err.errorString()));
+        return out;
+    }
+    const QJsonArray entries = doc.object().value("allowlist").toArray();
+    for (const QJsonValue &v : entries) {
+        if (!v.isObject()) continue;
+        const QJsonObject o = v.toObject();
+        const QString rule = o.value("rule").toString();
+        const QString glob = o.value("path_glob").toString();
+        const QString line = o.value("line_regex").toString();
+        if (rule.isEmpty() || glob.isEmpty() || line.isEmpty()) continue;
+        if (isCatastrophicRegex(line)) {
+            qWarning(".audit_allowlist.json: line_regex rejected for "
+                     "shape-DoS risk: %s", qPrintable(line));
+            continue;
+        }
+        AllowlistEntry e;
+        e.rule      = rule;
+        e.pathRegex = globToRegex(glob);
+        e.lineRegex = QRegularExpression(hardenUserRegex(line));
+        if (!e.lineRegex.isValid()) {
+            qWarning(".audit_allowlist.json: bad line_regex '%s': %s",
+                     qPrintable(line),
+                     qPrintable(e.lineRegex.errorString()));
+            continue;
+        }
+        e.reason    = o.value("reason").toString();
+        out.append(e);
+    }
+    return out;
+}
+
+bool allowlisted(const QList<AllowlistEntry> &allowlist,
+                 const QString &checkId,
+                 const QString &file,
+                 const QString &message) {
+    if (allowlist.isEmpty()) return false;
+    for (const AllowlistEntry &e : allowlist) {
+        if (e.rule != checkId) continue;
+        if (!file.isEmpty() && !e.pathRegex.match(file).hasMatch()) continue;
+        if (!e.lineRegex.match(message).hasMatch()) continue;
+        return true;
+    }
+    return false;
+}
+
 // ANTS-1709 — centralised directory-exclusion set. See the header for
 // the rationale (one source of truth, no per-tool drift). `build` is the
 // only globbed family; each formatter emits it in its own syntax.

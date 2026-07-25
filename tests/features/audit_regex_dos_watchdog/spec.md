@@ -8,7 +8,11 @@ User-supplied regex patterns reach the audit dialog via two routes:
    post-filter regex applied in `applyFilter`).
 2. `.audit_allowlist.json` → `AllowlistEntry::lineRegex` (compiled in
    `loadAllowlist` and matched against finding messages in
-   `allowlisted`).
+   `allowlisted`). **ANTS-3615** moved both out of `AuditDialog` into
+   `AuditEngine` so the headless `audit_run` path applies the same filter;
+   the dialog delegates. The guard therefore has to hold in the engine
+   body now — and it covers both callers, where it previously covered
+   only the GUI.
 
 These run in the GUI thread (the audit pipeline is in-process for
 custom grep rules). A pathological pattern matched against scanner

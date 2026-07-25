@@ -24,8 +24,11 @@
 // literals so source-grep extraction works on functions that contain
 // `if (line.startsWith('{'))`-style code.
 static std::string extractFnBody(const std::string &src, const char *qualName) {
-    std::string pat = std::string("(?:void|int|bool|QString)\\s+") +
-                      qualName + R"(\s*\([^)]*\)\s*(?:const\s*)?\{)";
+    // ANTS-3615 — `QList<AllowlistEntry>` joined the alternation when
+    // loadAllowlist moved to AuditEngine and gained a real return type.
+    std::string pat =
+        std::string("(?:void|int|bool|QString|QList<AllowlistEntry>)\\s+") +
+        qualName + R"(\s*\([^)]*\)\s*(?:const\s*)?\{)";
     std::regex re(pat);
     std::smatch m;
     if (!std::regex_search(src, m, re)) return {};
@@ -77,6 +80,10 @@ TEST(AuditRegexDosWatchdog, Main) {
     // all three so the INVs see the helper definitions (regexharden.cpp), the
     // forwarders + applyFilter call (auditengine.cpp), and the dropIfMatches /
     // loadAllowlist entry points (auditdialog.cpp) together.
+    // ANTS-3615: loadAllowlist itself moved to auditengine.cpp (the headless
+    // audit_run path needed it), so the allowlist INVs now resolve against
+    // the engine body — which is exactly the point: the guard must live
+    // wherever the loader does, and there is now only one loader.
     const std::string dialogCpp = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
 #ifdef SRC_AUDIT_ENGINE_CPP_PATH
     const std::string engineCpp = ants_test::slurpFile(SRC_AUDIT_ENGINE_CPP_PATH);
@@ -129,7 +136,7 @@ TEST(AuditRegexDosWatchdog, Main) {
                  "filter is the primary user-pattern entry point.");
     }
     {
-        const std::string body = extractFnBody(cpp, "AuditDialog::loadAllowlist");
+        const std::string body = extractFnBody(cpp, "loadAllowlist");
         if (body.empty()) {
             fail("precondition: loadAllowlist body not located.");
         } else {
@@ -206,7 +213,7 @@ TEST(AuditRegexDosWatchdog, Main) {
     // INV-4 — qWarning on rejection somewhere in the user-pattern entry path.
     // Search the loadAllowlist body specifically.
     {
-        const std::string body = extractFnBody(cpp, "AuditDialog::loadAllowlist");
+        const std::string body = extractFnBody(cpp, "loadAllowlist");
         if (!body.empty()) {
             std::regex warn(R"((?:qWarning|qCritical)\s*\()");
             if (!std::regex_search(body, warn)) {

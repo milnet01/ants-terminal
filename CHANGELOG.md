@@ -47,6 +47,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The audit's "hide these known-OK warnings" list now works outside the app window too.** (ANTS-3615)
+  The `.audit_allowlist.json` filter only ever ran in the Audit pop-up, so an entry that hid a finding there did nothing when Claude or CI ran the same audit. It is now shared by both. The `suppressions` setting, which had quietly done nothing, is honoured too — and an unrecognised value now says so instead of being ignored.
+
 - **`audit_run` cleans up the temporary report files it leaves when a project folder is read-only.** (ANTS-3614)
   When the audit can't write into your project it drops its report in a temp area, and those were never cleaned up. They are now swept after a week, on the next audit that needs the fallback.
 

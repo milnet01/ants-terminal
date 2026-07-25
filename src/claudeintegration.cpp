@@ -7066,10 +7066,17 @@ void ClaudeIntegration::onMcpConnection() {
                         "Default 30. Out-of-range → bad_args.");
                     QJsonObject suppProp;
                     suppProp["type"] = "string";
+                    // ANTS-3615 — describes what the headless engine actually
+                    // does. `.audit_suppress` is GUI-only (line-grain dedup
+                    // keys the runner never materialises); the headless
+                    // sources are the learned-FP ledger + the allowlist.
                     suppProp["description"] = QStringLiteral(
-                        "\"auto\" (default) loads .audit_suppress + "
-                        ".audit_allowlist.json; \"none\" ignores both; "
-                        "\"path:<file>\" loads the named file.");
+                        "\"auto\" (default) applies the learned-FP ledger "
+                        "(.audit_cache/learned-fp.jsonl) + "
+                        ".audit_allowlist.json; \"none\" applies neither; "
+                        "\"path:<file>\" reads the allowlist from the named "
+                        "file instead (must resolve under the project root, "
+                        "else bad_path). Any other value → bad_args.");
                     QJsonObject formatsProp;
                     formatsProp["type"] = "array";
                     formatsProp["description"] = QStringLiteral(

@@ -244,6 +244,49 @@ bool isCatastrophicRegex(const QString &pattern);
 // ingest go through this function.
 QString hardenUserRegex(const QString &pattern);
 
+// ANTS-3615 — project-local cross-detector allowlist
+// (`<root>/.audit_allowlist.json`). Lives here rather than on AuditDialog
+// so the headless `audit_run` path gets the SAME filter as the GUI: the
+// loader + matcher were GUI-only, which is why a `.audit_allowlist.json`
+// entry silently did nothing under MCP/CI. AuditDialog now delegates here,
+// so there is one implementation and one place for the regex hardening.
+//
+// Schema (unchanged):
+//   { "version": 1,
+//     "allowlist": [ { "rule": "id", "path_glob": "glob",
+//                      "line_regex": "regex", "reason": "…" } ] }
+// All fields required except `reason` (informational). An entry whose
+// `line_regex` trips `isCatastrophicRegex`, or fails to compile after
+// `hardenUserRegex`, is dropped with a qWarning — one bad entry never
+// voids the rest of the file.
+struct AllowlistEntry {
+    QString            rule;       // audit check id, matched exact-equality
+    QRegularExpression pathRegex;  // compiled from path_glob
+    QRegularExpression lineRegex;  // compiled from line_regex (hardened)
+    QString            reason;     // informational only
+};
+
+// Read + compile the allowlist. `allowlistPath` is the file to read;
+// callers that want the project default pass
+// `<projectPath>/.audit_allowlist.json`. A missing or malformed file
+// yields an empty list (never an error) — an allowlist is an optional
+// noise filter, not a contract.
+QList<AllowlistEntry> loadAllowlist(const QString &allowlistPath);
+
+// True when `checkId`/`file`/`message` match any entry. Empty list → false.
+// `file` is matched as the tool spelled it (the GUI's path-rule
+// normalisation is a separate, path_rules-only concern).
+bool allowlisted(const QList<AllowlistEntry> &allowlist,
+                 const QString &checkId,
+                 const QString &file,
+                 const QString &message);
+
+// Minimal glob→regex used by the allowlist and the dialog's path rules:
+// `**` → `.*`, `*` → `[^/]*`, `?` → `[^/]`, everything else escaped;
+// anchored `^…$`. Moved off AuditDialog by ANTS-3615 (the dialog method
+// now delegates) so the engine-side allowlist compiles globs identically.
+QRegularExpression globToRegex(const QString &glob);
+
 // ANTS-1709 — single source of truth for the directory names every
 // audit scanner must skip (VCS, dependency vendoring, language caches,
 // our own artifact dirs). `build` is deliberately NOT in this list: it

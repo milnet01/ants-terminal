@@ -227,9 +227,14 @@ struct ParsedCounts {
     // non-cppcheck tools and for clean runs.
     QStringList parseFailureFiles;
 };
+// ANTS-3615 — `allowlistPath` is optional; when non-empty the file is
+// loaded through AuditEngine::loadAllowlist and its entries suppress
+// alongside the fingerprint ledger, so a test can assert the headless
+// `.audit_allowlist.json` filter without spawning a tool.
 ParsedCounts parseWithSuppression(const QString &tool, const QString &raw,
                                   int sampleCap,
-                                  const QSet<QString> &learnedFps);
+                                  const QSet<QString> &learnedFps,
+                                  const QString &allowlistPath = {});
 
 // ANTS-1446 — compile_commands.json include-path validation.
 //
