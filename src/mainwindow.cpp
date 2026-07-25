@@ -4800,10 +4800,11 @@ void MainWindow::setupClaudeMcpProviders() {
             return QString::fromUtf8(
                 QJsonDocument(env).toJson(QJsonDocument::Compact));
         });
-    // ANTS-1397 — test_audit trio (v1). All four verbs Optional
-    // contract per § 2.4 (matches cold_eyes / indie_review /
-    // debt_sweep). fold_in delegates to RoadmapFoldIn::* engine
-    // entries directly (NOT MCP re-entry — INV-3).
+    // ANTS-1397 — test_audit verb family. All five register the
+    // Required caller_cwd contract (the spec's original "Optional"
+    // design never shipped; ANTS-1397.md INV-5 was corrected to match
+    // this code, 2026-07-25). fold_in delegates to RoadmapFoldIn::*
+    // engine entries directly (NOT MCP re-entry — INV-3).
     m_claudeIntegration->registerToolProvider("test_audit_partition",
         ClaudeIntegration::CallerCwdContract::Required,
         [](const QJsonObject &args) -> QString {

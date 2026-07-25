@@ -19734,6 +19734,15 @@ shipped.
   Lanes: docintegrity.
   Source: in-session-2026-07-25 (running doc_integrity after the cold-eyes pass-6 doc edits).
 
+- 📋 [ANTS-3624] **audit_run's compile_commands escape-validator probes 2 build-dir locations while the tools resolve their `-p` DB from 7 — a DB in build-fast/ is used but never validated.**
+  VERIFIED both halves. `validateCompileCommandsImpl` (auditrunner.cpp ~:1406) hard-codes exactly two candidates — `<root>/build/compile_commands.json` and `<root>/compile_commands.json` — and RETURNS TRUE (pass) when neither exists (~:1414). But INV-19's `-p` argument for clazy/clang-tidy resolves through `AuditEngine::resolveCompileCommands` (auditengine.cpp:195-219), which probes SEVEN variants: build, build-fast, build-asan, build-workstation, build-release, build-debug, build-test.
+  Consequence: on a project whose only compile DB is in build-fast/ (this repo's own `fast` preset, and the layout the CLAUDE.md iteration guidance actively recommends), clazy and clang-tidy receive `-p build-fast` while ANTS-1446's include-path escape check silently passes over nothing. The check exists precisely to stop a hostile or misconfigured DB pointing `-I` at paths outside the root, so a validator that can't see the DB being used is a real gap rather than a cosmetic one — same-uid trust model bounds the blast radius, but ANTS-1446 was written because we did not want to rely on that alone.
+  Fix: have the validator resolve its target through `AuditEngine::resolveCompileCommands` so it validates exactly the DB that will be passed as `-p`, and decide what a genuinely-absent DB should do (current pass-through is right — nothing to validate — but it should be reached because no DB resolved, not because two guesses missed). Also add a feature-test case with the DB in a non-`build/` dir; the existing audit_run_compile_commands_validation suite only exercises the two probed locations, which is why this survived. ANTS-1351.md INV-2 now documents the gap and points here.
+  **Layman:** Before running the C++ analysers we check the build database for paths that point outside the project. But we only look for that database in two places, while the analysers themselves look in seven — so on some projects we hand the analysers a database we never checked.
+  Kind: security.
+  Lanes: auditrunner, auditengine.
+  Source: cold-eyes ANTS-1351 loop 2, lane 1 (2026-07-25).
+
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
 /cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +

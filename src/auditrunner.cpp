@@ -763,8 +763,9 @@ struct ParsedOutput {
 // `applyLearnedFpSuppressions` operates on `Finding` objects, which the v1
 // runner never materialises; this path consumes the same ledger via the
 // shared content fingerprint. Cross-path matching works for the line-based
-// tools (cppcheck/clazy/mypy/shellcheck), whose check id IS the tool name —
-// matching the GUI's `Finding::checkId`. JSON tools key on the tool's own
+// tools (cppcheck/clazy/clang-tidy/mypy), whose check id IS the tool name —
+// matching the GUI's `Finding::checkId`. (shellcheck was listed here but is
+// a JSON tool per isJsonFindingTool below — ANTS-3395.) JSON tools key on the tool's own
 // `check_id`, a different namespace, so they don't cross-match (the same v1
 // limitation under which the runner already does no per-finding filtering).
 bool isLearnedFp(const QSet<QString> &learnedFps, const QString &file,

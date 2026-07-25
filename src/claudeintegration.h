@@ -633,7 +633,10 @@ private:
     static constexpr int kRateLimitExpensiveCap     = 10;
     static constexpr qint64 kRateLimitWindowMs      = 60'000;
 
-    // ANTS-1351 + ANTS-1397 § 2.4 — inline in-flight gate. Key:
+    // ANTS-1351 § 2.4 — inline in-flight gate. Consumers are `audit_run`
+    // and `indie_review_dispatch`. (ANTS-1397's `test_audit_partition`
+    // was a designed third consumer but was never wired — its INV-12 is
+    // marked NOT IMPLEMENTED, 2026-07-25.) Key:
     // (verb, canonicalProjectRoot) → start time (ms epoch). RAII
     // guard removes the slot on return; stale-slot reaper sweeps
     // entries older than aggregate-cap + 30 s on each tryAcquire

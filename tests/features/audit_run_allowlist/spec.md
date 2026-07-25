@@ -29,8 +29,11 @@ rather than duplicating the matcher.
 - **INV-2 / Rule identity is exact.** An entry whose `rule` does not equal
   the finding's check id never suppresses, even when the path and message
   patterns both match. For the line-based tools (cppcheck / clazy /
-  clang-tidy / mypy / shellcheck) the check id IS the tool name, matching the
-  GUI's `Finding::checkId`; JSON tools key on their own `check_id`.
+  clang-tidy / mypy) the check id IS the tool name, matching the GUI's
+  `Finding::checkId`; the JSON tools (ruff / bandit / semgrep / gitleaks /
+  trivy / **shellcheck** — see `isJsonFindingTool`) key on their own
+  `check_id`, a different namespace, so an allowlist entry for one of those
+  must name that tool's check id rather than the tool.
 - **INV-3 / Hostile entries are dropped, not fatal.** An entry whose
   `line_regex` trips `isCatastrophicRegex`, or fails to compile after
   `hardenUserRegex`, is skipped with a warning and the remaining entries
