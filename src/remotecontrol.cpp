@@ -13087,19 +13087,25 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         const QString content = QString::fromUtf8(rf.readAll());
         rf.close();
 
-        // Version gate — v2 only (spec § 2.4). A v1 file's findings predate the
-        // structural `**Proposed ID:**` line, so none would be recognised as a
-        // finding; refuse and direct the caller to op:migrate_v2.
+        // Version gate — v2 or later (spec § 2.4). A v1 file's findings predate
+        // the structural `**Proposed ID:**` line, so none would be recognised as
+        // a finding; refuse and direct the caller to op:migrate_v2.
+        // ANTS-3621 — the floor is `< 2`, NOT `!= 2`. The parser gates on
+        // `formatVersion >= 2` (feedbackfile.cpp:142), so a future v3+ file is
+        // read with v2 inline-ID semantics; an `!= 2` gate here refused it as
+        // `not_v2` and told the caller to run migrate_v2 — which is a no-op on
+        // an already-migrated file, leaving no way forward. Keep the two
+        // version predicates agreeing.
         static const QRegularExpression markerRe(
             QStringLiteral("<!--\\s*ants-mcp-feedback:\\s*([0-9]+)\\s*-->"));
         const auto mm = markerRe.match(content);
         const int ver = mm.hasMatch() ? mm.captured(1).toInt() : 0;
-        if (ver != 2) {
+        if (ver < 2) {
             return QJsonDocument(fbErr(
                 QStringLiteral("not_v2"),
-                QStringLiteral("feedback_log: compact_resolved requires a v2 "
-                               "file (<!-- ants-mcp-feedback: 2 -->); this file "
-                               "is v%1 — run op:migrate_v2 first").arg(ver)));
+                QStringLiteral("feedback_log: compact_resolved requires a v2 or "
+                               "later file (<!-- ants-mcp-feedback: 2 -->); this "
+                               "file is v%1 — run op:migrate_v2 first").arg(ver)));
         }
 
         // Roadmap resolution (spec § 2.3): build shippedIds (status ✅) +
