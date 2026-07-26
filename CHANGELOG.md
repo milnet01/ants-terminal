@@ -73,6 +73,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log no longer writes a body or note that opens a code fence it never closes** (ANTS-3640)
+  A roadmap note quoting a bare fence opener used to be written
+  verbatim, which silently turned every bullet below it into one big
+  code block — the next edit down there was refused with a message
+  pointing at the innocent bullet. Unclosed openers are now escaped on
+  the way in (balanced ones, which leave the file well-formed, are left
+  alone), and the refusal names the line that opened the fence.
+
 - **Review-tool descriptions no longer deny a call their own skill instructs** (ANTS-3639)
   The "your slash-command skill does not call this tool" note was pasted onto every tool whose name started with cold_eyes_, indie_review_ or test_audit_. But /test-audit drives the whole test_audit_ family, and /indie-review instructs indie_review_partition and indie_review_corroborate by name — so sessions were told not to call verbs their skill mandates two lines later. Those seven are now exempt.
 

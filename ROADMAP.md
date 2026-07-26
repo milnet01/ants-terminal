@@ -20272,12 +20272,44 @@ that needs them.
   Lanes: claudeintegration, mcp-discoverability.
   Source: in-session-2026-07-26 (found while implementing ANTS-3637).
 
-- 📋 [ANTS-3640] **roadmap_log op:append accepts a body whose line starts a code fence, silently breaking every bullet below it.**
+- ✅ [ANTS-3640] **roadmap_log op:append accepts a body whose line starts a code fence, silently breaking every bullet below it.**
   Hit live this session. ANTS-3635's body quotes a nested code fence, so
   one of its continuation lines began with an unescaped triple backtick.
   roadmap_log wrote it verbatim. Appending ANTS-3638 (which quotes the
   same text) added a second one — and the pair fenced every bullet
   between them, including ANTS-3637.
+  Resolved (2026-07-26): both halves.
+
+  (a) New rcEscapeUnclosedFence, called from the tail of the shared
+  rcScrubLeakedToolXml — so one chokepoint covers every writer that
+  already scrubs prose (op:append, append_batch, flip note, annotate,
+  amend_body, the pass-format renderer, changelog_log). It simulates the
+  same toggle the walkers use, so "balanced" means the same thing to the
+  guard as to the code that would later refuse, and escapes ONLY an
+  opener the prose never closes — a body quoting a whole balanced code
+  block is legitimate and passes through untouched. The escape is
+  CommonMark's backslash form, which renders as literal text and also
+  falls outside the walkers' startsWith toggle, so both readers agree on
+  the repaired line. Tilde fences are covered too (CommonMark opens on
+  them; the walkers do not, so escaping is the strictly safer union).
+
+  (b) GfmBullet / AntsV1Bullet gained fenceOpenLine alongside the
+  existing insideFenced, and a new rcFenceOpenerHint appends "— the
+  fence opens at line N" to all six anchor_unsafe_context messages. The
+  bullet being edited was never the actionable fact.
+
+  Tests: tests/features/roadmap_log_fence_guard/ (spec + 4 invariants,
+  test_claude bundle), driving the *ForTest handlers against a seeded
+  QTemporaryDir roadmap. Must-fail-first verified: with the fix reverted
+  INV-1 (bullet below an unclosed opener stays editable), INV-3 (note
+  path) and INV-4 (refusal names the opener) all FAIL; INV-2 is a
+  converse guard so it passes either way. Full suite 2911/2911.
+
+  Noted, not changed (out of scope, no bug observed): the walkers' fence
+  rule is looser than CommonMark's on indent (they toggle at any indent,
+  CommonMark stops at 4) and narrower on the fence character (no tilde).
+  Tightening it would change flip/annotate behaviour on existing
+  roadmaps, so it stays a separate call if it ever bites.
 
   The failure surfaced two ops later as
   `anchor_unsafe_context: located bullet is inside a fenced code block —

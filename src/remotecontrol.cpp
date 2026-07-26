@@ -957,6 +957,59 @@ QJsonArray rcComputeDuplicateIds(const QJsonArray &bullets) {
 // own size handling and are not routed through this cap.
 constexpr int kRcMaxNoteChars = 4096;
 
+// ANTS-3640 — neutralise a code fence the prose opens and never closes.
+//
+// Bodies and notes are written as continuation lines indented two spaces
+// under their bullet, and that indent saves nobody: CommonMark opens a
+// fence at `^ {0,3}(```|~~~)`, and this file's own walkGfmBullets /
+// walkAntsV1Bullets toggle on a `trimmed()` line starting with ``` at ANY
+// indent. So one quoted-but-unclosed fence opener in a body swallows every
+// bullet below it until the next stray fence. That is not hypothetical:
+// ANTS-3635's body quoted a fence opener, ANTS-3638's quoted another, and
+// the pair fenced off ANTS-3637 between them — surfacing two ops later as
+// an anchor_unsafe_context refusal naming the innocent bullet.
+//
+// Only an UNCLOSED opener is escaped. A body quoting a whole balanced code
+// block leaves the file well-formed, and quoting one is a legitimate thing
+// to do, so it passes through untouched. The escape is CommonMark's
+// backslash form — `\``` renders as a literal ``` and opens nothing — and
+// it also falls outside the walkers' `startsWith("```")` toggle, so both
+// readers agree on the repaired line.
+void rcEscapeUnclosedFence(QString &text) {
+    if (!text.contains(QLatin1Char('`')) && !text.contains(QLatin1Char('~')))
+        return;
+    QStringList ls = text.split(QChar('\n'));
+    // Toggle exactly as the walkers do, so "balanced" means the same thing
+    // to this guard as it does to the code that would later refuse.
+    int openAt = -1;
+    for (int i = 0; i < ls.size(); ++i) {
+        const QString t = ls.at(i).trimmed();
+        if (!t.startsWith(QStringLiteral("```")) &&
+            !t.startsWith(QStringLiteral("~~~"))) {
+            continue;
+        }
+        openAt = (openAt < 0) ? i : -1;
+    }
+    if (openAt < 0) return;
+    QString &l = ls[openAt];
+    int at = 0;
+    while (at < l.size() && l.at(at).isSpace()) ++at;
+    l.insert(at, QLatin1Char('\\'));
+    text = ls.join(QChar('\n'));
+}
+
+// ANTS-3640 — the fenced-bullet refusals name the bullet being edited,
+// which is never where the fix goes: that bullet is innocent, some earlier
+// line opened a fence and swallowed it. Appended to those messages so the
+// reader is pointed at the line they actually have to repair. Empty when
+// the opener is unknown (older walk results), so the message degrades to
+// its pre-ANTS-3640 wording rather than claiming a bogus line.
+QString rcFenceOpenerHint(int fenceOpenLine) {
+    if (fenceOpenLine < 0) return {};
+    return QStringLiteral(" — the fence opens at line %1")
+        .arg(fenceOpenLine + 1);
+}
+
 void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames) {
     if (text.isEmpty()) return;
     // Matched <parameter name="X">…</parameter> pairs. [\s\S] spans
@@ -1003,6 +1056,7 @@ void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames) {
         }
     }
     text = ls.join(QChar('\n'));
+    rcEscapeUnclosedFence(text);   // ANTS-3640
     while (text.endsWith(QChar('\n'))) text.chop(1);
 }
 
@@ -1461,6 +1515,9 @@ QSet<quint64> rcGfmHeadlineMatchHashes(const QString &rawHead,
 //   - insideFenced: true iff the checkbox line was reached while
 //     inside an open ```...``` block — surfaces the
 //     anchor_unsafe_context refusal.
+//   - fenceOpenLine: 0-based index of the line that opened that fence,
+//     -1 when not fenced. ANTS-3640 — the refusal reports it, because
+//     the opener is the line the caller has to repair.
 struct GfmBullet {
     int     firstLine     = -1;
     int     headlineLine  = -1;
@@ -1469,6 +1526,7 @@ struct GfmBullet {
     QString status;        // "✅" | "📋" | "🚧" | "💭"
     QString headline;      // first non-empty line text (post-strip)
     bool    insideFenced   = false;
+    int     fenceOpenLine  = -1;
 };
 
 // kAdapterEmoji* — same byte sequences as roadmapdialog.cpp's
@@ -1482,11 +1540,13 @@ constexpr const char *kAdapterEmojiConsidered = "\xF0\x9F\x92\xAD";    // 💭
 QVector<GfmBullet> walkGfmBullets(const QStringList &lines) {
     QVector<GfmBullet> out;
     bool insideFence = false;
+    int  fenceOpenLine = -1;
     for (int i = 0; i < lines.size(); ++i) {
         const QString &ln = lines.at(i);
         const QString trimmed = ln.trimmed();
         if (trimmed.startsWith(QStringLiteral("```"))) {
             insideFence = !insideFence;
+            fenceOpenLine = insideFence ? i : -1;
             continue;
         }
         if (!ln.startsWith(QStringLiteral("- [ ]")) &&
@@ -1495,9 +1555,10 @@ QVector<GfmBullet> walkGfmBullets(const QStringList &lines) {
             continue;
         }
         GfmBullet b;
-        b.firstLine    = i;
-        b.headlineLine = i;
-        b.insideFenced = insideFence;
+        b.firstLine     = i;
+        b.headlineLine  = i;
+        b.insideFenced  = insideFence;
+        b.fenceOpenLine = insideFence ? fenceOpenLine : -1;
 
         // Parse status from checkbox char.
         const QChar cb = ln.size() > 3 ? ln.at(3) : QChar(' ');
@@ -1642,6 +1703,7 @@ struct AntsV1Bullet {
     QString status;        // "✅" | "📋" | "🚧" | "💭"
     QString headline;      // post-strip; "**" wrappers removed
     bool    insideFenced   = false;
+    int     fenceOpenLine  = -1;   // ANTS-3640 — see GfmBullet
 };
 
 // Match the bracket-ID token that immediately follows the status
@@ -1662,6 +1724,7 @@ static const QRegularExpression rxAntsV1IdBracket(
 QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
     QVector<AntsV1Bullet> out;
     bool insideFence = false;
+    int  fenceOpenLine = -1;
     auto matchEmojiAt = [](const QString &line, int pos) -> QString {
         const QString done = QString::fromUtf8(kAdapterEmojiDone);
         const QString plan = QString::fromUtf8(kAdapterEmojiPlanned);
@@ -1677,6 +1740,7 @@ QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
         const QString &ln = lines.at(i);
         if (ln.trimmed().startsWith(QStringLiteral("```"))) {
             insideFence = !insideFence;
+            fenceOpenLine = insideFence ? i : -1;
             continue;
         }
         if (!ln.startsWith(QStringLiteral("- "))) continue;
@@ -1690,8 +1754,9 @@ QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
             continue;
         }
         AntsV1Bullet b;
-        b.firstLine    = i;
-        b.insideFenced = insideFence;
+        b.firstLine     = i;
+        b.insideFenced  = insideFence;
+        b.fenceOpenLine = insideFence ? fenceOpenLine : -1;
         // ANTS-2059 — the id bracket is OPTIONAL. A fully id-less bullet
         // (`- 📋 **Headline.**`, no bracket at all) is still a real
         // ants-v1 bullet: the READ path (parseBullets) synthesises an id
@@ -7704,7 +7769,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             return rlErr(QStringLiteral("anchor_unsafe_context"),
                 QStringLiteral("roadmap_log: located bullet is "
                                "inside a fenced code block — "
-                               "refusing to edit"));
+                               "refusing to edit")
+                    + rcFenceOpenerHint(v1target.fenceOpenLine));
         }
         // Apply flip (skipped under annotate) + optional note, then
         // atomic write. applyAntsV1Flip edits the headline in place
@@ -8116,7 +8182,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         return rlErr(QStringLiteral("anchor_unsafe_context"),
             QStringLiteral("roadmap_log: located bullet is inside a "
                            "fenced code block — cannot edit it safely "
-                           "(anchor inject / flip / note append)"));
+                           "(anchor inject / flip / note append)")
+                + rcFenceOpenerHint(target.fenceOpenLine));
     }
 
     // 9. Determine if anchor injection is needed (INV-5). Annotate
@@ -8454,7 +8521,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
             if (t.insideFenced) {
                 return rlErr(QStringLiteral("anchor_unsafe_context"),
                     QStringLiteral("roadmap_log: located bullet is inside a "
-                                   "fenced code block — refusing to edit"));
+                                   "fenced code block — refusing to edit")
+                        + rcFenceOpenerHint(t.fenceOpenLine));
             }
             // Anchor the body span at firstLine (the checkbox line), NOT
             // headlineLine: walkGfmBullets advances headlineLine past
@@ -8504,7 +8572,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
             if (t.insideFenced) {
                 return rlErr(QStringLiteral("anchor_unsafe_context"),
                     QStringLiteral("roadmap_log: located bullet is inside a "
-                                   "fenced code block — refusing to edit"));
+                                   "fenced code block — refusing to edit")
+                        + rcFenceOpenerHint(t.fenceOpenLine));
             }
             format         = QStringLiteral("ants-v1");
             bodyAnchorLine = t.firstLine;
@@ -8551,7 +8620,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
         if (t.insideFenced) {
             return rlErr(QStringLiteral("anchor_unsafe_context"),
                 QStringLiteral("roadmap_log: located bullet is inside a "
-                               "fenced code block — refusing to edit"));
+                               "fenced code block — refusing to edit")
+                    + rcFenceOpenerHint(t.fenceOpenLine));
         }
         bodyAnchorLine = t.firstLine;
         reportLine     = t.firstLine + 1;
@@ -8925,7 +8995,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                 if (it->insideFenced) {
                     skip(li, QStringLiteral("anchor_unsafe_context"),
                          QStringLiteral("bullet at line %1 is inside a fenced "
-                                        "code block — refusing").arg(fl + 1));
+                                        "code block — refusing").arg(fl + 1)
+                             + rcFenceOpenerHint(it->fenceOpenLine));
                     continue;
                 }
                 t.headlineLine = it->headlineLine;
@@ -8940,7 +9011,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                 if (it->insideFenced) {
                     skip(li, QStringLiteral("anchor_unsafe_context"),
                          QStringLiteral("bullet at line %1 is inside a fenced "
-                                        "code block — refusing").arg(fl + 1));
+                                        "code block — refusing").arg(fl + 1)
+                             + rcFenceOpenerHint(it->fenceOpenLine));
                     continue;
                 }
                 t.headlineLine = fl;
