@@ -20382,6 +20382,56 @@ that needs them.
   Lanes: remotecontrol, roadmapfoldin.
   Source: in-session-2026-07-26 (hit while writing ANTS-3638).
 
+- 📋 [ANTS-3641] **Repair the drifted `mcpprojection.cpp:28` citation in docs/specs/ANTS-2090.md.**
+  docs/specs/ANTS-2090.md:69 reads "`compactEnvelope` (gated on
+  `isFieldProjectionTool`, `mcpprojection.cpp:28`)". src/mcpprojection.cpp:28
+  is today a blank line between two unrelated functions — the code moved and
+  the citation did not.
+
+  Found by hand while grounding the ANTS-3636 spec, and kept there as the
+  worked example in its § 2.1 response sample: the line still EXISTS, so an
+  existence-only check passes it. This is the exact failure class the
+  doc_citations verb is being built to catch, which makes it the natural
+  first customer once that verb ships.
+
+  Fix: re-locate isFieldProjectionTool in src/mcpprojection.cpp and update
+  the citation. Cheap either way; do NOT block it on ANTS-3636.
+  **Layman:** A design doc points at a line of code that has since moved, so it now points at an empty line. Fix the pointer.
+  Kind: doc-fix.
+  Source: in-session-2026-07-26 (found while speccing ANTS-3636).
+
+- 📋 [ANTS-3642] **doc_citations: request-side `expect` map for scripted re-verification.**
+  Deferred out of the ANTS-3636 spec, which substitutes an anchor-symbol
+  check derived from the doc's own `sym` (`file.cpp:12`) idiom.
+
+  Measured coverage of that substitute: 404 of 1,830 citations under docs/
+  carry a preceding identifier code span within 40 chars — 22%, not the
+  "dominant" share the first spec draft claimed. So the derived check is a
+  good DEFAULT but is not a replacement: the other 78% get no drift signal
+  at all, and the bullet's scripted-re-verification case (a caller who HAS
+  an expectation because it is re-checking after a refactor) is unserved.
+
+  Shape: optional `expect: [{doc_line, substring}]` on the doc_citations
+  request; each cited region is tested for the substring and the result
+  joins `anchor_found` on the same axis. Only worth building once the
+  per-doc call has proven its value in real review loops.
+  **Layman:** Let a caller say what a doc's line references SHOULD say, so a script can re-check them automatically after code moves.
+  Kind: implement.
+  Source: in-session-2026-07-26 (ANTS-3636 spec, cold-eyes loop 1 deferral).
+
+- 📋 [ANTS-3643] **doc_citations: corpus-wide digest mode for a whole docs/ sweep.**
+  ANTS-3636 scopes `path` to a single FILE: the docs/ tree holds ~1,870
+  citations, and returning cited text for all of them would blow any
+  sensible response budget. A directory path refuses `bad_args`.
+
+  A sweep mode needs a different response contract — counts plus the
+  stale subset only, never per-citation text — which is a distinct verb
+  shape rather than an argument on this one. Deliberately gated behind
+  evidence that the per-doc call earns its keep first.
+  **Layman:** Check every design doc's file references in one go, showing only the broken ones.
+  Kind: implement.
+  Source: in-session-2026-07-26 (ANTS-3636 spec, cold-eyes loop 1 deferral).
+
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
 /cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +
