@@ -20432,6 +20432,31 @@ that needs them.
   Kind: implement.
   Source: in-session-2026-07-26 (ANTS-3636 spec, cold-eyes loop 1 deferral).
 
+- 📋 [ANTS-3644] **Fix the stale `mcpprojection` tool count in docs/subsystems.md.**
+  docs/subsystems.md:85 describes `isFieldProjectionTool` as a
+  "7-tool allowlist". The live set in src/mcpprojection.cpp:64-77 has 13
+  entries (roadmap_query, changelog_query, project_layout, file_outline,
+  get_environment, tab_list, subsystem, git_state, read_log, read_region,
+  codebase_index, docs_index, model_switch_stats). Drift accumulated as
+  ANTS-1855/2021/1637/2139/1735/3533 each added one without touching the
+  lane entry. Prefer dropping the count rather than re-pinning it, so the
+  next addition cannot re-stale it.
+  **Layman:** A reference doc says a list holds 7 entries; it actually holds 13.
+  Kind: doc-fix.
+  Source: cold-eyes-2026-07-26 ANTS-3636 loop 3 lane C.
+
+- 📋 [ANTS-3645] **Document the token-cost table as a required MCP registration step.**
+  docs/standards/mcp-tools.md has no mention of the per-verb token-cost
+  table in claudeintegration.cpp, nor of `selection_hint` (the one-line
+  "when to use" that tool_info {catalog:true} surfaces per verb). Both are
+  hand-authored per tool and both silently degrade when omitted — a verb
+  with no selection_hint lists in the catalog with an empty hint, which is
+  the discovery surface CLAUDE.md points every session at. The standard's
+  step list should carry them so a new verb cannot ship without.
+  **Layman:** Adding a new MCP tool needs a step that our own how-to guide never mentions.
+  Kind: doc.
+  Source: cold-eyes-2026-07-26 ANTS-3636 loop 3 lane C.
+
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
 /cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +
