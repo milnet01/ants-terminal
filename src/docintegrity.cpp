@@ -100,37 +100,82 @@ QList<Heading> extractHeadings(const QStringList &lines,
 // it, so a real link whose TEXT is code — [`a/b.md`](a/b.md) — still parses:
 // the brackets and the target sit outside the span and survive. Follows the
 // CommonMark rule that a span closes on a backtick run of equal length.
-QString maskInlineCode(const QString &line) {
-    QString out = line;
-    const int n = out.size();
-    int i = 0;
-    while (i < n) {
-        if (out.at(i) != QLatin1Char('`')) { ++i; continue; }
-        const int openStart = i;
-        int openLen = 0;
-        while (i < n && out.at(i) == QLatin1Char('`')) { ++i; ++openLen; }
-        int j = i;
-        bool closed = false;
-        while (j < n) {
-            if (out.at(j) != QLatin1Char('`')) { ++j; continue; }
-            int closeLen = 0;
-            while (j < n && out.at(j) == QLatin1Char('`')) { ++j; ++closeLen; }
-            if (closeLen == openLen) { closed = true; break; }
+//
+// ANTS-3635(a) — the mask runs over the whole document, not line by line,
+// because a code span may cross a newline (CommonMark § 6.1). Masking each
+// line in isolation left the tail of a multi-line span exposed:
+// docs/specs/ANTS-1150.md wraps a C++ lambda in a span that opens on :197
+// and closes on :198, so `[this](int idx)` was harvested as a link.
+//
+// The closing run is searched forward across lines, stopping at a blank
+// line or a fenced-block line — an inline span cannot cross either. If no
+// equal-length run turns up, the backticks are literal text per CommonMark
+// and NOTHING is masked, so one stray backtick cannot swallow the real
+// links on the lines below it.
+QStringList maskInlineCode(const QStringList &lines,
+                           const QVector<bool> &fence) {
+    QStringList out = lines;
+    const auto isBoundary = [&](int li) {
+        return fence.value(li) || out.at(li).trimmed().isEmpty();
+    };
+    for (int li = 0; li < out.size(); ++li) {
+        if (isBoundary(li)) continue;
+        int i = 0;
+        while (i < out.at(li).size()) {
+            if (out.at(li).at(i) != QLatin1Char('`')) { ++i; continue; }
+            const int openStart = i;
+            int openLen = 0;
+            while (i < out.at(li).size()
+                   && out.at(li).at(i) == QLatin1Char('`')) { ++i; ++openLen; }
+
+            int closeLine = li, cj = i, closeEnd = -1;
+            for (;;) {
+                const QString &s = out.at(closeLine);
+                while (cj < s.size()) {
+                    if (s.at(cj) != QLatin1Char('`')) { ++cj; continue; }
+                    int runLen = 0;
+                    while (cj < s.size() && s.at(cj) == QLatin1Char('`')) {
+                        ++cj;
+                        ++runLen;
+                    }
+                    if (runLen == openLen) { closeEnd = cj; break; }
+                }
+                if (closeEnd >= 0 || closeLine + 1 >= out.size()
+                    || isBoundary(closeLine + 1)) break;
+                ++closeLine;
+                cj = 0;
+            }
+            if (closeEnd < 0) continue;   // unmatched run — literal text
+
+            if (closeLine == li) {
+                for (int k = openStart; k < closeEnd; ++k)
+                    out[li][k] = QLatin1Char(' ');
+                i = closeEnd;
+                continue;
+            }
+            // Multi-line span: blank this line's tail, each whole line
+            // between, and the closing line's head. The outer loop then
+            // reaches the closing line with its prefix already spaces, so
+            // scanning resumes just past the closing run.
+            for (int k = openStart; k < out.at(li).size(); ++k)
+                out[li][k] = QLatin1Char(' ');
+            for (int m = li + 1; m < closeLine; ++m)
+                out[m].fill(QLatin1Char(' '));
+            for (int k = 0; k < closeEnd; ++k)
+                out[closeLine][k] = QLatin1Char(' ');
+            break;   // nothing left to scan on this line
         }
-        if (!closed) break;   // unterminated run — leave the remainder alone
-        for (int k = openStart; k < j; ++k) out[k] = QLatin1Char(' ');
-        i = j;
     }
     return out;
 }
 
 QList<Link> extractLinks(const QStringList &lines,
                          const QVector<bool> &fence, int cap) {
+    const QStringList scan = maskInlineCode(lines, fence);
     QList<Link> out;
-    for (int i = 0; i < lines.size() && out.size() < cap; ++i) {
+    for (int i = 0; i < scan.size() && out.size() < cap; ++i) {
         if (fence.value(i)) continue;
-        const QString scanLine = maskInlineCode(lines[i]);
-        auto it = linkRe().globalMatch(scanLine);
+        auto it = linkRe().globalMatch(scan.at(i));
         while (it.hasNext() && out.size() < cap) {
             const auto m = it.next();
             out.append({m.captured(1).trimmed(), i + 1});

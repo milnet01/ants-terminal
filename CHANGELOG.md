@@ -40,6 +40,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Dropped the source-scrape size ceiling from the roadmap-format test** (ANTS-3633)
+  The ceiling had been raised eleven times and never once caught the runaway it was meant to catch — it only taxed each edit to the roadmap-query code with a second round trip. The check that actually guards against reading the wrong function is kept, and its failure message now names the real cause.
+
 - **`find_sources` is now labelled C/C++-only before you call it, not after.** (ANTS-3619)
   On a Python or JS project it returns `files_count:0`, which is indistinguishable from a genuine "nothing calls this" — the worst possible wrong answer when checking a change's blast radius. The limit was only explained in the response. Both pre-call surfaces (the session hook menu and the tool catalog hint) now state it, and the adjacent `find_definition` line names its languages so the asymmetry is visible rather than inferred.
 
@@ -69,6 +72,9 @@ for security-relevant changes.
   `quick:true` ran an identical full walk and pre-pass. `--quick` is caller-side (the grep pre-pass is the audit; only the subagent phase is skipped), so the field promised a fast path that did not exist. Callers passing it now get a schema refusal rather than a silent no-op.
 
 ### Fixed
+
+- **doc_integrity: a code span that crosses a newline is now masked end to end** (ANTS-3635)
+  The link checker masked inline code one line at a time, so the tail of a two-line `…` span was still harvested as a link — a C++ lambda split across lines read as a broken link. Masking now runs over the whole document. An unpaired backtick still masks nothing, so one stray tick cannot silently stop the checker on the lines below it.
 
 - **Link checker no longer reports every section of a spec as "missing from TOC" when that spec's contents list is plain text.** (ANTS-3634)
   (ANTS-3634) `doc_integrity`'s TOC-coverage check matches sections by

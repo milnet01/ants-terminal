@@ -18,77 +18,27 @@ bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
 }
 
-// Bounded substring between two signatures. Returns the substring
-// from the first signature's position up to the second's. Asserts
-// the bound is non-zero and ≤ kMaxBound bytes so a future reorder
-// that widens the bound trips the test loudly rather than passing
-// silently against the wrong function body.
-// ANTS-1428 bumped the kMaxBound ceiling from 16 KB to 24 KB
-// because cmdRoadmapQuery legitimately grew: per-bullet
-// `format`/`synthetic`/`anchor` envelope fields + the
-// envelope-level format echo are ~700 B of new behaviour
-// distributed across the cache-fill, lazy-fill, and emission
-// paths. ANTS-1437 + ANTS-1438 bumped it again to 28 KB:
-// section_index branch (~4 KB — lazy fill + tally + envelope)
-// plus bold_id emissions across three sites (~300 B). The bound
-// is still a meaningful runaway-guard ceiling — at 28 KB any
-// "added a new mode" change should make the author think twice
-// about whether the work belongs in a helper instead.
+// Bounded substring between two signatures. Returns the substring from
+// the first signature's position up to the second's, or {} if either
+// signature is missing — that match IS the guard: it catches a reorder
+// that would otherwise scrape the wrong function body.
+//
+// ANTS-3633 removed a size ceiling that used to sit here. It was bumped
+// eleven times (16→24→28→32→40→44→52→64→72→80→88→96 KiB) and every
+// firing was resolved by raising the number, never once by extracting a
+// helper — so it never worked as the "think twice about a helper" nudge
+// its comment claimed, it just taxed each edit to cmdRoadmapQuery with a
+// second, unrelated round trip. Policing function size is a lint concern,
+// not something to smuggle into a regex-window helper.
 std::string boundedBetween(const std::string &cpp,
                            const std::string &startSig,
-                           const std::string &endSig,
-                           size_t kMaxBound = 96 * 1024) {
-    // ANTS-1436 bumped 28→32 KB: pagination args parse (~1.5 KB)
-    // + PaginationEngine::pageBullets call + envelope augment at
-    // each of the 2 emission sites (~600 B × 2). The pagination
-    // LOGIC lives in src/paginationengine.cpp; only the call sites
-    // are in cmdRoadmapQuery.
-    // ANTS-1462 bumped 32→40 KB: header-inventory fallback adds
-    // a lazy buildIndex call + ~1.5 KB envelope construction in
-    // each of the 2 emission sites in cmdRoadmapQuery. The
-    // inventory rendering itself lives in
-    // buildHeaderInventoryEnvelope outside the function body.
-    // ANTS-1622 bumped 40→44 KB: section_index emission grew by
-    // ~1.5 KB to surface the three `*_id_only` parallel counts
-    // per section + the top-level legacy_format_sections[] hint
-    // (the tally pass itself only adds ~200 B; the bulk is in
-    // the per-section emission and the inline rationale comment).
-    // ANTS-1856 bumped 44→52 KB: the single-item `id` selector adds
-    // the id parse + two combo-rejection guards + the bypass branch
-    // (~3.7 KB) ahead of the status filter. cmdRoadmapQuery is now
-    // ~48.7 KB — still a meaningful runaway ceiling.
-    // ANTS-1726 bumped 52→64 KB: the plural `ids` selector adds the
-    // ids parse + three combo guards + the document-order match
-    // branch with matched/missing accounting (~5 KB total).
-    // cmdRoadmapQuery is now ~57 KB.
-    // ANTS-2052 bumped 64→72 KB: the section_index legacy-roadmap
-    // fallback adds the raw-total sum + id-only survivor pre-count +
-    // the raw/id-only drop-predicate switch + the legacy_format/
-    // raw_*_count envelope emission (~2 KB). Body is now ~66 KB —
-    // the ceiling stays a meaningful runaway guard.
-    // ANTS-3400/3402 bumped 72→80 KB: the accepted-status-filter block +
-    // sectionFilter collapse + granular lifecycle predicate branches
-    // (ANTS-3400) and the max_body_bytes parse + rcCapBodyFields emission
-    // caps (ANTS-3402) add ~4 KB.
-    // ANTS-3425 bumped 80→88 KB: the three m_roadmapCacheBullets builders
-    // now pass kRoadmapQueryBodyStoreCap + carry the rationale comment so
-    // an id/ids max_body_bytes fetch is no longer inert (~0.5 KB). The
-    // measured body sat at ~79.5 KB before this change (the earlier
-    // "~70 KB" note was stale), so it had crept to the ceiling; the
-    // guard stays meaningful and still flags a genuine new-mode addition.
-    // ANTS-3617 bumped 88→96 KB: collapsing the four-way `mode !=` chain
-    // into a single kModes list (so bad_mode can echo `accepted`, matching
-    // changelog_query) plus its rationale comment added ~0.7 KB. The
-    // measured body was 89,497 B before the change and 90,168 B after —
-    // i.e. it had crept to within 600 B of the old 90,112 B ceiling, and
-    // this bump restores the headroom rather than papering over a
-    // runaway.
+                           const std::string &endSig) {
     const auto startPos = cpp.find(startSig);
     if (startPos == std::string::npos) return {};
     const auto endPos = cpp.find(endSig, startPos + startSig.size());
     if (endPos == std::string::npos) return {};
     const auto len = endPos - startPos;
-    if (len == 0 || len > kMaxBound) return {};
+    if (len == 0) return {};
     return cpp.substr(startPos, len);
 }
 
@@ -105,8 +55,8 @@ TEST(mcp_roadmap_unrecognised_format, Inv1QueryGate) {
         "QJsonDocument RemoteControl::cmdRoadmapQuery(",
         "QJsonDocument RemoteControl::cmdRoadmapLog(");
     ASSERT_FALSE(body.empty())
-        << "INV-1: failed to bound cmdRoadmapQuery body (sig moved "
-           "or body exceeded boundedBetween's kMaxBound ceiling)";
+        << "INV-1: failed to bound cmdRoadmapQuery body (one of the two "
+           "bounding signatures moved or was renamed)";
 
     expect(contains(body, "ANTS-1429"),
            "INV-1: ANTS-1429 anchor present in cmdRoadmapQuery");
@@ -145,16 +95,15 @@ TEST(mcp_roadmap_unrecognised_format, Inv3LogGateAndShape) {
     // (cmdRoadmapLog itself is now a thin dispatcher). Bound that function
     // directly — bounding from the dispatcher instead swept up the unrelated
     // cmdChangelog* functions that sit between it and cmdRoadmapLogFlip in the
-    // TU, so any growth there (e.g. ANTS-3584 add_subsection) tipped the
-    // accidental span over the boundedBetween ceiling (ANTS source-scrape
-    // window brittleness).
+    // TU, so the assertions below were being checked against a span that
+    // was mostly unrelated code (ANTS source-scrape window brittleness).
     const std::string body = boundedBetween(
         cpp,
         "QJsonDocument RemoteControl::cmdRoadmapLogAppend(",
         "QJsonDocument RemoteControl::cmdRoadmapLogFlip(");
     ASSERT_FALSE(body.empty())
-        << "INV-3: failed to bound cmdRoadmapLogAppend body (sig moved "
-           "or bound exceeded)";
+        << "INV-3: failed to bound cmdRoadmapLogAppend body (one of the "
+           "two bounding signatures moved or was renamed)";
 
     expect(contains(body, "ANTS-1429"),
            "INV-3: ANTS-1429 anchor present in cmdRoadmapLog");

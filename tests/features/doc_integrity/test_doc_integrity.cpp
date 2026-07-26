@@ -160,6 +160,46 @@ TEST(DocIntegrity, RealLinkWithCodeTextStillChecked) {
     EXPECT_TRUE(hasMention(fs, Kind::BrokenLink, "gone.md"));
 }
 
+// INV-5d (ANTS-3635a) — a code span may cross a newline (CommonMark § 6.1),
+// so the tail of a multi-line span is still prose about a link. This is the
+// live docs/specs/ANTS-1150.md:197-198 shape: one span wrapping a C++ lambda
+// whose second line reads `[this](int idx)`.
+TEST(DocIntegrity, MultiLineInlineCodeSpanNotHarvested) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    ASSERT_TRUE(writeFile(root + "/docs/a.md",
+                          "# H\n"
+                          "The handler is `[this](gone-a.md)\n"
+                          "and [more](gone-b.md)` — one span, two lines.\n"));
+    const auto fs = DocIntegrity::check(root, {"docs/a.md"});
+    EXPECT_EQ(countKind(fs, Kind::BrokenLink), 0)
+        << "the tail of a multi-line code span must not be harvested";
+}
+
+// INV-5e (ANTS-3635a) — the converse guard on INV-5d. An UNMATCHED backtick
+// run is literal text per CommonMark, so it must mask nothing; and the
+// forward search for a closing run stops at a blank line, since an inline
+// span cannot cross a paragraph break. Without both, one stray backtick
+// would silently stop the checker on every line below it.
+TEST(DocIntegrity, UnmatchedBacktickDoesNotSwallowLinks) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    ASSERT_TRUE(writeFile(root + "/docs/a.md",
+                          "# H\n"
+                          "A stray ` backtick with no partner.\n"
+                          "Then [x](gone-a.md) below it.\n"
+                          "\n"
+                          "New paragraph, opens ` here and never closes.\n"
+                          "So [y](gone-b.md) is still checked.\n"));
+    const auto fs = DocIntegrity::check(root, {"docs/a.md"});
+    EXPECT_EQ(countKind(fs, Kind::BrokenLink), 2)
+        << "an unmatched backtick must leave following links harvestable";
+    EXPECT_TRUE(hasMention(fs, Kind::BrokenLink, "gone-a.md"));
+    EXPECT_TRUE(hasMention(fs, Kind::BrokenLink, "gone-b.md"));
+}
+
 // INV-6 — a root-escaping link (relative escape AND absolute target) is
 // skipped, never probed, never treated as an in-root file.
 TEST(DocIntegrity, RootEscapeSkipped) {

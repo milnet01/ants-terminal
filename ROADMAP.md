@@ -19901,11 +19901,22 @@ shipped.
   Lanes: diffviewer.
   Source: user-request-2026-07-25.
 
-- 📋 [ANTS-3633] **boundedBetween's runaway-growth ceiling has been bumped 11 times and never once caught a runaway — it taxes every edit instead.**
+- ✅ [ANTS-3633] **boundedBetween's runaway-growth ceiling has been bumped 11 times and never once caught a runaway — it taxes every edit instead.**
   Found while shipping ANTS-3617: a ~700-byte edit to cmdRoadmapQuery
   failed mcp_roadmap_unrecognised_format because the function's measured
   body went 89,497 B → 90,168 B, 56 B past boundedBetween's 90,112 B
   (88 KiB) ceiling.
+  Resolved (2026-07-26) with option (a) — the ceiling is deleted.
+  boundedBetween now keeps only the start/end signature match, which is the
+  guard that catches the real failure mode (a reorder that would scrape the
+  WRONG function body); the 11-bump comment block went with it. Both
+  "bound exceeded" failure messages were rewritten to name the actual cause
+  ("one of the two bounding signatures moved or was renamed"), so the stale
+  "> 16 KB" text the reporter hit is gone. The INV-3 comment that blamed the
+  old cmdRoadmapLog bounding on "growth tipping the span over the ceiling"
+  now states the real reason: the assertions were being checked against a
+  span that was mostly unrelated code. All 5 mcp_roadmap_unrecognised_format
+  tests green.
 
   The ceiling's stated purpose is to be "a meaningful runaway guard" that
   makes an author "think twice about whether the work belongs in a helper
@@ -20026,10 +20037,25 @@ shipped.
   Lanes: docintegrity.
   Source: in-session-2026-07-25 (ANTS-3623 follow-up).
 
-- 📋 [ANTS-3635] **doc_integrity: three residual broken_link false-positive classes the ANTS-3623/3634 passes did not cover.**
+- ✅ [ANTS-3635] **doc_integrity: three residual broken_link false-positive classes the ANTS-3623/3634 passes did not cover.**
   Measured against the live post-relaunch binary: docs/ now yields 3
   broken_link findings, and ALL THREE are false positives. Each has a
   distinct root cause, verified in source:
+  Resolved (2026-07-26) with fix (a) ONLY, per the bullet's own recommended
+  split. maskInlineCode now runs over the whole document rather than one line
+  at a time, so a code span that crosses a newline (CommonMark § 6.1) is
+  masked end to end. The closing run is searched forward across lines and
+  stops at a blank line or a fenced-block line — an inline span cannot cross
+  either — and an UNMATCHED run masks nothing at all, because CommonMark
+  treats unpaired backticks as literal text and one stray backtick must not
+  silently stop the checker on every line below it. That converse guard is
+  INV-5e; INV-5d replicates the live ANTS-1150.md:197-198 shape and FAILS
+  against pre-fix code (verified by reverting src/docintegrity.cpp and
+  rebuilding: MultiLineInlineCodeSpanNotHarvested failed, the rest passed).
+  26 DocIntegrity tests green.
+  (b) and (c) are carried forward as their own bullet — (b) needs the
+  container-relative fence-indent rule specced before coding, and (c) is a
+  judgment call about draft-markdown-quoted-for-another-file, not a bug.
 
   (a) Multi-line inline code span. docs/specs/ANTS-1150.md:198 — a single
   backtick span opens on :197 and closes on :198, wrapping the C++
@@ -20065,6 +20091,114 @@ shipped.
   Kind: fix.
   Lanes: docintegrity.
   Source: in-session-2026-07-25 (ANTS-3634 follow-up, measured post-relaunch).
+
+### 🔌 Ants-MCP feedback from CC sessions (triage 2026-07-26)
+
+Triage of the OneUp session's addenda to OneUp_Ants_MCP_Feedback.md. Both
+findings are about the /cold-eyes workflow: one asks for a verb that does not
+exist yet, the other for the verbs that DO exist to be reachable from the skill
+that needs them.
+
+- 📋 [ANTS-3636] **doc_citations verb — resolve a doc's `path:line` citations against the files and return the cited line TEXT.**
+  Reported by the OneUp session: reviewing one spec meant verifying 33
+  `updater.py:NNN` citations, and there is no verb for "given this doc,
+  resolve every path:line reference and show me the cited line". They
+  hand-wrote a throwaway Python script. read_regions is the closest fit
+  but needs the citation list extracted by hand first — which is the
+  tedious part.
+
+  This sits on the critical path of a MANDATED workflow: global rule 13
+  requires every doc claim naming a file/line to be verified against
+  current source, and /cold-eyes runs that check every loop, every
+  reviewer, every doc. The failure mode when it is skipped is a loop that
+  ratifies a stale line number.
+
+  Shape: a `doc_citations` verb (or a mode on doc_integrity — decide at
+  spec time; doc_integrity already owns link resolution and the fence /
+  inline-code masking a citation scraper needs). Given a doc path, regex
+  out `path:line` and `path:start-end` references, resolve each against
+  the repo, and return `[{doc_line, cited_path, cited_line, exists,
+  text}]` plus a `stale[]` list for citations whose target is missing or
+  out of range.
+
+  The cited line TEXT is the load-bearing part: an existence check alone
+  does not catch a citation that has drifted 20 lines onto an unrelated
+  statement, which is the common failure after a refactor. An `expect`
+  mode ("does the cited line still contain this substring?") would let a
+  spec be re-verified mechanically after the code moves.
+
+  Related, and worth reading before speccing: ANTS-3596 made
+  docs/specs/ANTS-2161.md's `~:line` citations drift-resistant by hand.
+  This verb is the general mechanism that would have made that fix
+  unnecessary.
+  **Layman:** The doc reviewer has to hand-check every "see file X, line 200" reference in a spec. This would check them all in one call and show what is actually on those lines now.
+  Kind: implement.
+  Source: OneUp_Ants_MCP_Feedback.md (2026-07-26 addendum).
+
+- 📋 [ANTS-3637] **The cold_eyes_* / indie_review_* / test_audit_* orchestration verbs are invisible to a session following the matching skill.**
+  Reported by the OneUp session. The cold-eyes skill names
+  `cold_eyes_brief` twice as a ready-made source of
+  `cited_code_regions[]` + `large_cross_reference_docs[]` — exactly what
+  they needed — and they STILL hand-built the reviewer brief, because
+  those verbs are deferred: only the name is in the tool list, no schema,
+  and nothing in the flow prompts a ToolSearch at the moment the brief is
+  being assembled. The run cost more tokens than it needed to.
+
+  This is the discoverability class of ANTS-1897 / the
+  feedback_mcp_discoverability memory: a token-saving verb nobody calls
+  saves nothing. It also directly undercuts ANTS-3521/3522, whose whole
+  point was to make cold_eyes_brief hand a reviewer regions instead of
+  whole files.
+
+  Fix (a), cheap and sufficient on the reporter's own account: make the
+  three skills name their verb as an explicit imperative step with the
+  exact call, not a parenthetical — "Phase 2: call `cold_eyes_brief
+  {caller_cwd, docs:[...]}` to build the brief; do not assemble it by
+  hand". Applies to ~/.claude/skills/{cold-eyes,indie-review,test-audit}.
+
+  Fix (b), if (a) proves insufficient: have session_orient (or the
+  skill's first response) surface a one-line "workflow verbs available
+  for the skill you are running", so the names arrive with a reason to
+  fetch their schemas.
+
+  Do (a) first and measure — (b) adds always-loaded bytes to every
+  session to serve three of them.
+  **Layman:** We built helper tools for the big review workflows, but the skill instructions only mention them in passing — so sessions rebuild the same thing by hand and burn extra tokens.
+  Kind: doc.
+  Source: OneUp_Ants_MCP_Feedback.md (2026-07-26 addendum).
+
+- 📋 [ANTS-3638] **doc_integrity broken_link: fences nested in list items, and markdown a spec quotes on behalf of another file.**
+  Carried forward from ANTS-3635, which shipped fix (a) only.
+
+  (b) Fence nested in a list item. docs/specs/ANTS-1238.md:328 — the
+  ```cpp fence at :319 is indented 4 spaces as list-item continuation.
+  fenceRe (markdownscan.cpp:13) is `^ {0,3}(```|~~~)`, matching
+  CommonMark's TOP-LEVEL 3-space limit, so a list-nested fence never
+  opens and its whole body is scanned as prose. This is NOT a
+  one-character regex widening: the fence may indent to the enclosing
+  item's content column, so the indent limit has to become
+  relative-to-container. Spec the container rule before coding — widening
+  the regex outright would start swallowing genuine prose that happens to
+  begin with backticks at 4+ spaces.
+
+  (c) Markdown quoted on behalf of ANOTHER file. docs/specs/ANTS-1894.md:851
+  writes [`docs/specs/ANTS-1894.md`](docs/specs/ANTS-1894.md) inside § 8
+  Cross-doc impact, as DRAFT text for CHANGELOG.md. From the repo root
+  that path is correct — CHANGELOG.md:1752 shipped the identical link —
+  but the checker resolves it relative to the citing doc's own directory
+  (docs/specs/), so it probes docs/specs/docs/specs/. Do NOT "fix" the
+  doc: the draft is faithful, and rewriting it would make the copied
+  CHANGELOG entry wrong. Options are to skip links inside a block a spec
+  marks as draft-for-another-file, or to accept and document the class as
+  a known, bounded residue.
+
+  Weigh (c) against doing nothing: it is one finding in the whole tree,
+  and the cheapest honest answer may be a line in the doc_integrity spec
+  rather than code.
+  **Layman:** Two remaining link-checker false alarms: code blocks indented inside a bullet list are not recognised as code blocks, and a spec that drafts text destined for another file gets its links checked from the wrong folder.
+  Kind: fix.
+  Lanes: docintegrity, markdownscan.
+  Source: ANTS-3635 (b)+(c) carry-forward, 2026-07-26.
 
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
