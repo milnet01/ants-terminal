@@ -4,6 +4,7 @@
 #include "markdownscan.h"
 
 #include <QChar>
+#include <QRegularExpression>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -12,6 +13,7 @@
 
 using MarkdownScan::fenceMask;
 using MarkdownScan::fenceOpenerChar;
+using MarkdownScan::fenceRe;
 
 // INV-1 — fence opener recognition: 0–3 leading spaces, space-only indent.
 TEST(MarkdownScanFence, OpenerCharIndentRule) {
@@ -75,4 +77,59 @@ TEST(MarkdownScanFence, UnterminatedFenceMasksToEnd) {
 // INV-5 — empty input yields an empty mask (no crash).
 TEST(MarkdownScanFence, EmptyInput) {
     EXPECT_TRUE(fenceMask(QStringList{}).isEmpty());
+}
+
+// INV-6 (ANTS-3638) — fenceOpenerChar hand-scans rather than matching
+// fenceRe(), because its indent limit varies. fenceRe() is still the written
+// statement of the top-level rule, so pin the two together: at the default
+// limit they must agree on every line, or one can drift without the other.
+TEST(MarkdownScanFence, HandScanAgreesWithFenceReAtDefaultIndent) {
+    const QStringList lines{
+        QStringLiteral("```"),        QStringLiteral(" ~~~lua"),
+        QStringLiteral("   ```cpp"),  QStringLiteral("    ```"),
+        QStringLiteral("\t~~~"),      QStringLiteral("``"),
+        QStringLiteral("~~"),         QStringLiteral(""),
+        QStringLiteral("prose ```"),  QStringLiteral("  \\```cpp"),
+    };
+    for (const QString &l : lines) {
+        const auto m = fenceRe().match(l);
+        const QChar got = fenceOpenerChar(l);
+        EXPECT_EQ(m.hasMatch(), !got.isNull()) << l.toStdString();
+        if (m.hasMatch()) EXPECT_EQ(got, m.captured(1).at(0)) << l.toStdString();
+    }
+}
+
+// INV-7 (ANTS-3638) — a fence nested in a list item opens. CommonMark
+// re-bases the item's content at the marker's content column, so the 4-space
+// indent here is 2 past the column and still within the 3-space allowance.
+// Pre-fix the fence never opened and `[x](gone.md)` was scanned as prose.
+TEST(MarkdownScanFence, ListNestedFenceOpens) {
+    const QStringList lines{
+        QStringLiteral("- item text"),        // 0 false
+        QStringLiteral(""),                   // 1 false
+        QStringLiteral("    ```cpp"),         // 2 true  (opener, col 2 + 2)
+        QStringLiteral("    [x](gone.md)"),   // 3 true  (body — sample, not a link)
+        QStringLiteral("    ```"),            // 4 true  (closer)
+        QStringLiteral(""),                   // 5 false
+        QStringLiteral("after"),              // 6 false
+    };
+    const QVector<bool> want{false, false, true, true, true, false, false};
+    EXPECT_EQ(fenceMask(lines), want);
+}
+
+// INV-7 converse — leaving the list restores the top-level 3-space limit, so
+// an indented block after the list is NOT read as a fence. Without this the
+// widening would be unbounded and could swallow the rest of a document.
+TEST(MarkdownScanFence, IndentAllowanceResetsAfterTheList) {
+    const QStringList lines{
+        QStringLiteral("  - nested item"),  // 0 false (content col 4)
+        QStringLiteral("      ```"),        // 1 true  (opener, col 4 + 2)
+        QStringLiteral("      body"),       // 2 true
+        QStringLiteral("      ```"),        // 3 true  (closer)
+        QStringLiteral("top-level prose"),  // 4 false — pops the container
+        QStringLiteral("    ```"),          // 5 false — 4 spaces, no container
+        QStringLiteral("still prose"),      // 6 false
+    };
+    const QVector<bool> want{false, true, true, true, false, false, false};
+    EXPECT_EQ(fenceMask(lines), want);
 }

@@ -27,6 +27,23 @@ through their own behaviour.
   masks every subsequent line true.
 - **INV-5** — the returned mask has exactly one entry per input line. *Test:*
   `mask.size() == lines.size()` on every case.
+- **INV-6** (ANTS-3638) — `fenceOpenerChar` hand-scans the indent instead of
+  matching `fenceRe()`, because its limit is now a parameter (default 3).
+  `fenceRe()` remains the written statement of the top-level rule, so the two
+  must **agree on every line** at the default limit. *Test:* a table of
+  openers, near-misses and non-fences asserts `fenceRe().hasMatch()` ⟺
+  non-null `fenceOpenerChar`, with the same fence char.
+- **INV-7** (ANTS-3638) — `fenceMask` tracks **list containers**: CommonMark
+  re-bases a list item's content at its marker's content column, so a fence
+  inside an item opens at up to 3 spaces past *that* column, not past 0.
+  Leaving the item restores the outer allowance. *Test:* a 4-space fence
+  under a `- ` bullet masks true; a 4-space ``` line after the list has ended
+  does not.
+
+  INV-1's 0–3 rule is the top-level case of INV-7 (content column 0), not a
+  separate rule. Only `fenceMask` carries this — the stateless
+  `fenceOpenerChar` callers (`feedbackfile`, `speclog`, `docsindex`) keep the
+  top-level limit, because container tracking needs state they do not hold.
 
 ## Test
 

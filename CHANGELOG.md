@@ -73,6 +73,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The doc link-checker now recognises code blocks indented inside a bullet list** (ANTS-3638)
+  A code block nested under a bullet was invisible to the scanner, so
+  its sample text was read as prose and any link-shaped line in it was
+  reported as broken. Code blocks are now recognised relative to the
+  bullet they sit under, exactly as Markdown defines them, while an
+  indented block outside a list is still left alone.
+
 - **roadmap_log no longer writes a body or note that opens a code fence it never closes** (ANTS-3640)
   A roadmap note quoting a bare fence opener used to be written
   verbatim, which silently turned every bullet below it into one big

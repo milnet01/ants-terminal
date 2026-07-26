@@ -20196,8 +20196,47 @@ that needs them.
   Kind: doc.
   Source: OneUp_Ants_MCP_Feedback.md (2026-07-26 addendum).
 
-- 📋 [ANTS-3638] **doc_integrity broken_link: fences nested in list items, and markdown a spec quotes on behalf of another file.**
+- ✅ [ANTS-3638] **doc_integrity broken_link: fences nested in list items, and markdown a spec quotes on behalf of another file.**
   Carried forward from ANTS-3635, which shipped fix (a) only.
+  Resolved (2026-07-26): (b) fixed in code, (c) accepted and documented.
+
+  (b) MarkdownScan::fenceMask now tracks list containers. CommonMark
+  re-bases a list item's content at its marker's content column, so a
+  fence inside an item opens at up to 3 spaces past THAT column — the
+  old `^ {0,3}` was the top-level case of the rule (content column 0)
+  mistaken for the whole of it. A QVector<int> stack of content columns,
+  popped when a non-blank line indents less than the innermost, pushed
+  on a marker line, gives the allowance; the stack is frozen inside a
+  fence so a bullet in a code sample is not read as a list. This is a
+  widening only INSIDE list items, and only toward what CommonMark
+  already says, so it cannot start swallowing genuine top-level prose —
+  the converse test pins that a 4-space ``` after the list has ended is
+  still not a fence.
+
+  fenceOpenerChar gained a defaulted maxIndent (3), and hand-scans
+  instead of matching fenceRe() because the limit now varies. fenceRe()
+  stays as the written statement of the top-level rule; INV-6 pins the
+  two to agree on every line at the default, so neither can drift alone.
+  Only fenceMask is container-aware — the stateless fenceOpenerChar
+  callers (feedbackfile, speclog, docsindex) need state they do not
+  carry, and the files they scan fence at top level. Noted in the header
+  so the divergence is not a surprise.
+
+  Tests: markdownscan INV-6/INV-7 + converse (test_core). Must-fail-first
+  verified: both INV-7 tests FAIL against the reverted scanner; INV-6 is
+  an equivalence guard and passes either way. Full suite 2914/2914.
+
+  (c) Accepted as a bounded residue, per this bullet's own advice to
+  weigh it against doing nothing. One finding in the whole tree, and
+  suppressing it needs a "draft-for-another-file" marker no doc uses,
+  invented for that one case. Documented in
+  tests/features/doc_integrity_verb/spec.md (Known residue), including
+  the cheap fix if it ever grows: also try resolving a failing relative
+  link from the repo root, and report that as a distinct kind rather
+  than silently dropping it. Chose the feature spec over docs/specs/
+  ANTS-3601.md deliberately — a post-hoc note on measured behaviour is
+  not an implementer's contract, and the global rule-14 cold-eyes gate
+  exists for contracts.
 
   (b) Fence nested in a list item. docs/specs/ANTS-1238.md:328 — the
   triple-backtick cpp fence at :319 is indented 4 spaces as list-item
