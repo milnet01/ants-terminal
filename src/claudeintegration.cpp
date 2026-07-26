@@ -10192,26 +10192,41 @@ void ClaudeIntegration::onMcpConnection() {
                                 "underlying file hasn't changed "
                                 "(ANTS-1499 \"304 Not Modified\" pattern).");
                         }
-                        // ANTS-1581 — the cold_eyes_ / indie_review_ /
-                        // test_audit_ verb families are a *parallel* API:
-                        // the matching /cold-eyes, /indie-review,
-                        // /test-audit slash-command skills orchestrate
+                        // ANTS-1581 — most of the cold_eyes_ /
+                        // indie_review_ verbs are a *parallel* API: the
+                        // matching /cold-eyes and /indie-review
+                        // slash-command skills orchestrate
                         // these steps themselves via subagent fan-out and
                         // do NOT call these tools. The naming parity
                         // otherwise reads as "the canonical path", so three
                         // sister sessions reached for them mid-skill. Flag
                         // them as the non-CC programmatic API. Idempotent
                         // sentinel: skip if "Parallel API:" already present.
-                        if (!desc.contains(QStringLiteral("Parallel API:"))) {
+                        //
+                        // ANTS-3639 — the prefix match over-applied. Some of
+                        // these verbs ARE called by their skill, so the note
+                        // was denying a call the skill mandates two lines
+                        // later: /test-audit's "Fast path" section drives the
+                        // whole test_audit_ family (and lists it in
+                        // allowed-tools), and /indie-review instructs
+                        // indie_review_partition (Phase 1 / 2.0) +
+                        // indie_review_corroborate (Phase 2b). Exempt those;
+                        // the rest of the families genuinely are the
+                        // build-your-own-pipeline API.
+                        static const QSet<QString> kSkillCalled = {
+                            QStringLiteral("indie_review_partition"),
+                            QStringLiteral("indie_review_corroborate"),
+                        };
+                        if (!desc.contains(QStringLiteral("Parallel API:"))
+                            && !kSkillCalled.contains(name)
+                            && !name.startsWith(
+                                   QLatin1String("test_audit_"))) {
                             QString skill;
                             if (name.startsWith(QLatin1String("cold_eyes_")))
                                 skill = QStringLiteral("/cold-eyes");
                             else if (name.startsWith(
                                          QLatin1String("indie_review_")))
                                 skill = QStringLiteral("/indie-review");
-                            else if (name.startsWith(
-                                         QLatin1String("test_audit_")))
-                                skill = QStringLiteral("/test-audit");
                             if (!skill.isEmpty()) {
                                 desc += QStringLiteral(
                                     " Parallel API: the %1 slash-command "

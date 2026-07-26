@@ -73,6 +73,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Review-tool descriptions no longer deny a call their own skill instructs** (ANTS-3639)
+  The "your slash-command skill does not call this tool" note was pasted onto every tool whose name started with cold_eyes_, indie_review_ or test_audit_. But /test-audit drives the whole test_audit_ family, and /indie-review instructs indie_review_partition and indie_review_corroborate by name — so sessions were told not to call verbs their skill mandates two lines later. Those seven are now exempt.
+
 - **doc_integrity: a code span that crosses a newline is now masked end to end** (ANTS-3635)
   The link checker masked inline code one line at a time, so the tail of a two-line `…` span was still harvested as a link — a C++ lambda split across lines read as a broken link. Masking now runs over the whole document. An unpaired backtick still masks nothing, so one stray tick cannot silently stop the checker on the lines below it.
 

@@ -20065,7 +20065,8 @@ shipped.
   newline, so this is a real gap in the ANTS-3623 mask.
 
   (b) Fence nested in a list item. docs/specs/ANTS-1238.md:328 — the
-  ```cpp fence at :319 is indented 4 spaces as list-item continuation.
+  triple-backtick cpp fence at :319 is indented 4 spaces as list-item
+  continuation.
   fenceRe (markdownscan.cpp:13) is `^ {0,3}(```|~~~)`, matching
   CommonMark's TOP-LEVEL 3-space limit, so a list-nested fence is never
   opened and its whole body is scanned as prose. Fixing this needs list
@@ -20135,7 +20136,7 @@ that needs them.
   Kind: implement.
   Source: OneUp_Ants_MCP_Feedback.md (2026-07-26 addendum).
 
-- 📋 [ANTS-3637] **The cold_eyes_* / indie_review_* / test_audit_* orchestration verbs are invisible to a session following the matching skill.**
+- ✅ [ANTS-3637] **The cold_eyes_* / indie_review_* / test_audit_* orchestration verbs are invisible to a session following the matching skill.**
   Reported by the OneUp session. The cold-eyes skill names
   `cold_eyes_brief` twice as a ready-made source of
   `cited_code_regions[]` + `large_cross_reference_docs[]` — exactly what
@@ -20143,6 +20144,34 @@ that needs them.
   those verbs are deferred: only the name is in the tool list, no schema,
   and nothing in the flow prompts a ToolSearch at the moment the brief is
   being assembled. The run cost more tokens than it needed to.
+  Resolved (2026-07-26) — but NOT with the reported fix (a), which is
+  rejected by precedent. Verifying before writing turned up ANTS-1581,
+  which deliberately declined to wire these skills to the verbs: the four
+  review skills live in ~/.claude/skills (GLOBAL, every project) while
+  mcp__ants__* exists only when Ants MCP is connected, so "call
+  cold_eyes_brief, do not assemble by hand" would regress every non-Ants
+  project. Writing that step would have contradicted a shipped decision.
+
+  The REAL defect is a contradiction the reporter walked straight into:
+  ANTS-3522/3526 added prose dangling cold_eyes_brief as a source of
+  "ready-made" cited_code_regions[] / large_cross_reference_docs[], while
+  that verb's own description says the skill does not call it. Ambiguous
+  prose on one side, a blanket denial on the other, and no schema in
+  between — hand-rolling was the rational response.
+
+  Shipped: /cold-eyes and /indie-review each gained one explicit
+  Orchestrator-discipline bullet stating which verb families the skill
+  builds itself and why (naming ANTS-1581's reasoning), and the two
+  dangling parentheticals now read "this block is what cold_eyes_brief
+  calls X — you build it here" instead of "ready-made for this".
+  /indie-review's bullet also names its two genuine exceptions
+  (indie_review_partition, indie_review_corroborate).
+
+  Root cause split out as ANTS-3639: the "Parallel API" note was being
+  prefix-pasted onto verbs the skills DO mandate. Fix (b) from the report
+  (session_orient surfacing skill-adjacent verbs) stays unbuilt — it adds
+  always-loaded bytes to every session to serve three of them, and (a) +
+  ANTS-3639 address the reported confusion directly.
 
   This is the discoverability class of ANTS-1897 / the
   feedback_mcp_discoverability memory: a token-saving verb nobody calls
@@ -20171,7 +20200,8 @@ that needs them.
   Carried forward from ANTS-3635, which shipped fix (a) only.
 
   (b) Fence nested in a list item. docs/specs/ANTS-1238.md:328 — the
-  ```cpp fence at :319 is indented 4 spaces as list-item continuation.
+  triple-backtick cpp fence at :319 is indented 4 spaces as list-item
+  continuation.
   fenceRe (markdownscan.cpp:13) is `^ {0,3}(```|~~~)`, matching
   CommonMark's TOP-LEVEL 3-space limit, so a list-nested fence never
   opens and its whole body is scanned as prose. This is NOT a
@@ -20199,6 +20229,87 @@ that needs them.
   Kind: fix.
   Lanes: docintegrity, markdownscan.
   Source: ANTS-3635 (b)+(c) carry-forward, 2026-07-26.
+
+- ✅ [ANTS-3639] **The ANTS-1581 "Parallel API — the skill does not call this tool" note over-applies: it denies calls the skills mandate.**
+  Found while implementing ANTS-3637, and it is that finding's root cause.
+
+  ANTS-1581(b) appends a "Parallel API: the <skill> slash-command skill
+  orchestrates this step itself and does not call this tool" line to every
+  tools/list description whose name starts with cold_eyes_ /
+  indie_review_ / test_audit_ (claudeintegration.cpp:10195). Prefix match,
+  no exemptions. Verified against the shipped skills, that is wrong for
+  seven of them:
+
+  - ~/.claude/skills/test-audit/SKILL.md has a "Fast path (Ants Terminal)"
+    section that drives the WHOLE test_audit_ family (partition → brief →
+    dispatch → synth → fold_in) and lists all five in its allowed-tools
+    frontmatter.
+  - ~/.claude/skills/indie-review/SKILL.md instructs
+    indie_review_partition at Phase 1 / 2.0 and indie_review_corroborate
+    at Phase 2b, by name.
+
+  So a session reading the tool description was told not to call a verb
+  its own skill instructs two lines later. The cold_eyes_ family is the
+  only one where the blanket note is accurate — /cold-eyes names no verb
+  as a call.
+
+  Resolved (2026-07-26): the note now skips the test_audit_ family
+  outright and the two named indie_review_ read-only lookups; cold_eyes_
+  and the remaining indie_review_ verbs keep it. Deliberately NO new
+  test: the natural home (mcp_indie_review_tools) is source-scrape, and
+  adding another scrape assertion is the exact brittleness class
+  ANTS-3628/3633 were just filed against — the guard is a three-line
+  allowlist read directly above the string it gates.
+
+  VERIFICATION CAVEAT, stated rather than glossed: the MCP server is the
+  running Ants instance, so tool_info still serves the OLD descriptions
+  until the user relaunches. Verified here by build + full suite; the
+  description change is observable on next relaunch (`tool_info
+  {name:"test_audit_partition"}` should no longer contain "Parallel
+  API:").
+  **Layman:** A warning we bolt onto some tool descriptions says "your skill won't call this" — but for several of them the skill explicitly tells you to call it. The warning was being pasted on by name prefix, without checking.
+  Kind: fix.
+  Lanes: claudeintegration, mcp-discoverability.
+  Source: in-session-2026-07-26 (found while implementing ANTS-3637).
+
+- 📋 [ANTS-3640] **roadmap_log op:append accepts a body whose line starts a code fence, silently breaking every bullet below it.**
+  Hit live this session. ANTS-3635's body quotes a nested code fence, so
+  one of its continuation lines began with an unescaped triple backtick.
+  roadmap_log wrote it verbatim. Appending ANTS-3638 (which quotes the
+  same text) added a second one — and the pair fenced every bullet
+  between them, including ANTS-3637.
+
+  The failure surfaced two ops later as
+  `anchor_unsafe_context: located bullet is inside a fenced code block —
+  refusing to edit`. That guard did its job, but the message points at
+  the bullet being edited rather than at the append that broke the file,
+  so the reader looks in the wrong place. Diagnosing it took a
+  `grep -n '```' ROADMAP.md` and a manual Edit to repair the two source
+  lines.
+
+  Two independent gaps:
+
+  (a) The WRITE side does not sanitise. A body continuation line is
+  indented two spaces by the renderer, and CommonMark's fence rule is
+  `^ {0,3}` — so a two-space-indented triple backtick still OPENS a
+  fence. Escape or reject a body line that would open one (escaping is
+  friendlier: an author quoting a fence in prose is a legitimate thing to
+  do, they just cannot do it bare).
+
+  (b) The REFUSAL should name the cause. `anchor_unsafe_context` knows
+  the bullet is inside a fence; it could report the line number of the
+  fence opener that swallowed it, which is the actionable fact. Compare
+  ANTS-3617 / ANTS-3619, the same class of "refusal that does not say
+  what to do next".
+
+  Note the irony worth keeping: the body that broke the parser was a
+  report about doc_integrity mis-parsing fences. The two share the
+  CommonMark indent rule, so fixing (a) is a chance to check that
+  roadmap_log and markdownscan agree on what opens a fence.
+  **Layman:** Writing a roadmap note that quotes a code-block marker turned the rest of the roadmap into one big code block, and the next edit was refused with a confusing message.
+  Kind: fix.
+  Lanes: remotecontrol, roadmapfoldin.
+  Source: in-session-2026-07-26 (hit while writing ANTS-3638).
 
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
