@@ -171,9 +171,11 @@ future reviewers.
 `"see PR #123"`.
 
 **Good rationale:** `"the apparent race is impossible because
-mainwindow.cpp:842 holds the m_promptMutex across both calls — the
-reviewer didn't have that file in their brief"` *(illustrative example —
-use a real path:line in actual entries)*.
+MainWindow::handlePrompt() holds the m_promptMutex across both calls —
+the reviewer didn't have that file in their brief"` *(illustrative
+example — cite the real symbol, not a line number, per
+[`documentation.md` § 1.7](documentation.md); a ledger entry outlives
+the line numbers around it)*.
 
 **Never include secrets.** The `rationale` field flows verbatim
 into the brief that the reviewer LLM consumes — which means it

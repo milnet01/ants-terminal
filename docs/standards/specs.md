@@ -80,9 +80,10 @@ from § 1:
 ### 3.3 § 1. Problem
 
 What is broken or missing, and why it matters *now*. Ground every
-claim about current behaviour in `path:line` references checked against
-live source (this is the spec-side application of the global
-verify-before-stating rule). State the consequences as a numbered list
+claim about current behaviour in a symbol reference
+(`src/foo.cpp::bar()`, per [`documentation.md` § 1.7](documentation.md))
+checked against live source — the spec-side application of the global
+verify-before-stating rule. State the consequences as a numbered list
 when there is more than one — it makes the invariants in § 3.5 easier
 to trace back.
 
@@ -161,11 +162,13 @@ Add these when they carry weight; omit when they would be empty:
 
 ### 5.1 Grounding
 
-Every file path, line number, function name, constant, and
-version-specific behaviour in the spec is backed by a grep/Read against
-current source — not recall. A spec built on an unverified assumption
-is the most expensive class of mistake: it is discovered wrong on the
-next pass and forces a rewrite.
+Every file path, symbol name, constant, and version-specific behaviour
+in the spec is backed by a grep/Read against current source — not
+recall. A spec built on an unverified assumption is the most expensive
+class of mistake: it is discovered wrong on the next pass and forces a
+rewrite. Cite what you verified by symbol rather than by line
+([`documentation.md` § 1.7](documentation.md)) — a line number verified
+today is stale two commits later.
 
 ### 5.2 Layman line
 
@@ -178,6 +181,17 @@ plain-English **Layman:** gloss (same convention as `roadmap-format.md`
 Code in specs follows `coding.md`: current Qt6/C++20 idioms, shortest
 correct form, no scaffolding for hypothetical futures. A spec proposing
 250 lines where 50 suffice is over-designed before a line is written.
+
+The same gate applies to the spec itself, per
+[`documentation.md` § 1.6](documentation.md). Show request/response
+shapes, structs and limits as schemas, tables and fenced blocks — never
+as paragraphs narrating them — and state each limit once (§ 1.5). Two
+yardsticks: a spec several times longer than a sibling spec covering
+comparable surface, or several times longer than the code it specifies,
+is over-built until it names the extra surface it covers. Length is not
+just a reading cost — every restatement of a fact is one more place for
+the next review loop to find a contradiction, so an over-long spec
+actively delays its own convergence.
 
 ### 5.4 Security boundaries
 
@@ -238,7 +252,7 @@ Copy this to start a new spec:
 
 ## 1. Problem
 
-<what is broken/missing, grounded in path:line; why now>
+<what is broken/missing, grounded in `path::symbol()`; why now>
 
 ## 2. Surface
 

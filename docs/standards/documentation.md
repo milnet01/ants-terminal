@@ -38,6 +38,57 @@ features go in `ROADMAP.md`, not `README.md` or contract docs.
 Don't repeat the install steps in README + INSTALL + CONTRIBUTING
 + SETUP. Pick the canonical home; cross-link from the others.
 
+This applies **within** a document as much as across them. A limit,
+default, or constant stated in five sections will be wrong in at least
+one of them after the first edit. State it once — in one table — and
+reference that table everywhere else. Repetition is where
+contradictions come from, and a reviewer finds them one at a time.
+
+### 1.6 Concise over complete-sounding
+
+The shortest form that stays unambiguous. Length is not thoroughness:
+a longer document has more places for two statements to disagree, and
+every extra sentence is one more thing that has to stay true.
+
+- **Show the shape; don't narrate it.** A request/response format, a
+  struct, a set of limits, a status list — those are schemas, tables
+  and code blocks. Prose walking the reader through a table they can
+  already see is deleted, not shortened.
+- **Cut what adds no constraint.** If removing a sentence changes
+  nothing a reader would do differently, it was commentary.
+- **Put rationale where it acts.** "Here is the case a naive
+  implementation gets wrong" belongs with the test that catches it,
+  not inside the contract it defends.
+- **Compare against a sibling.** A doc several times the size of its
+  nearest equivalent in the same project is over-built until it can
+  name the extra surface it covers.
+
+### 1.7 Cite symbols, not line numbers
+
+A line number points into a file and changes whenever anything above
+it changes. A symbol name changes only when the thing itself changes.
+Cite the symbol.
+
+- **Canonical form** — `src/markdownscan.cpp::fenceMask()` for a
+  function; `claude.mcp_enabled` in `config.json` for a key; "the
+  `JOB_POOLS` block in `CMakeLists.txt`" for a build directive. Prose
+  reads fine too: "the `op:detect` block in `cmdProjectSettings`".
+- **A line number may accompany a symbol, never replace it.** Spell an
+  approximate hint `~:N`, so a reader knows it is a convenience and a
+  drifted hint is not a defect.
+- **No symbol to name?** Cite the nearest stable named container plus a
+  distinctive quoted token. The test is grep-ability: if one search
+  finds it after the file moves, the citation holds.
+- **Exempt — historical records.** Line numbers inside a review loop
+  log, a `Resolved (date):` note, or a dated measurement are frozen
+  records of what was true then. Leave them; never re-sync them. Only
+  *live* citations — claims about how the code works now — are governed
+  by this rule.
+
+Grounded in three hand-repairs of the same drift (ANTS-3470, ANTS-3596,
+ANTS-3641): ANTS-3470 found that the one citation which survived the
+refactor was the one naming its symbol chain.
+
 
 ## 2. Project-level files
 
@@ -217,6 +268,9 @@ the two drift independently. A doc review surfaces:
 - "Recent change" / "yesterday" relative dates.
 - Sections that document a feature that was removed.
 - Cross-references to renamed files / functions.
+- Live `file:line` citations that have drifted (§ 1.7) — check the
+  cited line still *says* what the doc claims. Existence is not
+  enough: code moves, and the line that replaces it still exists.
 - ROADMAP / CHANGELOG bullets whose claims don't match the
   shipped code.
 
@@ -236,3 +290,10 @@ Findings from a doc review fold into the ROADMAP under
   changes.
 - ❌ Relative dates in committed docs (`recently`, `last week`).
 - ❌ A README so long a new contributor bounces off the page.
+- ❌ A bare `file:line` as the only pointer to live code — name the
+  symbol (§ 1.7).
+- ❌ Prose that restates the table, schema, or code block above it
+  (§ 1.6).
+- ❌ The same limit, default, or constant written out in more than one
+  place (§ 1.5) — the copies drift apart, and only one of them is
+  right.

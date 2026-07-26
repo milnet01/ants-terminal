@@ -302,7 +302,8 @@ Shared v1 standards in `docs/standards/` (from the `/start-app` template):
   preamble to keep the always-loaded session context lean.
 
 Project-local additions: `coding.md` adds the `setOwnerOnlyPerms()` note
-(§5.2); `documentation.md` adds §7 Accessibility (ANTS-1235);
+(§5.2); `documentation.md` adds §7 Accessibility (ANTS-1235) and
+§§ 1.6–1.7 (concision; symbol-not-line citations);
 `commits.md` / `testing.md` are template-identical.
 [`mcp-errors.md`](docs/standards/mcp-errors.md) is a superseded
 (2026-05-12) draft — `mcp-error-codes.md` is the authoritative taxonomy.
