@@ -20403,6 +20403,13 @@ that needs them.
 - 📋 [ANTS-3642] **doc_citations: request-side `expect` map for scripted re-verification.**
   Deferred out of the ANTS-3636 spec, which substitutes an anchor-symbol
   check derived from the doc's own `sym` (`file.cpp:12`) idiom.
+  Counts superseded (2026-07-26, ANTS-3636 cold-eyes loop 5): the
+  404/1,830 = 22% above was a loop-1 measurement against one scan's
+  denominator only. Re-measured: 388 anchored path citations + 138
+  anchored continuations = 526 of the ~2,620 tokens the verb actually
+  harvests, so coverage is 20% and the unserved share is 80%. The
+  argument for this item is unchanged and slightly strengthened; only
+  the numbers move. docs/specs/ANTS-3636.md § 1 carries the commands.
 
   Measured coverage of that substitute: 404 of 1,830 citations under docs/
   carry a preceding identifier code span within 40 chars — 22%, not the
@@ -20423,6 +20430,12 @@ that needs them.
   ANTS-3636 scopes `path` to a single FILE: the docs/ tree holds ~1,870
   citations, and returning cited text for all of them would blow any
   sensible response budget. A directory path refuses `bad_args`.
+  Count superseded (2026-07-26, ANTS-3636 cold-eyes loop 5): "~1,870
+  citations" was a loop-1 estimate. Re-measured under docs/ — 1,935
+  path citations plus 727 bare continuations, less 42 that sit inside
+  fenced blocks and are correctly skipped, so the sweep would face
+  ~2,620 tokens, not ~1,870. The response-budget argument for a
+  digest-only contract is that much stronger.
 
   A sweep mode needs a different response contract — counts plus the
   stale subset only, never per-citation text — which is a distinct verb
@@ -20456,6 +20469,25 @@ that needs them.
   **Layman:** Adding a new MCP tool needs a step that our own how-to guide never mentions.
   Kind: doc.
   Source: cold-eyes-2026-07-26 ANTS-3636 loop 3 lane C.
+  Two more mcp-tools.md gaps found in ANTS-3636 cold-eyes loop 5
+  (2026-07-26), same file, fold into the same pass:
+
+  (a) Step 2 is stale on contract-drift enforcement. `mcp-tools.md:111`
+  still reads "asserts (via `Q_ASSERT_X`, i.e. debug builds)", but
+  ANTS-1834 made drift a REFUSAL in every build config, with the
+  Q_ASSERT_X an additional debug abort — the code's own comment says so
+  at `src/claudeintegration.cpp:1298-1300`, and ANTS-1834's rationale at
+  `:1322` is precisely that Q_ASSERT_X compiles out under NDEBUG. As
+  written the standard tells an implementer a Release build tolerates
+  drift silently, which is the opposite of what ships.
+
+  (b) Step 11's two prohibitions read as equally enforced and are not.
+  The `props["` ban has a scraper (`mcp_dispatch_forward_completeness`);
+  the "description must not begin with `[`" ban has NO test —
+  `tests/features/mcp_tool_prefix_tags` checks `kindForName` coverage,
+  not the description's first character. Either say so, or add the
+  check; today a new verb can ship with a doubled `[<kind>]` prefix and
+  the suite stays green.
 
 - 📋 [ANTS-3646] **Support the `~:N` approximate-citation spelling in doc_citations.**
   ANTS-3636 s 2.2 handles the approximate form `file.cpp:~197` but not
