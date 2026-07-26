@@ -20578,6 +20578,34 @@ that needs them.
   Kind: fix.
   Source: in-session-2026-07-26 (ANTS-3636 cold-eyes loop 8).
 
+- 📋 [ANTS-3651] **`spec_log op:append_loop` can create a SECOND `## Cold-eyes loop log` section instead of appending to the existing one.**
+  Observed on `docs/specs/ANTS-3636.md`: after appending loop 7 the file
+  carried TWO `## Cold-eyes loop log` H2 headings, with loop 7 alone under
+  the trailing one. Loops 8 and 9 then matched the FIRST heading, so the
+  rendered order became 1-6, 8, 9, then 7 under a duplicate heading. A
+  cold reviewer flagged it as a structural defect three loops later; the
+  repair had to be done by hand.
+
+  The verb's contract says it appends the bullet "creating the section if
+  absent". The bug is in the absent-detection: the section was present,
+  and it created a second one anyway. Suspected cause is the section
+  matcher requiring the heading to be the LAST section, or matching on an
+  exact trailing-content shape the file no longer had.
+
+  Fix: match `^##+ Cold-eyes loop log\s*$` anywhere in the file, append
+  after that section's last bullet, and REFUSE (`unrecognised_format`)
+  rather than creating a duplicate when more than one match exists. Add a
+  regression fixture with a loop-log section that is not the final section
+  of the file.
+
+  Companion to ANTS-3650 (`op:set_status` stranding a wrapped Status
+  block). Both are the same underlying weakness: the verb locates its
+  target by a narrower pattern than the format actually permits, and
+  degrades by writing rather than by refusing.
+  **Layman:** A tool that adds a review-round entry to a spec sometimes starts a whole new section at the bottom instead of adding to the one already there, so the rounds end up out of order under two identical headings.
+  Kind: fix.
+  Source: in-session-2026-07-26 (ANTS-3636 cold-eyes loop 10).
+
 ### 📚 Doc standard — symbol citations + concision (user request 2026-07-26)
 
 documentation.md gained § 1.6 (concise over complete-sounding) and § 1.7 (cite
