@@ -20471,6 +20471,28 @@ that needs them.
   Source: cold-eyes-2026-07-26 ANTS-3636 loop 3 lane C.
   Two more mcp-tools.md gaps found in ANTS-3636 cold-eyes loop 5
   (2026-07-26), same file, fold into the same pass:
+  Correction (2026-07-26, ANTS-3636 cold-eyes loop 6) — this bullet's
+  own premise was half wrong, and I wrote it. "Both silently degrade
+  when omitted" is FALSE for `selection_hint`: omitting one is loudly
+  enforced by two feature tests, verified by opening them —
+  `tests/features/mcp_selection_hint/test_mcp_selection_hint.cpp:52-89`
+  (HINT-1, a descriptor with no sibling hint fails) and
+  `tests/features/mcp_orientation_install/test_mcp_orientation_install.cpp:570`
+  (INV-6, name/hint count drift fails).
+
+  Two FORMAT constraints are also enforced and are documented nowhere in
+  mcp-tools.md, which is the real gap: every hint must begin with
+  `"Use "` (case-insensitive) and stay under 280 chars
+  (`test_mcp_orientation_install.cpp:530`, ANTS-1897 INV-7), tightened
+  to 240 by `test_mcp_selection_hint.cpp:121-196` (ANTS-1453 HINT-3).
+  240 + the `Use ` prefix is the binding rule.
+
+  So the item survives but narrows and sharpens: the standard is silent
+  about a step that IS enforced, and silent about the two format rules
+  that will fail a new verb's first build. The token-cost half of this
+  bullet is unaffected — that one really has no test. The (b) note above
+  (the `[`-prefix ban having no test) was independently re-verified true
+  this loop.
 
   (a) Step 2 is stale on contract-drift enforcement. `mcp-tools.md:111`
   still reads "asserts (via `Q_ASSERT_X`, i.e. debug builds)", but
