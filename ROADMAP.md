@@ -20457,6 +20457,28 @@ that needs them.
   Kind: doc.
   Source: cold-eyes-2026-07-26 ANTS-3636 loop 3 lane C.
 
+- 📋 [ANTS-3646] **Support the `~:N` approximate-citation spelling in doc_citations.**
+  ANTS-3636 s 2.2 handles the approximate form `file.cpp:~197` but not
+  `file.cpp ~:11985` (tilde BEFORE the colon). The corpus holds 10 such
+  tokens across 4 files (docs/specs/ANTS-2161.md x3, ANTS-3579.md,
+  docs/plans/ANTS-1160.md, docs/superpowers/plans/2026-06-10-ants-2049-
+  e2e-harness.md x3), and ROADMAP.md ANTS-3596 names the class by that
+  spelling.
+
+  They match neither the `citation` nor the `continuation` production, so
+  they are invisible twice over: absent from `count` AND absent from
+  `unparsed[]`. That is the one degradation shape ANTS-3636 otherwise
+  refuses to allow, accepted there only because admitting a second
+  approximate form throughout the grammar for 10 tokens was not worth the
+  surface at spec time.
+
+  Either extend `locus` to `"~"? ":" "~"? N`, or emit the token into
+  `unparsed[]` with a new `reason:"unsupported_spelling"` so the gap is at
+  least countable.
+  **Layman:** Our docs write "about line 200" two different ways; the new checker only understands one of them.
+  Kind: enhancement.
+  Source: cold-eyes-2026-07-26 ANTS-3636 loop 4 lane C.
+
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
 /cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +
