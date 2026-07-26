@@ -20107,6 +20107,7 @@ that needs them.
   hand-wrote a throwaway Python script. read_regions is the closest fit
   but needs the citation list extracted by hand first — which is the
   tedious part.
+  Progress (2026-07-26): spec consolidation before cold-eyes loop 7. Loops 5→6 grew the spec 1,226→2,013 lines (+64%) while findings fell only 42→36, and every loop-6 CRITICAL was caused by a loop-5 fix — review output was being written back into the document faster than it converged. Three of five CRITICALs were the same shape: one fact stated in several places, disagreeing (`max_bytes` appears 32×, `max_range_lines` 21×, `next_offset` 21×). Measured against docs/standards/specs.md § 5.3's new length gate: 2,013 lines vs ANTS-3601's 552 for comparable surface, and vs ~400 lines of estimated implementation. Consolidating to ~900–1,000 (the cold-eyes log's 174 lines are frozen historical record and excluded): § 2.1 and § 2.7 become schemas + tables rather than prose narrating them, each cap is stated once, and invariants return to the standard's one-line form with the "here is the trap a naive implementation falls into" rationale moved into § 4 Tests as one table. Splitting the spec was considered and rejected: the invariants partition 42/1/4, so shearing off the primitives and the verb wiring removes 11% and leaves every CRITICAL inside the engine, while a harvest/resolve/report split would convert intra-document coupling into cross-document coupling that no single reviewer sees. INV-44 (the MarkdownScan hoist) moves out to ANTS-3649 as a prerequisite refactor. Cold-eyes loop 7 runs after the cut.
 
   This sits on the critical path of a MANDATED workflow: global rule 13
   requires every doc claim naming a file/line to be verified against
@@ -20532,6 +20533,72 @@ that needs them.
   **Layman:** Our docs write "about line 200" two different ways; the new checker only understands one of them.
   Kind: enhancement.
   Source: cold-eyes-2026-07-26 ANTS-3636 loop 4 lane C.
+
+### 📚 Doc standard — symbol citations + concision (user request 2026-07-26)
+
+documentation.md gained § 1.6 (concise over complete-sounding) and § 1.7 (cite
+symbols, not line numbers), and § 1.5's one-source-of-truth rule was broadened
+to apply within a document. Follow-on work from that change.
+
+- 📋 [ANTS-3647] **Sweep live `file:line` citations in docs/ onto symbol references (documentation.md § 1.7).**
+  1,956 `path:line` tokens across 167 files under docs/ (measured
+  2026-07-26, `workspace_search count_only`). Most are EXEMPT: cold-eyes
+  loop logs, `Resolved (date):` notes and dated measurements are frozen
+  historical records per § 1.7 and must not be touched — ANTS-3470 and
+  ANTS-3596 both deliberately left them.
+
+  In scope is the live subset: § 1 Problem / § 2 Surface citations in
+  docs/specs/, and the standards docs themselves. Do it per-file on the
+  next touch of each spec rather than as one mega-sweep — a bulk rewrite
+  of 167 files is unreviewable and would bury the exempt/live judgement
+  call that each citation needs.
+
+  ANTS-3636's doc_citations verb is the instrument: its anchor check
+  (does the cited line still contain the expected token?) is exactly the
+  "which of these have already drifted" query this sweep needs, so
+  prioritise the sweep after that verb ships.
+  **Layman:** Our design docs point at code using "line 842", which goes wrong every time the code moves. Change them to name the function instead.
+  Kind: doc-fix.
+  Source: user-request-2026-07-26.
+
+- 📋 [ANTS-3648] **`dependencies.md` § 6 contradicts itself on line-number citations.**
+  § 6 ("Where the versions live") states that symbol names "are the
+  stable anchor; line numbers drift" — and then cites every version
+  location by line: `(L1)`, `(L2)`, `(L60)`, `(L65/L69)`, `(L744/L750)`,
+  plus `CMakeLists.txt:83` in the § 5 table.
+
+  It is the authoritative version-location map and the checklist for a
+  dependency sweep, so its citations are load-bearing and live — exactly
+  the class § 1.7 governs. Convert to the directive names it already
+  nominates (`cmake_minimum_required`, `project(… VERSION)`,
+  `find_package(Qt6 …)`, the GoogleTest `FetchContent` block).
+  **Layman:** One of our own standards documents says "don't use line numbers" and then uses line numbers.
+  Kind: doc-fix.
+  Source: in-session-2026-07-26 (found while writing documentation.md § 1.7)..
+
+- 📋 [ANTS-3649] **Hoist `DocIntegrity::maskInlineCode` into `MarkdownScan::codeSpans` as its own change, ahead of ANTS-3636.**
+  Split out of ANTS-3636 so the prerequisite refactor lands and is
+  verified before its first consumer is built (the shared-foundation-first
+  rule). Distinct risk profile: it MODIFIES already-shipped behaviour that
+  `doc_integrity` depends on, whereas the new verb only adds surface.
+
+  Scope: add `MarkdownScan::codeSpans(lines, fence)` returning
+  `{startLine, startCol, endLine, endCol}` spans (whole-document, so a
+  span crossing a newline is one span), re-base `maskInlineCode` on it
+  (mask = blank each returned span), and add the
+  `fenceMask(lines, &openerLine)` overload reporting an unterminated
+  opener. Net line reduction, not addition — `maskInlineCode` already IS
+  the algorithm; it is private only by its anonymous-namespace placement.
+
+  `tests/features/markdownscan/` already owns this module's contract and
+  gains the cases, including the no-regression half: `maskInlineCode` over
+  the ANTS-3635(a) multi-line-span fixture still blanks both halves. That
+  half is what makes the hoist safe to land in one change.
+
+  Blocker for ANTS-3636 (its INV-44 moves here).
+  **Layman:** Move a shared text-scanning helper into the shared module before building the new tool that needs it, so the risky part lands and gets tested on its own.
+  Kind: refactor.
+  Source: in-session-2026-07-26 (ANTS-3636 spec consolidation)..
 
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
