@@ -20633,6 +20633,17 @@ to apply within a document. Follow-on work from that change.
   `codeSpans` returns span content VERBATIM: CommonMark's one-space strip is
   the consumer's job, not the primitive's, so a caller matching an identifier
   is unaffected by it while a caller testing "fills the span" applies it.
+  Progress (2026-07-26, ANTS-3636 loop 9): one more behaviour the hoist must
+  preserve, verified against `src/docintegrity.cpp`'s `maskInlineCode`
+  comment. A span's closing run is searched FORWARD across lines but never
+  past a blank line or a fence line — an inline span cannot cross either.
+  `codeSpans` is described as whole-document, which is true but incomplete
+  without this: the rule decides where a span *ends*, and ANTS-3636's
+  "fills a whole span" (§ 2.2) and "an anchor must be one" (§ 2.5) both
+  branch on span boundaries. A genuinely boundary-free whole-document scan
+  would change that verb's `count`. Now stated in ANTS-3636 § 2.7's
+  `codeSpans` comment; the no-regression half of this refactor should
+  assert it directly.
 
   Scope: add `MarkdownScan::codeSpans(lines, fence)` returning
   `{startLine, startCol, endLine, endCol, delimLen}` spans (whole-document, so a
