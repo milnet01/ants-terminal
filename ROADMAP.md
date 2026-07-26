@@ -20108,6 +20108,24 @@ that needs them.
   but needs the citation list extracted by hand first — which is the
   tedious part.
   Progress (2026-07-26): spec consolidation before cold-eyes loop 7. Loops 5→6 grew the spec 1,226→2,013 lines (+64%) while findings fell only 42→36, and every loop-6 CRITICAL was caused by a loop-5 fix — review output was being written back into the document faster than it converged. Three of five CRITICALs were the same shape: one fact stated in several places, disagreeing (`max_bytes` appears 32×, `max_range_lines` 21×, `next_offset` 21×). Measured against docs/standards/specs.md § 5.3's new length gate: 2,013 lines vs ANTS-3601's 552 for comparable surface, and vs ~400 lines of estimated implementation. Consolidating to ~900–1,000 (the cold-eyes log's 174 lines are frozen historical record and excluded): § 2.1 and § 2.7 become schemas + tables rather than prose narrating them, each cap is stated once, and invariants return to the standard's one-line form with the "here is the trap a naive implementation falls into" rationale moved into § 4 Tests as one table. Splitting the spec was considered and rejected: the invariants partition 42/1/4, so shearing off the primitives and the verb wiring removes 11% and leaves every CRITICAL inside the engine, while a harvest/resolve/report split would convert intra-document coupling into cross-document coupling that no single reviewer sees. INV-44 (the MarkdownScan hoist) moves out to ANTS-3649 as a prerequisite refactor. Cold-eyes loop 7 runs after the cut.
+  Progress (2026-07-26): cold-eyes loop 7 — 4 CRITICAL / 16 HIGH / 26 MEDIUM
+  raw across four depth lanes, all verified and fixed except two that are
+  design decisions rather than doc defects, and so are surfaced here instead
+  of being auto-resolved:
+  (a) **The in-flight target read's line count is unbounded within
+  `maxTargetBytes`.** § 5's peak table charges that buffer ~24 MiB by assuming
+  ~40 B/line, but nothing caps a target's line count — an 8 MiB file of
+  one-byte lines is ~4M `QString`s, ~160 MiB by the spec's own
+  `2 × bytes + 40 × count` formula. Either charge the read before holding it
+  (as the cache already does before insertion) and `read_error` past the
+  bound, or add a per-target line cap to `Options`. The same class as the doc
+  row this loop corrected from ~12 to ~18 MiB.
+  (b) **The doc is read and decoded twice.** `docCitationsValidate` must
+  refuse `read_failed` for a doc that is not decodable UTF-8, which means
+  decoding it; `DocCitations::check` then reads `docAbsPath` again. § 5's peak
+  charges the doc's `QStringList` once. Either have validate hand the decoded
+  lines to check, or state the double-read and re-charge the row.
+  Loop 8 runs after these two are settled.
 
   This sits on the critical path of a MANDATED workflow: global rule 13
   requires every doc claim naming a file/line to be verified against
@@ -20581,9 +20599,17 @@ to apply within a document. Follow-on work from that change.
   verified before its first consumer is built (the shared-foundation-first
   rule). Distinct risk profile: it MODIFIES already-shipped behaviour that
   `doc_integrity` depends on, whereas the new verb only adds surface.
+  Progress (2026-07-26): ANTS-3636 cold-eyes loop 7 pinned two details this
+  refactor must honour. (1) `CodeSpan` gains `delimLen`, the backtick-run
+  length, so the opening delimiter's column is `startCol - delimLen` — the
+  consumer's anchor window (ANTS-3636 § 2.5) measures from that column, which
+  a content-only struct cannot express for a multi-backtick span. (2)
+  `codeSpans` returns span content VERBATIM: CommonMark's one-space strip is
+  the consumer's job, not the primitive's, so a caller matching an identifier
+  is unaffected by it while a caller testing "fills the span" applies it.
 
   Scope: add `MarkdownScan::codeSpans(lines, fence)` returning
-  `{startLine, startCol, endLine, endCol}` spans (whole-document, so a
+  `{startLine, startCol, endLine, endCol, delimLen}` spans (whole-document, so a
   span crossing a newline is one span), re-base `maskInlineCode` on it
   (mask = blank each returned span), and add the
   `fenceMask(lines, &openerLine)` overload reporting an unterminated
