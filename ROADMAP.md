@@ -20552,6 +20552,32 @@ that needs them.
   Kind: enhancement.
   Source: cold-eyes-2026-07-26 ANTS-3636 loop 4 lane C.
 
+- 📋 [ANTS-3650] **`spec_log op:set_status` strands the continuation of a multi-line Status block.**
+  `specs.md` § 3 permits a Status block that wraps onto continuation lines,
+  and the corpus contains them. `op:set_status` rewrites only the single
+  line matching `^\*\*Status:\*\*`, so a wrapped status leaves its tail
+  behind — the file then carries two statuses, the stale one below the
+  fresh one, and it reads as current prose rather than as debris.
+
+  Hit live during ANTS-3636 cold-eyes loop 8: a set_status left
+  "`documentation.md` § 1.5–1.6 (2026-07-26). Loop 7 pending." sitting
+  under a status that said loops 1–7 were folded. A cold reviewer opened
+  with it as its first finding, correctly.
+
+  Fix: consume the whole Status block — the matched line plus every
+  following line until the next `**Key:**` field, a blank line, or a
+  heading — and replace it as a unit. Same treatment likely needed for any
+  other `**Field:**` line the verb rewrites. Worth a refusal
+  (`unrecognised_format`) rather than a silent partial write if the block
+  cannot be delimited confidently.
+
+  Add a `dry_run` fixture with a two-line Status to the spec_log tests;
+  the current suite only exercises the single-line shape, which is why
+  this shipped.
+  **Layman:** A tool that updates a spec's status line only replaces the first line, so any extra lines underneath survive and start contradicting the new status.
+  Kind: fix.
+  Source: in-session-2026-07-26 (ANTS-3636 cold-eyes loop 8).
+
 ### 📚 Doc standard — symbol citations + concision (user request 2026-07-26)
 
 documentation.md gained § 1.6 (concise over complete-sounding) and § 1.7 (cite
