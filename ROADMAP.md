@@ -20100,7 +20100,7 @@ findings are about the /cold-eyes workflow: one asks for a verb that does not
 exist yet, the other for the verbs that DO exist to be reachable from the skill
 that needs them.
 
-- 📋 [ANTS-3636] **doc_citations verb — resolve a doc's `path:line` citations against the files and return the cited line TEXT.**
+- ✅ [ANTS-3636] **doc_citations verb — resolve a doc's `path:line` citations against the files and return the cited line TEXT.**
   Reported by the OneUp session: reviewing one spec meant verifying 33
   `updater.py:NNN` citations, and there is no verb for "given this doc,
   resolve every path:line reference and show me the cited line". They
@@ -20135,6 +20135,34 @@ that needs them.
   as specified -- twelve reading passes missed them, and one attempt to type
   the fixture would have caught both, which is the signal that the validator
   for an unimplemented verb is the test, not another reviewer.
+  Resolved (2026-07-27): the verb ships. Engine `DocCitations::check`
+  (src/doccitations.{h,cpp}, beside the ANTS-3653 scan it consumes) — the § 2.4
+  ladder, the six statuses, the target line cache, the sticky antecedent for bare
+  continuations, the tallies and the emission caps; pure, Qt6::Core-only, no
+  writes and no cross-call state. Verb layer `RemoteControl::cmdDocCitations`
+  plus the two pure statics `docCitationsValidate` / `docCitationsClampOptions`,
+  and all six registration hooks across mainwindow.cpp + claudeintegration.cpp.
+
+  Tests: tests/features/doc_citations/ (28 engine invariants, test_core) and
+  tests/features/doc_citations_verb/ (5, test_claude) — 33 of the spec's 48 ids;
+  the other 15 are tombstones owned by ANTS-3649 / 3653 / 3654. Each layer was
+  RED before implementation. The engine's 28 passed on the first run, so § 4's
+  trap rows were sabotage-verified one at a time: routing ladder step 2's else to
+  step 4 fails only INV-34, a hard max_bytes fails only INV-35, and applying
+  omit-when-false uniformly fails INV-28 + INV-47. The wiring test was
+  sabotage-verified too — dropping the kindForName bucket fails both INV-19 and
+  the pre-existing mcp_tool_prefix_tags guard, exactly as § 2.7 hook 4 predicts.
+
+  § 2.5 stays ANTS-3654's: anchor_symbol / anchor_found are not emitted,
+  counts.anchor_missing is 0, every ok citation is counts.unchecked, and
+  only:"stale" selects the non-ok citations. The three invariants with an
+  anchor-dependent half say so at their fixture rather than asserting a stub.
+
+  Also updated by this change: mcp_projection's makeEncodingProp() call-site
+  count 7 → 8 (doc_citations declares encoding:"tabular"; citations[] and
+  unparsed[] are both list-shaped), and CLAUDE.md's verb count ~73 → ~74.
+
+  Suite 2968/2968 green at -j4. Reachable over MCP after the next relaunch.
 
   Split on the two seams where a child needs almost nothing from the parent:
   ANTS-3653 takes 2.2/2.3 (the scan is a pure function -- text in, tokens out,

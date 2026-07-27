@@ -4144,6 +4144,75 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(docInt);
 
+                // ANTS-3636 — doc_citations: resolve every path:line citation
+                // in one doc and return the line it points at, so a reviewer
+                // stops opening 33 files by hand to verify them.
+                QJsonObject docCit;
+                docCit["name"] = "doc_citations";
+                docCit["description"] = QStringLiteral(
+                    "Resolve a doc's `path:line` citations against the files and return the "
+                    "cited line TEXT. Scans one markdown/text file, finds every src/a.cpp:12 "
+                    "/ a.cpp:10-12 / `:45` continuation, resolves it (project-relative, then "
+                    "the codebase-index basename map, then the repo root), and reports each "
+                    "with status ok | missing_file | out_of_range | read_error | ambiguous | "
+                    "unresolved plus the text. Fenced examples are skipped; a citation inside "
+                    "an inline code span IS harvested. only=\"stale\" narrows to the "
+                    "non-ok ones; counts stay unfiltered. offset pages; max_range_lines "
+                    "bounds the lines per citation; max_bytes the response; max_doc_lines the "
+                    "scanned prefix. Tokens that look like citations but resolve nowhere land "
+                    "in unparsed[] rather than being guessed at. Read-only. caller_cwd "
+                    "required.");
+                docCit["selection_hint"] = QStringLiteral(
+                    "Use when reviewing a doc full of file:line references, to check every "
+                    "one still points where it claims — instead of opening each file by "
+                    "hand.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    schema["required"] = QJsonArray{QStringLiteral("caller_cwd"),
+                                                    QStringLiteral("path")};
+                    QJsonObject props;
+                    QJsonObject dcPath; dcPath["type"] = "string";
+                        dcPath["description"] = QStringLiteral(
+                            "Project-relative path to a single FILE to scan (a directory "
+                            "refuses bad_args). Any UTF-8 text file, not only .md.");
+                    QJsonObject dcOnly; dcOnly["type"] = "string";
+                        dcOnly["enum"] = QJsonArray{QStringLiteral("all"),
+                                                    QStringLiteral("stale")};
+                        dcOnly["description"] = QStringLiteral(
+                            "Filter over citations[] only: \"stale\" keeps the ones that did "
+                            "not resolve cleanly. counts stay whole-doc. Default all.");
+                    QJsonObject dcOffset; dcOffset["type"] = "integer";
+                        dcOffset["description"] = QStringLiteral(
+                            "0-based index into the post-filter list. next_offset in the "
+                            "response resumes the page when a cap dropped entries.");
+                    QJsonObject dcRange; dcRange["type"] = "integer";
+                        dcRange["description"] = QStringLiteral(
+                            "Max lines of text per citation (1-20, default 3). A longer cited "
+                            "range sets range_truncated; end_line still echoes the doc.");
+                    QJsonObject dcBytes; dcBytes["type"] = "integer";
+                        dcBytes["description"] = QStringLiteral(
+                            "Response byte budget (64 KiB - 4 MiB, default 128 KiB). A soft "
+                            "ceiling: one entry always ships so paging cannot stall.");
+                    QJsonObject dcDocLines; dcDocLines["type"] = "integer";
+                        dcDocLines["description"] = QStringLiteral(
+                            "Lines of the doc to scan (1000-50000, default 20000). "
+                            "scanned_lines < doc_lines says the tail was not looked at.");
+                    props["path"]            = dcPath;
+                    props["only"]            = dcOnly;
+                    props["offset"]          = dcOffset;
+                    props["max_range_lines"] = dcRange;
+                    props["max_bytes"]       = dcBytes;
+                    props["max_doc_lines"]   = dcDocLines;
+                    props["caller_cwd"]      = makeCallerCwdReadProp();
+                    props["etag_match"]      = makeEtagMatchProp();   // ANTS-1499
+                    props["encoding"]        = makeEncodingProp();    // ANTS-2090
+                    schema["properties"] = props;
+                    docCit["inputSchema"] = schema;
+                }
+                tools.append(docCit);
+
                 // ANTS-2161 — project_settings: detect a misplaced layout +
                 // create/update <root>/.ants/project.json so a non-src/
                 // project (e.g. code under linuxdoom-1.10/) stops getting an
@@ -9925,6 +9994,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-3601 — doc_integrity: findings list, usually
                         // small (most docs are clean); grows with breakage.
                         {QStringLiteral("doc_integrity"),     {500,  4000}},
+                        // ANTS-3636 — doc_citations: one entry per citation
+                        // plus its text; a dense spec is the upper end.
+                        {QStringLiteral("doc_citations"),     {900,  8000}},
                         // Repo / docs.
                         {QStringLiteral("roadmap_query"),     {1700, 12000}},
                         {QStringLiteral("roadmap_log"),       {200,  600}},
@@ -10078,6 +10150,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-3601 — doc_integrity: project-scoped
                         // doc-consistency reader.
                         name == QLatin1String("doc_integrity") ||
+                        // ANTS-3636 — doc_citations: project-scoped
+                        // citation-resolution reader, doc_integrity's sibling.
+                        name == QLatin1String("doc_citations") ||
                         // ANTS-2161 — project_settings: project-scoped
                         // layout-config detect + create/update.
                         name == QLatin1String("project_settings") ||
@@ -11476,6 +11551,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-3601 — doc_integrity is a project-scoped doc-consistency reader
     // keyed on the resolved root; Required.
     if (toolName == QStringLiteral("doc_integrity"))       return C::Required;
+    // ANTS-3636 — doc_citations resolves citations against the focused
+    // project's tree; Required.
+    if (toolName == QStringLiteral("doc_citations"))       return C::Required;
     // ANTS-2161 — project_settings reads/writes <root>/.ants/project.json
     // anchored on the resolved root; Required.
     if (toolName == QStringLiteral("project_settings"))    return C::Required;
@@ -11660,6 +11738,9 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
         || toolName == QStringLiteral("docs_index")
         // ANTS-3601 — doc_integrity: unchanged docs → identical findings → 304.
         || toolName == QStringLiteral("doc_integrity")
+        // ANTS-3636 — doc_citations: unchanged doc + unchanged targets → an
+        // identical answer → 304.
+        || toolName == QStringLiteral("doc_citations")
         || toolName == QStringLiteral("last_audit_summary")
         || toolName == QStringLiteral("get_environment")
         || toolName == QStringLiteral("tab_list")

@@ -13,6 +13,7 @@
 #include "codebaseindex.h"
 #include "docsindex.h"
 #include "docintegrity.h"      // ANTS-3601 — doc_integrity verb
+#include "doccitations.h"      // ANTS-3636 — doc_citations verb
 #include "speclog.h"             // ANTS-1963
 #include "modelswitchledger.h"   // ANTS-1735 — model_switch_stats aggregation
 #include "modelnearmissledger.h" // ANTS-1894 — model_switch_stats near-miss arm
@@ -12378,6 +12379,117 @@ QJsonObject RemoteControl::docIntegrityBuildResponse(
     o[QStringLiteral("findings")]     = findingsArr;
     o[QStringLiteral("counts")]       = counts;
     o[QStringLiteral("checked_docs")] = QJsonArray::fromStringList(checkedDocs);
+    return o;
+}
+
+// ANTS-3636 — doc_citations: resolve a doc's `path:line` citations against the
+// files and return the cited line TEXT. caller_cwd Required (the dispatcher
+// enforces caller_cwd_required before this runs). `path` names a single FILE —
+// unlike doc_integrity, which accepts a directory and walks it, because this
+// verb's payload is per-citation text and the whole docs/ corpus would bury it;
+// the sweep shape is ANTS-3643. Engine: DocCitations::check. See
+// docs/specs/ANTS-3636.md.
+QJsonDocument RemoteControl::cmdDocCitations(const QJsonObject &req) {
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QJsonObject refusal = docCitationsValidate(rootCanonical, req);
+    if (!refusal.isEmpty()) return QJsonDocument(refusal);
+
+    DocCitations::Options opts = docCitationsClampOptions(req);
+
+    // The basename map, in the five steps § 2.7 spells out. Step 4 is the one an
+    // implementer omits: CodebaseIndex::fromJson copies `version` and
+    // `root_canonical` into the struct and parses `files` unconditionally — it
+    // validates neither. The reject-on-mismatch lives one level up in
+    // CodebaseIndex::serve, which this deliberately bypasses because serve may
+    // BUILD the index and a read verb must not spend multiple seconds doing so.
+    // Skipping the check silently mines a stale-schema or wrong-project cache
+    // and reports every health field green.
+    QFile cacheFile(CodebaseIndex::cachePathFor(rootCanonical));
+    if (cacheFile.open(QIODevice::ReadOnly)) {
+        QJsonParseError perr{};
+        const QJsonDocument jd = QJsonDocument::fromJson(cacheFile.readAll(), &perr);
+        if (perr.error == QJsonParseError::NoError && jd.isObject()) {
+            const CodebaseIndex::Index idx = CodebaseIndex::fromJson(jd.object());
+            if (idx.version == CodebaseIndex::kIndexVersion
+                && idx.rootCanonical == rootCanonical) {
+                for (const CodebaseIndex::FileEntry &fe : idx.files)
+                    opts.basenameIndex[fe.path.section(QLatin1Char('/'), -1)].append(fe.path);
+                // A truncated index looks large and healthy from the map alone,
+                // so the flag has to travel separately (INV-37).
+                opts.basenameIndexTruncated = idx.filesTruncated;
+            }
+        }
+    }
+
+    const QString rawPath = req.value(QStringLiteral("path")).toString();
+    const QString abs = QDir::cleanPath(QDir(rootCanonical).filePath(rawPath));
+    QJsonObject out = DocCitations::check(rootCanonical, abs, opts);
+    // The engine reports the doc project-relative; the caller gets its own
+    // string back, which is what makes a stored page self-describing.
+    if (out.value(QStringLiteral("ok")).toBool())
+        out[QStringLiteral("path")] = rawPath;
+    // etag injected centrally (isEtagSupportedTool).
+    return QJsonDocument(out);
+}
+
+// ANTS-3636 — pure: the five refusals, in the order § 2.1's table gives them.
+// Everything else coerces (docCitationsClampOptions), which is what keeps this
+// set at exactly five and errs toward the unfiltered view — the safe direction
+// for a verb whose failure mode is under-reporting drift.
+QJsonObject RemoteControl::docCitationsValidate(const QString &rootCanonical,
+                                                const QJsonObject &req) {
+    const auto refuse = [](const QString &code, const QString &msg) {
+        return QJsonObject{{QStringLiteral("ok"), false},
+                           {QStringLiteral("code"), code},
+                           {QStringLiteral("error"), QStringLiteral("doc_citations: ") + msg}};
+    };
+    if (rootCanonical.isEmpty())
+        return refuse(QStringLiteral("bad_path"), QStringLiteral("no focused project"));
+
+    const QString rawPath = req.value(QStringLiteral("path")).toString();
+    if (rawPath.isEmpty())
+        return refuse(QStringLiteral("missing_field"),
+                      QStringLiteral("path is required and names a single file"));
+
+    const auto checked = PathValidation::validatePath(
+        rawPath, rootCanonical, QStringLiteral("doc_citations"), QStringLiteral("path"));
+    if (checked.bad) return checked.err;   // root-escaping → bad_path
+
+    const QFileInfo fi(QDir::cleanPath(QDir(rootCanonical).filePath(rawPath)));
+    if (fi.isDir())
+        return refuse(QStringLiteral("bad_args"),
+                      QStringLiteral("path names a directory; this verb reads one file at a "
+                                     "time (a corpus sweep is ANTS-3643)"));
+    // A non-existent in-root path is NOT a refusal: it answers ok:true with an
+    // empty result, so a typo'd path gets the same answer doc_integrity gives.
+    if (!fi.exists()) return {};
+    if (!fi.isReadable() || fi.size() > DocCitations::Options{}.maxDocBytes)
+        return refuse(QStringLiteral("read_failed"),
+                      QStringLiteral("doc is unreadable or too large to hold"));
+    return {};
+}
+
+// ANTS-3636 — pure: request args → Options. Out-of-domain values coerce rather
+// than refuse, and a wrong-typed numeric falls back to its DEFAULT rather than
+// to a clamp endpoint — a caller who sends a string got the argument wrong, and
+// the default is the answer they would have had by omitting it.
+DocCitations::Options RemoteControl::docCitationsClampOptions(const QJsonObject &req) {
+    DocCitations::Options o;
+    const auto clamped = [&req](const char *key, int def, int lo, int hi) {
+        const QJsonValue v = req.value(QLatin1String(key));
+        if (!v.isDouble()) return def;
+        return qBound(lo, v.toInt(def), hi);
+    };
+    o.maxRangeLines = clamped("max_range_lines", o.maxRangeLines, 1, 20);
+    o.maxDocLines   = clamped("max_doc_lines", o.maxDocLines, 1000, 50000);
+    o.maxBytes      = clamped("max_bytes", o.maxBytes, 64 * 1024, 4 * 1024 * 1024);
+    // No upper clamp on offset: that bound is `count`, which the handler has not
+    // computed. Paging past the end is an empty page, not an error (INV-38).
+    const QJsonValue off = req.value(QStringLiteral("offset"));
+    o.offset = off.isDouble() ? qMax(0, off.toInt(0)) : 0;
+    o.only   = req.value(QStringLiteral("only")).toString() == QLatin1String("stale")
+                   ? DocCitations::Only::Stale
+                   : DocCitations::Only::All;
     return o;
 }
 

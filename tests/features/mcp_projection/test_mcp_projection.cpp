@@ -809,7 +809,7 @@ TEST(McpTabular, Ants2090DispatchOrderingAndGuard) {
         << "the guard must compare against \"tabular\"";
 }
 
-// §2.4 — each of the 7 list-shaped read verbs declares the `encoding` prop.
+// §2.4 — each of the 8 list-shaped read verbs declares the `encoding` prop.
 TEST(McpTabular, Ants2090SchemaDeclaresEncoding) {
     QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
     ASSERT_TRUE(f.open(QIODevice::ReadOnly));
@@ -817,10 +817,12 @@ TEST(McpTabular, Ants2090SchemaDeclaresEncoding) {
     EXPECT_TRUE(s.contains("auto makeEncodingProp"))
         << "the shared `encoding` schema fragment must be defined once";
     // One call site per advertised verb: roadmap_query, find_sources,
-    // workspace_search, file_outline, codebase_index, docs_index, find_caller.
+    // workspace_search, file_outline, codebase_index, docs_index, find_caller,
+    // and doc_citations (ANTS-3636 — citations[] / unparsed[] are both
+    // list-shaped, so the columnar repack applies).
     int count = 0, idx = 0;
     const QByteArray needle = "makeEncodingProp();";
     while ((idx = s.indexOf(needle, idx)) != -1) { ++count; idx += needle.size(); }
-    EXPECT_EQ(count, 7) << "expected 7 makeEncodingProp() call sites, got "
+    EXPECT_EQ(count, 8) << "expected 8 makeEncodingProp() call sites, got "
                         << count;
 }

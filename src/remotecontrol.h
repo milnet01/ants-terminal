@@ -9,6 +9,7 @@
 
 #include "auditengine.h"  // ANTS-1254 — AuditSummary value member below
 #include "docintegrity.h"  // ANTS-3601 — DocIntegrity::Finding in helper sig
+#include "doccitations.h"  // ANTS-3636 — DocCitations::Options in helper sig
 #include "changelogquery.h"  // ANTS-3533 — changelog_query parse-cache member
 #include "coldeyesengine.h"  // ANTS-1319 — cold-eyes partition cache
 #include "roadmapindex.h"  // ANTS-1287 — heading-index cache members
@@ -518,6 +519,21 @@ public:
     static QJsonObject docIntegrityBuildResponse(
         const QList<DocIntegrity::Finding> &findings,
         const QSet<QString> &kinds, const QStringList &checkedDocs);
+    // ANTS-3636 — doc_citations: resolve a doc's path:line citations against the
+    // files and return the cited line text (DocCitations::check).
+    QJsonDocument cmdDocCitations(const QJsonObject &req);
+    // Pure statics, for the same reason as the pair above: the handler needs a
+    // live MainWindow and these must run in a unit test that has none.
+    // `docCitationsValidate` takes rootCanonical rather than resolving it (that
+    // resolution is what needs the MainWindow) and returns a refusal envelope,
+    // or an empty object for input it accepts. It never decodes the doc:
+    // undecodable-as-UTF-8 is the same read_failed to the caller but is raised
+    // by DocCitations::check, which is about to read the file anyway.
+    // `docCitationsClampOptions` needs no root at all — request args in,
+    // Options out, coercing out-of-domain values rather than refusing.
+    static QJsonObject docCitationsValidate(const QString &rootCanonical,
+                                            const QJsonObject &req);
+    static DocCitations::Options docCitationsClampOptions(const QJsonObject &req);
     // ANTS-2161 — project_settings: detect a misplaced layout + create/update
     // .ants/project.json (ops detect / init / set) via ProjectSettings.
     QJsonDocument cmdProjectSettings(const QJsonObject &req);

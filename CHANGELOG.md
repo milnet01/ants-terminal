@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **New `doc_citations` tool — check that a document's "see file, line 12" pointers still point where they claim** (ANTS-3636)
+  Design docs are full of references like `src/window.cpp:120`, and they
+  go stale silently as the code moves. Reviewing one used to mean opening
+  every file by hand. This reads the document, finds every reference, and
+  shows you the line each one points at today — plus which ones now point
+  at a missing file, past the end of a file, or at a name that matches
+  several files.
+
 - **Citation scan — the `path:line` grammar and scrape rule as a standalone contract, split out of ANTS-3636.** (ANTS-3653)
   The part that just finds `file.cpp:42` references in a document, specified on its own so it can be built and tested without touching the filesystem.
 

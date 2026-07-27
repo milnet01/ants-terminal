@@ -5140,6 +5140,10 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("doc_integrity",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdDocIntegrity));
+    // ANTS-3636 — doc_citations: resolve a doc's path:line citations, return the text.
+    m_claudeIntegration->registerToolProvider("doc_citations",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdDocCitations));
     // ANTS-2161 — project_settings: detect layout + create/update .ants/project.json.
     m_claudeIntegration->registerToolProvider("project_settings",
         ClaudeIntegration::CallerCwdContract::Required,

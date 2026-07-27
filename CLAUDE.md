@@ -181,7 +181,7 @@ load. Quick check: `LC_ALL=C.UTF-8 ctest --test-dir build`.
 ## MCP tool authoring
 
 **Discovering the full toolkit (ANTS-2037).** The SessionStart hook lists
-~12 high-frequency verbs; for all ~73 (grouped by category, each with a
+~12 high-frequency verbs; for all ~74 (grouped by category, each with a
 one-line *when to use*), call `tool_info {catalog:true}` (ANTS-1985) once,
 then `ToolSearch` `select:mcp__ants__<name>` to load a verb's schema before
 calling it. This pointer is the always-loaded fallback for when the hook

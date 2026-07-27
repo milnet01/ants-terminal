@@ -1280,6 +1280,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_docs_index/test_mcp_docs_index.cpp
                 # ANTS-3601 — doc_integrity verb (enumeration + kinds filter + wiring).
                 tests/features/doc_integrity_verb/test_doc_integrity_verb.cpp
+                # ANTS-3636 doc_citations verb layer + its six registration hooks.
+                tests/features/doc_citations_verb/test_doc_citations_verb.cpp
                 # ANTS-2160 — per-project .ants/project.json settings file.
                 tests/features/project_settings/test_project_settings.cpp
                 # ANTS-2161 — layout auto-detect + project_settings verb.
