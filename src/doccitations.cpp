@@ -345,6 +345,82 @@ bool needsEscaping(const QString &line) {
            || line.contains(closeRe) || line.contains(openRe);
 }
 
+// ANTS-3654 — the doc-side half of the anchor check. Purely positional: which
+// identifier, if any, does this citation sit beside? No filesystem, so it is
+// decided BEFORE the target read and can tell that read how wide to go.
+struct Anchor {
+    QString symbol;   // the span's content, VERBATIM — what anchor_symbol carries
+    QString needle;   // the text after its last "::" — what the search looks for
+};
+
+// Position order over (line, col). Spans never overlap, so this totally orders
+// them and a monotone cursor over document-ordered citations is exact.
+bool posBefore(int l1, int c1, int l2, int c2) {
+    return l1 != l2 ? l1 < l2 : c1 < c2;
+}
+
+// The immediately preceding code span, when it is an identifier within reach.
+// `cursor` walks forward across calls; citations arrive in document order and
+// spans are in document order, so it never rewinds.
+bool anchorFor(const Citation &tok, const QStringList &lines,
+               const QVector<MarkdownScan::CodeSpan> &spans, const Options &opts,
+               int &cursor, Anchor &out) {
+    const int line = tok.docLine - 1;
+    const int col  = tok.docCol;
+    while (cursor < spans.size()
+           && !posBefore(line, col, spans.at(cursor).endLine, spans.at(cursor).endCol))
+        ++cursor;
+    // A citation outside every code span has no anchor, whatever precedes it:
+    // the delimiters are what make the pairing authored rather than accidental.
+    if (cursor >= spans.size()) return false;
+    const MarkdownScan::CodeSpan &self = spans.at(cursor);
+    if (posBefore(line, col, self.startLine, self.startCol)) return false;
+    if (cursor == 0) return false;
+
+    // "Immediately preceding" is the nearest span, full stop — a non-identifier
+    // one is not skipped over in search of a better candidate. Both endpoints
+    // must sit on the citation SPAN's opening line, or the column arithmetic
+    // below is measuring across a newline.
+    const MarkdownScan::CodeSpan &prev = spans.at(cursor - 1);
+    if (prev.startLine != prev.endLine || prev.endLine != self.startLine) return false;
+    if (self.startCol - self.delimLen - (prev.endCol + prev.delimLen) > opts.maxAnchorGap)
+        return false;
+
+    // Content VERBATIM: CommonMark's one-space strip is the caller's job and
+    // this caller does not apply it, so ` foo ` is not an identifier.
+    static const QRegularExpression idRe(
+        QRegularExpression::anchoredPattern(QStringLiteral("[A-Za-z_][A-Za-z0-9_:]*")));
+    const QString content =
+        lines.at(prev.startLine).mid(prev.startCol, prev.endCol - prev.startCol);
+    if (!idRe.match(content).hasMatch()) return false;
+
+    // Only "::" separates: the pattern admits a lone colon, so `a:b` is its own
+    // needle. A trailing "::" leaves an empty component and yields no anchor.
+    const int sep = content.lastIndexOf(QLatin1String("::"));
+    out.needle    = sep < 0 ? content : content.mid(sep + 2);
+    if (out.needle.isEmpty()) return false;
+    out.symbol = content;
+    return true;
+}
+
+// Whole-identifier, case-sensitive: the occurrence must not be flanked by a
+// word character, so `id` does not match `invalid`.
+bool containsIdentifier(const QString &hay, const QString &needle) {
+    const auto isWord = [](QChar c) {
+        return (c >= QLatin1Char('a') && c <= QLatin1Char('z'))
+               || (c >= QLatin1Char('A') && c <= QLatin1Char('Z'))
+               || (c >= QLatin1Char('0') && c <= QLatin1Char('9'))
+               || c == QLatin1Char('_');
+    };
+    for (int i = hay.indexOf(needle); i >= 0; i = hay.indexOf(needle, i + 1)) {
+        if (i > 0 && isWord(hay.at(i - 1))) continue;
+        const int end = i + needle.size();
+        if (end < hay.size() && isWord(hay.at(end))) continue;
+        return true;
+    }
+    return false;
+}
+
 // Reads each target at most once while it is cached; past the cache's bounds a
 // target is re-read per citation (no eviction, no LRU churn). ReadRegion::extract
 // is deliberately not reused: it re-opens per call, never reports the file's
@@ -355,13 +431,17 @@ public:
     struct Result {
         bool        ok        = false;   // false → read_error
         int         fileLines = 0;
-        QStringList lines;               // the emitted slice, already clipped
-        bool        clipped   = false;
+        QStringList lines;               // the read slice, already clipped
+        bool        clipped   = false;   // over the EMITTED prefix only, see take()
     };
 
     explicit TargetReader(const Options &o) : m_opts(o) {}
 
-    Result read(const QString &absPath, int startLine, int wantLines) {
+    // ANTS-3654 — `wantLines` is what is READ (the anchor search covers the full
+    // cited range); `emitLines` is what the response will carry. They differ only
+    // for an anchored citation, and only `clipped` distinguishes them, because
+    // `text_clipped` describes the emitted text and must not move with the read.
+    Result read(const QString &absPath, int startLine, int wantLines, int emitLines) {
         Result r;
         const auto cached = m_cache.constFind(absPath);
         if (cached != m_cache.constEnd()) {
@@ -369,7 +449,7 @@ public:
             r.fileLines = cached->size();
             for (int i = startLine - 1; i >= 0 && i < cached->size() && r.lines.size() < wantLines;
                  ++i)
-                r.lines << clipToBytes(cached->at(i), m_opts.maxTextBytes, &r.clipped);
+                take(r, cached->at(i), emitLines);
             return r;
         }
         if (m_reads >= m_opts.maxTargetReads) {   // the absolute budget, INV-46
@@ -397,8 +477,7 @@ public:
         const auto takeLine = [&](QString line) {
             if (line.endsWith(QLatin1Char('\r'))) line.chop(1);
             ++lineNo;
-            if (lineNo >= startLine && r.lines.size() < wantLines)
-                r.lines << clipToBytes(line, m_opts.maxTextBytes, &r.clipped);
+            if (lineNo >= startLine && r.lines.size() < wantLines) take(r, line, emitLines);
             if (!accumulating) return;
             // In memory, not on disk: QString is UTF-16, plus a header and its
             // own allocation per line. Budgeting by file size would promise
@@ -439,6 +518,15 @@ public:
     bool budgetHit() const { return m_budgetHit; }
 
 private:
+    // One line onto the slice. A clip past the emitted prefix is real but
+    // invisible to the caller, so it must not raise `text_clipped`.
+    void take(Result &r, const QString &line, int emitLines) const {
+        bool          clipped = false;
+        const QString s       = clipToBytes(line, m_opts.maxTextBytes, &clipped);
+        if (clipped && r.lines.size() < emitLines) r.clipped = true;
+        r.lines << s;
+    }
+
     const Options              &m_opts;
     QHash<QString, QStringList> m_cache;
     qint64                      m_charge    = 0;
@@ -571,6 +659,7 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
 
     const ScanResult    sc    = scan(prefix, opts);
     const QVector<bool> fence = MarkdownScan::fenceMask(prefix);
+    const QVector<MarkdownScan::CodeSpan> spans = MarkdownScan::codeSpans(prefix, fence);
 
     TargetReader           reader(opts);
     QVector<QJsonObject>   entries;
@@ -578,6 +667,11 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
     QHash<QString, int>    tally;
     Antecedent             ante;
     int                    fenceCursor = 0;
+    int                    spanCursor  = 0;
+    // The two overlays on the ok subset (ANTS-3654 § 2): a needle that was
+    // looked for and not found, and an ok citation with no anchor to judge it by.
+    int anchorMissing = 0;
+    int uncheckedOk   = 0;
 
     for (const Citation &tok : sc.citations) {
         // A fence is a context break, not merely skipped text: a `:45` after a
@@ -618,6 +712,12 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
             continue;
         }
 
+        // Decided doc-side, before the read, because it is what tells the read
+        // how wide to go. Evaluated only where it can be reported: a status that
+        // emits no text emits no verdict either.
+        Anchor     anchor;
+        const bool anchored = anchorFor(tok, prefix, spans, opts, spanCursor, anchor);
+
         QJsonObject e{{QStringLiteral("doc_line"), tok.docLine},
                       {QStringLiteral("raw"), tok.raw},
                       {QStringLiteral("start_line"), tok.startLine},
@@ -649,8 +749,12 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         default: {
             e.insert(QStringLiteral("path"), t.relPath);
             const int cited = tok.endLine - tok.startLine + 1;
+            // Not `emit` — that is a Qt keyword macro, and it expands to nothing.
+            const int shown = qMin(opts.maxRangeLines, cited);
+            // The match is over the FULL resolved range, so an anchored citation
+            // reads past max_range_lines — and only an anchored one does.
             const TargetReader::Result rr =
-                reader.read(t.absPath, tok.startLine, qMin(opts.maxRangeLines, cited));
+                reader.read(t.absPath, tok.startLine, anchored ? cited : shown, shown);
             if (!rr.ok) {
                 status = QStringLiteral("read_error");
                 break;
@@ -663,13 +767,27 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                 break;
             }
             status = QStringLiteral("ok");
+            // The response carries the emitted PREFIX, never the wider slice the
+            // anchor search read — `text`, `text_clipped` and `text_escaped` all
+            // keep ANTS-3636's semantics, and `range_truncated` below is derived
+            // from the citation's own line numbers, so it would not catch a leak.
             QJsonArray text;
             bool escaped = false;
-            for (const QString &l : rr.lines) {
-                text.append(l);
-                escaped = escaped || needsEscaping(l);
+            for (int i = 0; i < rr.lines.size() && i < shown; ++i) {
+                text.append(rr.lines.at(i));
+                escaped = escaped || needsEscaping(rr.lines.at(i));
             }
             e.insert(QStringLiteral("text"), text);
+            if (anchored) {
+                bool found = false;
+                for (const QString &l : rr.lines)
+                    if ((found = containsIdentifier(l, anchor.needle))) break;
+                e.insert(QStringLiteral("anchor_symbol"), anchor.symbol);
+                e.insert(QStringLiteral("anchor_found"), found);
+                if (!found) ++anchorMissing;
+            } else {
+                ++uncheckedOk;
+            }
             if (tok.endLine > rr.fileLines) e.insert(QStringLiteral("end_clamped"), true);
             if (qMin(tok.endLine, rr.fileLines) - tok.startLine + 1 > opts.maxRangeLines)
                 e.insert(QStringLiteral("range_truncated"), true);
@@ -699,16 +817,17 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                                                        : a.docCol < b.docCol;
                      });
 
-    const int okCount = tally.value(QStringLiteral("ok"));
     QJsonObject counts;
     for (const char *k : {"ok", "missing_file", "out_of_range", "read_error", "ambiguous",
                           "unresolved"})
         counts.insert(QLatin1String(k), tally.value(QString::fromLatin1(k)));
-    // Overlays on the ok subset, not statuses. Until ANTS-3654 lands the anchor
-    // check nothing is judged, so every ok citation is `unchecked` — which is
-    // the honesty field doing its job rather than a placeholder.
-    counts.insert(QStringLiteral("anchor_missing"), 0);
-    counts.insert(QStringLiteral("unchecked"), okCount);
+    // Overlays on the ok subset, not statuses (ANTS-3654 § 2). `anchor_missing`
+    // counts a needle that was searched for and not found — a citation with no
+    // anchor at all is `unchecked`, not missing. The two plus the
+    // anchored-and-found remainder partition counts.ok, and both stay whole-doc
+    // so only:"stale" never moves them.
+    counts.insert(QStringLiteral("anchor_missing"), anchorMissing);
+    counts.insert(QStringLiteral("unchecked"), uncheckedOk);
     counts.insert(QStringLiteral("unparsed"), unparsedRows.size());
 
     QJsonArray unparsedOut;
@@ -743,10 +862,16 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
     // Filter, then page, then fill until a cap binds — that order is what makes
     // next_offset == offset + returned correct and every entry reachable.
     QVector<QJsonObject> filtered;
-    for (const QJsonObject &e : entries)
-        if (opts.only == Only::All
-            || e.value(QStringLiteral("status")).toString() != QLatin1String("ok"))
-            filtered.append(e);
+    for (const QJsonObject &e : entries) {
+        // ANTS-3654 widens `stale` from "did not resolve" to "did not resolve, OR
+        // resolved and no longer says what the doc claims". An ok citation with
+        // no anchor was never judged, so it is not stale — it is unchecked.
+        const bool stale =
+            e.value(QStringLiteral("status")).toString() != QLatin1String("ok")
+            || (e.contains(QStringLiteral("anchor_found"))
+                && !e.value(QStringLiteral("anchor_found")).toBool());
+        if (opts.only == Only::All || stale) filtered.append(e);
+    }
 
     // The budget is what is left after everything that is never trimmed —
     // unparsed[] above all, which max_bytes must not touch.

@@ -7,6 +7,7 @@
 // no MainWindow is involved.
 
 #include "../../_support/expect.h"
+#include "fixture.h"
 #include "doccitations.h"
 
 #include <gtest/gtest.h>
@@ -28,48 +29,10 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-// A throwaway project root. `root` is canonical because gate G compares
-// canonical paths, and /tmp is a symlink on some distributions — an
-// uncanonicalised root would make every in-root citation look like an escape.
-struct Fixture {
-    QTemporaryDir dir;
-    QString root;
-
-    Fixture() : root(QFileInfo(dir.path()).canonicalFilePath()) {}
-
-    QString write(const QString &rel, const QByteArray &content) const {
-        const QString abs = root + QLatin1Char('/') + rel;
-        QDir().mkpath(QFileInfo(abs).path());
-        QFile f(abs);
-        if (!f.open(QIODevice::WriteOnly)) return QString();
-        f.write(content);
-        f.close();
-        return abs;
-    }
-
-    QString doc(const QByteArray &content) const { return write(QStringLiteral("doc.md"), content); }
-};
-
-QJsonArray cites(const QJsonObject &r) { return r.value(QStringLiteral("citations")).toArray(); }
-QJsonArray unparsed(const QJsonObject &r) { return r.value(QStringLiteral("unparsed")).toArray(); }
-
-QJsonObject cite(const QJsonObject &r, int i) { return cites(r).at(i).toObject(); }
-
-QString status(const QJsonObject &r, int i) {
-    return cite(r, i).value(QStringLiteral("status")).toString();
-}
-
-// Failure detail: the whole envelope, so a red line says what actually came
-// back rather than only which predicate failed.
-QString render(const QJsonObject &r) {
-    return QString::fromUtf8(QJsonDocument(r).toJson(QJsonDocument::Compact));
-}
-
-QStringList textOf(const QJsonObject &c) {
-    QStringList out;
-    for (const QJsonValue &v : c.value(QStringLiteral("text")).toArray()) out << v.toString();
-    return out;
-}
+// The fixture and response accessors live in fixture.h — ANTS-3654 added a
+// second test file against this engine and a divergent second copy of the
+// canonical-root logic would fail silently. See that header.
+using namespace doccit_test;
 
 // The six-status fixture, shared by INV-41 (which statuses carry `file_lines`)
 // and INV-26 (the tally identities). Both need every bucket non-empty, and
@@ -821,9 +784,12 @@ TEST(DocCitations, Inv17ResumableAndNonResumableCaps) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// INV-26 — the three tally identities, with every bucket non-empty. (The
-// anchored-and-found term is 0 until ANTS-3654 lands the anchor check, so the
-// second identity currently reads counts.ok == anchor_missing + unchecked.)
+// INV-26 — the three tally identities, with every bucket non-empty. Since
+// ANTS-3654 the ok subset partitions THREE ways, and the third term has no
+// counter of its own — it is derived from citations[] here. Asserting only
+// anchor_missing + unchecked would pass on any fixture that happens to anchor
+// nothing, which is exactly what this fixture does, so the identity would look
+// verified while testing nothing.
 TEST(DocCitations, Inv26TallyIdentities) {
     expect_reset();
     SixStatus f;
@@ -840,9 +806,12 @@ TEST(DocCitations, Inv26TallyIdentities) {
     }
     expect(sum == r.value(QStringLiteral("count")).toInt(),
            "INV-26: the six statuses partition count", render(r));
+    int anchoredFound = 0;
+    for (const QJsonValue &v : cites(r))
+        if (v.toObject().value(QStringLiteral("anchor_found")).toBool()) ++anchoredFound;
     expect(counts.value(QStringLiteral("ok")).toInt()
                == counts.value(QStringLiteral("anchor_missing")).toInt()
-                      + counts.value(QStringLiteral("unchecked")).toInt(),
+                      + counts.value(QStringLiteral("unchecked")).toInt() + anchoredFound,
            "INV-26: the anchor overlays partition the ok subset", render(r));
     expect(counts.value(QStringLiteral("unparsed")).toInt()
                == r.value(QStringLiteral("unparsed_total")).toInt(),

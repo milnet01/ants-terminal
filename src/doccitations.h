@@ -22,9 +22,10 @@
 
 namespace DocCitations {
 
-// `only` — the filter over citations[]. Stale keeps every non-ok citation; once
-// ANTS-3654 lands the anchor check it also keeps an ok one whose anchor no
-// longer matches, which is the drift the verb exists to surface.
+// `only` — the filter over citations[]. Stale keeps every non-ok citation, and
+// (ANTS-3654) an ok one whose anchor no longer matches — the drift the verb
+// exists to surface. An ok citation with no anchor was never judged, so it is
+// `unchecked` rather than stale, and Stale drops it.
 enum class Only { All, Stale };
 
 // Test-only counters. INV-6 asserts "zero filesystem calls" and INV-20 "one
@@ -60,6 +61,9 @@ struct Options {
 
     int maxLocusDigits = 7;    // scan stage 2: longer → bad_locus, before converting
     int maxRawChars    = 120;  // bounds an `unparsed` entry's `raw`
+    int maxAnchorGap   = 40;   // ANTS-3654 § 2: columns between the anchor span's
+                               // closing delimiter and the citation span's opening
+                               // one, beyond which the identifier is not an anchor
 
     int    maxCitations   = 400;
     int    maxUnparsed    = 200;
