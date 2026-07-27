@@ -20780,7 +20780,7 @@ that needs them.
   Kind: fix.
   Source: in-session-2026-07-27.
 
-- 📋 [ANTS-3657] **`/cold-eyes` §1e's fence check is a naive delimiter count and false-alarms on multi-backtick spans.**
+- ✅ [ANTS-3657] **`/cold-eyes` §1e's fence check is a naive delimiter count and false-alarms on multi-backtick spans.**
   Spun out of ANTS-3655 (2026-07-27). The skill's structural-integrity bullet
   asks for "an odd count of fenced-block delimiters", which an agent implements
   ad hoc with grep -- and that count reads a ```` ```` ``` ```` ```` inline span
@@ -20795,6 +20795,22 @@ that needs them.
   **Layman:** The doc-review checklist counts backticks by hand and mistakes example text for a real code block; point it at the fixed scanner instead.
   Kind: doc.
   Source: in-session-2026-07-27 (ANTS-3655 follow-up).
+  Resolved (2026-07-27): option (b), in the global skill —
+  ~/.claude/skills/cold-eyes/SKILL.md, claude-config 865b7a1 (nothing in
+  this repo changed, so no CHANGELOG entry). §1e's structural-integrity
+  bullet now takes the fence from `doc_citations`' `unterminated_fence`
+  (the 1-based opener line from MarkdownScan::fenceMask, absent when every
+  fence closes) instead of "an odd count of fenced-block delimiters", and
+  states the fallback rule for projects without the verb — ignore a line
+  carrying a further backtick after its opening run, and never infer
+  "unterminated" from a trailing run of fenced lines (markdownscan.h:71-76:
+  that is what a correctly closed final code block looks like).
+  Same edit folded in the neighbouring hand-rolled check: the link/anchor
+  bullet's "add one grep the verb doesn't cover: path:line citations" is
+  doc_citations' main output, so it names the verb rather than asking for a
+  second ad-hoc scan — two hand-rolled greps in §1e collapse to one verb
+  call that also reports what is on each cited line today.
+  Reachable over MCP after the next Ants relaunch (ANTS-3636's binary).
 
 - ✅ [ANTS-3658] **`mcp_audit_run.Ants3605InProcessLanesDispatchedHeadless` runs ~9.5 s against a 10 s ctest timeout.**
   Observed 2026-07-27 during ANTS-3655: the test timed out under `ctest
