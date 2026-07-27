@@ -9043,7 +9043,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-07-14 (ANTS-2119 work).
   Resolved 2026-07-17: qualified-name fallback added to resolveSymbol (readregion.cpp) — the complement of ANTS-3399. A pasted Class::method / ns::fn now resolves the bare outline entry via the last ::/. component (unambiguous-only; ties fall through to symbol_not_found). Locked by McpReadRegion.QualifiedNameResolvesBareOutlineEntry + QualifiedNameAmbiguousTailRejected (12/12 green).
 
-- 📋 [ANTS-3659] **`doc_citations` reports a citation-grammar doc's own teaching examples as rot.**
+- 🚧 [ANTS-3659] **`doc_citations` reports a citation-grammar doc's own teaching examples as rot.**
   First real-doc run, 2026-07-27. `docs/specs/ANTS-3636.md` returns 37
   citations / 22 unparsed, of which 31 are `missing_file` or `ambiguous` —
   and every one is an illustrative example the spec authors on purpose
@@ -9051,6 +9051,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   `src/gone.cpp:1` / `bad.cpp:1` in the INV-7 fixture prose). Nothing has
   rotted. Control docs are clean: `CLAUDE.md` 1 citation, ok;
   `docs/standards/mcp-tools.md` zero.
+  Progress (2026-07-27): spec drafted at docs/specs/ANTS-3659.md (commit 1cb48096), pre-cold-eyes. Option (b) — the region marker — chosen on measurement, not preference: three of the six healthy citations in ANTS-3636.md are illustrations citing REAL files (CMakeLists.txt:148, CMakeLists.txt:1, and a bare :1-9999999 that inherits claudeintegration.cpp from a genuine antecedent 24 lines earlier and resolves ok against it), so the cheaper path-name opt-out would leave all three standing. Marker is verb-neutral (`doc-examples`) because ANTS-3661 needs the same region over the same prose. INV-49..53.
 
   The verb is not wrong — those paths genuinely do not exist. The consumer
   drowns: /cold-eyes § 1e now runs `doc_citations` per doc, and on the
