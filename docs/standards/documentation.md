@@ -85,6 +85,36 @@ Cite the symbol.
   *live* citations — claims about how the code works now — are governed
   by this rule.
 
+### 1.8 Mark teaching examples so they don't read as rot
+
+A doc that *explains* citations has to write ones that point nowhere —
+`src/foo.cpp:12` in a grammar table, `src/gone.cpp:1` in a fixture. To a
+checker those are indistinguishable from real rot. Mark the passage:
+
+```
+<!-- doc-examples: begin -->
+...prose whose file references are illustrations...
+<!-- doc-examples: end -->
+```
+
+- **Alone on its line**, up to three leading spaces, lowercase keyword.
+  A marker inside a fenced block is sample text, not syntax — which is
+  what lets this section show the marker without opening a region.
+- **Honouring it is each verb's own policy.** `doc_citations` skips a
+  marked region entirely (ANTS-3659); another checker may not, the same
+  way `doc_integrity` and `doc_citations` already share one code-span
+  scanner and invert what they do with it.
+- **Mark the passages that are about notation, not the whole file.** A
+  region drawn wide enough to quiet every complaint also hides real
+  rot; `examples_suppressed` in the response is what makes an
+  over-broad one visible, so treat a surprising count as a defect.
+- **The § 1.7 exemption above extends to this**: a cold-eyes loop log
+  is a frozen record, so its citations are not live claims and are
+  worth marking rather than checking.
+- **Never infer "example" from a name that looks like a placeholder.**
+  This repo has real files with generic names; a heuristic that guesses
+  suppresses real rot silently. The marker is explicit for that reason.
+
 Grounded in three hand-repairs of the same drift (ANTS-3470, ANTS-3596,
 ANTS-3641): ANTS-3470 found that the one citation which survived the
 refactor was the one naming its symbol chain.

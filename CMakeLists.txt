@@ -2024,6 +2024,8 @@ if(ANTS_TESTS)
                 tests/features/doc_citations_scan/test_doc_citations_scan.cpp
                 # ANTS-3654 — anchor-symbol drift check (advisory, layered on ok).
                 tests/features/doc_citations_anchor/test_doc_citations_anchor.cpp
+                # ANTS-3659 — the doc-examples suppression region.
+                tests/features/doc_citations_examples/test_doc_citations_examples.cpp
                 tests/features/config_parse_failure_guard/test_config_parse_failure.cpp
                 tests/features/config_reload_loop_safety/test_config_reload_loop_safety.cpp
                 tests/features/debuglog_perms/test_debuglog_perms.cpp

@@ -111,4 +111,33 @@ struct CodeSpan {
 // testing "fills the span" applies it.
 QVector<CodeSpan> codeSpans(const QStringList &lines, const QVector<bool> &fence);
 
+// ANTS-3659 — per-line "inside a doc-examples region" mask, one bool per input
+// line, 0-based like fenceMask. A region is opened by a line matching
+//     ^ {0,3}<!--[ \t]*doc-examples:[ \t]*(begin|end)[ \t]*-->[ \t]*$
+// and closed by its `end` counterpart. Every line of a recognised region is
+// masked, its two delimiters included (they are region syntax, not prose).
+//
+// Regions do not nest: a `begin` inside an open region is ignored and the
+// region keeps its FIRST opener's line, which is what an unterminated doubled
+// `begin` reports. An `end` with no open region is ignored and its line is not
+// masked. An unterminated region masks true to the end of the INPUT — which for
+// a truncated scan is the prefix, not the document — and reports its opener in
+// *unterminatedOpenerLine as a 1-BASED line (-1 when balanced; nullptr
+// accepted), matching fenceMask's overload.
+//
+// `fence` is required, not optional: a marker inside a fenced block is sample
+// text, and docs/specs/ANTS-3659.md is a document that shows the marker inside
+// a fence. It must be the mask for THESE lines; a size mismatch is a
+// programming error, and in release a short mask reads as unfenced.
+//
+// A marker inside a multi-line INLINE code span is still a marker: consuming
+// codeSpans here would make the lighter primitive depend on the heavier one for
+// a document shape with no instance in this corpus.
+//
+// Lines must arrive with any trailing \r removed — the trailing [ \t]*$ matches
+// neither \r nor \n, so a CRLF line would silently never open a region. The
+// primitive cannot detect a violation it was handed; see ANTS-3659 § 2.1.
+QVector<bool> exampleMask(const QStringList &lines, const QVector<bool> &fence,
+                          int *unterminatedOpenerLine = nullptr);
+
 }  // namespace MarkdownScan

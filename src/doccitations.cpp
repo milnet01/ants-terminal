@@ -170,9 +170,17 @@ int oneSpaceStrip(const QString &content, QString &stripped) {
     return 0;
 }
 
-void record(ScanResult &r, const Options &opts, const QString &line, int docLine,
-          int docCol, const Token &tok, const QString &raw,
-          const QString &path, bool continuation) {
+void record(ScanResult &r, const Options &opts, const QVector<bool> &examples,
+          const QString &line, int docLine, int docCol, const Token &tok,
+          const QString &raw, const QString &path, bool continuation) {
+    // ANTS-3659 — one guard for BOTH arrays. This is the single funnel every
+    // token passes through, so a masked line cannot reach citations[] or
+    // unparsed[] by any route, and the counter cannot disagree with either.
+    // docLine is 1-based; the mask is 0-based like fenceMask.
+    if (examples.value(docLine - 1)) {
+        ++r.examplesSuppressed;
+        return;
+    }
     Citation c;
     c.docLine      = docLine;
     c.docCol       = docCol;
@@ -198,6 +206,10 @@ ScanResult scan(const QStringList &lines, const Options &opts) {
     ScanResult r;
     const QVector<bool> fence = MarkdownScan::fenceMask(lines,
                                                         &r.unterminatedFence);
+    // ANTS-3659 — passages the author marked as illustrations. Fence-aware, so
+    // a marker shown inside a ```` ```markdown ```` sample is sample text.
+    const QVector<bool> examples =
+        MarkdownScan::exampleMask(lines, fence, &r.unterminatedExamples);
 
     // Pass 1 — path-bearing tokens, on the RAW line. A citation with a path is
     // harvested wherever it appears: bare prose, inside emphasis, inside link
@@ -225,7 +237,7 @@ ScanResult scan(const QStringList &lines, const Options &opts) {
 
             Token tok;
             if (!recogniseAfterColon(line, i, tok)) continue;
-            record(r, opts, line, li + 1, start, tok,
+            record(r, opts, examples, line, li + 1, start, tok,
                  line.mid(start, tok.end - start), path, false);
             i = tok.end - 1;                          // resume past the token
         }
@@ -250,8 +262,8 @@ ScanResult scan(const QStringList &lines, const Options &opts) {
         Token tok;
         if (!recogniseAfterColon(stripped, 0, tok)) continue;
         if (tok.end != stripped.size()) continue;     // did not FILL the span
-        record(r, opts, stripped, s.startLine + 1, off, tok, stripped, QString(),
-             true);
+        record(r, opts, examples, stripped, s.startLine + 1, off, tok, stripped,
+             QString(), true);
     }
 
     // Document order — ascending docLine, then ascending column. Paging over
@@ -660,6 +672,10 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
     const ScanResult    sc    = scan(prefix, opts);
     const QVector<bool> fence = MarkdownScan::fenceMask(prefix);
     const QVector<MarkdownScan::CodeSpan> spans = MarkdownScan::codeSpans(prefix, fence);
+    // ANTS-3659 § 2.4 — the example regions again, for the antecedent reset.
+    // A second computation, like the fence mask above: scan() owns the
+    // unterminated sentinel, so the out-param is nullptr here.
+    const QVector<bool> examples = MarkdownScan::exampleMask(prefix, fence);
 
     TargetReader           reader(opts);
     QVector<QJsonObject>   entries;
@@ -676,9 +692,13 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
     for (const Citation &tok : sc.citations) {
         // A fence is a context break, not merely skipped text: a `:45` after a
         // code sample far more likely discusses that sample, and a visible
-        // `unresolved` beats a silent mis-attribution.
+        // `unresolved` beats a silent mis-attribution. ANTS-3659 — an example
+        // region is the same kind of break, so ANY masked line resets: without
+        // it a continuation after the region inherits a real path across an
+        // illustration and reports `ok` against a file the author never named.
         for (; fenceCursor < tok.docLine && fenceCursor < fence.size(); ++fenceCursor)
-            if (fence.at(fenceCursor)) ante = Antecedent{};
+            if (fence.at(fenceCursor) || examples.value(fenceCursor))
+                ante = Antecedent{};
 
         Target t;
         bool   inherited = false;
@@ -858,6 +878,10 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
     if (reader.budgetHit()) out.insert(QStringLiteral("read_budget_exhausted"), true);
     if (sc.unterminatedFence >= 0)
         out.insert(QStringLiteral("unterminated_fence"), sc.unterminatedFence);
+    if (sc.unterminatedExamples >= 0)
+        out.insert(QStringLiteral("unterminated_examples"), sc.unterminatedExamples);
+    if (sc.examplesSuppressed > 0)
+        out.insert(QStringLiteral("examples_suppressed"), sc.examplesSuppressed);
 
     // Filter, then page, then fill until a cap binds — that order is what makes
     // next_offset == offset + returned correct and every entry reachable.

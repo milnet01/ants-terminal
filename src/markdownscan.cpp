@@ -166,4 +166,57 @@ QVector<CodeSpan> codeSpans(const QStringList &lines,
     return out;
 }
 
+namespace {
+
+// ANTS-3659 § 2.1. Anchored at both ends, so the marker must be alone on its
+// line: a marker sharing a line with prose would leave "is the prose before it
+// inside or outside?" with no non-arbitrary answer. The indent is space-only
+// for fenceRe's reason (ANTS-3598) — a `\s` class admits `\r`, and a stray
+// carriage return would then open a region.
+const QRegularExpression &exampleMarkerRe() {
+    static const QRegularExpression re(QStringLiteral(
+        "^ {0,3}<!--[ \\t]*doc-examples:[ \\t]*(begin|end)[ \\t]*-->[ \\t]*$"));
+    return re;
+}
+
+}  // namespace
+
+QVector<bool> exampleMask(const QStringList &lines, const QVector<bool> &fence,
+                          int *unterminatedOpenerLine) {
+    Q_ASSERT(fence.size() == lines.size());
+
+    QVector<bool> mask(lines.size(), false);
+    int           open = -1;   // 0-based line of the FIRST unclosed begin, or -1
+
+    const auto fill = [&mask](int from, int to) {
+        for (int i = from; i <= to; ++i) mask[i] = true;
+    };
+
+    for (int li = 0; li < lines.size(); ++li) {
+        if (fence.value(li)) continue;          // fenced ⇒ sample text, not syntax
+        const QString &line = lines.at(li);
+        // Prefilter: the marker-free document is the common case and an anchored
+        // regex per line is this primitive's whole cost. Not a contract — the
+        // regex alone is authoritative.
+        if (!line.contains(QLatin1String("<!--"))) continue;
+        const QRegularExpressionMatch m = exampleMarkerRe().match(line);
+        if (!m.hasMatch()) continue;
+
+        if (m.capturedView(1) == QLatin1String("begin")) {
+            if (open < 0) open = li;            // no nesting: keep the FIRST opener
+        } else if (open >= 0) {
+            fill(open, li);
+            open = -1;
+        }
+        // An `end` with no open region is ignored, and its line is not masked.
+    }
+
+    // Unterminated: mask to the end of the INPUT, matching fenceMask's
+    // CommonMark leniency. For a truncated scan that is the prefix, not the
+    // document — see the header.
+    if (open >= 0) fill(open, lines.size() - 1);
+    if (unterminatedOpenerLine) *unterminatedOpenerLine = open < 0 ? -1 : open + 1;
+    return mask;
+}
+
 }  // namespace MarkdownScan

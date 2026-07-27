@@ -115,6 +115,16 @@ struct ScanResult {
     // barely read. Comes from MarkdownScan::fenceMask's opener overload and is
     // never inferred from the mask (see that header for why it cannot be).
     int unterminatedFence = -1;
+    // ANTS-3659 — 1-based line of an unclosed `<!-- doc-examples: begin -->`,
+    // or -1. Relative to the SCANNED PREFIX: with max_doc_lines binding, a
+    // region whose `end` is past the cut reports here, and
+    // scanned_lines < doc_lines (ANTS-3636 INV-30) is what says so.
+    int unterminatedExamples = -1;
+    // ANTS-3659 — how many tokens the example mask dropped, across BOTH arrays.
+    // Whole-doc: the emission caps trim what is returned, never what was
+    // suppressed. Without it a too-wide region is indistinguishable from a
+    // document that cites nothing.
+    int examplesSuppressed = 0;
 };
 
 ScanResult scan(const QStringList &lines, const Options &opts = {});
