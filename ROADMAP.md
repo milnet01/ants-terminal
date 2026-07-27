@@ -20126,6 +20126,34 @@ that needs them.
   charges the doc's `QStringList` once. Either have validate hand the decoded
   lines to check, or state the double-read and re-charge the row.
   Loop 8 runs after these two are settled.
+  Progress (2026-07-27): SPLIT, and the cold-eyes loop stopped at 12. The
+  loop was not converging and could not: measured across all 23 commits, the
+  spec went 413 lines (draft) -> 2,095 (loop 12) while findings did not fall,
+  because every finding was repaired by ADDING prose and the additions
+  restated facts that then drifted. Loop 11 deleted 200 lines; loop 12 added
+  198 back. Both of loop 12's CRITICALs were fixtures that cannot be written
+  as specified -- twelve reading passes missed them, and one attempt to type
+  the fixture would have caught both, which is the signal that the validator
+  for an unimplemented verb is the test, not another reviewer.
+
+  Split on the two seams where a child needs almost nothing from the parent:
+  ANTS-3653 takes 2.2/2.3 (the scan is a pure function -- text in, tokens out,
+  no filesystem) with INV-1, 2, 3, 9, 10, 24, 29, 32, 33, 36, 39, 40;
+  ANTS-3654 takes 2.5 (advisory, the verb ships without it) with INV-13, 14.
+  Parent 2,095 -> 1,840; children 306 + 165. No renumbering anywhere -- both
+  children keep the parent's INV numbers and the parent carries `moved to`
+  tombstones, the pattern INV-44/ANTS-3649 already set (specs.md 5.5), so no
+  existing citation breaks.
+
+  Four reconciliations the split forced, each a fact that had been living in
+  two layers: the sticky-path rule moved to 2.4 (inheritance is resolution,
+  not grammar); INV-1, 29 and 32 were asserting resolve-layer facts a
+  filesystem-free scan fixture cannot reach; INV-36/40's trap rows followed
+  them to ANTS-3653 5; the children reference every Options limit by NAME and
+  restate no value, leaving 2.7's Options block the single source of truth.
+
+  Next step is NOT loop 13. It is writing the ANTS-3653 fixtures, which is the
+  pass that finds the INV-4/INV-22 class.
 
   This sits on the critical path of a MANDATED workflow: global rule 13
   requires every doc claim naming a file/line to be verified against
@@ -20605,6 +20633,92 @@ that needs them.
   **Layman:** A tool that adds a review-round entry to a spec sometimes starts a whole new section at the bottom instead of adding to the one already there, so the rounds end up out of order under two identical headings.
   Kind: fix.
   Source: in-session-2026-07-26 (ANTS-3636 cold-eyes loop 10).
+
+- 📋 [ANTS-3653] **Citation scan — the `path:line` grammar and scrape rule as a standalone contract, split out of ANTS-3636.**
+  Split out of ANTS-3636 (2026-07-27) after twelve cold-eyes loops failed to
+  converge. The parent spec grew 413 -> 2,095 lines across those loops while
+  findings did not fall, because every finding was repaired by adding prose,
+  and the added prose restated facts that then drifted from their originals:
+  three of loop 12's five HIGHs were fix-induced contradictions between two
+  copies of one fact.
+
+  This is the clean seam. The scan layer is a pure function -- document text
+  in, citation tokens out -- with no filesystem access, no path resolution and
+  no status taxonomy, so it is testable standalone and its invariants cannot
+  drift against the parent's read path. Owns section 2.2 (two-stage
+  recognise/validate grammar, maximal-munch left edge, the five grammar
+  constraints, en dash, trailing loci, tilde, the `~:N` gap) and section 2.3
+  (fence masking, unterminated-fence reporting, the inline-span policy
+  inversion vs `doc_integrity`). Carries INV-1, 2, 3, 9, 10, 24, 29, 32, 33,
+  36, 39 and 40 with their original numbers -- deliberately NOT renumbered, so
+  every existing citation of them still resolves (the same `moved to` stub
+  pattern INV-44 used for ANTS-3649).
+
+  Depends on ANTS-3649 (`MarkdownScan::codeSpans` + the `fenceMask` opener
+  overload); a continuation must fill a whole inline span and an unterminated
+  fence must report its opener line, neither of which the current primitives
+  express.
+  **Layman:** The part that just finds `file.cpp:42` references in a document, specified on its own so it can be built and tested without touching the filesystem.
+  Kind: implement.
+  Source: user-request-2026-07-27.
+
+- 📋 [ANTS-3654] **Anchor-symbol drift check + `only:"stale"` filter, split out of ANTS-3636.**
+  Split out of ANTS-3636 (2026-07-27) alongside ANTS-3653. This is the
+  most speculative surface in the parent spec and the verb is useful without
+  it: `doc_citations` resolves and returns cited text whether or not it also
+  judges staleness. Separating it lets the core verb ship first and keeps a
+  derived, advisory signal from sharing a document with the contract it is
+  derived from.
+
+  Owns section 2.5: anchor = the immediately preceding identifier code span
+  within `maxAnchorGap` on the citation span's opening line, needle = its final
+  `::` component, match = case-sensitive whole-identifier over the full
+  resolved range (not the `max_range_lines`-clipped text). Carries INV-13 and
+  INV-14 with their original numbers. `anchor_found` is advisory and never a
+  `status`; its two known false-positive shapes (a symbol just outside the
+  cited range, a call site rather than a definition) are stated and
+  deliberately not tuned away.
+
+  The residual -- the un-anchored remainder and the caller-supplied `expect`
+  mode -- remains ANTS-3642. Depends on ANTS-3649 for `CodeSpan::delimLen`,
+  which the anchor-gap measurement needs.
+  **Layman:** The optional extra that checks whether a cited line still mentions the symbol the document says it does -- useful, but the verb works fine without it.
+  Kind: implement.
+  Source: user-request-2026-07-27.
+
+- 📋 [ANTS-3655] **`MarkdownScan::fenceOpenerChar` misreads a 4-backtick inline span as a fence opener.**
+  Found while splitting ANTS-3636 (2026-07-27). `fenceOpenerChar` (and the
+  `fenceRe()` it shares) match `^ {0,3}(```|~~~)` and stop there. CommonMark
+  additionally requires that a BACKTICK fence's info string contain no
+  backticks -- so a line like
+
+      \```` ``` ```` at line 4 with a citation at line 9
+
+  is a paragraph holding a 4-backtick inline code span, NOT a fence opener.
+  The current rule reads it as one, opens a fence that never closes, and
+  masks every following line true to end-of-input.
+
+  Live blast radius, since the consumers are exactly the docs tooling that
+  reads specs about fences: `feedbackfile.cpp` (scanBoundaries),
+  `speclog.cpp` (findSectionHeading), `featurecoverage.cpp`,
+  `docsindex.cpp`, `docintegrity.cpp` (ANTS-3601). A spec that documents
+  fence syntax by example -- `docs/specs/ANTS-3653.md` line 301 does exactly
+  this today -- silently truncates for all of them.
+
+  Fix: in `fenceOpenerChar`, when the fence char is a backtick, reject the
+  line if the remainder after the opening run contains another backtick.
+  Tilde fences are unaffected (their info strings may contain tildes... but
+  not the fence char run itself -- check the spec while in there). Note the
+  same gap exists in my own grep-based cold-eyes fence-parity pre-pass, which
+  false-alarmed on this line in loop 12 and again in this session; the
+  mechanical check should reuse the fixed primitive rather than re-implement
+  the regex.
+
+  Test: a `markdownscan` fixture asserting the 4-backtick line opens no fence
+  and a following `# heading` is still visible to `fenceMask`.
+  **Layman:** A line that shows backticks as example text can be mistaken for the start of a code block, which makes the scanner skip the rest of the document.
+  Kind: fix.
+  Source: in-session-2026-07-27.
 
 ### 📚 Doc standard — symbol citations + concision (user request 2026-07-26)
 
